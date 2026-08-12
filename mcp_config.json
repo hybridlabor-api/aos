@@ -27,17 +27,6 @@
       "command": "uv",
       "args": ["run", "--with-requirements", "__MCPS_DIR__/davinci-resolve-mcp-free/requirements.txt", "__MCPS_DIR__/davinci-resolve-mcp-free/src/resolve_mcp_bridge.py"]
     },
-    "bdb_davinci_mcp_studio": {
-      "command": "node",
-      "args": ["__MCPS_DIR__/davinci-resolve-mcp/bin/davinci-resolve-mcp.mjs"]
-    },
-    "bdb_davinci_mcp_fallback": {
-      "command": "uv",
-      "args": ["--directory", "__MCPS_DIR__/davinci-mcp-professional", "run", "main.py"],
-      "env": {
-        "SETUPTOOLS_SCM_PRETEND_VERSION": "0.1.0"
-      }
-    },
     "bdb_grandma3_mcp": {
       "command": "uv",
       "args": ["run", "__MCPS_DIR__/grandma3_mcp.py", "--ip", "127.0.0.1", "--port", "8080", "--mode", "webapi_only"]
@@ -45,10 +34,6 @@
     "bdb_resolume_mcp": {
       "command": "uv",
       "args": ["run", "__MCPS_DIR__/resolume_mcp.py"]
-    },
-    "adobe_mcp": {
-      "command": "uv",
-      "args": ["run", "__MCPS_DIR__/adobe_mcp.py"]
     },
     "adobe_uxp_mcp": {
       "command": "node",
@@ -58,10 +43,6 @@
       "command": "uv",
       "args": ["--directory", "__MCPS_DIR__/blender-mcp", "run", "-m", "blender_mcp.server"]
     },
-    "bdb_blender_mcp_fallback": {
-      "command": "uv",
-      "args": ["--directory", "__MCPS_DIR__/blender-mcp-server", "run", "-m", "blender_mcp_server"]
-    },
     "bdb_after_effects_mcp": {
       "command": "node",
       "args": ["__MCPS_DIR__/after-effects-mcp/build/index.js"]
@@ -69,10 +50,6 @@
     "bdb_after_effects_mcp_fallback": {
       "command": "sh",
       "args": ["-c", "cd __MCPS_DIR__/ae-mcp && go run ./cmd/ae-mcp"]
-    },
-    "bdb_vectorworks_mcp": {
-      "command": "uv",
-      "args": ["run", "--with-requirements", "__MCPS_DIR__/vectorworks-mcp/requirements.txt", "__MCPS_DIR__/vectorworks-mcp/app/mcp_server.py"]
     },
     "bdb_td_minddesigner": {
       "command": "node",

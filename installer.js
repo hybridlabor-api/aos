@@ -24,6 +24,22 @@ const colors = {
     dim: "\x1b[2m"
 };
 
+const unsupportedMcpDirs = [
+    'adobe_mcp',
+    'davinci-mcp-professional',
+    'davinci-resolve-mcp',
+    'vectorworks-mcp',
+    'blender-mcp-server'
+];
+
+const unsupportedMcpConfigKeys = [
+    'adobe_mcp',
+    'bdb_davinci_mcp_fallback',
+    'bdb_davinci_mcp_studio',
+    'bdb_vectorworks_mcp',
+    'bdb_blender_mcp_fallback'
+];
+
 function isNewerVersion(local, remote) {
     const lParts = local.split('.').map(Number);
     const rParts = remote.split('.').map(Number);
@@ -350,6 +366,8 @@ async function promptMcpSelection(mcpsDir, tier) {
         const basicMcps = ['computer-use-mcp', 'memb-mcp', 'windows-computer-use-mcp'];
         availableMcps = availableMcps.filter(m => basicMcps.includes(m));
     }
+
+    availableMcps = availableMcps.filter(m => !unsupportedMcpDirs.includes(m));
 
     if (isAutoYes) return availableMcps;
     if (availableMcps.length === 0) return [];
@@ -889,6 +907,7 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
         const mcpSrcDir = path.join(srcDir, 'mcps');
         const mcpCodeTarget = path.join(targetMcpDir, 'mcps');
         const selectedMcps = await promptMcpSelection(mcpSrcDir, tier);
+        let creds = {};
         
         if (selectedMcps.length > 0) {
             fs.mkdirSync(targetMcpDir, { recursive: true });
@@ -998,7 +1017,7 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
             }
             mcpConfigStr = mcpConfigStr.replace(/"command":\s*"uv"/g, `"command": "${uvPath.replace(/\\/g, '/')}"`);
 
-            const creds = await promptCredentials(targetMcpDir);
+            creds = await promptCredentials(targetMcpDir);
 
             if (selectedMcps.includes('memb-mcp')) {
                 const pythonBinPath = process.platform === 'win32'
@@ -1012,6 +1031,9 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                 try {
                     const oldConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
                     const newConfig = JSON.parse(mcpConfigStr);
+                    if (oldConfig.mcpServers) {
+                        unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
+                    }
                     oldConfig.mcpServers = Object.assign({}, oldConfig.mcpServers || {}, newConfig.mcpServers || {});
                     fs.writeFileSync(mcpConfigPath, JSON.stringify(oldConfig, null, 2));
                     console.log(` -> Merged BDB MCPs into existing ${path.basename(mcpConfigPath)}`);

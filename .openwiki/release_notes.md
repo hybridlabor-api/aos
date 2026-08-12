@@ -1,5 +1,11 @@
 # Release Notes
 
+## v3.0.6 (Final 3.0.6 Release — Installer Stabilization & Broken MCP Cleanup)
+- **Installer stability hardening**: Fixed Windows npm cache install behavior and secured runtime credentials injection for the BDB MCP installer.
+- **Broken MCP fallback cleanup**: Removed unsupported fallback entries for Adobe legacy, DaVinci fallback, Blender fallback, and Vectorworks from the default MCP configuration.
+- **Release metadata bump**: Updated package and release manifest to `3.0.6`.
+- **memB retention confirmed**: `memb_mcp` remains installed and active while unstable fallback servers are no longer shipped by default.
+
 ## v3.0.0 (Godmode Architecture, Universal Agent Harness & Ecosystem Integrations)
 - **Six-Pillar Godmode Architecture**: Introduced supreme domain governance pillars (`godmode-engineering`, `godmode-ui-ux`, `godmode-shipping`, `godmode-eventtech`, `godmode-3d-creation`, `godmode-media-creation`) routing all sub-skills under master governance rules.
 - **BDB Ecosystem Integrations**: Full companion links and architecture pairing with `bdb-dev-creator-extension` (heavy 3D/video/ComfyUI CUDA compute) and `bdb-os-agent-workspace` (desktop IDE meta-harness orchestrator).
