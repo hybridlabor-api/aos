@@ -59,6 +59,16 @@ function checkForUpdates() {
     });
 }
 
+function cleanNpmCacheOnWindows() {
+    if (process.platform !== 'win32') return;
+    try {
+        console.log(`${colors.dim} -> Windows detected: cleaning npm cache before package install...${colors.reset}`);
+        execSync('npm cache clean --force', { stdio: 'ignore' });
+    } catch (e) {
+        console.warn(` -> Warning: npm cache clean failed on Windows: ${e.message}`);
+    }
+}
+
 const cols = process.stdout.columns || 110;
 
 const headerArt = `
@@ -897,6 +907,7 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                 if (fs.existsSync(path.join(targetFolder, 'package.json'))) {
                     console.log(` -> Setting up Node dependencies for ${mcpFolder}...`);
                     try {
+                        cleanNpmCacheOnWindows();
                         execSync('npm install --no-audit --no-fund', { cwd: targetFolder, stdio: 'ignore' });
                         if (fs.existsSync(path.join(targetFolder, 'tsconfig.json')) || fs.existsSync(path.join(targetFolder, 'tsconfig.build.json'))) {
                             console.log(` -> Compiling TypeScript for ${mcpFolder}...`);
@@ -987,6 +998,8 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
             }
             mcpConfigStr = mcpConfigStr.replace(/"command":\s*"uv"/g, `"command": "${uvPath.replace(/\\/g, '/')}"`);
 
+            const creds = await promptCredentials(targetMcpDir);
+
             if (selectedMcps.includes('memb-mcp')) {
                 const pythonBinPath = process.platform === 'win32'
                     ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')
@@ -1019,8 +1032,6 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
             console.log(" -> Skipping MCP installation.");
         }
 
-        const creds = await promptCredentials(targetMcpDir);
-        
         if (creds.gemini || creds.github || creds.keyEnvName) {
             const envPath = path.join(targetMcpDir, '.env');
             let envContent = '';
@@ -1096,6 +1107,7 @@ async function promptCreatorExtension(mcpConfigPath) {
         console.log(` -> BDB Creator Extension wird über NPM nach ${creatorDir} geladen...`);
         try {
             fs.mkdirSync(creatorDir, { recursive: true });
+            cleanNpmCacheOnWindows();
             execSync(`npm pack @hybridlabor-api/bdb-dev-creator-extension`, { stdio: 'ignore', cwd: creatorDir });
             const tarball = fs.readdirSync(creatorDir).find(f => f.endsWith('.tgz'));
             if (tarball) {
@@ -1136,6 +1148,7 @@ async function promptOSAgentWorkspace() {
         console.log(` -> BDB OS Agent Workspace wird über NPM nach ${osAgentDir} geladen...`);
         try {
             fs.mkdirSync(osAgentDir, { recursive: true });
+            cleanNpmCacheOnWindows();
             execSync(`npm pack @hybridlabor-api/bdb-os-agent-workspace`, { stdio: 'ignore', cwd: osAgentDir });
             const tarball = fs.readdirSync(osAgentDir).find(f => f.endsWith('.tgz'));
             if (tarball) {
