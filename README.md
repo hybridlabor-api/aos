@@ -34,7 +34,6 @@ While optimized for **Google Antigravity**, this skills pack and MCP configurati
 
 ---
 
-![BDB v3 Core Tools Overview](assets/bdb_v3_core_tools_overview_sketch.jpg)
 
 ### 🪐 Universal Agent Harness (v3.0.0)
 The installer now features a fully automated Universal Sync engine. It scans your system for **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline**, and injects the curated MCP configuration and Godmode rules across all environments simultaneously.
@@ -43,6 +42,10 @@ The installer now features a fully automated Universal Sync engine. It scans you
 This package acts as the bridge to two massive upstream capabilities (available as direct installation targets via the installer):
 - **BDB OS Agent Workspace:** The Orchestration Layer for parallel AI agents. Start multiple isolated agent sessions via Git-Worktrees with live terminal control, automatic CI/CD feedback loops, and PR review routing.
 - **BDB Creator Extension:** The heavy-lifting Agentic Media Pipeline. Gives agents local ComfyUI MCP capabilities (FLUX, SDXL), Image-to-3D generation (TripoSR, TRELLIS), and automated video production through OpenMontage and Remotion.
+
+## Overview UPDATED V2 zu V3.0.0 
+
+![BDB v3 Core Tools Overview](assets/bdb_v3_core_tools_overview_sketch.jpg)
 
 ## 🌟 ~144+ Optimized Skills (Updated for v3.0.0)
 
