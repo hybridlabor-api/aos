@@ -40,6 +40,34 @@ const unsupportedMcpConfigKeys = [
     'bdb_blender_mcp_fallback'
 ];
 
+function readJsonFile(filePath) {
+    if (!fs.existsSync(filePath)) return null;
+    try {
+        let raw = fs.readFileSync(filePath, 'utf8');
+        if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+        return JSON.parse(raw);
+    } catch (e) {
+        return null;
+    }
+}
+
+function readJsoncFile(filePath) {
+    if (!fs.existsSync(filePath)) return null;
+    let raw = fs.readFileSync(filePath, 'utf8');
+    if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+    raw = raw.replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|[^:])\/\/.*$/gm, '$1')
+        .replace(/,\s*([}\]])/g, '$1');
+    try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+function isValidInstallDir(dir, markerFiles) {
+    if (!fs.existsSync(dir)) return false;
+    const leftoverTarballs = fs.readdirSync(dir).filter(f => f.endsWith('.tgz'));
+    if (leftoverTarballs.length > 0) return false;
+    return markerFiles.every(f => fs.existsSync(path.join(dir, f)));
+}
+
 function isNewerVersion(local, remote) {
     const lParts = local.split('.').map(Number);
     const rParts = remote.split('.').map(Number);
@@ -83,6 +111,24 @@ function cleanNpmCacheOnWindows() {
     } catch (e) {
         console.warn(` -> Warning: npm cache clean failed on Windows: ${e.message}`);
     }
+}
+
+function runNpmWithRetry(cmd, opts, label, attempts = 3) {
+    for (let i = 1; i <= attempts; i++) {
+        try {
+            execSync(cmd, opts);
+            return true;
+        } catch (e) {
+            if (i === attempts) {
+                console.warn(`Warning: Failed to ${label}: ${e.message}`);
+                return false;
+            }
+            const waitMs = 1000 * i;
+            console.warn(` -> ${label} failed (attempt ${i}/${attempts}), retrying in ${waitMs / 1000}s...`);
+            execSync(process.platform === 'win32' ? `powershell -NoProfile -Command "Start-Sleep -Seconds ${waitMs / 1000}"` : `sleep ${waitMs / 1000}`, { stdio: 'ignore' });
+        }
+    }
+    return false;
 }
 
 const cols = process.stdout.columns || 110;
@@ -208,6 +254,14 @@ function detectPlatforms() {
     const aiderConf = path.join(homeDir, '.aider.conf.yml');
     if (fs.existsSync(aiderConf) || fs.existsSync(path.join(homeDir, '.aider'))) {
         detections.push({ name: "Aider CLI", path: homeDir, key: "aider" });
+    }
+
+    // OpenCode CLI
+    const opencodeDir = process.platform === 'win32'
+        ? path.join(process.env.APPDATA || homeDir, 'opencode')
+        : path.join(homeDir, '.config', 'opencode');
+    if (fs.existsSync(opencodeDir) || fs.existsSync(path.join(homeDir, '.opencode'))) {
+        detections.push({ name: "OpenCode CLI", path: fs.existsSync(opencodeDir) ? opencodeDir : path.join(homeDir, '.opencode'), key: "opencode" });
     }
 
     return detections;
@@ -697,7 +751,8 @@ async function installTokenSaver(platformTarget) {
         console.log(` -> Running Heimdall Token Saver setup (${targetFlag})...`);
         execSync(`${pythonCmd} install.py ${targetFlag}`, {
             cwd: tokenSaverDir,
-            stdio: 'inherit'
+            stdio: 'inherit',
+            env: Object.assign({}, process.env, { PYTHONUTF8: '1' })
         });
         console.log(` -> Heimdall Token Saver successfully registered.`);
     } catch (err) {
@@ -955,14 +1010,11 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                 const targetFolder = path.join(mcpCodeTarget, mcpFolder);
                 if (fs.existsSync(path.join(targetFolder, 'package.json'))) {
                     console.log(` -> Setting up Node dependencies for ${mcpFolder}...`);
-                    try {
-                        cleanNpmCacheOnWindows();
-                        execSync('npm install --no-audit --no-fund', { cwd: targetFolder, stdio: 'ignore' });
-                        if (fs.existsSync(path.join(targetFolder, 'tsconfig.json')) || fs.existsSync(path.join(targetFolder, 'tsconfig.build.json'))) {
-                            console.log(` -> Compiling TypeScript for ${mcpFolder}...`);
-                            execSync('npm run build', { cwd: targetFolder, stdio: 'ignore' });
-                        }
-                    } catch (e) { console.warn(`Warning: Failed to set up ${mcpFolder}: ${e.message}`); }
+                    const ok = runNpmWithRetry('npm install --no-audit --no-fund', { cwd: targetFolder, stdio: 'ignore' }, `npm install for ${mcpFolder}`);
+                    if (ok && (fs.existsSync(path.join(targetFolder, 'tsconfig.json')) || fs.existsSync(path.join(targetFolder, 'tsconfig.build.json')))) {
+                        console.log(` -> Compiling TypeScript for ${mcpFolder}...`);
+                        runNpmWithRetry('npm run build', { cwd: targetFolder, stdio: 'ignore' }, `npm run build for ${mcpFolder}`);
+                    }
                 }
             });
 
@@ -985,10 +1037,14 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                     try {
                         const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
                         execSync(`${pythonCmd} -m venv .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
-                        const pipPath = process.platform === 'win32' ? '.venv\\Scripts\\pip.exe' : '.venv/bin/pip';
+                        const venvPython = process.platform === 'win32'
+                            ? path.join(membMcpFolder, '.venv', 'Scripts', 'python.exe')
+                            : path.join(membMcpFolder, '.venv', 'bin', 'python');
+                        const pipViaPython = `"${venvPython}" -m pip`;
                         console.log(` -> Installing Python dependencies for memB MCP...`);
-                        execSync(`"${pipPath}" install --upgrade pip`, { cwd: membMcpFolder, stdio: 'ignore' });
-                        execSync(`"${pipPath}" install -r requirements.txt`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        execSync(`${pipViaPython} install --upgrade pip`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        execSync(`${pipViaPython} install --upgrade pip setuptools`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        execSync(`${pipViaPython} install -r requirements.txt`, { cwd: membMcpFolder, stdio: 'ignore' });
                         console.log(` -> memB MCP setup completed successfully.`);
                     } catch (e) { console.warn(`Warning: Failed to set up Python virtual environment for memB: ${e.message}`); }
                 }
@@ -1040,7 +1096,8 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
 
             let uvPath = 'uv';
             try {
-                uvPath = execSync('which uv').toString().trim();
+                const whichCmd = process.platform === 'win32' ? 'where uv' : 'which uv';
+                uvPath = execSync(whichCmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split(/\r?\n/)[0];
             } catch(e) {
                 if (fs.existsSync(path.join(homeDir, '.local', 'bin', 'uv'))) uvPath = path.join(homeDir, '.local', 'bin', 'uv');
                 else if (fs.existsSync(path.join(homeDir, '.cargo', 'bin', 'uv'))) uvPath = path.join(homeDir, '.cargo', 'bin', 'uv');
@@ -1059,8 +1116,9 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
             
             if (mode === '1' && fs.existsSync(mcpConfigPath)) {
                 try {
-                    const oldConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
+                    const oldConfig = readJsonFile(mcpConfigPath);
                     const newConfig = JSON.parse(mcpConfigStr);
+                    if (!oldConfig) throw new Error('unparseable existing config');
                     if (oldConfig.mcpServers) {
                         unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
                     }
@@ -1155,13 +1213,13 @@ async function promptCreatorExtension(mcpConfigPath) {
     const creatorDir = path.join(basePath, 'bdb-dev-creator-extension');
     const installerScript = path.join(creatorDir, 'installer.js');
 
-    if (!fs.existsSync(creatorDir)) {
+    if (!isValidInstallDir(creatorDir, ['installer.js', 'package.json'])) {
         console.log(` -> BDB Creator Extension wird über NPM nach ${creatorDir} geladen...`);
         try {
             fs.mkdirSync(creatorDir, { recursive: true });
+            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-dev-creator-extension`, { stdio: 'ignore', cwd: creatorDir }, 'creator extension download');
             cleanNpmCacheOnWindows();
-            execSync(`npm pack @hybridlabor-api/bdb-dev-creator-extension`, { stdio: 'ignore', cwd: creatorDir });
-            const tarball = fs.readdirSync(creatorDir).find(f => f.endsWith('.tgz'));
+            const tarball = ok ? fs.readdirSync(creatorDir).find(f => f.endsWith('.tgz')) : null;
             if (tarball) {
                 execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: creatorDir });
                 fs.unlinkSync(path.join(creatorDir, tarball));
@@ -1196,13 +1254,13 @@ async function promptOSAgentWorkspace() {
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const osAgentDir = path.join(basePath, 'bdb-os-agent-workspace');
 
-    if (!fs.existsSync(osAgentDir)) {
+    if (!isValidInstallDir(osAgentDir, ['package.json'])) {
         console.log(` -> BDB OS Agent Workspace wird über NPM nach ${osAgentDir} geladen...`);
         try {
             fs.mkdirSync(osAgentDir, { recursive: true });
+            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-os-agent-workspace`, { stdio: 'ignore', cwd: osAgentDir }, 'OS agent workspace download');
             cleanNpmCacheOnWindows();
-            execSync(`npm pack @hybridlabor-api/bdb-os-agent-workspace`, { stdio: 'ignore', cwd: osAgentDir });
-            const tarball = fs.readdirSync(osAgentDir).find(f => f.endsWith('.tgz'));
+            const tarball = ok ? fs.readdirSync(osAgentDir).find(f => f.endsWith('.tgz')) : null;
             if (tarball) {
                 execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: osAgentDir });
                 fs.unlinkSync(path.join(osAgentDir, tarball));
@@ -1233,8 +1291,9 @@ async function promptOSAgentWorkspace() {
             const syncMcpConfig = (targetPath) => {
                 try {
                     let data = { mcpServers: {} };
-                    if (fs.existsSync(targetPath)) {
-                        data = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+                    const existing = readJsonFile(targetPath);
+                    if (existing) {
+                        data = existing;
                         if (!data.mcpServers) data.mcpServers = {};
                     }
                     if (masterMcpData.mcpServers) {
@@ -1249,10 +1308,34 @@ async function promptOSAgentWorkspace() {
                 }
             };
 
+            const syncOpencodeConfig = (targetPath) => {
+                try {
+                    const existing = readJsoncFile(targetPath);
+                    const data = existing && existing.mcp ? existing : Object.assign({}, existing || {}, { mcp: {} });
+                    if (masterMcpData.mcpServers) {
+                        for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
+                            const cmd = Array.isArray(val.command) ? val.command : [val.command];
+                            const args = Array.isArray(val.args) ? val.args : [];
+                            data.mcp[key] = {
+                                type: "local",
+                                command: [...cmd, ...args],
+                                enabled: true,
+                                ...(val.environment || val.env ? { environment: val.environment || val.env } : {})
+                            };
+                        }
+                    }
+                    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+                    fs.writeFileSync(targetPath, JSON.stringify(data, null, 2));
+                } catch(e) {
+                    console.log(`    Failed to sync MCP to ${targetPath}: ${e.message}`);
+                }
+            };
+
             for (const d of detections) {
                 console.log(` -> Injecting MCP engines into ${d.name}...`);
                 if (d.key === 'claude') syncMcpConfig(path.join(d.path, 'claude_desktop_config.json'));
                 else if (d.key === 'cursor' || d.key === 'windsurf' || d.key === 'vscode' || d.key === 'aider') syncMcpConfig(path.join(d.path, 'mcp.json'));
+                else if (d.key === 'opencode') syncOpencodeConfig(path.join(d.path, 'opencode.jsonc'));
             }
             console.log(` -> Universal Sync Complete!`);
         }

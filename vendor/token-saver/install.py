@@ -14,6 +14,21 @@ Usage:
 
 import argparse
 import platform
+import sys
+
+
+def _force_utf8_stdio():
+    """Force UTF-8 output so emoji never crash on Windows (cp1252)."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, OSError, ValueError):
+                pass
+
+
+_force_utf8_stdio()
 
 from installers import antigravity, claude, universal
 from installers.common import (

@@ -36,10 +36,11 @@ if ([string]::IsNullOrWhiteSpace($GeminiKey)) {
 if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
     Write-Host "Verifying API key..." -ForegroundColor Yellow
     try {
+        $VerifyModel = if ([string]::IsNullOrWhiteSpace($env:OPENWIKI_MODEL)) { "gemma-4-12b-it" } else { $env:OPENWIKI_MODEL }
         $VerifyResult = python -c "
 from google import genai
 client = genai.Client(api_key='$GeminiKey')
-r = client.models.generate_content(model='gemma-4-12b-it', contents='Say OK')
+r = client.models.generate_content(model='$VerifyModel', contents='Say OK')
 print('OK')
 " 2>&1
         if ($VerifyResult -match "OK") {
@@ -67,7 +68,9 @@ $EnvSetup = ""
 if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
     $EnvSetup = "`$env:GEMINI_API_KEY='$GeminiKey'; "
 }
-$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -Command `"& { $EnvSetup python '$ScriptPath' --one-shot }`""
+
+$DaemonCommand = "& { $EnvSetup python '$ScriptPath' --one-shot }"
+$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -Command `"$DaemonCommand`""
 
 # 6. Trigger: every 2 hours via repetition
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
@@ -76,20 +79,34 @@ $Trigger.Repetition = (New-ScheduledTaskTrigger -Once -At "00:00" -RepetitionInt
 # 7. Settings
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 
-# 8. Register
+# 8. Register (per-user task; no admin required). Only report success if the task really registered.
 $TaskName = "BDB_OpenWiki_Daemon"
 Write-Host "Registering task '$TaskName'..." -ForegroundColor Yellow
 
+$Registered = $false
 try {
     Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force | Out-Null
+    $Registered = $true
+} catch {
+    Write-Warning "Scheduled task registration failed ($($_.Exception.Message))."
+    # Fallback: per-user Startup folder .cmd that starts the daemon at logon (no admin needed).
+    $StartupDir = [System.Environment]::GetFolderPath('Startup')
+    if (-not (Test-Path $StartupDir)) { New-Item -ItemType Directory -Force -Path $StartupDir | Out-Null }
+    $DaemonCmdPath = Join-Path $StartupDir "BDB_OpenWiki_Daemon.cmd"
+    Set-Content -Path $DaemonCmdPath -Value "@echo off`r`npowershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"$DaemonCommand`"" -Encoding ASCII
+    Write-Host " -> Created startup entry: $DaemonCmdPath" -ForegroundColor Green
+}
+
+if ($Registered) {
     Write-Host " -> Success! OpenWiki daemon installed (runs every 2 hours)." -ForegroundColor Green
     Write-Host " -> Logs: $DaemonLogDir\daemon.log" -ForegroundColor Green
     Write-Host " -> Projects config: $DaemonLogDir\projects.json" -ForegroundColor Green
-
-    Start-ScheduledTask -TaskName $TaskName
-    Write-Host " -> Initial run launched." -ForegroundColor Green
-} catch {
-    Write-Error "Failed to register Scheduled Task: $_"
+    try {
+        Start-ScheduledTask -TaskName $TaskName
+        Write-Host " -> Initial run launched." -ForegroundColor Green
+    } catch {
+        Write-Warning "Could not start task immediately: $($_.Exception.Message)"
+    }
 }
 
 Write-Host "=========================================================" -ForegroundColor Cyan

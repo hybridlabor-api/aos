@@ -34,10 +34,11 @@ fi
 
 if [ -n "$GEMINI_KEY" ]; then
     echo "Verifying API key..."
+    VERIFY_MODEL="${OPENWIKI_MODEL:-gemma-4-12b-it}"
     VERIFY_RESULT=$(python3 -c "
 from google import genai
 client = genai.Client(api_key='$GEMINI_KEY')
-r = client.models.generate_content(model='gemma-4-12b-it', contents='Say OK')
+r = client.models.generate_content(model='$VERIFY_MODEL', contents='Say OK')
 print('OK')
 " 2>&1)
     if echo "$VERIFY_RESULT" | grep -q "OK"; then

@@ -1,4 +1,21 @@
 import os
+import sys
+
+
+def _force_utf8_stdio():
+    """Force UTF-8 on stdout/stderr so emoji in output never crashes
+    on Windows (default cp1252 cannot encode them)."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, OSError, ValueError):
+                pass
+
+
+_force_utf8_stdio()
+
 
 def install(use_symlink=False):
     print("\n--- Universal Agent Harness (IDE & CLI Rules) ---")
@@ -44,14 +61,14 @@ This compresses the terminal output, saving 60-99% of your context window tokens
         # If it's a generic file like agent.md or copilot-instructions.md, we append.
         # Otherwise, we write the rule file directly.
         if "rules" not in file_path.split("/") and os.path.exists(full_path):
-            with open(full_path, "r") as f:
+            with open(full_path, "r", encoding="utf-8") as f:
                 existing_content = f.read()
             if "token-saver" not in existing_content:
-                with open(full_path, "a") as f:
+                with open(full_path, "a", encoding="utf-8") as f:
                     f.write("\n\n" + rule_content)
                 print(f"✅ Appended Heimdall rules to {agent_name} ({file_path})")
         else:
-            with open(full_path, "w") as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(rule_content)
             print(f"✅ Injected Heimdall rules for {agent_name} ({file_path})")
 
