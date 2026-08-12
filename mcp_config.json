@@ -92,7 +92,10 @@
     },
     "memb_mcp": {
       "command": "__PYTHON_BIN__",
-      "args": ["__MCPS_DIR__/memb-mcp/run.py"]
+      "args": ["__MCPS_DIR__/memb-mcp/run.py"],
+      "env": {
+        "GEMINI_API_KEY": "__GEMINI_API_KEY__"
+      }
     },
     "open_design_mcp": {
       "command": "npx",

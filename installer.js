@@ -906,6 +906,18 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                 }
             });
 
+            if (selectedMcps.includes('davinci-resolve-mcp')) {
+                const davinciFolder = path.join(mcpCodeTarget, 'davinci-resolve-mcp');
+                if (fs.existsSync(davinciFolder)) {
+                    console.log(` -> Bootstrapping Python virtual environment for DaVinci Resolve MCP Studio...`);
+                    try {
+                        execSync('node bin/davinci-resolve-mcp.mjs setup --clients manual', { cwd: davinciFolder, stdio: 'ignore' });
+                    } catch (e) {
+                        console.warn(`Warning: Failed to setup DaVinci Python env: ${e.message}`);
+                    }
+                }
+            }
+
             if (selectedMcps.includes('memb-mcp')) {
                 const membMcpFolder = path.join(mcpCodeTarget, 'memb-mcp');
                 if (fs.existsSync(membMcpFolder)) {
@@ -980,6 +992,7 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                     ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')
                     : path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'bin', 'python');
                 mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, pythonBinPath.replace(/\\/g, '/'));
+                mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, creds.gemini || process.env.GEMINI_API_KEY || '');
             }
             
             if (mode === '1' && fs.existsSync(mcpConfigPath)) {
