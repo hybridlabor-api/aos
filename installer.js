@@ -277,8 +277,13 @@ async function promptMode() {
         console.log("\nNo active agent config directories auto-detected in standard locations.");
     }
 
+    const detectedNames = detections.length > 0 ? detections.map(d => d.name).join(', ') : 'All Platforms';
+    const universalLabel = detections.length > 0
+        ? `(0) Update All Detected Agent Environments [${detectedNames}] (Recommended)`
+        : `(0) Universal Agent Harness (Sync rules & MCPs across ALL AI platforms - Recommended)`;
+
     const platformOptions = [
-        { label: '(0) Universal Agent Harness (Inject rules & MCPs into ALL detected platforms - Recommended)', value: '0' },
+        { label: universalLabel, value: '0' },
         { label: '(1) Google Antigravity (Default Single Hub)', value: '1' },
         { label: '(2) Claude Desktop / Claude Code', value: '2' },
         { label: '(3) Cursor / Generic IDE (Project-local)', value: '3' },
