@@ -18,7 +18,7 @@ LOG_FILE = os.path.join(LOG_DIR, "daemon.log")
 
 # --- Provider config via environment variables ---
 # OPENWIKI_PROVIDER: "google" | "openai" | "groq" | "grok" | "nvidia" | "openrouter" | "ollama" | "lmstudio" | "custom"
-# OPENWIKI_MODEL:    model name (e.g. meta/llama-3.3-70b-instruct, grok-2-latest, llama-3.3-70b-versatile, anthropic/claude-3.5-sonnet, gpt-4o-mini)
+# OPENWIKI_MODEL:    model name (e.g. gemma-4-26b-a4b-it, gemma-4-31b-it, gemini-2.5-pro, gemini-3.5-flash, llama-3.3-70b-versatile, llama-3.1-8b-instant, grok-2-latest, grok-3, meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct, anthropic/claude-3.5-sonnet, gpt-4o-mini, gpt-4o-1, llama3)
 # OPENWIKI_BASE_URL: custom base URL (e.g. https://integrate.api.nvidia.com/v1, https://api.x.ai/v1, https://api.groq.com/openai/v1)
 PROVIDER = os.environ.get("OPENWIKI_PROVIDER", "google").lower()
 
@@ -35,7 +35,7 @@ PROVIDER_BASE_URLS = {
 }
 
 PROVIDER_DEFAULT_MODELS = {
-    "google": "gemma-4-12b-it",
+    "google": "gemma-4-26b-a4b-it",
     "openai": "gpt-4o-mini",
     "groq": "llama-3.3-70b-versatile",
     "grok": "grok-2-latest",

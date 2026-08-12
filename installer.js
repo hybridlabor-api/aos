@@ -548,14 +548,14 @@ async function promptCredentials(targetMcpDir = '') {
             }
 
             const provOptions = [
-            { label: 'Gemma 4 12B / Gemini – Google AI Studio (FREE, default)', value: '1' },
-            { label: 'Groq – Ultra-Fast Llama 3.3 70B (Groq API)', value: '2' },
-            { label: 'Grok / xAI – Grok 2 (api.x.ai)', value: '3' },
-            { label: 'Nvidia NIM – Llama 3.3 70B (integrate.api.nvidia.com)', value: '4' },
-            { label: 'OpenRouter – Claude 3.5, Qwen, Kimi, Llama (openrouter.ai)', value: '5' },
-            { label: 'OpenAI – GPT-4o-mini / GPT-4o (api.openai.com)', value: '6' },
+            { label: 'Google AI Studio / Gemini – gemma-4-26b-a4b-it, gemma-4-31b-it, gemini-2.5-pro, gemini-3.5-flash', value: '1' },
+            { label: 'Groq – llama-3.3-70b-versatile, llama-3.1-8b-instant', value: '2' },
+            { label: 'Grok / xAI – grok-2-latest, grok-3', value: '3' },
+            { label: 'NVIDIA NIM – meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct', value: '4' },
+            { label: 'OpenRouter – anthropic/claude-3.5-sonnet', value: '5' },
+            { label: 'OpenAI – gpt-4o-mini, gpt-4o, gpt-4o-1', value: '6' },
             { label: 'Ollama / LM Studio – Local LLM (no API key, no cost)', value: '7' },
-            { label: 'Custom OpenAI API – Custom Base URL + API Key + Model', value: '8' }
+            { label: 'Custom OpenAI API / Base URL + API Key + Model', value: '8' }
         ];
         const choice = await promptSingleSelect('Choose OpenWiki LLM Provider:', provOptions, 0);
             let provider = "google", model = "", baseUrl = "", keyEnvName = "GEMINI_API_KEY";
@@ -577,8 +577,33 @@ async function promptCredentials(targetMcpDir = '') {
                     const u = await askTextQuestion(`${colors.yellow}Ollama Base URL [default: http://localhost:11434/v1]: ${colors.reset}`);
                     if (u.trim()) baseUrl = u.trim();
                 }
-                const defaultModel = model || (provider === "google" ? "gemma-4-12b-it" : "gpt-4o-mini");
-                const m = await askTextQuestion(`${colors.yellow}Model name [default: ${defaultModel}]: ${colors.reset}`);
+                const defaultModel = model || (provider === "google"
+                    ? "gemma-4-26b-a4b-it"
+                    : provider === "groq"
+                        ? "llama-3.3-70b-versatile"
+                        : provider === "grok"
+                            ? "grok-2-latest"
+                            : provider === "nvidia"
+                                ? "meta/llama-3.3-70b-instruct"
+                                : provider === "openai"
+                                    ? "gpt-4o-mini"
+                                    : provider === "ollama"
+                                        ? "llama3"
+                                        : "gpt-4o-mini");
+                const modelHint = provider === "google"
+                    ? "gemma-4-26b-a4b-it | gemma-4-31b-it | gemini-2.5-pro | gemini-3.5-flash"
+                    : provider === "groq"
+                        ? "llama-3.3-70b-versatile | llama-3.1-8b-instant"
+                        : provider === "grok"
+                            ? "grok-2-latest | grok-3"
+                            : provider === "nvidia"
+                                ? "meta/llama-3.3-70b-instruct | nvidia/llama-3.1-nemotron-70b-instruct"
+                                : provider === "openai"
+                                    ? "gpt-4o-mini | gpt-4o | gpt-4o-1"
+                                    : provider === "ollama"
+                                        ? "llama3 | gemma-4-e4b:q4_k_m | qwen3-8b-instruct:q4_k_m | qwen3-coder-8b-instruct:q4_k_m | llama-3.1-8b-instruct:q4_k_m | gpt-oss-20b"
+                                        : "model name";
+                const m = await askTextQuestion(`${colors.yellow}Model name [default: ${defaultModel}] (${modelHint}): ${colors.reset}`);
                 if (m.trim()) model = m.trim();
 
                 let apiKey = "";
