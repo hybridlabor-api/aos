@@ -18,7 +18,10 @@
     },
     "bdb_rhino_mcp_fallback": {
       "command": "uv",
-      "args": ["--directory", "__MCPS_DIR__/golem-rhino-mcp", "run", "-m", "mcp_server"]
+      "args": ["--directory", "__MCPS_DIR__/golem-rhino-mcp", "run", "-m", "mcp_server"],
+      "env": {
+        "SETUPTOOLS_SCM_PRETEND_VERSION": "0.1.0"
+      }
     },
     "bdb_davinci_mcp": {
       "command": "uv",
