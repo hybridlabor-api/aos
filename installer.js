@@ -664,7 +664,12 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
                 try {
                     const pythonCmd = os.platform() === 'win32' ? 'python' : 'python3';
                     const daemonPath = path.join(scriptBase, 'openwiki_daemon.py');
-                    execSync(`${pythonCmd} "${daemonPath}" --one-shot`, { stdio: 'ignore', env: daemonEnv });
+                    const daemonProcess = spawn(pythonCmd, [daemonPath, '--one-shot'], { 
+                        detached: true,
+                        stdio: 'ignore',
+                        env: daemonEnv
+                    });
+                    daemonProcess.unref();
                     console.log(' -> Daemon auto-started successfully.');
                 } catch(e) {
                     console.warn(` -> Could not auto-start daemon: ${e.message}`);
