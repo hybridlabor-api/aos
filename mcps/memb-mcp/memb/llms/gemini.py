@@ -39,7 +39,7 @@ class GeminiLLM(LLMBase):
         if self.config.vertexai:
             self.client = genai.Client(vertexai=True, project=self.config.project, location=self.config.location)
         else:
-            api_key = self.config.api_key or os.getenv("GOOGLE_API_KEY")
+            api_key = self.config.api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
             self.client = genai.Client(api_key=api_key)
 
     def _parse_response(self, response, tools):
