@@ -22,7 +22,7 @@
     },
     "bdb_davinci_mcp": {
       "command": "uv",
-      "args": ["run", "-r", "__MCPS_DIR__/davinci-resolve-mcp-free/requirements.txt", "__MCPS_DIR__/davinci-resolve-mcp-free/src/resolve_mcp_bridge.py"]
+      "args": ["run", "--with-requirements", "__MCPS_DIR__/davinci-resolve-mcp-free/requirements.txt", "__MCPS_DIR__/davinci-resolve-mcp-free/src/resolve_mcp_bridge.py"]
     },
     "bdb_davinci_mcp_studio": {
       "command": "node",
@@ -30,7 +30,10 @@
     },
     "bdb_davinci_mcp_fallback": {
       "command": "uv",
-      "args": ["--directory", "__MCPS_DIR__/davinci-mcp-professional", "run", "main.py"]
+      "args": ["--directory", "__MCPS_DIR__/davinci-mcp-professional", "run", "main.py"],
+      "env": {
+        "SETUPTOOLS_SCM_PRETEND_VERSION": "0.1.0"
+      }
     },
     "bdb_grandma3_mcp": {
       "command": "uv",
@@ -66,7 +69,7 @@
     },
     "bdb_vectorworks_mcp": {
       "command": "uv",
-      "args": ["run", "-r", "__MCPS_DIR__/vectorworks-mcp/requirements.txt", "__MCPS_DIR__/vectorworks-mcp/app/mcp_server.py"]
+      "args": ["run", "--with-requirements", "__MCPS_DIR__/vectorworks-mcp/requirements.txt", "__MCPS_DIR__/vectorworks-mcp/app/mcp_server.py"]
     },
     "bdb_td_minddesigner": {
       "command": "node",
