@@ -430,12 +430,54 @@ async function promptMcpSelection(mcpsDir, tier) {
     });
 }
 
-async function promptCredentials() {
+function loadExistingEnv(targetMcpDir) {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    const envPaths = [
+        targetMcpDir ? path.join(targetMcpDir, '.env') : null,
+        path.join(homeDir, '.gemini', 'config', '.env'),
+        path.join(homeDir, '.agents', '.env')
+    ].filter(Boolean);
+
+    const envData = {};
+    for (const ep of envPaths) {
+        if (fs.existsSync(ep)) {
+            try {
+                const lines = fs.readFileSync(ep, 'utf8').split('\n');
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+                        const idx = trimmed.indexOf('=');
+                        const k = trimmed.substring(0, idx).trim();
+                        const v = trimmed.substring(idx + 1).trim();
+                        if (k && v && !envData[k]) {
+                            envData[k] = v;
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+
+    for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GITHUB_PERSONAL_ACCESS_TOKEN', 'GROQ_API_KEY', 'XAI_API_KEY', 'NVIDIA_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY']) {
+        if (process.env[k] && !envData[k]) {
+            envData[k] = process.env[k];
+        }
+    }
+
+    return envData;
+}
+
+function maskApiKey(key) {
+    if (!key) return '';
+    if (key.length <= 8) return '****';
+    return key.substring(0, 4) + '...' + key.substring(key.length - 4);
+}
+
+async function promptCredentials(targetMcpDir = '') {
     if (isAutoYes) return { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "" };
+    const existingEnv = loadExistingEnv(targetMcpDir);
     return new Promise((resolve) => {
         console.log(`\n${colors.magenta}${colors.bold}--- Integrations & Credentials ---${colors.reset}`);
-
-        // Step 1: LLM Provider for OpenWiki
 
         (async () => {
         const provOptions = [
@@ -474,10 +516,18 @@ async function promptCredentials() {
 
                 let apiKey = "";
                 if (provider !== "ollama") {
-                    apiKey = await askTextQuestion(`${colors.yellow}Enter your ${keyEnvName} for OpenWiki${colors.reset} ${colors.dim}(leave blank to skip):${colors.reset} `);
+                    const existingKey = existingEnv[keyEnvName] || existingEnv['GEMINI_API_KEY'] || '';
+                    const hintText = existingKey ? `${colors.green}(existing detected: ${maskApiKey(existingKey)}, press Enter to keep)${colors.reset}` : `${colors.dim}(leave blank to skip)${colors.reset}`;
+                    const entered = await askTextQuestion(`${colors.yellow}Enter your ${keyEnvName} for OpenWiki${colors.reset} ${hintText}: `);
+                    apiKey = entered.trim() || existingKey;
                 }
-                const github = await askTextQuestion(`${colors.yellow}Enter your GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP${colors.reset} ${colors.dim}(leave blank to skip):${colors.reset} `);
-                resolve({ gemini: apiKey.trim(), github: github.trim(), openwikiProvider: provider, openwikiModel: model, openwikiBaseUrl: baseUrl });
+
+                const existingGithub = existingEnv['GITHUB_PERSONAL_ACCESS_TOKEN'] || existingEnv['GITHUB_TOKEN'] || '';
+                const ghHint = existingGithub ? `${colors.green}(existing detected: ${maskApiKey(existingGithub)}, press Enter to keep)${colors.reset}` : `${colors.dim}(leave blank to skip)${colors.reset}`;
+                const enteredGithub = await askTextQuestion(`${colors.yellow}Enter your GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP${colors.reset} ${ghHint}: `);
+                const github = enteredGithub.trim() || existingGithub;
+
+                resolve({ gemini: apiKey.trim(), github: github.trim(), openwikiProvider: provider, openwikiModel: model, openwikiBaseUrl: baseUrl, keyEnvName });
             })();
         })();
     });
@@ -908,16 +958,31 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
             console.log(" -> Skipping MCP installation.");
         }
 
-        const creds = await promptCredentials();
+        const creds = await promptCredentials(targetMcpDir);
         
-        if (creds.gemini || creds.github) {
+        if (creds.gemini || creds.github || creds.keyEnvName) {
             const envPath = path.join(targetMcpDir, '.env');
             let envContent = '';
             if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, 'utf8') + '\n';
-            if (creds.gemini && !envContent.includes('GEMINI_API_KEY=')) envContent += `GEMINI_API_KEY=${creds.gemini}\n`;
-            if (creds.github && !envContent.includes('GITHUB_PERSONAL_ACCESS_TOKEN=')) envContent += `GITHUB_PERSONAL_ACCESS_TOKEN=${creds.github}\n`;
-            if (envContent.trim().length > 0) fs.writeFileSync(envPath, envContent.trim() + '\n');
-            console.log(` -> Saved credentials to ${envPath}`);
+            
+            const updateOrAppend = (key, val) => {
+                if (!val) return;
+                const lineRegex = new RegExp(`^${key}=.*$`, 'm');
+                if (lineRegex.test(envContent)) {
+                    envContent = envContent.replace(lineRegex, `${key}=${val}`);
+                } else {
+                    envContent += `${key}=${val}\n`;
+                }
+            };
+
+            if (creds.gemini) updateOrAppend('GEMINI_API_KEY', creds.gemini);
+            if (creds.github) updateOrAppend('GITHUB_PERSONAL_ACCESS_TOKEN', creds.github);
+            if (creds.keyEnvName && creds.gemini) updateOrAppend(creds.keyEnvName, creds.gemini);
+
+            if (envContent.trim().length > 0) {
+                fs.writeFileSync(envPath, envContent.trim() + '\n');
+                console.log(` -> Saved credentials to ${envPath}`);
+            }
         }
 
 async function promptMemBIngestion(mcpCodeTarget) {
