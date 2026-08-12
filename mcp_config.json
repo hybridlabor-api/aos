@@ -90,7 +90,7 @@
     },
     "open_design_mcp": {
       "command": "npx",
-      "args": ["-y", "@nexu-io/open-design-mcp", "__MCPS_DIR__/open-design"]
+      "args": ["-y", "open-design-mcp", "__MCPS_DIR__/open-design"]
     }
   }
 }
