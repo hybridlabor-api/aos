@@ -43,7 +43,7 @@ This package acts as the bridge to two massive upstream capabilities (available 
 - **BDB OS Agent Workspace:** The Orchestration Layer for parallel AI agents. Start multiple isolated agent sessions via Git-Worktrees with live terminal control, automatic CI/CD feedback loops, and PR review routing.
 - **BDB Creator Extension:** The heavy-lifting Agentic Media Pipeline. Gives agents local ComfyUI MCP capabilities (FLUX, SDXL), Image-to-3D generation (TripoSR, TRELLIS), and automated video production through OpenMontage and Remotion.
 
-## Overview UPDATED V2 zu V3.0.0 
+## Overview UPDATE V2.latest -> V3.0.0 
 
 ![BDB v3 Core Tools Overview](assets/bdb_v3_core_tools_overview_sketch.jpg)
 
