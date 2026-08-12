@@ -279,7 +279,7 @@ async function promptMode() {
 
     const detectedNames = detections.length > 0 ? detections.map(d => d.name).join(', ') : 'All Platforms';
     const universalLabel = detections.length > 0
-        ? `(0) Update All Detected Agent Environments [${detectedNames}] (Recommended)`
+        ? `(0) Universal Agent Harness – Update All Detected Environments [${detectedNames}] (Recommended)`
         : `(0) Universal Agent Harness (Sync rules & MCPs across ALL AI platforms - Recommended)`;
 
     const platformOptions = [
