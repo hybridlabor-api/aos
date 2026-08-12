@@ -966,6 +966,15 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
             mcpConfigStr = mcpConfigStr.replace(/__MCPS_DIR__/g, mcpCodeTarget);
             mcpConfigStr = mcpConfigStr.replace(/\{\{HOME\}\}/g, homeDir);
 
+            let uvPath = 'uv';
+            try {
+                uvPath = execSync('which uv').toString().trim();
+            } catch(e) {
+                if (fs.existsSync(path.join(homeDir, '.local', 'bin', 'uv'))) uvPath = path.join(homeDir, '.local', 'bin', 'uv');
+                else if (fs.existsSync(path.join(homeDir, '.cargo', 'bin', 'uv'))) uvPath = path.join(homeDir, '.cargo', 'bin', 'uv');
+            }
+            mcpConfigStr = mcpConfigStr.replace(/"command":\s*"uv"/g, `"command": "${uvPath.replace(/\\/g, '/')}"`);
+
             if (selectedMcps.includes('memb-mcp')) {
                 const pythonBinPath = process.platform === 'win32'
                     ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')

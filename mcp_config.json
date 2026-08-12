@@ -61,8 +61,8 @@
       "args": ["__MCPS_DIR__/after-effects-mcp/build/index.js"]
     },
     "bdb_after_effects_mcp_fallback": {
-      "command": "go",
-      "args": ["run", "__MCPS_DIR__/ae-mcp/cmd/ae-mcp"]
+      "command": "sh",
+      "args": ["-c", "cd __MCPS_DIR__/ae-mcp && go run ./cmd/ae-mcp"]
     },
     "bdb_vectorworks_mcp": {
       "command": "uv",
@@ -90,7 +90,10 @@
     },
     "open_design_mcp": {
       "command": "npx",
-      "args": ["-y", "open-design-mcp", "__MCPS_DIR__/open-design"]
+      "args": ["-y", "open-design-mcp", "__MCPS_DIR__/open-design"],
+      "env": {
+        "OD_DAEMON_URL": "http://127.0.0.1:3000"
+      }
     }
   }
 }
