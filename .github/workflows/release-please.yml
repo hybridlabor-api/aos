@@ -35,6 +35,6 @@ jobs:
 
       - name: Publish to NPM
         if: ${{ steps.release.outputs.release_created }}
-        run: npm ci && npm publish --access public
+        run: npm install --package-lock=false && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
