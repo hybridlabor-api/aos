@@ -481,11 +481,45 @@ function maskApiKey(key) {
 async function promptCredentials(targetMcpDir = '') {
     if (isAutoYes) return { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "" };
     const existingEnv = loadExistingEnv(targetMcpDir);
-    return new Promise((resolve) => {
-        console.log(`\n${colors.magenta}${colors.bold}--- Integrations & Credentials ---${colors.reset}`);
 
+    const existingGemini = existingEnv['GEMINI_API_KEY'] || existingEnv['GOOGLE_API_KEY'] || existingEnv['OPENWIKI_API_KEY'] || '';
+    const existingGithub = existingEnv['GITHUB_PERSONAL_ACCESS_TOKEN'] || existingEnv['GITHUB_TOKEN'] || '';
+    const existingProvider = existingEnv['OPENWIKI_PROVIDER'] || 'google';
+    const existingModel = existingEnv['OPENWIKI_MODEL'] || '';
+    const existingBaseUrl = existingEnv['OPENWIKI_BASE_URL'] || '';
+
+    const hasKeys = Boolean(existingGemini || existingGithub);
+
+    return new Promise((resolve) => {
         (async () => {
-        const provOptions = [
+            if (hasKeys) {
+                console.log(`\n${colors.magenta}${colors.bold}--- Integrations & Credentials ---${colors.reset}`);
+                if (existingGemini) console.log(`  * GEMINI/OpenWiki Key: ${colors.green}${maskApiKey(existingGemini)}${colors.reset}`);
+                if (existingGithub) console.log(`  * GitHub MCP Token:    ${colors.green}${maskApiKey(existingGithub)}${colors.reset}`);
+
+                const reuseOptions = [
+                    { label: 'Keep existing credentials & LLM provider settings (Recommended)', value: 'keep' },
+                    { label: 'Re-configure API keys / LLM provider wizard', value: 'update' }
+                ];
+
+                const credAction = await promptSingleSelect('Credentials Setup:', reuseOptions, 0);
+                if (credAction === 'keep') {
+                    console.log(` -> Reusing existing credentials.`);
+                    resolve({
+                        gemini: existingGemini,
+                        github: existingGithub,
+                        openwikiProvider: existingProvider,
+                        openwikiModel: existingModel,
+                        openwikiBaseUrl: existingBaseUrl,
+                        keyEnvName: 'GEMINI_API_KEY'
+                    });
+                    return;
+                }
+            } else {
+                console.log(`\n${colors.magenta}${colors.bold}--- Integrations & Credentials ---${colors.reset}`);
+            }
+
+            const provOptions = [
             { label: 'Gemma 4 12B / Gemini – Google AI Studio (FREE, default)', value: '1' },
             { label: 'Groq – Ultra-Fast Llama 3.3 70B (Groq API)', value: '2' },
             { label: 'Grok / xAI – Grok 2 (api.x.ai)', value: '3' },
