@@ -1,7 +1,7 @@
 {
   "name": "@hybridlabor-api/bdb-dev-optimized-agent-skills",
   "version": "3.0.0",
-  "description": "Optimized Agent skills and MCP pack for BDB DEV",
+  "description": "A Curated AI AGENT OS – Optimized agent skills and add-ons like memB, OpenWiki, Heimdall Token Saver, and Godmode architectures.",
   "main": "installer.js",
   "bin": {
     "bdb-dev-optimized-agent-skills": "installer.js",
