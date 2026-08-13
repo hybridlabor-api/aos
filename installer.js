@@ -43,11 +43,22 @@ const unsupportedMcpConfigKeys = [
 function readJsonFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
     try {
-        let raw = fs.readFileSync(filePath, 'utf8');
-        if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+        const buf = fs.readFileSync(filePath);
+        let raw;
+        if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
+            raw = buf.toString('utf16le', 2);
+        } else if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) {
+            raw = buf.toString('utf8', 3);
+        } else {
+            raw = buf.toString('utf8');
+        }
         return JSON.parse(raw);
     } catch (e) {
-        return null;
+        try {
+            return readJsoncFile(filePath);
+        } catch (e2) {
+            return null;
+        }
     }
 }
 

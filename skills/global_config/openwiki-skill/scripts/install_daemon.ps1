@@ -85,7 +85,7 @@ Write-Host "Registering task '$TaskName'..." -ForegroundColor Yellow
 
 $Registered = $false
 try {
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force | Out-Null
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force -ErrorAction Stop | Out-Null
     $Registered = $true
 } catch {
     Write-Warning "Scheduled task registration failed ($($_.Exception.Message))."
@@ -102,7 +102,7 @@ if ($Registered) {
     Write-Host " -> Logs: $DaemonLogDir\daemon.log" -ForegroundColor Green
     Write-Host " -> Projects config: $DaemonLogDir\projects.json" -ForegroundColor Green
     try {
-        Start-ScheduledTask -TaskName $TaskName
+        Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
         Write-Host " -> Initial run launched." -ForegroundColor Green
     } catch {
         Write-Warning "Could not start task immediately: $($_.Exception.Message)"
