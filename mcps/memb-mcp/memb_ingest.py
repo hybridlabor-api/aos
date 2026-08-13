@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 memB Deep Ingestion Tool
-Scans any directory path (e.g. /Users/timrennings/bdb-dev or custom project folders),
+Scans any directory path (e.g. ~/projects/my-app or custom project folders),
 extracts project architectures, tech specs, READMEs, agent.md, openwiki notes, and past transcripts,
 and ingests them into memB local vector memory (~/.MemBDB/memb.db).
 """

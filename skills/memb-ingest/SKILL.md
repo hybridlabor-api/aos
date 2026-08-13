@@ -10,14 +10,15 @@ When this skill is invoked via `/memb-ingest` or requested, you MUST orchestrate
 ## Core Workflow & Instructions
 
 ### 1. Target Path & Filter Selection
-- Ask the user: *"Which directory or project path would you like to scan into memB memory?"* (Default: Current Workspace or `/Users/timrennings/bdb-dev`)
+- Ask the user: *"Which directory or project path would you like to scan into memB memory?"* (Default: Current Workspace or active project directory)
 - Ask if they would also like to include **past Antigravity chat transcripts (`--transcripts`)** or filter specific file patterns (e.g., `*.md`, `agent.md`, `.openwiki/`).
 
 ### 2. Execution
-Run the embedded python ingestion script:
+Locate the `memb-mcp` installation (e.g., `~/.gemini/config/mcps/memb-mcp/` or `~/.gemini/mcps/memb-mcp/`) and execute the ingestion script via its virtual environment:
 
 ```bash
-/Users/timrennings/.gemini/mcps/memb-mcp/.venv/bin/python /Users/timrennings/bdb-dev/bdb-dev-optimized-agent-skills/mcps/memb-mcp/memb_ingest.py "<TARGET_DIRECTORY>" --transcripts
+# Run ingestion with project detection & optional transcript indexing
+~/.gemini/config/mcps/memb-mcp/.venv/bin/python ~/.gemini/config/mcps/memb-mcp/memb_ingest.py "<TARGET_DIRECTORY>" --transcripts
 ```
 
 ### 3. Verification

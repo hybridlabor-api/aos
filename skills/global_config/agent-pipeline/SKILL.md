@@ -46,6 +46,10 @@ DEFINE          PLAN           BUILD          VERIFY         REVIEW          SHI
 * **Output:** Code review summary & QA gate approval.
 
 ### 6. SHIP (`/ship`)
-* **Focus:** Production Deployment & Release
-* **Action:** Take git snapshots, push commits to remote repositories (Private by default), update documentation/OpenWiki release notes, and deploy daemons/executables.
-* **Output:** Live deployment confirmation & release notes entry.
+* **Focus:** Production Deployment, Knowledge Sync & Release Gate
+* **Action:**
+  1. **Pre-Push Sanitization (`github-repo`):** Audit for absolute local paths, usernames, and uncommitted secrets.
+  2. **Codebase Wiki Sync (`openwiki-skill`):** Scan git diff, update `.openwiki/` (`architecture.md`, `release_notes.md`, `quickstart.md`), and refresh `README.md`.
+  3. **Memory Engine Feeding (`memb-ingest`):** Feed updated docs and architecture into the local memB vector brain (`~/.MemBDB/`) via `memb-mcp` or `memb_ingest.py`.
+  4. **Release Deployment:** Take git snapshot, commit structured changes, push to private remote repository, and trigger deployment/release tags.
+* **Output:** Live deployment confirmation, synced `.openwiki/` release notes, and refreshed memB long-term memory.

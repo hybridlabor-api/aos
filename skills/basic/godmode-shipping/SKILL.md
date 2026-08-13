@@ -16,7 +16,9 @@ Writing code without a specification is guessing.
 Before any code is committed, pushed, or deployed, you must actively verify the following:
 *   [ ] **Test Suite Green:** All unit and E2E tests pass.
 *   [ ] **No Test Skips:** No `.skip` or `.only` test blocks remain in the codebase.
-*   [ ] **Sanitized Code:** No floating `console.log` or debug statements left behind.
+*   [ ] **Sanitized Code:** No floating `console.log` or debug statements left behind. No local absolute paths or usernames.
+*   [ ] **Documentation Synced:** `.openwiki/` and `README.md` updated via `openwiki-skill`.
+*   [ ] **Memory Ingested:** New architecture facts and decisions indexed into `memB` via `memb-ingest`.
 *   [ ] **Accessibility Checked:** Core Web Vitals and WCAG 2.1 AA audits are clear.
 *   [ ] **Security Verified:** API keys and secrets are safely managed via environment variables and never hardcoded.
 

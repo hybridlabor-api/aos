@@ -11,13 +11,13 @@ You are the Master Orchestrator for all media creation workflows within the BDB 
 
 ## 1. Engine & Local Backend Architecture
 
-The core local video generation backends are hosted at:
-`/Users/timrennings/bdb-dev/bdb-dev-creator-extension/engines/video/`
+The core local video generation backends are hosted within the Creator Extension:
+`bdb-dev-creator-extension/engines/video/`
 
 ### Primary Engines & Services:
-* **OpenMontage** (`/engines/video/openmontage`): Storyboarding, script analysis, multi-track sequence assembly, and timeline orchestration.
-* **Palmier Pro** (`/engines/video/palmier-pro`): High-precision NLE timeline editing, color grading, audio beat synchronization, and export workflows.
-* **Video Shotcraft** (`/engines/video/video-shotcraft`): Generative shot planning, camera movement prompting, and multi-shot composition.
+* **OpenMontage** (`engines/video/openmontage`): Storyboarding, script analysis, multi-track sequence assembly, and timeline orchestration.
+* **Palmier Pro** (`engines/video/palmier-pro`): High-precision NLE timeline editing, color grading, audio beat synchronization, and export workflows.
+* **Video Shotcraft** (`engines/video/video-shotcraft`): Generative shot planning, camera movement prompting, and multi-shot composition.
 * **TouchDesigner Media MCP** (`bdb_td_minddesigner`): Provides real-time generative audio and generative art tools (e.g. `create_generative_audio`, `create_generative_art` MCP tools).
 
 ---
@@ -47,7 +47,7 @@ Use `create_video_timeline` to structure multi-shot sequences, assemble video as
         "clips": [
           {
             "clip_id": "shot_01",
-            "source_path": "/Users/timrennings/assets/shots/intro_landscape.mp4",
+            "source_path": "./assets/shots/intro_landscape.mp4",
             "start_time": 0.0,
             "duration": 4.5,
             "in_point": 0.0,
@@ -55,7 +55,7 @@ Use `create_video_timeline` to structure multi-shot sequences, assemble video as
           },
           {
             "clip_id": "shot_02",
-            "source_path": "/Users/timrennings/assets/shots/performance_stage.mp4",
+            "source_path": "./assets/shots/performance_stage.mp4",
             "start_time": 4.5,
             "duration": 5.0,
             "in_point": 1.0,
@@ -69,7 +69,7 @@ Use `create_video_timeline` to structure multi-shot sequences, assemble video as
         "clips": [
           {
             "clip_id": "bgm_track",
-            "source_path": "/Users/timrennings/assets/audio/synthwave_120bpm.wav",
+            "source_path": "./assets/audio/synthwave_120bpm.wav",
             "start_time": 0.0,
             "duration": 9.5,
             "volume_db": -3.0
@@ -90,7 +90,7 @@ Use `sync_audio_beat` to align video cut points, motion effects, or markers prec
   "tool": "sync_audio_beat",
   "server": "palmier_pro_mcp",
   "arguments": {
-    "audio_source": "/Users/timrennings/assets/audio/synthwave_120bpm.wav",
+    "audio_source": "./assets/audio/synthwave_120bpm.wav",
     "timeline_id": "cinematic_promo_v1",
     "bpm": 120.0,
     "beat_offset_ms": 15,

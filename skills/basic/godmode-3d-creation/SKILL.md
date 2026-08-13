@@ -11,13 +11,13 @@ You are the Mastermind for all 3D generation, modeling, and CAD workflows within
 
 ## 1. Engine & Local Backend Architecture
 
-The core local 3D generation backends are hosted at:
-`/Users/timrennings/bdb-dev/bdb-dev-creator-extension/engines/3d/`
+The core local 3D generation backends are hosted within the Creator Extension:
+`bdb-dev-creator-extension/engines/3d/`
 
 ### Primary Engines & Local Modules:
-* **TRELLIS** (`/engines/3d/trellis`): High-fidelity Image-to-3D generation producing 3D Gaussian Splats, textured UV meshes, and radiance fields.
-* **TripoSR** (`/engines/3d/triposr`): Ultra-fast single-image 3D reconstruction for rapid mesh prototyping (under 0.5s execution time).
-* **Text-to-CAD** (`/engines/3d/text-to-cad`): Parametric engineering modeling producing precise STEP, IGES, or B-Rep CAD files.
+* **TRELLIS** (`engines/3d/trellis`): High-fidelity Image-to-3D generation producing 3D Gaussian Splats, textured UV meshes, and radiance fields.
+* **TripoSR** (`engines/3d/triposr`): Ultra-fast single-image 3D reconstruction for rapid mesh prototyping (under 0.5s execution time).
+* **Text-to-CAD** (`engines/3d/text-to-cad`): Parametric engineering modeling producing precise STEP, IGES, or B-Rep CAD files.
 
 ---
 
@@ -33,7 +33,7 @@ Use `generate_3d_model` for high-quality Image-to-3D mesh generation, Gaussian S
   "tool": "generate_3d_model",
   "server": "trellis_mcp",
   "arguments": {
-    "image_path": "/Users/timrennings/assets/concepts/hero_prop_concept.png",
+    "image_path": "./assets/concepts/hero_prop_concept.png",
     "output_format": "glb",
     "ss_sampling_steps": 12,
     "slat_sampling_steps": 12,
@@ -41,7 +41,7 @@ Use `generate_3d_model` for high-quality Image-to-3D mesh generation, Gaussian S
     "texture_size": 2048,
     "generate_color": true,
     "generate_normal": true,
-    "output_dir": "/Users/timrennings/projects/stage_assets/models/"
+    "output_dir": "./projects/stage_assets/models/"
   }
 }
 ```
@@ -54,12 +54,12 @@ Use `rapid_mesh_generation` for instant single-image 3D mesh reconstruction inte
   "tool": "rapid_mesh_generation",
   "server": "triposr_mcp",
   "arguments": {
-    "image_path": "/Users/timrennings/assets/concepts/quick_chair_sketch.png",
+    "image_path": "./assets/concepts/quick_chair_sketch.png",
     "output_format": "obj",
     "mc_resolution": 256,
     "foreground_ratio": 0.85,
     "bake_texture": true,
-    "output_path": "/Users/timrennings/projects/stage_assets/proxies/chair_proxy.obj"
+    "output_path": "./projects/stage_assets/proxies/chair_proxy.obj"
   }
 }
 ```
@@ -76,7 +76,7 @@ Use `generate_parametric_cad` to build precise CAD geometries, engineering parts
     "file_format": "step",
     "unit": "mm",
     "tolerance": 0.01,
-    "output_dir": "/Users/timrennings/projects/stage_assets/cad/"
+    "output_dir": "./projects/stage_assets/cad/"
   }
 }
 ```
