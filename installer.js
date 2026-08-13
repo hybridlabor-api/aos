@@ -973,7 +973,7 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
     }
 
     console.log("\nInstalling Godmode/Harness configurations to local workspace...");
-    const harnessDirs = ['.cursor/rules', '.claude', '.github', '.codex-plugin'];
+    const harnessDirs = ['.agents', '.cursor/rules', '.claude', '.github', '.codex-plugin'];
     harnessDirs.forEach(dir => {
         const sourcePath = path.join(srcDir, dir);
         if (fs.existsSync(sourcePath)) {
@@ -982,6 +982,48 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
             console.log(` -> Copied ${dir} to ${targetPath}`);
         }
     });
+
+    // Roo Code / Custom Modes sync (.roomodes)
+    const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
+    if (fs.existsSync(agentsMdSrc)) {
+        const rooModesPath = path.join(currentDir, '.roomodes');
+        const rooModesData = {
+            customModes: [
+                {
+                    slug: "planner-orchestrator",
+                    name: "Planner Orchestrator",
+                    roleDefinition: "Lead System Planner & Task Decomposer. Analyzes prompts and /grill-me into atomic sub-tasks.",
+                    groups: ["read", "browser", "command"]
+                },
+                {
+                    slug: "godmode-ui-ux",
+                    name: "Godmode UI/UX",
+                    roleDefinition: "Lead Frontend Designer & UI Engineer. Anti-Slop, design tokens, fluid motion, React/Tailwind.",
+                    groups: ["read", "edit", "browser", "command"]
+                },
+                {
+                    slug: "godmode-engineering",
+                    name: "Godmode Engineering",
+                    roleDefinition: "Senior Fullstack & Backend Engineer. DDD, Clean Architecture, TDD, TypeScript/Python.",
+                    groups: ["read", "edit", "browser", "command"]
+                },
+                {
+                    slug: "godmode-media-eventtech",
+                    name: "Godmode Media & EventTech",
+                    roleDefinition: "Creative-Tech & Show-Control Specialist. TouchDesigner, Unreal, DaVinci, grandMA3, Resolume, 3D.",
+                    groups: ["read", "edit", "mcp", "command"]
+                },
+                {
+                    slug: "godmode-shipping",
+                    name: "Godmode Shipping",
+                    roleDefinition: "Release Gatekeeper & Quality Auditor. Webapp testing, WCAG, SEO, release validation.",
+                    groups: ["read", "command"]
+                }
+            ]
+        };
+        fs.writeFileSync(rooModesPath, JSON.stringify(rooModesData, null, 2));
+        console.log(` -> Synced Roo Code custom modes to ${rooModesPath}`);
+    }
 
     const geminiMdSrc = path.join(srcDir, 'GEMINI.md');
     if (fs.existsSync(geminiMdSrc)) {

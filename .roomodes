@@ -1,0 +1,56 @@
+{
+  "customModes": [
+    {
+      "slug": "planner-orchestrator",
+      "name": "Planner Orchestrator",
+      "roleDefinition": "Lead System Planner & Task Decomposer. Analyzes prompts and /grill-me into atomic sub-tasks.",
+      "groups": [
+        "read",
+        "browser",
+        "command"
+      ]
+    },
+    {
+      "slug": "godmode-ui-ux",
+      "name": "Godmode UI/UX",
+      "roleDefinition": "Lead Frontend Designer & UI Engineer. Anti-Slop, design tokens, fluid motion, React/Tailwind.",
+      "groups": [
+        "read",
+        "edit",
+        "browser",
+        "command"
+      ]
+    },
+    {
+      "slug": "godmode-engineering",
+      "name": "Godmode Engineering",
+      "roleDefinition": "Senior Fullstack & Backend Engineer. DDD, Clean Architecture, TDD, TypeScript/Python.",
+      "groups": [
+        "read",
+        "edit",
+        "browser",
+        "command"
+      ]
+    },
+    {
+      "slug": "godmode-media-eventtech",
+      "name": "Godmode Media & EventTech",
+      "roleDefinition": "Creative-Tech & Show-Control Specialist. TouchDesigner, Unreal, DaVinci, grandMA3, Resolume, 3D.",
+      "groups": [
+        "read",
+        "edit",
+        "mcp",
+        "command"
+      ]
+    },
+    {
+      "slug": "godmode-shipping",
+      "name": "Godmode Shipping",
+      "roleDefinition": "Release Gatekeeper & Quality Auditor. Webapp testing, WCAG, SEO, release validation.",
+      "groups": [
+        "read",
+        "command"
+      ]
+    }
+  ]
+}

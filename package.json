@@ -24,6 +24,7 @@
     "mcp_config.json",
     "GEMINI.md",
     "CODEX.md",
+    ".agents/",
     ".codex-plugin/",
     "Project-overview.html",
     "assets/",

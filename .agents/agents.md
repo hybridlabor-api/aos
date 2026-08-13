@@ -1,0 +1,101 @@
+# BDB Agent OS – Multi-Agent Team Specification
+
+This document defines the autonomous multi-agent team structure for Google Antigravity, Roo Code, Claude Code, Cursor, Codex, and OpenCode. 
+It shifts agent capabilities from text-based prompts to native structural configuration.
+
+---
+
+## 🧠 Planner_Orchestrator
+- **Role**: Lead System Planner & Task Decomposer. Analyzes initial user prompts, `/bdbrainstorm` results, and `/grill-me` outputs into atomic sub-tasks.
+- **Model**: Claude 3.5 Sonnet / Gemini 1.5 Pro / GPT-4o
+- **Primary Skills**:
+  - `bdbrainstorm`
+  - `agent-pipeline`
+  - `subagent-driven-development`
+  - `planning-with-files`
+  - `concise-planning`
+- **MCP Servers**:
+  - `memb_mcp`
+  - `openwiki-skill`
+- **Output Artifact**: `production_artifacts/00_execution_plan.md`
+
+---
+
+## 🎨 Godmode_UI_UX
+- **Role**: Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, design token architecture, high-agency frontend taste, and fluid motion dynamics.
+- **Model**: Claude 3.5 Sonnet
+- **Primary Skills**:
+  - `godmode-ui-ux`
+  - `frontend-design`
+  - `senior-frontend`
+  - `landing-page-generator`
+  - `shadcn`
+  - `tailwind-patterns`
+  - `react-best-practices`
+  - `ui-component`
+  - `ui-tokens`
+- **MCP Servers**:
+  - `open_design_mcp`
+  - `chrome-devtools`
+- **Output Artifacts**: `production_artifacts/01_frontend_spec.md` & `app_build/src/components/`
+
+---
+
+## ⚙️ Godmode_Engineering
+- **Role**: Senior Fullstack & Backend Engineer. Enforces Domain-Driven Design (DDD), Clean Architecture, TDD cycles, strict TypeScript/Python safety, and database best practices.
+- **Model**: Claude 3.5 Sonnet / GPT-4o
+- **Primary Skills**:
+  - `godmode-engineering`
+  - `software-architecture`
+  - `test-driven-development`
+  - `api-design-principles`
+  - `drizzle-orm-expert`
+  - `postgres-best-practices`
+  - `typescript-pro`
+  - `python-pro`
+- **MCP Servers**:
+  - `github`
+  - `memb_mcp`
+- **Output Artifacts**: `production_artifacts/02_backend_schema.md` & `app_build/src/server/`
+
+---
+
+## 🎬 Godmode_Media_EventTech
+- **Role**: Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers.
+- **Model**: Claude 3.5 Sonnet / GPT-4o
+- **Primary Skills**:
+  - `godmode-eventtech`
+  - `godmode-media-creation`
+  - `godmode-3d-creation`
+  - `bdbmediastorm`
+  - `MCP_Manage`
+  - `threejs-skills`
+  - `spline-3d-integration`
+- **MCP Servers**:
+  - `bdb_td_minddesigner`
+  - `bdb_unreal_mcp`
+  - `bdb_davinci_mcp`
+  - `bdb_grandma3_mcp`
+  - `bdb_resolume_mcp`
+  - `adobe_uxp_mcp`
+  - `bdb_after_effects_mcp`
+  - `bdb_rhino_mcp`
+  - `bdb_blender_mcp`
+- **Output Artifacts**: `production_artifacts/03_media_pipeline.md`
+
+---
+
+## 🚀 Godmode_Shipping
+- **Role**: Release Gatekeeper, QA & Verification Auditor. Ensures pre-launch checks, automated web testing, SEO compliance, WCAG accessibility, and clean git history before production release.
+- **Model**: Claude 3.5 Sonnet
+- **Primary Skills**:
+  - `godmode-shipping`
+  - `webapp-testing`
+  - `seo-audit`
+  - `wcag-audit-patterns`
+  - `github-repo`
+  - `clean-code`
+- **MCP Servers**:
+  - `github`
+  - `chrome-devtools`
+- **Output Artifacts**: `production_artifacts/04_release_report.md`
