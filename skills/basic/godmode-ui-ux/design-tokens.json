@@ -1,0 +1,385 @@
+{
+  "color": {
+    "primary": {
+      "$value": "oklch(0.55 0.20 285)",
+      "$type": "color",
+      "$description": "BDB Purple primary brand color"
+    },
+    "primary-light": {
+      "$value": "oklch(0.75 0.14 285)",
+      "$type": "color",
+      "$description": "Lighter variant of BDB Purple primary color"
+    },
+    "secondary": {
+      "$value": "oklch(0.60 0.05 285)",
+      "$type": "color",
+      "$description": "Neutral purple-tinted complement for secondary elements"
+    },
+    "surface": {
+      "$value": "oklch(0.99 0.005 285)",
+      "$type": "color",
+      "$description": "Very light near-white background surface color"
+    },
+    "surface-elevated": {
+      "$value": "oklch(0.97 0.008 285)",
+      "$type": "color",
+      "$description": "Slightly off-white background surface color for elevated cards"
+    },
+    "neutral-900": {
+      "$value": "oklch(0.20 0.01 285)",
+      "$type": "color",
+      "$description": "Neutral scale 900 - darkest text and high-contrast elements"
+    },
+    "neutral-800": {
+      "$value": "oklch(0.30 0.01 285)",
+      "$type": "color",
+      "$description": "Neutral scale 800 - primary body text"
+    },
+    "neutral-700": {
+      "$value": "oklch(0.40 0.01 285)",
+      "$type": "color",
+      "$description": "Neutral scale 700 - secondary text"
+    },
+    "neutral-600": {
+      "$value": "oklch(0.50 0.01 285)",
+      "$type": "color",
+      "$description": "Neutral scale 600 - muted text and icons"
+    },
+    "neutral-500": {
+      "$value": "oklch(0.60 0.01 285)",
+      "$type": "color",
+      "$description": "Neutral scale 500 - borders and division lines"
+    },
+    "neutral-400": {
+      "$value": "oklch(0.70 0.01 285)",
+      "$type": "color",
+      "$description": "Neutral scale 400 - subtle borders and disabled states"
+    },
+    "neutral-300": {
+      "$value": "oklch(0.80 0.01 285)",
+      "$type": "color",
+      "$description": "Neutral scale 300 - hover states for neutral components"
+    },
+    "neutral-200": {
+      "$value": "oklch(0.90 0.005 285)",
+      "$type": "color",
+      "$description": "Neutral scale 200 - background fill for subtle elements"
+    },
+    "neutral-100": {
+      "$value": "oklch(0.96 0.005 285)",
+      "$type": "color",
+      "$description": "Neutral scale 100 - lightest background tint"
+    },
+    "accent": {
+      "$value": "oklch(0.65 0.17 170)",
+      "$type": "color",
+      "$description": "Emerald/teal accent complement"
+    },
+    "danger": {
+      "$value": "oklch(0.58 0.22 25)",
+      "$type": "color",
+      "$description": "Red semantic color for danger and error states"
+    },
+    "warning": {
+      "$value": "oklch(0.75 0.18 75)",
+      "$type": "color",
+      "$description": "Amber semantic color for warning states"
+    },
+    "success": {
+      "$value": "oklch(0.62 0.19 145)",
+      "$type": "color",
+      "$description": "Green semantic color for success states"
+    },
+    "info": {
+      "$value": "oklch(0.60 0.18 240)",
+      "$type": "color",
+      "$description": "Blue semantic color for informational states"
+    }
+  },
+  "spacing": {
+    "4": {
+      "$value": "4px",
+      "$type": "dimension",
+      "$description": "4px spacing token (0.5 unit on 8pt grid)"
+    },
+    "8": {
+      "$value": "8px",
+      "$type": "dimension",
+      "$description": "8px spacing token (1 unit on 8pt grid)"
+    },
+    "12": {
+      "$value": "12px",
+      "$type": "dimension",
+      "$description": "12px spacing token (1.5 units on 8pt grid)"
+    },
+    "16": {
+      "$value": "16px",
+      "$type": "dimension",
+      "$description": "16px spacing token (2 units on 8pt grid)"
+    },
+    "24": {
+      "$value": "24px",
+      "$type": "dimension",
+      "$description": "24px spacing token (3 units on 8pt grid)"
+    },
+    "32": {
+      "$value": "32px",
+      "$type": "dimension",
+      "$description": "32px spacing token (4 units on 8pt grid)"
+    },
+    "48": {
+      "$value": "48px",
+      "$type": "dimension",
+      "$description": "48px spacing token (6 units on 8pt grid)"
+    },
+    "64": {
+      "$value": "64px",
+      "$type": "dimension",
+      "$description": "64px spacing token (8 units on 8pt grid)"
+    },
+    "96": {
+      "$value": "96px",
+      "$type": "dimension",
+      "$description": "96px spacing token (12 units on 8pt grid)"
+    }
+  },
+  "typography": {
+    "font-display": {
+      "$value": [
+        "Geist",
+        "system-ui",
+        "sans-serif"
+      ],
+      "$type": "fontFamily",
+      "$description": "Display font stack for headings"
+    },
+    "font-body": {
+      "$value": [
+        "Geist",
+        "system-ui",
+        "sans-serif"
+      ],
+      "$type": "fontFamily",
+      "$description": "Body font stack for main text"
+    },
+    "font-mono": {
+      "$value": [
+        "Geist Mono",
+        "ui-monospace",
+        "monospace"
+      ],
+      "$type": "fontFamily",
+      "$description": "Monospace font stack for code and technical data"
+    },
+    "scale-ratio": {
+      "$value": 1.25,
+      "$type": "number",
+      "$description": "Major Third typographic scaling ratio"
+    },
+    "line-height-tight": {
+      "$value": 1.1,
+      "$type": "number",
+      "$description": "Tight line height for headings"
+    },
+    "line-height-normal": {
+      "$value": 1.5,
+      "$type": "number",
+      "$description": "Normal line height for body text"
+    },
+    "line-height-loose": {
+      "$value": 1.75,
+      "$type": "number",
+      "$description": "Loose line height for long-form reading"
+    },
+    "letter-spacing-tight": {
+      "$value": "-0.02em",
+      "$type": "dimension",
+      "$description": "Tight letter spacing for large text and headings"
+    },
+    "letter-spacing-normal": {
+      "$value": "0em",
+      "$type": "dimension",
+      "$description": "Normal letter spacing"
+    },
+    "letter-spacing-wide": {
+      "$value": "0.05em",
+      "$type": "dimension",
+      "$description": "Wide letter spacing for microcopy and captions"
+    }
+  },
+  "motion": {
+    "spring-subtle": {
+      "$value": {
+        "stiffness": 300,
+        "damping": 30
+      },
+      "$type": "spring",
+      "$description": "Subtle spring animation physics"
+    },
+    "spring-default": {
+      "$value": {
+        "stiffness": 100,
+        "damping": 20
+      },
+      "$type": "spring",
+      "$description": "Default spring animation physics"
+    },
+    "spring-bouncy": {
+      "$value": {
+        "stiffness": 80,
+        "damping": 12
+      },
+      "$type": "spring",
+      "$description": "Bouncy spring animation physics"
+    },
+    "spring-heavy": {
+      "$value": {
+        "stiffness": 50,
+        "damping": 15
+      },
+      "$type": "spring",
+      "$description": "Heavy spring animation physics"
+    },
+    "duration-instant": {
+      "$value": "100ms",
+      "$type": "duration",
+      "$description": "Instant transition duration"
+    },
+    "duration-fast": {
+      "$value": "200ms",
+      "$type": "duration",
+      "$description": "Fast transition duration"
+    },
+    "duration-normal": {
+      "$value": "300ms",
+      "$type": "duration",
+      "$description": "Normal transition duration"
+    }
+  },
+  "radius": {
+    "sm": {
+      "$value": "6px",
+      "$type": "dimension",
+      "$description": "Small border radius (6px)"
+    },
+    "md": {
+      "$value": "12px",
+      "$type": "dimension",
+      "$description": "Medium border radius (12px)"
+    },
+    "lg": {
+      "$value": "16px",
+      "$type": "dimension",
+      "$description": "Large border radius (16px)"
+    },
+    "xl": {
+      "$value": "24px",
+      "$type": "dimension",
+      "$description": "Extra large border radius (24px)"
+    },
+    "2xl": {
+      "$value": "40px",
+      "$type": "dimension",
+      "$description": "2X large border radius (40px)"
+    },
+    "full": {
+      "$value": "9999px",
+      "$type": "dimension",
+      "$description": "Full border radius for pill buttons and avatars (9999px)"
+    }
+  },
+  "shadow": {
+    "sm": {
+      "$value": [
+        {
+          "color": "oklch(0.20 0.01 285 / 0.04)",
+          "offsetX": "0px",
+          "offsetY": "1px",
+          "blur": "2px",
+          "spread": "0px"
+        },
+        {
+          "color": "oklch(0.20 0.01 285 / 0.04)",
+          "offsetX": "0px",
+          "offsetY": "2px",
+          "blur": "4px",
+          "spread": "0px"
+        }
+      ],
+      "$type": "shadow",
+      "$description": "Subtle multi-layered card shadow"
+    },
+    "md": {
+      "$value": [
+        {
+          "color": "oklch(0.20 0.01 285 / 0.06)",
+          "offsetX": "0px",
+          "offsetY": "4px",
+          "blur": "8px",
+          "spread": "-1px"
+        },
+        {
+          "color": "oklch(0.20 0.01 285 / 0.04)",
+          "offsetX": "0px",
+          "offsetY": "2px",
+          "blur": "4px",
+          "spread": "-1px"
+        }
+      ],
+      "$type": "shadow",
+      "$description": "Elevated multi-layered card shadow"
+    },
+    "lg": {
+      "$value": [
+        {
+          "color": "oklch(0.20 0.01 285 / 0.08)",
+          "offsetX": "0px",
+          "offsetY": "12px",
+          "blur": "24px",
+          "spread": "-4px"
+        },
+        {
+          "color": "oklch(0.20 0.01 285 / 0.04)",
+          "offsetX": "0px",
+          "offsetY": "4px",
+          "blur": "8px",
+          "spread": "-2px"
+        }
+      ],
+      "$type": "shadow",
+      "$description": "Multi-layered modal and dropdown shadow"
+    }
+  },
+  "z-index": {
+    "base": {
+      "$value": 0,
+      "$type": "number",
+      "$description": "Base stacking context z-index"
+    },
+    "dropdown": {
+      "$value": 100,
+      "$type": "number",
+      "$description": "Dropdown overlay z-index"
+    },
+    "sticky": {
+      "$value": 200,
+      "$type": "number",
+      "$description": "Sticky element z-index"
+    },
+    "modal": {
+      "$value": 300,
+      "$type": "number",
+      "$description": "Modal dialog overlay z-index"
+    },
+    "toast": {
+      "$value": 400,
+      "$type": "number",
+      "$description": "Toast notification z-index"
+    },
+    "tooltip": {
+      "$value": 500,
+      "$type": "number",
+      "$description": "Tooltip z-index"
+    }
+  }
+}

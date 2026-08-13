@@ -1,6 +1,6 @@
 ---
 name: ux-persuasion-engineer
-description: "One sentence - what this skill does and when to invoke it"
+description: "Behavioral UX specialist applying choice architecture, friction audits, and commitment design to guide users toward intended actions without coercion. Use when optimizing conversion flows, onboarding, or checkout UX."
 risk: safe
 source: community
 date_added: "2026-04-04"
@@ -94,15 +94,12 @@ The line between persuasion and manipulation is guiding behavior by making the i
 
 ## SKILL CHAINING
 
-Before invoking this skill, the agent should have completed:
-- [ ] `@customer-psychographic-profiler`
-- [ ] `@jobs-to-be-done-analyst`
-- [ ] `@awareness-stage-mapper`
+This skill works best after Brand Discovery has been completed (see `godmode-ui-ux` §0).
 
 This skill's output feeds into:
-- [ ] `@onboarding-psychologist`
-- [ ] `@copywriting-psychologist`
-- [ ] `@brand-perception-psychologist`
+- `godmode-ui-ux` for visual implementation of the optimized flow
+- `landing-page-generator` for conversion-focused page structure
+- `copywriting` for persuasion-aligned messaging
 
 ## OUTPUT QUALITY CHECK
 

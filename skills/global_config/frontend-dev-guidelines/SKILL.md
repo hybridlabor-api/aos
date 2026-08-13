@@ -332,11 +332,8 @@ export default MyComponent;
 
 ## 15. Integration With Other Skills
 
-* **frontend-design** → Visual systems & aesthetics
-* **page-cro** → Layout hierarchy & conversion logic
-* **analytics-tracking** → Event instrumentation
-* **backend-dev-guidelines** → API contract alignment
-* **error-tracking** → Runtime observability
+* **godmode-ui-ux** → Visual systems & aesthetics
+* **godmode-engineering** → API contract alignment
 
 ---
 

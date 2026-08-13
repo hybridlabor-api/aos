@@ -40,11 +40,7 @@ Generate high-converting landing pages from a product description. Output comple
 Follow these steps in order for every landing page request:
 
 1. **Gather inputs** — collect product name, tagline, audience, pain point, key benefit, pricing tiers, design style, and copy framework using the trigger format below. Ask only for missing fields.
-2. **Analyze brand voice** (recommended) — if the user has existing brand content (website copy, blog posts, marketing materials), run it through `marketing-skill/content-production/scripts/brand_voice_analyzer.py` to get a voice profile (formality, tone, perspective). Use the profile to inform design style and copy framework selection:
-   - formal + professional → **enterprise** style, **AIDA** framework
-   - casual + friendly → **bold-startup** style, **BAB** framework
-   - professional + authoritative → **dark-saas** style, **PAS** framework
-   - casual + conversational → **clean-minimal** style, **BAB** framework
+2. **Check brand context** (recommended) — if Brand Discovery has been completed via `godmode-ui-ux` §0, read the project's DESIGN.md for colors, fonts, and voice direction. Use these to inform design style and copy framework selection.
 3. **Select design style** — map the user's choice (or infer from brand voice analysis) to one of the four Tailwind class sets in the Design Style Reference.
 4. **Apply copy framework** — write all headline and body copy using the chosen framework (PAS / AIDA / BAB) before generating components. Match the voice profile's formality and tone throughout.
 5. **Generate sections in order** — Hero → Features → Pricing → FAQ → Testimonials → CTA → Footer. Skip sections not relevant to the product.
@@ -203,9 +199,8 @@ Inject `FAQPage` JSON-LD via `<script type="application/ld+json" dangerouslySetI
 
 ## Related Skills
 
-- **Brand Voice Analyzer** (`marketing-skill/content-production/scripts/brand_voice_analyzer.py`) — Run before generation to establish voice profile and ensure copy consistency
-- **UI Design System** (`product-team/ui-design-system/`) — Generate design tokens from brand color before building the page
-- **Competitive Teardown** (`product-team/competitive-teardown/`) — Competitive positioning informs landing page messaging and differentiation
+- **Brand Discovery** (godmode-ui-ux/brand-discovery.md) — Run before generation to establish brand colors, fonts, and voice
+- **Design Tokens** (godmode-ui-ux/design-tokens.json) — Machine-readable DTCG tokens for consistent styling
 
 ## Limitations
 - Use this skill only when the task clearly matches the scope described above.
