@@ -71,7 +71,7 @@ def main():
     models_to_try = []
     if configured_model:
         models_to_try.append(configured_model)
-    models_to_try.append("gemini-2.0-flash")
+    models_to_try.append("gemma-4-26b-a4b-it")
     if discovered_model and discovered_model not in models_to_try:
         models_to_try.append(discovered_model)
 

@@ -645,12 +645,12 @@ async function promptCredentials(targetMcpDir = '') {
             }
 
             const provOptions = [
-            { label: 'Google AI Studio / Gemini – gemini-2.0-flash, gemini-2.5-pro, gemini-3.5-flash', value: '1' },
+            { label: 'Google AI Studio / Gemini – gemma-4-26b-a4b-it, gemma-4-31b-it, gemini-2.5-pro, gemini-3.5-flash', value: '1' },
             { label: 'Groq – llama-3.3-70b-versatile, llama-3.1-8b-instant', value: '2' },
             { label: 'Grok / xAI – grok-2-latest, grok-3', value: '3' },
             { label: 'NVIDIA NIM – meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct', value: '4' },
-            { label: 'OpenRouter – anthropic/claude-3.5-sonnet', value: '5' },
-            { label: 'OpenAI – gpt-4o-mini, gpt-4o, gpt-4o-1', value: '6' },
+            { label: 'OpenRouter – anthropic/claude-3.5-sonnet, openai/gpt-4o', value: '5' },
+            { label: 'OpenAI – gpt-4o-mini, gpt-4o, o1', value: '6' },
             { label: 'Ollama / LM Studio – Local LLM (no API key, no cost)', value: '7' },
             { label: 'Custom OpenAI API / Base URL + API Key + Model', value: '8' }
         ];
@@ -675,7 +675,7 @@ async function promptCredentials(targetMcpDir = '') {
                     if (u.trim()) baseUrl = u.trim();
                 }
                 const defaultModel = model || (provider === "google"
-                    ? "gemini-2.0-flash"
+                    ? "gemma-4-26b-a4b-it"
                     : provider === "groq"
                         ? "llama-3.3-70b-versatile"
                         : provider === "grok"
@@ -688,18 +688,20 @@ async function promptCredentials(targetMcpDir = '') {
                                         ? "llama3"
                                         : "gpt-4o-mini");
                 const modelHint = provider === "google"
-                    ? "gemini-2.0-flash | gemini-2.5-pro | gemini-3.5-flash"
+                    ? "gemma-4-26b-a4b-it | gemma-4-31b-it | gemini-2.5-pro | gemini-3.5-flash"
                     : provider === "groq"
                         ? "llama-3.3-70b-versatile | llama-3.1-8b-instant"
                         : provider === "grok"
                             ? "grok-2-latest | grok-3"
                             : provider === "nvidia"
                                 ? "meta/llama-3.3-70b-instruct | nvidia/llama-3.1-nemotron-70b-instruct"
-                                : provider === "openai"
-                                    ? "gpt-4o-mini | gpt-4o | gpt-4o-1"
-                                    : provider === "ollama"
-                                        ? "llama3 | gemma-4-e4b:q4_k_m | qwen3-8b-instruct:q4_k_m | qwen3-coder-8b-instruct:q4_k_m | llama-3.1-8b-instruct:q4_k_m | gpt-oss-20b"
-                                        : "model name";
+                                : provider === "openrouter"
+                                    ? "anthropic/claude-3.5-sonnet | openai/gpt-4o"
+                                    : provider === "openai"
+                                        ? "gpt-4o-mini | gpt-4o | o1"
+                                        : provider === "ollama"
+                                            ? "llama3 | gemma-4-e4b:q4_k_m | qwen3-8b-instruct:q4_k_m | qwen3-coder-8b-instruct:q4_k_m | llama-3.1-8b-instruct:q4_k_m | gpt-oss-20b"
+                                            : "model name";
                 const m = await askTextQuestion(`${colors.yellow}Model name [default: ${defaultModel}] (${modelHint}): ${colors.reset}`);
                 if (m.trim()) model = m.trim();
 

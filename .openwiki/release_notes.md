@@ -1,8 +1,9 @@
 # Release Notes
 
 ## v3.1.6 (OpenWiki Model Fix)
-- **Valid default Google model**: The default OpenWiki Google model was `gemma-4-12b-it`, which does **not** exist in the Google API (confirmed `404 NOT_FOUND`), so key verification and the daemon always failed. The default is now `gemini-2.0-flash`; provider wizard options, docs and READMEs updated accordingly.
+- **Valid default Google model**: The OpenWiki Google default in the API key verifier was `gemma-4-12b-it`, which does **not** exist in the Google API (confirmed `404 NOT_FOUND`), so verification always failed. The verifier now probes the verified default `gemma-4-26b-a4b-it` and keeps the provider wizard / daemon on the verified Google models (`gemma-4-26b-a4b-it`, `gemma-4-31b-it`, `gemini-2.5-pro`, `gemini-3.5-flash`).
 - **Automatic model discovery**: `verify_api_key.py` and `openwiki_daemon.py` now query the models API and automatically fall back to the first available `generateContent`-capable Gemini/Gemma model when the configured one is unknown, so a valid key never reports a false failure because of a wrong model name.
+- **Verified model lists synced**: Provider wizard labels and hints updated to the verified availability lists (OpenAI `o1`, OpenRouter `openai/gpt-4o`, Ollama `gpt-oss-20b`).
 
 ## v3.1.5 (Cross-Platform Installer Hardening — Native Linux/macOS/Windows)
 - **Bug 1 — JSON escaping on Windows**: Paths injected into the generated `mcp_config.json` (`__MCPS_DIR__`, `{{HOME}}`) are now JSON-escaped, fixing the `Bad escaped character in JSON` crash that broke MCP config writing on Windows.

@@ -453,7 +453,7 @@ Die **OpenWiki Engine** verwaltet autonom lebendige Codebasis-Dokumentation, Arc
 <summary><strong>🧠 Multi-Provider LLM & Zero-Token RepoGraph Architektur</strong></summary>
 
 1. **Multi-Provider LLM Agility:** Decoupled from single-vendor lock-in. Configure any LLM backend via environment variables:
-   - **Google GenAI:** `gemini-2.0-flash` (Standard via `google-genai` SDK, mit automatischem Modell-Discovery-Fallback)
+   - **Google GenAI:** `gemma-4-26b-a4b-it` (Standard via `google-genai` SDK, mit automatischem Modell-Discovery-Fallback)
    - **Groq:** `llama-3.3-70b-versatile` (ultra-low latency)
    - **Grok / xAI:** `grok-2-latest`
    - **Nvidia NIM:** `meta/llama-3.3-70b-instruct`
