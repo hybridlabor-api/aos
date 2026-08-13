@@ -131,6 +131,24 @@ function runNpmWithRetry(cmd, opts, label, attempts = 3) {
     return false;
 }
 
+function runPipWithRetry(cmd, opts, label, attempts = 2, timeoutMs = 900000) {
+    for (let i = 1; i <= attempts; i++) {
+        try {
+            execSync(cmd, { ...opts, timeout: timeoutMs });
+            return true;
+        } catch (e) {
+            if (i === attempts) {
+                console.warn(`Warning: Failed to ${label}: ${e.message}`);
+                return false;
+            }
+            const waitMs = 1000 * i;
+            console.warn(` -> ${label} failed (attempt ${i}/${attempts}), retrying in ${waitMs / 1000}s...`);
+            execSync(process.platform === 'win32' ? `powershell -NoProfile -Command "Start-Sleep -Seconds ${waitMs / 1000}"` : `sleep ${waitMs / 1000}`, { stdio: 'ignore' });
+        }
+    }
+    return false;
+}
+
 const cols = process.stdout.columns || 110;
 
 const headerArt = `
@@ -1042,9 +1060,8 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                             : path.join(membMcpFolder, '.venv', 'bin', 'python');
                         const pipViaPython = `"${venvPython}" -m pip`;
                         console.log(` -> Installing Python dependencies for memB MCP...`);
-                        execSync(`${pipViaPython} install --upgrade pip`, { cwd: membMcpFolder, stdio: 'ignore' });
-                        execSync(`${pipViaPython} install --upgrade pip setuptools`, { cwd: membMcpFolder, stdio: 'ignore' });
-                        execSync(`${pipViaPython} install -r requirements.txt`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        runPipWithRetry(`${pipViaPython} install --upgrade setuptools --timeout 30 --no-input`, { cwd: membMcpFolder, stdio: 'ignore' }, 'pip setuptools upgrade for memB MCP', 2, 120000);
+                        runPipWithRetry(`${pipViaPython} install -r requirements.txt --timeout 30 --no-input`, { cwd: membMcpFolder, stdio: 'inherit' }, 'pip install for memB MCP', 2, 900000);
                         console.log(` -> memB MCP setup completed successfully.`);
                     } catch (e) { console.warn(`Warning: Failed to set up Python virtual environment for memB: ${e.message}`); }
                 }
