@@ -1008,9 +1008,21 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                     groups: ["read", "edit", "browser", "command"]
                 },
                 {
-                    slug: "godmode-media-eventtech",
-                    name: "Godmode Media & EventTech",
-                    roleDefinition: "Creative-Tech & Show-Control Specialist. TouchDesigner, Unreal, DaVinci, grandMA3, Resolume, 3D.",
+                    slug: "godmode-eventtech",
+                    name: "Godmode EventTech",
+                    roleDefinition: "Architectural Authority for Real-Time Performance, Signal Flow, and Hardware Limits in live environments. TouchDesigner, grandMA3, Resolume.",
+                    groups: ["read", "edit", "mcp", "command"]
+                },
+                {
+                    slug: "godmode-media-creation",
+                    name: "Godmode Media Creation",
+                    roleDefinition: "AI Video Production & Pipeline Orchestrator. Master of OpenMontage and Palmier Pro MCPs.",
+                    groups: ["read", "edit", "mcp", "command"]
+                },
+                {
+                    slug: "godmode-3d-creation",
+                    name: "Godmode 3D Creation",
+                    roleDefinition: "AI 3D Generation & Asset Architect. Master of TRELLIS, TripoSR, and Text-to-CAD MCPs.",
                     groups: ["read", "edit", "mcp", "command"]
                 },
                 {
