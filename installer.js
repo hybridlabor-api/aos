@@ -1135,7 +1135,11 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                     console.log(` -> Bootstrapping Python virtual environment for memB MCP...`);
                     try {
                         const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-                        execSync(`${pythonCmd} -m venv .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        try {
+                            execSync(`uv venv --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        } catch (e1) {
+                            execSync(`${pythonCmd} -m venv .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        }
                         const venvPython = process.platform === 'win32'
                             ? path.join(membMcpFolder, '.venv', 'Scripts', 'python.exe')
                             : path.join(membMcpFolder, '.venv', 'bin', 'python');
@@ -1335,7 +1339,7 @@ async function promptCreatorExtension(mcpConfigPath) {
     if (fs.existsSync(installerScript)) {
         console.log(` -> Starte Setup der BDB Creator Extension...`);
         try {
-            execSync(`node "${installerScript}"`, { stdio: 'inherit', cwd: creatorDir });
+            execSync(`node "${installerScript}" --auto`, { stdio: 'inherit', cwd: creatorDir });
         } catch (e) {
             console.log(` -> Hinweis beim Ausführen des Creator Extension Setups: ${e.message}`);
         }
