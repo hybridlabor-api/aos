@@ -35,23 +35,16 @@ if ([string]::IsNullOrWhiteSpace($GeminiKey)) {
 
 if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
     Write-Host "Verifying API key..." -ForegroundColor Yellow
-    try {
-        $VerifyModel = if ([string]::IsNullOrWhiteSpace($env:OPENWIKI_MODEL)) { "gemma-4-12b-it" } else { $env:OPENWIKI_MODEL }
-        $VerifyResult = python -c "
-from google import genai
-client = genai.Client(api_key='$GeminiKey')
-r = client.models.generate_content(model='$VerifyModel', contents='Say OK')
-print('OK')
-" 2>&1
-        if ($VerifyResult -match "OK") {
-            Write-Host " -> API key verified." -ForegroundColor Green
-            [System.Environment]::SetEnvironmentVariable("GEMINI_API_KEY", $GeminiKey, "User")
-        } else {
-            Write-Host " -> WARNING: API key verification failed. Daemon will run in collect-only mode." -ForegroundColor Yellow
-            $GeminiKey = ""
-        }
-    } catch {
-        Write-Host " -> WARNING: Verification error. Daemon will run in collect-only mode." -ForegroundColor Yellow
+    $VerifyScript = Join-Path $PSScriptRoot "verify_api_key.py"
+    $VerifyOutput = & python $VerifyScript 2>&1
+    $VerifyCode = $LASTEXITCODE
+    if ($VerifyCode -eq 0 -and ($VerifyOutput -match "VERIFIED_OK")) {
+        Write-Host " -> API key verified." -ForegroundColor Green
+        [System.Environment]::SetEnvironmentVariable("GEMINI_API_KEY", $GeminiKey, "User")
+    } else {
+        Write-Host " -> WARNING: API key verification failed (with retry + TLS fallback)." -ForegroundColor Yellow
+        $VerifyOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+        Write-Host "    The daemon will run in collect-only mode until a valid key is set." -ForegroundColor Yellow
         $GeminiKey = ""
     }
 } else {

@@ -80,6 +80,8 @@ A continuous, non-intrusive background daemon that maintains codebase documentat
   - **OpenAI:** `gpt-4o-mini` / `gpt-4o`
   - **Local Offline / Self-Hosted:** Ollama (`llama3`), LM Studio, or any custom OpenAI-compatible endpoint
 - **Configuration:** Controlled via `OPENWIKI_PROVIDER`, `OPENWIKI_MODEL`, and `OPENWIKI_BASE_URL` environment variables.
+- **Cross-Platform Daemon Registration:** `install_daemon.sh` installs a macOS LaunchAgent (`StartInterval` 2h) or, on Linux with a systemd user session, a systemd user service + timer (2h); without systemd it reports an explicit skip with cron instructions and a non-zero exit code. `install_daemon.ps1` registers a Windows Scheduled Task with a Startup-folder fallback.
+- **Key Verification:** `verify_api_key.py` validates `GEMINI_API_KEY` with two retries plus a TLS-verification-disabled fallback and prints a concrete error diagnosis on failure so the daemon never silently falls back to collect-only mode.
 
 ### 5. RepoGraph Deterministic Code Health Analytics (Zero-Token Git Engine)
 A 100% deterministic, zero-token cost analysis subsystem embedded in the OpenWiki pipeline:

@@ -90,3 +90,15 @@ This document records the foundational architectural decisions, rationale, and c
 - **Decision:** Standardize web data extraction on the Firecrawl CLI platform, integrating dedicated skills for structured JSON schema extraction (`firecrawl-agent`), bulk documentation crawling (`firecrawl-crawl`), page interaction (`firecrawl-interact`), site mapping (`firecrawl-map`), and deep search synthesis (`firecrawl-search`).
 - **Consequences:** Provides reliable, LLM-optimized web data access and dynamic browser interaction across all agent workflows.
 
+---
+
+## ADR-012: Cross-Platform Installer & Daemon Hardening
+- **Status:** Accepted
+- **Context:** Windows installs produced invalid `mcp_config.json` (unescaped `\` path separators broke `JSON.parse`), npm dependency failures printed no actionable detail, OpenWiki API-key verification failed silently on TLS/network issues, and the macOS-only daemon script claimed success on Linux even though no launch agent existed.
+- **Decision:**
+  1. JSON-escape Windows paths before injecting `__MCPS_DIR__` / `{{HOME}}` into the generated MCP config.
+  2. Capture and print trailing npm/pip error output on retry and failure so installers surface real root causes plus a manual re-run hint.
+  3. Route OpenWiki API-key verification through `verify_api_key.py` with 2 retries plus a TLS-verification-disabled fallback and a clear, structured error diagnosis.
+  4. Make `install_daemon.sh` platform-aware: macOS LaunchAgent, Linux systemd user service + timer when a systemd user session exists, otherwise an explicit skip with manual cron instructions and a non-zero exit code (never a false success).
+- **Consequences:** The installer now behaves consistently and honestly on native Linux, macOS, and Windows; failed steps produce actionable diagnostics instead of silent degradation or misleading success messages.
+

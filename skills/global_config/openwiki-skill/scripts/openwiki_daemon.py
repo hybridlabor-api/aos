@@ -837,14 +837,14 @@ def run_daemon_loop(api_key):
 
 
 def main():
-    if genai is None:
+    parser = argparse.ArgumentParser(description="OpenWiki Daemon - direct LLM API")
+    parser.add_argument("--one-shot", action="store_true", help="Run once and exit")
+    args = parser.parse_args()
+
+    if PROVIDER == "google" and genai is None:
         print("ERROR: google-genai package not installed.")
         print("Install it with: pip3 install google-genai")
         sys.exit(1)
-
-    parser = argparse.ArgumentParser(description="OpenWiki Daemon - Gemma 4 Direct API")
-    parser.add_argument("--one-shot", action="store_true", help="Run once and exit")
-    args = parser.parse_args()
 
     api_key = (
         os.environ.get("OPENWIKI_API_KEY", "").strip() or

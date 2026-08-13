@@ -144,13 +144,16 @@ This stages `.openwiki/`, `README.md`, `agent.md`, and `CLAUDE.md`, and commits 
 The daemon script (`openwiki_daemon.py`) runs as a background service:
 
 - **macOS**: Installed as a LaunchAgent via `install_daemon.sh`. Uses `StartInterval` (7200s = 2 hours) with `--one-shot` flag per invocation. No long-running process.
+- **Linux**: Installed as a systemd user service + timer via `install_daemon.sh` when a usable systemd user session exists. If systemd is unavailable the installer reports a clear skip (never a false success) and tells you to use cron instead.
 - **Windows**: Installed as a Scheduled Task via `install_daemon.ps1`. Repeats every 2 hours with `--one-shot`.
+
+During install the API key is verified by `verify_api_key.py` (2 retries + TLS-certificate fallback) so an unreachable/invalid key is reported with a concrete error message instead of silently degrading to collect-only mode.
 
 Each invocation:
 1. Reads `~/.openwiki/projects.json` for registered project paths
 2. Runs `openwiki_helper.py --command collect` to gather git evidence
 3. Checks for meaningful changes (new commits or unstaged diffs)
-4. If changes found, calls Gemma 4 API with evidence + existing wiki pages
+4. If changes found, calls the configured LLM provider with evidence + existing wiki pages
 5. Parses JSON response and writes updated `.openwiki/*.md` files
 6. Runs `openwiki_helper.py --command commit` to auto-commit
 
@@ -159,6 +162,9 @@ Install:
 # macOS
 bash ~/.gemini/config/skills/openwiki-skill/scripts/install_daemon.sh
 
-# Windows (PowerShell as Admin)
+# Linux (systemd user session required)
+bash ~/.gemini/config/skills/openwiki-skill/scripts/install_daemon.sh
+
+# Windows (PowerShell)
 powershell -ExecutionPolicy Bypass -File install_daemon.ps1
 ```

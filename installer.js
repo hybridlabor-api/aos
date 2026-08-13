@@ -124,18 +124,32 @@ function cleanNpmCacheOnWindows() {
     }
 }
 
+function tailOutput(e, maxLines = 12) {
+    const raw = (e && (e.stderr || e.stdout) ? e.stderr || e.stdout : '').toString().trim();
+    if (!raw) return '';
+    const lines = raw.split(/\r?\n/).slice(-maxLines);
+    return lines.map(l => `     ${l}`).join('\n');
+}
+
 function runNpmWithRetry(cmd, opts, label, attempts = 3) {
     for (let i = 1; i <= attempts; i++) {
         try {
-            execSync(cmd, opts);
+            execSync(cmd, { ...opts, stdio: 'pipe', maxBuffer: 16 * 1024 * 1024 });
             return true;
         } catch (e) {
             if (i === attempts) {
-                console.warn(`Warning: Failed to ${label}: ${e.message}`);
+                const firstLine = (e.message || '').split('\n')[0];
+                console.warn(`Warning: Failed to ${label}.`);
+                if (firstLine) console.warn(`  └─ ${firstLine}`);
+                const tail = tailOutput(e);
+                if (tail) console.warn(`  └─ Last output:\n${tail}`);
+                if (opts && opts.cwd) console.warn(`  └─ Re-run manually: cd "${opts.cwd}" && ${cmd}`);
                 return false;
             }
             const waitMs = 1000 * i;
             console.warn(` -> ${label} failed (attempt ${i}/${attempts}), retrying in ${waitMs / 1000}s...`);
+            const tail = tailOutput(e, 4);
+            if (tail) console.warn(`${colors.dim}  └─ ${tail.trim()}${colors.reset}`);
             execSync(process.platform === 'win32' ? `powershell -NoProfile -Command "Start-Sleep -Seconds ${waitMs / 1000}"` : `sleep ${waitMs / 1000}`, { stdio: 'ignore' });
         }
     }
@@ -758,7 +772,7 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
                     console.warn(` -> Could not auto-start daemon: ${e.message}`);
                 }
             }
-            else console.error(` -> OpenWiki Daemon installation failed with code ${code}.`);
+            else console.warn(` -> OpenWiki Daemon background install was skipped or failed (exit code ${code}).\n -> See the output above. The daemon can still be run manually:\n -> python3 "${path.join(scriptBase, 'openwiki_daemon.py')}" --one-shot`);
             resolve();
         });
         child.on('error', (err) => { console.error(' -> Failed to start OpenWiki Daemon script:', err); resolve(); });
@@ -1119,8 +1133,9 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                 mcpConfigStr = JSON.stringify(parsedMcpConfig, null, 2);
             } catch(e) {}
 
-            mcpConfigStr = mcpConfigStr.replace(/__MCPS_DIR__/g, mcpCodeTarget);
-            mcpConfigStr = mcpConfigStr.replace(/\{\{HOME\}\}/g, homeDir);
+            const jsonEscapePath = (p) => String(p).replace(/\\/g, '\\\\');
+            mcpConfigStr = mcpConfigStr.replace(/__MCPS_DIR__/g, () => jsonEscapePath(mcpCodeTarget));
+            mcpConfigStr = mcpConfigStr.replace(/\{\{HOME\}\}/g, () => jsonEscapePath(homeDir));
 
             let uvPath = 'uv';
             try {

@@ -47,6 +47,20 @@ open .openwiki/code_health_dashboard.html
 ```
 *Features 6 live visual panels with 60-second auto-refresh and integrated memB sync telemetry.*
 
+### 3. Run the Daemon as a Background Service
+The installer registers the daemon automatically. Manual registration:
+```bash
+# macOS (LaunchAgent)
+bash ~/.gemini/config/skills/openwiki-skill/scripts/install_daemon.sh
+
+# Linux (systemd user session required)
+bash ~/.gemini/config/skills/openwiki-skill/scripts/install_daemon.sh
+
+# Windows (Scheduled Task)
+powershell -ExecutionPolicy Bypass -File install_daemon.ps1
+```
+During install the API key is verified by `verify_api_key.py` (2 retries + TLS fallback). If verification fails the daemon stays in collect-only mode and the installer prints the concrete reason. On Linux without systemd the script skips with cron instructions instead of reporting a false success.
+
 ---
 
 ## 🧠 memB Semantic Memory Synchronization

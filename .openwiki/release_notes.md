@@ -1,5 +1,12 @@
 # Release Notes
 
+## v3.1.5 (Cross-Platform Installer Hardening — Native Linux/macOS/Windows)
+- **Bug 1 — JSON escaping on Windows**: Paths injected into the generated `mcp_config.json` (`__MCPS_DIR__`, `{{HOME}}`) are now JSON-escaped, fixing the `Bad escaped character in JSON` crash that broke MCP config writing on Windows.
+- **Bug 2 — npm verbose diagnostics**: `runNpmWithRetry` now captures and prints trailing npm output plus a manual re-run command on retries and final failure, so failures like the `after-effects-mcp` install show the real root cause instead of a bare `Command failed`.
+- **Bug 3 — OpenWiki key verification**: New `verify_api_key.py` validates `GEMINI_API_KEY` with two retries and a TLS-verification-disabled fallback, then reports a clear, structured error diagnosis instead of silently degrading to collect-only mode.
+- **Bug 4 — Linux daemon detection**: `install_daemon.sh` now installs a systemd user service + timer on Linux when a systemd user session exists; without systemd it prints an explicit skip with cron instructions and exits non-zero (no false success). macOS LaunchAgent path unchanged.
+- **OpenWiki skill refresh**: `SKILL.md`, `.openwiki/` docs and `openwiki_daemon.py` updated for Linux support; `google-genai` is now only required for the `google` provider.
+
 ## v3.0.6 (Final 3.0.6 Release — Installer Stabilization & Broken MCP Cleanup)
 - **Installer stability hardening**: Fixed Windows npm cache install behavior and secured runtime credentials injection for the BDB MCP installer.
 - **Broken MCP fallback cleanup**: Removed unsupported fallback entries for Adobe legacy, DaVinci fallback, Blender fallback, and Vectorworks from the default MCP configuration.
