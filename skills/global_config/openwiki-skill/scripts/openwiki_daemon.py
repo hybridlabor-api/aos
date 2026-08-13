@@ -18,7 +18,7 @@ LOG_FILE = os.path.join(LOG_DIR, "daemon.log")
 
 # --- Provider config via environment variables ---
 # OPENWIKI_PROVIDER: "google" | "openai" | "groq" | "grok" | "nvidia" | "openrouter" | "ollama" | "lmstudio" | "custom"
-# OPENWIKI_MODEL:    model name (e.g. gemma-4-26b-a4b-it, gemma-4-31b-it, gemini-2.5-pro, gemini-3.5-flash, llama-3.3-70b-versatile, llama-3.1-8b-instant, grok-2-latest, grok-3, meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct, anthropic/claude-3.5-sonnet, gpt-4o-mini, gpt-4o-1, llama3)
+# OPENWIKI_MODEL:    model name (e.g. gemini-2.0-flash, gemini-2.5-pro, gemini-3.5-flash, llama-3.3-70b-versatile, llama-3.1-8b-instant, grok-2-latest, grok-3, meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct, anthropic/claude-3.5-sonnet, gpt-4o-mini, gpt-4o-1, llama3)
 # OPENWIKI_BASE_URL: custom base URL (e.g. https://integrate.api.nvidia.com/v1, https://api.x.ai/v1, https://api.groq.com/openai/v1)
 PROVIDER = os.environ.get("OPENWIKI_PROVIDER", "google").lower()
 
@@ -35,7 +35,7 @@ PROVIDER_BASE_URLS = {
 }
 
 PROVIDER_DEFAULT_MODELS = {
-    "google": "gemma-4-26b-a4b-it",
+    "google": "gemini-2.0-flash",
     "openai": "gpt-4o-mini",
     "groq": "llama-3.3-70b-versatile",
     "grok": "grok-2-latest",
@@ -47,7 +47,7 @@ PROVIDER_DEFAULT_MODELS = {
 }
 
 BASE_URL = os.environ.get("OPENWIKI_BASE_URL", "").strip() or PROVIDER_BASE_URLS.get(PROVIDER, "https://api.openai.com/v1")
-MODEL_ID = os.environ.get("OPENWIKI_MODEL", "").strip() or PROVIDER_DEFAULT_MODELS.get(PROVIDER, "gemma-4-12b-it")
+MODEL_ID = os.environ.get("OPENWIKI_MODEL", "").strip() or PROVIDER_DEFAULT_MODELS.get(PROVIDER, "gpt-4o-mini")
 
 SYSTEM_PROMPT = """You are a technical documentation generator for software projects.
 You receive git evidence (recent commits, diffs, status) and existing wiki pages.
@@ -160,6 +160,24 @@ def has_meaningful_changes(evidence):
     return False
 
 
+def resolve_google_model(client, current_model):
+    """Find a generateContent-capable Gemini/Gemma model available to the key."""
+    try:
+        for model in client.models.list():
+            name = getattr(model, "name", "") or ""
+            if not name.startswith("models/"):
+                continue
+            short = name.split("/", 1)[1]
+            if not short.lower().startswith(("gemini", "gemma")):
+                continue
+            actions = getattr(model, "supported_actions", None) or []
+            if not actions or "generateContent" in actions:
+                return short
+    except Exception:
+        pass
+    return current_model
+
+
 def call_model(api_key, evidence, existing_pages):
     """Call configured LLM provider. Supports google, openai, ollama."""
     existing_context = ""
@@ -173,16 +191,33 @@ def call_model(api_key, evidence, existing_pages):
 
     if PROVIDER == "google":
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model=MODEL_ID,
-            contents=user_msg,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.3,
-                max_output_tokens=8192,
-            ),
-        )
-        raw = response.text.strip()
+        model = MODEL_ID
+        last_error = None
+        for attempt in range(2):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=user_msg,
+                    config=genai.types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.3,
+                        max_output_tokens=8192,
+                    ),
+                )
+                raw = response.text.strip()
+                break
+            except Exception as e:
+                last_error = e
+                msg = (str(e) or "").lower()
+                if attempt == 0 and ("not_found" in msg or "not found" in msg):
+                    resolved = resolve_google_model(client, model)
+                    if resolved != model:
+                        log(f"Model '{model}' not found; falling back to '{resolved}'")
+                        model = resolved
+                        continue
+                raise
+        else:
+            raise last_error
 
     else:
         # OpenAI-compatible REST API call (covers OpenAI, Groq, Grok, Nvidia NIM, OpenRouter, Ollama, Kimi, Qwen, etc.)

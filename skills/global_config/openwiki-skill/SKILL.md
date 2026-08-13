@@ -15,13 +15,13 @@ This skill equips the Antigravity agent with a direct, Gemini-native implementat
 
 ## Architecture
 
-The OpenWiki daemon uses the **Gemma 4 API** (`gemma-4-12b-it`) directly via the `google-genai` Python SDK. It does **not** spawn `agy` conversations or any external agent processes.
+The OpenWiki daemon uses the **Google Gemini API** (`gemini-2.0-flash` default) directly via the `google-genai` Python SDK. If the configured model is unavailable, the daemon and the API key verifier automatically discover a valid generateContent-capable model via the models API. It does **not** spawn `agy` conversations or any external agent processes.
 
 ```mermaid
 flowchart LR
     A[Daemon Loop / Cron] --> B[Collect Git Evidence]
     B --> C[Read Existing .openwiki/ Pages]
-    C --> D[Single Gemma 4 API Call]
+    C --> D[Single Gemini API Call]
     D --> E[Parse JSON Response]
     E --> F[Write Updated .md Files]
     F --> G[Auto-Commit via Helper]

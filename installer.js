@@ -645,7 +645,7 @@ async function promptCredentials(targetMcpDir = '') {
             }
 
             const provOptions = [
-            { label: 'Google AI Studio / Gemini – gemma-4-26b-a4b-it, gemma-4-31b-it, gemini-2.5-pro, gemini-3.5-flash', value: '1' },
+            { label: 'Google AI Studio / Gemini – gemini-2.0-flash, gemini-2.5-pro, gemini-3.5-flash', value: '1' },
             { label: 'Groq – llama-3.3-70b-versatile, llama-3.1-8b-instant', value: '2' },
             { label: 'Grok / xAI – grok-2-latest, grok-3', value: '3' },
             { label: 'NVIDIA NIM – meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct', value: '4' },
@@ -675,7 +675,7 @@ async function promptCredentials(targetMcpDir = '') {
                     if (u.trim()) baseUrl = u.trim();
                 }
                 const defaultModel = model || (provider === "google"
-                    ? "gemma-4-26b-a4b-it"
+                    ? "gemini-2.0-flash"
                     : provider === "groq"
                         ? "llama-3.3-70b-versatile"
                         : provider === "grok"
@@ -688,7 +688,7 @@ async function promptCredentials(targetMcpDir = '') {
                                         ? "llama3"
                                         : "gpt-4o-mini");
                 const modelHint = provider === "google"
-                    ? "gemma-4-26b-a4b-it | gemma-4-31b-it | gemini-2.5-pro | gemini-3.5-flash"
+                    ? "gemini-2.0-flash | gemini-2.5-pro | gemini-3.5-flash"
                     : provider === "groq"
                         ? "llama-3.3-70b-versatile | llama-3.1-8b-instant"
                         : provider === "grok"

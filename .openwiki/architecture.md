@@ -72,7 +72,7 @@ Deep architectural pairing across the BDB ecosystem:
 ### 4. Multi-Provider OpenWiki Engine (`openwiki_daemon.py`)
 A continuous, non-intrusive background daemon that maintains codebase documentation, changelogs, architecture specs, and design decisions in `.openwiki/`.
 - **Multi-Provider LLM Support:** Fully decoupled from vendor lock-in with unified OpenAI-compatible and Google GenAI adapters:
-  - **Google:** `gemma-4-12b-it` (via `google-genai` SDK)
+  - **Google:** `gemini-2.0-flash` (via `google-genai` SDK, automatic model discovery fallback)
   - **Groq:** `llama-3.3-70b-versatile` (ultra-low latency)
   - **Grok / xAI:** `grok-2-latest`
   - **Nvidia NIM:** `meta/llama-3.3-70b-instruct`

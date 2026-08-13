@@ -1,5 +1,9 @@
 # Release Notes
 
+## v3.1.6 (OpenWiki Model Fix)
+- **Valid default Google model**: The default OpenWiki Google model was `gemma-4-12b-it`, which does **not** exist in the Google API (confirmed `404 NOT_FOUND`), so key verification and the daemon always failed. The default is now `gemini-2.0-flash`; provider wizard options, docs and READMEs updated accordingly.
+- **Automatic model discovery**: `verify_api_key.py` and `openwiki_daemon.py` now query the models API and automatically fall back to the first available `generateContent`-capable Gemini/Gemma model when the configured one is unknown, so a valid key never reports a false failure because of a wrong model name.
+
 ## v3.1.5 (Cross-Platform Installer Hardening — Native Linux/macOS/Windows)
 - **Bug 1 — JSON escaping on Windows**: Paths injected into the generated `mcp_config.json` (`__MCPS_DIR__`, `{{HOME}}`) are now JSON-escaped, fixing the `Bad escaped character in JSON` crash that broke MCP config writing on Windows.
 - **Bug 2 — npm verbose diagnostics**: `runNpmWithRetry` now captures and prints trailing npm output plus a manual re-run command on retries and final failure, so failures like the `after-effects-mcp` install show the real root cause instead of a bare `Command failed`.
@@ -58,7 +62,7 @@
 - **Interactive Installer Overhaul**: Improved multi-platform menu, promptMode sync, and Basic vs. Pro tier management (consolidating installer logic to dynamically handle both package tiers).
 
 ## v2.4.0 (Multi-Provider OpenWiki, RepoGraph Code Health & Creator Decoupling)
-- **Multi-Provider LLM Engine for OpenWiki**: Decoupled `openwiki_daemon.py` from single-provider constraints. Fully supports Google Gemma 4 (`gemma-4-12b-it` via `google-genai`), Groq (`llama-3.3-70b-versatile`), Grok/xAI (`grok-2-latest`), Nvidia NIM (`meta/llama-3.3-70b-instruct`), OpenRouter (`anthropic/claude-3.5-sonnet`), OpenAI (`gpt-4o-mini`), Ollama (`llama3`), LM Studio, and custom OpenAI-compatible endpoints via environment variables.
+- **Multi-Provider LLM Engine for OpenWiki**: Decoupled `openwiki_daemon.py` from single-provider constraints. Fully supports Google Gemini (`gemini-2.0-flash` via `google-genai`), Groq (`llama-3.3-70b-versatile`), Grok/xAI (`grok-2-latest`), Nvidia NIM (`meta/llama-3.3-70b-instruct`), OpenRouter (`anthropic/claude-3.5-sonnet`), OpenAI (`gpt-4o-mini`), Ollama (`llama3`), LM Studio, and custom OpenAI-compatible endpoints via environment variables.
 - **RepoGraph Deterministic Code Health Engine**: Introduced zero-token, zero-inference local Git analytics in OpenWiki. Computes 90-day hotspot velocity, maintainability index, commit distribution, and single-author bus factor risk scoring without external API calls.
 - **Interactive Code Health Dashboard (`code_health_dashboard.html`)**: Added a Repowise-grade visual dashboard in `.openwiki/` featuring 6 SVG visual panels (Galaxy Cluster Map, Defect Risk Donut, Bus Factor Matrix, Commit Velocity Churn, Hotspot Leaderboard, Architecture Radar), 60-second live auto-refresh, and real-time memB ADR synchronization.
 - **Architectural Decoupling of Creator Suite**: Decoupled heavy generative 3D pipelines (TRELLIS, TripoSR, text-to-cad), cinema video generation (OpenMontage, Remotion Video-Shotcraft, Palmier Pro NLE MCP), and local ComfyUI rendering into the standalone `bdb-dev-creator-extension` repository.

@@ -453,7 +453,7 @@ O **OpenWiki Engine** mantém autonomamente documentação viva da base de códi
 <summary><strong>🧠 Arquitetura Multi-Provedor LLM & Zero-Token RepoGraph</strong></summary>
 
 1. **Multi-Provider LLM Agility:** Decoupled from single-vendor lock-in. Configure any LLM backend via environment variables:
-   - **Google GenAI:** `gemma-4-12b-it` (default via `google-genai` SDK)
+   - **Google GenAI:** `gemini-2.0-flash` (padrão via SDK `google-genai`, com fallback de descoberta automática de modelos)
    - **Groq:** `llama-3.3-70b-versatile` (ultra-low latency)
    - **Grok / xAI:** `grok-2-latest`
    - **Nvidia NIM:** `meta/llama-3.3-70b-instruct`
