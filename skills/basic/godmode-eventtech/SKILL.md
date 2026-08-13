@@ -1,39 +1,60 @@
 ---
 name: godmode-eventtech
-description: BDB EventTech Godmode. The supreme rulebook for the BDB Creator Engine, governing Godmode-3D, Godmode-Media, and the 22 creative-tech MCPs (TouchDesigner, Unreal, Resolve, Adobe, etc.).
+description: Architectural authority for real-time performance, signal flow, protocol routing, and hardware constraints in live show and event technology environments.
 ---
 
-# 🎬 BDB EventTech Godmode
+# 🎛️ BDB EventTech Godmode
 
-This skill is the overarching architectural authority for the **BDB Creator Engine** (and its dedicated agents, like Godmode-3D and Godmode-Media). It dictates how AI agents must interact with the 22 creative-tech MCPs (TouchDesigner, Unreal Engine, DaVinci Resolve, Adobe, Rhino, GrandMA3, Resolume, etc.).
+This skill is the architectural authority for **Real-Time Performance, Signal Flow, Protocol Routing, and Hardware Limits** in live show and event-tech environments. It defines how agents must execute real-time graphics pipelines, hardware-level show control, and multi-server communication without compromising stability or latency.
 
-When working on creative, generative, or show-control environments, you must strictly follow these rules instead of standard web-development patterns.
+---
 
-## 1. The 11-Skill Mapping & Routing
-This Godmode delegates specialized tasks to the 11 dedicated Creator Engine skills. Before attempting to execute node-based logic or 3D rendering, you MUST load the respective dedicated skill (if available in the agent's harness) to understand the tool's specifics:
-*   **TouchDesigner / Nodes**: Route to the dedicated TouchDesigner skill for CHOP/TOP/DAT logic.
-*   **Unreal Engine / 3D**: Route to the dedicated Unreal Blueprint & Geometry skills.
-*   **GrandMA3 / DMX**: Route to the dedicated lighting logic skill.
-*   **Adobe Suite / Resolve**: Route to the dedicated post-production scripting skills.
-*(Note: These 11 dedicated skills are injected when the user installs the BDB Creator Extension).*
+## 1. Role & Architectural Boundaries
 
-## 2. Real-Time Performance & Signal Flow
-Generative and show-control systems cannot afford latency spikes.
-*   **Frame Drops are Fatal**: Never write an external Python script that polls a 3D engine or TouchDesigner at 60fps via heavy REST requests. Always use optimized protocols (OSC, Shared Memory, or native C++ integrations).
-*   **Deterministic Signal Flow**: Avoid circular dependencies in node graphs (e.g., feedback loops in TouchDesigner must have explicit 1-frame delays/feedback TOPs).
+* **Real-Time & Live Show Authority:** Focuses on deterministic frame timing, zero-latency signal routing, hardware boundaries, and physical protocol management (OSC, Art-Net, sACN, DMX, MIDI, SMPTE, NDI, Spout/Syphon).
+* **Peer Integration:** Operates alongside specialized media and 3D creation skills, enforcing strict hardware stability, network bandwidth limits, and live-environment fault tolerance across all event technology systems.
 
-## 3. Generative Constraints (Anti-Slop 3D)
-Do not build "AI-slop" in 3D or video.
-*   **Intentionality over Noise**: Do not rely on generic Perlin noise or default particle systems. Every parameter must have a distinct artistic or physical intent.
-*   **Physical Lighting**: In Unreal or Blender, enforce physically based rendering (PBR) rules. Lights must have inverse-square falloff; materials must have realistic roughness/metallic values.
+---
 
-## 4. Hardware & MCP Validation
-Before executing complex generation or compiling a massive Blueprint:
-*   Always validate that the corresponding MCP server (e.g., `touchdesigner-mcp`, `unreal_mcp`, `grandma3_mcp.py`) is actually connected and responsive via `ping` or `status` tools.
-*   Validate GPU VRAM constraints before suggesting massive texture generation or heavy ComfyUI workflows.
+## 2. Real-Time Performance & Signal Flow Rules
+
+Generative show-control and live performance engines operate under strict real-time constraints where frame drops or dropped packets are fatal.
+
+* **Zero Latency Spikes:** Never poll a live server (TouchDesigner, Resolume, grandMA3) via blocking REST calls at 60fps. Utilize optimized, low-overhead protocols (OSC, Shared Memory, direct C++ bindings, or WebSocket events).
+* **Deterministic Signal Topology:** Signal loops and feedback networks must be explicitly bounded (e.g., TouchDesigner Feedback TOPs must enforce explicit 1-frame delays to prevent infinite stack depth or race conditions).
+* **Framerate Lock & Buffer Strategy:** Design pipelines with guaranteed 60fps/120fps headroom. Explicitly account for VRAM fill rate, canvas compositing limits, and SDI/HDMI sync timing.
+
+---
+
+## 3. Hardware Limits & MCP Validation
+
+Before triggering high-resolution real-time renders or compiling complex node graphs:
+
+* **MCP Health Validation:** Validate that all required supported MCP servers (e.g., TouchDesigner MCP, grandMA3 MCP, Resolume MCP, Unreal MCP) are active and responsive before executing node changes or patch operations.
+* **Hardware & VRAM Auditing:** Check GPU VRAM allocation, display output resolutions, and CPU core loading. Ensure real-time rendering tasks leave sufficient VRAM margin for video capture buffers and texture sharing.
+* **Network & Bandwidth Budgeting:** Account for total network payload. Calculate Art-Net universe bandwidth (approx. 250 Kbps per universe) and NDI stream bitrates (100–250 Mbps for 1080p60/4K60) to prevent NIC saturation.
+
+---
+
+## 4. Live Environment Failovers & Redundancy
+
+* **Safety Blackouts & Emergency Macros:** System designs MUST include hardware or software safety blackout chains and immediate manual takeover toggles.
+* **Main / Backup Redundancy:** For critical live productions, enforce dual-server tracking (Main/Backup) with automated heartbeat monitoring and instantaneous seamless signal switching.
+
+---
+
+## 5. Dedicated MCP Tool Validation Requirement
+
+When orchestrating event-tech workflows, the agent MUST validate the availability of the required supported MCP tools before issuing node modification commands or protocol bindings:
+
+1. **TouchDesigner / Node Control**: Validate TouchDesigner MCP tools (`get_td_nodes`, `create_td_node`, `update_td_node_parameters`).
+2. **Lighting & DMX Systems**: Validate Lighting / grandMA3 MCP tools for fixture patching and cue execution.
+3. **Real-Time Rendering & Engines**: Validate Unreal Engine or Resolume MCP connections for real-time video compositing and scene execution.
+
+---
 
 ## Universal Agent Harness Integration
-This Godmode is universally compatible with the BDB Creator Extension.
-*   **Cursor:** Auto-injected via `.cursor/rules/godmode-eventtech.mdc`.
-*   **Claude Code:** Reads principles via `CLAUDE.md`.
-*   **Agy / CLI Agents:** Automatically loaded during `/bdbmediastorm` sessions.
+
+This Godmode rulebook is universally available across the BDB ecosystem:
+* **Cursor:** Referenced via `.cursor/rules/godmode-eventtech.mdc`.
+* **Claude Code / CLI Agents:** Loaded during `/bdbmediastorm` and live event-tech execution sessions.
