@@ -7,11 +7,45 @@
 - **Bug 4 — Linux daemon detection**: `install_daemon.sh` now installs a systemd user service + timer on Linux when a systemd user session exists; without systemd it prints an explicit skip with cron instructions and exits non-zero (no false success). macOS LaunchAgent path unchanged.
 - **OpenWiki skill refresh**: `SKILL.md`, `.openwiki/` docs and `openwiki_daemon.py` updated for Linux support; `google-genai` is now only required for the `google` provider.
 
-## v3.0.6 (Final 3.0.6 Release — Installer Stabilization & Broken MCP Cleanup)
-- **Installer stability hardening**: Fixed Windows npm cache install behavior and secured runtime credentials injection for the BDB MCP installer.
-- **Broken MCP fallback cleanup**: Removed unsupported fallback entries for Adobe legacy, DaVinci fallback, Blender fallback, and Vectorworks from the default MCP configuration.
-- **Release metadata bump**: Updated package and release manifest to `3.0.6`.
-- **memB retention confirmed**: `memb_mcp` remains installed and active while unstable fallback servers are no longer shipped by default.
+## v3.1.4 (Installer Robustness)
+- **Installer:** Robust JSON config parsing and correct daemon task error handling.
+
+## v3.1.3 (Windows memB Fix)
+- **Installer:** Prevent memB pip install hang on Windows.
+
+## v3.1.2 (Windows Compatibility)
+- **Installer:** Windows compatibility — UTF-8, npm retries, scheduler fallback, OpenCode support.
+
+## v3.1.1 (Installer Hang Fix)
+- Prevent installer hang by using async daemon startup.
+
+## v3.1.0 (OpenWiki Provider Expansion)
+- **Feature:** Expand OpenWiki LLM provider wizard with additional models.
+- **CI:** Use `npm install` for release publish without lockfile.
+
+## v3.0.7 (CI Repair)
+- **CI:** Repair release-please workflow for v3.0.6 release automation.
+
+## v3.0.6 (Installer Stabilization & Broken MCP Cleanup)
+- **Installer:** Inject Gemini API key for memB and make DaVinci Resolve MCP setup unattended.
+- **MCP:** Add `setuptools_scm` version spoofing for the Rhino fallback server.
+- **MCP:** Replace invalid `uv run -r` with `--with-requirements` and fix `setuptools_scm` version lookup for the DaVinci fallback.
+- **MCP:** Resolve port conflicts, missing `uv` PATH, missing `anyio`, and the open_design daemon URL.
+
+## v3.0.5 (Universal Harness UI)
+- **Installer UI polish:** Option (0) now seamlessly combines the official 'Universal Agent Harness' architectural branding with the dynamic list of detected environments.
+
+## v3.0.4 (Credential Reuse)
+- **Installer UX upgrade:** If existing API keys are detected, the installer offers a 1-click option to keep all existing credentials and skip the setup wizard completely.
+
+## v3.0.3 (Environment Detection UI)
+- **Installer UI enhancement:** Option (0) now dynamically displays all detected agent environments directly in the selection menu.
+
+## v3.0.2 (Credential Auto-Detection)
+- **Installer UX upgrade:** Auto-detects existing API keys and `.env` credentials from previous installations and allows one-key Enter reuse.
+
+## v3.0.1 (MCP Fixes)
+- Fix open-design-mcp package 404 error and add `GEMINI_API_KEY` fallback support to memB MCP.
 
 ## v3.0.0 (Godmode Architecture, Universal Agent Harness & Ecosystem Integrations)
 - **Six-Pillar Godmode Architecture**: Introduced supreme domain governance pillars (`godmode-engineering`, `godmode-ui-ux`, `godmode-shipping`, `godmode-eventtech`, `godmode-3d-creation`, `godmode-media-creation`) routing all sub-skills under master governance rules.
@@ -62,3 +96,6 @@
 - Refined skill selection down to 143 highly optimized skills.
 - Integrated OpenWiki documentation support.
 - Cleaned up PII and added strict privacy guidelines.
+
+## v1.1.0
+- Official v1.1.0 release. Includes all agent skills, installer, memB, and Token Saver.
