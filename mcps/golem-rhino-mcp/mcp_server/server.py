@@ -34,7 +34,7 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(
     "GOLEM-3DMCP",
-    description=(
+    instructions=(
         "Full-access MCP server for Rhinoceros 3D — geometry creation, "
         "boolean operations, NURBS surfaces, SubD, Grasshopper scripting, "
         "viewport capture, file I/O, and arbitrary Python/RhinoScript execution."
