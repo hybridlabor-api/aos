@@ -1,4 +1,4 @@
-mcp>=1.0.0
+mcp>=1.0.0,<2.0.0
 faster-whisper>=1.2.0
 demucs>=4.0.0
 rembg[cpu]>=2.0.50

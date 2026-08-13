@@ -1,3 +1,9 @@
+# /// script
+# dependencies = [
+#   "mcp>=1.0.0,<2.0.0",
+# ]
+# ///
+
 import socket
 import argparse
 from typing import Optional
