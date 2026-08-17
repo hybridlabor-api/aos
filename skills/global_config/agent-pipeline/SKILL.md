@@ -1,6 +1,6 @@
 ---
 name: agent-pipeline
-description: Defines the 6-stage BDB Software Engineering Pipeline (DEFINE, PLAN, BUILD, VERIFY, REVIEW, SHIP) with corresponding slash commands (/spec, /plan, /build, /test, /review, /ship) for AI agent orchestration.
+description: Defines the 6-stage BDB Software Engineering Pipeline (DEFINE, PLAN, BUILD, VERIFY, REVIEW, SHIP) with corresponding slash commands (/spec, /plan, /build, /test, /review, /ship) and autonomous orchestrator /startcycle.
 ---
 
 # 🔄 BDB Software Engineering Pipeline
@@ -14,11 +14,26 @@ DEFINE          PLAN           BUILD          VERIFY         REVIEW          SHI
  │Refine│      │  PRD │      │ Impl │      │Debug │      │ Gate │      │ Live │
  └──────┘      └──────┘      └──────┘      └──────┘      └──────┘      └──────┘
   /spec          /plan          /build        /test         /review       /ship
+ └─────────────────────────────────────────────────────────────────────────────┘
+                        🚀 Master Macro: /startcycle
 ```
 
 ---
 
-## 📌 Pipeline Stages & Slash Command Triggers
+## ⚡ Autonomous Orchestration: `/startcycle`
+To run the entire pipeline autonomously across a multi-agent team without manual step-by-step prompts, invoke:
+```bash
+/startcycle
+```
+`/startcycle` automatically assigns:
+- **Stages 1 & 2 (DEFINE + PLAN):** `Planner_Orchestrator` ➔ `production_artifacts/00_execution_plan.md`
+- **Stage 3 (BUILD):** `Godmode_UI_UX`, `Godmode_Engineering`, `Godmode_Media_EventTech`
+- **Stages 4 & 5 (VERIFY + REVIEW):** `Godmode_Shipping` ➔ `production_artifacts/04_release_report.md`
+- **Stage 6 (SHIP):** `openwiki-skill` (wiki sync) + `memb-ingest` (vector memory)
+
+---
+
+## 📌 Individual Pipeline Stages & Slash Commands
 
 ### 1. DEFINE (`/spec`)
 * **Focus:** Idea Refinement & Requirement Elicitation
@@ -42,7 +57,7 @@ DEFINE          PLAN           BUILD          VERIFY         REVIEW          SHI
 
 ### 5. REVIEW (`/review`)
 * **Focus:** QA Gate & Code Review
-* **Action:** Perform architectural reviews, security scans for hardcoded secrets, UI/UX compliance audits (`ui-ux-pro-max`), and code simplification passes.
+* **Action:** Perform architectural reviews, security scans for hardcoded secrets, UI/UX compliance audits (`godmode-ui-ux`), and code simplification passes.
 * **Output:** Code review summary & QA gate approval.
 
 ### 6. SHIP (`/ship`)

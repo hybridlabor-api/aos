@@ -315,13 +315,16 @@ While heavily optimized for the creative tech industry, these skills are deeply 
  │   Brainstorming  │    │ OpenWiki & Repo │    │   Plan    │    │ & MCP Dev  │   │ Review   │   │  & Push  │
  └──────────────────┘    └─────────────────┘    └───────────┘    └────────────┘   └──────────┘   └──────────┘
 /grill-me /bdbmediastorm  /openwiki /github-repo    /plan          /subagents       /review        /ship
+ └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                  🚀 Autonomous Execution: /startcycle
 ```
 
 AI agents follow this structured lifecycle, deeply integrated with the **BDBrainstorm** and **BDBMediaStorm** philosophy:
 
+- **🚀 Autonomous Pipeline (`/startcycle`)**: Prompt-less execution macro that runs the 5-agent team (`Planner_Orchestrator` ➔ `Godmode_UI_UX`, `Godmode_Engineering`, `Godmode_Media_EventTech` ➔ `Godmode_Shipping` ➔ `.openwiki` + `memB`) with deterministic file hand-offs in `production_artifacts/`.
 - **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Actively challenge ideas or conduct multi-agent media/event-tech brainstorming. Spawns specialized subagents (CI/Design Expert, Real Time Architect, MCP Implementer) to validate hardware, 3D scenography (Rhino, Blender, Unreal), protocols (OSC, Art-Net), and MCP compatibility.
 - **2. DEFINE & SCAFFOLD (`openwiki-skill`, `github-repo`)**: Confirm target workspace directory with the user, then autonomously initialize project documentation, `agent.md`, `.openwiki/` structures, and GitHub repo standards.
-- **3. PLAN (`/plan`)**: Create technical design specs, PRD, and file-by-file implementation plans, strictly adhering to `ui-ux-pro-max` standards.
+- **3. PLAN (`/plan`)**: Create technical design specs, PRD, and file-by-file implementation plans, strictly adhering to `godmode-ui-ux` standards.
 - **4. BUILD (`/subagents`)**: Subagent-driven development. The master orchestrator delegates specific component creation, node patching, and refactoring tasks to independent subagents.
 - **5. VERIFY & REVIEW (`/review`)**: Perform QA gate reviews, secret scans, unit test suites, and strict UI/UX or signal-flow audits.
 - **6. SHIP (`/ship`)**: Commit, push private repositories, update OpenWiki docs autonomously, ingest into memB, and deploy live.

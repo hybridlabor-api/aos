@@ -6,9 +6,10 @@ It shifts agent capabilities from text-based prompts to native structural config
 ---
 
 ## 🧠 Planner_Orchestrator
-- **Role**: Lead System Planner & Task Decomposer. Analyzes initial user prompts, `/bdbrainstorm` results, and `/grill-me` outputs into atomic sub-tasks.
+- **Role**: Lead System Planner & Task Decomposer. Analyzes initial user prompts, `/bdbrainstorm` results, and `/grill-me` outputs into atomic sub-tasks. Triggers and oversees `/startcycle`.
 - **Model**: Claude 3.5 Sonnet / Gemini 1.5 Pro / GPT-4o
 - **Primary Skills**:
+  - `startcycle`
   - `bdbrainstorm`
   - `agent-pipeline`
   - `subagent-driven-development`
@@ -22,11 +23,10 @@ It shifts agent capabilities from text-based prompts to native structural config
 ---
 
 ## 🎨 Godmode_UI_UX
-- **Role**: Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, design token architecture, high-agency frontend taste, and fluid motion dynamics.
+- **Role**: Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics.
 - **Model**: Claude 3.5 Sonnet
 - **Primary Skills**:
   - `godmode-ui-ux`
-  - `frontend-design`
   - `senior-frontend`
   - `landing-page-generator`
   - `shadcn`
@@ -37,7 +37,7 @@ It shifts agent capabilities from text-based prompts to native structural config
 - **MCP Servers**:
   - `open_design_mcp`
   - `chrome-devtools`
-- **Output Artifacts**: `production_artifacts/01_frontend_spec.md` & `app_build/src/components/`
+- **Output Artifacts**: `production_artifacts/01_frontend_spec.md` & `frontend/src/`
 
 ---
 
@@ -56,7 +56,7 @@ It shifts agent capabilities from text-based prompts to native structural config
 - **MCP Servers**:
   - `github`
   - `memb_mcp`
-- **Output Artifacts**: `production_artifacts/02_backend_schema.md` & `app_build/src/server/`
+- **Output Artifacts**: `production_artifacts/02_backend_schema.md` & `backend/src/`
 
 ---
 
@@ -80,7 +80,6 @@ It shifts agent capabilities from text-based prompts to native structural config
   - `adobe_uxp_mcp`
   - `bdb_after_effects_mcp`
   - `bdb_rhino_mcp`
-  - `bdb_blender_mcp`
 - **Output Artifacts**: `production_artifacts/03_media_pipeline.md`
 
 ---

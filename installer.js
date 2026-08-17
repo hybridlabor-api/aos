@@ -972,7 +972,7 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
         console.log(" -> Installed all global config & core skills.");
     }
 
-    console.log("\nInstalling Godmode/Harness configurations to local workspace...");
+    console.log("\nInstalling Godmode/Harness configurations to local workspace & global environment...");
     const harnessDirs = ['.agents', '.cursor/rules', '.claude', '.github', '.codex-plugin'];
     harnessDirs.forEach(dir => {
         const sourcePath = path.join(srcDir, dir);
@@ -983,6 +983,14 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
         }
     });
 
+    // Global ~/.agents/ sync
+    const globalAgentsDir = path.join(os.homedir(), '.agents');
+    const agentsDirSrc = path.join(srcDir, '.agents');
+    if (fs.existsSync(agentsDirSrc)) {
+        copyDirRecursiveSync(agentsDirSrc, globalAgentsDir);
+        console.log(` -> Synced global .agents/ (agents.md, workflows/startcycle.md) to ${globalAgentsDir}`);
+    }
+
     // Roo Code / Custom Modes sync (.roomodes)
     const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
     if (fs.existsSync(agentsMdSrc)) {
@@ -992,13 +1000,13 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                 {
                     slug: "planner-orchestrator",
                     name: "Planner Orchestrator",
-                    roleDefinition: "Lead System Planner & Task Decomposer. Analyzes prompts and /grill-me into atomic sub-tasks.",
+                    roleDefinition: "Lead System Planner & Task Decomposer. Analyzes prompts, /bdbrainstorm, and orchestrates /startcycle.",
                     groups: ["read", "browser", "command"]
                 },
                 {
                     slug: "godmode-ui-ux",
                     name: "Godmode UI/UX",
-                    roleDefinition: "Lead Frontend Designer & UI Engineer. Anti-Slop, design tokens, fluid motion, React/Tailwind.",
+                    roleDefinition: "Lead Frontend Designer & UI Engineer. Anti-Slop, DTCG design tokens, fluid motion, React/Tailwind.",
                     groups: ["read", "edit", "browser", "command"]
                 },
                 {
@@ -1045,26 +1053,34 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
         
         // 2. Universal Harness Injection
         const globalRules = fs.readFileSync(geminiMdSrc, 'utf8');
+        const startcycleWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'startcycle.md');
+        const startcycleContent = fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '';
+        const agentsMdContent = fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : '';
         
-        // Cursor
-        const cursorRulePath = path.join(currentDir, '.cursor', 'rules', '000_global_rules.mdc');
-        if (fs.existsSync(path.dirname(cursorRulePath))) {
-            fs.writeFileSync(cursorRulePath, `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
-            console.log(` -> Injected Global Rules to ${cursorRulePath}`);
+        // Cursor Rules
+        const cursorRulesDir = path.join(currentDir, '.cursor', 'rules');
+        fs.mkdirSync(cursorRulesDir, { recursive: true });
+        const cursorRulePath = path.join(cursorRulesDir, '000_global_rules.mdc');
+        fs.writeFileSync(cursorRulePath, `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
+        if (startcycleContent) {
+            fs.writeFileSync(path.join(cursorRulesDir, 'startcycle.mdc'), `---\nname: startcycle\ndescription: Autonomous Multi-Agent Development Pipeline (/startcycle)\n---\n\n${startcycleContent}`);
         }
+        if (agentsMdContent) {
+            fs.writeFileSync(path.join(cursorRulesDir, 'bdb_agents.mdc'), `---\nname: bdb-agents\ndescription: BDB Multi-Agent Team Specifications\n---\n\n${agentsMdContent}`);
+        }
+        console.log(` -> Injected Cursor Rules (global_rules, startcycle, bdb_agents) to ${cursorRulesDir}`);
         
         // Claude Code
         const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
-        if (fs.existsSync(claudeMdPath)) {
-            const claudeContent = fs.readFileSync(claudeMdPath, 'utf8');
-            if (!claudeContent.includes("Global Agent Instructions")) {
-                fs.appendFileSync(claudeMdPath, `\n\n${globalRules}`);
-                console.log(` -> Appended Global Rules to ${claudeMdPath}`);
-            }
-        } else {
-            fs.writeFileSync(claudeMdPath, globalRules);
-            console.log(` -> Created ${claudeMdPath} with Global Rules`);
+        let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+        if (!claudeContent.includes("Global Agent Instructions")) {
+            claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
         }
+        if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
+            claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
+        }
+        fs.writeFileSync(claudeMdPath, claudeContent);
+        console.log(` -> Synced CLAUDE.md with Global Rules and /startcycle workflow`);
         
         // GitHub Copilot
         const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');
@@ -1077,14 +1093,18 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
         }
         
         // Codex Plugin
-        const codexPath = path.join(currentDir, '.codex-plugin', 'system.md');
-        if (fs.existsSync(path.dirname(codexPath))) {
-            const codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
-            if (!codexContent.includes("Global Agent Instructions")) {
-                fs.appendFileSync(codexPath, `\n\n${globalRules}`);
-                console.log(` -> Injected Global Rules to ${codexPath}`);
-            }
+        const codexDir = path.join(currentDir, '.codex-plugin');
+        fs.mkdirSync(codexDir, { recursive: true });
+        const codexPath = path.join(codexDir, 'system.md');
+        let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
+        if (!codexContent.includes("Global Agent Instructions")) {
+            codexContent = `${codexContent}\n\n${globalRules}`.trim();
         }
+        if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
+            codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
+        }
+        fs.writeFileSync(codexPath, codexContent);
+        console.log(` -> Synced .codex-plugin/system.md with Global Rules and /startcycle workflow`);
     }
 
     (async () => {

@@ -108,18 +108,49 @@ An offline-first, local vector database and knowledge management engine:
 
 ## 🔄 BDB Agent Pipeline Architecture
 
-The 6-stage structured lifecycle enforces quality and deterministic verification across all AI agents:
+The structured lifecycle enforces quality, deterministic verification, and automated memory ingestion across all AI agents:
 
 ```text
-DEFINE (/spec) ──▶ PLAN (/plan) ──▶ BUILD (/build) ──▶ VERIFY (/test) ──▶ REVIEW (/review) ──▶ SHIP (/ship)
+                      ┌──────────────────────────────────────────────┐
+                      │ 1. ENTWICKLUNG & PIPELINE                    │
+                      │    (/spec ──▶ /plan ──▶ /build ──▶ /test)    │
+                      └──────────────────────┬───────────────────────┘
+                                             │
+                                             ▼
+                      ┌──────────────────────────────────────────────┐
+                      │ 2. RELEASE & DOCS GATE (/ship)               │
+                      │    • openwiki-skill scannt Git-Diff          │
+                      │    • Aktualisiert .openwiki/ & README.md     │
+                      └──────────────────────┬───────────────────────┘
+                                             │
+                            ┌────────────────┴────────────────┐
+                            ▼                                 ▼
+             ┌───────────────────────────────┐ ┌──────────────────────────────┐
+             │ 3a. OPENWIKI (.openwiki/)     │ │ 3b. MEMB VECTOR & VAULT       │
+             │     • quickstart.md           │ │     • SQLite Vector Embeddings│
+             │     • architecture.md         │ │     • AI-Vault: God_Mode.md   │
+             │     • release_notes.md        │ │     • Triggered via ingest.py │
+             └──────────────┬────────────────┘ └──────────────┬────────────────┘
+                            │                                 │
+                            └────────────────┬────────────────┘
+                                             │
+                                             ▼
+                      ┌─────────────────────────────────────────────┐
+                      │ 4. KONTEXT-ABRUF FÜR NEUE AGENTEN            │
+                      │    • agent.md / CLAUDE.md ──▶ .openwiki      │
+                      │    • search_memory Tool ──▶ memB             │
+                      └──────────────────────────────────────────────┘
 ```
 
-- **DEFINE (`/spec`, `openwiki-skill`, `github-repo`):** Requirements gathering, workspace confirmation, `agent.md` and `.openwiki/` scaffolding.
-- **PLAN (`/plan`, `/grill-me`, `/bdbrainstorm`):** Multi-agent stress-testing, UI/UX specifications, architectural plans.
-- **BUILD (`/build`, `/subagents`):** Delegated task execution with specialized subagents and 22 custom local MCPs.
-- **VERIFY (`/test`):** Automated test runs, linters, and signal-flow verifications.
-- **REVIEW (`/review`):** Security audits, secret scanning, code health checks, and design compliance.
-- **SHIP (`/ship`):** Documentation updates, private git push, and automated memB synchronization.
+### 🚀 Autonomous Multi-Agent Macro: `/startcycle`
+Triggers prompt-less, end-to-end execution of the 6-stage lifecycle using the 5-agent team:
+1. **`Planner_Orchestrator`**: Ingests requirements, breaks down tasks ➔ `production_artifacts/00_execution_plan.md`.
+2. **Parallel Streams**:
+   - `Godmode_UI_UX`: Frontend & design token styling ➔ `production_artifacts/01_frontend_spec.md`.
+   - `Godmode_Engineering`: DDD models, APIs, and schemas ➔ `production_artifacts/02_backend_schema.md`.
+   - `Godmode_Media_EventTech`: TouchDesigner, Unreal, DaVinci, DMX ➔ `production_artifacts/03_media_pipeline.md`.
+3. **`Godmode_Shipping`**: Automated testing, linting, WCAG, and SEO audit ➔ `production_artifacts/04_release_report.md`.
+4. **Knowledge Loop (`/ship`)**: Automatic documentation sync with `openwiki-skill` and SQLite vector indexing with `memb-ingest`.
 
 ---
 
