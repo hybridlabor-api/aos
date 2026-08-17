@@ -1347,15 +1347,16 @@ async function promptCreatorExtension(mcpConfigPath) {
 }
 
 async function promptSynapse() {
-    if (isAutoYes) return;
-    
-    console.log(`\n${colors.cyan}${colors.bold}🧠 BDB Synapse (3D Codebase Visualizer)${colors.reset}`);
-    const doInstall = await promptSingleSelect("Install 'BDB Synapse' (Lightweight 3D Workspace Engine)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 0);
-
-    if (!doInstall) return;
+    console.log(`\n${colors.cyan}${colors.bold}\xF0\x9F\xA7\xA0 BDB Synapse (3D Codebase Visualizer)${colors.reset}`);
+    if (!isAutoYes) {
+        const doInstall = await promptSingleSelect("Install 'BDB Synapse' (Lightweight 3D Workspace Engine)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 0);
+        if (!doInstall) return;
+    }
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const synapseDir = path.join(basePath, 'bdb-synapse');
+    const isWin = process.platform === 'win32';
+    const binaryName = isWin ? 'synapse.exe' : 'synapse';
     
     console.log(` -> BDB Synapse wird nach ${synapseDir} geladen...`);
     try {
@@ -1366,16 +1367,19 @@ async function promptSynapse() {
         }
         
         console.log(` -> Kompiliere Synapse Binary (Go)...`);
-        execSync(`go build -o synapse ./cmd/synapse/`, { stdio: 'ignore', cwd: synapseDir });
+        execSync(`go build -o ${binaryName} ./cmd/synapse/`, { stdio: 'ignore', cwd: synapseDir });
         
         const localBin = path.join(os.homedir(), '.local', 'bin');
-        if (fs.existsSync(localBin)) {
+        if (!isWin && fs.existsSync(localBin)) {
             const symlinkPath = path.join(localBin, 'synapse');
-            if (fs.existsSync(symlinkPath)) fs.unlinkSync(symlinkPath);
-            fs.symlinkSync(path.join(synapseDir, 'synapse'), symlinkPath);
-            console.log(` -> ✅ Symlink in ~/.local/bin/synapse erstellt!`);
+            try { 
+                const stats = fs.lstatSync(symlinkPath);
+                if (stats.isSymbolicLink()) fs.unlinkSync(symlinkPath);
+            } catch (e) {}
+            fs.symlinkSync(path.join(synapseDir, binaryName), symlinkPath);
+            console.log(` -> \u2705 Symlink in ~/.local/bin/synapse erstellt!`);
         } else {
-            console.log(` -> ✅ Erfolgreich kompiliert in ${path.join(synapseDir, 'synapse')}!`);
+            console.log(` -> \u2705 Erfolgreich kompiliert in ${path.join(synapseDir, binaryName)}!`);
         }
     } catch (e) {
         console.log(` -> Fehler beim Setup von Synapse: ${e.message}`);
