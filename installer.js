@@ -1355,34 +1355,46 @@ async function promptSynapse() {
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const synapseDir = path.join(basePath, 'bdb-synapse');
+
+    if (!isValidInstallDir(synapseDir, ['package.json'])) {
+        console.log(` -> BDB Synapse wird über NPM nach ${synapseDir} geladen...`);
+        try {
+            fs.mkdirSync(synapseDir, { recursive: true });
+            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-synapse`, { stdio: 'ignore', cwd: synapseDir }, 'synapse download');
+            cleanNpmCacheOnWindows();
+            const tarball = ok ? fs.readdirSync(synapseDir).find(f => f.endsWith('.tgz')) : null;
+            if (tarball) {
+                execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: synapseDir });
+                fs.unlinkSync(path.join(synapseDir, tarball));
+                console.log(` -> Erfolgreich heruntergeladen!`);
+            } else {
+                throw new Error("NPM pack lieferte kein Archiv.");
+            }
+        } catch (e) {
+            console.log(` -> Fehler beim Herunterladen von Synapse: ${e.message}`);
+            return;
+        }
+    } else {
+        console.log(` -> BDB Synapse existiert bereits unter ${synapseDir}.`);
+    }
+
+    // Pre-built binary is included in NPM package at bin/synapse
     const isWin = process.platform === 'win32';
     const binaryName = isWin ? 'synapse.exe' : 'synapse';
-    
-    console.log(` -> BDB Synapse wird nach ${synapseDir} geladen...`);
-    try {
-        if (!fs.existsSync(synapseDir)) {
-            execSync(`git clone https://github.com/hybridlabor-api/bdb-synapse.git "${synapseDir}"`, { stdio: 'ignore' });
-        } else {
-            execSync(`git pull`, { stdio: 'ignore', cwd: synapseDir });
-        }
-        
-        console.log(` -> Kompiliere Synapse Binary (Go)...`);
-        execSync(`go build -o ${binaryName} ./cmd/synapse/`, { stdio: 'ignore', cwd: synapseDir });
-        
+    const binaryPath = path.join(synapseDir, 'bin', binaryName);
+
+    if (fs.existsSync(binaryPath)) {
         const localBin = path.join(os.homedir(), '.local', 'bin');
         if (!isWin && fs.existsSync(localBin)) {
             const symlinkPath = path.join(localBin, 'synapse');
-            try { 
-                const stats = fs.lstatSync(symlinkPath);
-                if (stats.isSymbolicLink()) fs.unlinkSync(symlinkPath);
-            } catch (e) {}
-            fs.symlinkSync(path.join(synapseDir, binaryName), symlinkPath);
-            console.log(` -> \u2705 Symlink in ~/.local/bin/synapse erstellt!`);
+            try { fs.unlinkSync(symlinkPath); } catch (e) {}
+            fs.symlinkSync(binaryPath, symlinkPath);
+            console.log(` -> \u2705 Synapse Binary verlinkt nach ~/.local/bin/synapse`);
         } else {
-            console.log(` -> \u2705 Erfolgreich kompiliert in ${path.join(synapseDir, binaryName)}!`);
+            console.log(` -> \u2705 Synapse Binary verfügbar unter ${binaryPath}`);
         }
-    } catch (e) {
-        console.log(` -> Fehler beim Setup von Synapse: ${e.message}`);
+    } else {
+        console.log(` -> Hinweis: Kein Pre-built Binary für diese Plattform. Kompiliere mit: cd "${synapseDir}" && go build -o ${binaryName} ./cmd/synapse/`);
     }
 }
 
