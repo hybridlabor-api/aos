@@ -1346,6 +1346,42 @@ async function promptCreatorExtension(mcpConfigPath) {
     }
 }
 
+async function promptSynapse() {
+    if (isAutoYes) return;
+    
+    console.log(`\n${colors.cyan}${colors.bold}🧠 BDB Synapse (3D Codebase Visualizer)${colors.reset}`);
+    const doInstall = await promptSingleSelect("Install 'BDB Synapse' (Lightweight 3D Workspace Engine)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 0);
+
+    if (!doInstall) return;
+
+    const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
+    const synapseDir = path.join(basePath, 'bdb-synapse');
+    
+    console.log(` -> BDB Synapse wird nach ${synapseDir} geladen...`);
+    try {
+        if (!fs.existsSync(synapseDir)) {
+            execSync(`git clone https://github.com/hybridlabor-api/bdb-synapse.git "${synapseDir}"`, { stdio: 'ignore' });
+        } else {
+            execSync(`git pull`, { stdio: 'ignore', cwd: synapseDir });
+        }
+        
+        console.log(` -> Kompiliere Synapse Binary (Go)...`);
+        execSync(`go build -o synapse ./cmd/synapse/`, { stdio: 'ignore', cwd: synapseDir });
+        
+        const localBin = path.join(os.homedir(), '.local', 'bin');
+        if (fs.existsSync(localBin)) {
+            const symlinkPath = path.join(localBin, 'synapse');
+            if (fs.existsSync(symlinkPath)) fs.unlinkSync(symlinkPath);
+            fs.symlinkSync(path.join(synapseDir, 'synapse'), symlinkPath);
+            console.log(` -> ✅ Symlink in ~/.local/bin/synapse erstellt!`);
+        } else {
+            console.log(` -> ✅ Erfolgreich kompiliert in ${path.join(synapseDir, 'synapse')}!`);
+        }
+    } catch (e) {
+        console.log(` -> Fehler beim Setup von Synapse: ${e.message}`);
+    }
+}
+
 async function promptOSAgentWorkspace() {
     if (isAutoYes) return;
     
@@ -1382,6 +1418,7 @@ async function promptOSAgentWorkspace() {
         await installOpenWikiDaemon(creds.gemini, targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
         await installTokenSaver(platform);
         await promptCreatorExtension(mcpConfigPath);
+        await promptSynapse();
         await promptOSAgentWorkspace();
         await promptMemBIngestion(mcpCodeTarget);
         
