@@ -854,6 +854,35 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
     });
 }
 
+function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
+    const skillsBase = path.join(srcDir, 'skills');
+    if (!fs.existsSync(skillsBase)) return;
+
+    const extraSkillDestinations = [
+        path.join(homeDir, '.claude', 'skills'),
+        path.join(homeDir, '.agents', 'skills'),
+        path.join(homeDir, '.codex', 'skills'),
+        path.join(homeDir, '.cursor', 'skills'),
+        path.join(homeDir, '.roo', 'skills')
+    ];
+
+    for (const dest of extraSkillDestinations) {
+        try {
+            fs.mkdirSync(dest, { recursive: true });
+            const dirs = fs.readdirSync(skillsBase);
+            for (const dir of dirs) {
+                if (dir === 'global_legacy' || dir === 'workspace_agents') continue;
+                const fullPath = path.join(skillsBase, dir);
+                if (!fs.statSync(fullPath).isDirectory()) continue;
+                copyDirRecursiveSync(fullPath, dest, excludeSkills);
+            }
+            console.log(` -> Synced BDB skills to ${dest}`);
+        } catch (e) {
+            console.log(` -> Note: Could not sync skills to ${dest}: ${e.message}`);
+        }
+    }
+}
+
 (async () => {
     const { tier, mode, platform, isUniversal, customPaths } = await promptMode();
     fs.mkdirSync(backupDir, { recursive: true });
@@ -865,10 +894,10 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
     let mcpConfigPath = path.join(targetMcpDir, 'mcp_config.json');
     
     if (platform === '2') {
-        // Claude Desktop
-        console.log("\n[Platform: Claude Desktop] Adapting installation paths...");
-        targetSkillDir = path.join(homeDir, '.bdb-skills');
-        targetLegacyDir = path.join(homeDir, '.bdb-skills', 'legacy');
+        // Claude Desktop / Claude Code
+        console.log("\n[Platform: Claude Desktop / Claude Code] Adapting installation paths...");
+        targetSkillDir = path.join(homeDir, '.claude', 'skills');
+        targetLegacyDir = path.join(homeDir, '.claude', 'skills', 'legacy');
         
         let claudeAppSupport = process.platform === 'win32' 
             ? path.join(process.env.APPDATA || homeDir, 'Claude')
@@ -971,6 +1000,9 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
         }
         console.log(" -> Installed all global config & core skills.");
     }
+
+    // Sync all BDB skills across Claude Code, Codex, Cursor, Roo, and ~/.agents/
+    syncSkillsToGlobalHarnesses(srcDir, excludeSkills);
 
     console.log("\nInstalling Godmode/Harness configurations to local workspace & global environment...");
     const harnessDirs = ['.agents', '.cursor/rules', '.claude', '.github', '.codex-plugin'];
@@ -1529,9 +1561,35 @@ async function promptOSAgentWorkspace() {
 
             for (const d of detections) {
                 console.log(` -> Injecting MCP engines into ${d.name}...`);
-                if (d.key === 'claude') syncMcpConfig(path.join(d.path, 'claude_desktop_config.json'));
-                else if (d.key === 'cursor' || d.key === 'windsurf' || d.key === 'vscode' || d.key === 'aider') syncMcpConfig(path.join(d.path, 'mcp.json'));
-                else if (d.key === 'opencode') syncOpencodeConfig(path.join(d.path, 'opencode.jsonc'));
+                if (d.key === 'claudedesktop') {
+                    syncMcpConfig(path.join(d.path, 'claude_desktop_config.json'));
+                } else if (d.key === 'claudecode') {
+                    syncMcpConfig(path.join(homeDir, '.claude.json'));
+                } else if (d.key === 'cursor') {
+                    syncMcpConfig(path.join(homeDir, '.cursor', 'mcp.json'));
+                    syncMcpConfig(path.join(d.path, 'User', 'globalStorage', 'mcp.json'));
+                    syncMcpConfig(path.join(d.path, 'User', 'mcp.json'));
+                    syncMcpConfig(path.join(d.path, 'mcp.json'));
+                    syncMcpConfig(path.join(currentDir, '.cursor', 'mcp.json'));
+                } else if (d.key === 'vscode') {
+                    // VS Code User settings MCP
+                    syncMcpConfig(path.join(d.path, 'User', 'mcp.json'));
+                    syncMcpConfig(path.join(d.path, 'mcp.json'));
+                    // Roo Code global settings
+                    syncMcpConfig(path.join(homeDir, '.roo', 'mcp_settings.json'));
+                    syncMcpConfig(path.join(d.path, 'User', 'globalStorage', 'rooveterinaryinc.roo-cline', 'settings', 'mcp_settings.json'));
+                    // Cline global settings
+                    syncMcpConfig(path.join(homeDir, '.cline', 'mcp_settings.json'));
+                    syncMcpConfig(path.join(d.path, 'User', 'globalStorage', 'saoudrizwan.claude-dev', 'settings', 'cline_mcp_settings.json'));
+                } else if (d.key === 'windsurf') {
+                    syncMcpConfig(path.join(homeDir, '.windsurf', 'mcp.json'));
+                    syncMcpConfig(path.join(d.path, 'User', 'mcp.json'));
+                    syncMcpConfig(path.join(d.path, 'mcp.json'));
+                } else if (d.key === 'aider') {
+                    syncMcpConfig(path.join(homeDir, '.aider', 'mcp.json'));
+                } else if (d.key === 'opencode') {
+                    syncOpencodeConfig(path.join(d.path, 'opencode.jsonc'));
+                }
             }
             console.log(` -> Universal Sync Complete!`);
         }
