@@ -1356,8 +1356,17 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                 const pythonBinPath = process.platform === 'win32'
                     ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')
                     : path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'bin', 'python');
-                mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, pythonBinPath.replace(/\\/g, '/'));
-                mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, creds.gemini || process.env.GEMINI_API_KEY || '');
+                // Both placeholders sit inside JSON string literals, and both are
+                // substituted through a replacer function: in a replacement *string*
+                // String.replace() reads $&, $1, $` as backreferences, so a key like
+                // "AIza$&injected" used to inject the placeholder back into itself.
+                // The value additionally goes through JSON.stringify(...).slice(1, -1),
+                // i.e. exactly the JSON escaping the GitHub token gets below, so a
+                // quote or a backslash in it cannot break the surrounding JSON.
+                const pythonBinValue = pythonBinPath.split('\\').join('/');
+                const geminiKeyValue = creds.gemini || process.env.GEMINI_API_KEY || '';
+                mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, () => JSON.stringify(pythonBinValue).slice(1, -1));
+                mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, () => JSON.stringify(geminiKeyValue).slice(1, -1));
             }
 
             // @modelcontextprotocol/server-github reads the token from its own process
