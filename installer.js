@@ -804,6 +804,10 @@ async function promptCredentials(targetMcpDir = '') {
     });
 }
 
+// install_daemon.ps1 exits with this code when it could not register the
+// scheduled task and installed the logon-only startup entry instead.
+const DAEMON_LOGON_FALLBACK_EXIT_CODE = 10;
+
 async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     const prov = openwikiEnv.provider || "google";
     if (!apiKey && !["ollama", "lmstudio"].includes(prov)) { console.log(' -> Skipping OpenWiki Daemon background installation (no API key provided).'); return; }
@@ -837,8 +841,14 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
         }
         const child = spawn(command, args, { stdio: 'inherit', env: daemonEnv });
         child.on('close', (code) => {
-            if (code === 0) {
-                console.log(' -> OpenWiki Daemon installed successfully.');
+            const usedLogonFallback = code === DAEMON_LOGON_FALLBACK_EXIT_CODE;
+            if (code === 0 || usedLogonFallback) {
+                if (usedLogonFallback) {
+                    console.log(`${colors.yellow} -> OpenWiki Daemon installed via the logon-only fallback - no periodic schedule.${colors.reset}`);
+                    console.log(`${colors.yellow}    Documentation is refreshed once per logon instead of every 2 hours; see the reason above.${colors.reset}`);
+                } else {
+                    console.log(' -> OpenWiki Daemon installed successfully (scheduled every 2 hours).');
+                }
                 console.log(' -> Auto-starting OpenWiki Daemon for the first run...');
                 try {
                     const pythonCmd = os.platform() === 'win32' ? 'python' : 'python3';

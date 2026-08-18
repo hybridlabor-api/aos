@@ -177,3 +177,13 @@ if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
 }
 
 Write-Host "=========================================================" -ForegroundColor Cyan
+
+# 11. Exit code tells the caller which of the two paths was taken, so it cannot
+# report a periodic schedule when only the logon-only fallback exists.
+#   0  -> scheduled task registered, daemon runs every 2 hours
+#   10 -> startup fallback, daemon runs once per logon
+#   other -> the install did not complete
+if ($Registered) {
+    exit 0
+}
+exit 10
