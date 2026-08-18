@@ -6,14 +6,12 @@ known marketplace and writes installed_plugins.json in the v2 format that
 Claude Code expects.
 """
 
-import contextlib
 import json
 import os
 import shutil
 
 from .common import (
     HOOK_MARKER,
-    IS_WINDOWS,
     SHARED_FILES,
     home,
     install_files,
@@ -61,28 +59,6 @@ def _settings_dir():
     return os.path.join(home(), ".claude")
 
 
-def _same_path(a, b):
-    """Compare two paths with symlinks resolved and Windows case folded."""
-    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
-
-
-def _stray_appdata_dir():
-    r"""Return the bogus %APPDATA%\claude directory written by older versions.
-
-    Returns None when there is nothing to clean up: on non-Windows platforms,
-    when the directory does not exist, and whenever it would resolve to the
-    real settings directory -- so the cleanup below can never reach a live
-    install.
-    """
-    if not IS_WINDOWS:
-        return None
-    appdata = os.environ.get("APPDATA", os.path.join(home(), "AppData", "Roaming"))
-    stray = os.path.join(appdata, "claude")
-    if not os.path.isdir(stray) or _same_path(stray, _settings_dir()):
-        return None
-    return stray
-
-
 def _plugin_dir():
     """Return the OLD v1.x plugin install directory (for migration/cleanup only)."""
     return os.path.join(_settings_dir(), "plugins", "token-saver")
@@ -113,19 +89,19 @@ def _marketplace_dir():
     return os.path.join(_settings_dir(), "plugins", "marketplaces", _MARKETPLACE_NAME)
 
 
-def _settings_path(base=None):
-    """Return path to Claude Code settings.json (under *base* when given)."""
-    return os.path.join(base or _settings_dir(), "settings.json")
+def _settings_path():
+    """Return path to Claude Code settings.json."""
+    return os.path.join(_settings_dir(), "settings.json")
 
 
-def _installed_plugins_path(base=None):
+def _installed_plugins_path():
     """Return path to Claude Code's installed plugins registry."""
-    return os.path.join(base or _settings_dir(), "plugins", "installed_plugins.json")
+    return os.path.join(_settings_dir(), "plugins", "installed_plugins.json")
 
 
-def _known_marketplaces_path(base=None):
+def _known_marketplaces_path():
     """Return path to Claude Code's known marketplaces registry."""
-    return os.path.join(base or _settings_dir(), "plugins", "known_marketplaces.json")
+    return os.path.join(_settings_dir(), "plugins", "known_marketplaces.json")
 
 
 def _hook_belongs_to_us(hook_entry):
@@ -242,17 +218,14 @@ def _register_plugin(marketplace_dir, cache_dir, version):
     print("  ENABLED in settings.json (enabledPlugins)")
 
 
-def _unregister_plugin(base=None):
-    r"""Unregister token-saver from Claude Code's plugin system.
+def _unregister_plugin():
+    """Unregister token-saver from Claude Code's plugin system.
 
     Removes from known_marketplaces.json, installed_plugins.json,
     disables in enabledPlugins, and cleans up any legacy v1.x hooks.
-
-    *base* overrides the settings directory.  It is used by the stray-install
-    cleanup to strip our own entries out of the orphaned %APPDATA%\claude tree.
     """
     # --- 1. Remove from known_marketplaces.json ---
-    km_path = _known_marketplaces_path(base)
+    km_path = _known_marketplaces_path()
     if os.path.exists(km_path):
         try:
             with open(km_path, encoding="utf-8") as f:
@@ -267,7 +240,7 @@ def _unregister_plugin(base=None):
             pass
 
     # --- 2. Remove from installed_plugins.json (handle both v1 and v2 formats) ---
-    plugins_path = _installed_plugins_path(base)
+    plugins_path = _installed_plugins_path()
     if os.path.exists(plugins_path):
         try:
             with open(plugins_path, encoding="utf-8") as f:
@@ -296,7 +269,7 @@ def _unregister_plugin(base=None):
             pass
 
     # --- 3. Remove from enabledPlugins + clean legacy hooks from settings.json ---
-    settings_path = _settings_path(base)
+    settings_path = _settings_path()
     if os.path.exists(settings_path):
         with open(settings_path, encoding="utf-8") as f:
             settings = json.load(f)
@@ -331,105 +304,6 @@ def _unregister_plugin(base=None):
                 json.dump(settings, f, indent=2)
                 f.write("\n")
             print("  REMOVED from settings.json")
-
-
-def _has_our_entries(base):
-    """Return True when *base* holds anything token-saver itself created."""
-    for path in (
-        os.path.join(base, "plugins", "cache", _MARKETPLACE_NAME),
-        os.path.join(base, "plugins", "marketplaces", _MARKETPLACE_NAME),
-        os.path.join(base, "plugins", "token-saver"),  # v1.x layout
-    ):
-        if os.path.isdir(path):
-            return True
-    for path in (
-        _known_marketplaces_path(base),
-        _installed_plugins_path(base),
-        _settings_path(base),
-    ):
-        if not os.path.isfile(path):
-            continue
-        try:
-            with open(path, encoding="utf-8") as f:
-                if HOOK_MARKER in f.read():
-                    return True
-        except OSError:
-            continue
-    return False
-
-
-def _drop_empty_registry(path):
-    """Delete *path* when it is a JSON document we just left without entries."""
-    if not os.path.isfile(path):
-        return
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, ValueError, OSError):
-        return
-    if isinstance(data, list):
-        empty = not data
-    elif isinstance(data, dict):
-        if data.get("version") == 2 and set(data) <= {"version", "plugins"}:
-            empty = not data.get("plugins")
-        else:
-            empty = not data
-    else:
-        empty = False
-    if empty:
-        os.remove(path)
-
-
-def _cleanup_stray_appdata_install():
-    r"""Remove the orphaned install older Windows builds wrote to %APPDATA%\claude.
-
-    Those builds resolved the settings directory to %APPDATA%\claude and left a
-    complete plugin tree there that Claude Code never reads.  Only entries
-    token-saver created itself are removed: the two trees named after our
-    marketplace, the v1.x plugin directory, and our own keys inside
-    known_marketplaces.json / installed_plugins.json / settings.json.  What is
-    left over is pruned with ``os.rmdir`` only, which refuses to act unless a
-    directory is already empty -- there is deliberately no blanket
-    ``shutil.rmtree`` of %APPDATA%\claude, a directory we do not own.
-    """
-    stray = _stray_appdata_dir()
-    if stray is None or not _has_our_entries(stray):
-        return False
-
-    plugins_dir = os.path.join(stray, "plugins")
-    cache_dir = os.path.join(plugins_dir, "cache")
-    marketplaces_dir = os.path.join(plugins_dir, "marketplaces")
-
-    print(f"\n--- Claude Code (orphaned install: {stray}) ---")
-    print("  Claude Code never reads this path; removing token-saver's entries.")
-    try:
-        for path in (
-            os.path.join(cache_dir, _MARKETPLACE_NAME),
-            os.path.join(marketplaces_dir, _MARKETPLACE_NAME),
-            os.path.join(plugins_dir, "token-saver"),
-        ):
-            if os.path.isdir(path) and not os.path.islink(path):
-                shutil.rmtree(path)
-                print(f"  REMOVED {path}")
-
-        _unregister_plugin(stray)
-
-        for path in (
-            _known_marketplaces_path(stray),
-            _installed_plugins_path(stray),
-            _settings_path(stray),
-        ):
-            _drop_empty_registry(path)
-
-        # Prune the scaffolding, but only while it is empty: rmdir raises (and
-        # is suppressed) the moment anything that is not ours still lives there.
-        for path in (cache_dir, marketplaces_dir, plugins_dir, stray):
-            with contextlib.suppress(OSError):
-                os.rmdir(path)
-    except (OSError, ValueError) as exc:
-        print(f"  WARNING: could not fully clean {stray}: {exc}")
-        return False
-    return True
 
 
 def _migrate_from_v1():
@@ -520,10 +394,6 @@ def install(use_symlink=False):
     path), the GitHub repo is registered as a known marketplace, and the
     plugin is added to installed_plugins.json (v2 format) and enabledPlugins.
     """
-    # 0. Drop the orphaned %APPDATA%\claude tree that older Windows builds
-    #    created before the _settings_dir() path bug was fixed.
-    _cleanup_stray_appdata_install()
-
     # 1. Migrate from v1.x (clean old hooks, old directories)
     _migrate_from_v1()
 
@@ -556,10 +426,6 @@ def uninstall():
     """Uninstall Heimdall Token Saver from Claude Code."""
     print("\n--- Claude Code ---")
     _unregister_plugin()
-
-    # Older Windows builds installed to %APPDATA%\claude; clear that out too
-    # so uninstalling does not leave the orphan behind.
-    _cleanup_stray_appdata_install()
 
     # Remove entire marketplace cache directory (all versions)
     cache_root = os.path.join(
