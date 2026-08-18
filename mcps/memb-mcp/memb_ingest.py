@@ -27,7 +27,9 @@ except ImportError:
 
 def init_memory():
     """Initialize the local memB Memory instance with ONNX embedder."""
-    if "OPENAI_API_KEY" not in os.environ and "GEMINI_API_KEY" not in os.environ:
+    # Memory.from_config() eagerly builds an OpenAI LLM client regardless of any other
+    # provider key, although ingestion never calls an LLM (local_onnx embedder, infer=False).
+    if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "sk-dummy-key-for-local-onnx-ingestion"
 
     db_dir = os.environ.get("MEMB_DATA_DIR") or os.path.expanduser("~/.MemBDB")
@@ -62,31 +64,82 @@ TARGET_FILES = [
     "pyproject.toml", "mcp_config.json", "registry.json", "CLAUDE.md"
 ]
 
+MARKDOWN_EXTENSIONS = {".md", ".markdown", ".mdx"}
 
-def scan_directory(root_dir: str, project_name: str) -> List[Dict[str, Any]]:
-    """Scan root_dir recursively for key project architecture files."""
-    documents = []
+# Hard ceiling per file so a single oversized document cannot stall a whole run.
+MAX_FILE_BYTES = 512 * 1024
+
+# Long files are split into successive chunks instead of being cut off silently.
+CHUNK_CHARS = 4000
+
+
+def is_markdown(fname: str) -> bool:
+    return os.path.splitext(fname)[1].lower() in MARKDOWN_EXTENSIONS
+
+
+def read_text_file(path: str) -> Optional[str]:
+    """Read a text file, skipping anything above MAX_FILE_BYTES. Returns None if unusable."""
+    try:
+        size = os.path.getsize(path)
+        if size > MAX_FILE_BYTES:
+            print("  ⚠ Skipped (%d KB > %d KB limit): %s" % (size // 1024, MAX_FILE_BYTES // 1024, path))
+            return None
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read().strip()
+    except Exception:
+        return None
+
+
+def make_documents(source: str, project: str, doc_type: str, content: str) -> List[Dict[str, Any]]:
+    """Split content into chunk sized documents so nothing is lost by truncation."""
+    chunks = [content[i:i + CHUNK_CHARS] for i in range(0, len(content), CHUNK_CHARS)]
+    total = len(chunks)
+    return [
+        {
+            "source": source if total == 1 else f"{source} [part {idx}/{total}]",
+            "project": project,
+            "type": doc_type,
+            "content": chunk
+        }
+        for idx, chunk in enumerate(chunks, start=1)
+    ]
+
+
+def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False) -> Dict[str, Any]:
+    """Scan root_dir recursively for key project architecture files.
+
+    With all_markdown=True every markdown file is picked up instead of only TARGET_FILES.
+    Returns {"documents": [...], "files_captured": int, "files_found": int}.
+    """
+    documents: List[Dict[str, Any]] = []
+    counters = {"found": 0, "captured": 0}
     print(f"🔍 Scanning directory: {root_dir} for project '{project_name}'...")
+
+    def collect(path: str, source: str, doc_type: str):
+        counters["found"] += 1
+        content = read_text_file(path)
+        if content:
+            documents.extend(make_documents(source, project_name, doc_type, content))
+            counters["captured"] += 1
+
+    def result() -> Dict[str, Any]:
+        return {
+            "documents": documents,
+            "files_captured": counters["captured"],
+            "files_found": counters["found"]
+        }
 
     # If the target path is directly a .openwiki directory or contains .openwiki
     if os.path.basename(root_dir.rstrip("/")) == ".openwiki" or "/.openwiki" in root_dir:
         for wiki_file in os.listdir(root_dir):
             if wiki_file.endswith(".md"):
-                w_path = os.path.join(root_dir, wiki_file)
-                try:
-                    with open(w_path, "r", encoding="utf-8") as f:
-                        content = f.read().strip()
-                    if content:
-                        documents.append({
-                            "source": f"{project_name}/.openwiki/{wiki_file}",
-                            "project": project_name,
-                            "type": "openwiki_doc",
-                            "content": content[:3000]
-                        })
-                except Exception:
-                    pass
+                collect(
+                    os.path.join(root_dir, wiki_file),
+                    f"{project_name}/.openwiki/{wiki_file}",
+                    "openwiki_doc"
+                )
         if documents:
-            return documents
+            return result()
 
     for dirpath, dirnames, filenames in os.walk(root_dir):
         # Skip ignored directories
@@ -97,38 +150,21 @@ def scan_directory(root_dir: str, project_name: str) -> List[Dict[str, Any]]:
         if os.path.isdir(openwiki_dir):
             for wiki_file in os.listdir(openwiki_dir):
                 if wiki_file.endswith(".md"):
-                    w_path = os.path.join(openwiki_dir, wiki_file)
-                    try:
-                        with open(w_path, "r", encoding="utf-8") as f:
-                            content = f.read().strip()
-                        if content:
-                            documents.append({
-                                "source": f"{project_name}/.openwiki/{wiki_file}",
-                                "project": project_name,
-                                "type": "openwiki_doc",
-                                "content": content[:3000]
-                            })
-                    except Exception:
-                        pass
+                    collect(
+                        os.path.join(openwiki_dir, wiki_file),
+                        f"{project_name}/.openwiki/{wiki_file}",
+                        "openwiki_doc"
+                    )
 
         # Check for target project files
         for fname in filenames:
+            f_path = os.path.join(dirpath, fname)
             if fname in TARGET_FILES:
-                f_path = os.path.join(dirpath, fname)
-                try:
-                    with open(f_path, "r", encoding="utf-8") as f:
-                        content = f.read().strip()
-                    if content:
-                        documents.append({
-                            "source": os.path.relpath(f_path, root_dir),
-                            "project": project_name,
-                            "type": fname,
-                            "content": content[:4000]
-                        })
-                except Exception:
-                    pass
+                collect(f_path, os.path.relpath(f_path, root_dir), fname)
+            elif all_markdown and is_markdown(fname):
+                collect(f_path, os.path.relpath(f_path, root_dir), "markdown_doc")
 
-    return documents
+    return result()
 
 
 def scan_antigravity_transcripts(max_sessions: int = 20) -> List[Dict[str, Any]]:
@@ -179,7 +215,8 @@ def scan_antigravity_transcripts(max_sessions: int = 20) -> List[Dict[str, Any]]
     return documents
 
 
-def ingest_to_memb(memory: Any, documents: List[Dict[str, Any]], category: str):
+def ingest_to_memb(memory: Any, documents: List[Dict[str, Any]], category: str,
+                   coverage: Optional[Dict[str, int]] = None):
     """Ingest extracted documents into memB vector memory."""
     print(f"💾 Ingesting {len(documents)} document snippets into memB (~/.MemBDB/memb.db)...")
     success_count = 0
@@ -199,6 +236,9 @@ def ingest_to_memb(memory: Any, documents: List[Dict[str, Any]], category: str):
             print(f"  ✕ Failed ({doc['source']}): {e}")
 
     print(f"\n🎉 Finished memB ingestion: {success_count}/{len(documents)} entries successfully indexed!")
+    if coverage:
+        print("📁 File coverage: %d/%d candidate files captured in the scanned directory." % (
+            coverage.get("files_captured", 0), coverage.get("files_found", 0)))
 
 
 def get_memory_title(data: str, mid: str) -> str:
@@ -243,7 +283,8 @@ The `memB` architecture is brutally optimized for ultra-fast inference on small,
     with open(os.path.join(vault_dir, "agent.md"), "w", encoding="utf-8") as f:
         f.write(agent_md_content)
     
-    all_mem = memory.get_all(filters={"user_id": "bdb_developer"}, limit=10000)
+    # get_all() takes top_k; a "limit" kwarg is silently swallowed and the default of 20 applies.
+    all_mem = memory.get_all(filters={"user_id": "bdb_developer"}, top_k=10000)
     results = all_mem.get("results", []) if all_mem else []
     
     tree = {}
@@ -322,6 +363,8 @@ def main():
     parser.add_argument("--project", help="Explicit project name (defaults to folder basename)")
     parser.add_argument("--transcripts", action="store_true", help="Also mine past Antigravity conversation logs")
     parser.add_argument("--category", default="project_architecture", help="Memory category (e.g. 3D_Engine, Styling_System)")
+    parser.add_argument("--all-markdown", action="store_true",
+                        help="Capture every markdown file, not just the fixed TARGET_FILES whitelist")
     args = parser.parse_args()
 
     target_path = os.path.abspath(args.path)
@@ -331,31 +374,30 @@ def main():
 
     memory = init_memory()
     docs = []
+    coverage = None
 
     if os.path.isfile(target_path):
         project_name = args.project or os.path.basename(os.path.dirname(target_path))
-        try:
-            with open(target_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-            if content:
-                docs.append({
-                    "source": os.path.basename(target_path),
-                    "project": project_name,
-                    "type": "custom_file",
-                    "content": content[:4000]
-                })
-        except Exception as e:
-            print(f"Error reading file {target_path}: {e}", file=sys.stderr)
+        content = read_text_file(target_path)
+        if content:
+            docs = make_documents(os.path.basename(target_path), project_name, "custom_file", content)
+        elif content is None:
+            print(f"Error reading file {target_path}", file=sys.stderr)
     else:
         project_name = args.project or os.path.basename(target_path)
-        docs = scan_directory(target_path, project_name)
+        scan = scan_directory(target_path, project_name, all_markdown=args.all_markdown)
+        docs = scan["documents"]
+        coverage = {"files_captured": scan["files_captured"], "files_found": scan["files_found"]}
 
     if args.transcripts:
         chat_docs = scan_antigravity_transcripts(max_sessions=30)
         docs.extend(chat_docs)
 
     if docs:
-        ingest_to_memb(memory, docs, category=args.category)
+        ingest_to_memb(memory, docs, category=args.category, coverage=coverage)
+    elif coverage:
+        print("No new documents to ingest (%d/%d candidate files captured)." % (
+            coverage["files_captured"], coverage["files_found"]))
     else:
         print("No new documents to ingest.")
         
