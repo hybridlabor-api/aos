@@ -1393,10 +1393,23 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
             }
 
 
-            const existingIsEmpty = fs.existsSync(mcpConfigPath) && readTextFile(mcpConfigPath).trim().length === 0;
-            if (mode === '1' && fs.existsSync(mcpConfigPath) && !existingIsEmpty) {
+            // Only consulted on the merge path -- replace mode overwrites the file and
+            // never has to read it. readTextFile() throws for a directory (EISDIR) and
+            // for an unreadable file (EACCES), and the async IIFE around this code has
+            // neither try/catch nor .catch(), so an escaping error became an unhandled
+            // rejection that killed the process before the universal sync and the final
+            // report could run.
+            const existingConfigIsEmpty = () => {
+                try {
+                    return readTextFile(mcpConfigPath).trim().length === 0;
+                } catch (e) {
+                    return false;
+                }
+            };
+
+            const configName = path.basename(mcpConfigPath);
+            if (mode === '1' && fs.existsSync(mcpConfigPath) && !existingConfigIsEmpty()) {
                 const oldConfig = readJsonFile(mcpConfigPath);
-                const configName = path.basename(mcpConfigPath);
                 if (!oldConfig) {
                     // Merge mode promises to keep what is already there. Overwriting an
                     // unreadable file would silently drop every non-BDB server entry, so
@@ -1437,13 +1450,21 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                     }
                 }
             } else {
-                if ((platform === '2' || platform === '4') && !fs.existsSync(mcpConfigPath)) {
-                     const wrapper = { mcpServers: JSON.parse(mcpConfigStr).mcpServers };
-                     fs.writeFileSync(mcpConfigPath, JSON.stringify(wrapper, null, 2));
-                } else {
-                     fs.writeFileSync(mcpConfigPath, mcpConfigStr);
+                // Same reason as the read above: this runs inside an async IIFE with
+                // no catch, so a failing write (EISDIR, EACCES, read-only volume)
+                // would end the run as an unhandled rejection instead of a message.
+                try {
+                    if ((platform === '2' || platform === '4') && !fs.existsSync(mcpConfigPath)) {
+                        const wrapper = { mcpServers: JSON.parse(mcpConfigStr).mcpServers };
+                        fs.writeFileSync(mcpConfigPath, JSON.stringify(wrapper, null, 2));
+                    } else {
+                        fs.writeFileSync(mcpConfigPath, mcpConfigStr);
+                    }
+                    console.log(` -> Installed optimized MCP config to ${targetMcpDir}`);
+                } catch (e) {
+                    console.warn(`${colors.yellow} -> Could not write ${configName}: ${e.message}${colors.reset}`);
+                    console.warn(`${colors.yellow}    The MCP servers were NOT registered; fix the path and re-run the installer.${colors.reset}`);
                 }
-                console.log(` -> Installed optimized MCP config to ${targetMcpDir}`);
             }
         } else {
             console.log(" -> Skipping MCP installation.");
