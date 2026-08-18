@@ -1243,6 +1243,38 @@ function reportFatal(stage, e) {
                 console.log(` -> Injected Cursor Rules (global_rules, startcycle, bdb_agents) to ${cursorRulesDir}`);
             }, 'Cursor keeps its existing rules.');
 
+            // Antigravity (agy) Native Subagent Compiler
+            installStep('compile Antigravity subagents', () => {
+                if (agentsMdContent) {
+                    const agyAgentsDir = path.join(require('os').homedir(), '.gemini', 'config', 'agents');
+                    if (!fs.existsSync(agyAgentsDir)) fs.mkdirSync(agyAgentsDir, { recursive: true });
+                    
+                    const agentBlocks = agentsMdContent.split('## ').slice(1);
+                    for (const block of agentBlocks) {
+                        const nameMatch = block.match(/^([A-Za-z0-9_]+)/);
+                        if (nameMatch) {
+                            const name = nameMatch[1];
+                            const descMatch = block.match(/- \*\*Role\*\*: (.*)/);
+                            const role = descMatch ? descMatch[1] : 'BDB Agent';
+                            
+                            const agentConfig = {
+                                name: name,
+                                description: role,
+                                enable_write_tools: true,
+                                enable_subagent_tools: true,
+                                enable_mcp_tools: true,
+                                system_prompt: block,
+                                _comment: "Auto-compiled from AGENTS.md for tool parity matching agentic-awesome-skills"
+                            };
+                            
+                            fs.writeFileSync(path.join(agyAgentsDir, `${name}.json`), JSON.stringify(agentConfig, null, 2));
+                        }
+                    }
+                    console.log(` -> Compiled AGENTS.md to native Antigravity subagents in ${agyAgentsDir}`);
+                }
+            }, 'Compile Antigravity native agents');
+
+
             // Claude Code
             const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
             installStep(`sync ${claudeMdPath}`, () => {

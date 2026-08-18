@@ -1,0 +1,11 @@
+{
+  "name": "@hybridlabor-api/bdb-dev-os-skill",
+  "version": "1.0.0",
+  "private": true,
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "engines": {
+    "bdb-synapse": "^1.2.4"
+  }
+}
