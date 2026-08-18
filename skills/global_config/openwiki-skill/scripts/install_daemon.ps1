@@ -35,6 +35,12 @@ if ([string]::IsNullOrWhiteSpace($GeminiKey)) {
 
 if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
     Write-Host "Verifying API key..." -ForegroundColor Yellow
+    # verify_api_key.py reads GEMINI_API_KEY from its own process environment.
+    # A key typed at the Read-Host prompt above exists only in $GeminiKey, so it
+    # has to be published to this process before python is started - otherwise
+    # the child sees nothing and every interactively entered key fails the check
+    # and is discarded below.
+    $env:GEMINI_API_KEY = $GeminiKey
     $VerifyScript = Join-Path $PSScriptRoot "verify_api_key.py"
     $VerifyOutput = & python $VerifyScript 2>&1
     $VerifyCode = $LASTEXITCODE
