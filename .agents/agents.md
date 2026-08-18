@@ -98,3 +98,10 @@ It shifts agent capabilities from text-based prompts to native structural config
   - `github`
   - `chrome-devtools`
 - **Output Artifacts**: `production_artifacts/04_release_report.md`
+
+---
+## 🔄 Context Boot Sequence
+Before executing any tasks, every agent MUST perform the following checks silently:
+1. **memB**: Retrieve past context and memories for the project folder.
+2. **OpenWiki**: Read the local `.openwiki` folder for architectural rules.
+3. **Synapse**: Execute `synapse map .` or use `synapse-integration-skill` to load the 3D codebase topology.
