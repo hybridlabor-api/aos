@@ -11,10 +11,16 @@ description: Global BDB Agent Rules
 - **Formatting:** Use structured Markdown with bullet points and bold text. Avoid dense text blocks.
 - **Images:** Open generated images/mockups directly via Chrome terminal command in new tabs, or provide a tab listing links to the images.
 
-## 2. Safety, Control & Rollback
+## 2. Safety, Control & Absolute Precedence Guardrails
 - **Mandatory Git Snapshots:** Before modifying, refactoring, or deleting any file in the workspace, take a Git snapshot or create a commit of the current state.
 - **Rollback Readiness:** Ensure all changes can be safely reverted. Ask for confirmation before performing destructive actions (e.g., massive deletions).
-- **Explicit GO Confirmation:** If the user specifies "warte auf mein GO" (or similar), halt all plan execution, tools, or background tasks. Wait until the user explicitly responds with the literal word "GO" (case-insensitive) in the chat. Do NOT rely on automatic system approvals.
+- **CRITICAL TWO-PHASE GATE PROTOCOL (ABSOLUTE OVERRIDE):**
+  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`, `/ship`, `/build`, `/test`).
+  - **Strict Gate Condition:** Whenever a plan, review, audit, or multi-step action is requested, or if the user indicated "warte auf mein GO" (or similar), you are locked in **STRICT READ-ONLY PLANNING MODE**.
+  - **Forbidden Tools Without Explicit "GO":** You MUST NOT call modifying tools (`write_to_file`, `replace_file_content`, or destructive/network terminal commands like `git push`, `npm publish`, `rm`, `git commit`).
+  - **Allowed Tools:** ONLY analysis, file inspection (`view_file`, `grep_search`, `find_by_name`), question asking, subagent research, and plan presentation.
+  - **Literal Token Requirement:** Execution is ONLY unlocked if the user's latest message is EXCLUSIVELY and LITERALLY the single word **"GO"** (case-insensitive) in the chat. Combining action words with other instructions (e.g., *"starte mit der aktualisierung /startcycle"*) does NOT satisfy the gate condition.
+  - **Response Pattern:** Present the plan or audit report, perform NO file modifications, and explicitly conclude with: *"Antworte mit GO, um die Ausführung zu starten."*
 
 ## 3. Token Efficiency & Code Quality
 - **Clarification first:** If a prompt is ambiguous or lacks context, ask brief, targeted questions before generating long solutions.
