@@ -40,6 +40,33 @@ const unsupportedMcpConfigKeys = [
     'bdb_blender_mcp_fallback'
 ];
 
+// Entries whose command needs a toolchain that is not part of a standard
+// installation. The probe runs at install time; when it fails the key joins
+// unsupportedMcpConfigKeys and the server is never registered.
+const conditionalMcpConfigKeys = [
+    { key: 'bdb_after_effects_mcp_fallback', requires: 'go', hint: 'https://go.dev/dl/' }
+];
+
+function hasExecutable(binary) {
+    try {
+        const lookup = process.platform === 'win32' ? `where ${binary}` : `command -v ${binary}`;
+        execSync(lookup, { stdio: 'ignore' });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function resolveUnsupportedMcpConfigKeys() {
+    const keys = unsupportedMcpConfigKeys.slice();
+    conditionalMcpConfigKeys.forEach(entry => {
+        if (hasExecutable(entry.requires)) return;
+        console.log(`${colors.dim} -> Skipping MCP '${entry.key}': '${entry.requires}' was not found on PATH (${entry.hint}).${colors.reset}`);
+        keys.push(entry.key);
+    });
+    return keys;
+}
+
 function readJsonFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
     try {
@@ -1227,12 +1254,13 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
             }
             
             let mcpConfigStr = fs.readFileSync(path.join(srcDir, 'mcp_config.json'), 'utf8');
+            const skippedMcpConfigKeys = resolveUnsupportedMcpConfigKeys();
             try {
                 const parsedMcpConfig = JSON.parse(mcpConfigStr);
                 const finalMcpServers = {};
                 const availableFolders = fs.readdirSync(mcpSrcDir);
                 for (const [key, val] of Object.entries(parsedMcpConfig.mcpServers)) {
-                    let keep = true;
+                    let keep = !skippedMcpConfigKeys.includes(key);
                     for (const available of availableFolders) {
                         if (!selectedMcps.includes(available) && JSON.stringify(val).includes(available)) {
                             keep = false;
@@ -1299,7 +1327,7 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                     const newConfig = JSON.parse(mcpConfigStr);
                     if (!oldConfig) throw new Error('unparseable existing config');
                     if (oldConfig.mcpServers) {
-                        unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
+                        skippedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
                     }
                     oldConfig.mcpServers = Object.assign({}, oldConfig.mcpServers || {}, newConfig.mcpServers || {});
                     fs.writeFileSync(mcpConfigPath, JSON.stringify(oldConfig, null, 2));

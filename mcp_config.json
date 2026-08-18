@@ -48,8 +48,8 @@
       "args": ["__MCPS_DIR__/after-effects-mcp/build/index.js"]
     },
     "bdb_after_effects_mcp_fallback": {
-      "command": "sh",
-      "args": ["-c", "cd __MCPS_DIR__/ae-mcp && go run ./cmd/ae-mcp"]
+      "command": "go",
+      "args": ["-C", "__MCPS_DIR__/ae-mcp", "run", "./cmd/ae-mcp"]
     },
     "bdb_td_minddesigner": {
       "command": "node",
