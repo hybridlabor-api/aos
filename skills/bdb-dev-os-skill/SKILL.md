@@ -14,3 +14,4 @@ description: Internal maintainer rules for the BDB Agent OS Ecosystem (Tim & Noa
    - `heimdall-token-saver`
    - `bdb-os-agent-workspace`
    - `creator-extension`
+   - `bdb-os-remote`
