@@ -67,19 +67,28 @@ function resolveUnsupportedMcpConfigKeys() {
     return keys;
 }
 
+function readTextFile(filePath) {
+    const buf = fs.readFileSync(filePath);
+    if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.toString('utf16le', 2);
+    if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return buf.toString('utf8', 3);
+    return buf.toString('utf8');
+}
+
+// readJsonFile only reports "null" on failure. Callers that have to explain the
+// failure to the user get the underlying parser message from here.
+function describeJsonParseError(filePath) {
+    try {
+        JSON.parse(readTextFile(filePath));
+        return '';
+    } catch (e) {
+        return e.message;
+    }
+}
+
 function readJsonFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
     try {
-        const buf = fs.readFileSync(filePath);
-        let raw;
-        if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
-            raw = buf.toString('utf16le', 2);
-        } else if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) {
-            raw = buf.toString('utf8', 3);
-        } else {
-            raw = buf.toString('utf8');
-        }
-        return JSON.parse(raw);
+        return JSON.parse(readTextFile(filePath));
     } catch (e) {
         try {
             return readJsoncFile(filePath);
@@ -1365,20 +1374,48 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
             }
 
 
-            if (mode === '1' && fs.existsSync(mcpConfigPath)) {
-                try {
-                    const oldConfig = readJsonFile(mcpConfigPath);
-                    const newConfig = JSON.parse(mcpConfigStr);
-                    if (!oldConfig) throw new Error('unparseable existing config');
-                    if (oldConfig.mcpServers) {
-                        skippedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
+            const existingIsEmpty = fs.existsSync(mcpConfigPath) && readTextFile(mcpConfigPath).trim().length === 0;
+            if (mode === '1' && fs.existsSync(mcpConfigPath) && !existingIsEmpty) {
+                const oldConfig = readJsonFile(mcpConfigPath);
+                const configName = path.basename(mcpConfigPath);
+                if (!oldConfig) {
+                    // Merge mode promises to keep what is already there. Overwriting an
+                    // unreadable file would silently drop every non-BDB server entry, so
+                    // the original is left alone and the user gets a copy plus the reason.
+                    const parseError = describeJsonParseError(mcpConfigPath) || 'file could not be decoded as JSON';
+                    const backupCopy = `${mcpConfigPath}.corrupt_${timestamp}.bak`;
+                    const sideCarPath = `${mcpConfigPath}.bdb-new.json`;
+                    let backupWritten = true;
+                    try {
+                        fs.copyFileSync(mcpConfigPath, backupCopy);
+                    } catch (copyError) {
+                        backupWritten = false;
+                        console.warn(`${colors.yellow} -> Could not create the backup copy: ${copyError.message}${colors.reset}`);
                     }
-                    oldConfig.mcpServers = Object.assign({}, oldConfig.mcpServers || {}, newConfig.mcpServers || {});
-                    fs.writeFileSync(mcpConfigPath, JSON.stringify(oldConfig, null, 2));
-                    console.log(` -> Merged BDB MCPs into existing ${path.basename(mcpConfigPath)}`);
-                } catch (e) {
-                    console.log(` -> Failed to parse existing JSON, overwriting ${path.basename(mcpConfigPath)}`);
-                    fs.writeFileSync(mcpConfigPath, mcpConfigStr);
+                    try {
+                        fs.writeFileSync(sideCarPath, mcpConfigStr);
+                    } catch (writeError) {
+                        console.warn(`${colors.yellow} -> Could not write ${path.basename(sideCarPath)}: ${writeError.message}${colors.reset}`);
+                    }
+                    console.warn(`\n${colors.yellow}${colors.bold} -> ${configName} is not valid JSON - merge skipped, nothing was overwritten.${colors.reset}`);
+                    console.warn(`${colors.yellow}    Reason: ${parseError}${colors.reset}`);
+                    if (backupWritten) console.warn(`${colors.yellow}    Backup copy:  ${backupCopy}${colors.reset}`);
+                    console.warn(`${colors.yellow}    BDB config:   ${sideCarPath}${colors.reset}`);
+                    console.warn(`${colors.yellow}    Next step: repair ${configName} (or replace it with the BDB config above,`);
+                    console.warn(`    copying your own server entries back in) and re-run this installer.${colors.reset}\n`);
+                } else {
+                    try {
+                        if (oldConfig.mcpServers) {
+                            skippedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
+                        }
+                        const newConfig = JSON.parse(mcpConfigStr);
+                        oldConfig.mcpServers = Object.assign({}, oldConfig.mcpServers || {}, newConfig.mcpServers || {});
+                        fs.writeFileSync(mcpConfigPath, JSON.stringify(oldConfig, null, 2));
+                        console.log(` -> Merged BDB MCPs into existing ${configName}`);
+                    } catch (e) {
+                        console.warn(`${colors.yellow} -> Could not merge into ${configName}: ${e.message}${colors.reset}`);
+                        console.warn(`${colors.yellow}    ${configName} was left unchanged; the backup from this run is in ${backupDir}.${colors.reset}`);
+                    }
                 }
             } else {
                 if ((platform === '2' || platform === '4') && !fs.existsSync(mcpConfigPath)) {
