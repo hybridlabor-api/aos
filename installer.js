@@ -1268,7 +1268,31 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                 mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, pythonBinPath.replace(/\\/g, '/'));
                 mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, creds.gemini || process.env.GEMINI_API_KEY || '');
             }
-            
+
+            // @modelcontextprotocol/server-github reads the token from its own process
+            // environment, so the .env we write next to the config never reaches it.
+            // Injected after parsing (not via placeholder) because JSON.stringify escapes
+            // the token for us and an empty token simply leaves the entry untouched -
+            // an empty env value would authenticate worse than no env value at all.
+            const githubToken = (creds.github || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || '').trim();
+            if (githubToken) {
+                try {
+                    const tokenizedConfig = JSON.parse(mcpConfigStr);
+                    if (tokenizedConfig.mcpServers && tokenizedConfig.mcpServers.github) {
+                        tokenizedConfig.mcpServers.github.env = Object.assign(
+                            {},
+                            tokenizedConfig.mcpServers.github.env,
+                            { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken }
+                        );
+                        mcpConfigStr = JSON.stringify(tokenizedConfig, null, 2);
+                        console.log(` -> Passed the GitHub token to the github MCP server entry.`);
+                    }
+                } catch (e) {
+                    console.warn(`${colors.yellow} -> Warning: could not attach the GitHub token to the github MCP entry: ${e.message}${colors.reset}`);
+                }
+            }
+
+
             if (mode === '1' && fs.existsSync(mcpConfigPath)) {
                 try {
                     const oldConfig = readJsonFile(mcpConfigPath);
