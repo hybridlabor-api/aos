@@ -12,7 +12,14 @@ import json
 import glob
 import argparse
 import shutil
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, NamedTuple
+
+# Consoles and redirected pipes fall back to the locale codepage (e.g. cp1252 on German
+# Windows), which cannot encode the status emojis used below.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # Ensure local memb module is importable
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -73,21 +80,60 @@ MAX_FILE_BYTES = 512 * 1024
 CHUNK_CHARS = 4000
 
 
+# Tried in order; latin-1 accepts any byte sequence, so the lossy fallback below is a
+# guard for exotic decoder failures only.
+TEXT_ENCODINGS = ("utf-8", "utf-8-sig", "cp1252", "latin-1")
+
+
+class FileRead(NamedTuple):
+    """Outcome of reading one file: content is None when the file is unusable."""
+    content: Optional[str]
+    reason: Optional[str]
+    truncated: bool
+
+
 def is_markdown(fname: str) -> bool:
     return os.path.splitext(fname)[1].lower() in MARKDOWN_EXTENSIONS
 
 
-def read_text_file(path: str) -> Optional[str]:
-    """Read a text file, skipping anything above MAX_FILE_BYTES. Returns None if unusable."""
+def is_openwiki_path(path: str) -> bool:
+    """True if path is, or lives inside, a .openwiki directory (platform neutral)."""
+    return ".openwiki" in os.path.normpath(path).split(os.sep)
+
+
+def read_text_file(path: str, truncate_oversized: bool = False) -> FileRead:
+    """Read a text file, trying several encodings before falling back to lossy decoding.
+
+    Files above MAX_FILE_BYTES are skipped, unless truncate_oversized is set: then their
+    first CHUNK_CHARS characters are kept so no previously ingested file is lost.
+    """
     try:
         size = os.path.getsize(path)
-        if size > MAX_FILE_BYTES:
-            print("  ⚠ Skipped (%d KB > %d KB limit): %s" % (size // 1024, MAX_FILE_BYTES // 1024, path))
-            return None
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            return f.read().strip()
-    except Exception:
-        return None
+    except OSError as e:
+        return FileRead(None, f"could not stat file ({e})", False)
+
+    truncated = size > MAX_FILE_BYTES
+    if truncated and not truncate_oversized:
+        return FileRead(None, f"too large ({size // 1024} KB > {MAX_FILE_BYTES // 1024} KB limit)", False)
+
+    def read_with(encoding: str, errors: Optional[str] = None) -> str:
+        with open(path, "r", encoding=encoding, errors=errors) as f:
+            return f.read(CHUNK_CHARS) if truncated else f.read()
+
+    for encoding in TEXT_ENCODINGS:
+        try:
+            return FileRead(read_with(encoding).strip(), None, truncated)
+        except UnicodeDecodeError:
+            continue
+        except OSError as e:
+            return FileRead(None, f"could not read file ({e})", False)
+
+    try:
+        content = read_with("utf-8", errors="replace").strip()
+    except OSError as e:
+        return FileRead(None, f"could not read file ({e})", False)
+    print(f"  ⚠ No matching encoding, undecodable bytes replaced: {path}")
+    return FileRead(content, None, truncated)
 
 
 def make_documents(source: str, project: str, doc_type: str, content: str) -> List[Dict[str, Any]]:
@@ -113,14 +159,27 @@ def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False)
     """
     documents: List[Dict[str, Any]] = []
     counters = {"found": 0, "captured": 0}
+    seen_paths = set()
     print(f"🔍 Scanning directory: {root_dir} for project '{project_name}'...")
 
-    def collect(path: str, source: str, doc_type: str):
+    def collect(path: str, source: str, doc_type: str, truncate_oversized: bool = True):
+        # The openwiki pass and the generic walk can reach the same file; count it once.
+        real_path = os.path.realpath(path)
+        if real_path in seen_paths:
+            return
+        seen_paths.add(real_path)
         counters["found"] += 1
-        content = read_text_file(path)
-        if content:
-            documents.extend(make_documents(source, project_name, doc_type, content))
+        # Files that were ingested before this flag existed keep their oversized content
+        # (truncated) so nothing is lost; only the broad markdown sweep skips them.
+        read = read_text_file(path, truncate_oversized=truncate_oversized)
+        if read.truncated and read.content:
+            print(f"  ✂ Truncated to the first {CHUNK_CHARS} chars "
+                  f"(above {MAX_FILE_BYTES // 1024} KB limit): {source}")
+        if read.content:
+            documents.extend(make_documents(source, project_name, doc_type, read.content))
             counters["captured"] += 1
+        elif read.reason:
+            print(f"  ⚠ Skipped ({read.reason}): {source}")
 
     def result() -> Dict[str, Any]:
         return {
@@ -130,7 +189,7 @@ def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False)
         }
 
     # If the target path is directly a .openwiki directory or contains .openwiki
-    if os.path.basename(root_dir.rstrip("/")) == ".openwiki" or "/.openwiki" in root_dir:
+    if is_openwiki_path(root_dir):
         for wiki_file in os.listdir(root_dir):
             if wiki_file.endswith(".md"):
                 collect(
@@ -158,11 +217,12 @@ def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False)
 
         # Check for target project files
         for fname in filenames:
-            f_path = os.path.join(dirpath, fname)
             if fname in TARGET_FILES:
+                f_path = os.path.join(dirpath, fname)
                 collect(f_path, os.path.relpath(f_path, root_dir), fname)
             elif all_markdown and is_markdown(fname):
-                collect(f_path, os.path.relpath(f_path, root_dir), "markdown_doc")
+                f_path = os.path.join(dirpath, fname)
+                collect(f_path, os.path.relpath(f_path, root_dir), "markdown_doc", truncate_oversized=False)
 
     return result()
 
@@ -237,8 +297,8 @@ def ingest_to_memb(memory: Any, documents: List[Dict[str, Any]], category: str,
 
     print(f"\n🎉 Finished memB ingestion: {success_count}/{len(documents)} entries successfully indexed!")
     if coverage:
-        print("📁 File coverage: %d/%d candidate files captured in the scanned directory." % (
-            coverage.get("files_captured", 0), coverage.get("files_found", 0)))
+        print(f"📁 File coverage: {coverage['files_captured']}/{coverage['files_found']} "
+              "candidate files captured in the scanned directory.")
 
 
 def get_memory_title(data: str, mid: str) -> str:
@@ -378,11 +438,14 @@ def main():
 
     if os.path.isfile(target_path):
         project_name = args.project or os.path.basename(os.path.dirname(target_path))
-        content = read_text_file(target_path)
-        if content:
-            docs = make_documents(os.path.basename(target_path), project_name, "custom_file", content)
-        elif content is None:
-            print(f"Error reading file {target_path}", file=sys.stderr)
+        read = read_text_file(target_path, truncate_oversized=True)
+        if read.truncated and read.content:
+            print(f"  ✂ Truncated to the first {CHUNK_CHARS} chars "
+                  f"(above {MAX_FILE_BYTES // 1024} KB limit): {target_path}")
+        if read.content:
+            docs = make_documents(os.path.basename(target_path), project_name, "custom_file", read.content)
+        elif read.reason:
+            print(f"Error reading file {target_path}: {read.reason}", file=sys.stderr)
     else:
         project_name = args.project or os.path.basename(target_path)
         scan = scan_directory(target_path, project_name, all_markdown=args.all_markdown)
@@ -396,8 +459,8 @@ def main():
     if docs:
         ingest_to_memb(memory, docs, category=args.category, coverage=coverage)
     elif coverage:
-        print("No new documents to ingest (%d/%d candidate files captured)." % (
-            coverage["files_captured"], coverage["files_found"]))
+        print("No new documents to ingest "
+              f"({coverage['files_captured']}/{coverage['files_found']} candidate files captured).")
     else:
         print("No new documents to ingest.")
         
