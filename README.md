@@ -45,7 +45,7 @@ This package acts as the bridge to three major upstream capabilities:
 
 ## Overview
 
-![BDB v3 Core Tools Overview](assets/bdb_v3_core_tools_overview_sketch.jpg)
+![BDB Agent OS v3.4.0 Core Tools Overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
 
 ---
 
