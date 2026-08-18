@@ -20,6 +20,7 @@ const colors = {
     purpleBold: "\x1b[1;\x1b[38;2;157;78;221m",
     green: "\x1b[32m",
     yellow: "\x1b[33m",
+    red: "\x1b[31m",
     magenta: "\x1b[35m",
     dim: "\x1b[2m"
 };
@@ -973,10 +974,39 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
     }
 }
 
+// The installation runs inside two nested async IIFEs. A throw inside them is an
+// unhandled rejection, and Node ends the process on it -- which took down the
+// universal sync and the final report as well. Every optional file system step
+// therefore goes through installStep(): the step is reported as skipped and the
+// run continues. `hint` says what the user loses by the skipped step.
+function installStep(what, fn, hint) {
+    try {
+        return { ok: true, value: fn() };
+    } catch (e) {
+        console.warn(`${colors.yellow} -> Could not ${what}: ${e.message}${colors.reset}`);
+        if (hint) console.warn(`${colors.yellow}    ${hint}${colors.reset}`);
+        return { ok: false, error: e };
+    }
+}
+
+// Last net for everything installStep() does not cover (a throw from a prompt,
+// from execSync, from a helper). Prints the reason instead of letting Node die
+// with a bare "UnhandledPromiseRejection".
+function reportFatal(stage, e) {
+    console.error(`\n${colors.red}${colors.bold}The installer stopped during ${stage}.${colors.reset}`);
+    console.error(`${colors.red}Reason: ${(e && e.stack) || e}${colors.reset}`);
+    console.error(`${colors.red}Nothing was rolled back; re-running the installer is safe.${colors.reset}`);
+    process.exitCode = 1;
+}
+
 (async () => {
     const { tier, mode, platform, isUniversal, customPaths } = await promptMode();
-    fs.mkdirSync(backupDir, { recursive: true });
-    
+    installStep(
+        `create the backup directory ${backupDir}`,
+        () => fs.mkdirSync(backupDir, { recursive: true }),
+        'The installation continues, but existing files are not backed up.'
+    );
+
     let targetSkillDir = globalConfigDir;
     let targetLegacyDir = globalLegacyDir;
     let targetWorkspaceDir = workspaceDir;
@@ -1065,30 +1095,34 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
     ] : [];
 
     console.log(`\nInstalling optimized skills (140 curated skills)${tier === '2' ? ' [Basic Tier]' : ''}...`);
-    fs.mkdirSync(targetSkillDir, { recursive: true });
-    fs.mkdirSync(targetLegacyDir, { recursive: true });
-    fs.mkdirSync(targetWorkspaceDir, { recursive: true });
+    installStep('create the skill target directories', () => {
+        fs.mkdirSync(targetSkillDir, { recursive: true });
+        fs.mkdirSync(targetLegacyDir, { recursive: true });
+        fs.mkdirSync(targetWorkspaceDir, { recursive: true });
+    }, 'The skill copy below will most likely be skipped as well.');
 
     // Copy all subfolders in skills/ to their respective destinations
     const skillsBase = path.join(srcDir, 'skills');
     if (fs.existsSync(skillsBase)) {
-        const dirs = fs.readdirSync(skillsBase);
-        for (const dir of dirs) {
-            const fullPath = path.join(skillsBase, dir);
-            if (!fs.statSync(fullPath).isDirectory()) continue;
-            
-            if (dir === 'global_legacy') {
-                copyDirRecursiveSync(fullPath, targetLegacyDir, excludeSkills);
-                console.log(" -> Installed global legacy skills.");
-            } else if (dir === 'workspace_agents') {
-                copyDirRecursiveSync(fullPath, targetWorkspaceDir, excludeSkills);
-                console.log(" -> Installed workspace skills.");
-            } else {
-                // Copy all other skill folders (global_config, basic, bdbmediastorm, etc.) into targetSkillDir
-                copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
+        installStep('install the skills', () => {
+            const dirs = fs.readdirSync(skillsBase);
+            for (const dir of dirs) {
+                const fullPath = path.join(skillsBase, dir);
+                if (!fs.statSync(fullPath).isDirectory()) continue;
+
+                if (dir === 'global_legacy') {
+                    copyDirRecursiveSync(fullPath, targetLegacyDir, excludeSkills);
+                    console.log(" -> Installed global legacy skills.");
+                } else if (dir === 'workspace_agents') {
+                    copyDirRecursiveSync(fullPath, targetWorkspaceDir, excludeSkills);
+                    console.log(" -> Installed workspace skills.");
+                } else {
+                    // Copy all other skill folders (global_config, basic, bdbmediastorm, etc.) into targetSkillDir
+                    copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
+                }
             }
-        }
-        console.log(" -> Installed all global config & core skills.");
+            console.log(" -> Installed all global config & core skills.");
+        }, 'The skills are missing or incomplete; the rest of the installation continues.');
     }
 
     // Sync all BDB skills across Claude Code, Codex, Cursor, Roo, and ~/.agents/
@@ -1100,8 +1134,10 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
         const sourcePath = path.join(srcDir, dir);
         if (fs.existsSync(sourcePath)) {
             const targetPath = path.join(currentDir, dir);
-            copyDirRecursiveSync(sourcePath, targetPath);
-            console.log(` -> Copied ${dir} to ${targetPath}`);
+            installStep(`copy ${dir} to ${targetPath}`, () => {
+                copyDirRecursiveSync(sourcePath, targetPath);
+                console.log(` -> Copied ${dir} to ${targetPath}`);
+            }, 'The remaining harness directories are still copied.');
         }
     });
 
@@ -1109,8 +1145,10 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
     const globalAgentsDir = path.join(os.homedir(), '.agents');
     const agentsDirSrc = path.join(srcDir, '.agents');
     if (fs.existsSync(agentsDirSrc)) {
-        copyDirRecursiveSync(agentsDirSrc, globalAgentsDir);
-        console.log(` -> Synced global .agents/ (agents.md, workflows/startcycle.md) to ${globalAgentsDir}`);
+        installStep(`sync global .agents/ to ${globalAgentsDir}`, () => {
+            copyDirRecursiveSync(agentsDirSrc, globalAgentsDir);
+            console.log(` -> Synced global .agents/ (agents.md, workflows/startcycle.md) to ${globalAgentsDir}`);
+        }, 'agents.md and workflows/startcycle.md are missing there.');
     }
 
     // Roo Code / Custom Modes sync (.roomodes)
@@ -1163,70 +1201,90 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                 }
             ]
         };
-        fs.writeFileSync(rooModesPath, JSON.stringify(rooModesData, null, 2));
-        console.log(` -> Synced Roo Code custom modes to ${rooModesPath}`);
+        installStep(`write ${rooModesPath}`, () => {
+            fs.writeFileSync(rooModesPath, JSON.stringify(rooModesData, null, 2));
+            console.log(` -> Synced Roo Code custom modes to ${rooModesPath}`);
+        }, 'Roo Code keeps its existing custom modes.');
     }
 
     const geminiMdSrc = path.join(srcDir, 'GEMINI.md');
     if (fs.existsSync(geminiMdSrc)) {
         // 1. Antigravity Global config
-        fs.copyFileSync(geminiMdSrc, path.join(geminiDir, 'GEMINI.md'));
-        console.log(` -> Installed GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`);
-        
+        installStep(`install GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`, () => {
+            fs.copyFileSync(geminiMdSrc, path.join(geminiDir, 'GEMINI.md'));
+            console.log(` -> Installed GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`);
+        }, 'The harness injection below still runs.');
+
         // 2. Universal Harness Injection
-        const globalRules = fs.readFileSync(geminiMdSrc, 'utf8');
+        // Reading the sources is the precondition for every injection below, so a
+        // failure here skips them all instead of injecting an empty rule set.
         const startcycleWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'startcycle.md');
-        const startcycleContent = fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '';
-        const agentsMdContent = fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : '';
-        
-        // Cursor Rules
-        const cursorRulesDir = path.join(currentDir, '.cursor', 'rules');
-        fs.mkdirSync(cursorRulesDir, { recursive: true });
-        const cursorRulePath = path.join(cursorRulesDir, '000_global_rules.mdc');
-        fs.writeFileSync(cursorRulePath, `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
-        if (startcycleContent) {
-            fs.writeFileSync(path.join(cursorRulesDir, 'startcycle.mdc'), `---\nname: startcycle\ndescription: Autonomous Multi-Agent Development Pipeline (/startcycle)\n---\n\n${startcycleContent}`);
-        }
-        if (agentsMdContent) {
-            fs.writeFileSync(path.join(cursorRulesDir, 'bdb_agents.mdc'), `---\nname: bdb-agents\ndescription: BDB Multi-Agent Team Specifications\n---\n\n${agentsMdContent}`);
-        }
-        console.log(` -> Injected Cursor Rules (global_rules, startcycle, bdb_agents) to ${cursorRulesDir}`);
-        
-        // Claude Code
-        const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
-        let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
-        if (!claudeContent.includes("Global Agent Instructions")) {
-            claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
-        }
-        if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
-            claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
-        }
-        fs.writeFileSync(claudeMdPath, claudeContent);
-        console.log(` -> Synced CLAUDE.md with Global Rules and /startcycle workflow`);
-        
-        // GitHub Copilot
-        const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');
-        if (fs.existsSync(path.dirname(copilotPath))) {
-            const copilotContent = fs.existsSync(copilotPath) ? fs.readFileSync(copilotPath, 'utf8') : '';
-            if (!copilotContent.includes("Global Agent Instructions")) {
-                fs.appendFileSync(copilotPath, `\n\n${globalRules}`);
-                console.log(` -> Injected Global Rules to ${copilotPath}`);
+        const sources = installStep('read the global rule sources', () => ({
+            globalRules: fs.readFileSync(geminiMdSrc, 'utf8'),
+            startcycleContent: fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '',
+            agentsMdContent: fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : ''
+        }), 'Cursor, Claude, Copilot and Codex keep their current instruction files.');
+
+        if (sources.ok) {
+            const { globalRules, startcycleContent, agentsMdContent } = sources.value;
+
+            // Cursor Rules
+            const cursorRulesDir = path.join(currentDir, '.cursor', 'rules');
+            installStep(`write the Cursor rules to ${cursorRulesDir}`, () => {
+                fs.mkdirSync(cursorRulesDir, { recursive: true });
+                const cursorRulePath = path.join(cursorRulesDir, '000_global_rules.mdc');
+                fs.writeFileSync(cursorRulePath, `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
+                if (startcycleContent) {
+                    fs.writeFileSync(path.join(cursorRulesDir, 'startcycle.mdc'), `---\nname: startcycle\ndescription: Autonomous Multi-Agent Development Pipeline (/startcycle)\n---\n\n${startcycleContent}`);
+                }
+                if (agentsMdContent) {
+                    fs.writeFileSync(path.join(cursorRulesDir, 'bdb_agents.mdc'), `---\nname: bdb-agents\ndescription: BDB Multi-Agent Team Specifications\n---\n\n${agentsMdContent}`);
+                }
+                console.log(` -> Injected Cursor Rules (global_rules, startcycle, bdb_agents) to ${cursorRulesDir}`);
+            }, 'Cursor keeps its existing rules.');
+
+            // Claude Code
+            const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
+            installStep(`sync ${claudeMdPath}`, () => {
+                let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+                if (!claudeContent.includes("Global Agent Instructions")) {
+                    claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
+                }
+                if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
+                    claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
+                }
+                fs.writeFileSync(claudeMdPath, claudeContent);
+                console.log(` -> Synced CLAUDE.md with Global Rules and /startcycle workflow`);
+            }, 'CLAUDE.md is unchanged.');
+
+            // GitHub Copilot
+            const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');
+            if (fs.existsSync(path.dirname(copilotPath))) {
+                installStep(`inject the global rules into ${copilotPath}`, () => {
+                    const copilotContent = fs.existsSync(copilotPath) ? fs.readFileSync(copilotPath, 'utf8') : '';
+                    if (!copilotContent.includes("Global Agent Instructions")) {
+                        fs.appendFileSync(copilotPath, `\n\n${globalRules}`);
+                        console.log(` -> Injected Global Rules to ${copilotPath}`);
+                    }
+                }, 'copilot-instructions.md is unchanged.');
             }
+
+            // Codex Plugin
+            const codexDir = path.join(currentDir, '.codex-plugin');
+            installStep(`sync ${path.join(codexDir, 'system.md')}`, () => {
+                fs.mkdirSync(codexDir, { recursive: true });
+                const codexPath = path.join(codexDir, 'system.md');
+                let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
+                if (!codexContent.includes("Global Agent Instructions")) {
+                    codexContent = `${codexContent}\n\n${globalRules}`.trim();
+                }
+                if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
+                    codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
+                }
+                fs.writeFileSync(codexPath, codexContent);
+                console.log(` -> Synced .codex-plugin/system.md with Global Rules and /startcycle workflow`);
+            }, '.codex-plugin/system.md is unchanged.');
         }
-        
-        // Codex Plugin
-        const codexDir = path.join(currentDir, '.codex-plugin');
-        fs.mkdirSync(codexDir, { recursive: true });
-        const codexPath = path.join(codexDir, 'system.md');
-        let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
-        if (!codexContent.includes("Global Agent Instructions")) {
-            codexContent = `${codexContent}\n\n${globalRules}`.trim();
-        }
-        if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
-            codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
-        }
-        fs.writeFileSync(codexPath, codexContent);
-        console.log(` -> Synced .codex-plugin/system.md with Global Rules and /startcycle workflow`);
     }
 
     (async () => {
@@ -1236,12 +1294,16 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
         let creds = {};
         
         if (selectedMcps.length > 0) {
-            fs.mkdirSync(targetMcpDir, { recursive: true });
-            if (!fs.existsSync(mcpCodeTarget)) fs.mkdirSync(mcpCodeTarget, { recursive: true });
+            installStep(`create ${targetMcpDir}`, () => {
+                fs.mkdirSync(targetMcpDir, { recursive: true });
+                if (!fs.existsSync(mcpCodeTarget)) fs.mkdirSync(mcpCodeTarget, { recursive: true });
+            }, 'The MCP steps below will most likely fail as well and are reported individually.');
 
             console.log(`\nInstalling ${selectedMcps.length} selected MCPs...`);
             selectedMcps.forEach(mcp => {
-                copyDirRecursiveSync(path.join(mcpSrcDir, mcp), path.join(mcpCodeTarget, mcp));
+                installStep(`copy the MCP server ${mcp}`, () => {
+                    copyDirRecursiveSync(path.join(mcpSrcDir, mcp), path.join(mcpCodeTarget, mcp));
+                }, 'The remaining MCP servers are still installed.');
             });
             console.log(` -> Installed selected MCP servers to ${mcpCodeTarget}`);
 
@@ -1311,12 +1373,28 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                 }
             });
 
+            // The backup runs before every branch below, so an unprotected throw here
+            // (a directory in place of the config file -> EISDIR, an unreadable file
+            // -> EACCES) killed the run one line ahead of the merge region that was
+            // hardened for exactly that case. A missing backup costs the safety copy,
+            // not the installation.
             if (fs.existsSync(mcpConfigPath)) {
-                fs.copyFileSync(mcpConfigPath, path.join(backupDir, 'mcp_config_backup.json'));
-                console.log(` -> Backed up existing ${path.basename(mcpConfigPath)}`);
+                installStep(`back up ${path.basename(mcpConfigPath)}`, () => {
+                    fs.copyFileSync(mcpConfigPath, path.join(backupDir, 'mcp_config_backup.json'));
+                    console.log(` -> Backed up existing ${path.basename(mcpConfigPath)}`);
+                }, 'The installation continues without a backup copy of this file.');
             }
-            
-            let mcpConfigStr = fs.readFileSync(path.join(srcDir, 'mcp_config.json'), 'utf8');
+
+            // Our own template. Without it there is nothing to write, so the config
+            // branches below are skipped -- but the credential prompt, the .env, the
+            // OpenWiki daemon, the universal sync and the final report still run.
+            const mcpTemplatePath = path.join(srcDir, 'mcp_config.json');
+            const mcpTemplate = installStep(
+                `read the MCP template ${mcpTemplatePath}`,
+                () => fs.readFileSync(mcpTemplatePath, 'utf8'),
+                'No MCP config is generated; the existing config stays untouched.'
+            );
+            let mcpConfigStr = mcpTemplate.ok ? mcpTemplate.value : '';
             const skippedMcpConfigKeys = resolveUnsupportedMcpConfigKeys();
             try {
                 const parsedMcpConfig = JSON.parse(mcpConfigStr);
@@ -1413,7 +1491,12 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
             const configName = path.basename(mcpConfigPath);
             const isTomlConfig = mcpConfigPath.toLowerCase().endsWith('.toml');
 
-            if (isTomlConfig) {
+            if (!mcpTemplate.ok) {
+                // Nothing to write: writing the empty fallback would wipe the servers
+                // the user already has in there.
+                console.warn(`${colors.yellow} -> No MCP config was written: the template could not be read.${colors.reset}`);
+                console.warn(`${colors.yellow}    ${configName} was left untouched.${colors.reset}`);
+            } else if (isTomlConfig) {
                 // Codex keeps its MCP servers in config.toml. This installer only
                 // produces JSON and has no TOML parser available, so the file is
                 // neither read as JSON nor written: overwriting it with JSON destroyed
@@ -1548,8 +1631,20 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
         if (creds.gemini || creds.github || creds.keyEnvName) {
             const envPath = path.join(targetMcpDir, '.env');
             let envContent = '';
-            if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, 'utf8') + '\n';
-            
+            // An unreadable .env (EACCES, or a directory under that name -> EISDIR)
+            // must not end the run. Starting from empty would silently drop foreign
+            // entries on the write below, so the write is skipped in that case too.
+            let envReadable = true;
+            if (fs.existsSync(envPath)) {
+                const existingEnv = installStep(
+                    `read ${envPath}`,
+                    () => fs.readFileSync(envPath, 'utf8'),
+                    'The credentials are not written; entries already in the file stay as they are.'
+                );
+                if (existingEnv.ok) envContent = existingEnv.value + '\n';
+                else envReadable = false;
+            }
+
             const updateOrAppend = (key, val) => {
                 if (!val) return;
                 const lineRegex = new RegExp(`^${key}=.*$`, 'm');
@@ -1564,9 +1659,11 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
             if (creds.github) updateOrAppend('GITHUB_PERSONAL_ACCESS_TOKEN', creds.github);
             if (creds.keyEnvName && creds.gemini) updateOrAppend(creds.keyEnvName, creds.gemini);
 
-            if (envContent.trim().length > 0) {
-                fs.writeFileSync(envPath, envContent.trim() + '\n');
-                console.log(` -> Saved credentials to ${envPath}`);
+            if (envReadable && envContent.trim().length > 0) {
+                installStep(`save the credentials to ${envPath}`, () => {
+                    fs.writeFileSync(envPath, envContent.trim() + '\n');
+                    console.log(` -> Saved credentials to ${envPath}`);
+                }, 'Set GEMINI_API_KEY / GITHUB_PERSONAL_ACCESS_TOKEN yourself, or fix the path and re-run the installer.');
             }
         }
 
@@ -1846,6 +1943,6 @@ async function promptOSAgentWorkspace() {
         console.log(`${colors.green}${colors.bold} 🎉 Installation complete! The environment now has the ${colors.reset}`);
         console.log(`${colors.green}${colors.bold}    optimized skill configuration.${colors.reset}`);
         console.log(`${colors.green}${colors.bold}=========================================================${colors.reset}`);
-        
-    })();
-})();
+
+    })().catch(e => reportFatal('the MCP and extension installation', e));
+})().catch(e => reportFatal('the skill installation', e));
