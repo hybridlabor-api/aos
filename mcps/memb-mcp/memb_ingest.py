@@ -76,8 +76,16 @@ MARKDOWN_EXTENSIONS = {".md", ".markdown", ".mdx"}
 # Hard ceiling per file so a single oversized document cannot stall a whole run.
 MAX_FILE_BYTES = 512 * 1024
 
-# Long files are split into successive chunks instead of being cut off silently.
+# With --all-markdown long files are split into successive chunks instead of being
+# cut off silently.
 CHUNK_CHARS = 4000
+
+# Without --all-markdown the ingestion keeps exactly the shape it had before this
+# tool learned to chunk: one document per file, cut off at these limits. Chunking
+# every file by default would multiply embedding calls, DB rows and ~/.MemBDB
+# growth per run for existing users and change the recorded "source" values.
+DEFAULT_DOC_CHARS = 4000
+OPENWIKI_DOC_CHARS = 3000
 
 
 # Tried in order; latin-1 accepts any byte sequence, so the lossy fallback below is a
@@ -136,8 +144,25 @@ def read_text_file(path: str, truncate_oversized: bool = False) -> FileRead:
     return FileRead(content, None, truncated)
 
 
-def make_documents(source: str, project: str, doc_type: str, content: str) -> List[Dict[str, Any]]:
-    """Split content into chunk sized documents so nothing is lost by truncation."""
+def make_documents(source: str, project: str, doc_type: str, content: str,
+                   chunked: bool = False, limit: int = DEFAULT_DOC_CHARS) -> List[Dict[str, Any]]:
+    """Build the memB documents for one file.
+
+    chunked=False (the default, i.e. every run without --all-markdown) reproduces
+    the historical behaviour exactly: a single document holding the first *limit*
+    characters, with the plain source value and no "[part i/n]" suffix.
+
+    chunked=True splits the whole content into CHUNK_CHARS sized documents so
+    nothing is lost by truncation.
+    """
+    if not chunked:
+        return [{
+            "source": source,
+            "project": project,
+            "type": doc_type,
+            "content": content[:limit]
+        }]
+
     chunks = [content[i:i + CHUNK_CHARS] for i in range(0, len(content), CHUNK_CHARS)]
     total = len(chunks)
     return [
@@ -154,7 +179,11 @@ def make_documents(source: str, project: str, doc_type: str, content: str) -> Li
 def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False) -> Dict[str, Any]:
     """Scan root_dir recursively for key project architecture files.
 
-    With all_markdown=True every markdown file is picked up instead of only TARGET_FILES.
+    With all_markdown=True every markdown file is picked up instead of only
+    TARGET_FILES, and every captured file is split into CHUNK_CHARS sized documents.
+    Without the flag the output is document-identical to the pre-chunking version:
+    one document per file, cut off at DEFAULT_DOC_CHARS (OPENWIKI_DOC_CHARS for
+    .openwiki notes).
     Returns {"documents": [...], "files_captured": int, "files_found": int}.
     """
     documents: List[Dict[str, Any]] = []
@@ -162,7 +191,8 @@ def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False)
     seen_paths = set()
     print(f"🔍 Scanning directory: {root_dir} for project '{project_name}'...")
 
-    def collect(path: str, source: str, doc_type: str, truncate_oversized: bool = True):
+    def collect(path: str, source: str, doc_type: str, truncate_oversized: bool = True,
+                limit: int = DEFAULT_DOC_CHARS):
         # The openwiki pass and the generic walk can reach the same file; count it once.
         real_path = os.path.realpath(path)
         if real_path in seen_paths:
@@ -173,10 +203,12 @@ def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False)
         # (truncated) so nothing is lost; only the broad markdown sweep skips them.
         read = read_text_file(path, truncate_oversized=truncate_oversized)
         if read.truncated and read.content:
-            print(f"  ✂ Truncated to the first {CHUNK_CHARS} chars "
+            kept = CHUNK_CHARS if all_markdown else min(CHUNK_CHARS, limit)
+            print(f"  ✂ Truncated to the first {kept} chars "
                   f"(above {MAX_FILE_BYTES // 1024} KB limit): {source}")
         if read.content:
-            documents.extend(make_documents(source, project_name, doc_type, read.content))
+            documents.extend(make_documents(source, project_name, doc_type, read.content,
+                                            chunked=all_markdown, limit=limit))
             counters["captured"] += 1
         elif read.reason:
             print(f"  ⚠ Skipped ({read.reason}): {source}")
@@ -195,7 +227,8 @@ def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False)
                 collect(
                     os.path.join(root_dir, wiki_file),
                     f"{project_name}/.openwiki/{wiki_file}",
-                    "openwiki_doc"
+                    "openwiki_doc",
+                    limit=OPENWIKI_DOC_CHARS
                 )
         if documents:
             return result()
@@ -212,7 +245,8 @@ def scan_directory(root_dir: str, project_name: str, all_markdown: bool = False)
                     collect(
                         os.path.join(openwiki_dir, wiki_file),
                         f"{project_name}/.openwiki/{wiki_file}",
-                        "openwiki_doc"
+                        "openwiki_doc",
+                        limit=OPENWIKI_DOC_CHARS
                     )
 
         # Check for target project files
@@ -424,7 +458,9 @@ def main():
     parser.add_argument("--transcripts", action="store_true", help="Also mine past Antigravity conversation logs")
     parser.add_argument("--category", default="project_architecture", help="Memory category (e.g. 3D_Engine, Styling_System)")
     parser.add_argument("--all-markdown", action="store_true",
-                        help="Capture every markdown file, not just the fixed TARGET_FILES whitelist")
+                        help="Capture every markdown file instead of only the fixed TARGET_FILES "
+                             "whitelist, and split every captured file into chunks instead of "
+                             "keeping only its first 4000 (3000 for .openwiki) characters")
     args = parser.parse_args()
 
     target_path = os.path.abspath(args.path)
@@ -443,7 +479,8 @@ def main():
             print(f"  ✂ Truncated to the first {CHUNK_CHARS} chars "
                   f"(above {MAX_FILE_BYTES // 1024} KB limit): {target_path}")
         if read.content:
-            docs = make_documents(os.path.basename(target_path), project_name, "custom_file", read.content)
+            docs = make_documents(os.path.basename(target_path), project_name, "custom_file",
+                                  read.content, chunked=args.all_markdown)
         elif read.reason:
             print(f"Error reading file {target_path}: {read.reason}", file=sys.stderr)
     else:
