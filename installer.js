@@ -1794,10 +1794,10 @@ async function promptSynapse() {
     const synapseDir = path.join(basePath, 'bdb-synapse');
 
     const isWin = process.platform === 'win32';
-    const binaryName = isWin ? 'synapse.exe' : 'synapse';
+    const binaryName = isWin ? 'synapse.js' : 'synapse';
     const hasBinary = fs.existsSync(path.join(synapseDir, 'bin', binaryName)) ||
                       fs.existsSync(path.join(synapseDir, 'bin', 'synapse')) ||
-                      fs.existsSync(path.join(synapseDir, 'bin', 'synapse.exe'));
+                      fs.existsSync(path.join(synapseDir, 'bin', 'synapse.js'));
 
     if (!isValidInstallDir(synapseDir, ['package.json']) || !hasBinary) {
         console.log(` -> BDB Synapse wird über NPM nach ${synapseDir} geladen...`);
@@ -1843,7 +1843,7 @@ async function promptSynapse() {
             try { fs.unlinkSync(symlinkPath); } catch (e) {}
             try {
                 fs.symlinkSync(binaryPath, symlinkPath);
-                console.log(` -> ✅ Synapse Binary verlinkt nach ~/.local/bin/synapse`);
+                console.log(` -> ✅ Synapse Binary verlinkt nach ~/.local/bin/synapse.js`);
             } catch (e) {
                 console.log(` -> ✅ Synapse Binary verfügbar unter ${binaryPath}`);
             }
