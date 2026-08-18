@@ -158,6 +158,17 @@ chmod 700 "$DAEMON_LOG_DIR" 2>/dev/null || true
 if [ "$OS" = "macos" ]; then
     echo "Creating LaunchAgent plist at $PLIST_PATH..."
 
+    # ~/Library/LaunchAgents does not exist on a fresh account. Without this the
+    # plist redirect failed with "No such file or directory"; the script has no
+    # set -e, so it carried on and `launchctl load` reported the missing agent as
+    # the problem - while the launcher with the API key was already on disk.
+    # Bailing out here happens before write_launcher, so the key stays off disk.
+    # (The systemd branch below already does the same via mkdir -p "$SYSTEMD_DIR".)
+    if ! mkdir -p "$(dirname "$PLIST_PATH")"; then
+        echo " -> ERROR: could not create $(dirname "$PLIST_PATH")."
+        exit 1
+    fi
+
     MACOS_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     write_launcher "/usr/bin/python3" "$MACOS_PATH"
     echo " -> Launcher written to $LAUNCHER_PATH (mode 700; holds the API key, if any)."
