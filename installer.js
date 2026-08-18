@@ -1645,11 +1645,19 @@ function reportFatal(stage, e) {
                 else envReadable = false;
             }
 
+            // The second run replaces an existing line. In a replacement *string*
+            // String.replace() reads $&, $`, $', $$ and $1 as backreferences, so a
+            // key containing them wrote the matched line back into itself instead of
+            // the key ("AIza$&injected" -> "AIzaGEMINI_API_KEY=...injected"). A
+            // replacer function receives the value verbatim, exactly as the MCP
+            // config placeholders in this file already do it. The key additionally
+            // goes into a RegExp, so it is escaped for the search side as well.
+            const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const updateOrAppend = (key, val) => {
                 if (!val) return;
-                const lineRegex = new RegExp(`^${key}=.*$`, 'm');
+                const lineRegex = new RegExp(`^${escapeRegExp(key)}=.*$`, 'm');
                 if (lineRegex.test(envContent)) {
-                    envContent = envContent.replace(lineRegex, `${key}=${val}`);
+                    envContent = envContent.replace(lineRegex, () => `${key}=${val}`);
                 } else {
                     envContent += `${key}=${val}\n`;
                 }
