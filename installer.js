@@ -265,6 +265,49 @@ const backupDir = path.join(geminiDir, `skills_backup_${timestamp}`);
 // Auto-accept flags for CI/CD or autonomous agents
 const isAutoYes = process.argv.includes('-y') || process.argv.includes('--yes');
 
+// Optional subset selection for scripted runs: --mcps=memb-mcp,open-design
+// --mcps=all keeps the --yes default (everything), --mcps=none installs only
+// the core module. Without the flag nothing about --yes changes.
+const mcpsArgRaw = process.argv.find(a => a === '--mcps' || a.startsWith('--mcps='));
+const mcpsArg = (mcpsArgRaw && mcpsArgRaw.startsWith('--mcps=')) ? mcpsArgRaw.slice('--mcps='.length) : null;
+if (mcpsArgRaw && mcpsArg === null) {
+    console.warn(`${colors.yellow} -> Ignoring '--mcps' without a value. Use --mcps=<name,name>, --mcps=all or --mcps=none.${colors.reset}`);
+}
+
+const CORE_MCP = 'memb-mcp';
+
+function resolveMcpsArg(availableMcps) {
+    const requested = mcpsArg.split(',').map(s => s.trim()).filter(Boolean);
+    const wantsNone = requested.some(r => ['none', 'core', 'core-only'].includes(r.toLowerCase()));
+    const wantsAll = requested.some(r => r.toLowerCase() === 'all');
+
+    if (wantsAll && !wantsNone) return availableMcps;
+
+    const matched = [];
+    const unknown = [];
+    if (!wantsNone) {
+        requested.forEach(name => {
+            const hit = availableMcps.find(m => m.toLowerCase() === name.toLowerCase());
+            if (hit) {
+                if (!matched.includes(hit)) matched.push(hit);
+            } else if (!['all', 'none', 'core', 'core-only'].includes(name.toLowerCase())) {
+                unknown.push(name);
+            }
+        });
+    }
+
+    if (unknown.length > 0) {
+        console.warn(`${colors.yellow} -> Unknown or unavailable MCP name(s) in --mcps: ${unknown.join(', ')}${colors.reset}`);
+        console.warn(`${colors.dim}    Available for this tier: ${availableMcps.join(', ') || '(none)'}${colors.reset}`);
+    }
+
+    // The core module is installed unconditionally, mirroring the interactive picker.
+    if (availableMcps.includes(CORE_MCP) && !matched.includes(CORE_MCP)) matched.unshift(CORE_MCP);
+
+    console.log(` -> --mcps selection: ${matched.join(', ') || '(none)'}`);
+    return matched;
+}
+
 function detectPlatforms() {
     const detections = [];
     
@@ -493,6 +536,7 @@ async function promptMcpSelection(mcpsDir, tier) {
 
     availableMcps = availableMcps.filter(m => !unsupportedMcpDirs.includes(m));
 
+    if (mcpsArg !== null) return resolveMcpsArg(availableMcps);
     if (isAutoYes) return availableMcps;
     if (availableMcps.length === 0) return [];
 
