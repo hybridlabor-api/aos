@@ -123,6 +123,14 @@ xml_escape() {
 write_launcher() {
     local python_bin=$1
     local path_value=$2
+    # Redirecting onto an existing path follows a symlink and truncates a regular
+    # file in place, keeping its old mode - umask 077 only applies to a file that
+    # is actually created. An already present 0644 run_daemon.sh therefore held
+    # the API key world readable until the chmod 700 below caught up, and a
+    # symlink planted there would have taken the key somewhere else entirely.
+    # Removing the path first makes the redirect create a fresh file under the
+    # umask, with no window in between.
+    rm -f "$LAUNCHER_PATH"
     (
         umask 077
         {
