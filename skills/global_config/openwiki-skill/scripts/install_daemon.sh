@@ -81,12 +81,29 @@ sq() {
 }
 
 # XML text escaping for the values interpolated into the LaunchAgent plist.
+#
+# This used to be three ${s//pat/repl} substitutions. Since bash 5.2 an
+# unescaped & in the *replacement* stands for the matched text, so on bash 5.3.9
+# `${s//</&lt;}` turned a<b into a<lt;b and `${s//>/&gt;}` turned a>b into
+# a>gt;b - raw < in the plist, i.e. invalid XML. Only the & case came out right,
+# and only because there the bug cancels itself out.
+#
+# Mapping each character explicitly avoids the replacement-string semantics
+# altogether: out+='&amp;' is a plain append, no pattern substitution involved.
+# That also removes the ordering question - every input character is looked at
+# once, so an inserted entity can never be escaped a second time, on any bash.
 xml_escape() {
-    local s=$1
-    s=${s//&/&amp;}
-    s=${s//</&lt;}
-    s=${s//>/&gt;}
-    printf '%s' "$s"
+    local s=$1 out='' i c
+    for (( i = 0; i < ${#s}; i++ )); do
+        c=${s:i:1}
+        case $c in
+            '&') out+='&amp;' ;;
+            '<') out+='&lt;' ;;
+            '>') out+='&gt;' ;;
+            *)   out+=$c ;;
+        esac
+    done
+    printf '%s' "$out"
 }
 
 # The API key is deliberately NOT written into the LaunchAgent plist or the
