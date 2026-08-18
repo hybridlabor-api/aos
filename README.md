@@ -339,11 +339,11 @@ BDBrainstorm combines multi-agent brainstorming, the `/grill-me` slash command, 
 
 ---
 
-## 🔌 22 Custom Local MCP Integrations
+## 🔌 21 Custom Local MCP Integrations
 
 ![BDB Architecture Sketch](bdb_architecture_sketch.jpg)
 
-Rather than relying on skeletal python mocks or broken remote APIs, this repository bundles **22 custom, local MCP wrappers** (in the `mcps/` directory). These are built/warmed automatically and allow your AI assistant to read, write, and execute commands within the industry's leading creative software.
+Rather than relying on skeletal python mocks or broken remote APIs, this repository bundles **21 custom, local MCP wrappers** (in the `mcps/` directory). These are built/warmed automatically and allow your AI assistant to read, write, and execute commands within the industry's leading creative software.
 
 <details>
 <summary><strong>🎨 Adobe Creative Cloud (Illustrator, Photoshop, After Effects, Premiere Pro)</strong></summary>

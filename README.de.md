@@ -44,9 +44,9 @@ Dieses Paket dient als Brücke zu zwei gewaltigen vorgelagerten Funktionen (verf
 - **BDB OS Agent Workspace:** Die Orchestrierungsschicht für parallele KI-Agenten. Starten Sie mehrere isolierte Agenten-Sitzungen über Git-Worktrees mit Live-Terminalsteuerung, automatischen CI/CD-Feedbackschleifen und PR-Review-Routing.
 - **BDB Creator Extension:** Die leistungsstarke Agentic Media Pipeline. Verleiht Agenten lokale ComfyUI MCP-Fähigkeiten (FLUX, SDXL), Image-to-3D-Generierung (TripoSR, TRELLIS) und automatisierte Videoproduktion über OpenMontage und Remotion.
 
-## 🌟 ~144+ Optimierte Skills (Aktualisiert für v3.0.0)
+## 🌟 ~154+ Optimierte Skills (Aktualisiert für v3.6.0)
 
-Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Nach intensiven Tests, Filterungen und Verfeinerungen haben wir sie zu einem hochkuratierten Set von **144+ Optimierten Skills** destilliert (mit nativer OpenWiki-Dokumentationsengine, dem **lokalen semantischen Gedächtnis memB** und jetzt der **Universal Agent Harness Synchronisation in v3.0.0**).
+Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Nach intensiven Tests, Filterungen und Verfeinerungen haben wir sie zu einem hochkuratierten Set von **154+ Optimierten Skills** destilliert (mit nativer OpenWiki-Dokumentationsengine, dem **lokalen semantischen Gedächtnis memB** und jetzt der **Universal Agent Harness Synchronisation in v3.6.0**).
 
 Diese Skills sind präzise optimiert, damit Agenten keine Zeit mit redundanten Aufgaben verschwenden, sondern mit maximaler Autonomie, strengen Architekturvorgaben und robustem Kontextbewusstsein agieren.
 
@@ -56,6 +56,7 @@ Anstatt Agenten durch generische Anweisungen irren zu lassen, setzt die oberste 
 - **`godmode-ui-ux`**: Der Frontend-Goldstandard. Erzwingt BDB "Anti-Slop"-Prinzipien, Barrierefreiheit (Accessibility) und fluide Bewegungsdynamiken.
 - **`godmode-shipping`**: Der finale Wächter für Production Releases. Erzwingt Spec-Driven Development, Pre-Launch-Prüfungen und sichere Rollbacks.
 - **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 22 Creative-Tech MCPs steuert.
+- **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 21 Creative-Tech MCPs steuert.
 - **`godmode-3d-creation`**: Steuert die Agentic-3D-Pipeline (TripoSR, TRELLIS) für generative Modelle und CAD-Strukturen.
 - **`godmode-media-creation`**: Orchestriert automatisierte Videoproduktion, Storytelling und ComfyUI-Generierungsschleifen.
 
@@ -350,11 +351,11 @@ BDBrainstorm kombiniert Multi-Agenten-Brainstorming, den Slash-Befehl `/grill-me
 
 ---
 
-## 🔌 22 Custom Lokale MCP Integrationen
+## 🔌 21 Custom Lokale MCP Integrationen
 
 ![BDB Architecture Sketch](bdb_architecture_sketch.jpg)
 
-Anstatt sich auf rudimentäre Python-Mocks oder fehlerhafte Remote-APIs zu verlassen, bündelt dieses Repository **22 eigene, lokale MCP-Wrapper** (im Ordner `mcps/`). Diese werden automatisch erstellt/aufgewärmt und ermöglichen Ihrem KI-Assistenten das Lesen, Schreiben und Ausführen von Befehlen in der führenden Kreativsoftware der Branche.
+Anstatt sich auf rudimentäre Python-Mocks oder fehlerhafte Remote-APIs zu verlassen, bündelt dieses Repository **21 eigene, lokale MCP-Wrapper** (im Ordner `mcps/`). Diese werden automatisch erstellt/aufgewärmt und ermöglichen Ihrem KI-Assistenten das Lesen, Schreiben und Ausführen von Befehlen in der führenden Kreativsoftware der Branche.
 
 <details>
 <summary><strong>🎨 Adobe Creative Cloud (Illustrator, Photoshop, After Effects, Premiere Pro)</strong></summary>

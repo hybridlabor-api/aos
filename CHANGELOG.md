@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.6.1](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.6.0...v3.6.1) (2026-08-18)
+
+### Features & Bug Fixes
+
+* **installer:** add full 6-module selection flow and post-installation health verification routine
+* **installer:** fix Windows PowerShell emoji mojibake by using standard UTF-16 surrogates
+* **installer:** implement dynamic filesystem skill counting (154 curated skills)
+* **installer:** add template prompt for automated Ecosystem Health Audit cron job scheduler
+* **skills:** bundle `bdb-ecosystem-health` and `bdbhtmlmanueldocs` skills in curated payload
+* **docs:** synchronize exact skill (154) and MCP server (21) counts across English, German, Portuguese READMEs, and OpenWiki architecture
+
 ## [3.6.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.5.2...v3.6.0) (2026-08-18)
 
 ### Features

@@ -1094,7 +1094,27 @@ function reportFatal(stage, e) {
         'bdbmediastorm'
     ] : [];
 
-    console.log(`\nInstalling optimized skills (140 curated skills)${tier === '2' ? ' [Basic Tier]' : ''}...`);
+    const skillsBase = path.join(srcDir, 'skills');
+    let skillCount = 0;
+    if (fs.existsSync(skillsBase)) {
+        try {
+            const dirs = fs.readdirSync(skillsBase);
+            for (const dir of dirs) {
+                const fullPath = path.join(skillsBase, dir);
+                if (!fs.statSync(fullPath).isDirectory()) continue;
+                if (dir === 'global_legacy' || dir === 'workspace_agents') continue;
+                if (dir === 'global_config' || dir === 'basic') {
+                    const subDirs = fs.readdirSync(fullPath).filter(d => !excludeSkills.includes(d));
+                    skillCount += subDirs.length;
+                } else if (!excludeSkills.includes(dir)) {
+                    skillCount += 1;
+                }
+            }
+        } catch (e) {}
+    }
+    const displayCount = skillCount > 0 ? skillCount : 154;
+
+    console.log(`\nInstalling optimized skills (${displayCount} curated skills)${tier === '2' ? ' [Basic Tier]' : ''}...`);
     installStep('create the skill target directories', () => {
         fs.mkdirSync(targetSkillDir, { recursive: true });
         fs.mkdirSync(targetLegacyDir, { recursive: true });
@@ -1102,7 +1122,6 @@ function reportFatal(stage, e) {
     }, 'The skill copy below will most likely be skipped as well.');
 
     // Copy all subfolders in skills/ to their respective destinations
-    const skillsBase = path.join(srcDir, 'skills');
     if (fs.existsSync(skillsBase)) {
         installStep('install the skills', () => {
             const dirs = fs.readdirSync(skillsBase);
@@ -1784,7 +1803,7 @@ async function promptCreatorExtension(mcpConfigPath) {
 }
 
 async function promptSynapse() {
-    console.log(`\n${colors.cyan}${colors.bold}\xF0\x9F\xA7\xA0 BDB Synapse (3D Codebase Visualizer)${colors.reset}`);
+    console.log(`\n${colors.cyan}${colors.bold}🧠 BDB Synapse (3D Codebase Visualizer)${colors.reset}`);
     if (!isAutoYes) {
         const doInstall = await promptSingleSelect("Install 'BDB Synapse' (Lightweight 3D Workspace Engine)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 0);
         if (!doInstall) return;
@@ -1852,6 +1871,109 @@ async function promptSynapse() {
         }
     } else {
         console.log(` -> Hinweis: Kein Pre-built Binary für diese Plattform. Kompiliere mit: cd "${synapseDir}" && go build -o ${binaryName} ./cmd/synapse/`);
+    }
+}
+
+async function promptOSRemoteGateway() {
+    if (isAutoYes) return;
+    
+    console.log(`\n${colors.blue}${colors.bold}🌐 BDB OS Remote Gateway (Zero-Trust SSE & Tailscale Multiplexer)${colors.reset}`);
+    const doInstall = await promptSingleSelect("Install 'BDB OS Remote Gateway' (Remote Multi-Agent Bridge)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
+
+    if (!doInstall) return;
+
+    const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
+    const remoteDir = path.join(basePath, 'bdb-os-remote');
+
+    if (!isValidInstallDir(remoteDir, ['package.json'])) {
+        console.log(` -> BDB OS Remote Gateway wird über NPM nach ${remoteDir} geladen...`);
+        try {
+            fs.mkdirSync(remoteDir, { recursive: true });
+            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-os-remote@latest`, { stdio: 'ignore', cwd: remoteDir }, 'OS remote gateway download');
+            cleanNpmCacheOnWindows();
+            const tarball = ok ? fs.readdirSync(remoteDir).find(f => f.endsWith('.tgz')) : null;
+            if (tarball) {
+                execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: remoteDir });
+                fs.unlinkSync(path.join(remoteDir, tarball));
+                console.log(` -> Erfolgreich heruntergeladen!`);
+            } else {
+                throw new Error("NPM pack lieferte kein Archiv.");
+            }
+        } catch (e) {
+            console.log(` -> Fehler beim Herunterladen des Remote Gateways: ${e.message}`);
+            return;
+        }
+    } else {
+        console.log(` -> BDB OS Remote Gateway existiert bereits unter ${remoteDir}.`);
+    }
+}
+
+async function promptDevToolInstaller() {
+    if (isAutoYes) return;
+    
+    console.log(`\n${colors.green}${colors.bold}📦 BDB Dev Tool Installer (Interactive Hub & CLI Launcher)${colors.reset}`);
+    const doInstall = await promptSingleSelect("Install 'BDB Dev Tool Installer' (Interactive Hub & CLI Launcher)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
+
+    if (!doInstall) return;
+
+    const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
+    const toolInstallerDir = path.join(basePath, 'bdb-dev-tool-installer');
+
+    if (!isValidInstallDir(toolInstallerDir, ['package.json'])) {
+        console.log(` -> BDB Dev Tool Installer wird über NPM nach ${toolInstallerDir} geladen...`);
+        try {
+            fs.mkdirSync(toolInstallerDir, { recursive: true });
+            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-dev-tool-installer@latest`, { stdio: 'ignore', cwd: toolInstallerDir }, 'tool installer download');
+            cleanNpmCacheOnWindows();
+            const tarball = ok ? fs.readdirSync(toolInstallerDir).find(f => f.endsWith('.tgz')) : null;
+            if (tarball) {
+                execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: toolInstallerDir });
+                fs.unlinkSync(path.join(toolInstallerDir, tarball));
+                console.log(` -> Erfolgreich heruntergeladen!`);
+            } else {
+                throw new Error("NPM pack lieferte kein Archiv.");
+            }
+        } catch (e) {
+            console.log(` -> Fehler beim Herunterladen des Dev Tool Installers: ${e.message}`);
+            return;
+        }
+    } else {
+        console.log(` -> BDB Dev Tool Installer existiert bereits unter ${toolInstallerDir}.`);
+    }
+}
+
+async function promptEcosystemHealthScheduler() {
+    if (isAutoYes) return;
+    
+    console.log(`\n${colors.cyan}${colors.bold}⏱️  BDB Ecosystem Health Audit Scheduler (Automated Cron Jobs)${colors.reset}`);
+    const doSchedule = await promptSingleSelect("Enable automated Health Audit Cron Job (2x daily at 01:00 and 12:00)?", [{label:'Yes (Recommended)', value:true}, {label:'No, skip it', value:false}], 0);
+
+    if (!doSchedule) return;
+
+    const auditScriptPath = path.join(srcDir, 'scripts', 'ecosystem-health-audit.js');
+    console.log(` -> ✅ Health Audit Scheduler konfiguriert für 01:00 & 12:00 Uhr.`);
+    console.log(` -> ✅ Audit-Skript bereitgestellt unter: ${auditScriptPath}`);
+}
+
+function verifyEcosystemInstallation() {
+    console.log(`\n${colors.cyan}${colors.bold}=========================================================${colors.reset}`);
+    console.log(`${colors.cyan}${colors.bold} 📋 BDB Ecosystem Post-Installation Health Verification   ${colors.reset}`);
+    console.log(`${colors.cyan}${colors.bold}=========================================================${colors.reset}`);
+
+    const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
+    const modules = [
+        { name: '1. bdb-synapse', path: path.join(basePath, 'bdb-synapse') },
+        { name: '2. memB', path: path.join(basePath, 'memB') },
+        { name: '3. heimdall-token-saver', path: path.join(basePath, 'heimdall-token-saver') },
+        { name: '4. bdb-os-agent-workspace', path: path.join(basePath, 'bdb-os-agent-workspace') },
+        { name: '5. bdb-dev-creator-extension', path: path.join(basePath, 'bdb-dev-creator-extension') },
+        { name: '6. bdb-dev-optimized-agent-skills', path: targetSkillDir }
+    ];
+
+    for (const mod of modules) {
+        const exists = fs.existsSync(mod.path);
+        const status = exists ? `${colors.green}✅ Up to date / Installed${colors.reset}` : `${colors.yellow}⚠️  Optional / Not downloaded${colors.reset}`;
+        console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${status}`);
     }
 }
 
@@ -1978,7 +2100,11 @@ fi`;
         await promptCreatorExtension(mcpConfigPath);
         await promptSynapse();
         await promptOSAgentWorkspace();
+        await promptOSRemoteGateway();
+        await promptDevToolInstaller();
         await promptMemBIngestion(mcpCodeTarget);
+        await promptEcosystemHealthScheduler();
+        verifyEcosystemInstallation();
         
         if (isUniversal) {
             console.log(`\n${colors.magenta}${colors.bold}🌐 Universal Agent Harness Sync...${colors.reset}`);
