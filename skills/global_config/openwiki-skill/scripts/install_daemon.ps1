@@ -56,13 +56,14 @@ if (-not (Test-Path $DaemonLogDir)) {
     New-Item -ItemType Directory -Force -Path $DaemonLogDir | Out-Null
 }
 
-# 5. Build scheduled task action with API key in environment
-$EnvSetup = ""
-if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
-    $EnvSetup = "`$env:GEMINI_API_KEY='$GeminiKey'; "
-}
-
-$DaemonCommand = "& { $EnvSetup python '$ScriptPath' --one-shot }"
+# 5. Build the daemon command.
+# The API key is deliberately NOT embedded. Step 3 already persisted it as a
+# User environment variable, and every process started at logon - the scheduled
+# task as well as the Startup-folder fallback - inherits it. Embedding it would
+# write the key in clear text into the .cmd under
+# %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\, readable by any
+# process in the user context and routinely swept up by backups and sync folders.
+$DaemonCommand = "& { python '$ScriptPath' --one-shot }"
 $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -Command `"$DaemonCommand`""
 
 # 6. Trigger: every 2 hours via repetition
@@ -72,22 +73,81 @@ $Trigger.Repetition = (New-ScheduledTaskTrigger -Once -At "00:00" -RepetitionInt
 # 7. Settings
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)
 
-# 8. Register (per-user task; no admin required). Only report success if the task really registered.
-$TaskName = "BDB_OpenWiki_Daemon"
-Write-Host "Registering task '$TaskName'..." -ForegroundColor Yellow
+# 8. Fallback: per-user Startup .cmd. It is NOT equivalent to the scheduled
+# task - it runs the daemon once per logon instead of every 2 hours - so say so.
+function Install-StartupFallback {
+    param(
+        [string]$Command,
+        [string]$Reason
+    )
 
-$Registered = $false
-try {
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force -ErrorAction Stop | Out-Null
-    $Registered = $true
-} catch {
-    Write-Warning "Scheduled task registration failed ($($_.Exception.Message))."
-    # Fallback: per-user Startup folder .cmd that starts the daemon at logon (no admin needed).
     $StartupDir = [System.Environment]::GetFolderPath('Startup')
     if (-not (Test-Path $StartupDir)) { New-Item -ItemType Directory -Force -Path $StartupDir | Out-Null }
     $DaemonCmdPath = Join-Path $StartupDir "BDB_OpenWiki_Daemon.cmd"
-    Set-Content -Path $DaemonCmdPath -Value "@echo off`r`npowershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"$DaemonCommand`"" -Encoding ASCII
-    Write-Host " -> Created startup entry: $DaemonCmdPath" -ForegroundColor Green
+    Set-Content -Path $DaemonCmdPath -Value "@echo off`r`npowershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"$Command`"" -Encoding ASCII
+
+    Write-Host ""
+    Write-Host " -> FALLBACK USED: no scheduled task was created." -ForegroundColor Yellow
+    Write-Host "    Reason: $Reason" -ForegroundColor Yellow
+    Write-Host "    Created startup entry instead: $DaemonCmdPath" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "    This is NOT the same as the scheduled task:" -ForegroundColor Yellow
+    Write-Host "      * scheduled task -> runs every 2 hours" -ForegroundColor Yellow
+    Write-Host "      * startup entry   -> runs ONCE per logon (--one-shot)" -ForegroundColor Yellow
+    Write-Host "    Documentation is refreshed only when you log in, or when you run" -ForegroundColor Yellow
+    Write-Host "    the daemon manually:" -ForegroundColor Yellow
+    Write-Host "      python `"$ScriptPath`" --one-shot" -ForegroundColor DarkGray
+    Write-Host "    To get the 2-hour schedule, re-run this installer from an elevated" -ForegroundColor Yellow
+    Write-Host "    PowerShell (Run as administrator)." -ForegroundColor Yellow
+}
+
+# 9. Pre-flight: check up front whether a scheduled task can be registered at all.
+$TaskName = "BDB_OpenWiki_Daemon"
+
+$IsElevated = $false
+try {
+    $CurrentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $CurrentPrincipal = New-Object System.Security.Principal.WindowsPrincipal($CurrentIdentity)
+    $IsElevated = $CurrentPrincipal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+} catch {
+    $IsElevated = $false
+}
+
+$BlockReason = ""
+if (-not (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue)) {
+    $BlockReason = "the ScheduledTasks module is not available on this system"
+} else {
+    $ScheduleService = Get-Service -Name "Schedule" -ErrorAction SilentlyContinue
+    if ($null -eq $ScheduleService) {
+        $BlockReason = "the Task Scheduler service is not present"
+    } elseif ($ScheduleService.Status -ne "Running") {
+        $BlockReason = "the Task Scheduler service is not running (status: $($ScheduleService.Status))"
+    }
+}
+
+# 10. Register (per-user task). Only report success if the task really registered.
+$Registered = $false
+if ($BlockReason -ne "") {
+    Install-StartupFallback -Command $DaemonCommand -Reason $BlockReason
+} else {
+    if (-not $IsElevated) {
+        Write-Host "Running without administrator rights." -ForegroundColor DarkGray
+        Write-Host " -> A per-user task usually registers fine; if this system denies it," -ForegroundColor DarkGray
+        Write-Host "    a logon-only startup entry is used instead." -ForegroundColor DarkGray
+    }
+    Write-Host "Registering task '$TaskName'..." -ForegroundColor Yellow
+    try {
+        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force -ErrorAction Stop | Out-Null
+        $Registered = $true
+    } catch {
+        $FailureMessage = $_.Exception.Message
+        Write-Warning "Scheduled task registration failed ($FailureMessage)."
+        $Reason = "scheduled task registration failed: $FailureMessage"
+        if (-not $IsElevated) {
+            $Reason = "$Reason (administrator rights are likely required on this system)"
+        }
+        Install-StartupFallback -Command $DaemonCommand -Reason $Reason
+    }
 }
 
 if ($Registered) {
@@ -100,6 +160,14 @@ if ($Registered) {
     } catch {
         Write-Warning "Could not start task immediately: $($_.Exception.Message)"
     }
+} else {
+    Write-Host " -> Logs: $DaemonLogDir\daemon.log" -ForegroundColor Yellow
+    Write-Host " -> Projects config: $DaemonLogDir\projects.json" -ForegroundColor Yellow
+}
+
+if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
+    Write-Host " -> API key stored as the GEMINI_API_KEY user environment variable" -ForegroundColor Green
+    Write-Host "    (not embedded in the task or the startup file)." -ForegroundColor Green
 }
 
 Write-Host "=========================================================" -ForegroundColor Cyan
