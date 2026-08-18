@@ -165,15 +165,21 @@ def _legacy_dirs():
     # Claude Code CLI is not %APPDATA%-based (see installers.claude._settings_dir).
     dirs.append(os.path.join(h, ".claude", "plugins", _LEGACY_NAME))
 
+    # Gemini CLI extension: ~/.gemini/extensions/token-saving on every platform
+    # too -- installer.js resolves geminiDir to path.join(homeDir, '.gemini')
+    # regardless of platform, and installers/universal.py writes
+    # ~/.gemini/rules.md the same way.
+    dirs.append(os.path.join(h, ".gemini", "extensions", _LEGACY_NAME))
+
     if IS_WINDOWS:
         appdata = os.environ.get("APPDATA", os.path.join(h, "AppData", "Roaming"))
-        # Older Windows builds wrote Claude Code data to %APPDATA%\claude by
-        # mistake; keep looking there so those orphans get cleaned up too.
+        # Older Windows builds wrote Claude Code and Gemini CLI data under
+        # %APPDATA% by mistake; keep looking there so those orphans get cleaned
+        # up too.
         dirs.append(os.path.join(appdata, "claude", "plugins", _LEGACY_NAME))
         dirs.append(os.path.join(appdata, "gemini", "extensions", _LEGACY_NAME))
         dirs.append(os.path.join(appdata, _LEGACY_NAME))
     else:
-        dirs.append(os.path.join(h, ".gemini", "extensions", _LEGACY_NAME))
         dirs.append(os.path.join(h, f".{_LEGACY_NAME}"))
 
     return dirs
