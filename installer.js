@@ -1372,8 +1372,11 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
             // @modelcontextprotocol/server-github reads the token from its own process
             // environment, so the .env we write next to the config never reaches it.
             // Injected after parsing (not via placeholder) because JSON.stringify escapes
-            // the token for us and an empty token simply leaves the entry untouched -
+            // the token for us. With an empty token nothing is written here at all:
             // an empty env value would authenticate worse than no env value at all.
+            // That alone does not protect a token the user configured themselves --
+            // the merge below replaces whole server entries, so it is the env carry-
+            // over there that keeps an existing github.env.GITHUB_PERSONAL_ACCESS_TOKEN.
             const githubToken = (creds.github || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || '').trim();
             if (githubToken) {
                 try {
@@ -1438,10 +1441,31 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                 } else {
                     try {
                         if (oldConfig.mcpServers) {
-                            skippedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
+                            // Only the statically unsupported keys are pruned from
+                            // the *existing* config. The conditional keys in
+                            // skippedMcpConfigKeys are left out of what we write (see
+                            // the filter above), but deleting them here as well would
+                            // remove an entry the user configured themselves - an own
+                            // bdb_after_effects_mcp_fallback with an absolute Go path
+                            // would disappear the moment `where go` fails.
+                            unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
                         }
                         const newConfig = JSON.parse(mcpConfigStr);
-                        oldConfig.mcpServers = Object.assign({}, oldConfig.mcpServers || {}, newConfig.mcpServers || {});
+                        const oldServers = oldConfig.mcpServers || {};
+                        const newServers = newConfig.mcpServers || {};
+                        // Object.assign replaces a server entry as a whole. Where our
+                        // entry brings no env of its own, an env the user configured on
+                        // the existing entry (their own GITHUB_PERSONAL_ACCESS_TOKEN,
+                        // for instance) is carried over first so the merge cannot drop
+                        // it. An env we do bring still wins.
+                        Object.keys(newServers).forEach(key => {
+                            const previous = oldServers[key];
+                            const incoming = newServers[key];
+                            if (!previous || typeof previous !== 'object') return;
+                            if (!incoming || typeof incoming !== 'object') return;
+                            if (!incoming.env && previous.env) incoming.env = previous.env;
+                        });
+                        oldConfig.mcpServers = Object.assign({}, oldServers, newServers);
                         fs.writeFileSync(mcpConfigPath, JSON.stringify(oldConfig, null, 2));
                         console.log(` -> Merged BDB MCPs into existing ${configName}`);
                     } catch (e) {
