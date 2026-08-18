@@ -1865,6 +1865,12 @@ async function promptOSAgentWorkspace() {
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const osAgentDir = path.join(basePath, 'bdb-os-agent-workspace');
+    const localBinDir = path.join(os.homedir(), '.local', 'bin');
+    const binTarget = path.join(localBinDir, 'ao');
+
+    fs.mkdirSync(localBinDir, { recursive: true });
+    fs.mkdirSync(path.join(os.homedir(), '.ao', 'data'), { recursive: true });
+    fs.mkdirSync(path.join(os.homedir(), '.ao', 'logs'), { recursive: true });
 
     if (!isValidInstallDir(osAgentDir, ['package.json'])) {
         console.log(` -> BDB OS Agent Workspace wird über NPM nach ${osAgentDir} geladen...`);
@@ -1876,7 +1882,7 @@ async function promptOSAgentWorkspace() {
             if (tarball) {
                 execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: osAgentDir });
                 fs.unlinkSync(path.join(osAgentDir, tarball));
-                console.log(` -> Erfolgreich heruntergeladen! (CD in ${osAgentDir} für die OS-Steuerung)`);
+                console.log(` -> Erfolgreich heruntergeladen!`);
             } else {
                 throw new Error("NPM pack lieferte kein Archiv.");
             }
@@ -1886,6 +1892,85 @@ async function promptOSAgentWorkspace() {
     } else {
         console.log(` -> BDB OS Agent Workspace existiert bereits unter ${osAgentDir}.`);
     }
+
+    // Binary symlink & build verification
+    const daemonBin = path.join(osAgentDir, 'backend', 'ao-daemon');
+    if (fs.existsSync(daemonBin)) {
+        try {
+            fs.copyFileSync(daemonBin, binTarget);
+            fs.chmodSync(binTarget, '755');
+            console.log(` -> ✅ 'ao' CLI Binary verknüpft unter ${binTarget}`);
+        } catch(e) {}
+    }
+
+    // macOS LaunchAgent and App Setup
+    if (process.platform === 'darwin') {
+        const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.bdb.agent-workspace.plist');
+        const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bdb.agent-workspace</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${binTarget}</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>AO_PORT</key>
+        <string>3101</string>
+        <key>AO_DATA_DIR</key>
+        <string>${path.join(os.homedir(), '.ao', 'data')}</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:${localBinDir}</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${path.join(os.homedir(), '.ao', 'logs', 'daemon.stdout.log')}</string>
+    <key>StandardErrorPath</key>
+    <string>${path.join(os.homedir(), '.ao', 'logs', 'daemon.stderr.log')}</string>
+</dict>
+</plist>`;
+        try {
+            fs.writeFileSync(plistPath, plistContent);
+            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            console.log(` -> ✅ Background LaunchAgent aktiv (Port 3101)`);
+        } catch(e) {}
+
+        const appDir = '/Applications/BDB Agent Workspace.app';
+        try {
+            fs.mkdirSync(path.join(appDir, 'Contents', 'MacOS'), { recursive: true });
+            fs.mkdirSync(path.join(appDir, 'Contents', 'Resources'), { recursive: true });
+            const iconSrc = path.join(osAgentDir, 'frontend', 'assets', 'icon.icns');
+            if (fs.existsSync(iconSrc)) {
+                fs.copyFileSync(iconSrc, path.join(appDir, 'Contents', 'Resources', 'AppIcon.icns'));
+            }
+            const launcherScript = `#!/usr/bin/env bash
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:${localBinDir}:$PATH"
+if ! curl -s http://127.0.0.1:3101/healthz >/dev/null 2>&1; then
+    launchctl start com.bdb.agent-workspace 2>/dev/null || "${binTarget}" &
+    sleep 0.5
+fi
+if [ -d "/Applications/Google Chrome.app" ]; then
+    open -na "/Applications/Google Chrome.app" --args --app="http://127.0.0.1:3101" --user-data-dir="$HOME/.ao/chrome-app-profile"
+elif [ -d "/Applications/Brave Browser.app" ]; then
+    open -na "/Applications/Brave Browser.app" --args --app="http://127.0.0.1:3101" --user-data-dir="$HOME/.ao/brave-app-profile"
+else
+    open "http://127.0.0.1:3101"
+fi`;
+            const launcherPath = path.join(appDir, 'Contents', 'MacOS', 'app_launcher');
+            fs.writeFileSync(launcherPath, launcherScript);
+            fs.chmodSync(launcherPath, '755');
+            console.log(` -> ✅ Desktop App verfügbar unter /Applications/BDB Agent Workspace.app`);
+        } catch(e) {}
+    }
+
+    console.log(` -> 🌐 BDB Agent Workspace WebUI erreichbar unter: http://localhost:3101`);
 }
 
         await installOpenWikiDaemon(creds.gemini, targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
