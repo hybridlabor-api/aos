@@ -1251,7 +1251,7 @@ function reportFatal(stage, e) {
                     
                     const agentBlocks = agentsMdContent.split('## ').slice(1);
                     for (const block of agentBlocks) {
-                        const nameMatch = block.match(/^([A-Za-z0-9_]+)/);
+                        const nameMatch = block.match(/([A-Za-z0-9_]+)/);
                         if (nameMatch) {
                             const name = nameMatch[1];
                             const descMatch = block.match(/- \*\*Role\*\*: (.*)/);
