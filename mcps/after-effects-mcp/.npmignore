@@ -1,10 +1,13 @@
 # NOTE: This package ships its TypeScript/JSX sources on purpose.
-# package.json has "postinstall": "npm run build", and the installer
-# (installer.js -> nodeMcps) copies this folder and runs `npm install`
-# followed by `npm run build` in it. Both need src/ and tsconfig.json,
-# and build/ is git-ignored (never checked in). Excluding the sources
-# here makes the published tarball unbuildable and postinstall fails
-# deterministically. Do not re-add /src or tsconfig.json.
+# package.json has "postinstall": "npm run build", which bundles
+# src/index.ts with esbuild and copies src/scripts/** into build/, and
+# build/ is git-ignored (never checked in). Excluding /src here makes the
+# published tarball unbuildable and postinstall fails deterministically.
+# tsconfig.json is shipped for a second reason: the installer
+# (installer.js -> nodeMcps) copies this folder, runs `npm install` and
+# only runs its explicit `npm run build` step when tsconfig.json or
+# tsconfig.build.json is present in the copy.
+# Do not re-add /src or tsconfig.json.
 
 # Development tools
 .cursor/
