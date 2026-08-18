@@ -9,3 +9,9 @@ onnxruntime>=1.14.0
 tokenizers>=0.13.0
 google-generativeai>=0.3.0
 google-genai>=1.0.0
+
+# spaCy backs lemmatization and entity extraction (memb/utils/spacy_models.py).
+# The membai[nlp] extra named in the runtime error is not vendored here, so require spaCy directly.
+# The en_core_web_sm model is not installable as a plain requirement; spacy_models.py downloads it
+# on first use, or install it manually: python -m spacy download en_core_web_sm
+spacy>=3.7,<4.0

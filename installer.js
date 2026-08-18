@@ -20,6 +20,7 @@ const colors = {
     purpleBold: "\x1b[1;\x1b[38;2;157;78;221m",
     green: "\x1b[32m",
     yellow: "\x1b[33m",
+    red: "\x1b[31m",
     magenta: "\x1b[35m",
     dim: "\x1b[2m"
 };
@@ -40,19 +41,55 @@ const unsupportedMcpConfigKeys = [
     'bdb_blender_mcp_fallback'
 ];
 
+// Entries whose command needs a toolchain that is not part of a standard
+// installation. The probe runs at install time; when it fails the key joins
+// unsupportedMcpConfigKeys and the server is never registered.
+const conditionalMcpConfigKeys = [
+    { key: 'bdb_after_effects_mcp_fallback', requires: 'go', hint: 'https://go.dev/dl/' }
+];
+
+function hasExecutable(binary) {
+    try {
+        const lookup = process.platform === 'win32' ? `where ${binary}` : `command -v ${binary}`;
+        execSync(lookup, { stdio: 'ignore' });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function resolveUnsupportedMcpConfigKeys() {
+    const keys = unsupportedMcpConfigKeys.slice();
+    conditionalMcpConfigKeys.forEach(entry => {
+        if (hasExecutable(entry.requires)) return;
+        console.log(`${colors.dim} -> Skipping MCP '${entry.key}': '${entry.requires}' was not found on PATH (${entry.hint}).${colors.reset}`);
+        keys.push(entry.key);
+    });
+    return keys;
+}
+
+function readTextFile(filePath) {
+    const buf = fs.readFileSync(filePath);
+    if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.toString('utf16le', 2);
+    if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return buf.toString('utf8', 3);
+    return buf.toString('utf8');
+}
+
+// readJsonFile only reports "null" on failure. Callers that have to explain the
+// failure to the user get the underlying parser message from here.
+function describeJsonParseError(filePath) {
+    try {
+        JSON.parse(readTextFile(filePath));
+        return '';
+    } catch (e) {
+        return e.message;
+    }
+}
+
 function readJsonFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
     try {
-        const buf = fs.readFileSync(filePath);
-        let raw;
-        if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
-            raw = buf.toString('utf16le', 2);
-        } else if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) {
-            raw = buf.toString('utf8', 3);
-        } else {
-            raw = buf.toString('utf8');
-        }
-        return JSON.parse(raw);
+        return JSON.parse(readTextFile(filePath));
     } catch (e) {
         try {
             return readJsoncFile(filePath);
@@ -237,6 +274,49 @@ const backupDir = path.join(geminiDir, `skills_backup_${timestamp}`);
 
 // Auto-accept flags for CI/CD or autonomous agents
 const isAutoYes = process.argv.includes('-y') || process.argv.includes('--yes');
+
+// Optional subset selection for scripted runs: --mcps=memb-mcp,open-design
+// --mcps=all keeps the --yes default (everything), --mcps=none installs only
+// the core module. Without the flag nothing about --yes changes.
+const mcpsArgRaw = process.argv.find(a => a === '--mcps' || a.startsWith('--mcps='));
+const mcpsArg = (mcpsArgRaw && mcpsArgRaw.startsWith('--mcps=')) ? mcpsArgRaw.slice('--mcps='.length) : null;
+if (mcpsArgRaw && mcpsArg === null) {
+    console.warn(`${colors.yellow} -> Ignoring '--mcps' without a value. Use --mcps=<name,name>, --mcps=all or --mcps=none.${colors.reset}`);
+}
+
+const CORE_MCP = 'memb-mcp';
+
+function resolveMcpsArg(availableMcps) {
+    const requested = mcpsArg.split(',').map(s => s.trim()).filter(Boolean);
+    const wantsNone = requested.some(r => ['none', 'core', 'core-only'].includes(r.toLowerCase()));
+    const wantsAll = requested.some(r => r.toLowerCase() === 'all');
+
+    if (wantsAll && !wantsNone) return availableMcps;
+
+    const matched = [];
+    const unknown = [];
+    if (!wantsNone) {
+        requested.forEach(name => {
+            const hit = availableMcps.find(m => m.toLowerCase() === name.toLowerCase());
+            if (hit) {
+                if (!matched.includes(hit)) matched.push(hit);
+            } else if (!['all', 'none', 'core', 'core-only'].includes(name.toLowerCase())) {
+                unknown.push(name);
+            }
+        });
+    }
+
+    if (unknown.length > 0) {
+        console.warn(`${colors.yellow} -> Unknown or unavailable MCP name(s) in --mcps: ${unknown.join(', ')}${colors.reset}`);
+        console.warn(`${colors.dim}    Available for this tier: ${availableMcps.join(', ') || '(none)'}${colors.reset}`);
+    }
+
+    // The core module is installed unconditionally, mirroring the interactive picker.
+    if (availableMcps.includes(CORE_MCP) && !matched.includes(CORE_MCP)) matched.unshift(CORE_MCP);
+
+    console.log(` -> --mcps selection: ${matched.join(', ') || '(none)'}`);
+    return matched;
+}
 
 function detectPlatforms() {
     const detections = [];
@@ -466,6 +546,7 @@ async function promptMcpSelection(mcpsDir, tier) {
 
     availableMcps = availableMcps.filter(m => !unsupportedMcpDirs.includes(m));
 
+    if (mcpsArg !== null) return resolveMcpsArg(availableMcps);
     if (isAutoYes) return availableMcps;
     if (availableMcps.length === 0) return [];
 
@@ -724,6 +805,10 @@ async function promptCredentials(targetMcpDir = '') {
     });
 }
 
+// install_daemon.ps1 exits with this code when it could not register the
+// scheduled task and installed the logon-only startup entry instead.
+const DAEMON_LOGON_FALLBACK_EXIT_CODE = 10;
+
 async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     const prov = openwikiEnv.provider || "google";
     if (!apiKey && !["ollama", "lmstudio"].includes(prov)) { console.log(' -> Skipping OpenWiki Daemon background installation (no API key provided).'); return; }
@@ -757,8 +842,14 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
         }
         const child = spawn(command, args, { stdio: 'inherit', env: daemonEnv });
         child.on('close', (code) => {
-            if (code === 0) {
-                console.log(' -> OpenWiki Daemon installed successfully.');
+            const usedLogonFallback = code === DAEMON_LOGON_FALLBACK_EXIT_CODE;
+            if (code === 0 || usedLogonFallback) {
+                if (usedLogonFallback) {
+                    console.log(`${colors.yellow} -> OpenWiki Daemon installed via the logon-only fallback - no periodic schedule.${colors.reset}`);
+                    console.log(`${colors.yellow}    Documentation is refreshed once per logon instead of every 2 hours; see the reason above.${colors.reset}`);
+                } else {
+                    console.log(' -> OpenWiki Daemon installed successfully (scheduled every 2 hours).');
+                }
                 console.log(' -> Auto-starting OpenWiki Daemon for the first run...');
                 try {
                     const pythonCmd = os.platform() === 'win32' ? 'python' : 'python3';
@@ -883,10 +974,39 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
     }
 }
 
+// The installation runs inside two nested async IIFEs. A throw inside them is an
+// unhandled rejection, and Node ends the process on it -- which took down the
+// universal sync and the final report as well. Every optional file system step
+// therefore goes through installStep(): the step is reported as skipped and the
+// run continues. `hint` says what the user loses by the skipped step.
+function installStep(what, fn, hint) {
+    try {
+        return { ok: true, value: fn() };
+    } catch (e) {
+        console.warn(`${colors.yellow} -> Could not ${what}: ${e.message}${colors.reset}`);
+        if (hint) console.warn(`${colors.yellow}    ${hint}${colors.reset}`);
+        return { ok: false, error: e };
+    }
+}
+
+// Last net for everything installStep() does not cover (a throw from a prompt,
+// from execSync, from a helper). Prints the reason instead of letting Node die
+// with a bare "UnhandledPromiseRejection".
+function reportFatal(stage, e) {
+    console.error(`\n${colors.red}${colors.bold}The installer stopped during ${stage}.${colors.reset}`);
+    console.error(`${colors.red}Reason: ${(e && e.stack) || e}${colors.reset}`);
+    console.error(`${colors.red}Nothing was rolled back; re-running the installer is safe.${colors.reset}`);
+    process.exitCode = 1;
+}
+
 (async () => {
     const { tier, mode, platform, isUniversal, customPaths } = await promptMode();
-    fs.mkdirSync(backupDir, { recursive: true });
-    
+    installStep(
+        `create the backup directory ${backupDir}`,
+        () => fs.mkdirSync(backupDir, { recursive: true }),
+        'The installation continues, but existing files are not backed up.'
+    );
+
     let targetSkillDir = globalConfigDir;
     let targetLegacyDir = globalLegacyDir;
     let targetWorkspaceDir = workspaceDir;
@@ -975,30 +1095,34 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
     ] : [];
 
     console.log(`\nInstalling optimized skills (140 curated skills)${tier === '2' ? ' [Basic Tier]' : ''}...`);
-    fs.mkdirSync(targetSkillDir, { recursive: true });
-    fs.mkdirSync(targetLegacyDir, { recursive: true });
-    fs.mkdirSync(targetWorkspaceDir, { recursive: true });
+    installStep('create the skill target directories', () => {
+        fs.mkdirSync(targetSkillDir, { recursive: true });
+        fs.mkdirSync(targetLegacyDir, { recursive: true });
+        fs.mkdirSync(targetWorkspaceDir, { recursive: true });
+    }, 'The skill copy below will most likely be skipped as well.');
 
     // Copy all subfolders in skills/ to their respective destinations
     const skillsBase = path.join(srcDir, 'skills');
     if (fs.existsSync(skillsBase)) {
-        const dirs = fs.readdirSync(skillsBase);
-        for (const dir of dirs) {
-            const fullPath = path.join(skillsBase, dir);
-            if (!fs.statSync(fullPath).isDirectory()) continue;
-            
-            if (dir === 'global_legacy') {
-                copyDirRecursiveSync(fullPath, targetLegacyDir, excludeSkills);
-                console.log(" -> Installed global legacy skills.");
-            } else if (dir === 'workspace_agents') {
-                copyDirRecursiveSync(fullPath, targetWorkspaceDir, excludeSkills);
-                console.log(" -> Installed workspace skills.");
-            } else {
-                // Copy all other skill folders (global_config, basic, bdbmediastorm, etc.) into targetSkillDir
-                copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
+        installStep('install the skills', () => {
+            const dirs = fs.readdirSync(skillsBase);
+            for (const dir of dirs) {
+                const fullPath = path.join(skillsBase, dir);
+                if (!fs.statSync(fullPath).isDirectory()) continue;
+
+                if (dir === 'global_legacy') {
+                    copyDirRecursiveSync(fullPath, targetLegacyDir, excludeSkills);
+                    console.log(" -> Installed global legacy skills.");
+                } else if (dir === 'workspace_agents') {
+                    copyDirRecursiveSync(fullPath, targetWorkspaceDir, excludeSkills);
+                    console.log(" -> Installed workspace skills.");
+                } else {
+                    // Copy all other skill folders (global_config, basic, bdbmediastorm, etc.) into targetSkillDir
+                    copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
+                }
             }
-        }
-        console.log(" -> Installed all global config & core skills.");
+            console.log(" -> Installed all global config & core skills.");
+        }, 'The skills are missing or incomplete; the rest of the installation continues.');
     }
 
     // Sync all BDB skills across Claude Code, Codex, Cursor, Roo, and ~/.agents/
@@ -1010,8 +1134,10 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
         const sourcePath = path.join(srcDir, dir);
         if (fs.existsSync(sourcePath)) {
             const targetPath = path.join(currentDir, dir);
-            copyDirRecursiveSync(sourcePath, targetPath);
-            console.log(` -> Copied ${dir} to ${targetPath}`);
+            installStep(`copy ${dir} to ${targetPath}`, () => {
+                copyDirRecursiveSync(sourcePath, targetPath);
+                console.log(` -> Copied ${dir} to ${targetPath}`);
+            }, 'The remaining harness directories are still copied.');
         }
     });
 
@@ -1019,8 +1145,10 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
     const globalAgentsDir = path.join(os.homedir(), '.agents');
     const agentsDirSrc = path.join(srcDir, '.agents');
     if (fs.existsSync(agentsDirSrc)) {
-        copyDirRecursiveSync(agentsDirSrc, globalAgentsDir);
-        console.log(` -> Synced global .agents/ (agents.md, workflows/startcycle.md) to ${globalAgentsDir}`);
+        installStep(`sync global .agents/ to ${globalAgentsDir}`, () => {
+            copyDirRecursiveSync(agentsDirSrc, globalAgentsDir);
+            console.log(` -> Synced global .agents/ (agents.md, workflows/startcycle.md) to ${globalAgentsDir}`);
+        }, 'agents.md and workflows/startcycle.md are missing there.');
     }
 
     // Roo Code / Custom Modes sync (.roomodes)
@@ -1073,70 +1201,90 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                 }
             ]
         };
-        fs.writeFileSync(rooModesPath, JSON.stringify(rooModesData, null, 2));
-        console.log(` -> Synced Roo Code custom modes to ${rooModesPath}`);
+        installStep(`write ${rooModesPath}`, () => {
+            fs.writeFileSync(rooModesPath, JSON.stringify(rooModesData, null, 2));
+            console.log(` -> Synced Roo Code custom modes to ${rooModesPath}`);
+        }, 'Roo Code keeps its existing custom modes.');
     }
 
     const geminiMdSrc = path.join(srcDir, 'GEMINI.md');
     if (fs.existsSync(geminiMdSrc)) {
         // 1. Antigravity Global config
-        fs.copyFileSync(geminiMdSrc, path.join(geminiDir, 'GEMINI.md'));
-        console.log(` -> Installed GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`);
-        
+        installStep(`install GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`, () => {
+            fs.copyFileSync(geminiMdSrc, path.join(geminiDir, 'GEMINI.md'));
+            console.log(` -> Installed GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`);
+        }, 'The harness injection below still runs.');
+
         // 2. Universal Harness Injection
-        const globalRules = fs.readFileSync(geminiMdSrc, 'utf8');
+        // Reading the sources is the precondition for every injection below, so a
+        // failure here skips them all instead of injecting an empty rule set.
         const startcycleWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'startcycle.md');
-        const startcycleContent = fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '';
-        const agentsMdContent = fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : '';
-        
-        // Cursor Rules
-        const cursorRulesDir = path.join(currentDir, '.cursor', 'rules');
-        fs.mkdirSync(cursorRulesDir, { recursive: true });
-        const cursorRulePath = path.join(cursorRulesDir, '000_global_rules.mdc');
-        fs.writeFileSync(cursorRulePath, `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
-        if (startcycleContent) {
-            fs.writeFileSync(path.join(cursorRulesDir, 'startcycle.mdc'), `---\nname: startcycle\ndescription: Autonomous Multi-Agent Development Pipeline (/startcycle)\n---\n\n${startcycleContent}`);
-        }
-        if (agentsMdContent) {
-            fs.writeFileSync(path.join(cursorRulesDir, 'bdb_agents.mdc'), `---\nname: bdb-agents\ndescription: BDB Multi-Agent Team Specifications\n---\n\n${agentsMdContent}`);
-        }
-        console.log(` -> Injected Cursor Rules (global_rules, startcycle, bdb_agents) to ${cursorRulesDir}`);
-        
-        // Claude Code
-        const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
-        let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
-        if (!claudeContent.includes("Global Agent Instructions")) {
-            claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
-        }
-        if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
-            claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
-        }
-        fs.writeFileSync(claudeMdPath, claudeContent);
-        console.log(` -> Synced CLAUDE.md with Global Rules and /startcycle workflow`);
-        
-        // GitHub Copilot
-        const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');
-        if (fs.existsSync(path.dirname(copilotPath))) {
-            const copilotContent = fs.existsSync(copilotPath) ? fs.readFileSync(copilotPath, 'utf8') : '';
-            if (!copilotContent.includes("Global Agent Instructions")) {
-                fs.appendFileSync(copilotPath, `\n\n${globalRules}`);
-                console.log(` -> Injected Global Rules to ${copilotPath}`);
+        const sources = installStep('read the global rule sources', () => ({
+            globalRules: fs.readFileSync(geminiMdSrc, 'utf8'),
+            startcycleContent: fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '',
+            agentsMdContent: fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : ''
+        }), 'Cursor, Claude, Copilot and Codex keep their current instruction files.');
+
+        if (sources.ok) {
+            const { globalRules, startcycleContent, agentsMdContent } = sources.value;
+
+            // Cursor Rules
+            const cursorRulesDir = path.join(currentDir, '.cursor', 'rules');
+            installStep(`write the Cursor rules to ${cursorRulesDir}`, () => {
+                fs.mkdirSync(cursorRulesDir, { recursive: true });
+                const cursorRulePath = path.join(cursorRulesDir, '000_global_rules.mdc');
+                fs.writeFileSync(cursorRulePath, `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
+                if (startcycleContent) {
+                    fs.writeFileSync(path.join(cursorRulesDir, 'startcycle.mdc'), `---\nname: startcycle\ndescription: Autonomous Multi-Agent Development Pipeline (/startcycle)\n---\n\n${startcycleContent}`);
+                }
+                if (agentsMdContent) {
+                    fs.writeFileSync(path.join(cursorRulesDir, 'bdb_agents.mdc'), `---\nname: bdb-agents\ndescription: BDB Multi-Agent Team Specifications\n---\n\n${agentsMdContent}`);
+                }
+                console.log(` -> Injected Cursor Rules (global_rules, startcycle, bdb_agents) to ${cursorRulesDir}`);
+            }, 'Cursor keeps its existing rules.');
+
+            // Claude Code
+            const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
+            installStep(`sync ${claudeMdPath}`, () => {
+                let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+                if (!claudeContent.includes("Global Agent Instructions")) {
+                    claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
+                }
+                if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
+                    claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
+                }
+                fs.writeFileSync(claudeMdPath, claudeContent);
+                console.log(` -> Synced CLAUDE.md with Global Rules and /startcycle workflow`);
+            }, 'CLAUDE.md is unchanged.');
+
+            // GitHub Copilot
+            const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');
+            if (fs.existsSync(path.dirname(copilotPath))) {
+                installStep(`inject the global rules into ${copilotPath}`, () => {
+                    const copilotContent = fs.existsSync(copilotPath) ? fs.readFileSync(copilotPath, 'utf8') : '';
+                    if (!copilotContent.includes("Global Agent Instructions")) {
+                        fs.appendFileSync(copilotPath, `\n\n${globalRules}`);
+                        console.log(` -> Injected Global Rules to ${copilotPath}`);
+                    }
+                }, 'copilot-instructions.md is unchanged.');
             }
+
+            // Codex Plugin
+            const codexDir = path.join(currentDir, '.codex-plugin');
+            installStep(`sync ${path.join(codexDir, 'system.md')}`, () => {
+                fs.mkdirSync(codexDir, { recursive: true });
+                const codexPath = path.join(codexDir, 'system.md');
+                let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
+                if (!codexContent.includes("Global Agent Instructions")) {
+                    codexContent = `${codexContent}\n\n${globalRules}`.trim();
+                }
+                if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
+                    codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
+                }
+                fs.writeFileSync(codexPath, codexContent);
+                console.log(` -> Synced .codex-plugin/system.md with Global Rules and /startcycle workflow`);
+            }, '.codex-plugin/system.md is unchanged.');
         }
-        
-        // Codex Plugin
-        const codexDir = path.join(currentDir, '.codex-plugin');
-        fs.mkdirSync(codexDir, { recursive: true });
-        const codexPath = path.join(codexDir, 'system.md');
-        let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
-        if (!codexContent.includes("Global Agent Instructions")) {
-            codexContent = `${codexContent}\n\n${globalRules}`.trim();
-        }
-        if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
-            codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
-        }
-        fs.writeFileSync(codexPath, codexContent);
-        console.log(` -> Synced .codex-plugin/system.md with Global Rules and /startcycle workflow`);
     }
 
     (async () => {
@@ -1146,12 +1294,16 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
         let creds = {};
         
         if (selectedMcps.length > 0) {
-            fs.mkdirSync(targetMcpDir, { recursive: true });
-            if (!fs.existsSync(mcpCodeTarget)) fs.mkdirSync(mcpCodeTarget, { recursive: true });
+            installStep(`create ${targetMcpDir}`, () => {
+                fs.mkdirSync(targetMcpDir, { recursive: true });
+                if (!fs.existsSync(mcpCodeTarget)) fs.mkdirSync(mcpCodeTarget, { recursive: true });
+            }, 'The MCP steps below will most likely fail as well and are reported individually.');
 
             console.log(`\nInstalling ${selectedMcps.length} selected MCPs...`);
             selectedMcps.forEach(mcp => {
-                copyDirRecursiveSync(path.join(mcpSrcDir, mcp), path.join(mcpCodeTarget, mcp));
+                installStep(`copy the MCP server ${mcp}`, () => {
+                    copyDirRecursiveSync(path.join(mcpSrcDir, mcp), path.join(mcpCodeTarget, mcp));
+                }, 'The remaining MCP servers are still installed.');
             });
             console.log(` -> Installed selected MCP servers to ${mcpCodeTarget}`);
 
@@ -1221,18 +1373,35 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                 }
             });
 
+            // The backup runs before every branch below, so an unprotected throw here
+            // (a directory in place of the config file -> EISDIR, an unreadable file
+            // -> EACCES) killed the run one line ahead of the merge region that was
+            // hardened for exactly that case. A missing backup costs the safety copy,
+            // not the installation.
             if (fs.existsSync(mcpConfigPath)) {
-                fs.copyFileSync(mcpConfigPath, path.join(backupDir, 'mcp_config_backup.json'));
-                console.log(` -> Backed up existing ${path.basename(mcpConfigPath)}`);
+                installStep(`back up ${path.basename(mcpConfigPath)}`, () => {
+                    fs.copyFileSync(mcpConfigPath, path.join(backupDir, 'mcp_config_backup.json'));
+                    console.log(` -> Backed up existing ${path.basename(mcpConfigPath)}`);
+                }, 'The installation continues without a backup copy of this file.');
             }
-            
-            let mcpConfigStr = fs.readFileSync(path.join(srcDir, 'mcp_config.json'), 'utf8');
+
+            // Our own template. Without it there is nothing to write, so the config
+            // branches below are skipped -- but the credential prompt, the .env, the
+            // OpenWiki daemon, the universal sync and the final report still run.
+            const mcpTemplatePath = path.join(srcDir, 'mcp_config.json');
+            const mcpTemplate = installStep(
+                `read the MCP template ${mcpTemplatePath}`,
+                () => fs.readFileSync(mcpTemplatePath, 'utf8'),
+                'No MCP config is generated; the existing config stays untouched.'
+            );
+            let mcpConfigStr = mcpTemplate.ok ? mcpTemplate.value : '';
+            const skippedMcpConfigKeys = resolveUnsupportedMcpConfigKeys();
             try {
                 const parsedMcpConfig = JSON.parse(mcpConfigStr);
                 const finalMcpServers = {};
                 const availableFolders = fs.readdirSync(mcpSrcDir);
                 for (const [key, val] of Object.entries(parsedMcpConfig.mcpServers)) {
-                    let keep = true;
+                    let keep = !skippedMcpConfigKeys.includes(key);
                     for (const available of availableFolders) {
                         if (!selectedMcps.includes(available) && JSON.stringify(val).includes(available)) {
                             keep = false;
@@ -1265,33 +1434,195 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
                 const pythonBinPath = process.platform === 'win32'
                     ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')
                     : path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'bin', 'python');
-                mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, pythonBinPath.replace(/\\/g, '/'));
-                mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, creds.gemini || process.env.GEMINI_API_KEY || '');
+                // Both placeholders sit inside JSON string literals, and both are
+                // substituted through a replacer function: in a replacement *string*
+                // String.replace() reads $&, $1, $` as backreferences, so a key like
+                // "AIza$&injected" used to inject the placeholder back into itself.
+                // The value additionally goes through JSON.stringify(...).slice(1, -1),
+                // i.e. exactly the JSON escaping the GitHub token gets below, so a
+                // quote or a backslash in it cannot break the surrounding JSON.
+                const pythonBinValue = pythonBinPath.split('\\').join('/');
+                const geminiKeyValue = creds.gemini || process.env.GEMINI_API_KEY || '';
+                mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, () => JSON.stringify(pythonBinValue).slice(1, -1));
+                mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, () => JSON.stringify(geminiKeyValue).slice(1, -1));
             }
-            
-            if (mode === '1' && fs.existsSync(mcpConfigPath)) {
+
+            // @modelcontextprotocol/server-github reads the token from its own process
+            // environment, so the .env we write next to the config never reaches it.
+            // Injected after parsing (not via placeholder) because JSON.stringify escapes
+            // the token for us. With an empty token nothing is written here at all:
+            // an empty env value would authenticate worse than no env value at all.
+            // That alone does not protect a token the user configured themselves --
+            // the merge below replaces whole server entries, so it is the env carry-
+            // over there that keeps an existing github.env.GITHUB_PERSONAL_ACCESS_TOKEN.
+            const githubToken = (creds.github || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || '').trim();
+            if (githubToken) {
                 try {
-                    const oldConfig = readJsonFile(mcpConfigPath);
-                    const newConfig = JSON.parse(mcpConfigStr);
-                    if (!oldConfig) throw new Error('unparseable existing config');
-                    if (oldConfig.mcpServers) {
-                        unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
+                    const tokenizedConfig = JSON.parse(mcpConfigStr);
+                    if (tokenizedConfig.mcpServers && tokenizedConfig.mcpServers.github) {
+                        tokenizedConfig.mcpServers.github.env = Object.assign(
+                            {},
+                            tokenizedConfig.mcpServers.github.env,
+                            { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken }
+                        );
+                        mcpConfigStr = JSON.stringify(tokenizedConfig, null, 2);
+                        console.log(` -> Passed the GitHub token to the github MCP server entry.`);
                     }
-                    oldConfig.mcpServers = Object.assign({}, oldConfig.mcpServers || {}, newConfig.mcpServers || {});
-                    fs.writeFileSync(mcpConfigPath, JSON.stringify(oldConfig, null, 2));
-                    console.log(` -> Merged BDB MCPs into existing ${path.basename(mcpConfigPath)}`);
                 } catch (e) {
-                    console.log(` -> Failed to parse existing JSON, overwriting ${path.basename(mcpConfigPath)}`);
-                    fs.writeFileSync(mcpConfigPath, mcpConfigStr);
+                    console.warn(`${colors.yellow} -> Warning: could not attach the GitHub token to the github MCP entry: ${e.message}${colors.reset}`);
+                }
+            }
+
+
+            // Only consulted on the merge path -- replace mode overwrites the file and
+            // never has to read it. readTextFile() throws for a directory (EISDIR) and
+            // for an unreadable file (EACCES), and the async IIFE around this code has
+            // neither try/catch nor .catch(), so an escaping error became an unhandled
+            // rejection that killed the process before the universal sync and the final
+            // report could run.
+            const existingConfigIsEmpty = () => {
+                try {
+                    return readTextFile(mcpConfigPath).trim().length === 0;
+                } catch (e) {
+                    return false;
+                }
+            };
+
+            const configName = path.basename(mcpConfigPath);
+            const isTomlConfig = mcpConfigPath.toLowerCase().endsWith('.toml');
+
+            if (!mcpTemplate.ok) {
+                // Nothing to write: writing the empty fallback would wipe the servers
+                // the user already has in there.
+                console.warn(`${colors.yellow} -> No MCP config was written: the template could not be read.${colors.reset}`);
+                console.warn(`${colors.yellow}    ${configName} was left untouched.${colors.reset}`);
+            } else if (isTomlConfig) {
+                // Codex keeps its MCP servers in config.toml. This installer only
+                // produces JSON and has no TOML parser available, so the file is
+                // neither read as JSON nor written: overwriting it with JSON destroyed
+                // the whole Codex configuration, and running it through the JSON error
+                // path produced a fresh .corrupt_<timestamp>.bak plus a .bdb-new.json
+                // on every single run while reporting "is not valid JSON" about a file
+                // that was never meant to be JSON. The servers are written next to it
+                // as a ready-to-paste TOML snippet under a fixed name, so a re-run
+                // overwrites that one file instead of piling up more.
+                const snippetPath = `${mcpConfigPath}.bdb-mcp-servers.toml`;
+                const tomlKey = (k) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k));
+                // JSON.stringify emits only escapes that are valid in a TOML basic
+                // string as well (\", \\, \b, \f, \n, \r, \t, \uXXXX) and never \/.
+                const tomlValue = (v) => {
+                    if (Array.isArray(v)) return `[${v.map(tomlValue).join(', ')}]`;
+                    if (v && typeof v === 'object') {
+                        const pairs = Object.entries(v).map(([k, x]) => `${tomlKey(k)} = ${tomlValue(x)}`);
+                        return `{ ${pairs.join(', ')} }`;
+                    }
+                    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+                    return JSON.stringify(String(v));
+                };
+                try {
+                    const servers = JSON.parse(mcpConfigStr).mcpServers || {};
+                    const tables = Object.entries(servers).map(([name, cfg]) => {
+                        const rows = [`[mcp_servers.${tomlKey(name)}]`];
+                        Object.entries(cfg || {}).forEach(([k, v]) => rows.push(`${tomlKey(k)} = ${tomlValue(v)}`));
+                        return rows.join('\n');
+                    });
+                    const snippet = [
+                        '# BDB MCP servers for Codex, generated by installer.js.',
+                        `# Append these tables to ${configName}; if you ran the installer`,
+                        '# before, replace the [mcp_servers.*] tables of the same name',
+                        '# instead of adding them a second time.',
+                        '',
+                        tables.join('\n\n'),
+                        ''
+                    ].join('\n');
+                    fs.writeFileSync(snippetPath, snippet);
+                    console.warn(`\n${colors.yellow}${colors.bold} -> ${configName} is TOML; this installer cannot write TOML.${colors.reset}`);
+                    console.warn(`${colors.yellow}    ${configName} was left untouched - nothing overwritten, no backup copies.${colors.reset}`);
+                    console.warn(`${colors.yellow}    MCP servers as a TOML snippet: ${snippetPath}${colors.reset}`);
+                    console.warn(`${colors.yellow}    Next step: append that snippet to ${configName} (replacing same-named`);
+                    console.warn(`    [mcp_servers.*] tables from an earlier run) and restart Codex.${colors.reset}\n`);
+                } catch (e) {
+                    console.warn(`${colors.yellow} -> Could not write the Codex TOML snippet: ${e.message}${colors.reset}`);
+                    console.warn(`${colors.yellow}    ${configName} was left untouched.${colors.reset}`);
+                }
+            } else if (mode === '1' && fs.existsSync(mcpConfigPath) && !existingConfigIsEmpty()) {
+                const oldConfig = readJsonFile(mcpConfigPath);
+                if (!oldConfig) {
+                    // Merge mode promises to keep what is already there. Overwriting an
+                    // unreadable file would silently drop every non-BDB server entry, so
+                    // the original is left alone and the user gets a copy plus the reason.
+                    const parseError = describeJsonParseError(mcpConfigPath) || 'file could not be decoded as JSON';
+                    const backupCopy = `${mcpConfigPath}.corrupt_${timestamp}.bak`;
+                    const sideCarPath = `${mcpConfigPath}.bdb-new.json`;
+                    let backupWritten = true;
+                    try {
+                        fs.copyFileSync(mcpConfigPath, backupCopy);
+                    } catch (copyError) {
+                        backupWritten = false;
+                        console.warn(`${colors.yellow} -> Could not create the backup copy: ${copyError.message}${colors.reset}`);
+                    }
+                    try {
+                        fs.writeFileSync(sideCarPath, mcpConfigStr);
+                    } catch (writeError) {
+                        console.warn(`${colors.yellow} -> Could not write ${path.basename(sideCarPath)}: ${writeError.message}${colors.reset}`);
+                    }
+                    console.warn(`\n${colors.yellow}${colors.bold} -> ${configName} is not valid JSON - merge skipped, nothing was overwritten.${colors.reset}`);
+                    console.warn(`${colors.yellow}    Reason: ${parseError}${colors.reset}`);
+                    if (backupWritten) console.warn(`${colors.yellow}    Backup copy:  ${backupCopy}${colors.reset}`);
+                    console.warn(`${colors.yellow}    BDB config:   ${sideCarPath}${colors.reset}`);
+                    console.warn(`${colors.yellow}    Next step: repair ${configName} (or replace it with the BDB config above,`);
+                    console.warn(`    copying your own server entries back in) and re-run this installer.${colors.reset}\n`);
+                } else {
+                    try {
+                        if (oldConfig.mcpServers) {
+                            // Only the statically unsupported keys are pruned from
+                            // the *existing* config. The conditional keys in
+                            // skippedMcpConfigKeys are left out of what we write (see
+                            // the filter above), but deleting them here as well would
+                            // remove an entry the user configured themselves - an own
+                            // bdb_after_effects_mcp_fallback with an absolute Go path
+                            // would disappear the moment `where go` fails.
+                            unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
+                        }
+                        const newConfig = JSON.parse(mcpConfigStr);
+                        const oldServers = oldConfig.mcpServers || {};
+                        const newServers = newConfig.mcpServers || {};
+                        // Object.assign replaces a server entry as a whole. Where our
+                        // entry brings no env of its own, an env the user configured on
+                        // the existing entry (their own GITHUB_PERSONAL_ACCESS_TOKEN,
+                        // for instance) is carried over first so the merge cannot drop
+                        // it. An env we do bring still wins.
+                        Object.keys(newServers).forEach(key => {
+                            const previous = oldServers[key];
+                            const incoming = newServers[key];
+                            if (!previous || typeof previous !== 'object') return;
+                            if (!incoming || typeof incoming !== 'object') return;
+                            if (!incoming.env && previous.env) incoming.env = previous.env;
+                        });
+                        oldConfig.mcpServers = Object.assign({}, oldServers, newServers);
+                        fs.writeFileSync(mcpConfigPath, JSON.stringify(oldConfig, null, 2));
+                        console.log(` -> Merged BDB MCPs into existing ${configName}`);
+                    } catch (e) {
+                        console.warn(`${colors.yellow} -> Could not merge into ${configName}: ${e.message}${colors.reset}`);
+                        console.warn(`${colors.yellow}    ${configName} was left unchanged; the backup from this run is in ${backupDir}.${colors.reset}`);
+                    }
                 }
             } else {
-                if ((platform === '2' || platform === '4') && !fs.existsSync(mcpConfigPath)) {
-                     const wrapper = { mcpServers: JSON.parse(mcpConfigStr).mcpServers };
-                     fs.writeFileSync(mcpConfigPath, JSON.stringify(wrapper, null, 2));
-                } else {
-                     fs.writeFileSync(mcpConfigPath, mcpConfigStr);
+                // Same reason as the read above: this runs inside an async IIFE with
+                // no catch, so a failing write (EISDIR, EACCES, read-only volume)
+                // would end the run as an unhandled rejection instead of a message.
+                try {
+                    if ((platform === '2' || platform === '4') && !fs.existsSync(mcpConfigPath)) {
+                        const wrapper = { mcpServers: JSON.parse(mcpConfigStr).mcpServers };
+                        fs.writeFileSync(mcpConfigPath, JSON.stringify(wrapper, null, 2));
+                    } else {
+                        fs.writeFileSync(mcpConfigPath, mcpConfigStr);
+                    }
+                    console.log(` -> Installed optimized MCP config to ${targetMcpDir}`);
+                } catch (e) {
+                    console.warn(`${colors.yellow} -> Could not write ${configName}: ${e.message}${colors.reset}`);
+                    console.warn(`${colors.yellow}    The MCP servers were NOT registered; fix the path and re-run the installer.${colors.reset}`);
                 }
-                console.log(` -> Installed optimized MCP config to ${targetMcpDir}`);
             }
         } else {
             console.log(" -> Skipping MCP installation.");
@@ -1300,13 +1631,33 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
         if (creds.gemini || creds.github || creds.keyEnvName) {
             const envPath = path.join(targetMcpDir, '.env');
             let envContent = '';
-            if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, 'utf8') + '\n';
-            
+            // An unreadable .env (EACCES, or a directory under that name -> EISDIR)
+            // must not end the run. Starting from empty would silently drop foreign
+            // entries on the write below, so the write is skipped in that case too.
+            let envReadable = true;
+            if (fs.existsSync(envPath)) {
+                const existingEnv = installStep(
+                    `read ${envPath}`,
+                    () => fs.readFileSync(envPath, 'utf8'),
+                    'The credentials are not written; entries already in the file stay as they are.'
+                );
+                if (existingEnv.ok) envContent = existingEnv.value + '\n';
+                else envReadable = false;
+            }
+
+            // The second run replaces an existing line. In a replacement *string*
+            // String.replace() reads $&, $`, $', $$ and $1 as backreferences, so a
+            // key containing them wrote the matched line back into itself instead of
+            // the key ("AIza$&injected" -> "AIzaGEMINI_API_KEY=...injected"). A
+            // replacer function receives the value verbatim, exactly as the MCP
+            // config placeholders in this file already do it. The key additionally
+            // goes into a RegExp, so it is escaped for the search side as well.
+            const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const updateOrAppend = (key, val) => {
                 if (!val) return;
-                const lineRegex = new RegExp(`^${key}=.*$`, 'm');
+                const lineRegex = new RegExp(`^${escapeRegExp(key)}=.*$`, 'm');
                 if (lineRegex.test(envContent)) {
-                    envContent = envContent.replace(lineRegex, `${key}=${val}`);
+                    envContent = envContent.replace(lineRegex, () => `${key}=${val}`);
                 } else {
                     envContent += `${key}=${val}\n`;
                 }
@@ -1316,9 +1667,11 @@ function syncSkillsToGlobalHarnesses(srcDir, excludeSkills = []) {
             if (creds.github) updateOrAppend('GITHUB_PERSONAL_ACCESS_TOKEN', creds.github);
             if (creds.keyEnvName && creds.gemini) updateOrAppend(creds.keyEnvName, creds.gemini);
 
-            if (envContent.trim().length > 0) {
-                fs.writeFileSync(envPath, envContent.trim() + '\n');
-                console.log(` -> Saved credentials to ${envPath}`);
+            if (envReadable && envContent.trim().length > 0) {
+                installStep(`save the credentials to ${envPath}`, () => {
+                    fs.writeFileSync(envPath, envContent.trim() + '\n');
+                    console.log(` -> Saved credentials to ${envPath}`);
+                }, 'Set GEMINI_API_KEY / GITHUB_PERSONAL_ACCESS_TOKEN yourself, or fix the path and re-run the installer.');
             }
         }
 
@@ -1598,6 +1951,6 @@ async function promptOSAgentWorkspace() {
         console.log(`${colors.green}${colors.bold} 🎉 Installation complete! The environment now has the ${colors.reset}`);
         console.log(`${colors.green}${colors.bold}    optimized skill configuration.${colors.reset}`);
         console.log(`${colors.green}${colors.bold}=========================================================${colors.reset}`);
-        
-    })();
-})();
+
+    })().catch(e => reportFatal('the MCP and extension installation', e));
+})().catch(e => reportFatal('the skill installation', e));

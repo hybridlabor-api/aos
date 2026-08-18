@@ -12,7 +12,6 @@ import shutil
 
 from .common import (
     HOOK_MARKER,
-    IS_WINDOWS,
     SHARED_FILES,
     home,
     install_files,
@@ -45,10 +44,18 @@ _GITHUB_REPO = "ppgranger/token-saver"
 
 
 def _settings_dir():
-    """Return Claude Code settings directory."""
-    if IS_WINDOWS:
-        appdata = os.environ.get("APPDATA", os.path.join(home(), "AppData", "Roaming"))
-        return os.path.join(appdata, "claude")
+    r"""Return Claude Code settings directory.
+
+    Claude Code CLI keeps its configuration in ``~/.claude`` on *every*
+    platform, Windows included -- it is not an %APPDATA%-based application.
+    (%APPDATA%\Claude belongs to Claude *Desktop*, a different product with a
+    different config file.)
+
+    Earlier versions returned %APPDATA%\claude on Windows.  The installer then
+    built a complete, self-consistent plugin tree there and reported
+    "REGISTERED"/"ENABLED" while Claude Code never read a single byte of it,
+    and the real ~/.claude/settings.json stayed untouched.
+    """
     return os.path.join(home(), ".claude")
 
 

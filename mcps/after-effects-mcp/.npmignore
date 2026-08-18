@@ -1,6 +1,13 @@
-# Source and development files
-/src
-tsconfig.json
+# NOTE: This package ships its TypeScript/JSX sources on purpose.
+# package.json has "postinstall": "npm run build", which bundles
+# src/index.ts with esbuild and copies src/scripts/** into build/, and
+# build/ is git-ignored (never checked in). Excluding /src here makes the
+# published tarball unbuildable and postinstall fails deterministically.
+# tsconfig.json is shipped for a second reason: the installer
+# (installer.js -> nodeMcps) copies this folder, runs `npm install` and
+# only runs its explicit `npm run build` step when tsconfig.json or
+# tsconfig.build.json is present in the copy.
+# Do not re-add /src or tsconfig.json.
 
 # Development tools
 .cursor/
@@ -20,5 +27,3 @@ yarn-error.log*
 /temp
 *.temp.*
 **/temp/
-
-# Just include built files and scripts for npm packages 
