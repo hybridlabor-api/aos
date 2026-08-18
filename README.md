@@ -650,6 +650,19 @@ git clone https://github.com/hybridlabor-api/bdb-dev-creator-extension.git
 ```
 </details>
 
+<details>
+<summary><strong>🌍 BDB OS Remote Gateway & Thin-Client (`mcps/bdb-os-remote/`)</strong></summary>
+
+- **Zero-Trust SSE Transport:** Run Claude Desktop on your laptop while executing tools natively on your stationary Workstation over a secure Tailscale tunnel.
+- **Asymmetric Topology:** Installs `heimdall-token-saver` locally on your laptop to compress tokens *before* calling the LLM, while `memB`, `synapse`, and file operations are routed to the Workstation.
+- **Offline Clone Tool:** One-click project archives streamed seamlessly over Tailscale without heavy `node_modules`.
+- **Direct Repository:** Access the gateway at [github.com/hybridlabor-api/bdb-os-remote](https://github.com/hybridlabor-api/bdb-os-remote) or install via NPX:
+
+```bash
+npx @hybridlabor-api/bdb-os-remote installer
+```
+</details>
+
 ---
 
 ## 🧠 memB: Custom Semantic Brain
