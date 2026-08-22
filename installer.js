@@ -494,7 +494,8 @@ function reloadDaemons() {
         const daemons = [
             { name: 'Synapse 3D', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.synapse.plist') },
             { name: 'BDB Remote Gateway', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.hybridlabor.bdb-remote.plist') },
-            { name: 'Agent Workspace (ao)', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.ao.daemon.plist') }
+            { name: 'Agent Workspace (ao)', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.ao.daemon.plist') },
+            { name: 'memB WebUI', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.memb.webui.plist') }
         ];
         for (const d of daemons) {
             if (fs.existsSync(d.plist)) {
@@ -2148,7 +2149,6 @@ async function promptDevToolInstaller(isSilent = false) {
 
 async function promptMemB(isSilent = false) {
     if (!isSilent && isAutoYes) return;
-    
     if (!isSilent) {
         console.log(`\n${colors.cyan}${colors.bold}🧠 memB Vector Engine (Local Long-Term Agent Memory)${colors.reset}`);
         const doInstall = await promptSingleSelect("Install 'memB' (Autonomous Vector & Semantic Memory Engine)?", [{label:'Yes (Recommended)', value:true}, {label:'No, skip it', value:false}], 0);
@@ -2159,6 +2159,78 @@ async function promptMemB(isSilent = false) {
     const membDir = path.join(basePath, 'memB');
 
     downloadOrUpdateModule('@hybridlabor-api/memb', membDir, 'memB Vector Engine');
+
+    // --- Venv Bootstrap für WebUI & CLI ---
+    const reqFile = path.join(membDir, 'requirements.txt');
+    const serverPy = path.join(membDir, 'src', 'backend', 'server.py');
+    if (fs.existsSync(reqFile)) {
+        try {
+            const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+            const venvPython = process.platform === 'win32'
+                ? path.join(membDir, '.venv', 'Scripts', 'python.exe')
+                : path.join(membDir, '.venv', 'bin', 'python');
+
+            if (!fs.existsSync(venvPython)) {
+                console.log(` -> Bootstrapping Python venv for memB standalone...`);
+                try {
+                    execSync(`uv venv --seed .venv`, { cwd: membDir, stdio: 'ignore' });
+                } catch (e1) {
+                    execSync(`${pythonCmd} -m venv .venv`, { cwd: membDir, stdio: 'ignore' });
+                }
+            }
+
+            const pipViaPython = `"${venvPython}" -m pip`;
+            console.log(` -> Installing Python dependencies for memB standalone...`);
+            runPipWithRetry(`${pipViaPython} install --upgrade setuptools --timeout 30 --no-input`, { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
+            runPipWithRetry(`${pipViaPython} install -r requirements.txt --timeout 30 --no-input`, { cwd: membDir, stdio: 'inherit' }, 'pip install for memB standalone', 2, 900000);
+
+            // FastAPI + uvicorn für den WebUI Server
+            if (fs.existsSync(serverPy)) {
+                runPipWithRetry(`${pipViaPython} install fastapi uvicorn --timeout 30 --no-input`, { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
+                console.log(` -> ✅ memB WebUI Server bereit (Port 8088)`);
+            }
+
+            console.log(` -> ✅ memB standalone venv setup completed.`);
+        } catch (e) {
+            console.warn(`Warning: Failed to set up memB standalone venv: ${e.message}`);
+        }
+    }
+
+    // --- macOS LaunchAgent für memB WebUI ---
+    if (process.platform === 'darwin' && fs.existsSync(serverPy)) {
+        const venvPython = path.join(membDir, '.venv', 'bin', 'python');
+        const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.bdb.memb.webui.plist');
+        const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bdb.memb.webui</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${venvPython}</string>
+        <string>${serverPy}</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${path.join(membDir, 'src', 'backend')}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${path.join(os.homedir(), '.memb', 'webui.stdout.log')}</string>
+    <key>StandardErrorPath</key>
+    <string>${path.join(os.homedir(), '.memb', 'webui.stderr.log')}</string>
+</dict>
+</plist>`;
+        try {
+            fs.mkdirSync(path.join(os.homedir(), '.memb'), { recursive: true });
+            fs.writeFileSync(plistPath, plistContent);
+            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            console.log(` -> ✅ memB WebUI LaunchAgent aktiv (Port 8088)`);
+        } catch(e) {}
+    }
 }
 
 async function promptEcosystemHealthScheduler() {
