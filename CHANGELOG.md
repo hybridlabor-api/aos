@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.3](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.2...v3.9.3) (2026-08-22)
+
+
+### Bug Fixes
+
+* **installer:** make venv setup idempotent and refine verification candidate paths ([e64b68d](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/e64b68ddf034f078f3d9c17f253e5fadc9059207))
+
 ## [3.9.2](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.1...v3.9.2) (2026-08-22)
 
 
