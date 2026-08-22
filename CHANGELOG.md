@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.1](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.0...v3.9.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **installer:** resolve NPX local version fallback in detectInstallState ([9c899fc](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/9c899fcb850d626a239694053afdb1cde28b665c))
+
 ## [3.9.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.8.1...v3.9.0) (2026-08-22)
 
 
