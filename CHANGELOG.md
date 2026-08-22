@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.2](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.1...v3.9.2) (2026-08-22)
+
+
+### Bug Fixes
+
+* **installer:** scope promptNewModules inside main async execution block ([c7dcfaa](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/c7dcfaac76e6c958aafc16653c7b10f32386e113))
+
 ## [3.9.1](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.0...v3.9.1) (2026-08-22)
 
 
