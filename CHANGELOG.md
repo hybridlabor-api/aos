@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.4](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.3...v3.9.4) (2026-08-22)
+
+
+### Bug Fixes
+
+* **installer:** elevate memB to standalone ecosystem submodule and sync verification ([d4064f7](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/d4064f7d48a979b1344825f927b62437e842959b))
+
 ## [3.9.3](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.2...v3.9.3) (2026-08-22)
 
 
