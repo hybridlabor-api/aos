@@ -21,9 +21,9 @@
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/bdb-dev-optimized-agent-skills.svg)](https://www.npmjs.com/package/@hybridlabor-api/bdb-dev-optimized-agent-skills)
 [![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![skills](https://img.shields.io/badge/skills-152%20curated-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
+[![skills](https://img.shields.io/badge/skills-153%20curated-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
 
-> **Supercharging AI coding agents with 152 hyper-curated skills, 22 local MCPs, and deep integrations for the creative technology industry.**
+> **Supercharging AI coding agents with 153 hyper-curated skills, 22 local MCPs, and deep integrations for the creative technology industry.**
 
 Welcome to the **BDB DEV Skills & MCP Configuration** repository. This project serves as the backbone of our creative and full-stack development ecosystem, supercharging AI agents with highly specialized capabilities tailored for the event and creative technology industry, as well as general-purpose software engineering.
 
@@ -49,9 +49,9 @@ This package acts as the bridge to three major upstream capabilities:
 
 ---
 
-## 🌟 152 Optimized Skills
+## 🌟 153 Optimized Skills
 
-We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **152 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
+We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **153 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
 
 These skills are precision-engineered to ensure agents waste no time on redundant tasks and instead operate with maximum agency, strict architectural constraints, and robust context awareness.
 
@@ -130,7 +130,7 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `api-patterns` | API design decision-making. REST vs GraphQL vs tRPC selection, response formats, versioning, pagination. |
 | `database-design` | Database design principles. Schema design, indexing strategy, ORM selection, serverless databases. |
 | `drizzle-orm-expert` | Drizzle ORM for TypeScript — schema design, relational queries, migrations, and serverless database integration. |
-| `golang-pro` | Master Go 1.21+ with modern patterns, advanced concurrency, performance optimization, and production-ready microservices. |
+| `golang-pro` | Master Go 1.22+ with modern patterns, advanced concurrency, performance optimization, and production-ready microservices. |
 | `go-concurrency-patterns` | Go concurrency with goroutines, channels, sync primitives, and context. Worker pools and race condition debugging. |
 | `go-playwright` | Robust, stealthy, and efficient browser automation using Playwright Go. |
 | `microservices-patterns` | Microservices architecture patterns: service boundaries, inter-service communication, data management, and resilience. |
@@ -339,11 +339,11 @@ BDBrainstorm combines multi-agent brainstorming, the `/grill-me` slash command, 
 
 ---
 
-## 🔌 21 Custom Local MCP Integrations
+## 🔌 22 Custom Local MCP Integrations
 
 ![BDB Architecture Sketch](bdb_architecture_sketch.jpg)
 
-Rather than relying on skeletal python mocks or broken remote APIs, this repository bundles **21 custom, local MCP wrappers** (in the `mcps/` directory). These are built/warmed automatically and allow your AI assistant to read, write, and execute commands within the industry's leading creative software.
+Rather than relying on skeletal python mocks or broken remote APIs, this repository bundles **22 custom, local MCP wrappers** (in the `mcps/` directory). These are built/warmed automatically and allow your AI assistant to read, write, and execute commands within the industry's leading creative software.
 
 <details>
 <summary><strong>🎨 Adobe Creative Cloud (Illustrator, Photoshop, After Effects, Premiere Pro)</strong></summary>
@@ -550,7 +550,7 @@ git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
 
 [![Repo](https://img.shields.io/badge/repo-bdb--synapse-blue.svg)](https://github.com/hybridlabor-api/bdb-synapse)
 [![3D Engine](https://img.shields.io/badge/3D-Three.js%20%7C%20WebGL-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-synapse)
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8.svg)](https://github.com/hybridlabor-api/bdb-synapse)
+[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)](https://github.com/hybridlabor-api/bdb-synapse)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/hybridlabor-api/bdb-synapse/blob/main/LICENSE)
 
 **BDB Synapse** renders your repository as an interactive **3D code city** and replays coding-agent sessions as light trails moving through it — showing which files were read, edited, and where friction occurred. One Go binary, fully local, zero telemetry.

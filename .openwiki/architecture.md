@@ -40,7 +40,7 @@ The ecosystem is partitioned into dedicated modular layers to balance high-speed
 
 1. **Core Skills Backbone (`bdb-dev-optimized-agent-skills`)**:
    - Ultra-lightweight, high-speed skill execution engine.
-   - Bundles the Six-Pillar Godmode Architecture, Universal Agent Harness Sync, 21 core local MCP servers, memB semantic memory, OpenWiki daemon, Firecrawl web scraping suite, and Heimdall Token Saver.
+   - Bundles the Six-Pillar Godmode Architecture, Universal Agent Harness Sync, 22 core local MCP servers, memB semantic memory, OpenWiki daemon, Firecrawl web scraping suite, and Heimdall Token Saver.
 2. **Desktop Orchestration Harness (`bdb-os-agent-workspace`)**:
    - Desktop IDE meta-harness orchestrator providing multi-workspace coordination and UI environment setup.
 3. **Creator Extension Suite (`bdb-dev-creator-extension`)**:
@@ -165,7 +165,7 @@ bdb-dev-optimized-agent-skills/
 │   ├── release_notes.md             # Version changelogs and feature history
 │   ├── code_health.md               # Deterministic RepoGraph metrics & hotspot report
 │   └── code_health_dashboard.html   # Repowise-grade 6-panel live SVG dashboard
-├── mcps/                            # 21 local MCP servers for creative & system tooling
+├── mcps/                            # 22 local MCP servers for creative & system tooling
 │   ├── bdb_adobe_mcp/               # macOS AppleScript & Windows COM ExtendScript bridges
 │   ├── bdb_davinci_mcp/             # Resolve 162-tool suite & local AI audio models
 │   ├── bdb_rhino_mcp/               # McNeel Rhino 3D & Grasshopper connectors

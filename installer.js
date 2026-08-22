@@ -540,7 +540,7 @@ async function promptMcpSelection(mcpsDir, tier) {
     } catch(e) { return []; }
 
     if (tier === '2') {
-        const basicMcps = ['computer-use-mcp', 'memb-mcp', 'windows-computer-use-mcp', 'bdb-remoteos-mcp'];
+        const basicMcps = ['computer-use-mcp', 'memb-mcp', 'windows-computer-use-mcp'];
         availableMcps = availableMcps.filter(m => basicMcps.includes(m));
     }
 
@@ -1342,6 +1342,7 @@ function reportFatal(stage, e) {
         const mcpSrcDir = path.join(srcDir, 'mcps');
         const mcpCodeTarget = path.join(targetMcpDir, 'mcps');
         const selectedMcps = await promptMcpSelection(mcpSrcDir, tier);
+n    console.log("");n    const saasOptions = [n        { label: 'Nein (Server Management Tools überspringen - Standard)', value: false },n        { label: 'Ja (Installiere BDB SAAS SERVER MGMT tools)', value: true }n    ];n    const installSaas = await promptSingleSelect('Möchtest du BDB SaaS & Server Mgmt Tools installieren?', saasOptions, 0);n    if (installSaas && !selectedMcps.includes('bdb-remoteos-mcp')) {n        selectedMcps.push('bdb-remoteos-mcp');n    }
         let creds = {};
         
         if (selectedMcps.length > 0) {

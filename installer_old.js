@@ -270,7 +270,7 @@ async function promptMcpSelection(mcpsDir, tier) {
     } catch(e) { return []; }
 
     if (tier === '2') {
-        const basicMcps = ['computer-use-mcp', 'memb-mcp', 'windows-computer-use-mcp', 'bdb-remoteos-mcp'];
+        const basicMcps = ['computer-use-mcp', 'memb-mcp', 'windows-computer-use-mcp'];
         availableMcps = availableMcps.filter(m => basicMcps.includes(m));
     }
 

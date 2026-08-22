@@ -56,7 +56,7 @@ Anstatt Agenten durch generische Anweisungen irren zu lassen, setzt die oberste 
 - **`godmode-ui-ux`**: Der Frontend-Goldstandard. Erzwingt BDB "Anti-Slop"-Prinzipien, Barrierefreiheit (Accessibility) und fluide Bewegungsdynamiken.
 - **`godmode-shipping`**: Der finale Wächter für Production Releases. Erzwingt Spec-Driven Development, Pre-Launch-Prüfungen und sichere Rollbacks.
 - **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 22 Creative-Tech MCPs steuert.
-- **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 21 Creative-Tech MCPs steuert.
+- **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 22 Creative-Tech MCPs steuert.
 - **`godmode-3d-creation`**: Steuert die Agentic-3D-Pipeline (TripoSR, TRELLIS) für generative Modelle und CAD-Strukturen.
 - **`godmode-media-creation`**: Orchestriert automatisierte Videoproduktion, Storytelling und ComfyUI-Generierungsschleifen.
 
@@ -176,7 +176,7 @@ Nachfolgend finden Sie die vollständige Übersicht aller in diesem Paket enthal
 | `gemini-api-integration` | Use when integrating Google Gemini API into projects. Covers model selection, multimodal inputs, streaming, function calling, and production best practices. |
 | `github` | Use the `gh` CLI for issues, pull requests, Actions runs, and GitHub API queries. |
 | `go-concurrency-patterns` | Master Go concurrency with goroutines, channels, sync primitives, and context. Use when building concurrent Go applications, implementing worker pools, or debugging race conditions. |
-| `golang-pro` | Master Go 1.21+ with modern patterns, advanced concurrency, performance optimization, and production-ready microservices. |
+| `golang-pro` | Master Go 1.22+ with modern patterns, advanced concurrency, performance optimization, and production-ready microservices. |
 | `llm-structured-output` | Get reliable JSON, enums, and typed objects from LLMs using response_format, tool_use, and schema-constrained decoding across OpenAI, Anthropic, and Google APIs. |
 | `microservices-patterns` | Master microservices architecture patterns including service boundaries, inter-service communication, data management, and resilience patterns for building distributed systems. |
 | `neon-postgres` | Expert patterns for Neon serverless Postgres, branching, connection pooling, and Prisma/Drizzle integration |
@@ -351,11 +351,11 @@ BDBrainstorm kombiniert Multi-Agenten-Brainstorming, den Slash-Befehl `/grill-me
 
 ---
 
-## 🔌 21 Custom Lokale MCP Integrationen
+## 🔌 22 Custom Lokale MCP Integrationen
 
 ![BDB Architecture Sketch](bdb_architecture_sketch.jpg)
 
-Anstatt sich auf rudimentäre Python-Mocks oder fehlerhafte Remote-APIs zu verlassen, bündelt dieses Repository **21 eigene, lokale MCP-Wrapper** (im Ordner `mcps/`). Diese werden automatisch erstellt/aufgewärmt und ermöglichen Ihrem KI-Assistenten das Lesen, Schreiben und Ausführen von Befehlen in der führenden Kreativsoftware der Branche.
+Anstatt sich auf rudimentäre Python-Mocks oder fehlerhafte Remote-APIs zu verlassen, bündelt dieses Repository **22 eigene, lokale MCP-Wrapper** (im Ordner `mcps/`). Diese werden automatisch erstellt/aufgewärmt und ermöglichen Ihrem KI-Assistenten das Lesen, Schreiben und Ausführen von Befehlen in der führenden Kreativsoftware der Branche.
 
 <details>
 <summary><strong>🎨 Adobe Creative Cloud (Illustrator, Photoshop, After Effects, Premiere Pro)</strong></summary>
