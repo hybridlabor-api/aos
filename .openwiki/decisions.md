@@ -102,3 +102,14 @@ This document records the foundational architectural decisions, rationale, and c
   4. Make `install_daemon.sh` platform-aware: macOS LaunchAgent, Linux systemd user service + timer when a systemd user session exists, otherwise an explicit skip with manual cron instructions and a non-zero exit code (never a false success).
 - **Consequences:** The installer now behaves consistently and honestly on native Linux, macOS, and Windows; failed steps produce actionable diagnostics instead of silent degradation or misleading success messages.
 
+---
+
+## ADR-013: Strict SemVer Patch Cadence & Major Version 4.0 Gate
+- **Status:** Accepted (Mandatory Enforcement)
+- **Context:** Rapid minor version increments (e.g. 0.1.0 steps) cause unnecessary version drift, ecosystem churn, and premature exhaustion of the 3.x release space. Reaching major version 4.0.0 without explicit, deliberate architectural consolidation undermines release governance.
+- **Decision:**
+  1. **Strict Patch-Only Cadence (`3.9.x`):** All subsequent BDB Agent OS releases must increment strictly via granular patch steps (from `3.9.1` up to `3.9.99`). Minor bumps (0.1.0) are strictly frozen.
+  2. **Major Version 4.0 Hard Gate:** Version `4.0.0` (or any `4.x` release) MUST NOT be triggered, committed, merged, or published under any circumstances without the literal, explicit user command: `"UPDATE VERSION TO 4"`.
+  3. **Release-Please & Commit Discipline:** All agent and developer commits must use `fix:` or `chore:` conventions (or explicit patch configuration) to guarantee only patch increments occur automatically.
+- **Consequences:** Provides steady, predictable release stability, prevents premature major version bumps, and ensures full human governance over the transition to BDB OS 4.0.
+
