@@ -18,6 +18,7 @@ const colors = {
     cyan: "\x1b[36m",
     purple: "\x1b[38;2;157;78;221m",
     purpleBold: "\x1b[1;\x1b[38;2;157;78;221m",
+    blue: "\x1b[34m",
     green: "\x1b[32m",
     yellow: "\x1b[33m",
     red: "\x1b[31m",
@@ -1777,7 +1778,7 @@ function checkModuleUpdate(pkgName, targetDir) {
         const localVer = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
         let remoteVer = null;
         try {
-            remoteVer = execSync(`npm view ${pkgName} version 2>/dev/null`, { encoding: 'utf8', timeout: 4000 }).trim();
+            remoteVer = execSync(`npm view ${pkgName} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
         } catch (e) {}
         
         if (remoteVer && localVer !== remoteVer) {
@@ -1946,7 +1947,7 @@ function verifyEcosystemInstallation() {
         { name: '5. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', path: path.join(basePath, 'bdb-dev-creator-extension') },
         { name: '6. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', path: path.join(basePath, 'bdb-os-remote') },
         { name: '7. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', path: path.join(basePath, 'bdb-dev-tool-installer') },
-        { name: '8. bdb-dev-optimized-agent-skills', pkg: '@hybridlabor-api/bdb-dev-optimized-agent-skills', path: targetSkillDir }
+        { name: '8. bdb-dev-optimized-agent-skills', pkg: '@hybridlabor-api/bdb-dev-optimized-agent-skills', path: srcDir }
     ];
 
     for (const mod of modules) {
@@ -1956,7 +1957,7 @@ function verifyEcosystemInstallation() {
                 const localVer = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
                 let npmVer = null;
                 try {
-                    npmVer = execSync(`npm view ${mod.pkg} version 2>/dev/null`, { encoding: 'utf8', timeout: 4000 }).trim();
+                    npmVer = execSync(`npm view ${mod.pkg} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
                 } catch (e) {}
                 
                 if (npmVer && localVer !== npmVer) {
