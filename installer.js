@@ -441,6 +441,7 @@ function detectInstallState() {
     const basePath = __dirname.includes('_npx') ? path.join(homeDir, '.agents') : path.dirname(srcDir);
     const submodules = [
         { id: 'synapse', dir: path.join(basePath, 'bdb-synapse'), name: 'BDB Synapse' },
+        { id: 'memb', dir: path.join(basePath, 'memB'), name: 'memB Vector Engine' },
         { id: 'remote', dir: path.join(basePath, 'bdb-os-remote'), name: 'BDB OS Remote Gateway' },
         { id: 'ao', dir: path.join(basePath, 'bdb-os-agent-workspace'), name: 'BDB OS Agent Workspace' },
         { id: 'creator', dir: path.join(basePath, 'bdb-dev-creator-extension'), name: 'BDB Creator Extension' },
@@ -2145,6 +2146,21 @@ async function promptDevToolInstaller(isSilent = false) {
     downloadOrUpdateModule('@hybridlabor-api/bdb-dev-tool-installer', toolInstallerDir, 'BDB Dev Tool Installer');
 }
 
+async function promptMemB(isSilent = false) {
+    if (!isSilent && isAutoYes) return;
+    
+    if (!isSilent) {
+        console.log(`\n${colors.cyan}${colors.bold}🧠 memB Vector Engine (Local Long-Term Agent Memory)${colors.reset}`);
+        const doInstall = await promptSingleSelect("Install 'memB' (Autonomous Vector & Semantic Memory Engine)?", [{label:'Yes (Recommended)', value:true}, {label:'No, skip it', value:false}], 0);
+        if (!doInstall) return;
+    }
+
+    const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
+    const membDir = path.join(basePath, 'memB');
+
+    downloadOrUpdateModule('@hybridlabor-api/memb', membDir, 'memB Vector Engine');
+}
+
 async function promptEcosystemHealthScheduler() {
     if (isAutoYes) return;
     
@@ -2314,6 +2330,7 @@ async function promptNewModules(installedModules, mcpConfigPath) {
     if (isAutoYes) return;
     const allModules = [
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: promptSynapse },
+        { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: promptMemB },
         { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: promptOSRemoteGateway },
         { id: 'ao', name: 'BDB OS Agent Workspace (AI Orchestrator)', fn: promptOSAgentWorkspace },
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: () => promptCreatorExtension(mcpConfigPath) },
@@ -2341,6 +2358,7 @@ async function promptNewModules(installedModules, mcpConfigPath) {
             const modulesToUpdate = (installState && installState.installedModules) || [];
             for (const subId of modulesToUpdate) {
                 if (subId === 'synapse') await promptSynapse(true);
+                else if (subId === 'memb') await promptMemB(true);
                 else if (subId === 'remote') await promptOSRemoteGateway(true);
                 else if (subId === 'ao') await promptOSAgentWorkspace(true);
                 else if (subId === 'creator') await promptCreatorExtension(mcpConfigPath, true);
@@ -2352,6 +2370,7 @@ async function promptNewModules(installedModules, mcpConfigPath) {
         } else {
             await installOpenWikiDaemon(creds.gemini, targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
             await installTokenSaver(platform);
+            await promptMemB();
             await promptCreatorExtension(mcpConfigPath);
             await promptSynapse();
             await promptOSAgentWorkspace();
