@@ -1,5 +1,23 @@
 # Release Notes
 
+## v3.8.0 (Live Drift-Checker, Multi-Repo Ecosystem Sync & Port Registry)
+- **Live Version Drift-Checker (`downloadOrUpdateModule`)**: Added autonomous NPM remote version detection across all standalone modules (`bdb-synapse`, `memB`, `bdb-os-remote`, `bdb-dev-tool-installer`, `bdb-dev-creator-extension`, `bdb-os-agent-workspace`). Automatically downloads `@latest` tarballs if upstream releases exist on NPM.
+- **memB v2.3.0 Engine Upgrade**: Synced full hybrid vector store with SQLite WAL concurrency, FTS5 BM25 keyword boosting (1.25x), SHA-256 deduplication, and 8-tool FastMCP interface.
+- **BDB Standard Port Registry (`77xx` standard)**: Implemented isolated port allocation (`:7781` Synapse, `:9080` Remote Gateway, `:7785` SaaS Console, `:7790` memB Dashboard) with live discovery via `~/.bdb/ports.json` and automatic `EADDRINUSE` auto-increment fallback.
+- **Persistent LaunchAgents**: Configured background autostart daemons for Synapse 3D (`com.bdb.synapse.plist`) and BDB Remote Gateway (`com.hybridlabor.bdb-remote.plist`).
+
+## v3.7.0 (Ecosystem Auto-Updater & SaaS Server Management Decoupling)
+- **Ecosystem Auto-Updater**: Automated module upgrade pipelines in `installer.js` replacing manual git clone prompts with self-healing NPM package downloads.
+- **SaaS Server Management Decoupling**: Decoupled `bdb-remoteos-mcp` from standard installation into an on-demand SaaS & Cloud Server Management module.
+
+## v3.6.0 (Zero-Trust Tailscale Multiplexer & Config Injector)
+- **BDB OS Remote Gateway v2.0**: Integrated high-speed MCP multiplexing over Tailscale SSE tunnels, allowing thin-client agent harnesses (AGY, Codex, Claude Desktop) to invoke workstation MCPs and clone workspaces with zero latency.
+- **Heimdall Token Saver v2.6.3**: Production-hardened CLI context compression engine saving 60–99% token bandwidth on large git diffs, build outputs, and MCP JSON responses.
+
+## v3.5.0 (Synapse 3D Visualizer v1.1.0 & Multi-Harness Session Mapping)
+- **Synapse 3D Integration**: Native 3D codebase visualizer and session replay engine parsing Antigravity (`transcript.jsonl`), Claude Code, Codex, and Pi agent traces.
+- **Multi-Agent Workspace Topology**: Automated graph layout, real-time code velocity coloring, and subagent hierarchy clustering.
+
 ## v3.1.6 (OpenWiki Model Fix)
 - **Valid default Google model**: The OpenWiki Google default in the API key verifier was `gemma-4-12b-it`, which does **not** exist in the Google API (confirmed `404 NOT_FOUND`), so verification always failed. The verifier now probes the verified default `gemma-4-26b-a4b-it` and keeps the provider wizard / daemon on the verified Google models (`gemma-4-26b-a4b-it`, `gemma-4-31b-it`, `gemini-2.5-pro`, `gemini-3.5-flash`).
 - **Automatic model discovery**: `verify_api_key.py` and `openwiki_daemon.py` now query the models API and automatically fall back to the first available `generateContent`-capable Gemini/Gemma model when the configured one is unknown, so a valid key never reports a false failure because of a wrong model name.
