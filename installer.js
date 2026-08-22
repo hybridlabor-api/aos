@@ -420,9 +420,9 @@ function detectInstallState() {
     if (!isInstalled && legacyMarkers.some(p => fs.existsSync(p))) {
         isInstalled = true;
         const candidatePkgs = [
-            path.join(homeDir, '.gemini', 'config', 'package.json'),
+            path.join(homeDir, '.agents', 'bdb-dev-optimized-agent-skills', 'package.json'),
             path.join(homeDir, '.agents', 'package.json'),
-            path.join(srcDir, 'package.json')
+            path.join(homeDir, '.gemini', 'config', 'package.json')
         ];
         for (const cp of candidatePkgs) {
             if (fs.existsSync(cp)) {
