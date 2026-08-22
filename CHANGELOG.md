@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.8.1...v3.9.0) (2026-08-22)
+
+
+### Features
+
+* **installer:** add 1-click quick update mode, state detection, and daemon reload ([27bdd80](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/27bdd805bd64636c28a918473a3d1ec1ad36e0a9))
+
 ## [3.8.1](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.8.0...v3.8.1) (2026-08-22)
 
 
