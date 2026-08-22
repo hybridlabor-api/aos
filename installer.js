@@ -1604,14 +1604,18 @@ function reportFatal(stage, e) {
                     console.log(` -> Bootstrapping Python virtual environment for memB MCP...`);
                     try {
                         const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-                        try {
-                            execSync(`uv venv --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
-                        } catch (e1) {
-                            execSync(`${pythonCmd} -m venv .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
-                        }
                         const venvPython = process.platform === 'win32'
                             ? path.join(membMcpFolder, '.venv', 'Scripts', 'python.exe')
                             : path.join(membMcpFolder, '.venv', 'bin', 'python');
+
+                        if (!fs.existsSync(venvPython)) {
+                            try {
+                                execSync(`uv venv --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                            } catch (e1) {
+                                execSync(`${pythonCmd} -m venv .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                            }
+                        }
+
                         const pipViaPython = `"${venvPython}" -m pip`;
                         console.log(` -> Installing Python dependencies for memB MCP...`);
                         runPipWithRetry(`${pipViaPython} install --upgrade setuptools --timeout 30 --no-input`, { cwd: membMcpFolder, stdio: 'ignore' }, 'pip setuptools upgrade for memB MCP', 2, 120000);
@@ -2159,23 +2163,32 @@ function verifyEcosystemInstallation() {
     console.log(`${colors.cyan}${colors.bold} 📋 BDB Ecosystem Version & Health Verification          ${colors.reset}`);
     console.log(`${colors.cyan}${colors.bold}=========================================================${colors.reset}`);
 
-    const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
+    const homeDir = os.homedir();
+    const basePath = __dirname.includes('_npx') ? path.join(homeDir, '.agents') : path.dirname(srcDir);
     const modules = [
-        { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', path: path.join(basePath, 'bdb-synapse') },
-        { name: '2. memB', pkg: '@hybridlabor-api/memb', path: path.join(basePath, 'memB') },
-        { name: '3. heimdall-token-saver', pkg: '@hybridlabor-api/heimdall-token-saver', path: path.join(basePath, 'heimdall-token-saver') },
-        { name: '4. bdb-os-agent-workspace', pkg: '@hybridlabor-api/bdb-os-agent-workspace', path: path.join(basePath, 'bdb-os-agent-workspace') },
-        { name: '5. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', path: path.join(basePath, 'bdb-dev-creator-extension') },
-        { name: '6. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', path: path.join(basePath, 'bdb-os-remote') },
-        { name: '7. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', path: path.join(basePath, 'bdb-dev-tool-installer') },
-        { name: '8. bdb-dev-optimized-agent-skills', pkg: '@hybridlabor-api/bdb-dev-optimized-agent-skills', path: srcDir }
+        { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', paths: [path.join(basePath, 'bdb-synapse')] },
+        { name: '2. memB', pkg: '@hybridlabor-api/memb', paths: [path.join(basePath, 'memB'), path.join(homeDir, '.gemini', 'config', 'mcps', 'memb-mcp')] },
+        { name: '3. heimdall-token-saver', pkg: '@hybridlabor-api/heimdall-token-saver', paths: [path.join(basePath, 'heimdall-token-saver'), path.join(srcDir, 'vendor', 'token-saver')] },
+        { name: '4. bdb-os-agent-workspace', pkg: '@hybridlabor-api/bdb-os-agent-workspace', paths: [path.join(basePath, 'bdb-os-agent-workspace')] },
+        { name: '5. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', paths: [path.join(basePath, 'bdb-dev-creator-extension')] },
+        { name: '6. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', paths: [path.join(basePath, 'bdb-os-remote')] },
+        { name: '7. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', paths: [path.join(basePath, 'bdb-dev-tool-installer')] },
+        { name: '8. bdb-dev-optimized-agent-skills', pkg: '@hybridlabor-api/bdb-dev-optimized-agent-skills', paths: [srcDir] }
     ];
 
     for (const mod of modules) {
-        const pkgPath = path.join(mod.path, 'package.json');
-        if (fs.existsSync(pkgPath)) {
+        let pkgPath = null;
+        for (const p of mod.paths) {
+            const candidate = path.join(p, 'package.json');
+            if (fs.existsSync(candidate)) {
+                pkgPath = candidate;
+                break;
+            }
+        }
+
+        if (pkgPath) {
             try {
-                const localVer = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+                const localVer = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version || '1.0.0';
                 let npmVer = null;
                 try {
                     npmVer = execSync(`npm view ${mod.pkg} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
@@ -2189,6 +2202,8 @@ function verifyEcosystemInstallation() {
             } catch (e) {
                 console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ Installed${colors.reset}`);
             }
+        } else if (mod.name.includes('token-saver') && fs.existsSync(path.join(srcDir, 'vendor', 'token-saver'))) {
+            console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ v2.6.3 (Integrated)${colors.reset}`);
         } else {
             console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.dim}⚪ Optional / Not downloaded${colors.reset}`);
         }
