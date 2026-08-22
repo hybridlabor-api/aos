@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.1](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.8.0...v3.8.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **windows:** fix cross-platform execSync, add blue color, and correct version verification path ([00a1306](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/00a13064b5645f8fcc1a9e564ba34e5407c367cb))
+
 ## [3.8.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.7.0...v3.8.0) (2026-08-22)
 
 
