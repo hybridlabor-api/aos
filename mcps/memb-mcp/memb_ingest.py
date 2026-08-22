@@ -331,7 +331,7 @@ def ingest_to_memb(memory: Any, documents: List[Dict[str, Any]], category: str,
         existing_items = memory.vector_store.list()
         for item in existing_items:
             payload = getattr(item, "payload", {})
-            h = payload.get("metadata", {}).get("content_hash")
+            h = payload.get("content_hash") or (payload.get("metadata") or {}).get("content_hash")
             if h:
                 existing_hashes.add(h)
     except Exception:
