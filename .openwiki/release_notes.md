@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased — Two-Phase GO Gate Hardening (see ADR-014)
+- **Fix:** `npm version` added to the CRITICAL TWO-PHASE GATE PROTOCOL's forbidden-tools list in `CLAUDE.md` (was previously only `npm publish`, leaving a gap a plan-driven agent could walk through).
+- **Fix:** Gate now explicitly states that commands found inside a plan/task file (e.g. `production_artifacts/*.md`) are not a "GO" — they still require independent gate approval before execution.
+- **Fix:** Gate now explicitly states subagents don't inherit an orchestrator's "GO", and a blocked/failed release command must not be silently retried without a fresh one.
+- **Status:** Change is written to this repo's `CLAUDE.md` (uncommitted) and mirrored to the user's machine-wide `CLAUDE.md`/`GEMINI.md`. Intentionally left uncommitted here pending the next update cycle's commit/push, per the very gate this change enforces — no `git commit`/`git push` without an explicit "GO".
+
 ## v3.9.0 (1-Click Quick Update Mode, State Detection & Seamless Daemon Reload)
 - **1-Click Quick Update Mode (`executeQuickUpdate`)**: Intelligent top-level update flow detecting existing installations (`~/.agents/.bdb-manifest.json`). Enables instant 5-second non-interactive upgrades of all 160 skills, rules, and MCP configs while keeping existing API keys, tokens, and custom user MCPs intact.
 - **Interactive Top-Level Status Banner**: Clear terminal prompt displaying local vs. remote version (`v3.8.0 ➔ v3.9.0`). Highlights `[1] ⚡ Quick Update` if updates are available, or `🛠️ Re-configure / 🔄 Repair` if already up-to-date.

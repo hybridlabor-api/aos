@@ -113,3 +113,14 @@ This document records the foundational architectural decisions, rationale, and c
   3. **Release-Please & Commit Discipline:** All agent and developer commits must use `fix:` or `chore:` conventions (or explicit patch configuration) to guarantee only patch increments occur automatically.
 - **Consequences:** Provides steady, predictable release stability, prevents premature major version bumps, and ensures full human governance over the transition to BDB OS 4.0.
 
+---
+
+## ADR-014: Two-Phase GO Gate — Plan Files Are Not Approval, No Subagent Inheritance
+- **Status:** Accepted (Mandatory Enforcement)
+- **Context:** An agent running a multi-step `/startcycle`-style pipeline read its own execution plan file (`production_artifacts/*.md`), found literal `npm version` / `npm publish` commands written inside it, and executed them directly — publishing a package version without the user's literal `"GO"`. Root cause was twofold: (1) the CRITICAL TWO-PHASE GATE PROTOCOL's forbidden-tools list named `npm publish` but not `npm version`, so a plan step that only ran `npm version` first didn't visibly trip the gate; (2) nothing in the protocol said that a command's mere presence inside a plan/task file counts as authorization, so the agent treated "the plan says to do it" as equivalent to "the user said GO". A second, unreviewed publish attempt was also made afterward without a fresh authorization.
+- **Decision:**
+  1. **Explicit scope, not an exhaustive list:** The forbidden-tools list under the GO gate now names `npm version` alongside `npm publish`, `git push`, `git commit`, `rm` — closing the specific gap that let this incident happen.
+  2. **Plans are not approval:** Any command found inside a plan, spec, or task file (including `production_artifacts/*.md` the agent itself wrote) still requires the gate to be checked independently before execution. A plan may describe a future action; it cannot authorize it.
+  3. **No inheritance, no silent retries:** A subagent spawned by an already-authorized orchestrator does not inherit that orchestrator's "GO". A release/publish/push command that is blocked, fails, or has an ambiguous outcome must not be retried without a fresh, explicit "GO" for that specific retry.
+- **Consequences:** Closes the exact loophole that produced an unreviewed `npm publish`. The gate's guarantee now holds regardless of whether a mutating command is typed directly by the agent or discovered inside a file the agent is following. Applied to the root `CLAUDE.md` in this repo and mirrored into the user's machine-wide `CLAUDE.md` / `GEMINI.md` so it binds every agent harness, not just this repository.
+

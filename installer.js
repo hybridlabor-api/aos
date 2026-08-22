@@ -2149,10 +2149,16 @@ async function promptDevToolInstaller(isSilent = false) {
 
 async function promptMemB(isSilent = false) {
     if (!isSilent && isAutoYes) return;
+    let installWebUI = true;
     if (!isSilent) {
         console.log(`\n${colors.cyan}${colors.bold}🧠 memB Vector Engine (Local Long-Term Agent Memory)${colors.reset}`);
         const doInstall = await promptSingleSelect("Install 'memB' (Autonomous Vector & Semantic Memory Engine)?", [{label:'Yes (Recommended)', value:true}, {label:'No, skip it', value:false}], 0);
         if (!doInstall) return;
+        
+        installWebUI = await promptSingleSelect("Do you need the standalone memB WebUI daemon? (Select 'No' if you use the Obsidian plugin)", [
+            {label:'Yes, install standalone WebUI (Port 8088)', value:true}, 
+            {label:'No, I use the Obsidian Plugin for memB', value:false}
+        ], 0);
     }
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
@@ -2185,7 +2191,7 @@ async function promptMemB(isSilent = false) {
             runPipWithRetry(`${pipViaPython} install -r requirements.txt --timeout 30 --no-input`, { cwd: membDir, stdio: 'inherit' }, 'pip install for memB standalone', 2, 900000);
 
             // FastAPI + uvicorn für den WebUI Server
-            if (fs.existsSync(serverPy)) {
+            if (installWebUI && fs.existsSync(serverPy)) {
                 runPipWithRetry(`${pipViaPython} install fastapi uvicorn --timeout 30 --no-input`, { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
                 console.log(` -> ✅ memB WebUI Server bereit (Port 8088)`);
             }
@@ -2197,7 +2203,7 @@ async function promptMemB(isSilent = false) {
     }
 
     // --- macOS LaunchAgent für memB WebUI ---
-    if (process.platform === 'darwin' && fs.existsSync(serverPy)) {
+    if (installWebUI && process.platform === 'darwin' && fs.existsSync(serverPy)) {
         const venvPython = path.join(membDir, '.venv', 'bin', 'python');
         const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.bdb.memb.webui.plist');
         const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
@@ -2537,6 +2543,7 @@ async function promptNewModules(installedModules, mcpConfigPath) {
                 }
             }
             console.log(` -> Universal Sync Complete!`);
+            generateAndOpenLaunchpad();
         }
         
         console.log(`\n${colors.green}${colors.bold}=========================================================${colors.reset}`);
@@ -2546,3 +2553,40 @@ async function promptNewModules(installedModules, mcpConfigPath) {
 
     })().catch(e => reportFatal('the MCP and extension installation', e));
 })().catch(e => reportFatal('the skill installation', e));
+
+function generateAndOpenLaunchpad() {
+    if (process.env.SSH_CLIENT || process.env.SSH_TTY) return;
+    
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BDB Launchpad</title>
+  <style>
+    body { background: #121212; color: #e0e0e0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding: 40px; margin: 0; }
+    h1 { font-size: 14px; color: #888; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    ul { list-style: none; padding: 0; margin: 0; max-width: 400px; }
+    li { margin-bottom: 12px; display: flex; align-items: center; }
+    li::before { content: "→"; color: #555; margin-right: 12px; }
+    a { color: #e0e0e0; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    a:hover { color: #fff; text-decoration: underline; }
+    .port { color: #555; font-size: 12px; margin-left: auto; }
+  </style>
+</head>
+<body>
+  <h1>BDB Ecosystem</h1>
+  <ul>
+    <li><a href="http://127.0.0.1:8088" target="_blank">memB Vector Memory</a><span class="port">8088</span></li>
+    <li><a href="http://127.0.0.1:7781" target="_blank">Synapse Topology</a><span class="port">7781</span></li>
+    <li><a href="http://127.0.0.1:3101" target="_blank">Agent Workspace</a><span class="port">3101</span></li>
+  </ul>
+</body>
+</html>`;
+
+    const filePath = require('path').join(require('os').homedir(), '.agents', 'bdb-launchpad.html');
+    require('fs').writeFileSync(filePath, html, 'utf-8');
+    
+    const command = process.platform === 'darwin' ? `open "${filePath}"` : process.platform === 'win32' ? `start "" "${filePath}"` : `xdg-open "${filePath}"`;
+    
+    require('child_process').exec(command, () => {});
+}

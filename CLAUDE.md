@@ -12,8 +12,10 @@
 - **CRITICAL TWO-PHASE GATE PROTOCOL (ABSOLUTE OVERRIDE):**
   - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`, `/ship`, `/build`, `/test`).
   - **Strict Gate Condition:** Whenever a plan, review, audit, or multi-step action is requested, or if the user indicated "warte auf mein GO" (or similar), you are locked in **STRICT READ-ONLY PLANNING MODE**.
-  - **Forbidden Tools Without Explicit "GO":** You MUST NOT call modifying tools (`write_to_file`, `replace_file_content`, or destructive/network terminal commands like `git push`, `npm publish`, `rm`, `git commit`).
+  - **Forbidden Tools Without Explicit "GO":** You MUST NOT call modifying tools (`write_to_file`, `replace_file_content`, or destructive/network terminal commands like `git push`, `npm version`, `npm publish`, `rm`, `git commit`).
   - **Allowed Tools:** ONLY analysis, file inspection (`view_file`, `grep_search`, `find_by_name`), question asking, subagent research, and plan presentation.
+  - **Plans are not approval:** Commands found inside a plan/task file (e.g. `production_artifacts/*.md`) are not a "GO" — the gate still applies before running them.
+  - **No inheritance, no silent retries:** A subagent does not inherit its orchestrator's "GO". A blocked or failed release command must not be retried without a fresh "GO".
   - **Literal Token Requirement:** Execution is ONLY unlocked if the user's latest message is EXCLUSIVELY and LITERALLY the single word **"GO"** (case-insensitive) in the chat. Combining action words with other instructions (e.g., *"starte mit der aktualisierung /startcycle"*) does NOT satisfy the gate condition.
   - **Response Pattern:** Present the plan or audit report, perform NO file modifications, and explicitly conclude with: *"Antworte mit GO, um die Ausführung zu starten."*
 
