@@ -1342,7 +1342,15 @@ function reportFatal(stage, e) {
         const mcpSrcDir = path.join(srcDir, 'mcps');
         const mcpCodeTarget = path.join(targetMcpDir, 'mcps');
         const selectedMcps = await promptMcpSelection(mcpSrcDir, tier);
-n    console.log("");n    const saasOptions = [n        { label: 'Nein (Server Management Tools überspringen - Standard)', value: false },n        { label: 'Ja (Installiere BDB SAAS SERVER MGMT tools)', value: true }n    ];n    const installSaas = await promptSingleSelect('Möchtest du BDB SaaS & Server Mgmt Tools installieren?', saasOptions, 0);n    if (installSaas && !selectedMcps.includes('bdb-remoteos-mcp')) {n        selectedMcps.push('bdb-remoteos-mcp');n    }
+        console.log("");
+        const saasOptions = [
+            { label: 'Nein (Server Management Tools überspringen - Standard)', value: false },
+            { label: 'Ja (Installiere BDB SAAS SERVER MGMT tools)', value: true }
+        ];
+        const installSaas = await promptSingleSelect('Möchtest du BDB SaaS & Server Mgmt Tools installieren?', saasOptions, 0);
+        if (installSaas && !selectedMcps.includes('bdb-remoteos-mcp')) {
+            selectedMcps.push('bdb-remoteos-mcp');
+        }
         let creds = {};
         
         if (selectedMcps.length > 0) {
@@ -1760,6 +1768,59 @@ async function promptMemBIngestion(mcpCodeTarget) {
     }
 }
 
+function checkModuleUpdate(pkgName, targetDir) {
+    const pkgPath = path.join(targetDir, 'package.json');
+    if (!fs.existsSync(pkgPath)) {
+        return { installed: false, updateAvailable: false, localVer: null, remoteVer: null };
+    }
+    try {
+        const localVer = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+        let remoteVer = null;
+        try {
+            remoteVer = execSync(`npm view ${pkgName} version 2>/dev/null`, { encoding: 'utf8', timeout: 4000 }).trim();
+        } catch (e) {}
+        
+        if (remoteVer && localVer !== remoteVer) {
+            return { installed: true, updateAvailable: true, localVer, remoteVer };
+        }
+        return { installed: true, updateAvailable: false, localVer, remoteVer };
+    } catch (e) {
+        return { installed: true, updateAvailable: false, localVer: null, remoteVer: null };
+    }
+}
+
+function downloadOrUpdateModule(pkgName, targetDir, displayName) {
+    const status = checkModuleUpdate(pkgName, targetDir);
+    if (status.installed && !status.updateAvailable) {
+        console.log(` -> ${displayName} ist bereits auf dem neuesten Stand (v${status.localVer}).`);
+        return true;
+    }
+
+    if (status.installed && status.updateAvailable) {
+        console.log(` -> 🚀 Update verfügbar für ${displayName}: v${status.localVer} ➔ v${status.remoteVer}! Aktualisiere über NPM...`);
+    } else {
+        console.log(` -> ${displayName} wird über NPM nach ${targetDir} geladen...`);
+    }
+
+    try {
+        fs.mkdirSync(targetDir, { recursive: true });
+        const ok = runNpmWithRetry(`npm pack ${pkgName}@latest`, { stdio: 'ignore', cwd: targetDir }, `${displayName} download`);
+        cleanNpmCacheOnWindows();
+        const tarball = ok ? fs.readdirSync(targetDir).find(f => f.endsWith('.tgz')) : null;
+        if (tarball) {
+            execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: targetDir });
+            fs.unlinkSync(path.join(targetDir, tarball));
+            console.log(` -> ✅ ${displayName} erfolgreich auf v${status.remoteVer || 'latest'} aktualisiert!`);
+            return true;
+        } else {
+            throw new Error("NPM pack lieferte kein Archiv.");
+        }
+    } catch (e) {
+        console.log(` -> Fehler beim Laden von ${displayName}: ${e.message}`);
+        return false;
+    }
+}
+
 async function promptCreatorExtension(mcpConfigPath) {
     if (isAutoYes) return;
     
@@ -1773,25 +1834,7 @@ async function promptCreatorExtension(mcpConfigPath) {
     const creatorDir = path.join(basePath, 'bdb-dev-creator-extension');
     const installerScript = path.join(creatorDir, 'installer.js');
 
-    if (!isValidInstallDir(creatorDir, ['installer.js', 'package.json'])) {
-        console.log(` -> BDB Creator Extension wird über NPM nach ${creatorDir} geladen...`);
-        try {
-            fs.mkdirSync(creatorDir, { recursive: true });
-            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-dev-creator-extension`, { stdio: 'ignore', cwd: creatorDir }, 'creator extension download');
-            cleanNpmCacheOnWindows();
-            const tarball = ok ? fs.readdirSync(creatorDir).find(f => f.endsWith('.tgz')) : null;
-            if (tarball) {
-                execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: creatorDir });
-                fs.unlinkSync(path.join(creatorDir, tarball));
-                console.log(` -> Erfolgreich heruntergeladen!`);
-            } else {
-                throw new Error("NPM pack lieferte kein Archiv.");
-            }
-        } catch (e) {
-            console.log(` -> Fehler beim Herunterladen der Creator Extension: ${e.message}`);
-            return;
-        }
-    }
+    downloadOrUpdateModule('@hybridlabor-api/bdb-dev-creator-extension', creatorDir, 'BDB Creator Extension');
 
     if (fs.existsSync(installerScript)) {
         console.log(` -> Starte Setup der BDB Creator Extension...`);
@@ -1813,37 +1856,10 @@ async function promptSynapse() {
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const synapseDir = path.join(basePath, 'bdb-synapse');
 
+    downloadOrUpdateModule('@hybridlabor-api/bdb-synapse', synapseDir, 'BDB Synapse');
+
     const isWin = process.platform === 'win32';
     const binaryName = isWin ? 'synapse.js' : 'synapse';
-    const hasBinary = fs.existsSync(path.join(synapseDir, 'bin', binaryName)) ||
-                      fs.existsSync(path.join(synapseDir, 'bin', 'synapse')) ||
-                      fs.existsSync(path.join(synapseDir, 'bin', 'synapse.js'));
-
-    if (!isValidInstallDir(synapseDir, ['package.json']) || !hasBinary) {
-        console.log(` -> BDB Synapse wird über NPM nach ${synapseDir} geladen...`);
-        try {
-            if (fs.existsSync(synapseDir) && !hasBinary) {
-                try { fs.rmSync(synapseDir, { recursive: true, force: true }); } catch (e) {}
-            }
-            fs.mkdirSync(synapseDir, { recursive: true });
-            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-synapse@latest`, { stdio: 'ignore', cwd: synapseDir }, 'synapse download');
-            cleanNpmCacheOnWindows();
-            const tarball = ok ? fs.readdirSync(synapseDir).find(f => f.endsWith('.tgz')) : null;
-            if (tarball) {
-                execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: synapseDir });
-                fs.unlinkSync(path.join(synapseDir, tarball));
-                console.log(` -> Erfolgreich heruntergeladen!`);
-            } else {
-                throw new Error("NPM pack lieferte kein Archiv.");
-            }
-        } catch (e) {
-            console.log(` -> Fehler beim Herunterladen von Synapse: ${e.message}`);
-            return;
-        }
-    } else {
-        console.log(` -> BDB Synapse existiert bereits unter ${synapseDir}.`);
-    }
-
     let binaryPath = path.join(synapseDir, 'bin', binaryName);
     if (!fs.existsSync(binaryPath)) {
         if (process.platform === 'darwin' && fs.existsSync(path.join(synapseDir, 'bin', 'synapse-darwin-arm64'))) {
@@ -1863,7 +1879,7 @@ async function promptSynapse() {
             try { fs.unlinkSync(symlinkPath); } catch (e) {}
             try {
                 fs.symlinkSync(binaryPath, symlinkPath);
-                console.log(` -> ✅ Synapse Binary verlinkt nach ~/.local/bin/synapse.js`);
+                console.log(` -> ✅ Synapse Binary verlinkt nach ~/.local/bin/synapse`);
             } catch (e) {
                 console.log(` -> ✅ Synapse Binary verfügbar unter ${binaryPath}`);
             }
@@ -1886,27 +1902,7 @@ async function promptOSRemoteGateway() {
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const remoteDir = path.join(basePath, 'bdb-os-remote');
 
-    if (!isValidInstallDir(remoteDir, ['package.json'])) {
-        console.log(` -> BDB OS Remote Gateway wird über NPM nach ${remoteDir} geladen...`);
-        try {
-            fs.mkdirSync(remoteDir, { recursive: true });
-            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-os-remote@latest`, { stdio: 'ignore', cwd: remoteDir }, 'OS remote gateway download');
-            cleanNpmCacheOnWindows();
-            const tarball = ok ? fs.readdirSync(remoteDir).find(f => f.endsWith('.tgz')) : null;
-            if (tarball) {
-                execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: remoteDir });
-                fs.unlinkSync(path.join(remoteDir, tarball));
-                console.log(` -> Erfolgreich heruntergeladen!`);
-            } else {
-                throw new Error("NPM pack lieferte kein Archiv.");
-            }
-        } catch (e) {
-            console.log(` -> Fehler beim Herunterladen des Remote Gateways: ${e.message}`);
-            return;
-        }
-    } else {
-        console.log(` -> BDB OS Remote Gateway existiert bereits unter ${remoteDir}.`);
-    }
+    downloadOrUpdateModule('@hybridlabor-api/bdb-os-remote', remoteDir, 'BDB OS Remote Gateway');
 }
 
 async function promptDevToolInstaller() {
@@ -1920,27 +1916,7 @@ async function promptDevToolInstaller() {
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const toolInstallerDir = path.join(basePath, 'bdb-dev-tool-installer');
 
-    if (!isValidInstallDir(toolInstallerDir, ['package.json'])) {
-        console.log(` -> BDB Dev Tool Installer wird über NPM nach ${toolInstallerDir} geladen...`);
-        try {
-            fs.mkdirSync(toolInstallerDir, { recursive: true });
-            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-dev-tool-installer@latest`, { stdio: 'ignore', cwd: toolInstallerDir }, 'tool installer download');
-            cleanNpmCacheOnWindows();
-            const tarball = ok ? fs.readdirSync(toolInstallerDir).find(f => f.endsWith('.tgz')) : null;
-            if (tarball) {
-                execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: toolInstallerDir });
-                fs.unlinkSync(path.join(toolInstallerDir, tarball));
-                console.log(` -> Erfolgreich heruntergeladen!`);
-            } else {
-                throw new Error("NPM pack lieferte kein Archiv.");
-            }
-        } catch (e) {
-            console.log(` -> Fehler beim Herunterladen des Dev Tool Installers: ${e.message}`);
-            return;
-        }
-    } else {
-        console.log(` -> BDB Dev Tool Installer existiert bereits unter ${toolInstallerDir}.`);
-    }
+    downloadOrUpdateModule('@hybridlabor-api/bdb-dev-tool-installer', toolInstallerDir, 'BDB Dev Tool Installer');
 }
 
 async function promptEcosystemHealthScheduler() {
@@ -1958,23 +1934,42 @@ async function promptEcosystemHealthScheduler() {
 
 function verifyEcosystemInstallation() {
     console.log(`\n${colors.cyan}${colors.bold}=========================================================${colors.reset}`);
-    console.log(`${colors.cyan}${colors.bold} 📋 BDB Ecosystem Post-Installation Health Verification   ${colors.reset}`);
+    console.log(`${colors.cyan}${colors.bold} 📋 BDB Ecosystem Version & Health Verification          ${colors.reset}`);
     console.log(`${colors.cyan}${colors.bold}=========================================================${colors.reset}`);
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const modules = [
-        { name: '1. bdb-synapse', path: path.join(basePath, 'bdb-synapse') },
-        { name: '2. memB', path: path.join(basePath, 'memB') },
-        { name: '3. heimdall-token-saver', path: path.join(basePath, 'heimdall-token-saver') },
-        { name: '4. bdb-os-agent-workspace', path: path.join(basePath, 'bdb-os-agent-workspace') },
-        { name: '5. bdb-dev-creator-extension', path: path.join(basePath, 'bdb-dev-creator-extension') },
-        { name: '6. bdb-dev-optimized-agent-skills', path: targetSkillDir }
+        { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', path: path.join(basePath, 'bdb-synapse') },
+        { name: '2. memB', pkg: '@hybridlabor-api/memb', path: path.join(basePath, 'memB') },
+        { name: '3. heimdall-token-saver', pkg: '@hybridlabor-api/heimdall-token-saver', path: path.join(basePath, 'heimdall-token-saver') },
+        { name: '4. bdb-os-agent-workspace', pkg: '@hybridlabor-api/bdb-os-agent-workspace', path: path.join(basePath, 'bdb-os-agent-workspace') },
+        { name: '5. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', path: path.join(basePath, 'bdb-dev-creator-extension') },
+        { name: '6. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', path: path.join(basePath, 'bdb-os-remote') },
+        { name: '7. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', path: path.join(basePath, 'bdb-dev-tool-installer') },
+        { name: '8. bdb-dev-optimized-agent-skills', pkg: '@hybridlabor-api/bdb-dev-optimized-agent-skills', path: targetSkillDir }
     ];
 
     for (const mod of modules) {
-        const exists = fs.existsSync(mod.path);
-        const status = exists ? `${colors.green}✅ Up to date / Installed${colors.reset}` : `${colors.yellow}⚠️  Optional / Not downloaded${colors.reset}`;
-        console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${status}`);
+        const pkgPath = path.join(mod.path, 'package.json');
+        if (fs.existsSync(pkgPath)) {
+            try {
+                const localVer = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+                let npmVer = null;
+                try {
+                    npmVer = execSync(`npm view ${mod.pkg} version 2>/dev/null`, { encoding: 'utf8', timeout: 4000 }).trim();
+                } catch (e) {}
+                
+                if (npmVer && localVer !== npmVer) {
+                    console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.yellow}⚠️  Update verfügbar (v${localVer} ➔ v${npmVer})${colors.reset}`);
+                } else {
+                    console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ v${localVer} (Up to date)${colors.reset}`);
+                }
+            } catch (e) {
+                console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ Installed${colors.reset}`);
+            }
+        } else {
+            console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.dim}⚪ Optional / Not downloaded${colors.reset}`);
+        }
     }
 }
 
@@ -1995,26 +1990,7 @@ async function promptOSAgentWorkspace() {
     fs.mkdirSync(path.join(os.homedir(), '.ao', 'data'), { recursive: true });
     fs.mkdirSync(path.join(os.homedir(), '.ao', 'logs'), { recursive: true });
 
-    if (!isValidInstallDir(osAgentDir, ['package.json'])) {
-        console.log(` -> BDB OS Agent Workspace wird über NPM nach ${osAgentDir} geladen...`);
-        try {
-            fs.mkdirSync(osAgentDir, { recursive: true });
-            const ok = runNpmWithRetry(`npm pack @hybridlabor-api/bdb-os-agent-workspace`, { stdio: 'ignore', cwd: osAgentDir }, 'OS agent workspace download');
-            cleanNpmCacheOnWindows();
-            const tarball = ok ? fs.readdirSync(osAgentDir).find(f => f.endsWith('.tgz')) : null;
-            if (tarball) {
-                execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: osAgentDir });
-                fs.unlinkSync(path.join(osAgentDir, tarball));
-                console.log(` -> Erfolgreich heruntergeladen!`);
-            } else {
-                throw new Error("NPM pack lieferte kein Archiv.");
-            }
-        } catch (e) {
-            console.log(` -> Fehler beim Herunterladen des OS Agent Workspaces: ${e.message}`);
-        }
-    } else {
-        console.log(` -> BDB OS Agent Workspace existiert bereits unter ${osAgentDir}.`);
-    }
+    downloadOrUpdateModule('@hybridlabor-api/bdb-os-agent-workspace', osAgentDir, 'BDB OS Agent Workspace');
 
     // Binary symlink & build verification
     const daemonBin = path.join(osAgentDir, 'backend', 'ao-daemon');
