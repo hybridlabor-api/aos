@@ -391,6 +391,148 @@ function detectPlatforms() {
     return detections;
 }
 
+function detectInstallState() {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    const manifestPath = path.join(homeDir, '.agents', '.bdb-manifest.json');
+    let isInstalled = false;
+    let localVersion = null;
+    let manifest = null;
+    let installedModules = [];
+
+    if (fs.existsSync(manifestPath)) {
+        try {
+            manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            if (manifest && manifest.version) {
+                isInstalled = true;
+                localVersion = manifest.version;
+                installedModules = manifest.installedModules || [];
+            }
+        } catch (e) {}
+    }
+
+    const legacyMarkers = [
+        path.join(homeDir, '.agents', 'AGENTS.md'),
+        path.join(homeDir, '.gemini', 'config', 'skills', 'startcycle', 'SKILL.md'),
+        path.join(homeDir, '.agents', 'skills', 'startcycle', 'SKILL.md'),
+        path.join(homeDir, '.claude', 'skills', 'startcycle', 'SKILL.md')
+    ];
+
+    if (!isInstalled && legacyMarkers.some(p => fs.existsSync(p))) {
+        isInstalled = true;
+        const candidatePkgs = [
+            path.join(homeDir, '.gemini', 'config', 'package.json'),
+            path.join(homeDir, '.agents', 'package.json'),
+            path.join(srcDir, 'package.json')
+        ];
+        for (const cp of candidatePkgs) {
+            if (fs.existsSync(cp)) {
+                try {
+                    const parsed = JSON.parse(fs.readFileSync(cp, 'utf8'));
+                    if (parsed.version) {
+                        localVersion = parsed.version;
+                        break;
+                    }
+                } catch(e) {}
+            }
+        }
+        if (!localVersion) localVersion = '3.8.0';
+    }
+
+    const basePath = __dirname.includes('_npx') ? path.join(homeDir, '.agents') : path.dirname(srcDir);
+    const submodules = [
+        { id: 'synapse', dir: path.join(basePath, 'bdb-synapse'), name: 'BDB Synapse' },
+        { id: 'remote', dir: path.join(basePath, 'bdb-os-remote'), name: 'BDB OS Remote Gateway' },
+        { id: 'ao', dir: path.join(basePath, 'bdb-os-agent-workspace'), name: 'BDB OS Agent Workspace' },
+        { id: 'creator', dir: path.join(basePath, 'bdb-dev-creator-extension'), name: 'BDB Creator Extension' },
+        { id: 'installer', dir: path.join(basePath, 'bdb-dev-tool-installer'), name: 'BDB Dev Tool Installer' }
+    ];
+
+    for (const sub of submodules) {
+        if (fs.existsSync(sub.dir) && !installedModules.includes(sub.id)) {
+            installedModules.push(sub.id);
+        }
+    }
+
+    const currentVersion = pkg.version || '3.8.1';
+    const updateAvailable = isInstalled && (localVersion !== currentVersion);
+
+    return {
+        isInstalled,
+        localVersion,
+        currentVersion,
+        updateAvailable,
+        installedModules,
+        manifest
+    };
+}
+
+function saveManifest(data = {}) {
+    try {
+        const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+        const manifestDir = path.join(homeDir, '.agents');
+        fs.mkdirSync(manifestDir, { recursive: true });
+        const manifestPath = path.join(manifestDir, '.bdb-manifest.json');
+        let current = {};
+        if (fs.existsSync(manifestPath)) {
+            try { current = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch(e) {}
+        }
+        const updated = Object.assign({}, current, {
+            version: pkg.version || '3.8.1',
+            lastUpdated: new Date().toISOString(),
+            platform: process.platform,
+            ...data
+        });
+        fs.writeFileSync(manifestPath, JSON.stringify(updated, null, 2));
+    } catch(e) {}
+}
+
+function reloadDaemons() {
+    console.log(`\n${colors.cyan}${colors.bold}🔄 Reloading background daemons...${colors.reset}`);
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    if (process.platform === 'darwin') {
+        const daemons = [
+            { name: 'Synapse 3D', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.synapse.plist') },
+            { name: 'BDB Remote Gateway', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.hybridlabor.bdb-remote.plist') },
+            { name: 'Agent Workspace (ao)', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.ao.daemon.plist') }
+        ];
+        for (const d of daemons) {
+            if (fs.existsSync(d.plist)) {
+                try {
+                    execSync(`launchctl unload "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    execSync(`launchctl load "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    console.log(`  • ${colors.green}✅ ${d.name} daemon reloaded${colors.reset}`);
+                } catch(e) {}
+            }
+        }
+    }
+}
+
+async function promptNewModules(installedModules, mcpConfigPath) {
+    if (isAutoYes) return;
+    const allModules = [
+        { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: promptSynapse },
+        { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: promptOSRemoteGateway },
+        { id: 'ao', name: 'BDB OS Agent Workspace (AI Orchestrator)', fn: promptOSAgentWorkspace },
+        { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: () => promptCreatorExtension(mcpConfigPath) },
+        { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: promptDevToolInstaller }
+    ];
+
+    const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
+    if (uninstalled.length === 0) return;
+
+    console.log(`\n${colors.magenta}${colors.bold}✨ Neue / Optionale BDB OS Module verfügbar:${colors.reset}`);
+    for (const mod of uninstalled) {
+        const doInstall = await promptSingleSelect(`Möchtest du ${mod.name} jetzt installieren?`, [
+            { label: `Ja, ${mod.name} installieren`, value: true },
+            { label: `Überspringen`, value: false }
+        ], 1);
+        if (doInstall) {
+            await mod.fn();
+            installedModules.push(mod.id);
+        }
+    }
+}
+
 async function promptSingleSelect(title, options, defaultIndex = 0) {
     if (isAutoYes) return options[defaultIndex].value !== undefined ? options[defaultIndex].value : options[defaultIndex];
 
@@ -463,8 +605,85 @@ async function promptSingleSelect(title, options, defaultIndex = 0) {
 }
 
 async function promptMode() {
+    const installState = detectInstallState();
+
     if (isAutoYes) {
-        return { tier: '1', mode: '1', platform: '1' };
+        return { tier: '1', mode: '1', platform: '1', isUniversal: true, isQuickUpdate: true, installState };
+    }
+
+    if (installState.isInstalled) {
+        if (installState.updateAvailable) {
+            console.log(`\n${colors.yellow}${colors.bold}╭───────────────────────────────────────────────────────────╮${colors.reset}`);
+            console.log(`${colors.yellow}${colors.bold}│  🚀 BDB AGENT OS Installation Erkannt                     │${colors.reset}`);
+            console.log(`${colors.yellow}${colors.bold}│  Status: v${installState.localVersion} ➔ ${colors.green}v${installState.currentVersion}${colors.reset}${colors.yellow}${colors.bold} (Update verfügbar)                 │${colors.reset}`);
+            console.log(`${colors.yellow}${colors.bold}╰───────────────────────────────────────────────────────────╯${colors.reset}`);
+
+            const updateOptions = [
+                {
+                    label: `⚡ Quick Update (v${installState.localVersion} ➔ v${installState.currentVersion}) – Skills & Daemons aktualisieren, alle Settings behalten`,
+                    value: 'quick'
+                },
+                {
+                    label: `🛠️ Vollständige Neu-Installation / Re-Konfiguration`,
+                    value: 'reconfigure'
+                },
+                {
+                    label: `❌ Beenden`,
+                    value: 'cancel'
+                }
+            ];
+
+            const updateChoice = await promptSingleSelect('BDB OS Update Action:', updateOptions, 0);
+            if (updateChoice === 'cancel') {
+                console.log("\nInstallation abgebrochen.");
+                process.exit(0);
+            }
+            if (updateChoice === 'quick') {
+                return {
+                    tier: '1',
+                    mode: '1',
+                    platform: '1',
+                    isUniversal: true,
+                    isQuickUpdate: true,
+                    installState
+                };
+            }
+        } else {
+            console.log(`\n${colors.green}${colors.bold}╭───────────────────────────────────────────────────────────╮${colors.reset}`);
+            console.log(`${colors.green}${colors.bold}│  ✅ BDB AGENT OS ist bereits auf dem neuesten Stand (v${installState.currentVersion}) │${colors.reset}`);
+            console.log(`${colors.green}${colors.bold}╰───────────────────────────────────────────────────────────╯${colors.reset}`);
+
+            const upToDateOptions = [
+                {
+                    label: `🛠️ Neu-Konfiguration / Tier wechseln (Pro vs Basic)`,
+                    value: 'reconfigure'
+                },
+                {
+                    label: `🔄 Reparatur / Erzwinge Neu-Installation aller Skills`,
+                    value: 'repair'
+                },
+                {
+                    label: `❌ Beenden`,
+                    value: 'cancel'
+                }
+            ];
+
+            const actionChoice = await promptSingleSelect('BDB OS Wartung & Konfiguration:', upToDateOptions, 0);
+            if (actionChoice === 'cancel') {
+                console.log("\nBeendet.");
+                process.exit(0);
+            }
+            if (actionChoice === 'repair') {
+                return {
+                    tier: '1',
+                    mode: '1',
+                    platform: '1',
+                    isUniversal: true,
+                    isQuickUpdate: true,
+                    installState
+                };
+            }
+        }
     }
 
     const tierOptions = [
@@ -1001,7 +1220,7 @@ function reportFatal(stage, e) {
 }
 
 (async () => {
-    const { tier, mode, platform, isUniversal, customPaths } = await promptMode();
+    const { tier, mode, platform, isUniversal, customPaths, isQuickUpdate, installState } = await promptMode();
     installStep(
         `create the backup directory ${backupDir}`,
         () => fs.mkdirSync(backupDir, { recursive: true }),
@@ -1342,15 +1561,26 @@ function reportFatal(stage, e) {
     (async () => {
         const mcpSrcDir = path.join(srcDir, 'mcps');
         const mcpCodeTarget = path.join(targetMcpDir, 'mcps');
-        const selectedMcps = await promptMcpSelection(mcpSrcDir, tier);
-        console.log("");
-        const saasOptions = [
-            { label: 'Nein (Server Management Tools überspringen - Standard)', value: false },
-            { label: 'Ja (Installiere BDB SAAS SERVER MGMT tools)', value: true }
-        ];
-        const installSaas = await promptSingleSelect('Möchtest du BDB SaaS & Server Mgmt Tools installieren?', saasOptions, 0);
-        if (installSaas && !selectedMcps.includes('bdb-remoteos-mcp')) {
-            selectedMcps.push('bdb-remoteos-mcp');
+        let selectedMcps = [];
+        
+        if (isQuickUpdate) {
+            console.log(`\n${colors.cyan}${colors.bold}⚡ Quick Update: Behalte bestehende MCPs und Konfigurationen bei...${colors.reset}`);
+            const existingMcpConfig = readJsonFile(mcpConfigPath);
+            if (existingMcpConfig && existingMcpConfig.mcpServers) {
+                selectedMcps = Object.keys(existingMcpConfig.mcpServers);
+            }
+            if (!selectedMcps.includes('memb-mcp')) selectedMcps.push('memb-mcp');
+        } else {
+            selectedMcps = await promptMcpSelection(mcpSrcDir, tier);
+            console.log("");
+            const saasOptions = [
+                { label: 'Nein (Server Management Tools überspringen - Standard)', value: false },
+                { label: 'Ja (Installiere BDB SAAS SERVER MGMT tools)', value: true }
+            ];
+            const installSaas = await promptSingleSelect('Möchtest du BDB SaaS & Server Mgmt Tools installieren?', saasOptions, 0);
+            if (installSaas && !selectedMcps.includes('bdb-remoteos-mcp')) {
+                selectedMcps.push('bdb-remoteos-mcp');
+            }
         }
         let creds = {};
         
@@ -1489,7 +1719,19 @@ function reportFatal(stage, e) {
             }
             mcpConfigStr = mcpConfigStr.replace(/"command":\s*"uv"/g, `"command": "${uvPath.replace(/\\/g, '/')}"`);
 
-            creds = await promptCredentials(targetMcpDir);
+            if (isQuickUpdate) {
+                const existingEnv = loadExistingEnv(targetMcpDir);
+                creds = {
+                    gemini: existingEnv['GEMINI_API_KEY'] || existingEnv['GOOGLE_API_KEY'] || existingEnv['OPENWIKI_API_KEY'] || '',
+                    github: existingEnv['GITHUB_PERSONAL_ACCESS_TOKEN'] || existingEnv['GITHUB_TOKEN'] || '',
+                    openwikiProvider: existingEnv['OPENWIKI_PROVIDER'] || 'google',
+                    openwikiModel: existingEnv['OPENWIKI_MODEL'] || '',
+                    openwikiBaseUrl: existingEnv['OPENWIKI_BASE_URL'] || '',
+                    keyEnvName: 'GEMINI_API_KEY'
+                };
+            } else {
+                creds = await promptCredentials(targetMcpDir);
+            }
 
             if (selectedMcps.includes('memb-mcp')) {
                 const pythonBinPath = process.platform === 'win32'
@@ -1822,13 +2064,14 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
     }
 }
 
-async function promptCreatorExtension(mcpConfigPath) {
-    if (isAutoYes) return;
+async function promptCreatorExtension(mcpConfigPath, isSilent = false) {
+    if (!isSilent && isAutoYes) return;
     
-    console.log(`\n${colors.magenta}${colors.bold}🎬 BDB Creator Extension (Generative 3D, Video & ComfyUI)${colors.reset}`);
-    const doInstall = await promptSingleSelect("Install 'BDB Creator Extension' (3D, Video & ComfyUI MCP Engines)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
-
-    if (!doInstall) return;
+    if (!isSilent) {
+        console.log(`\n${colors.magenta}${colors.bold}🎬 BDB Creator Extension (Generative 3D, Video & ComfyUI)${colors.reset}`);
+        const doInstall = await promptSingleSelect("Install 'BDB Creator Extension' (3D, Video & ComfyUI MCP Engines)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
+        if (!doInstall) return;
+    }
 
     // Use user's home directory config path for stability if running via npx, or alongside current dir
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
@@ -1847,11 +2090,13 @@ async function promptCreatorExtension(mcpConfigPath) {
     }
 }
 
-async function promptSynapse() {
-    console.log(`\n${colors.cyan}${colors.bold}🧠 BDB Synapse (3D Codebase Visualizer)${colors.reset}`);
-    if (!isAutoYes) {
-        const doInstall = await promptSingleSelect("Install 'BDB Synapse' (Lightweight 3D Workspace Engine)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 0);
-        if (!doInstall) return;
+async function promptSynapse(isSilent = false) {
+    if (!isSilent) {
+        console.log(`\n${colors.cyan}${colors.bold}🧠 BDB Synapse (3D Codebase Visualizer)${colors.reset}`);
+        if (!isAutoYes) {
+            const doInstall = await promptSingleSelect("Install 'BDB Synapse' (Lightweight 3D Workspace Engine)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 0);
+            if (!doInstall) return;
+        }
     }
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
@@ -1892,13 +2137,14 @@ async function promptSynapse() {
     }
 }
 
-async function promptOSRemoteGateway() {
-    if (isAutoYes) return;
+async function promptOSRemoteGateway(isSilent = false) {
+    if (!isSilent && isAutoYes) return;
     
-    console.log(`\n${colors.blue}${colors.bold}🌐 BDB OS Remote Gateway (Zero-Trust SSE & Tailscale Multiplexer)${colors.reset}`);
-    const doInstall = await promptSingleSelect("Install 'BDB OS Remote Gateway' (Remote Multi-Agent Bridge)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
-
-    if (!doInstall) return;
+    if (!isSilent) {
+        console.log(`\n${colors.blue}${colors.bold}🌐 BDB OS Remote Gateway (Zero-Trust SSE & Tailscale Multiplexer)${colors.reset}`);
+        const doInstall = await promptSingleSelect("Install 'BDB OS Remote Gateway' (Remote Multi-Agent Bridge)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
+        if (!doInstall) return;
+    }
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const remoteDir = path.join(basePath, 'bdb-os-remote');
@@ -1906,13 +2152,14 @@ async function promptOSRemoteGateway() {
     downloadOrUpdateModule('@hybridlabor-api/bdb-os-remote', remoteDir, 'BDB OS Remote Gateway');
 }
 
-async function promptDevToolInstaller() {
-    if (isAutoYes) return;
+async function promptDevToolInstaller(isSilent = false) {
+    if (!isSilent && isAutoYes) return;
     
-    console.log(`\n${colors.green}${colors.bold}📦 BDB Dev Tool Installer (Interactive Hub & CLI Launcher)${colors.reset}`);
-    const doInstall = await promptSingleSelect("Install 'BDB Dev Tool Installer' (Interactive Hub & CLI Launcher)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
-
-    if (!doInstall) return;
+    if (!isSilent) {
+        console.log(`\n${colors.green}${colors.bold}📦 BDB Dev Tool Installer (Interactive Hub & CLI Launcher)${colors.reset}`);
+        const doInstall = await promptSingleSelect("Install 'BDB Dev Tool Installer' (Interactive Hub & CLI Launcher)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
+        if (!doInstall) return;
+    }
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const toolInstallerDir = path.join(basePath, 'bdb-dev-tool-installer');
@@ -1974,13 +2221,14 @@ function verifyEcosystemInstallation() {
     }
 }
 
-async function promptOSAgentWorkspace() {
-    if (isAutoYes) return;
+async function promptOSAgentWorkspace(isSilent = false) {
+    if (!isSilent && isAutoYes) return;
     
-    console.log(`\n${colors.magenta}${colors.bold}🧠 BDB OS Agent Workspace (AI Orchestrator)${colors.reset}`);
-    const doInstall = await promptSingleSelect("Install 'BDB OS Agent Workspace' (Orchestration Layer)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
-
-    if (!doInstall) return;
+    if (!isSilent) {
+        console.log(`\n${colors.magenta}${colors.bold}🧠 BDB OS Agent Workspace (AI Orchestrator)${colors.reset}`);
+        const doInstall = await promptSingleSelect("Install 'BDB OS Agent Workspace' (Orchestration Layer)?", [{label:'Yes', value:true}, {label:'No, skip it', value:false}], 1);
+        if (!doInstall) return;
+    }
 
     const basePath = __dirname.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
     const osAgentDir = path.join(basePath, 'bdb-os-agent-workspace');
@@ -2073,15 +2321,32 @@ fi`;
     console.log(` -> 🌐 BDB Agent Workspace WebUI erreichbar unter: http://localhost:3101`);
 }
 
-        await installOpenWikiDaemon(creds.gemini, targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
-        await installTokenSaver(platform);
-        await promptCreatorExtension(mcpConfigPath);
-        await promptSynapse();
-        await promptOSAgentWorkspace();
-        await promptOSRemoteGateway();
-        await promptDevToolInstaller();
-        await promptMemBIngestion(mcpCodeTarget);
-        await promptEcosystemHealthScheduler();
+        if (isQuickUpdate) {
+            console.log(`\n${colors.cyan}${colors.bold}⚡ Quick Update: Synchronisiere installierte Submodule...${colors.reset}`);
+            const modulesToUpdate = (installState && installState.installedModules) || [];
+            for (const subId of modulesToUpdate) {
+                if (subId === 'synapse') await promptSynapse(true);
+                else if (subId === 'remote') await promptOSRemoteGateway(true);
+                else if (subId === 'ao') await promptOSAgentWorkspace(true);
+                else if (subId === 'creator') await promptCreatorExtension(mcpConfigPath, true);
+                else if (subId === 'installer') await promptDevToolInstaller(true);
+            }
+            await promptNewModules(modulesToUpdate, mcpConfigPath);
+            reloadDaemons();
+            saveManifest({ tier, isUniversal, installedModules: modulesToUpdate });
+        } else {
+            await installOpenWikiDaemon(creds.gemini, targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+            await installTokenSaver(platform);
+            await promptCreatorExtension(mcpConfigPath);
+            await promptSynapse();
+            await promptOSAgentWorkspace();
+            await promptOSRemoteGateway();
+            await promptDevToolInstaller();
+            await promptMemBIngestion(mcpCodeTarget);
+            await promptEcosystemHealthScheduler();
+            reloadDaemons();
+            saveManifest({ tier, isUniversal, installedModules: (installState && installState.installedModules) || [] });
+        }
         verifyEcosystemInstallation();
         
         if (isUniversal) {
