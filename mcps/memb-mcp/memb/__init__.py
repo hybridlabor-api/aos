@@ -5,5 +5,8 @@ try:
 except importlib.metadata.PackageNotFoundError:
     __version__ = "1.0.0"
 
-from memb.client.main import AsyncMemoryClient, MemoryClient  # noqa
+try:
+    from memb.client.main import AsyncMemoryClient, MemoryClient  # noqa
+except ImportError:
+    pass
 from memb.memory.main import AsyncMemory, Memory  # noqa

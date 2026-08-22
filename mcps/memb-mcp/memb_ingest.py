@@ -12,6 +12,7 @@ import json
 import glob
 import argparse
 import shutil
+import hashlib
 from typing import List, Dict, Any, Optional, NamedTuple
 
 # Consoles and redirected pipes fall back to the locale codepage (e.g. cp1252 on German
@@ -310,26 +311,64 @@ def scan_antigravity_transcripts(max_sessions: int = 20) -> List[Dict[str, Any]]
 
 
 def ingest_to_memb(memory: Any, documents: List[Dict[str, Any]], category: str,
-                   coverage: Optional[Dict[str, int]] = None):
-    """Ingest extracted documents into memB vector memory."""
+                   coverage: Optional[Dict[str, int]] = None, purge_project: Optional[str] = None):
+    """Ingest extracted documents into memB vector memory with MD5 content deduplication."""
+    if purge_project:
+        print(f"🧹 Purging existing memories for project '{purge_project}' before re-ingestion...")
+        try:
+            items = memory.vector_store.list(filters={"project_id": purge_project})
+            for item in items:
+                m_id = getattr(item, "id", None)
+                if m_id:
+                    memory.delete(m_id)
+            print(f"  ✓ Purged {len(items)} existing records for '{purge_project}'")
+        except Exception as e:
+            print(f"  ✕ Purge error: {e}")
+
+    # Build existing content hashes map for deduplication
+    existing_hashes = set()
+    try:
+        existing_items = memory.vector_store.list()
+        for item in existing_items:
+            payload = getattr(item, "payload", {})
+            h = payload.get("metadata", {}).get("content_hash")
+            if h:
+                existing_hashes.add(h)
+    except Exception:
+        pass
+
     print(f"💾 Ingesting {len(documents)} document snippets into memB (~/.MemBDB/memb.db)...")
     success_count = 0
+    skipped_count = 0
 
     for doc in documents:
+        content_hash = hashlib.md5(f"{doc['project']}:{doc['source']}:{doc['content']}".encode("utf-8")).hexdigest()
+        if content_hash in existing_hashes:
+            skipped_count += 1
+            continue
+
         text_entry = f"[{doc['project']} | {doc['type']} | {doc['source']}]\n{doc['content']}"
         try:
             memory.add(
                 text_entry,
                 user_id="bdb_developer",
-                metadata={"project": doc["project"], "project_id": doc["project"], "type": doc["type"], "source": doc["source"], "category": category},
+                metadata={
+                    "project": doc["project"],
+                    "project_id": doc["project"],
+                    "type": doc["type"],
+                    "source": doc["source"],
+                    "category": category,
+                    "content_hash": content_hash
+                },
                 infer=False
             )
+            existing_hashes.add(content_hash)
             success_count += 1
             print(f"  ✓ Ingested: {doc['source']}")
         except Exception as e:
             print(f"  ✕ Failed ({doc['source']}): {e}")
 
-    print(f"\n🎉 Finished memB ingestion: {success_count}/{len(documents)} entries successfully indexed!")
+    print(f"\n🎉 Finished memB ingestion: {success_count} added, {skipped_count} unchanged ({len(documents)} total processed)!")
     if coverage:
         print(f"📁 File coverage: {coverage['files_captured']}/{coverage['files_found']} "
               "candidate files captured in the scanned directory.")
@@ -455,6 +494,7 @@ def main():
     parser = argparse.ArgumentParser(description="memB Deep Ingestion Tool")
     parser.add_argument("path", nargs="?", default=os.path.expanduser("~/bdb-dev"), help="File or directory path to ingest")
     parser.add_argument("--project", help="Explicit project name (defaults to folder basename)")
+    parser.add_argument("--purge-project", help="Purge all previous memories for this project name before ingesting")
     parser.add_argument("--transcripts", action="store_true", help="Also mine past Antigravity conversation logs")
     parser.add_argument("--category", default="project_architecture", help="Memory category (e.g. 3D_Engine, Styling_System)")
     parser.add_argument("--all-markdown", action="store_true",
@@ -494,7 +534,7 @@ def main():
         docs.extend(chat_docs)
 
     if docs:
-        ingest_to_memb(memory, docs, category=args.category, coverage=coverage)
+        ingest_to_memb(memory, docs, category=args.category, coverage=coverage, purge_project=args.purge_project)
     elif coverage:
         print("No new documents to ingest "
               f"({coverage['files_captured']}/{coverage['files_found']} candidate files captured).")

@@ -49,11 +49,11 @@ def fetch_top_context(memory: Any, project_name: str) -> str:
     """Fetch Godmode and Project-specific memories to form the injected context."""
     context_parts = []
     
-    # 1. Fetch Godmode rules
-    godmode_memories = memory.search("developer preferences architecture rules", filters={"user_id": "bdb_developer"}, limit=5)
+    # 1. Fetch Godmode & architectural rules
+    godmode_memories = memory.search("developer preferences architecture rules", filters={"user_id": "bdb_developer"}, top_k=5)
     
     # 2. Fetch Project-specific rules
-    project_memories = memory.search("project rules constraints decisions", filters={"user_id": "bdb_developer"}, limit=5)
+    project_memories = memory.search(f"{project_name} architecture decisions conventions", filters={"user_id": "bdb_developer"}, top_k=5)
     
     context_parts.append("# memB Auto-Injected Context")
     context_parts.append("The following knowledge was automatically retrieved from the memB vector engine.\n")
@@ -61,14 +61,18 @@ def fetch_top_context(memory: Any, project_name: str) -> str:
     context_parts.append("## Global Developer Preferences (Godmode)")
     if godmode_memories and 'results' in godmode_memories:
         for m in godmode_memories['results']:
-            if m.get('metadata', {}).get('category') == 'godmode':
-                context_parts.append(f"- {m.get('document')}")
+            text = m.get("memory") or m.get("data") or m.get("document") or ""
+            if text:
+                context_parts.append(f"- {text.strip()}")
 
     context_parts.append(f"\n## Project Context: {project_name}")
     if project_memories and 'results' in project_memories:
         for m in project_memories['results']:
-            if m.get('metadata', {}).get('project') == project_name:
-                context_parts.append(f"- {m.get('document')}")
+            meta = m.get('metadata', {})
+            if meta.get('project') == project_name or meta.get('project_id') == project_name:
+                text = m.get("memory") or m.get("data") or m.get("document") or ""
+                if text:
+                    context_parts.append(f"- {text.strip()}")
 
     if len(context_parts) <= 4:
         context_parts.append("- No specific project memory found. Rely on Godmode standards.")
