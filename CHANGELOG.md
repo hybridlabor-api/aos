@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.9.6](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.5...v3.9.6) (2026-08-22)
+
+
+### Bug Fixes
+
+* **installer:** memB standalone venv bootstrap + WebUI daemon autostart ([ee17732](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/ee17732abc1c02c959ad3c9676d24c6178879c20))
+* **installer:** prompt for Obsidian memB plugin, launchpad and harden gate ADR-014 ([669c5f8](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/669c5f8ede2314e3c62adcc0e6aa77cc315012b8))
+* **installer:** trigger 3.9.6 PR ([cc59898](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/cc59898d9f667922bb5d6d302fee7166878d2675))
+* **installer:** trigger clean 3.9.6 patch release ([8dfc8c0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/8dfc8c0645d305441330537b532c2399a0ddbf42))
+
 ## [3.9.4](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.3...v3.9.4) (2026-08-22)
 
 
