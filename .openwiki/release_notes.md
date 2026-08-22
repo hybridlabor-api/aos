@@ -1,5 +1,18 @@
 # Release Notes
 
+## v3.9.0 (1-Click Quick Update Mode, State Detection & Seamless Daemon Reload)
+- **1-Click Quick Update Mode (`executeQuickUpdate`)**: Intelligent top-level update flow detecting existing installations (`~/.agents/.bdb-manifest.json`). Enables instant 5-second non-interactive upgrades of all 160 skills, rules, and MCP configs while keeping existing API keys, tokens, and custom user MCPs intact.
+- **Interactive Top-Level Status Banner**: Clear terminal prompt displaying local vs. remote version (`v3.8.0 ➔ v3.9.0`). Highlights `[1] ⚡ Quick Update` if updates are available, or `🛠️ Re-configure / 🔄 Repair` if already up-to-date.
+- **Post-Update New Module Discovery (`promptNewModules`)**: Automatically synchronizes all previously installed submodules first, and then selectively offers newly introduced ecosystem modules without asking 10 upfront configuration questions.
+- **Automated Daemon Reload (`reloadDaemons`)**: Triggers zero-downtime background reloads for Synapse 3D (`com.bdb.synapse`), Remote Gateway (`com.hybridlabor.bdb-remote`), and Agent Workspace (`com.bdb.ao.daemon`).
+- **Persistent State Manifest (`saveManifest`)**: Writes machine-readable `.bdb-manifest.json` under `~/.agents/` for reliable cross-platform version discovery and drift prevention.
+
+## v3.8.1 (Windows CLI Execution, Color Escaping & Path Normalization)
+- **Cross-Platform `execSync` Hardening**: Replaced shell redirection `2>/dev/null` with `{ stdio: ['ignore', 'pipe', 'ignore'] }` across all version inspection checks, eliminating Windows `cmd.exe` path errors (`Das System kann den angegebenen Pfad nicht finden`).
+- **Terminal Color Formatting**: Added missing `blue` ANSI color token in `colors` palette, fixing `undefined` prefixes in module prompts.
+- **AI Vault Path Normalization**: Unified Windows forward/backward slash formats in `memB_Vault` generators using `os.path.normpath`.
+- **Ecosystem Verification Path Fix**: Corrected package lookup directory to `srcDir` for accurate local version auditing.
+
 ## v3.8.0 (Live Drift-Checker, Multi-Repo Ecosystem Sync & Port Registry)
 - **Live Version Drift-Checker (`downloadOrUpdateModule`)**: Added autonomous NPM remote version detection across all standalone modules (`bdb-synapse`, `memB`, `bdb-os-remote`, `bdb-dev-tool-installer`, `bdb-dev-creator-extension`, `bdb-os-agent-workspace`). Automatically downloads `@latest` tarballs if upstream releases exist on NPM.
 - **memB v2.3.0 Engine Upgrade**: Synced full hybrid vector store with SQLite WAL concurrency, FTS5 BM25 keyword boosting (1.25x), SHA-256 deduplication, and 8-tool FastMCP interface.
