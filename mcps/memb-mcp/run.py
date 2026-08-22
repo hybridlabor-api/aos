@@ -32,7 +32,7 @@ memory_config = {
     "llm": {
         "provider": "gemini",
         "config": {
-            "model": "gemini-1.5-flash"
+            "model": os.environ.get("MEMB_LLM_MODEL", "gemini-2.0-flash")
         }
     },
     "history_db_path": history_db_path
@@ -58,11 +58,11 @@ def add_memory(
         project_id: Optional folder name of the active project (e.g. 'VisualSelect_By_BDB') to isolate context.
     """
     metadata = {
-        "category": category,
-        "user_id": user_id
+        "category": category
     }
     if project_id:
         metadata["project_id"] = project_id
+        metadata["project"] = project_id
         
     memory.add(text, user_id=user_id, metadata=metadata)
     return f"Successfully added memory to category '{category}'" + (f" (Project: {project_id})" if project_id else "")
@@ -72,6 +72,7 @@ def search_memory(
     query: str, 
     user_id: str = "bdb_developer", 
     limit: int = 5,
+    category: Optional[str] = None,
     project_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """Queries the local semantic database for relevant memories, configurations, and styles.
@@ -80,16 +81,31 @@ def search_memory(
         query: The semantic search query term.
         user_id: The developer user identifier.
         limit: Maximum number of memories to return.
-        project_id: Optional active project directory name to fetch project-specific memories in addition to global God Mode memories.
+        category: Optional category filter ('godmode', 'media', 'web', 'software', etc.). If omitted, searches all categories.
+        project_id: Optional active project directory name to fetch project-specific memories in addition to global memories.
     """
-    # 1. Fetch global God Mode memories
-    godmode_res = memory.search(query=query, filters={"category": "godmode", "user_id": user_id}, top_k=limit)
-    results = godmode_res.get("results", [])
+    results = []
     
-    # 2. Fetch project-specific memories if requested
-    if project_id:
-        project_res = memory.search(query=query, filters={"project_id": project_id, "user_id": user_id}, top_k=limit)
-        results.extend(project_res.get("results", []))
+    if category and project_id:
+        # Explicit category and project_id requested
+        res = memory.search(query=query, filters={"category": category, "project_id": project_id, "user_id": user_id}, top_k=limit)
+        results.extend(res.get("results", []))
+    elif category:
+        # Explicit category requested
+        res = memory.search(query=query, filters={"category": category, "user_id": user_id}, top_k=limit)
+        results.extend(res.get("results", []))
+    elif project_id:
+        # Fetch project-specific memories
+        proj_res = memory.search(query=query, filters={"project_id": project_id, "user_id": user_id}, top_k=limit)
+        results.extend(proj_res.get("results", []))
+        
+        # Also fetch global godmode memories
+        godmode_res = memory.search(query=query, filters={"category": "godmode", "user_id": user_id}, top_k=limit)
+        results.extend(godmode_res.get("results", []))
+    else:
+        # Search ALL user memories across all categories and projects by default
+        all_res = memory.search(query=query, filters={"user_id": user_id}, top_k=max(limit * 2, 10))
+        results.extend(all_res.get("results", []))
         
     # Remove duplicates and sort by similarity score descending
     seen_ids = set()
@@ -104,15 +120,27 @@ def search_memory(
     return unique_results[:limit]
 
 @mcp.tool()
-def list_memories(user_id: str = "bdb_developer", limit: int = 50) -> List[Dict[str, Any]]:
-    """Lists all active memories stored locally in SQLite for this user.
+def list_memories(
+    user_id: str = "bdb_developer", 
+    limit: int = 50,
+    category: Optional[str] = None,
+    project_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Lists active memories stored locally in SQLite for this user.
     
     Args:
         user_id: The developer user identifier.
         limit: Max number of records to return.
+        category: Optional category filter.
+        project_id: Optional project identifier filter.
     """
-    # get_all() takes top_k; a "limit" kwarg is silently swallowed and the default of 20 applies.
-    all_m = memory.get_all(filters={"user_id": user_id}, top_k=limit)
+    filters = {"user_id": user_id}
+    if category:
+        filters["category"] = category
+    if project_id:
+        filters["project_id"] = project_id
+        
+    all_m = memory.get_all(filters=filters, top_k=limit)
     return all_m.get("results", []) if all_m else []
 
 @mcp.tool()

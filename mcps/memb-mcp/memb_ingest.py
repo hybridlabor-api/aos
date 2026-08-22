@@ -321,7 +321,7 @@ def ingest_to_memb(memory: Any, documents: List[Dict[str, Any]], category: str,
             memory.add(
                 text_entry,
                 user_id="bdb_developer",
-                metadata={"project": doc["project"], "type": doc["type"], "source": doc["source"], "category": category},
+                metadata={"project": doc["project"], "project_id": doc["project"], "type": doc["type"], "source": doc["source"], "category": category},
                 infer=False
             )
             success_count += 1
