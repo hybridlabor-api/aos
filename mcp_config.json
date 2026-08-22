@@ -80,6 +80,19 @@
       "env": {
         "OD_DAEMON_URL": "http://127.0.0.1:3000"
       }
+    },
+    "bdb_remoteos_mcp": {
+      "command": "uv",
+      "args": [
+        "--directory", 
+        "__MCPS_DIR__/bdb-remoteos-mcp", 
+        "run", 
+        "bdb-remoteos-mcp"
+      ],
+      "env": {
+        "REMOTEOS_GATEWAY_URL": "https://gateway.yourdomain.com",
+        "REMOTEOS_API_KEY": "${REMOTEOS_API_KEY}"
+      }
     }
   }
 }
