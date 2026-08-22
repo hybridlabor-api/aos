@@ -507,32 +507,6 @@ function reloadDaemons() {
     }
 }
 
-async function promptNewModules(installedModules, mcpConfigPath) {
-    if (isAutoYes) return;
-    const allModules = [
-        { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: promptSynapse },
-        { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: promptOSRemoteGateway },
-        { id: 'ao', name: 'BDB OS Agent Workspace (AI Orchestrator)', fn: promptOSAgentWorkspace },
-        { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: () => promptCreatorExtension(mcpConfigPath) },
-        { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: promptDevToolInstaller }
-    ];
-
-    const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
-    if (uninstalled.length === 0) return;
-
-    console.log(`\n${colors.magenta}${colors.bold}✨ Neue / Optionale BDB OS Module verfügbar:${colors.reset}`);
-    for (const mod of uninstalled) {
-        const doInstall = await promptSingleSelect(`Möchtest du ${mod.name} jetzt installieren?`, [
-            { label: `Ja, ${mod.name} installieren`, value: true },
-            { label: `Überspringen`, value: false }
-        ], 1);
-        if (doInstall) {
-            await mod.fn();
-            installedModules.push(mod.id);
-        }
-    }
-}
-
 async function promptSingleSelect(title, options, defaultIndex = 0) {
     if (isAutoYes) return options[defaultIndex].value !== undefined ? options[defaultIndex].value : options[defaultIndex];
 
@@ -2319,6 +2293,32 @@ fi`;
     }
 
     console.log(` -> 🌐 BDB Agent Workspace WebUI erreichbar unter: http://localhost:3101`);
+}
+
+async function promptNewModules(installedModules, mcpConfigPath) {
+    if (isAutoYes) return;
+    const allModules = [
+        { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: promptSynapse },
+        { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: promptOSRemoteGateway },
+        { id: 'ao', name: 'BDB OS Agent Workspace (AI Orchestrator)', fn: promptOSAgentWorkspace },
+        { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: () => promptCreatorExtension(mcpConfigPath) },
+        { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: promptDevToolInstaller }
+    ];
+
+    const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
+    if (uninstalled.length === 0) return;
+
+    console.log(`\n${colors.magenta}${colors.bold}✨ Neue / Optionale BDB OS Module verfügbar:${colors.reset}`);
+    for (const mod of uninstalled) {
+        const doInstall = await promptSingleSelect(`Möchtest du ${mod.name} jetzt installieren?`, [
+            { label: `Ja, ${mod.name} installieren`, value: true },
+            { label: `Überspringen`, value: false }
+        ], 1);
+        if (doInstall) {
+            await mod.fn();
+            installedModules.push(mod.id);
+        }
+    }
 }
 
         if (isQuickUpdate) {
