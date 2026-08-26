@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>BDB SaaS Host Administrator Certificate - {{ candidate_name }}</title>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #080c14;
+      color: #f8fafc;
+      width: 297mm;
+      height: 210mm;
+      padding: 12mm;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      -webkit-print-color-adjust: exact;
+    }
+    .cert-container {
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 50% 20%, #172554 0%, #0b1329 50%, #030712 100%);
+      border: 2px solid #1e3a8a;
+      border-radius: 16px;
+      padding: 14mm 16mm;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: inset 0 0 60px rgba(59, 130, 246, 0.15);
+    }
+    .corner-decor {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border: 2px solid #38bdf8;
+    }
+    .top-left { top: 8px; left: 8px; border-right: none; border-bottom: none; }
+    .top-right { top: 8px; right: 8px; border-left: none; border-bottom: none; }
+    .bottom-left { bottom: 8px; left: 8px; border-right: none; border-top: none; }
+    .bottom-right { bottom: 8px; right: 8px; border-left: none; border-top: none; }
+
+    .header {
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 14px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #38bdf8;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 4px;
+    }
+    h2 {
+      font-size: 14px;
+      font-weight: 500;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+
+    .middle {
+      text-align: center;
+      margin: 8px 0;
+    }
+    .certifies {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    .name {
+      font-size: 34px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      color: #38bdf8;
+      text-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+      margin-bottom: 6px;
+    }
+    .statement {
+      font-size: 13px;
+      color: #cbd5e1;
+      max-width: 680px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+
+    .skills-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 10px 0;
+    }
+    .skill-item {
+      font-size: 11px;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .check {
+      color: #34d399;
+      font-weight: bold;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-top: 1px solid rgba(51, 65, 85, 0.6);
+      padding-top: 10px;
+    }
+    .meta-col {
+      font-size: 10px;
+      color: #64748b;
+      line-height: 1.6;
+    }
+    .meta-col strong {
+      color: #94a3b8;
+    }
+    .sig-col {
+      text-align: right;
+    }
+    .sig-line {
+      font-size: 12px;
+      font-weight: 600;
+      color: #f1f5f9;
+      border-top: 1px solid #475569;
+      padding-top: 4px;
+      display: inline-block;
+      min-width: 180px;
+      text-align: center;
+    }
+    .sig-title {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="cert-container">
+    <div class="corner-decor top-left"></div>
+    <div class="corner-decor top-right"></div>
+    <div class="corner-decor bottom-left"></div>
+    <div class="corner-decor bottom-right"></div>
+
+    <div class="header">
+      <div class="badge">BDB Agent OS &bull; Technical Certification</div>
+      <h1>CERTIFICATE OF EXCELLENCE</h1>
+      <h2>BDB SaaS Host Fleet Administrator</h2>
+    </div>
+
+    <div class="middle">
+      <div class="certifies">This is to officially certify that</div>
+      <div class="name">{{ candidate_name }}</div>
+      <div class="statement">
+        has successfully completed the intensive hands-on SysAdmin bootcamp and demonstrated verified technical competence in container virtualization, zero-trust security, and autonomous AI-agent operations across the BDB Multi-Cloud Fleet.
+      </div>
+    </div>
+
+    <div class="skills-grid">
+      <div class="skill-item"><span class="check">&#10003;</span> Zero-Trust Step-CA 2FA SSH</div>
+      <div class="skill-item"><span class="check">&#10003;</span> Incus Custom Profile Engineering</div>
+      <div class="skill-item"><span class="check">&#10003;</span> Autonomous AI-Agent Sandboxing</div>
+      <div class="skill-item"><span class="check">&#10003;</span> FastMCP Remote Gateway Operations</div>
+      <div class="skill-item"><span class="check">&#10003;</span> 4-Eyes HMAC Authorization</div>
+      <div class="skill-item"><span class="check">&#10003;</span> Caddy 2FA & Cloudflare Governance</div>
+    </div>
+
+    <div class="footer">
+      <div class="meta-col">
+        <div><strong>Issue Date:</strong> {{ issue_date }}</div>
+        <div><strong>Final Exam Score:</strong> {{ score }}/10 ({{ percentage }}%)</div>
+        <div><strong>Certificate ID:</strong> {{ cert_id }}</div>
+      </div>
+      <div class="sig-col">
+        <div class="sig-line">Tim Rennings</div>
+        <div class="sig-title">Lead Architect &bull; BDB Hybridlabor</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

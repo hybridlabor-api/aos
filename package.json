@@ -6,7 +6,8 @@
   "bin": {
     "bdb-dev-optimized-agent-skills": "installer.js",
     "bdb-agent-skills-pro": "installer.js",
-    "bdb-agent-skills": "installer.js"
+    "bdb-agent-skills": "installer.js",
+    "setup-saas": "bin/setup-saas.mjs"
   },
   "publishConfig": {
     "access": "public"
@@ -21,6 +22,7 @@
   "homepage": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills#readme",
   "files": [
     "installer.js",
+    "bin/",
     "mcp_config.json",
     "GEMINI.md",
     "CODEX.md",
@@ -44,6 +46,10 @@
     "aider-skills",
     "mcp-server"
   ],
+  "dependencies": {
+    "@clack/prompts": "^0.8.2",
+    "picocolors": "^1.1.1"
+  },
   "author": "BDB DEV",
   "license": "Apache-2.0"
 }
