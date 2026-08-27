@@ -91,8 +91,41 @@ Ran via `HOME=$(mktemp -d) node .../installer.js` from the user's real `~`.
      copies `.claude/` as a whole directory, and only references the
      unrelated doc `.agents/workflows/startcycle.md` by name) — so this
      fix needed no installer changes.
-   - **Not yet retested end-to-end** — this was the very next step queued
-     when context most recently ran low. See "Priority order" below.
+   - **Retested — the dispatcher genuinely ran for the first time.**
+     `/startcycle <goal>` (fresh Claude Code session, same scratch project)
+     produced a real `Workflow` tool call, a real spawned subagent
+     (`architect-0`, Sonnet 5, 46.1k tokens), and a Run ID
+     (`wf_f3a0d7da-768`) visible in `/workflows`. This is the first actual
+     end-to-end execution since the graph was designed.
+
+2. **New finding from that same run, fixed (commit `05382aa`):**
+   `Workflow(name: "startcycle-dispatch")` itself failed —
+   `Error: Workflow "startcycle-dispatch" not found. Available:
+   deep-research` — even though the script exists, is correctly named, and
+   the naming collision is resolved. Only `deep-research` (apparently
+   built-in) is known to by-name lookup; a custom script under
+   `.claude/workflows/` is NOT automatically registered by name just by
+   existing there. The live session self-recovered by calling `Workflow`
+   with `scriptPath` instead, which worked. **Fix:** rewrote the skill to
+   use `scriptPath` (resolved via `$HOME`, never a hardcoded username) as
+   the primary and only mechanism — removes the dependency on whatever
+   by-name registration step actually exists (the `/workflows` monitor's
+   `s save` hint looks like a candidate, but it's an interactive action a
+   slash command can't trigger itself, so don't build on it without
+   confirming it actually does that).
+   - **Not yet independently reconfirmed** with the `scriptPath`-only
+     version of the skill (the successful run above used the model's own
+     workaround, not this fix) — next retest should confirm the skill's
+     instructions alone (no improvisation needed) produce the same result.
+
+3. **Status of that specific run when last observed:** `/workflows` monitor
+   showed the pipeline as `paused`, with `architect-0` marked `stopped`
+   after ~11s. Unclear from a static screenshot whether: (a) architect
+   finished normally and the dispatcher script is between steps, (b) it's
+   waiting on a tool-permission approval the user hasn't seen yet, or (c)
+   something errored silently. **Needs a live check** — open `/workflows`
+   again, look at `architect-0`'s actual output/logs, and check for any
+   pending permission prompt. Not resolved as of this doc's last edit.
 
 2. **Confirmed, separate, real safety gap:** both hooks errored
    (non-blocking) during the test run — `PreToolUse:Bash hook error`,
