@@ -1,6 +1,6 @@
 ---
 name: startcycle
-description: Use when autonomous multi-agent development cycle pipeline triggered after /bdbrainstorm or /grill-me. Orchestrates Planner, UI/UX, Engineering, Media/EventTech, and Shipping agents with deterministic production_artifacts hand-offs and automated o...
+description: Use when running the autonomous multi-agent build pipeline after /bdbrainstorm or /grill-me. A dispatcher reads production_artifacts/state.json and invokes Architect, TechLead, UI/UX, Engineering, Media/EventTech, Reviewer, and Shipping in turn per .agents/graph.md's edge table — the agents never invoke each other.
 category: bdb-core
 ---
 
@@ -43,60 +43,50 @@ The `/startcycle` workflow is the autonomous, multi-agent execution pipeline of 
 
 ---
 
-## 📋 Deterministic 4-Phase Pipeline
+## 📋 Dispatcher-Mediated Graph (v2)
 
-### Phase 1: Task Decomposition & Planning
-- **Agent Role**: `Planner_Orchestrator`
-- **Model**: `Claude 3.5 Sonnet` / `Gemini 1.5 Pro` / `GPT-4o`
-- **Action**:
-  1. Ingests session output, RFC, or brainstorming summary.
-  2. Breaks down requirements into atomic execution tasks across domain streams.
-  3. Defines explicit dependency graphs and data contracts between streams.
-- **Output Artifact**: `production_artifacts/00_execution_plan.md`
+**This replaces the old linear 4-phase description below the diagram above.**
+The full contract — state schema, node table, edge predicates, the Stop-hook
+loop-keeper — lives in [`.agents/graph.md`](../../../.agents/graph.md) and
+[`.agents/state.schema.json`](../../../.agents/state.schema.json); this
+section is a summary, not the source of truth.
 
----
+**The one rule:** these seven agents never invoke each other. A dispatcher —
+the main session running `/startcycle`, or whatever plays that role in a
+given harness — reads `production_artifacts/state.json` after each agent
+returns and decides which one runs next. The old version of this skill
+described "streams" and "hand-offs" in a way that read as agents calling
+agents; that framing is corrected (see `audit-agents.md` F-17).
 
-### Phase 2: Parallel Stream Execution (State Hand-Off)
-Sub-agents are executed in isolated contexts. All inter-agent data exchange happens strictly via files in `production_artifacts/`.
+| Node | Role | Reads | Writes |
+|---|---|---|---|
+| **Architect** | Turns the goal into a system plan | `state.goal` | `state.artifacts.plan` |
+| **TechLead** | Approves/rejects the plan's capability map | `state.artifacts.plan` | plan approval, `state.phase` |
+| **Godmode_UI_UX** | Frontend implementation | plan, own findings | `state.artifacts.frontend` |
+| **Godmode_Engineering** | Backend implementation | plan, own findings | `state.artifacts.backend` |
+| **Godmode_Media_EventTech** | Media/show-control implementation (if the goal needs it) | plan, own findings | `state.artifacts.media` |
+| **Reviewer** | Adversarial review of build output against the plan's contract — never sees the implementer's claim, only the artifact | build artifacts only | `state.findings`, `state.doubt_theater_streak` |
+| **Godmode_Shipping** | Runs the automated quality gate; ships only with all gates green and a `GO` | all artifacts, findings | `state.gate`, `state.phase: done` |
 
-#### 🎨 Frontend Stream
-- **Agent Role**: `Godmode_UI_UX`
-- **Primary Skills**: `godmode-ui-ux`, `landing-page-generator`, `shadcn`, `tailwind-patterns`, `react-best-practices`, `ui-component`
-- **Action**: Reads `00_execution_plan.md`, implements responsive UI components, enforces Anti-Slop rules, DTCG design tokens, and fluid motion physics.
-- **Output Artifacts**: `production_artifacts/01_frontend_spec.md` & code to `frontend/src/` or `app_build/src/components/`.
+**Repair loop (the gap the old version of this skill flagged as a Red Flag,
+now closed):** if TechLead rejects the plan, Reviewer has an open blocking
+finding, or Shipping's gate fails, the dispatcher increments
+`state.iteration` and re-invokes the owning node — it does not just stop. A
+`Stop` hook (`.claude/hooks/graph-gate.mjs`) enforces this deterministically:
+it blocks the turn from ending while the gate is failing and
+`iteration < max_iterations` (default 3). Once the ceiling is hit, the
+dispatcher sets `phase: escalated` and hands control back to the user instead
+of looping forever.
 
-#### ⚙️ Backend & Architecture Stream
-- **Agent Role**: `Godmode_Engineering`
-- **Primary Skills**: `godmode-engineering`, `software-architecture`, `test-driven-development`, `api-design-principles`, `drizzle-orm-expert`, `postgres-best-practices`, `typescript-pro`, `python-pro`
-- **Action**: Reads `00_execution_plan.md`, implements DDD models, type-safe database schemas, business logic, and API routes.
-- **Output Artifacts**: `production_artifacts/02_backend_schema.md` & code to `backend/src/` or `app_build/src/server/`.
+**Doubt theater guard:** if Reviewer produces zero blocking findings on two
+consecutive cycles over the same artifact, the dispatcher does not run a
+third identical review — it suspects the reviewer is validating rather than
+doubting, sets `needs_human: true`, and surfaces that to the user.
 
-#### 🎬 Media & EventTech Stream (If Applicable)
-- **Agent Role**: `Godmode_Media_EventTech`
-- **Primary Skills**: `godmode-eventtech`, `godmode-media-creation`, `godmode-3d-creation`, `bdbmediastorm`, `threejs-skills`, `spline-3d-integration`
-- **Action**: Reads `00_execution_plan.md`, generates TouchDesigner TOX/GLSL networks, Unreal Engine blueprints, DaVinci Resolve color grades, or DMX/grandMA3 lighting layouts via MCP tools.
-- **Output Artifacts**: `production_artifacts/03_media_pipeline.md`.
-
----
-
-### Phase 3: Verification & Quality Gate
-- **Agent Role**: `Godmode_Shipping`
-- **Primary Skills**: `godmode-shipping`, `webapp-testing`, `seo-audit`, `wcag-audit-patterns`, `clean-code`, `github-repo`
-- **Action**:
-  1. Runs typechecks, linters, and unit test suites (`npm test`, `pytest`, `tsc --noEmit`).
-  2. Runs Playwright browser automation tests for critical user flows.
-  3. Verifies WCAG 2.1 AA accessibility and SEO meta signals.
-  4. Audits codebase for hardcoded secrets and absolute file paths.
-- **Gate Checkpoint**: Must achieve `Status: PASSED (100% Green)` before progressing to release.
-- **Output Artifact**: `production_artifacts/04_release_report.md`.
-
----
-
-### Phase 4: Production Release & Memory Sync (`/ship`)
-Once Phase 3 passes:
-1. **Wiki Sync (`openwiki-skill`)**: Scans git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and updates root `README.md`.
-2. **memB Memory Ingestion (`memb-ingest`)**: Automatically ingests newly created documentation, schemas, and patterns into local SQLite vector memory (`~/.MemBDB/`).
-3. **Git Release**: Creates atomic commit, tags version, and pushes to private remote repository.
+**`/ship` (after `state.phase: done`):**
+1. **Wiki Sync (`openwiki-skill`)**: scans the git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and root `README.md`.
+2. **memB Memory Ingestion (`memb-ingest`)**: ingests new documentation, schemas, and patterns into local vector memory (`~/.MemBDB/`).
+3. **Git Release**: atomic commit, version tag, push to the private remote — gated by `go-gate.mjs` like any other push in this repo.
 
 ---
 
@@ -140,7 +130,8 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 - Bypassing the verification step after a script execution.
 - Proceeding to the next pipeline stage without confirming the previous stage's side effects.
 - Ignoring domain-specific constraints listed in this skill.
-- The quality gate finds a failure and the run has no defined way to loop back to a build stage.
+- One agent's prompt or output directly instructing another agent to act ("hand off to Engineering now") instead of the dispatcher reading `state.json` and deciding the next invocation itself — this is the node-to-node hand-off pattern `.agents/graph.md` explicitly rules out (F-17).
+- A third identical Reviewer cycle on the same artifact after two consecutive clean passes, instead of escalating per the doubt-theater guard.
 
 ## 6. Verification
 - [ ] Verified script exit codes are explicitly checked.

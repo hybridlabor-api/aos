@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/.agents/state.schema.json",
+  "title": "BDB Graph Run State",
+  "description": "Typed hand-off record for a /startcycle run, replacing free-form production_artifacts/*.md prose as the transport edges evaluate. See .agents/graph.md for the dispatcher loop this state drives. Persisted at production_artifacts/state.json.",
+  "type": "object",
+  "required": ["run_id", "goal", "phase", "iteration", "max_iterations", "gate", "findings", "approvals"],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Unique id for this /startcycle run, e.g. a timestamp or short hash. Lets a fresh dispatcher invocation resume the right run instead of guessing."
+    },
+    "goal": {
+      "type": "string",
+      "description": "The user's original request, verbatim or lightly normalized. Every node reads this instead of re-deriving intent from a prior node's prose (F-17: context fidelity)."
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["define", "plan", "build", "verify", "review", "ship", "done", "escalated"],
+      "description": "Current pipeline stage. 'escalated' means the dispatcher stopped the loop and handed control back to the user (max_iterations reached or needs_human)."
+    },
+    "artifacts": {
+      "type": "object",
+      "description": "Paths to the human-readable markdown artifacts nodes produce. state.json is what edges evaluate; these stay the readable payload.",
+      "properties": {
+        "plan": { "type": ["string", "null"] },
+        "frontend": { "type": ["string", "null"] },
+        "backend": { "type": ["string", "null"] },
+        "media": { "type": ["string", "null"] },
+        "review": { "type": ["string", "null"] },
+        "report": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "description": "Reviewer output. Each finding is owned by exactly one build node so the dispatcher knows which node to re-invoke on a repair loop.",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "node", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "severity": { "type": "string", "enum": ["blocking", "advisory"] },
+          "node": {
+            "type": "string",
+            "enum": ["ui_ux", "engineering", "media_eventtech"],
+            "description": "Which build node owns fixing this finding."
+          },
+          "status": { "type": "string", "enum": ["open", "fixed", "wont_fix"] },
+          "summary": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "gate": {
+      "type": "object",
+      "description": "Shipping's quality-gate results. Any 'fail' here, with iteration < max_iterations, is what the Stop hook (.claude/hooks/graph-gate.mjs) blocks on.",
+      "properties": {
+        "lint": { "type": "string", "enum": ["pass", "fail", "skip"] },
+        "typecheck": { "type": "string", "enum": ["pass", "fail", "skip"] },
+        "tests": { "type": "string", "enum": ["pass", "fail", "skip"] },
+        "a11y": { "type": "string", "enum": ["pass", "fail", "skip"] },
+        "seo": { "type": "string", "enum": ["pass", "fail", "skip"] }
+      },
+      "additionalProperties": false
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Repair-loop counter. Incremented by the dispatcher every time an edge sends the run back to a build node (TechLead rejection, Reviewer findings, or a failed gate)."
+    },
+    "max_iterations": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3,
+      "description": "Hard stop. Default 3, matching the 'doubt theater' convention (2+ review cycles with zero actionable findings means stop and escalate rather than keep looping) and staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead."
+    },
+    "doubt_theater_streak": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Consecutive Reviewer cycles that produced zero actionable findings. At 2, the dispatcher should suspect the reviewer is validating rather than doubting (see .agents/graph.md Reviewer discipline) and escalate rather than run a third identical cycle."
+    },
+    "approvals": {
+      "type": "array",
+      "description": "GO tokens observed for this run. Distinct from the go-gate.mjs hook's own transcript check -- this is a state-level record of when/where a GO was given, for audit purposes.",
+      "items": {
+        "type": "object",
+        "required": ["node", "token", "at"],
+        "properties": {
+          "node": { "type": "string" },
+          "token": { "type": "string", "const": "GO" },
+          "at": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "needs_human": {
+      "type": "boolean",
+      "default": false,
+      "description": "Any node can set this to force an in-loop feedback edge back to the user (per B5's reference diagram), independent of the gate/iteration state."
+    }
+  },
+  "additionalProperties": false
+}

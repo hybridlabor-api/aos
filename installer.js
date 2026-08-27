@@ -1863,6 +1863,16 @@ function parseAgentsMd(content) {
     return agents;
 }
 
+// A role description is free text that may contain ": " (colon-space), which
+// breaks an unquoted YAML plain scalar the moment a future role happens to
+// use it (e.g. "Reviews: what changed"). Double-quoting defensively, with the
+// two characters that would break a double-quoted scalar escaped, costs
+// nothing when it's not needed and avoids a silent frontmatter-parse failure
+// when it is.
+function yamlQuote(str) {
+    return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
+}
+
 // Generates .claude/agents/<name>.md — Claude Code's native subagent format.
 // Only frontmatter fields confirmed against code.claude.com/docs/en/sub-agents
 // are emitted (name, description, model). `tools:`/`permission`-style
@@ -1884,7 +1894,7 @@ function compileClaudeAgents(agents, targetDir) {
         const frontmatter = [
             '---',
             `name: ${slug}`,
-            `description: ${a.role.replace(/\n/g, ' ')}`,
+            `description: ${yamlQuote(a.role)}`,
             `model: ${model}`,
             '---',
             '',
@@ -1915,7 +1925,7 @@ function compileOpenCodeAgents(agents, targetDir) {
 
         const frontmatter = [
             '---',
-            `description: ${a.role.replace(/\n/g, ' ')}`,
+            `description: ${yamlQuote(a.role)}`,
             'mode: subagent',
             '---',
             '',
