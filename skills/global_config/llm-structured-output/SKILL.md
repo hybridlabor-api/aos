@@ -1,8 +1,8 @@
 ---
 name: llm-structured-output
 description: >
-category: library
   Get reliable JSON, enums, and typed objects from LLMs using response_format, tool_use, and schema-constrained decoding across OpenAI, Anthropic, and Google APIs.
+category: library
 risk: safe
 source: community
 date_added: "2026-03-12"
