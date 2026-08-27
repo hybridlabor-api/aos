@@ -1814,6 +1814,117 @@ async function installMcpsForTarget(paths, ctx) {
     }
 }
 
+// Single source of truth for parsing .agents/agents.md into structured agent
+// records. Used by every compiler (Claude Code, OpenCode, Antigravity) so a
+// format change only needs a fix in one place. Requires a "- **Role**:" field
+// to treat a "## " block as an agent -- this is what excludes trailing
+// non-agent sections like "## Context Boot Sequence" from being compiled as
+// a bogus agent (previously the Antigravity-only inline parser had no such
+// guard). Name extraction strips any leading non-word characters (emoji,
+// spaces) rather than matching the first alphanumeric run anywhere in the
+// block, so it can't accidentally pick up a word from prose if the heading
+// format changes.
+function parseAgentsMd(content) {
+    const blocks = content.split(/\n## /).slice(1);
+    const agents = [];
+    for (const raw of blocks) {
+        const headingLine = raw.split('\n')[0];
+        const name = headingLine.replace(/^[^\w]+/, '').trim().split(/\s+/)[0];
+        if (!name) continue;
+
+        const roleMatch = raw.match(/-\s*\*\*Role\*\*:\s*(.+)/);
+        if (!roleMatch) continue; // not an agent block
+
+        const modelMatch = raw.match(/-\s*\*\*Model\*\*:\s*(.+)/);
+        const outputMatch = raw.match(/-\s*\*\*Output Artifacts?\*\*:\s*(.+)/);
+
+        const extractListAfter = (label) => {
+            const re = new RegExp(`-\\s*\\*\\*${label}\\*\\*:\\s*\\n((?:[ \\t]+-.*\\n?)*)`, 'm');
+            const m = raw.match(re);
+            if (!m) return [];
+            return m[1]
+                .split('\n')
+                .map((l) => l.trim())
+                .filter((l) => l.startsWith('-'))
+                .map((l) => l.replace(/^-\s*/, '').replace(/`/g, '').trim())
+                .filter(Boolean);
+        };
+
+        agents.push({
+            name,
+            role: roleMatch[1].trim(),
+            model: modelMatch ? modelMatch[1].trim() : null,
+            skills: extractListAfter('Primary Skills'),
+            mcpServers: extractListAfter('MCP Servers'),
+            output: outputMatch ? outputMatch[1].trim() : null,
+            systemPrompt: raw.trim(),
+        });
+    }
+    return agents;
+}
+
+// Generates .claude/agents/<name>.md — Claude Code's native subagent format.
+// Only frontmatter fields confirmed against code.claude.com/docs/en/sub-agents
+// are emitted (name, description, model). `tools:`/`permission`-style
+// allowlists are deliberately omitted rather than guessed from the MCP-server
+// list -- an unverified mapping there would silently over- or under-scope a
+// subagent's tool access, which is worse than inheriting the default set.
+function compileClaudeAgents(agents, targetDir) {
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const a of agents) {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        const model = a.model ? a.model.toLowerCase() : 'inherit';
+        const body = [
+            a.role,
+            a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
+            a.mcpServers.length ? `**MCP servers used:** ${a.mcpServers.join(', ')}` : null,
+            a.output ? `**Output artifact(s):** ${a.output}` : null,
+        ].filter(Boolean).join('\n\n');
+
+        const frontmatter = [
+            '---',
+            `name: ${slug}`,
+            `description: ${a.role.replace(/\n/g, ' ')}`,
+            `model: ${model}`,
+            '---',
+            '',
+        ].join('\n');
+
+        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
+    }
+}
+
+// Generates .opencode/agents/<name>.md. Only `description` and `mode` are
+// emitted -- confirmed fields per opencode.ai/docs/agents. `model` and
+// `permission` are left unset: OpenCode's model-id format and its mapping
+// from an MCP-server list to `permission` keys are not verified against its
+// docs, so guessing either would risk emitting a value OpenCode silently
+// can't resolve. `mode: subagent` is used for every generated agent, since
+// none of these five is meant to be a primary/default agent a user talks to
+// directly.
+function compileOpenCodeAgents(agents, targetDir) {
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const a of agents) {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        const body = [
+            a.role,
+            a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
+            a.mcpServers.length ? `**MCP servers used:** ${a.mcpServers.join(', ')}` : null,
+            a.output ? `**Output artifact(s):** ${a.output}` : null,
+        ].filter(Boolean).join('\n\n');
+
+        const frontmatter = [
+            '---',
+            `description: ${a.role.replace(/\n/g, ' ')}`,
+            'mode: subagent',
+            '---',
+            '',
+        ].join('\n');
+
+        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
+    }
+}
+
 function injectHarnessRules() {
     const geminiMdSrc = path.join(srcDir, 'GEMINI.md');
     const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
@@ -1852,42 +1963,63 @@ function injectHarnessRules() {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
                     if (!fs.existsSync(agyAgentsDir)) fs.mkdirSync(agyAgentsDir, { recursive: true });
 
-                    const agentBlocks = agentsMdContent.split('## ').slice(1);
-                    for (const block of agentBlocks) {
-                        const nameMatch = block.match(/([A-Za-z0-9_]+)/);
-                        if (nameMatch) {
-                            const name = nameMatch[1];
-                            const descMatch = block.match(/- \*\*Role\*\*: (.*)/);
-                            const role = descMatch ? descMatch[1] : 'BDB Agent';
-
-                            const agentConfig = {
-                                name: name,
-                                description: role,
-                                enable_write_tools: true,
-                                enable_subagent_tools: true,
-                                enable_mcp_tools: true,
-                                system_prompt: block,
-                                _comment: "Auto-compiled from AGENTS.md by installer.beta.js"
-                            };
-
-                            fs.writeFileSync(path.join(agyAgentsDir, `${name}.json`), JSON.stringify(agentConfig, null, 2));
-                        }
+                    const agents = parseAgentsMd(agentsMdContent);
+                    for (const a of agents) {
+                        const agentConfig = {
+                            name: a.name,
+                            description: a.role,
+                            enable_write_tools: true,
+                            enable_subagent_tools: true,
+                            enable_mcp_tools: true,
+                            system_prompt: a.systemPrompt,
+                            _comment: "Auto-compiled from AGENTS.md by installer.js"
+                        };
+                        fs.writeFileSync(path.join(agyAgentsDir, `${a.name}.json`), JSON.stringify(agentConfig, null, 2));
                     }
                     log.step(`Compiled AGENTS.md to native Antigravity subagents in ${agyAgentsDir}`);
                 }
             }, 'Antigravity agents unchanged');
 
+            installStep('compile Claude Code subagents', () => {
+                if (agentsMdContent) {
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const claudeAgentsDir = path.join(currentDir, '.claude', 'agents');
+                    compileClaudeAgents(agents, claudeAgentsDir);
+                    log.step(`Compiled AGENTS.md to Claude Code subagents in ${claudeAgentsDir}`);
+                }
+            }, 'Claude Code agents unchanged');
+
+            installStep('compile OpenCode subagents', () => {
+                if (agentsMdContent) {
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const opencodeAgentsDir = path.join(currentDir, '.opencode', 'agents');
+                    compileOpenCodeAgents(agents, opencodeAgentsDir);
+                    log.step(`Compiled AGENTS.md to OpenCode subagents in ${opencodeAgentsDir}`);
+                }
+            }, 'OpenCode agents unchanged');
+
             const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
             installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
-                if (!claudeContent.includes("Global Agent Instructions")) {
-                    claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
+                // A CLAUDE.md carrying this title is the short, hand-maintained
+                // form (see audit-agents.md F-01): the GO gate lives in a hook,
+                // not in this file's prose, and the /startcycle spec + agent
+                // roster live in their own skill/workflow files, not duplicated
+                // here. Re-appending the old long-form content on every install
+                // would silently undo that diet. Leave it alone.
+                const isManagedShortForm = claudeContent.includes('BDB Agent Skills — Global Instructions');
+                if (isManagedShortForm) {
+                    log.step('CLAUDE.md already uses the short managed form -- leaving it untouched.');
+                } else {
+                    if (!claudeContent.includes("Global Agent Instructions")) {
+                        claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
+                    }
+                    if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
+                        claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
+                    }
+                    fs.writeFileSync(claudeMdPath, claudeContent);
+                    log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
                 }
-                if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
-                    claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
-                }
-                fs.writeFileSync(claudeMdPath, claudeContent);
-                log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
             }, 'CLAUDE.md is unchanged.');
 
             const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');

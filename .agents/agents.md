@@ -7,7 +7,7 @@ It shifts agent capabilities from text-based prompts to native structural config
 
 ## 🧠 Planner_Orchestrator
 - **Role**: Lead System Planner & Task Decomposer. Analyzes initial user prompts, `/bdbrainstorm` results, and `/grill-me` outputs into atomic sub-tasks. Triggers and oversees `/startcycle`.
-- **Model**: Claude 3.5 Sonnet / Gemini 1.5 Pro / GPT-4o
+- **Model**: opus
 - **Primary Skills**:
   - `startcycle`
   - `bdbrainstorm`
@@ -24,7 +24,7 @@ It shifts agent capabilities from text-based prompts to native structural config
 
 ## 🎨 Godmode_UI_UX
 - **Role**: Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics.
-- **Model**: Claude 3.5 Sonnet
+- **Model**: opus
 - **Primary Skills**:
   - `godmode-ui-ux`
   - `senior-frontend`
@@ -43,7 +43,7 @@ It shifts agent capabilities from text-based prompts to native structural config
 
 ## ⚙️ Godmode_Engineering
 - **Role**: Senior Fullstack & Backend Engineer. Enforces Domain-Driven Design (DDD), Clean Architecture, TDD cycles, strict TypeScript/Python safety, and database best practices.
-- **Model**: Claude 3.5 Sonnet / GPT-4o
+- **Model**: opus
 - **Primary Skills**:
   - `godmode-engineering`
   - `software-architecture`
@@ -62,7 +62,7 @@ It shifts agent capabilities from text-based prompts to native structural config
 
 ## 🎬 Godmode_Media_EventTech
 - **Role**: Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers.
-- **Model**: Claude 3.5 Sonnet / GPT-4o
+- **Model**: opus
 - **Primary Skills**:
   - `godmode-eventtech`
   - `godmode-media-creation`
@@ -86,7 +86,7 @@ It shifts agent capabilities from text-based prompts to native structural config
 
 ## 🚀 Godmode_Shipping
 - **Role**: Release Gatekeeper, QA & Verification Auditor. Ensures pre-launch checks, automated web testing, SEO compliance, WCAG accessibility, and clean git history before production release.
-- **Model**: Claude 3.5 Sonnet
+- **Model**: opus
 - **Primary Skills**:
   - `godmode-shipping`
   - `webapp-testing`

@@ -34,7 +34,7 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
                                          ▼
                   ┌─────────────────────────────────────────────┐
                   │ 4. PERSISTENT AGENT MEMORY & RETRIEVAL       │
-                  │    • agent.md / CLAUDE.md ──▶ .openwiki      │
+                  │    • AGENTS.md / CLAUDE.md ──▶ .openwiki      │
                   │    • search_memory Tool ──▶ memB             │
                   └──────────────────────────────────────────────┘
 ```
