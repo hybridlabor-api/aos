@@ -7,6 +7,30 @@ disable-model-invocation: true
 
 # 🚀 BDB Autonomous Development Cycle (`/startcycle`)
 
+**Step 0 — bootstrap the contract into this project, before calling
+`Workflow`.** Every agent the dispatcher spawns is told to read/write
+`production_artifacts/state.json` "per `.agents/state.schema.json`" — a path
+resolved against the CURRENT PROJECT, not globally. If this project has
+never run `/startcycle` before, that file (and `.agents/graph.md`) won't be
+here yet, and every agent will freelance the state shape instead of
+conforming to the schema (observed for real: a run's `state.json` was
+missing `run_id`/`max_iterations`/`gate`/`findings`/`approvals` and had
+several fields the schema doesn't define at all). Fix it first:
+
+```bash
+mkdir -p .agents
+[ -f .agents/graph.md ] || cp "$HOME/.agents/graph.md" .agents/graph.md
+[ -f .agents/state.schema.json ] || cp "$HOME/.agents/state.schema.json" .agents/state.schema.json
+```
+
+If `$HOME/.agents/graph.md` or `$HOME/.agents/state.schema.json` doesn't
+exist either, stop and tell the user: this machine has no canonical copy of
+the graph contract to bootstrap from, and `/startcycle` will produce a
+non-conforming `state.json` until one is installed. Don't silently proceed.
+(`.claude/agents/*.md`, the seven agent persona files, do NOT need this
+treatment — Claude Code resolves subagents from the user-level
+`~/.claude/agents/` fine without a project-local copy.)
+
 **Action — do this, and nothing else:** call the `Workflow` tool with
 `scriptPath` pointing at this repo's dispatcher script — resolve `$HOME`
 yourself (e.g. `echo $HOME` or your own environment info) rather than
