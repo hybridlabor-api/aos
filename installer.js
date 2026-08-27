@@ -2040,6 +2040,16 @@ function generateAndOpenLaunchpad() {
     }
     if (process.env.SSH_CLIENT || process.env.SSH_TTY) return;
 
+    // Local Developer Workflow Guard:
+    // Only generate and open the launchpad if running in a local developer repo environment or explicitly requested
+    const isDevWorkflow = fs.existsSync(path.join(homeDir, 'bdb-dev')) ||
+                          process.env.BDB_DEV === '1' ||
+                          process.argv.includes('--launchpad') ||
+                          process.argv.includes('--dev');
+    if (!isDevWorkflow) {
+        return;
+    }
+
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>

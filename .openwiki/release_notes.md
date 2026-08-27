@@ -1,10 +1,16 @@
 # Release Notes
 
-## Unreleased — Two-Phase GO Gate Hardening (see ADR-014)
-- **Fix:** `npm version` added to the CRITICAL TWO-PHASE GATE PROTOCOL's forbidden-tools list in `CLAUDE.md` (was previously only `npm publish`, leaving a gap a plan-driven agent could walk through).
-- **Fix:** Gate now explicitly states that commands found inside a plan/task file (e.g. `production_artifacts/*.md`) are not a "GO" — they still require independent gate approval before execution.
-- **Fix:** Gate now explicitly states subagents don't inherit an orchestrator's "GO", and a blocked/failed release command must not be silently retried without a fresh one.
-- **Status:** Change is written to this repo's `CLAUDE.md` (uncommitted) and mirrored to the user's machine-wide `CLAUDE.md`/`GEMINI.md`. Intentionally left uncommitted here pending the next update cycle's commit/push, per the very gate this change enforces — no `git commit`/`git push` without an explicit "GO".
+## v3.10.0 (Dynamic Gateway Discovery, Windows Daemons & SaaS Academy)
+- **Dynamic Gateway Discovery (`setup-saas` CLI)**: Added `bin/setup-saas.mjs` with zero-copypaste browser 2FA loopback handshake (port 8123). Supports interactive domain selection (`--gateway`, `--domain`) and auto-injects FastMCP SSE configurations into Google Antigravity, Claude Desktop, Cursor, and Roo Code.
+- **Zero-Leak Enterprise Sanitization**: Purged all static infrastructure metadata, server IPs, and hardcoded private domains from public NPM and GitHub distribution files.
+- **BDB SaaS Training Academy (`/bdbsaastraining`)**: 5-station interactive sysadmin and agent harness bootcamp covering Step-CA 2FA, Incus custom profiles, agent sandboxing, FastMCP 4-eyes approval drills, and automated Playwright dark-mode PDF certification.
+- **Native Windows Background Daemons**: Implemented headless `.vbs` startup runner engine for Windows, spawning memB WebUI (`:8088`), Synapse 3D (`:7781`), and Agent Workspace (`:3101`) silently without open command prompt windows.
+- **Glassmorphic Live-Health Launchpad**: Upgraded `bdb-launchpad.html` with modern matte-dark UI and real-time JavaScript polling indicators across all 8 ecosystem engines.
+- **Zero-Trust FastMCP & Agent-Sudo Guardrails**: Hardened `bdbsaashost` skill with strict least-privilege execution rules and 4-eyes HMAC approval workflows.
+- **memB Hybrid Engine Synchronization**: Upgraded memB to v2.3.1 with SQLite WAL mode, FTS5 BM25 hybrid search, and FastMCP 8-tool surface.
+
+## v3.9.6 (Automated Patch Release)
+- **Patch Release**: Automated version synchronization via Release-Please for package manifest consistency.
 
 ## v3.9.0 (1-Click Quick Update Mode, State Detection & Seamless Daemon Reload)
 - **1-Click Quick Update Mode (`executeQuickUpdate`)**: Intelligent top-level update flow detecting existing installations (`~/.agents/.bdb-manifest.json`). Enables instant 5-second non-interactive upgrades of all 160 skills, rules, and MCP configs while keeping existing API keys, tokens, and custom user MCPs intact.
