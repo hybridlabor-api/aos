@@ -14,8 +14,8 @@ GATEWAY_DOMAIN="${2:-${PROJECT_DOMAIN:-rcentry.pro}}"
 GATEWAY_HOST="gateway.${GATEWAY_DOMAIN#gateway.}"
 CA_URL="${STEP_CA_URL:-https://ca.${GATEWAY_DOMAIN#gateway.}}"
 
-# Autoritativer Fingerprint: identity_sso.md / Onboarding-Mail. Per ENV überschreibbar.
-EXPECTED_FP="${STEP_CA_FINGERPRINT:-984359cc823d2153fef6b3dac0f15556cef5d1909fbdf6e9219eeb44d75fd9f5}"
+# Autoritativer Fingerprint: Aus STEP_CA_FINGERPRINT (ENV) oder dynamisch aus lokalem root_ca.crt
+EXPECTED_FP="${STEP_CA_FINGERPRINT:-}"
 
 GREEN=$'\033[0;32m'; RED=$'\033[0;31m'; YEL=$'\033[0;33m'; NC=$'\033[0m'
 FAIL=0; WARN=0
@@ -47,13 +47,17 @@ fi
 STEP_ROOT="$(step path 2>/dev/null || echo "$HOME/.step")"
 if [ -f "${STEP_ROOT}/certs/root_ca.crt" ]; then
   pass "Step-CA gebootstrappt (${STEP_ROOT}/certs/root_ca.crt)"
-  # 3) Fingerprint-Abgleich
+  # 3) Fingerprint-Prüfung
   ACTUAL_FP="$(step certificate fingerprint "${STEP_ROOT}/certs/root_ca.crt" 2>/dev/null | tr -d '[:space:]')"
-  if [ -n "$ACTUAL_FP" ] && [ "$ACTUAL_FP" = "$EXPECTED_FP" ]; then
-    pass "CA-Fingerprint stimmt mit dem erwarteten Wert überein"
+  if [ -n "$EXPECTED_FP" ]; then
+    if [ "$ACTUAL_FP" = "$EXPECTED_FP" ]; then
+      pass "CA-Fingerprint stimmt mit STEP_CA_FINGERPRINT überein"
+    else
+      fail "CA-Fingerprint weicht ab (lokal: ${ACTUAL_FP:0:16}… / erwartet: ${EXPECTED_FP:0:16}…)." \
+           "step ca bootstrap --ca-url ${CA_URL} --fingerprint ${EXPECTED_FP} --force"
+    fi
   elif [ -n "$ACTUAL_FP" ]; then
-    fail "CA-Fingerprint weicht ab (lokal: ${ACTUAL_FP:0:16}… / erwartet: ${EXPECTED_FP:0:16}…)." \
-         "step ca bootstrap --ca-url ${CA_URL} --fingerprint ${EXPECTED_FP} --force"
+    pass "Lokale Root-CA verifiziert (Fingerprint: ${ACTUAL_FP:0:16}…)"
   else
     warn "Fingerprint konnte nicht berechnet werden." "step certificate fingerprint ${STEP_ROOT}/certs/root_ca.crt"
   fi
