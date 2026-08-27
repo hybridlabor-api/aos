@@ -2017,7 +2017,7 @@ function injectHarnessRules() {
             installStep('compile Claude Code subagents', () => {
                 if (agentsMdContent) {
                     const agents = parseAgentsMd(agentsMdContent);
-                    const claudeAgentsDir = path.join(currentDir, '.claude', 'agents');
+                    const claudeAgentsDir = path.join(homeDir, '.claude', 'agents');
                     compileClaudeAgents(agents, claudeAgentsDir);
                     log.step(`Compiled AGENTS.md to Claude Code subagents in ${claudeAgentsDir}`);
                 }
@@ -2026,7 +2026,7 @@ function injectHarnessRules() {
             installStep('compile OpenCode subagents', () => {
                 if (agentsMdContent) {
                     const agents = parseAgentsMd(agentsMdContent);
-                    const opencodeAgentsDir = path.join(currentDir, '.opencode', 'agents');
+                    const opencodeAgentsDir = path.join(homeDir, '.opencode', 'agents');
                     compileOpenCodeAgents(agents, opencodeAgentsDir);
                     log.step(`Compiled AGENTS.md to OpenCode subagents in ${opencodeAgentsDir}`);
                 }
@@ -2107,7 +2107,7 @@ function injectHarnessRules() {
             harnessDirs.forEach(dir => {
                 const sourcePath = path.join(srcDir, dir);
                 if (fs.existsSync(sourcePath)) {
-                    const targetPath = path.join(currentDir, dir);
+                    const targetPath = path.join(homeDir, dir);
                     copyDirRecursiveSync(sourcePath, targetPath);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
@@ -2617,6 +2617,7 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
 
     const detectedNames = detections.map(d => d.name).join(', ');
     const platformOptions = [
+        { value: '9', label: 'Local Project Harness', hint: 'copy dispatcher contract to current project' },
         { value: '0', label: '🌐 Universal Agent Harness', hint: detections.length > 0 ? `sync ALL detected: ${detectedNames}` : 'sync across ALL AI platforms' },
         { value: '1', label: 'Google Antigravity', hint: '~/.gemini/config/skills' },
         { value: '2', label: 'Claude Desktop / Claude Code', hint: '~/.claude/skills' },
@@ -2848,6 +2849,17 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
     reloadDaemons();
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
 
+    if (tier === '9') {
+        const agentsSrc = path.join(srcDir, '.agents');
+        if (fs.existsSync(agentsSrc)) {
+            const targetAgents = path.join(currentDir, '.agents');
+            copyDirRecursiveSync(agentsSrc, targetAgents);
+            log.success(`Project harness installed to ${targetAgents}`);
+        }
+        outro('Project harness installation complete.');
+        return;
+    }
+    
     if (wantsUniversal) {
         await universalHarnessSync(primaryTarget.mcpConfigPath);
     }

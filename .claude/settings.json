@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs\""
+            "command": "node \"${HOME}/.claude/hooks/go-gate.mjs\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/graph-gate.mjs\""
+            "command": "node \"${HOME}/.claude/hooks/graph-gate.mjs\""
           }
         ]
       }
