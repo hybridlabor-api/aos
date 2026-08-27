@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.11.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.10.0...v3.11.0) (2026-08-27)
+
+
+### Features
+
+* **installer:** add local dev guard for launchpad and integrate bdbsaas-ops skill ([794a378](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/794a378c6ff4ac7f7d576fd54e8d7fd5b1db1310))
+
 ## [3.10.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.6...v3.10.0) (2026-08-27)
 
 
