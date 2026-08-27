@@ -2704,6 +2704,12 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
 
     const installState = detectInstallState();
 
+    if (PROJECT_HARNESS_ARG) {
+        installProjectHarness();
+        outro('Project harness installation complete.');
+        return;
+    }
+
     if (installState.isInstalled && !isAutoYes) {
         if (installState.updateAvailable) {
             log.warn(`BDB AGENT OS installation detected: v${installState.localVersion} ➔ v${installState.currentVersion}`);
@@ -2714,10 +2720,12 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
         const options = installState.updateAvailable
             ? [
                 { value: 'quick', label: `⚡ Quick Update (v${installState.localVersion} ➔ v${installState.currentVersion}) – refresh skills & daemons, keep settings` },
+                { value: 'project', label: '📁 Drop Local Project Harness (in current directory)' },
                 { value: 'reconfigure', label: '🛠️ Full re-installation / re-configuration' },
                 { value: 'cancel', label: '❌ Exit' }
               ]
             : [
+                { value: 'project', label: '📁 Drop Local Project Harness (in current directory)' },
                 { value: 'reconfigure', label: '🛠️ Re-configuration / switch tier (Pro vs Basic)' },
                 { value: 'quick', label: '🔄 Repair / force reinstall all skills' },
                 { value: 'cancel', label: '❌ Exit' }
@@ -2731,6 +2739,11 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
 
         if (action === 'cancel') {
             outro('Cancelled.');
+            return;
+        }
+        if (action === 'project') {
+            installProjectHarness();
+            outro('Project harness installation complete.');
             return;
         }
         if (action === 'quick') {
