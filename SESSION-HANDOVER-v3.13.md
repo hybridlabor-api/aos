@@ -118,16 +118,55 @@ Ran via `HOME=$(mktemp -d) node .../installer.js` from the user's real `~`.
      workaround, not this fix) — next retest should confirm the skill's
      instructions alone (no improvisation needed) produce the same result.
 
-3. **Status of that specific run when last observed:** `/workflows` monitor
-   showed the pipeline as `paused`, with `architect-0` marked `stopped`
-   after ~11s. Unclear from a static screenshot whether: (a) architect
-   finished normally and the dispatcher script is between steps, (b) it's
-   waiting on a tool-permission approval the user hasn't seen yet, or (c)
-   something errored silently. **Needs a live check** — open `/workflows`
-   again, look at `architect-0`'s actual output/logs, and check for any
-   pending permission prompt. Not resolved as of this doc's last edit.
+3. **Status of that specific run, resolved by a peer session
+   (`startcycle-test-01-db`) that checked directly:** `architect-0`
+   SUCCEEDED cleanly (state="done", wrote a real 53-line plan + state.json,
+   TechLead was correctly spawned next — the architect→techlead edge
+   fires). The "paused/stopped" in `/workflows` was NOT a permission wait —
+   the persisted run file showed `status:"killed", error:"Error: Workflow
+   aborted"`. **Root cause: this Claude Code session's own process did not
+   survive between turns, so the backgrounded Dynamic Workflow got killed
+   mid-run** (TechLead was killed mid-`ls .agents/` at end-of-turn). This is
+   a genuine, previously-undocumented runtime characteristic: a background
+   `Workflow` run does NOT survive the parent session ending its turn —
+   resuming requires an explicit `Workflow({scriptPath, resumeFromRunId})`
+   call, not just `/workflows`' interactive `p` (resume). **Practical
+   implication:** driving a real multi-round `/startcycle` run end-to-end
+   may require keeping the invoking session alive/active for the whole
+   run, or a deliberate resume step after any turn boundary. Not yet solved
+   architecturally — just observed and worked around once by the peer
+   manually resuming.
 
-2. **Confirmed, separate, real safety gap:** both hooks errored
+4. **New finding + FIXED (commit `639cb2e`):** the `state.json` written by
+   that run did not conform to `.agents/state.schema.json` at all — missing
+   `run_id`/`max_iterations`/`gate`/`findings`/`approvals`, and had several
+   fields the schema doesn't define (`additionalProperties: false`
+   violated: `status`, `updatedAt`, `updatedBy`, `needsMedia`, `buildOrder`,
+   `history`). Root cause: `dispatchNote()` in the workflow script tells
+   every agent to write state "per `.agents/state.schema.json`" — a path
+   relative to whatever project the workflow runs in. That path only
+   exists globally (`$HOME/.agents/`, a side effect of the earlier
+   installer bug), NOT in the actual target project
+   (`~/startcycle-test-01/.agents/` was confirmed missing). Every agent
+   freelanced the shape with nothing to read. `.claude/agents/*.md` (the 7
+   persona files) are NOT affected — Claude Code resolves those fine from
+   `~/.claude/agents/` without a project-local copy; only the two contract
+   files needed this. **Fix:** added a "Step 0" to the skill — before
+   calling `Workflow`, copy `.agents/graph.md` and
+   `.agents/state.schema.json` from `$HOME/.agents/` into the current
+   project if not already present there, or stop and warn if even the
+   `$HOME` copy doesn't exist. This is a stopgap at the skill level;
+   **the real fix belongs in the installer** as a proper project-scoped
+   install mode (see priority item 5 below — this expands that item's
+   scope, it's not just the `currentDir`/`homeDir` global-write bug
+   anymore).
+   - **Not yet retested** — needs a fresh `/startcycle` run in a project
+     that doesn't already have a stale non-conforming `state.json` (either
+     `rm -rf production_artifacts/.agents` in the scratch project first, or
+     use a brand new scratch dir) to confirm the bootstrap actually
+     produces a schema-conforming file this time.
+
+5. **Confirmed, separate, real safety gap:** both hooks errored
    (non-blocking) during the test run — `PreToolUse:Bash hook error`,
    `Stop hook error: Cannot find module
    '/Users/timrennings/startcycle-test-01/.claude/hooks/graph-gate.mjs'`.
@@ -147,26 +186,41 @@ Ran via `HOME=$(mktemp -d) node .../installer.js` from the user's real `~`.
 ## Priority order for next session
 
 1. ~~Get the `/config` Dynamic Workflows answer.~~ **Done — it's ON.**
-2. ~~Fix the naming collision.~~ **Done, commit `2138bd9`, not yet retested.**
-3. **Retest `/startcycle` right now** in `~/startcycle-test-01` (or fresh) —
-   send `/startcycle <small goal>` again and confirm: does the model call
-   the `Workflow` tool this time, does `production_artifacts/state.json`
-   appear, do the 7 agents actually get invoked, does the repair loop
-   exercise for real? This is the concrete next action, queued but not yet
-   executed as of this doc's last edit.
-4. **Fix the hook path-resolution gap** so the GO-gate actually protects
+2. ~~Fix the naming collision.~~ **Done, commit `2138bd9`.**
+3. ~~Fix `Workflow(name:...)` lookup failure.~~ **Done, commit `05382aa`
+   — route via `scriptPath` instead.**
+4. ~~Fix `.agents/` contract missing from the target project.~~ **Done,
+   commit `639cb2e`** — Step 0 bootstrap added to the skill. **Not yet
+   retested.**
+5. **Retest `/startcycle` end-to-end, clean.** Use a FRESH scratch project
+   (or `rm -rf production_artifacts .agents` in `~/startcycle-test-01`
+   first — the existing `state.json` there is already non-conforming and
+   would confuse a retest). Confirm: `Workflow` tool fires via
+   `scriptPath`, `.agents/` gets bootstrapped, `production_artifacts/
+   state.json` conforms to `.agents/state.schema.json` this time, TechLead
+   actually approves/rejects, and — the big unresolved one — **whether the
+   run survives to completion despite the "background workflow dies when
+   the parent turn ends" behavior observed in finding 3 above.** If it
+   doesn't survive unattended, that's a real architectural limit to
+   document (not just a bug to fix), possibly requiring the invoking
+   session to stay active/keep resuming for the whole run.
+6. **Fix the hook path-resolution gap** so the GO-gate actually protects
    something outside the original repo, or explicitly scope it back to
-   project-local and stop claiming global protection. Still open — the
-   naming-collision fix did not touch this; `~/startcycle-test-01/.claude`
-   still does not exist, so both hooks will still no-op there.
-5. **Fix the `currentDir`-vs-`homeDir` installer bug** (harnessDirs loop +
-   my two Phase 2 compile calls) so a future installer run — isolated test
-   or real — can't silently overwrite arbitrary directories under whatever
-   `cwd` happens to be. Still open, untouched by today's fix.
-6. Only after an actual successful dispatcher run: open the PR against
-   `main`, with an honest description of what's verified (stubbed-agent
-   tests, adversarial review, real installer run, real dispatcher run) and
-   what isn't.
+   project-local and stop claiming global protection. Still open —
+   `~/startcycle-test-01/.claude/hooks/` still does not exist.
+7. **Fix the installer properly**, now with a wider scope than originally
+   diagnosed: (a) the `currentDir`-vs-`homeDir` bug (harnessDirs loop + the
+   two Phase 2 agent-compile calls) so a global install can't silently
+   overwrite whatever directory happens to be the shell's cwd, AND (b) add
+   an actual **project-scoped install mode** that drops `.agents/graph.md`
+   + `.agents/state.schema.json` into whatever project `/startcycle` will
+   run in — the Step 0 skill bootstrap (item 4) is a stopgap, not a real
+   fix; it depends on a global `$HOME/.agents/` copy existing, which on a
+   fresh machine it won't.
+8. Only after an actual successful, schema-conforming, survives-to-completion
+   dispatcher run: open the PR against `main`, with an honest description
+   of what's verified (stubbed-agent tests, adversarial review, real
+   installer run, real dispatcher run) and what isn't.
 
 ## Things NOT to redo
 
