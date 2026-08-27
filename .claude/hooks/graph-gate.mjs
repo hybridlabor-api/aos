@@ -17,11 +17,31 @@
 // dispatcher's next turn.
 //
 // max_iterations defaults to 3 (.agents/state.schema.json) -- deliberately
-// under Claude Code's own 8-consecutive-Stop-hook-block override, so this
-// hook's own escalation message reaches the user before that platform
-// ceiling would silently end the turn without one.
+// under Claude Code's own 8-consecutive-Stop-hook-block override (itself
+// tunable via CLAUDE_CODE_STOP_HOOK_BLOCK_CAP), so this hook's own escalation
+// message reaches the user before that platform ceiling would silently end
+// the turn without one.
+//
+// Progress requirement: this hook only blocks while the run is DEMONSTRABLY
+// advancing. Two guards enforce that, because "gate is red" alone is not a
+// good enough reason to keep a session alive indefinitely:
+//
+//   a) `stop_hook_active` in the hook input is true when this stop is itself
+//      the result of a previous Stop-hook block. The hooks guide names
+//      checking it as the way a Stop hook avoids driving a runaway loop. On
+//      its own, though, exiting early whenever it's true would let this hook
+//      block exactly once ever -- useless for a repair loop that legitimately
+//      spans several turns. So it's combined with (b) rather than used alone.
+//
+//   b) `state.iteration` must have CHANGED since the last time this hook
+//      blocked (tracked in a sibling marker file). If the dispatcher is
+//      working the repair loop, iteration advances every round and blocking
+//      is justified. If it hasn't moved, nothing is actually being repaired
+//      -- something is stuck or nobody is driving the loop -- and blocking
+//      again would just burn turns until the platform cap force-overrides us
+//      with a warning. In that case: allow the stop and let the human see it.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function allow() {
@@ -44,6 +64,7 @@ function main() {
 
   const cwd = input?.cwd || process.cwd();
   const statePath = join(cwd, "production_artifacts", "state.json");
+  const markerPath = join(cwd, "production_artifacts", ".graph-gate-last-block");
 
   if (!existsSync(statePath)) {
     allow(); // no active /startcycle run in this cwd -- most sessions, most of the time
@@ -78,6 +99,40 @@ function main() {
   if (failing.length === 0) {
     allow();
     return;
+  }
+
+  // Progress check (see file header). Only relevant once we've already
+  // blocked at least once this run -- stop_hook_active tells us that.
+  if (input?.stop_hook_active) {
+    let lastBlockedIteration = null;
+    try {
+      lastBlockedIteration = JSON.parse(readFileSync(markerPath, "utf8"))?.iteration ?? null;
+    } catch {
+      // No readable marker: treat as "no evidence of a prior block by us",
+      // fall through and block once, writing the marker below.
+    }
+
+    if (lastBlockedIteration === iteration) {
+      // We blocked before at this same iteration and the dispatcher hasn't
+      // advanced it since. Nothing is being repaired -- blocking again would
+      // just burn turns until the platform's consecutive-block cap
+      // force-overrides us with a warning the user has to decipher. Let the
+      // stop through so the failing gate surfaces plainly instead.
+      process.stderr.write(
+        `graph-gate: gate still failing (${failing.join(", ")}) but iteration has not advanced ` +
+          `past ${iteration} since the last block -- the repair loop is not progressing. ` +
+          `Allowing this turn to end so it surfaces instead of looping.\n`
+      );
+      allow();
+      return;
+    }
+  }
+
+  try {
+    writeFileSync(markerPath, JSON.stringify({ iteration, at: new Date().toISOString() }));
+  } catch {
+    // Marker is an optimization, not a correctness requirement -- if we can't
+    // write it, the platform's own consecutive-block cap still bounds us.
   }
 
   block(

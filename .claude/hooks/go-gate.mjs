@@ -13,6 +13,16 @@
 //
 // Fails closed: if the transcript can't be read or parsed, block rather than
 // guess.
+//
+// Why a PreToolUse hook and not a CLAUDE.md rule: per
+// code.claude.com/docs/en/hooks-guide, "PreToolUse hooks fire before any
+// permission-mode check, in every permission mode, including dontAsk. A hook
+// that returns permissionDecision: 'deny' blocks the tool even in
+// bypassPermissions mode or with --dangerously-skip-permissions." Exiting 2
+// blocks unconditionally the same way. So this gate cannot be sidestepped by
+// switching permission modes -- which prose in CLAUDE.md never could
+// guarantee. (Hooks can tighten restrictions but not loosen them: a hook
+// returning "allow" still can't override a deny rule from settings.)
 
 import { readFileSync } from "node:fs";
 

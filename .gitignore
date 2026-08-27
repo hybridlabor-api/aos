@@ -21,3 +21,6 @@ patch_installer*.js
 
 # Installer output artifact — generated from skills/workspace_agents/, not source
 .agents/skills/
+
+# graph-gate.mjs progress marker — per-run scratch state, never source
+production_artifacts/.graph-gate-last-block
