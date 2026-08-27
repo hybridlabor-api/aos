@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.12.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.11.0...v3.12.0) (2026-08-27)
+
+
+### Features
+
+* **security:** sanitize and neutralize bdbsaastraining skill for public NPM ([8e802b5](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/8e802b5bd94d86e50556dd8eede01e26f885bb0a))
+* **skills:** integrate bdbsaastraining v2 workload-adaptive bootcamp ([febd25b](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/febd25ba40f99f797ef3c81c1382f1192952a2f1))
+
 ## [3.11.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.10.0...v3.11.0) (2026-08-27)
 
 
