@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.10.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.6...v3.10.0) (2026-08-27)
+
+
+### Features
+
+* **saas:** implement dynamic gateway discovery and add bdbsaastraining workstation setup ([d29d699](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/d29d699e1cf91b87195b91abf2427a41dc813973))
+* **skills:** update bdbsaashost with sanitized zero-trust fastmcp and agent-sudo guardrails ([619d5ac](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/619d5acbb72c8e3506709603e65f2d52cabf2324))
+
 ## [3.9.6](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.9.5...v3.9.6) (2026-08-22)
 
 
