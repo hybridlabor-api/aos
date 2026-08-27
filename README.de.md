@@ -36,17 +36,18 @@ Obwohl für **Google Antigravity** optimiert, ist dieses Skill-Paket und die MCP
 
 ![BDB v3 Core Tools Overview](assets/bdb_v3_core_tools_overview_sketch.jpg)
 
-### 🪐 Universal Agent Harness (v3.0.0)
+### 🪐 Universal Agent Harness (v3.13.0)
 Der Installer verfügt jetzt über eine vollautomatische Universal Sync Engine. Er scannt Ihr System nach **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline** und injiziert die kuratierte MCP-Konfiguration sowie die Godmode-Regeln gleichzeitig in alle Umgebungen.
+- **Tier 9 - Local Project Harness:** Anstatt global in `$HOME` zu installieren, können Entwickler den `.agents` Contract und die Hooks nun direkt in isolierte Projektordner injizieren.
 
-### 🧩 Ecosystem-Integrationen (v3.0.0)
+### 🧩 Ecosystem-Integrationen (v3.13.0)
 Dieses Paket dient als Brücke zu zwei gewaltigen vorgelagerten Funktionen (verfügbar als direkte Installationsziele über den Installer):
 - **BDB OS Agent Workspace:** Die Orchestrierungsschicht für parallele KI-Agenten. Starten Sie mehrere isolierte Agenten-Sitzungen über Git-Worktrees mit Live-Terminalsteuerung, automatischen CI/CD-Feedbackschleifen und PR-Review-Routing.
 - **BDB Creator Extension:** Die leistungsstarke Agentic Media Pipeline. Verleiht Agenten lokale ComfyUI MCP-Fähigkeiten (FLUX, SDXL), Image-to-3D-Generierung (TripoSR, TRELLIS) und automatisierte Videoproduktion über OpenMontage und Remotion.
 
-## 🌟 ~154+ Optimierte Skills (Aktualisiert für v3.6.0)
+## 🌟 ~154+ Optimierte Skills (Aktualisiert für v3.13.0)
 
-Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Nach intensiven Tests, Filterungen und Verfeinerungen haben wir sie zu einem hochkuratierten Set von **154+ Optimierten Skills** destilliert (mit nativer OpenWiki-Dokumentationsengine, dem **lokalen semantischen Gedächtnis memB** und jetzt der **Universal Agent Harness Synchronisation in v3.6.0**).
+Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Nach intensiven Tests, Filterungen und Verfeinerungen haben wir sie zu einem hochkuratierten Set von **154+ Optimierten Skills** destilliert (mit nativer OpenWiki-Dokumentationsengine, dem **lokalen semantischen Gedächtnis memB** und jetzt der **Universal Agent Harness Synchronisation in v3.13.0**).
 
 Diese Skills sind präzise optimiert, damit Agenten keine Zeit mit redundanten Aufgaben verschwenden, sondern mit maximaler Autonomie, strengen Architekturvorgaben und robustem Kontextbewusstsein agieren.
 
@@ -321,25 +322,17 @@ Nachfolgend finden Sie die vollständige Übersicht aller in diesem Paket enthal
 
 ---
 
-## 🔄 BDB Software Engineering Pipeline & Slash-Befehle
+## 🔄 Dispatcher Graph (.agents/graph.md)
 
-```text
- IDEATE & MEDIA STORM     DEFINE & SCAFFOLD      PLAN & SPEC      BUILD & MCPs       VERIFY        SHIP
- ┌──────────────────┐    ┌─────────────────┐    ┌───────────┐    ┌────────────┐   ┌──────────┐   ┌──────────┐
- │ Grill Me & Media │ ──▶│  Folder Select  │ ──▶│ Spec &    │ ──▶│ Subagents  │──▶│ QA Gate  │──▶│ OpenWiki │
- │   Brainstorming  │    │ OpenWiki & Repo │    │   Plan    │    │ & MCP Dev  │   │ Review   │   │  & Push  │
- └──────────────────┘    └─────────────────┘    └───────────┘    └────────────┘   └──────────┘   └──────────┘
-/grill-me /bdbmediastorm  /openwiki /github-repo    /plan          /subagents       /review        /ship
-```
+KI-Agenten folgen nun einer robusten, deterministischen State Machine zur Orchestrierung paralleler Operationen, die die alte textbasierte 5-Agenten-Pipeline ersetzt.
 
-KI-Agenten folgen diesem strukturierten Lebenszyklus, der tief in die Philosophie von **BDBrainstorm** und **BDBMediaStorm** integriert ist:
-
-- **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Ideen aktiv hinterfragen oder Multi-Agenten-Medien/Event-Tech-Brainstorming durchführen. Startet spezialisierte Subagenten (CI/Design Expert, Real Time Architect, MCP Implementer) zur Validierung von Hardware, 3D-Szenografie (Rhino, Blender, Unreal), Protokollen (OSC, Art-Net) und MCP-Kompatibilität.
+- **🚀 Dispatcher Graph (`.agents/graph.md`)**: Ein vollständig autonomes, knotenbasiertes Routing-System zur Koordination des Agenten-Teams (Architect, TechLead, UI/UX, Engineering, EventTech, Reviewer, Shipping). Es nutzt deterministische Dateiübergaben in `production_artifacts/` und explizite State Gates, was präzise parallele Orchestrierung ohne Prompt-Drift gewährleistet.
+- **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Ideen aktiv hinterfragen oder Multi-Agenten-Medien/Event-Tech-Brainstorming durchführen. Startet spezialisierte Subagenten zur Validierung von Hardware, 3D-Szenografie, Protokollen und MCP-Kompatibilität.
 - **2. DEFINE & SCAFFOLD (`openwiki-skill`, `github-repo`)**: Ziel-Workspace-Verzeichnis mit dem Benutzer bestätigen, anschließend autonom Projektdokumentation, `AGENTS.md`, `.openwiki/`-Strukturen und GitHub-Repo-Standards initialisieren.
-- **3. PLAN (`/plan`)**: Technische Design-Spezifikationen, PRD und dateiweise Entwicklungspläne unter strikter Einhaltung der `ui-ux-pro-max`-Standards erstellen.
-- **4. BUILD (`/subagents`)**: Subagenten-gesteuerte Entwicklung. Der Master-Orchestrierer delegiert spezifische Komponentenerstellung, Node-Patching und Refactoring-Aufgaben an unabhängige Subagenten.
-- **5. VERIFY & REVIEW (`/review`)**: Durchführung von QA-Gate-Reviews, Secret-Scans, Unit-Test-Suites und strengen UI/UX- oder Signalfluss-Audits.
-- **6. SHIP (`/ship`)**: Committen, private Repositories pushen, OpenWiki-Dokumente autonom aktualisieren und live deployen.
+- **3. PLAN & ARCHITECT**: Der Architect wandelt das Ziel in einen Ausführungsplan um (`00_execution_plan.md`), und der TechLead überprüft die Capability Map, bevor Build-Knoten gestartet werden.
+- **4. BUILD (Parallele Knoten-Ausführung)**: Subagenten-gesteuerte Entwicklung. Der Dispatcher routet Aufgaben an spezialisierte Godmode-Agenten (UI/UX, Engineering, EventTech), die in isolierten Git-Worktrees operieren.
+- **5. VERIFY & REVIEW (Adversarielles QA)**: Ein dedizierter Reviewer auditiert die Ausgaben der Build-Knoten adversariell gegen den Contract, setzt strikte QA-Gates durch und protokolliert Findings.
+- **6. SHIP (Release Gatekeeper)**: Godmode_Shipping führt das finale automatisierte Quality Gate aus. Es committet, pusht private Repositories, aktualisiert OpenWiki-Dokumente autonom, integriert sie in memB und deployt live.
 
 ---
 
@@ -438,7 +431,7 @@ Dieses Repository enthält außerdem 14 Tiefensystem-Konfigurationen und Dokumen
 
 ---
 
-## 🌐 OpenWiki & RepoGraph Code Health Engine (v2.4.0)
+## 🌐 OpenWiki & RepoGraph Code Health Engine (v3.13.0)
 
 Die **OpenWiki Engine** verwaltet autonom lebendige Codebasis-Dokumentation, Architektur-Spezifikationen, ADRs, Release Notes und Echtzeit-Code-Health-Analysen über alle Ihre aktiven Projekte hinweg.
 
@@ -500,7 +493,7 @@ tail -f ~/.openwiki/daemon.log
 
 ---
 
-## 🖥️ BDB OS Agent Workspace: Parallele Multi-Agenten-Orchestrierung (v3.0.0)
+## 🖥️ BDB OS Agent Workspace: Parallele Multi-Agenten-Orchestrierung (v3.13.0)
 
 [![Repo](https://img.shields.io/badge/repo-bdb--os--agent--workspace-blue.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
 [![harness](https://img.shields.io/badge/orchestrierung-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
@@ -558,7 +551,7 @@ git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
 
 ---
 
-## 🎨 BDB Creator Extension: Heavy-Lifting Medien- & 3D-Compute-Pipeline (v3.0.0)
+## 🎨 BDB Creator Extension: Heavy-Lifting Medien- & 3D-Compute-Pipeline (v3.13.0)
 
 [![Repo](https://img.shields.io/badge/repo-bdb--dev--creator--extension-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
 [![compute](https://img.shields.io/badge/compute-CUDA%20%2F%20ML-orange.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
@@ -619,7 +612,7 @@ git clone https://github.com/hybridlabor-api/bdb-dev-creator-extension.git
 
 ---
 
-## 🧠 memB: Eigenes Semantisches Gedächtnis (v2.2.1)
+## 🧠 memB: Eigenes Semantisches Gedächtnis (v3.13.0)
 
 BDB OS führt ein vollständig integriertes, lokales Offline-First Semantisches Gedächtnis auf Basis von **memB** ein. Es bietet Zero-Compute-Kontext für SLMs und eine AI-First Flat-File-Vault-Architektur.
 
@@ -647,7 +640,7 @@ memB includes a native **Obsidian Plugin** (`obsidian-memb-plugin`) that acts as
 
 ---
 
-## ⚡ Heimdall Token Saver: CLI Kontext-Komprimierung (v2.6.3)
+## ⚡ Heimdall Token Saver: CLI Kontext-Komprimierung (v3.13.0)
 
 ![Heimdall Savings Graph](bdb_savings_graph_sketch.jpg)
 

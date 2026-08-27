@@ -36,17 +36,18 @@ Embora otimizado para o **Google Antigravity**, este pacote de skills e configur
 
 ![BDB v3 Core Tools Overview](assets/bdb_v3_core_tools_overview_sketch.jpg)
 
-### 🪐 Universal Agent Harness (v3.0.0)
+### 🪐 Universal Agent Harness (v3.13.0)
 O instalador agora possui um motor Universal Sync totalmente automatizado. Ele varre seu sistema em busca do **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline** e injeta a configuração MCP curada e as regras de Godmode em todos os ambientes simultaneamente.
+- **Tier 9 - Local Project Harness:** Em vez de instalar globalmente em `$HOME`, os desenvolvedores podem injetar o contrato `.agents` e os hooks diretamente em pastas de projetos isoladas.
 
-### 🧩 Integrações do Ecossistema (v3.0.0)
+### 🧩 Integrações do Ecossistema (v3.13.0)
 Este pacote atua como a ponte para duas capacidades massivas a montante (disponíveis como alvos de instalação direta através do instalador):
 - **BDB OS Agent Workspace:** A camada de orquestração para agentes de IA paralelos. Inicie múltiplas sessões de agentes isoladas via Git-Worktrees com controle de terminal ao vivo, loops de feedback CI/CD automáticos e roteamento de revisão de PR.
 - **BDB Creator Extension:** O pipeline de mídia agêntica de alta capacidade. Fornece aos agentes capacidades MCP locais do ComfyUI (FLUX, SDXL), geração Image-to-3D (TripoSR, TRELLIS) e produção de vídeo automatizada através do OpenMontage e Remotion.
 
-## 🌟 ~154+ Skills Otimizadas (Atualizado para v3.6.0)
+## 🌟 ~154+ Skills Otimizadas (Atualizado para v3.13.0)
 
-Começamos com um conjunto massivo de mais de 1.400 skills de IA brutas. Após rigorosos testes, filtragem e refinamento, destilamo-las em um conjunto hipercurado de **154+ Skills Otimizadas** (apresentando um motor nativo de documentação OpenWiki, o **cérebro de memória semântica local memB** e agora a **sincronização Universal Agent Harness na v3.6.0**).
+Começamos com um conjunto massivo de mais de 1.400 skills de IA brutas. Após rigorosos testes, filtragem e refinamento, destilamo-las em um conjunto hipercurado de **154+ Skills Otimizadas** (apresentando um motor nativo de documentação OpenWiki, o **cérebro de memória semântica local memB** e agora a **sincronização Universal Agent Harness na v3.13.0**).
 
 Essas skills são projetadas com precisão para garantir que os agentes não percam tempo com tarefas redundantes e, em vez disso, operem com máxima autonomia, restrições arquitetônicas rígidas e robusta consciência de contexto.
 
@@ -320,25 +321,17 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 
 ---
 
-## 🔄 BDB Software Engineering Pipeline & Comandos Slash
+## 🔄 Dispatcher Graph (.agents/graph.md)
 
-```text
- IDEATE & MEDIA STORM     DEFINE & SCAFFOLD      PLAN & SPEC      BUILD & MCPs       VERIFY        SHIP
- ┌──────────────────┐    ┌─────────────────┐    ┌───────────┐    ┌────────────┐   ┌──────────┐   ┌──────────┐
- │ Grill Me & Media │ ──▶│  Folder Select  │ ──▶│ Spec &    │ ──▶│ Subagents  │──▶│ QA Gate  │──▶│ OpenWiki │
- │   Brainstorming  │    │ OpenWiki & Repo │    │   Plan    │    │ & MCP Dev  │   │ Review   │   │  & Push  │
- └──────────────────┘    └─────────────────┘    └───────────┘    └────────────┘   └──────────┘   └──────────┘
-/grill-me /bdbmediastorm  /openwiki /github-repo    /plan          /subagents       /review        /ship
-```
+Os agentes de IA agora seguem uma máquina de estados robusta e determinística para orquestrar operações paralelas, substituindo a antiga pipeline de 5 agentes baseada em texto.
 
-Os agentes de IA seguem este ciclo de vida estruturado, profundamente integrado com a filosofia do **BDBrainstorm** e **BDBMediaStorm**:
-
-- **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Desafiar ideias ativamente ou realizar brainstorming multi-agente de mídia/event-tech. Inicia subagentes especializados (Especialista CI/Design, Arquiteto Real Time, Implementador MCP) para validar hardware, cenografia 3D (Rhino, Blender, Unreal), protocolos (OSC, Art-Net) e compatibilidade MCP.
+- **🚀 Dispatcher Graph (`.agents/graph.md`)**: Um sistema de roteamento baseado em nós totalmente autônomo para coordenar a equipe de agentes (Architect, TechLead, UI/UX, Engineering, EventTech, Reviewer, Shipping). Utiliza entregas determinísticas de arquivos em `production_artifacts/` e portas de estado explícitas, garantindo uma orquestração paralela precisa sem desvio de prompts.
+- **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Desafiar ideias ativamente ou realizar brainstorming multi-agente de mídia/event-tech. Inicia subagentes especializados para validar hardware, cenografia 3D, protocolos e compatibilidade MCP.
 - **2. DEFINE & SCAFFOLD (`openwiki-skill`, `github-repo`)**: Confirmar diretório de workspace alvo com o usuário e, em seguida, inicializar autonomamente a documentação do projeto, `AGENTS.md`, estruturas `.openwiki/` e padrões do repositório GitHub.
-- **3. PLAN (`/plan`)**: Criar especificações de design técnico, PRD e planos de implementação arquivo por arquivo, aderindo estritamente aos padrões `ui-ux-pro-max`.
-- **4. BUILD (`/subagents`)**: Desenvolvimento guiado por subagentes. O orquestrador mestre delega tarefas específicas de criação de componentes, patching de nós e refatoração para subagentes independentes.
-- **5. VERIFY & REVIEW (`/review`)**: Realizar revisões de portão de QA, varredura de segredos, suítes de testes unitários e auditorias rígidas de UI/UX ou fluxo de sinal.
-- **6. SHIP (`/ship`)**: Fazer commit, enviar repositórios privados, atualizar documentos OpenWiki autonomamente e publicar ao vivo.
+- **3. PLAN & ARCHITECT**: O Arquiteto transforma a meta em um plano de execução (`00_execution_plan.md`), e o TechLead revisa o mapa de capacidades antes de iniciar os nós de construção.
+- **4. BUILD (Execução de Nós em Paralelo)**: Desenvolvimento guiado por subagentes. O dispatcher encaminha tarefas para agentes Godmode especializados (UI/UX, Engineering, EventTech) operando em Git-Worktrees isolados.
+- **5. VERIFY & REVIEW (QA Adversário)**: Um Revisor dedicado audita de forma adversária as saídas dos nós de construção em relação ao contrato, impondo rígidos portões de QA e registrando descobertas.
+- **6. SHIP (Release Gatekeeper)**: Godmode_Shipping executa o portão de qualidade automatizado final. Realiza commits, envia para repositórios privados, atualiza documentos OpenWiki autonomamente, ingere no memB e implementa ao vivo.
 
 ---
 
@@ -437,7 +430,7 @@ Este repositório também contém 14 configurações profundas de sistema e dire
 
 ---
 
-## 🌐 OpenWiki & RepoGraph Code Health Engine (v2.4.0)
+## 🌐 OpenWiki & RepoGraph Code Health Engine (v3.13.0)
 
 O **OpenWiki Engine** mantém autonomamente documentação viva da base de código, especificações de arquitetura, ADRs, notas de lançamento e análises de saúde do código em tempo real em todos os seus projetos ativos.
 
@@ -499,7 +492,7 @@ tail -f ~/.openwiki/daemon.log
 
 ---
 
-## 🖥️ BDB OS Agent Workspace: Orquestração de Multi-Agentes Paralelos (v3.0.0)
+## 🖥️ BDB OS Agent Workspace: Orquestração de Multi-Agentes Paralelos (v3.13.0)
 
 [![Repo](https://img.shields.io/badge/repo-bdb--os--agent--workspace-blue.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
 [![harness](https://img.shields.io/badge/orquestração-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
@@ -557,7 +550,7 @@ git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
 
 ---
 
-## 🎨 BDB Creator Extension: Pipeline de Mídia & Computação 3D de Alta Capacidade (v3.0.0)
+## 🎨 BDB Creator Extension: Pipeline de Mídia & Computação 3D de Alta Capacidade (v3.13.0)
 
 [![Repo](https://img.shields.io/badge/repo-bdb--dev--creator--extension-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
 [![compute](https://img.shields.io/badge/computação-CUDA%20%2F%20ML-orange.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
@@ -618,7 +611,7 @@ git clone https://github.com/hybridlabor-api/bdb-dev-creator-extension.git
 
 ---
 
-## 🧠 memB: Cérebro Semântico Personalizado (v2.2.1)
+## 🧠 memB: Cérebro Semântico Personalizado (v3.13.0)
 
 O BDB OS introduz um cérebro de memória semântica local, offline-first totalmente integrado baseado no **memB**. Ele fornece contexto de computação zero para SLMs e uma arquitetura de vault de arquivos planos AI-first.
 
@@ -646,7 +639,7 @@ memB includes a native **Obsidian Plugin** (`obsidian-memb-plugin`) that acts as
 
 ---
 
-## ⚡ Heimdall Token Saver: Compressão de Contexto CLI (v2.6.3)
+## ⚡ Heimdall Token Saver: Compressão de Contexto CLI (v3.13.0)
 
 ![Heimdall Savings Graph](bdb_savings_graph_sketch.jpg)
 

@@ -36,6 +36,7 @@ While optimized for **Google Antigravity**, this skills pack and MCP configurati
 
 ### 🪐 Universal Agent Harness
 The installer features a fully automated Universal Sync engine. It scans your system for **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline**, and injects the curated MCP configuration and Godmode rules across all environments simultaneously.
+- **Tier 9 - Local Project Harness:** Instead of installing globally into `$HOME`, developers can inject the `.agents` contract and hooks directly into isolated project folders.
 
 ### 🧩 Ecosystem Integrations
 This package acts as the bridge to three major upstream capabilities:
@@ -45,7 +46,7 @@ This package acts as the bridge to three major upstream capabilities:
 
 ## Overview
 
-![BDB Agent OS v3.4.0 Core Tools Overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
+![BDB Agent OS v3.13.0 Core Tools Overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
 
 ---
 
@@ -306,28 +307,17 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 
 ---
 
-## 🔄 BDB Software Engineering Pipeline & Slash Commands
+## 🔄 Dispatcher Graph (.agents/graph.md)
 
-```text
- IDEATE & MEDIA STORM     DEFINE & SCAFFOLD      PLAN & SPEC      BUILD & MCPs       VERIFY        SHIP
- ┌──────────────────┐    ┌─────────────────┐    ┌───────────┐    ┌────────────┐   ┌──────────┐   ┌──────────┐
- │ Grill Me & Media │ ──▶│  Folder Select  │ ──▶│ Spec &    │ ──▶│ Subagents  │──▶│ QA Gate  │──▶│ OpenWiki │
- │   Brainstorming  │    │ OpenWiki & Repo │    │   Plan    │    │ & MCP Dev  │   │ Review   │   │  & Push  │
- └──────────────────┘    └─────────────────┘    └───────────┘    └────────────┘   └──────────┘   └──────────┘
-/grill-me /bdbmediastorm  /openwiki /github-repo    /plan          /subagents       /review        /ship
- └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-                                  🚀 Autonomous Execution: /startcycle
-```
+AI agents now follow a robust, deterministic state machine for orchestrating parallel operations, replacing the legacy text-based 5-Agent Pipeline.
 
-AI agents follow this structured lifecycle, deeply integrated with the **BDBrainstorm** and **BDBMediaStorm** philosophy:
-
-- **🚀 Autonomous Pipeline (`/startcycle`)**: Prompt-less execution macro that runs the 5-agent team (`Planner_Orchestrator` ➔ `Godmode_UI_UX`, `Godmode_Engineering`, `Godmode_Media_EventTech` ➔ `Godmode_Shipping` ➔ `.openwiki` + `memB`) with deterministic file hand-offs in `production_artifacts/`.
-- **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Actively challenge ideas or conduct multi-agent media/event-tech brainstorming. Spawns specialized subagents (CI/Design Expert, Real Time Architect, MCP Implementer) to validate hardware, 3D scenography (Rhino, Blender, Unreal), protocols (OSC, Art-Net), and MCP compatibility.
+- **🚀 Dispatcher Graph (`.agents/graph.md`)**: A fully autonomous, node-based routing system for coordinating the agent team (Architect, TechLead, UI/UX, Engineering, EventTech, Reviewer, Shipping). It uses deterministic file hand-offs in `production_artifacts/` and explicit state gates, ensuring precise parallel orchestration without prompt drift.
+- **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Actively challenge ideas or conduct multi-agent media/event-tech brainstorming. Spawns specialized subagents to validate hardware, 3D scenography, protocols, and MCP compatibility.
 - **2. DEFINE & SCAFFOLD (`openwiki-skill`, `github-repo`)**: Confirm target workspace directory with the user, then autonomously initialize project documentation, `AGENTS.md`, `.openwiki/` structures, and GitHub repo standards.
-- **3. PLAN (`/plan`)**: Create technical design specs, PRD, and file-by-file implementation plans, strictly adhering to `godmode-ui-ux` standards.
-- **4. BUILD (`/subagents`)**: Subagent-driven development. The master orchestrator delegates specific component creation, node patching, and refactoring tasks to independent subagents.
-- **5. VERIFY & REVIEW (`/review`)**: Perform QA gate reviews, secret scans, unit test suites, and strict UI/UX or signal-flow audits.
-- **6. SHIP (`/ship`)**: Commit, push private repositories, update OpenWiki docs autonomously, ingest into memB, and deploy live.
+- **3. PLAN & ARCHITECT**: The Architect turns the goal into an execution plan (`00_execution_plan.md`), and TechLead reviews the capability map before starting any build nodes.
+- **4. BUILD (Parallel Node Execution)**: Subagent-driven development. The dispatcher routes tasks to specialized Godmode agents (UI/UX, Engineering, EventTech) operating in isolated Git-Worktrees.
+- **5. VERIFY & REVIEW (Adversarial QA)**: A dedicated Reviewer adversarially audits build-node outputs against the contract, enforcing strict QA gates and recording findings.
+- **6. SHIP (Release Gatekeeper)**: Godmode_Shipping runs the final automated quality gate. It commits, pushes private repositories, updates OpenWiki docs autonomously, ingests into memB, and deploys live.
 
 ---
 
