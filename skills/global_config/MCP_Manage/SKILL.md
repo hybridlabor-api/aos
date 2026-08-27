@@ -1,6 +1,7 @@
 ---
 name: MCP_Manage
 description: Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner.
+category: media-eventtech
 ---
 
 # MCP_Manage: Specialized Tool Orchestration

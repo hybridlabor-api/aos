@@ -1,6 +1,7 @@
 ---
 name: gemini-api-dev
 description: "The Gemini API provides access to Google's most advanced AI models. Key capabilities include:"
+category: library
 risk: unknown
 source: community
 date_added: "2026-02-27"

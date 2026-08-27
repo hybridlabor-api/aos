@@ -1,7 +1,7 @@
 ---
 name: tmux
 description: "Expert tmux session, window, and pane management for terminal multiplexing, persistent remote workflows, and shell scripting automation."
-category: development
+category: library
 risk: safe
 source: community
 date_added: "2026-03-28"

@@ -1,6 +1,7 @@
 ---
 name: memb-skill
 description: "BDB local-first long-term memory engine (memB). Query, remember, and adapt preferences, code architectures, and developer patterns across tasks."
+category: bdb-core
 risk: low
 source: bdb
 date_added: "2026-07-11"

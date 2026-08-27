@@ -1,6 +1,7 @@
 ---
 name: simplify-code
 description: "Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes."
+category: engineering-method
 risk: safe
 source: "Dimillian/Skills (MIT)"
 date_added: "2026-03-25"

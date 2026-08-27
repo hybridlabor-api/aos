@@ -1,6 +1,7 @@
 ---
 name: godmode-3d-creation
 description: MCP-First master orchestration skill for 3D generation, mesh reconstruction, and parametric CAD engineering. Interfaces with local 3D engines and MCP tools.
+category: media-eventtech
 ---
 
 # 🧊 Godmode 3D Creation: MCP-First 3D Pipeline

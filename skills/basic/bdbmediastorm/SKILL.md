@@ -1,6 +1,7 @@
 ---
 name: bdbmediastorm
 description: The master ideation and brainstorming engine for live shows, show-control, and event technology. Orchestrates multi-agent technical planning focused on hardware constraints, signal routing, protocols (OSC, Art-Net, DMX, MIDI, SMPTE), TouchDesigner, Resolume, and grandMA3.
+category: media-eventtech
 ---
 
 # ⚡ BDB MediaStorm: Live Show & Event-Tech Ideation Engine

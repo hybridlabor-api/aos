@@ -1,7 +1,7 @@
 ---
 name: bdbsaashost
 description: "Master SaaS Webagency & AI-Agent Fleet Skill. Governs direct interaction with Multi-Cloud Fleets (Primary Compute, GCP Identity Hub, Oracle), FastMCP SSE Gateway, 4-Eyes Approvals, agent-sudo CLI guardrails, Incus containers, and LLDAP/Authelia identity management."
-category: infrastructure-automation
+category: saas-ops
 risk: safe
 source: bdb-agency
 date_added: "2026-08-27"

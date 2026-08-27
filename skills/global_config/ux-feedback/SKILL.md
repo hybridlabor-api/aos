@@ -1,7 +1,7 @@
 ---
 name: ux-feedback
 description: "Add loading, empty, error, and success feedback states to StyleSeed components and pages with practical mobile-first rules."
-category: design
+category: design-ui-ux
 risk: safe
 source: community
 source_repo: bitjaru/styleseed

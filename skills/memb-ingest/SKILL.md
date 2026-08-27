@@ -1,6 +1,7 @@
 ---
 name: memb-ingest
 description: Deep scan and ingest project files (.md, .json, agent.md, .openwiki) and past conversation logs into the local memB vector memory engine.
+category: bdb-core
 ---
 
 # memB Deep Memory Ingestion Skill

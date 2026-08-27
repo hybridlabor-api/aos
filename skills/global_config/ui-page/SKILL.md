@@ -1,7 +1,7 @@
 ---
 name: ui-page
 description: "Scaffold a new mobile-first page using StyleSeed Toss layout patterns, section rhythm, and existing shell components."
-category: design
+category: design-ui-ux
 risk: safe
 source: community
 source_repo: bitjaru/styleseed

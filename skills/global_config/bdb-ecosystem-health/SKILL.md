@@ -1,6 +1,7 @@
 ---
 name: bdb-ecosystem-health
 description: Autonomous verification and health monitoring skill for the BDB Ecosystem (Kernel + 7 Standalone NPM Modules). Audits Git, NPM version drift, and GitHub Actions CI/CD status, generates dark-mode HTML reports, and executes auto-remediation plans.
+category: saas-ops
 ---
 
 # BDB Ecosystem Health Skill

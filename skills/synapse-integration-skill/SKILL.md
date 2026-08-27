@@ -1,6 +1,7 @@
 ---
 name: synapse-integration-skill
 description: Global skill for BDB Synapse (3D Codebase Visualizer) integration.
+category: bdb-core
 ---
 
 # BDB Synapse Integration

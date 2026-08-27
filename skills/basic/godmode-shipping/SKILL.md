@@ -1,6 +1,7 @@
 ---
 name: godmode-shipping
 description: BDB Shipping Godmode. The final gatekeeper for production releases. Enforces Spec-Driven Development, rigorous pre-launch checks, feature flags, and rollback strategies.
+category: bdb-core
 ---
 
 # 🚀 BDB Shipping Godmode

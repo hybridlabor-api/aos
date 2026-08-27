@@ -1,6 +1,7 @@
 ---
 name: bdbrainstorm
 description: Combines multi-agent brainstorming, the /grill-me slash command, subagent-driven-development, ui-ux-pro-max, and automatic hand-off to the /startcycle execution pipeline.
+category: library
 ---
 
 # BDBrainstorm: The Ultimate Multi-Agent Design & Ideation Workflow

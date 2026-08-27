@@ -1,6 +1,7 @@
 ---
 name: startcycle
 description: Autonomous multi-agent development cycle pipeline triggered after /bdbrainstorm or /grill-me. Orchestrates Planner, UI/UX, Engineering, Media/EventTech, and Shipping agents with deterministic production_artifacts hand-offs and automated openwiki + memB sync.
+category: bdb-core
 ---
 
 # 🚀 BDB Autonomous Development Cycle (`/startcycle`)

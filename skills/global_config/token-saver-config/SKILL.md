@@ -1,6 +1,7 @@
 ---
 name: token-saver-config
 description: Context window output compression engine for CLI commands (60-99% token reduction).
+category: bdb-core
 ---
 
 # Heimdall Token Saver Configuration & Diagnostics

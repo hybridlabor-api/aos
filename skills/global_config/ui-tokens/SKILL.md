@@ -1,7 +1,7 @@
 ---
 name: ui-tokens
 description: "List, add, and update StyleSeed design tokens while keeping JSON sources, CSS variables, and dark-mode values in sync."
-category: design
+category: design-ui-ux
 risk: safe
 source: community
 source_repo: bitjaru/styleseed

@@ -1,6 +1,7 @@
 ---
 name: shadcn
 description: Manages shadcn/ui components and projects, providing context, documentation, and usage patterns for building modern design systems.
+category: design-ui-ux
 user-invocable: false
 risk: safe
 source: https://github.com/shadcn-ui/ui/tree/main/skills/shadcn

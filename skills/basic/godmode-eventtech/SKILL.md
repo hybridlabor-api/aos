@@ -1,6 +1,7 @@
 ---
 name: godmode-eventtech
 description: Architectural authority for real-time performance, signal flow, protocol routing, and hardware constraints in live show and event technology environments.
+category: media-eventtech
 ---
 
 # 🎛️ BDB EventTech Godmode

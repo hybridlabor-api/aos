@@ -1,6 +1,7 @@
 ---
 name: bdb-dev-os-skill
 description: Internal maintainer rules for the BDB Agent OS Ecosystem (Tim & Noah only).
+category: bdb-core
 ---
 
 # BDB Ecosystem Release Rules

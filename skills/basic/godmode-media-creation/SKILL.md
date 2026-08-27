@@ -1,6 +1,7 @@
 ---
 name: godmode-media-creation
 description: MCP-First master orchestration skill for all media creation pipelines (Video, Timeline Assembly, Beat Sync, Motion Design). Directly interfaces with local media engines and MCP tools.
+category: media-eventtech
 ---
 
 # 🎬 Godmode Media Creation: MCP-First Video & Media Pipeline

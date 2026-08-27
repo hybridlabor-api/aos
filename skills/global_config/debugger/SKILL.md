@@ -1,6 +1,7 @@
 ---
 name: debugger
 description: 'Debugging specialist for errors, test failures, and unexpected
+category: library
 
   behavior. Use proactively when encountering any issues.
 

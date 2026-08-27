@@ -1,6 +1,7 @@
 ---
 name: firecrawl-build-search
 description: Integrate Firecrawl `/search` into product code and agent workflows. Use when an app needs discovery before extraction, when the feature starts with a query instead of a URL, or when the system should search the web and optionally hydrate result content.
+category: library
 license: ISC
 metadata:
   author: firecrawl

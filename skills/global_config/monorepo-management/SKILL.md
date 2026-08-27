@@ -1,6 +1,7 @@
 ---
 name: monorepo-management
 description: "Build efficient, scalable monorepos that enable code sharing, consistent tooling, and atomic changes across multiple packages and applications."
+category: library
 risk: safe
 source: community
 date_added: "2026-02-27"

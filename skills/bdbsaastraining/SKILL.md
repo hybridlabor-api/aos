@@ -1,6 +1,7 @@
 ---
 name: bdbsaastraining
 description: Interaktiver, workload-adaptiver Hands-On Trainings-Skill für die BDB SaaS Host Engine. Führt jeden neuen Mitarbeiter, Entwickler oder Consultant über ein Workload-Interview (Station 0) in eine passende Trainingsspur (AI-Agent Sandbox, WordPress/Web, Mailserver, Clean Debian oder ein selbst beschriebenes Custom-Profil) und dann Schritt für Schritt durch SSH 2FA, Incus Profile Engineering, Deployment, FastMCP 4-Augen-Guardrails und Routing. Stellt nach bestandener Prüfung ein Dark-Mode PDF-Zertifikat aus.
+category: saas-ops
 ---
 
 # 🥋 BDB SaaS Host Universal Administrator Bootcamp (`/bdbsaastraining`)

@@ -1,7 +1,7 @@
 ---
 name: openwiki-skill
 description: "Direct Gemini-native integration of OpenWiki for autonomous, high-agency documentation management and release notes maintenance."
-category: workflow-bundle
+category: bdb-core
 risk: safe
 source: community
 date_added: "2026-07-10"

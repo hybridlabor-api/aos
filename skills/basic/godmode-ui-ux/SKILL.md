@@ -1,6 +1,7 @@
 ---
 name: godmode-ui-ux
 description: "BDB UI/UX Godmode. The authoritative design skill for all frontend work. Enforces Brand Discovery, contextual Anti-Slop rules, DTCG design tokens, fluid motion physics, enterprise accessibility, and data-driven design generation across all agent harnesses."
+category: design-ui-ux
 ---
 
 # BDB UI/UX Godmode

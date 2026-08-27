@@ -1,6 +1,7 @@
 ---
 name: agent-pipeline
 description: Defines the 6-stage BDB Software Engineering Pipeline (DEFINE, PLAN, BUILD, VERIFY, REVIEW, SHIP) with corresponding slash commands (/spec, /plan, /build, /test, /review, /ship) and autonomous orchestrator /startcycle.
+category: bdb-core
 ---
 
 # 🔄 BDB Software Engineering Pipeline

@@ -1,7 +1,7 @@
 ---
 name: documentation
 description: "Documentation generation workflow covering API docs, architecture docs, README files, code comments, and technical writing."
-category: workflow-bundle
+category: library
 risk: safe
 source: personal
 date_added: "2026-02-27"
