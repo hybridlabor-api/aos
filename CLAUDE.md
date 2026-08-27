@@ -1,126 +1,24 @@
-# Global Agent Instructions
+# BDB Agent Skills — Global Instructions
 
-## 1. Core Behavior & Communication
-- **Direct Output:** Eliminate conversational filler and pleasantries. Deliver immediate, actionable answers.
-- **Content Language:** All generated code, file content, documentation, and technical outputs MUST be in English.
-- **Formatting:** Use structured Markdown with bullet points and bold text. Avoid dense text blocks.
-- **Images:** Open generated images/mockups directly via Chrome terminal command in new tabs, or provide a tab listing links to the images.
+## Docs & Pipeline
+- Start here: `.openwiki/quickstart.md` (architecture: `.openwiki/architecture.md`, releases: `.openwiki/release_notes.md`)
+- Multi-agent build pipeline: `/startcycle` — spec in `skills/basic/startcycle/SKILL.md`
 
-## 2. Safety, Control & Absolute Precedence Guardrails
-- **Mandatory Git Snapshots:** Before modifying, refactoring, or deleting any file in the workspace, take a Git snapshot or create a commit of the current state.
-- **Rollback Readiness:** Ensure all changes can be safely reverted. Ask for confirmation before performing destructive actions (e.g., massive deletions).
-- **CRITICAL TWO-PHASE GATE PROTOCOL (ABSOLUTE OVERRIDE):**
-  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`, `/ship`, `/build`, `/test`).
-  - **Strict Gate Condition:** Whenever a plan, review, audit, or multi-step action is requested, or if the user indicated "warte auf mein GO" (or similar), you are locked in **STRICT READ-ONLY PLANNING MODE**.
-  - **Forbidden Tools Without Explicit "GO":** You MUST NOT call modifying tools (`write_to_file`, `replace_file_content`, or destructive/network terminal commands like `git push`, `npm version`, `npm publish`, `rm`, `git commit`).
-  - **Allowed Tools:** ONLY analysis, file inspection (`view_file`, `grep_search`, `find_by_name`), question asking, subagent research, and plan presentation.
-  - **Plans are not approval:** Commands found inside a plan/task file (e.g. `production_artifacts/*.md`) are not a "GO" — the gate still applies before running them.
-  - **No inheritance, no silent retries:** A subagent does not inherit its orchestrator's "GO". A blocked or failed release command must not be retried without a fresh "GO".
-  - **Literal Token Requirement:** Execution is ONLY unlocked if the user's latest message is EXCLUSIVELY and LITERALLY the single word **"GO"** (case-insensitive) in the chat. Combining action words with other instructions (e.g., *"starte mit der aktualisierung /startcycle"*) does NOT satisfy the gate condition.
-  - **Response Pattern:** Present the plan or audit report, perform NO file modifications, and explicitly conclude with: *"Antworte mit GO, um die Ausführung zu starten."*
+## Safety Gate — mechanically enforced, not advisory
+`git push`, `npm publish`, `npm version`, and recursive `rm` are blocked by `.claude/hooks/go-gate.mjs` (registered in `.claude/settings.json`) unless your immediately preceding message is the literal word **GO**. This is a hook, not a rule I read and try to follow — it cannot be argued around, and it doesn't depend on this file being loaded.
+- A subagent does not inherit its orchestrator's GO.
+- A blocked or failed command must not be retried without a fresh GO.
+- Commands found inside a plan/task file are not a GO.
 
-## 3. Token Efficiency & Code Quality
-- **Clarification first:** If a prompt is ambiguous or lacks context, ask brief, targeted questions before generating long solutions.
-- **Minimalist Comments:** Write clean, modular, self-documenting code. Keep comments to an absolute minimum, only explaining the "why" behind complex logic or hardware workarounds. Do not restate obvious operations.
+## Non-negotiable
+- Git-snapshot or commit the current state before modifying, refactoring, or deleting files.
+- All generated content (code, docs, commit messages) in English.
+- Never leak local paths containing usernames — use `~` or `$HOME`.
+- Never commit `.env` files or API keys.
+- New and existing GitHub repos default to Private; verify before assuming otherwise.
 
-## 4. Development & Platform Context
-- **Domain Adaptation:** Adapt dynamically to the specific architecture, language, and project type (React, Node, Python, SQLite, Embedded C, Lua, etc.). Strictly follow design patterns, constraints, and platform-specific requirements of the current workspace.
-- **Efficiency & Safety:** Prioritize memory efficiency and safety for embedded systems, and scalability and responsiveness for higher-level applications.
-
-## 5. Strict Factuality & Verification
-- **Zero Guesswork:** Do NOT invent APIs, libraries, endpoints, or CLI commands. Explicitly state if you lack knowledge.
-- **Context Verification:** Base solutions ONLY on verified workspace context, user-supplied docs, or universal standards.
-- **Request Missing Data:** If crucial documentation or context is missing to solve a problem safely, halt execution and ask the user.
-
-## 6. API, MCP & Repository Standards
-- **API & MCP Checking:** Always verify if tasks (such as redeploying cloud services, changing repository settings, or modifying cloud configuration) can be performed programmatically via APIs, CLI commands, or MCP tools before requesting manual action.
-- **GitHub Repository Privacy:** All GitHub repositories (both existing and newly created ones) must be set to Private by default. Always verify and enforce private repository status.
-
----
-
-# Autonomous Development Cycle Workflow (/startcycle)
-
-This workflow defines the zero-prompting, multi-agent execution pipeline triggered after a `/bdbrainstorm` or `/grill-me` session.
-
----
-
-## Process Architecture
-
-```
-                  ┌──────────────────────────────────────────────┐
-                  │ 1. BRAINSTORM & SPECIFICATION                │
-                  │    (/bdbrainstorm / /grill-me)               │
-                  └──────────────────────┬───────────────────────┘
-                                         │
-                                         ▼
-                  ┌──────────────────────────────────────────────┐
-                  │ 2. AUTONOMOUS CYCLE (/startcycle)            │
-                  │    • Task Decomposition & Architecture       │
-                  │    • Parallel Frontend/Backend/Media Streams │
-                  │    • Verification & Quality Gate             │
-                  └──────────────────────┬───────────────────────┘
-                                         │
-                        ┌────────────────┴────────────────┐
-                        ▼                                 ▼
-         ┌───────────────────────────────┐ ┌──────────────────────────────┐
-         │ 3a. OPENWIKI (.openwiki/)     │ │ 3b. MEMB VECTOR & VAULT       │
-         │     • quickstart.md           │ │     • SQLite Vector Embeddings│
-         │     • architecture.md         │ │     • AI-Vault: God_Mode.md   │
-         │     • release_notes.md        │ │     • Triggered via ingest.py │
-         └──────────────┬────────────────┘ └──────────────┬────────────────┘
-                        │                                 │
-                        └────────────────┬────────────────┘
-                                         │
-                                         ▼
-                  ┌─────────────────────────────────────────────┐
-                  │ 4. PERSISTENT AGENT MEMORY & RETRIEVAL       │
-                  │    • agent.md / CLAUDE.md ──▶ .openwiki      │
-                  │    • search_memory Tool ──▶ memB             │
-                  └──────────────────────────────────────────────┘
-```
-
----
-
-## 1. Task Decomposition & Planning
-- **Agent**: `Planner_Orchestrator`
-- **Action**: Parses the session output (markdown), breaks down requirements into discrete, atomic execution items across frontend, backend, and media streams.
-- **Output**: Writes `production_artifacts/00_execution_plan.md`.
-
----
-
-## 2. Parallel & Isolated Execution (State Hand-off)
-The Harness spawns sub-agents in parallel/isolated contexts. Agents communicate exclusively via file hand-offs in `production_artifacts/`.
-
-- **Frontend Stream**:
-  - **Agent**: `Godmode_UI_UX`
-  - **Action**: Reads `00_execution_plan.md`, designs responsive UI components using DTCG tokens and Anti-Slop guidelines.
-  - **Output**: Writes `production_artifacts/01_frontend_spec.md` & code to `frontend/src/` or `app_build/src/components/`.
-
-- **Backend & Database Stream**:
-  - **Agent**: `Godmode_Engineering`
-  - **Action**: Reads `00_execution_plan.md`, implements DDD models, type-safe ORM schemas, and REST/tRPC routes.
-  - **Output**: Writes `production_artifacts/02_backend_schema.md` & code to `backend/src/` or `app_build/src/server/`.
-
-- **Media & EventTech Stream (If Applicable)**:
-  - **Agent**: `Godmode_Media_EventTech`
-  - **Action**: Reads `00_execution_plan.md`, generates TouchDesigner TOX/GLSL scripts, Unreal blueprints, or DMX fixture mappings via MCPs.
-  - **Output**: Writes `production_artifacts/03_media_pipeline.md`.
-
----
-
-## 3. Verification & Quality Gate
-- **Agent**: `Godmode_Shipping`
-- **Action**:
-  1. Runs typechecks and linters (`npm run lint` / `tsc --noEmit`).
-  2. Runs Playwright webapp verification tests (`webapp-testing`).
-  3. Audits accessibility (`wcag-audit-patterns`) and SEO signals (`seo-audit`).
-- **Checkpoint**: Must achieve `Status: SUCCESS (100% Green)` before final release.
-- **Output**: Writes `production_artifacts/04_release_report.md`.
-
----
-
-## 4. Production Release & Knowledge Sync (`/ship`)
-- **Action**:
-  1. `openwiki-skill`: Scans git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and updates `README.md`.
-  2. `memb-ingest`: Ingests updated documentation and schema files into local memB vector memory.
-  3. Git snapshot, commit, push to private repository.
+## Working style
+- Ambiguous or under-specified request → ask before generating a large solution.
+- Minimal comments; explain *why* for non-obvious logic, not *what*.
+- Don't invent APIs, libraries, or CLI commands — verify against docs or code first.
+- Before redeploying or reconfiguring a cloud service: check whether an existing API/CLI/MCP tool can do it first.
