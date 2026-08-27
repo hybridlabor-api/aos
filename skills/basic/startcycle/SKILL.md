@@ -52,6 +52,16 @@ loop-keeper — lives in [`.agents/graph.md`](../../../.agents/graph.md) and
 [`.agents/state.schema.json`](../../../.agents/state.schema.json); this
 section is a summary, not the source of truth.
 
+**The dispatcher is runnable, not just specified:**
+[`.claude/workflows/startcycle.mjs`](../../../.claude/workflows/startcycle.mjs)
+implements the loop below as an actual Dynamic Workflow script — running
+`/startcycle` on Claude Code executes it. It reads the goal, drives the
+Architect/TechLead approval loop, fans the build nodes out in parallel, runs
+Reviewer's repair loop with a no-progress guard, and stops at `ready_to_ship`
+for a human `GO` rather than shipping on its own. Other harnesses without an
+equivalent "workflow" primitive fall back to this file and `.agents/graph.md`
+as a manual dispatch guide.
+
 **The one rule:** these seven agents never invoke each other. A dispatcher —
 the main session running `/startcycle`, or whatever plays that role in a
 given harness — reads `production_artifacts/state.json` after each agent
@@ -66,7 +76,7 @@ agents; that framing is corrected (see `audit-agents.md` F-17).
 | **Godmode_UI_UX** | Frontend implementation | plan, own findings | `state.artifacts.frontend` |
 | **Godmode_Engineering** | Backend implementation | plan, own findings | `state.artifacts.backend` |
 | **Godmode_Media_EventTech** | Media/show-control implementation (if the goal needs it) | plan, own findings | `state.artifacts.media` |
-| **Reviewer** | Adversarial review of build output against the plan's contract — never sees the implementer's claim, only the artifact | build artifacts only | `state.findings`, `state.doubt_theater_streak` |
+| **Reviewer** | Adversarial review of build output against the plan's contract — never sees the implementer's claim, only the artifact | build artifacts only | `state.findings` |
 | **Godmode_Shipping** | Runs the automated quality gate; ships only with all gates green and a `GO` | all artifacts, findings | `state.gate`, `state.phase: done` |
 
 **Repair loop (the gap the old version of this skill flagged as a Red Flag,
@@ -79,10 +89,12 @@ it blocks the turn from ending while the gate is failing and
 dispatcher sets `phase: escalated` and hands control back to the user instead
 of looping forever.
 
-**Doubt theater guard:** if Reviewer produces zero blocking findings on two
-consecutive cycles over the same artifact, the dispatcher does not run a
-third identical review — it suspects the reviewer is validating rather than
-doubting, sets `needs_human: true`, and surfaces that to the user.
+**No-progress guard:** if a repair round reports the exact same blocking
+finding ID(s) Reviewer already flagged before the build node was re-invoked
+to fix them, the dispatcher escalates immediately instead of repeating an
+identical cycle. (This replaced an earlier "two clean cycles" framing that
+turned out to have no reachable trigger once the dispatcher became a real
+script — see `.agents/graph.md`'s Reviewer discipline for the full story.)
 
 **`/ship` (after `state.phase: done`):**
 1. **Wiki Sync (`openwiki-skill`)**: scans the git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and root `README.md`.
@@ -132,7 +144,7 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 - Proceeding to the next pipeline stage without confirming the previous stage's side effects.
 - Ignoring domain-specific constraints listed in this skill.
 - One agent's prompt or output directly instructing another agent to act ("hand off to Engineering now") instead of the dispatcher reading `state.json` and deciding the next invocation itself — this is the node-to-node hand-off pattern `.agents/graph.md` explicitly rules out (F-17).
-- A third identical Reviewer cycle on the same artifact after two consecutive clean passes, instead of escalating per the doubt-theater guard.
+- A repair cycle running again with the exact same finding IDs as the last one, instead of escalating per the no-progress guard.
 
 ## 6. Verification
 - [ ] Verified script exit codes are explicitly checked.

@@ -73,13 +73,7 @@
       "type": "integer",
       "minimum": 1,
       "default": 3,
-      "description": "Hard stop. Default 3, matching the 'doubt theater' convention (2+ review cycles with zero actionable findings means stop and escalate rather than keep looping) and staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead."
-    },
-    "doubt_theater_streak": {
-      "type": "integer",
-      "minimum": 0,
-      "default": 0,
-      "description": "Consecutive Reviewer cycles that produced zero actionable findings. At 2, the dispatcher should suspect the reviewer is validating rather than doubting (see .agents/graph.md Reviewer discipline) and escalate rather than run a third identical cycle."
+      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/startcycle.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
     },
     "approvals": {
       "type": "array",

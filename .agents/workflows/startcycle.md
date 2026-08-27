@@ -63,7 +63,7 @@ agents calling agents; see `audit-agents.md` F-17 for why that's corrected.
 | **Godmode_UI_UX** | Frontend implementation | plan, own findings | `state.artifacts.frontend` |
 | **Godmode_Engineering** | Backend implementation | plan, own findings | `state.artifacts.backend` |
 | **Godmode_Media_EventTech** | Media/show-control implementation (if the goal needs it) | plan, own findings | `state.artifacts.media` |
-| **Reviewer** | Adversarial review of build output against the plan's contract — never sees the implementer's claim, only the artifact | build artifacts only | `state.findings`, `state.doubt_theater_streak` |
+| **Reviewer** | Adversarial review of build output against the plan's contract — never sees the implementer's claim, only the artifact | build artifacts only | `state.findings` |
 | **Godmode_Shipping** | Runs the automated quality gate; ships only with all gates green and a `GO` | all artifacts, findings | `state.gate`, `state.phase: done` |
 
 **Repair loop:** if TechLead rejects the plan, Reviewer has an open blocking
@@ -73,9 +73,10 @@ finding, or Shipping's gate fails, the dispatcher increments
 while `iteration < max_iterations` (default 3). At the ceiling, the
 dispatcher sets `phase: escalated` and hands control back to the user.
 
-**Doubt theater guard:** two consecutive clean Reviewer cycles on the same
-artifact stop the loop and escalate instead of running a third identical
-pass.
+**No-progress guard:** if a repair round reports the exact same blocking
+finding ID(s) Reviewer already flagged before the build node was re-invoked
+to fix them, the dispatcher escalates immediately instead of repeating an
+identical cycle (see `.agents/graph.md`'s Reviewer discipline).
 
 **`/ship` (after `state.phase: done`):**
 1. `openwiki-skill`: scans the git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and `README.md`.
