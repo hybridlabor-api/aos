@@ -1,7 +1,7 @@
 ---
 name: bdbrainstorm
 description: Combines multi-agent brainstorming, the /grill-me slash command, and the 3 Core Godmodes (godmode-engineering, godmode-ui-ux, godmode-shipping) to force a comprehensive, multi-agent ideation and technical design workflow.
-category: library
+category: bdb-core
 ---
 
 # BDBrainstorm: The Ultimate Multi-Agent Design & Ideation Workflow
