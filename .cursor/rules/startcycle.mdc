@@ -39,53 +39,50 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
                                          ▼
                   ┌─────────────────────────────────────────────┐
                   │ 4. PERSISTENT AGENT MEMORY & RETRIEVAL       │
-                  │    • agent.md / CLAUDE.md ──▶ .openwiki      │
+                  │    • AGENTS.md / CLAUDE.md ──▶ .openwiki      │
                   │    • search_memory Tool ──▶ memB             │
                   └──────────────────────────────────────────────┘
 ```
 
 ---
 
-## 1. Task Decomposition & Planning
-- **Agent**: `Planner_Orchestrator`
-- **Action**: Parses the session output (markdown), breaks down requirements into discrete, atomic execution items across frontend, backend, and media streams.
-- **Output**: Writes `production_artifacts/00_execution_plan.md`.
+## Dispatcher-Mediated Graph (v2)
 
----
+**This replaces the old 4-step pipeline description below.** The full
+contract — state schema, node table, edge predicates, the Stop-hook
+loop-keeper — lives in `.agents/graph.md` and `.agents/state.schema.json`;
+this file is a summary, kept in sync with
+`skills/basic/startcycle/SKILL.md`'s canonical version.
 
-## 2. Parallel & Isolated Execution (State Hand-off)
-The Harness spawns sub-agents in parallel/isolated contexts. Agents communicate exclusively via file hand-offs in `production_artifacts/`.
+**The one rule:** these seven agents never invoke each other. A dispatcher —
+the main session running `/startcycle`, or whatever plays that role in a
+given harness — reads `production_artifacts/state.json` after each agent
+returns and decides which one runs next. The version of this file below this
+notice previously described "streams" and "hand-offs" in a way that read as
+agents calling agents; see `audit-agents.md` F-17 for why that's corrected.
 
-- **Frontend Stream**:
-  - **Agent**: `Godmode_UI_UX`
-  - **Action**: Reads `00_execution_plan.md`, designs responsive UI components using DTCG tokens and Anti-Slop guidelines.
-  - **Output**: Writes `production_artifacts/01_frontend_spec.md` & code to `frontend/src/` or `app_build/src/components/`.
+| Node | Role | Reads | Writes |
+|---|---|---|---|
+| **Architect** | Turns the goal into a system plan | `state.goal` | `state.artifacts.plan` |
+| **TechLead** | Approves/rejects the plan's capability map | `state.artifacts.plan` | plan approval, `state.phase` |
+| **Godmode_UI_UX** | Frontend implementation | plan, own findings | `state.artifacts.frontend` |
+| **Godmode_Engineering** | Backend implementation | plan, own findings | `state.artifacts.backend` |
+| **Godmode_Media_EventTech** | Media/show-control implementation (if the goal needs it) | plan, own findings | `state.artifacts.media` |
+| **Reviewer** | Adversarial review of build output against the plan's contract — never sees the implementer's claim, only the artifact | build artifacts only | `state.findings`, `state.doubt_theater_streak` |
+| **Godmode_Shipping** | Runs the automated quality gate; ships only with all gates green and a `GO` | all artifacts, findings | `state.gate`, `state.phase: done` |
 
-- **Backend & Database Stream**:
-  - **Agent**: `Godmode_Engineering`
-  - **Action**: Reads `00_execution_plan.md`, implements DDD models, type-safe ORM schemas, and REST/tRPC routes.
-  - **Output**: Writes `production_artifacts/02_backend_schema.md` & code to `backend/src/` or `app_build/src/server/`.
+**Repair loop:** if TechLead rejects the plan, Reviewer has an open blocking
+finding, or Shipping's gate fails, the dispatcher increments
+`state.iteration` and re-invokes the owning node instead of stopping. A
+`Stop` hook (`.claude/hooks/graph-gate.mjs`) enforces this deterministically
+while `iteration < max_iterations` (default 3). At the ceiling, the
+dispatcher sets `phase: escalated` and hands control back to the user.
 
-- **Media & EventTech Stream (If Applicable)**:
-  - **Agent**: `Godmode_Media_EventTech`
-  - **Action**: Reads `00_execution_plan.md`, generates TouchDesigner TOX/GLSL scripts, Unreal blueprints, or DMX fixture mappings via MCPs.
-  - **Output**: Writes `production_artifacts/03_media_pipeline.md`.
+**Doubt theater guard:** two consecutive clean Reviewer cycles on the same
+artifact stop the loop and escalate instead of running a third identical
+pass.
 
----
-
-## 3. Verification & Quality Gate
-- **Agent**: `Godmode_Shipping`
-- **Action**:
-  1. Runs typechecks and linters (`npm run lint` / `tsc --noEmit`).
-  2. Runs Playwright webapp verification tests (`webapp-testing`).
-  3. Audits accessibility (`wcag-audit-patterns`) and SEO signals (`seo-audit`).
-- **Checkpoint**: Must achieve `Status: SUCCESS (100% Green)` before final release.
-- **Output**: Writes `production_artifacts/04_release_report.md`.
-
----
-
-## 4. Production Release & Knowledge Sync (`/ship`)
-- **Action**:
-  1. `openwiki-skill`: Scans git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and updates `README.md`.
-  2. `memb-ingest`: Ingests updated documentation and schema files into local memB vector memory.
-  3. Git snapshot, commit, push to private repository.
+**`/ship` (after `state.phase: done`):**
+1. `openwiki-skill`: scans the git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and `README.md`.
+2. `memb-ingest`: ingests new documentation and schema files into local memB vector memory.
+3. Git commit, version tag, push to the private remote — gated by `go-gate.mjs` like any other push in this repo.

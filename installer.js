@@ -611,6 +611,30 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
     });
 }
 
+// A top-level entry under skills/ is either a leaf skill (its own SKILL.md
+// directly inside -- e.g. skills/bdbrainstorm/) or a container of multiple
+// leaf skills (e.g. skills/global_config/, skills/basic/,
+// skills/workspace_agents/). copyDirRecursiveSync(source, target) copies
+// source's CONTENTS into target -- it never nests under
+// target/basename(source). That's correct for a container (its children are
+// already properly-named skill dirs) but wrong for a leaf skill, whose
+// SKILL.md needs to land at target/<dirName>/SKILL.md, not loose at
+// target/SKILL.md. Getting this wrong doesn't just misplace one skill: every
+// root-level leaf skill dumps into the same flat target, so each subsequent
+// one silently overwrites the previous one's SKILL.md -- found by tracing
+// why skills/bdbrainstorm/ and skills/global_config/bdbrainstorm/ both
+// existed with different content; the root-level one (and 5 siblings:
+// bdbsaastraining, github-repo, memb-ingest, bdb-dev-os-skill,
+// synapse-integration-skill) never survived a global sync intact.
+function syncSkillEntry(fullPath, dirName, targetSkillDir, excludeSkills) {
+    const isLeafSkill = fs.existsSync(path.join(fullPath, 'SKILL.md'));
+    if (isLeafSkill) {
+        copyDirRecursiveSync(fullPath, path.join(targetSkillDir, dirName), excludeSkills);
+    } else {
+        copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
+    }
+}
+
 function installStep(what, fn, hint) {
     try {
         return { ok: true, value: fn() };
@@ -648,7 +672,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
                 if (dir === 'global_legacy' || dir === 'workspace_agents') continue;
                 const fullPath = path.join(skillsBase, dir);
                 if (!fs.statSync(fullPath).isDirectory()) continue;
-                copyDirRecursiveSync(fullPath, dest, excludeSkills);
+                syncSkillEntry(fullPath, dir, dest, excludeSkills);
             }
             log.step(`Synced BDB skills to ${dest}`);
         } catch (e) {
@@ -2496,7 +2520,7 @@ async function runQuickUpdate(installState) {
             } else if (dir === 'workspace_agents') {
                 copyDirRecursiveSync(fullPath, paths.targetWorkspaceDir, excludeSkills);
             } else {
-                copyDirRecursiveSync(fullPath, paths.targetSkillDir, excludeSkills);
+                syncSkillEntry(fullPath, dir, paths.targetSkillDir, excludeSkills);
             }
         }
     }
@@ -2794,7 +2818,7 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
                     } else if (dir === 'workspace_agents') {
                         copyDirRecursiveSync(fullPath, t.targetWorkspaceDir, excludeSkills);
                     } else {
-                        copyDirRecursiveSync(fullPath, t.targetSkillDir, excludeSkills);
+                        syncSkillEntry(fullPath, dir, t.targetSkillDir, excludeSkills);
                     }
                 }
                 log.step(`Installed all global config & core skills to ${t.targetSkillDir}`);
