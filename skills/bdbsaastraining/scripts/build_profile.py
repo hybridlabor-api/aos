@@ -41,6 +41,17 @@ def warn(msg: str) -> None:
 # ---------------------------------------------------------------------------
 # YAML-Emitter (nur so viel wie nötig; eine einzige Block-Scalar-Ebene)
 # ---------------------------------------------------------------------------
+_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def yaml_sq(text: str) -> str:
+    """Beliebigen Text als sicheren YAML-single-quoted-Scalar. Kollabiert
+    Steuerzeichen/Whitespace, verdoppelt Apostrophe. Kein Backslash-Escaping nötig."""
+    flat = _CTRL_RE.sub(" ", str(text)).replace("\t", " ")
+    flat = re.sub(r"\s+", " ", flat).strip()
+    return "'" + flat.replace("'", "''") + "'"
+
+
 def emit_profile(config: dict[str, str], description: str, user_data: str,
                  devices: dict[str, dict[str, str]]) -> str:
     lines: list[str] = ["config:"]
@@ -51,8 +62,7 @@ def emit_profile(config: dict[str, str], description: str, user_data: str,
     lines.append("  cloud-init.user-data: |")
     for ud_line in user_data.splitlines():
         lines.append(f"    {ud_line}" if ud_line else "")
-    safe_desc = description.replace('"', "'").replace("\n", " ").strip()
-    lines.append(f'description: "{safe_desc}"')
+    lines.append(f"description: {yaml_sq(description)}")
     if devices:
         lines.append("devices:")
         for dname, dcfg in devices.items():
@@ -104,7 +114,9 @@ def validate_packages(pkgs: list[str]) -> list[str]:
         if not p:
             continue
         if not PKG_RE.match(p):
-            warn(f"Paketname '{p}' sieht ungewöhnlich aus (Debian-13-Namen: klein, [a-z0-9.+-]). Trotzdem übernommen.")
+            warn(f"Paketname '{p}' ist kein gültiger Debian-Paketname ([a-z0-9][a-z0-9.+-]*) — VERWORFEN, "
+                 f"nicht ins Profil übernommen.")
+            continue
         clean.append(p)
     return clean
 
@@ -238,11 +250,13 @@ def render_track_b(args, ram, cpu, disk) -> str:
 
 
 def render_track_c(args, ram, cpu, disk) -> str:
-    dom = args.customer_domain
+    dom = (args.customer_domain or "").strip()
     if dom and not DOMAIN_RE.match(dom):
-        warn(f"customer-domain '{dom}' ist keine gültige Domain — Blueprint in Station 5 wird darauf aufbauen.")
+        warn(f"customer-domain '{dom}' ist keine gültige Domain — VERWORFEN, nutze Platzhalter. "
+             f"Für Station 5 (DNS-Blueprint) korrekte Domain nachreichen.")
+        dom = ""
     if not dom:
-        warn("Keine --customer-domain angegeben. Station 5 (DNS-Blueprint) braucht sie.")
+        warn("Keine gültige --customer-domain. Station 5 (DNS-Blueprint) braucht sie.")
         dom = "beispiel-kunde.de"
 
     pkgs = ["postfix", "dovecot-imapd", "mariadb-server", "php-fpm", "php-mysql",
@@ -274,9 +288,9 @@ def render_track_c(args, ram, cpu, disk) -> str:
         "    permissions: '0755'",
         "    content: |",
         installer,
-        f"  - path: /root/CUSTOMER_DOMAIN",
+        "  - path: /root/CUSTOMER_DOMAIN",
         "    permissions: '0644'",
-        f"    content: {dom}",
+        f"    content: {yaml_sq(dom)}",
         "runcmd:",
         '  - [ "/bin/bash", "/root/install_froxlor.sh" ]',
     ]
@@ -294,7 +308,7 @@ def render_track_d(args, ram, cpu, disk) -> str:
         "postgres": (["postgresql", "postgresql-client"], "postgresql", "/var/lib/postgresql"),
         "redis":    (["redis-server"], "redis-server", "/var/lib/redis"),
         "node":     (["nodejs", "npm", "git"], None, "/srv/app"),
-        "plain":    ([], None, None),
+        "plain":    ([], None, "/srv/data"),
     }
     pkgs, svc, datapath = table.get(wl, table["plain"])
 
@@ -435,8 +449,17 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+USER_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$")
+
+
 def main() -> int:
     args = build_parser().parse_args()
+
+    if not USER_RE.match(args.user):
+        print(f"❌ --user '{args.user}' ist ungültig. Erlaubt: kleinbuchstaben/ziffern/bindestrich, "
+              f"2–32 Zeichen (wie ein Incus-Instanz-/Volume-Name). Nutze den LLDAP-Benutzernamen.", file=sys.stderr)
+        return 2
+
     ram, cpu, disk = clamp_sizing(args)
     args.ram, args.cpu, args.disk = ram, cpu, disk
 
