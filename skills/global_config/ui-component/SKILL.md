@@ -1,6 +1,6 @@
 ---
 name: ui-component
-description: "Generate a new UI component that follows StyleSeed Toss conventions for structure, tokens, accessibility, and component ergonomics."
+description: "Use when generating a new UI component that follows StyleSeed Toss conventions for structure, tokens, accessibility, and ergonomics."
 category: design-ui-ux
 risk: safe
 source: community
@@ -102,3 +102,27 @@ Provide:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Core Process
+1. Analyze the component requirements and verify it doesn't already exist.
+2. Scaffold the component using StyleSeed spacing, typography, and color tokens.
+3. Implement all interactive states (hover, focus, active, disabled).
+4. Test the component mobile-first to ensure touch target sizes are adequate.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll just copy this component from another project. | Fails to adhere to StyleSeed Toss conventions and design tokens. |
+| This component doesn't need to support mobile, it's for the dashboard. | All StyleSeed components must be built mobile-first. |
+| I'll hardcode the padding because it looks better. | Violates the strict spacing discipline enforced by StyleSeed tokens. |
+
+## Red Flags
+- Component is not mobile-first.
+- Spacing and typography do not use StyleSeed tokens.
+- Missing interactive states (hover, focus, active).
+
+## Verification
+- [ ] Component structure matches StyleSeed Toss conventions.
+- [ ] All spacing, colors, and typography use official design tokens.
+- [ ] Component is responsive and tested mobile-first.

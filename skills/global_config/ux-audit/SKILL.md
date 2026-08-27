@@ -1,6 +1,6 @@
 ---
 name: ux-audit
-description: "Audit screens against Nielsen's heuristics and mobile UX best practices using the StyleSeed Toss design language as the implementation context."
+description: "Use when auditing screens against Nielsen's heuristics and mobile UX best practices within the StyleSeed Toss design language context."
 category: design-ui-ux
 risk: safe
 source: community
@@ -64,3 +64,27 @@ Return:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Core Process
+1. Define the core tasks and user goals for the flow being audited.
+2. Step through the flow evaluating against Nielsen's heuristics.
+3. Test edge cases, error states, and empty states specifically.
+4. Document actionable findings and prioritize remediation.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| The screen looks modern, so the UX must be good. | Aesthetics do not equal usability; heuristic evaluation is required. |
+| I'll only audit the happy path. | Most UX failures occur in error states, edge cases, and empty states. |
+| Users will figure out this complex navigation. | If navigation requires effort to 'figure out', the UX has failed. |
+
+## Red Flags
+- Missing feedback for user actions (system status visibility).
+- Lack of clear undo/cancel options for critical actions.
+- Inconsistent terminology used across different screens.
+
+## Verification
+- [ ] Audit covers all relevant Nielsen's heuristics.
+- [ ] Error states and edge cases are explicitly tested.
+- [ ] A concrete list of actionable UX improvements is generated.

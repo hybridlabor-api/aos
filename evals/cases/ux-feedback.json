@@ -1,0 +1,30 @@
+{
+  "skill_name": "ux-feedback",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Design the skeleton loader for the data table.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Create an actionable error state for failed API requests.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Implement an engaging empty state for the newly created account dashboard.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Update the JSON design tokens for the error colors.",
+        "owner": "ui-tokens"
+      },
+      {
+        "prompt": "Build the entire data table layout.",
+        "owner": "ui-pattern"
+      }
+    ]
+  },
+  "evals": []
+}

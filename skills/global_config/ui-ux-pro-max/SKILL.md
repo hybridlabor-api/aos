@@ -360,3 +360,30 @@ This skill is applicable to execute the workflow or actions described in the ove
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+Holistic design oversight ensuring accessible, intuitive, and cohesive user experiences across platforms.
+
+## Core Process
+1. Map the end-to-end user flow before touching visual design.
+2. Apply the chosen color palettes and typography securely within WCAG guidelines.
+3. Ensure complex data is optimized for mobile touch interaction.
+4. Validate the overall cohesion of the design language across multiple screens.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll skip user flow mapping and jump straight to high-fidelity design. | Skipping foundational UX leads to beautiful screens that fail to solve the user's problem. |
+| This complex table doesn't need mobile optimization. | All interfaces must be usable on all devices; complex data must be adapted. |
+| I'll use low contrast text because it looks sleeker. | Sacrificing accessibility for aesthetics alienates users and violates WCAG standards. |
+
+## Red Flags
+- Designing isolated screens without considering the end-to-end user journey.
+- Failing WCAG color contrast requirements.
+- Designing touch targets smaller than 44x44 pixels.
+
+## Verification
+- [ ] End-to-end user flow is mapped and validated.
+- [ ] All text meets WCAG AA contrast ratios.
+- [ ] Touch targets on mobile are adequately sized (minimum 44x44px).

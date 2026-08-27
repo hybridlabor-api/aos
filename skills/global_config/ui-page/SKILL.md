@@ -1,6 +1,6 @@
 ---
 name: ui-page
-description: "Scaffold a new mobile-first page using StyleSeed Toss layout patterns, section rhythm, and existing shell components."
+description: "Use when scaffolding a new mobile-first page using StyleSeed Toss layout patterns, section rhythm, and existing shell components."
 category: design-ui-ux
 risk: safe
 source: community
@@ -98,3 +98,27 @@ Return:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Core Process
+1. Scaffold the page structure using the standard StyleSeed shell component.
+2. Layout the content mobile-first, ensuring proper stacking and touch ergonomics.
+3. Apply consistent vertical section rhythm using design tokens.
+4. Adapt the layout for desktop viewports using responsive grid patterns.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll build the desktop layout first and adapt it for mobile later. | Violates the core mobile-first mandate, leading to clunky mobile experiences. |
+| I don't need to use the standard shell component here. | Bypassing the shell creates inconsistent navigation and layout behavior. |
+| I'll add custom margins between these sections. | Breaks the established section rhythm defined in StyleSeed. |
+
+## Red Flags
+- Page layout fails on narrow mobile screens.
+- Inconsistent vertical rhythm between major page sections.
+- Not utilizing standard page shell or layout wrappers.
+
+## Verification
+- [ ] Page is built mobile-first and scales up to desktop.
+- [ ] Section spacing adheres to StyleSeed section rhythm tokens.
+- [ ] Standard shell components are used for layout wrapping.

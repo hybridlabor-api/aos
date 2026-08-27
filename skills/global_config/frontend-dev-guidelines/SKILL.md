@@ -365,3 +365,30 @@ This skill is applicable to execute the workflow or actions described in the ove
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+Strict architectural and performance standards for senior frontend engineers building robust applications.
+
+## Core Process
+1. Review the data fetching strategy and ensure decoupling from presentation.
+2. Implement robust error boundaries and fallback UI.
+3. Validate state management against global vs local standards.
+4. Run performance checks before finalizing the component.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I can just fetch this data inside the component directly. | Data fetching should be decoupled from presentation following the established architecture. |
+| I'll use a local state instead of the global store because it's quicker. | Bypassing the global store leads to state fragmentation and synchronization bugs. |
+| I'm skipping the error boundary here, it won't fail. | All components must fail gracefully without crashing the entire application. |
+
+## Red Flags
+- Tightly coupled data fetching and UI components.
+- Unhandled promise rejections or missing error boundaries.
+- Using deprecated frontend patterns instead of the approved architecture.
+
+## Verification
+- [ ] Component separates data fetching from presentation logic.
+- [ ] Error states and boundaries are implemented.
+- [ ] Performance metrics (e.g. bundle size, render time) are unaffected.

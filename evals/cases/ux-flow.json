@@ -1,0 +1,30 @@
+{
+  "skill_name": "ux-flow",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Map the progressive disclosure flow for the advanced settings panel.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Design the hub-and-spoke navigation for the mobile app.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Restructure the multi-step onboarding flow to reduce cognitive load.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Add tactile feedback to the navigation buttons.",
+        "owner": "design-spells"
+      },
+      {
+        "prompt": "Audit the color contrast of the navigation menu.",
+        "owner": "ui-review"
+      }
+    ]
+  },
+  "evals": []
+}

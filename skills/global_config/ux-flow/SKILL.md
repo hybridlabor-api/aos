@@ -1,6 +1,6 @@
 ---
 name: ux-flow
-description: "Design user flows and screen structure using StyleSeed UX patterns such as progressive disclosure, hub-and-spoke navigation, and information pyramids."
+description: "Use when designing user flows, progressive disclosure, and hub-and-spoke navigation using established StyleSeed UX structure patterns."
 category: design-ui-ux
 risk: safe
 source: community
@@ -70,3 +70,27 @@ Provide:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Core Process
+1. Map the navigation hierarchy utilizing hub-and-spoke or pyramid models.
+2. Apply progressive disclosure to hide secondary complex features until needed.
+3. Ensure clear exit paths and predictable back navigation independent of the browser.
+4. Validate that primary actions are highly discoverable.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll put all the settings on one long page. | Overwhelms the user; progressive disclosure should group related settings. |
+| Users can just use the browser back button. | In-app navigation must provide clear, predictable paths independent of browser controls. |
+| I'll hide this important feature in a deep submenu to keep the UI clean. | Violates the information pyramid; core features must be easily discoverable. |
+
+## Red Flags
+- Dead-end screens without clear navigation back to a hub.
+- Overwhelming users with too many choices on a single screen.
+- Inconsistent navigation patterns across similar flows.
+
+## Verification
+- [ ] User flow avoids dead ends and provides clear exit paths.
+- [ ] Complex tasks use progressive disclosure to minimize cognitive load.
+- [ ] Navigation hierarchy follows a clear hub-and-spoke or pyramid model.

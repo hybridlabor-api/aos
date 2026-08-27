@@ -1,6 +1,6 @@
 ---
 name: senior-frontend
-description: Frontend development skill for React, Next.js, TypeScript, and Tailwind CSS applications. Use when building React components, optimizing Next.js performance, analyzing bundle sizes, scaffolding frontend projects, implementing accessibility, or reviewing frontend code quality.
+description: "Use when building React components, optimizing Next.js performance, implementing accessibility, or reviewing frontend code quality for modern web applications."
 category: design-ui-ux
 risk: safe
 source: https://github.com/alirezarezvani/claude-skills
@@ -494,3 +494,30 @@ function List<T>({ items, renderItem }: ListProps<T>) {
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+Comprehensive expertise for React, Next.js, and TypeScript, focusing on performance, typing, and production-readiness.
+
+## Core Process
+1. Write component logic using strict TypeScript interfaces.
+2. Analyze and optimize the bundle size impact of new imports.
+3. Implement accessibility features including keyboard navigation and ARIA.
+4. Address SSR and hydration requirements for Next.js.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll use an `any` type here to save time. | Defeats the purpose of TypeScript and introduces silent runtime errors. |
+| This component is too small to need a proper prop interface. | Even small components need strict contracts to ensure maintainability. |
+| We can optimize the Next.js bundle size later. | Shipping large bundles immediately impacts Core Web Vitals and user retention. |
+
+## Red Flags
+- Widespread use of `any` or `@ts-ignore`.
+- Ignoring React hydration errors or SSR mismatches.
+- Shipping unoptimized images or heavy third-party libraries.
+
+## Verification
+- [ ] No strict TypeScript errors or `any` types.
+- [ ] Next.js bundle size remains within acceptable limits.
+- [ ] Component is fully accessible (keyboard navigation and ARIA labels).

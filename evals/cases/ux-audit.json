@@ -1,0 +1,30 @@
+{
+  "skill_name": "ux-audit",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Perform a heuristic evaluation on the current checkout flow.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Audit the dashboard screens for usability issues.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Identify UX friction points in the mobile app navigation.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Optimize the choice architecture to increase conversions.",
+        "owner": "ux-persuasion-engineer"
+      },
+      {
+        "prompt": "Review the React code for proper data fetching logic.",
+        "owner": "frontend-dev-guidelines"
+      }
+    ]
+  },
+  "evals": []
+}

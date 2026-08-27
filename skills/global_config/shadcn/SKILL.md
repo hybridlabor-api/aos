@@ -1,6 +1,6 @@
 ---
 name: shadcn
-description: Manages shadcn/ui components and projects, providing context, documentation, and usage patterns for building modern design systems.
+description: "Use when adding, customizing, or troubleshooting shadcn/ui components to build modern, accessible design systems."
 category: design-ui-ux
 user-invocable: false
 risk: safe
@@ -253,3 +253,30 @@ npx shadcn@latest view @shadcn/button
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+Specialized knowledge for managing and customizing shadcn/ui components and their underlying Radix primitives.
+
+## Core Process
+1. Install the required shadcn component via the CLI into `components/ui`.
+2. Extend styling using consistent Tailwind utility classes.
+3. Verify that ARIA attributes and keyboard navigation remain functional.
+4. Ensure the component integrates seamlessly with the existing theme.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll just modify the component directly in `node_modules`. | shadcn components are owned by the project; modify them in the `components/ui` folder. |
+| I don't need to update the Radix primitives. | Outdated primitives can cause subtle accessibility and behavior bugs. |
+| I'll build my own dialog instead of using the shadcn one. | Reinventing complex accessible components wastes time and introduces bugs. |
+
+## Red Flags
+- Inconsistent styling that diverges from the shadcn theme configuration.
+- Missing or broken ARIA attributes on customized components.
+- Duplicating component logic instead of extending the existing shadcn primitives.
+
+## Verification
+- [ ] Component is installed in the correct `components/ui` directory.
+- [ ] Customizations use Tailwind utility classes consistently.
+- [ ] Accessibility (keyboard, screen reader) remains intact after modification.

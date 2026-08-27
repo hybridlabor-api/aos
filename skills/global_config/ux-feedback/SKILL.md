@@ -1,6 +1,6 @@
 ---
 name: ux-feedback
-description: "Add loading, empty, error, and success feedback states to StyleSeed components and pages with practical mobile-first rules."
+description: "Use when implementing loading, empty, error, and success feedback states in StyleSeed components to ensure responsive communication."
 category: design-ui-ux
 risk: safe
 source: community
@@ -66,3 +66,27 @@ Return:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Core Process
+1. Identify all asynchronous boundaries requiring loading states.
+2. Implement skeleton screens that mirror the final loaded content structure.
+3. Design actionable error states with clear recovery paths.
+4. Create informative empty states featuring a primary call-to-action.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll just use a generic spinner for this entire page load. | Skeleton screens provide better perceived performance and context. |
+| A simple 'Error' text is enough. | Error states must be actionable, explaining what went wrong and how to fix it. |
+| I don't need an empty state, the user will just add data. | Empty states are critical onboarding opportunities to guide the user's first action. |
+
+## Red Flags
+- Blank screens during data fetching.
+- Dead-end error messages without recovery actions.
+- Unstyled or generic empty states lacking call-to-actions.
+
+## Verification
+- [ ] Skeleton loading states match the final content structure.
+- [ ] Error messages provide clear, actionable recovery steps.
+- [ ] Empty states include a clear call-to-action to populate data.

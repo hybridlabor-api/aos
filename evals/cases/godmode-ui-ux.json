@@ -1,0 +1,30 @@
+{
+  "skill_name": "godmode-ui-ux",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Generate a comprehensive UI/UX plan for the new dashboard.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Act as the UI/UX lead and design the main landing page.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Enforce the brand guidelines and design tokens on the checkout flow.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Add a micro-interaction to the submit button.",
+        "owner": "design-spells"
+      },
+      {
+        "prompt": "Review this specific UI component for spacing issues.",
+        "owner": "ui-review"
+      }
+    ]
+  },
+  "evals": []
+}
