@@ -19,7 +19,7 @@
       color: #f8fafc;
       width: 297mm;
       height: 210mm;
-      padding: 12mm;
+      padding: 10mm;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -28,101 +28,167 @@
     .cert-container {
       width: 100%;
       height: 100%;
-      background: radial-gradient(circle at 50% 20%, #172554 0%, #0b1329 50%, #030712 100%);
-      border: 2px solid #1e3a8a;
+      background: radial-gradient(circle at 50% 15%, #161b33 0%, #0c1020 50%, #05070e 100%);
+      border: 2px solid #283353;
       border-radius: 16px;
-      padding: 14mm 16mm;
+      padding: 10mm 14mm 8mm 14mm;
       position: relative;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      box-shadow: inset 0 0 60px rgba(59, 130, 246, 0.15);
+      box-shadow: inset 0 0 80px rgba(56, 189, 248, 0.08);
+      overflow: hidden;
     }
+
+    /* Watermark Background */
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 480px;
+      height: 480px;
+      opacity: 0.035;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Guilloche Corner Accents */
     .corner-decor {
       position: absolute;
-      width: 24px;
-      height: 24px;
+      width: 32px;
+      height: 32px;
       border: 2px solid #38bdf8;
+      opacity: 0.8;
+      z-index: 2;
     }
-    .top-left { top: 8px; left: 8px; border-right: none; border-bottom: none; }
-    .top-right { top: 8px; right: 8px; border-left: none; border-bottom: none; }
-    .bottom-left { bottom: 8px; left: 8px; border-right: none; border-top: none; }
-    .bottom-right { bottom: 8px; right: 8px; border-left: none; border-top: none; }
+    .top-left { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+    .top-right { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+    .bottom-left { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+    .bottom-right { bottom: 10px; right: 10px; border-left: none; border-top: none; }
 
+    .content-layer {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+    }
+
+    /* Header */
     .header {
       text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .header-logo-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 6px;
+    }
+    .bdb-logo-svg {
+      width: 52px;
+      height: 52px;
+      filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.4));
+    }
+    .brand-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      color: #facc15;
+      text-transform: uppercase;
+      text-align: left;
+    }
+    .brand-subtitle {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      text-align: left;
     }
     .badge {
       display: inline-block;
-      padding: 4px 14px;
+      padding: 3px 14px;
       background: rgba(56, 189, 248, 0.12);
       border: 1px solid rgba(56, 189, 248, 0.4);
       border-radius: 9999px;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
       letter-spacing: 2px;
       color: #38bdf8;
       text-transform: uppercase;
-      margin-bottom: 8px;
+      margin-top: 4px;
+      margin-bottom: 4px;
     }
     h1 {
-      font-size: 28px;
-      font-weight: 800;
-      letter-spacing: 1px;
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 1.5px;
       background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     h2 {
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 13px;
+      font-weight: 600;
       color: #94a3b8;
       text-transform: uppercase;
       letter-spacing: 1.5px;
     }
     .track-line {
-      margin-top: 6px;
+      margin-top: 4px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       letter-spacing: 0.5px;
       color: #38bdf8;
+      background: rgba(56, 189, 248, 0.08);
+      padding: 2px 12px;
+      border-radius: 6px;
+      display: inline-block;
     }
 
+    /* Middle */
     .middle {
       text-align: center;
-      margin: 8px 0;
+      margin: 4px 0;
     }
     .certifies {
-      font-size: 13px;
+      font-size: 12px;
       color: #64748b;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
     .name {
-      font-size: 34px;
+      font-size: 32px;
       font-weight: 900;
       letter-spacing: 1px;
-      color: #38bdf8;
-      text-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
-      margin-bottom: 6px;
+      color: #ffffff;
+      text-shadow: 0 0 24px rgba(56, 189, 248, 0.5);
+      margin-bottom: 4px;
     }
     .statement {
-      font-size: 13px;
+      font-size: 12px;
       color: #cbd5e1;
-      max-width: 680px;
+      max-width: 720px;
       margin: 0 auto;
-      line-height: 1.5;
+      line-height: 1.45;
     }
 
+    /* Skills Grid */
     .skills-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(51, 65, 85, 0.6);
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(51, 65, 85, 0.7);
       border-radius: 10px;
-      padding: 12px 16px;
-      margin: 10px 0;
+      padding: 10px 16px;
+      margin: 6px 0;
     }
     .skill-item {
       font-size: 11px;
@@ -134,29 +200,55 @@
     .check {
       color: #34d399;
       font-weight: bold;
+      font-size: 13px;
     }
 
+    /* Footer */
     .footer {
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
       border-top: 1px solid rgba(51, 65, 85, 0.6);
-      padding-top: 10px;
+      padding-top: 8px;
     }
     .meta-col {
       font-size: 10px;
       color: #64748b;
-      line-height: 1.6;
+      line-height: 1.5;
     }
     .meta-col strong {
       color: #94a3b8;
+    }
+    .seal-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .seal-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 2px solid #eab308;
+      background: radial-gradient(circle, #422006 0%, #1c1917 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 0 16px rgba(234, 179, 8, 0.3);
+    }
+    .seal-text {
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #eab308;
+      text-transform: uppercase;
     }
     .sig-col {
       text-align: right;
     }
     .sig-line {
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       color: #f1f5f9;
       border-top: 1px solid #475569;
       padding-top: 4px;
@@ -165,52 +257,121 @@
       text-align: center;
     }
     .sig-title {
-      font-size: 10px;
+      font-size: 9px;
       color: #64748b;
       margin-top: 2px;
+      text-align: center;
     }
   </style>
 </head>
 <body>
   <div class="cert-container">
+    <!-- Guilloche Corners -->
     <div class="corner-decor top-left"></div>
     <div class="corner-decor top-right"></div>
     <div class="corner-decor bottom-left"></div>
     <div class="corner-decor bottom-right"></div>
 
-    <div class="header">
-      <div class="badge">BDB Agent OS &bull; Technical Certification</div>
-      <h1>CERTIFICATE OF EXCELLENCE</h1>
-      <h2>BDB SaaS Host Fleet Administrator</h2>
-      <div class="track-line">{{ track_line }}</div>
+    <!-- Authentic BDB Vector Watermark -->
+    <div class="watermark">
+      <svg viewBox="0 0 512 512" width="100%" height="100%">
+        <circle cx="256" cy="256" r="210" fill="none" stroke="#38bdf8" stroke-width="6"/>
+        <g fill="#38bdf8">
+          <path d="M181.63.05c101.39-2.47,184.56,80.09,190.14,179.93,5.53,99.03-66.16,185.42-165.11,195.46-87.39,8.86-171.1-45.56-197.67-128.96C-28.74,128.03,56.78,3.1,181.63.05h0ZM177.5,21.3C69.09,25.31-7.16,129.62,21.76,234.52c18.72,67.88,81.56,116.7,151.53,121.32,106.21,7.03,195.6-81.63,179.68-189.06-12.54-84.65-89.81-148.66-175.47-145.49h0Z"/>
+          <path d="M147.69,120.05c12.04.36,24.64-.72,36.62-.07,24.29,1.32,41.37,20.13,42.91,43.99-.69,16.35.57,33.42-.28,49.69-1.31,25.42-18.55,43.75-44.02,45.64-9.59.72-20.14.69-29.78.84-4.97.08-9.9.68-10.37-5.66s.43-9.41.34-14.03c12.65-11.84,14.75-31.17,4.75-45.41-.63-.9-2.26-2.34-2.62-3.17s-.46-12.58-.26-14.37,1.1-3.52,1.46-5.16c1.21-5.42,1.06-11.26-.39-16.62-.41-1.54-1.48-3.56-1.63-4.99-.47-4.28-.14-9.67-.26-14.08-.11-3.56-.84-8.43-.57-11.86s1.32-4.35,4.08-4.75h0ZM162.03,135.5c-4.32.73-3.34,6.65-3.26,10.01.17,6.21.91,12.51,1.13,18.73.83,23.13-1.03,45.49-1.41,68.42-.07,3.93-1.27,10.87,4.01,11.46,10.36-.51,21.39,1.89,31.38-1.45,13.74-4.59,20.43-17.79,19.81-31.81-1.77-14.46-1.19-29.09-1.94-43.58-.52-10.12-3.97-20.33-12.44-26.46-10.8-7.82-24.82-4.88-37.29-5.34h0Z"/>
+          <path d="M232.66,132.46c9.53.36,19.74-.72,29.19-.08,22.64,1.52,33.92,28.58,21.93,47.05-1.49,2.3-4.32,4.47-3.85,7.42.47,2.95,5.64,6.21,7.42,8.3,11.88,13.96,8.41,35.69-6.91,45.49-7.85,5.02-14.69,4.43-23.56,4.86-7.67.37-16.24,1.05-23.91.66-1.66-.08-2.98-.73-3.68-2.32s-.52-7.28-.43-9.26c.36-6.63,3.52-13.04,3.89-20.39.58-11.38-.1-23.12-.3-34.49-.1-5.68.32-11.44-.3-17.08-.41-3.82-1.64-7.52-1.89-11.35-.25-3.85-.18-7.99-.26-11.88-.07-2.84-1.26-6.03,2.68-6.95h-.01ZM243.68,144.59c-3.41.77-2.55,6.7-2.66,9.2-.28,6.08-.58,12.36-.29,18.47.1,2.06.36,6.36.9,8.21.54,1.85.84,1.79,1.66,2.19,1.66.83,8-.68,10.26-.88,4.22-.39,8.12.03,12.28-1.24,16.76-5.12,16.53-26.53,1.01-33.02-15.52-6.5-13.5-2.7-18.82-2.98-5.31-.28-3.37-.17-4.36.06h.03ZM243.68,194.52c-3.49.79-2.58,8.66-2.68,11.39-.26,7.05-1.06,17.41.07,24.21,1.13,6.8,2.63,3.38,5.32,3.26,3.96-.19,8.36-1.32,12.4-1.67,5.85-.5,10.68.22,16.24-2.25,13.6-6.04,12.62-25.27-.46-31.46-5.63-2.66-9.89-1.97-15.78-2.43-3.57-.28-7.2-.92-10.76-1.1-1.12-.06-3.35-.17-4.36.06h0Z"/>
+          <path d="M90.59,133.03c8.84-.44,25.24-1.08,33.23,1.92,18.07,6.77,23.99,29.96,13.56,45.7-1.6,2.41-4.52,4.44-3.28,7.75.69,1.85,5.41,5.42,7.03,7.31,11.86,13.82,8.77,35.23-6.25,45.33-15.02,10.1-23.31,5.27-34.44,5.56-4.12.11-10.36.88-14.32.28-2.22-.34-3.45-2.79-3.48-4.83-.11-7.84.77-15.89,1.1-23.71.99-23.09,1.31-45.33.57-68.43-.14-4.15-1.05-9.79-.57-13.79.43-3.52,4.1-2.95,6.84-3.09h0ZM98.3,145.15c-1.71.29-2.98,1.7-3.21,3.41-.15,1.19-.23,3.13-.3,4.39-.39,8.01-.9,19.53.58,27.27.23,1.24.57,2.55,1.82,3.15,1.81.84,7.03-.55,9.32-.76,3.3-.3,6.62-.1,9.89-.59,21.2-3.21,21.02-29.7,1.28-34.86-4.36-1.14-13.16-1.92-17.79-2.07-.55-.01-1.03-.03-1.59.07h0ZM98.03,195.09c-4.25.88-2.46,6.76-3.24,9.72-.06,7.92-.55,15.86,0,23.75.22,3.21.77,5.75,4.57,5.67,3.82-.08,8.46-1.32,12.41-1.67,5.55-.48,11.21.12,16.48-2,14.62-5.88,13.53-26.13-.52-32.17-5.13-2.21-8.25-1.59-13.48-1.97-4.69-.34-9.7-1.23-14.35-1.38-.62-.01-1.26-.07-1.86.06h-.01Z"/>
+        </g>
+      </svg>
     </div>
 
-    <div class="middle">
-      <div class="certifies">This is to officially certify that</div>
-      <div class="name">{{ candidate_name }}</div>
-      <div class="statement">
-        has successfully completed the intensive hands-on SysAdmin bootcamp and demonstrated verified technical competence in container virtualization, zero-trust security, and autonomous AI-agent operations across the BDB Multi-Cloud Fleet.
+    <div class="content-layer">
+      <!-- Header -->
+      <div class="header">
+        <div class="header-logo-row">
+          <!-- Authentic BDB Vector Coin -->
+          <div class="bdb-logo-svg">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+              <defs>
+                <linearGradient id="bdbPlateLightH" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#FFFFFF"/>
+                  <stop offset="60%" stop-color="#FDE047"/>
+                  <stop offset="100%" stop-color="#EAB308"/>
+                </linearGradient>
+                <linearGradient id="bdbPlateDarkH" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#1E293B"/>
+                  <stop offset="100%" stop-color="#020617"/>
+                </linearGradient>
+              </defs>
+              <circle cx="256" cy="256" r="195" fill="url(#bdbPlateDarkH)" stroke="#EAB308" stroke-width="4" stroke-opacity="0.8"/>
+              <circle cx="256" cy="256" r="175" fill="#0A0F1D"/>
+              <g transform="translate(70, 68) scale(1.0)">
+                <g id="BDB_negativ">
+                  <path fill="url(#bdbPlateLightH)" d="M181.63.05c101.39-2.47,184.56,80.09,190.14,179.93,5.53,99.03-66.16,185.42-165.11,195.46-87.39,8.86-171.1-45.56-197.67-128.96C-28.74,128.03,56.78,3.1,181.63.05h0ZM177.5,21.3C69.09,25.31-7.16,129.62,21.76,234.52c18.72,67.88,81.56,116.7,151.53,121.32,106.21,7.03,195.6-81.63,179.68-189.06-12.54-84.65-89.81-148.66-175.47-145.49h0Z"/>
+                  <g fill="#FFFFFF">
+                    <path d="M147.69,120.05c12.04.36,24.64-.72,36.62-.07,24.29,1.32,41.37,20.13,42.91,43.99-.69,16.35.57,33.42-.28,49.69-1.31,25.42-18.55,43.75-44.02,45.64-9.59.72-20.14.69-29.78.84-4.97.08-9.9.68-10.37-5.66s.43-9.41.34-14.03c12.65-11.84,14.75-31.17,4.75-45.41-.63-.9-2.26-2.34-2.62-3.17s-.46-12.58-.26-14.37,1.1-3.52,1.46-5.16c1.21-5.42,1.06-11.26-.39-16.62-.41-1.54-1.48-3.56-1.63-4.99-.47-4.28-.14-9.67-.26-14.08-.11-3.56-.84-8.43-.57-11.86s1.32-4.35,4.08-4.75h0ZM162.03,135.5c-4.32.73-3.34,6.65-3.26,10.01.17,6.21.91,12.51,1.13,18.73.83,23.13-1.03,45.49-1.41,68.42-.07,3.93-1.27,10.87,4.01,11.46,10.36-.51,21.39,1.89,31.38-1.45,13.74-4.59,20.43-17.79,19.81-31.81-1.77-14.46-1.19-29.09-1.94-43.58-.52-10.12-3.97-20.33-12.44-26.46-10.8-7.82-24.82-4.88-37.29-5.34h0Z"/>
+                    <path d="M232.66,132.46c9.53.36,19.74-.72,29.19-.08,22.64,1.52,33.92,28.58,21.93,47.05-1.49,2.3-4.32,4.47-3.85,7.42.47,2.95,5.64,6.21,7.42,8.3,11.88,13.96,8.41,35.69-6.91,45.49-7.85,5.02-14.69,4.43-23.56,4.86-7.67.37-16.24,1.05-23.91.66-1.66-.08-2.98-.73-3.68-2.32s-.52-7.28-.43-9.26c.36-6.63,3.52-13.04,3.89-20.39.58-11.38-.1-23.12-.3-34.49-.1-5.68.32-11.44-.3-17.08-.41-3.82-1.64-7.52-1.89-11.35-.25-3.85-.18-7.99-.26-11.88-.07-2.84-1.26-6.03,2.68-6.95h-.01ZM243.68,144.59c-3.41.77-2.55,6.7-2.66,9.2-.28,6.08-.58,12.36-.29,18.47.1,2.06.36,6.36.9,8.21.54,1.85.84,1.79,1.66,2.19,1.66.83,8-.68,10.26-.88,4.22-.39,8.12.03,12.28-1.24,16.76-5.12,16.53-26.53,1.01-33.02-15.52-6.5-13.5-2.7-18.82-2.98-5.31-.28-3.37-.17-4.36.06h.03ZM243.68,194.52c-3.49.79-2.58,8.66-2.68,11.39-.26,7.05-1.06,17.41.07,24.21,1.13,6.8,2.63,3.38,5.32,3.26,3.96-.19,8.36-1.32,12.4-1.67,5.85-.5,10.68.22,16.24-2.25,13.6-6.04,12.62-25.27-.46-31.46-5.63-2.66-9.89-1.97-15.78-2.43-3.57-.28-7.2-.92-10.76-1.1-1.12-.06-3.35-.17-4.36.06h0Z"/>
+                    <path d="M90.59,133.03c8.84-.44,25.24-1.08,33.23,1.92,18.07,6.77,23.99,29.96,13.56,45.7-1.6,2.41-4.52,4.44-3.28,7.75.69,1.85,5.41,5.42,7.03,7.31,11.86,13.82,8.77,35.23-6.25,45.33-15.02,10.1-23.31,5.27-34.44,5.56-4.12.11-10.36.88-14.32.28-2.22-.34-3.45-2.79-3.48-4.83-.11-7.84.77-15.89,1.1-23.71.99-23.09,1.31-45.33.57-68.43-.14-4.15-1.05-9.79-.57-13.79.43-3.52,4.1-2.95,6.84-3.09h0ZM98.3,145.15c-1.71.29-2.98,1.7-3.21,3.41-.15,1.19-.23,3.13-.3,4.39-.39,8.01-.9,19.53.58,27.27.23,1.24.57,2.55,1.82,3.15,1.81.84,7.03-.55,9.32-.76,3.3-.3,6.62-.1,9.89-.59,21.2-3.21,21.02-29.7,1.28-34.86-4.36-1.14-13.16-1.92-17.79-2.07-.55-.01-1.03-.03-1.59.07h0ZM98.03,195.09c-4.25.88-2.46,6.76-3.24,9.72-.06,7.92-.55,15.86,0,23.75.22,3.21.77,5.75,4.57,5.67,3.82-.08,8.46-1.32,12.41-1.67,5.55-.48,11.21.12,16.48-2,14.62-5.88,13.53-26.13-.52-32.17-5.13-2.21-8.25-1.59-13.48-1.97-4.69-.34-9.7-1.23-14.35-1.38-.62-.01-1.26-.07-1.86.06h-.01Z"/>
+                  </g>
+                </g>
+              </g>
+            </svg>
+          </div>
+          <div>
+            <div class="brand-title">BDB AGENT OS</div>
+            <div class="brand-subtitle">Branch &bull; Develop &bull; Bump &bull; Hybridlabor Global LLC</div>
+          </div>
+        </div>
+
+        <div class="badge">Technical Certification &bull; Zero-Trust Fleet</div>
+        <h1>CERTIFICATE OF EXCELLENCE</h1>
+        <h2>BDB SaaS Host Fleet Administrator</h2>
+        <div class="track-line">{{ track_line }}</div>
       </div>
-    </div>
 
-    <div class="skills-grid">
-      <div class="skill-item"><span class="check">&#10003;</span> Zero-Trust Step-CA 2FA SSH</div>
-      <div class="skill-item"><span class="check">&#10003;</span> Incus Custom Profile Engineering</div>
-      <div class="skill-item"><span class="check">&#10003;</span> Autonomous AI-Agent Sandboxing</div>
-      <div class="skill-item"><span class="check">&#10003;</span> FastMCP Remote Gateway Operations</div>
-      <div class="skill-item"><span class="check">&#10003;</span> 4-Eyes HMAC Authorization</div>
-      <div class="skill-item"><span class="check">&#10003;</span> Caddy 2FA & Cloudflare Governance</div>
-    </div>
-
-    <div class="footer">
-      <div class="meta-col">
-        <div><strong>Issue Date:</strong> {{ issue_date }}</div>
-        <div><strong>Final Exam Score:</strong> {{ score }}/10 ({{ percentage }}%)</div>
-        <div><strong>Certificate ID:</strong> {{ cert_id }}</div>
+      <!-- Middle -->
+      <div class="middle">
+        <div class="certifies">This is to officially certify that</div>
+        <div class="name">{{ candidate_name }}</div>
+        <div class="statement">
+          has successfully passed the intensive hands-on SysAdmin bootcamp and demonstrated verified technical competence in container virtualization, zero-trust security, and autonomous AI-agent operations across the BDB Multi-Cloud Fleet.
+        </div>
       </div>
-      <div class="sig-col">
-        <div class="sig-line">Tim Rennings</div>
-        <div class="sig-title">Lead Architect &bull; BDB Hybridlabor</div>
+
+      <!-- Skills Grid -->
+      <div class="skills-grid">
+        <div class="skill-item"><span class="check">&#10003;</span> Zero-Trust Step-CA 2FA SSH</div>
+        <div class="skill-item"><span class="check">&#10003;</span> Incus Custom Profile Engineering</div>
+        <div class="skill-item"><span class="check">&#10003;</span> Autonomous AI-Agent Sandboxing</div>
+        <div class="skill-item"><span class="check">&#10003;</span> FastMCP Remote Gateway Operations</div>
+        <div class="skill-item"><span class="check">&#10003;</span> 4-Eyes HMAC Authorization</div>
+        <div class="skill-item"><span class="check">&#10003;</span> Caddy 2FA &amp; Cloudflare Governance</div>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <div class="meta-col">
+          <div><strong>Issue Date:</strong> {{ issue_date }}</div>
+          <div><strong>Final Exam Score:</strong> {{ score }}/10 ({{ percentage }}%)</div>
+          <div><strong>Certificate ID:</strong> {{ cert_id }}</div>
+        </div>
+
+        <!-- Gold Holographic Seal -->
+        <div class="seal-col">
+          <div class="seal-badge">
+            <svg viewBox="0 0 512 512" width="28" height="28">
+              <circle cx="256" cy="256" r="195" fill="none" stroke="#EAB308" stroke-width="8"/>
+              <path fill="#EAB308" d="M181.63.05c101.39-2.47,184.56,80.09,190.14,179.93,5.53,99.03-66.16,185.42-165.11,195.46-87.39,8.86-171.1-45.56-197.67-128.96C-28.74,128.03,56.78,3.1,181.63.05h0ZM177.5,21.3C69.09,25.31-7.16,129.62,21.76,234.52c18.72,67.88,81.56,116.7,151.53,121.32,106.21,7.03,195.6-81.63,179.68-189.06-12.54-84.65-89.81-148.66-175.47-145.49h0Z"/>
+            </svg>
+          </div>
+          <div class="seal-text">VERIFIED SEAL</div>
+        </div>
+
+        <!-- Signature -->
+        <div class="sig-col">
+          <div class="sig-line">Tim Rennings</div>
+          <div class="sig-title">Lead Architect &bull; Hybridlabor Global LLC</div>
+        </div>
       </div>
     </div>
   </div>
