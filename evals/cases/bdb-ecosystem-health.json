@@ -1,0 +1,30 @@
+{
+  "skill_name": "bdb-ecosystem-health",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Run the ecosystem health check script to make sure everything is green.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Audit all 8 BDB ecosystem repositories for version drift.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Check if the CI/CD workflows are passing across the ecosystem modules.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Can you review this specific pull request for the API module?",
+        "owner": "git-pr-review"
+      },
+      {
+        "prompt": "Deploy the new agent skills package to NPM.",
+        "owner": "unknown"
+      }
+    ]
+  },
+  "evals": []
+}
