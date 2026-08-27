@@ -1,6 +1,6 @@
 ---
 name: playwright-skill
-description: "IMPORTANT - Path Resolution: This skill can be installed in different locations (plugin system, manual installation, global, or project-specific). Before executing any commands, determine the skill directory based on where you loaded this SKILL.md file, and use that path in all commands below."
+description: General-purpose browser automation skill. Use when a task needs custom Playwright code — end-to-end testing, scraping a JS-rendered page, or driving a browser interactively — executed via this skill's universal executor rather than a one-off script.
 category: library
 risk: unknown
 source: community
