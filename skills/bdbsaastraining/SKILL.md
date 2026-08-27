@@ -122,7 +122,7 @@ flowchart TD
    step ssh inspect ~/.step/ssh/id_ecdsa-cert.pub
    ```
    Trainee liest aus: Gültigkeitsdauer (`Valid: … to …`, ~16 h), Principals (`<TRAINEE_USER>`), CA-Fingerprint.
-3. Verbindung testen — nutze den in der Onboarding-E-Mail genannten SSH-Endpunkt (obfuskierter Hostname, z. B. `vocal-journey-….rcentry.pro`, oder die dort genannte IP):
+3. Verbindung testen — nutze den in der **Onboarding-E-Mail** genannten SSH-Endpunkt (den obfuskierten Hostnamen oder die dort genannte IP; frag den Trainee, wenn nicht klar):
    ```bash
    ssh <TRAINEE_USER>@<SSH_ENDPOINT> "id && hostname"
    ```

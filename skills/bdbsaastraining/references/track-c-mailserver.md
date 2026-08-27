@@ -73,7 +73,7 @@ remoteos_create_instance(
     target_node="netcup"
 )
 ```
-Antwort enthält bei externer (Nicht-`rcentry.pro`) Domain **kein** Cloudflare-Sync, sondern ein `dns_blueprint`-Feld (Mailserver-Variante).
+Antwort enthält bei einer externen Kundendomain (nicht die Fleet-Domain) **kein** Cloudflare-Sync, sondern ein `dns_blueprint`-Feld (Mailserver-Variante).
 
 **Track-Fragen:** `C_1`, `C_2`, `C_3`, `C_4`.
 
@@ -96,7 +96,7 @@ Der Trainee liest das generierte Paket und ordnet jeden Record zu:
 - **TXT DMARC** `_dmarc.<domain>` `v=DMARC1; p=quarantine; ...`
 - **CNAME** `autodiscover` / `autoconfig`
 
-Wichtig: Die Fleet verwaltet nur `*.rcentry.pro` selbst per Cloudflare-API. Für **BYOD-Kundendomains** trägt der Kunde diese Records bei **seinem eigenen** DNS-Provider ein — deshalb Blueprint statt API-Call.
+Wichtig: Die Fleet verwaltet nur ihre eigene Domain (`*.<FLEET_DOMAIN>`) per Cloudflare-API. Für **BYOD-Kundendomains** trägt der Kunde diese Records bei **seinem eigenen** DNS-Provider ein — deshalb Blueprint statt API-Call.
 
 DKIM-Key aus dem Container holen:
 ```bash

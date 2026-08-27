@@ -10,7 +10,13 @@
 set -u
 
 TRAINEE_USER="${1:-}"
-GATEWAY_DOMAIN="${2:-${PROJECT_DOMAIN:-rcentry.pro}}"
+# Domain kommt aus dem 2. Argument oder $PROJECT_DOMAIN — kein Default.
+GATEWAY_DOMAIN="${2:-${PROJECT_DOMAIN:-}}"
+if [ -z "$GATEWAY_DOMAIN" ]; then
+  echo "Fehlt: Fleet-Domain. Aus deiner Onboarding-E-Mail übergeben:" >&2
+  echo "  bash $0 <lldap_user> <deine-fleet-domain>   (oder: export PROJECT_DOMAIN=…)" >&2
+  exit 2
+fi
 GATEWAY_HOST="gateway.${GATEWAY_DOMAIN#gateway.}"
 CA_URL="${STEP_CA_URL:-https://ca.${GATEWAY_DOMAIN#gateway.}}"
 
@@ -73,7 +79,7 @@ if [ -f "$HOME/.ssh/config" ] && grep -q "BDB SAAS HOST FLEET RULES" "$HOME/.ssh
   fi
 else
   fail "Kein BDB Fleet-Block in ~/.ssh/config." \
-       "cd bdb-saashost-engine && npm run setup:workstation   ODER   npx @hybridlabor-api/bdb-dev-optimized-agent-skills setup-saas --gateway ${GATEWAY_HOST}"
+       "npx @hybridlabor-api/bdb-dev-optimized-agent-skills setup-saas --gateway ${GATEWAY_HOST}   (oder 'npm run setup:workstation' im geklonten Engine-Repo)"
 fi
 
 # 5) SSH-Zertifikat vorhanden & gültig?

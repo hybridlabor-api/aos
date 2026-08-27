@@ -206,7 +206,7 @@ Warum ist der MX/A-Record des Mailservers in Cloudflare `⚪ DNS-only`?
 ### C_4
 Der Kunde bringt seine eigene Domain mit (BYOD). Was liefert das Training statt eines Cloudflare-API-Aufrufs?
 - A) Nichts, BYOD wird nicht unterstützt.
-- B) Ein RFC-konformes DNS-Blueprint, das der Kunde bei seinem eigenen DNS-Provider einträgt — die Fleet verwaltet nur `*.rcentry.pro` selbst per API.
+- B) Ein RFC-konformes DNS-Blueprint, das der Kunde bei seinem eigenen DNS-Provider einträgt — die Fleet verwaltet nur ihre eigene Domain (`*.<FLEET_DOMAIN>`) per API.
 - C) Der Kunde muss die Domain zu Cloudflare transferieren.
 - D) Ein Zonefile-Download für BIND.
 
