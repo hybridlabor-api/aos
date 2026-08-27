@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
-const { execSync, spawn, spawnSync } = require('child_process');
+const { execSync, spawn, spawnSync, exec } = require('child_process');
 const clack = require('@clack/prompts');
 
 const {
@@ -2238,8 +2238,15 @@ function generateAndOpenLaunchpad() {
 
     const filePath = path.join(os.homedir(), '.agents', 'bdb-launchpad.html');
     fs.writeFileSync(filePath, html, 'utf-8');
-    const command = process.platform === 'darwin' ? `open "${filePath}"` : process.platform === 'win32' ? `start "" "${filePath}"` : `xdg-open "${filePath}"`;
-    exec(command, () => {});
+    try {
+        if (process.platform === 'darwin') {
+            spawn('open', [filePath], { detached: true, stdio: 'ignore' }).unref();
+        } else if (process.platform === 'win32') {
+            spawn('cmd.exe', ['/c', 'start', '""', filePath], { detached: true, stdio: 'ignore' }).unref();
+        } else {
+            spawn('xdg-open', [filePath], { detached: true, stdio: 'ignore' }).unref();
+        }
+    } catch (e) { logDebug(e, 'launchpad open'); }
 }
 
 async function universalHarnessSync(primaryMcpConfigPath) {
