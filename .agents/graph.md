@@ -64,7 +64,7 @@ this discipline exists to prevent:
 4. **No-progress guard, adapted from B3's "doubt theater" concept.** B3's
    original framing — escalate after 2 consecutive *clean* Reviewer cycles on
    the same artifact — doesn't have a reachable trigger once this contract
-   became an actual runnable script (`.claude/workflows/startcycle.mjs`): a
+   became an actual runnable script (`.claude/workflows/startcycle-dispatch.mjs`): a
    clean result exits the build/review loop immediately, so Reviewer is never
    asked to re-confirm an already-clean artifact twice in a row. What the
    script implements instead, in the same spirit: if a repair round reports
@@ -102,7 +102,7 @@ a Claude-only file:
   dispatcher role — the main Claude Code session, an Antigravity subagent
   loop, or an OpenCode primary agent. The edge table above is the contract
   regardless of which harness executes it.
-- **Executable dispatcher (Claude Code only)**: `.claude/workflows/startcycle.mjs`
+- **Executable dispatcher (Claude Code only)**: `.claude/workflows/startcycle-dispatch.mjs`
   is the actual runnable implementation of this contract, using Claude
   Code's Dynamic Workflows runtime (a script holds the loop and branches;
   the seven agents are leaves it calls via `agent()`/`pipeline()`, never

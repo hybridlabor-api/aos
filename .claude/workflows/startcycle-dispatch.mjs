@@ -30,7 +30,7 @@
 // before that platform ceiling would silently end a turn instead.
 
 export const meta = {
-  name: 'startcycle',
+  name: 'startcycle-dispatch',
   description:
     'Dispatcher-mediated build pipeline: Architect -> TechLead -> {UI_UX, Engineering, Media_EventTech} -> Reviewer -> Shipping, per .agents/graph.md. Agents never invoke each other -- this script decides every next step.',
 };
