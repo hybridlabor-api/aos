@@ -8,10 +8,24 @@ disable-model-invocation: true
 # 🚀 BDB Autonomous Development Cycle (`/startcycle`)
 
 **Action — do this, and nothing else:** call the `Workflow` tool with
-`name: "startcycle-dispatch"` and `args` set to the goal text that follows
-`ARGUMENTS:` below this file's content. Pass it through verbatim. If there is
-no `ARGUMENTS:` text, pass no `args` (or `args: undefined`) — the workflow
-itself asks for a goal in that case rather than guessing one.
+`scriptPath` pointing at this repo's dispatcher script — resolve `$HOME`
+yourself (e.g. `echo $HOME` or your own environment info) rather than
+hardcoding a username, giving
+`$HOME/.claude/workflows/startcycle-dispatch.mjs` — and `args` set to the
+goal text that follows `ARGUMENTS:` below this file's content. Pass the goal
+through verbatim. If there is no `ARGUMENTS:` text, pass no `args` (or
+`args: undefined`) — the workflow itself asks for a goal in that case rather
+than guessing one.
+
+Use `scriptPath`, not `name: "startcycle-dispatch"` — by-name lookup for a
+custom (non-built-in) workflow script has been observed to fail with
+`Workflow "startcycle-dispatch" not found. Available: deep-research`, even
+when the script exists at the expected path and is correctly named inside
+its own `meta.name`. `scriptPath` pointing directly at the file works
+reliably; `name` apparently requires a separate registration step (the
+`/workflows` monitor's `s save` action looked like a candidate, but that's
+an interactive step a slash command can't trigger on its own, so don't rely
+on it).
 
 Then wait for the `Workflow` tool call to finish and report its result
 (including `phase`, any `reason`, and — at `ready_to_ship` — the instruction
