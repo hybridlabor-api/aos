@@ -2,6 +2,7 @@
 name: bdb-updater
 description: Use when proactively check for and install updates to the BDB Antigravity Skills package via NPM.
 category: bdb-core
+disable-model-invocation: true
 ---
 
 # BDB Updater Skill

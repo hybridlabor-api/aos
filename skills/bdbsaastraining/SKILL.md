@@ -2,6 +2,7 @@
 name: bdbsaastraining
 description: Use when onboarding or training staff on the BDB SaaS Host Engine. Guides trainees via interactive workloads (WordPress, mail, agents) through SSH 2FA, Incus, and FastMCP guardrails, culminating in a PDF certificate.
 category: saas-ops
+disable-model-invocation: true
 ---
 
 # 🥋 BDB SaaS Host Universal Administrator Bootcamp (`/bdbsaastraining`)

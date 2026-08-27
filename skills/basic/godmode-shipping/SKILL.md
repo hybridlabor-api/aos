@@ -1,7 +1,8 @@
 ---
 name: godmode-shipping
-description: Use when bDB Shipping Godmode. The final gatekeeper for production releases. Enforces Spec-Driven Development, rigorous pre-launch checks, feature flags, and rollback strategies.
+description: BDB Shipping Godmode, the final gatekeeper for production releases. Use when running pre-launch checks, feature-flag rollouts, or rollback planning under Spec-Driven Development before a release ships.
 category: bdb-core
+disable-model-invocation: true
 ---
 
 # 🚀 BDB Shipping Godmode

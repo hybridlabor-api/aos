@@ -1,6 +1,6 @@
 ---
 name: memb-skill
-description: Use when bDB local-first long-term memory engine (memB). Query, remember, and adapt preferences, code architectures, and developer patterns across tasks.
+description: BDB local-first long-term memory engine (memB). Use when querying, remembering, or adapting preferences, code architectures, and developer patterns across tasks.
 category: bdb-core
 risk: low
 source: bdb
