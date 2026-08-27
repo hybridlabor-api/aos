@@ -1,0 +1,30 @@
+{
+  "skill_name": "godmode-3d-creation",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Generate a 3D mesh from this concept image of a chair.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Create a parametric CAD model for a 50mm clamp bracket.",
+        "top_k": 3
+      },
+      {
+        "prompt": "I need a quick 3D proxy of this prop using TripoSR.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "How do I route OSC to TouchDesigner?",
+        "owner": "bdbmediastorm"
+      },
+      {
+        "prompt": "Render this video timeline with OpenMontage.",
+        "owner": "godmode-media-creation"
+      }
+    ]
+  },
+  "evals": []
+}

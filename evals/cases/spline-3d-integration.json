@@ -1,0 +1,30 @@
+{
+  "skill_name": "spline-3d-integration",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "How do I embed this Spline scene in my Next.js app?",
+        "top_k": 3
+      },
+      {
+        "prompt": "I need to make my Spline 3D object interactive in React.",
+        "top_k": 3
+      },
+      {
+        "prompt": "The Spline embed is performing poorly on mobile, how do I optimize it?",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Can you generate a 3D CAD file for manufacturing?",
+        "owner": "godmode-3d-creation"
+      },
+      {
+        "prompt": "Write a Three.js scene with custom shaders.",
+        "owner": "threejs-skills"
+      }
+    ]
+  },
+  "evals": []
+}

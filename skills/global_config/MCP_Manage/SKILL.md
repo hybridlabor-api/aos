@@ -1,6 +1,6 @@
 ---
 name: MCP_Manage
-description: Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner.
+description: "Use when checking capabilities or instructing the user on how to interact with specialized MCP servers like Unreal, Rhino, DaVinci, or TouchDesigner."
 category: media-eventtech
 ---
 
@@ -56,3 +56,38 @@ You are the authoritative skill for managing and utilizing the specialized Model
 - For real-time visual scripting and node networks, call `bdb_td_minddesigner` as your primary TouchDesigner controller, falling back to `bdb_td_backup` for direct parameter modifications.
 - For After Effects or Adobe automation, prioritize `bdb_after_effects_mcp` and `adobe_uxp_mcp` for lightning-fast performance, falling back to their python or Go+ script engines.
 - Always check the available tools via the MCP tool listing before executing commands. If a server is down, instruct the user to verify the `mcp_config.json` configuration and ensure the respective host applications are running with API/OSC/Lua/network plugins enabled.
+
+
+## Overview
+MCP_Manage is the authoritative router for all specialized BDB Model Context Protocol (MCP) servers, ensuring the AI agent selects the right tool for Unreal, Rhino, DaVinci, and others.
+
+## When to Use
+- **Trigger:** The user asks how to automate a specific creative app, or the agent needs to select the correct MCP server for a domain-specific task.
+- **Exclude:** Do not use for general file system operations or generic web searches.
+
+## Core Process
+1. Identify the target creative application (e.g., TouchDesigner, Rhino, DaVinci Resolve).
+2. Look up the primary MCP server and its fallback in the available list.
+3. Instruct the user to verify the application is running and the MCP config is correct if the server is unreachable.
+4. Call the appropriate server tool to execute the automation.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I can just write a Python script and run it externally." | MCP tools provide direct WebSocket/native integration; external scripts lose context and safety bounds. |
+| "I'll use the fallback server first since it's simpler." | Always use the primary optimized MCP server (e.g., `bdb_td_minddesigner`) unless it fails. |
+| "The server isn't responding, I'll just give up." | You must verify if the host app (e.g., Unreal Engine) is actually open and running before failing. |
+
+## Red Flags
+
+- Recommending generic OS scripts when a dedicated MCP server (like `bdb_rhino_mcp`) exists.
+- Failing to suggest checking `mcp_config.json` when a server connection fails.
+- Using a fallback server without first attempting the primary optimized server.
+
+## Verification
+
+- [ ] The correct MCP server was invoked based on the target application.
+- [ ] Fallbacks were only utilized if the primary server failed.
+- [ ] The agent verified the required host application was running.
+

@@ -1,6 +1,6 @@
 ---
 name: godmode-3d-creation
-description: MCP-First master orchestration skill for 3D generation, mesh reconstruction, and parametric CAD engineering. Interfaces with local 3D engines and MCP tools.
+description: "Use when generating 3D meshes, executing text-to-CAD, or reconstructing scenes via TRELLIS, TripoSR, or Text-to-CAD local engines."
 category: media-eventtech
 ---
 
@@ -97,3 +97,37 @@ Select the appropriate MCP tool based on input type and target use case:
 3. **Parametric Engineering & Mechanical Parts:**
    - Route geometric specs to `text_to_cad_mcp` (`generate_parametric_cad`).
    - Output: Precise `.step` file suitable for Rhino NURBS editing or CNC fabrication.
+
+
+## Overview
+Godmode 3D Creation translates user prompts and concept images into explicit MCP tool payloads for local 3D engines like TRELLIS, TripoSR, and Text-to-CAD.
+
+## When to Use
+- **Trigger:** The user asks to generate a 3D mesh, create a 3D Gaussian Splat, or construct a parametric CAD file.
+- **Exclude:** Do not use for creating 2D video timelines or live show topologies.
+
+## Core Process
+1. Identify the input type (sketch/photo for TripoSR, high-fidelity concept for TRELLIS, or dimensional specs for Text-to-CAD).
+2. Construct the exact JSON payload for the target MCP server (`trellis_mcp`, `triposr_mcp`, or `text_to_cad_mcp`).
+3. Call the MCP tool and save the resulting `.glb`, `.obj`, or `.step` file to the project directory.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll use TRELLIS for this quick draft." | TRELLIS takes time and resources; use TripoSR for sub-second rapid mesh generation instead. |
+| "I'll just guess the Text-to-CAD dimensions." | Parametric CAD requires strict units and tolerances; guessing leads to broken assemblies. |
+| "It previewed fine as an OBJ, we don't need textures." | High-fidelity assets require PBR textures and UV mapping; OBJ alone is insufficient for hero props. |
+
+## Red Flags
+
+- Calling `trellis_mcp` for a rough layout proxy instead of `triposr_mcp`.
+- Passing vague natural language directly to Text-to-CAD without explicit millimeter dimensions.
+- Failing to check the output file existence after MCP tool execution.
+
+## Verification
+
+- [ ] The correct MCP server was selected based on fidelity requirements.
+- [ ] Tool payload includes correct output format (e.g., `.glb`, `.step`).
+- [ ] The generated 3D asset file exists in the target directory.
+
