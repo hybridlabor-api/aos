@@ -7,9 +7,23 @@
 // gating them too would just re-create the "over-scoped rule nobody reads"
 // problem this hook exists to fix.
 //
-// Gate validity: open only if the LAST user message in the transcript is the
-// literal word "GO" (case-insensitive, trimmed). Any other message closes it
-// again — matches "no silent retries" / "a fresh GO per action" from CLAUDE.md.
+// Gate validity: open only if the LAST human-typed user message in the
+// transcript is the literal word "GO" (case-insensitive, trimmed). Any other
+// message closes it again — matches "no silent retries" / "a fresh GO per
+// action" from CLAUDE.md.
+//
+// Transcript format (v3.13 audit BLOCKER-1): Claude Code transcript JSONL
+// entries carry the entry kind in a top-level `type` field ("user"), with the
+// payload nested under `message.content` — a top-level `role` exists on zero
+// lines of a real transcript, so matching on it blocked the gate forever.
+// Two traps the parser below handles explicitly:
+//   1. `message.content` is EITHER a plain string OR an array of typed blocks
+//      — always run it through extractText(), never assume one shape.
+//   2. Tool results are ALSO `type: "user"` entries (their blocks are
+//      `tool_result`), and subagent turns are user entries flagged
+//      `isSidechain: true`. Neither is the human: entries with no text block
+//      are skipped, and sidechain entries are skipped outright — so the scan
+//      lands on the last message a human actually typed.
 //
 // Fails closed: if the transcript can't be read or parsed, block rather than
 // guess.
@@ -62,6 +76,15 @@ function extractText(content) {
   return "";
 }
 
+function isHumanUserEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  // `type` is the authoritative field in real transcripts; `role` kept as a
+  // defensive fallback in case a future/alternate export flattens it.
+  if (entry.type !== "user" && entry.role !== "user") return false;
+  if (entry.isSidechain === true) return false; // subagent turn, not the human
+  return true;
+}
+
 function lastUserMessageIsGo(transcriptPath) {
   let raw;
   try {
@@ -78,8 +101,13 @@ function lastUserMessageIsGo(transcriptPath) {
     } catch {
       continue; // tolerate partial/trailing lines from an in-progress write
     }
-    if (entry.role !== "user") continue;
-    const text = extractText(entry.content).trim();
+    if (!isHumanUserEntry(entry)) continue;
+    // Tool results are user-role entries with no text block; extractText()
+    // lifts only text blocks, so those yield "" and are skipped -- the scan
+    // lands on the last entry a human actually typed.
+    const content = entry.message?.content ?? entry.content;
+    const text = extractText(content).trim();
+    if (!text) continue;
     return { ok: text.toUpperCase() === "GO", reason: `last user message was: ${JSON.stringify(text)}` };
   }
   return { ok: false, reason: "no user message found in transcript" };

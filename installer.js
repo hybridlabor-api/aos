@@ -43,6 +43,7 @@ const colors = {
 };
 
 const DRY_RUN = process.argv.includes('--dry-run');
+const PROJECT_HARNESS_ARG = process.argv.includes('--project-harness');
 const isAutoYes = process.argv.includes('-y') || process.argv.includes('--yes') || !process.stdout.isTTY;
 const VERBOSE = process.argv.includes('--verbose') || process.argv.includes('-v');
 
@@ -504,7 +505,7 @@ function saveManifest(data = {}) {
             ...data
         });
         fs.writeFileSync(manifestPath, JSON.stringify(updated, null, 2));
-    } catch (e) { logDebug(e, 'current = JSON.parse(fs.readFileSync(manifestPath, utf8)); }'); }
+    } catch (e) { logDebug(e, 'manifest read/parse'); }
 }
 
 function reloadDaemons() {
@@ -1735,7 +1736,8 @@ async function installMcpsForTarget(paths, ctx) {
                 tables.join('\n\n'),
                 ''
             ].join('\n');
-            fs.writeFileSync(snippetPath, snippet);
+            // Snippets can embed injected API keys — keep them user-readable only.
+            fs.writeFileSync(snippetPath, snippet, { mode: 0o600 });
             log.warn(`${configName} is TOML; written as snippet instead: ${snippetPath}`);
         } catch (e) {
             log.warn(`Could not write the Codex TOML snippet: ${e.message}`);
@@ -1754,7 +1756,7 @@ async function installMcpsForTarget(paths, ctx) {
                 log.warn(`Could not create the backup copy: ${copyError.message}`);
             }
             try {
-                fs.writeFileSync(sideCarPath, mcpConfigStr);
+                fs.writeFileSync(sideCarPath, mcpConfigStr, { mode: 0o600 });
             } catch (writeError) {
                 log.warn(`Could not write ${path.basename(sideCarPath)}: ${writeError.message}`);
             }
@@ -1778,7 +1780,7 @@ async function installMcpsForTarget(paths, ctx) {
                     if (!incoming.env && previous.env) incoming.env = previous.env;
                 });
                 oldConfig.mcpServers = Object.assign({}, oldServers, newServers);
-                fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2));
+                fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2), { mode: 0o600 });
                 log.step(`Merged BDB MCPs into existing ${configName}`);
             } catch (e) {
                 log.warn(`Could not merge into ${configName}: ${e.message}`);
@@ -1789,9 +1791,10 @@ async function installMcpsForTarget(paths, ctx) {
         try {
             if ((platformValue === '2' || platformValue === '4') && !fs.existsSync(paths.mcpConfigPath)) {
                 const wrapper = { mcpServers: JSON.parse(mcpConfigStr).mcpServers };
-                fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(wrapper, null, 2));
+                fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(wrapper, null, 2), { mode: 0o600 });
             } else {
-                fs.writeFileSync(paths.mcpConfigPath, mcpConfigStr);
+                // The generated config carries injected API keys — 0600, not umask default.
+                fs.writeFileSync(paths.mcpConfigPath, mcpConfigStr, { mode: 0o600 });
             }
             log.step(`Installed optimized MCP config to ${paths.targetMcpDir}`);
         } catch (e) {
@@ -1831,7 +1834,7 @@ async function installMcpsForTarget(paths, ctx) {
 
         if (envReadable && envContent.trim().length > 0) {
             installStep(`save the credentials to ${envPath}`, () => {
-                fs.writeFileSync(envPath, envContent.trim() + '\n');
+                fs.writeFileSync(envPath, envContent.trim() + '\n', { mode: 0o600 });
                 log.step(`Saved credentials to ${envPath}`);
             }, 'Set GEMINI_API_KEY / GITHUB_PERSONAL_ACCESS_TOKEN yourself, or fix the path and re-run the installer.');
         }
@@ -2108,10 +2111,14 @@ function injectHarnessRules() {
                 const sourcePath = path.join(srcDir, dir);
                 if (fs.existsSync(sourcePath)) {
                     const targetPath = path.join(homeDir, dir);
-                    copyDirRecursiveSync(sourcePath, targetPath);
+                    // settings.json is merged separately below: a wholesale
+                    // copy would clobber user-owned keys like enabledPlugins.
+                    const exclude = dir === '.claude' ? ['settings.json'] : [];
+                    copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
             });
+            mergeBdbSettingsHooks(path.join(homeDir, '.claude', 'settings.json'));
         }, '');
 
         installStep('sync global .agents/', () => {
@@ -2123,6 +2130,132 @@ function injectHarnessRules() {
             }
         }, 'agents.md and workflows/startcycle.md may be missing globally.');
     }
+}
+
+// Merge the BDB gate hooks into a Claude Code settings.json without clobbering
+// user-owned keys (v3.13 audit BLOCKER-3: the harness-dir copy used to
+// overwrite the file wholesale, silently dropping e.g. enabledPlugins). Only
+// BDB-owned hook entries -- identified by their script name inside `command` --
+// are replaced or added; every other key and every foreign hook entry survives
+// untouched. With projectLocal, `${HOME}` hook paths are rewritten to
+// `$CLAUDE_PROJECT_DIR` so a project harness is self-contained on every
+// collaborator's checkout. If the existing file is not valid JSON(C), nothing
+// is overwritten: the original is backed up as .corrupt_<ts>.bak and the
+// merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
+// the MCP config merge in installMcpsForTarget uses.
+function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs'];
+    const isBdbEntry = (entry) => {
+        const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
+            .map((h) => (h && typeof h.command === 'string' ? h.command : ''))
+            .join(' ');
+        return bdbHookScripts.some((name) => cmds.includes(name));
+    };
+    const localize = (cmd) => (projectLocal ? cmd.split('${HOME}').join('$CLAUDE_PROJECT_DIR') : cmd);
+    const cloneBdbEntries = (entries) =>
+        JSON.parse(JSON.stringify(entries)).map((e) => ({
+            ...e,
+            hooks: (e.hooks || []).map((h) => (typeof h.command === 'string' ? { ...h, command: localize(h.command) } : h)),
+        }));
+
+    const buildMerged = (existing) => {
+        const merged = existing && typeof existing === 'object' ? existing : {};
+        merged.hooks = merged.hooks && typeof merged.hooks === 'object' ? merged.hooks : {};
+        const repoSettings = readJsonFile(path.join(srcDir, '.claude', 'settings.json')) || {};
+        for (const [event, entries] of Object.entries(repoSettings.hooks || {})) {
+            if (!Array.isArray(entries)) continue;
+            const foreignEntries = (Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [])
+                .filter((e) => !isBdbEntry(e));
+            merged.hooks[event] = [...foreignEntries, ...cloneBdbEntries(entries)];
+        }
+        return merged;
+    };
+
+    let existing = null;
+    if (fs.existsSync(settingsPath)) {
+        existing = readJsonFile(settingsPath);
+        if (!existing) {
+            const backupCopy = `${settingsPath}.corrupt_${timestamp}.bak`;
+            const sideCarPath = `${settingsPath}.bdb-new.json`;
+            let backupWritten = true;
+            try {
+                fs.copyFileSync(settingsPath, backupCopy);
+            } catch (copyError) {
+                backupWritten = false;
+                log.warn(`Could not create the settings backup: ${copyError.message}`);
+            }
+            try {
+                fs.writeFileSync(sideCarPath, JSON.stringify(buildMerged(null), null, 2) + '\n');
+            } catch (writeError) {
+                log.warn(`Could not write ${path.basename(sideCarPath)}: ${writeError.message}`);
+            }
+            log.warn(`${path.basename(settingsPath)} is not valid JSON - hook merge skipped, nothing overwritten.`);
+            if (backupWritten) log.warn(`Backup copy: ${backupCopy}`);
+            log.warn(`BDB-wired settings: ${sideCarPath}`);
+            return;
+        }
+    }
+
+    try {
+        fs.writeFileSync(settingsPath, JSON.stringify(buildMerged(existing), null, 2) + '\n');
+    } catch (e) {
+        log.warn(`Could not write ${settingsPath}: ${e.message}`);
+    }
+}
+
+// Tier 9 (Local Project Harness): drop the dispatcher contract into the
+// CURRENT PROJECT only -- no writes to $HOME, no global skill/MCP sync, and
+// this runs as an early return BEFORE any global install step. A bare
+// `.agents/` copy alone would leave the graph contract half-installed
+// (v3.13 audit EDGE-1): the executable dispatcher (.claude/workflows/), its
+// two gate hooks (.claude/hooks/), the agent definitions the dispatcher's
+// prompts reference (.claude/agents/), and a project-local settings.json
+// wiring Claude Code to those local hooks are all part of the contract.
+// Reachable interactively via the "Local Project Harness" platform option, or
+// non-interactively via `--project-harness` (combine with -y for CI).
+function installProjectHarness() {
+    const projectClaudeDir = path.join(currentDir, '.claude');
+    installStep(`create ${projectClaudeDir}`, () => {
+        fs.mkdirSync(projectClaudeDir, { recursive: true });
+    }, 'The harness copies below will most likely fail as well.');
+
+    installStep('copy .agents/ contract into project', () => {
+        const agentsSrc = path.join(srcDir, '.agents');
+        if (!fs.existsSync(agentsSrc)) throw new Error(`missing payload: ${agentsSrc}`);
+        copyDirRecursiveSync(agentsSrc, path.join(currentDir, '.agents'));
+        log.step(`Copied .agents/ contract to ${path.join(currentDir, '.agents')}`);
+    }, 'graph.md / state.schema.json may be missing in the project.');
+
+    installStep('copy dispatcher workflows into project', () => {
+        const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
+        if (fs.existsSync(workflowsSrc)) {
+            copyDirRecursiveSync(workflowsSrc, path.join(projectClaudeDir, 'workflows'));
+            log.step(`Copied dispatcher workflows to ${path.join(projectClaudeDir, 'workflows')}`);
+        }
+    }, '/startcycle dispatch degrades to graph.md as a manual guide.');
+
+    installStep('copy gate hooks into project', () => {
+        const hooksSrc = path.join(srcDir, '.claude', 'hooks');
+        if (fs.existsSync(hooksSrc)) {
+            copyDirRecursiveSync(hooksSrc, path.join(projectClaudeDir, 'hooks'));
+            log.step(`Copied gate hooks to ${path.join(projectClaudeDir, 'hooks')}`);
+        }
+    }, 'go-gate / graph-gate enforcement stays inactive in this project.');
+
+    installStep('copy agent definitions into project', () => {
+        const agentsSrc = path.join(srcDir, '.claude', 'agents');
+        if (fs.existsSync(agentsSrc)) {
+            copyDirRecursiveSync(agentsSrc, path.join(projectClaudeDir, 'agents'));
+            log.step(`Copied agent definitions to ${path.join(projectClaudeDir, 'agents')}`);
+        }
+    }, 'The dispatcher runs, but its agent-file pointers resolve to nothing.');
+
+    installStep('wire project .claude/settings.json to local hooks', () => {
+        mergeBdbSettingsHooks(path.join(projectClaudeDir, 'settings.json'), { projectLocal: true });
+        log.step(`Wired project hooks in ${path.join(projectClaudeDir, 'settings.json')}`);
+    }, 'The gate hooks exist but are not auto-wired for this project.');
+
+    log.success(`Project harness installed to ${currentDir}`);
 }
 
 async function promptMcpSelection(tier) {
@@ -2435,7 +2568,7 @@ async function universalHarnessSync(primaryMcpConfigPath) {
                 }
             }
             fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-            fs.writeFileSync(targetPath, JSON.stringify(data, null, 2));
+            fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), { mode: 0o600 });
         } catch (e) {
             log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
         }
@@ -2458,7 +2591,7 @@ async function universalHarnessSync(primaryMcpConfigPath) {
                 }
             }
             fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-            fs.writeFileSync(targetPath, JSON.stringify(data, null, 2));
+            fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), { mode: 0o600 });
         } catch (e) {
             log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
         }
@@ -2642,7 +2775,7 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
         selectedMcps = await promptMcpSelection(tier);
     } else {
         const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null };
-        const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI' };
+        const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness' };
 
         const stepTier = async () => {
             const t = await selectWithBack({
@@ -2668,6 +2801,9 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
         };
 
         const stepMode = async () => {
+            // '9' is project-only: mode, custom paths, MCPs and credentials
+            // don't apply to a harness drop (main() early-returns for it).
+            if (ctx.selectedPlatforms.includes('9')) return;
             while (true) {
                 const m = await selectWithBack({
                     message: 'Installation Mode:',
@@ -2695,6 +2831,7 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
         };
 
         const stepCustomPaths = async () => {
+            if (ctx.selectedPlatforms.includes('9')) return;
             if (!ctx.selectedPlatforms.includes('4')) return;
             log.info('Custom Path Configuration:');
             const skillDirRes = await textWithBack({ message: `Target directory for global skills [default: ${path.join(homeDir, '.bdb-skills')}] (< = back):`, placeholder: path.join(homeDir, '.bdb-skills') });
@@ -2713,6 +2850,7 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
         };
 
         const stepMcps = async () => {
+            if (ctx.selectedPlatforms.includes('9')) return;
             const sel = await promptMcpSelection(ctx.tier);
             if (sel === BACK) return 'back';
             if (sel.length > 0) {
@@ -2727,6 +2865,7 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
         };
 
         const stepCredentials = async () => {
+            if (ctx.selectedPlatforms.includes('9')) return;
             const specNow = ctx.selectedPlatforms.filter(p => p !== '0');
             const ref = specNow[0] === '4' && ctx.customPaths ? ctx.customPaths.mcpDir : resolveTargetPaths(specNow[0] || '1', ctx.customPaths).targetMcpDir;
             const c = await promptCredentials(ref);
@@ -2779,8 +2918,24 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
         if (specificPlatforms.length === 0 && wantsUniversal) specificPlatforms.push('1');
     }
 
+    // Tier 9 is project-only and must run BEFORE any global install step --
+    // a late postscript would still have dumped the full skill/MCP/daemon
+    // payload into $HOME by then (v3.13 audit BLOCKER-2).
+    const projectHarnessRequested = specificPlatforms.includes('9') || PROJECT_HARNESS_ARG;
+    if (projectHarnessRequested) {
+        const alsoSelected = specificPlatforms.filter(p => p !== '9');
+        if (alsoSelected.length > 0) {
+            log.warn(`Local Project Harness is project-only - skipping global install for target(s): ${alsoSelected.join(', ')}`);
+        }
+        installProjectHarness();
+        outro('Project harness installation complete.');
+        return;
+    }
+
     installStep(`create the backup directory ${backupDir}`, () => {
-        fs.mkdirSync(backupDir, { recursive: true });
+        // Backups can hold credential copies (mcp_config_backup.json) --
+        // 0700, not the umask default.
+        fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
     }, 'The installation continues, but existing files are not backed up.');
 
     const targets = specificPlatforms.map(p => ({
@@ -2849,17 +3004,6 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
     reloadDaemons();
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
 
-    if (tier === '9') {
-        const agentsSrc = path.join(srcDir, '.agents');
-        if (fs.existsSync(agentsSrc)) {
-            const targetAgents = path.join(currentDir, '.agents');
-            copyDirRecursiveSync(agentsSrc, targetAgents);
-            log.success(`Project harness installed to ${targetAgents}`);
-        }
-        outro('Project harness installation complete.');
-        return;
-    }
-    
     if (wantsUniversal) {
         await universalHarnessSync(primaryTarget.mcpConfigPath);
     }
@@ -2870,4 +3014,9 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
     outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
 }
 
-main().catch(e => reportFatal('the beta installer run', e));
+if (require.main === module) {
+    main().catch(e => reportFatal('the beta installer run', e));
+}
+
+// Exported for tests -- requiring installer.js must not launch the TUI.
+module.exports = { mergeBdbSettingsHooks, installProjectHarness };

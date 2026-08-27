@@ -18,7 +18,7 @@ import os from 'node:os';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { execSync, spawn } from 'node:child_process';
+import { execSync, execFileSync, spawn } from 'node:child_process';
 import {
   intro,
   outro,
@@ -82,25 +82,40 @@ function ensureStepCli() {
 }
 
 function bootstrapStepCa(caUrl, fingerprint) {
+  // execFileSync with an args array: caUrl/fingerprint arrive as gateway
+  // callback query params -- inside an execSync shell string, `$(...)` would
+  // execute (audit SEC-1).
   try {
+    const args = ['ca', 'bootstrap', '--ca-url', caUrl];
     if (fingerprint) {
-      execSync(
-        `step ca bootstrap --ca-url "${caUrl}" --fingerprint "${fingerprint}" --force`,
-        { stdio: 'ignore' }
-      );
+      args.push('--fingerprint', fingerprint);
     } else {
-      execSync(
-        `step ca bootstrap --ca-url "${caUrl}" --install --force`,
-        { stdio: 'ignore' }
-      );
+      args.push('--install');
     }
+    args.push('--force');
+    execFileSync('step', args, { stdio: 'ignore' });
     return true;
   } catch (err) {
     return false;
   }
 }
 
+// Whitelist-validate callback params before they land in ~/.ssh/config: an
+// indented keyword there is a directive (ProxyCommand = shell execution on
+// the next ssh), so newlines/quotes/$ in user, host pattern or IPs are an
+// injection vector (audit SEC-2). Fail closed with a clear error instead of
+// writing a half-valid config.
+function assertSshSafe(label, value, pattern) {
+  if (!pattern.test(value)) {
+    throw new Error(`Ungültige Zeichen in '${label}' -- SSH-Config-Patch abgebrochen.`);
+  }
+}
+
 function patchSshConfig(username, hostPattern, hostIps = '') {
+  assertSshSafe('User', username, /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
+  assertSshSafe('Host-Pattern', hostPattern, /^[A-Za-z0-9._*?!, -]{1,200}$/);
+  assertSshSafe('Host-IPs', hostIps, /^[A-Za-z0-9., -]{0,400}$/);
+
   const homeDir = os.homedir();
   const sshDir = path.join(homeDir, '.ssh');
   if (!fs.existsSync(sshDir)) {
@@ -275,6 +290,10 @@ function syncTrainingSkill() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 /**
  * Starts a temporary local HTTP loopback server and opens the browser
  * to complete the 2FA handshake with Authelia on the dynamic gateway.
@@ -293,15 +312,33 @@ function performBrowserAuthHandshake(gatewayBaseUrl, port = 8123) {
       const parsedUrl = new URL(req.url, `http://127.0.0.1:${port}`);
       
       if (parsedUrl.pathname === '/callback') {
+        // CSRF guard: the legit gateway echoes our state_token back. A
+        // mismatched echo is a forged/foreign request -- refuse it and keep
+        // waiting for the real callback (the 5-minute timeout still bounds
+        // this). An absent echo means an older backend; accepted for
+        // backward compatibility.
+        const stateEcho = parsedUrl.searchParams.get('state_token');
+        if (stateEcho && stateEcho !== stateToken) {
+          res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Ungültiger state_token.');
+          return;
+        }
+
         const token = parsedUrl.searchParams.get('token');
         const user = parsedUrl.searchParams.get('user') || 'user';
-        
+
         const stepCaUrl = parsedUrl.searchParams.get('step_ca_url');
         const stepCaFingerprint = parsedUrl.searchParams.get('step_ca_fingerprint');
         const sshHostPattern = parsedUrl.searchParams.get('ssh_host_pattern');
         const sshHostIps = parsedUrl.searchParams.get('ssh_host_ips') || '';
 
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        // no-store + replaceState keep the token out of browser history and
+        // disk cache; no-referrer keeps it away from cross-origin referrers.
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer'
+        });
         res.end(`
           <!DOCTYPE html>
           <html>
@@ -317,8 +354,9 @@ function performBrowserAuthHandshake(gatewayBaseUrl, port = 8123) {
           <body>
             <div class="card">
               <h1>✔ Authentifizierung Erfolgreich!</h1>
-              <p>Hallo <b>${user}</b>. Dein FastMCP Token wurde an das Terminal übertragen.<br><br>Du kannst dieses Browser-Tab jetzt schließen.</p>
+              <p>Hallo <b>${escapeHtml(user)}</b>. Dein FastMCP Token wurde an das Terminal übertragen.<br><br>Du kannst dieses Browser-Tab jetzt schließen.</p>
             </div>
+            <script>history.replaceState(null, '', '/done');</script>
           </body>
           </html>
         `);
