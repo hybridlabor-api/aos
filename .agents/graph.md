@@ -89,8 +89,7 @@ never inside a node's own prompt.
 | Reviewer | the **same** `blocking` finding ID(s) as the previous cycle | set `needs_human: true`, `phase: escalated` — **stop** (no-progress guard, see above) |
 | Reviewer | zero blocking findings | invoke Shipping |
 | Shipping | any `gate.*` is `fail` | `iteration++`, invoke whichever build node(s) Shipping's own structured output names as owning the failing check(s) — the dispatcher does not guess a lint/test-to-node mapping itself |
-| Shipping | all `gate.*` are `pass`/`skip`, no `approvals` entry with token `GO` yet | stop, surface "ready to ship, needs GO" to the user |
-| Shipping | all `gate.*` pass, `approvals` has a `GO` | `phase: done` — proceed to `/ship` |
+| Shipping | all `gate.*` are `pass`/`skip` | `phase: ready_to_ship`, stop — surface "ready to ship, needs GO" to the user. The dispatcher does not itself check `approvals` for a prior GO here (see the Harness section's noted exception); the actual push/version/publish is a separate `/ship` step gated by `go-gate.mjs`, which does the GO check at the point it matters. |
 | any | `iteration >= max_iterations` | **stop unconditionally**, `phase: escalated`, set `needs_human: true` — do not invoke anything further automatically |
 | any | a node sets `needs_human: true` itself | stop, surface to the user (in-loop feedback edge, per B5's diagram — `/startcycle`'s original "zero-prompting" framing had removed this; it's restored here as an edge, not a constant interruption) |
 
@@ -108,10 +107,19 @@ a Claude-only file:
   Code's Dynamic Workflows runtime (a script holds the loop and branches;
   the seven agents are leaves it calls via `agent()`/`pipeline()`, never
   calling each other). It's a translation, not a re-derivation — every edge
-  in the table above has a corresponding branch in that script, verified by
+  in the table above has a corresponding branch in that script, with one
+  deliberate exception: the script stops at `phase: ready_to_ship` rather
+  than checking `approvals` itself for a prior `GO` and proceeding to
+  `phase: done` (the row above notes this explicitly). Re-running the whole
+  plan→build→review loop just to check one flag would be wasteful; the
+  actual push/version/publish is a separate `/ship` step already gated by
+  `go-gate.mjs`, which does the GO check at the point it matters. Verified by
   running the script's extracted logic against 9+ scripted scenarios before
   it was committed (happy path, TechLead rejection loop, Reviewer repair
-  loop, the no-progress guard, gate-failure repair, missing goal). Other
+  loop, the no-progress guard, gate-failure repair, missing goal), then by an
+  adversarial review pass against this file and `state.schema.json` that
+  found and fixed real gaps (an unpersisted iteration counter, `needs_human`
+  never actually being written, and the Reviewer note that follows). Other
   harnesses without an equivalent "workflow" primitive fall back to this
   file as a manual dispatch guide followed turn-by-turn.
 - **Deterministic safety net (Claude Code only, degrades to advisory

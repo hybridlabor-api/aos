@@ -16,8 +16,8 @@
     },
     "phase": {
       "type": "string",
-      "enum": ["define", "plan", "build", "verify", "review", "ship", "done", "escalated"],
-      "description": "Current pipeline stage. 'escalated' means the dispatcher stopped the loop and handed control back to the user (max_iterations reached or needs_human)."
+      "enum": ["define", "plan", "build", "verify", "review", "ready_to_ship", "ship", "done", "escalated"],
+      "description": "Current pipeline stage. 'ready_to_ship' means all gates passed but no GO has been recorded yet -- distinct from 'ship' (actively running /ship) and 'done'. 'escalated' means the dispatcher stopped the loop and handed control back to the user (max_iterations reached or needs_human)."
     },
     "artifacts": {
       "type": "object",
