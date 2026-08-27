@@ -63,33 +63,36 @@ Ran via `HOME=$(mktemp -d) node .../installer.js` from the user's real `~`.
   before touching this again.
 
 ### Test 2: real `/startcycle` run in a scratch project (`~/startcycle-test-01`)
-**The dispatcher never actually ran.** Two findings, both unfixed:
+**The dispatcher never actually ran, on the first two attempts.** Findings:
 
-1. **Naming collision, confirmed on disk:** `~/.claude/skills/startcycle/`
-   (the skill, `disable-model-invocation: true`) and
-   `~/.claude/workflows/startcycle.mjs` (the Dynamic Workflow) share the
-   name `startcycle`. Typing `/startcycle <goal>` resolved to the **skill**,
-   not the workflow. Claude read the skill's instructions and did the task
-   inline, using its own judgment ("Ran inline (task too small for agent
-   fleet)" — the model's own paraphrase, not text from any of our files),
-   completely bypassing the graph: no `state.json` was ever created, no
-   subagents were spawned, none of the 7 agent personas were used. Only
-   `production_artifacts/00_execution_plan.md` and `04_release_report.md`
-   got written, directly, by the main session.
-   - **Unresolved question, next concrete step:** check `/config` in an
-     interactive Claude Code session for a **"Dynamic workflows"** row/toggle.
-     Per `code.claude.com/docs/en/workflows`: *"On Pro, turn them on from the
-     Dynamic workflows row in /config."* The account in the test is on
-     **Claude Pro**. If the toggle is off, that alone could fully explain
-     why the workflow was never eligible to fire at all, independent of the
-     naming collision. **This was asked of the user right as context ran
-     out — get this answer first before changing anything.**
-   - Even if workflows are enabled, the name collision itself likely still
-     needs a fix: either rename the workflow's `meta.name` in
-     `.claude/workflows/startcycle.mjs` to something distinct from the
-     skill (e.g. `startcycle-dispatch`), or remove/rename the skill so
-     `/startcycle` unambiguously means the workflow. Needs deciding, not
-     yet decided.
+1. **Naming collision, confirmed on disk, and RESOLVED (commit `2138bd9`):**
+   `~/.claude/skills/startcycle/` (the skill, `disable-model-invocation:
+   true`) and `~/.claude/workflows/startcycle.mjs` (the Dynamic Workflow)
+   shared the name `startcycle`. First attempt (`/startcycle <goal>`,
+   Dynamic workflows OFF): resolved to the **skill**, which did the task
+   inline — no `state.json`, no subagents, no graph. Second attempt
+   (**same result, after toggling Dynamic workflows ON in `/config`**):
+   the skill *still* won — confirming the toggle alone does not resolve the
+   collision; the skill wins regardless.
+   - **Root cause:** the skill's body duplicated the full pipeline
+     description in prose, which invited the model to follow it "in
+     spirit" inline rather than invoke the workflow — and nothing in the
+     harness prefers a same-named workflow over a same-named skill.
+   - **Fix applied:** renamed the workflow `startcycle.mjs` →
+     `startcycle-dispatch.mjs` (`meta.name` too), and rewrote
+     `skills/basic/startcycle/SKILL.md` as a thin router whose only
+     instruction is "call the `Workflow` tool with name
+     `startcycle-dispatch` and relay the result" — no pipeline prose left
+     to follow "in spirit". Updated `.agents/graph.md`'s two path
+     references. Mirrored both changes into the installed copies
+     (`~/.claude/skills/startcycle/SKILL.md`,
+     `~/.claude/workflows/startcycle-dispatch.mjs`) for immediate retest.
+     Confirmed no `installer.js` code hardcodes the old filename (it
+     copies `.claude/` as a whole directory, and only references the
+     unrelated doc `.agents/workflows/startcycle.md` by name) — so this
+     fix needed no installer changes.
+   - **Not yet retested end-to-end** — this was the very next step queued
+     when context most recently ran low. See "Priority order" below.
 
 2. **Confirmed, separate, real safety gap:** both hooks errored
    (non-blocking) during the test run — `PreToolUse:Bash hook error`,
@@ -110,21 +113,23 @@ Ran via `HOME=$(mktemp -d) node .../installer.js` from the user's real `~`.
 
 ## Priority order for next session
 
-1. **Get the `/config` Dynamic Workflows answer.** Cheapest, most
-   diagnostic, was already asked.
-2. **Fix the naming collision** (rename workflow or skill) so `/startcycle`
-   deterministically means one thing.
-3. **Fix the hook path-resolution gap** so the GO-gate actually protects
+1. ~~Get the `/config` Dynamic Workflows answer.~~ **Done — it's ON.**
+2. ~~Fix the naming collision.~~ **Done, commit `2138bd9`, not yet retested.**
+3. **Retest `/startcycle` right now** in `~/startcycle-test-01` (or fresh) —
+   send `/startcycle <small goal>` again and confirm: does the model call
+   the `Workflow` tool this time, does `production_artifacts/state.json`
+   appear, do the 7 agents actually get invoked, does the repair loop
+   exercise for real? This is the concrete next action, queued but not yet
+   executed as of this doc's last edit.
+4. **Fix the hook path-resolution gap** so the GO-gate actually protects
    something outside the original repo, or explicitly scope it back to
-   project-local and stop claiming global protection.
-4. **Fix the `currentDir`-vs-`homeDir` installer bug** (harnessDirs loop +
+   project-local and stop claiming global protection. Still open — the
+   naming-collision fix did not touch this; `~/startcycle-test-01/.claude`
+   still does not exist, so both hooks will still no-op there.
+5. **Fix the `currentDir`-vs-`homeDir` installer bug** (harnessDirs loop +
    my two Phase 2 compile calls) so a future installer run — isolated test
    or real — can't silently overwrite arbitrary directories under whatever
-   `cwd` happens to be.
-5. **Re-run the real `/startcycle` test** (same scratch project or a fresh
-   one) once 1-3 are addressed, to see if the dispatcher actually invokes
-   now and produces `state.json` / spawns the 7 agents / exercises the
-   repair loop for real.
+   `cwd` happens to be. Still open, untouched by today's fix.
 6. Only after an actual successful dispatcher run: open the PR against
    `main`, with an honest description of what's verified (stubbed-agent
    tests, adversarial review, real installer run, real dispatcher run) and
