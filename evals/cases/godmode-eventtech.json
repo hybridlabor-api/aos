@@ -1,0 +1,30 @@
+{
+  "skill_name": "godmode-eventtech",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "We are dropping frames in TouchDesigner, how do I enforce a 60fps lock?",
+        "top_k": 3
+      },
+      {
+        "prompt": "Help me calculate the network bandwidth for 10 Art-Net universes.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Validate the VRAM limits for our dual 4K output live show.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Let's edit this video sequence to match the audio beat.",
+        "owner": "godmode-media-creation"
+      },
+      {
+        "prompt": "Can you make a 3D model of the stage?",
+        "owner": "godmode-3d-creation"
+      }
+    ]
+  },
+  "evals": []
+}

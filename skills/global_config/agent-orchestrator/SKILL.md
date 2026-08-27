@@ -1,6 +1,7 @@
 ---
 name: agent-orchestrator
-description: Meta-skill que orquestra todos os agentes do ecossistema. Scan automatico de skills, match por capacidades, coordenacao de workflows multi-skill e registry management.
+description: Use when meta-skill que orquestra todos os agentes do ecossistema. Scan automatico de skills, match por capacidades, coordenacao de workflows multi-skill e registry management.
+category: bdb-core
 risk: safe
 source: community
 date_added: '2026-03-06'
@@ -319,3 +320,26 @@ python agent-orchestrator/scripts/scan_registry.py --status
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+## 3. Core Process
+1. Read the provided context and ensure preconditions are met.
+2. Run the required script or tool and confirm the state change.
+3. Verify exit codes, file modifications, or DB counts to guarantee success before reporting completion.
+
+## 4. Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| "The code change was small, so I skipped updating OpenWiki docs." | Every state change must be reflected in the relevant system records. |
+| "The ingest script exited without an error, so the memB index must be updated." | Silent failures happen; explicit verification of the side effect is mandatory. |
+| "I'll let the /startcycle proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
+| "I trust the cached agent registry instead of rescanning after a skill change." | Caches stale out quickly; explicit rescans prevent ghost failures. |
+
+## 5. Red Flags
+- Bypassing the verification step after a script execution.
+- Proceeding to the next pipeline stage without confirming the previous stage's side effects.
+- Ignoring domain-specific constraints listed in this skill.
+
+## 6. Verification
+- [ ] Verified script exit codes are explicitly checked.
+- [ ] Confirmed target files or database records reflect the expected change.
+- [ ] Ensured no silent failures were ignored before reporting success.

@@ -1,7 +1,7 @@
 ---
 name: ui-pattern
-description: "Generate reusable UI patterns such as card sections, grids, lists, forms, and chart wrappers using StyleSeed Toss primitives."
-category: design
+description: "Use when generating reusable UI patterns such as card sections, grids, lists, forms, and chart wrappers using StyleSeed Toss primitives."
+category: design-ui-ux
 risk: safe
 source: community
 source_repo: bitjaru/styleseed
@@ -90,3 +90,27 @@ Provide:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Core Process
+1. Identify the recurring UI challenge and select the appropriate StyleSeed primitives.
+2. Compose the primitives into a flexible pattern that accepts variable content.
+3. Implement standard error handling and edge cases (e.g., long text overflow).
+4. Document the pattern for reuse across the application.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll build a custom grid for this specific layout. | Fails to leverage existing StyleSeed grid primitives, reducing consistency. |
+| This form doesn't need the standard validation pattern. | Inconsistent validation patterns confuse users and reduce trust. |
+| I'll hardcode the list spacing. | Breaks the reusable pattern design, making it brittle to global spacing updates. |
+
+## Red Flags
+- Reinventing standard patterns instead of composing them from primitives.
+- Hardcoded layouts that don't adapt to different content lengths.
+- Inconsistent error handling in form patterns.
+
+## Verification
+- [ ] Pattern correctly composes existing StyleSeed primitives.
+- [ ] Layout responds gracefully to varying content lengths.
+- [ ] Standard interactive patterns (e.g. form validation) are maintained.

@@ -1,0 +1,30 @@
+{
+  "skill_name": "ux-persuasion-engineer",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Optimize the checkout flow to increase conversion rates ethically.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Apply choice architecture to the pricing tier selection page.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Add constructive friction to the account deletion process.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Perform a heuristic evaluation on the settings page.",
+        "owner": "ux-audit"
+      },
+      {
+        "prompt": "Scaffold a new pricing page layout.",
+        "owner": "ui-page"
+      }
+    ]
+  },
+  "evals": []
+}

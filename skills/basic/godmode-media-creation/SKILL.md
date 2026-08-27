@@ -1,6 +1,7 @@
 ---
 name: godmode-media-creation
-description: MCP-First master orchestration skill for all media creation pipelines (Video, Timeline Assembly, Beat Sync, Motion Design). Directly interfaces with local media engines and MCP tools.
+description: "Use when assembling video timelines, syncing beats, or executing media creation via OpenMontage, Palmier Pro, or TouchDesigner audio/visuals."
+category: media-eventtech
 ---
 
 # 🎬 Godmode Media Creation: MCP-First Video & Media Pipeline
@@ -140,3 +141,38 @@ Audio and visual generation tools are provided as direct MCP tools on `bdb_td_mi
 3. **Asset Generation:** Invoke generative tools on `bdb_td_minddesigner` or external render nodes for required media elements.
 4. **Beat Sync & Final NLE Polish:** Pass timeline and audio assets to `palmier_pro_mcp` (`sync_audio_beat`) for frame-accurate cut synchronization and audio ducking.
 5. **Export & Delivery:** Render out final composition with verified codecs (H.264/ProRes) and matching frame rate.
+
+
+## Overview
+This skill orchestrates offline and real-time media creation, coordinating storyboarding, timeline assembly, and beat-syncing via OpenMontage, Palmier Pro, and TouchDesigner.
+
+## When to Use
+- **Trigger:** The user needs to assemble a video timeline, synchronize clips to an audio beat, or generate real-time audiovisual art.
+- **Exclude:** Do not use for live show protocol routing or 3D CAD modeling.
+
+## Core Process
+1. Verify connectivity with `openmontage_mcp` and `palmier_pro_mcp`.
+2. Use OpenMontage to define the multi-track timeline sequence and ingest source clips.
+3. If audio sync is required, use Palmier Pro's `sync_audio_beat` to align transients.
+4. Render the final composition matching the target frame rate and codec.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll just eyeball the cut to the music." | Beat synchronization must be precise using Palmier Pro's grid and transient detection. |
+| "H.264 is fine for intermediate editing." | H.264 causes decoding lag; use ProRes or DNxHR for intermediate NLE timelines. |
+| "I'll generate the audio and video in one pass." | Generative audio and visuals should be created in separate passes via `bdb_td_minddesigner` to ensure sync. |
+
+## Red Flags
+
+- Attempting to manually calculate beat offsets instead of using `sync_audio_beat`.
+- Outputting timelines with mismatched clip framerates.
+- Failing to verify MCP tool connectivity before building the timeline.
+
+## Verification
+
+- [ ] Timeline JSON payload includes correct framerate and resolution.
+- [ ] Audio-driven cuts explicitly reference BPM and beat offsets.
+- [ ] Final output format and codec are explicitly defined.
+

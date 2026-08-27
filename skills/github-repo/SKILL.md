@@ -1,7 +1,7 @@
 ---
 name: github-repo
 description: "Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill."
-category: workflow-bundle
+category: engineering-method
 risk: safe
 source: local
 date_added: "2026-07-28"

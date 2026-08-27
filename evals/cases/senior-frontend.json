@@ -1,0 +1,30 @@
+{
+  "skill_name": "senior-frontend",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Optimize the Next.js app bundle size.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Refactor this component to use strict TypeScript interfaces.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Fix the hydration errors in the server component.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Design a new mobile-first landing page.",
+        "owner": "ui-page"
+      },
+      {
+        "prompt": "Audit the application for Nielsen's heuristics.",
+        "owner": "ux-audit"
+      }
+    ]
+  },
+  "evals": []
+}

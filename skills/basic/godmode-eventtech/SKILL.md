@@ -1,6 +1,7 @@
 ---
 name: godmode-eventtech
-description: Architectural authority for real-time performance, signal flow, protocol routing, and hardware constraints in live show and event technology environments.
+description: "Use when designing real-time live performance architectures, signal flows, protocol routings (OSC, DMX), or validating hardware limits."
+category: media-eventtech
 ---
 
 # 🎛️ BDB EventTech Godmode
@@ -58,3 +59,38 @@ When orchestrating event-tech workflows, the agent MUST validate the availabilit
 This Godmode rulebook is universally available across the BDB ecosystem:
 * **Cursor:** Referenced via `.cursor/rules/godmode-eventtech.mdc`.
 * **Claude Code / CLI Agents:** Loaded during `/bdbmediastorm` and live event-tech execution sessions.
+
+
+## Overview
+This skill acts as the architectural authority for real-time performance systems, enforcing hardware limits, deterministic frame timing, and zero-latency protocol routing.
+
+## When to Use
+- **Trigger:** The user is designing or modifying a real-time graphics pipeline, network protocol binding, or live performance showfile.
+- **Exclude:** Do not use for pre-rendered video editing or offline 3D rendering.
+
+## Core Process
+1. Audit the current GPU VRAM allocation and network bandwidth budget.
+2. Validate that required MCP servers (TouchDesigner, grandMA3, Resolume) are active and responsive.
+3. Implement node or patch changes using low-overhead protocols (OSC, Shared Memory).
+4. Establish a hardware/software safety blackout chain.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "We can poll the REST API at 60fps for live data." | Blocking REST calls cause frame drops; use OSC or WebSocket events for real-time sync. |
+| "Feedback loops don't need a delay if the PC is fast." | TouchDesigner Feedback TOPs must enforce a 1-frame delay to prevent infinite stack depth crashes. |
+| "Art-Net can share the main internet network." | Art-Net requires a dedicated subnet to prevent packet collision and broadcast storms. |
+
+## Red Flags
+
+- Designing a pipeline using HTTP polling instead of UDP/OSC for real-time data.
+- Failing to validate TouchDesigner or grandMA3 MCP health before sending commands.
+- Ignoring VRAM limits when suggesting 4K output streams.
+
+## Verification
+
+- [ ] MCP server health (e.g., `bdb_td_minddesigner`) was validated before execution.
+- [ ] Network bandwidth and VRAM budgets are explicitly calculated in the plan.
+- [ ] Real-time control relies on OSC, MIDI, or DMX/Art-Net, not blocking HTTP calls.
+

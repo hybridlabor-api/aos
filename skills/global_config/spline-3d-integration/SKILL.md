@@ -1,6 +1,7 @@
 ---
 name: spline-3d-integration
 description: "Use when adding interactive 3D scenes from Spline.design to web projects, including React embedding and runtime control API."
+category: media-eventtech
 risk: safe
 source: community
 date_added: "2026-03-07"
@@ -88,3 +89,34 @@ Once you have the stack and the scene URL, read the appropriate guide file above
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+This skill guides the embedding and interactive control of Spline 3D scenes within web projects across Vanilla JS, React, and Next.js.
+
+## Core Process
+1. Identify the web stack (React, Next.js, Vanilla JS) to choose the correct `@splinetool` package.
+2. Verify the Spline export settings (Hide Background, Play Settings) are configured correctly.
+3. Implement the integration using a lazy-loaded wrapper and fallback UI.
+4. Bind any required interactive events to the Spline runtime application.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll just use the iframe embed, it's easier." | Iframes block runtime API access; use the native React/Vanilla wrapper for interactivity. |
+| "The scene is slow, but that's just 3D." | Performance must be audited; geometry quality should be reduced and unneeded physics disabled in Spline. |
+| "I'll load the Spline component directly on mount." | Spline scenes are heavy; always lazy-load them with a Suspense fallback to protect Core Web Vitals. |
+
+## Red Flags
+
+- Embedding a Spline scene without a loading fallback or lazy loading.
+- Using an iframe when runtime API control (e.g., triggering animations) is requested.
+- Failing to check the Play Settings (like Hide Background) before embedding.
+
+## Verification
+
+- [ ] The correct `@splinetool` integration package is used for the framework.
+- [ ] The Spline component is lazy-loaded.
+- [ ] Background and logo settings were explicitly verified with the user.
+

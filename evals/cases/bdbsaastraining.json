@@ -1,0 +1,30 @@
+{
+  "skill_name": "bdbsaastraining",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Please start the SaaS Host training for a new developer.",
+        "top_k": 3
+      },
+      {
+        "prompt": "I need to go through the Incus profile engineering training station.",
+        "top_k": 3
+      },
+      {
+        "prompt": "/bdbsaastraining let's do the Mailserver track.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Can you deploy a new WordPress container to production?",
+        "owner": "bdbsaashost"
+      },
+      {
+        "prompt": "How do I fix this broken Docker container locally?",
+        "owner": "docker-expert"
+      }
+    ]
+  },
+  "evals": []
+}

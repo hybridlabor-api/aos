@@ -1,115 +1,91 @@
 ---
 name: startcycle
-description: Autonomous multi-agent development cycle pipeline triggered after /bdbrainstorm or /grill-me. Orchestrates Planner, UI/UX, Engineering, Media/EventTech, and Shipping agents with deterministic production_artifacts hand-offs and automated openwiki + memB sync.
+description: Use when running the autonomous multi-agent build pipeline after /bdbrainstorm or /grill-me. Routes to the startcycle-dispatch Dynamic Workflow, which reads production_artifacts/state.json and invokes Architect, TechLead, UI/UX, Engineering, Media/EventTech, Reviewer, and Shipping in turn per .agents/graph.md's edge table — the agents never invoke each other.
+category: bdb-core
+disable-model-invocation: true
 ---
 
 # 🚀 BDB Autonomous Development Cycle (`/startcycle`)
 
-The `/startcycle` workflow is the autonomous, multi-agent execution pipeline of the BDB ecosystem. It translates high-level specifications and brainstorming results into fully implemented, tested, documented, and production-ready code without manual prompt-chaining.
-
-```
-                  ┌──────────────────────────────────────────────┐
-                  │ 1. BRAINSTORM & SPECIFICATION                │
-                  │    (/bdbrainstorm / /grill-me)               │
-                  └──────────────────────┬───────────────────────┘
-                                         │
-                                         ▼
-                  ┌──────────────────────────────────────────────┐
-                  │ 2. AUTONOMOUS CYCLE (/startcycle)            │
-                  │    • Task Decomposition & Architecture       │
-                  │    • Parallel Frontend/Backend/Media Streams │
-                  │    • Verification & Quality Gate             │
-                  └──────────────────────┬───────────────────────┘
-                                         │
-                        ┌────────────────┴────────────────┐
-                        ▼                                 ▼
-         ┌───────────────────────────────┐ ┌──────────────────────────────┐
-         │ 3a. OPENWIKI (.openwiki/)     │ │ 3b. MEMB VECTOR & VAULT       │
-         │     • quickstart.md           │ │     • SQLite Vector Embeddings│
-         │     • architecture.md         │ │     • AI-Vault: God_Mode.md   │
-         │     • release_notes.md        │ │     • Triggered via ingest.py │
-         └──────────────┬────────────────┘ └──────────────┬────────────────┘
-                        │                                 │
-                        └────────────────┬────────────────┘
-                                         │
-                                         ▼
-                  ┌─────────────────────────────────────────────┐
-                  │ 4. PERSISTENT AGENT MEMORY & RETRIEVAL       │
-                  │    • agent.md / CLAUDE.md ──▶ .openwiki      │
-                  │    • search_memory Tool ──▶ memB             │
-                  └──────────────────────────────────────────────┘
-```
-
----
-
-## 📋 Deterministic 4-Phase Pipeline
-
-### Phase 1: Task Decomposition & Planning
-- **Agent Role**: `Planner_Orchestrator`
-- **Model**: `Claude 3.5 Sonnet` / `Gemini 1.5 Pro` / `GPT-4o`
-- **Action**:
-  1. Ingests session output, RFC, or brainstorming summary.
-  2. Breaks down requirements into atomic execution tasks across domain streams.
-  3. Defines explicit dependency graphs and data contracts between streams.
-- **Output Artifact**: `production_artifacts/00_execution_plan.md`
-
----
-
-### Phase 2: Parallel Stream Execution (State Hand-Off)
-Sub-agents are executed in isolated contexts. All inter-agent data exchange happens strictly via files in `production_artifacts/`.
-
-#### 🎨 Frontend Stream
-- **Agent Role**: `Godmode_UI_UX`
-- **Primary Skills**: `godmode-ui-ux`, `landing-page-generator`, `shadcn`, `tailwind-patterns`, `react-best-practices`, `ui-component`
-- **Action**: Reads `00_execution_plan.md`, implements responsive UI components, enforces Anti-Slop rules, DTCG design tokens, and fluid motion physics.
-- **Output Artifacts**: `production_artifacts/01_frontend_spec.md` & code to `frontend/src/` or `app_build/src/components/`.
-
-#### ⚙️ Backend & Architecture Stream
-- **Agent Role**: `Godmode_Engineering`
-- **Primary Skills**: `godmode-engineering`, `software-architecture`, `test-driven-development`, `api-design-principles`, `drizzle-orm-expert`, `postgres-best-practices`, `typescript-pro`, `python-pro`
-- **Action**: Reads `00_execution_plan.md`, implements DDD models, type-safe database schemas, business logic, and API routes.
-- **Output Artifacts**: `production_artifacts/02_backend_schema.md` & code to `backend/src/` or `app_build/src/server/`.
-
-#### 🎬 Media & EventTech Stream (If Applicable)
-- **Agent Role**: `Godmode_Media_EventTech`
-- **Primary Skills**: `godmode-eventtech`, `godmode-media-creation`, `godmode-3d-creation`, `bdbmediastorm`, `threejs-skills`, `spline-3d-integration`
-- **Action**: Reads `00_execution_plan.md`, generates TouchDesigner TOX/GLSL networks, Unreal Engine blueprints, DaVinci Resolve color grades, or DMX/grandMA3 lighting layouts via MCP tools.
-- **Output Artifacts**: `production_artifacts/03_media_pipeline.md`.
-
----
-
-### Phase 3: Verification & Quality Gate
-- **Agent Role**: `Godmode_Shipping`
-- **Primary Skills**: `godmode-shipping`, `webapp-testing`, `seo-audit`, `wcag-audit-patterns`, `clean-code`, `github-repo`
-- **Action**:
-  1. Runs typechecks, linters, and unit test suites (`npm test`, `pytest`, `tsc --noEmit`).
-  2. Runs Playwright browser automation tests for critical user flows.
-  3. Verifies WCAG 2.1 AA accessibility and SEO meta signals.
-  4. Audits codebase for hardcoded secrets and absolute file paths.
-- **Gate Checkpoint**: Must achieve `Status: PASSED (100% Green)` before progressing to release.
-- **Output Artifact**: `production_artifacts/04_release_report.md`.
-
----
-
-### Phase 4: Production Release & Memory Sync (`/ship`)
-Once Phase 3 passes:
-1. **Wiki Sync (`openwiki-skill`)**: Scans git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and updates root `README.md`.
-2. **memB Memory Ingestion (`memb-ingest`)**: Automatically ingests newly created documentation, schemas, and patterns into local SQLite vector memory (`~/.MemBDB/`).
-3. **Git Release**: Creates atomic commit, tags version, and pushes to private remote repository.
-
----
-
-## 🛠️ Slash Command Invocation
-
-To trigger the autonomous cycle in any supported agent harness (Antigravity, Roo Code, Claude Code, Cursor, Codex):
+**Step 0 — bootstrap the contract into this project, before calling
+`Workflow`.** Every agent the dispatcher spawns is told to read/write
+`production_artifacts/state.json` "per `.agents/state.schema.json`" — a path
+resolved against the CURRENT PROJECT, not globally. If this project has
+never run `/startcycle` before, that file (and `.agents/graph.md`) won't be
+here yet, and every agent will freelance the state shape instead of
+conforming to the schema (observed for real: a run's `state.json` was
+missing `run_id`/`max_iterations`/`gate`/`findings`/`approvals` and had
+several fields the schema doesn't define at all). Fix it first:
 
 ```bash
-/startcycle
+mkdir -p .agents
+[ -f .agents/graph.md ] || cp "$HOME/.agents/graph.md" .agents/graph.md
+[ -f .agents/state.schema.json ] || cp "$HOME/.agents/state.schema.json" .agents/state.schema.json
 ```
 
-Or pass a specific focus area:
-```bash
-/startcycle frontend
-/startcycle fullstack
-/startcycle mediastorm
-```
+If `$HOME/.agents/graph.md` or `$HOME/.agents/state.schema.json` doesn't
+exist either, stop and tell the user: this machine has no canonical copy of
+the graph contract to bootstrap from, and `/startcycle` will produce a
+non-conforming `state.json` until one is installed. Don't silently proceed.
+(`.claude/agents/*.md`, the seven agent persona files, do NOT need this
+treatment — Claude Code resolves subagents from the user-level
+`~/.claude/agents/` fine without a project-local copy.)
+
+**Action — do this, and nothing else:** call the `Workflow` tool with
+`scriptPath` pointing at this repo's dispatcher script — resolve `$HOME`
+yourself (e.g. `echo $HOME` or your own environment info) rather than
+hardcoding a username, giving
+`$HOME/.claude/workflows/startcycle-dispatch.mjs` — and `args` set to the
+goal text that follows `ARGUMENTS:` below this file's content. Pass the goal
+through verbatim. If there is no `ARGUMENTS:` text, pass no `args` (or
+`args: undefined`) — the workflow itself asks for a goal in that case rather
+than guessing one.
+
+Use `scriptPath`, not `name: "startcycle-dispatch"` — by-name lookup for a
+custom (non-built-in) workflow script has been observed to fail with
+`Workflow "startcycle-dispatch" not found. Available: deep-research`, even
+when the script exists at the expected path and is correctly named inside
+its own `meta.name`. `scriptPath` pointing directly at the file works
+reliably; `name` apparently requires a separate registration step (the
+`/workflows` monitor's `s save` action looked like a candidate, but that's
+an interactive step a slash command can't trigger on its own, so don't rely
+on it).
+
+Then wait for the `Workflow` tool call to finish and report its result
+(including `phase`, any `reason`, and — at `ready_to_ship` — the instruction
+to reply `GO`) back to the user. Do not summarize or reinterpret it; relay it.
+
+**Do NOT decompose the task, write anything under `production_artifacts/`, or
+implement any part of the goal yourself in response to this skill.** This
+file exists only to route the `/startcycle` slash command to the real
+dispatcher — a Dynamic Workflow script
+(`.claude/workflows/startcycle-dispatch.mjs`) that holds the actual
+node/edge graph, spawns the seven agents, and drives the repair loop. If you
+catch yourself about to write a plan file or code directly because of this
+skill, stop — that means the `Workflow` tool call was skipped, which is
+exactly the failure this file was rewritten to close (see
+`SESSION-HANDOVER-v3.13.md` in the source repo for the incident: an earlier
+version of this file embedded the full pipeline description in prose, and
+the model followed it "in spirit" inline instead of invoking the script —
+silently skipping the whole graph, with no `state.json`, no subagents, no
+Reviewer, and no quality gate ever running).
+
+## Why this file is a thin router, not a spec
+
+The full contract — state schema, node/edge table, the Stop-hook
+loop-keeper, the no-progress guard — lives in
+[`.agents/graph.md`](../../../.agents/graph.md) and
+[`.agents/state.schema.json`](../../../.agents/state.schema.json). Those are
+read by the dispatcher script itself and by the agents it invokes, not
+duplicated here — so there is nothing here to follow "in spirit" instead of
+actually running.
+
+## If the `Workflow` tool is unavailable
+
+Some harnesses (or Claude Code with Dynamic Workflows toggled off in
+`/config`) have no `Workflow` tool at all. Only in that case, fall back to
+manually driving `.agents/graph.md`'s node/edge table yourself as the
+dispatcher: read `production_artifacts/state.json`, decide the next node
+per the edge predicates, invoke exactly that one agent, and repeat. Never
+let one agent's output instruct another agent directly — that hand-off
+pattern is the thing `.agents/graph.md` (F-17) rules out.

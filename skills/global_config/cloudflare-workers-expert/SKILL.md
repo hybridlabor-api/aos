@@ -1,6 +1,7 @@
 ---
 name: cloudflare-workers-expert
 description: "Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage."
+category: library
 risk: safe
 source: community
 date_added: "2026-02-27"

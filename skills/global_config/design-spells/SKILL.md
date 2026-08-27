@@ -1,6 +1,7 @@
---- 
+---
 name: design-spells
-description: Curated micro-interactions and design details that add "magic" and personality to websites and apps.
+description: "Use when adding curated micro-interactions, delightful animations, and subtle design details that add magic and personality to web and mobile apps."
+category: design-ui-ux
 risk: safe
 source: community
 date_added: "2026-03-07"
@@ -39,3 +40,30 @@ Trigger this skill when:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+Focuses on micro-interactions and motion design that elevate the user experience through subtle feedback and delight.
+
+## Core Process
+1. Identify the trigger and intent of the micro-interaction.
+2. Apply the animation using approved motion curves.
+3. Verify performance to ensure 60fps execution.
+4. Ensure the animation respects `prefers-reduced-motion`.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll skip the animation, it's too subtle to matter. | Micro-interactions are what separate good apps from great ones; they provide critical feedback. |
+| A simple hover color change is enough. | Missing the opportunity to guide the user's focus and provide satisfying tactile feedback. |
+| I don't need to consider accessibility for this visual effect. | Animations must respect 'prefers-reduced-motion' to avoid causing user distress. |
+
+## Red Flags
+- Adding animations that do not respect reduced-motion settings.
+- Overusing complex animations that distract from the main user goal.
+- Implementing micro-interactions without verifying performance (jank).
+
+## Verification
+- [ ] Animations check for `prefers-reduced-motion`.
+- [ ] Frame rates remain stable during the micro-interaction.
+- [ ] The interaction enhances feedback rather than just being decorative.

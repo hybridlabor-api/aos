@@ -1,6 +1,7 @@
 ---
 name: godmode-ui-ux
-description: "BDB UI/UX Godmode. The authoritative design skill for all frontend work. Enforces Brand Discovery, contextual Anti-Slop rules, DTCG design tokens, fluid motion physics, enterprise accessibility, and data-driven design generation across all agent harnesses."
+description: "Use when acting as the authoritative design lead for all frontend work, enforcing brand discovery, Anti-Slop rules, DTCG design tokens, fluid motion, and data-driven design generation."
+category: design-ui-ux
 ---
 
 # BDB UI/UX Godmode
@@ -124,3 +125,34 @@ Silently validate ALL code against this before presenting to user:
 - Claude Code: reads via CLAUDE.md
 - Antigravity: natively enforced
 - MediaStorm: extends to TouchDesigner/Unreal operator panels via /bdbmediastorm
+
+
+## Overview
+Master orchestration skill for UI/UX design, enforcing high-agency design taste and system consistency.
+
+## When to Use
+- Triggered when acting as the primary design authority on a frontend project.
+- Exclude when performing pure backend or DevOps tasks.
+
+## Core Process
+1. Analyze the requested UI against StyleSeed guidelines.
+2. Ensure all spacing and colors utilize DTCG design tokens.
+3. Implement explicit loading, error, and empty states.
+4. Apply fluid motion physics for interactions.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll just add this one CSS override to make it fit. | Violates design tokens and creates inconsistent UI; use the designated token. |
+| We don't need a loading state here, it's fast. | Network latency varies; missing feedback states cause perceived unresponsiveness. |
+| I'll skip the dark mode check since the primary brand is light. | Incomplete dark mode breaks the app for users relying on system preferences. |
+
+## Red Flags
+- Hardcoded hex colors or arbitrary pixel values in new components.
+- Absence of loading/error states in newly implemented features.
+- Ignoring motion physics and using linear CSS transitions.
+
+## Verification
+- [ ] All spacing and colors use DTCG design tokens.
+- [ ] Loading and error states are explicitly handled.
+- [ ] Motion transitions follow the fluid motion physics guidelines.

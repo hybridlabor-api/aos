@@ -1,6 +1,7 @@
 ---
 name: threejs-skills
 description: "Create 3D scenes, interactive experiences, and visual effects using Three.js. Use when user requests 3D graphics, WebGL experiences, 3D visualizations, animations, or interactive 3D elements."
+category: media-eventtech
 risk: safe
 source: "https://github.com/CloudAI-X/threejs-skills"
 date_added: "2026-02-27"
@@ -718,3 +719,34 @@ Three.js r183 + Vite
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+This skill dictates the systematic creation of high-quality 3D scenes, WebGL visualizations, and interactive particle systems using modern Three.js (r183+).
+
+## Core Process
+1. Initialize the Three.js scene, camera, and WebGL/WebGPU renderer with correct color space settings.
+2. Construct the required geometries, materials, and lighting arrays.
+3. Set up the animation loop using `renderer.setAnimationLoop()` and `THREE.Timer`.
+4. Implement responsive window resize handlers and explicit object disposal for memory management.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I'll use requestAnimationFrame, it's standard." | `renderer.setAnimationLoop()` is required for WebXR compatibility and modern Three.js apps. |
+| "I don't need to dispose of geometries, the garbage collector will get them." | Three.js requires explicit `.dispose()` calls for geometries and materials to prevent WebGL memory leaks. |
+| "I'll use `THREE.Clock` for the animation delta." | `THREE.Timer` is recommended in r183+ as it correctly pauses when the tab is hidden. |
+
+## Red Flags
+
+- Using outdated `outputEncoding` instead of `outputColorSpace`.
+- Forgetting to add window resize event listeners.
+- Creating lit materials (Standard/Phong) without adding ambient or directional lights to the scene.
+
+## Verification
+
+- [ ] The animation loop uses `renderer.setAnimationLoop()`.
+- [ ] `THREE.Timer` is used instead of `THREE.Clock` for delta time.
+- [ ] The renderer has `outputColorSpace = THREE.SRGBColorSpace` configured.
+

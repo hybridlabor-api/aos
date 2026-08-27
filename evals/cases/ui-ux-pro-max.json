@@ -1,0 +1,30 @@
+{
+  "skill_name": "ui-ux-pro-max",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Choose an accessible color palette and typography for the new app.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Design the end-to-end UX for the new reporting module.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Review the overall high-fidelity mockups for UX consistency.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Add a bounce animation to the modal opening.",
+        "owner": "design-spells"
+      },
+      {
+        "prompt": "Scaffold the basic component structure for a button.",
+        "owner": "ui-component"
+      }
+    ]
+  },
+  "evals": []
+}

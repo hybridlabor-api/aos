@@ -1,0 +1,30 @@
+{
+  "skill_name": "tailwind-patterns",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Convert this custom CSS into Tailwind v4 utility classes.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Configure container queries in the Tailwind config.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Refactor this component to use semantic Tailwind colors.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Design a progressive disclosure flow for settings.",
+        "owner": "ux-flow"
+      },
+      {
+        "prompt": "Implement the loading skeleton for the dashboard.",
+        "owner": "ux-feedback"
+      }
+    ]
+  },
+  "evals": []
+}

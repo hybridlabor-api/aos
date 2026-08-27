@@ -1,6 +1,7 @@
 ---
 name: bdbmediastorm
-description: The master ideation and brainstorming engine for live shows, show-control, and event technology. Orchestrates multi-agent technical planning focused on hardware constraints, signal routing, protocols (OSC, Art-Net, DMX, MIDI, SMPTE), TouchDesigner, Resolume, and grandMA3.
+description: "Use when brainstorming or planning live event technology, show control, and real-time media systems (TouchDesigner, Resolume, grandMA3)."
+category: media-eventtech
 ---
 
 # ⚡ BDB MediaStorm: Live Show & Event-Tech Ideation Engine
@@ -77,3 +78,38 @@ Define hardware and software nodes as strict bounded contexts:
 2. **Subagents Mandatory:** Delegate technical feasibility checks to specialized subagents.
 3. **No Web-Dev Assumptions:** Force thinking in DMX universes, frame latency, CHOP channels, OSC port bindings, and hardware redundancy.
 4. **Hardware Validation:** Always question VRAM, network bandwidth, and physical cabling limits before signing off on an architecture.
+
+
+## Overview
+BDB MediaStorm is the master ideation and brainstorming engine for live show-control and event technology, focusing strictly on hardware constraints, signal routing, and protocol topologies.
+
+## When to Use
+- **Trigger:** The user asks to plan a live show, design a hardware topology, or route signals (OSC, DMX, Art-Net) between media servers.
+- **Exclude:** Do not use for generating video timelines or 3D meshes.
+
+## Core Process
+1. Run an interactive `/grill-me` session to challenge assumptions about protocols, hardware, and bandwidth.
+2. Scaffold foundational files (`agent.md`, `signal-flow.md`, `network-patch.json`).
+3. Generate a strict Mermaid.js signal flow diagram mapping all protocols.
+4. Document a main/backup redundancy and failover matrix.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "We can just run NDI over the venue's Wi-Fi for testing." | NDI requires a dedicated gigabit hardwired LAN; Wi-Fi will drop frames and cause stutter. |
+| "A 60fps UI is fine, we don't need a strict lock." | Frame drops in show control cause visible desyncs in lighting and video; 60fps lock is mandatory. |
+| "I'll skip the blackout macro, it's just a small show." | Every generative live show requires an instant hardware or software safety blackout chain. |
+
+## Red Flags
+
+- Recommending generative video tools (TRELLIS, OpenMontage) during the planning phase.
+- Failing to ask about GPU VRAM or network bandwidth limits.
+- Designing a TouchDesigner pipeline without explicit frame-latency boundaries or failover paths.
+
+## Verification
+
+- [ ] `/grill-me` session was completed with answers regarding protocols and bandwidth.
+- [ ] Output includes a Mermaid.js signal flow diagram.
+- [ ] A dedicated failover/blackout mechanism is documented.
+

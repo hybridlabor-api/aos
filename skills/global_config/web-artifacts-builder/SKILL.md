@@ -1,6 +1,7 @@
 ---
 name: web-artifacts-builder
 description: "To build powerful frontend claude.ai artifacts, follow these steps:"
+category: library
 risk: unknown
 source: community
 date_added: "2026-02-27"

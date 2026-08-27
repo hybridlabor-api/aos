@@ -1,0 +1,30 @@
+{
+  "skill_name": "godmode-shipping",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Execute the standard godmode-shipping workflow.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Run the godmode-shipping tasks.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Please apply the godmode-shipping skill.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Plausible near-miss that should not route here.",
+        "owner": "unknown"
+      },
+      {
+        "prompt": "Another plausible near-miss request.",
+        "owner": "unknown"
+      }
+    ]
+  },
+  "evals": []
+}

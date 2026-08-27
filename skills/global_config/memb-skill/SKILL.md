@@ -1,6 +1,7 @@
 ---
 name: memb-skill
-description: "BDB local-first long-term memory engine (memB). Query, remember, and adapt preferences, code architectures, and developer patterns across tasks."
+description: BDB local-first long-term memory engine (memB). Use when querying, remembering, or adapting preferences, code architectures, and developer patterns across tasks.
+category: bdb-core
 risk: low
 source: bdb
 date_added: "2026-07-11"
@@ -101,3 +102,34 @@ Example command structure (replace `<PLATFORM_DIR>` with the correct path discov
 1.  **Task Start (Context Loading):** If `God_Mode.md` shows the project exists, read its Hubs. If you need highly specific snippets, use the `search_memory` MCP tool to query the vector DB.
 2.  **Execution:** Proceed with coding, applying the retrieved styles and preferences.
 3.  **Task End (Knowledge Capture):** If you resolved a complex setup bug or the user specified a new preference, run `add_memory` to persist it.
+
+## 1. Overview
+This skill provides domain-specific logic and rules for its respective BDB pipeline component to ensure standardization across multi-agent workflows.
+
+## 2. When to Use
+- Use when specifically requested by the user or triggered by an orchestration agent.
+- Use when the current task aligns with the skill's domain.
+- Exclude when standard tool execution is sufficient.
+
+## 3. Core Process
+1. Read the provided context and ensure preconditions are met.
+2. Run the required script or tool and confirm the state change.
+3. Verify exit codes, file modifications, or DB counts to guarantee success before reporting completion.
+
+## 4. Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| "The code change was small, so I skipped updating OpenWiki docs." | Every state change must be reflected in the relevant system records. |
+| "The ingest script exited without an error, so the memB index must be updated." | Silent failures happen; explicit verification of the side effect is mandatory. |
+| "I'll let the /startcycle proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
+| "I trust the cached agent registry instead of rescanning after a skill change." | Caches stale out quickly; explicit rescans prevent ghost failures. |
+
+## 5. Red Flags
+- Bypassing the verification step after a script execution.
+- Proceeding to the next pipeline stage without confirming the previous stage's side effects.
+- Ignoring domain-specific constraints listed in this skill.
+
+## 6. Verification
+- [ ] Verified script exit codes are explicitly checked.
+- [ ] Confirmed target files or database records reflect the expected change.
+- [ ] Ensured no silent failures were ignored before reporting success.

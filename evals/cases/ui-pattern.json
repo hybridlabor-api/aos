@@ -1,0 +1,30 @@
+{
+  "skill_name": "ui-pattern",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Create a reusable data grid pattern for the admin panel.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Build a standard checkout form pattern with validation.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Design a responsive masonry layout pattern for images.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Design a specific micro-interaction for the like button.",
+        "owner": "design-spells"
+      },
+      {
+        "prompt": "Add an empty state to the inbox component.",
+        "owner": "ux-feedback"
+      }
+    ]
+  },
+  "evals": []
+}

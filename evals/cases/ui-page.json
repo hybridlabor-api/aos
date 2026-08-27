@@ -1,0 +1,30 @@
+{
+  "skill_name": "ui-page",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Scaffold the new user settings page.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Build the layout for the analytics dashboard view.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Create a mobile-first product detail page.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Create a reusable card component pattern.",
+        "owner": "ui-pattern"
+      },
+      {
+        "prompt": "Audit the checkout flow for friction points.",
+        "owner": "ux-persuasion-engineer"
+      }
+    ]
+  },
+  "evals": []
+}

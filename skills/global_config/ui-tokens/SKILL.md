@@ -1,7 +1,7 @@
 ---
 name: ui-tokens
-description: "List, add, and update StyleSeed design tokens while keeping JSON sources, CSS variables, and dark-mode values in sync."
-category: design
+description: "Use when listing, adding, or updating StyleSeed design tokens, keeping JSON sources, CSS variables, and dark-mode values perfectly in sync."
+category: design-ui-ux
 risk: safe
 source: community
 source_repo: bitjaru/styleseed
@@ -71,3 +71,27 @@ Return:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Core Process
+1. Identify the need for a new token and ensure an existing semantic token doesn't already fit.
+2. Update the master JSON token source.
+3. Generate or manually update the corresponding CSS variables.
+4. Explicitly define and verify the corresponding dark-mode token values.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll just add the CSS variable directly without updating the JSON. | Desyncs the token source of truth, breaking multi-platform tooling. |
+| I don't need to define a dark mode equivalent for this specific color. | Incomplete token definitions cause random bright spots in dark mode. |
+| I'll create a new token for this one-off color. | Bloats the design system; semantic tokens should be reused whenever possible. |
+
+## Red Flags
+- CSS variables and JSON token sources are out of sync.
+- Missing dark mode definitions for new color tokens.
+- Creating highly specific, non-reusable tokens instead of semantic ones.
+
+## Verification
+- [ ] Token is defined in both the JSON source and CSS variables.
+- [ ] Dark mode values are explicitly set and verified.
+- [ ] Token naming follows the established semantic conventions.

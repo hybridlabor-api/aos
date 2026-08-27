@@ -3,6 +3,7 @@ name: firecrawl-build
 description: >-
   Integrate Firecrawl into product code for web scraping, crawling, searching, and interaction.
   Use this skill when an application needs to access web data, extract content, or automate web interactions.
+category: library
 allowed-tools:
   - Bash(firecrawl *)
   - Bash(npx firecrawl *)

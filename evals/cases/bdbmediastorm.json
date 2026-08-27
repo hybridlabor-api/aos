@@ -1,0 +1,30 @@
+{
+  "skill_name": "bdbmediastorm",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "I need to plan the signal routing for a live show using TouchDesigner and grandMA3 over Art-Net.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Let's brainstorm a hardware failover topology for our upcoming media server deployment.",
+        "top_k": 3
+      },
+      {
+        "prompt": "How should I route OSC from my lighting console to trigger video clips in Resolume?",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Can you generate a 3D mesh of a stage truss?",
+        "owner": "godmode-3d-creation"
+      },
+      {
+        "prompt": "I need to edit a video timeline for the promo clip.",
+        "owner": "godmode-media-creation"
+      }
+    ]
+  },
+  "evals": []
+}

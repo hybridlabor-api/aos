@@ -1,0 +1,30 @@
+{
+  "skill_name": "bdbsaashost",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Create a new Incus staging container on the primary compute node.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Check the status of the FastMCP remote gateway and list all approvals.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Approve the pending deletion in the 4-Eyes queue and remove the old node.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Teach me how the SaaS host engine works.",
+        "owner": "bdbsaastraining"
+      },
+      {
+        "prompt": "Run a health audit on the NPM packages for the ecosystem.",
+        "owner": "bdb-ecosystem-health"
+      }
+    ]
+  },
+  "evals": []
+}

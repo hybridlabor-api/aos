@@ -137,20 +137,23 @@ The structured lifecycle enforces quality, deterministic verification, and autom
                                              ▼
                       ┌─────────────────────────────────────────────┐
                       │ 4. KONTEXT-ABRUF FÜR NEUE AGENTEN            │
-                      │    • agent.md / CLAUDE.md ──▶ .openwiki      │
+                      │    • AGENTS.md / CLAUDE.md ──▶ .openwiki      │
                       │    • search_memory Tool ──▶ memB             │
                       └──────────────────────────────────────────────┘
 ```
 
 ### 🚀 Autonomous Multi-Agent Macro: `/startcycle`
-Triggers prompt-less, end-to-end execution of the 6-stage lifecycle using the 5-agent team:
-1. **`Planner_Orchestrator`**: Ingests requirements, breaks down tasks ➔ `production_artifacts/00_execution_plan.md`.
-2. **Parallel Streams**:
+Dispatcher-mediated graph (v2) using a 7-agent team — see `.agents/graph.md`
+and `.agents/state.schema.json` for the full contract (state schema, node
+table, edge predicates). Summary:
+1. **`Architect`** → **`TechLead`**: goal ➔ plan ➔ capability-map approval, written to `production_artifacts/state.json` / `00_execution_plan.md`.
+2. **Build nodes** (dispatcher-invoked independently, not chained):
    - `Godmode_UI_UX`: Frontend & design token styling ➔ `production_artifacts/01_frontend_spec.md`.
    - `Godmode_Engineering`: DDD models, APIs, and schemas ➔ `production_artifacts/02_backend_schema.md`.
    - `Godmode_Media_EventTech`: TouchDesigner, Unreal, DaVinci, DMX ➔ `production_artifacts/03_media_pipeline.md`.
-3. **`Godmode_Shipping`**: Automated testing, linting, WCAG, and SEO audit ➔ `production_artifacts/04_release_report.md`.
-4. **Knowledge Loop (`/ship`)**: Automatic documentation sync with `openwiki-skill` and SQLite vector indexing with `memb-ingest`.
+3. **`Reviewer`**: adversarial review of build output against the plan's contract ➔ `state.findings`, with a repair loop back to the owning build node on any blocking finding.
+4. **`Godmode_Shipping`**: automated testing, linting, WCAG, and SEO audit gate ➔ `production_artifacts/04_release_report.md`. Ships only with all gates green and a `GO`.
+5. **Knowledge Loop (`/ship`)**: automatic documentation sync with `openwiki-skill` and SQLite vector indexing with `memb-ingest`.
 
 ---
 

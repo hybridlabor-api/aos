@@ -1,0 +1,30 @@
+{
+  "skill_name": "ui-review",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Review this pull request for design system compliance.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Audit the newly merged component for mobile spacing issues.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Check the implementation of the new form pattern for UI inconsistencies.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Create a new color token for the warning state.",
+        "owner": "ui-tokens"
+      },
+      {
+        "prompt": "Audit the overall user flow of the onboarding sequence.",
+        "owner": "ux-audit"
+      }
+    ]
+  },
+  "evals": []
+}

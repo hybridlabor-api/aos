@@ -1,6 +1,7 @@
 ---
 name: tdd-workflow
 description: "Test-Driven Development workflow principles. RED-GREEN-REFACTOR cycle."
+category: engineering-method
 risk: unknown
 source: community
 date_added: "2026-02-27"

@@ -1,6 +1,8 @@
 ---
 name: bdbsaastraining
-description: Interaktiver, workload-adaptiver Hands-On Trainings-Skill für die BDB SaaS Host Engine. Führt jeden neuen Mitarbeiter, Entwickler oder Consultant über ein Workload-Interview (Station 0) in eine passende Trainingsspur (AI-Agent Sandbox, WordPress/Web, Mailserver, Clean Debian oder ein selbst beschriebenes Custom-Profil) und dann Schritt für Schritt durch SSH 2FA, Incus Profile Engineering, Deployment, FastMCP 4-Augen-Guardrails und Routing. Stellt nach bestandener Prüfung ein Dark-Mode PDF-Zertifikat aus.
+description: Use when onboarding or training staff on the BDB SaaS Host Engine. Guides trainees via interactive workloads (WordPress, mail, agents) through SSH 2FA, Incus, and FastMCP guardrails, culminating in a PDF certificate.
+category: saas-ops
+disable-model-invocation: true
 ---
 
 # 🥋 BDB SaaS Host Universal Administrator Bootcamp (`/bdbsaastraining`)
@@ -10,6 +12,38 @@ Wenn dieser Skill über `/bdbsaastraining` oder eine Aufforderung zum SaaS-Host-
 Der Skill ist **workload-adaptiv**: Station 0 ermittelt, *was* der Trainee tatsächlich auf der Plattform betreiben will. Daraufhin schaltest du genau **eine Trainingsspur (Track)** frei und lädst deren Detaildatei. Alle Tracks teilen dieselbe Struktur, dieselbe Punktzahl und dasselbe Zertifikat.
 
 ---
+
+## Overview
+Interactive, workload-adaptive hands-on training skill for the BDB SaaS Host Engine. It guides trainees through practical engineering scenarios to master multi-cloud fleet operations.
+
+## When to Use
+* **Use when** a new developer, employee, or agent needs onboarding to the BDB fleet.
+* **Use when** the `/bdbsaastraining` command is invoked.
+* **Do NOT use when** performing actual production changes; this is strictly for training.
+
+## Core Process
+1. Run Station 0 to interview the trainee and determine their target workload (e.g., WordPress, mailserver).
+2. Execute the preflight check script to validate CA and SSH setups.
+3. Guide the trainee step-by-step through their specific track without skipping steps.
+4. Administer the final exam and generate a PDF certificate upon passing.
+
+## Common Rationalizations
+| Rationalization | Reality |
+| :--- | :--- |
+| "The trainee already knows Docker, so we can skip Incus profile engineering." | Incus has different security paradigms (e.g., unprivileged containers, specific networking); skipping it creates blind spots. |
+| "I'll just accept their plain text answer for the exam instead of forcing a multiple-choice selection." | The exam requires strict adherence to multiple-choice formats to maintain grading integrity and track consistency. |
+| "The preflight check failed, but I'll let them proceed anyway to save time." | Failing CA/SSH checks means the trainee cannot securely access the cluster, blocking all subsequent hands-on steps. |
+
+## Red Flags
+* Skipping Station 0 and directly providing SSH commands.
+* Giving the trainee the answers to the exam questions rather than letting them solve them.
+* Accepting a failed preflight check without enforcing the corresponding fix.
+
+## Verification
+- [ ] Trainee workload track has been explicitly recorded.
+- [ ] Preflight script executed with exit code `0`.
+- [ ] Final exam scored with a minimum of 80% passing grade.
+- [ ] PDF certificate generated and presented to the trainee.
 
 ## 🎯 Didaktische Leitphilosophie (gilt in jedem Track)
 

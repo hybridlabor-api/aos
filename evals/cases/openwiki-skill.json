@@ -1,0 +1,30 @@
+{
+  "skill_name": "openwiki-skill",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Execute the standard openwiki-skill workflow.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Run the openwiki-skill tasks.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Please apply the openwiki-skill skill.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Plausible near-miss that should not route here.",
+        "owner": "unknown"
+      },
+      {
+        "prompt": "Another plausible near-miss request.",
+        "owner": "unknown"
+      }
+    ]
+  },
+  "evals": []
+}

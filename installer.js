@@ -611,6 +611,30 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
     });
 }
 
+// A top-level entry under skills/ is either a leaf skill (its own SKILL.md
+// directly inside -- e.g. skills/bdbrainstorm/) or a container of multiple
+// leaf skills (e.g. skills/global_config/, skills/basic/,
+// skills/workspace_agents/). copyDirRecursiveSync(source, target) copies
+// source's CONTENTS into target -- it never nests under
+// target/basename(source). That's correct for a container (its children are
+// already properly-named skill dirs) but wrong for a leaf skill, whose
+// SKILL.md needs to land at target/<dirName>/SKILL.md, not loose at
+// target/SKILL.md. Getting this wrong doesn't just misplace one skill: every
+// root-level leaf skill dumps into the same flat target, so each subsequent
+// one silently overwrites the previous one's SKILL.md -- found by tracing
+// why skills/bdbrainstorm/ and skills/global_config/bdbrainstorm/ both
+// existed with different content; the root-level one (and 5 siblings:
+// bdbsaastraining, github-repo, memb-ingest, bdb-dev-os-skill,
+// synapse-integration-skill) never survived a global sync intact.
+function syncSkillEntry(fullPath, dirName, targetSkillDir, excludeSkills) {
+    const isLeafSkill = fs.existsSync(path.join(fullPath, 'SKILL.md'));
+    if (isLeafSkill) {
+        copyDirRecursiveSync(fullPath, path.join(targetSkillDir, dirName), excludeSkills);
+    } else {
+        copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
+    }
+}
+
 function installStep(what, fn, hint) {
     try {
         return { ok: true, value: fn() };
@@ -648,7 +672,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
                 if (dir === 'global_legacy' || dir === 'workspace_agents') continue;
                 const fullPath = path.join(skillsBase, dir);
                 if (!fs.statSync(fullPath).isDirectory()) continue;
-                copyDirRecursiveSync(fullPath, dest, excludeSkills);
+                syncSkillEntry(fullPath, dir, dest, excludeSkills);
             }
             log.step(`Synced BDB skills to ${dest}`);
         } catch (e) {
@@ -1814,6 +1838,127 @@ async function installMcpsForTarget(paths, ctx) {
     }
 }
 
+// Single source of truth for parsing .agents/agents.md into structured agent
+// records. Used by every compiler (Claude Code, OpenCode, Antigravity) so a
+// format change only needs a fix in one place. Requires a "- **Role**:" field
+// to treat a "## " block as an agent -- this is what excludes trailing
+// non-agent sections like "## Context Boot Sequence" from being compiled as
+// a bogus agent (previously the Antigravity-only inline parser had no such
+// guard). Name extraction strips any leading non-word characters (emoji,
+// spaces) rather than matching the first alphanumeric run anywhere in the
+// block, so it can't accidentally pick up a word from prose if the heading
+// format changes.
+function parseAgentsMd(content) {
+    const blocks = content.split(/\n## /).slice(1);
+    const agents = [];
+    for (const raw of blocks) {
+        const headingLine = raw.split('\n')[0];
+        const name = headingLine.replace(/^[^\w]+/, '').trim().split(/\s+/)[0];
+        if (!name) continue;
+
+        const roleMatch = raw.match(/-\s*\*\*Role\*\*:\s*(.+)/);
+        if (!roleMatch) continue; // not an agent block
+
+        const modelMatch = raw.match(/-\s*\*\*Model\*\*:\s*(.+)/);
+        const outputMatch = raw.match(/-\s*\*\*Output Artifacts?\*\*:\s*(.+)/);
+
+        const extractListAfter = (label) => {
+            const re = new RegExp(`-\\s*\\*\\*${label}\\*\\*:\\s*\\n((?:[ \\t]+-.*\\n?)*)`, 'm');
+            const m = raw.match(re);
+            if (!m) return [];
+            return m[1]
+                .split('\n')
+                .map((l) => l.trim())
+                .filter((l) => l.startsWith('-'))
+                .map((l) => l.replace(/^-\s*/, '').replace(/`/g, '').trim())
+                .filter(Boolean);
+        };
+
+        agents.push({
+            name,
+            role: roleMatch[1].trim(),
+            model: modelMatch ? modelMatch[1].trim() : null,
+            skills: extractListAfter('Primary Skills'),
+            mcpServers: extractListAfter('MCP Servers'),
+            output: outputMatch ? outputMatch[1].trim() : null,
+            systemPrompt: raw.trim(),
+        });
+    }
+    return agents;
+}
+
+// A role description is free text that may contain ": " (colon-space), which
+// breaks an unquoted YAML plain scalar the moment a future role happens to
+// use it (e.g. "Reviews: what changed"). Double-quoting defensively, with the
+// two characters that would break a double-quoted scalar escaped, costs
+// nothing when it's not needed and avoids a silent frontmatter-parse failure
+// when it is.
+function yamlQuote(str) {
+    return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
+}
+
+// Generates .claude/agents/<name>.md — Claude Code's native subagent format.
+// Only frontmatter fields confirmed against code.claude.com/docs/en/sub-agents
+// are emitted (name, description, model). `tools:`/`permission`-style
+// allowlists are deliberately omitted rather than guessed from the MCP-server
+// list -- an unverified mapping there would silently over- or under-scope a
+// subagent's tool access, which is worse than inheriting the default set.
+function compileClaudeAgents(agents, targetDir) {
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const a of agents) {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        const model = a.model ? a.model.toLowerCase() : 'inherit';
+        const body = [
+            a.role,
+            a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
+            a.mcpServers.length ? `**MCP servers used:** ${a.mcpServers.join(', ')}` : null,
+            a.output ? `**Output artifact(s):** ${a.output}` : null,
+        ].filter(Boolean).join('\n\n');
+
+        const frontmatter = [
+            '---',
+            `name: ${slug}`,
+            `description: ${yamlQuote(a.role)}`,
+            `model: ${model}`,
+            '---',
+            '',
+        ].join('\n');
+
+        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
+    }
+}
+
+// Generates .opencode/agents/<name>.md. Only `description` and `mode` are
+// emitted -- confirmed fields per opencode.ai/docs/agents. `model` and
+// `permission` are left unset: OpenCode's model-id format and its mapping
+// from an MCP-server list to `permission` keys are not verified against its
+// docs, so guessing either would risk emitting a value OpenCode silently
+// can't resolve. `mode: subagent` is used for every generated agent, since
+// none of these five is meant to be a primary/default agent a user talks to
+// directly.
+function compileOpenCodeAgents(agents, targetDir) {
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const a of agents) {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        const body = [
+            a.role,
+            a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
+            a.mcpServers.length ? `**MCP servers used:** ${a.mcpServers.join(', ')}` : null,
+            a.output ? `**Output artifact(s):** ${a.output}` : null,
+        ].filter(Boolean).join('\n\n');
+
+        const frontmatter = [
+            '---',
+            `description: ${yamlQuote(a.role)}`,
+            'mode: subagent',
+            '---',
+            '',
+        ].join('\n');
+
+        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
+    }
+}
+
 function injectHarnessRules() {
     const geminiMdSrc = path.join(srcDir, 'GEMINI.md');
     const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
@@ -1852,42 +1997,63 @@ function injectHarnessRules() {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
                     if (!fs.existsSync(agyAgentsDir)) fs.mkdirSync(agyAgentsDir, { recursive: true });
 
-                    const agentBlocks = agentsMdContent.split('## ').slice(1);
-                    for (const block of agentBlocks) {
-                        const nameMatch = block.match(/([A-Za-z0-9_]+)/);
-                        if (nameMatch) {
-                            const name = nameMatch[1];
-                            const descMatch = block.match(/- \*\*Role\*\*: (.*)/);
-                            const role = descMatch ? descMatch[1] : 'BDB Agent';
-
-                            const agentConfig = {
-                                name: name,
-                                description: role,
-                                enable_write_tools: true,
-                                enable_subagent_tools: true,
-                                enable_mcp_tools: true,
-                                system_prompt: block,
-                                _comment: "Auto-compiled from AGENTS.md by installer.beta.js"
-                            };
-
-                            fs.writeFileSync(path.join(agyAgentsDir, `${name}.json`), JSON.stringify(agentConfig, null, 2));
-                        }
+                    const agents = parseAgentsMd(agentsMdContent);
+                    for (const a of agents) {
+                        const agentConfig = {
+                            name: a.name,
+                            description: a.role,
+                            enable_write_tools: true,
+                            enable_subagent_tools: true,
+                            enable_mcp_tools: true,
+                            system_prompt: a.systemPrompt,
+                            _comment: "Auto-compiled from AGENTS.md by installer.js"
+                        };
+                        fs.writeFileSync(path.join(agyAgentsDir, `${a.name}.json`), JSON.stringify(agentConfig, null, 2));
                     }
                     log.step(`Compiled AGENTS.md to native Antigravity subagents in ${agyAgentsDir}`);
                 }
             }, 'Antigravity agents unchanged');
 
+            installStep('compile Claude Code subagents', () => {
+                if (agentsMdContent) {
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const claudeAgentsDir = path.join(homeDir, '.claude', 'agents');
+                    compileClaudeAgents(agents, claudeAgentsDir);
+                    log.step(`Compiled AGENTS.md to Claude Code subagents in ${claudeAgentsDir}`);
+                }
+            }, 'Claude Code agents unchanged');
+
+            installStep('compile OpenCode subagents', () => {
+                if (agentsMdContent) {
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const opencodeAgentsDir = path.join(homeDir, '.opencode', 'agents');
+                    compileOpenCodeAgents(agents, opencodeAgentsDir);
+                    log.step(`Compiled AGENTS.md to OpenCode subagents in ${opencodeAgentsDir}`);
+                }
+            }, 'OpenCode agents unchanged');
+
             const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
             installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
-                if (!claudeContent.includes("Global Agent Instructions")) {
-                    claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
+                // A CLAUDE.md carrying this title is the short, hand-maintained
+                // form (see audit-agents.md F-01): the GO gate lives in a hook,
+                // not in this file's prose, and the /startcycle spec + agent
+                // roster live in their own skill/workflow files, not duplicated
+                // here. Re-appending the old long-form content on every install
+                // would silently undo that diet. Leave it alone.
+                const isManagedShortForm = claudeContent.includes('BDB Agent Skills — Global Instructions');
+                if (isManagedShortForm) {
+                    log.step('CLAUDE.md already uses the short managed form -- leaving it untouched.');
+                } else {
+                    if (!claudeContent.includes("Global Agent Instructions")) {
+                        claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
+                    }
+                    if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
+                        claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
+                    }
+                    fs.writeFileSync(claudeMdPath, claudeContent);
+                    log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
                 }
-                if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
-                    claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
-                }
-                fs.writeFileSync(claudeMdPath, claudeContent);
-                log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
             }, 'CLAUDE.md is unchanged.');
 
             const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');
@@ -1941,7 +2107,7 @@ function injectHarnessRules() {
             harnessDirs.forEach(dir => {
                 const sourcePath = path.join(srcDir, dir);
                 if (fs.existsSync(sourcePath)) {
-                    const targetPath = path.join(currentDir, dir);
+                    const targetPath = path.join(homeDir, dir);
                     copyDirRecursiveSync(sourcePath, targetPath);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
@@ -2354,7 +2520,7 @@ async function runQuickUpdate(installState) {
             } else if (dir === 'workspace_agents') {
                 copyDirRecursiveSync(fullPath, paths.targetWorkspaceDir, excludeSkills);
             } else {
-                copyDirRecursiveSync(fullPath, paths.targetSkillDir, excludeSkills);
+                syncSkillEntry(fullPath, dir, paths.targetSkillDir, excludeSkills);
             }
         }
     }
@@ -2451,6 +2617,7 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
 
     const detectedNames = detections.map(d => d.name).join(', ');
     const platformOptions = [
+        { value: '9', label: 'Local Project Harness', hint: 'copy dispatcher contract to current project' },
         { value: '0', label: '🌐 Universal Agent Harness', hint: detections.length > 0 ? `sync ALL detected: ${detectedNames}` : 'sync across ALL AI platforms' },
         { value: '1', label: 'Google Antigravity', hint: '~/.gemini/config/skills' },
         { value: '2', label: 'Claude Desktop / Claude Code', hint: '~/.claude/skills' },
@@ -2652,7 +2819,7 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
                     } else if (dir === 'workspace_agents') {
                         copyDirRecursiveSync(fullPath, t.targetWorkspaceDir, excludeSkills);
                     } else {
-                        copyDirRecursiveSync(fullPath, t.targetSkillDir, excludeSkills);
+                        syncSkillEntry(fullPath, dir, t.targetSkillDir, excludeSkills);
                     }
                 }
                 log.step(`Installed all global config & core skills to ${t.targetSkillDir}`);
@@ -2682,6 +2849,17 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
     reloadDaemons();
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
 
+    if (tier === '9') {
+        const agentsSrc = path.join(srcDir, '.agents');
+        if (fs.existsSync(agentsSrc)) {
+            const targetAgents = path.join(currentDir, '.agents');
+            copyDirRecursiveSync(agentsSrc, targetAgents);
+            log.success(`Project harness installed to ${targetAgents}`);
+        }
+        outro('Project harness installation complete.');
+        return;
+    }
+    
     if (wantsUniversal) {
         await universalHarnessSync(primaryTarget.mcpConfigPath);
     }

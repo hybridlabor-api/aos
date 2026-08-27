@@ -1,0 +1,30 @@
+{
+  "skill_name": "frontend-dev-guidelines",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Implement data fetching for the user profile component.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Add global state management for the shopping cart.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Set up error boundaries for the new dashboard sections.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Review the visual spacing of the profile page.",
+        "owner": "ui-review"
+      },
+      {
+        "prompt": "Configure Tailwind CSS v4 in the project.",
+        "owner": "tailwind-patterns"
+      }
+    ]
+  },
+  "evals": []
+}

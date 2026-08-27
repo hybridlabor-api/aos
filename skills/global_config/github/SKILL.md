@@ -1,6 +1,7 @@
 ---
 name: github
 description: "Use the `gh` CLI for issues, pull requests, Actions runs, and GitHub API queries."
+category: library
 risk: safe
 source: "Dimillian/Skills (MIT)"
 date_added: "2026-03-25"

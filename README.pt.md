@@ -271,7 +271,7 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 | `bdbmediastorm` | The ultimate creative-tech and show-control brainstorming engine. Orchestrates multi-agent ideation focused on signal flow, hardware constraints, protocols, and BDB MCP integrations. Now strictly governed by the 3 Core Godmodes (engineering, ui-ux, shipping). |
 | `bdbrainstorm` | Combines multi-agent brainstorming, the /grill-me slash command, and the 3 Core Godmodes (godmode-engineering, godmode-ui-ux, godmode-shipping) to force a comprehensive, multi-agent ideation and technical design workflow. |
 | `github-repo` | Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill. |
-| `memb-ingest` | Deep scan and ingest project files (.md, .json, agent.md, .openwiki) and past conversation logs into the local memB vector memory engine. |
+| `memb-ingest` | Deep scan and ingest project files (.md, .json, AGENTS.md, .openwiki) and past conversation logs into the local memB vector memory engine. |
 
 </details>
 
@@ -334,7 +334,7 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 Os agentes de IA seguem este ciclo de vida estruturado, profundamente integrado com a filosofia do **BDBrainstorm** e **BDBMediaStorm**:
 
 - **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Desafiar ideias ativamente ou realizar brainstorming multi-agente de mídia/event-tech. Inicia subagentes especializados (Especialista CI/Design, Arquiteto Real Time, Implementador MCP) para validar hardware, cenografia 3D (Rhino, Blender, Unreal), protocolos (OSC, Art-Net) e compatibilidade MCP.
-- **2. DEFINE & SCAFFOLD (`openwiki-skill`, `github-repo`)**: Confirmar diretório de workspace alvo com o usuário e, em seguida, inicializar autonomamente a documentação do projeto, `agent.md`, estruturas `.openwiki/` e padrões do repositório GitHub.
+- **2. DEFINE & SCAFFOLD (`openwiki-skill`, `github-repo`)**: Confirmar diretório de workspace alvo com o usuário e, em seguida, inicializar autonomamente a documentação do projeto, `AGENTS.md`, estruturas `.openwiki/` e padrões do repositório GitHub.
 - **3. PLAN (`/plan`)**: Criar especificações de design técnico, PRD e planos de implementação arquivo por arquivo, aderindo estritamente aos padrões `ui-ux-pro-max`.
 - **4. BUILD (`/subagents`)**: Desenvolvimento guiado por subagentes. O orquestrador mestre delega tarefas específicas de criação de componentes, patching de nós e refatoração para subagentes independentes.
 - **5. VERIFY & REVIEW (`/review`)**: Realizar revisões de portão de QA, varredura de segredos, suítes de testes unitários e auditorias rígidas de UI/UX ou fluxo de sinal.
@@ -626,12 +626,12 @@ O BDB OS introduz um cérebro de memória semântica local, offline-first totalm
 <summary><strong>⚙️ Como Funciona o Ecossistema (Skills, Vaults & Obsidian)</strong></summary>
 
 ### 1. Ingestion via the `/memb-ingest` Skill
-The ecosystem includes a deeply integrated skill (`/memb-ingest`). When an agent runs this, the `memb_ingest.py` script recursively scans your project (reading `.openwiki`, `agent.md`, transcripts, and architecture files). 
+The ecosystem includes a deeply integrated skill (`/memb-ingest`). When an agent runs this, the `memb_ingest.py` script recursively scans your project (reading `.openwiki`, `AGENTS.md`, transcripts, and architecture files). 
 * **Offline Vector Embeddings:** It bundles a pre-quantized 30MB `all-MiniLM-L6-v2` ONNX model to chunk and store these learnings natively in a fast SQLite vector store (`~/.MemBDB/memb.db`), all without hitting external APIs.
 
 ### 2. Autonomous AI-First Vault Generation
 Once ingestion completes, memB natively generates a **physical Markdown Vault** (`~/.MemBDB/memB_Vault`) structured around a strict "God Mode" radial topology:
-* **Zero-Compute Context:** A universal `agent.md` and a master `God_Mode.md` are written to the root. Small 30MB local inference models can instantly orient themselves macroscopically by reading these physical files without spending context tokens on complex database calls.
+* **Zero-Compute Context:** A universal `AGENTS.md` and a master `God_Mode.md` are written to the root. Small 30MB local inference models can instantly orient themselves macroscopically by reading these physical files without spending context tokens on complex database calls.
 * **Micro-Targeted RAG:** For precise execution, the small LLMs query the vector DB to retrieve just the exact 3-5 sub-files needed.
 
 ### 3. The Obsidian Visualization Plugin

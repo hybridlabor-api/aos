@@ -1,6 +1,7 @@
 ---
 name: git-pr-review
 description: Generate a concise and structured PR description from commit history with minimal token usage
+category: library
 risk: safe
 source: community
 source_type: community

@@ -1,7 +1,7 @@
 ---
 name: ui-review
-description: "Review UI code for StyleSeed design-system compliance, accessibility, mobile ergonomics, spacing discipline, and implementation quality."
-category: design
+description: "Use when reviewing UI code for StyleSeed design-system compliance, accessibility, mobile ergonomics, spacing discipline, and implementation quality."
+category: design-ui-ux
 risk: safe
 source: community
 source_repo: bitjaru/styleseed
@@ -88,3 +88,27 @@ Return:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Core Process
+1. Pull the code and render the UI locally.
+2. Inspect elements to verify the use of exact design tokens for spacing and color.
+3. Test the UI on a simulated mobile device for touch ergonomics.
+4. Run accessibility checks (contrast, ARIA) and test interactive states.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| The UI looks fine in my browser, so I won't check the design tokens. | Visual similarity does not guarantee structural compliance with the design system. |
+| I'll approve this PR; the spacing is off by just 2px. | Small spacing inconsistencies compound, destroying the design system's integrity. |
+| The developer said they tested on mobile, no need for me to check. | Mobile ergonomics must be explicitly verified against StyleSeed standards. |
+
+## Red Flags
+- Approving PRs with hardcoded colors or spacing values.
+- Failing to test interactive states (focus, hover) during the review.
+- Overlooking low contrast ratios or missing ARIA attributes.
+
+## Verification
+- [ ] Code has been audited for hardcoded design values.
+- [ ] Mobile layout and ergonomics have been explicitly verified.
+- [ ] Accessibility requirements (contrast, ARIA) pass standard checks.

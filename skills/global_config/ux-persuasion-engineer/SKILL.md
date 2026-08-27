@@ -1,6 +1,7 @@
 ---
 name: ux-persuasion-engineer
 description: "Behavioral UX specialist applying choice architecture, friction audits, and commitment design to guide users toward intended actions without coercion. Use when optimizing conversion flows, onboarding, or checkout UX."
+category: design-ui-ux
 risk: safe
 source: community
 date_added: "2026-04-04"
@@ -114,3 +115,30 @@ Before finalizing output, the agent asks:
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+Applies behavioral psychology to UX design, optimizing conversions and user commitment ethically.
+
+## Core Process
+1. Analyze the user's decision-making process within the flow.
+2. Implement ethical choice architecture to highlight recommended paths.
+3. Introduce constructive friction before destructive or high-risk actions.
+4. Stage information contextually to avoid analysis paralysis.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll use a dark pattern to trick users into subscribing. | Dark patterns destroy long-term trust and brand reputation; use ethical choice architecture. |
+| We should remove all friction from this flow. | Constructive friction prevents catastrophic errors and increases commitment. |
+| I'll overwhelm them with all product benefits at once. | Information overload causes analysis paralysis; stage information contextually. |
+
+## Red Flags
+- Implementing deceptive UI patterns (e.g., hiding the unsubscribe button).
+- Removing necessary friction before destructive actions.
+- Failing to provide clear default choices to reduce decision fatigue.
+
+## Verification
+- [ ] Persuasion techniques are ethical and avoid dark patterns.
+- [ ] Constructive friction is appropriately applied to high-risk actions.
+- [ ] Choice architecture clearly highlights the recommended path without coercion.

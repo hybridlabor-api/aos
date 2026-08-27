@@ -1,6 +1,7 @@
 ---
 name: product-manager-toolkit
 description: "Essential tools and frameworks for modern product management, from discovery to delivery."
+category: library
 risk: unknown
 source: community
 date_added: "2026-02-27"

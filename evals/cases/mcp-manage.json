@@ -1,0 +1,30 @@
+{
+  "skill_name": "mcp-manage",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "What MCP server should I use to automate Rhino 3D?",
+        "top_k": 3
+      },
+      {
+        "prompt": "Check the available tools for the Unreal Engine MCP.",
+        "top_k": 3
+      },
+      {
+        "prompt": "How do I interact with DaVinci Resolve via MCP?",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Can you design a network protocol topology for Art-Net?",
+        "owner": "bdbmediastorm"
+      },
+      {
+        "prompt": "Help me build a Three.js particle system.",
+        "owner": "threejs-skills"
+      }
+    ]
+  },
+  "evals": []
+}

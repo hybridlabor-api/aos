@@ -1,0 +1,30 @@
+{
+  "skill_name": "design-spells",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Add a subtle bounce effect when the user likes a post.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Create a satisfying micro-interaction for the toggle switch.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Animate the success checkmark drawing itself.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Design the entire user flow for onboarding.",
+        "owner": "ux-flow"
+      },
+      {
+        "prompt": "Create a new button component structure.",
+        "owner": "ui-component"
+      }
+    ]
+  },
+  "evals": []
+}

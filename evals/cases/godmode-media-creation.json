@@ -1,0 +1,30 @@
+{
+  "skill_name": "godmode-media-creation",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Assemble a video timeline with these clips using OpenMontage.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Sync the cuts in this sequence to the 120BPM audio track.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Generate a procedural audio loop in TouchDesigner for my video.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "How do I configure a fallback media server for my live show?",
+        "owner": "bdbmediastorm"
+      },
+      {
+        "prompt": "I need to embed a Spline 3D scene in my React app.",
+        "owner": "spline-3d-integration"
+      }
+    ]
+  },
+  "evals": []
+}

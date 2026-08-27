@@ -1,6 +1,7 @@
 ---
 name: tailwind-patterns
-description: "Tailwind CSS v4 principles. CSS-first configuration, container queries, modern patterns, design token architecture."
+description: "Use when styling components with Tailwind CSS v4, managing CSS-first configurations, writing container queries, or implementing design token architecture."
+category: design-ui-ux
 risk: unknown
 source: community
 date_added: "2026-02-27"
@@ -277,3 +278,30 @@ Use this skill when configuring Tailwind v4, using CSS-first theme and design to
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+
+## Overview
+Expertise in modern Tailwind CSS v4 practices, avoiding bloated markup and utilizing robust configuration.
+
+## Core Process
+1. Map design requirements to existing Tailwind theme variables.
+2. Construct responsive layouts using official breakpoints and container queries.
+3. Refactor repetitive inline classes into component structures (not `@apply`).
+4. Validate that the CSS bundle size remains optimized.
+
+## Common Rationalizations
+| Rationalization | Reality |
+|---|---|
+| I'll use a custom class name instead of utility classes for this complex layout. | Breaks the utility-first paradigm and increases the CSS bundle size. |
+| I'll hardcode the breakpoint pixels instead of using the Tailwind theme. | Hardcoded breakpoints break responsiveness if the design system changes. |
+| I don't need to use arbitrary values, I'll just add a new config entry for this one-off. | Clutters the Tailwind config; arbitrary values are designed for one-offs. |
+
+## Red Flags
+- Overuse of `@apply` in CSS files instead of utility classes in HTML/JSX.
+- Hardcoded color hex codes instead of semantic Tailwind theme colors.
+- Unnecessary nesting or deeply complex CSS files bypassing Tailwind.
+
+## Verification
+- [ ] Styling relies primarily on Tailwind utility classes.
+- [ ] Responsive design uses official theme breakpoints.
+- [ ] Tailwind config remains clean without unnecessary one-off values.
