@@ -1,9 +1,11 @@
 # Agent & Skill Architecture Audit
 
-**Target:** `bdb-dev-optimized-agent-skills` @ `39c7462` (v3.12.0)
-**Date:** 2026-08-27
-**Type:** Read-only structural audit. No code review, no changes applied.
+**Target:** `bdb-dev-optimized-agent-skills` @ `39c7462` (v3.12.0), work continuing on branch `feat/agent-skills-v3.13`
+**Date:** 2026-08-27 (original audit) · updated 2026-08-27 (Phase −1 reference deep-dive)
+**Type:** Read-only structural audit. Findings below informed Phase 0 (dedup + domain tagging, already applied on the branch — see commit `e4036aa`). No further changes applied by this document.
 **Scope:** Skill layer (`SKILL.md`), instruction layer (`CLAUDE.md`, `agent.md`, `GEMINI.md`, `CODEX.md`), agent layer (`.agents/agents.md`, `.roomodes`, `.cursor/rules`), workflow layer (`startcycle`), distribution layer (`installer.js`).
+
+**Count correction:** the original pass below cites 334 SKILL.md / "270 files, 160 unique" — that included vendored third-party MCP repos under `mcps/`. The correct pre-dedup count for this repo's own skills was **257 SKILL.md / 160 unique names**. Post-Phase-0 the tree holds **161 SKILL.md**, each tagged with a `category:` domain (`media-eventtech`, `saas-ops`, `design-ui-ux`, `bdb-core`, `engineering-method`, `library`). Findings below that reference the old counts are left as originally written (they were directionally correct); treat the counts here as current.
 
 ## Reference Baselines
 
@@ -131,28 +133,68 @@ B1 and B3 both treat `description` as the routing signal. Only **28 / 134** desc
 
 ## 3. Findings vs. addyosmani/agent-skills (B3)
 
-B3's anatomy is: **Overview → When to Use → Process → Rationalizations → Red Flags → Verification**, with three tenets: *process over prose*, *anti-rationalization*, *verification mandatory* ("seems right" is never acceptable).
+*Updated after Phase −1 full-text read of `docs/skill-anatomy.md`, `CONTRIBUTING.md`, `AGENTS.md`, and 6 real SKILL.md files. Verbatim quotes below are from that source, not paraphrase.*
+
+B3's exact anatomy (source: `skill-anatomy.md`, framed as *"a recommended pattern, not a rigid template — only frontmatter is strictly required"*):
+
+`Overview → When to Use → Core Process → Techniques → Common Rationalizations (table) → Red Flags → Verification (checkboxes)`
+
+Six writing principles stated verbatim: **Process over knowledge** ("Skills are workflows, not reference docs. Steps, not facts."), **Specific over general**, **Evidence over assumption** ("Every verification checkbox requires proof."), **Anti-rationalization** ("Every skip-worthy step needs a counter-argument in the rationalizations table."), **Progressive disclosure**, **Token-conscious** ("If removing it wouldn't change agent behavior, remove it."). Hard limit: keep `SKILL.md` under 500 lines.
 
 ### F-10 — Missing the enforcement half of the anatomy *(P1)*
 The repo has the descriptive half (`When to Use` 99/134) and almost none of the enforcement half (Rationalizations 2, Red Flags 3, Verification 7). The godmode-* skills are the closest in spirit but state principles rather than executable process with checkpoints.
 
+**Concrete template for Phase 3**, lifted directly from B3's real skills (not invented):
+
+| Section | Format | Real example (from `test-driven-development`, `code-review-and-quality`) |
+|---|---|---|
+| Rationalizations | `\| Rationalization \| Reality \|` table | *"I'll write tests after the code works"* → *"You won't. And tests written after the fact test implementation, not behavior."* / *"It's just a version bump"* → *"A bump is a behavior change you didn't write. Read the changelog; semver doesn't guarantee no breakage."* |
+| Red Flags | bullet list, observable during review | *"'LGTM' without evidence of actual review"* / *"More than 100 lines of code written without running tests"* |
+| Verification | checkbox list, each requiring evidence | `- [ ] The full suite passes, run with the repository's own test command` / `- [ ] Bug fixes include a reproduction test that failed before the fix` |
+
+The **Verification** line is the one that matters most for this repo: the anatomy's own definition is *"the exit criteria... every checkbox should be verifiable with evidence (test output, build result, screenshot, etc.)"* — this is the same requirement as B1's F-02, stated independently by a second source.
+
+**New sub-finding — eval enforcement (not previously known):** B3's `CONTRIBUTING.md` requires every skill to ship `evals/cases/<name>.json` with **≥3 positive triggers, ≥2 negative triggers, ≥1 behavioral eval**, checked in CI across three tiers: structural (frontmatter/naming), trigger/routing (TF-IDF description-similarity check that **errors at ≥75% similarity** between two skills' descriptions — a direct, automatable check for description quality that this repo has no equivalent of), and behavioral (headless `claude -p` run against fixtures). This is the concrete shape for the "Phase 3.5 — skill tests" step in the implementation plan; it is not aspirational, it is CI-enforced in the reference repo.
+
 ### F-11 — No SDLC phase taxonomy *(P2)*
-B3 groups skills into Define / Plan / Build / Verify / Review / Ship. This repo *has* that taxonomy — it is written in `skills/global_config/agent-pipeline/SKILL.md` as the 6-stage BDB pipeline — but it is not reflected in the directory layout or in frontmatter. `category` appears in only 21 / 134 skills, `tags` in 13. Result: with 134 flat skills the router has no phase-level prior.
+B3 groups skills into Define / Plan / Build / Verify / Review / Ship. This repo *has* that taxonomy — it is written in `skills/global_config/agent-pipeline/SKILL.md` as the 6-stage BDB pipeline — but it is not reflected in the directory layout or in frontmatter (partially remedied by Phase 0's `category:` domain tagging, which is an orthogonal axis — domain, not lifecycle phase — so this finding still stands).
+
+Cross-check against B2 (Prompt Library, confirmed in Phase −1): Anthropic's own taxonomy is **5 phases** — `discover / design / build / ship / operate` — not 6. The two schemes are close but not identical: B2 has no separate "Review" phase (folded into `build/Review` as a category, not a phase) and adds `operate` (Debug/Incident/Data/Automate — post-ship work) which the BDB 6-stage pipeline has no equivalent for. Recommendation for Phase 4/5: keep the BDB 6-stage pipeline as the primary taxonomy (it maps cleanly to the 5 agents) but note `operate` as a real gap — none of the 6 stages own post-ship incident/debug work, which is exactly the domain of `godmode-eventtech`'s live-show failure modes (§6 addendum below).
 
 ### F-12 — Command mirroring is one-directional *(P2)*
 B3 ships `.claude/commands/`, `.gemini/commands/` and `commands/` side by side so the same 8 commands exist natively in all three harnesses. This repo ships slash commands only as *documented conventions* inside skill bodies (`/spec`, `/plan`, `/build`, `/test`, `/review`, `/ship`, `/startcycle`) with no command files in any harness directory.
+
+**Confirmed in Phase −1** (previously assumed, now verified byte-for-byte): `.gemini/commands/build.toml` and `commands/build.toml` are **identical**; `.claude/commands/build.md` carries the same numbered steps and the same git-safety rules (baseline `git status --porcelain` check, never `git add -A` blindly, one commit per task) word-for-word, differing only in syntax (Markdown+YAML vs. TOML) and in one convention: Claude's version prefixes skill references with the plugin namespace (`agent-skills:test-driven-development`), the other two use bare names. One filename diverges on purpose — `.claude/commands/plan.md` vs. `commands/planning.toml` — likely to dodge a reserved name in the non-Claude tooling. **Conclusion for Phase 2:** command files should be generated from one canonical source per command, with per-harness syntax adaptation and namespace prefixing as the only allowed variation — exactly the pattern `installer.js` already uses for the Antigravity agent JSON.
+
+### F-17 — Persona-calls-persona is a platform-enforced anti-pattern *(P0 — corrects §6.2)*
+
+**This is the most consequential Phase −1 finding and changes the Phase 4 graph design.**
+
+B3's `references/orchestration-patterns.md` and `docs/agents.md` state a hard rule, quoted verbatim: *"the user (or a slash command) is the orchestrator. Personas do not invoke other personas."* Four anti-patterns are explicitly named and rejected: router persona, persona-calls-persona, paraphrasing sequential orchestrator, deep persona trees. Critically, this is not a style preference — B3 cites it as a **platform constraint**: *"subagents cannot spawn other subagents"* (Anthropic's own Claude Code documentation).
+
+The graph design proposed in §6.2 below — `Architect → TechLead → {UI_UX ∥ Engineering ∥ Media} → Reviewer → Shipping` — was written as if each node could hand off directly to the next, which reads as (and risks being implemented as) agents invoking agents. That is the rejected pattern. §6.2 is corrected below: the **dispatcher stays the main session or a slash command**, never a persona; nodes are leaves that read state, do work, write state, and return — the *routing decision* (which edge fires next) is evaluated by the dispatcher after each return, not delegated into the graph itself.
+
+Secondary finding from the same source: B3 ships a `doubt-driven-development` skill that operationalizes exactly the "Reviewer" node from §6.2 as a concrete process, not a principle. Its core discipline, worth adopting verbatim for our Reviewer node: pass the reviewer **ARTIFACT + CONTRACT only, never the CLAIM or the implementer's reasoning** (biases toward agreement otherwise), use an explicitly adversarial prompt (*"Find what is wrong... Do NOT validate. Do NOT summarize."*), and classify every finding against a fixed precedence order (contract misread → valid+actionable → valid trade-off → noise) with a named failure mode to watch for: **"doubt theater"** — 2+ review cycles producing zero actionable findings means the reviewer is validating, not doubting, and the loop should stop and escalate rather than continue.
 
 ---
 
 ## 4. Findings vs. Prompt Library (B2)
 
+*Updated after Phase −1 full extraction of the page's raw data (52 prompt objects, complete, verified un-truncated).*
+
+Confirmed schema: `{ id, sdlc, cat, roles, prompt, slots?, needs?, paste?, startN?, src, nextHref? }`, joined at render time with a separate `text` dictionary (`title`, `teaches`, `next`) keyed by the same `id`. 52 entries total: `discover` 7, `design` 6, `build` 22 (42% — the largest phase), `ship` 5, `operate` 12.
+
 ### F-13 — No slot-templated prompt assets *(P2)*
-B2 entries are structured records: `{ id, sdlc, cat, roles, prompt, slots, src, nextHref }` — a parameterised prompt with named slots, a phase, target roles, and a link to the next step. The repo contains no equivalent asset. `bdbrainstorm` and `grill-me` produce free-form markdown; `startcycle` consumes it by convention, not by contract.
+B2 entries are structured records with named slots, a phase, target roles, and a link to the next step. The repo contains no equivalent asset. `bdbrainstorm` and `grill-me` produce free-form markdown; `startcycle` consumes it by convention, not by contract. This is the direct upstream cause of F-16: without a typed hand-off record there is nothing for a graph edge to route on.
 
-This is the direct upstream cause of F-16: without a typed hand-off record there is nothing for a graph edge to route on.
+**Confirmed schema details worth adopting for our own slot-templated assets** (e.g. `bdbrainstorm` → `startcycle` hand-off, or any future `/spec`-style prompt library entry):
+- Placeholders are `{word}` (single token, no defaults inline); `slots` is a separate object of the *same keys*, holding example fill-ins — never raw numbers, always strings (`n: '20'`, not `20`), and the UI shows them as editable placeholder text, not literal substitutions.
+- `needs` is a **small closed enum** (`tracker`, `gh`, `browser`, `db`) resolved through a separate label dictionary — a clean way to flag "this prompt needs an external tool/connector" without repeating boilerplate prose in every entry.
+- `paste` is a **separate** closed enum (`mockup`, `design`, `screenshot`, `plan`, `error`, `csv`) — distinct from `slots`: it signals "the user must attach/paste a blob before sending" rather than "fill in this typed field." Worth keeping as two separate concepts if `bdbrainstorm` output ever becomes schema'd.
+- `nextHref` is **not** "read this next" — it is *"graduate this one-off prompt into a durable Claude Code feature"* (a skill, `/goal`, CLAUDE.md/memory, an MCP connector, or a built-in command). E.g. `review-your-changes-before` (a manual review prompt) points to `/en/commands` with the CTA *"Run `/code-review` for the same check in one command."* Direct implication for this repo: `/bdbrainstorm` and `/grill-me` output should point forward to `/startcycle` the same way — "graduate this brainstorm into the pipeline" — which is closer to what already happens, but the *mechanism* (a `nextHref`-style pointer plus a stated CTA) is more explicit than the current prose convention.
 
-### F-14 — No role dimension *(P3)*
-B2 tags prompts by role (`pm`, `design`, …). The repo's 5 agents are roles, but skills are not tagged by which agent should own them — the mapping exists only as a hand-maintained bullet list inside `.agents/agents.md`, which will drift as skills are added.
+### F-14 — No role dimension *(P3, correction: not directly reusable)*
+B2 tags prompts by role — confirmed values: `pm, design, marketing, docs, security, ops, data` (7 roles, ~48% of prompts have none i.e. apply to everyone). **Correction from Phase −1:** these are **human job functions**, not AI-agent-routing targets — a `pm`-tagged prompt is one a product manager would run, not one routed to a "PM agent." This repo's 5 agents (`Godmode_UI_UX`, `_Engineering`, …) are a different axis entirely (which AI persona executes) and B2's `roles` field is not the right vocabulary to reuse for that. The underlying gap stands — skills are not tagged by which agent should own them — but the fix is a repo-specific field (e.g. `agent:` or reuse of Phase 0's `category:` domain tag, which already does most of this job), not an import of B2's `roles` enum.
 
 ---
 
@@ -192,7 +234,9 @@ Also missing relative to the Architect/Tech-Lead/Developer diagram (B5, image 1)
 - **No in-loop feedback edges.** The diagram has two edges back to the user (`In-loop feedback`) and one from Developer back to Architect (`Analyzes and responds to`). `/startcycle` is explicitly branded "zero-prompting" — it has *removed* the human edges that the reference pattern treats as load-bearing.
 - **AI Document as a node, not a substrate.** In the diagram the AI Document *supports the task of* the Developer — a shared artifact both Tech Lead and Developer address. In `/startcycle` the artifacts are one-way drops; no node reads back its own output or another node's revision.
 
-### 6.2 Proposed target contract
+### 6.2 Proposed target contract *(revised per F-17 — see correction below)*
+
+**Correction (F-17):** the version of this section as originally written implied nodes hand off directly to each other (`Architect → TechLead → {...} → Reviewer → Shipping` read as a call chain). Per F-17, that is the platform-rejected persona-calls-persona pattern and, on Claude Code specifically, subagents cannot spawn subagents at all. The graph below keeps the same nodes and edges but makes explicit that **routing is evaluated by a single dispatcher** (the main session, or a slash command like `/startcycle` acting on the user's behalf) after each node returns — the arrows are dispatcher decisions, not node-to-node calls.
 
 The concrete deliverable would be a new `.agents/graph.md` (harness-neutral, plus generated bindings) defining:
 
@@ -209,28 +253,43 @@ iteration: int
 max_iterations: int             # hard stop, harness-enforced
 approvals: [{ node, token: "GO", at }]
 ```
-Markdown artifacts stay as the human-readable payload; `state.json` becomes what edges evaluate.
+Markdown artifacts stay as the human-readable payload; `state.json` becomes what the dispatcher's edge-predicates evaluate.
 
-**Nodes** — 7 instead of 5, splitting Planner into Architect + Tech Lead per B5 and adding an explicit Reviewer (B1's *adversarial review step*, which must be a different context than the one that wrote the code):
+**Nodes** — 7 instead of 5, splitting Planner into Architect + Tech Lead per B5 and adding an explicit Reviewer (B1's *adversarial review step*; per F-17, model it on B3's `doubt-driven-development` discipline — pass it ARTIFACT + CONTRACT only, never the implementer's CLAIM or reasoning, and give it an explicitly adversarial prompt):
 
-`Architect → TechLead → {UI_UX ∥ Engineering ∥ Media} → Reviewer → Shipping`
+`Architect · TechLead · {UI_UX ∥ Engineering ∥ Media} · Reviewer · Shipping` — **each invoked independently by the dispatcher**, never by one another.
 
-**Edges** — every transition gets a predicate:
+**Dispatch loop (replaces the old "hand-off" framing):**
+```
+1. dispatcher invokes Architect        → writes state.plan
+2. dispatcher reads state, invokes TechLead   → writes state.plan.approved
+3. dispatcher evaluates edge: approved? → (yes) step 4 / (no) → back to 1, iteration++
+4. dispatcher invokes {UI_UX, Engineering, Media} in parallel → each writes its artifact
+5. dispatcher invokes Reviewer (ARTIFACT+CONTRACT only) → writes state.findings
+6. dispatcher evaluates edge: findings.open > 0? → (yes) back to 4 for the owning node / (no) step 7
+   — after 2 cycles with zero actionable findings: "doubt theater" flag, stop and ask the user, don't keep looping
+7. dispatcher invokes Shipping (runs gates) → writes state.gate
+8. dispatcher evaluates edge: all gates pass ∧ approvals contains GO? → (yes) ship / (no) back to 4, iteration++
+9. iteration >= max_iterations at any point → escalate to User, do not loop further
+```
 
-| From | Predicate | To |
+**Edges** — every transition gets a predicate, evaluated by the dispatcher between steps, not by the nodes:
+
+| After node | Predicate (dispatcher checks `state.json`) | Dispatcher's next action |
 |---|---|---|
-| TechLead | `plan.approved == false` | Architect (revise) |
-| Reviewer | `findings.open > 0` | owning build node (repair loop) |
-| Shipping | `gate.* any == fail` | owning build node |
-| Shipping | `iteration >= max_iterations` | **User** (escalate, do not loop) |
-| any | `needs_human == true` | **User** (in-loop feedback edge) |
+| TechLead | `plan.approved == false` | invoke Architect again (revise), `iteration++` |
+| Reviewer | `findings.open > 0` | invoke the owning build node again (repair) |
+| Reviewer | 2+ cycles, 0 actionable findings | stop, flag "doubt theater," ask User |
+| Shipping | `gate.* any == fail` | invoke the owning build node again |
+| any | `iteration >= max_iterations` | stop, escalate to **User** — do not loop |
+| any | `needs_human == true` | stop, surface to **User** (in-loop feedback edge) |
 | Shipping | all gates pass ∧ `approvals` contains GO | ship |
 
 **Harness** — the loop-keeper is the piece that has no equivalent today. Two implementations, both needed:
-- *Advisory:* the graph contract in `.agents/graph.md`, read by the orchestrator.
-- *Deterministic:* a `Stop` hook that reads `state.json` and blocks turn-end while `gate.* == fail ∧ iteration < max_iterations` — B1's exact prescription for closing a loop without human attention. `max_iterations` prevents the runaway that hooks otherwise enable.
+- *Advisory:* the graph contract in `.agents/graph.md`, read by the dispatcher (main session or `/startcycle` command logic) — this is also where the F-17 constraint is written down explicitly, so a future contributor doesn't reintroduce persona-calls-persona by "optimizing" the pipeline into direct hand-offs.
+- *Deterministic:* a `Stop` hook that reads `state.json` and blocks turn-end while `gate.* == fail ∧ iteration < max_iterations` — B1's exact prescription for closing a loop without human attention, using the exact hook shape B3 already ships (`PreToolUse`/`Stop` hook exits 2 to block, message goes back over stderr — see the Phase −1 addendum below). `max_iterations` prevents the runaway that hooks otherwise enable.
 
-This is the smallest change set that turns the existing pipeline into a graph: the nodes already exist, the artifacts already exist. What is missing is **typed state, predicates on edges, and a loop-keeper** — and one of those three (the Stop hook) also happens to fix F-02 and F-03.
+This is the smallest change set that turns the existing pipeline into a graph: the nodes already exist, the artifacts already exist. What is missing is **typed state, predicates evaluated by a single dispatcher (not node-to-node calls), and a loop-keeper** — and one of those three (the Stop hook) also happens to fix F-02 and F-03.
 
 ---
 
@@ -280,6 +339,7 @@ The matrix above yields one constraint: **anything that only works in Claude Cod
 | F-02 | Verification sections in 7/134 skills; no enforced gate | **P0** | L | High — trust-then-verify gap |
 | F-03 | Zero hooks; GO gate is advisory prose only | **P0** | S | High — the one rule that must be deterministic isn't |
 | F-04 | No `.claude/agents/`; agents unusable as subagents in Claude Code | **P0** | M | High — the multi-agent team doesn't exist at runtime |
+| F-17 | Graph design in §6.2 implied persona-calls-persona (platform-rejected, and unsupported on Claude Code); must be dispatcher-mediated | **P0** | S (design-only fix, already applied to §6.2) | High — would have made Phase 4 unbuildable on Claude Code as originally drafted |
 | F-16 | OpenCode gets MCP only; Claude Code missing 3 of 4 layers | **P1** | M | High |
 | F-15 | No checked-in `.claude/settings.json` | **P1** | S | Medium |
 | F-06 | Rule drift across 8 entrypoints, no single source of truth | **P1** | M | Medium |
@@ -307,7 +367,23 @@ The matrix above yields one constraint: **anything that only works in Claude Cod
 
 ---
 
-## 9. Explicitly Out of Scope
+## 9. Phase −1 Addendum: Concrete Building Blocks for Phase 1–4
+
+Reusable, verbatim-sourced patterns from B3 that directly inform implementation (not new findings, just the concrete "how" for findings already listed above):
+
+**GO-gate hook shape (feeds F-03, Phase 1).** B3's `simplify-ignore` hook is the reference implementation for a blocking `PreToolUse` hook: it exits with code 2 to block the tool call, and returns its message over **stderr**, not stdout. Our GO-gate hook should follow the same shape — `PreToolUse` matcher on `Write|Edit|Bash(git commit *|git push *|npm publish *|npm version *|rm *)`, exit 2 with `"Blocked: no GO token for this run. See CLAUDE.md §2."` on stderr when the state file has no matching approval, exit 0 otherwise.
+
+**Session-start context injection (optional Phase 2 addition).** B3 registers a `SessionStart` hook (`session-start.sh`) that injects its meta-skill's full content into every new session via `additionalContext`, degrading gracefully (info-level log) if `jq` is missing. Equivalent for this repo: inject a short "you are working in the BDB agent-skills repo; domains are media-eventtech/saas-ops/design-ui-ux/bdb-core; the GO gate is hook-enforced" context block, rather than relying on `CLAUDE.md` prose to convey it every time.
+
+**Eval case format (feeds Phase 3.5).** `evals/cases/<skill-name>.json` — minimum 3 positive triggers (example user prompts that should route to this skill), 2 negative triggers (should NOT route here, catches over-broad descriptions), 1 behavioral eval (a `kind: "dialogue"` case for conversational skills, or a real-fixture execution case). B3's CI also runs a **cross-skill description-collision check** — two skills whose descriptions exceed ~75% TF-IDF similarity is a CI error. Recommendation: run this collision check once across the finalized 161-skill tree before Phase 3 authoring starts, since several `library`-tier duplicates (e.g. `postgresql` / `postgres-best-practices` / `using-neon` / `neon-postgres`, flagged in the original F-08 area) are likely to fail it as currently worded.
+
+**Reviewer-node discipline (feeds §6.2, Phase 4).** From `doubt-driven-development`: pass the reviewer ARTIFACT + CONTRACT only, never the CLAIM; adversarial prompt, explicitly forbidding validation language; fixed finding-classification precedence (contract misread → valid+actionable → valid trade-off → noise); named stop condition "doubt theater" (2+ cycles, 0 actionable findings → escalate, don't keep looping).
+
+**Command-file generation (feeds F-12, Phase 2).** One canonical command body per command; harness-specific syntax adaptation (Markdown+YAML for Claude, TOML for Gemini/Antigravity) and namespace prefixing are the *only* permitted variation — verified byte-identical across two of three real harness targets in the reference repo, so this is a proven pattern, not a proposal.
+
+---
+
+## 10. Explicitly Out of Scope
 
 - No code review of `installer.js`, `scripts/`, `mcps/`, `tools/` (structural references only).
 - No content-quality review of individual skill bodies — only structural conformance was measured.
