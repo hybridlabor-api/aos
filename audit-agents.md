@@ -312,10 +312,10 @@ Ratings: ✅ native · ⚠️ works with adapter · ❌ unsupported.
 
 | Construct | Claude Code | Antigravity (agy) | OpenCode | Codex | Cursor | Roo | Gemini CLI |
 |---|---|---|---|---|---|---|---|
-| `SKILL.md` (name+description) | ✅ | ✅ | ⚠️ via AGENTS.md ref | ✅ | ⚠️ copied to `.cursor/bdb-skills` | ⚠️ `.roo/bdb-skills` | ✅ |
+| `SKILL.md` (name+description) | ✅ | ✅ | ✅ native — reads `.claude/skills/` and `.agents/skills/` directly, project- and user-level, per `opencode.ai/docs/skills` (verified; corrects the earlier "⚠️ via AGENTS.md ref" guess) | ✅ | ⚠️ copied to `.cursor/bdb-skills` | ⚠️ `.roo/bdb-skills` | ✅ |
 | `allowed-tools` frontmatter | ✅ | ⚠️ maps to `enable_*_tools` | ❌ | ⚠️ | ❌ | ❌ | ❌ |
 | `disable-model-invocation` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Subagents (`.claude/agents/*.md`) | ✅ **not shipped** | ✅ JSON, shipped | ⚠️ prompt-level | ❌ | ❌ | ✅ `.roomodes` | ⚠️ |
+| Subagents | ✅ **not shipped**, `.claude/agents/*.md` | ✅ JSON, shipped | ✅ real primitive — Markdown in `.opencode/agents/`, frontmatter (`description`, `mode: primary\|subagent`, `model`, `permission`, `steps`), invoked automatically or via `@name` (verified; corrects "⚠️ prompt-level") — **not shipped yet** | ❌ no subagent primitive exists in the tool at all — structural ceiling, not a gap this repo can close | ❌ same structural ceiling as Codex | ✅ `.roomodes` | ⚠️ |
 | Hooks | ✅ **not shipped** | ⚠️ limited | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `settings.json` / `defaultMode` | ✅ **not shipped** | ⚠️ own schema | ⚠️ `opencode.jsonc` | ⚠️ | ❌ | ❌ | ⚠️ |
 | Slash commands | ✅ (via skills) | ✅ `commands/` | ✅ | ✅ | ⚠️ rules | ⚠️ modes | ✅ `.gemini/commands/` |
@@ -324,19 +324,25 @@ Ratings: ✅ native · ⚠️ works with adapter · ❌ unsupported.
 | Typed state file (`state.json`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Graph contract as markdown | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-### F-16 — Installer coverage is uneven *(P1)*
+### F-16 — Installer coverage is uneven *(P1, revised)*
 
 | Harness | Skills | Instructions | Agents | MCP |
 |---|---|---|---|---|
 | Claude Code | ✅ `~/.claude/skills` | ✅ `CLAUDE.md` | ❌ | ✅ `~/.claude.json` |
 | Antigravity | ✅ `~/.gemini/config/skills` | ✅ | ✅ compiled JSON | ✅ |
-| Codex | ✅ `~/.codex/skills` | ✅ `system.md` | ❌ | ✅ |
-| Cursor | ✅ `.cursor/bdb-skills` | ✅ `.mdc` rules | ⚠️ as a rule file | ✅ |
+| Codex | ✅ `~/.codex/skills` | ✅ `system.md` | ❌ (no subagent primitive exists) | ✅ |
+| Cursor | ✅ `.cursor/bdb-skills` | ✅ `.mdc` rules | ❌ (no subagent primitive exists) | ✅ |
 | Roo | ✅ `~/.roo/bdb-skills` | ✅ | ✅ `.roomodes` | ✅ |
 | Windsurf / Aider | ✅ | ⚠️ | ❌ | ✅ |
-| **OpenCode** | ❌ | ❌ | ❌ | ✅ MCP only (`opencode.jsonc`) |
+| **OpenCode** | ✅ **already, for free** — see below | ✅ **already, once F-06's rename lands** | ❌ **real gap, genuinely missing** | ✅ MCP only (`opencode.jsonc`) |
 
-OpenCode is detected (`installer.js:409–413`) but receives **only** MCP server config — no skills, no rules, no agents. Antigravity is the *best*-served harness (native agent compilation); Claude Code, despite being the primary target, is the one missing subagents, hooks and settings.
+**Revised after checking `opencode.ai/docs/{skills,agents,rules}` directly** (the original row above was a guess and wrong on two of three counts):
+
+- **Skills:** OpenCode natively reads `.claude/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, both project-level (walking up from cwd) and globally (`~/.claude/skills/`, `~/.agents/skills/`). `installer.js:636–640` already populates exactly those global paths for Claude Code's own sync. **OpenCode is already receiving this repo's skills on any machine where the installer has run** — this was never a gap, the audit's original claim ("receives only MCP") was checked against the installer's `syncOpencodeConfig` function specifically and wrongly generalized to "OpenCode gets nothing," without checking OpenCode's own skill-discovery behavior.
+- **Instructions:** OpenCode's own precedence order is `AGENTS.md` → `CLAUDE.md` → `~/.claude/CLAUDE.md` (first match wins, local before global). Once F-06/F-17's `agent.md → AGENTS.md` rename lands, OpenCode picks it up automatically with no new sync code; until then it falls back to the (now 24-line, Phase-1-trimmed) `CLAUDE.md`, which is already an improvement over the pre-Phase-1 126-line file.
+- **Agents:** this is the one real, confirmed gap. OpenCode has a genuine subagent primitive — Markdown files in `.opencode/agents/` with frontmatter (`description`, `mode: primary|subagent`, `model`, `permission`, `steps`), invoked automatically or via `@name` — structurally close enough to `.claude/agents/*.md` that the same source (`.agents/agents.md`) can drive both generators with a small frontmatter translation (`tools:` → `permission:` object). This is the only piece Phase 2 needs to actually build for OpenCode.
+
+Antigravity remains the best-served harness today (native agent compilation already shipped). Codex and Cursor have a **structural ceiling, not a gap**: neither tool has any subagent-equivalent primitive, so the 5/7-agent team can only ever exist there as documentation inside `system.md`/`.mdc` rules, never as a dispatchable construct — no installer change closes that.
 
 ### Design rule for any future change
 
@@ -353,7 +359,7 @@ The matrix above yields one constraint: **anything that only works in Claude Cod
 | F-03 | Zero hooks; GO gate is advisory prose only | **P0** | S | High — the one rule that must be deterministic isn't |
 | F-04 | No `.claude/agents/`; agents unusable as subagents in Claude Code | **P0** | M | High — the multi-agent team doesn't exist at runtime |
 | F-17 | Graph design in §6.2 implied node-to-node hand-off; corrected to dispatcher-mediated routing (not a platform limit — a context-fidelity + portability + auditability decision) | **P0** | S (design-only fix, already applied to §6.2) | High — would have compounded the state-fidelity problem and been Claude-Code-only had it shipped as originally drafted |
-| F-16 | OpenCode gets MCP only; Claude Code missing 3 of 4 layers | **P1** | M | High |
+| F-16 | Claude Code missing subagents/hooks/settings; OpenCode missing only agent generation (skills+instructions already work natively, revised) | **P1** | S (scope reduced after verifying OpenCode's real behavior) | High |
 | F-15 | No checked-in `.claude/settings.json` | **P1** | S | Medium |
 | F-06 | Rule drift across 8 entrypoints, no single source of truth | **P1** | M | Medium |
 | F-07 | Frontmatter dominated by non-standard keys; 0 `disable-model-invocation` | **P1** | M | Medium — side-effect skills are model-invocable |
@@ -373,7 +379,7 @@ The matrix above yields one constraint: **anything that only works in Claude Cod
 ### Suggested sequence
 
 1. **F-01 + F-03 together.** Cut `CLAUDE.md` to the rules that matter *and* convert the GO gate to a `PreToolUse` hook in the same change — the gate stops depending on the prose that was diluting it.
-2. **F-04 + F-16.** Generate `.claude/agents/*.md` from `.agents/agents.md` in `installer.js`, mirroring the Antigravity path that already works. Same commit fixes the `AGENTS.md` naming mismatch and adds OpenCode skill/rule sync.
+2. **F-04 + F-16.** Generate `.claude/agents/*.md` *and* `.opencode/agents/*.md` from the same `.agents/agents.md` source, mirroring the Antigravity JSON path that already works (small frontmatter translation per target, same generation logic). Same commit fixes the `AGENTS.md` naming mismatch — which alone makes OpenCode start reading this repo's instructions and skills correctly, no separate sync code needed for those two.
 3. **Deduplication.** Delete `global_legacy` (after porting `brainstorming` and reconciling `landing-page-generator`), collapse the firecrawl double-tree. Halves the surface everything after this touches.
 4. **F-13 + graph contract (§6.2).** Typed `state.json` first, then edge predicates, then the Stop hook — which delivers F-02's enforced verification as a side effect.
 5. **F-07/F-09/F-11 as one frontmatter migration.** Mechanical, scriptable, best done once across the deduplicated tree.
