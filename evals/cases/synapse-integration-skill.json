@@ -1,0 +1,30 @@
+{
+  "skill_name": "synapse-integration-skill",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Execute the standard synapse-integration-skill workflow.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Run the synapse-integration-skill tasks.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Please apply the synapse-integration-skill skill.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Plausible near-miss that should not route here.",
+        "owner": "unknown"
+      },
+      {
+        "prompt": "Another plausible near-miss request.",
+        "owner": "unknown"
+      }
+    ]
+  },
+  "evals": []
+}

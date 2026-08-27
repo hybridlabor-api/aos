@@ -1,0 +1,30 @@
+{
+  "skill_name": "agent-orchestrator",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Execute the standard agent-orchestrator workflow.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Run the agent-orchestrator tasks.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Please apply the agent-orchestrator skill.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Start and stop the tmux agent sessions.",
+        "owner": "agent-manager-skill"
+      },
+      {
+        "prompt": "Another plausible near-miss request.",
+        "owner": "unknown"
+      }
+    ]
+  },
+  "evals": []
+}

@@ -1,0 +1,30 @@
+{
+  "skill_name": "bdb-dev-os-skill",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Execute the standard bdb-dev-os-skill workflow.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Run the bdb-dev-os-skill tasks.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Please apply the bdb-dev-os-skill skill.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Plausible near-miss that should not route here.",
+        "owner": "unknown"
+      },
+      {
+        "prompt": "Another plausible near-miss request.",
+        "owner": "unknown"
+      }
+    ]
+  },
+  "evals": []
+}

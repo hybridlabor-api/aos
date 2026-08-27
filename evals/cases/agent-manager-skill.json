@@ -1,0 +1,30 @@
+{
+  "skill_name": "agent-manager-skill",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Execute the standard agent-manager-skill workflow.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Run the agent-manager-skill tasks.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Please apply the agent-manager-skill skill.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Orchestrate the overall pipeline and assign tasks.",
+        "owner": "agent-orchestrator"
+      },
+      {
+        "prompt": "Another plausible near-miss request.",
+        "owner": "unknown"
+      }
+    ]
+  },
+  "evals": []
+}

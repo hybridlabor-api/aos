@@ -1,0 +1,30 @@
+{
+  "skill_name": "agent-pipeline",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Execute the standard agent-pipeline workflow.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Run the agent-pipeline tasks.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Please apply the agent-pipeline skill.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Coordinate the agents and match skills.",
+        "owner": "agent-orchestrator"
+      },
+      {
+        "prompt": "Another plausible near-miss request.",
+        "owner": "unknown"
+      }
+    ]
+  },
+  "evals": []
+}
