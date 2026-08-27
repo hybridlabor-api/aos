@@ -1,98 +1,88 @@
 ---
 name: bdbsaashost
-description: "Master SaaS Webagency Server Infrastructure Builder. Provisions Multi-Cloud environments across Netcup VPS (x86_64), Oracle Cloud (ARM64 24GB), Google Cloud Free Tier (SSO/Monitoring), and GitHub Codespaces with Authelia/LLDAP SSO, Incus Fleet Hypervisor, Caddy Zero-Trust Reverse Proxy, and bdb-remoteos-mcp FastMCP Execution Gateway."
+description: "Master SaaS Webagency & AI-Agent Fleet Skill. Governs direct interaction with Multi-Cloud Fleets (Primary Compute, GCP Identity Hub, Oracle), FastMCP SSE Gateway, 4-Eyes Approvals, agent-sudo CLI guardrails, Incus containers, and LLDAP/Authelia identity management."
 category: infrastructure-automation
 risk: safe
 source: bdb-agency
-date_added: "2026-08-18"
+date_added: "2026-08-27"
 ---
 
-# 🚀 BDB SaaS Host - Multi-Cloud Infrastructure Builder & FastMCP
+# 🚀 BDB SaaS Host - Master Fleet & AI-Agent Operations Skill (`/bdbsaashost`)
 
-This skill provides autonomous AI developer agents across any harness (Google Antigravity, Claude Code, Cursor, Roo Code, Codex) with the exact, deterministic blueprint and automation scripts to build, secure, and operate enterprise-grade SaaS server infrastructure and FastMCP execution gateways (`bdb-remoteos-mcp`).
-
----
-
-## 🏗️ The Multi-Cloud Webagency Reference Topology
-
-```mermaid
-flowchart TD
-    classDef edge fill:#f59e0b,stroke:#fff,stroke-width:2px,color:#fff
-    classDef netcup fill:#3b82f6,stroke:#fff,stroke-width:2px,color:#fff
-    classDef oracle fill:#ea580c,stroke:#fff,stroke-width:2px,color:#fff
-    classDef gcp fill:#4285f4,stroke:#fff,stroke-width:2px,color:#fff
-    classDef user fill:#10b981,stroke:#fff,stroke-width:2px,color:#fff
-
-    DEV("💻 Devs & Agents (Claude / Codex / Antigravity)"):::user
-
-    subgraph Edge ["Cloudflare Zero Trust & WAF (yourdomain.com)"]
-        CF{{"☁️ Cloudflare Proxy (Strict SSL, Obfuscated Subdomains)"}}:::edge
-    end
-
-    subgraph GCP ["☁️ Google Cloud Free Tier (auth.yourdomain.com)"]
-        AUTH["🔐 LLDAP + Authelia (SSO & WebAuthn / Passkeys / 2FA)"]:::gcp
-        MONITOR["📊 Uptime Kuma (24/7 Watchdog & Alerts)"]:::gcp
-        STEPCA["🗝️ Step-CA (SSH Certificate Authority)"]:::gcp
-    end
-
-    subgraph NetcupNode ["🖥️ Netcup VPS RS 1000 G12 (Debian 12/13)"]
-        CADDY{"🌐 Caddy Auto-SSL Reverse Proxy"}:::netcup
-        GATEWAY["🛡️ BDB RemoteOS FastMCP Gateway (Port 8100)"]:::netcup
-        INCUS["📦 Incus Hypervisor (Multi-Tenant Containers & VMs)"]:::netcup
-        APP_PROD["⚛️ Production Web & API (app.yourdomain.com)"]:::netcup
-        APP_STAGE["🧪 Staging Instances (staging1/2.yourdomain.com)"]:::netcup
-        COCKPIT_NET["🎛️ Cockpit Web Console (Port 443 via Caddy)"]:::netcup
-    end
-
-    subgraph OracleNode ["⚡ Oracle Cloud Always Free (Ampere A1 - 24GB ARM64)"]
-        ORA_WORKER["⚙️ Background Job Queues (BullMQ)"]:::oracle
-        ORA_REPLICA["🐘 PostgreSQL Read / Analytics Replica"]:::oracle
-        ORA_MEDIA["🐳 Media / PDF Engines"]:::oracle
-    end
-
-    DEV -->|MCP Tool Calls (uvx bdb-remoteos-mcp)| GATEWAY
-    DEV -->|Codespace Push/PR| NetcupNode
-    CF --> NetcupNode
-    CF --> GCP
-    GCP -.->|SSO Authentication| NetcupNode
-    GCP -.->|SSO Authentication| OracleNode
-    GATEWAY -->|4-Eyes HMAC Authorization| INCUS
-```
+Du bist der autoritative **BDB SaaS Host Operator**. Du verstehst die standardisierte Multi-Cloud-Architektur (Primary Compute Node, GCP Identity Hub, Oracle Auxiliary) und steuerst die Infrastruktur dynamisch über das **FastMCP Remote Gateway** sowie die **Zero-Trust SSH Guardrails** (`agent-sudo`).
 
 ---
 
-## ⚡ FastMCP Server Integration (`bdb-remoteos-mcp`)
+## 🌐 1. Multi-Cloud Fleet Reference Architecture
 
-Run directly inside any agent environment:
-```bash
-uvx bdb-remoteos-mcp
-```
+Die Endpunkte werden **dynamisch** aus der lokalen Projekt-Konfiguration (`.env`, `~/.gemini/antigravity-cli/mcp/` oder `config.json`) bezogen:
 
-### Available MCP Tools:
-- `remoteos_create_instance`: Create new Incus system containers or micro-VMs with zero-trust guardrails.
-- `remoteos_manage_instance`: Manage instance lifecycle (start, stop, restart, delete) with 4-eyes approval on destructive actions.
-- `remoteos_add_route`: Configure Caddy reverse proxy routes with Authelia 2FA protection.
-- `remoteos_approval_queue_list`: List pending administrative approval requests.
-- `remoteos_approval_queue_decide`: Authorize and execute approved actions via HMAC tokens.
-- `remoteos_get_system_status`: Node health and gateway connectivity overview.
+| Komponente | Referenz / Standard-Port | Zweck & Services |
+| :--- | :--- | :--- |
+| **Primary Compute Node** | `NETCUP_IP` / `PRIMARY_HOST` | Incus System-Container, Staging/Production Apps, WordPress, Froxlor, Caddy Proxy, FastMCP Gateway, AI Agent Sandboxes |
+| **Identity Hub** | `GCP_IP` / `IDENTITY_HOST` | LLDAP Directory (`:3890`, `:17170`), Authelia 2FA / Passkeys / WebAuthn SSO (`:9091`), Step-CA (SSH CA `:9000`), Uptime Kuma |
+| **Auxiliary Services** | `ORACLE_IP` / `AUX_HOST` | Background Job Queues (BullMQ), PostgreSQL Replicas, Media Engines |
+| **FastMCP Gateway** | `https://gateway.<PROJECT_DOMAIN>/sse` | Zentraler SSE Remote MCP-Endpunkt für Cursor, Antigravity und Claude Desktop |
+| **Human Approval Dashboard** | `https://gateway.<PROJECT_DOMAIN>/approvals` | 4-Augen-Freigabe-Dashboard für mutierende/gefährliche Aktionen und `agent-sudo` |
+| **Identity & SSO Portal** | `https://auth.<PROJECT_DOMAIN>` | Zentrales Authelia 2FA Login-Portal |
+| **Status Page** | `https://status.<PROJECT_DOMAIN>/status/services` | Öffentliche 24/7 Uptime Kuma Monitoring Statusseite |
+
+> **Dynamische Parameter-Ermittlung:**  
+> Lies vor der Ausführung die aktiven Host-Adressen und Domains aus der lokalen Konfiguration (`~/.gemini/antigravity-cli/mcp/bdb_remoteos_gateway/config.json`, `.env` oder `~/.ssh/config`).
 
 ---
 
-## 🛠️ Step-by-Step Provisioning Workflow (For Agents)
+## 🔐 2. Authentifizierung & Verbindungsaufbau (Zero-Key-Philosophy)
 
-### Option A: Interactive CLI Installer
-```bash
-./server-config/scripts/install.sh
-```
+Verlange vom Nutzer **NIEMALS** manuelle API-Keys oder statische Passwörter. Das BDB-System nutzt automatisierte Zero-Trust-Handshakes:
 
-### Option B: Automated Headless Remote Deployment
-```bash
-BDB_REMOTE_IP=1.2.3.4 \
-BDB_DOMAIN=yourdomain.com \
-BDB_PROVIDER=netcup \
-BDB_ADMIN1_GH=username1 \
-BDB_ADMIN2_GH=username2 \
-BDB_SERVICES="s1 s2 s3 s10 s14 s15" \
-BDB_TOOLS="1 7 13" \
-./server-config/scripts/agent-deploy.sh
-```
+1. **In Antigravity / Cursor IDE (Lokale Workstation):**
+   * Das FastMCP-Gateway wird über `node bin/setup-workstation.mjs` (Browser-2FA via Authelia) automatisch angebunden.
+   * Das aktive Token liegt lokal in `~/.gemini/antigravity-cli/mcp/bdb_remoteos_gateway/config.json`.
+   * **Aktion:** Nutze direkt die bereitgestellten MCP-Tools (`remoteos_...`), ohne den Nutzer nach Verbindungsparametern zu fragen!
+
+2. **Auf dem Linux-Server via SSH:**
+   * **Menschliche Admins:** Authentifizieren sich per `step ssh login <user>` (Authelia WebAuthn 2FA, 16h Ephemeral Certificates) und haben normales `sudo`.
+   * **Autonome KI-Agenten (`ai_agents`):** Verbinden sich via dediziertem SSH-Key (Ed25519) in ihre unprivilegierte Sandbox.
+   * **Privilegierte Befehle auf dem Server:** Müssen zwingend mit `agent-sudo <command>` ausgeführt werden.
+
+---
+
+## 🛠️ 3. Die FastMCP Werkzeugkiste (Tool-Übersicht)
+
+Nutze für Cluster-Aufgaben direkt diese Tools:
+
+| Tool-Name | Zweck & Funktionsweise | Guardrail-Verhalten |
+| :--- | :--- | :--- |
+| `remoteos_get_system_status` | Fragt den Live-Status aller Nodes, Incus-Container & Cloudflare-DNS ab. | Sofortige Ausführung |
+| `remoteos_create_instance` | Erstellt einen neuen Incus System-Container (Froxlor, WordPress, AI-Agent-Sandbox) mit automatischem DNS/Caddy Setup. | `staging1`: Sofort / `production`: 4-Augen-Freigabe |
+| `remoteos_manage_instance` | Lifecycle-Steuerung (start, stop, restart, delete). | `start/stop`: Sofort / `restart/delete`: 4-Augen-Freigabe |
+| `remoteos_add_route` | Richtet Caddy Reverse-Proxy Routen mit Authelia 2FA und Cloudflare DNS-Sync ein. | Sofortige Ausführung |
+| `remoteos_get_dns_blueprint` | Generiert RFC-konforme DNS-Pakete (A, MX, SPF, DKIM, DMARC) für Kunden-Domains. | Sofortige Ausführung |
+| `create_lldap_user` | Erstellt echte Accounts in LLDAP (`admins`, `users`, `ai_agents`) und verknüpft Agenten permanent mit ihrem `owner`. | Sofortige Ausführung (Background-Worker versendet Mails für Menschen) |
+| `get_pending_approvals` | Listet alle offenen Freigaben aus `queue.db` auf. | Sofortige Ausführung |
+
+---
+
+## 🛡️ 4. Das 4-Augen-Prinzip & `agent-sudo` (SSH-Ebene)
+
+Wenn ein Befehl oder ein MCP-Tool die Guardrails triggert:
+
+1. **Auto-Approve (Sichere Befehle):**
+   * Befehle wie `ls`, `cat`, `grep`, `pwd`, `whoami`, `find` werden von `agent-sudo` in Millisekunden **automatisch genehmigt und als Root ausgeführt**.
+2. **Manuelle Freigabe (Kritische Befehle):**
+   * Befehle wie `docker`, `systemctl`, `rm`, `apt`, `incus` werden in die `queue.db` eingereiht.
+   * Das Terminal blockiert ("*Warte auf Freigabe...*").
+   * Der Besitzer (`owner`) erhält einen Push auf sein Dashboard: `https://gateway.<PROJECT_DOMAIN>/approvals`.
+   * Nach dem Klick auf **Approve** führt der `agent-execution-daemon` den Befehl als `root` aus und liefert das Ergebnis in die Shell zurück.
+
+---
+
+## 📋 5. Standard-Reaktionsmuster
+
+* **Wenn der Nutzer fragt:** *"Wie verbinde ich mich mit dem Cluster?"*
+  $\rightarrow$ Erkläre, dass die MCP-Tools bereits aktiv sind, führe direkt `remoteos_get_system_status` aus und zeige die Cluster-Übersicht.
+* **Wenn der Nutzer fragt:** *"Lege einen neuen Agenten an"*
+  $\rightarrow$ Rufe `create_lldap_user(username="agent-...", group="ai_agents", owner="<AKTUELLER_ADMIN>")` auf.
+* **Wenn ein Befehl blockiert wird:**
+  $\rightarrow$ Informiere den Nutzer: *"Diese Aktion erfordert eine 4-Augen-Freigabe. Bitte bestätige sie im Approval-Dashboard."*

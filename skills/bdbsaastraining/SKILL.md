@@ -33,7 +33,7 @@ flowchart TD
     
     S3["Station 3: Die AI-Agent-Harness Instanz in Aktion\n• c-agent-<USER> starten & einloggen\n• Agent-Task: Auto-MCP-Generator via OpenAPI\n• Host-Schutz & Sandbox-Sicherheit"]
     
-    S4["Station 4: FastMCP Remote Gateway & Guardrails\n• HTTPS SSE (https://gateway.<DOMAIN>/sse)\n• Persönlicher API-Key aus Onboarding-Mail\n• 4-Augen-Queue Trigger & sudo su Block-Test"]
+    S4["Station 4: FastMCP Remote Gateway & Guardrails\n• HTTPS SSE (https://gateway.rcentry.pro/sse)\n• Persönlicher API-Key aus Onboarding-Mail\n• 4-Augen-Queue Trigger & sudo su Block-Test"]
     
     S5["Station 5: Routing, Caddy 2FA & Cloudflare\n• Service-Routing via remoteos_add_route\n• Caddy forward_auth mit Authelia 2FA\n• Cloudflare DNS & Proxy-Governance"]
 
@@ -68,7 +68,7 @@ Wenn der User den Skill startet, begrüße ihn herzlich und stelle exakt diese 3
 ## 📚 Die 5 Praxis-Stationen (Dynamisch parametrisiert)
 
 ### 🔹 Station 1: Zero-Trust SSH 2FA Login & Zertifikats-Inspektion
-- **Thema:** Warum keine statischen SSH-Keys? Wie funktioniert die Step-CA Authority (`ca.<DOMAIN>`)?
+- **Thema:** Warum keine statischen SSH-Keys? Wie funktioniert die Step-CA Authority (`ca.rcentry.pro`)?
 - **Hands-On Task:**
   1. Trainee führt aus:
      ```bash
@@ -82,7 +82,7 @@ Wenn der User den Skill startet, begrüße ihn herzlich und stelle exakt diese 3
   3. Trainee prüft: Gültigkeitsdauer (16 Stunden), Principals (`<TRAINEE_USER>`), CA-Fingerprint.
   4. Trainee testet Verbindung zum Netcup VPS:
      ```bash
-     ssh <TRAINEE_USER>@server.<DOMAIN> "uptime"
+     ssh <TRAINEE_USER>@159.195.33.127 "uptime"
      ```
 - **Prüfungsfrage 1:**
   > *"Was passiert, wenn ein Angreifer nach 17 Stunden deine private Schlüsseldatei `id_ecdsa` von deinem Laptop entwendet?"*
@@ -159,14 +159,14 @@ Wenn der User den Skill startet, begrüße ihn herzlich und stelle exakt diese 3
 ---
 
 ### 🔹 Station 4: FastMCP Remote Gateway & Guardrail Penetration Test
-- **Thema:** Nutzung von `https://gateway.<DOMAIN>/sse` im Client (`<CLIENT_NAME>`) und Überprüfung von `99-agent-guardrails`.
+- **Thema:** Nutzung von `https://gateway.rcentry.pro/sse` im Client (`<CLIENT_NAME>`) und Überprüfung von `99-agent-guardrails`.
 - **Hands-On Task:**
   1. Trainee trägt die SSE-URL mit seinem **persönlichen API-Key aus seiner Onboarding-E-Mail** in `<CLIENT_NAME>` ein:
      ```json
      {
        "mcpServers": {
          "bdb-remoteos": {
-           "url": "https://gateway.<DOMAIN>/sse",
+           "url": "https://gateway.rcentry.pro/sse",
            "headers": {
              "X-API-Key": "<DEIN_PERSOENLICHER_API_KEY>"
            }
@@ -196,7 +196,7 @@ Wenn der User den Skill startet, begrüße ihn herzlich und stelle exakt diese 3
   Trainee schaltet mit FastMCP eine neue Route für seinen Agenten-Dienst:
   ```python
   remoteos_add_route(
-      domain="agent-<TRAINEE_USER>.<DOMAIN>",
+      domain="agent-<TRAINEE_USER>.rcentry.pro",
       upstream_port=8000,
       target_node="netcup",
       service_type="web",
@@ -205,7 +205,7 @@ Wenn der User den Skill startet, begrüße ihn herzlich und stelle exakt diese 3
   )
   ```
 - **Prüfungsfrage 5:**
-  > *"Warum leitet Caddy beim Aufruf von `https://agent-<TRAINEE_USER>.<DOMAIN>` sofort auf `https://auth.<DOMAIN>` weiter?"*
+  > *"Warum leitet Caddy beim Aufruf von `https://agent-<TRAINEE_USER>.rcentry.pro` sofort auf `https://auth.rcentry.pro` weiter?"*
   - **A)** Weil der Port 8000 offline ist.
   - **B)** Weil durch `require_auth=True` die Caddy `forward_auth`-Regel greift und ohne aktive Authelia 2FA-Session jeglicher Zugriff blockiert wird. *(Richtig)*
   - **C)** Weil Cloudflare die Domain sperrt.
