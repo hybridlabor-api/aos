@@ -1,11 +1,17 @@
-# BDB Agent Graph — `/startcycle` v2
+# BDB Agent Graph — `/startcycle-graph` v2
 
-Harness-neutral contract for the autonomous build pipeline. Replaces the linear
-hand-off framing in `skills/basic/startcycle/SKILL.md` §"Deterministic 4-Phase
-Pipeline" with a dispatcher-mediated graph. See `audit-agents.md` §6 and F-17
-for the analysis behind this design; this file is the buildable spec.
+Harness-neutral contract for the autonomous build pipeline. This is the
+dispatcher-mediated graph, invoked as `/startcycle-graph`. It does not replace
+the linear pipeline — the two ship side by side: `skills/basic/startcycle/`
+is the linear variant (plain file hand-offs, no `state.json`, no repair loop,
+no escalation machinery), and this graph is what you reach for when you need
+the durable record, the Reviewer repair loop, the automated gate, and a
+human-escalation edge. `skills/basic/startcycle-graph-user/` is the third
+sibling: a throwaway 2-4 node fan-out with nothing persistent left behind.
+See `audit-agents.md` §6 and F-17 for the analysis behind this design; this
+file is the buildable spec for the graph variant only.
 
-**Read this before touching `/startcycle`'s control flow.** The single rule
+**Read this before touching `/startcycle-graph`'s control flow.** The single rule
 that matters: **nodes never call each other.** A node reads `state.json`, does
 its work, writes `state.json`, and returns. The dispatcher — the main session,
 or a slash command acting on the user's behalf — is the only thing that
@@ -43,11 +49,11 @@ registry, not here or in `.agents/agents.md`.
 |---|---|---|---|
 | **Architect** | `goal` | `artifacts.plan`, `phase: plan` | invokes TechLead itself |
 | **TechLead** | `artifacts.plan` | `phase` (`build` or back to `plan`), capability-map approval | invokes Architect or the build nodes itself |
-| **UI_UX** | `artifacts.plan`, own prior `findings` | own `state.d/ui_ux.json` fragment (never `state.json` directly — see Harness) | invokes Engineering/Media/Reviewer itself |
-| **Engineering** | `artifacts.plan`, own prior `findings` | own `state.d/engineering.json` fragment (never `state.json` directly) | invokes UI_UX/Media/Reviewer itself |
-| **Media_EventTech** | `artifacts.plan`, own prior `findings` | own `state.d/media_eventtech.json` fragment (only if the goal needs it; never `state.json` directly) | invokes the other build nodes itself |
+| **UI_UX** | `artifacts.plan`, own prior `findings` | own `state.d/ui_ux.json` fragment (never `state.json` directly — see Harness; may set `needs_human: true` which the merge step propagates to the top level) | invokes Engineering/Media/Reviewer itself |
+| **Engineering** | `artifacts.plan`, own prior `findings` | own `state.d/engineering.json` fragment (never `state.json` directly; may set `needs_human: true` which the merge step propagates to the top level) | invokes UI_UX/Media/Reviewer itself |
+| **Media_EventTech** | `artifacts.plan`, own prior `findings` | own `state.d/media_eventtech.json` fragment (only if the goal needs it; never `state.json` directly; may set `needs_human: true` which the merge step propagates to the top level) | invokes the other build nodes itself |
 | **Reviewer** | `artifacts.{frontend,backend,media}` **only** — never `goal`, never a build node's reasoning | `findings[]` | invokes a build node itself, or ever sees the original `goal`/CLAIM |
-| **Shipping** | `artifacts.*`, `findings` (all must be `fixed`/`wont_fix`) | `gate.*`, `artifacts.report`, `phase: ship\|done` | invokes anything, or ships with an open `blocking` finding |
+| **Shipping** | `artifacts.*`, `findings` (all must be `fixed`/`wont_fix`) | `gate.*`, `artifacts.report`, `phase: ready_to_ship` | invokes anything, or ships with an open `blocking` finding |
 
 ### Reviewer discipline (from B3's `doubt-driven-development`, adopted verbatim)
 
@@ -94,7 +100,7 @@ never inside a node's own prompt.
 | Shipping | any `gate.*` is `fail` | `iteration++`, invoke whichever build node(s) Shipping's own structured output names as owning the failing check(s) — the dispatcher does not guess a lint/test-to-node mapping itself |
 | Shipping | all `gate.*` are `pass`/`skip` | `phase: ready_to_ship`, stop — surface "ready to ship, needs GO" to the user. The dispatcher does not itself check `approvals` for a prior GO here (see the Harness section's noted exception); the actual push/version/publish is a separate GO-gated step, enforced by `go-gate.mjs`, which does the GO check at the point it matters. |
 | any | `iteration >= max_iterations` | **stop unconditionally**, `phase: escalated`, set `needs_human: true` — do not invoke anything further automatically |
-| any | a node sets `needs_human: true` itself | stop, surface to the user (in-loop feedback edge, per B5's diagram — `/startcycle`'s original "zero-prompting" framing had removed this; it's restored here as an edge, not a constant interruption) |
+| any | a node sets `needs_human: true` itself | stop, surface to the user (in-loop feedback edge, per B5's diagram — `/startcycle-graph`'s original "zero-prompting" framing had removed this; it's restored here as an edge, not a constant interruption) |
 
 ## Harness (the loop-keeper)
 
@@ -126,8 +132,7 @@ a Claude-only file:
   loop, the no-progress guard, gate-failure repair, missing goal), then by an
   adversarial review pass against this file and `state.schema.json` that
   found and fixed real gaps (an unpersisted iteration counter, `needs_human`
-  never actually being written, and the Reviewer note that follows). The
-  second exception: the three build nodes never write `state.json`
+  never actually being written, and the Reviewer note that follows). The second exception: the three build nodes typically do not write `state.json`
   directly. Because they run inside a `pipeline()` fan-out (genuinely
   parallel — each is an independent dispatcher call, not one node fanning
   out to the others per the table's own "Never" column), two of them
@@ -137,7 +142,14 @@ a Claude-only file:
   barrier where every parallel node has finished), one dedicated `haiku`
   merge step folds every fragment into `state.json` before the run
   continues — never deferred, since `graph-gate.mjs` reads `state.json` at
-  turn end. Sequential nodes (Architect, TechLead, Reviewer, Shipping) are
+  turn end. The fragment-and-merge machinery exists ONLY because parallel
+  writers would race. When a pass fans out to exactly ONE build node (the
+  common case in a repair round, where only the node owning an open finding
+  is re-invoked), there is no race, so that node writes `production_artifacts/state.json`
+  directly and the dispatcher skips the merge step entirely. This is a
+  deliberate token-efficiency measure, not an inconsistency, and the fragment
+  path still applies whenever two or more build nodes run in the same pass.
+  Sequential nodes (Architect, TechLead, Reviewer, Shipping) are
   never inside a `pipeline()` call, so they are not part of this race and
   keep writing `state.json` directly as the table above describes. Other
   harnesses without an equivalent "workflow" primitive fall back to this
@@ -147,7 +159,7 @@ a Claude-only file:
   turn-end while `state.json` shows a failing gate and
   `iteration < max_iterations` — see that file's own comments for the exact
   predicate. This exists independently of the workflow script above: it
-  catches the case where someone continues a `/startcycle` run manually,
+  catches the case where someone continues a `/startcycle-graph` run manually,
   turn by turn, outside the workflow runtime, and stops early despite a
   known-failing gate. It fails *open* (allows the stop) on a missing or
   malformed `state.json`, unlike `go-gate.mjs`'s fail-closed default — a
@@ -171,6 +183,6 @@ turn without one.
   is additive infrastructure, not a replacement for the markdown.
 - Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) were evaluated and
   deferred for this graph specifically because spawning teammates requires an
-  interactive session and `/startcycle` needs to run headless — see F-17's
-  addendum in `audit-agents.md` for the full reasoning. Revisit if `/startcycle`
+  interactive session and `/startcycle-graph` needs to run headless — see F-17's
+  addendum in `audit-agents.md` for the full reasoning. Revisit if `/startcycle-graph`
   ever becomes interactive-only by design.

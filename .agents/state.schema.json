@@ -2,13 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/.agents/state.schema.json",
   "title": "BDB Graph Run State",
-  "description": "Typed hand-off record for a /startcycle run, replacing free-form production_artifacts/*.md prose as the transport edges evaluate. See .agents/graph.md for the dispatcher loop this state drives. Persisted at production_artifacts/state.json.",
+  "description": "Typed hand-off record for a /startcycle-graph run, replacing free-form production_artifacts/*.md prose as the transport edges evaluate. See .agents/graph.md for the dispatcher loop this state drives. Persisted at production_artifacts/state.json.",
   "type": "object",
   "required": ["run_id", "goal", "phase", "iteration", "max_iterations", "gate", "findings", "approvals"],
   "properties": {
     "run_id": {
       "type": "string",
-      "description": "Unique id for this /startcycle run, e.g. a timestamp or short hash. Lets a fresh dispatcher invocation resume the right run instead of guessing."
+      "description": "Unique id for this /startcycle-graph run, e.g. a timestamp or short hash. Lets a fresh dispatcher invocation resume the right run instead of guessing."
     },
     "goal": {
       "type": "string",
@@ -115,6 +115,10 @@
           "type": "array",
           "description": "Status updates for findings this node addressed (e.g. flipping a previously-open finding to \"fixed\"). Same item shape as the top-level findings[] entries; the merge step matches by \"id\" and updates in place rather than duplicating.",
           "items": { "$ref": "#/properties/findings/items" }
+        },
+        "needs_human": {
+          "type": "boolean",
+          "description": "A build node sets this when it cannot proceed without a human decision. The merge step propagates a true value into the top-level state.needs_human, and it must never flip an existing true back to false."
         }
       },
       "additionalProperties": false

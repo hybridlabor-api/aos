@@ -1,4 +1,4 @@
-// Dispatcher for /startcycle. Implements the node/edge table in
+// Dispatcher for /startcycle-graph. Implements the node/edge table in
 // .agents/graph.md as an actual runnable loop, using Claude Code's Dynamic
 // Workflows runtime (this script IS the dispatcher F-17 requires: it holds
 // the loop and the branching decisions; the seven agents below are leaves
@@ -22,7 +22,7 @@
 // 2. No module loading (`import()` fails before the run starts) -- `agent`
 //    and `pipeline` are ambient globals the runtime injects, not imports.
 //    `args` is likewise an ambient global carrying whatever was passed to
-//    `/startcycle`, not a function parameter.
+//    `/startcycle-graph`, not a function parameter.
 //
 // 3. pipeline() fans out one agent() call per build node, genuinely
 //    concurrently, and every one of those was previously told to
@@ -92,8 +92,16 @@ let iteration = 0;
 // so they must NOT write state.json themselves (see comment block item #3
 // above) -- they write only their own production_artifacts/state.d/<id>.json
 // fragment, which the dedicated merge step folds in afterwards.
-function dispatchNote(node) {
+function dispatchNote(node, soloWriter = false) {
   if (node?.role === 'build') {
+    if (soloWriter) {
+      return (
+        'Read production_artifacts/state.json if it exists. ' +
+        `Set state.iteration to ${iteration}. Update your artifacts key and status for your open findings directly in state.json. ` +
+        'You may also set "needs_human": true if you genuinely cannot proceed without a human decision. ' +
+        'Do NOT write a production_artifacts/state.d/ fragment.'
+      );
+    }
     const writes = node.writes || `production_artifacts/state.d/${node.id}.json`;
     return (
       'Read production_artifacts/state.json if it exists (read-only -- for context such as state.goal and ' +
@@ -102,7 +110,7 @@ function dispatchNote(node) {
       `write ONLY ${writes} (create production_artifacts/state.d/ if missing), containing just the fields you ` +
       `own: { "node": "${node.id}", "artifacts": { "${node.artifactKey || node.id}": <path to the artifact you ` +
       `produced> }, "findings": [ <status updates for any open findings you addressed, same shape as the ` +
-      `top-level findings[] items> ] } per .agents/state.schema.json's $defs.stateFragment. Omit state.iteration, ` +
+      `top-level findings[] items> ], "needs_human": true (optional, only set if you genuinely cannot proceed without a human decision) } per .agents/state.schema.json's $defs.stateFragment. Omit state.iteration, ` +
       'state.goal, and every field you do not own -- the dispatcher runs a dedicated merge step that folds your ' +
       'fragment into state.json afterwards; do not attempt that merge yourself.'
     );
@@ -169,7 +177,7 @@ function humanList(items) {
 // state.json directly like the other sequential nodes.
 async function escalate(reason, extra = {}) {
   await agent(
-    'You are recording a /startcycle escalation. Update production_artifacts/state.json per ' +
+    'You are recording a /startcycle-graph escalation. Update production_artifacts/state.json per ' +
       '.agents/state.schema.json: set phase to "escalated", needs_human to true, iteration to ' +
       `${iteration}, and append this reason to the record: ${JSON.stringify(reason)}. ` +
       'Create production_artifacts/ if missing.',
@@ -187,10 +195,10 @@ async function escalate(reason, extra = {}) {
 // any field.
 async function mergeStateD() {
   return await agent(
-    'You are the dedicated /startcycle state-merge step -- a deterministic fold, not a reasoning task. ' +
+    'You are the dedicated /startcycle-graph state-merge step -- a deterministic fold, not a reasoning task. ' +
       'Read every file matching production_artifacts/state.d/*.json (if that directory does not exist or is ' +
       'empty, there is nothing to merge -- just confirm production_artifacts/state.json still exists and is ' +
-      'valid per .agents/state.schema.json, and return merged: 0). Read the current ' +
+      'valid per .agents/state.schema.json, and return merged: 0, needsHuman: false). Read the current ' +
       'production_artifacts/state.json. For each fragment file, per .agents/state.schema.json\'s ' +
       '$defs.stateFragment shape: merge fragment.artifacts into state.artifacts by key -- only the key(s) ' +
       'present in that specific fragment change, every other artifacts key is left exactly as it was; merge ' +
@@ -198,23 +206,28 @@ async function mergeStateD() {
       'fields (status, etc.) updated in place, a finding id not already present is appended, and findings not ' +
       'mentioned in any fragment are left completely untouched. ' +
       `Set state.iteration to ${iteration}. Do not change state.goal, state.phase, state.gate, state.approvals, ` +
-      'state.run_id, or state.needs_human -- this step folds state.d fragments into state.json and nothing ' +
-      'else. Do NOT invent, guess, reinterpret, or silently drop any field: if a fragment is malformed or is ' +
+      'or state.run_id. If ANY fragment sets "needs_human": true, you MUST set state.needs_human = true in the merged ' +
+      'result (never flip an existing true back to false). Do NOT invent, guess, reinterpret, or silently drop any field: if a fragment is malformed or is ' +
       'missing its required "node" field, skip that exact file and report it in "skipped" with a short reason, ' +
-      'rather than guessing its intent. Write the merged result back to production_artifacts/state.json, then ' +
-      'delete the production_artifacts/state.d/*.json files you just merged so a stale fragment is never ' +
-      're-read on the next pass.\n\n' +
-      'Return only: { "merged": number, "skipped": string[] } -- merged is how many fragment files were folded ' +
-      'in; skipped lists any fragment filenames that could not be merged, each with a short reason.',
+      'rather than guessing its intent. Write the merged result back to production_artifacts/state.json. Then VERIFY before deleting anything: re-read ' +
+      'production_artifacts/state.json and confirm that, for every fragment you folded in, its artifacts key(s) and its ' +
+      'findings id(s) are actually present in the file you just wrote. Only delete a production_artifacts/state.d/*.json ' +
+      'fragment after you have confirmed its content landed. If ANY fragment was skipped, or if any read-back verification ' +
+      'fails, delete NOTHING AT ALL and report the reason in "skipped" -- the dispatcher escalates on a non-empty "skipped", ' +
+      'and the fragments must still exist at that point so the run can be diagnosed and recovered. Deleting a fragment you ' +
+      'could not verify would destroy the only copy of that node\'s output.\n\n' +
+      'Return only: { "merged": number, "skipped": string[], "needsHuman": boolean } -- merged is how many fragment files were folded ' +
+      'in; skipped lists any fragment filenames that could not be merged, each with a short reason; needsHuman is true if any fragment requested it.',
     {
       label: `merge-${iteration}`,
       model: 'haiku',
       schema: {
         type: 'object',
-        required: ['merged', 'skipped'],
+        required: ['merged', 'skipped', 'needsHuman'],
         properties: {
           merged: { type: 'number' },
           skipped: { type: 'array', items: { type: 'string' } },
+          needsHuman: { type: 'boolean' },
         },
       },
     }
@@ -261,6 +274,7 @@ const REGISTRY_SCHEMA = {
 
 const REQUIRED_NODE_IDS = ['architect', 'techlead', 'ui_ux', 'engineering', 'media_eventtech', 'reviewer', 'shipping'];
 
+try {
 const registryResult = await agent(
   'Read the file .agents/nodes.json (repository root) and return its exact contents, parsed as JSON, matching ' +
     'the given schema. This is a read-only lookup, not a reasoning task: do not invent, modify, reinterpret, ' +
@@ -274,7 +288,7 @@ const missingNodeIds = REQUIRED_NODE_IDS.filter((id) => !registryNodes[id]);
 if (missingNodeIds.length > 0) {
   return await escalate(
     `.agents/nodes.json failed to load, or is missing required node id(s): ${missingNodeIds.join(', ')}. ` +
-      'Refusing to fall back to a hardcoded node list -- fix the registry and re-run /startcycle.'
+      'Refusing to fall back to a hardcoded node list -- fix the registry and re-run /startcycle-graph.'
   );
 }
 
@@ -286,7 +300,7 @@ const shippingNode = { id: 'shipping', ...registryNodes.shipping };
 const goal = typeof args === 'string' ? args : args?.goal;
 if (!goal) {
   return escalate(
-    'startcycle needs a goal, e.g. "Run /startcycle on: add OAuth login with Google" -- nothing was invoked.'
+    'startcycle-graph needs a goal, e.g. "Run /startcycle-graph on: add OAuth login with Google" -- nothing was invoked.'
   );
 }
 
@@ -390,30 +404,48 @@ let nodesToRun = BUILD_NODES; // first pass: everyone applicable
 let previousBlockingIds = new Set(); // for the no-progress guard below
 
 while (!reviewedClean) {
-  await pipeline(nodesToRun, (n) => {
+  const isSolo = nodesToRun.length === 1;
+  const pipelineResults = await pipeline(nodesToRun, (n) => {
     const openFindings = findings.filter((f) => f.node === n.id && f.status === 'open');
+    const opts = { label: n.id, agentType: n.agentType, model: n.model };
+    if (isSolo) {
+      opts.schema = {
+        type: 'object',
+        properties: { needsHuman: { type: 'boolean' } }
+      };
+    }
     return agent(
-      `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n)}${skillsNote(n)}\n\n` +
+      `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
         `Read the plan at ${planPath}. ${n.instructions}\n` +
         (openFindings.length
           ? `Address these open Reviewer findings before anything else: ${JSON.stringify(openFindings)}\n`
-          : ''),
-      { label: n.id, agentType: n.agentType, model: n.model }
+          : '') +
+        (isSolo ? `\n\nReturn only: { "needsHuman": boolean } (set to true only if you set "needs_human": true in state.json).` : ''),
+      opts
     );
   });
 
-  // Barrier: every build node in this pass has returned and written only its
-  // own production_artifacts/state.d/<id>.json fragment (dispatchNote()'s
-  // build-role branch). Fold them into state.json now, before Reviewer (or
-  // anything else) reads it -- this is the CHANGE 1 fix from comment block
-  // item #3, and it must happen inside this run since graph-gate.mjs reads
-  // state.json at turn end.
-  const mergeResult = await mergeStateD();
-  if (mergeResult?.skipped?.length) {
-    return await escalate(
-      `State merge could not fold fragment(s) after the build pass: ${mergeResult.skipped.join(', ')}`,
-      { skipped: mergeResult.skipped }
-    );
+  if (isSolo) {
+    if (pipelineResults[0]?.needsHuman) {
+      return await escalate(`Build node ${nodesToRun[0].id} requested human input.`);
+    }
+  } else {
+    // Barrier: every build node in this pass has returned and written only its
+    // own production_artifacts/state.d/<id>.json fragment (dispatchNote()'s
+    // build-role branch). Fold them into state.json now, before Reviewer (or
+    // anything else) reads it -- this is the CHANGE 1 fix from comment block
+    // item #3, and it must happen inside this run since graph-gate.mjs reads
+    // state.json at turn end.
+    const mergeResult = await mergeStateD();
+    if (mergeResult?.skipped?.length) {
+      return await escalate(
+        `State merge could not fold fragment(s) after the build pass: ${mergeResult.skipped.join(', ')}`,
+        { skipped: mergeResult.skipped }
+      );
+    }
+    if (mergeResult?.needsHuman) {
+      return await escalate('One or more build nodes requested human input.');
+    }
   }
 
   // Reviewer: ARTIFACT + CONTRACT only, per .agents/graph.md's discipline --
@@ -434,7 +466,7 @@ while (!reviewedClean) {
       `stability is what lets the dispatcher detect a repair round that made no real progress, so do not renumber ` +
       `findings between cycles just because this is a fresh review call.\n` +
       `Write production_artifacts/review_findings.md and update state.findings.\n\n` +
-      `Return only: { "findings": [{ "id": string, "severity": "blocking"|"advisory", "node": string, "summary": string, "status": "open"|"fixed"|"wont_fix" }], "blockingCount": number }.`,
+      `Return only: { "findings": [{ "id": string, "severity": "blocking"|"advisory", "node": string, "summary": string, "status": "open"|"fixed"|"wont_fix" }], "blockingCount": number } (blockingCount must count ONLY findings whose status is "open").`,
     {
       label: `reviewer-${iteration}`,
       agentType: reviewerNode.agentType,
@@ -464,7 +496,7 @@ while (!reviewedClean) {
   );
 
   findings = reviewResult?.findings ?? [];
-  const blockingCount = reviewResult?.blockingCount ?? findings.filter((f) => f.severity === 'blocking').length;
+  const blockingCount = reviewResult?.blockingCount ?? findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
 
   if (blockingCount === 0) {
     // Clean. Note on .agents/graph.md's original "doubt theater" guard (2
@@ -477,7 +509,7 @@ while (!reviewedClean) {
     // genuinely reach.
     reviewedClean = true;
   } else {
-    const blockingIds = new Set(findings.filter((f) => f.severity === 'blocking').map((f) => f.id));
+    const blockingIds = new Set(findings.filter((f) => f.severity === 'blocking' && f.status === 'open').map((f) => f.id));
     const sameAsLastTime =
       iteration > 0 &&
       blockingIds.size > 0 &&
@@ -537,7 +569,8 @@ while (!allGatesPass) {
       `Run the automated quality gate against the artifacts from the plan at ${planPath}: lint, typecheck, ` +
       `tests, a11y, seo. Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect ` +
       `which apply; use "skip" only for a check that genuinely doesn't apply to this repo, not for one you didn't run). ` +
-      `Write production_artifacts/04_release_report.md and update state.gate.\n\n` +
+      `Write production_artifacts/04_release_report.md and update state.gate. ` +
+      `If every gate check is 'pass' or 'skip', you must also set state.phase = "ready_to_ship" in state.json.\n\n` +
       `Return only: { "gate": { "lint": "pass"|"fail"|"skip", "typecheck": "pass"|"fail"|"skip", "tests": "pass"|"fail"|"skip", "a11y": "pass"|"fail"|"skip", "seo": "pass"|"fail"|"skip" }, "blockingNodes": string[] } ` +
       `-- blockingNodes lists which build node(s) (${NODE_NAMES}) own fixing each failing check; empty if all pass.`,
     {
@@ -583,24 +616,42 @@ while (!allGatesPass) {
     );
   }
 
-  await pipeline(blockingNodes, (n) =>
-    agent(
-      `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n)}${skillsNote(n)}\n\n` +
+  const isSolo = blockingNodes.length === 1;
+  const pipelineResults = await pipeline(blockingNodes, (n) => {
+    const opts = { label: `${n.id}-gate-fix-${iteration}`, agentType: n.agentType, model: n.model };
+    if (isSolo) {
+      opts.schema = {
+        type: 'object',
+        properties: { needsHuman: { type: 'boolean' } }
+      };
+    }
+    return agent(
+      `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
         `Shipping's quality gate failed on a check you own: ${JSON.stringify(lastGate)}. ` +
-        `Read production_artifacts/04_release_report.md for details and fix it.`,
-      { label: `${n.id}-gate-fix-${iteration}`, agentType: n.agentType, model: n.model }
-    )
-  );
-
-  // Same barrier as the build/review loop above: this pipeline() call just
-  // ran build nodes concurrently, each writing only its own state.d
-  // fragment. Fold them in before Shipping re-checks the gate.
-  const gateMergeResult = await mergeStateD();
-  if (gateMergeResult?.skipped?.length) {
-    return await escalate(
-      `State merge could not fold fragment(s) after a gate-fix repair round: ${gateMergeResult.skipped.join(', ')}`,
-      { skipped: gateMergeResult.skipped }
+        `Read production_artifacts/04_release_report.md for details and fix it.` +
+        (isSolo ? `\n\nReturn only: { "needsHuman": boolean } (set to true only if you set "needs_human": true in state.json).` : ''),
+      opts
     );
+  });
+
+  if (isSolo) {
+    if (pipelineResults[0]?.needsHuman) {
+      return await escalate(`Build node ${blockingNodes[0].id} requested human input during gate fix.`);
+    }
+  } else {
+    // Same barrier as the build/review loop above: this pipeline() call just
+    // ran build nodes concurrently, each writing only its own state.d
+    // fragment. Fold them in before Shipping re-checks the gate.
+    const gateMergeResult = await mergeStateD();
+    if (gateMergeResult?.skipped?.length) {
+      return await escalate(
+        `State merge could not fold fragment(s) after a gate-fix repair round: ${gateMergeResult.skipped.join(', ')}`,
+        { skipped: gateMergeResult.skipped }
+      );
+    }
+    if (gateMergeResult?.needsHuman) {
+      return await escalate('One or more build nodes requested human input during gate fix.');
+    }
   }
 }
 
@@ -615,3 +666,10 @@ return {
   gate: lastGate,
   planPath,
 };
+} catch (error) {
+  try {
+    return await escalate(error.message || String(error));
+  } catch (escalateError) {
+    return { phase: 'escalated', reason: error.message || String(error), needs_human: true };
+  }
+}

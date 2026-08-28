@@ -97,7 +97,7 @@ Nachfolgend finden Sie die vollständige Übersicht aller in diesem Paket enthal
 | `agent-manager-skill` | Manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling. |
 | `agent-memory-mcp` | A hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions). |
 | `agent-orchestrator` | Meta-skill que orquestra todos os agentes do ecossistema. Scan automatico de skills, match por capacidades, coordenacao de workflows multi-skill e registry management. |
-| `agent-pipeline` | Referenz für den BDB-Lebenszyklus (define → plan → build → verify/review → ship), den der Dispatcher-Graph von `/startcycle` tatsächlich ausführt. |
+| `agent-pipeline` | Referenz für den BDB-Lebenszyklus (define → plan → build → verify/review → ship), den der Dispatcher-Graph von `/startcycle-graph` tatsächlich ausführt. |
 | `agent-tool-builder` | Tools are how AI agents interact with the world. A well-designed tool is the difference between an agent that works and one that hallucinates, fails silently, or costs 10x more tokens than necessary. This skill covers tool design from schema to error handling. |
 | `ai-agent-development` | AI agent development workflow for building autonomous agents, multi-agent systems, and agent orchestration with CrewAI, LangGraph, and custom agents. |
 | `apify-lead-generation` | Scrape leads from multiple platforms using Apify Actors. |
