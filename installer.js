@@ -53,6 +53,11 @@ const colors = {
     cyan: "\x1b[36m",
     purple: "\x1b[38;2;157;78;221m",
     purpleBold: "\x1b[1;\x1b[38;2;157;78;221m",
+    // v3.13 "KEYSTONE" latest-release identity -- gold wordmark + emerald
+    // tagline, deliberately distinct from the purple/cyan beta banner so a
+    // push to `latest` is visually obvious, not just a version-number diff.
+    gold: "\x1b[38;2;212;175;55m",
+    emerald: "\x1b[38;2;46;204;113m",
     blue: "\x1b[34m",
     green: "\x1b[32m",
     yellow: "\x1b[33m",
@@ -2894,14 +2899,14 @@ async function runQuickUpdate(installState) {
 }
 
 async function main() {
-    const banner = `${colors.purple}${colors.bold}
+    const banner = `${colors.gold}${colors.bold}
     ____  ____  ____     ___   _____________   ________   ____  _____
    / __ )/ __ \\/ __ )   /   | / ____/ ____/ | / /_  __/  / __ \\/ ___/
   / __  / / / / __  |  / /| |/ / __/ __/ /  |/ / / /    / / / /\\__ \\
  / /_/ / /_/ / /_/ /  / ___ / /_/ / /___/ /|  / / /    / /_/ /___/ /
 /_____/_____/_____/  /_/  |_\\____/_____/_/ |_/ /_/     \\____//____/${colors.reset}
 
-${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BETA (clack)${colors.reset}`;
+${colors.emerald}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  v3.13 "KEYSTONE"${colors.reset}`;
 
     intro(banner);
 
