@@ -24,9 +24,9 @@
 
 > **Supercharging AI coding agents with 162 hyper-curated skills, 22 local MCPs, and a runnable multi-agent dispatcher graph.**
 
-Welcome to the **BDB DEV Skills & MCP Configuration** repository. This project serves as the backbone of our creative and full-stack development ecosystem, supercharging AI agents with highly specialized capabilities tailored for the event and creative technology industry, as well as general-purpose software engineering.
+Welcome to **BDB DEV — v3.13 "NODEFORGE"**: 162 curated skills, 22 local MCP servers, and a dispatcher graph that turns them into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
 
-While optimized for **Google Antigravity**, this skills pack and MCP configuration is **100% universal** and works seamlessly with all modern AI agents and developer interfaces, including **ChatGPT Codex / Codex CLI, Claude Desktop, Claude Code, Cursor, Aider, Roo Code, Cline, and Windsurf**.
+It is harness-neutral by design, not "optimized for one tool with others as an afterthought": the dispatcher graph runs on Claude Code's Dynamic Workflows, the same skills and MCP configuration install natively into **Google Antigravity, ChatGPT Codex / Codex CLI, Claude Desktop, Cursor, Aider, Roo Code, Cline, and Windsurf**, and the lightweight `/startcycle-graph-user` variant falls back to Claude Code's own subagents on any machine that has none of the above installed.
 
 > 🎙 **Audio Deep Dive: "Give AI Agents Control of Creative Software"**  
 > <video src="assets/Give_AI_Agents_Control_of_Creative_Software.mp4" controls></video>
