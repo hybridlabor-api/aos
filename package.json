@@ -1,6 +1,6 @@
 {
   "name": "@hybridlabor-api/bdb-dev-optimized-agent-skills",
-  "version": "3.13.0-nodex.10",
+  "version": "3.13.0-nodex.11",
   "description": "A Curated AI AGENT OS – Optimized agent skills and add-ons like memB, OpenWiki, Heimdall Token Saver, and Godmode architectures.",
   "main": "installer.js",
   "bin": {
