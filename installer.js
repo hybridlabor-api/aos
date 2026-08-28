@@ -4,6 +4,25 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
+const net = require('net');
+
+function verifyDaemonListening(port, name, timeoutMs = 4000) {
+    return new Promise((resolve) => {
+        const deadline = Date.now() + timeoutMs;
+        const tryConnect = () => {
+            const socket = net.createConnection({ port, host: "127.0.0.1" }, () => {
+                socket.destroy();
+                resolve(true);
+            });
+            socket.on("error", () => {
+                socket.destroy();
+                if (Date.now() < deadline) setTimeout(tryConnect, 300);
+                else resolve(false);
+            });
+        };
+        tryConnect();
+    });
+}
 const { execSync, spawn, spawnSync, exec } = require('child_process');
 const clack = require('@clack/prompts');
 
@@ -1190,7 +1209,12 @@ async function installMemB(interactive) {
                 fs.writeFileSync(plistPath, plistContent);
                 execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
                 execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                log.success('memB WebUI LaunchAgent active (Port 8088)');
+                const isListening = await verifyDaemonListening(8088, 'memB WebUI');
+                if (isListening) {
+                    log.success('memB WebUI LaunchAgent active (Port 8088)');
+                } else {
+                    log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                }
             } catch (e) { logDebug(e, 'operation'); }
         } else if (process.platform === 'win32') {
             const venvPython = path.join(membDir, '.venv', 'Scripts', 'python.exe');
@@ -1202,7 +1226,12 @@ async function installMemB(interactive) {
                 fs.mkdirSync(startupDir, { recursive: true });
                 fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
                 spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
-                log.success('memB WebUI Windows Background Service registered & started (Port 8088)');
+                const isListening = await verifyDaemonListening(8088, 'memB WebUI');
+                if (isListening) {
+                    log.success('memB WebUI Windows Background Service registered & started (Port 8088)');
+                } else {
+                    log.warn('memB WebUI Windows daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                }
             } catch (e) { logDebug(e, 'windows memb daemon setup'); }
         }
     }
@@ -1275,7 +1304,12 @@ async function installSynapse() {
                 fs.writeFileSync(plistPath, plistContent);
                 execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
                 execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                log.success('Synapse 3D LaunchAgent active (Port 7781)');
+                const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
+                if (isListening) {
+                    log.success('Synapse 3D LaunchAgent active (Port 7781)');
+                } else {
+                    log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                }
             } catch (e) { logDebug(e, 'synapse plist setup'); }
         } else if (process.platform === 'win32') {
             const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
@@ -1286,7 +1320,12 @@ async function installSynapse() {
             try {
                 fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
                 spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
-                log.success('Synapse 3D Windows Background Service registered & started (Port 7781)');
+                const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
+                if (isListening) {
+                    log.success('Synapse 3D Windows Background Service registered & started (Port 7781)');
+                } else {
+                    log.warn('Synapse 3D Windows daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                }
             } catch (e) { logDebug(e, 'windows synapse daemon setup'); }
         }
     } else {
@@ -1381,6 +1420,12 @@ async function installOSAgentWorkspace() {
             fs.writeFileSync(plistPath, plistContent);
             execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
             execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            const isListening = await verifyDaemonListening(3101, 'Agent Workspace');
+            if (isListening) {
+                log.success('Agent Workspace LaunchAgent active (Port 3101)');
+            } else {
+                log.warn('Agent Workspace daemon did not respond on Port 3101 within timeout. You may need to start it manually or check for port conflicts.');
+            }
         } catch (e) { logDebug(e, 'operation'); }
 
         let appDir = '/Applications/BDB Agent Workspace.app';
@@ -1427,7 +1472,12 @@ fi`;
             try {
                 fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
                 spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
-                log.success('Agent Workspace Windows Background Service registered & started (Port 3101)');
+                const isListening = await verifyDaemonListening(3101, 'Agent Workspace');
+                if (isListening) {
+                    log.success('Agent Workspace Windows Background Service registered & started (Port 3101)');
+                } else {
+                    log.warn('Agent Workspace Windows daemon did not respond on Port 3101 within timeout. You may need to start it manually or check for port conflicts.');
+                }
             } catch (e) { logDebug(e, 'windows workspace daemon setup'); }
         }
     }
