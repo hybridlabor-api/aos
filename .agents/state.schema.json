@@ -21,7 +21,7 @@
     },
     "artifacts": {
       "type": "object",
-      "description": "Paths to the human-readable markdown artifacts nodes produce. state.json is what edges evaluate; these stay the readable payload.",
+      "description": "Paths to the human-readable markdown artifacts nodes produce. state.json is what edges evaluate; these stay the readable payload. Known keys are documented below; additionalProperties stays a typed string-or-null (not fully open) so a registry-driven build domain beyond these can validate without making this object permissive to arbitrary JSON.",
       "properties": {
         "plan": { "type": ["string", "null"] },
         "frontend": { "type": ["string", "null"] },
@@ -30,7 +30,7 @@
         "review": { "type": ["string", "null"] },
         "report": { "type": ["string", "null"] }
       },
-      "additionalProperties": false
+      "additionalProperties": { "type": ["string", "null"] }
     },
     "findings": {
       "type": "array",
@@ -95,5 +95,29 @@
       "description": "Any node can set this to force an in-loop feedback edge back to the user (per B5's reference diagram), independent of the gate/iteration state."
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "stateFragment": {
+      "description": "Shape of one production_artifacts/state.d/<nodeId>.json file. During a parallel pipeline() fan-out (the build nodes, or a gate-fix repair round), each participating node writes ONLY this fragment for itself -- never production_artifacts/state.json directly, since two concurrently-running nodes writing the same file would race and the last writer would silently drop the other's update. Immediately after the pipeline() call returns, one dedicated haiku merge agent reads every production_artifacts/state.d/*.json fragment and folds it into production_artifacts/state.json (per the top-level schema above) before the workflow run continues or returns -- this is what .claude/hooks/graph-gate.mjs ends up reading, so the merge must happen inside the run, never deferred. Sequential nodes (architect, techlead, reviewer, shipping) are not part of this race and keep writing state.json directly.",
+      "type": "object",
+      "required": ["node"],
+      "properties": {
+        "node": {
+          "type": "string",
+          "description": "The node id that owns this fragment, e.g. \"engineering\" -- must match the id this node was invoked under."
+        },
+        "artifacts": {
+          "type": "object",
+          "description": "Only the artifact key(s) this node owns, e.g. { \"backend\": \"production_artifacts/02_backend_schema.md\" }. The merge step writes just these keys into state.artifacts and leaves every other key untouched.",
+          "additionalProperties": { "type": ["string", "null"] }
+        },
+        "findings": {
+          "type": "array",
+          "description": "Status updates for findings this node addressed (e.g. flipping a previously-open finding to \"fixed\"). Same item shape as the top-level findings[] entries; the merge step matches by \"id\" and updates in place rather than duplicating.",
+          "items": { "$ref": "#/properties/findings/items" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

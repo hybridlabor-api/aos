@@ -33,16 +33,19 @@ Seven, up from the original five — `Planner_Orchestrator` is split into
 **Architect** (system plan) and **TechLead** (execution coordination,
 capability-map approval) per the reference diagram (B5), and an explicit
 **Reviewer** is added (B1's adversarial-review step, modeled on B3's
-`doubt-driven-development` discipline — see below). Definitions live in
-`.agents/agents.md`; this table is the routing summary only.
+`doubt-driven-development` discipline — see below). Node identity, model,
+and skill allowlist now come from `.agents/nodes.json` (a declarative
+registry the dispatcher loads at run start via a `load-registry` step) —
+this table stays the routing summary; per-node config lives in the
+registry, not here or in `.agents/agents.md`.
 
 | Node | Reads | Writes | Never |
 |---|---|---|---|
 | **Architect** | `goal` | `artifacts.plan`, `phase: plan` | invokes TechLead itself |
 | **TechLead** | `artifacts.plan` | `phase` (`build` or back to `plan`), capability-map approval | invokes Architect or the build nodes itself |
-| **UI_UX** | `artifacts.plan`, own prior `findings` | `artifacts.frontend` | invokes Engineering/Media/Reviewer itself |
-| **Engineering** | `artifacts.plan`, own prior `findings` | `artifacts.backend` | invokes UI_UX/Media/Reviewer itself |
-| **Media_EventTech** | `artifacts.plan`, own prior `findings` | `artifacts.media` (only if the goal needs it) | invokes the other build nodes itself |
+| **UI_UX** | `artifacts.plan`, own prior `findings` | own `state.d/ui_ux.json` fragment (never `state.json` directly — see Harness) | invokes Engineering/Media/Reviewer itself |
+| **Engineering** | `artifacts.plan`, own prior `findings` | own `state.d/engineering.json` fragment (never `state.json` directly) | invokes UI_UX/Media/Reviewer itself |
+| **Media_EventTech** | `artifacts.plan`, own prior `findings` | own `state.d/media_eventtech.json` fragment (only if the goal needs it; never `state.json` directly) | invokes the other build nodes itself |
 | **Reviewer** | `artifacts.{frontend,backend,media}` **only** — never `goal`, never a build node's reasoning | `findings[]` | invokes a build node itself, or ever sees the original `goal`/CLAIM |
 | **Shipping** | `artifacts.*`, `findings` (all must be `fixed`/`wont_fix`) | `gate.*`, `artifacts.report`, `phase: ship\|done` | invokes anything, or ships with an open `blocking` finding |
 
@@ -106,9 +109,13 @@ a Claude-only file:
   is the actual runnable implementation of this contract, using Claude
   Code's Dynamic Workflows runtime (a script holds the loop and branches;
   the seven agents are leaves it calls via `agent()`/`pipeline()`, never
-  calling each other). It's a translation, not a re-derivation — every edge
-  in the table above has a corresponding branch in that script, with one
-  deliberate exception: the script stops at `phase: ready_to_ship` rather
+  calling each other). The script's first action is a `load-registry` step
+  that reads `.agents/nodes.json` for each node's `agentType`, `model`, and
+  `skills` allowlist — if a required node id is missing from that file, the
+  script escalates rather than falling back to a hardcoded list. It's a
+  translation, not a re-derivation — every edge in the table above has a
+  corresponding branch in that script, with two deliberate exceptions: the
+  script stops at `phase: ready_to_ship` rather
   than checking `approvals` itself for a prior `GO` and proceeding to
   `phase: done` (the row above notes this explicitly). Re-running the whole
   plan→build→review loop just to check one flag would be wasteful; the
@@ -119,7 +126,20 @@ a Claude-only file:
   loop, the no-progress guard, gate-failure repair, missing goal), then by an
   adversarial review pass against this file and `state.schema.json` that
   found and fixed real gaps (an unpersisted iteration counter, `needs_human`
-  never actually being written, and the Reviewer note that follows). Other
+  never actually being written, and the Reviewer note that follows). The
+  second exception: the three build nodes never write `state.json`
+  directly. Because they run inside a `pipeline()` fan-out (genuinely
+  parallel — each is an independent dispatcher call, not one node fanning
+  out to the others per the table's own "Never" column), two of them
+  writing the same file at once would race and silently drop an update.
+  Each writes only its own `production_artifacts/state.d/<nodeId>.json`
+  fragment instead; immediately after the `pipeline()` call returns (the
+  barrier where every parallel node has finished), one dedicated `haiku`
+  merge step folds every fragment into `state.json` before the run
+  continues — never deferred, since `graph-gate.mjs` reads `state.json` at
+  turn end. Sequential nodes (Architect, TechLead, Reviewer, Shipping) are
+  never inside a `pipeline()` call, so they are not part of this race and
+  keep writing `state.json` directly as the table above describes. Other
   harnesses without an equivalent "workflow" primitive fall back to this
   file as a manual dispatch guide followed turn-by-turn.
 - **Deterministic safety net (Claude Code only, degrades to advisory
