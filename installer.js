@@ -1450,17 +1450,33 @@ async function installSynapse() {
         } else if (process.platform === 'win32') {
             const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
             fs.mkdirSync(startupDir, { recursive: true });
+            const synapseLogDir = path.join(homeDir, '.synapse');
+            fs.mkdirSync(synapseLogDir, { recursive: true });
+            const stdoutLog = path.join(synapseLogDir, 'daemon.stdout.log');
+            const stderrLog = path.join(synapseLogDir, 'daemon.stderr.log');
+            const batPath = path.join(synapseLogDir, 'run-synapse.bat');
+            const runCmd = binaryPath.endsWith('.js') ? `node "${binaryPath}" serve` : `"${binaryPath}" serve`;
+            // WshShell.Run has no stdout/stderr redirection of its own, so a crash on launch
+            // (e.g. a missing dependency the binary shells out to) used to die silently with
+            // nothing to diagnose short of reading source — route through a .bat wrapper that
+            // redirects to the same ~/.synapse log files the macOS launchd plist already writes.
+            const batContent = `@echo off\r\ncd /d "${synapseDir}"\r\n${runCmd} >> "${stdoutLog}" 2>> "${stderrLog}"\r\n`;
             const vbsPath = path.join(startupDir, 'com.bdb.synapse.vbs');
-            const runCmd = binaryPath.endsWith('.js') ? `node ""${binaryPath}"" serve` : `""${binaryPath}"" serve`;
-            const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${synapseDir}"\r\nWshShell.Run "${runCmd}", 0, False\r\n`;
+            const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${synapseDir}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`;
             try {
+                fs.writeFileSync(batPath, batContent, 'utf-8');
                 fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
                 spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
-                const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
+                // wscript -> WshShell.Run -> node.exe is three layers of indirection plus a cold
+                // interpreter start (macOS/Linux launch a pre-built native binary instead), and a
+                // freshly-downloaded synapse.js can get held up by Defender's first-run scan —
+                // the default 4s budget used by every other verifyDaemonListening() call is too
+                // tight for this specific path and produced false "did not respond" warnings.
+                const isListening = await verifyDaemonListening(7781, 'Synapse 3D', 12000);
                 if (isListening) {
                     log.success('Synapse 3D Windows Background Service registered & started (Port 7781)');
                 } else {
-                    log.warn('Synapse 3D Windows daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                    log.warn(`Synapse 3D Windows daemon did not respond on Port 7781 within timeout. Check ${stderrLog} for the actual error (e.g. a missing 'go' on PATH) before assuming it's just slow to start.`);
                 }
             } catch (e) { logDebug(e, 'windows synapse daemon setup'); }
         }
