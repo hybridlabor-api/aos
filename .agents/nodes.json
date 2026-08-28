@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "description": "Declarative node registry for /startcycle-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher.",
+  "nodes": {
+    "architect": {
+      "label": "Architect",
+      "agentType": "architect",
+      "personaFile": ".claude/agents/architect.md",
+      "model": "opus",
+      "role": "plan",
+      "artifactKey": "plan",
+      "writes": null,
+      "optional": false,
+      "skills": [
+        "bdbrainstorm",
+        "planning-with-files",
+        "concise-planning"
+      ],
+      "instructions": null
+    },
+    "techlead": {
+      "label": "TechLead",
+      "agentType": "techlead",
+      "personaFile": ".claude/agents/techlead.md",
+      "model": "sonnet",
+      "role": "approve",
+      "artifactKey": null,
+      "writes": null,
+      "optional": false,
+      "skills": [
+        "startcycle-graph",
+        "agent-pipeline",
+        "subagent-driven-development"
+      ],
+      "instructions": null
+    },
+    "ui_ux": {
+      "label": "Godmode_UI_UX",
+      "agentType": "godmode-ui-ux",
+      "personaFile": ".claude/agents/godmode-ui-ux.md",
+      "model": "sonnet",
+      "role": "build",
+      "artifactKey": "frontend",
+      "writes": "production_artifacts/state.d/ui_ux.json",
+      "optional": false,
+      "skills": [
+        "godmode-ui-ux",
+        "senior-frontend",
+        "landing-page-generator",
+        "shadcn",
+        "tailwind-patterns",
+        "react-best-practices",
+        "ui-component",
+        "ui-tokens"
+      ],
+      "instructions": "Implement the frontend per the plan: responsive UI, DTCG design tokens, Anti-Slop taste. Write production_artifacts/01_frontend_spec.md and the code."
+    },
+    "engineering": {
+      "label": "Godmode_Engineering",
+      "agentType": "godmode-engineering",
+      "personaFile": ".claude/agents/godmode-engineering.md",
+      "model": "sonnet",
+      "role": "build",
+      "artifactKey": "backend",
+      "writes": "production_artifacts/state.d/engineering.json",
+      "optional": false,
+      "skills": [
+        "godmode-engineering",
+        "software-architecture",
+        "test-driven-development",
+        "api-design-principles",
+        "drizzle-orm-expert",
+        "postgres-best-practices",
+        "typescript-pro",
+        "python-pro"
+      ],
+      "instructions": "Implement the backend per the plan: DDD models, type-safe schemas, API routes, Clean Architecture. Write production_artifacts/02_backend_schema.md and the code."
+    },
+    "media_eventtech": {
+      "label": "Godmode_Media_EventTech",
+      "agentType": "godmode-media-eventtech",
+      "personaFile": ".claude/agents/godmode-media-eventtech.md",
+      "model": "sonnet",
+      "role": "build",
+      "artifactKey": "media",
+      "writes": "production_artifacts/state.d/media_eventtech.json",
+      "optional": true,
+      "skills": [
+        "godmode-eventtech",
+        "godmode-media-creation",
+        "godmode-3d-creation",
+        "bdbmediastorm",
+        "MCP_Manage",
+        "threejs-skills",
+        "spline-3d-integration"
+      ],
+      "instructions": "Implement the media/show-control piece per the plan (TouchDesigner/Unreal/DaVinci/DMX as applicable). Write production_artifacts/03_media_pipeline.md."
+    },
+    "reviewer": {
+      "label": "Reviewer",
+      "agentType": "reviewer",
+      "personaFile": ".claude/agents/reviewer.md",
+      "model": "sonnet",
+      "role": "review",
+      "artifactKey": "review",
+      "writes": null,
+      "optional": false,
+      "skills": [
+        "ui-review",
+        "ux-audit",
+        "architect-review",
+        "systematic-debugging"
+      ],
+      "instructions": null
+    },
+    "shipping": {
+      "label": "Godmode_Shipping",
+      "agentType": "godmode-shipping",
+      "personaFile": ".claude/agents/godmode-shipping.md",
+      "model": "sonnet",
+      "role": "gate",
+      "artifactKey": "report",
+      "writes": null,
+      "optional": false,
+      "skills": [
+        "godmode-shipping",
+        "webapp-testing",
+        "seo-audit",
+        "wcag-audit-patterns",
+        "github-repo",
+        "clean-code"
+      ],
+      "instructions": null
+    }
+  }
+}

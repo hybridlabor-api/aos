@@ -1,91 +1,128 @@
 ---
 name: startcycle
-description: Use when running the autonomous multi-agent build pipeline after /bdbrainstorm or /grill-me. Routes to the startcycle-dispatch Dynamic Workflow, which reads production_artifacts/state.json and invokes Architect, TechLead, UI/UX, Engineering, Media/EventTech, Reviewer, and Shipping in turn per .agents/graph.md's edge table — the agents never invoke each other.
+description: Linear multi-agent build pipeline with file hand-offs in production_artifacts/, run after /bdbrainstorm or /grill-me. This is the linear variant — no state.json, no repair loop, no dispatcher graph — distinct from startcycle-graph, which adds durable state and automated escalation.
 category: bdb-core
 disable-model-invocation: true
 ---
 
-# 🚀 BDB Autonomous Development Cycle (`/startcycle`)
+# `/startcycle` — Linear Build Pipeline
 
-**Step 0 — bootstrap the contract into this project, before calling
-`Workflow`.** Every agent the dispatcher spawns is told to read/write
-`production_artifacts/state.json` "per `.agents/state.schema.json`" — a path
-resolved against the CURRENT PROJECT, not globally. If this project has
-never run `/startcycle` before, that file (and `.agents/graph.md`) won't be
-here yet, and every agent will freelance the state shape instead of
-conforming to the schema (observed for real: a run's `state.json` was
-missing `run_id`/`max_iterations`/`gate`/`findings`/`approvals` and had
-several fields the schema doesn't define at all). Fix it first:
+A straight-line run through the BDB agent roster. Whoever invokes this skill invokes each step in turn, in order, and every hand-off between steps is a file written under `production_artifacts/`. Nothing else is shared between steps — no memory, no live conversation state, no orchestrator process watching over the run.
 
-```bash
-mkdir -p .agents
-[ -f .agents/graph.md ] || cp "$HOME/.agents/graph.md" .agents/graph.md
-[ -f .agents/state.schema.json ] || cp "$HOME/.agents/state.schema.json" .agents/state.schema.json
+```
+                  ┌──────────────────────────────────────────────┐
+                  │ 0. BRAINSTORM & SPECIFICATION                │
+                  │    (/bdbrainstorm / /grill-me)               │
+                  └──────────────────────┬───────────────────────┘
+                                         │
+                                         ▼
+                  ┌──────────────────────────────────────────────┐
+                  │ 1. ARCHITECT                                  │
+                  │    goal ──▶ 00_execution_plan.md              │
+                  └──────────────────────┬───────────────────────┘
+                                         ▼
+                  ┌──────────────────────────────────────────────┐
+                  │ 2. TECHLEAD                                   │
+                  │    approve plan, or send back to Architect    │
+                  │    (once)                                     │
+                  └──────────────────────┬───────────────────────┘
+                                         ▼
+              ┌──────────────────────────┴──────────────────────────┐
+              ▼                          ▼                          ▼
+  ┌───────────────────┐   ┌───────────────────────┐   ┌───────────────────────┐
+  │ 3a. UI/UX          │   │ 3b. ENGINEERING        │   │ 3c. MEDIA/EVENTTECH    │
+  │ 01_frontend_spec.md│   │ 02_backend_schema.md   │   │ 03_media_pipeline.md   │
+  │ frontend/src/       │   │ backend/src/           │   │ (only if goal needs it)│
+  └──────────┬──────────┘   └───────────┬────────────┘   └───────────┬────────────┘
+              └──────────────────────────┴──────────────────────────┘
+                                         ▼
+                  ┌──────────────────────────────────────────────┐
+                  │ 4. REVIEWER                                   │
+                  │    adversarial pass ──▶ review_findings.md    │
+                  └──────────────────────┬───────────────────────┘
+                                         ▼
+                              ── pipeline ends here by default ──
+                                         │
+                                (only if release requested)
+                                         ▼
+                  ┌──────────────────────────────────────────────┐
+                  │ 5. SHIPPING (optional)                        │
+                  │    quality gate ──▶ 04_release_report.md      │
+                  └──────────────────────────────────────────────┘
 ```
 
-If `$HOME/.agents/graph.md` or `$HOME/.agents/state.schema.json` doesn't
-exist either, stop and tell the user: this machine has no canonical copy of
-the graph contract to bootstrap from, and `/startcycle` will produce a
-non-conforming `state.json` until one is installed. Don't silently proceed.
-(`.claude/agents/*.md`, the seven agent persona files, do NOT need this
-treatment — Claude Code resolves subagents from the user-level
-`~/.claude/agents/` fine without a project-local copy.)
+---
 
-**Action — do this, and nothing else:** call the `Workflow` tool with
-`scriptPath` pointing at this repo's dispatcher script — resolve `$HOME`
-yourself (e.g. `echo $HOME` or your own environment info) rather than
-hardcoding a username, giving
-`$HOME/.claude/workflows/startcycle-dispatch.mjs` — and `args` set to the
-goal text that follows `ARGUMENTS:` below this file's content. Pass the goal
-through verbatim. If there is no `ARGUMENTS:` text, pass no `args` (or
-`args: undefined`) — the workflow itself asks for a goal in that case rather
-than guessing one.
+## Steps
 
-Use `scriptPath`, not `name: "startcycle-dispatch"` — by-name lookup for a
-custom (non-built-in) workflow script has been observed to fail with
-`Workflow "startcycle-dispatch" not found. Available: deep-research`, even
-when the script exists at the expected path and is correctly named inside
-its own `meta.name`. `scriptPath` pointing directly at the file works
-reliably; `name` apparently requires a separate registration step (the
-`/workflows` monitor's `s save` action looked like a candidate, but that's
-an interactive step a slash command can't trigger on its own, so don't rely
-on it).
+### 1. Architect
+- **Agent**: `architect`
+- **Reads**: the goal (or `/bdbrainstorm` / `/grill-me` output), existing architecture.
+- **Action**: turns the goal into a system plan with an explicit capability map — module boundaries, dependency direction, what streams the goal actually touches.
+- **Writes**: `production_artifacts/00_execution_plan.md`
 
-Then wait for the `Workflow` tool call to finish and report its result
-(including `phase`, any `reason`, and — at `ready_to_ship` — the instruction
-to reply `GO`) back to the user. Do not summarize or reinterpret it; relay it.
+### 2. TechLead
+- **Agent**: `techlead`
+- **Reads**: `00_execution_plan.md`.
+- **Action**: reviews the plan for module boundaries, dependency direction, and build order. Approves it, or sends it back to Architect once for a revision. This is a gate, not a deliverable — TechLead does not invoke Architect itself; the invoker re-runs step 1 if TechLead rejects.
+- **Writes**: no separate file; approval is just the invoker's own record of the gate having passed.
 
-**Do NOT decompose the task, write anything under `production_artifacts/`, or
-implement any part of the goal yourself in response to this skill.** This
-file exists only to route the `/startcycle` slash command to the real
-dispatcher — a Dynamic Workflow script
-(`.claude/workflows/startcycle-dispatch.mjs`) that holds the actual
-node/edge graph, spawns the seven agents, and drives the repair loop. If you
-catch yourself about to write a plan file or code directly because of this
-skill, stop — that means the `Workflow` tool call was skipped, which is
-exactly the failure this file was rewritten to close (see
-`SESSION-HANDOVER-v3.13.md` in the source repo for the incident: an earlier
-version of this file embedded the full pipeline description in prose, and
-the model followed it "in spirit" inline instead of invoking the script —
-silently skipping the whole graph, with no `state.json`, no subagents, no
-Reviewer, and no quality gate ever running).
+### 3. Build (parallel, stream-selective)
+Run only the streams the goal actually needs. A plain backend feature does not need step 3a or 3c; a pure copy change does not need 3b. Each stream's `skills:` frontmatter already lists what it should reach for — the invoker passes that list through rather than restating it here.
 
-## Why this file is a thin router, not a spec
+| Stream | Agent | Reads | Writes |
+|---|---|---|---|
+| 3a. Frontend | `godmode-ui-ux` | `00_execution_plan.md` | `production_artifacts/01_frontend_spec.md` + `frontend/src/` |
+| 3b. Backend | `godmode-engineering` | `00_execution_plan.md` | `production_artifacts/02_backend_schema.md` + `backend/src/` |
+| 3c. Media/EventTech | `godmode-media-eventtech` | `00_execution_plan.md` | `production_artifacts/03_media_pipeline.md` |
 
-The full contract — state schema, node/edge table, the Stop-hook
-loop-keeper, the no-progress guard — lives in
-[`.agents/graph.md`](../../../.agents/graph.md) and
-[`.agents/state.schema.json`](../../../.agents/state.schema.json). Those are
-read by the dispatcher script itself and by the agents it invokes, not
-duplicated here — so there is nothing here to follow "in spirit" instead of
-actually running.
+3c is for TouchDesigner, show-control, DMX/grandMA3, 3D, or other media-pipeline goals — most goals are not this. Skip it unless the plan actually calls for it.
 
-## If the `Workflow` tool is unavailable
+### 4. Reviewer
+- **Agent**: `reviewer`
+- **Reads**: the artifacts each build stream produced (01/02/03) and the plan's stated contract (`00_execution_plan.md`) — nothing else. Never the goal directly, never a build agent's own claim that it's done; passing that claim through biases the review toward agreement.
+- **Action**: adversarial pass — "find what is wrong," never "does this look good." Every finding is classified by fixed precedence:
+  1. contract misread
+  2. valid & actionable (blocking)
+  3. valid trade-off (advisory)
+  4. noise
+- **Writes**: `production_artifacts/review_findings.md`
 
-Some harnesses (or Claude Code with Dynamic Workflows toggled off in
-`/config`) have no `Workflow` tool at all. Only in that case, fall back to
-manually driving `.agents/graph.md`'s node/edge table yourself as the
-dispatcher: read `production_artifacts/state.json`, decide the next node
-per the edge predicates, invoke exactly that one agent, and repeat. Never
-let one agent's output instruct another agent directly — that hand-off
-pattern is the thing `.agents/graph.md` (F-17) rules out.
+**The linear pipeline ends here by default.** A plain build or refactor goal is done at step 4 — it does not automatically drag a quality gate and release report behind it.
+
+### 5. Shipping — optional, not a hard-wired terminal step
+- **Agent**: `godmode-shipping`
+- **Runs only when**: the user explicitly asks for it, or the original goal was itself a release.
+- **Action**: lint, typecheck, tests, a11y, SEO — the mechanical quality gate, deliberately separate from Reviewer's adversarial correctness pass.
+- **Writes**: `production_artifacts/04_release_report.md`
+
+If the invoker isn't sure whether shipping applies, treat step 4 as the finish line and ask before running step 5.
+
+---
+
+## Explicit non-goals
+
+This skill deliberately does **not** have:
+- `production_artifacts/state.json` or `.agents/state.schema.json`
+- `.agents/graph.md` bootstrap
+- a dispatcher script or `Workflow` tool call
+- a repair loop, an iteration counter, a no-progress guard, or escalation machinery
+- agents invoking each other — whoever runs the skill invokes each step in turn; no agent hands off directly to the next
+
+If a run needs any of the above, it needs `startcycle-graph`, not this skill.
+
+---
+
+## Which startcycle do I want?
+
+| Skill | Use when |
+|---|---|
+| `startcycle` (this one) | Linear, predictable, cheapest of the three. You want a straight run through the agents with file hand-offs and no state machine. |
+| `startcycle-graph` | You need the full dispatcher graph: durable `state.json`, a Reviewer repair loop with a no-progress guard, an automated quality gate, escalation to a human, and a resumable record. |
+| `startcycle-graph-user` | A small throwaway fan-out (2-4 nodes) in any project, nothing persistent left behind. |
+
+---
+
+## Safety
+
+`git push`, `npm publish`, and `npm version` are blocked by `.claude/hooks/go-gate.mjs` unless the user's immediately preceding message is the literal word `GO`. This skill never pushes on its own — Shipping (step 5) prepares the release report; the invoker still needs a fresh `GO` before anything leaves the machine.

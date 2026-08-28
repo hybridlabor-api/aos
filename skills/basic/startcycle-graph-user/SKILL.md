@@ -1,12 +1,12 @@
 ---
-name: light-graph
-description: Use when a task needs a small, throwaway multi-agent fan-out (a couple of parallel workers plus a review pass) in ANY project, without the full /startcycle contract — no .agents/graph.md bootstrap, no state.json schema, no persistent files. Model-tiered by role (opus plan, sonnet review, haiku or an external CLI for workers) and portable across machines that may not have Antigravity/OpenCode/Codex installed.
+name: startcycle-graph-user
+description: Use when a task needs a small, throwaway multi-agent fan-out (a couple of parallel workers plus a review pass) in ANY project, without the full /startcycle-graph contract — no .agents/graph.md bootstrap, no state.json schema, no persistent files. Model-tiered by role (opus plan, sonnet review, haiku or an external CLI for workers) and portable across machines that may not have Antigravity/OpenCode/Codex installed.
 category: bdb-core
 ---
 
 # ⚡ Light Graph — disposable multi-agent fan-out
 
-`/startcycle`'s dispatcher graph is a permanent, project-scoped contract: seven
+`/startcycle-graph`'s dispatcher graph is a permanent, project-scoped contract: seven
 fixed BDB roles, a `state.json` schema, a repair loop, a Stop-hook gate. That's
 the right tool for the BDB build pipeline — and the wrong tool for "spawn me 3
 workers for this one thing right now" in a project that has never heard of
@@ -87,12 +87,12 @@ that silently inherits that is the exact waste this tiering exists to avoid.
   `.agents/`, no `state.json`, no persistent contract — this graph existed for
   the duration of the task and is gone once it's done.
 
-## 5. When to reach for `/startcycle` instead
+## 5. When to reach for `/startcycle-graph` instead
 
 If the task turns out to actually need the full pipeline — multiple build
 domains (UI/UX, Engineering, Media/EventTech), a real repair loop with a
 no-progress guard, or a durable record of what happened for future
-sessions — stop and use `/startcycle`, not this. This skill is deliberately
+sessions — stop and use `/startcycle-graph`, not this. This skill is deliberately
 too small for that job; don't stretch it to cover what the real dispatcher
 graph (`.agents/graph.md`) already does properly.
 
@@ -109,7 +109,7 @@ graph (`.agents/graph.md`) already does properly.
 
 - Any worker node running on sonnet/opus without a specific reason forced by the task.
 - Assuming agy/OpenCode/Codex is present without checking.
-- Writing `.agents/`, `state.json`, or any persistent file for a task this skill was invoked for — that's `/startcycle`'s job, not this one's.
+- Writing `.agents/`, `state.json`, or any persistent file for a task this skill was invoked for — that's `/startcycle-graph`'s job, not this one's.
 - A "light" graph with more nodes than the task actually has independent workstreams.
 
 ## 8. Verification

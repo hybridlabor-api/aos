@@ -142,7 +142,7 @@ The structured lifecycle enforces quality, deterministic verification, and autom
                       └──────────────────────────────────────────────┘
 ```
 
-### 🚀 Autonomous Multi-Agent Macro: `/startcycle`
+### 🚀 Autonomous Multi-Agent Macro: `/startcycle-graph`
 Dispatcher-mediated graph (v2) using a 7-agent team — see `.agents/graph.md`
 and `.agents/state.schema.json` for the full contract (state schema, node
 table, edge predicates). Summary:

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Stop hook — the deterministic half of the /startcycle loop-keeper described
+// Stop hook — the deterministic half of the /startcycle-graph loop-keeper described
 // in .agents/graph.md. Blocks turn-end while production_artifacts/state.json
 // shows a failing quality gate and the run hasn't hit its iteration ceiling,
-// so an unattended /startcycle repair loop doesn't stop just because the
+// so an unattended /startcycle-graph repair loop doesn't stop just because the
 // model's own turn ended -- it keeps going until the gate passes or
 // max_iterations forces an escalation.
 //
 // Deliberately fails OPEN, unlike go-gate.mjs's fail-closed default: a
-// missing or malformed state.json most likely means this isn't a /startcycle
+// missing or malformed state.json most likely means this isn't a /startcycle-graph
 // run at all (the common case, since this hook fires on every Stop event in
 // every session, not just graph runs), or the run hasn't reached a gate step
 // yet. Blocking indefinitely on an unreadable state file would be a worse
@@ -67,7 +67,7 @@ function main() {
   const markerPath = join(cwd, "production_artifacts", ".graph-gate-last-block");
 
   if (!existsSync(statePath)) {
-    allow(); // no active /startcycle run in this cwd -- most sessions, most of the time
+    allow(); // no active /startcycle-graph run in this cwd -- most sessions, most of the time
     return;
   }
 

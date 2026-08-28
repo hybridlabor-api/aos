@@ -1,4 +1,4 @@
-# Autonomous Development Cycle Workflow (/startcycle)
+# Autonomous Development Cycle Workflow (/startcycle-graph)
 
 This workflow defines the zero-prompting, multi-agent execution pipeline triggered after a `/bdbrainstorm` or `/grill-me` session.
 
@@ -14,7 +14,7 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
                                          │
                                          ▼
                   ┌──────────────────────────────────────────────┐
-                  │ 2. AUTONOMOUS CYCLE (/startcycle)            │
+                  │ 2. AUTONOMOUS CYCLE (/startcycle-graph)            │
                   │    • Task Decomposition & Architecture       │
                   │    • Parallel Frontend/Backend/Media Streams │
                   │    • Verification & Quality Gate             │
@@ -47,10 +47,10 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
 contract — state schema, node table, edge predicates, the Stop-hook
 loop-keeper — lives in [`.agents/graph.md`](../graph.md) and
 [`.agents/state.schema.json`](../state.schema.json); this file is a summary,
-kept in sync with `skills/basic/startcycle/SKILL.md`'s canonical version.
+kept in sync with `skills/basic/startcycle-graph/SKILL.md`'s canonical version.
 
 **The one rule:** these seven agents never invoke each other. A dispatcher —
-the main session running `/startcycle`, or whatever plays that role in a
+the main session running `/startcycle-graph`, or whatever plays that role in a
 given harness — reads `production_artifacts/state.json` after each agent
 returns and decides which one runs next. The version of this file below this
 notice previously described "streams" and "hand-offs" in a way that read as

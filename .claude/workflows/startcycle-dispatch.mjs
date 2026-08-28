@@ -1,10 +1,10 @@
-// Dispatcher for /startcycle. Implements the node/edge table in
+// Dispatcher for /startcycle-graph. Implements the node/edge table in
 // .agents/graph.md as an actual runnable loop, using Claude Code's Dynamic
 // Workflows runtime (this script IS the dispatcher F-17 requires: it holds
 // the loop and the branching decisions; the seven agents below are leaves
 // that never invoke each other or this script).
 //
-// Two things this runtime doesn't give a workflow script, and how we work
+// Four things this runtime doesn't give a workflow script, and how we work
 // around them:
 //
 // 1. No direct filesystem access from the script itself ("Agents read,
@@ -22,7 +22,41 @@
 // 2. No module loading (`import()` fails before the run starts) -- `agent`
 //    and `pipeline` are ambient globals the runtime injects, not imports.
 //    `args` is likewise an ambient global carrying whatever was passed to
-//    `/startcycle`, not a function parameter.
+//    `/startcycle-graph`, not a function parameter.
+//
+// 3. pipeline() fans out one agent() call per build node, genuinely
+//    concurrently, and every one of those was previously told to
+//    read-modify-write the SAME production_artifacts/state.json -- last
+//    writer wins, so concurrent findings/artifact updates were silently
+//    lost. There is no lock available (the runtime gives the script no
+//    filesystem access, so it can't hold one itself). Fixed by single-
+//    writer-per-file: each build node in a pipeline() fan-out writes ONLY
+//    its own production_artifacts/state.d/<nodeId>.json fragment (see
+//    .agents/state.schema.json's $defs.stateFragment) and never touches
+//    state.json. Immediately after each pipeline() call returns -- the
+//    barrier where every parallel node has finished -- mergeStateD() below
+//    invokes one dedicated haiku agent that folds every state.d/*.json
+//    fragment into state.json, deterministically, before the run continues.
+//    This still happens inside the workflow run, never deferred, because
+//    graph-gate.mjs reads state.json at turn end. Sequential nodes
+//    (architect, techlead, reviewer, shipping) are never inside a
+//    pipeline() fan-out, so they are not part of this race and keep
+//    writing state.json directly, same as before.
+//
+// 4. The seven node identities (persona file, model, which skills each may
+//    reach for, build-node instructions) used to be hardcoded in this
+//    script. They now live in .agents/nodes.json (owned by a different
+//    agent than this file) so that registry can grow without touching this
+//    dispatcher. Since this script has no filesystem access (see #1), it
+//    can't read that file itself either -- so the very first thing this run
+//    does is spawn a small haiku `load-registry` agent whose only job is to
+//    read .agents/nodes.json and return it, schema-validated. Everything
+//    downstream (BUILD_NODES, NODE_ENUM, NODE_NAMES, every agentType/model
+//    passed to agent(), every skills allowlist, every build-node
+//    instruction string) is derived from that returned object, not
+//    hardcoded. If the registry fails to load or comes back with fewer
+//    than the seven required node ids, this run escalates immediately --
+//    it never silently falls back to a hardcoded list.
 //
 // max_iterations mirrors .agents/state.schema.json's default (3) --
 // deliberately under Claude Code's own 8-consecutive-Stop-hook-block
@@ -32,7 +66,7 @@
 export const meta = {
   name: 'startcycle-dispatch',
   description:
-    'Dispatcher-mediated build pipeline: Architect -> TechLead -> {UI_UX, Engineering, Media_EventTech} -> Reviewer -> Shipping, per .agents/graph.md. Agents never invoke each other -- this script decides every next step.',
+    'Dispatcher-mediated build pipeline: Architect -> TechLead -> {UI_UX, Engineering, Media_EventTech} -> Reviewer -> Shipping, per .agents/graph.md. Agents never invoke each other -- this script decides every next step. Node identities come from .agents/nodes.json, loaded fresh each run.',
 };
 
 const MAX_ITERATIONS = 3;
@@ -47,12 +81,40 @@ const MAX_ITERATIONS = 3;
 // correct on the first draft.
 let iteration = 0;
 
-// Every non-Reviewer agent gets the same note: read the full state, and
-// explicitly set state.iteration to the dispatcher's current count so the
-// persisted file (which .claude/hooks/graph-gate.mjs reads) actually reflects
-// reality -- nothing else in this script has filesystem access to write it
-// directly.
-function dispatchNote() {
+// Every sequential (non-build-role) agent gets the same note: read the full
+// state, and explicitly set state.iteration to the dispatcher's current
+// count so the persisted file (which .claude/hooks/graph-gate.mjs reads)
+// actually reflects reality -- nothing else in this script has filesystem
+// access to write it directly.
+//
+// Build-role nodes get a different note: they are invoked inside a
+// pipeline() fan-out alongside other build nodes writing at the same time,
+// so they must NOT write state.json themselves (see comment block item #3
+// above) -- they write only their own production_artifacts/state.d/<id>.json
+// fragment, which the dedicated merge step folds in afterwards.
+function dispatchNote(node, soloWriter = false) {
+  if (node?.role === 'build') {
+    if (soloWriter) {
+      return (
+        'Read production_artifacts/state.json if it exists. ' +
+        `Set state.iteration to ${iteration}. Update your artifacts key and status for your open findings directly in state.json. ` +
+        'You may also set "needs_human": true if you genuinely cannot proceed without a human decision. ' +
+        'Do NOT write a production_artifacts/state.d/ fragment.'
+      );
+    }
+    const writes = node.writes || `production_artifacts/state.d/${node.id}.json`;
+    return (
+      'Read production_artifacts/state.json if it exists (read-only -- for context such as state.goal and ' +
+      'state.artifacts.plan). Do NOT write production_artifacts/state.json yourself -- other build nodes may be ' +
+      `writing concurrently in this same pass, and a shared write would race and silently lose updates. Instead ` +
+      `write ONLY ${writes} (create production_artifacts/state.d/ if missing), containing just the fields you ` +
+      `own: { "node": "${node.id}", "artifacts": { "${node.artifactKey || node.id}": <path to the artifact you ` +
+      `produced> }, "findings": [ <status updates for any open findings you addressed, same shape as the ` +
+      `top-level findings[] items> ], "needs_human": true (optional, only set if you genuinely cannot proceed without a human decision) } per .agents/state.schema.json's $defs.stateFragment. Omit state.iteration, ` +
+      'state.goal, and every field you do not own -- the dispatcher runs a dedicated merge step that folds your ' +
+      'fragment into state.json afterwards; do not attempt that merge yourself.'
+    );
+  }
   return (
     'Read production_artifacts/state.json if it exists; otherwise this is a fresh run. ' +
     `Set state.iteration to ${iteration} in your update (this is the dispatcher's authoritative count -- ` +
@@ -69,7 +131,10 @@ function dispatchNote() {
 // one thing the discipline says it must never see. This was caught the same
 // way as the iteration-counter bug: an adversarial review against
 // .agents/graph.md's own text, not assumed safe because "it's just a
-// generic state-sync note."
+// generic state-sync note." Reviewer is a sequential (review-role) node --
+// never inside a pipeline() fan-out -- so writing state.json directly here
+// is not part of the CHANGE 1 race and this function is left untouched by
+// that fix.
 function reviewerStateNote() {
   return (
     'Do NOT read state.goal or any other node\'s reasoning/claims from production_artifacts/state.json -- ' +
@@ -80,16 +145,39 @@ function reviewerStateNote() {
   );
 }
 
+// Injects each node's registry-declared skills as an explicit allowlist.
+// Applies to every node, build and sequential alike.
+function skillsNote(node) {
+  const skills = Array.isArray(node?.skills) ? node.skills : [];
+  if (skills.length === 0) return '';
+  return (
+    ` Use these skills for this work: ${skills.join(', ')}. ` +
+    'Do not reach for skills outside this list unless the task genuinely requires it.'
+  );
+}
+
+// "a", "a or b", "a, b, or c" -- used for NODE_NAMES, itself derived from the
+// registry rather than hardcoded (see load-registry below).
+function humanList(items) {
+  const quoted = items.map((s) => `"${s}"`);
+  if (quoted.length === 0) return '';
+  if (quoted.length === 1) return quoted[0];
+  if (quoted.length === 2) return quoted.join(' or ');
+  return `${quoted.slice(0, -1).join(', ')}, or ${quoted[quoted.length - 1]}`;
+}
+
 // Centralizes every escalation path through one place, so `needs_human` and
 // `phase: escalated` actually land in state.json instead of only in this
 // script's return value (found the same way: grep for "needs_human" in an
 // earlier draft returned zero matches across 8 separate `return { phase:
 // 'escalated', ... }` sites -- the field was silently dropped end to end
 // every single time, since none of those `return`s routed through an
-// agent() call that could persist it).
+// agent() call that could persist it). Escalation is inherently a single,
+// sequential call (never inside a pipeline() fan-out), so it writes
+// state.json directly like the other sequential nodes.
 async function escalate(reason, extra = {}) {
   await agent(
-    'You are recording a /startcycle escalation. Update production_artifacts/state.json per ' +
+    'You are recording a /startcycle-graph escalation. Update production_artifacts/state.json per ' +
       '.agents/state.schema.json: set phase to "escalated", needs_human to true, iteration to ' +
       `${iteration}, and append this reason to the record: ${JSON.stringify(reason)}. ` +
       'Create production_artifacts/ if missing.',
@@ -98,15 +186,127 @@ async function escalate(reason, extra = {}) {
   return { phase: 'escalated', reason, iteration, ...extra };
 }
 
-const goal = typeof args === 'string' ? args : args?.goal;
-if (!goal) {
-  return escalate(
-    'startcycle needs a goal, e.g. "Run /startcycle on: add OAuth login with Google" -- nothing was invoked.'
+// The single-writer-per-file fix from comment block item #3. Called once,
+// immediately after every pipeline() call returns (the barrier where all
+// parallel build nodes have finished this pass) -- never deferred, since
+// .claude/hooks/graph-gate.mjs reads production_artifacts/state.json at turn
+// end and needs the merged result to already be there. Deterministic fold
+// only: model 'haiku', explicitly told not to invent, reinterpret, or drop
+// any field.
+async function mergeStateD() {
+  return await agent(
+    'You are the dedicated /startcycle-graph state-merge step -- a deterministic fold, not a reasoning task. ' +
+      'Read every file matching production_artifacts/state.d/*.json (if that directory does not exist or is ' +
+      'empty, there is nothing to merge -- just confirm production_artifacts/state.json still exists and is ' +
+      'valid per .agents/state.schema.json, and return merged: 0, needsHuman: false). Read the current ' +
+      'production_artifacts/state.json. For each fragment file, per .agents/state.schema.json\'s ' +
+      '$defs.stateFragment shape: merge fragment.artifacts into state.artifacts by key -- only the key(s) ' +
+      'present in that specific fragment change, every other artifacts key is left exactly as it was; merge ' +
+      'fragment.findings into state.findings by matching "id" -- an existing finding with that id gets its ' +
+      'fields (status, etc.) updated in place, a finding id not already present is appended, and findings not ' +
+      'mentioned in any fragment are left completely untouched. ' +
+      `Set state.iteration to ${iteration}. Do not change state.goal, state.phase, state.gate, state.approvals, ` +
+      'or state.run_id. If ANY fragment sets "needs_human": true, you MUST set state.needs_human = true in the merged ' +
+      'result (never flip an existing true back to false). Do NOT invent, guess, reinterpret, or silently drop any field: if a fragment is malformed or is ' +
+      'missing its required "node" field, skip that exact file and report it in "skipped" with a short reason, ' +
+      'rather than guessing its intent. Write the merged result back to production_artifacts/state.json. Then VERIFY before deleting anything: re-read ' +
+      'production_artifacts/state.json and confirm that, for every fragment you folded in, its artifacts key(s) and its ' +
+      'findings id(s) are actually present in the file you just wrote. Only delete a production_artifacts/state.d/*.json ' +
+      'fragment after you have confirmed its content landed. If ANY fragment was skipped, or if any read-back verification ' +
+      'fails, delete NOTHING AT ALL and report the reason in "skipped" -- the dispatcher escalates on a non-empty "skipped", ' +
+      'and the fragments must still exist at that point so the run can be diagnosed and recovered. Deleting a fragment you ' +
+      'could not verify would destroy the only copy of that node\'s output.\n\n' +
+      'Return only: { "merged": number, "skipped": string[], "needsHuman": boolean } -- merged is how many fragment files were folded ' +
+      'in; skipped lists any fragment filenames that could not be merged, each with a short reason; needsHuman is true if any fragment requested it.',
+    {
+      label: `merge-${iteration}`,
+      model: 'haiku',
+      schema: {
+        type: 'object',
+        required: ['merged', 'skipped', 'needsHuman'],
+        properties: {
+          merged: { type: 'number' },
+          skipped: { type: 'array', items: { type: 'string' } },
+          needsHuman: { type: 'boolean' },
+        },
+      },
+    }
   );
 }
 
 // ---------------------------------------------------------------------
-// Architect <-> TechLead: plan, then capability-map approval.
+// Load the node registry. First thing this run does, per comment block
+// item #4 -- everything below is derived from this, nothing is hardcoded.
+// ---------------------------------------------------------------------
+
+const REGISTRY_SCHEMA = {
+  type: 'object',
+  required: ['version', 'nodes'],
+  properties: {
+    version: { type: 'number' },
+    description: { type: 'string' },
+    nodes: {
+      type: 'object',
+      minProperties: 1,
+      additionalProperties: {
+        type: 'object',
+        required: ['label', 'agentType', 'personaFile', 'model', 'role'],
+        properties: {
+          label: { type: 'string' },
+          agentType: { type: 'string' },
+          personaFile: { type: 'string' },
+          model: { type: 'string' },
+          role: { type: 'string', enum: ['plan', 'approve', 'build', 'review', 'gate'] },
+          // artifactKey/writes/instructions are null on nodes where they don't apply (e.g. techlead
+          // has no artifactKey, architect/techlead/reviewer/shipping have writes: null and
+          // instructions: null since they are sequential nodes with hardcoded prompt text below,
+          // not build nodes reading a registry instruction string) -- must accept null, not just string.
+          artifactKey: { type: ['string', 'null'] },
+          writes: { type: ['string', 'null'] },
+          optional: { type: 'boolean' },
+          skills: { type: 'array', items: { type: 'string' } },
+          instructions: { type: ['string', 'null'] },
+        },
+      },
+    },
+  },
+};
+
+const REQUIRED_NODE_IDS = ['architect', 'techlead', 'ui_ux', 'engineering', 'media_eventtech', 'reviewer', 'shipping'];
+
+try {
+const registryResult = await agent(
+  'Read the file .agents/nodes.json (repository root) and return its exact contents, parsed as JSON, matching ' +
+    'the given schema. This is a read-only lookup, not a reasoning task: do not invent, modify, reinterpret, ' +
+    'merge, or add any field that is not literally present in the file. If the file is missing, unreadable, or ' +
+    'not valid JSON, return { "version": 0, "nodes": {} } rather than guessing at its contents.',
+  { label: 'load-registry', model: 'haiku', schema: REGISTRY_SCHEMA }
+);
+
+const registryNodes = registryResult?.nodes ?? {};
+const missingNodeIds = REQUIRED_NODE_IDS.filter((id) => !registryNodes[id]);
+if (missingNodeIds.length > 0) {
+  return await escalate(
+    `.agents/nodes.json failed to load, or is missing required node id(s): ${missingNodeIds.join(', ')}. ` +
+      'Refusing to fall back to a hardcoded node list -- fix the registry and re-run /startcycle-graph.'
+  );
+}
+
+const architectNode = { id: 'architect', ...registryNodes.architect };
+const techleadNode = { id: 'techlead', ...registryNodes.techlead };
+const reviewerNode = { id: 'reviewer', ...registryNodes.reviewer };
+const shippingNode = { id: 'shipping', ...registryNodes.shipping };
+
+const goal = typeof args === 'string' ? args : args?.goal;
+if (!goal) {
+  return escalate(
+    'startcycle-graph needs a goal, e.g. "Run /startcycle-graph on: add OAuth login with Google" -- nothing was invoked.'
+  );
+}
+
+// ---------------------------------------------------------------------
+// Architect <-> TechLead: plan, then capability-map approval. Sequential --
+// not part of the CHANGE 1 race, writes state.json directly as before.
 // ---------------------------------------------------------------------
 
 let planPath = null;
@@ -116,7 +316,7 @@ let lastRejectionReason = '';
 
 while (!approved) {
   const architectResult = await agent(
-    `You are acting as the Architect agent (.claude/agents/architect.md). ${dispatchNote()}\n\n` +
+    `You are acting as the ${architectNode.label} agent (${architectNode.personaFile}). ${dispatchNote(architectNode)}${skillsNote(architectNode)}\n\n` +
       `Goal: ${JSON.stringify(goal)}\n` +
       (lastRejectionReason
         ? `TechLead rejected your previous plan for this reason -- address it: ${lastRejectionReason}\n`
@@ -128,6 +328,8 @@ while (!approved) {
       `Return only: { "planPath": string, "needsMedia": boolean }.`,
     {
       label: `architect-${iteration}`,
+      agentType: architectNode.agentType,
+      model: architectNode.model,
       schema: {
         type: 'object',
         required: ['planPath', 'needsMedia'],
@@ -144,13 +346,15 @@ while (!approved) {
   }
 
   const techLeadResult = await agent(
-    `You are acting as the TechLead agent (.claude/agents/techlead.md). ${dispatchNote()}\n\n` +
+    `You are acting as the ${techleadNode.label} agent (${techleadNode.personaFile}). ${dispatchNote(techleadNode)}${skillsNote(techleadNode)}\n\n` +
       `Read the plan at ${planPath}. Approve it only if it has an explicit capability map: ` +
       `module boundaries, dependency direction, and build order are all stated, not implicit. ` +
       `Record your decision in state.json (plan approval, state.phase = "build" if approved).\n\n` +
       `Return only: { "approved": boolean, "reason": string }.`,
     {
       label: `techlead-${iteration}`,
+      agentType: techleadNode.agentType,
+      model: techleadNode.model,
       schema: {
         type: 'object',
         required: ['approved', 'reason'],
@@ -177,40 +381,22 @@ while (!approved) {
 // Build nodes (parallel, dispatcher-invoked independently -- pipeline()
 // fans out one agent() per node; none of them call each other) <-> Reviewer
 // repair loop. On the first pass every applicable node runs; on a repair
-// pass only the nodes that own an open finding run again.
+// pass only the nodes that own an open finding run again. Derived entirely
+// from the registry loaded above, filtered to role: 'build' and (for
+// media_eventtech specifically) Architect's needsMedia decision.
 // ---------------------------------------------------------------------
 
-const NODE_NAMES = needsMedia ? '"ui_ux", "engineering", or "media_eventtech"' : '"ui_ux" or "engineering"';
-const NODE_ENUM = needsMedia ? ['ui_ux', 'engineering', 'media_eventtech'] : ['ui_ux', 'engineering'];
+const BUILD_NODES = Object.keys(registryNodes)
+  .filter((id) => registryNodes[id]?.role === 'build')
+  .filter((id) => id !== 'media_eventtech' || needsMedia)
+  .map((id) => ({ id, ...registryNodes[id] }));
 
-const BUILD_NODES = [
-  {
-    node: 'ui_ux',
-    label: 'Godmode_UI_UX',
-    agentFile: '.claude/agents/godmode-ui-ux.md',
-    instructions:
-      'Implement the frontend per the plan: responsive UI, DTCG design tokens, Anti-Slop taste. ' +
-      'Write production_artifacts/01_frontend_spec.md and the code.',
-  },
-  {
-    node: 'engineering',
-    label: 'Godmode_Engineering',
-    agentFile: '.claude/agents/godmode-engineering.md',
-    instructions:
-      'Implement the backend per the plan: DDD models, type-safe schemas, API routes, Clean Architecture. ' +
-      'Write production_artifacts/02_backend_schema.md and the code.',
-  },
-];
-if (needsMedia) {
-  BUILD_NODES.push({
-    node: 'media_eventtech',
-    label: 'Godmode_Media_EventTech',
-    agentFile: '.claude/agents/godmode-media-eventtech.md',
-    instructions:
-      'Implement the media/show-control piece per the plan (TouchDesigner/Unreal/DaVinci/DMX as applicable). ' +
-      'Write production_artifacts/03_media_pipeline.md.',
-  });
+if (BUILD_NODES.length === 0) {
+  return await escalate('No build-role nodes resolved from .agents/nodes.json for this goal.');
 }
+
+const NODE_ENUM = BUILD_NODES.map((n) => n.id);
+const NODE_NAMES = humanList(NODE_ENUM);
 
 let findings = [];
 let reviewedClean = false;
@@ -218,24 +404,55 @@ let nodesToRun = BUILD_NODES; // first pass: everyone applicable
 let previousBlockingIds = new Set(); // for the no-progress guard below
 
 while (!reviewedClean) {
-  await pipeline(nodesToRun, (n) => {
-    const openFindings = findings.filter((f) => f.node === n.node && f.status === 'open');
+  const isSolo = nodesToRun.length === 1;
+  const pipelineResults = await pipeline(nodesToRun, (n) => {
+    const openFindings = findings.filter((f) => f.node === n.id && f.status === 'open');
+    const opts = { label: n.id, agentType: n.agentType, model: n.model };
+    if (isSolo) {
+      opts.schema = {
+        type: 'object',
+        properties: { needsHuman: { type: 'boolean' } }
+      };
+    }
     return agent(
-      `You are acting as the ${n.label} agent (${n.agentFile}). ${dispatchNote()}\n\n` +
+      `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
         `Read the plan at ${planPath}. ${n.instructions}\n` +
         (openFindings.length
           ? `Address these open Reviewer findings before anything else: ${JSON.stringify(openFindings)}\n`
           : '') +
-        `Update state.artifacts.${n.node === 'media_eventtech' ? 'media' : n.node} in state.json.`,
-      { label: n.node }
+        (isSolo ? `\n\nReturn only: { "needsHuman": boolean } (set to true only if you set "needs_human": true in state.json).` : ''),
+      opts
     );
   });
+
+  if (isSolo) {
+    if (pipelineResults[0]?.needsHuman) {
+      return await escalate(`Build node ${nodesToRun[0].id} requested human input.`);
+    }
+  } else {
+    // Barrier: every build node in this pass has returned and written only its
+    // own production_artifacts/state.d/<id>.json fragment (dispatchNote()'s
+    // build-role branch). Fold them into state.json now, before Reviewer (or
+    // anything else) reads it -- this is the CHANGE 1 fix from comment block
+    // item #3, and it must happen inside this run since graph-gate.mjs reads
+    // state.json at turn end.
+    const mergeResult = await mergeStateD();
+    if (mergeResult?.skipped?.length) {
+      return await escalate(
+        `State merge could not fold fragment(s) after the build pass: ${mergeResult.skipped.join(', ')}`,
+        { skipped: mergeResult.skipped }
+      );
+    }
+    if (mergeResult?.needsHuman) {
+      return await escalate('One or more build nodes requested human input.');
+    }
+  }
 
   // Reviewer: ARTIFACT + CONTRACT only, per .agents/graph.md's discipline --
   // reviewerStateNote() (not dispatchNote()) is what actually enforces this;
   // see that function's own comment for why the distinction matters.
   const reviewResult = await agent(
-    `You are acting as the Reviewer agent (.claude/agents/reviewer.md). ${reviewerStateNote()}\n\n` +
+    `You are acting as the ${reviewerNode.label} agent (${reviewerNode.personaFile}). ${reviewerStateNote()}${skillsNote(reviewerNode)}\n\n` +
       `Read the plan/contract at ${planPath} and the artifacts it produced ` +
       `(production_artifacts/01_frontend_spec.md, 02_backend_schema.md${
         needsMedia ? ', 03_media_pipeline.md' : ''
@@ -249,9 +466,11 @@ while (!reviewedClean) {
       `stability is what lets the dispatcher detect a repair round that made no real progress, so do not renumber ` +
       `findings between cycles just because this is a fresh review call.\n` +
       `Write production_artifacts/review_findings.md and update state.findings.\n\n` +
-      `Return only: { "findings": [{ "id": string, "severity": "blocking"|"advisory", "node": string, "summary": string, "status": "open"|"fixed"|"wont_fix" }], "blockingCount": number }.`,
+      `Return only: { "findings": [{ "id": string, "severity": "blocking"|"advisory", "node": string, "summary": string, "status": "open"|"fixed"|"wont_fix" }], "blockingCount": number } (blockingCount must count ONLY findings whose status is "open").`,
     {
       label: `reviewer-${iteration}`,
+      agentType: reviewerNode.agentType,
+      model: reviewerNode.model,
       schema: {
         type: 'object',
         required: ['findings', 'blockingCount'],
@@ -277,7 +496,7 @@ while (!reviewedClean) {
   );
 
   findings = reviewResult?.findings ?? [];
-  const blockingCount = reviewResult?.blockingCount ?? findings.filter((f) => f.severity === 'blocking').length;
+  const blockingCount = reviewResult?.blockingCount ?? findings.filter((f) => f.severity === 'blocking' && f.status === 'open').length;
 
   if (blockingCount === 0) {
     // Clean. Note on .agents/graph.md's original "doubt theater" guard (2
@@ -290,7 +509,7 @@ while (!reviewedClean) {
     // genuinely reach.
     reviewedClean = true;
   } else {
-    const blockingIds = new Set(findings.filter((f) => f.severity === 'blocking').map((f) => f.id));
+    const blockingIds = new Set(findings.filter((f) => f.severity === 'blocking' && f.status === 'open').map((f) => f.id));
     const sameAsLastTime =
       iteration > 0 &&
       blockingIds.size > 0 &&
@@ -311,7 +530,7 @@ while (!reviewedClean) {
     }
 
     previousBlockingIds = blockingIds;
-    nodesToRun = BUILD_NODES.filter((n) => findings.some((f) => f.node === n.node && f.status === 'open'));
+    nodesToRun = BUILD_NODES.filter((n) => findings.some((f) => f.node === n.id && f.status === 'open'));
     if (nodesToRun.length === 0) {
       // Findings exist but none map to a known node -- Reviewer mis-tagged
       // ownership (the schema's enum constraint above should make this rare,
@@ -334,6 +553,9 @@ while (!reviewedClean) {
 // ---------------------------------------------------------------------
 // Shipping: automated gate. Deliberately a separate check from Reviewer's
 // adversarial pass (mechanical gate execution vs. correctness review).
+// Shipping itself is sequential (not part of the CHANGE 1 race); the
+// gate-fix repair round below IS a pipeline() fan-out, so it gets the same
+// state.d + merge treatment as the build/review loop above.
 // ---------------------------------------------------------------------
 
 const GATE_KEYS = ['lint', 'typecheck', 'tests', 'a11y', 'seo'];
@@ -343,15 +565,18 @@ let lastGate = null;
 
 while (!allGatesPass) {
   const shipResult = await agent(
-    `You are acting as the Godmode_Shipping agent (.claude/agents/godmode-shipping.md). ${dispatchNote()}\n\n` +
+    `You are acting as the ${shippingNode.label} agent (${shippingNode.personaFile}). ${dispatchNote(shippingNode)}${skillsNote(shippingNode)}\n\n` +
       `Run the automated quality gate against the artifacts from the plan at ${planPath}: lint, typecheck, ` +
       `tests, a11y, seo. Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect ` +
       `which apply; use "skip" only for a check that genuinely doesn't apply to this repo, not for one you didn't run). ` +
-      `Write production_artifacts/04_release_report.md and update state.gate.\n\n` +
+      `Write production_artifacts/04_release_report.md and update state.gate. ` +
+      `If every gate check is 'pass' or 'skip', you must also set state.phase = "ready_to_ship" in state.json.\n\n` +
       `Return only: { "gate": { "lint": "pass"|"fail"|"skip", "typecheck": "pass"|"fail"|"skip", "tests": "pass"|"fail"|"skip", "a11y": "pass"|"fail"|"skip", "seo": "pass"|"fail"|"skip" }, "blockingNodes": string[] } ` +
       `-- blockingNodes lists which build node(s) (${NODE_NAMES}) own fixing each failing check; empty if all pass.`,
     {
       label: `shipping-${iteration}`,
+      agentType: shippingNode.agentType,
+      model: shippingNode.model,
       schema: {
         type: 'object',
         required: ['gate', 'blockingNodes'],
@@ -381,7 +606,7 @@ while (!allGatesPass) {
   }
 
   const blockingNodes = (shipResult?.blockingNodes ?? [])
-    .map((n) => BUILD_NODES.find((b) => b.node === n))
+    .map((n) => BUILD_NODES.find((b) => b.id === n))
     .filter(Boolean);
 
   if (blockingNodes.length === 0) {
@@ -391,14 +616,43 @@ while (!allGatesPass) {
     );
   }
 
-  await pipeline(blockingNodes, (n) =>
-    agent(
-      `You are acting as the ${n.label} agent (${n.agentFile}). ${dispatchNote()}\n\n` +
+  const isSolo = blockingNodes.length === 1;
+  const pipelineResults = await pipeline(blockingNodes, (n) => {
+    const opts = { label: `${n.id}-gate-fix-${iteration}`, agentType: n.agentType, model: n.model };
+    if (isSolo) {
+      opts.schema = {
+        type: 'object',
+        properties: { needsHuman: { type: 'boolean' } }
+      };
+    }
+    return agent(
+      `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
         `Shipping's quality gate failed on a check you own: ${JSON.stringify(lastGate)}. ` +
-        `Read production_artifacts/04_release_report.md for details and fix it.`,
-      { label: `${n.node}-gate-fix-${iteration}` }
-    )
-  );
+        `Read production_artifacts/04_release_report.md for details and fix it.` +
+        (isSolo ? `\n\nReturn only: { "needsHuman": boolean } (set to true only if you set "needs_human": true in state.json).` : ''),
+      opts
+    );
+  });
+
+  if (isSolo) {
+    if (pipelineResults[0]?.needsHuman) {
+      return await escalate(`Build node ${blockingNodes[0].id} requested human input during gate fix.`);
+    }
+  } else {
+    // Same barrier as the build/review loop above: this pipeline() call just
+    // ran build nodes concurrently, each writing only its own state.d
+    // fragment. Fold them in before Shipping re-checks the gate.
+    const gateMergeResult = await mergeStateD();
+    if (gateMergeResult?.skipped?.length) {
+      return await escalate(
+        `State merge could not fold fragment(s) after a gate-fix repair round: ${gateMergeResult.skipped.join(', ')}`,
+        { skipped: gateMergeResult.skipped }
+      );
+    }
+    if (gateMergeResult?.needsHuman) {
+      return await escalate('One or more build nodes requested human input during gate fix.');
+    }
+  }
 }
 
 // All gates green. Do NOT push/ship automatically -- that's gated by
@@ -412,3 +666,10 @@ return {
   gate: lastGate,
   planPath,
 };
+} catch (error) {
+  try {
+    return await escalate(error.message || String(error));
+  } catch (escalateError) {
+    return { phase: 'escalated', reason: error.message || String(error), needs_human: true };
+  }
+}

@@ -10,11 +10,11 @@
 - **Mandatory Git Snapshots:** Before modifying, refactoring, or deleting any file in the workspace, take a Git snapshot or create a commit of the current state.
 - **Rollback Readiness:** Ensure all changes can be safely reverted. Ask for confirmation before performing destructive actions (e.g., massive deletions).
 - **CRITICAL TWO-PHASE GATE PROTOCOL (ABSOLUTE OVERRIDE):**
-  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`).
+  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle-graph`).
   - **Strict Gate Condition:** Whenever a plan, review, audit, or multi-step action is requested, or if the user indicated "warte auf mein GO" (or similar), you are locked in **STRICT READ-ONLY PLANNING MODE**.
   - **Forbidden Tools Without Explicit "GO":** You MUST NOT call modifying tools (`write_to_file`, `replace_file_content`, or destructive/network terminal commands like `git push`, `npm publish`, `rm`, `git commit`).
   - **Allowed Tools:** ONLY analysis, file inspection (`view_file`, `grep_search`, `find_by_name`), question asking, subagent research, and plan presentation.
-  - **Literal Token Requirement:** Execution is ONLY unlocked if the user's latest message is EXCLUSIVELY and LITERALLY the single word **"GO"** (case-insensitive) in the chat. Combining action words with other instructions (e.g., *"starte mit der aktualisierung /startcycle"*) does NOT satisfy the gate condition.
+  - **Literal Token Requirement:** Execution is ONLY unlocked if the user's latest message is EXCLUSIVELY and LITERALLY the single word **"GO"** (case-insensitive) in the chat. Combining action words with other instructions (e.g., *"starte mit der aktualisierung /startcycle-graph"*) does NOT satisfy the gate condition.
   - **Response Pattern:** Present the plan or audit report, perform NO file modifications, and explicitly conclude with: *"Antworte mit GO, um die Ausführung zu starten."*
 
 ## 3. Token Efficiency & Code Quality
@@ -36,7 +36,7 @@
 
 ---
 
-# Autonomous Development Cycle Workflow (/startcycle)
+# Autonomous Development Cycle Workflow (/startcycle-graph)
 
 This workflow defines the zero-prompting, multi-agent execution pipeline triggered after a `/bdbrainstorm` or `/grill-me` session.
 
@@ -52,7 +52,7 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
                                          │
                                          ▼
                   ┌──────────────────────────────────────────────┐
-                  │ 2. AUTONOMOUS CYCLE (/startcycle)            │
+                  │ 2. AUTONOMOUS CYCLE (/startcycle-graph)            │
                   │    • Task Decomposition & Architecture       │
                   │    • Parallel Frontend/Backend/Media Streams │
                   │    • Verification & Quality Gate             │
@@ -85,10 +85,10 @@ This workflow defines the zero-prompting, multi-agent execution pipeline trigger
 contract — state schema, node table, edge predicates, the Stop-hook
 loop-keeper — lives in `.agents/graph.md` and `.agents/state.schema.json`;
 this file is a summary, kept in sync with
-`skills/basic/startcycle/SKILL.md`'s canonical version.
+`skills/basic/startcycle-graph/SKILL.md`'s canonical version.
 
 **The one rule:** these seven agents never invoke each other. A dispatcher —
-the main session running `/startcycle`, or whatever plays that role in a
+the main session running `/startcycle-graph`, or whatever plays that role in a
 given harness — reads `production_artifacts/state.json` after each agent
 returns and decides which one runs next. The version of this file below this
 notice previously described "streams" and "hand-offs" in a way that read as

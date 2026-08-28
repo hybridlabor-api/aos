@@ -182,7 +182,7 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `agent-manager-skill` | Manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling. |
 | `agent-memory-mcp` | Hybrid memory system providing persistent, searchable knowledge management for AI agents. |
 | `agent-orchestrator` | Meta-skill orchestrating all agents in the ecosystem. Automatic skill scanning, capability matching, and multi-skill workflow coordination. |
-| `agent-pipeline` | Reference for the BDB lifecycle (define → plan → build → verify/review → ship) that `/startcycle`'s dispatcher graph actually runs. |
+| `agent-pipeline` | Reference for the BDB lifecycle (define → plan → build → verify/review → ship) that `/startcycle-graph`'s dispatcher graph actually runs. |
 | `agent-tool-builder` | Tool design from schema to error handling — the difference between an agent that works and one that hallucinates. |
 | `ai-agent-development` | AI agent development workflow: autonomous agents, multi-agent systems, and agent orchestration with CrewAI, LangGraph. |
 | `crewai` | Expert in CrewAI — the leading role-based multi-agent framework. |
