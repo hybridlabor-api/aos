@@ -53,10 +53,12 @@ const colors = {
     cyan: "\x1b[36m",
     purple: "\x1b[38;2;157;78;221m",
     purpleBold: "\x1b[1;\x1b[38;2;157;78;221m",
-    // v3.13 "KEYSTONE" latest-release identity -- gold wordmark + emerald
-    // tagline, deliberately distinct from the purple/cyan beta banner so a
-    // push to `latest` is visually obvious, not just a version-number diff.
+    // v3.13 "NODEFORGE" latest-release identity -- gold BDB wordmark, fiery
+    // orange codename art, emerald tagline. Deliberately distinct from the
+    // purple/cyan beta banner so a push to `latest` is visually obvious, not
+    // just a version-number diff someone has to notice on their own.
     gold: "\x1b[38;2;212;175;55m",
+    forge: "\x1b[38;2;255;99;33m",
     emerald: "\x1b[38;2;46;204;113m",
     blue: "\x1b[34m",
     green: "\x1b[32m",
@@ -2906,7 +2908,14 @@ async function main() {
  / /_/ / /_/ / /_/ /  / ___ / /_/ / /___/ /|  / / /    / /_/ /___/ /
 /_____/_____/_____/  /_/  |_\\____/_____/_/ |_/ /_/     \\____//____/${colors.reset}
 
-${colors.emerald}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  v3.13 "KEYSTONE"${colors.reset}`;
+${colors.forge}${colors.bold} _   _ ___________ ___________ ___________ _____  _____
+| \\ | |  _  |  _  \\  ___|  ___|  _  | ___ \\  __ \\|  ___|
+|  \\| | | | | | | | |__ | |_  | | | | |_/ / |  \\/| |__
+| . \` | | | | | | |  __||  _| | | | |    /| | __ |  __|
+| |\\  \\ \\_/ / |/ /| |___| |   \\ \\_/ / |\\ \\| |_\\ \\| |___
+\\_| \\_/\\___/|___/ \\____/\\_|    \\___/\\_| \\_|\\____/\\____/${colors.reset}
+
+${colors.emerald}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  v3.13${colors.reset}`;
 
     intro(banner);
 
