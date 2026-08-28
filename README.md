@@ -1,4 +1,4 @@
-![BDB DEV Media | Event – Optimized Agent Skills](assets/header.png)
+![BDB DEV Media | Event – Optimized Agent Skills](assets/header.jpg)
 
 🌐 **Language / Sprache / Idioma**: **English** | [ 🇩🇪 Deutsch ](README.de.md) | [ 🇵🇹 Português ](README.pt.md)
 
@@ -70,6 +70,33 @@ This package acts as the bridge to three major upstream capabilities:
 - **BDB OS Agent Workspace:** The Orchestration Layer for parallel AI agents. Start multiple isolated agent sessions via Git-Worktrees with live terminal control, automatic CI/CD feedback loops, and PR review routing.
 - **BDB Creator Extension:** The heavy-lifting Agentic Media Pipeline. Gives agents local ComfyUI MCP capabilities (FLUX, SDXL), Image-to-3D generation (TripoSR, TRELLIS), and automated video production through OpenMontage and Remotion.
 - **BDB Synapse:** 3D Codebase Visualization & Agent Session Replay. Renders your repository as an interactive code city and replays agent sessions as light trails, showing which files were read, edited, and where friction occurred.
+
+### 🔗 Recommended Companion Plugins (Claude Code)
+Neither of these ships inside this package — they are independent, community-maintained
+Claude Code plugins that pair naturally with the `agy`-delegation pattern
+[`/startcycle-graph-user`](#-nodeforge-the-dispatcher-graph) already uses. Install them
+separately if you want the same routing available outside a `/startcycle` run.
+
+- **[antigravity-for-claude-code](https://github.com/yuting0624/antigravity-for-claude-code)**
+  — runs the Antigravity CLI (`agy`, Gemini) as a collaborating sub-agent with
+  intelligent model routing across the SDLC.
+  ```bash
+  claude plugin marketplace add yuting0624/antigravity-for-claude-code
+  claude plugin install antigravity@antigravity-for-claude-code
+  ```
+- **[opencode-plugin-cc](https://github.com/tasict/opencode-plugin-cc)** — adds
+  `/opencode:review` / `/opencode:adversarial-review` slash commands, letting Claude Code
+  delegate an async job to OpenCode and set up a review gate that blocks progress until
+  OpenCode's review comes back clean.
+  ```bash
+  claude plugin marketplace add https://github.com/tasict/opencode-plugin-cc.git
+  claude plugin install opencode@tasict-opencode-plugin-cc
+  ```
+
+> [!CAUTION]
+> If you also have an older `antigravity-plugin-cc` marketplace installed, disable it and
+> clear its plugin cache first — two `agy`-routing plugins active at once causes a
+> dual-activation conflict where neither initializes cleanly.
 
 ## Overview
 

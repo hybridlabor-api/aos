@@ -1,4 +1,4 @@
-![BDB DEV Media | Event – Optimized Agent Skills](assets/header.png)
+![BDB DEV Media | Event – Optimized Agent Skills](assets/header.jpg)
 
 🌐 **Idioma / Language / Sprache**: [ 🇬🇧 English ](README.md) | [ 🇩🇪 Deutsch ](README.de.md) | **Português**
 
