@@ -611,7 +611,12 @@ function saveManifest(data = {}) {
     } catch (e) { logDebug(e, 'manifest read/parse'); }
 }
 
-function reloadDaemons() {
+// Port to health-check per daemon name, where one is actually known. BDB Remote Gateway
+// has no verified fixed port in this codebase (Tailscale-multiplexed) -- deliberately left
+// unchecked rather than guessing one, per this file's own "load reloaded" != "daemon up" bug.
+const DAEMON_PORTS = { 'Synapse 3D': 7781, 'memB WebUI': 8088, 'Agent Workspace (ao)': 3101 };
+
+async function reloadDaemons() {
     if (DRY_RUN) {
         log.step('[dry-run] would reload background daemons (launchctl / windows startup)');
         return;
@@ -628,6 +633,11 @@ function reloadDaemons() {
                 try {
                     execSync(`launchctl unload "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
                     execSync(`launchctl load "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    const port = DAEMON_PORTS[d.name];
+                    if (port && !(await verifyDaemonListening(port, d.name))) {
+                        log.warn(`${d.name} was reloaded but Port ${port} isn't responding — check its log under ~/.synapse or ~/Library/Logs.`);
+                        continue;
+                    }
                     log.success(`${d.name} daemon reloaded`);
                 } catch (e) { logDebug(e, 'operation'); }
             }
@@ -643,6 +653,11 @@ function reloadDaemons() {
             if (fs.existsSync(d.vbs)) {
                 try {
                     spawn('wscript.exe', [d.vbs], { detached: true, stdio: 'ignore' }).unref();
+                    const port = DAEMON_PORTS[d.name];
+                    if (port && !(await verifyDaemonListening(port, d.name))) {
+                        log.warn(`${d.name} was relaunched but Port ${port} isn't responding — check ~/.synapse/daemon.stderr.log (or the module's own log) for the actual error.`);
+                        continue;
+                    }
                     log.success(`${d.name} background service started`);
                 } catch (e) { logDebug(e, 'windows daemon reload'); }
             }
@@ -3038,7 +3053,7 @@ async function runQuickUpdate(installState) {
     }
 
     await promptOptionalModules(modulesToUpdate);
-    reloadDaemons();
+    await reloadDaemons();
     saveManifest({ tier: '1', isUniversal: true, installedModules: modulesToUpdate });
 
     console.log('');
@@ -3444,7 +3459,7 @@ async function main() {
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
     await promptEcosystemHealthScheduler();
 
-    reloadDaemons();
+    await reloadDaemons();
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
 
     if (wantsUniversal) {
