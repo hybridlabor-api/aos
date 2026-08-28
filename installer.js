@@ -616,7 +616,13 @@ function saveManifest(data = {}) {
 // unchecked rather than guessing one, per this file's own "load reloaded" != "daemon up" bug.
 const DAEMON_PORTS = { 'Synapse 3D': 7781, 'memB WebUI': 8088, 'Agent Workspace (ao)': 3101 };
 
-async function reloadDaemons() {
+// Maps the module ids used by installedModules/promptOptionalModules to the daemon names
+// above, so a caller that just ran installSynapse()/installMemB()/etc. this same pass can
+// tell reloadDaemons() to skip them -- each individual installer already does its own
+// register-and-verify; redoing that here was pure redundant relaunch + a second 12s wait.
+const MODULE_ID_TO_DAEMON_NAME = { synapse: 'Synapse 3D', memb: 'memB WebUI', remote: 'BDB Remote Gateway', ao: 'Agent Workspace (ao)' };
+
+async function reloadDaemons(skipNames = []) {
     if (DRY_RUN) {
         log.step('[dry-run] would reload background daemons (launchctl / windows startup)');
         return;
@@ -629,6 +635,7 @@ async function reloadDaemons() {
             { name: 'memB WebUI', plist: path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.memb.webui.plist') }
         ];
         for (const d of daemons) {
+            if (skipNames.includes(d.name)) continue;
             if (fs.existsSync(d.plist)) {
                 try {
                     execSync(`launchctl unload "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
@@ -650,6 +657,7 @@ async function reloadDaemons() {
             { name: 'Agent Workspace (ao)', vbs: path.join(startupDir, 'com.bdb.agent-workspace.vbs') }
         ];
         for (const d of winDaemons) {
+            if (skipNames.includes(d.name)) continue;
             if (fs.existsSync(d.vbs)) {
                 try {
                     spawn('wscript.exe', [d.vbs], { detached: true, stdio: 'ignore' }).unref();
@@ -2677,8 +2685,12 @@ async function promptMcpSelection(tier) {
     return [CORE_MCP, ...chosen];
 }
 
+// Returns the module ids it actually installed this call (distinct from `installedModules`,
+// which may already contain ids from a prior run that this call does NOT touch) -- callers
+// use this to tell reloadDaemons() which daemons were just installed-and-verified here, so
+// it doesn't redundantly relaunch and re-check them a second time.
 async function promptOptionalModules(installedModules) {
-    if (isAutoYes) return;
+    if (isAutoYes) return [];
     const allModules = [
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: installSynapse },
         { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: () => installMemB(true) },
@@ -2689,7 +2701,7 @@ async function promptOptionalModules(installedModules) {
     ];
 
     const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
-    if (uninstalled.length === 0) return;
+    if (uninstalled.length === 0) return [];
 
     const chosen = pick(await multiselect({
         message: 'New / optional BDB OS modules available - select what to install:',
@@ -2703,6 +2715,7 @@ async function promptOptionalModules(installedModules) {
             installedModules.push(mod.id);
         }
     }
+    return chosen;
 }
 
 function generateAndOpenLaunchpad() {
@@ -3053,7 +3066,12 @@ async function runQuickUpdate(installState) {
     }
 
     await promptOptionalModules(modulesToUpdate);
-    await reloadDaemons();
+    // modulesToUpdate now covers both the modules updated in the loop above and any newly
+    // chosen ones promptOptionalModules just installed (it mutates the same array) -- every
+    // one of them already ran its own install-and-verify, so reloadDaemons() should leave
+    // them alone rather than relaunching and re-checking a daemon a second time.
+    const alreadyHandled = modulesToUpdate.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
+    await reloadDaemons(alreadyHandled);
     saveManifest({ tier: '1', isUniversal: true, installedModules: modulesToUpdate });
 
     console.log('');
@@ -3454,12 +3472,18 @@ async function main() {
     await installTokenSaver(primaryTarget.platformValue);
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];
-    await promptOptionalModules(installedModulesForPrompt);
+    // Unlike runQuickUpdate, nothing here reinstalls modules already in installedModulesForPrompt
+    // -- only promptOptionalModules's own return value (the ones it just chose-and-installed
+    // this call) actually ran an install-and-verify pass this run. Anything already in the
+    // array before this call was untouched here and must still get its normal reloadDaemons()
+    // check, not be skipped.
+    const justInstalled = await promptOptionalModules(installedModulesForPrompt) || [];
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
     await promptEcosystemHealthScheduler();
 
-    await reloadDaemons();
+    const alreadyHandled = justInstalled.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
+    await reloadDaemons(alreadyHandled);
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
 
     if (wantsUniversal) {
