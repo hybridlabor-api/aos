@@ -21,9 +21,9 @@
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/bdb-dev-optimized-agent-skills.svg)](https://www.npmjs.com/package/@hybridlabor-api/bdb-dev-optimized-agent-skills)
 [![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![skills](https://img.shields.io/badge/skills-153%20curated-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
+[![skills](https://img.shields.io/badge/skills-162%20curated-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
 
-> **Supercharging AI coding agents with 153 hyper-curated skills, 22 local MCPs, and deep integrations for the creative technology industry.**
+> **Supercharging AI coding agents with 162 hyper-curated skills, 22 local MCPs, and a runnable multi-agent dispatcher graph.**
 
 Welcome to the **BDB DEV Skills & MCP Configuration** repository. This project serves as the backbone of our creative and full-stack development ecosystem, supercharging AI agents with highly specialized capabilities tailored for the event and creative technology industry, as well as general-purpose software engineering.
 
@@ -74,31 +74,34 @@ This package acts as the bridge to three major upstream capabilities:
 
 ## Overview
 
-![BDB Agent OS v3.13.0 Core Tools Overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
+This repo ships three things: a curated skill library for coding agents, an
+installer that wires them (plus 22 local MCP servers) into whichever harness
+you use, and a dispatcher graph that orchestrates them as a multi-agent
+build pipeline. See [NODEFORGE: The Dispatcher Graph](#-nodeforge-the-dispatcher-graph)
+below for how the pipeline itself works.
 
 ---
 
-## 🌟 153 Optimized Skills
+## 🌟 162 Optimized Skills
 
-We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **153 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
+We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **162 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
 
 These skills are precision-engineered to ensure agents waste no time on redundant tasks and instead operate with maximum agency, strict architectural constraints, and robust context awareness.
 
 ---
 
-### 🛡️ The 7 Godmodes (Apex Layer)
+### 🛡️ The 6 Godmodes (Apex Layer)
 
-Instead of letting agents wander through generic instructions, the top-tier of this repository enforces seven **Hyper-Curated Godmodes**. These act as the ultimate gatekeepers for your codebase:
+Instead of letting agents wander through generic instructions, the top-tier of this repository enforces six **Hyper-Curated Godmodes**. Three of them are not just skills — they are the literal build/ship nodes the [dispatcher graph](#-nodeforge-the-dispatcher-graph) invokes (`UI_UX`, `Engineering`, `Shipping`); the other three cover 3D, media and event-tech work the same way.
 
 | Godmode | Purpose |
 |---------|---------|
-| **`godmode-engineering`** | Forces Domain-Driven Design, strict TypeScript checks, Clean Architecture, and systematic 5-step debugging triage. |
-| **`godmode-ui-ux`** | The frontend Gold-Standard. Enforces Brand Discovery, Anti-Slop principles, DTCG design tokens, fluid motion physics, and enterprise accessibility. |
-| **`godmode-shipping`** | The final gatekeeper for production releases. Enforces Spec-Driven Development, pre-launch checks, feature flags, and safe rollbacks. |
+| **`godmode-engineering`** | Forces Domain-Driven Design, strict TypeScript checks, Clean Architecture, and systematic 5-step debugging triage. Dispatcher's `Engineering` node. |
+| **`godmode-ui-ux`** | The frontend Gold-Standard. Enforces Brand Discovery, Anti-Slop principles, DTCG design tokens, fluid motion physics, and enterprise accessibility. Dispatcher's `UI_UX` node. |
+| **`godmode-shipping`** | The final gatekeeper for production releases. Enforces Spec-Driven Development, pre-launch checks, feature flags, and safe rollbacks. Dispatcher's `Shipping` node. |
 | **`godmode-eventtech`** | Architectural authority for real-time performance, signal flow, protocol routing, and hardware constraints in live show and event technology environments. |
 | **`godmode-3d-creation`** | MCP-First master orchestration for 3D generation, mesh reconstruction, and parametric CAD engineering. Interfaces with local 3D engines and MCP tools. |
 | **`godmode-media-creation`** | MCP-First master orchestration for all media creation pipelines (Video, Timeline Assembly, Beat Sync, Motion Design). Directly interfaces with local media engines and MCP tools. |
-| **`bdbmediastorm`** | The master ideation and brainstorming engine for live shows, show-control, and event technology. Orchestrates multi-agent technical planning focused on hardware constraints, signal routing, protocols (OSC, Art-Net, DMX, MIDI, SMPTE), TouchDesigner, Resolume, and grandMA3. |
 
 ### 💻 Beyond Events: Full-Stack Software & Web Agents
 While heavily optimized for the creative tech industry, these skills are deeply rooted in core software engineering:
@@ -111,7 +114,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 
 ## 🗂️ The Complete Skill Library
 
-### 🎨 Frontend & UI/UX Design
+147 skills across 15 domains, collapsed by default so this section does not require endless scrolling to get past. Click any category to expand it.
+
+<details>
+<summary><strong>🎨 Frontend & UI/UX Design</strong> — 20 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -136,7 +142,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `ux-persuasion-engineer` | Behavioral UX specialist applying choice architecture, friction audits, and commitment design. |
 | `wcag-audit-patterns` | Auditing web content against WCAG 2.2 guidelines with actionable remediation strategies. |
 
-### ⚛️ React & Next.js
+</details>
+
+<details>
+<summary><strong>⚛️ React & Next.js</strong> — 10 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -151,7 +160,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `zustand-store-ts` | Create Zustand stores following established patterns with proper TypeScript types and middleware. |
 | `web-artifacts-builder` | Build powerful frontend claude.ai artifacts. |
 
-### 🗄️ Backend, Databases & APIs
+</details>
+
+<details>
+<summary><strong>🗄️ Backend, Databases & APIs</strong> — 14 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -170,7 +182,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `prisma-expert` | Prisma ORM — schema design, migrations, query optimization, relations modeling, and database operations. |
 | `using-neon` | Neon serverless Postgres: autoscaling, branching, instant restore, and scale-to-zero. |
 
-### 🐍 Python
+</details>
+
+<details>
+<summary><strong>🐍 Python</strong> — 3 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -178,14 +193,20 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `python-patterns` | Python development principles. Framework selection, async patterns, type hints, project structure. |
 | `python-performance-optimization` | Profile and optimize Python code using cProfile, memory profilers, and performance best practices. |
 
-### 🦕 TypeScript & JavaScript
+</details>
+
+<details>
+<summary><strong>🦕 TypeScript & JavaScript</strong> — 2 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
 | `typescript-pro` | Master TypeScript with advanced types, generics, and strict type safety. Complex type systems, decorators, and enterprise-grade patterns. |
 | `modern-javascript-patterns` | Mastering modern JavaScript (ES6+) features, functional programming patterns, and best practices. |
 
-### 🧠 AI, LLM & Prompt Engineering
+</details>
+
+<details>
+<summary><strong>🧠 AI, LLM & Prompt Engineering</strong> — 13 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -203,7 +224,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `rag-implementation` | RAG implementation: embedding selection, vector database setup, chunking strategies, and retrieval optimization. |
 | `vector-database-engineer` | Vector databases, embedding strategies, and semantic search. Pinecone, Weaviate, Qdrant, Milvus, and pgvector. |
 
-### 🤖 Agents & Multi-Agent Systems
+</details>
+
+<details>
+<summary><strong>🤖 Agents & Multi-Agent Systems</strong> — 8 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -216,7 +240,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `crewai` | Expert in CrewAI — the leading role-based multi-agent framework. |
 | `subagent-driven-development` | Execute implementation plans with independent tasks in the current session. |
 
-### 🕷️ Web Scraping & Automation
+</details>
+
+<details>
+<summary><strong>🕷️ Web Scraping & Automation</strong> — 4 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -225,7 +252,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `browser-automation` | Browser automation for web testing, scraping, and AI agent interactions. Selectors, waiting strategies, anti-detection. |
 | `web-scraper` | Intelligent multi-strategy web scraping. Structured data extraction from tables, lists, prices. Pagination, monitoring, CSV/JSON export. |
 
-### 🔥 Firecrawl Workspace Agents
+</details>
+
+<details>
+<summary><strong>🔥 Firecrawl Workspace Agents</strong> — 13 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -243,7 +273,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `firecrawl-scrape` | Extract clean markdown from any URL, including JavaScript-rendered SPAs. |
 | `firecrawl-search` | Web search with full page content extraction. Real search results with optional full-page markdown. |
 
-### 📈 SEO & Marketing
+</details>
+
+<details>
+<summary><strong>📈 SEO & Marketing</strong> — 7 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -255,7 +288,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `seo-audit` | Diagnose and audit SEO issues affecting crawlability, indexation, rankings, and organic performance. |
 | `seo-technical` | Audit technical SEO: crawlability, indexability, security, URLs, mobile, Core Web Vitals, structured data, JS rendering. |
 
-### 🚀 DevOps, Infrastructure & CLI
+</details>
+
+<details>
+<summary><strong>🚀 DevOps, Infrastructure & CLI</strong> — 12 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -272,14 +308,21 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `tmux` | tmux session, window, and pane management for terminal multiplexing and persistent remote workflows. |
 | `turborepo-caching` | Configure Turborepo for efficient monorepo builds with local and remote caching. |
 
-### 🧊 3D, Motion & Video
+</details>
+
+<details>
+<summary><strong>🧊 3D, Motion & Video</strong> — 3 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
+| `bdbmediastorm` | Master ideation and brainstorming engine for live shows, show-control, and event tech. Multi-agent planning for hardware constraints, signal routing, protocols (OSC, Art-Net, DMX, MIDI, SMPTE), TouchDesigner, Resolume, and grandMA3. |
 | `remotion` | Generate walkthrough videos from Stitch projects using Remotion with smooth transitions, zooming, and text overlays. |
 | `threejs-skills` | Create 3D scenes, interactive experiences, and visual effects using Three.js and WebGL. |
 
-### 📝 Documentation, Planning & Quality
+</details>
+
+<details>
+<summary><strong>📝 Documentation, Planning & Quality</strong> — 19 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -303,11 +346,13 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `test-driven-development` | Use when implementing any feature or bugfix, before writing implementation code. |
 | `writing-plans` | Use when you have a spec or requirements for a multi-step task, before touching code. |
 
-### 📦 Utilities & Integrations
+</details>
+
+<details>
+<summary><strong>📦 Utilities & Integrations</strong> — 15 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
-| `bdb-updater` | Proactively check for and install updates to the BDB Antigravity Skills package via NPM. |
 | `google-sheets-automation` | Lightweight Google Sheets integration with standalone OAuth authentication. Full read/write access. |
 | `MCP_Manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
 | `n8n-code-javascript` | Write JavaScript code in n8n Code nodes. `$input`/`$json`/`$node` syntax, HTTP requests, DateTime handling. |
@@ -324,7 +369,10 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `webapp-testing` | Test local web applications with native Python Playwright scripts. |
 | `web-performance-optimization` | Optimize website performance: loading speed, Core Web Vitals, bundle size, caching, and runtime performance. |
 
-### 🌀 BDB Ecosystem & Methodologies
+</details>
+
+<details>
+<summary><strong>🌀 BDB Ecosystem & Methodologies</strong> — 4 skills</summary>
 
 | Skill | Description |
 |-------|-------------|
@@ -333,7 +381,7 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `memb-ingest` | Deep scan and ingest project files (.md, .json, AGENTS.md, .openwiki) and past conversation logs into the local memB vector memory engine. |
 | `openwiki-skill` | Direct Gemini-native integration of OpenWiki for autonomous, high-agency documentation management and release notes maintenance. |
 
----
+</details>
 
 ## 🔄 NODEFORGE: The Dispatcher Graph
 
@@ -812,48 +860,58 @@ You can run diagnostic and benchmarking commands directly in your terminal:
 
 ### 🆚 Which Version Should I Use?
 
-- **Agent Skills Version (`bdb-dev-optimized-agent-skills`)**: Includes all optimized skills, interactive MCP selection UI, and **active background daemons**. It automatically installs and orchestrates the `memB` local semantic memory engine and the `OpenWiki` self-documenting git-hooks. Best for fully autonomous, long-term project management.
-- **Legacy Antigravity Version (`bdb-antigravity-skills@legacy`)**: The original antigravity pack.
+- **`@latest`** — the stable channel. Interactive MCP selection UI, active background daemons (`memB`, `OpenWiki`), full skill library.
+- **`@beta`** — the current development channel, where v3.13 "NODEFORGE" (the dispatcher graph, the three `/startcycle` variants, the GO gate) is being validated before promotion to `@latest`.
+- **`bdb-antigravity-skills@legacy`** — the original, pre-dispatcher Antigravity-only pack, kept for anyone still depending on it.
 
-The installer is built using an interactive Node-based menu. It allows you to:
-1. **Backup & Overwrite**: Safely backups existing configuration files and overrides them.
-2. **Merge**: Merges the new skills, configs, and custom local MCP paths with your existing ones.
+Every run gives you the same choice: **Backup & Overwrite** (safely replace existing configuration) or **Merge** (fold the new skills/configs/MCP paths into what you already have).
 
-### Option 1: Ask Your AI Agent (Easiest)
-Simply tell your assistant:
-> "Please run `npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@latest` to install the skills pack and configure the local MCP servers."
+### Ask Your AI Agent (Easiest)
+Tell your assistant: *"Run `npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@latest` to install the skills pack and configure the local MCP servers."*
 
-### Option 2: Command Line (Global via NPX - Recommended)
-Run the script globally in your terminal. We recommend always appending `@latest` to fetch the newest version:
+### Command Line
 
 ```bash
+# Stable
 npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@latest
-```
-*(This command works on Mac/Linux terminals as well as Windows PowerShell!)*
 
-### Option 3: Using Homebrew (macOS)
-If you are on a Mac and prefer Homebrew, you can tap and install the package:
+# Development channel (v3.13 NODEFORGE)
+npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@beta
+```
+*(Works on Mac/Linux terminals as well as Windows PowerShell.)*
+
+### Non-Interactive / CI
+
+Select targets without the menu using `--platforms=<n[,n]>` — `0` universal, `1` Antigravity, `2` Claude Desktop/Code, `3` Cursor, `5` Codex, `6` Windsurf, `7` Roo/Cline, `8` Aider:
+
 ```bash
-brew tap hybridlabor-api/bdb-skills
-brew install bdb-skills
-bdb-skills
+npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills -y --platforms=2
 ```
 
-### Option 4: Manual Shell Script (Git Clone)
-Clone the repository and run the installer script:
+### Local Project Harness
+
+Drop just the dispatcher contract (`.agents/`, the gate hooks, the `/startcycle-graph` workflow) into a single project instead of installing globally into `$HOME`:
+
+```bash
+npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills --project-harness
+```
+
+### SaaS Workstation Bootstrapper
+
+For the BDB Multi-Cloud Fleet: 2FA browser handshake, Step-CA certificate bootstrap, SSH config, and FastMCP gateway injection into every detected editor:
+
+```bash
+npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills setup-saas
+```
+
+### From Source (Contributing)
+
 ```bash
 git clone https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills.git
 cd bdb-dev-optimized-agent-skills
-chmod +x installer.sh
-./installer.sh
+npm install
+node installer.js
 ```
-
-**The installer script will automatically:**
-1. Back up your existing global and workspace skills safely.
-2. Deploy the new curated global config skills.
-3. Install the workspace-specific agent skills.
-4. Copy the customized `GEMINI.md` to `~/.gemini/GEMINI.md`.
-5. Pre-warm Python dependencies via `uv run` to prevent AI agent timeouts on first run.
 
 ---
 *Elevate your agency. Dominate the workflow.*
