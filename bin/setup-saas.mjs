@@ -111,6 +111,14 @@ function assertSshSafe(label, value, pattern) {
   }
 }
 
+// Returns whether the CertificateFile line was actually included, so the
+// caller can warn the user rather than silently shipping a degraded config
+// (audit ROB-1: bootstrapStepCa()'s result used to be discarded entirely,
+// so a failed CA bootstrap still got a CertificateFile line pointed at a
+// cert that was never created). Checking the cert file's own existence,
+// not just the bootstrap call's return value, is the more direct signal --
+// a bootstrap can report success while writing the cert somewhere step's
+// own config expects but this script doesn't, or vice-versa.
 function patchSshConfig(username, hostPattern, hostIps = '') {
   assertSshSafe('User', username, /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
   assertSshSafe('Host-Pattern', hostPattern, /^[A-Za-z0-9._*?!, -]{1,200}$/);
@@ -128,14 +136,16 @@ function patchSshConfig(username, hostPattern, hostIps = '') {
     currentContent = fs.readFileSync(sshConfigFile, 'utf8');
   }
 
+  const certFile = path.join(homeDir, '.step', 'ssh', 'id_ecdsa-cert.pub');
+  const certReady = fs.existsSync(certFile);
+
   const markerBegin = '# --- BEGIN BDB SAAS HOST FLEET RULES ---';
   const markerEnd = '# --- END BDB SAAS HOST FLEET RULES ---';
 
   const hostRuleBlock = `${markerBegin}
 Host ${hostPattern}${hostIps ? ' ' + hostIps : ''}
     User ${username}
-    CertificateFile ~/.step/ssh/id_ecdsa-cert.pub
-    IdentityFile ~/.step/ssh/id_ecdsa
+${certReady ? '    CertificateFile ~/.step/ssh/id_ecdsa-cert.pub\n' : ''}    IdentityFile ~/.step/ssh/id_ecdsa
     IdentityFile ~/.ssh/id_ed25519
     IdentityFile ~/.ssh/id_rsa
     ServerAliveInterval 60
@@ -152,6 +162,8 @@ ${markerEnd}`;
   const tempFile = path.join(sshDir, `config.tmp.${Date.now()}`);
   fs.writeFileSync(tempFile, newContent, { mode: 0o600 });
   fs.renameSync(tempFile, sshConfigFile);
+
+  return certReady;
 }
 
 function detectInstalledEditors() {
@@ -203,6 +215,16 @@ function detectInstalledEditors() {
   return detected;
 }
 
+// Every MCP config below carries the injected FastMCP API key -- 0600, not
+// the umask default (audit SEC-4 class, found separately from installer.js's
+// instance of the same issue). writeFileSync's `mode` option only applies
+// when the file is CREATED, so an existing 0644 config from a prior run
+// would otherwise keep it -- chmod explicitly either way.
+function writeMcpConfigSecure(filePath, config) {
+  fs.writeFileSync(filePath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  try { fs.chmodSync(filePath, 0o600); } catch {}
+}
+
 function configureCursorMcp(apiKey, gatewaySseUrl) {
   const homeDir = os.homedir();
   const cursorDir = path.join(homeDir, '.cursor');
@@ -218,7 +240,7 @@ function configureCursorMcp(apiKey, gatewaySseUrl) {
     url: gatewaySseUrl,
     headers: { 'X-API-Key': apiKey }
   };
-  fs.writeFileSync(mcpFile, JSON.stringify(config, null, 2), 'utf8');
+  writeMcpConfigSecure(mcpFile, config);
 }
 
 function configureClaudeDesktopMcp(apiKey, gatewaySseUrl) {
@@ -242,7 +264,7 @@ function configureClaudeDesktopMcp(apiKey, gatewaySseUrl) {
     url: gatewaySseUrl,
     headers: { 'X-API-Key': apiKey }
   };
-  fs.writeFileSync(mcpFile, JSON.stringify(config, null, 2), 'utf8');
+  writeMcpConfigSecure(mcpFile, config);
 }
 
 function configureAntigravityMcp(apiKey, gatewaySseUrl) {
@@ -257,7 +279,7 @@ function configureAntigravityMcp(apiKey, gatewaySseUrl) {
     url: gatewaySseUrl,
     headers: { 'X-API-Key': apiKey }
   };
-  fs.writeFileSync(schemaFile, JSON.stringify(config, null, 2), 'utf8');
+  writeMcpConfigSecure(schemaFile, config);
 }
 
 function configureRooCodeMcp(apiKey, gatewaySseUrl) {
@@ -274,7 +296,7 @@ function configureRooCodeMcp(apiKey, gatewaySseUrl) {
       url: gatewaySseUrl,
       headers: { 'X-API-Key': apiKey }
     };
-    fs.writeFileSync(mcpFile, JSON.stringify(config, null, 2), 'utf8');
+    writeMcpConfigSecure(mcpFile, config);
   }
 }
 
@@ -475,11 +497,19 @@ async function main() {
 
   // Step 2: Bootstrap CA
   s.message(`Führe Step-CA Bootstrap durch (${finalStepCaUrl})...`);
-  bootstrapStepCa(finalStepCaUrl, stepCaFingerprint);
+  const stepCaOk = bootstrapStepCa(finalStepCaUrl, stepCaFingerprint);
+  if (!stepCaOk) {
+    s.stop(p.yellow(`⚠️ Step-CA Bootstrap fehlgeschlagen (${finalStepCaUrl}) -- SSH-Zertifikat wird übersprungen.`));
+    s.start('Setze Setup fort...');
+  }
 
   // Step 3: Patch SSH Config
   s.message(`Konfiguriere ~/.ssh/config für Host ${finalSshHostPattern} (${lldapUsername})...`);
-  patchSshConfig(lldapUsername, finalSshHostPattern, sshHostIps);
+  const certIncluded = patchSshConfig(lldapUsername, finalSshHostPattern, sshHostIps);
+  if (!certIncluded) {
+    s.stop(p.yellow('⚠️ Kein Step-CA-Zertifikat gefunden -- SSH-Eintrag angelegt ohne CertificateFile (Fallback: SSH-Keys).'));
+    s.start('Setze Setup fort...');
+  }
 
   // Step 4: Auto-Inject MCP Configs for all detected editors
   const editorIds = detectedEditors.map(e => e.id);
