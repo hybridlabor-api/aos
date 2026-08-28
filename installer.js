@@ -741,7 +741,14 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     for (const dest of extraSkillDestinations) {
         try {
             fs.mkdirSync(dest, { recursive: true });
-            const dirs = fs.readdirSync(skillsBase);
+            const rawDirs = fs.readdirSync(skillsBase);
+            const dirs = rawDirs.sort((a, b) => {
+                const aIsLeaf = fs.existsSync(path.join(skillsBase, a, 'SKILL.md'));
+                const bIsLeaf = fs.existsSync(path.join(skillsBase, b, 'SKILL.md'));
+                if (aIsLeaf && !bIsLeaf) return 1;
+                if (!aIsLeaf && bIsLeaf) return -1;
+                return 0;
+            });
             for (const dir of dirs) {
                 if (dir === 'global_legacy' || dir === 'workspace_agents') continue;
                 const fullPath = path.join(skillsBase, dir);
@@ -2795,7 +2802,14 @@ async function runQuickUpdate(installState) {
 
     const skillsBase = path.join(srcDir, 'skills');
     if (fs.existsSync(skillsBase)) {
-        const dirs = fs.readdirSync(skillsBase);
+        const rawDirs = fs.readdirSync(skillsBase);
+        const dirs = rawDirs.sort((a, b) => {
+            const aIsLeaf = fs.existsSync(path.join(skillsBase, a, 'SKILL.md'));
+            const bIsLeaf = fs.existsSync(path.join(skillsBase, b, 'SKILL.md'));
+            if (aIsLeaf && !bIsLeaf) return 1;
+            if (!aIsLeaf && bIsLeaf) return -1;
+            return 0;
+        });
         for (const dir of dirs) {
             const fullPath = path.join(skillsBase, dir);
             if (!fs.statSync(fullPath).isDirectory()) continue;
@@ -3139,7 +3153,14 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
 
         if (fs.existsSync(skillsBase)) {
             installStep(`install the skills (${t.value})`, () => {
-                const dirs = fs.readdirSync(skillsBase);
+                const rawDirs = fs.readdirSync(skillsBase);
+                const dirs = rawDirs.sort((a, b) => {
+                    const aIsLeaf = fs.existsSync(path.join(skillsBase, a, 'SKILL.md'));
+                    const bIsLeaf = fs.existsSync(path.join(skillsBase, b, 'SKILL.md'));
+                    if (aIsLeaf && !bIsLeaf) return 1;
+                    if (!aIsLeaf && bIsLeaf) return -1;
+                    return 0;
+                });
                 for (const dir of dirs) {
                     const fullPath = path.join(skillsBase, dir);
                     if (!fs.statSync(fullPath).isDirectory()) continue;

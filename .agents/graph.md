@@ -89,7 +89,7 @@ never inside a node's own prompt.
 | Reviewer | the **same** `blocking` finding ID(s) as the previous cycle | set `needs_human: true`, `phase: escalated` — **stop** (no-progress guard, see above) |
 | Reviewer | zero blocking findings | invoke Shipping |
 | Shipping | any `gate.*` is `fail` | `iteration++`, invoke whichever build node(s) Shipping's own structured output names as owning the failing check(s) — the dispatcher does not guess a lint/test-to-node mapping itself |
-| Shipping | all `gate.*` are `pass`/`skip` | `phase: ready_to_ship`, stop — surface "ready to ship, needs GO" to the user. The dispatcher does not itself check `approvals` for a prior GO here (see the Harness section's noted exception); the actual push/version/publish is a separate `/ship` step gated by `go-gate.mjs`, which does the GO check at the point it matters. |
+| Shipping | all `gate.*` are `pass`/`skip` | `phase: ready_to_ship`, stop — surface "ready to ship, needs GO" to the user. The dispatcher does not itself check `approvals` for a prior GO here (see the Harness section's noted exception); the actual push/version/publish is a separate GO-gated step, enforced by `go-gate.mjs`, which does the GO check at the point it matters. |
 | any | `iteration >= max_iterations` | **stop unconditionally**, `phase: escalated`, set `needs_human: true` — do not invoke anything further automatically |
 | any | a node sets `needs_human: true` itself | stop, surface to the user (in-loop feedback edge, per B5's diagram — `/startcycle`'s original "zero-prompting" framing had removed this; it's restored here as an edge, not a constant interruption) |
 
@@ -112,7 +112,7 @@ a Claude-only file:
   than checking `approvals` itself for a prior `GO` and proceeding to
   `phase: done` (the row above notes this explicitly). Re-running the whole
   plan→build→review loop just to check one flag would be wasteful; the
-  actual push/version/publish is a separate `/ship` step already gated by
+  actual push/version/publish is a separate GO-gated step, enforced by
   `go-gate.mjs`, which does the GO check at the point it matters. Verified by
   running the script's extracted logic against 9+ scripted scenarios before
   it was committed (happy path, TechLead rejection loop, Reviewer repair

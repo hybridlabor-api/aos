@@ -408,7 +408,7 @@ while (!allGatesPass) {
 return {
   phase: 'ready_to_ship',
   reason:
-    'All quality gates passed. Reply with the literal word GO to run /ship (git commit, version tag, push) -- go-gate.mjs will not let it proceed otherwise.',
+    'All quality gates passed. Reply with the literal word GO to authorize the push (git commit, version tag, push) -- go-gate.mjs will not let it proceed otherwise.',
   gate: lastGate,
   planPath,
 };

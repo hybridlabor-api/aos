@@ -10,7 +10,7 @@
 - **Mandatory Git Snapshots:** Before modifying, refactoring, or deleting any file in the workspace, take a Git snapshot or create a commit of the current state.
 - **Rollback Readiness:** Ensure all changes can be safely reverted. Ask for confirmation before performing destructive actions (e.g., massive deletions).
 - **CRITICAL TWO-PHASE GATE PROTOCOL (ABSOLUTE OVERRIDE):**
-  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`, `/ship`, `/build`, `/test`).
+  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`).
   - **Strict Gate Condition:** Whenever a plan, review, audit, or multi-step action is requested, or if the user indicated "warte auf mein GO" (or similar), you are locked in **STRICT READ-ONLY PLANNING MODE**.
   - **Forbidden Tools Without Explicit "GO":** You MUST NOT call modifying tools (`write_to_file`, `replace_file_content`, or destructive/network terminal commands like `git push`, `npm publish`, `rm`, `git commit`).
   - **Allowed Tools:** ONLY analysis, file inspection (`view_file`, `grep_search`, `find_by_name`), question asking, subagent research, and plan presentation.

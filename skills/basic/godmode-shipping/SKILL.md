@@ -11,7 +11,7 @@ This skill is the final gatekeeper. No code reaches production without passing t
 
 ## 1. Spec-Driven Development
 Writing code without a specification is guessing.
-*   **The `/spec` Command:** Every major feature or refactor must begin by writing a clear markdown specification file.
+*   **The Specification Phase:** Every major feature or refactor must begin by writing a clear markdown specification file.
 *   **Boundaries & Constraints:** The spec must document the exact boundaries of the feature, edge cases, data structures, and the definition of "Done". Do not proceed to code until the user approves the spec.
 
 ## 2. Pre-Launch Validation Checklist

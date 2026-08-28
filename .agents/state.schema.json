@@ -17,7 +17,7 @@
     "phase": {
       "type": "string",
       "enum": ["define", "plan", "build", "verify", "review", "ready_to_ship", "ship", "done", "escalated"],
-      "description": "Current pipeline stage. 'ready_to_ship' means all gates passed but no GO has been recorded yet -- distinct from 'ship' (actively running /ship) and 'done'. 'escalated' means the dispatcher stopped the loop and handed control back to the user (max_iterations reached or needs_human)."
+      "description": "Current pipeline stage. 'ready_to_ship' means all gates passed but no GO has been recorded yet -- distinct from 'ship' (actively executing the GO-gated push) and 'done'. 'escalated' means the dispatcher stopped the loop and handed control back to the user (max_iterations reached or needs_human)."
     },
     "artifacts": {
       "type": "object",
@@ -73,7 +73,7 @@
       "type": "integer",
       "minimum": 1,
       "default": 3,
-      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/startcycle.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
+      "description": "Hard stop on the repair loop, staying well under Claude Code's own 8-consecutive-Stop-hook-block override, so this run's escalation fires deterministically before that platform ceiling would silently end the turn instead. See the dispatcher (.claude/workflows/startcycle-dispatch.mjs) for the no-progress guard that can also escalate before this ceiling is reached: if a repair round reports the exact same blocking finding IDs Reviewer already flagged, the run stops rather than repeating an identical cycle."
     },
     "approvals": {
       "type": "array",

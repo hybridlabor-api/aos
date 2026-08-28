@@ -10,7 +10,7 @@
 - **Mandatory Git Snapshots:** Before modifying, refactoring, or deleting any file in the workspace, take a Git snapshot or create a commit of the current state.
 - **Rollback Readiness:** Ensure all changes can be safely reverted. Ask for confirmation before performing destructive actions (e.g., massive deletions).
 - **CRITICAL TWO-PHASE GATE PROTOCOL (ABSOLUTE OVERRIDE):**
-  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`, `/ship`, `/build`, `/test`).
+  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`).
   - **Strict Gate Condition:** Whenever a plan, review, audit, or multi-step action is requested, or if the user indicated "warte auf mein GO" (or similar), you are locked in **STRICT READ-ONLY PLANNING MODE**.
   - **Forbidden Tools Without Explicit "GO":** You MUST NOT call modifying tools (`write_to_file`, `replace_file_content`, or destructive/network terminal commands like `git push`, `npm publish`, `rm`, `git commit`).
   - **Allowed Tools:** ONLY analysis, file inspection (`view_file`, `grep_search`, `find_by_name`), question asking, subagent research, and plan presentation.
@@ -116,7 +116,7 @@ finding ID(s) Reviewer already flagged before the build node was re-invoked
 to fix them, the dispatcher escalates immediately instead of repeating an
 identical cycle (see `.agents/graph.md`'s Reviewer discipline).
 
-**`/ship` (after `state.phase: done`):**
+**The GO-gated push (after `state.phase: done`):**
 1. `openwiki-skill`: scans the git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and `README.md`.
 2. `memb-ingest`: ingests new documentation and schema files into local memB vector memory.
 3. Git commit, version tag, push to the private remote — gated by `go-gate.mjs` like any other push in this repo.

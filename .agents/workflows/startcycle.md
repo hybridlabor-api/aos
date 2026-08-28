@@ -78,7 +78,7 @@ finding ID(s) Reviewer already flagged before the build node was re-invoked
 to fix them, the dispatcher escalates immediately instead of repeating an
 identical cycle (see `.agents/graph.md`'s Reviewer discipline).
 
-**`/ship` (after `state.phase: done`):**
+**The GO-gated push (after `state.phase: done`):**
 1. `openwiki-skill`: scans the git diff, updates `.openwiki/architecture.md`, `.openwiki/release_notes.md`, and `README.md`.
 2. `memb-ingest`: ingests new documentation and schema files into local memB vector memory.
 3. Git commit, version tag, push to the private remote — gated by `go-gate.mjs` like any other push in this repo.

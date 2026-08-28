@@ -113,12 +113,12 @@ The structured lifecycle enforces quality, deterministic verification, and autom
 ```text
                       ┌──────────────────────────────────────────────┐
                       │ 1. ENTWICKLUNG & PIPELINE                    │
-                      │    (/spec ──▶ /plan ──▶ /build ──▶ /test)    │
+                      │    (spec ──▶ plan ──▶ build ──▶ test)        │
                       └──────────────────────┬───────────────────────┘
                                              │
                                              ▼
                       ┌──────────────────────────────────────────────┐
-                      │ 2. RELEASE & DOCS GATE (/ship)               │
+                      │ 2. RELEASE & DOCS GATE                       │
                       │    • openwiki-skill scannt Git-Diff          │
                       │    • Aktualisiert .openwiki/ & README.md     │
                       └──────────────────────┬───────────────────────┘
