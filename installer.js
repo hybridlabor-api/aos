@@ -5,6 +5,8 @@ const path = require('path');
 const os = require('os');
 const https = require('https');
 const net = require('net');
+const readline = require('readline');
+const util = require('util');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -1047,6 +1049,124 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     });
 }
 
+const GLITCH_CHARS = ['!', '@', '#', '$', '%', '^', '&', '*', '█', '▓', '▒', '░', '▄', '▀', '▌', '▐', '▆', '▇'];
+
+async function glitchBanner(bannerStr) {
+    if (!process.stdout.isTTY) return;
+
+    const lines = bannerStr.split('\n');
+    const lineCount = lines.length;
+    
+    console.log(bannerStr);
+    
+    try {
+        process.stdout.write('\x1B[?25l');
+        const duration = 800;
+        const fps = 15;
+        const frameTime = Math.floor(1000 / fps);
+        const frames = Math.floor(duration / frameTime);
+        
+        for (let i = 0; i < frames; i++) {
+            readline.moveCursor(process.stdout, 0, -lineCount);
+            
+            const glitchedLines = lines.map(line => {
+                if (line.trim().length === 0) return line;
+                
+                let out = '';
+                let inEscape = false;
+                for (let j = 0; j < line.length; j++) {
+                    const c = line[j];
+                    if (c === '\x1B') inEscape = true;
+                    
+                    if (inEscape) {
+                        out += c;
+                        if (c === 'm') inEscape = false;
+                    } else {
+                        if (c !== ' ' && Math.random() < 0.05) {
+                            const gChar = GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
+                            out += `${colors.magenta}${gChar}${colors.reset}`;
+                        } else {
+                            out += c;
+                        }
+                    }
+                }
+                return out;
+            });
+            
+            process.stdout.write(glitchedLines.join('\n') + '\n');
+            await new Promise(r => setTimeout(r, frameTime));
+        }
+        
+        readline.moveCursor(process.stdout, 0, -lineCount);
+        readline.clearScreenDown(process.stdout);
+    } finally {
+        process.stdout.write('\x1B[?25h');
+    }
+}
+
+async function runTopologyAnimation(backgroundTask, label) {
+    if (!process.stdout.isTTY || process.stdout.columns < 60 || process.stdout.rows < 15) {
+        log.step(`${label}...`);
+        return await backgroundTask;
+    }
+
+    let isDone = false;
+    let frame = 0;
+    
+    const topologyTemplate = [
+        "    [CORE] --- [MEM]    ",
+        "      |          |      ",
+        "    [EXT] -/    [DB]    ",
+        "             \\          ",
+        "              [SYS]     "
+    ];
+
+    try {
+        process.stdout.write('\x1B[?25l');
+        
+        console.log(`\n${colors.gold}${colors.bold}>>> ${label}${colors.reset}\n`);
+        for (let i = 0; i < topologyTemplate.length; i++) console.log('');
+        console.log('');
+        
+        const lineCount = topologyTemplate.length + 4;
+
+        backgroundTask.then(() => { isDone = true; }).catch(() => { isDone = true; });
+
+        while (!isDone) {
+            readline.moveCursor(process.stdout, 0, -lineCount);
+            
+            console.log(`\n${colors.gold}${colors.bold}>>> ${label} ${['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'][frame % 10]}${colors.reset}\n`);
+            
+            for (let line of topologyTemplate) {
+                let out = '';
+                for (let c of line) {
+                    if (c === '-' || c === '|' || c === '\\' || c === '/') {
+                        out += Math.random() < 0.25 ? `${colors.magenta}*${colors.reset}` : `${colors.forge}${c}${colors.reset}`;
+                    } else if (c === '[' || c === ']') {
+                        out += `${colors.gold}${c}${colors.reset}`;
+                    } else if (c !== ' ') {
+                        out += `${colors.emerald}${colors.bold}${c}${colors.reset}`;
+                    } else {
+                        out += c;
+                    }
+                }
+                console.log(out);
+            }
+            console.log('');
+            
+            frame++;
+            await new Promise(r => setTimeout(r, 100));
+        }
+        
+        readline.moveCursor(process.stdout, 0, -lineCount);
+        readline.clearScreenDown(process.stdout);
+        
+        return await backgroundTask;
+    } finally {
+        process.stdout.write('\x1B[?25h');
+    }
+}
+
 async function installTokenSaver(platformTarget) {
     const tokenSaverDir = path.join(srcDir, 'vendor', 'token-saver');
     if (!fs.existsSync(tokenSaverDir)) return;
@@ -1054,19 +1174,23 @@ async function installTokenSaver(platformTarget) {
         log.step('[dry-run] would run Heimdall Token Saver setup (--target all)');
         return;
     }
-    const s = spinner();
-    s.start('Installing Heimdall Token Saver Context Optimizer...');
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    
+    const { exec } = require('child_process');
+    const execAsync = util.promisify(exec);
+    
+    const task = execAsync(`${pythonCmd} install.py --target all`, {
+        cwd: tokenSaverDir,
+        maxBuffer: 16 * 1024 * 1024,
+        env: Object.assign({}, process.env, { PYTHONUTF8: '1' })
+    });
+
     try {
-        execSync(`${pythonCmd} install.py --target all`, {
-            cwd: tokenSaverDir,
-            stdio: 'pipe',
-            maxBuffer: 16 * 1024 * 1024,
-            env: Object.assign({}, process.env, { PYTHONUTF8: '1' })
-        });
-        s.stop('Heimdall Token Saver registered');
+        await runTopologyAnimation(task, 'Installing Heimdall Token Saver Context Optimizer');
+        log.success('Heimdall Token Saver registered');
     } catch (err) {
-        s.stop(`Heimdall Token Saver skipped/failed: ${err.message}`);
+        log.warn(`Heimdall Token Saver skipped/failed: ${err.message}`);
+        logDebug(err, 'Token Saver install');
     }
 }
 
@@ -2917,6 +3041,7 @@ ${colors.forge}${colors.bold} _   _ ___________ ___________ ___________ _____  _
 
 ${colors.emerald}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  v3.13${colors.reset}`;
 
+    await glitchBanner(banner);
     intro(banner);
 
     if (DRY_RUN) {
