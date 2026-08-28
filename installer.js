@@ -2195,7 +2195,7 @@ function injectHarnessRules() {
             installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
                 // A CLAUDE.md carrying this title is the short, hand-maintained
-                // form (see audit-agents.md F-01): the GO gate lives in a hook,
+                // form (see docs/sessions/audit-agents.md F-01): the GO gate lives in a hook,
                 // not in this file's prose, and the /startcycle spec + agent
                 // roster live in their own skill/workflow files, not duplicated
                 // here. Re-appending the old long-form content on every install

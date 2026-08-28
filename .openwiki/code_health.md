@@ -8,8 +8,8 @@
 |------|---------|------|
 | `README.md` | 20 | 🔴 High |
 | `installer.js` | 8 | 🟡 Medium |
-| `tools/obsidian-memb-plugin/main.js` | 8 | 🟡 Medium |
-| `tools/obsidian-memb-plugin/main.ts` | 8 | 🟡 Medium |
+| `packages/tools/obsidian-memb-plugin/main.js` | 8 | 🟡 Medium |
+| `packages/tools/obsidian-memb-plugin/main.ts` | 8 | 🟡 Medium |
 | `header.png` | 7 | 🟡 Medium |
 | `skills/global_config/openwiki-skill/scripts/openwiki_daemon.py` | 4 | 🟡 Medium |
 | `skills/global_config/memb-skill/SKILL.md` | 4 | 🟡 Medium |
@@ -25,8 +25,8 @@
 ## 👤 Bus Factor Risk (single-author files, last 90 days)
 | File | Sole Author |
 |------|-------------|
-| `tools/obsidian-memb-plugin/main.js` | timrennings@MacBook-Air-von-TKD-3.local |
-| `tools/obsidian-memb-plugin/main.ts` | timrennings@MacBook-Air-von-TKD-3.local |
+| `packages/tools/obsidian-memb-plugin/main.js` | timrennings@MacBook-Air-von-TKD-3.local |
+| `packages/tools/obsidian-memb-plugin/main.ts` | timrennings@MacBook-Air-von-TKD-3.local |
 | `header.png` | timrennings@MacBook-Air-von-TKD-3.local |
 | `skills/global_config/memb-skill/SKILL.md` | timrennings@MacBook-Air-von-TKD-3.local |
 | `mcps/memb-mcp/memb_ingest.py` | timrennings@MacBook-Air-von-TKD-3.local |
