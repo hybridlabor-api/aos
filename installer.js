@@ -1463,6 +1463,9 @@ function resolveTargetPaths(platformValue, customPaths) {
     let targetWorkspaceDir = workspaceDir;
     let targetMcpDir = path.join(geminiDir, 'config');
     let mcpConfigPath = path.join(targetMcpDir, 'mcp_config.json');
+    // Secondary MCP stores that must receive the same servers as mcpConfigPath
+    // (a harness whose CLI and GUI read different files -- see platform '2').
+    let extraMcpConfigPaths = [];
 
     if (platformValue === '2') {
         targetSkillDir = path.join(homeDir, '.claude', 'skills');
@@ -1472,6 +1475,15 @@ function resolveTargetPaths(platformValue, customPaths) {
             : path.join(homeDir, 'Library', 'Application Support', 'Claude');
         targetMcpDir = claudeAppSupport;
         mcpConfigPath = path.join(claudeAppSupport, 'claude_desktop_config.json');
+        // Claude Desktop and Claude Code are two products with two separate MCP
+        // stores, and this one option covers both: Desktop reads
+        // claude_desktop_config.json, Claude Code (CLI *and* its desktop app)
+        // reads ~/.claude.json. Writing only the first left every Claude Code
+        // user without the MCP servers they just installed -- and on a machine
+        // without Claude Desktop it created a config for a product that isn't
+        // there. universalHarnessSync() already distinguished the two; the
+        // per-platform path did not.
+        extraMcpConfigPaths = [path.join(homeDir, '.claude.json')];
     } else if (platformValue === '3') {
         targetSkillDir = path.join(currentDir, '.cursor', 'bdb-skills');
         targetLegacyDir = path.join(currentDir, '.cursor', 'bdb-skills', 'legacy');
@@ -1506,7 +1518,7 @@ function resolveTargetPaths(platformValue, customPaths) {
         mcpConfigPath = customPaths.mcpConfigPath;
     }
 
-    return { targetSkillDir, targetLegacyDir, targetWorkspaceDir, targetMcpDir, mcpConfigPath };
+    return { targetSkillDir, targetLegacyDir, targetWorkspaceDir, targetMcpDir, mcpConfigPath, extraMcpConfigPaths };
 }
 
 function getTierExcludeSkills(tier) {
@@ -1523,6 +1535,49 @@ function getTierExcludeSkills(tier) {
         'bdb-vectorworks-mcp.md',
         'bdbmediastorm'
     ] : [];
+}
+
+// Merge the BDB MCP servers into a harness's *secondary* config store without
+// disturbing anything else in it. Used where one harness option covers two
+// products that read different files (Claude Desktop vs Claude Code): the
+// primary write above owns its file wholesale, but a secondary store belongs
+// to another product and is very likely to already hold the user's own
+// servers -- so this merges per server key and never replaces the file.
+function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
+    if (!Array.isArray(extraPaths) || extraPaths.length === 0) return;
+
+    let servers;
+    try {
+        servers = JSON.parse(mcpConfigStr).mcpServers;
+    } catch (e) {
+        logDebug(e, 'mirrorMcpServersTo: primary config is not parseable JSON');
+        return;
+    }
+    if (!servers || typeof servers !== 'object') return;
+
+    for (const target of extraPaths) {
+        try {
+            const existing = fs.existsSync(target) ? readJsonFile(target) : null;
+            if (fs.existsSync(target) && !existing) {
+                // Same rule as the primary merge: never overwrite a file we
+                // could not parse -- the user's own servers could be in there.
+                log.warn(`${path.basename(target)} is not valid JSON - MCP mirror skipped, nothing overwritten.`);
+                continue;
+            }
+            const data = existing || {};
+            data.mcpServers = data.mcpServers && typeof data.mcpServers === 'object' ? data.mcpServers : {};
+            for (const [key, val] of Object.entries(servers)) data.mcpServers[key] = val;
+            fs.mkdirSync(path.dirname(target), { recursive: true });
+            // Carries injected API keys, same as the primary config. The `mode`
+            // option only applies when writeFileSync CREATES the file -- an
+            // existing 0644 file keeps its old mode -- so chmod explicitly.
+            fs.writeFileSync(target, JSON.stringify(data, null, 2), { mode: 0o600 });
+            try { fs.chmodSync(target, 0o600); } catch (e) { logDebug(e, 'chmod mirrored mcp config'); }
+            log.step(`Mirrored MCP servers into ${target}`);
+        } catch (e) {
+            log.warn(`Could not mirror MCP servers into ${target}: ${e.message}`);
+        }
+    }
 }
 
 async function installMcpsForTarget(paths, ctx) {
@@ -1805,6 +1860,8 @@ async function installMcpsForTarget(paths, ctx) {
             log.warn('The MCP servers were NOT registered; fix the path and re-run the installer.');
         }
     }
+
+    mirrorMcpServersTo(paths.extraMcpConfigPaths, mcpConfigStr);
 
     if (creds.gemini || creds.github || creds.keyEnvName) {
         const envPath = path.join(paths.targetMcpDir, '.env');
@@ -3035,4 +3092,4 @@ if (require.main === module) {
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
-module.exports = { mergeBdbSettingsHooks, installProjectHarness };
+module.exports = { mergeBdbSettingsHooks, installProjectHarness, mirrorMcpServersTo };
