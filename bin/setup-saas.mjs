@@ -415,7 +415,7 @@ async function main() {
   intro(p.bgCyan(p.black(' 🥋 BDB SaaS Host Workstation Setup ')));
 
   note(
-    'Dieses Setup konfiguriert Step-CA 2FA, SSH-Zertifikate, FastMCP\\n' +
+    'Dieses Setup konfiguriert Step-CA 2FA, SSH-Zertifikate, FastMCP\n' +
     'sowie den /bdbsaastraining Skill für dein persönliches Onboarding.',
     p.cyan('Willkommen im BDB Agent OS')
   );
