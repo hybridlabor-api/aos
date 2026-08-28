@@ -53,6 +53,41 @@ if (mcpsArgRaw && mcpsArg === null) {
     console.warn(`${colors.yellow} -> Ignoring '--mcps' without a value. Use --mcps=<name,name>, --mcps=all or --mcps=none.${colors.reset}`);
 }
 
+// --platforms=<n[,n]> picks install targets without the interactive menu. The
+// menu was previously the ONLY way to choose, so a non-interactive run was
+// locked to one hardcoded shape (Antigravity primary + universal MCP fan-out).
+// That is wrong for a mixed team -- someone who only uses Claude Code could
+// not express that in a script or CI, and got Antigravity as their primary
+// target instead. Values match the menu: 0 universal, 1 Antigravity,
+// 2 Claude Desktop/Code, 3 Cursor, 4 custom, 5 Codex, 6 Windsurf, 7 Roo/Cline,
+// 8 Aider (9 = project harness has its own --project-harness flag).
+const VALID_PLATFORMS = ['0', '1', '2', '3', '4', '5', '6', '7', '8'];
+const platformsArgRaw = process.argv.find(a => a === '--platforms' || a.startsWith('--platforms='));
+let PLATFORMS_ARG = null;
+if (platformsArgRaw) {
+    const rawValue = platformsArgRaw.startsWith('--platforms=')
+        ? platformsArgRaw.slice('--platforms='.length)
+        : null;
+    if (rawValue === null || rawValue.trim() === '') {
+        console.warn(`${colors.yellow} -> Ignoring '--platforms' without a value. Use --platforms=<n[,n]>, e.g. --platforms=2 for Claude.${colors.reset}`);
+    } else {
+        const requested = rawValue.split(',').map(v => v.trim()).filter(Boolean);
+        const unknown = requested.filter(v => !VALID_PLATFORMS.includes(v));
+        if (unknown.length > 0) {
+            // Refuse rather than silently installing somewhere unintended: an
+            // unrecognised value would otherwise fall through resolveTargetPaths
+            // to the Antigravity default.
+            console.error(`${colors.red} -> Unknown --platforms value(s): ${unknown.join(', ')}. Valid: ${VALID_PLATFORMS.join(', ')} (4 = custom paths needs the interactive menu).${colors.reset}`);
+            process.exit(1);
+        }
+        if (requested.includes('4')) {
+            console.error(`${colors.red} -> --platforms=4 (Custom Paths) needs the interactive menu; it has no non-interactive form.${colors.reset}`);
+            process.exit(1);
+        }
+        PLATFORMS_ARG = requested;
+    }
+}
+
 if (DRY_RUN) {
     const guardedFns = ['writeFileSync', 'mkdirSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'symlinkSync', 'appendFileSync', 'chmodSync', 'rmdirSync', 'rmSync'];
     for (const fn of guardedFns) {
@@ -2842,6 +2877,17 @@ ${colors.cyan}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  BE
     let selectedMcps = null;
     let wantsUniversal = true;
     let specificPlatforms = ['1'];
+
+    if (PLATFORMS_ARG) {
+        // Explicit targets win over both the menu and the auto-yes default.
+        // '0' means universal; anything else means exactly those targets, so
+        // the universal MCP fan-out must NOT also run -- otherwise asking for
+        // Claude only would still push servers into every detected harness.
+        wantsUniversal = PLATFORMS_ARG.includes('0');
+        specificPlatforms = wantsUniversal
+            ? ['1']
+            : PLATFORMS_ARG;
+    }
 
     if (isAutoYes) {
         creds = { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
