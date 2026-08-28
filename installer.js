@@ -602,7 +602,10 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                     log.warn(`Could not copy symlink ${curSource}: ${e.message}`);
                 }
             } else if (stat.isDirectory()) {
-                copyDirRecursiveSync(curSource, curTarget);
+                // excludeList must ride along: without it an exclusion only
+                // held at the top level, so a nested file with an excluded
+                // name got copied anyway.
+                copyDirRecursiveSync(curSource, curTarget, excludeList);
             } else {
                 fs.copyFileSync(curSource, curTarget);
             }
