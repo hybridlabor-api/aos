@@ -1476,7 +1476,15 @@ function verifyEcosystemInstallation() {
                     npmVer = execSync(`npm view ${mod.pkg} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
                 } catch (e) { logDebug(e, 'operation'); }
 
-                if (npmVer && localVer !== npmVer) {
+                // `npm view <pkg> version` with no tag resolves to the `latest`
+                // dist-tag. A version installed from a non-latest tag (a beta,
+                // for instance) is very likely to differ from `latest` while
+                // still being AHEAD of it -- a blind inequality flagged that as
+                // "update available" pointing backwards to an OLDER version.
+                // isNewerVersion() (already used for this installer's own
+                // self-update check above) only fires when npmVer is actually
+                // ahead of localVer.
+                if (npmVer && isNewerVersion(localVer, npmVer)) {
                     console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.yellow}⚠️  Update available (v${localVer} ➔ v${npmVer})${colors.reset}`);
                 } else {
                     console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ v${localVer} (Up to date)${colors.reset}`);
