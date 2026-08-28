@@ -33,3 +33,18 @@
 ## 6. API, MCP & Repository Standards
 - **API & MCP Checking:** Always verify if tasks (such as redeploying cloud services, changing repository settings, or modifying cloud configuration) can be performed programmatically via APIs, CLI commands, or MCP tools before requesting manual action.
 - **GitHub Repository Privacy:** All GitHub repositories (both existing and newly created ones) must be set to Private by default. Always verify and enforce private repository status.
+
+## 7. Docs & Pipeline
+- **Start here:** `.openwiki/quickstart.md` (architecture: `.openwiki/architecture.md`, releases: `.openwiki/release_notes.md`)
+- **Multi-agent build pipelines** — three variants, pick by how much machinery the task needs:
+  - `/startcycle` — linear chain, file hand-offs in `production_artifacts/`, no state machine (`skills/basic/startcycle/SKILL.md`)
+  - `/startcycle-graph` — dispatcher graph with durable `state.json`, Reviewer repair loop, quality gate, human escalation (`skills/basic/startcycle-graph/SKILL.md`, contract in `.agents/graph.md`)
+  - `/startcycle-graph-user` — throwaway 2-4 node fan-out, nothing persistent left behind (`skills/basic/startcycle-graph-user/SKILL.md`)
+
+## 8. How many agents
+Ask one question first: **do the workers need to see each other?**
+- **No — independent sub-tasks** → subagents. Each gets a self-contained slice, returns a result, done. The normal case, and what all three pipelines above already use.
+- **Yes — they must react to each other, or claim work dynamically from a shared list** → an orchestrated agent team (via `send_message`). Currently only `/bdbrainstorm` qualifies, where the spec demands a real debate rather than parallel monologues. True Agent Teams were evaluated and deferred for `/startcycle-graph` (needs an interactive session; the graph runs headless) — see `.agents/graph.md` and F-17's addendum in `docs/sessions/audit-agents.md`.
+- **Small task** → do it yourself. A two-file edit needs no agents.
+
+"Runs in parallel" is not a reason to reach for a team — subagents already run in parallel. Peer communication and dynamic task claiming are the only things a team adds.
