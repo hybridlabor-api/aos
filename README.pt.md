@@ -1,4 +1,4 @@
-![BDB DEV Media | Event – Optimized Agent Skills](header.png)
+![BDB DEV Media | Event – Optimized Agent Skills](assets/header.png)
 
 🌐 **Idioma / Language / Sprache**: [ 🇬🇧 English ](README.md) | [ 🇩🇪 Deutsch ](README.de.md) | **Português**
 
@@ -34,7 +34,7 @@ Embora otimizado para o **Google Antigravity**, este pacote de skills e configur
 
 ---
 
-![BDB v3 Core Tools Overview](assets/bdb_v3_core_tools_overview_sketch.jpg)
+![BDB v3 Core Tools Overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
 
 ### 🪐 Universal Agent Harness (v3.13.0)
 O instalador agora possui um motor Universal Sync totalmente automatizado. Ele varre seu sistema em busca do **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline** e injeta a configuração MCP curada e as regras de Godmode em todos os ambientes simultaneamente.
@@ -345,7 +345,7 @@ O BDBrainstorm combina brainstorming multi-agente, o comando slash `/grill-me`, 
 
 ## 🔌 22 Integrações Locais Personalizadas de MCP
 
-![BDB Architecture Sketch](bdb_architecture_sketch.jpg)
+![BDB Architecture Sketch](assets/bdb_architecture_sketch.jpg)
 
 Em vez de depender de mocks rudimentares em python ou APIs remotas com falhas, este repositório empacota **22 wrappers MCP locais e personalizados** (no diretório `mcps/`). Eles são construídos/preparados automaticamente e permitem que seu assistente de IA leia, escreva e execute comandos nos principais softwares criativos do mercado.
 
@@ -641,7 +641,7 @@ memB includes a native **Obsidian Plugin** (`obsidian-memb-plugin`) that acts as
 
 ## ⚡ Heimdall Token Saver: Compressão de Contexto CLI (v3.13.0)
 
-![Heimdall Savings Graph](bdb_savings_graph_sketch.jpg)
+![Heimdall Savings Graph](assets/bdb_savings_graph_sketch.jpg)
 
 **Heimdall Token Saver** é um motor de compressão de contexto ultra-rápido projetado para reduzir drasticamente o uso da janela de contexto para saídas de execução de ferramentas CLI em workflows de agentes de IA.
 

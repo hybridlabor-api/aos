@@ -1,4 +1,4 @@
-![BDB DEV Media | Event – Optimized Agent Skills](header.png)
+![BDB DEV Media | Event – Optimized Agent Skills](assets/header.png)
 
 🌐 **Language / Sprache / Idioma**: **English** | [ 🇩🇪 Deutsch ](README.de.md) | [ 🇵🇹 Português ](README.pt.md)
 
@@ -34,9 +34,37 @@ While optimized for **Google Antigravity**, this skills pack and MCP configurati
 
 ---
 
+### 🔨 What v3.13 "NODEFORGE" changes
+
+This release moves the multi-agent pipeline from prose into an executable
+state machine, and hardens the installer around it.
+
+- **A dispatcher graph that actually runs.** Seven nodes, explicit edge
+  predicates, a Reviewer repair loop with a no-progress guard, and automated
+  escalation to a human when the loop stops making progress. [Details below](#-nodeforge-the-dispatcher-graph).
+- **Three pipeline variants** (`/startcycle`, `/startcycle-graph`,
+  `/startcycle-graph-user`) so the machinery matches the task instead of
+  forcing full ceremony on a two-file change.
+- **A mechanically enforced GO gate.** `git push`, `npm publish`,
+  `npm version` and recursive `rm` are blocked by a `PreToolUse` hook unless
+  your immediately preceding message is the literal word **GO** — enforcement
+  that survives permission-mode changes, because it is a hook rather than a
+  rule an agent is asked to respect.
+- **Verified daemon startup.** The installer no longer reports "service
+  started" on faith; it connects to the port and warns you if the daemon
+  never came up. Same for the ecosystem status table, which now compares
+  versions with real semver precedence across every dist-tag instead of
+  string inequality against `latest`.
+- **Separated MCP stores per harness.** Claude Desktop and Claude Code read
+  different files; installing for one no longer silently skips the other.
+  Existing servers in either file are merged, not overwritten.
+- **Scriptable, non-interactive installs.** `--platforms=<n[,n]>` selects
+  targets without the menu, so a machine that only runs Claude Code can be
+  provisioned in CI without inheriting an Antigravity-first default.
+
 ### 🪐 Universal Agent Harness
 The installer features a fully automated Universal Sync engine. It scans your system for **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline**, and injects the curated MCP configuration and Godmode rules across all environments simultaneously.
-- **Tier 9 - Local Project Harness:** Instead of installing globally into `$HOME`, developers can inject the `.agents` contract and hooks directly into isolated project folders.
+- **Local Project Harness:** Instead of installing globally into `$HOME`, drop the `.agents` contract, the gate hooks and the dispatcher workflow directly into a single project — `npx @hybridlabor-api/bdb-dev-optimized-agent-skills --project-harness`.
 
 ### 🧩 Ecosystem Integrations
 This package acts as the bridge to three major upstream capabilities:
@@ -307,17 +335,72 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 
 ---
 
-## 🔄 Dispatcher Graph (.agents/graph.md)
+## 🔄 NODEFORGE: The Dispatcher Graph
 
-AI agents now follow a robust, deterministic state machine for orchestrating parallel operations, replacing the legacy text-based 5-Agent Pipeline.
+v3.13 replaces the old linear "5-agent pipeline" prose with a real, runnable
+state machine. The contract lives in [`.agents/graph.md`](.agents/graph.md),
+the node roster in [`.agents/nodes.json`](.agents/nodes.json), and the
+executable dispatcher in
+[`.claude/workflows/startcycle-dispatch.mjs`](.claude/workflows/startcycle-dispatch.mjs).
 
-- **🚀 Dispatcher Graph (`.agents/graph.md`)**: A fully autonomous, node-based routing system for coordinating the agent team (Architect, TechLead, UI/UX, Engineering, EventTech, Reviewer, Shipping). It uses deterministic file hand-offs in `production_artifacts/` and explicit state gates, ensuring precise parallel orchestration without prompt drift.
-- **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Actively challenge ideas or conduct multi-agent media/event-tech brainstorming. Spawns specialized subagents to validate hardware, 3D scenography, protocols, and MCP compatibility.
-- **2. DEFINE & SCAFFOLD (`openwiki-skill`, `github-repo`)**: Confirm target workspace directory with the user, then autonomously initialize project documentation, `AGENTS.md`, `.openwiki/` structures, and GitHub repo standards.
-- **3. PLAN & ARCHITECT**: The Architect turns the goal into an execution plan (`00_execution_plan.md`), and TechLead reviews the capability map before starting any build nodes.
-- **4. BUILD (Parallel Node Execution)**: Subagent-driven development. The dispatcher routes tasks to specialized Godmode agents (UI/UX, Engineering, EventTech) operating in isolated Git-Worktrees.
-- **5. VERIFY & REVIEW (Adversarial QA)**: A dedicated Reviewer adversarially audits build-node outputs against the contract, enforcing strict QA gates and recording findings.
-- **6. SHIP (Release Gatekeeper)**: Godmode_Shipping runs the final automated quality gate. It commits, pushes private repositories, updates OpenWiki docs autonomously, ingests into memB, and deploys live.
+**The one rule everything else follows: nodes never invoke each other.** A
+single dispatcher reads `production_artifacts/state.json` after each node
+returns and decides what runs next. There is no hand-off chain, no agent
+telling another agent to go — which is what stops the prompt drift that makes
+long agent pipelines wander off course.
+
+```mermaid
+flowchart LR
+    U(["👤 User"])
+    A["<b>Architect</b><br/><span>System Plan (00)</span>"]
+    T["<b>TechLead</b><br/><span>Capability Approval</span>"]
+    UX["<b>Godmode_UI_UX</b><br/><span>Frontend Spec (01)</span>"]
+    EN["<b>Godmode_Engineering</b><br/><span>Backend Schema (02)</span>"]
+    ME["<b>Godmode_Media</b><br/><span>EventTech (03)</span>"]
+    R["<b>Reviewer</b><br/><span>Doubt-Driven QA</span>"]
+    S["<b>Shipping</b><br/><span>GO-Gate</span>"]
+
+    U --> A --> T
+    T --> UX & EN & ME
+    UX & EN & ME --> R
+    R --> S
+
+    T -.->|TechLead Reject · capability map fail| A
+    R -.->|Reviewer Findings · repair loop| UX
+    S -.->|gate failed · Shipping names the owner| EN
+    R -.->|needs_human · no-progress guard| U
+
+    classDef box fill:#161b26,stroke:#3a4560,stroke-width:1.5px,color:#e8edf7
+    classDef user fill:#1a2436,stroke:#4a6fa5,stroke-width:1.5px,color:#dbeafe
+    class A,T,UX,EN,ME,R,S box
+    class U user
+    linkStyle 8,9,10,11 stroke:#7d8799,stroke-width:1px,color:#9aa4b8
+```
+
+### What makes it hold together
+
+| Mechanism | What it prevents |
+|---|---|
+| **Reviewer isolation** | The Reviewer reads build artifacts and the plan's contract — never the original `goal`, never a build node's reasoning or its claim that the work is done. Passing the implementer's claim biases a reviewer toward agreement; withholding it is what makes the review adversarial rather than a rubber stamp. |
+| **No-progress guard** | If a repair cycle comes back reporting the *same* blocking finding ID as the previous one, nothing is actually being fixed. The run escalates to a human instead of burning iterations re-running an identical loop. |
+| **Per-node state fragments** | Build nodes run in parallel and each writes its own `state.d/<node>.json` fragment, merged afterward — they never write `state.json` directly. Parallel writers to one JSON file is a lost-update race; fragments remove the race by construction. |
+| **Iteration ceiling** | `max_iterations` (default 3) stops the loop unconditionally, deliberately set below Claude Code's own 8-consecutive-Stop-hook override so the run's own escalation message reaches you first. |
+| **In-loop human edge** | Any node can set `needs_human: true` and stop the run. Full autonomy sounds good until a node hits something only a human can decide — this is an explicit edge in the graph, not an interruption of it. |
+| **GO-gated shipping** | Reaching `ready_to_ship` is not shipping. `git push`, `npm publish`, `npm version` and recursive `rm` are blocked by a `PreToolUse` hook ([`.claude/hooks/go-gate.mjs`](.claude/hooks/go-gate.mjs)) unless your immediately preceding message is the literal word **GO**. It is a hook, not a rule an agent reads and tries to follow — it fires before any permission-mode check and cannot be argued around. |
+
+### Three variants — pick by how much machinery the task needs
+
+| Command | Machinery | Use when |
+|---|---|---|
+| **`/startcycle`** | Linear chain, file hand-offs in `production_artifacts/`. No state machine, no repair loop. | A straightforward build where you want the agent roster but not the ceremony. |
+| **`/startcycle-graph`** | The full graph above: durable `state.json`, Reviewer repair loop, quality gate, automated escalation. | Real feature work where correctness matters more than speed, and you want an audit trail of what happened. |
+| **`/startcycle-graph-user`** | Throwaway 2–4 node fan-out. Nothing persistent — no `.agents/` bootstrap, no `state.json`. Model-tiered by role (Opus plans, Sonnet reviews, Haiku or an external CLI does the mechanical work). | A one-off "spawn a few workers for this task" in *any* project, including ones that have never heard of this repo. |
+
+The third variant deliberately assumes nothing about your machine: it detects
+whether Antigravity, OpenCode or Codex are present and falls back to Claude
+Code's own subagents when none are. Model tiers are forced per role rather than
+inherited from your session, so a mechanical worker step doesn't silently run
+on Opus because that's what you happened to have selected.
 
 ---
 
@@ -331,7 +414,7 @@ BDBrainstorm combines multi-agent brainstorming, the `/grill-me` slash command, 
 
 ## 🔌 22 Custom Local MCP Integrations
 
-![BDB Architecture Sketch](bdb_architecture_sketch.jpg)
+![BDB Architecture Sketch](assets/bdb_architecture_sketch.jpg)
 
 Rather than relying on skeletal python mocks or broken remote APIs, this repository bundles **22 custom, local MCP wrappers** (in the `mcps/` directory). These are built/warmed automatically and allow your AI assistant to read, write, and execute commands within the industry's leading creative software.
 
@@ -685,7 +768,7 @@ memB includes a native **Obsidian Plugin** (`obsidian-memb-plugin`) that acts as
 
 ## ⚡ Heimdall Token Saver: CLI Context Compression
 
-![Heimdall Savings Graph](bdb_savings_graph_sketch.jpg)
+![Heimdall Savings Graph](assets/bdb_savings_graph_sketch.jpg)
 
 **Heimdall Token Saver** is an ultra-fast context compression engine designed to drastically reduce context window usage for CLI tool execution outputs in AI agent workflows.
 
