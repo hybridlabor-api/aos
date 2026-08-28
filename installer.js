@@ -236,13 +236,48 @@ function readJsonFile(filePath) {
 }
 
 function isNewerVersion(local, remote) {
-    const lParts = local.split('.').map(Number);
-    const rParts = remote.split('.').map(Number);
-    for (let i = 0; i < Math.max(lParts.length, rParts.length); i++) {
-        const l = lParts[i] || 0;
-        const r = rParts[i] || 0;
-        if (r > l) return true;
-        if (l > r) return false;
+    const parse = (v) => {
+        const dashIdx = v.indexOf('-');
+        if (dashIdx === -1) return { main: v.split('.').map(Number), pre: null };
+        const main = v.slice(0, dashIdx).split('.').map(Number);
+        const pre = v.slice(dashIdx + 1).split('.').map(part => {
+            const num = Number(part);
+            return isNaN(num) ? part : num;
+        });
+        return { main, pre };
+    };
+
+    const l = parse(local);
+    const r = parse(remote);
+
+    for (let i = 0; i < Math.max(l.main.length, r.main.length); i++) {
+        const lv = l.main[i] || 0;
+        const rv = r.main[i] || 0;
+        if (rv > lv) return true;
+        if (lv > rv) return false;
+    }
+
+    if (l.pre === null && r.pre !== null) return false;
+    if (l.pre !== null && r.pre === null) return true;
+    if (l.pre === null && r.pre === null) return false;
+
+    for (let i = 0; i < Math.max(l.pre.length, r.pre.length); i++) {
+        const lp = l.pre[i];
+        const rp = r.pre[i];
+        
+        if (rp === undefined) return false; 
+        if (lp === undefined) return true;
+
+        if (typeof lp === 'number' && typeof rp === 'number') {
+            if (rp > lp) return true;
+            if (lp > rp) return false;
+        } else if (typeof lp === 'string' && typeof rp === 'string') {
+            if (rp > lp) return true;
+            if (lp > rp) return false;
+        } else {
+            if (typeof rp === 'number') return false;
+            return true;
+        }
     }
     return false;
 }
@@ -1471,21 +1506,26 @@ function verifyEcosystemInstallation() {
         if (modulePkgPath) {
             try {
                 const localVer = JSON.parse(fs.readFileSync(modulePkgPath, 'utf8')).version || '1.0.0';
-                let npmVer = null;
+                let newerVersion = null;
+                let newerTag = null;
                 try {
-                    npmVer = execSync(`npm view ${mod.pkg} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+                    const distTagsJson = execSync(`npm view ${mod.pkg} dist-tags --json`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+                    const distTags = JSON.parse(distTagsJson);
+                    for (const [tag, ver] of Object.entries(distTags)) {
+                        if (isNewerVersion(localVer, ver)) {
+                            if (!newerVersion || isNewerVersion(newerVersion, ver)) {
+                                newerVersion = ver;
+                                newerTag = tag;
+                            }
+                        }
+                    }
                 } catch (e) { logDebug(e, 'operation'); }
 
-                // `npm view <pkg> version` with no tag resolves to the `latest`
-                // dist-tag. A version installed from a non-latest tag (a beta,
-                // for instance) is very likely to differ from `latest` while
-                // still being AHEAD of it -- a blind inequality flagged that as
-                // "update available" pointing backwards to an OLDER version.
-                // isNewerVersion() (already used for this installer's own
-                // self-update check above) only fires when npmVer is actually
-                // ahead of localVer.
-                if (npmVer && isNewerVersion(localVer, npmVer)) {
-                    console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.yellow}⚠️  Update available (v${localVer} ➔ v${npmVer})${colors.reset}`);
+                // `npm view <pkg> dist-tags --json` fetches all tags.
+                // We compare every tag's version against localVer with the fixed
+                // isNewerVersion(), and report an update if ANY tag is ahead.
+                if (newerVersion) {
+                    console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.yellow}⚠️  Update available (v${localVer} ➔ v${newerVersion} (${newerTag}))${colors.reset}`);
                 } else {
                     console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ v${localVer} (Up to date)${colors.reset}`);
                 }
@@ -1839,6 +1879,7 @@ async function installMcpsForTarget(paths, ctx) {
             ].join('\n');
             // Snippets can embed injected API keys — keep them user-readable only.
             fs.writeFileSync(snippetPath, snippet, { mode: 0o600 });
+            try { fs.chmodSync(snippetPath, 0o600); } catch (e) { logDebug(e, 'chmod snippetPath'); }
             log.warn(`${configName} is TOML; written as snippet instead: ${snippetPath}`);
         } catch (e) {
             log.warn(`Could not write the Codex TOML snippet: ${e.message}`);
@@ -1858,6 +1899,7 @@ async function installMcpsForTarget(paths, ctx) {
             }
             try {
                 fs.writeFileSync(sideCarPath, mcpConfigStr, { mode: 0o600 });
+                try { fs.chmodSync(sideCarPath, 0o600); } catch (e) { logDebug(e, 'chmod sideCarPath'); }
             } catch (writeError) {
                 log.warn(`Could not write ${path.basename(sideCarPath)}: ${writeError.message}`);
             }
@@ -1882,6 +1924,7 @@ async function installMcpsForTarget(paths, ctx) {
                 });
                 oldConfig.mcpServers = Object.assign({}, oldServers, newServers);
                 fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2), { mode: 0o600 });
+                try { fs.chmodSync(paths.mcpConfigPath, 0o600); } catch (e) { logDebug(e, 'chmod mcpConfigPath'); }
                 log.step(`Merged BDB MCPs into existing ${configName}`);
             } catch (e) {
                 log.warn(`Could not merge into ${configName}: ${e.message}`);
@@ -1893,9 +1936,11 @@ async function installMcpsForTarget(paths, ctx) {
             if ((platformValue === '2' || platformValue === '4') && !fs.existsSync(paths.mcpConfigPath)) {
                 const wrapper = { mcpServers: JSON.parse(mcpConfigStr).mcpServers };
                 fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(wrapper, null, 2), { mode: 0o600 });
+                try { fs.chmodSync(paths.mcpConfigPath, 0o600); } catch (e) { logDebug(e, 'chmod mcpConfigPath wrapper'); }
             } else {
                 // The generated config carries injected API keys — 0600, not umask default.
                 fs.writeFileSync(paths.mcpConfigPath, mcpConfigStr, { mode: 0o600 });
+                try { fs.chmodSync(paths.mcpConfigPath, 0o600); } catch (e) { logDebug(e, 'chmod mcpConfigPath str'); }
             }
             log.step(`Installed optimized MCP config to ${paths.targetMcpDir}`);
         } catch (e) {
@@ -1938,6 +1983,7 @@ async function installMcpsForTarget(paths, ctx) {
         if (envReadable && envContent.trim().length > 0) {
             installStep(`save the credentials to ${envPath}`, () => {
                 fs.writeFileSync(envPath, envContent.trim() + '\n', { mode: 0o600 });
+                try { fs.chmodSync(envPath, 0o600); } catch (e) { logDebug(e, 'chmod envPath'); }
                 log.step(`Saved credentials to ${envPath}`);
             }, 'Set GEMINI_API_KEY / GITHUB_PERSONAL_ACCESS_TOKEN yourself, or fix the path and re-run the installer.');
         }
@@ -2672,6 +2718,7 @@ async function universalHarnessSync(primaryMcpConfigPath) {
             }
             fs.mkdirSync(path.dirname(targetPath), { recursive: true });
             fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+            try { fs.chmodSync(targetPath, 0o600); } catch (e) { logDebug(e, 'chmod targetPath'); }
         } catch (e) {
             log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
         }
@@ -2695,6 +2742,7 @@ async function universalHarnessSync(primaryMcpConfigPath) {
             }
             fs.mkdirSync(path.dirname(targetPath), { recursive: true });
             fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+            try { fs.chmodSync(targetPath, 0o600); } catch (e) { logDebug(e, 'chmod targetPath'); }
         } catch (e) {
             log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
         }
