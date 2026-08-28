@@ -55,10 +55,15 @@ const colors = {
     cyan: "\x1b[36m",
     purple: "\x1b[38;2;157;78;221m",
     purpleBold: "\x1b[1;\x1b[38;2;157;78;221m",
-    // v3.13 "NODEFORGE" latest-release identity -- gold BDB wordmark, fiery
-    // orange codename art, emerald tagline. Deliberately distinct from the
-    // purple/cyan beta banner so a push to `latest` is visually obvious, not
-    // just a version-number diff someone has to notice on their own.
+    // v3.13 "NODEFORGE" release identity. The wordmark itself is drawn with a
+    // per-column pink -> yellow -> amethyst gradient computed in buildBanner();
+    // these named constants cover the surrounding chrome (divider, tagline) and
+    // the animation effects. Deliberately distinct from the purple/cyan beta
+    // banner so a push to `latest` is visually obvious, not just a
+    // version-number diff someone has to notice on their own.
+    amethyst: "\x1b[38;2;155;89;182m",
+    beige: "\x1b[38;2;222;202;168m",
+    bannerWhite: "\x1b[38;2;255;255;255m",
     gold: "\x1b[38;2;212;175;55m",
     forge: "\x1b[38;2;255;99;33m",
     emerald: "\x1b[38;2;46;204;113m",
@@ -3024,22 +3029,59 @@ async function runQuickUpdate(installState) {
     verifyEcosystemInstallation();
 }
 
+
+// v3.13 "NODEFORGE" release banner. Built programmatically rather than stored
+// as one giant escaped string literal: the wordmark carries a per-column
+// pink -> yellow -> amethyst gradient, which needs a truecolor escape emitted
+// per character run. Hand-maintaining that as literal text would be
+// unreadable and near-impossible to edit safely.
+//
+// Width discipline: every rendered line stays <= 76 visible columns (the
+// wordmark's natural width), so the banner never wraps on an 80-column
+// terminal -- the same class of terminal-width bug this release already fixed
+// elsewhere. Changing the font means re-checking that number.
+const BANNER_WORDMARK = [
+    "█████▄ ████▄  █████▄   ▄████▄  ▄████  ██████ ███  ██ ██████   ▄████▄ ▄█████ ",
+    "██▄▄██ ██  ██ ██▄▄██   ██▄▄██ ██  ▄▄▄ ██▄▄   ██ ▀▄██   ██     ██  ██ ▀▀▀▄▄▄ ",
+    "██▄▄█▀ ████▀  ██▄▄█▀   ██  ██  ▀███▀  ██▄▄▄▄ ██   ██   ██     ▀████▀ █████▀"
+];
+
+function buildBanner() {
+    const pink = [236, 72, 153];
+    const yellow = [255, 208, 66];
+    const amethystRgb = [155, 89, 182];
+    const lerp = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+    const gradientAt = (t) => (t < 0.5 ? lerp(pink, yellow, t * 2) : lerp(yellow, amethystRgb, (t - 0.5) * 2));
+
+    const width = Math.max(...BANNER_WORDMARK.map((l) => l.length));
+    const wordmark = BANNER_WORDMARK.map((line) => {
+        let out = '';
+        let lastCode = null;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === ' ') { out += ch; continue; }
+            const [r, g, b] = gradientAt(i / (width - 1));
+            const code = `\x1b[38;2;${r};${g};${b}m`;
+            if (code !== lastCode) { out += code; lastCode = code; }
+            out += ch;
+        }
+        return out + colors.reset;
+    }).join('\n');
+
+    const label = ' N O D E F O R G E ';
+    const fill = width - label.length;
+    const divider = '─'.repeat(Math.floor(fill / 2)) + label + '─'.repeat(fill - Math.floor(fill / 2));
+
+    const tagline = ' O P T I M I Z E D   A G E N T   S K I L L S  ·  v3.13';
+    const taglinePad = ' '.repeat(Math.max(0, Math.floor((width - tagline.length) / 2)));
+
+    return `${colors.bold}\n${wordmark}\n\n`
+        + `${colors.beige}${divider}${colors.reset}\n\n`
+        + `${colors.bannerWhite}${colors.bold}${taglinePad}${tagline}${colors.reset}`;
+}
+
 async function main() {
-    const banner = `${colors.gold}${colors.bold}
-    ____  ____  ____     ___   _____________   ________   ____  _____
-   / __ )/ __ \\/ __ )   /   | / ____/ ____/ | / /_  __/  / __ \\/ ___/
-  / __  / / / / __  |  / /| |/ / __/ __/ /  |/ / / /    / / / /\\__ \\
- / /_/ / /_/ / /_/ /  / ___ / /_/ / /___/ /|  / / /    / /_/ /___/ /
-/_____/_____/_____/  /_/  |_\\____/_____/_/ |_/ /_/     \\____//____/${colors.reset}
-
-${colors.forge}${colors.bold} _   _ ___________ ___________ ___________ _____  _____
-| \\ | |  _  |  _  \\  ___|  ___|  _  | ___ \\  __ \\|  ___|
-|  \\| | | | | | | | |__ | |_  | | | | |_/ / |  \\/| |__
-| . \` | | | | | | |  __||  _| | | | |    /| | __ |  __|
-| |\\  \\ \\_/ / |/ /| |___| |   \\ \\_/ / |\\ \\| |_\\ \\| |___
-\\_| \\_/\\___/|___/ \\____/\\_|    \\___/\\_| \\_|\\____/\\____/${colors.reset}
-
-${colors.emerald}${colors.bold} O P T I M I Z E D   A G E N T   S K I L L S  ·  v3.13${colors.reset}`;
+    const banner = buildBanner();
 
     await glitchBanner(banner);
     intro(banner);
