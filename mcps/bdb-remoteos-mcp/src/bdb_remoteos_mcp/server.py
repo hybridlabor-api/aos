@@ -206,11 +206,23 @@ def remoteos_approval_queue_decide(
             )
             return decide_resp.json()
 
+    from fastapi import HTTPException
+
     from .main import state, decide_approval
+
     token = state.queue.pending_token(request_id)
     if token is None:
         return {"status": "error", "detail": "Request not pending or expired"}
-    return decide_approval(ApprovalDecision(token=token), admin=approver, _key=gateway_api_key())
+    try:
+        return decide_approval(
+            ApprovalDecision(token=token), admin=approver, _key=gateway_api_key()
+        )
+    except HTTPException as exc:
+        # F1 fails closed: with no identity-aware proxy in front of this process
+        # there is no authenticated approver, so direct/local approval is
+        # unavailable by design. Report it as a tool result — an MCP tool must
+        # not let an HTTP framework exception escape into the transport.
+        return {"status": "error", "code": exc.status_code, "detail": exc.detail}
 
 
 @mcp.tool(

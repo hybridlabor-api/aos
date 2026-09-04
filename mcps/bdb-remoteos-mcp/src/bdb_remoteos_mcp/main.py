@@ -49,14 +49,21 @@ app = FastAPI(title="BDB RemoteOS Execution Gateway", version="0.1.0")
 AuthKey = Annotated[str, Depends(require_api_key)]
 
 
+# The LDAP group that carries fleet-approval rights. Configurable on purpose:
+# it is an operational fact of the deployment, not a code fact, and hardcoding
+# it couples this publicly distributed package to one site's group naming.
+ADMIN_GROUP = os.environ.get("GATEKEEPER_ADMIN_GROUP", "dev_admin")
+
+
 def _require_admin_identity(remote_user: str | None, remote_groups: str | None) -> str:
     """Return the authenticated admin identity or refuse.
 
     The API key is a machine credential; it says nothing about *who* is approving.
     Both approval endpoints therefore require an authenticated admin session,
     supplied as Remote-User / Remote-Groups by whatever identity-aware proxy
-    fronts this gateway. Group membership is compared exactly, so a group named
-    `non-admins` does not satisfy an `admins` requirement.
+    fronts this gateway. Group membership is compared exactly against
+    ADMIN_GROUP, so a group named `non-<group>` does not satisfy a `<group>`
+    requirement.
 
     This fails closed on purpose: without such a proxy the approval endpoints
     return 401 and are unusable, which is the correct default for a publicly
@@ -68,8 +75,10 @@ def _require_admin_identity(remote_user: str | None, remote_groups: str | None) 
             detail="authenticated admin session required (Remote-User header absent)",
         )
     groups = {g.strip() for g in (remote_groups or "").split(",") if g.strip()}
-    if "admins" not in groups:
-        raise HTTPException(status_code=403, detail="admins group membership required")
+    if ADMIN_GROUP not in groups:
+        raise HTTPException(
+            status_code=403, detail=f"'{ADMIN_GROUP}' group membership required"
+        )
     return remote_user
 
 

@@ -12,6 +12,11 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("REMOTEOS_API_KEY", "test-key-1234")
 os.environ.setdefault("GATEKEEPER_API_KEY", "test-key-1234")
 os.environ.setdefault("GATEKEEPER_SIGNING_KEY", "unit-test-signing-key")
+# F1 (rev 3): the admin group is configurable. The suite pins it to the shipped
+# default so it exercises the real configured value instead of a literal that
+# only exists in the test file.
+os.environ.setdefault("GATEKEEPER_ADMIN_GROUP", "dev_admin")
+ADMIN_GROUP = os.environ["GATEKEEPER_ADMIN_GROUP"]
 
 from bdb_remoteos_mcp.main import app, state  # noqa: E402
 from tests.mock_incus import MOCK_INSTANCES  # noqa: E402
@@ -139,7 +144,7 @@ def test_signed_approval_executes_delete():
         ).json()
         request_id = enqueue["request_id"]
 
-        admin_session = {**AUTH, "Remote-User": "tkd", "Remote-Groups": "admins"}
+        admin_session = {**AUTH, "Remote-User": "tkd", "Remote-Groups": ADMIN_GROUP}
         wrong = c.post(
             "/approvals/decide",
             headers=admin_session,
@@ -179,7 +184,7 @@ def test_expired_token_rejected(monkeypatch):
 
         tok = c.post(
             f"/approvals/{request_id}/token",
-            headers={**AUTH, "Remote-User": "noah", "Remote-Groups": "admins"},
+            headers={**AUTH, "Remote-User": "noah", "Remote-Groups": ADMIN_GROUP},
         )
         assert tok.status_code == 410
 
@@ -193,7 +198,7 @@ def test_expired_token_rejected(monkeypatch):
 # distributed package that must never be able to approve its own requests.
 # ===========================================================================
 
-ADMIN_SESSION = {**AUTH, "Remote-User": "tkd", "Remote-Groups": "dev,admins"}
+ADMIN_SESSION = {**AUTH, "Remote-User": "tkd", "Remote-Groups": f"dev,{ADMIN_GROUP}"}
 NON_ADMIN_SESSION = {**AUTH, "Remote-User": "mallory", "Remote-Groups": "users"}
 
 
@@ -227,13 +232,14 @@ def test_f1_decide_approval_without_admins_group_is_403():
         assert state.queue.get(rid).status == "pending"
 
 
-def test_f1_admins_substring_group_is_not_sufficient():
+def test_f1_substring_group_is_not_sufficient():
+    """F1 advisory: `non-<group>` must not satisfy the admin-group requirement."""
     with TestClient(app) as c:
         rid = _queue_delete(c, "kunde-f1c")
         token = state.queue.pending_token(rid)
         r = c.post(
             "/approvals/decide",
-            headers={**AUTH, "Remote-User": "mallory", "Remote-Groups": "non-admins"},
+            headers={**AUTH, "Remote-User": "mallory", "Remote-Groups": f"non-{ADMIN_GROUP}"},
             json={"token": token},
         )
         assert r.status_code == 403
@@ -259,6 +265,62 @@ def test_f1_issue_approval_token_requires_admin_session():
         ok = c.post(f"/approvals/{rid}/token", headers=ADMIN_SESSION)
         assert ok.status_code == 200
         assert ok.json()["approval_token"] == state.queue.pending_token(rid)
+
+
+def test_f1_legacy_admins_group_is_rejected():
+    """F1 (rev 3): `admins` was never provisioned and must not authorize anything.
+
+    The rev 2 build hardcoded this literal. No LDAP group of that name exists,
+    so the guard locked out every real operator while still granting approval
+    rights to anyone who could present a group that happened to be called
+    `admins`. The configured group is the only one that counts.
+    """
+    with TestClient(app) as c:
+        rid = _queue_delete(c, "kunde-f1f")
+        token = state.queue.pending_token(rid)
+        r = c.post(
+            "/approvals/decide",
+            headers={**AUTH, "Remote-User": "tkd", "Remote-Groups": "dev,admins"},
+            json={"token": token},
+        )
+        assert r.status_code == 403
+        assert state.queue.get(rid).status == "pending"
+        assert MOCK_INSTANCES["kunde-f1f"]["status"] == "Running"
+
+
+def test_f1_admin_group_comes_from_the_environment():
+    """F1 (rev 3): the admin group is configuration, never a source literal."""
+    import inspect
+
+    from bdb_remoteos_mcp import main as gateway_main
+
+    assert gateway_main.ADMIN_GROUP == os.environ["GATEKEEPER_ADMIN_GROUP"]
+    source = inspect.getsource(gateway_main._require_admin_identity)
+    assert '"admins"' not in source, "hardcoded group literal survived in the guard"
+    assert "ADMIN_GROUP" in source
+
+
+def test_f1_mcp_decide_tool_reports_401_as_a_tool_error(monkeypatch):
+    """F1 (rev 3): the in-process fallback must fail legibly, never raise.
+
+    Copy C has no identity-aware proxy in front of `decide_approval`, so the F1
+    guard answers 401 for the direct/local path. That loss of function is the
+    intended fail-closed outcome for a publicly distributed package — but an MCP
+    tool has to return it as a structured result, not let an HTTPException
+    escape through the transport.
+    """
+    monkeypatch.delenv("REMOTEOS_GATEWAY_URL", raising=False)
+    from bdb_remoteos_mcp.server import remoteos_approval_queue_decide
+
+    with TestClient(app) as c:
+        rid = _queue_delete(c, "kunde-f1g")
+
+    res = remoteos_approval_queue_decide(rid)
+    assert isinstance(res, dict)
+    assert res["status"] == "error"
+    assert res["code"] == 401
+    assert res["detail"]
+    assert state.queue.get(rid).status == "pending"
 
 
 def test_f1_no_literal_admin_fallback_in_approval_path():
