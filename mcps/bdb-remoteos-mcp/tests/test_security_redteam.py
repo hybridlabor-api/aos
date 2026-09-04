@@ -139,15 +139,16 @@ def test_signed_approval_executes_delete():
         ).json()
         request_id = enqueue["request_id"]
 
+        admin_session = {**AUTH, "Remote-User": "tkd", "Remote-Groups": "admins"}
         wrong = c.post(
-            "/approvals/decide?admin=tkd",
-            headers=AUTH,
+            "/approvals/decide",
+            headers=admin_session,
             json={"token": "deadbeef" * 8},
         )
         assert wrong.status_code == 410
 
-        tok = c.post(f"/approvals/{request_id}/token?admin=tkd", headers=AUTH).json()
-        decide = c.post("/approvals/decide?admin=tkd", headers=AUTH, json={"token": tok["approval_token"]})
+        tok = c.post(f"/approvals/{request_id}/token", headers=admin_session).json()
+        decide = c.post("/approvals/decide", headers=admin_session, json={"token": tok["approval_token"]})
         assert decide.status_code == 200
         assert decide.json()["status"] == "executed"
         assert "kunde-1" not in MOCK_INSTANCES
@@ -176,5 +177,111 @@ def test_expired_token_rejected(monkeypatch):
             )
         state.queue.expire_stale()
 
-        tok = c.post(f"/approvals/{request_id}/token?admin=noah", headers=AUTH)
+        tok = c.post(
+            f"/approvals/{request_id}/token",
+            headers={**AUTH, "Remote-User": "noah", "Remote-Groups": "admins"},
+        )
         assert tok.status_code == 410
+
+
+# ===========================================================================
+# Phase 0 security remediation (execution plan rev 2) — F1 regression guards
+#
+# This package is published publicly. The guard deliberately fails closed:
+# where no authenticating proxy supplies Remote-User the approval endpoints
+# return 401 and are simply unusable, which is the correct default for a
+# distributed package that must never be able to approve its own requests.
+# ===========================================================================
+
+ADMIN_SESSION = {**AUTH, "Remote-User": "tkd", "Remote-Groups": "dev,admins"}
+NON_ADMIN_SESSION = {**AUTH, "Remote-User": "mallory", "Remote-Groups": "users"}
+
+
+def _queue_delete(c, container: str) -> str:
+    MOCK_INSTANCES[container] = {"name": container, "status": "Running", "profiles": []}
+    body = c.post(
+        f"/tools/incus_manage_instance?{AGENT}",
+        headers=AUTH,
+        json={"container_name": container, "action": "delete", "reason": "phase0 regression"},
+    ).json()
+    return body["request_id"]
+
+
+def test_f1_decide_approval_without_remote_user_is_401():
+    """A valid API key alone must not be able to approve anything."""
+    with TestClient(app) as c:
+        rid = _queue_delete(c, "kunde-f1a")
+        token = state.queue.pending_token(rid)
+        r = c.post("/approvals/decide?admin=tkd", headers=AUTH, json={"token": token})
+        assert r.status_code == 401
+        assert state.queue.get(rid).status == "pending"
+        assert MOCK_INSTANCES["kunde-f1a"]["status"] == "Running"
+
+
+def test_f1_decide_approval_without_admins_group_is_403():
+    with TestClient(app) as c:
+        rid = _queue_delete(c, "kunde-f1b")
+        token = state.queue.pending_token(rid)
+        r = c.post("/approvals/decide", headers=NON_ADMIN_SESSION, json={"token": token})
+        assert r.status_code == 403
+        assert state.queue.get(rid).status == "pending"
+
+
+def test_f1_admins_substring_group_is_not_sufficient():
+    with TestClient(app) as c:
+        rid = _queue_delete(c, "kunde-f1c")
+        token = state.queue.pending_token(rid)
+        r = c.post(
+            "/approvals/decide",
+            headers={**AUTH, "Remote-User": "mallory", "Remote-Groups": "non-admins"},
+            json={"token": token},
+        )
+        assert r.status_code == 403
+        assert state.queue.get(rid).status == "pending"
+
+
+def test_f1_approver_comes_from_remote_user_not_query_param():
+    with TestClient(app) as c:
+        rid = _queue_delete(c, "kunde-f1d")
+        token = state.queue.pending_token(rid)
+        r = c.post("/approvals/decide?admin=attacker", headers=ADMIN_SESSION, json={"token": token})
+        assert r.status_code == 200
+        record = state.queue.get(rid)
+        assert record.approved_by == "tkd"
+        assert record.approved_by not in ("attacker", "admin")
+
+
+def test_f1_issue_approval_token_requires_admin_session():
+    with TestClient(app) as c:
+        rid = _queue_delete(c, "kunde-f1e")
+        assert c.post(f"/approvals/{rid}/token?admin=tkd", headers=AUTH).status_code == 401
+        assert c.post(f"/approvals/{rid}/token", headers=NON_ADMIN_SESSION).status_code == 403
+        ok = c.post(f"/approvals/{rid}/token", headers=ADMIN_SESSION)
+        assert ok.status_code == 200
+        assert ok.json()["approval_token"] == state.queue.pending_token(rid)
+
+
+def test_f1_no_literal_admin_fallback_in_approval_path():
+    """Contract: neither approval endpoint may derive an approver from a default."""
+    import inspect
+
+    from bdb_remoteos_mcp import main as gateway_main
+
+    for symbol in (gateway_main.decide_approval, gateway_main.issue_approval_token):
+        source = inspect.getsource(symbol)
+        assert 'or "admin"' not in source, symbol.__name__
+        assert "approver=admin" not in source, symbol.__name__
+
+
+def test_f1_public_package_contains_no_infrastructure_constants():
+    """Copy C is world-readable on npm: no hostnames, IPs or fingerprints."""
+    import re as _re
+    from pathlib import Path
+
+    package_root = Path(__file__).resolve().parents[1] / "src"
+    ipv4 = _re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+    for path in package_root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        assert not ipv4.search(text), f"IP literal in public package: {path}"
+        for forbidden in ("rcentry.pro", "rcentry.cloud", "gateway.rcentry", "netcup"):
+            assert forbidden not in text.lower(), f"{forbidden} in public package: {path}"
