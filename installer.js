@@ -7,6 +7,7 @@ const https = require('https');
 const net = require('net');
 const readline = require('readline');
 const util = require('util');
+const crypto = require('crypto');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -426,6 +427,159 @@ const backupDir = path.join(geminiDir, `skills_backup_${timestamp}`);
 
 const CORE_MCP = 'memb-mcp';
 
+// ─── Install-Manifest Store ──────────────────────────────────────────────────
+// Tracks every file this installer places. Stored at
+// ~/.agents/.bdb-install-manifest.json with one entry per file:
+//   { path, sha256, version, installedAt }
+// Ground-truth hash = hash of the SOURCE file being copied (computed fresh
+// each run from the actual bytes in this repo/package).  The on-disk hash is
+// compared against: (a) the SOURCE hash (unmodified) and (b) the MANIFEST
+// hash (last-installed value).  This gives us three cases:
+//   ours + unmodified  → source_hash == disk_hash          → overwrite + update manifest
+//   ours + user-edited → manifest_hash == source_hash,
+//                        but disk_hash != source_hash       → .bak + warn + write
+//   foreign            → no manifest record AND disk_hash
+//                        not in any known source hash       → skip + warn
+
+function getInstallManifestPath() {
+    return path.join(os.homedir(), '.agents', '.bdb-install-manifest.json');
+}
+const INSTALL_MANIFEST_PATH = getInstallManifestPath();
+
+function computeFileHash(filePath) {
+    try {
+        const buf = fs.readFileSync(filePath);
+        return crypto.createHash('sha256').update(buf).digest('hex');
+    } catch (e) {
+        return null;
+    }
+}
+
+function loadInstallManifest(customPath = null) {
+    const manifestPath = customPath || getInstallManifestPath();
+    try {
+        if (fs.existsSync(manifestPath)) {
+            return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        }
+    } catch (e) { /* ignore parse errors – treat as empty */ }
+    return {};
+}
+
+function saveInstallManifest(manifest, customPath = null) {
+    if (DRY_RUN) return;
+    const manifestPath = customPath || getInstallManifestPath();
+    try {
+        fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    } catch (e) {
+        log.warn(`Could not write install manifest: ${e.message}`);
+    }
+}
+
+// Adopt an already-present file into the manifest (first-run bootstrap):
+// called when disk-hash == source-hash but there is no manifest entry yet.
+function adoptFileIntoManifest(manifest, targetPath, sourceHash) {
+    manifest[targetPath] = {
+        path: targetPath,
+        sha256: sourceHash,
+        version: pkg.version,
+        installedAt: new Date().toISOString()
+    };
+}
+
+// Manifest-aware file writer implementing the three-way conflict policy.
+// Returns 'wrote' | 'bak' | 'skipped'.
+// knownSourceHashes: Set of sha256 hashes of all source files in the current
+// payload (used to identify files we recognise even before manifest entry).
+function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes) {
+    const sourceHash = computeFileHash(sourcePath);
+    if (!sourceHash) return 'skipped'; // unreadable source – skip
+
+    const manifestEntry = manifest[targetPath];
+    const diskExists = fs.existsSync(targetPath);
+
+    if (!diskExists) {
+        // Fresh install – write and record.
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        return 'wrote';
+    }
+
+    const diskHash = computeFileHash(targetPath);
+
+    // Case: foreign – no manifest entry AND disk hash unknown to this payload.
+    if (!manifestEntry && !knownSourceHashes.has(diskHash)) {
+        log.warn(`[manifest] Foreign file at ${targetPath} — left untouched.`);
+        return 'skipped';
+    }
+
+    // Case: first-run bootstrap – disk hash matches source hash but no manifest entry.
+    if (!manifestEntry && diskHash === sourceHash) {
+        adoptFileIntoManifest(manifest, targetPath, sourceHash);
+        // File is already identical – no need to copy again, but update manifest.
+        return 'wrote';
+    }
+
+    // Case: ours + unmodified on disk (disk == source).
+    if (diskHash === sourceHash) {
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        return 'wrote';
+    }
+
+    // Case: ours + user-edited (manifest recorded our hash, but disk now differs).
+    if (manifestEntry && diskHash !== manifestEntry.sha256) {
+        const bakPath = `${targetPath}.bak`;
+        try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
+            log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
+        }
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        log.warn(`[manifest] User-edited file backed up to ${bakPath}, new version written.`);
+        return 'bak';
+    }
+
+    // Default: manifest entry present, disk matches manifest (no change needed) – overwrite.
+    fs.copyFileSync(sourcePath, targetPath);
+    manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+    return 'wrote';
+}
+
+// Build a Set of all sha256 hashes for files under a source directory tree.
+// Used as the "known shipped hashes" set so we can bootstrap-adopt files that
+// were placed by a prior install that pre-dates the manifest.
+function buildKnownSourceHashes(sourceDirs) {
+    const hashes = new Set();
+    const walk = (dir) => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) walk(full);
+            else if (entry.isFile()) {
+                const h = computeFileHash(full);
+                if (h) hashes.add(h);
+            }
+        }
+    };
+    for (const d of sourceDirs) walk(d);
+    return hashes;
+}
+// ─── End Install-Manifest Store ──────────────────────────────────────────────
+
+// Session-level state: set once at install time, consumed by copyDirRecursiveSync.
+// null = manifest-tracking disabled (project harness, test scaffolds, etc.)
+let _sessionManifest = null;
+let _sessionHashes = null;
+
+function initSessionManifest(existingManifest, sourceDirs) {
+    _sessionManifest = existingManifest || {};
+    _sessionHashes = buildKnownSourceHashes(sourceDirs);
+}
+
+function flushSessionManifest() {
+    if (_sessionManifest) saveInstallManifest(_sessionManifest);
+}
+
 function resolveMcpsArg(availableMcps) {
     const requested = mcpsArg.split(',').map(s => s.trim()).filter(Boolean);
     const wantsNone = requested.some(r => ['none', 'core', 'core-only'].includes(r.toLowerCase()));
@@ -585,7 +739,11 @@ function detectInstallState() {
     const currentVersion = pkg.version || '3.9.6';
     const updateAvailable = isInstalled && (localVersion !== currentVersion);
 
-    return { isInstalled, localVersion, currentVersion, updateAvailable, installedModules, manifest };
+    // Extend: also load the file-level install manifest so the caller can
+    // seed manifest-aware writes during this same session.
+    const installManifest = loadInstallManifest();
+
+    return { isInstalled, localVersion, currentVersion, updateAvailable, installedModules, manifest, installManifest };
 }
 
 function saveManifest(data = {}) {
@@ -680,13 +838,21 @@ function moveIfExists(src, dest, label) {
     }
 }
 
-function copyDirRecursiveSync(source, target, excludeList = []) {
+function copyDirRecursiveSync(source, target, excludeList = [], manifest = null, knownSourceHashes = null) {
+    // Fall back to session-level state when no explicit manifest is passed.
+    const mfst = manifest !== null ? manifest : _sessionManifest;
+    const hashes = knownSourceHashes !== null ? knownSourceHashes : _sessionHashes;
+
     if (!fs.existsSync(source)) return;
     const sourceStat = fs.lstatSync(source);
     if (sourceStat.isFile()) {
         const targetDir = path.dirname(target);
         if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-        fs.copyFileSync(source, target);
+        if (mfst && hashes) {
+            resolveFileConflict(source, target, mfst, hashes);
+        } else {
+            fs.copyFileSync(source, target);
+        }
         return;
     }
 
@@ -731,9 +897,13 @@ function copyDirRecursiveSync(source, target, excludeList = []) {
                 // excludeList must ride along: without it an exclusion only
                 // held at the top level, so a nested file with an excluded
                 // name got copied anyway.
-                copyDirRecursiveSync(curSource, curTarget, excludeList);
+                copyDirRecursiveSync(curSource, curTarget, excludeList, mfst, hashes);
             } else {
-                fs.copyFileSync(curSource, curTarget);
+                if (mfst && hashes) {
+                    resolveFileConflict(curSource, curTarget, mfst, hashes);
+                } else {
+                    fs.copyFileSync(curSource, curTarget);
+                }
             }
         } catch (e) {
             log.warn(`Failed to copy ${curSource} -> ${curTarget}: ${e.message}`);
@@ -1911,9 +2081,26 @@ async function installMcpsForTarget(paths, ctx) {
     }, 'The MCP steps below will most likely fail as well and are reported individually.');
 
     for (const mcp of selectedMcps) {
+        if (mcp === CORE_MCP) {
+            // memb-mcp is pulled from npm, not copied from local mcps/. See below.
+            continue;
+        }
         installStep(`copy the MCP server ${mcp}`, () => {
             copyDirRecursiveSync(path.join(mcpSrcDir, mcp), path.join(mcpCodeTarget, mcp));
         }, 'The remaining MCP servers are still installed.');
+    }
+
+    // CORE_MCP (memb-mcp): always pulled from the npm package rather than
+    // copied from the local vendor directory.  The npm tarball is byte-identical
+    // for all files that matter (run.py, memb_ingest.py, memb_auto_inject.py,
+    // requirements.txt, memb/).  memb_proxy.py is intentionally NOT injected:
+    // it has zero references anywhere in this repo, and the npm package ships
+    // memb/proxy/main.py instead.
+    if (selectedMcps.includes(CORE_MCP)) {
+        const membMcpTarget = path.join(mcpCodeTarget, CORE_MCP);
+        installStep(`download/update ${CORE_MCP} from npm`, () => {
+            downloadOrUpdateModule('@hybridlabor-api/memb', membMcpTarget, 'memB MCP');
+        }, 'memb-mcp installation skipped; MCP config may reference a missing path.');
     }
     log.step(`Installed selected MCP servers to ${mcpCodeTarget}`);
 
@@ -2349,7 +2536,7 @@ function injectHarnessRules() {
 
     if (fs.existsSync(geminiMdSrc)) {
         installStep(`install GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`, () => {
-            fs.copyFileSync(geminiMdSrc, path.join(geminiDir, 'GEMINI.md'));
+            copyDirRecursiveSync(geminiMdSrc, path.join(geminiDir, 'GEMINI.md'));
             log.step(`Installed GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`);
         }, 'The harness injection below still runs.');
 
@@ -3030,6 +3217,17 @@ async function runQuickUpdate(installState) {
     fs.mkdirSync(paths.targetLegacyDir, { recursive: true });
     fs.mkdirSync(paths.targetWorkspaceDir, { recursive: true });
 
+    // Initialize manifest for this update session.
+    initSessionManifest(installState.installManifest, [
+        path.join(srcDir, 'skills'),
+        path.join(srcDir, 'mcps'),
+        path.join(srcDir, '.agents'),
+        path.join(srcDir, '.claude'),
+        path.join(srcDir, '.cursor'),
+        path.join(srcDir, '.github'),
+        path.join(srcDir, '.codex-plugin'),
+    ]);
+
     const skillsBase = path.join(srcDir, 'skills');
     if (fs.existsSync(skillsBase)) {
         const rawDirs = fs.readdirSync(skillsBase);
@@ -3073,6 +3271,7 @@ async function runQuickUpdate(installState) {
     const alreadyHandled = modulesToUpdate.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);
     saveManifest({ tier: '1', isUniversal: true, installedModules: modulesToUpdate });
+    flushSessionManifest();
 
     console.log('');
     verifyEcosystemInstallation();
@@ -3148,6 +3347,22 @@ async function main() {
     }
 
     const installState = detectInstallState();
+
+    // Initialize session manifest – all copyDirRecursiveSync calls from here
+    // forward will use manifest-aware writes automatically.
+    initSessionManifest(installState.installManifest, [
+        path.join(srcDir, 'skills'),
+        path.join(srcDir, 'mcps'),
+        path.join(srcDir, '.agents'),
+        path.join(srcDir, '.claude'),
+        path.join(srcDir, '.cursor'),
+        path.join(srcDir, '.github'),
+        path.join(srcDir, '.codex-plugin'),
+        path.join(srcDir, 'GEMINI.md'),
+        path.join(srcDir, 'AGENTS.md'),
+        path.join(srcDir, 'CLAUDE.md'),
+        path.join(srcDir, 'CODEX.md'),
+    ]);
 
     if (PROJECT_HARNESS_ARG) {
         installProjectHarness();
@@ -3490,6 +3705,9 @@ async function main() {
         await universalHarnessSync(primaryTarget.mcpConfigPath);
     }
 
+    // Flush file-level install manifest after all writes are done.
+    flushSessionManifest();
+
     console.log('');
     verifyEcosystemInstallation();
 
@@ -3501,4 +3719,19 @@ if (require.main === module) {
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
-module.exports = { mergeBdbSettingsHooks, installProjectHarness, mirrorMcpServersTo };
+module.exports = {
+    mergeBdbSettingsHooks,
+    installProjectHarness,
+    mirrorMcpServersTo,
+    // Manifest store (exported for verification tests)
+    computeFileHash,
+    getInstallManifestPath,
+    loadInstallManifest,
+    saveInstallManifest,
+    resolveFileConflict,
+    buildKnownSourceHashes,
+    initSessionManifest,
+    flushSessionManifest,
+    copyDirRecursiveSync,
+    INSTALL_MANIFEST_PATH,
+};
