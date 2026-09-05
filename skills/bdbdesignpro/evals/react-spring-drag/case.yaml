@@ -1,0 +1,29 @@
+name: "React-Spring - Interruptible Momentum Drag"
+description: "Verify routing to React-Spring for physics-based drag and momentum"
+tags:
+  - routing
+  - react-spring
+prompt: |
+  I need a draggable list item that responds to gesture input with momentum-based
+  physics. When the user releases mid-drag, it should continue moving and eventually
+  settle to a snap point. The animation must be interruptible—if the user drags again
+  while it's settling, it should respond immediately.
+  What engine should I use?
+expected_routing: "React-Spring"
+citation: |
+  engine-routing.md § Routing Table: "Interruptible physics springs, momentum drag → React-Spring"
+
+  engine-routing.md § Decision Flow Step 4: "Interruptible real-world physics needed? → React-Spring"
+graders:
+  - type: "llm"
+    instructions: |
+      The skill should recommend React-Spring for interruptible physics animations.
+      Verify the response mentions:
+      - Spring physics (mass, friction, tension) over fixed durations
+      - Gesture interruptibility and momentum
+      - Real-world physics simulation
+      - Links to react-spring.dev docs
+
+      Reject if response suggests Motion.dev for momentum (it lacks the physics model).
+runs: 3
+timeout_seconds: 30

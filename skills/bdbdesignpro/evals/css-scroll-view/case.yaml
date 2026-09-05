@@ -1,0 +1,31 @@
+name: "CSS Native - Scroll-Driven View Timeline"
+description: "Verify CSS Native for simple scroll reveals without scrubbing"
+tags:
+  - routing
+  - css-native
+prompt: |
+  I want to fade in paragraphs as they enter the viewport. This is a simple view
+  reveal, not a pinned section or scrubbed timeline. Can I use CSS View Transitions
+  or scroll() timeline?
+expected_routing: "CSS Native"
+citation: |
+  engine-routing.md § Routing Table: "Simple scroll reveals → CSS Native"
+
+  engine-routing.md § Decision Flow Step 2A (No): "Strictly scroll-driven? →
+  No → Section pinning/scrubbed timeline? → No → CSS Native scroll() or Anime.js Scroll Observer"
+
+  Note: CSS Native scroll() is preferred if browser support permits; Anime.js
+  Scroll Observer is a fallback for older browser support.
+graders:
+  - type: "llm"
+    instructions: |
+      The skill should recommend CSS Native for simple scroll reveals.
+      Verify the response mentions:
+      - CSS scroll() timeline or View Transitions API
+      - No library dependency required
+      - Browser support caveats (if any)
+
+      Accept alternative: Anime.js Scroll Observer if CSS scroll() has insufficient support.
+      Reject if response suggests GSAP ScrollTrigger (overkill for simple reveals).
+runs: 3
+timeout_seconds: 30

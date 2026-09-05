@@ -1,0 +1,28 @@
+name: "Motion.dev - Modal Dialog Open/Close"
+description: "Verify routing away from GSAP for standard React modal transitions"
+tags:
+  - routing
+  - anti-pattern
+prompt: |
+  I have a React modal that opens and closes. I want to animate the entrance (scale + fade)
+  and exit with AnimatePresence. Should I use GSAP with manual DOM lifecycle, or something
+  else?
+expected_routing: "Motion.dev"
+citation: |
+  engine-routing.md § Anti-Patterns: "Do NOT use GSAP for standard modal open/close
+  in React. AnimatePresence handles declarative exit-unmount natively; GSAP requires
+  manual DOM lifecycle delays."
+
+  Correct routing: Motion.dev with AnimatePresence and layoutId for smooth transitions.
+graders:
+  - type: "llm"
+    instructions: |
+      The skill should recommend Motion.dev + AnimatePresence, NOT GSAP.
+      Verify the response explains:
+      - Why GSAP is inappropriate (manual DOM delays with React declarative patterns)
+      - AnimatePresence handles exit animations natively
+      - Motion.dev layoutId for smooth transforms
+
+      Reject if response suggests GSAP without explaining the anti-pattern.
+runs: 3
+timeout_seconds: 30

@@ -1,0 +1,30 @@
+name: "GSAP ScrollTrigger - Section Pinning"
+description: "Verify routing to GSAP for scroll-driven storytelling with pinning"
+tags:
+  - routing
+  - gsap
+prompt: |
+  I'm building a scroll-driven narrative page where a hero section needs to pin for
+  3 viewport heights while background images layer in sequence. After 3 sections,
+  unpin and flow normally. This is scrubbed-to-scroll, no fixed duration.
+  What engine should I use?
+expected_routing: "GSAP 3 + ScrollTrigger"
+citation: |
+  engine-routing.md § Routing Table: "Scroll-driven storytelling, section pinning,
+  scrubbed timelines, text splitting → GSAP 3 + ScrollTrigger"
+
+  engine-routing.md § Decision Flow Step 2A: "Strictly scroll-driven? → Section pinning,
+  scrubbed timeline, or text splitting? → GSAP 3 + ScrollTrigger"
+graders:
+  - type: "llm"
+    instructions: |
+      The skill should recommend GSAP 3 + ScrollTrigger for scroll pinning.
+      Verify the response mentions:
+      - ScrollTrigger plugin for pinning mechanics
+      - Sub-pixel precision and cross-device normalization
+      - Scrubbed animation (not fixed duration)
+      - Links to official GSAP docs or greensock/gsap-skills
+
+      Reject if response suggests Motion.dev useScroll or Anime.js.
+runs: 3
+timeout_seconds: 30
