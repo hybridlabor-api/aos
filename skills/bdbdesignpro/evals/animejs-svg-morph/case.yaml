@@ -1,0 +1,29 @@
+name: "Anime.js - SVG Path Morph"
+description: "Verify routing to Anime.js for lightweight SVG vector animations"
+tags:
+  - routing
+  - animejs
+prompt: |
+  I need to morph an SVG icon from one shape to another (star → circle) with a smooth
+  stagger effect across multiple path elements. This is lightweight vector animation,
+  no 3D or layout changes. Should I use Anime.js?
+expected_routing: "Anime.js"
+citation: |
+  engine-routing.md § Routing Table: "Lightweight SVG path morph / stroke draw, tiny stagger grids → Anime.js"
+
+  engine-routing.md § Decision Flow Step 5: "SVG path morph or vector drawing? → Yes → Anime.js"
+graders:
+  - type: "llm"
+    instructions: |
+      The skill should recommend Anime.js for SVG path morphing.
+      Verify the response mentions:
+      - SVG path `d` attribute animation
+      - Stagger timing for multiple paths
+      - Lightweight (no 3D, no layout)
+      - Links to animejs.com/documentation
+
+      CRITICAL: The response must ask the user to verify the Anime.js version
+      in package.json (v3 vs v4) BEFORE providing code.
+      Reject if any code uses fabricated methods like anime.scroll() or anime.observer().
+runs: 3
+timeout_seconds: 30

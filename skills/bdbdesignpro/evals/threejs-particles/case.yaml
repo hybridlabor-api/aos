@@ -1,0 +1,28 @@
+name: "Three.js / R3F - 3D Particle Field"
+description: "Verify routing to Three.js for 3D WebGL and particle effects"
+tags:
+  - routing
+  - threejs
+prompt: |
+  I'm building an interactive experience with a 3D particle field that responds to
+  mouse movement. Particles are WebGL-rendered spheres with custom shaders, and I need
+  GLTF model loading for complex geometry. This is definitely 3D canvas work.
+  What engine should I use?
+expected_routing: "Three.js / R3F"
+citation: |
+  engine-routing.md § Routing Table: "3D WebGL, GLTF, particles, shaders → Three.js / R3F"
+
+  engine-routing.md § Decision Flow Step 1: "3D WebGL / Canvas required? → Yes → Three.js / R3F"
+graders:
+  - type: "llm"
+    instructions: |
+      The skill should recommend Three.js (or R3F for React integration).
+      Verify the response mentions:
+      - WebGL rendering and shader support
+      - GLTF/glTF model loading
+      - Particle systems or BufferGeometry
+      - Links to threejs.org/docs or docs.pmnd.rs/react-three-fiber
+
+      Reject if response suggests 2D engines like GSAP or Motion.dev.
+runs: 3
+timeout_seconds: 30

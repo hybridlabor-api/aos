@@ -1,0 +1,39 @@
+name: "Antislop Check 1: Zero Layout Thrashing"
+description: "Verify rejection of animating left/top/width/height properties"
+tags:
+  - antislop
+  - check-1
+  - blocking
+prompt: |
+  Create a drawer component that slides in from the left. Animate its position
+  from left: -300px to left: 0 over 300ms using CSS transitions.
+expected_behavior: |
+  The skill MUST:
+  1. Explicitly flag this as violating Zero Layout Thrashing
+  2. Explain that animating `left` causes layout recalculation every frame
+  3. Recommend replacing with transform: translateX(-300px) → transform: translateX(0)
+  4. Provide corrected code using GPU-accelerated properties only
+
+citation: |
+  antislop-gate.md § Check 1 - Zero Layout Thrashing:
+  "Only animate transform, opacity, filter, clip-path. Never top, left, width, height, margin."
+
+  antislop-gate.md § Grep check:
+  "grep -nE 'animation\s*:|transition\s*:' *.css | grep -E '\b(width|height|top|left|margin)\b'"
+
+graders:
+  - type: "llm"
+    instructions: |
+      PASS criteria:
+      - Response explicitly calls out "layout thrashing"
+      - Recommends transform: translateX as alternative
+      - Final code uses ONLY transform, opacity, filter, or clip-path
+      - Explanation of why left is GPU-blocking is included
+
+      FAIL criteria:
+      - Response accepts the left-based animation without flagging it
+      - Code uses left, top, width, height, or margin in animation
+      - No mention of GPU properties or performance impact
+
+runs: 3
+timeout_seconds: 30

@@ -1,0 +1,27 @@
+name: "CSS Native - Button Hover Reveal"
+description: "Verify routing to CSS Native for simple hover state animations"
+tags:
+  - routing
+  - css-native
+prompt: |
+  I need a button that reveals hidden text on hover. The text should fade in smoothly
+  over 150ms with a subtle scale transform (1 → 1.05). This is a standard UI hover state.
+  What engine should I use?
+expected_routing: "CSS Native"
+citation: |
+  engine-routing.md § Routing Table: "Hover states, disclosure menus, dialog entry/exit,
+  simple scroll reveals, View Transitions → CSS Native (0 KB JS)"
+
+  engine-routing.md § Decision Flow Step 6: "Achievable with CSS transitions / @starting-style? → CSS Native"
+graders:
+  - type: "llm"
+    instructions: |
+      The skill should recommend CSS Native (zero JavaScript).
+      Verify the response mentions:
+      - CSS transitions or @starting-style
+      - No third-party library needed
+      - Fade (opacity) and scale (transform) as GPU properties
+
+      Reject if response suggests GSAP, Motion.dev, or Anime.js for this simple case.
+runs: 3
+timeout_seconds: 30

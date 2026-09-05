@@ -1,0 +1,34 @@
+{
+  "skill_name": "bdbdesignpro",
+  "trigger": {
+    "positive": [
+      {
+        "prompt": "Which animation engine should I use for a pinned scroll section with text reveals?",
+        "top_k": 3
+      },
+      {
+        "prompt": "Add a subtle hover micro-interaction to this button, keeping it under 250ms.",
+        "top_k": 3
+      },
+      {
+        "prompt": "Audit this component's animations for prefers-reduced-motion and layout thrashing.",
+        "top_k": 3
+      }
+    ],
+    "negative": [
+      {
+        "prompt": "Generate a shadcn/ui data table component with sorting and pagination.",
+        "owner": "shadcn"
+      },
+      {
+        "prompt": "Review this React component for accessibility and performance issues unrelated to motion.",
+        "owner": "senior-frontend"
+      },
+      {
+        "prompt": "Set up a Three.js scene with GLTF model loading and orbit controls.",
+        "owner": "threejs-skills"
+      }
+    ]
+  },
+  "evals": []
+}

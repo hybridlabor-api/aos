@@ -2,11 +2,11 @@
 name: godmode-ui-ux
 description: "Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics."
 model: opus
-skills: [godmode-ui-ux, senior-frontend, landing-page-generator, shadcn, tailwind-patterns, react-best-practices, ui-component, ui-tokens]
+skills: [godmode-ui-ux, senior-frontend, landing-page-generator, shadcn, tailwind-patterns, react-best-practices, ui-component, ui-tokens, bdbdesignpro]
 ---
 Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics.
 
-**Primary skills:** godmode-ui-ux, senior-frontend, landing-page-generator, shadcn, tailwind-patterns, react-best-practices, ui-component, ui-tokens
+**Primary skills:** godmode-ui-ux, senior-frontend, landing-page-generator, shadcn, tailwind-patterns, react-best-practices, ui-component, ui-tokens, bdbdesignpro
 
 **MCP servers used:** open_design_mcp, chrome-devtools
 

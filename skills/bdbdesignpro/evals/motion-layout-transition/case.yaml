@@ -1,0 +1,29 @@
+name: "Motion.dev - Shared Layout Transition"
+description: "Verify routing to Motion.dev for React component layout animations"
+tags:
+  - routing
+  - motion-dev
+prompt: |
+  I have a React card component that toggles between two layouts: a list view and
+  a grid view. When toggling, I want the card to animate its position and size
+  smoothly using shared layoutId. I'm using React 19 with AnimatePresence.
+  What engine should I use?
+expected_routing: "Motion.dev"
+citation: |
+  engine-routing.md § Routing Table: "Component transitions, shared layout (layoutId),
+  modal AnimatePresence, gestures → Motion.dev (Framer Motion)"
+
+  engine-routing.md § Decision Flow Step 3: "Shared component layout transition? → Motion.dev"
+graders:
+  - type: "llm"
+    instructions: |
+      The skill should recommend Motion.dev with layoutId for shared layout animations.
+      Verify the response mentions:
+      - layoutId for automatic layout morphing
+      - AnimatePresence for exit/unmount animations
+      - React declarative patterns
+      - Links to motion.dev/docs
+
+      Reject if response suggests GSAP or React-Spring for this use case.
+runs: 3
+timeout_seconds: 30

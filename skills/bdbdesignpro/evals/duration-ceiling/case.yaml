@@ -1,0 +1,50 @@
+name: "Antislop Check 4: Duration Ceiling"
+description: "Verify max 400ms for standard UI transitions (scroll-scrubbed exempt)"
+tags:
+  - antislop
+  - check-4
+  - perf
+  - blocking
+prompt: |
+  I want a hover effect on a button that smoothly transitions from rest to highlighted.
+  I'm using a 600ms transition to make it really smooth. Is this a good duration?
+expected_behavior: |
+  The skill MUST:
+  1. Reject 600ms as exceeding the standard UI transition ceiling (400ms)
+  2. Explain that slow transitions feel sluggish and violate UX responsiveness norms
+  3. Recommend 250–350ms for micro-interactions or state transitions
+  4. Explicitly permit 600ms only for scroll-scrubbed storytelling (exempt from ceiling)
+  5. Provide corrected code with appropriate duration
+
+citation: |
+  antislop-gate.md § Check 4 - Duration Ceiling:
+  "Standard UI transitions (dialogs, drawers, tabs, hover) do not exceed
+  --duration-slow: 400ms. Scroll-scrubbed narrative timelines are exempt."
+
+  bdb-motion-tokens.md § Timing Scale:
+  "--duration-fast: 150ms (Micro-interactions: hover, click, toggle)
+  --duration-normal: 300ms (State transitions: dialogs, drawers, tabs)
+  --duration-slow: 400ms (Upper bound for any standard UI transition)"
+
+  SKILL.md § Phase 2 - Timing Tier:
+  "Timing tier: micro (150ms), state transition (300ms, ceiling 400ms),
+  or scroll-scrubbed (no fixed duration)"
+
+graders:
+  - type: "llm"
+    instructions: |
+      PASS criteria:
+      - Response rejects 600ms as too slow for standard UI
+      - Recommends 250–400ms range for hover states
+      - Explains responsiveness impact of slow transitions
+      - Final code uses ≤400ms duration
+      - OR permits 600ms only if explicitly scroll-scrubbed
+
+      FAIL criteria:
+      - Response accepts 600ms for standard UI transition
+      - No mention of duration ceiling or 400ms limit
+      - Code retains 600ms without explanation
+      - Suggests duration is a matter of taste, not UX law
+
+runs: 3
+timeout_seconds: 30

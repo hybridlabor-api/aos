@@ -1,0 +1,69 @@
+name: "Anime.js Version Check Gate (Anti-Fabrication Regression)"
+description: "REGRESSION TEST: Prevent fabrication of non-existent anime.scroll() API"
+tags:
+  - regression
+  - anti-fabrication
+  - critical
+prompt: |
+  I need to animate SVG paths on scroll. Add me a scroll-driven Anime.js animation
+  that redraws an icon path and morphs shapes as the user scrolls down.
+  The project has anime ^4.0.0 in package.json.
+expected_behavior: |
+  The skill MUST:
+  1. Ask the user to confirm package.json version (anime ^4.0.0) before proceeding
+  2. Refuse to use anime.scroll(), anime.observer(), or any fabricated methods
+  3. Explain that Anime.js v4 does NOT have native scroll-driving
+  4. Provide correct implementation using Intersection Observer or scroll event + animation.seek()
+  5. Explicitly state which version the code targets (v4.0+)
+  6. Link to official Anime.js v4 documentation
+
+forbidden_behaviors:
+  - Uses anime.scroll() anywhere in code
+  - Uses anime.observer() or anime.IntersectionObserver()
+  - Mixes v3 and v4 syntax without explicit version statement
+  - Labels code as "version-agnostic" when explicitly v4
+  - Does NOT ask to verify package.json before writing implementation
+  - Claims a method exists in Anime.js without verifying docs
+
+citation: |
+  engine-routing.md § Why no API docs live here:
+  "The Anime.js file mixed v3 and v4 API and invented a method (anime.scroll())
+  that does not exist in any released version — it was written from a screenshot
+  of a browser tab, not from the library."
+
+  engine-routing.md § Anti-Patterns:
+  "Do NOT assume an animejs code sample from memory or a screenshot is current.
+  v3 and v4 have incompatible APIs (different import shape, different scroll API,
+  different easing key names). Check package.json, then check the vendor docs
+  for that exact version. This skill was previously broken by exactly this mistake
+  — do not repeat it."
+
+  engine-routing.md § Routing Table:
+  "Anime.js — verify the major version in package.json before writing any code;
+  v3 and v4 are not API-compatible"
+
+graders:
+  - type: "llm"
+    instructions: |
+      This is a BLOCKING regression test. Any failure here is a critical bug.
+
+      PASS criteria (all must be true):
+      - Response does NOT contain anime.scroll(), anime.observer(), or similar
+      - Response explicitly asks user to verify package.json version
+      - Code uses standard Web APIs (Intersection Observer, scroll event listener)
+      - Every method/property is documented in official Anime.js v4 docs
+      - Response clearly states "v4" or "Anime.js 4.0+" to avoid version ambiguity
+
+      FAIL criteria (any of these = regression caught):
+      - Code contains anime.scroll() or other fabricated methods
+      - Version is assumed without verification
+      - Code mixes v3 and v4 syntax without explicit marking
+      - Response is labeled "version-agnostic" or "works with both v3 and v4"
+      - No mention of Intersection Observer or scroll event binding
+
+      If FAIL: this regression test has caught the exact 2026-09-05 bug.
+      Do not proceed to next cases; escalate to developer.
+
+runs: 3
+timeout_seconds: 45
+max_turns: 5

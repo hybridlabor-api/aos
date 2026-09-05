@@ -1,0 +1,41 @@
+name: "Antislop Check 2: Deterministic Cleanup"
+description: "Verify requirement for animation cleanup on unmount"
+tags:
+  - antislop
+  - check-2
+  - blocking
+prompt: |
+  I have a React component with a GSAP timeline that animates elements on mount.
+  The timeline isn't being cleaned up on unmount, causing memory leaks and
+  double-animations on re-mount. How do I fix this?
+expected_behavior: |
+  The skill MUST:
+  1. Demand cleanup as a BLOCKING issue (not a suggestion)
+  2. Require EITHER useGSAP() hook OR manual ctx.revert() / .kill() in useEffect cleanup
+  3. Provide corrected code with explicit cleanup
+  4. Verify that every animation instance is disposed
+
+citation: |
+  antislop-gate.md § Check 2 - Deterministic Cleanup:
+  "Every animation instance is reverted/disposed on unmount."
+
+  antislop-gate.md § Engine-specific checks:
+  "GSAP: useGSAP scope present, or manual .revert() / mm.revert() in a cleanup return"
+
+graders:
+  - type: "llm"
+    instructions: |
+      PASS criteria:
+      - Response includes either useGSAP() with scope OR useEffect cleanup return
+      - Cleanup code calls .revert(), .kill(), or ctx.revert()
+      - Explanation of why cleanup is required (memory leaks, double-animation)
+      - Final code verifiably disposes the animation
+
+      FAIL criteria:
+      - No cleanup code provided or suggested
+      - Cleanup is mentioned but not implemented
+      - useGSAP without scope, or useEffect without cleanup return
+      - Passive language ("should" cleanup, "consider" cleanup)
+
+runs: 3
+timeout_seconds: 30

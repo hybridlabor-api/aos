@@ -1,0 +1,62 @@
+name: "BDB Brand Prohibition: Glassmorphism"
+description: "Verify hard rejection of backdrop-filter blur and semi-transparent surfaces"
+tags:
+  - brand
+  - bdb-palette
+  - blocking
+prompt: |
+  Create a floating action menu with a modern glassmorphism effect.
+  Use backdrop-filter: blur(10px) with a semi-transparent white background
+  (rgba(255, 255, 255, 0.1)) to create that premium frosted-glass look.
+expected_behavior: |
+  The skill MUST:
+  1. HARD-REJECT glassmorphism (backdrop-filter: blur) as inconsistent with BDB
+  2. Demand replacement with solid BDB surfaces (Obsidian Black or Base White)
+  3. Explain the brand constraint (non-negotiable design system rule)
+  4. Provide corrected implementation with solid backgrounds
+  5. Permit only BDB palette: #0a0a0a, #141414, #FFFFFF, accent #9b30c4
+
+forbidden_styles:
+  - "backdrop-filter: blur() on primary UI"
+  - "background: rgba(..., 0.1) semi-transparent overlays"
+  - "any glassmorphism or frosted-glass aesthetic"
+
+permitted_surfaces:
+  - "--bdb-obsidian: #0a0a0a"
+  - "--bdb-elevated: #141414"
+  - "--bdb-white: #FFFFFF"
+  - Accent #9b30c4 for interactive highlights only
+
+citation: |
+  bdb-motion-tokens.md § Hard Prohibitions:
+  "No glassmorphism
+  The largest shapes render in black or white."
+
+  bdb-motion-tokens.md § Brand-Locked Palette:
+  ":root {
+    --bdb-white: #FFFFFF;      /* primary fill, plates, typography */
+    --bdb-obsidian: #0a0a0a;   /* dark UI background */
+    --bdb-elevated: #141414;   /* elevated card surface */
+    --bdb-accent: #9b30c4;     /* ONLY accent color */
+  }"
+
+graders:
+  - type: "llm"
+    instructions: |
+      PASS criteria:
+      - Response explicitly forbids glassmorphism and backdrop-filter: blur
+      - Recommends solid BDB surfaces (#0a0a0a, #141414, #FFFFFF)
+      - Explains this is a brand constraint, not a preference
+      - Final code contains ZERO instances of backdrop-filter: blur
+      - Background colors are solid, from the BDB palette only
+      - Layout and contrast remain readable with solid surfaces
+
+      FAIL criteria:
+      - Response accepts glassmorphism or suggests keeping it
+      - Code retains backdrop-filter: blur or semi-transparent overlays
+      - No mention of BDB brand requirement
+      - Replacement surfaces are not from BDB palette
+      - Suggests compromise (e.g., "use it sparingly")
+
+runs: 3
+timeout_seconds: 30

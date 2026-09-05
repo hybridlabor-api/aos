@@ -1,0 +1,52 @@
+name: "Antislop Check 3: Reduced Motion Honored"
+description: "Verify concrete prefers-reduced-motion fallback, not just mention"
+tags:
+  - antislop
+  - check-3
+  - a11y
+  - blocking
+prompt: |
+  Implement a staggered list reveal with 200ms delay between items.
+  I want it to feel smooth and animated, but respectful of accessibility.
+  Add prefers-reduced-motion support.
+expected_behavior: |
+  The skill MUST:
+  1. Demand a @media (prefers-reduced-motion: reduce) block
+  2. Require a CONCRETE fallback (instant reveal OR opacity-only fade without stagger)
+  3. Flag incomplete fallbacks (just animation: none, or just a comment) as insufficient
+  4. Provide full working code with both paths
+
+forbidden_incomplete_fallbacks:
+  - "animation: none — alone, with no other guard"
+  - "comment mentioning prefers-reduced-motion with no implementation"
+  - "reduced motion via display: none / hidden"
+  - "generic browser defaults without explicit CSS"
+
+citation: |
+  antislop-gate.md § Check 3 - Reduced Motion Honored:
+  "prefers-reduced-motion: reduce has a concrete fallback for every animation,
+  not just a mention. This was the single biggest gap found in the 2026-09-05
+  audit — 4 of 6 former engine-reference files had zero coverage."
+
+  SKILL.md § Phase 2 - The Interaction Thesis Gate:
+  "Reduced-motion fallback: the zero-motion alternative, defined now, not
+  retrofitted later."
+
+graders:
+  - type: "llm"
+    instructions: |
+      PASS criteria:
+      - @media (prefers-reduced-motion: reduce) block is present
+      - Fallback specifies actual behavior (instant reveal OR fade without stagger)
+      - Fallback CSS is concrete and testable (not animation: none alone)
+      - Both code paths (reduced/full motion) render successfully
+
+      FAIL criteria:
+      - No @media (prefers-reduced-motion) block
+      - Block exists but only contains animation: none
+      - Fallback is a comment, not CSS
+      - No stagger removed in reduced-motion version
+      - Reduced motion path is unreachable or unstyled
+
+runs: 3
+timeout_seconds: 30

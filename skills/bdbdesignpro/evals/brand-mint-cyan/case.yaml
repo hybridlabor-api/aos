@@ -1,0 +1,58 @@
+name: "BDB Brand Prohibition: Mint/Cyan Accent"
+description: "Verify hard rejection of mint/cyan highlight colors"
+tags:
+  - brand
+  - bdb-palette
+  - blocking
+prompt: |
+  Design an interactive dashboard with a prominent highlight color.
+  I'm using #00ffff (cyan) for all active element borders and data-viz accents
+  because it pops on the dark background.
+expected_behavior: |
+  The skill MUST:
+  1. HARD-REJECT cyan (#00ffff, #22d3ee, #06b6d4) as the dominant accent
+  2. Demand replacement with BDB brand accent: #9b30c4 (Vibrant Orchid)
+  3. Explain the brand constraint (non-negotiable design system rule)
+  4. Provide corrected palette using BDB tokens
+  5. Accept #9b30c4 only on rings, pills, borders, single highlight stroke
+
+forbidden_colors:
+  - "#00ffff — pure cyan"
+  - "#22d3ee — sky"
+  - "#06b6d4 — cyan-600"
+  - "#2dd4bf — teal"
+  - "any mint/cyan variant"
+
+citation: |
+  bdb-motion-tokens.md § Brand-Locked Palette:
+  "--bdb-accent: #9b30c4 (Vibrant Orchid — the ONLY accent color)
+  --bdb-accent-shadow: #51116F (Deep Plum — accent depth/shadow only)"
+
+  bdb-motion-tokens.md § Hard Prohibitions:
+  "No mint/cyan highlight color, anywhere
+  Accent (#9b30c4 / #51116F) may appear on rings, pills, borders, or a single
+  highlight stroke — never as the largest shape's fill."
+
+  bdb-motion-tokens.md § Lint Check:
+  "grep -inE '#?(06b6d4|22d3ee|2dd4bf|00ffff|cyan|mint)' path/to/file.css
+  A hit is a blocking finding, not a style note"
+
+graders:
+  - type: "llm"
+    instructions: |
+      PASS criteria:
+      - Response explicitly forbids cyan/mint colors
+      - Recommends BDB accent #9b30c4 as mandatory replacement
+      - Explains this is a brand constraint, not a preference
+      - Final code contains ZERO instances of #00ffff, #22d3ee, #06b6d4, #2dd4bf
+      - Code uses #9b30c4 on permitted elements (rings, pills, borders, stroke)
+
+      FAIL criteria:
+      - Response accepts cyan as a valid accent color
+      - No mention of BDB brand requirement
+      - Code retains any mint/cyan colors
+      - Suggests compromise (e.g., "use it sparingly")
+      - No replacement with #9b30c4
+
+runs: 3
+timeout_seconds: 30
