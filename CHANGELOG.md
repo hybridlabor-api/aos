@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.13.0-nodefox.2](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.13.0-nodefox.1...v3.13.0-nodefox.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **security:** approval-gateway self-approval bypass closed ([50bec35](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/50bec35))
+* **security:** dashboard stored-XSS closed, unauthenticated admin-token minting closed, execution-daemon missing timeout fixed, and DNS-route risk classification added ([9f5340a](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/commit/9f5340a))
+* **installer:** update safety - quick-updates no longer overwrite user-modified or third-party files (manifest-based ownership tracking) <!-- TODO: Add commit SHA once Worker A's commit lands -->
+* **installer:** memb-mcp now sourced from the published @hybridlabor-api/memb package instead of a bundled copy <!-- TODO: Add commit SHA once Worker A's commit lands -->
+
 ## [3.12.0](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.11.0...v3.12.0) (2026-08-27)
 
 
