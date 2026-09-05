@@ -1,201 +1,172 @@
 ---
 name: openwiki-skill
-description: Use when direct Gemini-native integration of OpenWiki for autonomous, high-agency documentation management and release notes maintenance.
+description: "Initialize, update, and visualize codebase or personal knowledge wikis using LangChain OpenWiki. Enforces OKF v0.2, Grounded Claims, interactive visualizer graph, and MCP page-job lifecycle."
 category: bdb-core
 risk: safe
-source: community
-date_added: "2026-07-10"
+source: "https://github.com/langchain-ai/openwiki"
+date_added: "2026-09-01"
 ---
 
-# OpenWiki Skill: Gemini-Native Codebase Documentation Engine
+# OpenWiki Skill: Codebase & Personal Knowledge Wiki Engine
 
-This skill equips the Antigravity agent with a direct, Gemini-native implementation of OpenWiki. It automatically scans repositories for changes, creates and maintains a high-quality codebase wiki inside the `.openwiki/` directory, updates root-level instructions (`agent.md`/`CLAUDE.md`), updates project `README.md` files, and automatically commits documentation changes with structured git messages.
+This skill integrates the official **OpenWiki** ([`langchain-ai/openwiki`](https://github.com/langchain-ai/openwiki)) into BDB Agent OS and Google Antigravity workflows. It provides autonomous documentation generation, Grounded Claims verification, an interactive local node graph visualizer, and host integrations for coding agents via Model Context Protocol (MCP).
 
 ---
 
-## Architecture
+## 1. Upstream Package & Remote Updates
 
-The OpenWiki daemon uses the **Google Gemini API** (`gemma-4-26b-a4b-it` default) directly via the `google-genai` Python SDK. If the configured model is unavailable, the daemon and the API key verifier automatically discover a valid generateContent-capable model via the models API. It does **not** spawn `agy` conversations or any external agent processes.
+OpenWiki is distributed globally via `npm`:
+- **Repository**: [https://github.com/langchain-ai/openwiki](https://github.com/langchain-ai/openwiki)
+- **Package**: `openwiki` (v0.5.0+)
+- **Runtime**: Node.js >= 22
+
+### Pulling Remote Updates
+To check and pull the latest upstream version:
+```bash
+# Check installed vs latest version
+npm view openwiki version
+
+# Update to latest upstream release
+npm install -g openwiki@latest
+
+# Verify installation
+openwiki integrations list
+```
+
+A companion helper script is available in `scripts/update_openwiki.sh`:
+```bash
+bash skills/global_config/openwiki-skill/scripts/update_openwiki.sh
+```
+
+---
+
+## 2. Core Capabilities & Architecture
 
 ```mermaid
-flowchart LR
-    A[Daemon Loop / Cron] --> B[Collect Git Evidence]
-    B --> C[Read Existing .openwiki/ Pages]
-    C --> D[Single Gemini API Call]
-    D --> E[Parse JSON Response]
-    E --> F[Write Updated .md Files]
-    F --> G[Auto-Commit via Helper]
+flowchart TD
+    A[Repository / Git Changes] --> B[openwiki --init / --update]
+    B --> C[Page-Job Queue & Grounded Claims]
+    C --> D[Coding Agent MCP Host / DeepAgents]
+    D --> E[Write Markdown Wiki in openwiki/]
+    E --> F[Claims Persistence in openwiki/.claims/]
+    E --> G[Interactive Visualizer: openwiki visualize]
 ```
 
-This eliminates the previous issues of zombie sidebar conversations, GitHub MCP quota drain, and OAuth auth timeouts.
+### Key Differences from Legacy Wrapper
+- **Official OpenWiki Directory**: Writes to `openwiki/` (with `.claims/` and `.page-manifest.json`).
+- **Grounded Claims**: Material facts in pages carry versioned repository evidence citations (e.g. `repo://src/server.ts#L40-L82`). Stale or changed code automatically flags propositions for revision.
+- **Resumable Lifecycle**: Interrupted runs checkpoint into `openwiki/.run.json` and resume deterministically.
+- **Interactive Visualizer**: Instant local graph server (`openwiki visualize`) or deployable static bundle (`openwiki visualize --export <dir>`).
 
 ---
 
-## When to Invoke This Skill
+## 3. CLI Commands
 
-- **On-Demand**: When the user explicitly requests to update the wiki, document a feature, update the README, or write release notes. Run the workflow steps below inside the active conversation.
-- **Automated (Daemon)**: The background daemon runs every 2 hours via `StartInterval` (macOS) or Task Scheduler (Windows), calling the Gemma 4 API directly.
-
----
-
-## Setting Up `GEMINI_API_KEY`
-
-The daemon requires a Gemini API key to call the Gemma 4 model. Gemma 4 12B is available on the free tier.
-
-1. Get a key from [Google AI Studio](https://aistudio.google.com/apikey)
-2. Set it in your environment:
-   ```bash
-   # macOS / Linux
-   export GEMINI_API_KEY=your-key-here
-
-   # Windows PowerShell
-   $env:GEMINI_API_KEY = "your-key-here"
-   ```
-3. The install scripts will embed the key into the LaunchAgent plist / Scheduled Task.
-
-If no key is set, the daemon runs in **collect-only mode**: it gathers git evidence but skips documentation generation (no crash, no error).
-
----
-
-## Core Documentation Artifacts
-
-The agent is responsible for maintaining the following files at the root of the project:
-
-### 1. The Wiki Directory (`.openwiki/`)
-A modular folder containing markdown pages designed for both human readers and AI subagents:
-- **`.openwiki/quickstart.md`**: The navigation hub. Contains developer onboarding steps, quick CLI commands, test suites instructions, and workspace orientation.
-- **`.openwiki/architecture.md`**: Tech stack, module boundaries, data flows, third-party integrations, and directory structure maps.
-- **`.openwiki/release_notes.md`**: Organized release timeline, version numbers, features shipped, and changelogs.
-- **`.openwiki/decisions.md`**: Log of key design decisions, API trade-offs, and architecture constraints.
-
-### 2. Root Entrypoints
-- **`agent.md` or `CLAUDE.md`**: Must be kept up to date and contain a reference block directing subsequent agents to read `.openwiki/quickstart.md` for context.
-- **`README.md`**: Updated to show current status, active API contracts, features list, and links to the detailed wiki pages.
-
----
-
-## 🔒 Safety and Privacy Rules (PII Protection)
-1. **Never Leak Local Username / Paths:** Under no circumstances should absolute paths containing local usernames (e.g. `/Users/username/...`) be written to repository files, documentation, README, or wiki markdown files. Always use relative paths (`skills/global_config/...` or `.openwiki/quickstart.md`) or generic home folder variables (e.g. `~/.openwiki/` or `$HOME/...` or `<your-user-home>`).
-2. **Never Leak Secrets:** Do not commit or document API keys, OAuth tokens, passwords, private configuration details, or credentials in any file. Use placeholders like `<API_KEY>` or point the user to configure `.env` files.
-3. **No External URL Leaks:** Avoid hardcoding personal repository structures or domains unless they are public.
-
----
-
-## Step-by-Step Execution Workflow (On-Demand)
-
-Follow this procedure when executing the OpenWiki cycle manually inside a conversation:
-
-### Step 1: Collect Git Evidence & Identify Changes
-Execute the Python helper script to collect git status, diff logs, and check for a clean workspace:
+### Initialize or Update Documentation
 ```bash
-python3 ~/.gemini/config/skills/openwiki-skill/scripts/openwiki_helper.py --command collect
-```
-Review the printout carefully to identify:
-- Which files were recently added, modified, or deleted.
-- The commits added since the last documentation sync (if any).
-- Current unstaged changes.
+# Initialize a new repository wiki in openwiki/
+openwiki --init
 
-### Step 2: Compute Pre-Run Hash
-Determine if there are active changes in the wiki directory:
+# Update existing repository wiki based on changes and stale claims
+openwiki --update
+
+# Non-interactive one-shot update
+openwiki -p --update "Document recent architecture updates"
+
+# Initialize or update personal knowledge wiki (stores in ~/.openwiki/wiki)
+openwiki personal --init
+openwiki personal --update
+```
+
+### Explore Wiki via Visualizer
 ```bash
-python3 ~/.gemini/config/skills/openwiki-skill/scripts/openwiki_helper.py --command pre-snapshot
+# Launch interactive node graph on 127.0.0.1:4321
+openwiki visualize
+
+# Launch on custom port without opening browser automatically
+openwiki visualize openwiki --port 4321 --no-open
+
+# Export static HTML/JS/CSS bundle for GitHub Pages or MkDocs
+openwiki visualize openwiki --export docs/openwiki-visualizer
 ```
-Save the returned hash in your context. If the Git log, status, and pre-run hash indicate no functional modifications occurred in the codebase since the last update, you may skip execution early to conserve tokens.
 
-### Step 3: Map Documentation Plan
-Define which pages need updates:
-- If a new feature was added → Update `.openwiki/architecture.md`, `README.md`, and write new release notes in `.openwiki/release_notes.md`.
-- If setup steps changed → Update `.openwiki/quickstart.md`.
-- Bump project versions and update the changelog in `package.json` if applicable.
+---
 
-### Step 4: Perform Documentation Updates
-Write and edit markdown files under `.openwiki/`.
-- **Aesthetic standard**: Follow professional technical writing guidelines. Use clear headings, markdown tables for configurations, code block syntax highlighting, and github-style alert blocks (`> [!NOTE]`).
-- **Grounding constraint**: Document ONLY what is actually implemented in code. Do not speculate or invent features.
-- **Loose Coupling via CLI Handoff**: After writing or updating a `.openwiki` doc, if memB is available, trigger an ingest via background subprocess: `python ~/.gemini/mcps/memb-mcp/memb_ingest.py .openwiki/doc.md --category 'Documentation' &`
+## 4. Coding Agent Integrations (MCP)
 
-### Step 5: Update Root Redirects
-Verify that `agent.md` or `CLAUDE.md` contains the mandatory OpenWiki block:
+OpenWiki connects to coding agents (Claude Code, OpenCode, Codex, Cursor) via MCP so the agent uses its own model and tools while OpenWiki manages the durable lifecycle.
+
+### Setup Host Integrations
+```bash
+openwiki integrations install claude
+openwiki integrations install opencode
+openwiki integrations install codex
+openwiki integrations install cursor
+```
+
+### Verify Status
+```bash
+openwiki integrations list
+```
+
+### Lifecycle MCP Tools
+The integration exposes the native generation lifecycle:
+1. `openwiki_begin`: Initiates run, checks Git root and diff status.
+2. `openwiki_submit_plan`: Submits page breakdown and taxonomy.
+3. `openwiki_next_page`: Fetches the next pending page in the queue.
+4. `openwiki_inspect_page_claims`: Optional inspection of claims requiring attention.
+5. `openwiki_submit_page`: Submits page prose and sparse Claim updates.
+6. `openwiki_finish`: Finalizes OKF manifest and provenance.
+
+## 5. Page Quality & Claims Contract
+
+Every factual Markdown page generated under `openwiki/` MUST begin with valid OKF frontmatter:
+```yaml
+---
+type: <short descriptive concept type>
+title: <human-readable title in the run language>
+description: <one or two sentence retrieval-oriented summary in the run language>
+tags: [<stable English tag>, ...]
+---
+```
+
+Do not author generated, verified, sources, timestamp, or OpenWiki control fields. OpenWiki owns those. On update preserve accurate unknown producer-defined frontmatter fields.
+
+### Claims Contract
+A Claim is one substantive, independently falsifiable system truth. Prefer behavior, responsibilities, architecture/ownership, relationships, flow, invariants, lifecycle/failure semantics, configuration, security, persistence, operations, and extension seams.
+- Each Claim must cite one or more repository resources, preferably bounded language-agnostic spans such as `repo://src/auth.ts#L20-L48`.
+- Every resource MUST begin with `repo://` and use a repository-relative path; never submit a bare path such as `src/auth.ts`.
+- The reconciled page must retain or establish at least one material repository-grounded Claim.
+- Structured Claim state lives under `openwiki/.claims/`.
+
+---
+
+## 6. Root Entrypoints Standard
+
+Every repository using OpenWiki must maintain references in root files:
+
+### `agent.md` or `CLAUDE.md`
 ```markdown
 ## Documentation & Wiki
-- Entrypoint: [.openwiki/quickstart.md](.openwiki/quickstart.md)
-- Reference guides: [architecture.md](.openwiki/architecture.md), [release_notes.md](.openwiki/release_notes.md)
+- Entrypoint: [openwiki/quickstart.md](openwiki/quickstart.md)
+- Reference guides: [openwiki/architecture.md](openwiki/architecture.md)
 ```
 
-Update the main `README.md` to link to `.openwiki/quickstart.md` for full developer docs.
-
-### Step 6: Post-Snapshot Sync
-Run the post-snapshot script to compare changes and write metadata update details:
-```bash
-python3 ~/.gemini/config/skills/openwiki-skill/scripts/openwiki_helper.py --command post-snapshot --pre-hash <pre-hash-from-step-2>
-```
-
-### Step 7: Auto-Commit Documentation
-To keep the git history clean and separate documentation churn from code changes, stage and commit the updated wiki files using the helper script:
-```bash
-python3 ~/.gemini/config/skills/openwiki-skill/scripts/openwiki_helper.py --command commit
-```
-This stages `.openwiki/`, `README.md`, `agent.md`, and `CLAUDE.md`, and commits them under the prefix: `docs(wiki): update project specs and codebase documentation [auto]`.
+### `README.md`
+Include link to `openwiki/quickstart.md` or the exported visualizer directory.
 
 ---
 
-## Daemon Mode (Background)
+## 7. 🔒 Safety and Privacy Rules (PII Protection)
+1. **Never Leak Local Username / Paths**: Under no circumstances should absolute paths containing local usernames (e.g. `/Users/username/...`) be written to repository files, documentation, README, or wiki markdown files. Always use repository-relative paths (`openwiki/...`) or generic home folder variables (e.g. `~/.openwiki/`).
+2. **Never Leak Secrets**: Do not commit or document API keys, OAuth tokens, passwords, private configuration details, or credentials in any file. Use placeholders like `<API_KEY>`.
+3. **Never Modify Source Code**: OpenWiki only creates and updates documentation in `openwiki/` and root redirects.
 
-The daemon script (`openwiki_daemon.py`) runs as a background service:
+---
 
-- **macOS**: Installed as a LaunchAgent via `install_daemon.sh`. Uses `StartInterval` (7200s = 2 hours) with `--one-shot` flag per invocation. No long-running process.
-- **Linux**: Installed as a systemd user service + timer via `install_daemon.sh` when a usable systemd user session exists. If systemd is unavailable the installer reports a clear skip (never a false success) and tells you to use cron instead.
-- **Windows**: Installed as a Scheduled Task via `install_daemon.ps1`. Repeats every 2 hours with `--one-shot`.
-
-During install the API key is verified by `verify_api_key.py` (2 retries + TLS-certificate fallback) so an unreachable/invalid key is reported with a concrete error message instead of silently degrading to collect-only mode.
-
-Each invocation:
-1. Reads `~/.openwiki/projects.json` for registered project paths
-2. Runs `openwiki_helper.py --command collect` to gather git evidence
-3. Checks for meaningful changes (new commits or unstaged diffs)
-4. If changes found, calls the configured LLM provider with evidence + existing wiki pages
-5. Parses JSON response and writes updated `.openwiki/*.md` files
-6. Runs `openwiki_helper.py --command commit` to auto-commit
-
-Install:
-```bash
-# macOS
-bash ~/.gemini/config/skills/openwiki-skill/scripts/install_daemon.sh
-
-# Linux (systemd user session required)
-bash ~/.gemini/config/skills/openwiki-skill/scripts/install_daemon.sh
-
-# Windows (PowerShell)
-powershell -ExecutionPolicy Bypass -File install_daemon.ps1
-```
-
-## 1. Overview
-This skill provides domain-specific logic and rules for its respective BDB pipeline component to ensure standardization across multi-agent workflows.
-
-## 2. When to Use
-- Use when specifically requested by the user or triggered by an orchestration agent.
-- Use when the current task aligns with the skill's domain.
-- Exclude when standard tool execution is sufficient.
-
-## 3. Core Process
-1. Read the provided context and ensure preconditions are met.
-2. Run the required script or tool and confirm the state change.
-3. Verify exit codes, file modifications, or DB counts to guarantee success before reporting completion.
-
-## 4. Common Rationalizations
-| Rationalization | Reality |
-|---|---|
-| "The code change was small, so I skipped updating OpenWiki docs." | Every state change must be reflected in the relevant system records. |
-| "The ingest script exited without an error, so the memB index must be updated." | Silent failures happen; explicit verification of the side effect is mandatory. |
-| "I'll let the /startcycle proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
-| "I trust the cached agent registry instead of rescanning after a skill change." | Caches stale out quickly; explicit rescans prevent ghost failures. |
-
-## 5. Red Flags
-- Bypassing the verification step after a script execution.
-- Proceeding to the next pipeline stage without confirming the previous stage's side effects.
-- Ignoring domain-specific constraints listed in this skill.
-
-## 6. Verification
-- [ ] Verified script exit codes are explicitly checked.
-- [ ] Confirmed target files or database records reflect the expected change.
-- [ ] Ensured no silent failures were ignored before reporting success.
+## 8. Verification Checklist
+- [ ] Verified `openwiki` binary is installed and executable (`openwiki integrations list`).
+- [ ] Checked that `openwiki/` contains valid markdown pages with OKF frontmatter.
+- [ ] Confirmed interactive visualizer builds or runs (`openwiki visualize openwiki --export <dir>`).
+- [ ] Ensured root instructions (`agent.md`/`CLAUDE.md`) reference `openwiki/quickstart.md`.
+- [ ] Confirmed no absolute paths or credentials leaked in `.md` files.
