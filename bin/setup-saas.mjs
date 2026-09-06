@@ -225,7 +225,184 @@ function writeMcpConfigSecure(filePath, config) {
   try { fs.chmodSync(filePath, 0o600); } catch {}
 }
 
-function configureCursorMcp(apiKey, gatewaySseUrl) {
+// --- Keychain & OIDC Machine Identity Management (A8b / Decision 17 M8) ---
+
+function storePrivateKeyInKeychain(clientId, privateKeyPem) {
+  if (os.platform() === 'darwin' && hasCommand('security')) {
+    try {
+      execFileSync('security', [
+        'add-generic-password',
+        '-a', clientId,
+        '-s', 'bdb-saas-host-machine-key',
+        '-w', privateKeyPem,
+        '-U'
+      ], { stdio: 'pipe' });
+      return true;
+    } catch (err) {
+      log.warn(`Keychain-Speicherung fehlgeschlagen: ${err.message}`);
+      return false;
+    }
+  }
+  return false;
+}
+
+function getPrivateKeyFromKeychain(clientId) {
+  if (os.platform() === 'darwin' && hasCommand('security')) {
+    try {
+      const raw = execFileSync('security', [
+        'find-generic-password',
+        '-a', clientId,
+        '-s', 'bdb-saas-host-machine-key',
+        '-w'
+      ], { encoding: 'utf8', stdio: 'pipe' }).trim();
+
+      if (!raw) return null;
+      if (raw.startsWith('-----BEGIN')) {
+        return raw;
+      }
+      if (/^[0-9a-fA-F]+$/.test(raw)) {
+        const decoded = Buffer.from(raw, 'hex').toString('utf8');
+        if (decoded.includes('BEGIN')) {
+          return decoded.trim();
+        }
+      }
+      return raw;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function deletePrivateKeyFromKeychain(clientId) {
+  if (os.platform() === 'darwin' && hasCommand('security')) {
+    try {
+      execFileSync('security', [
+        'delete-generic-password',
+        '-a', clientId,
+        '-s', 'bdb-saas-host-machine-key'
+      ], { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function generateMachineKeypair(clientId) {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+  });
+
+  storePrivateKeyInKeychain(clientId, privateKey);
+  return { publicKey, privateKey };
+}
+
+function createClientAssertion(clientId, privateKeyPem, tokenEndpointUrl, keyId = `${clientId}-key-1`) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = {
+    alg: 'RS256',
+    typ: 'JWT',
+    kid: keyId
+  };
+  const payload = {
+    iss: clientId,
+    sub: clientId,
+    aud: tokenEndpointUrl,
+    jti: crypto.randomUUID(),
+    iat: now,
+    exp: now + 300
+  };
+
+  const base64Url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const signingInput = `${base64Url(header)}.${base64Url(payload)}`;
+
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(signingInput);
+  const signature = signer.sign(privateKeyPem, 'base64url');
+
+  return `${signingInput}.${signature}`;
+}
+
+async function acquireMachineToken(clientId, privateKeyPem, tokenEndpointUrl, scope = 'authelia.bearer.authz') {
+  const clientAssertion = createClientAssertion(clientId, privateKeyPem, tokenEndpointUrl);
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+    client_assertion: clientAssertion,
+    scope: scope
+  });
+
+  const res = await fetch(tokenEndpointUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: body.toString()
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OIDC Token-Abruf fehlgeschlagen (HTTP ${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+  return {
+    accessToken: data.access_token,
+    tokenType: data.token_type || 'Bearer',
+    expiresIn: data.expires_in || 900,
+    obtainedAt: Date.now()
+  };
+}
+
+class OidcMachineClient {
+  constructor({ clientId, privateKeyPem, tokenEndpointUrl, scope }) {
+    this.clientId = clientId;
+    this.privateKeyPem = privateKeyPem;
+    this.tokenEndpointUrl = tokenEndpointUrl;
+    this.scope = scope || 'authelia.bearer.authz';
+    this.currentToken = null;
+  }
+
+  async getAccessToken() {
+    const now = Date.now();
+    if (this.currentToken && (now < this.currentToken.obtainedAt + (this.currentToken.expiresIn - 60) * 1000)) {
+      return this.currentToken.accessToken;
+    }
+    this.currentToken = await acquireMachineToken(
+      this.clientId,
+      this.privateKeyPem,
+      this.tokenEndpointUrl,
+      this.scope
+    );
+    return this.currentToken.accessToken;
+  }
+
+  async fetchWithAutoRefresh(url, options = {}) {
+    let token = await this.getAccessToken();
+    const headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
+
+    let res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      this.currentToken = await acquireMachineToken(
+        this.clientId,
+        this.privateKeyPem,
+        this.tokenEndpointUrl,
+        this.scope
+      );
+      token = this.currentToken.accessToken;
+      const retryHeaders = { ...options.headers, 'Authorization': `Bearer ${token}` };
+      res = await fetch(url, { ...options, headers: retryHeaders });
+    }
+    return res;
+  }
+}
+
+function configureCursorMcp(token, gatewayUrl) {
   const homeDir = os.homedir();
   const cursorDir = path.join(homeDir, '.cursor');
   if (!fs.existsSync(cursorDir)) fs.mkdirSync(cursorDir, { recursive: true });
@@ -237,13 +414,16 @@ function configureCursorMcp(apiKey, gatewaySseUrl) {
   }
   config.mcpServers = config.mcpServers || {};
   config.mcpServers['bdb-remoteos'] = {
-    url: gatewaySseUrl,
-    headers: { 'X-API-Key': apiKey }
+    url: gatewayUrl,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-API-Key': token
+    }
   };
   writeMcpConfigSecure(mcpFile, config);
 }
 
-function configureClaudeDesktopMcp(apiKey, gatewaySseUrl) {
+function configureClaudeDesktopMcp(token, gatewayUrl) {
   const homeDir = os.homedir();
   let claudeDir = '';
   if (os.platform() === 'darwin') {
@@ -261,13 +441,16 @@ function configureClaudeDesktopMcp(apiKey, gatewaySseUrl) {
   }
   config.mcpServers = config.mcpServers || {};
   config.mcpServers['bdb-remoteos'] = {
-    url: gatewaySseUrl,
-    headers: { 'X-API-Key': apiKey }
+    url: gatewayUrl,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-API-Key': token
+    }
   };
   writeMcpConfigSecure(mcpFile, config);
 }
 
-function configureAntigravityMcp(apiKey, gatewaySseUrl) {
+function configureAntigravityMcp(token, gatewayUrl) {
   const homeDir = os.homedir();
   const mcpDir = path.join(homeDir, '.gemini', 'antigravity-cli', 'mcp', 'bdb_remoteos_gateway');
   fs.mkdirSync(mcpDir, { recursive: true });
@@ -276,13 +459,16 @@ function configureAntigravityMcp(apiKey, gatewaySseUrl) {
   const config = {
     name: 'bdb_remoteos_gateway',
     transport: 'sse',
-    url: gatewaySseUrl,
-    headers: { 'X-API-Key': apiKey }
+    url: gatewayUrl,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-API-Key': token
+    }
   };
   writeMcpConfigSecure(schemaFile, config);
 }
 
-function configureRooCodeMcp(apiKey, gatewaySseUrl) {
+function configureRooCodeMcp(token, gatewayUrl) {
   const homeDir = os.homedir();
   const rooDir = path.join(homeDir, 'Library', 'Application Support', 'Code', 'User', 'globalStorage', 'rooveterinaryinc.roo-cline', 'settings');
   if (fs.existsSync(rooDir)) {
@@ -293,8 +479,11 @@ function configureRooCodeMcp(apiKey, gatewaySseUrl) {
     }
     config.mcpServers = config.mcpServers || {};
     config.mcpServers['bdb-remoteos'] = {
-      url: gatewaySseUrl,
-      headers: { 'X-API-Key': apiKey }
+      url: gatewayUrl,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-API-Key': token
+      }
     };
     writeMcpConfigSecure(mcpFile, config);
   }
@@ -463,7 +652,8 @@ async function main() {
   } catch (e) {
     baseDomain = gatewayDomain.replace(/^gateway\./, '').replace(/^https?:\/\//, '');
   }
-  let gatewaySseUrl = `${gatewayUrl}/sse`;
+  const machineGatewayUrl = process.env.MACHINE_GATEWAY_URL || process.env.GATEWAY_URL || (gatewayUrl.includes('gateway.') ? gatewayUrl.replace('gateway.', 'api.') : gatewayUrl);
+  const oidcTokenUrl = process.env.OIDC_TOKEN_ENDPOINT || `https://auth.${baseDomain}/api/oidc/token`;
 
   // 3. Browser 2FA Login Handshake
   const s = spinner();
@@ -511,37 +701,92 @@ async function main() {
     s.start('Setze Setup fort...');
   }
 
-  // Step 4: Auto-Inject MCP Configs for all detected editors
-  const editorIds = detectedEditors.map(e => e.id);
-  s.message(`Injiziere FastMCP SSE-Gateway in ${detectedEditors.length} erkannte Editoren...`);
-  if (editorIds.includes('cursor')) configureCursorMcp(token, gatewaySseUrl);
-  if (editorIds.includes('claude')) configureClaudeDesktopMcp(token, gatewaySseUrl);
-  if (editorIds.includes('antigravity')) configureAntigravityMcp(token, gatewaySseUrl);
-  if (editorIds.includes('opencode')) configureRooCodeMcp(token, gatewaySseUrl);
+  // Step 4: Machine Keypair & OIDC Token Setup (A8b / Decision 17 M8)
+  const clientId = `agent-${lldapUsername}`;
+  s.message(`Prüfe Machine-Keypair für ${clientId} im OS Keychain...`);
+  let privateKey = getPrivateKeyFromKeychain(clientId);
+  let publicKeyPem = null;
+  if (!privateKey) {
+    const kp = generateMachineKeypair(clientId);
+    privateKey = kp.privateKey;
+    publicKeyPem = kp.publicKey;
+    log.info(`✔ Neues Machine-Keypair im macOS Keychain gesichert (${clientId}).`);
+  } else {
+    log.info(`✔ Vorhandenes Machine-Keypair aus macOS Keychain geladen (${clientId}).`);
+  }
 
-  // Step 5: Skill Sync
+  s.message(`Erwerbe OIDC Machine Token für ${clientId}...`);
+  let machineToken = token;
+  try {
+    const tokenInfo = await acquireMachineToken(clientId, privateKey, oidcTokenUrl);
+    machineToken = tokenInfo.accessToken;
+    log.info(`✔ OIDC Machine Access Token erfolgreich bezogen (${tokenInfo.expiresIn}s TTL).`);
+  } catch (err) {
+    log.warn(`⚠️ OIDC Machine Token-Abruf nicht erfolgreich (${err.message}). Verwende User-Token als Fallback.`);
+  }
+
+  // Step 5: Auto-Inject MCP Configs for all detected editors (dynamic URLs, no /sse default)
+  const editorIds = detectedEditors.map(e => e.id);
+  s.message(`Injiziere FastMCP Gateway-Konfiguration in ${detectedEditors.length} erkannte Editoren...`);
+  if (editorIds.includes('cursor')) configureCursorMcp(machineToken, machineGatewayUrl);
+  if (editorIds.includes('claude')) configureClaudeDesktopMcp(machineToken, machineGatewayUrl);
+  if (editorIds.includes('antigravity')) configureAntigravityMcp(machineToken, machineGatewayUrl);
+  if (editorIds.includes('opencode')) configureRooCodeMcp(machineToken, machineGatewayUrl);
+
+  // Step 6: Skill Sync
   s.message('Synchronisiere /bdbsaastraining Skill in dein lokales Verzeichnis...');
   syncTrainingSkill();
 
   s.stop(p.green('✔ Alle Konfigurationen erfolgreich abgeschlossen!'));
 
   note(
-    `• Authentifizierter User: ${p.bold(p.white(lldapUsername))}\\n` +
-    `• Step-CA Authority:      ${p.cyan(finalStepCaUrl)}\\n` +
-    `• FastMCP Gateway:        ${p.cyan(gatewaySseUrl)}\\n` +
-    `• SSH Host-Regeln:        ${p.cyan('~/.ssh/config')} (User: ${p.white(lldapUsername)})\\n` +
+    `• Authentifizierter User: ${p.bold(p.white(lldapUsername))}\n` +
+    `• Machine Client ID:      ${p.cyan(clientId)}\n` +
+    `• Private Key Storage:    ${p.cyan('macOS Keychain (bdb-saas-host-machine-key)')}\n` +
+    `• Machine API Gateway:    ${p.cyan(machineGatewayUrl)}\n` +
+    `• Step-CA Authority:      ${p.cyan(finalStepCaUrl)}\n` +
+    `• SSH Host-Regeln:        ${p.cyan('~/.ssh/config')} (User: ${p.white(lldapUsername)})\n` +
     `• Auto-konfiguriert:      ${p.cyan(detectedEditors.map(e => e.name).join(', '))}`,
     p.green('Deine Workstation ist startklar')
   );
 
+  if (publicKeyPem) {
+    note(
+      `Öffentlicher Schlüssel für ${clientId} (im IdP registrieren falls noch nicht erfolgt):\n\n` +
+      `${publicKeyPem.trim()}`,
+      p.yellow('Neuer Public Key')
+    );
+  }
+
   outro(
-    p.cyan('Glückwunsch, ') + p.white(fullName) + p.cyan('! 🚀\\n') +
-    p.gray('Öffne jetzt deinen AI-Editor und starte dein persönliches Training mit:\\n') +
+    p.cyan('Glückwunsch, ') + p.white(fullName) + p.cyan('! 🚀\n') +
+    p.gray('Öffne jetzt deinen AI-Editor und starte dein persönliches Training mit:\n') +
     p.bold(p.green('👉 /bdbsaastraining'))
   );
 }
 
-main().catch(err => {
-  console.error(p.red(`\\n❌ Fehler beim Setup: ${err.message}`));
-  process.exit(1);
-});
+// Export for unit tests and programmatic consumption
+export {
+  writeMcpConfigSecure,
+  storePrivateKeyInKeychain,
+  getPrivateKeyFromKeychain,
+  deletePrivateKeyFromKeychain,
+  generateMachineKeypair,
+  createClientAssertion,
+  acquireMachineToken,
+  OidcMachineClient,
+  configureCursorMcp,
+  configureClaudeDesktopMcp,
+  configureAntigravityMcp,
+  configureRooCodeMcp,
+  patchSshConfig,
+  detectInstalledEditors,
+  main,
+};
+
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  main().catch(err => {
+    console.error(p.red(`\n❌ Fehler beim Setup: ${err.message}`));
+    process.exit(1);
+  });
+}
