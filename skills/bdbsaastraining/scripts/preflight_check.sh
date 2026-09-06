@@ -125,6 +125,19 @@ else
   warn "curl nicht installiert — Gateway-Check übersprungen." "brew install curl / apt-get install curl"
 fi
 
+# 8) Machine Identity (OIDC Credential im OS Keychain)
+KEYCHAIN_FOUND=0
+if [[ "$OSTYPE" == "darwin"* ]] && command -v security >/dev/null 2>&1; then
+  if security find-generic-password -s "bdb-saas-host-machine-key" >/dev/null 2>&1; then
+    pass "OIDC Machine Key im macOS Keychain vorhanden (bdb-saas-host-machine-key)"
+    KEYCHAIN_FOUND=1
+  fi
+fi
+if [ "$KEYCHAIN_FOUND" -eq 0 ]; then
+  warn "Kein Machine-Key im Keychain — für autonome Agenten (Station 1b) erforderlich." \
+       "npm run setup:workstation   (generiert RSA-Keypair und registriert Machine Identity)"
+fi
+
 echo
 echo "──────────────────────────────────────────────────────────────────"
 if [ "$FAIL" -eq 0 ]; then

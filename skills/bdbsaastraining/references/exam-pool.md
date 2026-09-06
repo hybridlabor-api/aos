@@ -29,6 +29,26 @@ Ein Angreifer entwendet 17 Stunden nach dem letzten `step ssh login` die Datei `
 → Richtig: **B**
 Begründung: Der private Schlüssel allein nützt nichts — gültig ist nur das *zertifikat*, und dessen TTL ist abgelaufen. Neuausstellung erzwingt Authelia-2FA.
 
+### Q_MACHINE_IDENTITY — Station 1b
+Warum darf ein OIDC-Maschinen-Token (`client_credentials` / `ai_agents`) niemals die 4-Augen-Freigabe-Prüfung (`_require_admin_identity()`) am FastMCP Gateway erfüllen?
+- A) Weil Maschinen-Tokens keine Gültigkeitsdauer haben.
+- B) M6-Isolationsgrenze: Maschinen-Identitäten dürfen niemals privilegierte Aktionen selbst genehmigen; die Freigabe erfordert zwingend eine menschliche Authelia-2FA-Session.
+- C) Weil Authelia keine JWTs an Maschinen ausstellen kann.
+- D) Maschinen-Tokens dürfen nur SSH-Befehle ausführen.
+
+→ Richtig: **B**
+Begründung: Die M6-Sicherheitsgrenze trennt strikt Anforderer (Maschine/Agent) von Freigebenden (Mensch mit WebAuthn 2FA). Ein Maschinen-Token an Freigabe-Endpunkten würde das 4-Augen-Prinzip in ein 1-Auge-System korrumpieren.
+
+### Q_PRIVATE_KEY_JWT — Station 1b
+Welchen Sicherheitsvorteil bietet das RFC 7523 `private_key_jwt`-Verfahren gegenüber einem statischen Shared Secret / API-Key für Machine-to-Machine-Auth?
+- A) Das Token ist unbegrenzt gültig.
+- B) Asymmetrische Authentifizierung: Das Secret (Private Key) verlässt niemals die lokale Workstation / den OS-Keychain; an den IdP wird nur eine kurzlebige, signierte Client-Assertion übermittelt.
+- C) Es spart CPU-Zyklen beim TLS-Handshake.
+- D) Der Client benötigt keine Internetverbindung.
+
+→ Richtig: **B**
+Begründung: Bei Shared Secrets kennt der Server das Geheimnis im Klartext; ein Leak auf Server- oder Netzwerkebene kompromittiert das Credential. Mit `private_key_jwt` wird der Private Key im lokalen Keychain geschützt und ausschließlich der öffentliche Schlüssel bei Authelia hinterlegt.
+
 ---
 
 ## Kernfragen (in JEDER Abschlussprüfung)
@@ -120,7 +140,7 @@ Ein Agent (Gruppe `ai_agents`) braucht auf dem Server `systemctl restart caddy`.
 - D) Der Agent bekommt eine Root-Shell.
 
 → Richtig: **B**
-Begründung: Auto-Approve gilt nur für `ls/cat/echo/pwd/whoami/grep/find` ohne Chaining-Operatoren. Alles andere → Queue. (`systemctl reload caddy` wäre über die statische Whitelist erlaubt, `restart` nicht.)
+Begründung: Auto-Approve gilt nur für `ls/cat/echo/pwd/whoami/grep` ohne Chaining-Operatoren. Alles andere → Queue. (`systemctl reload caddy` wäre über die statische Whitelist erlaubt, `restart` nicht.)
 
 ### A_4
 Warum wird ein neuer Agent-User via `create_lldap_user(..., group="ai_agents", owner="<admin>")` mit gesetztem `owner` angelegt?

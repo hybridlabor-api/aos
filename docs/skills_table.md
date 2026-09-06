@@ -197,6 +197,9 @@
 |------------|-------------|
 | `bdbmediastorm` | The ultimate creative-tech and show-control brainstorming engine. Orchestrates multi-agent ideation focused on signal flow, hardware constraints, protocols, and BDB MCP integrations. Now strictly governed by the 3 Core Godmodes (engineering, ui-ux, shipping). |
 | `bdbrainstorm` | Combines multi-agent brainstorming, the /grill-me slash command, and the 3 Core Godmodes (godmode-engineering, godmode-ui-ux, godmode-shipping) to force a comprehensive, multi-agent ideation and technical design workflow. |
+| `bdbsaas-ops` | Retired — superseded by bdbsaashost. Use /bdbsaashost instead; this skill's content was merged there (2026-09-05, plan production_artifacts/00_execution_plan.md item B2). |
+| `bdbsaashost` | Use when operating the BDB Multi-Cloud Fleet. Governs Primary Compute, GCP Identity, Oracle, FastMCP SSE Gateway, 4-Eyes Approvals, agent-sudo guardrails, Incus containers, and LLDAP/Authelia identity management. |
+| `bdbsaastraining` | Use when onboarding or training staff on the BDB SaaS Host Engine. Guides trainees via interactive workloads (WordPress, mail, agents) through SSH 2FA, Incus, and FastMCP guardrails, culminating in a PDF certificate. |
 | `github-repo` | Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill. |
 | `memb-ingest` | Deep scan and ingest project files (.md, .json, agent.md, .openwiki) and past conversation logs into the local memB vector memory engine. |
 
