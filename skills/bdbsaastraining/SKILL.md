@@ -134,18 +134,21 @@ flowchart TD
     S0["Station 0: Onboarding + Workload-Interview\n→ Track A/B/C/D/E festlegen"]
     S05["Station 0.5: Preflight-Check\n(preflight_check.sh, Diagnose-Übungen)"]
     S1["Station 1: Zero-Trust SSH 2FA\n(step ssh login, Zertifikats-Inspektion)"]
+    S1b["Station 1b: Machine Identity (OIDC)\n(RFC 7523 private_key_jwt, Token-Claims & Refresh)"]
     S2["Station 2: Incus Profile Engineering\n★ TRACK-SPEZIFISCH: echtes Template inspizieren\n  + eigenes Profil bauen (build_profile.py)"]
     S3["Station 3: Workload Deployment & Verify\n★ TRACK-SPEZIFISCH: Container starten, Dienst prüfen"]
     S4["Station 4: FastMCP Gateway & 4-Augen-Guardrails\n(dein Container, echte Tool-Signaturen, Approval-Dashboard)"]
     S5["Station 5: Routing / DNS / Auth\n★ TRACK-SPEZIFISCH: Caddy+CF proxied / DNS-Blueprint / Gateway-Route / keine"]
     CERT["🏆 Abschlussprüfung: 6 Kern- + 4 Track-Fragen (≥80%)\n→ PDF-Zertifikat mit Track-Vermerk"]
 
-    S0 --> S05 --> S1 --> S2 --> S3 --> S4 --> S5 --> CERT
+    S0 --> S05 --> S1 --> S1b --> S2 --> S3 --> S4 --> S5 --> CERT
 ```
 
 ---
 
 ## 🔹 Station 1 — Zero-Trust SSH 2FA Login & Zertifikats-Inspektion (alle Tracks)
+
+> Single Source of Truth für alle Auth-Fakten (Human- und Maschinen-Pfad): `~/.claude/skills/bdbsaashost/SKILL.md` §2. Diese Station lehrt den menschlichen SSH-2FA-Pfad praktisch — die Fakten selbst stehen dort, nicht hier.
 
 **Thema:** Kurzlebige, 2FA-signierte SSH-Zertifikate. Warum keine statischen `id_rsa`-Keys.
 
@@ -164,6 +167,39 @@ flowchart TD
 **Wenn `ssh` „no such user" oder Permission denied liefert:** Das ist echt und trackrelevant — der zentrale Unix-Account bzw. der Sudo-Eintrag wird nicht automatisch aus LLDAP erzeugt. Halte fest: der Trainee braucht einen Admin, der `useradd` + den `sudoers.d/ldap-admins`-Eintrag setzt. Notiere das als Blocker und fahre mit Station 2 im MCP-Kontext fort, falls SSH nicht verfügbar ist.
 
 **Verständnisfrage 1:** `references/exam-pool.md` → `Q_SSH_TTL`.
+
+---
+
+## 🔹 Station 1b — Machine Identity (OIDC) & Token-Inspektion (alle Tracks)
+
+> Single Source of Truth für alle Auth-Fakten (Human- und Maschinen-Pfad): `~/.claude/skills/bdbsaashost/SKILL.md` §2. Diese Station lehrt den maschinellen OIDC-Zugangspfad für autonome Agenten — parallel zum menschlichen SSH-2FA-Pfad.
+
+**Thema:** Asymmetrische Client-Authentifizierung (`private_key_jwt`, RFC 7523), RFC 9068 JWT Profile für OAuth 2.0 Access Tokens und fail-closed Token-Validierung am FastMCP Gateway.
+
+**Hands-On:**
+1. **Machine Credential im OS Keychain prüfen:**
+   ```bash
+   security find-generic-password -s "bdb-saas-host-machine-key" -a "$USER"
+   ```
+   Der private RSA-Schlüssel (2048-bit) wird niemals im Klartext in Config-Dateien abgelegt, sondern sicher im macOS Keychain / OS Secret Store verwaltet.
+2. **Client Assertion & Token-Abruf:**
+   Ein signiertes JWT (Client Assertion, RS256) an Authelias Token-Endpunkt (`https://auth.<DOMAIN>/api/oidc/token`) senden und ein kurzlebiges Access Token abrufen:
+   ```bash
+   # Erfolgt im Workflow transparent via bin/setup-workstation.mjs / bin/setup-saas.mjs
+   # Token enthält Claims: iss, sub (client_id), aud, exp, jti, client_id
+   ```
+3. **JWT Claims inspizieren:**
+   Token dekodieren (z. B. via `python3 -m jwt <token>` oder Inspektions-Script):
+   Trainee prüft: Gültigkeitsdauer (`exp`, 1 Stunde), `client_id` (z. B. `agent-tkd`), kein Admin-Scope.
+4. **Maschinen-API Endpunkt aufrufen:**
+   ```bash
+   curl -s -H "Authorization: Bearer <token>" "https://api.<DOMAIN>/tools/incus_manage_instance"
+   ```
+   Verifizieren: Autorisierter Zugriff auf Tool-Endpunkte; Zugriff auf `/approvals/list` oder Freigabe-Endpunkte wird strikt mit HTTP 404/401 abgewiesen (M6-Isolationsgrenze).
+5. **Token-Refresh & Revocation:**
+   Trainee beobachtet: Bei `401 Unauthorized` erneuert der Client das Token einmalig transparent mit einer frischen Assertion. Ein in `queue.db` via `revoked_at` gesperrtes Credential führt sofort zu `invalid_token` (Fail-Closed).
+
+**Verständnisfrage 1b:** `references/exam-pool.md` → `Q_MACHINE_IDENTITY` & `Q_PRIVATE_KEY_JWT`.
 
 ---
 
@@ -204,10 +240,12 @@ Danach führt die Track-Datei durch die *workload-spezifische* Verifikation (Age
 
 ## 🔹 Station 4 — FastMCP Gateway & 4-Augen-Guardrails (alle Tracks)
 
+> Single Source of Truth für alle Auth-Fakten (Human- und Maschinen-Pfad): `~/.claude/skills/bdbsaashost/SKILL.md` §2 — dort steht auch, ob/wann sich der Maschinen-Pfad ändert (OIDC-Umbau, `production_artifacts/00_execution_plan.md`).
+
 **Thema:** Steuerung über `https://gateway.<DOMAIN>/sse` und die realen Guardrails.
 
 **Hands-On:**
-1. **MCP-Anbindung prüfen.** Der Token stammt aus dem **Browser-2FA-Handshake** (`npm run setup:workstation` bzw. `npx @hybridlabor-api/bdb-dev-optimized-agent-skills setup-saas`), nicht aus einer E-Mail. Er liegt clientabhängig in `~/.cursor/mcp.json`, `~/Library/Application Support/Claude/claude_desktop_config.json` oder `~/.gemini/antigravity-cli/mcp/bdb_remoteos_gateway/config.json`.
+1. **MCP-Anbindung prüfen.** Wie das aktuelle Token erworben wird, steht in `~/.claude/skills/bdbsaashost/SKILL.md` §2 (Single Source of Truth — dieser Fakt ändert sich mit dem OIDC-Umbau, siehe `production_artifacts/00_execution_plan.md`). Das Token liegt clientabhängig in `~/.cursor/mcp.json`, `~/Library/Application Support/Claude/claude_desktop_config.json` oder `~/.gemini/antigravity-cli/mcp/bdb_remoteos_gateway/config.json`.
 2. **Status abfragen:** im Client `remoteos_get_system_status()` aufrufen.
 3. **4-Augen-Queue provozieren** — echte Signatur (Pflichtfeld `reason`, min. 5 Zeichen):
    ```
@@ -217,15 +255,13 @@ Danach führt die Track-Datei durch die *workload-spezifische* Verifikation (Age
        reason="Bootcamp Station 4 Guardrail-Demo"
    )
    ```
-   Erwartete Antwort: `status: "queued"`, `message: "Guardrail ausgelöst: Freigabe durch <owner> erforderlich."`, `approval_url`, `expires_minutes: 15`.
-4. **Freigabe.** Die Freigabe läuft über das **Web-Dashboard** `https://gateway.<DOMAIN>/approvals` (Authelia 2FA → Button „Freigeben"). Es gibt **kein MCP-Tool**, das den HMAC-Token selbst zieht. 4-Augen heißt: ein *anderer* Admin (Owner) gibt frei — im Solo-Bootcamp beschreibt der Trainee den Ablauf und ruft danach `remoteos_approval_queue_list()` auf, um den Status `pending` → (nach Freigabe) verschwunden zu sehen.
-5. **Guardrail-Kontext.** `99-agent-guardrails` gilt für die LDAP-Gruppe `ai_agents`, nicht für menschliche Admins. Für Agenten-Sessions ist der Weg `agent-sudo <command>` mit Auto-Approve für `ls/cat/grep/pwd/whoami/find` und Queue für alles andere.
+   4. **Freigabe.** Die Freigabe läuft über das **Web-Dashboard** `https://gateway.<DOMAIN>/approvals` (Authelia 2FA → Button „Freigeben"). Es gibt **kein MCP-Tool**, das Freigaben tätigen oder listen kann — alle Approval-Tools wurden zur strikten Wahrung der M6-Grenze aus FastMCP entfernt. 4-Augen heißt: ein *anderer* Admin (Owner) gibt frei. Im Solo-Bootcamp beschreibt der Trainee den Ablauf und prüft den Status über das Dashboard oder den Carve-Out-Endpunkt `GET /api/approvals/{request_id}/status`.
+5. **Guardrail-Kontext.** `99-agent-guardrails` gilt für die LDAP-Gruppe `ai_agents`, nicht für menschliche Admins. Für Agenten-Sessions ist der Weg `agent-sudo <command>` mit Auto-Approve für `ls/cat/grep/pwd/whoami` und Queue für alles andere.
 
 **Verständnisfrage 4:** `references/exam-pool.md` → `Q_GUARDRAIL_SCOPE`.
 
-> **Bekannte Gateway-Lücken (offen dokumentieren, nicht kaschieren):**
-> - `POST /approvals/decide` erwartet einen Query-Param `admin` ohne Default → das MCP-Tool `remoteos_approval_queue_decide` liefert am Remote-Gateway aktuell HTTP 422. Freigabe daher ausschließlich über das Dashboard.
-> - `/tools/add_route` ist am Remote-Gateway derzeit ein Stub (keine echte Caddy-/Cloudflare-Änderung). Siehe Station 5.
+> **Architektur-Hinweis (M6-Isolationsgrenze):**
+> - Freigaben erfolgen ausschließlich über das Web-Dashboard mit menschlicher 2FA-Session (Authelia). Sämtliche Approval-Tools im MCP-Server wurden aus Sicherheitsgründen planmäßig ausgemustert.
 
 ---
 
