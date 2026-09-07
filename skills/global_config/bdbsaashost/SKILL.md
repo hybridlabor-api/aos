@@ -54,7 +54,7 @@ Die Endpunkte werden **dynamisch** aus der lokalen Projekt-Konfiguration (`.env`
 | **Primary Compute Node** | `NETCUP_IP` / `PRIMARY_HOST` | Incus System-Container, Staging/Production Apps, WordPress, Froxlor, Caddy Proxy, FastMCP Gateway, AI Agent Sandboxes |
 | **Identity Hub** | `GCP_IP` / `IDENTITY_HOST` | LLDAP Directory (`:3890`, `:17170`), Authelia 2FA / Passkeys / WebAuthn SSO (`:9091`), Step-CA (SSH CA `:9000`), Uptime Kuma |
 | **Auxiliary Services** | `ORACLE_IP` / `AUX_HOST` | Background Job Queues (BullMQ), PostgreSQL Replicas, Media Engines |
-| **FastMCP Gateway** | `https://gateway.<PROJECT_DOMAIN>/sse` | Zentraler SSE Remote MCP-Endpunkt für Cursor, Antigravity und Claude Desktop |
+| **FastMCP Gateway (Machine API)** | `https://api.<PROJECT_DOMAIN>/tools/*` | REST-Endpunkte für autonome Agenten (OIDC Bearer Auth) |
 | **Human Approval Dashboard** | `https://gateway.<PROJECT_DOMAIN>/approvals` | 4-Augen-Freigabe-Dashboard für mutierende/gefährliche Aktionen und `agent-sudo` |
 | **Identity & SSO Portal** | `https://auth.<PROJECT_DOMAIN>` | Zentrales Authelia 2FA Login-Portal |
 | **Status Page** | `https://status.<PROJECT_DOMAIN>/status/services` | Öffentliche 24/7 Uptime Kuma Monitoring Statusseite |
@@ -66,6 +66,8 @@ Die Endpunkte werden **dynamisch** aus der lokalen Projekt-Konfiguration (`.env`
 
 ## 🔐 2. Authentifizierung & Verbindungsaufbau (Zero-Key-Philosophy)
 
+> **Single Source of Truth.** Diese Sektion ist die einzige normative Quelle für Auth-Fakten im BDB-Ökosystem — `AGENTS.md`, `bdbsaastraining/SKILL.md` und andere Skills zitieren sie, statt sie zu wiederholen (siehe `production_artifacts/00_execution_plan.md`, Finding B-4/Item B4).
+
 Verlange vom Nutzer **NIEMALS** manuelle API-Keys oder statische Passwörter. Das BDB-System nutzt automatisierte Zero-Trust-Handshakes:
 
 1. **In Antigravity / Cursor IDE (Lokale Workstation):**
@@ -75,7 +77,7 @@ Verlange vom Nutzer **NIEMALS** manuelle API-Keys oder statische Passwörter. Da
 
 2. **Auf dem Linux-Server via SSH:**
    * **Menschliche Admins:** Authentifizieren sich per `step ssh login <user>` (Authelia WebAuthn 2FA, 16h Ephemeral Certificates) und haben normales `sudo`.
-   * **Autonome KI-Agenten (`ai_agents`):** Verbinden sich via dediziertem SSH-Key (Ed25519) in ihre unprivilegierte Sandbox.
+   * **Autonome KI-Agenten (`ai_agents`):** Beziehen per RFC 7523 / RFC 9068 `private_key_jwt` ein kurzlebiges OIDC Access Token von Authelia (`https://auth.<PROJECT_DOMAIN>/api/oidc/token`) unter Nutzung ihres im OS Keychain hinterlegten RSA-Schlüssels und rufen die Machine API (`https://api.<PROJECT_DOMAIN>/tools/*`) mit `Authorization: Bearer <token>` auf.
    * **Privilegierte Befehle auf dem Server:** Müssen zwingend mit `agent-sudo <command>` ausgeführt werden.
 
 ---
@@ -92,7 +94,6 @@ Nutze für Cluster-Aufgaben direkt diese Tools:
 | `remoteos_add_route` | Richtet Caddy Reverse-Proxy Routen mit Authelia 2FA und Cloudflare DNS-Sync ein. | Sofortige Ausführung |
 | `remoteos_get_dns_blueprint` | Generiert RFC-konforme DNS-Pakete (A, MX, SPF, DKIM, DMARC) für Kunden-Domains. | Sofortige Ausführung |
 | `create_lldap_user` | Erstellt echte Accounts in LLDAP (`admins`, `users`, `ai_agents`) und verknüpft Agenten permanent mit ihrem `owner`. | Sofortige Ausführung (Background-Worker versendet Mails für Menschen) |
-| `get_pending_approvals` | Listet alle offenen Freigaben aus `queue.db` auf. | Sofortige Ausführung |
 
 ---
 
@@ -101,7 +102,7 @@ Nutze für Cluster-Aufgaben direkt diese Tools:
 Wenn ein Befehl oder ein MCP-Tool die Guardrails triggert:
 
 1. **Auto-Approve (Sichere Befehle):**
-   * Befehle wie `ls`, `cat`, `grep`, `pwd`, `whoami`, `find` werden von `agent-sudo` in Millisekunden **automatisch genehmigt und als Root ausgeführt**.
+   * Befehle wie `ls`, `cat`, `grep`, `pwd`, `whoami` werden von `agent-sudo` in Millisekunden **automatisch genehmigt und als Root ausgeführt**.
 2. **Manuelle Freigabe (Kritische Befehle):**
    * Befehle wie `docker`, `systemctl`, `rm`, `apt`, `incus` werden in die `queue.db` eingereiht.
    * Das Terminal blockiert ("*Warte auf Freigabe...*").
@@ -115,6 +116,10 @@ Wenn ein Befehl oder ein MCP-Tool die Guardrails triggert:
 * **Wenn der Nutzer fragt:** *"Wie verbinde ich mich mit dem Cluster?"*
   $\rightarrow$ Erkläre, dass die MCP-Tools bereits aktiv sind, führe direkt `remoteos_get_system_status` aus und zeige die Cluster-Übersicht.
 * **Wenn der Nutzer fragt:** *"Lege einen neuen Agenten an"*
-  $\rightarrow$ Rufe `create_lldap_user(username="agent-...", group="ai_agents", owner="<AKTUELLER_ADMIN>")` auf.
-* **Wenn ein Befehl blockiert wird:**
+  $\rightarrow$ Rufe `create_lldap_user(username="agent-...", group="ai_agents", owner="<AKTUELLER_ADMIN>")` auf. Nach erfolgreicher Ausführung antworte: *"Der Benutzer wurde in LLDAP angelegt. Der Background-Worker versendet nun automatisch die Setup-E-Mails."* Versuche NIEMALS selbst, E-Mails zu schreiben, SMTP-Befehle auszuführen oder Passwörter zu generieren — der Background-Worker erledigt das vollautomatisch.
+* **Wenn ein SSH-Befehl über `agent-sudo` blockiert wird (kritischer Befehl, `queue.db`):**
   $\rightarrow$ Informiere den Nutzer: *"Diese Aktion erfordert eine 4-Augen-Freigabe. Bitte bestätige sie im Approval-Dashboard."*
+* **Wenn ein FastMCP-Tool-Aufruf (z. B. `incus_create_instance`, `incus_manage_instance`) mit `{"status": "queued", ...}` blockiert wird, weil du der LDAP-Gruppe `ai_agents` angehörst:**
+  $\rightarrow$ Mache KEINEN Retry und versuche nicht, den Fehler selbst zu beheben. Informiere den Nutzer **exakt so**: *"Meine Anfrage wurde durch die Guardrails blockiert. Bitte gib die Anfrage hier frei: [https://gateway.<PROJECT_DOMAIN>/approvals](https://gateway.<PROJECT_DOMAIN>/approvals)"*
+* **Wenn der Nutzer fragt:** *"Zeig mir ausstehende Anfragen"* oder *"Checke die Freigaben"*
+  $\rightarrow$ **`get_pending_approvals` wurde stillgelegt (A9, 2026-09-06)** — ein Maschinen-Tool, das die Freigabe-Queue lesen kann, untergräbt das Vier-Augen-Prinzip strukturell. Verweise den Nutzer direkt auf das Dashboard: *"Offene Freigaben siehst du direkt hier: https://gateway.\<PROJECT_DOMAIN\>/approvals"*
