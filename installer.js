@@ -551,7 +551,13 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
 function buildKnownSourceHashes(sourceDirs) {
     const hashes = new Set();
     const walk = (dir) => {
-        if (!fs.existsSync(dir)) return;
+        let stat;
+        try {
+            stat = fs.lstatSync(dir);
+        } catch {
+            return; // doesn't exist
+        }
+        if (!stat.isDirectory()) return; // symlink-to-file or plain file passed in; nothing to scan
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) walk(full);
