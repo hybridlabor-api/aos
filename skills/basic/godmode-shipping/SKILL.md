@@ -29,6 +29,7 @@ Releasing code should be a boring event.
 *   **Decouple Deploy from Release:** Pushing code to production does not mean the user sees it immediately. Use Feature Flags to merge code safely into main without exposing it to the user.
 *   **Dark Launching:** Test the code in production with synthetic traffic or internal users before flipping the feature flag for the public.
 *   **Staged Rollouts:** For critical features, roll out sequentially (Internal Team -> 5% of users -> 50% -> 100%).
+*   **Mechanism:** When a project has a `bdb-deploy.json`, use the `bdb-deploy` skill for the actual build+rsync+restart+healthcheck step — always `--dry-run` first, never hand-construct rsync/ssh commands (see `bdb-deploy`'s own SKILL.md for why). If a project has no `bdb-deploy.json` yet and needs one, that's a decision for the user (host, SSH key, remote path) — run `bdb-deploy init` interactively, don't invent the values.
 
 ## 4. Rollback Strategies
 Never launch a feature without a verified rollback plan.

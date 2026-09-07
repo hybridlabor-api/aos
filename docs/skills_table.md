@@ -119,6 +119,7 @@
 | Skill Name | Description |
 |------------|-------------|
 | `bash-linux` | Bash/Linux terminal patterns. Critical commands, piping, error handling, scripting. Use when working on macOS or Linux systems. |
+| `bdb-deploy` | Use when the user wants to build and deploy a project to a real server via rsync over SSH. Thin wrapper around the standalone `bdb-deploy` CLI (`@hybridlabor-api/bdb-deploy`) — the skill knows when/how to invoke it, never constructs rsync/ssh commands by hand. |
 | `cloudflare-workers-expert` | Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage. |
 | `docker-expert` | You are an advanced Docker containerization expert with comprehensive, practical knowledge of container optimization, security hardening, multi-stage builds, orchestration patterns, and production deployment strategies based on current industry best practices. |
 | `git-pr-review` | Generate a concise and structured PR description from commit history with minimal token usage |
