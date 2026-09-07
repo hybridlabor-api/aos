@@ -174,8 +174,10 @@
 | `clean-code` | This skill embodies the principles of "Clean Code" by Robert C. Martin (Uncle Bob). Use it to transform "code that works" into "code that is clean." |
 | `debugger` | Debugging specialist for errors, test failures, and unexpected behavior. Use proactively when encountering any issues. |
 | `playwright-skill` | IMPORTANT - Path Resolution: This skill can be installed in different locations (plugin system, manual installation, global, or project-specific). Before executing any commands, determine the skill directory based on where you loaded this SKILL.md file, and use that path in all commands below. |
+| `prototype` | Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like. |
 | `simplify-code` | Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes. |
 | `systematic-debugging` | Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes |
+| `triage` | Move issues and external PRs through a state machine of triage roles, categorise, verify, and write agent-ready briefs. |
 | `typescript-pro` | Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns. |
 
 #### 📦 Other Utilities
