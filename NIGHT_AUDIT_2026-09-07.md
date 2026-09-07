@@ -103,6 +103,14 @@ While this audit was running, a **separate Antigravity/Gemini session** left a h
 
 ---
 
+## 6b. Testing artifact I caused, caught, and reverted — plus a real product gap it exposed
+
+Running the main repo's installer **for real** (§5) from inside its own source directory (`cd bdb-dev-optimized-agent-skills && HOME=/tmp/... node installer.js -y`) silently overwrote three of the repo's own tracked files with the installer's generic embedded bootstrap template: `.roomodes`, `.cursor/rules/000_global_rules.mdc`, `.cursor/rules/bdb_agents.mdc` — stripping specific detail (e.g. "TouchDesigner, grandMA3, Resolume" and "OpenMontage and Palmier Pro MCPs" shortened to generic one-liners). Caught via `git status` immediately after, **reverted with `git restore`**, confirmed clean — checked `-basic` and `-antigravity` too (untouched; their smaller installers don't have this code path at all).
+
+**Why it happened, not fixed by me:** `installer.js:2664`'s project-harness sync (`.roomodes`, `.cursor/rules/*`, `.codex-plugin/system.md`, etc.) runs unconditionally against `currentDir` (wherever you invoke the installer from) — it does **not** require the `--project-harness` flag, and unlike the skill-copy path, it isn't covered by the manifest-based "don't overwrite user-modified files" protection the changelog says was added elsewhere (`ec02555`). For a normal end-user running this from a fresh project directory, that's the intended, useful behavior. Running it from inside the installer's *own* repo is a self-inflicted edge case my testing hit, not something a real user would normally do — but it does mean this specific sync path has weaker overwrite protection than the rest of the installer, which is worth a look independent of tonight's fixes.
+
+---
+
 ## 7. What's explicitly NOT done, and why
 
 - **No `git push` anywhere.** `bdb-saashost-engine` sits 26 commits ahead of `origin/main`. That repo's own `.claude/hooks/go-gate.mjs` mechanically blocks push/publish/version-bump without a literal, isolated "GO" — and every other repo's safety convention established tonight treats push the same way even where not mechanically enforced.
