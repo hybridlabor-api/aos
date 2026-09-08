@@ -44,6 +44,12 @@ const {
     log
 } = clack;
 
+const {
+    renderKineticIntro,
+    buildHeroHeader,
+    buildTelemetryCard
+} = require('./lib/startup-ui.js');
+
 const pkgPath = path.join(__dirname, 'package.json');
 let pkg = { name: '@hybridlabor-api/aos', version: '4.0.0' };
 if (fs.existsSync(pkgPath)) {
@@ -56,12 +62,6 @@ const colors = {
     cyan: "\x1b[36m",
     purple: "\x1b[38;2;157;78;221m",
     purpleBold: "\x1b[1;\x1b[38;2;157;78;221m",
-    // v3.13 "NODEFORGE" release identity. The wordmark itself is drawn with a
-    // per-column pink -> yellow -> amethyst gradient computed in buildBanner();
-    // these named constants cover the surrounding chrome (divider, tagline) and
-    // the animation effects. Deliberately distinct from the purple/cyan beta
-    // banner so a push to `latest` is visually obvious, not just a
-    // version-number diff someone has to notice on their own.
     amethyst: "\x1b[38;2;155;89;182m",
     beige: "\x1b[38;2;222;202;168m",
     bannerWhite: "\x1b[38;2;255;255;255m",
@@ -1254,61 +1254,6 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
         });
         child.on('error', (err) => { s.stop(`Failed to start OpenWiki Daemon script: ${err.message}`); resolve(); });
     });
-}
-
-const GLITCH_CHARS = ['!', '@', '#', '$', '%', '^', '&', '*', '█', '▓', '▒', '░', '▄', '▀', '▌', '▐', '▆', '▇'];
-
-async function glitchBanner(bannerStr) {
-    if (!process.stdout.isTTY) return;
-
-    const lines = bannerStr.split('\n');
-    const lineCount = lines.length;
-    
-    console.log(bannerStr);
-    
-    try {
-        process.stdout.write('\x1B[?25l');
-        const duration = 800;
-        const fps = 15;
-        const frameTime = Math.floor(1000 / fps);
-        const frames = Math.floor(duration / frameTime);
-        
-        for (let i = 0; i < frames; i++) {
-            readline.moveCursor(process.stdout, 0, -lineCount);
-            
-            const glitchedLines = lines.map(line => {
-                if (line.trim().length === 0) return line;
-                
-                let out = '';
-                let inEscape = false;
-                for (let j = 0; j < line.length; j++) {
-                    const c = line[j];
-                    if (c === '\x1B') inEscape = true;
-                    
-                    if (inEscape) {
-                        out += c;
-                        if (c === 'm') inEscape = false;
-                    } else {
-                        if (c !== ' ' && Math.random() < 0.05) {
-                            const gChar = GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
-                            out += `${colors.magenta}${gChar}${colors.reset}`;
-                        } else {
-                            out += c;
-                        }
-                    }
-                }
-                return out;
-            });
-            
-            process.stdout.write(glitchedLines.join('\n') + '\n');
-            await new Promise(r => setTimeout(r, frameTime));
-        }
-        
-        readline.moveCursor(process.stdout, 0, -lineCount);
-        readline.clearScreenDown(process.stdout);
-    } finally {
-        process.stdout.write('\x1B[?25h');
-    }
 }
 
 async function runTopologyAnimation(backgroundTask, label) {
@@ -3308,59 +3253,23 @@ async function runQuickUpdate(installState) {
 }
 
 
-// v4.0.0 "AOS" rename banner. Built programmatically rather than stored
-// as one giant escaped string literal: the wordmark carries a per-column
-// pink -> yellow -> amethyst gradient, which needs a truecolor escape emitted
-// per character run. Hand-maintaining that as literal text would be
-// unreadable and near-impossible to edit safely.
-//
-// Width discipline: every rendered line stays <= 76 visible columns, so the
-// banner never wraps on an 80-column terminal -- the same class of
-// terminal-width bug an earlier release already fixed elsewhere. Changing
-// the font means re-checking that number.
-const BANNER_WORDMARK = [
-    "   ▄██████▄       ▄██████████▄     ▄██████████▄ ",
-    " ██▄▄▄▄▄▄▄▄██    ██          ██    ▀██████████▄▄",
-    "██          ██    ▀██████████▀     ▄██████████▀ "
-];
-
-function buildBanner() {
-    const pink = [236, 72, 153];
-    const yellow = [255, 208, 66];
-    const amethystRgb = [155, 89, 182];
-    const lerp = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
-    const gradientAt = (t) => (t < 0.5 ? lerp(pink, yellow, t * 2) : lerp(yellow, amethystRgb, (t - 0.5) * 2));
-
-    const width = Math.max(...BANNER_WORDMARK.map((l) => l.length));
-    const wordmark = BANNER_WORDMARK.map((line) => {
-        let out = '';
-        let lastCode = null;
-        for (let i = 0; i < line.length; i++) {
-            const ch = line[i];
-            if (ch === ' ') { out += ch; continue; }
-            const [r, g, b] = gradientAt(i / (width - 1));
-            const code = `\x1b[38;2;${r};${g};${b}m`;
-            if (code !== lastCode) { out += code; lastCode = code; }
-            out += ch;
-        }
-        return out + colors.reset;
-    }).join('\n');
-
-    const divider = '─'.repeat(width);
-
-    const tagline = 'BDB AGENT OS · CORE KERNEL · AOS -  v4.0.0';
-    const taglinePad = ' '.repeat(Math.max(0, Math.floor((width - tagline.length) / 2)));
-
-    return `${colors.bold}\n${wordmark}\n\n`
-        + `${colors.beige}${divider}${colors.reset}\n\n`
-        + `${colors.bannerWhite}${colors.bold}${taglinePad}${tagline}${colors.reset}`;
-}
-
 async function main() {
-    const banner = buildBanner();
+    const skipIntro = isAutoYes || process.argv.includes('--no-intro') || process.argv.includes('--no-animation');
+    await renderKineticIntro({ rotations: 1, fps: 12.5, skip: skipIntro });
 
-    await glitchBanner(banner);
-    intro(banner);
+    const installState = detectInstallState();
+    const detections = detectPlatforms();
+
+    // Fast local daemon checks (150ms budget)
+    const aoOnline = await verifyDaemonListening(3101, 'AO Daemon', 150);
+    const remoteOsOnline = await verifyDaemonListening(9080, 'RemoteOS', 150);
+    const daemonStatus = [
+        { name: 'AO Orchestrator', port: 3101, online: aoOnline },
+        { name: 'RemoteOS Gateway', port: 9080, online: remoteOsOnline }
+    ];
+
+    intro(buildHeroHeader(pkg.version));
+    console.log(buildTelemetryCard({ installState, detections, daemonStatus }));
 
     if (DRY_RUN) {
         log.warn('DRY-RUN MODE active - no files will be modified, no commands executed.');
@@ -3373,8 +3282,6 @@ async function main() {
     if (latest) {
         log.warn(`Update available: v${pkg.version} ➔ v${latest} — run: npx ${pkg.name}@latest`);
     }
-
-    const installState = detectInstallState();
 
     // Initialize session manifest – all copyDirRecursiveSync calls from here
     // forward will use manifest-aware writes automatically.
@@ -3399,28 +3306,22 @@ async function main() {
     }
 
     if (installState.isInstalled && !isAutoYes) {
-        if (installState.updateAvailable) {
-            log.warn(`BDB AGENT OS installation detected: v${installState.localVersion} ➔ v${installState.currentVersion}`);
-        } else {
-            log.success(`BDB AGENT OS is already up to date (v${installState.currentVersion}).`);
-        }
-
         const options = installState.updateAvailable
             ? [
-                { value: 'quick', label: `⚡ Quick Update (v${installState.localVersion} ➔ v${installState.currentVersion}) – refresh skills & daemons, keep settings` },
-                { value: 'project', label: '📁 Drop Local Project Harness (in current directory)' },
-                { value: 'reconfigure', label: '🛠️ Full re-installation / re-configuration' },
+                { value: 'quick', label: `⚡ Quick Update (v${installState.localVersion} ➔ v${installState.currentVersion})`, hint: 'refresh skills, templates & daemons' },
+                { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
+                { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'change targets, tier or options' },
                 { value: 'cancel', label: '❌ Exit' }
               ]
             : [
-                { value: 'project', label: '📁 Drop Local Project Harness (in current directory)' },
-                { value: 'reconfigure', label: '🛠️ Re-configuration / switch tier (Pro vs Basic)' },
-                { value: 'quick', label: '🔄 Repair / force reinstall all skills' },
+                { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
+                { value: 'quick', label: '🔄 Verify & Refresh All Skills', hint: 're-sync and health check' },
+                { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'switch tier or targets' },
                 { value: 'cancel', label: '❌ Exit' }
               ];
 
         const action = pick(await select({
-            message: 'BDB OS maintenance:',
+            message: 'Select an operation:',
             options,
             initialValue: options[0].value
         }));
@@ -3441,26 +3342,18 @@ async function main() {
         }
     }
 
-    const detections = detectPlatforms();
-    if (detections.length > 0) {
-        log.info('Detected Agent Environments on this system:');
-        detections.forEach(d => log.message(`${d.name} (${d.path})`));
-    } else {
-        log.message('No active agent config directories auto-detected in standard locations.');
-    }
-
     const detectedNames = detections.map(d => d.name).join(', ');
     const platformOptions = [
-        { value: '9', label: 'Local Project Harness', hint: 'copy dispatcher contract to current project' },
         { value: '0', label: '🌐 Universal Agent Harness', hint: detections.length > 0 ? `sync ALL detected: ${detectedNames}` : 'sync across ALL AI platforms' },
         { value: '1', label: 'Google Antigravity', hint: '~/.gemini/config/skills' },
         { value: '2', label: 'Claude Desktop / Claude Code', hint: '~/.claude/skills' },
         { value: '3', label: 'Cursor / Generic IDE (project-local)', hint: '.cursor/' },
-        { value: '4', label: 'Custom Installation (specify paths manually)' },
         { value: '5', label: 'ChatGPT Codex CLI', hint: '~/.codex/skills' },
         { value: '6', label: 'Windsurf IDE', hint: '~/.windsurf' },
         { value: '7', label: 'Roo Code / Cline / VS Code', hint: '~/.roo' },
-        { value: '8', label: 'Aider CLI', hint: '~/.aider' }
+        { value: '8', label: 'Aider CLI', hint: '~/.aider' },
+        { value: '9', label: '📁 Local Project Harness', hint: 'copy dispatcher contract to current project' },
+        { value: '4', label: '⚙️ Custom Installation', hint: 'specify paths manually' }
     ];
 
     let tier = '1';
