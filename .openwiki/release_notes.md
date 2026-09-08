@@ -1,5 +1,22 @@
 # Release Notes
 
+## v4.0.2 (ask-tim Skill Discovery Guide)
+- **New `/ask-tim` skill**: routes a user or agent to the right skill out of the 150+ available, organized by intent rather than internal category, with explicit overlap guidance (the 3 build pipelines, `n8n-*`/`ui-*`/`firecrawl-*` clusters, `godmode-*` orchestrators vs narrower skills). Defers to `CLAUDE.md` for canonical routing rules instead of duplicating them.
+- Self-audited before release: first draft covered 65% of the skill catalog; closed to 91% (agent-orchestration, UX, language-expertise, and architecture clusters were the largest gaps).
+
+## v4.0.1 (Installer Bugfixes)
+- **Synapse 3D daemon fix**: the LaunchAgent (macOS) and startup script (Windows) never passed `--port 7781` to the binary, so it bound a different random port every restart while the installer always checked 7781 specifically. Reproduced on every machine, every install. Fixed on both platforms.
+- **memB install fix**: prefers `uv pip install --python <venv>` over `-m pip` whenever `uv` is available, since `uv venv --seed` was observed to silently under-deliver `pip` into the venv.
+- **README.pt.md**: the entire skill-catalog table (134 of ~155 rows) had never been translated — fixed and verified. Also closed two missing sections (`BDB OS Agent Workspace`, `BDB Synapse`) in both README.de.md and README.pt.md.
+
+## v4.0.0 (AOS — the Rename)
+- **Renamed** from `bdb-dev-optimized-agent-skills` to **AOS** (`@hybridlabor-api/aos`) — package, GitHub repo, and CLI bin names. Old package name deprecated on npm, pointing users to the new one.
+- **New installer startup sequence**: rotating 3D ASCII intro, gradient wordmark banner, studio hero header, and a pre-flight telemetry card (detected agent platforms, daemon status, install/version state) — all before the first prompt.
+- **OpenWiki setup now runs on every Quick Update**, not just fresh installs — previously it only ever ran once and was never offered again to existing installs.
+- `bdb-os-agent-workspace` temporarily removed from the tracked module list (main branch frozen upstream while real work sits on unmerged WIP branches) — daemon/LaunchAgent code untouched, only the offer/auto-update path disabled.
+- Carried over from the v3.13 "NODEFORGE" development cycle: `/startcycle` split into three variants with a declarative node registry; new `bdb-deploy`, `triage`, and `prototype` skills; `bdbsaas-ops` retired into `bdbsaashost`; OpenWiki modernized to `langchain-ai/openwiki` v0.5.0.
+- `bdb-dev-optimized-agent-skills-basic` and `bdb-dev-optimized-antigravity-skills` retired (archived on GitHub, deprecated on npm) — this package is now the only supported one.
+
 ## v3.10.0 (Dynamic Gateway Discovery, Windows Daemons & SaaS Academy)
 - **Dynamic Gateway Discovery (`setup-saas` CLI)**: Added `bin/setup-saas.mjs` with zero-copypaste browser 2FA loopback handshake (port 8123). Supports interactive domain selection (`--gateway`, `--domain`) and auto-injects FastMCP SSE configurations into Google Antigravity, Claude Desktop, Cursor, and Roo Code.
 - **Zero-Leak Enterprise Sanitization**: Purged all static infrastructure metadata, server IPs, and hardcoded private domains from public NPM and GitHub distribution files.
