@@ -45,7 +45,7 @@ const {
 } = clack;
 
 const pkgPath = path.join(__dirname, 'package.json');
-let pkg = { name: '@hybridlabor-api/bdb-dev-optimized-agent-skills', version: '3.9.6-beta' };
+let pkg = { name: '@hybridlabor-api/aos', version: '4.0.0' };
 if (fs.existsSync(pkgPath)) {
     try { pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')); } catch (e) { logDebug(e, 'operation'); }
 }
@@ -1904,7 +1904,7 @@ function verifyEcosystemInstallation() {
         { name: '4. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', paths: [path.join(moduleBasePath(), 'bdb-dev-creator-extension')] },
         { name: '5. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', paths: [path.join(moduleBasePath(), 'bdb-os-remote')] },
         { name: '6. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', paths: [path.join(moduleBasePath(), 'bdb-dev-tool-installer')] },
-        { name: '7. bdb-dev-optimized-agent-skills', pkg: '@hybridlabor-api/bdb-dev-optimized-agent-skills', paths: [srcDir] }
+        { name: '7. aos (bdb agent os)', pkg: '@hybridlabor-api/aos', paths: [srcDir] }
     ];
 
     for (const mod of modules) {
@@ -3294,20 +3294,20 @@ async function runQuickUpdate(installState) {
 }
 
 
-// v3.13 "NODEFORGE" release banner. Built programmatically rather than stored
+// v4.0.0 "AOS" rename banner. Built programmatically rather than stored
 // as one giant escaped string literal: the wordmark carries a per-column
 // pink -> yellow -> amethyst gradient, which needs a truecolor escape emitted
 // per character run. Hand-maintaining that as literal text would be
 // unreadable and near-impossible to edit safely.
 //
-// Width discipline: every rendered line stays <= 76 visible columns (the
-// wordmark's natural width), so the banner never wraps on an 80-column
-// terminal -- the same class of terminal-width bug this release already fixed
-// elsewhere. Changing the font means re-checking that number.
+// Width discipline: every rendered line stays <= 76 visible columns, so the
+// banner never wraps on an 80-column terminal -- the same class of
+// terminal-width bug an earlier release already fixed elsewhere. Changing
+// the font means re-checking that number.
 const BANNER_WORDMARK = [
-    "█████▄ ████▄  █████▄   ▄████▄  ▄████  ██████ ███  ██ ██████   ▄████▄ ▄█████ ",
-    "██▄▄██ ██  ██ ██▄▄██   ██▄▄██ ██  ▄▄▄ ██▄▄   ██ ▀▄██   ██     ██  ██ ▀▀▀▄▄▄ ",
-    "██▄▄█▀ ████▀  ██▄▄█▀   ██  ██  ▀███▀  ██▄▄▄▄ ██   ██   ██     ▀████▀ █████▀"
+    "   ▄██████▄       ▄██████████▄     ▄██████████▄ ",
+    " ██▄▄▄▄▄▄▄▄██    ██          ██    ▀██████████▄▄",
+    "██          ██    ▀██████████▀     ▄██████████▀ "
 ];
 
 function buildBanner() {
@@ -3332,9 +3332,7 @@ function buildBanner() {
         return out + colors.reset;
     }).join('\n');
 
-    const label = ' N O D E F O R G E ';
-    const fill = width - label.length;
-    const divider = '─'.repeat(Math.floor(fill / 2)) + label + '─'.repeat(fill - Math.floor(fill / 2));
+    const divider = '─'.repeat(width);
 
     const tagline = 'BDB AGENT OS · CORE KERNEL · AOS -  v4.0.0';
     const taglinePad = ' '.repeat(Math.max(0, Math.floor((width - tagline.length) / 2)));
