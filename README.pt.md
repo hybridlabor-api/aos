@@ -133,173 +133,173 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 | Nome da Skill | Descrição |
 |------------|-------------|
 | `agent-manager-skill` | Gerencia múltiplos agentes CLI locais via sessões tmux (iniciar/parar/monitorar/atribuir) com agendamento amigável para cron. |
-| `agent-memory-mcp` | A hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions). |
+| `agent-memory-mcp` | Um sistema de memória híbrida que fornece gerenciamento de conhecimento persistente e pesquisável para agentes de IA (Arquitetura, Padrões, Decisões). |
 | `agent-orchestrator` | Meta-skill que orquestra todos os agentes do ecossistema. Scan automatico de skills, match por capacidades, coordenacao de workflows multi-skill e registry management. |
 | `agent-pipeline` | Referência para o ciclo de vida do BDB (define → plan → build → verify/review → ship) que o grafo dispatcher do `/startcycle-graph` realmente executa. |
-| `agent-tool-builder` | Tools are how AI agents interact with the world. A well-designed tool is the difference between an agent that works and one that hallucinates, fails silently, or costs 10x more tokens than necessary. This skill covers tool design from schema to error handling. |
-| `ai-agent-development` | AI agent development workflow for building autonomous agents, multi-agent systems, and agent orchestration with CrewAI, LangGraph, and custom agents. |
-| `apify-lead-generation` | Scrape leads from multiple platforms using Apify Actors. |
-| `apify-ultimate-scraper` | AI-driven data extraction from 55+ Actors across all major platforms. This skill automatically selects the best Actor for your task. |
-| `bdbrainstorm` | Combines multi-agent brainstorming, the /grill-me slash command, subagent-driven-development, and ui-ux-pro-max to force a comprehensive, multi-agent ideation and UI/UX design workflow. |
-| `browser-automation` | Browser automation powers web testing, scraping, and AI agent interactions. The difference between a flaky script and a reliable system comes down to understanding selectors, waiting strategies, and anti-detection patterns. |
-| `crewai` | Expert in CrewAI - the leading role-based multi-agent framework used by 60% of Fortune 500 companies. |
-| `documentation` | Documentation generation workflow covering API docs, architecture docs, README files, code comments, and technical writing. |
-| `git-advanced-workflows` | Master advanced Git techniques to maintain clean history, collaborate effectively, and recover from any situation with confidence. |
-| `github-actions-templates` | Production-ready GitHub Actions workflow patterns for testing, building, and deploying applications. |
-| `github-repo` | Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill. |
-| `github-workflow-automation` | Patterns for automating GitHub workflows with AI assistance, inspired by [Gemini CLI](https://github.com/google-gemini/gemini-cli) and modern DevOps practices. |
-| `go-playwright` | Expert capability for robust, stealthy, and efficient browser automation using Playwright Go. |
-| `google-sheets-automation` | Lightweight Google Sheets integration with standalone OAuth authentication. No MCP server required. Full read/write access. |
-| `n8n-code-javascript` | Write JavaScript code in n8n Code nodes. Use when writing JavaScript in n8n, using $input/$json/$node syntax, making HTTP requests with $helpers, working with dates using DateTime, troubleshooting Code node errors, or choosing between Code node modes. |
-| `n8n-code-python` | Write Python code in n8n Code nodes. Use when writing Python in n8n, using _input/_json/_node syntax, working with standard library, or need to understand Python limitations in n8n Code nodes. |
-| `n8n-expression-syntax` | Validate n8n expression syntax and fix common errors. Use when writing n8n expressions, using {{}} syntax, accessing $json/$node variables, troubleshooting expression errors, or working with webhook data in workflows. |
-| `n8n-mcp-tools-expert` | Expert guide for using n8n-mcp MCP tools effectively. Use when searching for nodes, validating configurations, accessing templates, managing workflows, or using any n8n-mcp tool. Provides tool selection guidance, parameter formats, and common patterns. |
-| `n8n-workflow-patterns` | Proven architectural patterns for building n8n workflows. |
-| `notion-automation` | Automate Notion tasks via Rube MCP (Composio): pages, databases, blocks, comments, users. Always search tools first for current schemas. |
-| `os-scripting` | Operating system and shell scripting troubleshooting workflow for Linux, macOS, and Windows. Covers bash scripting, system administration, debugging, and automation. |
-| `rag-implementation` | RAG (Retrieval-Augmented Generation) implementation workflow covering embedding selection, vector database setup, chunking strategies, and retrieval optimization. |
-| `slack-automation` | Automate Slack workspace operations including messaging, search, channel management, and reaction workflows through Composio's Slack toolkit. |
-| `subagent-driven-development` | Use when executing implementation plans with independent tasks in the current session |
-| `tdd-workflow` | Test-Driven Development workflow principles. RED-GREEN-REFACTOR cycle. |
-| `tmux` | Expert tmux session, window, and pane management for terminal multiplexing, persistent remote workflows, and shell scripting automation. |
+| `agent-tool-builder` | Ferramentas são como os agentes de IA interagem com o mundo. Uma ferramenta bem projetada é a diferença entre um agente que funciona e um que alucina, falha silenciosamente ou custa 10x mais tokens do que o necessário. Esta skill abrange o design de ferramentas desde o esquema até o tratamento de erros. |
+| `ai-agent-development` | Fluxo de trabalho de desenvolvimento de agentes de IA para construir agentes autônomos, sistemas multi-agentes e orquestração de agentes com CrewAI, LangGraph e agentes personalizados. |
+| `apify-lead-generation` | Raspar leads de múltiplas plataformas usando Apify Actors. |
+| `apify-ultimate-scraper` | Extração de dados orientada por IA de mais de 55 Actors nas principais plataformas. Esta skill seleciona automaticamente o melhor Actor para a sua tarefa. |
+| `bdbrainstorm` | Combina brainstorming multi-agente, o comando slash /grill-me, subagent-driven-development e ui-ux-pro-max para forçar um fluxo de trabalho abrangente de ideação multi-agente e design de UI/UX. |
+| `browser-automation` | A automação de navegador potencializa testes web, raspagem e interações de agentes de IA. A diferença entre um script instável e um sistema confiável se resume a entender seletores, estratégias de espera e padrões anti-detecção. |
+| `crewai` | Especialista em CrewAI - o principal framework multi-agente baseado em funções usado por 60% das empresas Fortune 500. |
+| `documentation` | Fluxo de trabalho de geração de documentação abrangendo docs de API, docs de arquitetura, arquivos README, comentários de código e escrita técnica. |
+| `git-advanced-workflows` | Domine técnicas avançadas de Git para manter um histórico limpo, colaborar efetivamente e se recuperar de qualquer situação com confiança. |
+| `github-actions-templates` | Padrões de fluxo de trabalho do GitHub Actions prontos para produção para testar, compilar e implantar aplicações. |
+| `github-repo` | Padrões e fluxos de trabalho para escrever, formatar, higienizar e publicar repositórios GitHub de alta qualidade, complementando a skill openwiki-skill. |
+| `github-workflow-automation` | Padrões para automatizar fluxos de trabalho do GitHub com assistência de IA, inspirados pelo [Gemini CLI](https://github.com/google-gemini/gemini-cli) e práticas modernas de DevOps. |
+| `go-playwright` | Capacidade especialista para automação de navegador robusta, furtiva e eficiente usando Playwright Go. |
+| `google-sheets-automation` | Integração leve com Google Sheets com autenticação OAuth autônoma. Não requer servidor MCP. Acesso completo de leitura/escrita. |
+| `n8n-code-javascript` | Escreva código JavaScript em nós Code do n8n. Use ao escrever JavaScript no n8n, usando sintaxe $input/$json/$node, fazendo requisições HTTP com $helpers, trabalhando com datas usando DateTime, solucionando erros de nó Code, ou escolhendo entre modos de nó Code. |
+| `n8n-code-python` | Escreva código Python em nós Code do n8n. Use ao escrever Python no n8n, usando sintaxe _input/_json/_node, trabalhando com a biblioteca padrão, ou quando precisar entender as limitações do Python em nós Code do n8n. |
+| `n8n-expression-syntax` | Valide a sintaxe de expressões n8n e corrija erros comuns. Use ao escrever expressões n8n, usando sintaxe {{}}, acessando variáveis $json/$node, solucionando erros de expressão, ou trabalhando com dados de webhook em fluxos de trabalho. |
+| `n8n-mcp-tools-expert` | Guia especialista para usar ferramentas MCP n8n-mcp de forma eficaz. Use ao procurar nós, validar configurações, acessar templates, gerenciar fluxos de trabalho, ou usar qualquer ferramenta n8n-mcp. Fornece orientação de seleção de ferramentas, formatos de parâmetros e padrões comuns. |
+| `n8n-workflow-patterns` | Padrões arquiteturais comprovados para construir fluxos de trabalho n8n. |
+| `notion-automation` | Automatize tarefas do Notion via Rube MCP (Composio): páginas, bancos de dados, blocos, comentários, usuários. Sempre pesquise nas ferramentas primeiro para obter esquemas atuais. |
+| `os-scripting` | Fluxo de trabalho de solução de problemas de sistema operacional e shell scripting para Linux, macOS e Windows. Abrange bash scripting, administração de sistemas, depuração e automação. |
+| `rag-implementation` | Fluxo de trabalho de implementação de RAG (Retrieval-Augmented Generation) cobrindo seleção de embeddings, configuração de banco de dados vetorial, estratégias de chunking e otimização de recuperação. |
+| `slack-automation` | Automatize operações do workspace Slack incluindo mensagens, busca, gerenciamento de canais e fluxos de trabalho de reações através do toolkit Slack da Composio. |
+| `subagent-driven-development` | Use ao executar planos de implementação com tarefas independentes na sessão atual. |
+| `tdd-workflow` | Princípios de fluxo de trabalho de Desenvolvimento Orientado a Testes (Test-Driven Development). Ciclo RED-GREEN-REFACTOR. |
+| `tmux` | Especialista em gerenciamento de sessões, janelas e painéis tmux para multiplexação de terminal, fluxos de trabalho remotos persistentes e automação de shell scripting. |
 
 #### 🎨 Frontend & UI/UX
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `MCP_Manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
-| `api-design-principles` | Master REST and GraphQL API design principles to build intuitive, scalable, and maintainable APIs that delight developers and stand the test of time. |
-| `api-patterns` | API design principles and decision-making. REST vs GraphQL vs tRPC selection, response formats, versioning, pagination. |
-| `database-design` | Database design principles and decision-making. Schema design, indexing strategy, ORM selection, serverless databases. |
-| `design-taste-frontend` | Use when building high-agency frontend interfaces with strict design taste, calibrated color, responsive layout, and motion rules. |
-| `drizzle-orm-expert` | Expert in Drizzle ORM for TypeScript — schema design, relational queries, migrations, and serverless database integration. Use when building type-safe database layers with Drizzle. |
-| `frontend-design` | You are a frontend designer-engineer, not a layout generator. |
-| `frontend-dev-guidelines` | You are a senior frontend engineer operating under strict architectural and performance standards. Use when creating components or pages, adding new features, or fetching or mutating data. |
-| `landing-page-generator` | Generates high-converting Next.js/React landing pages with Tailwind CSS. Uses PAS, AIDA, and BAB frameworks for optimized copy/components (Heroes, Features, Pricing). Focuses on Core Web Vitals/SEO. |
-| `llm-application-dev-ai-assistant` | You are an AI assistant development expert specializing in creating intelligent conversational interfaces, chatbots, and AI-powered applications. Design comprehensive AI assistant solutions with natur |
-| `nextjs-app-router-patterns` | Comprehensive patterns for Next.js 14+ App Router architecture, Server Components, and modern full-stack React development. |
-| `nextjs-best-practices` | Next.js App Router principles. Server Components, data fetching, routing patterns. |
-| `openapi-spec-generation` | Generate and maintain OpenAPI 3.1 specifications from code, design-first specs, and validation patterns. Use when creating API documentation, generating SDKs, or ensuring API contract compliance. |
-| `postgres-best-practices` | Postgres performance optimization and best practices from Supabase. Use this skill when writing, reviewing, or optimizing Postgres queries, schema designs, or database configurations. |
-| `postgresql` | Design a PostgreSQL-specific schema. Covers best-practices, data types, indexing, constraints, performance patterns, and advanced features |
-| `prisma-expert` | You are an expert in Prisma ORM with deep knowledge of schema design, migrations, query optimization, relations modeling, and database operations across PostgreSQL, MySQL, and SQLite. |
-| `programmatic-seo` | Design and evaluate programmatic SEO strategies for creating SEO-driven pages at scale using templates and structured data. |
-| `react-best-practices` | Comprehensive performance optimization guide for React and Next.js applications, maintained by Vercel. Use when writing new React components or Next.js pages, implementing data fetching (client or server-side), or reviewing code for performance issues. |
-| `react-component-performance` | Diagnose slow React components and suggest targeted performance fixes. |
-| `react-patterns` | Modern React patterns and principles. Hooks, composition, performance, TypeScript best practices. |
-| `schema-markup` | Design, validate, and optimize schema.org structured data for eligibility, correctness, and measurable SEO impact. |
-| `senior-frontend` | Frontend development skill for React, Next.js, TypeScript, and Tailwind CSS applications. Use when building React components, optimizing Next.js performance, analyzing bundle sizes, scaffolding frontend projects, implementing accessibility, or reviewing frontend code quality. |
-| `shadcn` | Manages shadcn/ui components and projects, providing context, documentation, and usage patterns for building modern design systems. |
-| `software-architecture` | Guide for quality focused software architecture. This skill should be used when users want to write code, design architecture, analyze code, in any case that relates to software development. |
-| `spline-3d-integration` | Use when adding interactive 3D scenes from Spline.design to web projects, including React embedding and runtime control API. |
-| `tailwind-patterns` | Tailwind CSS v4 principles. CSS-first configuration, container queries, modern patterns, design token architecture. |
-| `tanstack-query-expert` | Expert in TanStack Query (React Query) — asynchronous state management. Covers data fetching, stale time configuration, mutations, optimistic updates, and Next.js App Router (SSR) integration. |
-| `ui-component` | Generate a new UI component that follows StyleSeed Toss conventions for structure, tokens, accessibility, and component ergonomics. |
-| `ui-page` | Scaffold a new mobile-first page using StyleSeed Toss layout patterns, section rhythm, and existing shell components. |
-| `ui-pattern` | Generate reusable UI patterns such as card sections, grids, lists, forms, and chart wrappers using StyleSeed Toss primitives. |
-| `ui-review` | Review UI code for StyleSeed design-system compliance, accessibility, mobile ergonomics, spacing discipline, and implementation quality. |
-| `ui-tokens` | List, add, and update StyleSeed design tokens while keeping JSON sources, CSS variables, and dark-mode values in sync. |
-| `ui-ux-pro-max` | Comprehensive design guide for web and mobile applications. Use when designing new UI components or pages, choosing color palettes and typography, or reviewing code for UX issues. |
-| `ux-audit` | Audit screens against Nielsen's heuristics and mobile UX best practices using the StyleSeed Toss design language as the implementation context. |
-| `ux-feedback` | Add loading, empty, error, and success feedback states to StyleSeed components and pages with practical mobile-first rules. |
-| `ux-flow` | Design user flows and screen structure using StyleSeed UX patterns such as progressive disclosure, hub-and-spoke navigation, and information pyramids. |
-| `ux-persuasion-engineer` | One sentence - what this skill does and when to invoke it |
-| `vercel-ai-sdk-expert` | Expert in the Vercel AI SDK. Covers Core API (generateText, streamText), UI hooks (useChat, useCompletion), tool calling, and streaming UI components with React and Next.js. |
-| `wcag-audit-patterns` | Comprehensive guide to auditing web content against WCAG 2.2 guidelines with actionable remediation strategies. |
-| `web-artifacts-builder` | To build powerful frontend claude.ai artifacts, follow these steps: |
-| `zustand-store-ts` | Create Zustand stores following established patterns with proper TypeScript types and middleware. |
+| `MCP_Manage` | Gerencia os servidores MCP especializados da BDB incluindo Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools e TouchDesigner. |
+| `api-design-principles` | Domine princípios de design de API REST e GraphQL para construir APIs intuitivas, escaláveis e de fácil manutenção que encantam os desenvolvedores e resistem ao teste do tempo. |
+| `api-patterns` | Princípios de design de API e tomada de decisões. Seleção entre REST vs GraphQL vs tRPC, formatos de resposta, versionamento, paginação. |
+| `database-design` | Princípios de design de banco de dados e tomada de decisões. Design de esquema, estratégia de indexação, seleção de ORM, bancos de dados serverless. |
+| `design-taste-frontend` | Use ao construir interfaces frontend de alta agência com gosto de design rigoroso, cores calibradas, layout responsivo e regras de movimento. |
+| `drizzle-orm-expert` | Especialista em Drizzle ORM para TypeScript — design de esquema, consultas relacionais, migrações e integração de banco de dados serverless. Use ao construir camadas de banco de dados type-safe com Drizzle. |
+| `frontend-design` | Você é um engenheiro-designer frontend, não um gerador de layouts. |
+| `frontend-dev-guidelines` | Você é um engenheiro frontend sênior operando sob rigorosos padrões arquiteturais e de desempenho. Use ao criar componentes ou páginas, adicionar novas features, ou buscar e mutar dados. |
+| `landing-page-generator` | Gera landing pages de alta conversão Next.js/React com Tailwind CSS. Usa frameworks PAS, AIDA e BAB para copy/componentes otimizados (Heroes, Features, Pricing). Foca em Core Web Vitals/SEO. |
+| `llm-application-dev-ai-assistant` | Você é um especialista em desenvolvimento de assistentes de IA especializado em criar interfaces conversacionais inteligentes, chatbots e aplicações movidas a IA. Crie soluções de assistente de IA abrangentes com natur |
+| `nextjs-app-router-patterns` | Padrões abrangentes para arquitetura Next.js 14+ App Router, Server Components e desenvolvimento full-stack React moderno. |
+| `nextjs-best-practices` | Princípios do Next.js App Router. Server Components, busca de dados, padrões de roteamento. |
+| `openapi-spec-generation` | Gere e mantenha especificações OpenAPI 3.1 a partir de código, especificações design-first e padrões de validação. Use ao criar documentação de API, gerar SDKs ou garantir conformidade com contratos de API. |
+| `postgres-best-practices` | Otimização de desempenho e melhores práticas de Postgres da Supabase. Use esta skill ao escrever, revisar ou otimizar consultas Postgres, designs de esquema ou configurações de banco de dados. |
+| `postgresql` | Projete um esquema específico para PostgreSQL. Abrange melhores práticas, tipos de dados, indexação, restrições, padrões de desempenho e recursos avançados. |
+| `prisma-expert` | Você é um especialista em Prisma ORM com profundo conhecimento em design de esquemas, migrações, otimização de consultas, modelagem de relações e operações de banco de dados em PostgreSQL, MySQL e SQLite. |
+| `programmatic-seo` | Projete e avalie estratégias de programmatic SEO para criar páginas orientadas a SEO em escala usando templates e dados estruturados. |
+| `react-best-practices` | Guia abrangente de otimização de desempenho para aplicações React e Next.js, mantido pela Vercel. Use ao escrever novos componentes React ou páginas Next.js, implementar busca de dados (client ou server-side), ou revisar código em busca de problemas de desempenho. |
+| `react-component-performance` | Diagnostique componentes React lentos e sugira correções de desempenho direcionadas. |
+| `react-patterns` | Padrões e princípios modernos do React. Hooks, composição, desempenho, melhores práticas de TypeScript. |
+| `schema-markup` | Projete, valide e otimize dados estruturados schema.org para elegibilidade, correção e impacto de SEO mensurável. |
+| `senior-frontend` | Skill de desenvolvimento frontend para aplicações React, Next.js, TypeScript e Tailwind CSS. Use ao construir componentes React, otimizar desempenho Next.js, analisar tamanhos de bundle, criar boilerplates de projetos frontend, implementar acessibilidade ou revisar a qualidade do código frontend. |
+| `shadcn` | Gerencia componentes e projetos shadcn/ui, fornecendo contexto, documentação e padrões de uso para construir sistemas de design modernos. |
+| `software-architecture` | Guia para arquitetura de software focada em qualidade. Esta skill deve ser usada quando os usuários quiserem escrever código, projetar arquitetura, analisar código, em qualquer caso relacionado ao desenvolvimento de software. |
+| `spline-3d-integration` | Use ao adicionar cenas 3D interativas do Spline.design a projetos web, incluindo incorporação React e API de controle de tempo de execução. |
+| `tailwind-patterns` | Princípios do Tailwind CSS v4. Configuração CSS-first, container queries, padrões modernos, arquitetura de design tokens. |
+| `tanstack-query-expert` | Especialista em TanStack Query (React Query) — gerenciamento de estado assíncrono. Abrange busca de dados, configuração de tempo de expiração (stale time), mutações, atualizações otimistas e integração com Next.js App Router (SSR). |
+| `ui-component` | Gere um novo componente de UI que siga as convenções do StyleSeed Toss para estrutura, tokens, acessibilidade e ergonomia de componente. |
+| `ui-page` | Crie a estrutura de uma nova página mobile-first usando padrões de layout do StyleSeed Toss, ritmo de seção e componentes de shell existentes. |
+| `ui-pattern` | Gere padrões de UI reutilizáveis como seções de cartões, grades, listas, formulários e invólucros de gráficos usando primitivos do StyleSeed Toss. |
+| `ui-review` | Revise o código de UI quanto à conformidade com o sistema de design StyleSeed, acessibilidade, ergonomia mobile, disciplina de espaçamento e qualidade de implementação. |
+| `ui-tokens` | Liste, adicione e atualize design tokens StyleSeed mantendo fontes JSON, variáveis CSS e valores de modo escuro perfeitamente sincronizados. |
+| `ui-ux-pro-max` | Guia de design abrangente para aplicações web e mobile. Use ao projetar novos componentes de UI ou páginas, escolher paletas de cores e tipografia, ou revisar código em busca de problemas de UX. |
+| `ux-audit` | Audite telas em relação às heurísticas de Nielsen e melhores práticas de UX mobile usando a linguagem de design StyleSeed Toss como contexto de implementação. |
+| `ux-feedback` | Adicione estados de feedback de carregamento, vazio, erro e sucesso a componentes e páginas StyleSeed com regras práticas mobile-first. |
+| `ux-flow` | Projete fluxos de usuários e estrutura de tela usando padrões de UX StyleSeed como divulgação progressiva, navegação hub-and-spoke e pirâmides de informação. |
+| `ux-persuasion-engineer` | Uma frase - o que esta skill faz e quando invocá-la. |
+| `vercel-ai-sdk-expert` | Especialista no Vercel AI SDK. Abrange Core API (generateText, streamText), hooks de UI (useChat, useCompletion), chamada de ferramentas e streaming de componentes de UI com React e Next.js. |
+| `wcag-audit-patterns` | Guia abrangente para auditar conteúdo web contra diretrizes WCAG 2.2 com estratégias de remediação acionáveis. |
+| `web-artifacts-builder` | Para construir artefatos frontend claude.ai poderosos, siga estes passos: |
+| `zustand-store-ts` | Crie stores Zustand seguindo padrões estabelecidos com tipos TypeScript adequados e middlewares. |
 
 #### 🗄️ Backend & Bancos de Dados
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `gemini-api-dev` | The Gemini API provides access to Google's most advanced AI models. Key capabilities include: |
-| `gemini-api-integration` | Use when integrating Google Gemini API into projects. Covers model selection, multimodal inputs, streaming, function calling, and production best practices. |
-| `github` | Use the `gh` CLI for issues, pull requests, Actions runs, and GitHub API queries. |
-| `go-concurrency-patterns` | Master Go concurrency with goroutines, channels, sync primitives, and context. Use when building concurrent Go applications, implementing worker pools, or debugging race conditions. |
-| `golang-pro` | Master Go 1.22+ with modern patterns, advanced concurrency, performance optimization, and production-ready microservices. |
-| `llm-structured-output` | Get reliable JSON, enums, and typed objects from LLMs using response_format, tool_use, and schema-constrained decoding across OpenAI, Anthropic, and Google APIs. |
-| `microservices-patterns` | Master microservices architecture patterns including service boundaries, inter-service communication, data management, and resilience patterns for building distributed systems. |
-| `neon-postgres` | Expert patterns for Neon serverless Postgres, branching, connection pooling, and Prisma/Drizzle integration |
-| `python-patterns` | Python development principles and decision-making. Framework selection, async patterns, type hints, project structure. Teaches thinking, not copying. |
-| `python-performance-optimization` | Profile and optimize Python code using cProfile, memory profilers, and performance best practices. Use when debugging slow Python code, optimizing bottlenecks, or improving application performance. |
-| `python-pro` | Master Python 3.12+ with modern features, async programming, performance optimization, and production-ready practices. Expert in the latest Python ecosystem including uv, ruff, pydantic, and FastAPI. |
-| `rag-engineer` | Expert in building Retrieval-Augmented Generation systems. Masters embedding models, vector databases, chunking strategies, and retrieval optimization for LLM applications. |
-| `using-neon` | Neon is a serverless Postgres platform that separates compute and storage to offer autoscaling, branching, instant restore, and scale-to-zero. It's fully compatible with Postgres and works with any language, framework, or ORM that supports Postgres. |
-| `vector-database-engineer` | Expert in vector databases, embedding strategies, and semantic search implementation. Masters Pinecone, Weaviate, Qdrant, Milvus, and pgvector for RAG applications, recommendation systems, and similar |
+| `gemini-api-dev` | A Gemini API fornece acesso aos modelos de IA mais avançados do Google. As principais capacidades incluem: |
+| `gemini-api-integration` | Use ao integrar a Google Gemini API em projetos. Abrange seleção de modelo, entradas multimodais, streaming, chamadas de função e melhores práticas de produção. |
+| `github` | Use a CLI `gh` para issues, pull requests, execuções do Actions e consultas à GitHub API. |
+| `go-concurrency-patterns` | Domine simultaneidade Go com goroutines, canais, primitivas sync e contexto. Use ao construir aplicações Go simultâneas, implementar pools de trabalhadores ou depurar condições de corrida. |
+| `golang-pro` | Domine Go 1.22+ com padrões modernos, simultaneidade avançada, otimização de desempenho e microsserviços prontos para produção. |
+| `llm-structured-output` | Obtenha JSON, enums e objetos tipados confiáveis de LLMs usando response_format, tool_use e decodificação com restrição de esquema em APIs OpenAI, Anthropic e Google. |
+| `microservices-patterns` | Domine padrões de arquitetura de microsserviços incluindo limites de serviço, comunicação inter-serviços, gerenciamento de dados e padrões de resiliência para construir sistemas distribuídos. |
+| `neon-postgres` | Padrões especialistas para Postgres serverless Neon, branching, pool de conexões e integração Prisma/Drizzle. |
+| `python-patterns` | Princípios de desenvolvimento em Python e tomada de decisões. Seleção de framework, padrões assíncronos, dicas de tipo (type hints), estrutura de projeto. Ensina a pensar, não a copiar. |
+| `python-performance-optimization` | Faça perfil e otimize código Python usando cProfile, profilers de memória e melhores práticas de desempenho. Use ao depurar código Python lento, otimizar gargalos ou melhorar o desempenho de aplicações. |
+| `python-pro` | Domine Python 3.12+ com recursos modernos, programação assíncrona, otimização de desempenho e práticas prontas para produção. Especialista no ecossistema Python mais recente, incluindo uv, ruff, pydantic e FastAPI. |
+| `rag-engineer` | Especialista em construir sistemas de Retrieval-Augmented Generation. Domina modelos de embedding, bancos de dados vetoriais, estratégias de chunking e otimização de recuperação para aplicações LLM. |
+| `using-neon` | Neon é uma plataforma Postgres serverless que separa computação e armazenamento para oferecer dimensionamento automático, ramificação (branching), restauração instantânea e scale-to-zero. É totalmente compatível com Postgres e funciona com qualquer linguagem, framework ou ORM que suporte Postgres. |
+| `vector-database-engineer` | Especialista em bancos de dados vetoriais, estratégias de embedding e implementação de busca semântica. Domina Pinecone, Weaviate, Qdrant, Milvus e pgvector para aplicações RAG, sistemas de recomendação e similares. |
 | `web-scraper` | Web scraping inteligente multi-estrategia. Extrai dados estruturados de paginas web (tabelas, listas, precos). Paginacao, monitoramento e export CSV/JSON. |
-| `webapp-testing` | To test local web applications, write native Python Playwright scripts. |
+| `webapp-testing` | Para testar aplicações web locais, escreva scripts nativos Python Playwright. |
 
 #### 🚀 DevOps & Infraestrutura
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `bash-linux` | Bash/Linux terminal patterns. Critical commands, piping, error handling, scripting. Use when working on macOS or Linux systems. |
-| `cloudflare-workers-expert` | Expert in Cloudflare Workers and the Edge Computing ecosystem. Covers Wrangler, KV, D1, Durable Objects, and R2 storage. |
-| `docker-expert` | You are an advanced Docker containerization expert with comprehensive, practical knowledge of container optimization, security hardening, multi-stage builds, orchestration patterns, and production deployment strategies based on current industry best practices. |
-| `git-pr-review` | Generate a concise and structured PR description from commit history with minimal token usage |
-| `llm-app-patterns` | Production-ready patterns for building LLM applications, inspired by [Dify](https://github.com/langgenius/dify) and industry best practices. |
-| `local-llm-expert` | Master local LLM inference, model selection, VRAM optimization, and local deployment using Ollama, llama.cpp, vLLM, and LM Studio. Expert in quantization formats (GGUF, EXL2) and local AI privacy. |
-| `posix-shell-pro` | Expert in strict POSIX sh scripting for maximum portability across Unix-like systems. Specializes in shell scripts that run on any POSIX-compliant shell (dash, ash, sh, bash --posix). |
-| `turborepo-caching` | Configure Turborepo for efficient monorepo builds with local and remote caching. Use when setting up Turborepo, optimizing build pipelines, or implementing distributed caching. |
-| `vercel-deployment` | Expert knowledge for deploying to Vercel with Next.js |
+| `bash-linux` | Padrões de terminal Bash/Linux. Comandos críticos, pipes, tratamento de erros, scripts. Use ao trabalhar em sistemas macOS ou Linux. |
+| `cloudflare-workers-expert` | Especialista em Cloudflare Workers e ecossistema de Edge Computing. Abrange Wrangler, KV, D1, Durable Objects e armazenamento R2. |
+| `docker-expert` | Você é um especialista avançado em conteinerização Docker com conhecimento prático e abrangente sobre otimização de contêineres, endurecimento de segurança, construções em múltiplas etapas, padrões de orquestração e estratégias de implantação em produção baseadas nas melhores práticas atuais da indústria. |
+| `git-pr-review` | Gere uma descrição de PR concisa e estruturada a partir do histórico de commits com uso mínimo de tokens. |
+| `llm-app-patterns` | Padrões prontos para produção para construir aplicações LLM, inspirados pelo [Dify](https://github.com/langgenius/dify) e pelas melhores práticas da indústria. |
+| `local-llm-expert` | Domine a inferência LLM local, seleção de modelo, otimização de VRAM e implantação local usando Ollama, llama.cpp, vLLM e LM Studio. Especialista em formatos de quantização (GGUF, EXL2) e privacidade em IA local. |
+| `posix-shell-pro` | Especialista em scripts POSIX sh estritos para máxima portabilidade em sistemas tipo Unix. Especializa-se em shell scripts que rodam em qualquer shell compatível com POSIX (dash, ash, sh, bash --posix). |
+| `turborepo-caching` | Configure o Turborepo para builds eficientes de monorepo com cache local e remoto. Use ao configurar Turborepo, otimizar pipelines de build ou implementar cache distribuído. |
+| `vercel-deployment` | Conhecimento especialista para implantar na Vercel com Next.js. |
 
 #### 🧠 IA & LLM
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `ai-product` | Every product will be AI-powered. The question is whether you'll build it right or ship a demo that falls apart in production. |
-| `llm-prompt-optimizer` | Use when improving prompts for any LLM. Applies proven prompt engineering techniques to boost output quality, reduce hallucinations, and cut token usage. |
-| `openwiki-skill` | Direct Gemini-native integration of OpenWiki for autonomous, high-agency documentation management and release notes maintenance. |
-| `prompt-engineer` | Transforms user prompts into optimized prompts using frameworks (RTF, RISEN, Chain of Thought, RODES, Chain of Density, RACE, RISE, STAR, SOAP, CLEAR, GROW) |
-| `prompt-engineering-patterns` | Master advanced prompt engineering techniques to maximize LLM performance, reliability, and controllability. |
+| `ai-product` | Todo produto será impulsionado por IA. A questão é se você o construirá direito ou lançará uma demo que desmorona em produção. |
+| `llm-prompt-optimizer` | Use ao melhorar prompts para qualquer LLM. Aplica técnicas comprovadas de engenharia de prompt para aumentar a qualidade da saída, reduzir alucinações e cortar uso de tokens. |
+| `openwiki-skill` | Integração nativa do Gemini com o OpenWiki para gerenciamento autônomo e de alta agência de documentação e manutenção de notas de lançamento (release notes). |
+| `prompt-engineer` | Transforma prompts de usuário em prompts otimizados usando frameworks (RTF, RISEN, Chain of Thought, RODES, Chain of Density, RACE, RISE, STAR, SOAP, CLEAR, GROW). |
+| `prompt-engineering-patterns` | Domine técnicas avançadas de engenharia de prompt para maximizar o desempenho, a confiabilidade e a controlabilidade do LLM. |
 
 #### 📝 Documentação & Planejamento
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `architect-review` | Master software architect specializing in modern architecture |
-| `concise-planning` | Use when a user asks for a plan for a coding task, to generate a clear, actionable, and atomic checklist. |
-| `copywriting` | Write rigorous, conversion-focused marketing copy for landing pages and emails. Enforces brief confirmation and strict no-fabrication rules. |
-| `deep-research` | Run autonomous research tasks that plan, search, read, and synthesize information into comprehensive reports. |
-| `executing-plans` | Use when you have a written implementation plan to execute in a separate session with review checkpoints |
-| `linear-claude-skill` | Manage Linear issues, projects, and teams |
-| `memb-skill` | BDB local-first long-term memory engine (memB). Query, remember, and adapt preferences, code architectures, and developer patterns across tasks. |
-| `modern-javascript-patterns` | Comprehensive guide for mastering modern JavaScript (ES6+) features, functional programming patterns, and best practices for writing clean, maintainable, and performant code. |
-| `planning-with-files` | Work like Manus: Use persistent markdown files as your "working memory on disk." |
-| `product-manager-toolkit` | Essential tools and frameworks for modern product management, from discovery to delivery. |
-| `readme` | You are an expert technical writer creating comprehensive project documentation. Your goal is to write a README.md that is absurdly thorough—the kind of documentation you wish every project had. |
-| `test-driven-development` | Use when implementing any feature or bugfix, before writing implementation code |
-| `writing-plans` | Use when you have a spec or requirements for a multi-step task, before touching code |
+| `architect-review` | Mestre arquiteto de software especializado em arquitetura moderna. |
+| `concise-planning` | Use quando um usuário pede um plano para uma tarefa de código, para gerar um checklist claro, acionável e atômico. |
+| `copywriting` | Escreva copy de marketing rigoroso e focado em conversão para landing pages e e-mails. Impõe confirmação breve e regras estritas de não-fabricação. |
+| `deep-research` | Execute tarefas autônomas de pesquisa que planejam, buscam, leem e sintetizam informações em relatórios abrangentes. |
+| `executing-plans` | Use quando você tiver um plano de implementação escrito para executar em uma sessão separada com checkpoints de revisão. |
+| `linear-claude-skill` | Gerencie issues, projetos e equipes no Linear. |
+| `memb-skill` | Motor de memória local de longo prazo da BDB (memB). Consulte, lembre-se e adapte preferências, arquiteturas de código e padrões de desenvolvedor entre tarefas. |
+| `modern-javascript-patterns` | Guia abrangente para dominar os recursos modernos do JavaScript (ES6+), padrões de programação funcional e melhores práticas para escrever código limpo, sustentável e de alto desempenho. |
+| `planning-with-files` | Trabalhe como o Manus: Use arquivos markdown persistentes como sua "memória de trabalho em disco". |
+| `product-manager-toolkit` | Ferramentas e frameworks essenciais para o gerenciamento de produtos moderno, da descoberta à entrega. |
+| `readme` | Você é um redator técnico especialista na criação de documentação abrangente de projetos. Seu objetivo é escrever um README.md que seja absurdamente completo — o tipo de documentação que você gostaria que todo projeto tivesse. |
+| `test-driven-development` | Use ao implementar qualquer recurso ou correção de bug, antes de escrever o código de implementação. |
+| `writing-plans` | Use quando você tiver uma especificação ou requisitos para uma tarefa de múltiplas etapas, antes de tocar no código. |
 
 #### 🧊 3D & Motion
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `remotion` | Generate walkthrough videos from Stitch projects using Remotion with smooth transitions, zooming, and text overlays |
-| `threejs-skills` | Create 3D scenes, interactive experiences, and visual effects using Three.js. Use when user requests 3D graphics, WebGL experiences, 3D visualizations, animations, or interactive 3D elements. |
+| `remotion` | Gere vídeos de passo a passo de projetos Stitch usando Remotion com transições suaves, zoom e sobreposições de texto. |
+| `threejs-skills` | Crie cenas 3D, experiências interativas e efeitos visuais usando Three.js. Use quando o usuário solicitar gráficos 3D, experiências WebGL, visualizações 3D, animações ou elementos 3D interativos. |
 
 #### 📈 SEO & Marketing
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `geo-fundamentals` | Generative Engine Optimization for AI search engines (ChatGPT, Claude, Perplexity). |
-| `seo` | Run a broad SEO audit across technical SEO, on-page SEO, schema, sitemaps, content quality, AI search readiness, and GEO. Use as the umbrella skill when the user asks for a full SEO analysis or strategy. |
-| `seo-audit` | Diagnose and audit SEO issues affecting crawlability, indexation, rankings, and organic performance. |
-| `seo-technical` | Audit technical SEO across crawlability, indexability, security, URLs, mobile, Core Web Vitals, structured data, JavaScript rendering, and related platform signals like robots.txt and AI crawler access. |
+| `geo-fundamentals` | Otimização de Motor Generativo (Generative Engine Optimization) para motores de busca de IA (ChatGPT, Claude, Perplexity). |
+| `seo` | Execute uma auditoria SEO ampla abrangendo SEO técnico, SEO on-page, schema, sitemaps, qualidade de conteúdo, prontidão para busca por IA e GEO. Use como a skill guarda-chuva quando o usuário pedir uma análise ou estratégia completa de SEO. |
+| `seo-audit` | Diagnostique e audite problemas de SEO que afetam crawlability, indexação, classificações e desempenho orgânico. |
+| `seo-technical` | Audite o SEO técnico abrangendo crawlability, indexabilidade, segurança, URLs, mobile, Core Web Vitals, dados estruturados, renderização JavaScript e sinais de plataforma relacionados como robots.txt e acesso de crawler de IA. |
 
 #### 🔧 Programação Central & Depuração
 | Nome da Skill | Descrição |
 |------------|-------------|
 | `clean-code` | Esta skill incorpora os princípios do "Clean Code" de Robert C. Martin (Uncle Bob). Use-a para transformar "código que funciona" em "código que é limpo". |
-| `debugger` | Debugging specialist for errors, test failures, and unexpected behavior. Use proactively when encountering any issues. |
-| `playwright-skill` | IMPORTANT - Path Resolution: This skill can be installed in different locations (plugin system, manual installation, global, or project-specific). Before executing any commands, determine the skill directory based on where you loaded this SKILL.md file, and use that path in all commands below. |
-| `simplify-code` | Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes. |
-| `systematic-debugging` | Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes |
-| `typescript-pro` | Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns. |
+| `debugger` | Especialista em depuração de erros, falhas de teste e comportamentos inesperados. Use proativamente ao encontrar quaisquer problemas. |
+| `playwright-skill` | IMPORTANTE - Resolução de Caminho: Esta skill pode ser instalada em locais diferentes (sistema de plugin, instalação manual, global ou específico do projeto). Antes de executar qualquer comando, determine o diretório da skill com base em onde você carregou este arquivo SKILL.md, e use esse caminho em todos os comandos abaixo. |
+| `simplify-code` | Revise um diff para buscar clareza e simplificações seguras e, opcionalmente, aplique correções de baixo risco. |
+| `systematic-debugging` | Use ao encontrar qualquer bug, falha de teste ou comportamento inesperado, antes de propor correções. |
+| `typescript-pro` | Domine TypeScript com tipos avançados, generics e estrita segurança de tipos. Lida com sistemas de tipos complexos, decorators e padrões de nível corporativo. |
 
 #### 📦 Outros Utilitários
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `bdb-updater` | Proactively check for and install updates to the BDB Antigravity Skills package via NPM. |
-| `monorepo-management` | Build efficient, scalable monorepos that enable code sharing, consistent tooling, and atomic changes across multiple packages and applications. |
-| `obsidian-markdown` | Create and edit Obsidian Flavored Markdown with wikilinks, embeds, callouts, properties, and other Obsidian-specific syntax. Use when working with .md files in Obsidian, or when the user mentions wikilinks, callouts, frontmatter, tags, embeds, or Obsidian notes. |
-| `senior-fullstack` | Complete toolkit for senior fullstack with modern tools and best practices. |
-| `token-saver-config` | Context window output compression engine for CLI commands (60-99% token reduction). |
-| `web-performance-optimization` | Optimize website and web application performance including loading speed, Core Web Vitals, bundle size, caching strategies, and runtime performance |
+| `bdb-updater` | Verifique proativamente e instale atualizações no pacote BDB Antigravity Skills via NPM. |
+| `monorepo-management` | Construa monorepos eficientes e escaláveis que possibilitem compartilhamento de código, ferramentas consistentes e alterações atômicas em múltiplos pacotes e aplicações. |
+| `obsidian-markdown` | Crie e edite Obsidian Flavored Markdown com wikilinks, embeds, callouts, propriedades e outras sintaxes específicas do Obsidian. Use ao trabalhar com arquivos .md no Obsidian, ou quando o usuário mencionar wikilinks, callouts, frontmatter, tags, embeds ou notas Obsidian. |
+| `senior-fullstack` | Kit de ferramentas completo para fullstack sênior com ferramentas modernas e melhores práticas. |
+| `token-saver-config` | Motor de compressão de saída de janela de contexto para comandos CLI (60-99% de redução de tokens). |
+| `web-performance-optimization` | Otimize o desempenho de sites e aplicações web, incluindo velocidade de carregamento, Core Web Vitals, tamanho de bundle, estratégias de cache e desempenho de tempo de execução. |
 
 </details>
 
@@ -308,10 +308,10 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `bdbmediastorm` | The ultimate creative-tech and show-control brainstorming engine. Orchestrates multi-agent ideation focused on signal flow, hardware constraints, protocols, and BDB MCP integrations. Now strictly governed by the 3 Core Godmodes (engineering, ui-ux, shipping). |
-| `bdbrainstorm` | Combines multi-agent brainstorming, the /grill-me slash command, and the 3 Core Godmodes (godmode-engineering, godmode-ui-ux, godmode-shipping) to force a comprehensive, multi-agent ideation and technical design workflow. |
-| `github-repo` | Standards and workflows for writing, formatting, sanitizing, and publishing high-quality GitHub repositories, complementing openwiki-skill. |
-| `memb-ingest` | Deep scan and ingest project files (.md, .json, AGENTS.md, .openwiki) and past conversation logs into the local memB vector memory engine. |
+| `bdbmediastorm` | O motor definitivo para brainstorming tecnológico criativo e controle de shows. Orquestra a ideação multi-agente focada em fluxo de sinais, restrições de hardware, protocolos e integrações MCP da BDB. Agora rigorosamente governada pelos 3 Core Godmodes (engineering, ui-ux, shipping). |
+| `bdbrainstorm` | Combina brainstorming multi-agente, o comando slash /grill-me e os 3 Core Godmodes (godmode-engineering, godmode-ui-ux, godmode-shipping) para forçar um fluxo de trabalho abrangente de ideação multi-agente e design técnico. |
+| `github-repo` | Padrões e fluxos de trabalho para escrever, formatar, higienizar e publicar repositórios GitHub de alta qualidade, complementando a skill openwiki-skill. |
+| `memb-ingest` | Varredura profunda e ingestão de arquivos de projeto (.md, .json, AGENTS.md, .openwiki) e logs de conversas passadas para o motor de memória vetorial local memB. |
 
 </details>
 
@@ -322,38 +322,38 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 | Nome da Skill | Descrição |
 |------------|-------------|
 | `firecrawl-agent` | Extração de dados autônoma alimentada por IA que navega em sites complexos e retorna JSON estruturado. Use esta skill quando o usuário quiser dados estruturados de sites, precisar extrair tabelas de preços, listagens de produtos, entradas de diretório ou qualquer dado como JSON com um esquema. Acionado por "extrair dados estruturados", "obter todos os produtos", "puxar informações de preços", "extrair como JSON" ou quando o usuário fornece um esquema JSON para dados do site. Mais poderoso que a raspagem simples para extração estruturada de múltiplas páginas. |
-| `firecrawl-build-onboarding` | Get Firecrawl credentials and SDK setup into a project. Use when an application needs `FIRECRAWL_API_KEY`, when an agent should add Firecrawl to `.env`, when the user wants to authenticate Firecrawl for app code, or when choosing the first SDK and docs for a new Firecrawl integration. This skill includes its own browser auth flow, so it does not depend on the website onboarding skill. |
-| `firecrawl-build-search` | Integrate Firecrawl `/search` into product code and agent workflows. Use when an app needs discovery before extraction, when the feature starts with a query instead of a URL, or when the system should search the web and optionally hydrate result content. |
+| `firecrawl-build-onboarding` | Adicione credenciais Firecrawl e configuração do SDK em um projeto. Use quando um aplicativo precisa de `FIRECRAWL_API_KEY`, quando um agente deve adicionar Firecrawl ao `.env`, quando o usuário deseja autenticar o Firecrawl para o código do aplicativo ou ao escolher a primeira documentação e SDK para uma nova integração Firecrawl. Esta skill inclui seu próprio fluxo de autenticação de navegador, portanto, não depende da skill de integração do site. |
+| `firecrawl-build-search` | Integre o `/search` do Firecrawl em código de produto e fluxos de trabalho de agentes. Use quando um aplicativo precisar de descoberta antes da extração, quando a feature iniciar com uma query em vez de uma URL, ou quando o sistema precisar pesquisar na web e opcionalmente hidratar o conteúdo do resultado. |
 
 #### 🗄️ Backend & Bancos de Dados
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `firecrawl-build` | Integrate Firecrawl into product code for web scraping, crawling, searching, and interaction. Use this skill when an application needs to access web data, extract content, or automate web interactions. |
-| `firecrawl-build-interact` | Integrate Firecrawl `/interact` into product code for dynamic pages and browser actions after scraping. Use when a feature needs clicks, form fills, pagination, authentication-aware flows, or other multi-step interactions that plain `/scrape` cannot complete. |
-| `firecrawl-download` | Download an entire website as local files — markdown, screenshots, or multiple formats per page. Use this skill when the user wants to save a site locally, download documentation for offline use, bulk-save pages as files, or says "download the site", "save as local files", "offline copy", "download all the docs", or "save for reference". Combines site mapping and scraping into organized local directories. |
-| `firecrawl-interact` | Control and interact with a live browser session on any scraped page — click buttons, fill forms, navigate flows, and extract data using natural language prompts or code. Use when the user needs to interact with a webpage beyond simple scraping: logging into a site, submitting forms, clicking through pagination, handling infinite scroll, navigating multi-step checkout or wizard flows, or when a regular scrape failed because content is behind JavaScript interaction. Also useful for authenticated scraping via profiles. Triggers on "interact", "click", "fill out the form", "log in to", "sign in", "submit", "paginated", "next page", "infinite scroll", "interact with the page", "navigate to", "open a session", or "scrape failed". |
+| `firecrawl-build` | Integre o Firecrawl no código de produto para scraping, crawling, buscas e interações web. Use esta skill quando uma aplicação precisar acessar dados web, extrair conteúdo ou automatizar interações web. |
+| `firecrawl-build-interact` | Integre o `/interact` do Firecrawl em código de produto para páginas dinâmicas e ações de navegador após scraping. Use quando uma feature precisar de cliques, preenchimentos de formulário, paginação, fluxos com reconhecimento de autenticação, ou outras interações de múltiplas etapas que um simples `/scrape` não consegue completar. |
+| `firecrawl-download` | Baixe um site inteiro como arquivos locais — markdown, capturas de tela, ou múltiplos formatos por página. Use esta skill quando o usuário quiser salvar um site localmente, baixar documentação para uso offline, salvar páginas em lote como arquivos, ou disser "baixar o site", "salvar como arquivos locais", "cópia offline", "baixar todas as docs", ou "salvar para referência". Combina mapeamento de site e scraping em diretórios locais organizados. |
+| `firecrawl-interact` | Controle e interaja com uma sessão de navegador ao vivo em qualquer página raspada — clique em botões, preencha formulários, navegue em fluxos e extraia dados usando prompts em linguagem natural ou código. Use quando o usuário precisar interagir com uma página da web além da raspagem simples: fazendo login em um site, enviando formulários, clicando através de paginação, lidando com rolagem infinita, navegando no checkout ou fluxos de assistente de múltiplos passos, ou quando uma raspagem regular falhar porque o conteúdo está por trás da interação JavaScript. Também útil para raspagem autenticada via perfis. É ativada em comandos como "interagir", "clicar", "preencher o formulário", "fazer login em", "entrar", "enviar", "paginada", "próxima página", "rolagem infinita", "interagir com a página", "navegar para", "abrir uma sessão", ou "falha na raspagem". |
 
 #### 🚀 DevOps & Infraestrutura
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `firecrawl` | Search, scrape, and interact with the web via the Firecrawl CLI. Use this skill whenever the user wants to search the web, find articles, research a topic, look something up online, scrape a webpage, grab content from a URL, get data from a website, crawl documentation, download a site, or interact with pages that need clicks or logins. Also use when they say "fetch this page", "pull the content from", "get the page at https://", or reference external websites. This provides real-time web search with full page content and interact capabilities — beyond what Claude can do natively with built-in tools. Do NOT trigger for local file operations, git commands, deployments, or code editing tasks. |
+| `firecrawl` | Pesquise, raspe e interaja com a web através da CLI do Firecrawl. Use esta skill sempre que o usuário quiser buscar na web, encontrar artigos, pesquisar um tópico, procurar algo online, raspar uma página da web, capturar conteúdo de uma URL, obter dados de um site, fazer crawl de documentação, baixar um site ou interagir com páginas que precisam de cliques ou logins. Use também quando eles disserem "busque esta página", "puxe o conteúdo de", "obter a página em https://" ou referenciarem sites externos. Isso provê pesquisa web em tempo real com conteúdo completo da página e capacidades interativas — além do que o Claude pode fazer nativamente com as ferramentas embutidas. NÃO acione para operações de arquivos locais, comandos git, implantações ou tarefas de edição de código. |
 
 #### 🧠 IA & LLM
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `firecrawl-scrape` | Extract clean markdown from any URL, including JavaScript-rendered SPAs. Use this skill whenever the user provides a URL and wants its content, says "scrape", "grab", "fetch", "pull", "get the page", "extract from this URL", or "read this webpage". Handles JS-rendered pages, multiple concurrent URLs, and returns LLM-optimized markdown. Use this instead of WebFetch for any webpage content extraction. |
+| `firecrawl-scrape` | Extraia markdown limpo de qualquer URL, incluindo SPAs renderizados em JavaScript. Use esta skill sempre que o usuário fornecer uma URL e quiser seu conteúdo, disser "raspar", "pegar", "buscar", "puxar", "obter a página", "extrair desta URL", ou "ler esta página da web". Lida com páginas renderizadas em JS, múltiplas URLs simultâneas e retorna markdown otimizado para LLM. Use esta em vez do WebFetch para qualquer extração de conteúdo de página web. |
 
 #### 📝 Documentação & Planejamento
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `firecrawl-crawl` | Bulk extract content from an entire website or site section. Use this skill when the user wants to crawl a site, extract all pages from a docs section, bulk-scrape multiple pages following links, or says "crawl", "get all the pages", "extract everything under /docs", "bulk extract", or needs content from many pages on the same site. Handles depth limits, path filtering, and concurrent extraction. |
+| `firecrawl-crawl` | Extraia conteúdo em massa de um site inteiro ou seção de site. Use esta skill quando o usuário quiser fazer crawl de um site, extrair todas as páginas de uma seção de documentação, raspar várias páginas em lote seguindo links, ou disser "crawl", "obter todas as páginas", "extrair tudo em /docs", "extrair em lote", ou precisar de conteúdo de muitas páginas no mesmo site. Lida com limites de profundidade, filtragem de rotas e extração concorrente. |
 
 #### 📦 Outros Utilitários
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `firecrawl-build-scrape` | Integrate Firecrawl `/scrape` into product code for single-page extraction. Use when an app already has a URL and needs markdown, HTML, links, screenshots, metadata, or structured page output. Prefer this skill over broader crawl patterns when the feature is page-level. |
-| `firecrawl-map` | Discover and list all URLs on a website, with optional search filtering. Use this skill when the user wants to find a specific page on a large site, list all URLs, see the site structure, find where something is on a domain, or says "map the site", "find the URL for", "what pages are on", or "list all pages". Essential when the user knows which site but not which exact page. |
-| `firecrawl-search` | Web search with full page content extraction. Use this skill whenever the user asks to search the web, find articles, research a topic, look something up, find recent news, discover sources, or says "search for", "find me", "look up", "what are people saying about", or "find articles about". Returns real search results with optional full-page markdown — not just snippets. Provides capabilities beyond Claude's built-in WebSearch. |
+| `firecrawl-build-scrape` | Integre o `/scrape` do Firecrawl em código de produto para extração de página única. Use quando um aplicativo já tiver uma URL e precisar de markdown, HTML, links, capturas de tela, metadados ou saída de página estruturada. Prefira esta skill sobre padrões de crawl mais amplos quando a funcionalidade for ao nível da página. |
+| `firecrawl-map` | Descubra e liste todas as URLs em um site, com filtragem de pesquisa opcional. Use esta skill quando o usuário quiser encontrar uma página específica em um site grande, listar todas as URLs, ver a estrutura do site, encontrar onde algo está em um domínio, ou disser "mapear o site", "encontrar a URL para", "quais páginas estão em", ou "listar todas as páginas". Essencial quando o usuário sabe qual site, mas não qual página exata. |
+| `firecrawl-search` | Busca na web com extração completa do conteúdo da página. Use esta skill sempre que o usuário pedir para buscar na web, encontrar artigos, pesquisar um tópico, procurar por algo, descobrir notícias recentes, encontrar fontes, ou disser "buscar por", "encontre para mim", "procurar", "o que as pessoas estão dizendo sobre", ou "encontre artigos sobre". Retorna resultados de busca reais com markdown opcional da página completa — não apenas trechos. Provê capacidades além do WebSearch integrado do Claude. |
 
 </details>
 
