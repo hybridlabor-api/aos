@@ -67,6 +67,8 @@ A straight-line run through the BDB agent roster. Whoever invokes this skill inv
 - **Action**: reviews the plan for module boundaries, dependency direction, and build order. Approves it, or sends it back to Architect once for a revision. This is a gate, not a deliverable — TechLead does not invoke Architect itself; the invoker re-runs step 1 if TechLead rejects.
 - **Writes**: no separate file; approval is just the invoker's own record of the gate having passed.
 
+> **Optional — Plan Canvas.** Before or alongside TechLead's gate, the plan can be reviewed in the browser: `aos-plan-canvas open production_artifacts/00_execution_plan.md`, then `aos-plan-canvas await …`. An `approve` verdict is a human confirmation of the gate. This is optional; the pipeline runs unchanged without it. See the `plan-canvas` skill.
+
 ### 3. Build (parallel, stream-selective)
 Run only the streams the goal actually needs. A plain backend feature does not need step 3a or 3c; a pure copy change does not need 3b. Each stream's `skills:` frontmatter already lists what it should reach for — the invoker passes that list through rather than restating it here.
 
