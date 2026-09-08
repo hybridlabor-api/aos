@@ -8,7 +8,8 @@
     "bdb-dev-optimized-agent-skills": "installer.js",
     "bdb-agent-skills-pro": "installer.js",
     "bdb-agent-skills": "installer.js",
-    "setup-saas": "bin/setup-saas.mjs"
+    "setup-saas": "bin/setup-saas.mjs",
+    "aos-plan-canvas": "skills/global_config/plan-canvas/scripts/plan-canvas.js"
   },
   "publishConfig": {
     "access": "public"
@@ -29,6 +30,7 @@
     "GEMINI.md",
     "CODEX.md",
     "CLAUDE.md",
+    "THIRD_PARTY_NOTICES.md",
     ".agents/",
     ".claude/",
     ".codex-plugin/",
