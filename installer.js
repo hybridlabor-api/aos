@@ -1256,15 +1256,15 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     });
 }
 
-// AOS wordmark banner. Rendered after the kinetic intro finishes, before the
+// Wordmark banner. Rendered after the kinetic intro finishes, before the
 // hero header -- the user wanted both kept, not one replacing the other.
 // Built programmatically rather than stored as an escaped string literal:
 // the wordmark carries a per-column pink -> yellow -> amethyst gradient,
 // which needs a truecolor escape emitted per character run.
 const BANNER_WORDMARK = [
-    "   ▄██████▄       ▄██████████▄     ▄██████████▄ ",
-    " ██▄▄▄▄▄▄▄▄██    ██          ██    ▀██████████▄▄",
-    "██          ██    ▀██████████▀     ▄██████████▀ "
+    "█████▄ ████▄  █████▄   ▄████▄  ▄████  ██████ ███  ██ ██████   ▄████▄ ▄█████ ",
+    "██▄▄██ ██  ██ ██▄▄██   ██▄▄██ ██  ▄▄▄ ██▄▄   ██ ▀▄██   ██     ██  ██ ▀▀▀▄▄▄ ",
+    "██▄▄█▀ ████▀  ██▄▄█▀   ██  ██  ▀███▀  ██▄▄▄▄ ██   ██   ██     ▀████▀ █████▀"
 ];
 
 function buildWordmarkBanner() {
@@ -1289,7 +1289,9 @@ function buildWordmarkBanner() {
         return out + colors.reset;
     }).join('\n');
 
-    const divider = '─'.repeat(width);
+    const label = ' N O D E F O R G E ';
+    const fill = width - label.length;
+    const divider = '─'.repeat(Math.floor(fill / 2)) + label + '─'.repeat(fill - Math.floor(fill / 2));
 
     return `${colors.bold}\n${wordmark}\n\n${colors.beige}${divider}${colors.reset}`;
 }
