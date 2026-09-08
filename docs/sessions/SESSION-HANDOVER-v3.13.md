@@ -8,7 +8,7 @@ preceded all of this; this file is the status of *acting* on it.
 ## Where things stand
 
 - **Branch:** `feat/agent-skills-v3.13`, worktree at
-  `/Users/timrennings/bdb-dev/bdb-dev-optimized-agent-skills.worktrees/agent-skills-v3.13`.
+  `~/bdb-dev/bdb-dev-optimized-agent-skills.worktrees/agent-skills-v3.13`.
 - **`main` has never been touched.** Nothing pushed. No PR opened.
 - ~24 commits. All of Phases −1 through 4 from `audit-agents.md` are done:
   audit, dedup + domain tagging, GO-gate hook, installer agent-generation,
@@ -169,7 +169,7 @@ Ran via `HOME=$(mktemp -d) node .../installer.js` from the user's real `~`.
 5. **Confirmed, separate, real safety gap:** both hooks errored
    (non-blocking) during the test run — `PreToolUse:Bash hook error`,
    `Stop hook error: Cannot find module
-   '/Users/timrennings/startcycle-test-01/.claude/hooks/graph-gate.mjs'`.
+   '~/startcycle-test-01/.claude/hooks/graph-gate.mjs'`.
    Root cause: hooks are registered **globally** in `~/.claude/settings.json`
    using `${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs` — a path that only
    resolves inside the original `bdb-dev-optimized-agent-skills` repo. In

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execSync } = require('child_process');
 
@@ -14,7 +15,7 @@ const REPOS = [
   { id: 'bdb-dev-creator-extension', name: 'Creator Extension', type: 'module' }
 ];
 
-const BASE_PATH = '/Users/timrennings/bdb-dev';
+const BASE_PATH = path.join(os.homedir(), 'dev', 'bdb-dev');
 const REPORT_DIR = path.join(BASE_PATH, 'marketing-intern', 'reports');
 const REPORT_FILE = path.join(REPORT_DIR, 'ecosystem_health_latest.html');
 

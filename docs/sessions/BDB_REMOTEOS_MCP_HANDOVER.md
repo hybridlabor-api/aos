@@ -9,8 +9,8 @@
 
 | Component | Source Location | Target in `bdb-dev-optimized-agent-skills` |
 | :--- | :--- | :--- |
-| **MCP Server** | `/Users/timrennings/bdb-saashost-engine/packages/bdb-remoteos-mcp/` | `mcps/bdb-remoteos-mcp/` |
-| **Skill Definition** | `/Users/timrennings/bdb-saashost-engine/server-config/skills/bdbsaashost/SKILL.md` | `skills/global_config/bdbsaashost/SKILL.md` |
+| **MCP Server** | `~/bdb-saashost-engine/packages/bdb-remoteos-mcp/` | `mcps/bdb-remoteos-mcp/` |
+| **Skill Definition** | `~/bdb-saashost-engine/server-config/skills/bdbsaashost/SKILL.md` | `skills/global_config/bdbsaashost/SKILL.md` |
 | **Server Engine** | `https://github.com/hybridlabor-api/bdb-saashost-engine` | External Infrastructure Engine |
 
 ---
