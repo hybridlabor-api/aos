@@ -50,6 +50,22 @@ Don't guess which pipeline to use. Follow these rules (source of truth: `CLAUDE.
 ### Overlap: Brainstorming
 * **`bdbrainstorm`**: For multi-agent software engineering ideation, UI/UX design, and architecture planning. Handoffs to `/startcycle-graph`.
 * **`bdbmediastorm`**: For creative-tech, live event technology, and show-control systems (TouchDesigner, Resolume, grandMA3).
+* **`brainstorming`**: Lighter-weight than `bdbrainstorm` — use before any creative or constructive work to turn a vague idea into a validated design through disciplined reasoning, without spinning up a multi-agent cycle.
+
+### Overlap: Planning Before Code
+* **`concise-planning`**: A coding task needs a plan. Produces a clear, atomic checklist.
+* **`writing-plans`**: You already have a spec/requirements for a multi-step task — write the plan before touching code.
+* **`executing-plans`**: You already have a written plan and need to execute it in a separate session with review checkpoints.
+* **`planning-with-files`**: Work like Manus — persistent markdown files as working memory on disk, for long-running or resumable tasks.
+* **`deep-research`**: The task is autonomous research (plan → search → read → synthesize into a report), not implementation.
+
+### Overlap: Multi-Agent Session &amp; Tool Management
+* **`agent-manager-skill`**: Managing multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling.
+* **`agent-orchestrator`**: Meta-skill that scans available skills, matches them to task capabilities, and coordinates multi-skill workflows — one level above picking a single skill by hand.
+* **`agent-tool-builder`**: You're building a *new* tool for an agent to use (not picking an existing skill) — schema design through error handling.
+* **`agent-memory-mcp`**: A hybrid persistent/searchable memory system for agents (architecture, patterns, decisions) — distinct from `memb-skill`/`memb-ingest`, which are BDB's own memB engine specifically.
+* **`triage`**: Moving issues/external PRs through a categorize → verify → brief state machine, not general planning.
+* **`prototype`**: A throwaway prototype to sanity-check a state model or UI direction before committing to real work.
 
 *Also see:* `agent-pipeline`, `subagent-driven-development`.
 
@@ -73,6 +89,19 @@ Use these skills for UI development, component architecture, and design taste.
 * **`react-patterns`**: Use for core hooks, composition, and TypeScript best practices.
 * **`nextjs-app-router-patterns` / `nextjs-best-practices`**: Use specifically for Next.js App Router architecture and routing.
 * **`react-component-performance`**: Use for targeted diagnosis of slow React components (e.g., render bottlenecks).
+* **`tanstack-query-expert`**: Async state/data-fetching specifically — TanStack Query mutations, stale time, optimistic updates.
+* **`zustand-store-ts`**: Client-side state stores with Zustand, typed and with middleware.
+* **`web-performance-optimization`**: Broader than component-level — Core Web Vitals, bundle size, caching across the whole app.
+* **`wcag-audit-patterns`**: Accessibility compliance auditing against WCAG 2.2, not general UX review.
+* **`senior-fullstack`** / **`frontend-dev-guidelines`**: General-purpose fullstack/frontend engineering standards when the task doesn't need a narrower skill above.
+* **`landing-page-generator`**: Specifically a high-converting marketing landing page (PAS/AIDA/BAB copy frameworks), not a general app page.
+
+### Overlap: The UX Cluster
+* **`ux-flow`**: Designing user flows, progressive disclosure, hub-and-spoke navigation (StyleSeed patterns).
+* **`ux-audit`**: Auditing existing screens against Nielsen's heuristics and mobile UX best practices.
+* **`ux-feedback`**: Adding loading/empty/error/success feedback states to components.
+* **`ux-persuasion-engineer`**: Conversion/onboarding/checkout flows specifically — choice architecture, friction audits, commitment design.
+* **`ui-ux-pro-max`**: Broader design guide (color, typography, general UI review) when the task doesn't fit one of the narrower UX skills above.
 
 *Also see:* `bdbdesignpro`, `design-spells`.
 
@@ -97,6 +126,11 @@ Use these for server-side architecture, APIs, workflows, and database schema des
 * **`n8n-code-javascript` / `n8n-code-python`**: Use when writing custom code inside n8n Code nodes (handles `$input`/`$json` nuances for JS/Python).
 * **`n8n-expression-syntax`**: Use for debugging `{{}}` expressions.
 * **`n8n-mcp-tools-expert`**: Use for integrating n8n-mcp tools effectively.
+
+### Overlap: Architecture Level
+* **`software-architecture`**: General quality-focused architecture guidance — the default when the task is "design/analyze architecture" without a more specific fit below.
+* **`microservices-patterns`**: Specifically service boundaries, inter-service communication, and distributed-systems resilience.
+* **`architect-review`**: Reviewing an existing architecture against modern practice, not designing a new one from scratch.
 
 *Also see:* `api-patterns`, `openapi-spec-generation`, `golang-pro`, `python-pro`.
 
@@ -127,7 +161,7 @@ Use these to ship code, manage infrastructure, and handle source control.
 
 * **Godmode Shipping**: `godmode-shipping` is the ultimate pre-launch gatekeeper (lint, tests, rollbacks).
 * **Deployments**: `vercel-deployment` (Next.js/React), `cloudflare-workers-expert` (Edge/KV/D1), `bdb-deploy` (rsync over SSH to VPS), `docker-expert` (Containers).
-* **Git/GitHub**: `git-advanced-workflows`, `git-pr-review`, `github-workflow-automation`, `github-repo`.
+* **Git/GitHub**: `git-advanced-workflows`, `git-pr-review`, `github-workflow-automation`, `github-repo`, `github-actions-templates` (CI/CD workflow patterns specifically).
 * **Monorepos**: `turborepo-caching`, `monorepo-management`.
 
 ---
@@ -139,9 +173,11 @@ Use these when building AI products or optimizing models.
 * **Top Picks:** `prompt-engineer`, `llm-structured-output`, `rag-engineer`
 
 * **Agent Dev**: `ai-agent-development`, `crewai`.
-* **LLM Integration**: `gemini-api-integration`, `local-llm-expert`, `llm-app-patterns`.
+* **LLM Integration**: `gemini-api-integration`, `gemini-api-dev` (Gemini API model capabilities specifically), `local-llm-expert`, `llm-app-patterns`.
+* **Conversational AI Products**: `llm-application-dev-ai-assistant` — building a chatbot/assistant product end-to-end, not just integrating one API.
 * **Prompting**: `prompt-engineering-patterns`, `llm-prompt-optimizer`.
-* **RAG**: `rag-implementation`.
+* **RAG**: `rag-implementation`, `rag-engineer` (broader — embedding models, vector DB selection), `vector-database-engineer` (specifically Pinecone/Weaviate/Qdrant/Milvus/pgvector selection and tuning).
+* **Vercel AI SDK**: `vercel-ai-sdk-expert` — `generateText`/`streamText`, UI hooks, tool calling specifically on Vercel's SDK.
 
 ---
 
@@ -165,6 +201,16 @@ Use these for raw problem solving and code hygiene.
 * **Debugging**: `debugger` (general errors), `systematic-debugging` (structured triage before fixing).
 * **Hygiene**: `simplify-code` (diff review for clarity).
 * **TDD**: `tdd-workflow`.
+
+### Overlap: Language Expertise
+* **`typescript-pro`**: Advanced types, generics, strict type safety, enterprise patterns.
+* **`modern-javascript-patterns`**: ES6+ features and functional patterns (no TypeScript-specific typing concerns).
+* **`python-patterns`**: Framework selection, async patterns, project structure — decision-making, not a specific bug.
+* **`python-performance-optimization`**: An existing Python app is slow — profiling and bottleneck fixes specifically.
+* **`go-concurrency-patterns`**: Goroutines, channels, sync primitives, race-condition debugging.
+* **`bash-linux`**: General Bash/Linux scripting patterns, macOS or Linux.
+* **`posix-shell-pro`**: The script must run on any POSIX shell (dash/ash/sh), not just bash.
+* **`tmux`**: Terminal multiplexing and persistent remote session management specifically.
 
 ---
 
