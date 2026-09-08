@@ -36,7 +36,7 @@ Autonomous verification and remediation skill for maintaining 100% operational i
 
 ## Verification
 - [ ] Health check script `ecosystem-health-audit.js` run completed with exit code `0`.
-- [ ] HTML report generated and verifiable at `/Users/timrennings/bdb-dev/marketing-intern/reports/ecosystem_health_latest.html`.
+- [ ] HTML report generated and verifiable at `~/bdb-dev/marketing-intern/reports/ecosystem_health_latest.html`.
 - [ ] Git working trees for all 8 repositories are clean.
 - [ ] NPM versions are fully synchronized with remote packages.
 
@@ -53,11 +53,11 @@ Autonomous verification and remediation skill for maintaining 100% operational i
 ## Automated Health Check Script
 Run the automated audit at any time:
 ```bash
-/Users/timrennings/bdb-dev/scripts/ecosystem-health-audit.js
+~/bdb-dev/scripts/ecosystem-health-audit.js
 ```
 
 ### Script Output:
-* **HTML Dashboard**: `/Users/timrennings/bdb-dev/marketing-intern/reports/ecosystem_health_latest.html`
+* **HTML Dashboard**: `~/bdb-dev/marketing-intern/reports/ecosystem_health_latest.html`
 * **Browser Launch**: Automatically opens the report in Chrome / Default Browser.
 * **Exit Code**: Returns `0` if all healthy, `1` if attention/remediation is required.
 

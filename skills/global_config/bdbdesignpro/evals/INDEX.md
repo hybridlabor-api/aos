@@ -194,7 +194,7 @@ timeout_seconds: 30
 ### Via `claude plugin eval` (Early Access)
 
 ```bash
-cd /Users/timrennings/.claude/skills/bdbdesignpro
+cd ~/.claude/skills/bdbdesignpro
 claude plugin eval --eval-dir evals --runs 3
 ```
 
@@ -226,19 +226,19 @@ Use these to manually invoke the skill and check responses against criteria.
 
 ## Deliverable Files
 
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/css-hover-reveal/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/gsap-scroll-pinning/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/motion-layout-transition/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/react-spring-drag/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/threejs-particles/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/animejs-svg-morph/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/css-scroll-view/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/modal-open-close/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/animejs-version-gate/case.yaml` ⚠️ CRITICAL
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/layout-thrashing-drawer/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/cleanup-gsap/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/reduced-motion-stagger/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/duration-ceiling/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/brand-mint-cyan/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/brand-glassmorphism/case.yaml`
-- `/Users/timrennings/.claude/skills/bdbdesignpro/evals/INDEX.md` (this file)
+- `~/.claude/skills/bdbdesignpro/evals/css-hover-reveal/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/gsap-scroll-pinning/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/motion-layout-transition/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/react-spring-drag/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/threejs-particles/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/animejs-svg-morph/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/css-scroll-view/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/modal-open-close/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/animejs-version-gate/case.yaml` ⚠️ CRITICAL
+- `~/.claude/skills/bdbdesignpro/evals/layout-thrashing-drawer/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/cleanup-gsap/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/reduced-motion-stagger/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/duration-ceiling/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/brand-mint-cyan/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/brand-glassmorphism/case.yaml`
+- `~/.claude/skills/bdbdesignpro/evals/INDEX.md` (this file)
