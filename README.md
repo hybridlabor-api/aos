@@ -1,4 +1,4 @@
-![BDB DEV Media | Event – Optimized Agent Skills](assets/header.jpg)
+![AOS — BDB Agent OS](assets/header-v4.jpg)
 
 🌐 **Language / Sprache / Idioma**: **English** | [ 🇩🇪 Deutsch ](README.de.md) | [ 🇵🇹 Português ](README.pt.md)
 
@@ -11,20 +11,20 @@
 
 ──────────────────────────── N O D E F O R G E ─────────────────────────────
 
-            O P T I M I Z E D   A G E N T   S K I L L S  ·  v3.13
+            O P T I M I Z E D   A G E N T   S K I L L S  ·  v4.0.0
 ```
 
-# 🚀 BDB DEV - Optimized Creative & Full-Stack Skills Pack
+# 🚀 AOS — BDB Agent OS · Optimized Creative & Full-Stack Skills Pack
 
-[![CI](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/actions)
-[![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/bdb-dev-optimized-agent-skills.svg)](https://www.npmjs.com/package/@hybridlabor-api/bdb-dev-optimized-agent-skills)
-[![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
+[![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
+[![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
+[![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![skills](https://img.shields.io/badge/skills-162%20curated-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
+[![skills](https://img.shields.io/badge/skills-154%20curated-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
 
-> **Supercharging AI coding agents with 162 hyper-curated skills, 22 local MCPs, and a runnable multi-agent dispatcher graph.**
+> **Supercharging AI coding agents with 154 hyper-curated skills, 21 local MCP wrappers, and a runnable multi-agent dispatcher graph.**
 
-Welcome to **BDB DEV — v3.13 "NODEFORGE"**: 162 curated skills, 22 local MCP servers, and a dispatcher graph that turns them into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
+Welcome to **BDB Agent OS — AOS v4.0.0**: 154 curated skills, 21 local MCP wrappers, and a dispatcher graph that turns them into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
 
 It is harness-neutral by design, not "optimized for one tool with others as an afterthought": the dispatcher graph runs on Claude Code's Dynamic Workflows, the same skills and MCP configuration install natively into **Google Antigravity, ChatGPT Codex / Codex CLI, Claude Desktop, Cursor, Aider, Roo Code, Cline, and Windsurf**, and the lightweight `/startcycle-graph-user` variant falls back to Claude Code's own subagents on any machine that has none of the above installed.
 
@@ -33,14 +33,14 @@ It is harness-neutral by design, not "optimized for one tool with others as an a
 
 ---
 
-### 🔨 What v3.13 "NODEFORGE" changes
+### 🔨 What v4.0.0 "AOS" changes
 
 This release moves the multi-agent pipeline from prose into an executable
 state machine, and hardens the installer around it.
 
 - **A dispatcher graph that actually runs.** Seven nodes, explicit edge
   predicates, a Reviewer repair loop with a no-progress guard, and automated
-  escalation to a human when the loop stops making progress. [Details below](#-nodeforge-the-dispatcher-graph).
+  escalation to a human when the loop stops making progress. [Details below](#-aos-the-dispatcher-graph).
 - **Three pipeline variants** (`/startcycle`, `/startcycle-graph`,
   `/startcycle-graph-user`) so the machinery matches the task instead of
   forcing full ceremony on a two-file change.
@@ -63,7 +63,7 @@ state machine, and hardens the installer around it.
 
 ### 🪐 Universal Agent Harness
 The installer features a fully automated Universal Sync engine. It scans your system for **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline**, and injects the curated MCP configuration and Godmode rules across all environments simultaneously.
-- **Local Project Harness:** Instead of installing globally into `$HOME`, drop the `.agents` contract, the gate hooks and the dispatcher workflow directly into a single project — `npx @hybridlabor-api/bdb-dev-optimized-agent-skills --project-harness`.
+- **Local Project Harness:** Instead of installing globally into `$HOME`, drop the `.agents` contract, the gate hooks and the dispatcher workflow directly into a single project — `npx @hybridlabor-api/aos --project-harness`.
 
 ### 🧩 Ecosystem Integrations
 This package acts as the bridge to three major upstream capabilities:
@@ -74,7 +74,7 @@ This package acts as the bridge to three major upstream capabilities:
 ### 🔗 Recommended Companion Plugins (Claude Code)
 Neither of these ships inside this package — they are independent, community-maintained
 Claude Code plugins that pair naturally with the `agy`-delegation pattern
-[`/startcycle-graph-user`](#-nodeforge-the-dispatcher-graph) already uses. Install them
+[`/startcycle-graph-user`](#-aos-the-dispatcher-graph) already uses. Install them
 separately if you want the same routing available outside a `/startcycle` run.
 
 - **[antigravity-for-claude-code](https://github.com/yuting0624/antigravity-for-claude-code)**
@@ -101,16 +101,16 @@ separately if you want the same routing available outside a `/startcycle` run.
 ## Overview
 
 This repo ships three things: a curated skill library for coding agents, an
-installer that wires them (plus 22 local MCP servers) into whichever harness
+installer that wires them (plus 21 local MCP wrappers) into whichever harness
 you use, and a dispatcher graph that orchestrates them as a multi-agent
-build pipeline. See [NODEFORGE: The Dispatcher Graph](#-nodeforge-the-dispatcher-graph)
+build pipeline. See [AOS: The Dispatcher Graph](#-aos-the-dispatcher-graph)
 below for how the pipeline itself works.
 
 ---
 
-## 🌟 162 Optimized Skills
+## 🌟 154 Optimized Skills
 
-We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **162 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
+We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **154 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
 
 These skills are precision-engineered to ensure agents waste no time on redundant tasks and instead operate with maximum agency, strict architectural constraints, and robust context awareness.
 
@@ -118,7 +118,7 @@ These skills are precision-engineered to ensure agents waste no time on redundan
 
 ### 🛡️ The 6 Godmodes (Apex Layer)
 
-Instead of letting agents wander through generic instructions, the top-tier of this repository enforces six **Hyper-Curated Godmodes**. Three of them are not just skills — they are the literal build/ship nodes the [dispatcher graph](#-nodeforge-the-dispatcher-graph) invokes (`UI_UX`, `Engineering`, `Shipping`); the other three cover 3D, media and event-tech work the same way.
+Instead of letting agents wander through generic instructions, the top-tier of this repository enforces six **Hyper-Curated Godmodes**. Three of them are not just skills — they are the literal build/ship nodes the [dispatcher graph](#-aos-the-dispatcher-graph) invokes (`UI_UX`, `Engineering`, `Shipping`); the other three cover 3D, media and event-tech work the same way.
 
 | Godmode | Purpose |
 |---------|---------|
@@ -409,9 +409,9 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 
 </details>
 
-## 🔄 NODEFORGE: The Dispatcher Graph
+## 🔄 AOS: The Dispatcher Graph
 
-v3.13 replaces the old linear "5-agent pipeline" prose with a real, runnable
+v4.0.0 replaces the old linear "5-agent pipeline" prose with a real, runnable
 state machine. The contract lives in [`.agents/graph.md`](.agents/graph.md),
 the node roster in [`.agents/nodes.json`](.agents/nodes.json), and the
 executable dispatcher in
@@ -486,11 +486,11 @@ BDBrainstorm combines multi-agent brainstorming, the `/grill-me` slash command, 
 
 ---
 
-## 🔌 22 Custom Local MCP Integrations
+## 🔌 21 Local MCP Wrappers
 
 ![BDB Architecture Sketch](assets/bdb_architecture_sketch.jpg)
 
-Rather than relying on skeletal python mocks or broken remote APIs, this repository bundles **22 custom, local MCP wrappers** (in the `mcps/` directory). These are built/warmed automatically and allow your AI assistant to read, write, and execute commands within the industry's leading creative software.
+Rather than relying on skeletal python mocks or broken remote APIs, this repository bundles **21 local MCP wrappers** (in the `mcps/` directory). These are built/warmed automatically and allow your AI assistant to read, write, and execute commands within the industry's leading creative software.
 
 <details>
 <summary><strong>🎨 Adobe Creative Cloud (Illustrator, Photoshop, After Effects, Premiere Pro)</strong></summary>
@@ -620,7 +620,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\config\skills
 ```json
 {
   "projects": [
-    "~/bdb-dev/bdb-dev-optimized-agent-skills",
+    "~/dev/bdb-dev/aos",
     "~/Projects/your-active-project"
   ],
   "interval_seconds": 3600
@@ -887,22 +887,23 @@ You can run diagnostic and benchmarking commands directly in your terminal:
 ### 🆚 Which Version Should I Use?
 
 - **`@latest`** — the stable channel. Interactive MCP selection UI, active background daemons (`memB`, `OpenWiki`), full skill library.
-- **`@beta`** — the current development channel, where v3.13 "NODEFORGE" (the dispatcher graph, the three `/startcycle` variants, the GO gate) is being validated before promotion to `@latest`.
+- **`@next`** — an ad-hoc staging channel used occasionally for large changes (like the v4.0.0 AOS rename) before promotion to `@latest` (which CI publishes to automatically on every release-please release). It is not a permanent parallel channel.
 - **`bdb-antigravity-skills@legacy`** — the original, pre-dispatcher Antigravity-only pack, kept for anyone still depending on it.
 
 Every run gives you the same choice: **Backup & Overwrite** (safely replace existing configuration) or **Merge** (fold the new skills/configs/MCP paths into what you already have).
 
 ### Ask Your AI Agent (Easiest)
-Tell your assistant: *"Run `npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@latest` to install the skills pack and configure the local MCP servers."*
+Tell your assistant: *"Run `npx -y @hybridlabor-api/aos@latest` to install the skills pack and configure the local MCP servers."*
 
 ### Command Line
 
 ```bash
 # Stable
-npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@latest
+npx -y @hybridlabor-api/aos@latest
 
-# Development channel (v3.13 NODEFORGE)
-npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@beta
+# Migration staging channel (v4.0.0 AOS)
+# Note: @next is only used occasionally for active migrations, not a standing channel.
+npx -y @hybridlabor-api/aos@next
 ```
 *(Works on Mac/Linux terminals as well as Windows PowerShell.)*
 
@@ -911,7 +912,7 @@ npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@beta
 Select targets without the menu using `--platforms=<n[,n]>` — `0` universal, `1` Antigravity, `2` Claude Desktop/Code, `3` Cursor, `5` Codex, `6` Windsurf, `7` Roo/Cline, `8` Aider:
 
 ```bash
-npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills -y --platforms=2
+npx -y @hybridlabor-api/aos -y --platforms=2
 ```
 
 ### Local Project Harness
@@ -919,7 +920,7 @@ npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills -y --platforms=2
 Drop just the dispatcher contract (`.agents/`, the gate hooks, the `/startcycle-graph` workflow) into a single project instead of installing globally into `$HOME`:
 
 ```bash
-npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills --project-harness
+npx -y @hybridlabor-api/aos --project-harness
 ```
 
 ### SaaS Workstation Bootstrapper
@@ -927,14 +928,14 @@ npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills --project-harness
 For the BDB Multi-Cloud Fleet: 2FA browser handshake, Step-CA certificate bootstrap, SSH config, and FastMCP gateway injection into every detected editor:
 
 ```bash
-npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills setup-saas
+npx -y @hybridlabor-api/aos setup-saas
 ```
 
 ### From Source (Contributing)
 
 ```bash
-git clone https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills.git
-cd bdb-dev-optimized-agent-skills
+git clone https://github.com/hybridlabor-api/aos.git
+cd aos
 npm install
 node installer.js
 ```

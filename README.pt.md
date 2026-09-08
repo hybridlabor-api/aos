@@ -1,4 +1,4 @@
-![BDB DEV Media | Event – Optimized Agent Skills](assets/header.jpg)
+![AOS — BDB Agent OS](assets/header-v4.jpg)
 
 🌐 **Idioma / Language / Sprache**: [ 🇬🇧 English ](README.md) | [ 🇩🇪 Deutsch ](README.de.md) | **Português**
 
@@ -15,15 +15,15 @@
                          O P T I M I Z E D   A G E N T   S K I L L S
 ```
 
-# 🚀 BDB DEV - Pacote de Skills Otimizadas para Desenvolvimento Criativo e Full-Stack
+# 🚀 AOS — BDB Agent OS · Pacote de Skills Otimizadas para Desenvolvimento Criativo e Full-Stack
 
-[![CI](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/actions)
-[![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/bdb-dev-optimized-agent-skills.svg)](https://www.npmjs.com/package/@hybridlabor-api/bdb-dev-optimized-agent-skills)
-[![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
+[![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
+[![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
+[![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![skills](https://img.shields.io/badge/skills-144%20curadas-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills)
+[![skills](https://img.shields.io/badge/skills-154%20curadas-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
 
-> **Potencializando agentes de código de IA com 144 skills altamente curadas, 22 MCPs locais e integrações profundas para a indústria de tecnologia criativa.**
+> **Potencializando agentes de código de IA com 144 skills altamente curadas, 21 wrappers MCP locais e integrações profundas para a indústria de tecnologia criativa.**
 
 Bem-vindo ao repositório **BDB DEV Skills & MCP Configuration**. Este projeto serve como a espinha dorsal do nosso ecossistema de desenvolvimento criativo e full-stack, capacitando agentes de IA com habilidades altamente especializadas adaptadas para a indústria de eventos e tecnologia criativa, bem como engenharia de software de uso geral.
 
@@ -36,18 +36,18 @@ Embora otimizado para o **Google Antigravity**, este pacote de skills e configur
 
 ![BDB v3 Core Tools Overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
 
-### 🪐 Universal Agent Harness (v3.13.0)
+### 🪐 Universal Agent Harness (v4.0.0)
 O instalador agora possui um motor Universal Sync totalmente automatizado. Ele varre seu sistema em busca do **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline** e injeta a configuração MCP curada e as regras de Godmode em todos os ambientes simultaneamente.
 - **Tier 9 - Local Project Harness:** Em vez de instalar globalmente em `$HOME`, os desenvolvedores podem injetar o contrato `.agents` e os hooks diretamente em pastas de projetos isoladas.
 
-### 🧩 Integrações do Ecossistema (v3.13.0)
+### 🧩 Integrações do Ecossistema (v4.0.0)
 Este pacote atua como a ponte para duas capacidades massivas a montante (disponíveis como alvos de instalação direta através do instalador):
 - **BDB OS Agent Workspace:** A camada de orquestração para agentes de IA paralelos. Inicie múltiplas sessões de agentes isoladas via Git-Worktrees com controle de terminal ao vivo, loops de feedback CI/CD automáticos e roteamento de revisão de PR.
 - **BDB Creator Extension:** O pipeline de mídia agêntica de alta capacidade. Fornece aos agentes capacidades MCP locais do ComfyUI (FLUX, SDXL), geração Image-to-3D (TripoSR, TRELLIS) e produção de vídeo automatizada através do OpenMontage e Remotion.
 
-## 🌟 ~154+ Skills Otimizadas (Atualizado para v3.13.0)
+## 🌟 ~154+ Skills Otimizadas (Atualizado para v4.0.0)
 
-Começamos com um conjunto massivo de mais de 1.400 skills de IA brutas. Após rigorosos testes, filtragem e refinamento, destilamo-las em um conjunto hipercurado de **154+ Skills Otimizadas** (apresentando um motor nativo de documentação OpenWiki, o **cérebro de memória semântica local memB** e agora a **sincronização Universal Agent Harness na v3.13.0**).
+Começamos com um conjunto massivo de mais de 1.400 skills de IA brutas. Após rigorosos testes, filtragem e refinamento, destilamo-las em um conjunto hipercurado de **154+ Skills Otimizadas** (apresentando um motor nativo de documentação OpenWiki, o **cérebro de memória semântica local memB** e agora a **sincronização Universal Agent Harness na v4.0.0**).
 
 Essas skills são projetadas com precisão para garantir que os agentes não percam tempo com tarefas redundantes e, em vez disso, operem com máxima autonomia, restrições arquitetônicas rígidas e robusta consciência de contexto.
 
@@ -56,7 +56,7 @@ Em vez de deixar os agentes vagando por instruções genéricas, o nível superi
 - **`godmode-engineering`**: Impõe Domain-Driven Design, verificações rígidas de TypeScript, Clean Architecture e depuração sistemática.
 - **`godmode-ui-ux`**: O padrão de ouro do frontend. Impõe princípios "Anti-Slop" da BDB, acessibilidade e dinâmicas de movimento fluidas.
 - **`godmode-shipping`**: O guardião final para lançamentos em produção. Impõe Spec-Driven Development, verificações pré-lançamento e rollbacks seguros.
-- **`godmode-eventtech`**: O livro de regras supremo para o BDB Creator Engine, governando 3D, Mídia e 22 MCPs de tecnologia criativa.
+- **`godmode-eventtech`**: O livro de regras supremo para o BDB Creator Engine, governando 3D, Mídia e 21 wrappers MCP de tecnologia criativa.
 - **`godmode-3d-creation`**: Controla o pipeline 3D agêntico (TripoSR, TRELLIS) para modelos generativos e estruturas CAD.
 - **`godmode-media-creation`**: Orquestra a produção automatizada de vídeo, narrativa e loops de geração do ComfyUI.
 
@@ -80,7 +80,7 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 |------------|-------------|
 | `godmode-3d-creation` | Skill mestre de orquestração para todas as tarefas de geração, modelagem e reconstrução 3D. Atua como o cérebro 3D para a BDB Creator Extension. |
 | `godmode-engineering` | BDB Engineering Godmode. Impõe Domain-Driven Design rigoroso, estrito TypeScript, Clean Architecture e triagem sistemática de depuração em 5 etapas. |
-| `godmode-eventtech` | BDB EventTech Godmode. O livro de regras supremo para o BDB Creator Engine, governando Godmode-3D, Godmode-Media e os 22 MCPs de tecnologia criativa. |
+| `godmode-eventtech` | BDB EventTech Godmode. O livro de regras supremo para o BDB Creator Engine, governando Godmode-3D, Godmode-Media e os 21 wrappers MCP de tecnologia criativa. |
 | `godmode-media-creation` | Skill mestre de orquestração para todas as tarefas de criação de mídia (Vídeo, Áudio, Imagem, Motion Design). Atua como o cérebro para a BDB Creator Extension. |
 | `godmode-shipping` | BDB Shipping Godmode. O guardião final para lançamentos em produção. Impõe Spec-Driven Development, rigorosas verificações pré-lançamento, feature flags e estratégias de rollback. |
 | `godmode-ui-ux` | BDB UI/UX Godmode. O padrão de ouro absoluto para design frontend. Impõe princípios Anti-Slop, acessibilidade corporativa, dinâmicas de movimento fluidas e geração de design orientada a dados em todos os harnesses de agentes. |
@@ -343,11 +343,11 @@ O BDBrainstorm combina brainstorming multi-agente, o comando slash `/grill-me`, 
 
 ---
 
-## 🔌 22 Integrações Locais Personalizadas de MCP
+## 🔌 21 Integrações Locais de MCPP
 
 ![BDB Architecture Sketch](assets/bdb_architecture_sketch.jpg)
 
-Em vez de depender de mocks rudimentares em python ou APIs remotas com falhas, este repositório empacota **22 wrappers MCP locais e personalizados** (no diretório `mcps/`). Eles são construídos/preparados automaticamente e permitem que seu assistente de IA leia, escreva e execute comandos nos principais softwares criativos do mercado.
+Em vez de depender de mocks rudimentares em python ou APIs remotas com falhas, este repositório empacota **21 wrappers MCP locais** (no diretório `mcps/`). Eles são construídos/preparados automaticamente e permitem que seu assistente de IA leia, escreva e execute comandos nos principais softwares criativos do mercado.
 
 <details>
 <summary><strong>🎨 Adobe Creative Cloud (Illustrator, Photoshop, After Effects, Premiere Pro)</strong></summary>
@@ -430,7 +430,7 @@ Este repositório também contém 14 configurações profundas de sistema e dire
 
 ---
 
-## 🌐 OpenWiki & RepoGraph Code Health Engine (v3.13.0)
+## 🌐 OpenWiki & RepoGraph Code Health Engine (v4.0.0)
 
 O **OpenWiki Engine** mantém autonomamente documentação viva da base de código, especificações de arquitetura, ADRs, notas de lançamento e análises de saúde do código em tempo real em todos os seus projetos ativos.
 
@@ -477,7 +477,7 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\config\skills
 ```json
 {
   "projects": [
-    "~/bdb-dev/bdb-dev-optimized-agent-skills",
+    "~/dev/bdb-dev/aos",
     "~/Projects/your-active-project"
   ],
   "interval_seconds": 3600
@@ -492,7 +492,7 @@ tail -f ~/.openwiki/daemon.log
 
 ---
 
-## 🖥️ BDB OS Agent Workspace: Orquestração de Multi-Agentes Paralelos (v3.13.0)
+## 🖥️ BDB OS Agent Workspace: Orquestração de Multi-Agentes Paralelos (v4.0.0)
 
 [![Repo](https://img.shields.io/badge/repo-bdb--os--agent--workspace-blue.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
 [![harness](https://img.shields.io/badge/orquestração-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
@@ -550,7 +550,7 @@ git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
 
 ---
 
-## 🎨 BDB Creator Extension: Pipeline de Mídia & Computação 3D de Alta Capacidade (v3.13.0)
+## 🎨 BDB Creator Extension: Pipeline de Mídia & Computação 3D de Alta Capacidade (v4.0.0)
 
 [![Repo](https://img.shields.io/badge/repo-bdb--dev--creator--extension-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
 [![compute](https://img.shields.io/badge/computação-CUDA%20%2F%20ML-orange.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
@@ -611,7 +611,7 @@ git clone https://github.com/hybridlabor-api/bdb-dev-creator-extension.git
 
 ---
 
-## 🧠 memB: Cérebro Semântico Personalizado (v3.13.0)
+## 🧠 memB: Cérebro Semântico Personalizado (v4.0.0)
 
 O BDB OS introduz um cérebro de memória semântica local, offline-first totalmente integrado baseado no **memB**. Ele fornece contexto de computação zero para SLMs e uma arquitetura de vault de arquivos planos AI-first.
 
@@ -639,7 +639,7 @@ memB includes a native **Obsidian Plugin** (`obsidian-memb-plugin`) that acts as
 
 ---
 
-## ⚡ Heimdall Token Saver: Compressão de Contexto CLI (v3.13.0)
+## ⚡ Heimdall Token Saver: Compressão de Contexto CLI (v4.0.0)
 
 ![Heimdall Savings Graph](assets/bdb_savings_graph_sketch.jpg)
 
@@ -685,7 +685,8 @@ Você pode executar comandos de diagnóstico e benchmarking diretamente no seu t
 
 ### 🆚 Qual Versão Devo Usar?
 
-- **Versão Agent Skills (`bdb-dev-optimized-agent-skills`)**: Inclui todas as skills otimizadas, interface interativa de seleção MCP e **daemons em segundo plano ativos**. Instala e orquestra automaticamente o motor de memória semântica local `memB` e os git-hooks de autodocumentação do `OpenWiki`. Ideal para gerenciamento de projetos autônomo e de longo prazo.
+- **Versão Agent Skills (`aos`)**: Inclui todas as skills otimizadas, interface interativa de seleção MCP e **daemons em segundo plano ativos**. Instala e orquestra automaticamente o motor de memória semântica local `memB` e os git-hooks de autodocumentação do `OpenWiki`. Ideal para gerenciamento de projetos autônomo e de longo prazo.
+- **`@next`**: um canal de staging usado ocasionalmente para grandes mudanças (como a renomeação v4.0.0 AOS) antes da promoção para `@latest` (que o CI publica automaticamente a cada release do release-please). Não é um canal paralelo permanente.
 - **Versão Legacy Antigravity (`bdb-antigravity-skills@legacy`)**: O pacote antigravity original.
 
 O instalador é construído usando um menu interativo baseado em Node. Ele permite:
@@ -694,13 +695,13 @@ O instalador é construído usando um menu interativo baseado em Node. Ele permi
 
 ### Opção 1: Pergunte ao seu Agente de IA (Mais Fácil)
 Basta dizer ao seu assistente:
-> "Por favor, execute `npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@latest` para instalar o pacote de skills e configurar os servidores MCP locais."
+> "Por favor, execute `npx -y @hybridlabor-api/aos@latest` para instalar o pacote de skills e configurar os servidores MCP locais."
 
 ### Opção 2: Linha de Comando (Global via NPX - Recomendado)
 Execute o script globalmente em seu terminal. Recomendamos sempre adicionar `@latest` para buscar a versão mais recente:
 
 ```bash
-npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@latest
+npx -y @hybridlabor-api/aos@latest
 ```
 *(Este comando funciona em terminais Mac/Linux, bem como no Windows PowerShell!)*
 
@@ -715,8 +716,8 @@ bdb-skills
 ### Opção 4: Script Shell Manual (Git Clone)
 Clone o repositório e execute o script instalador:
 ```bash
-git clone https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills.git
-cd bdb-dev-optimized-agent-skills
+git clone https://github.com/hybridlabor-api/aos.git
+cd aos
 chmod +x installer.sh
 ./installer.sh
 ```
