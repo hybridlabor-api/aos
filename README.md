@@ -1,19 +1,6 @@
 ![AOS — BDB Agent OS](assets/header-v4.jpg)
 
 🌐 **Language / Sprache / Idioma**: **English** | [ 🇩🇪 Deutsch ](README.de.md) | [ 🇵🇹 Português ](README.pt.md)
-
----
-
-```text
-█████▄ ████▄  █████▄   ▄████▄  ▄████  ██████ ███  ██ ██████   ▄████▄ ▄█████
-██▄▄██ ██  ██ ██▄▄██   ██▄▄██ ██  ▄▄▄ ██▄▄   ██ ▀▄██   ██     ██  ██ ▀▀▀▄▄▄
-██▄▄█▀ ████▀  ██▄▄█▀   ██  ██  ▀███▀  ██▄▄▄▄ ██   ██   ██     ▀████▀ █████▀
-
-──────────────────────────── N O D E F O R G E ─────────────────────────────
-
-                 BDB AGENT OS · CORE KERNEL · AOS -  v4.0.0
-```
-
 # 🚀 AOS — BDB Agent OS · Optimized Creative & Full-Stack Skills Pack
 
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
