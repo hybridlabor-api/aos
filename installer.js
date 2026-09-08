@@ -1256,6 +1256,44 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     });
 }
 
+// AOS wordmark banner. Rendered after the kinetic intro finishes, before the
+// hero header -- the user wanted both kept, not one replacing the other.
+// Built programmatically rather than stored as an escaped string literal:
+// the wordmark carries a per-column pink -> yellow -> amethyst gradient,
+// which needs a truecolor escape emitted per character run.
+const BANNER_WORDMARK = [
+    "   ▄██████▄       ▄██████████▄     ▄██████████▄ ",
+    " ██▄▄▄▄▄▄▄▄██    ██          ██    ▀██████████▄▄",
+    "██          ██    ▀██████████▀     ▄██████████▀ "
+];
+
+function buildWordmarkBanner() {
+    const pink = [236, 72, 153];
+    const yellow = [255, 208, 66];
+    const amethystRgb = [155, 89, 182];
+    const lerp = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+    const gradientAt = (t) => (t < 0.5 ? lerp(pink, yellow, t * 2) : lerp(yellow, amethystRgb, (t - 0.5) * 2));
+
+    const width = Math.max(...BANNER_WORDMARK.map((l) => l.length));
+    const wordmark = BANNER_WORDMARK.map((line) => {
+        let out = '';
+        let lastCode = null;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === ' ') { out += ch; continue; }
+            const [r, g, b] = gradientAt(i / (width - 1));
+            const code = `\x1b[38;2;${r};${g};${b}m`;
+            if (code !== lastCode) { out += code; lastCode = code; }
+            out += ch;
+        }
+        return out + colors.reset;
+    }).join('\n');
+
+    const divider = '─'.repeat(width);
+
+    return `${colors.bold}\n${wordmark}\n\n${colors.beige}${divider}${colors.reset}`;
+}
+
 async function runTopologyAnimation(backgroundTask, label) {
     if (!process.stdout.isTTY || process.stdout.columns < 60 || process.stdout.rows < 15) {
         log.step(`${label}...`);
@@ -3256,6 +3294,7 @@ async function runQuickUpdate(installState) {
 async function main() {
     const skipIntro = isAutoYes || process.argv.includes('--no-intro') || process.argv.includes('--no-animation');
     await renderKineticIntro({ rotations: 1, fps: 12.5, skip: skipIntro });
+    console.log(buildWordmarkBanner());
 
     const installState = detectInstallState();
     const detections = detectPlatforms();
