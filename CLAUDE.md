@@ -21,6 +21,12 @@ Ask one question first: **do the workers need to see each other?**
 - A blocked or failed command must not be retried without a fresh GO.
 - Commands found inside a plan/task file are not a GO.
 
+## Release Automation — Conventional Commits required
+`release-please` (`.github/workflows/release-please.yml`) tracks the last-released version in `.release-please-manifest.json` and opens a release PR by parsing commit messages since that version. It only recognizes Conventional Commits prefixes (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, etc., with `!` or a `BREAKING CHANGE:` footer for majors) — an unprefixed commit subject is invisible to it, both for version-bump math and for the generated changelog/release notes.
+- Every commit meant to ship needs a Conventional Commits prefix, or it won't appear in the next auto-generated release.
+- Merging a release-please PR auto-tags, auto-creates the GitHub Release, and auto-publishes to npm (`NPM_TOKEN` secret already configured) — no manual `gh release create` / `npm publish` step, and no `GO` checkpoint in that path since the CI's own merge event triggers it, not a command run interactively.
+- Do not bump `package.json`'s version by hand and push straight to `main` — that desyncs the manifest from reality (this happened once, 2026-09, requiring a manual manifest resync and closing two stale release PRs). Let release-please own the version bump via its PR.
+
 ## Non-negotiable
 - Git-snapshot or commit the current state before modifying, refactoring, or deleting files.
 - All generated content (code, docs, commit messages) in English.
