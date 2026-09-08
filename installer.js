@@ -1624,6 +1624,8 @@ async function installSynapse() {
     <array>
         ${binaryPath.endsWith('.js') ? `<string>/usr/local/bin/node</string>\n        <string>${binaryPath}</string>` : `<string>${binaryPath}</string>`}
         <string>serve</string>
+        <string>--port</string>
+        <string>7781</string>
     </array>
     <key>WorkingDirectory</key>
     <string>${synapseDir}</string>
@@ -1657,7 +1659,7 @@ async function installSynapse() {
             const stdoutLog = path.join(synapseLogDir, 'daemon.stdout.log');
             const stderrLog = path.join(synapseLogDir, 'daemon.stderr.log');
             const batPath = path.join(synapseLogDir, 'run-synapse.bat');
-            const runCmd = binaryPath.endsWith('.js') ? `node "${binaryPath}" serve` : `"${binaryPath}" serve`;
+            const runCmd = binaryPath.endsWith('.js') ? `node "${binaryPath}" serve --port 7781` : `"${binaryPath}" serve --port 7781`;
             // WshShell.Run has no stdout/stderr redirection of its own, so a crash on launch
             // (e.g. a missing dependency the binary shells out to) used to die silently with
             // nothing to diagnose short of reading source — route through a .bat wrapper that
@@ -1678,7 +1680,7 @@ async function installSynapse() {
                 if (isListening) {
                     log.success('Synapse 3D Windows Background Service registered & started (Port 7781)');
                 } else {
-                    log.warn(`Synapse 3D Windows daemon did not respond on Port 7781 within timeout. Check ${stderrLog} for the actual error (e.g. a missing 'go' on PATH) before assuming it's just slow to start.`);
+                    log.warn(`Synapse 3D Windows daemon did not respond on Port 7781 within timeout. Check ${stderrLog} for the actual error before assuming it's just slow to start.`);
                 }
             } catch (e) { logDebug(e, 'windows synapse daemon setup'); }
         }
