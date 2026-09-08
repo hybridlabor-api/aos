@@ -1,9 +1,10 @@
 {
-  "name": "@hybridlabor-api/bdb-dev-optimized-agent-skills",
-  "version": "3.13.0-nodefox.2",
-  "description": "A Curated AI AGENT OS – Optimized agent skills and add-ons like memB, OpenWiki, Heimdall Token Saver, and Godmode architectures.",
+  "name": "@hybridlabor-api/aos",
+  "version": "4.0.0",
+  "description": "AOS — A Curated AI AGENT OS. Optimized agent skills and add-ons like memB, OpenWiki, Heimdall Token Saver, and Godmode architectures.",
   "main": "installer.js",
   "bin": {
+    "aos": "installer.js",
     "bdb-dev-optimized-agent-skills": "installer.js",
     "bdb-agent-skills-pro": "installer.js",
     "bdb-agent-skills": "installer.js",
@@ -14,12 +15,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills.git"
+    "url": "git+https://github.com/hybridlabor-api/aos.git"
   },
   "bugs": {
-    "url": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/issues"
+    "url": "https://github.com/hybridlabor-api/aos/issues"
   },
-  "homepage": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills#readme",
+  "homepage": "https://github.com/hybridlabor-api/aos#readme",
   "files": [
     "installer.js",
     "bin/",
