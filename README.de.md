@@ -579,6 +579,170 @@ tail -f ~/.openwiki/daemon.log
 ```
 </details>
 
+---
+
+## 🖥️ BDB OS Agent Workspace: Parallele Multi-Agenten-Orchestrierung
+
+[![Repo](https://img.shields.io/badge/repo-bdb--os--agent--workspace-blue.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
+[![harness](https://img.shields.io/badge/orchestration-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
+[![terminal](https://img.shields.io/badge/terminal-Live%20Control-purple.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
+[![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
+**BDB OS Agent Workspace** ist der Desktop Meta-Harness und die Orchestrierungsschicht, entwickelt für parallele KI-Agenten. Es ermöglicht Entwicklern, mehrere isolierte Agenten-Sitzungen gleichzeitig über unabhängige Git-Worktrees hinweg zu starten, zu verwalten und zu koordinieren, inklusive Echtzeit-Terminal-Feedback-Schleifen und automatisiertem PR-Review-Routing.
+
+```mermaid
+flowchart TD
+    A[Desktop IDE Meta-Harness] --> B[Git Worktree Orchestrator]
+    B --> C[Agent Session 1: Feature Build]
+    B --> D[Agent Session 2: Refactoring]
+    B --> E[Agent Session N: Test & Verification]
+    C --> F[Live Terminal Control & Process Monitor]
+    D --> F
+    E --> F
+    F --> G[Automatic CI/CD Feedback Loops]
+    G --> H[PR Review & Merge Routing]
+    H --> I[Central Git Repository]
+```
+
+<details>
+<summary><strong>⚙️ Architektur & Worktree-Orchestrierung</strong></summary>
+
+- **Git-Worktree-Isolation:** Instanziiert dedizierte, saubere Arbeitsbäume für jede Subagenten-Sitzung, was die Beschädigung von Dateizuständen und Lockfile-Kollisionen bei gleichzeitigen Bearbeitungen verhindert.
+- **Desktop Meta-Harness:** Koordiniert Multi-Workspace-Konfigurationen, Umgebungsvariablen und lokale Serverports über gleichzeitig laufende Entwicklungsumgebungen hinweg.
+- **Parallele Agenten-Ausführung:** Startet autonome Agenten, die gleichzeitig an getrennten Modulen, Features oder Bugfixes arbeiten, ohne den primären Workspace-Branch zu stören.
+</details>
+
+<details>
+<summary><strong>🔬 Technische Spezifikationen & Automatisiertes Routing</strong></summary>
+
+- **Live-Terminal-Kontrolle:** Erfasst stdout/stderr-Streams von Subagenten mit aktiver Prozessüberwachung, Sitzungslebenszyklus-Steuerung und Echtzeit-Statusberichten.
+- **Automatische CI/CD-Feedback-Schleifen:** Überwacht Testausgaben und Build-Aufgaben und leitet Fehler-Traces direkt in den Kontext des ausführenden Subagenten zur sofortigen Reparatur zurück.
+- **PR-Review-Routing:** Verpackt abgeschlossene Features, führt automatisierte Sicherheits- und Code-Health-Checks durch und leitet generierte Pull Requests zur menschlichen Überprüfung oder zum automatisierten Mergen weiter.
+</details>
+
+<details>
+<summary><strong>🔌 Unterstützte Harnesses & Direkter Repository-Link</strong></summary>
+
+- **Unterstützte Agenten-Harnesses:**
+  - **Google Antigravity / AGY CLI**
+  - **Claude Desktop & Claude Code**
+  - **Cursor & Windsurf**
+  - **Roo Code & Cline**
+  - **ChatGPT Codex / Codex CLI**
+  - **Aider & VS Code**
+- **Direktes Repository:** Greifen Sie auf den Workspace-Orchestrator unter [github.com/hybridlabor-api/bdb-os-agent-workspace](https://github.com/hybridlabor-api/bdb-os-agent-workspace) zu.
+
+```bash
+git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
+```
+</details>
+
+---
+
+## 🧿 BDB Synapse: 3D Codebase-Visualisierung & Agenten-Sitzungs-Replay
+
+[![Repo](https://img.shields.io/badge/repo-bdb--synapse-blue.svg)](https://github.com/hybridlabor-api/bdb-synapse)
+[![3D Engine](https://img.shields.io/badge/3D-Three.js%20%7C%20WebGL-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-synapse)
+[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)](https://github.com/hybridlabor-api/bdb-synapse)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/hybridlabor-api/bdb-synapse/blob/main/LICENSE)
+
+**BDB Synapse** rendert Ihr Repository als eine interaktive **3D-Code-Stadt** und spielt Sitzungen von Coding-Agenten als Lichtspuren ab, die sich hindurchbewegen — und zeigt so, welche Dateien gelesen oder bearbeitet wurden und wo Reibung auftrat. Ein einziges Go-Binary, komplett lokal, null Telemetrie.
+
+Inspiriert von und geforkt aus [cosmtrek/mindwalk](https://github.com/cosmtrek/mindwalk) (MIT-Lizenz).
+
+```mermaid
+flowchart LR
+    A[Agent Session Logs] -->|JSONL Parsing| B[Go Trace Adapters]
+    B --> C[Normalized Event Stream]
+    D[Repository Tree] -->|Deterministic Layout| E[3D Citymap Generator]
+    C & E --> F[Local Go Server]
+    F --> G[React + Three.js WebGL Frontend]
+    G --> H[Interactive 3D Code City]
+```
+
+### Unterstützte Agenten
+
+| Agent | Log-Quelle | Status |
+|-------|-----------|--------|
+| **Claude Code** | `~/.claude/projects/` | ✅ Nativ |
+| **Codex CLI** | `~/.codex/sessions/` | ✅ Nativ |
+| **Pi Agent** | `~/.pi/agent/sessions/` | ✅ Nativ |
+| **Antigravity (agy)** | `~/.gemini/antigravity-cli/brain/` | ✅ BDB Extension |
+
+### Hauptmerkmale
+- **Tree- & Terrain-Ansichten:** Repository als radialer Baum oder Treemap — das Leuchten ist proportional dazu, wie tiefgreifend eine Datei bearbeitet wurde.
+- **Berührungszustände:** Gesehen (moosgrün), Gelesen (mondlichtblau), Bearbeitet (warmes Bernstein), Unbesucht (dunkel).
+- **Playback-Deck:** Spulen oder spielen Sie die Sitzung über ein geclustertes Histogramm ab. Beobachtungen bleiben kühl, Mutationen leuchten warm.
+- **Agenten-Linsen:** Wenn eine Sitzung Subagenten gestartet hat, wählen Sie eine Linse, um die Spur eines beliebigen Subagenten auf derselben Karte abzuspielen.
+- **Sitzungs-Evaluierung:** Bitten Sie eine lokale Agenten-CLI, den Verlauf der Sitzung anhand von Kriterien zu beurteilen, die aus Ihrer eigenen Anfrage abgeleitet wurden.
+
+```bash
+synapse                              # alle Agenten-Verzeichnisse scannen, Browser öffnen
+synapse open <session.jsonl>         # eine spezifische Sitzung abspielen
+synapse map <repo>                   # eine Repository-Karte rendern, keine Sitzung nötig
+```
+
+---
+
+## 🎨 BDB Creator Extension: Heavy-Lifting Media & 3D Compute Pipeline
+
+[![Repo](https://img.shields.io/badge/repo-bdb--dev--creator--extension-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
+[![compute](https://img.shields.io/badge/compute-CUDA%20%2F%20ML-orange.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
+[![3D Engine](https://img.shields.io/badge/3D-TRELLIS%20%7C%20TripoSR-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
+[![ComfyUI](https://img.shields.io/badge/ComfyUI-FLUX%20%7C%20SDXL%20%7C%20Wan2.1-red.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
+[![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
+**BDB Creator Extension** (`bdb-dev-creator-extension`) ist die leistungsstarke Media-Compute-Pipeline, die entwickelt wurde, um das Kern-Agent-Skills-Paket schnell, leichtgewichtig und responsiv (<25MB) zu halten. Sie kapselt neuronale CUDA/ML-Netzwerke, 3D-Mesh-Synthese, parametrische CAD-Generierung, automatisierte Videobearbeitung und lokale ComfyUI-Rendering-Engines.
+
+```mermaid
+flowchart LR
+    A[Core Skills Agent] -->|MCP Request| B[BDB Creator Extension Router]
+    B --> C[3D Generation Suite]
+    B --> D[Cinema Video Suite]
+    B --> E[Local ComfyUI MCP Engine]
+    C --> C1[TRELLIS: High-Fidelity 3D]
+    C --> C2[TripoSR: Fast Mesh <0.5s]
+    C --> C3[CadQuery: Text-to-CAD]
+    D --> D1[OpenMontage AI Director]
+    D --> D2[Remotion Video-Shotcraft]
+    D --> D3[Palmier Pro NLE MCP Server]
+    E --> E1[FLUX.1 Image Gen]
+    E --> E2[SDXL Pipeline]
+    E --> E3[Wan2.1 Video Diffusion]
+    C1 & C2 & C3 & D1 & D2 & D3 & E1 & E2 & E3 --> F[Rendered Media & Spatial Assets]
+```
+
+<details>
+<summary><strong>🔷 3D Generation Suite (`engines/3d/`)</strong></summary>
+
+- **Microsoft TRELLIS:** Hochpräzise Bild-zu-3D-Asset-Generierung, die texturierte 3D-Meshes und NeRF/Gaussian-Splat-Darstellungen erzeugt.
+- **Stability AI TripoSR:** Ultraschnelle Einzelbild-zu-3D-Mesh-Generierung (unter 0,5s) für schnelles räumliches Prototyping.
+- **CadQuery Parametric Text-to-CAD:** Generiert präzise Ingenieursmodelle und architektonische Geometrie in den Formaten STEP, STL und URDF.
+</details>
+
+<details>
+<summary><strong>🎬 Cinema Video Suite (`engines/video/`)</strong></summary>
+
+- **OpenMontage AI Orchestrator:** Automatisches Video-Storytelling, Script-to-Timeline-Montage und Shot-Sequenzierung.
+- **Remotion Video-Shotcraft:** Über 100 programmierbare Video-Komponenten und Motion-Graphics-Vorlagen auf Kino-Niveau, erstellt mit React.
+- **Palmier Pro NLE MCP Server:** Echtzeit-HTTP-MCP-Brücke (`http://127.0.0.1:19789/mcp`), die native, nicht-lineare macOS-Videobearbeitungsfunktionen verfügbar macht.
+</details>
+
+<details>
+<summary><strong>🎨 Local ComfyUI MCP Engine & Direct Repository Link (`mcps/comfyui-mcp/`)</strong></summary>
+
+- **Model Context Protocol Integration:** Macht lokale ComfyUI-Workflows direkt als ausführbare Tools für KI-Agenten über MCP verfügbar.
+- **Unterstützte Generative Modelle:**
+  - **FLUX.1:** Hochauflösende Bildsynthese und Prompt-Treue.
+  - **SDXL:** Latente Diffusions-Workflow-Kontrolle mit benutzerdefinierten LoRAs und ControlNets.
+  - **Wan2.1:** Generative Video-Diffusionsmodelle zur Erstellung von Clips mit hoher Bildrate.
+- **Direktes Repository:** Greifen Sie auf die Extension-Suite unter [github.com/hybridlabor-api/bdb-dev-creator-extension](https://github.com/hybridlabor-api/bdb-dev-creator-extension) zu.
+
+```bash
+git clone https://github.com/hybridlabor-api/bdb-dev-creator-extension.git
+```
+</details>
+
 <details>
 <summary><strong>🌍 BDB OS Remote Gateway & Thin-Client (`mcps/bdb-os-remote/`)</strong></summary>
 
@@ -592,7 +756,6 @@ npx @hybridlabor-api/bdb-os-remote installer
 ```
 </details>
 
----
 
 ## 🧠 memB: Eigenes Semantisches Gedächtnis (v4.0.0)
 
