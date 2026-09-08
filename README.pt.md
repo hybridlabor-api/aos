@@ -5,17 +5,16 @@
 ---
 
 ```text
-██████╗ ██████╗ ██████╗      █████╗  ██████╗ ███████╗███╗   ██╗████████╗     ██████╗ ███████╗
-██╔══██╗██╔══██╗██╔══██╗    ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝    ██╔═══██╗██╔════╝
-██████╔╝██║  ██║██████╔╝    ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║       ██║   ██║███████╗
-██╔══██╗██║  ██║██╔══██╗    ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║       ██║   ██║╚════██║
-██████╔╝██████╔╝██████╔╝    ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║       ╚██████╔╝███████║
-╚═════╝ ╚═════╝ ╚═════╝     ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝        ╚═════╝ ╚══════╝
+█████▄ ████▄  █████▄   ▄████▄  ▄████  ██████ ███  ██ ██████   ▄████▄ ▄█████
+██▄▄██ ██  ██ ██▄▄██   ██▄▄██ ██  ▄▄▄ ██▄▄   ██ ▀▄██   ██     ██  ██ ▀▀▀▄▄▄
+██▄▄█▀ ████▀  ██▄▄█▀   ██  ██  ▀███▀  ██▄▄▄▄ ██   ██   ██     ▀████▀ █████▀
 
-                         O P T I M I Z E D   A G E N T   S K I L L S
+──────────────────────────── N O D E F O R G E ─────────────────────────────
+
+                 BDB AGENT OS · CORE KERNEL · AOS -  v4.0.0
 ```
 
-# 🚀 AOS — BDB Agent OS · Pacote de Skills Otimizadas para Desenvolvimento Criativo e Full-Stack
+# 🚀 AOS — BDB Agent OS · Pacote Otimizado de Skills Criativas e Full-Stack
 
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
@@ -23,27 +22,67 @@
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![skills](https://img.shields.io/badge/skills-154%20curadas-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
 
-> **Potencializando agentes de código de IA com 144 skills altamente curadas, 21 wrappers MCP locais e integrações profundas para a indústria de tecnologia criativa.**
+> **Potencializando agentes de código de IA com 154 skills hipercuradas, 21 wrappers MCP locais e um grafo dispatcher de multi-agentes executável.**
 
-Bem-vindo ao repositório **BDB DEV Skills & MCP Configuration**. Este projeto serve como a espinha dorsal do nosso ecossistema de desenvolvimento criativo e full-stack, capacitando agentes de IA com habilidades altamente especializadas adaptadas para a indústria de eventos e tecnologia criativa, bem como engenharia de software de uso geral.
+Bem-vindo ao **BDB Agent OS — AOS v4.0.0**: 154 skills curadas, 21 wrappers MCP locais e um grafo dispatcher que os transforma em um verdadeiro pipeline de build multi-agente, não apenas uma biblioteca de prompts. Aponte para um objetivo e ele planeja, constrói, revisa e implementa através de sete nós de agentes coordenados — com um portão imposto mecanicamente antes que qualquer coisa vá ao ar.
 
-Embora otimizado para o **Google Antigravity**, este pacote de skills e configuração MCP é **100% universal** e funciona perfeitamente com todos os agentes de IA e interfaces de desenvolvedores modernos, incluindo **ChatGPT Codex / Codex CLI, Claude Desktop, Claude Code, Cursor, Aider, Roo Code, Cline e Windsurf**.
+É neutro em relação ao harness por design, não "otimizado para uma ferramenta com outras como reflexão tardia": o grafo dispatcher é executado no Dynamic Workflows do Claude Code, as mesmas skills e configuração MCP são instaladas nativamente no **Google Antigravity, ChatGPT Codex / Codex CLI, Claude Desktop, Cursor, Aider, Roo Code, Cline e Windsurf**, e a variante leve `/startcycle-graph-user` recorre aos próprios subagentes do Claude Code em qualquer máquina que não tenha nenhum dos acima instalados.
 
 > 🎙 **Audio Deep Dive: "Give AI Agents Control of Creative Software"**  
 > <video src="assets/Give_AI_Agents_Control_of_Creative_Software.mp4" controls></video>
 
 ---
 
-![BDB v3 Core Tools Overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
+### 🔨 O que muda na v4.0.0 "AOS"
 
-### 🪐 Universal Agent Harness (v4.0.0)
+Este release move o pipeline multi-agente de prosa para uma máquina de estado executável e fortalece o instalador ao seu redor.
+
+- **Um grafo dispatcher que realmente executa.** Sete nós, predicados de aresta explícitos, um loop de reparo do Revisor com guarda contra falta de progresso e escalonamento automático para um humano quando o loop para de progredir. [Detalhes abaixo](#-aos-o-grafo-dispatcher).
+- **Três variantes de pipeline** (`/startcycle`, `/startcycle-graph`, `/startcycle-graph-user`) para que o maquinário corresponda à tarefa em vez de forçar cerimônia completa em uma alteração de dois arquivos.
+- **Um portão GO imposto mecanicamente.** `git push`, `npm publish`, `npm version` e `rm` recursivo são bloqueados por um hook `PreToolUse` a menos que sua mensagem imediatamente anterior seja literalmente a palavra **GO** — fiscalização que sobrevive a alterações de modo de permissão, pois é um hook em vez de uma regra que o agente deve seguir.
+- **Inicialização de daemon verificada.** O instalador não relata mais "serviço iniciado" por fé; ele conecta à porta e avisa se o daemon nunca subir. O mesmo para a tabela de status do ecossistema, que agora compara versões com precedência semver real em cada dist-tag em vez de desigualdade de strings contra `latest`.
+- **Stores MCP separados por harness.** Claude Desktop e Claude Code leem arquivos diferentes; a instalação para um não pula mais silenciosamente o outro. Servidores existentes em ambos os arquivos são mesclados, não sobrescritos.
+- **Instalações programáveis, não interativas.** `--platforms=<n[,n]>` seleciona alvos sem o menu, para que uma máquina que apenas roda Claude Code possa ser provisionada em CI sem herdar o padrão focado no Antigravity.
+
+### 🪐 Universal Agent Harness
 O instalador agora possui um motor Universal Sync totalmente automatizado. Ele varre seu sistema em busca do **Claude Desktop, Cursor, Windsurf, Aider, Roo/Cline** e injeta a configuração MCP curada e as regras de Godmode em todos os ambientes simultaneamente.
-- **Tier 9 - Local Project Harness:** Em vez de instalar globalmente em `$HOME`, os desenvolvedores podem injetar o contrato `.agents` e os hooks diretamente em pastas de projetos isoladas.
+- **Local Project Harness:** Em vez de instalar globalmente em `$HOME`, os desenvolvedores podem injetar o contrato `.agents`, os hooks de portão e o workflow do dispatcher diretamente em um único projeto — `npx @hybridlabor-api/aos --project-harness`.
 
-### 🧩 Integrações do Ecossistema (v4.0.0)
-Este pacote atua como a ponte para duas capacidades massivas a montante (disponíveis como alvos de instalação direta através do instalador):
+### 🧩 Integrações do Ecossistema
+Este pacote atua como a ponte para três grandes capacidades upstream:
 - **BDB OS Agent Workspace:** A camada de orquestração para agentes de IA paralelos. Inicie múltiplas sessões de agentes isoladas via Git-Worktrees com controle de terminal ao vivo, loops de feedback CI/CD automáticos e roteamento de revisão de PR.
 - **BDB Creator Extension:** O pipeline de mídia agêntica de alta capacidade. Fornece aos agentes capacidades MCP locais do ComfyUI (FLUX, SDXL), geração Image-to-3D (TripoSR, TRELLIS) e produção de vídeo automatizada através do OpenMontage e Remotion.
+- **BDB Synapse:** Visualização de Codebase 3D & Replay de Sessões de Agentes. Renderiza seu repositório como uma cidade de código interativa e repete as sessões de agentes como rastros de luz, mostrando quais arquivos foram lidos, editados e onde ocorreu atrito.
+
+### 🔗 Plugins Complementares Recomendados (Claude Code)
+Nenhum destes vem dentro deste pacote — são plugins do Claude Code independentes e mantidos pela comunidade que combinam naturalmente com o padrão de delegação `agy` que o [`/startcycle-graph-user`](#-aos-o-grafo-dispatcher) já usa. Instale-os separadamente se quiser o mesmo roteamento disponível fora de uma execução `/startcycle`.
+
+- **[antigravity-for-claude-code](https://github.com/yuting0624/antigravity-for-claude-code)**
+  — executa a CLI do Antigravity (`agy`, Gemini) como um sub-agente colaborador com roteamento de modelo inteligente em todo o ciclo de vida de software (SDLC).
+  ```bash
+  claude plugin marketplace add yuting0624/antigravity-for-claude-code
+  claude plugin install antigravity@antigravity-for-claude-code
+  ```
+- **[opencode-plugin-cc](https://github.com/tasict/opencode-plugin-cc)** — adiciona
+  comandos slash `/opencode:review` / `/opencode:adversarial-review`, permitindo que o Claude Code
+  delegue um trabalho assíncrono para o OpenCode e configure um portão de revisão que bloqueia o progresso até que
+  a revisão do OpenCode retorne limpa.
+  ```bash
+  claude plugin marketplace add https://github.com/tasict/opencode-plugin-cc.git
+  claude plugin install opencode@tasict-opencode-plugin-cc
+  ```
+
+> [!CAUTION]
+> Se você também tiver um marketplace `antigravity-plugin-cc` antigo instalado, desative-o e
+> limpe o cache de plugins primeiro — dois plugins de roteamento `agy` ativos ao mesmo tempo causam um conflito de ativação dupla onde nenhum inicializa de forma limpa.
+
+## Visão Geral
+
+Este repositório entrega três coisas: uma biblioteca curada de skills para agentes de código, um
+instalador que conecta eles (mais 21 wrappers MCP locais) em qualquer harness
+que você use, e um grafo dispatcher que os orquestra como um pipeline de
+build multi-agente. Veja [AOS: O Grafo Dispatcher](#-aos-o-grafo-dispatcher)
+abaixo para entender como o próprio pipeline funciona.
 
 ## 🌟 ~154+ Skills Otimizadas (Atualizado para v4.0.0)
 
@@ -93,7 +132,7 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 #### 🤖 Agentes & Automação
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `agent-manager-skill` | Manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling. |
+| `agent-manager-skill` | Gerencia múltiplos agentes CLI locais via sessões tmux (iniciar/parar/monitorar/atribuir) com agendamento amigável para cron. |
 | `agent-memory-mcp` | A hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions). |
 | `agent-orchestrator` | Meta-skill que orquestra todos os agentes do ecossistema. Scan automatico de skills, match por capacidades, coordenacao de workflows multi-skill e registry management. |
 | `agent-pipeline` | Referência para o ciclo de vida do BDB (define → plan → build → verify/review → ship) que o grafo dispatcher do `/startcycle-graph` realmente executa. |
@@ -245,7 +284,7 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 #### 🔧 Programação Central & Depuração
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `clean-code` | This skill embodies the principles of "Clean Code" by Robert C. Martin (Uncle Bob). Use it to transform "code that works" into "code that is clean." |
+| `clean-code` | Esta skill incorpora os princípios do "Clean Code" de Robert C. Martin (Uncle Bob). Use-a para transformar "código que funciona" em "código que é limpo". |
 | `debugger` | Debugging specialist for errors, test failures, and unexpected behavior. Use proactively when encountering any issues. |
 | `playwright-skill` | IMPORTANT - Path Resolution: This skill can be installed in different locations (plugin system, manual installation, global, or project-specific). Before executing any commands, determine the skill directory based on where you loaded this SKILL.md file, and use that path in all commands below. |
 | `simplify-code` | Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes. |
@@ -282,7 +321,7 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 #### 🤖 Agentes & Automação
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `firecrawl-agent` | AI-powered autonomous data extraction that navigates complex sites and returns structured JSON. Use this skill when the user wants structured data from websites, needs to extract pricing tiers, product listings, directory entries, or any data as JSON with a schema. Triggers on "extract structured data", "get all the products", "pull pricing info", "extract as JSON", or when the user provides a JSON schema for website data. More powerful than simple scraping for multi-page structured extraction. |
+| `firecrawl-agent` | Extração de dados autônoma alimentada por IA que navega em sites complexos e retorna JSON estruturado. Use esta skill quando o usuário quiser dados estruturados de sites, precisar extrair tabelas de preços, listagens de produtos, entradas de diretório ou qualquer dado como JSON com um esquema. Acionado por "extrair dados estruturados", "obter todos os produtos", "puxar informações de preços", "extrair como JSON" ou quando o usuário fornece um esquema JSON para dados do site. Mais poderoso que a raspagem simples para extração estruturada de múltiplas páginas. |
 | `firecrawl-build-onboarding` | Get Firecrawl credentials and SDK setup into a project. Use when an application needs `FIRECRAWL_API_KEY`, when an agent should add Firecrawl to `.env`, when the user wants to authenticate Firecrawl for app code, or when choosing the first SDK and docs for a new Firecrawl integration. This skill includes its own browser auth flow, so it does not depend on the website onboarding skill. |
 | `firecrawl-build-search` | Integrate Firecrawl `/search` into product code and agent workflows. Use when an app needs discovery before extraction, when the feature starts with a query instead of a URL, or when the system should search the web and optionally hydrate result content. |
 
@@ -321,17 +360,60 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 
 ---
 
-## 🔄 Dispatcher Graph (.agents/graph.md)
+## 🔄 AOS: O Grafo Dispatcher
 
-Os agentes de IA agora seguem uma máquina de estados robusta e determinística para orquestrar operações paralelas, substituindo a antiga pipeline de 5 agentes baseada em texto.
+A v4.0.0 substitui a antiga prosa linear da "pipeline de 5 agentes" por uma máquina de estados real e executável. O contrato vive em [`.agents/graph.md`](.agents/graph.md), a lista de nós em [`.agents/nodes.json`](.agents/nodes.json), e o dispatcher executável em [`.claude/workflows/startcycle-dispatch.mjs`](.claude/workflows/startcycle-dispatch.mjs).
 
-- **🚀 Dispatcher Graph (`.agents/graph.md`)**: Um sistema de roteamento baseado em nós totalmente autônomo para coordenar a equipe de agentes (Architect, TechLead, UI/UX, Engineering, EventTech, Reviewer, Shipping). Utiliza entregas determinísticas de arquivos em `production_artifacts/` e portas de estado explícitas, garantindo uma orquestração paralela precisa sem desvio de prompts.
-- **1. IDEATE & MEDIA STORM (`/grill-me`, `/bdbrainstorm`, `/bdbmediastorm`)**: Desafiar ideias ativamente ou realizar brainstorming multi-agente de mídia/event-tech. Inicia subagentes especializados para validar hardware, cenografia 3D, protocolos e compatibilidade MCP.
-- **2. DEFINE & SCAFFOLD (`openwiki-skill`, `github-repo`)**: Confirmar diretório de workspace alvo com o usuário e, em seguida, inicializar autonomamente a documentação do projeto, `AGENTS.md`, estruturas `.openwiki/` e padrões do repositório GitHub.
-- **3. PLAN & ARCHITECT**: O Arquiteto transforma a meta em um plano de execução (`00_execution_plan.md`), e o TechLead revisa o mapa de capacidades antes de iniciar os nós de construção.
-- **4. BUILD (Execução de Nós em Paralelo)**: Desenvolvimento guiado por subagentes. O dispatcher encaminha tarefas para agentes Godmode especializados (UI/UX, Engineering, EventTech) operando em Git-Worktrees isolados.
-- **5. VERIFY & REVIEW (QA Adversário)**: Um Revisor dedicado audita de forma adversária as saídas dos nós de construção em relação ao contrato, impondo rígidos portões de QA e registrando descobertas.
-- **6. SHIP (Release Gatekeeper)**: Godmode_Shipping executa o portão de qualidade automatizado final. Realiza commits, envia para repositórios privados, atualiza documentos OpenWiki autonomamente, ingere no memB e implementa ao vivo.
+**A única regra que todo o resto segue: nós nunca invocam uns aos outros.** Um único dispatcher lê `production_artifacts/state.json` após o retorno de cada nó e decide o que será executado a seguir. Não há cadeia de repasse (hand-off), nenhum agente dizendo a outro agente para prosseguir — o que impede o desvio de prompts que faz longos pipelines de agentes saírem do curso.
+
+```mermaid
+flowchart LR
+    U(["👤 Usuário"])
+    A["<b>Architect</b><br/><span>Plano de Sistema (00)</span>"]
+    T["<b>TechLead</b><br/><span>Aprovação de Capacidades</span>"]
+    UX["<b>Godmode_UI_UX</b><br/><span>Especificação Frontend (01)</span>"]
+    EN["<b>Godmode_Engineering</b><br/><span>Esquema Backend (02)</span>"]
+    ME["<b>Godmode_Media</b><br/><span>EventTech (03)</span>"]
+    R["<b>Reviewer</b><br/><span>QA Baseado em Dúvida</span>"]
+    S["<b>Shipping</b><br/><span>Portão-GO</span>"]
+
+    U --> A --> T
+    T --> UX & EN & ME
+    UX & EN & ME --> R
+    R --> S
+
+    T -.->|Rejeição TechLead · falha no mapa de cap.| A
+    R -.->|Descobertas Reviewer · loop de reparo| UX
+    S -.->|falha no portão · Shipping nomeia o dono| EN
+    R -.->|needs_human · guarda anti-inércia| U
+
+    classDef box fill:#161b26,stroke:#3a4560,stroke-width:1.5px,color:#e8edf7
+    classDef user fill:#1a2436,stroke:#4a6fa5,stroke-width:1.5px,color:#dbeafe
+    class A,T,UX,EN,ME,R,S box
+    class U user
+    linkStyle 8,9,10,11 stroke:#7d8799,stroke-width:1px,color:#9aa4b8
+```
+
+### O que faz o sistema se manter unido
+
+| Mecanismo | O que previne |
+|---|---|
+| **Isolamento do Reviewer** | O Reviewer lê os artefatos de build e o contrato do plano — nunca o `goal` original, nunca o raciocínio de um nó de build ou sua afirmação de que o trabalho está concluído. Repassar a afirmação do implementador enviesa o revisor para a concordância; retê-la é o que torna a revisão adversária em vez de um mero carimbo. |
+| **Guarda anti-inércia** | Se um ciclo de reparo retornar relatando o *mesmo* ID de descoberta bloqueante que o anterior, nada está realmente sendo consertado. A execução escala para um humano em vez de queimar iterações executando um loop idêntico. |
+| **Fragmentos de estado por nó** | Os nós de build rodam em paralelo e cada um escreve seu próprio fragmento `state.d/<nó>.json`, mesclados depois — eles nunca escrevem em `state.json` diretamente. Gravadores paralelos em um arquivo JSON geram condição de corrida por atualização perdida; os fragmentos removem a corrida por construção. |
+| **Teto de iteração** | `max_iterations` (padrão 3) para o loop incondicionalmente, deliberadamente configurado abaixo da própria sobreposição de parada de 8 hooks do Claude Code, para que a própria mensagem de escalonamento da execução chegue a você primeiro. |
+| **Transição humana no loop** | Qualquer nó pode definir `needs_human: true` e parar a execução. Autonomia total soa bem até que um nó atinja algo que apenas um humano pode decidir — isso é uma aresta explícita no grafo, não uma interrupção dele. |
+| **Lançamento com Portão-GO** | Alcançar `ready_to_ship` não é lançar. `git push`, `npm publish`, `npm version` e `rm` recursivo são bloqueados por um hook `PreToolUse` ([`.claude/hooks/go-gate.mjs`](.claude/hooks/go-gate.mjs)) a menos que sua mensagem imediatamente anterior seja a palavra literal **GO**. É um hook, não uma regra que um agente lê e tenta seguir — ele é acionado antes de qualquer verificação de modo de permissão e não pode ser contornado. |
+
+### Três variantes — escolha pela quantidade de maquinário que a tarefa precisa
+
+| Comando | Maquinário | Use quando |
+|---|---|---|
+| **`/startcycle`** | Cadeia linear, entregas de arquivo em `production_artifacts/`. Sem máquina de estado, sem loop de reparo. | Um build direto onde você quer a equipe de agentes, mas não a cerimônia. |
+| **`/startcycle-graph`** | O grafo completo acima: `state.json` durável, loop de reparo do Reviewer, portão de qualidade, escalonamento automático. | Trabalho de feature real onde a exatidão importa mais que a velocidade, e você quer uma trilha de auditoria do que aconteceu. |
+| **`/startcycle-graph-user`** | Delegação descartável de 2 a 4 nós. Nada persistente — sem inicialização `.agents/`, sem `state.json`. Modelos classificados por função (Opus planeja, Sonnet revisa, Haiku ou uma CLI externa faz o trabalho mecânico). | Um único "gerar alguns trabalhadores para esta tarefa" em *qualquer* projeto, incluindo aqueles que nunca ouviram falar deste repositório. |
+
+A terceira variante assume deliberadamente nada sobre sua máquina: ela detecta se o Antigravity, OpenCode ou Codex estão presentes e recorre aos próprios subagentes do Claude Code quando nenhum está. As classificações de modelos são forçadas por função, em vez de herdadas de sua sessão, de forma que um passo de trabalhador mecânico não rode silenciosamente no Opus só porque é o que você tinha selecionado.
 
 ---
 
@@ -445,16 +527,16 @@ O **OpenWiki Engine** mantém autonomamente documentação viva da base de códi
 <details>
 <summary><strong>🧠 Arquitetura Multi-Provedor LLM & Zero-Token RepoGraph</strong></summary>
 
-1. **Multi-Provider LLM Agility:** Decoupled from single-vendor lock-in. Configure any LLM backend via environment variables:
+1. **Agilidade LLM Multi-Provedor:** Desacoplado de dependência de um único fornecedor. Configure qualquer backend LLM via variáveis de ambiente:
    - **Google GenAI:** `gemma-4-26b-a4b-it` (padrão via SDK `google-genai`, com fallback de descoberta automática de modelos)
-   - **Groq:** `llama-3.3-70b-versatile` (ultra-low latency)
+   - **Groq:** `llama-3.3-70b-versatile` (latência ultra-baixa)
    - **Grok / xAI:** `grok-2-latest`
    - **Nvidia NIM:** `meta/llama-3.3-70b-instruct`
-   - **OpenRouter:** `anthropic/claude-3.5-sonnet` (200+ models)
+   - **OpenRouter:** `anthropic/claude-3.5-sonnet` (mais de 200 modelos)
    - **OpenAI:** `gpt-4o-mini` / `gpt-4o`
-   - **Offline / Local:** Ollama (`llama3`), LM Studio, or any OpenAI-compatible endpoint.
-2. **RepoGraph Zero-Token Git Analytics:** Analyzes 90-day hotspot velocity, single-author bus factor risk, and maintainability index purely through deterministic local Git analysis—costing **0 LLM tokens**.
-3. **Repowise-Grade Live HTML Dashboard:** `.openwiki/code_health_dashboard.html` provides 6 visual SVG panels (Galaxy Cluster Map, Risk Donut, Bus Factor Matrix, Commit Velocity Churn, Hotspot Leaderboard, Architecture Health Radar) with **60-second live auto-refresh** and integrated memB ADR telemetry.
+   - **Offline / Local:** Ollama (`llama3`), LM Studio ou qualquer endpoint compatível com OpenAI.
+2. **Análise Git Zero-Token RepoGraph:** Analisa velocidade de hotspot de 90 dias, risco de fator-ônibus de autor único e índice de manutenibilidade puramente através de análise Git local determinística — custando **0 tokens LLM**.
+3. **Dashboard HTML Ao Vivo de Nível Repowise:** `.openwiki/code_health_dashboard.html` fornece 6 painéis visuais SVG (Mapa de Aglomerado de Galáxias, Gráfico de Risco em Rosca, Matriz de Fator Ônibus, Churn de Velocidade de Commit, Leaderboard de Hotspot, Radar de Saúde da Arquitetura) com **atualização automática ao vivo a cada 60 segundos** e telemetria integrada de ADR do memB.
 </details>
 
 <details>
@@ -490,126 +572,22 @@ tail -f ~/.openwiki/daemon.log
 ```
 </details>
 
----
-
-## 🖥️ BDB OS Agent Workspace: Orquestração de Multi-Agentes Paralelos (v4.0.0)
-
-[![Repo](https://img.shields.io/badge/repo-bdb--os--agent--workspace-blue.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
-[![harness](https://img.shields.io/badge/orquestração-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
-[![terminal](https://img.shields.io/badge/terminal-Controle%20ao%20Vivo-purple.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
-[![license](https://img.shields.io/badge/licença-Apache%202.0-blue.svg)](LICENSE)
-
-O **BDB OS Agent Workspace** é o Meta-Harness de Desktop e a Camada de Orquestração projetada para agentes de IA paralelos. Ele permite que os desenvolvedores iniciem, gerenciem e coordenem múltiplas sessões de agentes isoladas concorrentemente em Git Worktrees independentes, com loops de feedback de terminal em tempo real e roteamento automatizado de revisão de PR.
-
-```mermaid
-flowchart TD
-    A[Desktop IDE Meta-Harness] --> B[Orquestrador de Git Worktrees]
-    B --> C[Sessão de Agente 1: Construção de Feature]
-    B --> D[Sessão de Agente 2: Refatoração]
-    B --> E[Sessão de Agente N: Teste & Verificação]
-    C --> F[Controle de Terminal ao Vivo & Monitor de Processos]
-    D --> F
-    E --> F
-    F --> G[Loops de Feedback CI/CD Automáticos]
-    G --> H[Revisão de PR & Roteamento de Merge]
-    H --> I[Repositório Git Central]
-```
-
 <details>
-<summary><strong>⚙️ Arquitetura & Orquestração de Worktree</strong></summary>
+<summary><strong>🌍 BDB OS Remote Gateway & Thin-Client (`mcps/bdb-os-remote/`)</strong></summary>
 
-- **Isolamento de Git Worktree:** Instancia árvores de trabalho dedicadas e limpas para cada sessão de subagente, prevenindo corrupção de estado de arquivos e colisões de lockfiles durante edições concorrentes.
-- **Desktop Meta-Harness:** Coordena configurações multi-workspace, variáveis de ambiente e portas de servidores locais em ambientes de desenvolvimento concorrentes.
-- **Execução Paralela de Agentes:** Inicia agentes autônomos trabalhando simultaneamente em módulos, recursos ou correções de bugs separados, sem interferir no branch principal do workspace.
-</details>
-
-<details>
-<summary><strong>🔬 Especificações Técnicas & Roteamento Automatizado</strong></summary>
-
-- **Controle de Terminal ao Vivo:** Captura fluxos stdout/stderr de subagentes com monitoramento ativo de processos, controle de ciclo de vida de sessões e relatórios de status em tempo real.
-- **Loops de Feedback CI/CD Automáticos:** Monitora saídas de testes e tarefas de build, roteando rastros de erro diretamente de volta ao contexto do subagente executor para reparo imediato.
-- **Roteamento de Revisão de PR:** Empacota recursos concluídos, executa verificações automatizadas de segurança e saúde de código e roteia Pull Requests gerados para revisão do usuário ou fusão automatizada.
-</details>
-
-<details>
-<summary><strong>🔌 Harnesses Suportados & Link Direto do Repositório</strong></summary>
-
-- **Harnesses de Agentes Suportados:**
-  - **Google Antigravity / AGY CLI**
-  - **Claude Desktop & Claude Code**
-  - **Cursor & Windsurf**
-  - **Roo Code & Cline**
-  - **ChatGPT Codex / Codex CLI**
-  - **Aider & VS Code**
-- **Repositório Direto:** Acesse o orquestrador de workspace em [github.com/hybridlabor-api/bdb-os-agent-workspace](https://github.com/hybridlabor-api/bdb-os-agent-workspace).
+- **Transporte SSE Zero-Trust:** Execute o Claude Desktop no seu laptop enquanto roda ferramentas nativamente na sua Workstation fixa através de um túnel seguro do Tailscale.
+- **Topologia Assimétrica:** Instala `heimdall-token-saver` localmente no seu laptop para comprimir tokens *antes* de chamar o LLM, enquanto `memB`, `synapse` e operações de arquivos são roteadas para a Workstation.
+- **Ferramenta de Clone Offline:** Arquivos de projeto em um clique transmitidos de forma contínua através do Tailscale sem pastas `node_modules` pesadas.
+- **Repositório Direto:** Acesse o gateway em [github.com/hybridlabor-api/bdb-os-remote](https://github.com/hybridlabor-api/bdb-os-remote) ou instale via NPX:
 
 ```bash
-git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
+npx @hybridlabor-api/bdb-os-remote installer
 ```
 </details>
 
 ---
 
-## 🎨 BDB Creator Extension: Pipeline de Mídia & Computação 3D de Alta Capacidade (v4.0.0)
 
-[![Repo](https://img.shields.io/badge/repo-bdb--dev--creator--extension-blue.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
-[![compute](https://img.shields.io/badge/computação-CUDA%20%2F%20ML-orange.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
-[![3D Engine](https://img.shields.io/badge/3D-TRELLIS%20%7C%20TripoSR-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
-[![ComfyUI](https://img.shields.io/badge/ComfyUI-FLUX%20%7C%20SDXL%20%7C%20Wan2.1-red.svg)](https://github.com/hybridlabor-api/bdb-dev-creator-extension)
-[![license](https://img.shields.io/badge/licença-Apache%202.0-blue.svg)](LICENSE)
-
-O **BDB Creator Extension** (`bdb-dev-creator-extension`) é o pipeline de computação de mídia de alta capacidade projetado para manter o pacote de skills principal rápido, leve e responsivo (<25MB). Ele desacopla redes neurais CUDA/ML, síntese de malhas 3D, geração CAD paramétrica, edição de vídeo automatizada e motores de renderização ComfyUI locais.
-
-```mermaid
-flowchart LR
-    A[Agente Principal de Skills] -->|Requisição MCP| B[Roteador BDB Creator Extension]
-    B --> C[Suite de Geração 3D]
-    B --> D[Suite de Vídeo Cinema]
-    B --> E[Motor MCP ComfyUI Local]
-    C --> C1[TRELLIS: 3D de Alta Fidelidade]
-    C --> C2[TripoSR: Malha Rápida <0.5s]
-    C --> C3[CadQuery: Text-to-CAD]
-    D --> D1[Diretor AI OpenMontage]
-    D --> D2[Remotion Video-Shotcraft]
-    D --> D3[Servidor MCP Palmier Pro NLE]
-    E --> E1[Geração de Imagem FLUX.1]
-    E --> E2[Pipeline SDXL]
-    E --> E3[Difusão de Vídeo Wan2.1]
-    C1 & C2 & C3 & D1 & D2 & D3 & E1 & E2 & E3 --> F[Mídia Renderizada & Ativos Espaciais]
-```
-
-<details>
-<summary><strong>🔷 Suite de Geração 3D (`engines/3d/`)</strong></summary>
-
-- **Microsoft TRELLIS:** Geração de ativos Image-to-3D de alta fidelidade produzindo malhas 3D texturizadas e representações NeRF/Gaussian Splat.
-- **Stability AI TripoSR:** Geração ultra-rápida de imagem única para malha 3D em menos de meio segundo (<0.5s) para prototipagem espacial rápida.
-- **CadQuery Text-to-CAD Paramétrico:** Gera modelos de engenharia precisos e geometria arquitetônica nos formatos STEP, STL e URDF.
-</details>
-
-<details>
-<summary><strong>🎬 Suite de Vídeo Cinema (`engines/video/`)</strong></summary>
-
-- **Orquestrador AI OpenMontage:** Narrativa em vídeo automatizada, montagem de roteiro para linha do tempo e sequenciamento de tomadas.
-- **Remotion Video-Shotcraft:** Mais de 100 componentes de vídeo programáticos de nível de cinema e templates de motion graphics construídos com React.
-- **Servidor MCP Palmier Pro NLE:** Ponte MCP HTTP em tempo real (`http://127.0.0.1:19789/mcp`) que expõe capacidades nativas de edição de vídeo não linear do macOS.
-</details>
-
-<details>
-<summary><strong>🎨 Motor MCP ComfyUI Local & Link Direto do Repositório (`mcps/comfyui-mcp/`)</strong></summary>
-
-- **Integração Protocolo Model Context:** Expõe fluxos de trabalho locais do ComfyUI diretamente como ferramentas executáveis para agentes de IA via MCP.
-- **Modelos Generativos Suportados:**
-  - **FLUX.1:** Síntese de imagens de alta resolução e aderência precisa a prompts.
-  - **SDXL:** Controle de fluxo de difusão latente com LoRAs e ControlNets customizados.
-  - **Wan2.1:** Modelos de difusão de vídeo generativo para criação de clipes com alta taxa de quadros.
-- **Repositório Direto:** Acesse a extensão em [github.com/hybridlabor-api/bdb-dev-creator-extension](https://github.com/hybridlabor-api/bdb-dev-creator-extension).
-
-```bash
-git clone https://github.com/hybridlabor-api/bdb-dev-creator-extension.git
-```
-</details>
-
----
 
 ## 🧠 memB: Cérebro Semântico Personalizado (v4.0.0)
 
@@ -618,23 +596,23 @@ O BDB OS introduz um cérebro de memória semântica local, offline-first totalm
 <details>
 <summary><strong>⚙️ Como Funciona o Ecossistema (Skills, Vaults & Obsidian)</strong></summary>
 
-### 1. Ingestion via the `/memb-ingest` Skill
-The ecosystem includes a deeply integrated skill (`/memb-ingest`). When an agent runs this, the `memb_ingest.py` script recursively scans your project (reading `.openwiki`, `AGENTS.md`, transcripts, and architecture files). 
-* **Offline Vector Embeddings:** It bundles a pre-quantized 30MB `all-MiniLM-L6-v2` ONNX model to chunk and store these learnings natively in a fast SQLite vector store (`~/.MemBDB/memb.db`), all without hitting external APIs.
+### 1. Ingestão via Skill `/memb-ingest`
+O ecossistema inclui uma skill profundamente integrada (`/memb-ingest`). Quando um agente executa isso, o script `memb_ingest.py` rastreia recursivamente seu projeto (lendo `.openwiki`, `AGENTS.md`, transcrições e arquivos de arquitetura).
+* **Embeddings Vetoriais Offline:** Ele empacota um modelo ONNX `all-MiniLM-L6-v2` pré-quantizado de 30MB para fragmentar e armazenar esses aprendizados nativamente em um banco de dados vetorial SQLite rápido (`~/.MemBDB/memb.db`), tudo sem acessar APIs externas.
 
-### 2. Autonomous AI-First Vault Generation
-Once ingestion completes, memB natively generates a **physical Markdown Vault** (`~/.MemBDB/memB_Vault`) structured around a strict "God Mode" radial topology:
-* **Zero-Compute Context:** A universal `AGENTS.md` and a master `God_Mode.md` are written to the root. Small 30MB local inference models can instantly orient themselves macroscopically by reading these physical files without spending context tokens on complex database calls.
-* **Micro-Targeted RAG:** For precise execution, the small LLMs query the vector DB to retrieve just the exact 3-5 sub-files needed.
+### 2. Geração Autônoma de Vault AI-First
+Assim que a ingestão é concluída, o memB gera nativamente um **Vault de Markdown físico** (`~/.MemBDB/memB_Vault`) estruturado em torno de uma topologia radial rigorosa de "God Mode":
+* **Contexto Zero-Compute:** Um `AGENTS.md` universal e um `God_Mode.md` mestre são escritos na raiz. Modelos locais pequenos de inferência de 30MB podem se orientar macroscopicamente instantaneamente lendo esses arquivos físicos sem gastar tokens de contexto em chamadas de banco de dados complexas.
+* **RAG Micro-Direcionado:** Para execução precisa, os pequenos LLMs consultam o banco de dados vetorial para recuperar apenas os 3-5 sub-arquivos exatos necessários.
 
-### 3. The Obsidian Visualization Plugin
-memB includes a native **Obsidian Plugin** (`obsidian-memb-plugin`) that acts as a visual UI over your physical vault.
-* **Top-Down Radial Tree:** It reads the generated `memB_Vault` and maps it visually using Obsidian's graph view. 
-* By strictly using directional parent-to-child links (e.g., God Mode -> Projects -> Category -> Neuron), the Obsidian graph blossoms outward like a flower, completely preventing the "black hole" context clustering seen in unstructured graph databases.
+### 3. O Plugin de Visualização do Obsidian
+O memB inclui um **Plugin Obsidian** nativo (`obsidian-memb-plugin`) que atua como uma interface visual sobre seu vault físico.
+* **Árvore Radial Top-Down:** Ele lê o `memB_Vault` gerado e o mapeia visualmente usando a visualização de grafo do Obsidian.
+* Usando estritamente links direcionais de pai para filho (ex: God Mode -> Projetos -> Categoria -> Neurônio), o grafo do Obsidian se expande para fora como uma flor, evitando completamente o agrupamento de contexto em "buraco negro" visto em bancos de dados de grafos não estruturados.
 
-### 4. Data Sovereignty & Security
-* **Zero Telemetry:** Absolute data sovereignty with no remote tracking.
-* **Secret Filtration:** Blocks passwords, raw API keys, and connection strings before injection.
+### 4. Soberania de Dados & Segurança
+* **Zero Telemetria:** Soberania absoluta de dados sem rastreamento remoto.
+* **Filtragem de Segredos:** Bloqueia senhas, chaves de API brutas e strings de conexão antes da injeção.
 </details>
 
 ---
@@ -648,20 +626,20 @@ memB includes a native **Obsidian Plugin** (`obsidian-memb-plugin`) that acts as
 <details>
 <summary><strong>⚙️ Propósito & Desempenho</strong></summary>
 
-- **Automatic CLI Output Context Compression:** Reduces token overhead by **60–99%** on high-volume CLI tool outputs without impacting agent understanding.
-- **Zero Information Loss Guarantee:** Preserves all error messages, failed assertions, stack traces, exit codes, and actionable debugging context while stripping redundant whitespace, progress spinners, and repetitive logs.
-- **Automatic Secret Redaction:** Automatically detects and redacts passwords, tokens, API keys, and sensitive environment variables prior to inserting command output into agent context windows.
+- **Compressão Automática de Contexto de Saída CLI:** Reduz a sobrecarga de tokens em **60–99%** em saídas de ferramentas CLI de alto volume, sem impactar a compreensão do agente.
+- **Garantia de Perda Zero de Informação:** Preserva todas as mensagens de erro, asserções falhas, stack traces, códigos de saída e contexto de depuração acionável, enquanto remove espaços em branco redundantes, spinners de progresso e logs repetitivos.
+- **Ocultação Automática de Segredos:** Detecta e oculta automaticamente senhas, tokens, chaves de API e variáveis de ambiente sensíveis antes de inserir a saída de comandos nas janelas de contexto do agente.
 </details>
 
 <details>
 <summary><strong>🔬 Especificações Técnicas & Processadores</strong></summary>
 
-- **36 Specialized Processors:** Includes tailored compression rules for:
-  - **Version Control & Dev Tools:** `git` (status, diff, log, branch)
-  - **Testing Frameworks:** `pytest`, `jest`, `cargo test`, `vitest`, `go test`
-  - **Containers & Infrastructure:** `docker`, `kubectl`, `terraform`
-  - **Package Managers & Build Systems:** `npm`, `yarn`, `pnpm`, `pip`, `cargo`, `go` package listings and build outputs
-- **Preservation Rules:** Guarantees line numbers, error traces, and exact failure sites remain 100% intact for immediate root-cause diagnosis.
+- **36 Processadores Especializados:** Inclui regras de compressão adaptadas para:
+  - **Controle de Versão & Ferramentas Dev:** `git` (status, diff, log, branch)
+  - **Frameworks de Teste:** `pytest`, `jest`, `cargo test`, `vitest`, `go test`
+  - **Contêineres & Infraestrutura:** `docker`, `kubectl`, `terraform`
+  - **Gerenciadores de Pacotes & Sistemas de Build:** listas de pacotes e saídas de compilação de `npm`, `yarn`, `pnpm`, `pip`, `cargo`, `go`
+- **Regras de Preservação:** Garante que números de linhas, rastros de erro e locais exatos de falhas permaneçam 100% intactos para o diagnóstico imediato da causa raiz.
 </details>
 
 <details>
@@ -685,49 +663,59 @@ Você pode executar comandos de diagnóstico e benchmarking diretamente no seu t
 
 ### 🆚 Qual Versão Devo Usar?
 
-- **Versão Agent Skills (`aos`)**: Inclui todas as skills otimizadas, interface interativa de seleção MCP e **daemons em segundo plano ativos**. Instala e orquestra automaticamente o motor de memória semântica local `memB` e os git-hooks de autodocumentação do `OpenWiki`. Ideal para gerenciamento de projetos autônomo e de longo prazo.
-- **`@next`**: um canal de staging usado ocasionalmente para grandes mudanças (como a renomeação v4.0.0 AOS) antes da promoção para `@latest` (que o CI publica automaticamente a cada release do release-please). Não é um canal paralelo permanente.
-- **Versão Legacy Antigravity (`bdb-antigravity-skills@legacy`)**: O pacote antigravity original.
+- **`@latest`** — o canal estável. Interface iterativa de seleção MCP, daemons em segundo plano ativos (`memB`, `OpenWiki`), biblioteca completa de skills.
+- **`@next`** — um canal de staging ad-hoc usado ocasionalmente para grandes mudanças (como a renomeação v4.0.0 AOS) antes da promoção para `@latest` (que o CI publica automaticamente a cada release do release-please). Não é um canal paralelo permanente.
+- **`bdb-antigravity-skills@legacy`** — o pacote original, pré-dispatcher, apenas para Antigravity, mantido para qualquer um que ainda dependa dele.
 
-O instalador é construído usando um menu interativo baseado em Node. Ele permite:
-1. **Backup & Sobrescrever**: Faz backup com segurança dos arquivos de configuração existentes e os sobrescreve.
-2. **Merge**: Mescla as novas skills, configurações e caminhos MCP locais personalizados com os já existentes.
+Toda execução lhe dá a mesma escolha: **Backup & Overwrite** (substitui com segurança a configuração existente) ou **Merge** (mescla as novas skills/configs/caminhos MCP com o que você já tem).
 
-### Opção 1: Pergunte ao seu Agente de IA (Mais Fácil)
-Basta dizer ao seu assistente:
-> "Por favor, execute `npx -y @hybridlabor-api/aos@latest` para instalar o pacote de skills e configurar os servidores MCP locais."
+### Pergunte ao seu Agente de IA (Mais Fácil)
+Diga ao seu assistente: *"Execute `npx -y @hybridlabor-api/aos@latest` para instalar o pacote de skills e configurar os servidores MCP locais."*
 
-### Opção 2: Linha de Comando (Global via NPX - Recomendado)
-Execute o script globalmente em seu terminal. Recomendamos sempre adicionar `@latest` para buscar a versão mais recente:
+### Linha de Comando
 
 ```bash
+# Estável
 npx -y @hybridlabor-api/aos@latest
-```
-*(Este comando funciona em terminais Mac/Linux, bem como no Windows PowerShell!)*
 
-### Opção 3: Usando Homebrew (macOS)
-Se você está no Mac e prefere o Homebrew, pode adicionar o repositório e instalar o pacote:
+# Canal de staging para migração (v4.0.0 AOS)
+# Nota: @next é usado apenas ocasionalmente para migrações ativas, não é um canal permanente.
+npx -y @hybridlabor-api/aos@next
+```
+*(Funciona em terminais Mac/Linux, bem como no Windows PowerShell.)*
+
+### Não-Interativo / CI
+
+Selecione alvos sem o menu usando `--platforms=<n[,n]>` — `0` universal, `1` Antigravity, `2` Claude Desktop/Code, `3` Cursor, `5` Codex, `6` Windsurf, `7` Roo/Cline, `8` Aider:
+
 ```bash
-brew tap hybridlabor-api/bdb-skills
-brew install bdb-skills
-bdb-skills
+npx -y @hybridlabor-api/aos -y --platforms=2
 ```
 
-### Opção 4: Script Shell Manual (Git Clone)
-Clone o repositório e execute o script instalador:
+### Local Project Harness
+
+Adicione apenas o contrato do dispatcher (`.agents/`, os hooks de portão, o fluxo `/startcycle-graph`) em um único projeto em vez de instalar globalmente em `$HOME`:
+
+```bash
+npx -y @hybridlabor-api/aos --project-harness
+```
+
+### SaaS Workstation Bootstrapper
+
+Para a Frota Multi-Cloud da BDB: Handshake 2FA no navegador, bootstrap de certificado Step-CA, configuração SSH e injeção do gateway FastMCP em todos os editores detectados:
+
+```bash
+npx -y @hybridlabor-api/aos setup-saas
+```
+
+### A Partir da Fonte (Contribuindo)
+
 ```bash
 git clone https://github.com/hybridlabor-api/aos.git
 cd aos
-chmod +x installer.sh
-./installer.sh
+npm install
+node installer.js
 ```
-
-**O script instalador fará automaticamente:**
-1. Fazer backup seguro das suas skills globais e de workspace existentes.
-2. Implantar as novas skills de configuração global curadas.
-3. Instalar as skills de agente específicas do workspace.
-4. Copiar o `GEMINI.md` personalizado para `~/.gemini/GEMINI.md`.
-5. Pré-aquecer dependências do Python via `uv run` para evitar timeouts do agente de IA na primeira execução.
 
 ---
 *Elevate your agency. Dominate the workflow.*
