@@ -1480,20 +1480,35 @@ async function installMemB(interactive) {
                 ? path.join(membDir, '.venv', 'Scripts', 'python.exe')
                 : path.join(membDir, '.venv', 'bin', 'python');
 
+            let createdViaUv = false;
             if (!fs.existsSync(venvPython)) {
                 try {
                     execSync(`uv venv --seed .venv`, { cwd: membDir, stdio: 'ignore' });
+                    createdViaUv = true;
                 } catch (e1) {
                     execSync(`${pythonCmd} -m venv .venv`, { cwd: membDir, stdio: 'ignore' });
                 }
             }
 
-            const pipViaPython = `"${venvPython}" -m pip`;
-            runPipWithRetry(`${pipViaPython} install --upgrade setuptools --timeout 30 --no-input`, { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
-            runPipWithRetry(`${pipViaPython} install -r requirements.txt --timeout 30 --no-input`, { cwd: membDir, stdio: 'inherit' }, 'pip install for memB standalone', 2, 900000);
+            // `uv venv --seed` is supposed to seed pip/setuptools/wheel into the venv, but
+            // this has been observed to silently under-deliver (venv created, pip missing) --
+            // when that happens every `-m pip install` call below fails with "No module named
+            // pip". `uv pip install --python <venv>` never needs pip present in the venv at
+            // all, so prefer it whenever uv itself is on PATH, regardless of which tool
+            // actually created the venv -- it's a strictly more reliable install path.
+            let hasUv = createdViaUv;
+            if (!hasUv) {
+                try { execSync('uv --version', { stdio: 'ignore' }); hasUv = true; } catch (e) { hasUv = false; }
+            }
+            const uvInstall = (pkgsArg) => `uv pip install --python "${venvPython}" ${pkgsArg}`;
+            const pipInstall = (pkgsArg) => `"${venvPython}" -m pip install ${pkgsArg} --timeout 30 --no-input`;
+            const installCmd = (pkgsArg) => hasUv ? uvInstall(pkgsArg) : pipInstall(pkgsArg);
+
+            runPipWithRetry(installCmd('--upgrade setuptools'), { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
+            runPipWithRetry(installCmd('-r requirements.txt'), { cwd: membDir, stdio: 'inherit' }, 'pip install for memB standalone', 2, 900000);
 
             if (installWebUI && fs.existsSync(serverPy)) {
-                runPipWithRetry(`${pipViaPython} install fastapi uvicorn --timeout 30 --no-input`, { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
+                runPipWithRetry(installCmd('fastapi uvicorn'), { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
             }
         } catch (e) {
             log.warn(`Failed memB standalone venv setup: ${e.message}`);
