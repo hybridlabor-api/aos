@@ -3268,6 +3268,20 @@ async function runQuickUpdate(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     s.stop('Skills refreshed');
 
+    // OpenWiki setup only ever ran on a brand-new install (main()'s fresh-install
+    // branch below) -- an existing install running Quick Update never got offered
+    // it and never had its daemon schedule refreshed. promptCredentials() already
+    // detects an existing key and collapses to a single "keep existing" prompt in
+    // that case, so this is a no-op confirm for anyone already configured and a
+    // real one-time offer for anyone who isn't (including installs from before
+    // this feature existed).
+    if (!isAutoYes) {
+        const creds = await promptCredentials(paths.targetMcpDir);
+        if (creds !== BACK) {
+            await installOpenWikiDaemon(creds.gemini, paths.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+        }
+    }
+
     const modulesToUpdate = installState.installedModules || [];
     for (const subId of modulesToUpdate) {
         if (subId === 'synapse') await installSynapse();
