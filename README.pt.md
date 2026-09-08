@@ -587,7 +587,108 @@ npx @hybridlabor-api/bdb-os-remote installer
 
 ---
 
+## 🖥️ BDB OS Agent Workspace: Orquestração Multi-Agente Paralela
 
+[![Repo](https://img.shields.io/badge/repo-bdb--os--agent--workspace-blue.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
+[![harness](https://img.shields.io/badge/orchestration-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
+[![terminal](https://img.shields.io/badge/terminal-Live%20Control-purple.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
+[![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
+**BDB OS Agent Workspace** é o Meta-Harness de Desktop e a camada de orquestração projetada para agentes de IA paralelos. Ele permite que desenvolvedores criem, gerenciem e coordenem múltiplas sessões de agentes isoladas simultaneamente em Git Worktrees independentes, com loops de feedback de terminal em tempo real e roteamento automatizado de revisão de PR.
+
+```mermaid
+flowchart TD
+    A[Desktop IDE Meta-Harness] --> B[Git Worktree Orchestrator]
+    B --> C[Agent Session 1: Feature Build]
+    B --> D[Agent Session 2: Refactoring]
+    B --> E[Agent Session N: Test & Verification]
+    C --> F[Live Terminal Control & Process Monitor]
+    D --> F
+    E --> F
+    F --> G[Automatic CI/CD Feedback Loops]
+    G --> H[PR Review & Merge Routing]
+    H --> I[Central Git Repository]
+```
+
+<details>
+<summary><strong>⚙️ Arquitetura & Orquestração de Worktrees</strong></summary>
+
+- **Isolamento via Git Worktree:** Instancia árvores de trabalho dedicadas e limpas para cada sessão de subagente, prevenindo corrupção de estado de arquivos ou colisões de lock file durante edições concorrentes.
+- **Meta-Harness de Desktop:** Coordena configurações multi-workspace, variáveis de ambiente e portas de servidor local em ambientes de desenvolvedor concorrentes.
+- **Execução Paralela de Agentes:** Cria agentes autônomos trabalhando simultaneamente em módulos, features ou correções separadas, sem interferir no branch principal do workspace.
+</details>
+
+<details>
+<summary><strong>🔬 Especificações Técnicas & Roteamento Automatizado</strong></summary>
+
+- **Controle de Terminal ao Vivo:** Captura streams stdout/stderr de subagentes com monitoramento ativo de processos, controle de ciclo de vida de sessão e relatórios de status em tempo real.
+- **Loops Automáticos de Feedback CI/CD:** Monitora saídas de testes e tarefas de build, roteando traces de erro diretamente de volta ao contexto do subagente em execução para reparo instantâneo.
+- **Roteamento de Revisão de PR:** Empacota features concluídas, executa verificações automatizadas de segurança e saúde do código, e roteia Pull Requests gerados para revisão humana ou merge automatizado.
+</details>
+
+<details>
+<summary><strong>🔌 Harnesses Suportados & Link Direto do Repositório</strong></summary>
+
+- **Harnesses de Agentes Suportados:**
+  - **Google Antigravity / AGY CLI**
+  - **Claude Desktop & Claude Code**
+  - **Cursor & Windsurf**
+  - **Roo Code & Cline**
+  - **ChatGPT Codex / Codex CLI**
+  - **Aider & VS Code**
+- **Repositório Direto:** Acesse o orquestrador de workspace em [github.com/hybridlabor-api/bdb-os-agent-workspace](https://github.com/hybridlabor-api/bdb-os-agent-workspace).
+
+```bash
+git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
+```
+</details>
+
+---
+
+## 🧿 BDB Synapse: Visualização 3D de Código & Replay de Sessões de Agentes
+
+[![Repo](https://img.shields.io/badge/repo-bdb--synapse-blue.svg)](https://github.com/hybridlabor-api/bdb-synapse)
+[![3D Engine](https://img.shields.io/badge/3D-Three.js%20%7C%20WebGL-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-synapse)
+[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg)](https://github.com/hybridlabor-api/bdb-synapse)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/hybridlabor-api/bdb-synapse/blob/main/LICENSE)
+
+**BDB Synapse** renderiza seu repositório como uma **cidade de código 3D** interativa e reproduz sessões de agentes de codificação como trilhas de luz se movendo através dela — mostrando quais arquivos foram lidos, editados, e onde ocorreu fricção. Um único binário Go, totalmente local, zero telemetria.
+
+Inspirado e derivado de [cosmtrek/mindwalk](https://github.com/cosmtrek/mindwalk) (Licença MIT).
+
+```mermaid
+flowchart LR
+    A[Agent Session Logs] -->|JSONL Parsing| B[Go Trace Adapters]
+    B --> C[Normalized Event Stream]
+    D[Repository Tree] -->|Deterministic Layout| E[3D Citymap Generator]
+    C & E --> F[Local Go Server]
+    F --> G[React + Three.js WebGL Frontend]
+    G --> H[Interactive 3D Code City]
+```
+
+### Agentes Suportados
+
+| Agente | Fonte de Log | Status |
+|-------|-----------|--------|
+| **Claude Code** | `~/.claude/projects/` | ✅ Nativo |
+| **Codex CLI** | `~/.codex/sessions/` | ✅ Nativo |
+| **Pi Agent** | `~/.pi/agent/sessions/` | ✅ Nativo |
+| **Antigravity (agy)** | `~/.gemini/antigravity-cli/brain/` | ✅ Extensão BDB |
+
+### Principais Recursos
+- **Visualizações de Árvore & Terreno:** Repositório como uma árvore radial ou treemap — o brilho é proporcional a quão profundamente um arquivo foi tocado.
+- **Estados de Toque:** Visto (verde musgo), Lido (azul luar), Editado (âmbar quente), Não visitado (escuro).
+- **Deck de Reprodução:** Avance ou reproduza a sessão sobre um histograma agrupado. Observação permanece fria, mutação brilha quente.
+- **Lentes de Agente:** Quando uma sessão iniciou subagentes, escolha uma lente para reproduzir o trace de qualquer subagente no mesmo mapa.
+- **Avaliação de Sessão:** Peça a um CLI de agente local para julgar a trajetória da sessão contra critérios elaborados a partir do seu próprio pedido.
+
+```bash
+synapse                              # escaneia todos os diretórios de agentes, abre o navegador
+synapse open <session.jsonl>         # reproduz uma sessão específica
+synapse map <repo>                   # renderiza um mapa do repositório, sem necessidade de sessão
+```
+
+---
 
 ## 🧠 memB: Cérebro Semântico Personalizado (v4.0.0)
 

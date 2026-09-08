@@ -11,7 +11,7 @@
 
 ──────────────────────────── N O D E F O R G E ─────────────────────────────
 
-            O P T I M I Z E D   A G E N T   S K I L L S  ·  v4.0.0
+                 BDB AGENT OS · CORE KERNEL · AOS -  v4.0.0
 ```
 
 # 🚀 AOS — BDB Agent OS · Optimized Creative & Full-Stack Skills Pack
