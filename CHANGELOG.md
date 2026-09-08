@@ -1,5 +1,91 @@
 # Changelog
 
+## [3.12.1](https://github.com/hybridlabor-api/aos/compare/v3.12.0...v3.12.1) (2026-09-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **startcycle:** /startcycle now means the linear pipeline again. The dispatcher graph moved to /startcycle-graph, and /light-graph was renamed to /startcycle-graph-user. Anything invoking /startcycle expecting the graph must switch to /startcycle-graph.
+* **skills:** deduplicate skill trees and tag skills by domain
+
+### Features
+
+* add local project harness directly to maintenance menu and support --project-harness CLI flag ([bacc4ee](https://github.com/hybridlabor-api/aos/commit/bacc4eec35441d2026eac0d7bcb08d5d56729b61))
+* **branding:** embed authentic BDB vector coin, watermark and seal in certificate template ([1c28dd2](https://github.com/hybridlabor-api/aos/commit/1c28dd29adcaf4a03232aa571709d82bc7450dc0))
+* **branding:** redesign certificate to flagship BDB Enterprise SaaS Host A4 layout ([14bec20](https://github.com/hybridlabor-api/aos/commit/14bec20a13bbb7195e3b076eb473a16d7f036019))
+* **client:** implement keychain keypair, OIDC token acquisition, 401 refresh (A8b) ([f67593b](https://github.com/hybridlabor-api/aos/commit/f67593b7cfd52f766b2cbe16eba8a4f93d8144e7))
+* **graph:** dispatcher-mediated graph layer for /startcycle (Phase 4) ([5ba9622](https://github.com/hybridlabor-api/aos/commit/5ba9622b09ac98ceef88a4676efb29e181ceb9b6))
+* **installer:** add --platforms=&lt;n[,n]&gt; for non-interactive target selection ([6425b97](https://github.com/hybridlabor-api/aos/commit/6425b97b44c9a4a99736a640f354456f4254bb2c))
+* **installer:** add glitch banner and topology animation effects ([6f11669](https://github.com/hybridlabor-api/aos/commit/6f1166979967b4e42a5a053243d482e8433634ac))
+* **installer:** generate Claude Code + OpenCode subagents from AGENTS.md ([73bd07d](https://github.com/hybridlabor-api/aos/commit/73bd07d245417229a908922c39eeb2a76fa66c24))
+* **installer:** gold/emerald KEYSTONE banner for the v3.13 latest release ([e314a04](https://github.com/hybridlabor-api/aos/commit/e314a044c8e102f45938d58386152df089b7c421))
+* **installer:** manifest store conflict resolution and npm-based memb-mcp ([ec02555](https://github.com/hybridlabor-api/aos/commit/ec025557a61260d87f287d2ec942f45188866da1))
+* **installer:** NODEFORGE codename gets its own ASCII art in the banner ([46c6270](https://github.com/hybridlabor-api/aos/commit/46c6270d44f936c963f1ab9a2819d6fab1cb1761))
+* **installer:** NODEFORGE release banner with gradient wordmark ([e32510c](https://github.com/hybridlabor-api/aos/commit/e32510c53cf52140eab48ba54ab6cc4eea62b187))
+* **safety:** enforce GO gate via PreToolUse hook, trim CLAUDE.md ([ef2a3a2](https://github.com/hybridlabor-api/aos/commit/ef2a3a2c5d28ad35f3ced5e39b87fd0fa04713f0))
+* **skills:** add bdbdesignpro motion-engine router skill ([e0eba75](https://github.com/hybridlabor-api/aos/commit/e0eba7559f379cf8615fb08040c889bec91e67be))
+* **skills:** add full anatomy + eval triggers to bdb-core domain ([72d0194](https://github.com/hybridlabor-api/aos/commit/72d0194e321401848291fb713662dcdf0478e164))
+* **skills:** add full anatomy + eval triggers to design-ui-ux domain ([785176f](https://github.com/hybridlabor-api/aos/commit/785176f09d676bb74d16e1e68b19c991fca7fbae))
+* **skills:** add full anatomy + eval triggers to media-eventtech domain ([46a8147](https://github.com/hybridlabor-api/aos/commit/46a814719583ab5b7c0484ff6da80b7e68fdf0d3))
+* **skills:** add full anatomy + eval triggers to saas-ops domain ([3d17190](https://github.com/hybridlabor-api/aos/commit/3d17190db6e6a3b2dfeaf0ae73080887ea636a30))
+* **skills:** add light-graph -- disposable multi-agent fan-out ([7fe3ecf](https://github.com/hybridlabor-api/aos/commit/7fe3ecf5f2c972229fa7fa03b9814baab76ccc24))
+* **skills:** add sync_ecosystem_wiki.py to aggregate all 31 repos into master visualizer ([4a16a46](https://github.com/hybridlabor-api/aos/commit/4a16a46bcc9acdbb7486982c7b0bd058f1acc23e))
+* **skills:** import bdb-deploy skill, wire into godmode-shipping ([088aba3](https://github.com/hybridlabor-api/aos/commit/088aba3cbf0bd860788da05b9c9a01c23266710b))
+* **skills:** import triage + prototype from mattpocock/skills (MIT) ([a008ef9](https://github.com/hybridlabor-api/aos/commit/a008ef972529af65d1d4bd8467d38eb85addbe0f))
+* **skills:** modernize openwiki-skill to langchain-ai/openwiki v0.5.0 with visualizer and remote update script ([3548ece](https://github.com/hybridlabor-api/aos/commit/3548ece1deffaf766d5c43c2e6718d9c22abeb56))
+* **skills:** optimize ecosystem wiki topology into hierarchical domain clusters ([066dc14](https://github.com/hybridlabor-api/aos/commit/066dc148fc089170b20a57ee8b19e7446dd86fe8))
+* **skills:** propagate saas-ops consolidation (bdbsaas-ops retire, bdbsaashost OIDC, bdbsaastraining station 1b) ([46775fa](https://github.com/hybridlabor-api/aos/commit/46775fa87a466a8717f9aa06f71dc30c89ad3b6f))
+* **skills:** set disable-model-invocation on side-effect skills (F-07) ([c8b0a37](https://github.com/hybridlabor-api/aos/commit/c8b0a3714f65f7152e1c808e6593e8023742aeda))
+* **startcycle:** declarative node registry, fix parallel state.json race ([fc54714](https://github.com/hybridlabor-api/aos/commit/fc5471404f6ce57746161b53b2957f18b2529fa0))
+* **startcycle:** split into three variants, fix review findings ([3a93688](https://github.com/hybridlabor-api/aos/commit/3a9368807a79d7951a9e57f62d0f0dbf695de63a))
+* **workflow:** implement the dispatcher as a Claude Code Dynamic Workflow ([92dbe37](https://github.com/hybridlabor-api/aos/commit/92dbe3742bf85435bf5437c890a12291fa1e199a))
+
+
+### Bug Fixes
+
+* **assets:** actually commit the new header JPEG, add companion-plugins README section ([1918969](https://github.com/hybridlabor-api/aos/commit/1918969a9c64d641e583d6b260c743abda4b6e7b))
+* **assets:** correct mislabeled header image extension, document companion plugins ([a626b47](https://github.com/hybridlabor-api/aos/commit/a626b475a9111dc95573deaef300a765e551b672))
+* **hooks:** honor stop_hook_active in graph-gate; document go-gate's mode-independence ([6a73807](https://github.com/hybridlabor-api/aos/commit/6a7380761b89603290753f3ad46b718ea538c551))
+* **installer:** apply audit remediations F1 and F2 ([f21a58c](https://github.com/hybridlabor-api/aos/commit/f21a58ce53614476ff95eb9e86f3d2a0557ae3da))
+* **installer:** buildKnownSourceHashes crashes on a non-directory entry ([29ff82d](https://github.com/hybridlabor-api/aos/commit/29ff82dc08964f6bc9770958d3aaae14f8183b9a))
+* **installer:** correct skill sync flattening bug; sync graph docs (Punkt 7) ([98bd148](https://github.com/hybridlabor-api/aos/commit/98bd14886638a34e1db92d02d8d98f81e2d9c994))
+* **installer:** dedupe redundant daemon relaunch after individual module installs ([c6471ca](https://github.com/hybridlabor-api/aos/commit/c6471ca8cd159d498c7c9f68bf0363a6a6e46574))
+* **installer:** diagnose Windows Synapse daemon failures instead of hiding them ([b8a92a0](https://github.com/hybridlabor-api/aos/commit/b8a92a0c4a5ace6097f86cb8a5a4c9ae9c15764b))
+* **installer:** ecosystem status check compared against latest, not beta ([bb4053d](https://github.com/hybridlabor-api/aos/commit/bb4053d4a8b83e8bfb919b1ccfc94a07280f415b))
+* **installer:** give Claude Code its own MCP store, not just Claude Desktop ([f283b7c](https://github.com/hybridlabor-api/aos/commit/f283b7c6834c0e82daf5affec663b8c2b1c84b26))
+* **installer:** propagate excludeList through copyDirRecursiveSync recursion ([e3bea52](https://github.com/hybridlabor-api/aos/commit/e3bea52fc748a5cd8a74cf981cd908000bc78b87))
+* **installer:** reloadDaemons() now verifies daemons instead of assuming success ([fbe190d](https://github.com/hybridlabor-api/aos/commit/fbe190dfd27ae878e87e5d28c29d6fd6c81d012e))
+* **installer:** resolve v3.13 bugs (homeDir sync, hook paths, project mode) ([adc7f47](https://github.com/hybridlabor-api/aos/commit/adc7f47b05a62e899e4df174334641ccceb4d516))
+* **installer:** verify background daemons before reporting success ([9545855](https://github.com/hybridlabor-api/aos/commit/9545855e75577c303086a7f346f0ff60ac043c5c))
+* **package:** ship .claude/, .opencode/, CLAUDE.md in the npm package ([7481540](https://github.com/hybridlabor-api/aos/commit/74815406729611be6643010c5f5095a396dca62e))
+* **security:** Phase 0 F1 remediation of the approval gateway (public npm copy) ([50bec35](https://github.com/hybridlabor-api/aos/commit/50bec35b4b437880236b2b571d0b268f97efb245))
+* **security:** rev 3 — configurable admin group + typed 401 tool error (copy C) ([9f5340a](https://github.com/hybridlabor-api/aos/commit/9f5340a869c038e94090934b2bd5df6fc158a9b8))
+* **setup-saas:** double-escaped newline printed literally in welcome note ([c602902](https://github.com/hybridlabor-api/aos/commit/c6029021e976bc138e6eeced9009d0b81b7a3758))
+* **setup-saas:** ROB-1 ignored CA bootstrap result; SEC-4-class MCP config perms ([5c8b634](https://github.com/hybridlabor-api/aos/commit/5c8b63496d9458f05ffe25712cc0e18ebe73eaf6))
+* **skills:** agent-pipeline described a pipeline that no longer exists ([5b2444a](https://github.com/hybridlabor-api/aos/commit/5b2444a5d7bdb0b6627838e890c750bc911a30fb))
+* **skills:** correct saas-ops placement to canonical global_config/ container ([22a26dc](https://github.com/hybridlabor-api/aos/commit/22a26dc1519941affe1fd0d523a99e38cd53ccf9))
+* **skills:** playwright-skill description was body content, not a trigger description ([21274f6](https://github.com/hybridlabor-api/aos/commit/21274f682f2ad2e7c93b5e37bbb9250be6917a93))
+* **skills:** relocate bdbdesignpro into global_config/ (wrong bare placement) ([c2eb33c](https://github.com/hybridlabor-api/aos/commit/c2eb33c73abaf8b37f50e37049923d4d12962195))
+* **skills:** repair YAML broken by Phase 0's tagging script (self-caused regression) ([faeec0f](https://github.com/hybridlabor-api/aos/commit/faeec0f8a3b608ba7cf4c87f2270d81580d2e2cd))
+* **skills:** resolve F3-F5 pipeline command and duplicate skill issues ([acff50f](https://github.com/hybridlabor-api/aos/commit/acff50ff20ccad57114ef3bccc2e50e963048f61))
+* **skills:** restore brainstorming skill lost in Phase 0 dedup; fix bdbrainstorm's category ([3f54176](https://github.com/hybridlabor-api/aos/commit/3f54176c62d29055d61bf334acf5740386a693a5))
+* **skills:** sync build_profile.py YAML hardening (code-review findings) ([bb8ded8](https://github.com/hybridlabor-api/aos/commit/bb8ded8e2d0a200c31c32df5a0a06e820903e9fe))
+* **startcycle:** bootstrap .agents/ contract into target project ([639cb2e](https://github.com/hybridlabor-api/aos/commit/639cb2eac2808d73e86bb2cb3ee4cd7b8e4e4882))
+* **startcycle:** resolve skill/workflow naming collision ([2138bd9](https://github.com/hybridlabor-api/aos/commit/2138bd99028f3cef9e677582d8470b887bb1d2a5))
+* **startcycle:** route via scriptPath, not name -- by-name lookup fails ([05382aa](https://github.com/hybridlabor-api/aos/commit/05382aa1b1b175f72a6441f5f0c466e5d743e92e))
+* v3.13 audit remediations (Blockers 1-3, SEC 1-4) ([51ae49c](https://github.com/hybridlabor-api/aos/commit/51ae49cc8318f380883df79ec94c1515269d4922))
+* **workflow:** resolve 8 real findings from adversarial review of startcycle.mjs ([dc9dc0c](https://github.com/hybridlabor-api/aos/commit/dc9dc0c1079680174545a6702ce39d8662a121a7))
+
+
+### Miscellaneous Chores
+
+* pin next release to 3.12.1 ([f395afc](https://github.com/hybridlabor-api/aos/commit/f395afc45a23e10681bc9fc710e12d8885876a81))
+
+
+### Code Refactoring
+
+* **skills:** deduplicate skill trees and tag skills by domain ([e4036aa](https://github.com/hybridlabor-api/aos/commit/e4036aa692ed55eca247fc11c16d2dca039dda33))
+
 ## [3.13.0-nodefox.2](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.13.0-nodefox.1...v3.13.0-nodefox.2) (2026-09-05)
 
 
