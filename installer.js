@@ -3336,7 +3336,7 @@ function buildBanner() {
     const fill = width - label.length;
     const divider = '─'.repeat(Math.floor(fill / 2)) + label + '─'.repeat(fill - Math.floor(fill / 2));
 
-    const tagline = ' O P T I M I Z E D   A G E N T   S K I L L S  ·  v3.13';
+    const tagline = 'BDB AGENT OS · CORE KERNEL · AOS -  v4.0.0';
     const taglinePad = ' '.repeat(Math.max(0, Math.floor((width - tagline.length) / 2)));
 
     return `${colors.bold}\n${wordmark}\n\n`
