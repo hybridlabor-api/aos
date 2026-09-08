@@ -1,54 +1,70 @@
 ---
 name: bdb-updater
-description: Use when proactively check for and install updates to the BDB Antigravity Skills package via NPM.
+description: Use when proactively checking for and installing updates to the AOS (BDB Agent OS) package via npm.
 category: bdb-core
 disable-model-invocation: true
 ---
 
 # BDB Updater Skill
 
-You are responsible for keeping the BDB Antigravity Skills up to date.
-When the user asks about updates, or if you are running on a scheduled cron task, you must:
+Keeps AOS (`@hybridlabor-api/aos`) up to date. Since v4.0.0 (renamed from
+`@hybridlabor-api/bdb-dev-optimized-agent-skills`, which is deprecated on
+npm and frozen at its last pre-rename version — never check that name,
+it will never report a real update again).
 
-1. Check the latest version on NPM by running:
-   `npm show @hybridlabor-api/bdb-dev-optimized-agent-skills version`
+## 1. Check for an update
 
-2. If an update is needed, or the user requests a force update, you must run the interactive installer without prompts:
-   `npx -y @hybridlabor-api/bdb-dev-optimized-agent-skills@latest`
+```bash
+npm view @hybridlabor-api/aos dist-tags --json
+```
 
-3. After a successful update, inform the user about the new features or simply confirm that the skills and MCP servers have been refreshed in `~/.gemini/config`.
+Compare against the locally installed version (`~/.agents/aos/package.json`,
+or wherever the primary install target's `package.json` lives — the
+installer's own `verifyEcosystemInstallation()` status table is the
+authoritative source if you're running from inside an existing install).
 
-### Scheduled Updates
-If the user wants automatic updates, strongly recommend they use the `/schedule` slash command to set a recurring cron job for you. 
-Example: "I can set up an automatic weekly update check for you. Just type: `/schedule CronExpression="0 10 * * 1" Prompt="Check if there is a new version of @hybridlabor-api/bdb-dev-optimized-agent-skills via npm view and update it"`"
+Two dist-tags exist:
+- **`@latest`** — the stable channel. CI (`release-please`) publishes here
+  automatically on every release; this is what real users should run.
+- **`@next`** — an ad-hoc staging tag used occasionally to validate a large
+  change (a rename, a major version bump) before promotion to `@latest`.
+  It is not a standing parallel channel — don't default to it unless the
+  user is specifically testing a migration.
 
-## 1. Overview
-This skill provides domain-specific logic and rules for its respective BDB pipeline component to ensure standardization across multi-agent workflows.
+## 2. Run the update
 
-## 2. When to Use
-- Use when specifically requested by the user or triggered by an orchestration agent.
-- Use when the current task aligns with the skill's domain.
-- Exclude when standard tool execution is sufficient.
+```bash
+npx -y @hybridlabor-api/aos@latest
+```
 
-## 3. Core Process
-1. Read the provided context and ensure preconditions are met.
-2. Run the required script or tool and confirm the state change.
-3. Verify exit codes, file modifications, or DB counts to guarantee success before reporting completion.
+`-y` runs it fully non-interactively. If an install already exists, this
+takes the **Quick Update** path (refreshes skills, re-syncs installed
+submodules, refreshes the OpenWiki daemon schedule) rather than a full
+reinstall — it does not need a `--force` flag or any special handling for
+"already installed."
 
-## 4. Common Rationalizations
-| Rationalization | Reality |
-|---|---|
-| "The code change was small, so I skipped updating OpenWiki docs." | Every state change must be reflected in the relevant system records. |
-| "The ingest script exited without an error, so the memB index must be updated." | Silent failures happen; explicit verification of the side effect is mandatory. |
-| "I'll let the /startcycle proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
-| "I trust the cached agent registry instead of rescanning after a skill change." | Caches stale out quickly; explicit rescans prevent ghost failures. |
+The installer syncs skills to every detected harness in one pass, not
+just one: `~/.claude/skills`, `~/.gemini/config/skills` (Antigravity),
+`~/.agents/skills`, `~/.codex/skills`, `~/.cursor/skills`, `~/.roo/skills`.
+Don't assume Gemini/Antigravity is the only target.
 
-## 5. Red Flags
-- Bypassing the verification step after a script execution.
-- Proceeding to the next pipeline stage without confirming the previous stage's side effects.
-- Ignoring domain-specific constraints listed in this skill.
+## 3. Verify the result
 
-## 6. Verification
-- [ ] Verified script exit codes are explicitly checked.
-- [ ] Confirmed target files or database records reflect the expected change.
-- [ ] Ensured no silent failures were ignored before reporting success.
+After running, `verifyEcosystemInstallation()`'s own status table (printed
+at the end of the run) is the ground truth — it checks each tracked
+submodule's actual installed version against its own npm dist-tags
+(`bdb-synapse`, `memB`, `heimdall-token-saver`, `bdb-dev-creator-extension`,
+`bdb-os-remote`, `bdb-dev-tool-installer`, and `aos` itself). Read that
+table rather than assuming success from a clean exit code — a partial
+failure (e.g. a daemon not responding on its port) still exits 0 and logs
+a warning, not an error.
+
+Report the new version and anything flagged as a warning in that table
+(not just "update complete"). Don't report success without having actually
+looked at the status table's contents.
+
+## 4. Scheduled updates
+
+If the user wants recurring checks, recommend `/schedule` with the current
+package name:
+`/schedule CronExpression="0 10 * * 1" Prompt="Check if there is a new version of @hybridlabor-api/aos via npm view and update it"`
