@@ -24,6 +24,7 @@
   "files": [
     "installer.js",
     "bin/",
+    "lib/",
     "mcp_config.json",
     "GEMINI.md",
     "CODEX.md",
