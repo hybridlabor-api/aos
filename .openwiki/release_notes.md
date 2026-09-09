@@ -1,5 +1,82 @@
 # Release Notes
 
+## Unreleased (open on the release-please PR as v4.2.0)
+Published to npm as `4.2.0-beta.0` under the `beta` dist-tag for testing; `latest`
+deliberately stays on 4.1.0, so nobody receives this without asking for it.
+
+- **`--skill=<name>` mandatory skill injection.** Forces a specific skill — typically a
+  private one no node's registry allowlist would reach for — into a pipeline run:
+  `/startcycle-graph --skill=my-own-skill add OAuth login`. Repeatable. The name is
+  validated against installed skills *before* anything runs; one that does not resolve
+  escalates instead of silently proceeding without it, as does an empty `--skill=`.
+  From there it is a hard requirement: it goes into the plan, TechLead rejects a plan
+  that ignores it, and Reviewer treats an artifact showing no sign of it as a blocking
+  contract-misread finding. Shipping is deliberately excluded — it runs mechanical gates
+  and produces no artifact a skill would shape. Contract in `.agents/graph.md`; the two
+  lighter variants document the same syntax, invoker-driven since neither has a
+  dispatcher script to carry it. Verified end to end: escalation fires at iteration 0,
+  before any agent does work.
+- **`/startcycle-graph` first run in a fresh project was broken.** Step 0 copied
+  `.agents/graph.md` and `.agents/state.schema.json` but not `.agents/nodes.json`, which
+  the dispatcher loads as its very first action and escalates on when absent. Any project
+  running the graph for the first time failed before Architect ran, even after following
+  the documented bootstrap exactly. Found by running the dispatcher end to end in a
+  project that had never run it.
+- **OpenWiki daemon could never load its SDK.** Two independent bugs, either alone leaving
+  it permanently in collect-only mode: `pip3 install google-genai` fails on any PEP 668
+  interpreter (Homebrew/Debian) and the old `2>/dev/null` swallowed the reason; and the
+  install went to whichever `python3` was on PATH while the macOS launcher ran the daemon
+  under a hardcoded `/usr/bin/python3` — a different interpreter that never saw the
+  package. Now installs into `~/.openwiki/venv` and pins the launcher, the key check and
+  the printed cron fallback to that same interpreter.
+- **Delegation policy, documented for the first time.** AOS had none: the plugin
+  delegation subagents (`antigravity:antigravity-delegate`, `opencode:opencode-rescue`,
+  `codex:codex-rescue`) were mentioned nowhere, and the only place delegation appeared
+  described it purely as raw shell calls. Three rules now in `CLAUDE.md`, `AGENTS.md` and
+  `GEMINI.md`: prefer a plugin's subagent over shelling out; delegate only above the
+  break-even; **verify the returned content, never the status field** — a failing agy
+  delegation returns `{"status":"SUCCESS","usage":{"total":0}}` with an empty body.
+  Flagged explicitly as Claude Code plugins that do **not** ship with AOS.
+- **agy tier→model mapping.** The wrapper's built-in `flash` tier still points at Gemini
+  3.7 while 3.8 ships. Documented the per-task mapping (media and mechanical coding to 3.8
+  Flash, review and architecture to Claude Sonnet 4.6 — adversarial review most repays the
+  stronger tier, since a Flash model tends to agree with what it is shown) and both ways
+  to apply it. Note the env vars belong in `~/.zshenv`, not `~/.zshrc`: the latter is
+  sourced only for interactive shells, so tool-invoked ones never see them.
+- **Timeout guidance corrected.** A trivial headless `agy` prompt measured **605 s**;
+  `agy-delegate` defaults to 5 minutes and reports an empty body while the answer is still
+  coming. Pass `--timeout 15m`. This corrects an earlier conclusion in these notes' own
+  direction of travel: repeated 300 s failures with zero token counts were read as "the
+  prompt never reached the model" and called an upstream break. Neither held — headless
+  usage reporting is simply unpopulated.
+- **README**: badge row rebuilt into live-status and capability rows; skill count corrected
+  154 → 169 (the badge and prose had both drifted).
+
+## v4.1.0 (Plan Canvas & Auxiliary Agents)
+First release to ship end-to-end through the repaired automation — tag, GitHub Release and
+npm publish all from a single PR merge, with no manual `gh release create` or `npm publish`.
+
+- **Plan Canvas** (`skills/global_config/plan-canvas/`, `aos-plan-canvas` bin): a
+  loopback-only browser page for reviewing a plan by pointing at it — Mermaid renders live,
+  click-to-annotate, chat side-rail, and Approve / Request-changes buttons whose verdict is
+  the confirmation gate. Vendored from the MIT-licensed
+  [affaan-m/ECC](https://github.com/affaan-m/ECC); see `THIRD_PARTY_NOTICES.md`. Rebranded
+  so a co-installed original cannot collide (port 4519, own app id, own state dir,
+  `AOS_PLAN_CANVAS_*` env prefix), and its version decoupled from AOS's `package.json`
+  since the installer relocates the vendored tree. Mandatory at the end of `bdbrainstorm`
+  and `bdbmediastorm`, optional at `/startcycle`'s Architect→TechLead gate — `/startcycle-graph`
+  runs headless by design, so a browser gate is never forced there.
+- **Six auxiliary agents** ported from the same source: `silent-failure-hunter`,
+  `security-reviewer`, `go-build-resolver`, `database-reviewer`, `opensource-forker`,
+  `opensource-sanitizer`. They are **not** pipeline nodes — never in `.agents/nodes.json`,
+  never dispatched — but standalone specialists. Defined in `.agents/agents.md` so the
+  installer compiles them for every harness rather than leaving them Claude-Code-only.
+- **Release automation repaired.** `.release-please-manifest.json` had drifted to 3.12.0
+  while the package shipped 4.0.2, because manual version bumps went straight to `main`
+  instead of through a release PR; two stale release PRs proposing 3.12.1 were closed.
+  `CLAUDE.md` now documents the Conventional Commits requirement and the `feat:` vs
+  `fix:`/`chore:` lever that governs how fast the version grows.
+
 ## v4.0.2 (ask-tim Skill Discovery Guide)
 - **New `/ask-tim` skill**: routes a user or agent to the right skill out of the 150+ available, organized by intent rather than internal category, with explicit overlap guidance (the 3 build pipelines, `n8n-*`/`ui-*`/`firecrawl-*` clusters, `godmode-*` orchestrators vs narrower skills). Defers to `CLAUDE.md` for canonical routing rules instead of duplicating them.
 - Self-audited before release: first draft covered 65% of the skill catalog; closed to 91% (agent-orchestration, UX, language-expertise, and architecture clusters were the largest gaps).
