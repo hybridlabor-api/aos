@@ -27,6 +27,15 @@ Ask one question first: **do the workers need to see each other?**
 - Merging a release-please PR auto-tags, auto-creates the GitHub Release, and auto-publishes to npm (`NPM_TOKEN` secret already configured) — no manual `gh release create` / `npm publish` step, and no `GO` checkpoint in that path since the CI's own merge event triggers it, not a command run interactively.
 - Do not bump `package.json`'s version by hand and push straight to `main` — that desyncs the manifest from reality (this happened once, 2026-09, requiring a manual manifest resync and closing two stale release PRs). Let release-please own the version bump via its PR.
 
+### `feat:` vs `fix:`/`chore:`/`docs:` — the version-bump lever
+`feat:` always triggers a **minor** bump (`x.Y.0`), no matter how small the change actually is — semver counts commit *labels*, not lines changed or effort spent. Minor-version growth is controlled entirely by how strictly `feat:` is reserved, so default to the narrower type unless the change genuinely earns `feat:`:
+- **`feat:`** — a new user-facing capability someone would want to see in a changelog: a new skill, agent, CLI command, or config option. Reserve it for this.
+- **`fix:`** — corrects behavior that was actually broken.
+- **`chore:`** — internal maintenance: repo hygiene, config/gitignore changes, dependency bumps, non-user-facing wiring — even when it touches many files or adds new ones.
+- **`docs:`** — documentation-only changes; excluded from the changelog entirely.
+- **`refactor:`** — restructuring with no behavior change.
+When a piece of work has both a user-facing addition and pure housekeeping (e.g. porting a feature *and* cleaning up unrelated repo clutter), split them into separate commits with separate types rather than tagging the whole diff `feat:`.
+
 ## Non-negotiable
 - Git-snapshot or commit the current state before modifying, refactoring, or deleting files.
 - All generated content (code, docs, commit messages) in English.
