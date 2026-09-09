@@ -283,12 +283,27 @@ Specific utilities for the BDB environment.
 
 ## 🧊 Media & EventTech
 
-Use these for 3D, motion, and live show control.
+Use these for 3D, motion, video and live show control.
 
-* **Top Picks:** `godmode-eventtech`, `godmode-3d-creation`, `godmode-media-creation`
+* **Top Picks:** `godmode-media-creation` (video and montage), `godmode-eventtech` (live shows), `godmode-3d-creation` (meshes and scenes)
 
 * **Godmodes**: Determine the overarching flow (3D, Media, EventTech).
-* **Implementations**: `MCP_Manage` (Unreal, Rhino, Resolve, TouchDesigner), `spline-3d-integration` (web 3D), `threejs-skills` (WebGL).
+* **Implementations**: `MCP_Manage` drives the creative applications over MCP, `spline-3d-integration` (web 3D), `threejs-skills` (WebGL), `remotion` (React → MP4, deterministic frame counts).
+
+### Which video route?
+
+The choice is driven by where the pixels come from, not by the output format — all four end in a video file.
+
+| Source material | Route |
+|---|---|
+| Code-generated motion graphics, text, brand animation | `remotion` — React components rendered to MP4, deterministic and exactly frame-accurate |
+| Existing footage: cutting, colour, beat-sync | `godmode-media-creation` + `MCP_Manage` → **DaVinci Resolve** (`davinci-resolve-mcp`) or **Adobe Premiere** (`adobe_uxp_mcp`) |
+| Compositing, motion design over footage | `MCP_Manage` → **After Effects** (`ae-mcp`, `after-effects-mcp`), or **Photoshop** for stills (`adobe_uxp_mcp`) |
+| Generative visuals: audio-reactive, shaders, real-time | `godmode-eventtech` → TouchDesigner MCP, then `record_movie` |
+| Generative *assets*: text→3D, image→3D, AI video | The **Creator Extension** engines — TRELLIS and TripoSR (3D), Text-to-CAD, OpenMontage (multimodal montage), Video-Shotcraft (shot direction), Palmier-Pro (timeline and grading), driven through `comfyui-mcp`. Installed as a separate power-up module, not a skill in this catalogue. |
+| Concept not settled yet | `bdbmediastorm` first — it runs the grilling interview for show-control and media work |
+
+Resolve and Premiere are interchangeable at this level: pick whichever is actually installed. Both have a working MCP under `mcps/`.
 
 ---
 

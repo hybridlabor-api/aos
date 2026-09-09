@@ -26,9 +26,11 @@ Ideation must never be performed in isolation. Spawn specialized subagents to an
 
 ---
 
-## 2. Interactive `/grill-me` Technical Interview
+## 2. Interactive Technical Interview
 
-Before drafting signal flow diagrams or system configs, execute a mandatory `/grill-me` interactive interview. Deeply challenge the user's technical assumptions and hardware readiness by asking targeted questions:
+Before drafting signal flow diagrams or system configs, **invoke the `grill-with-docs` skill** (or `grill-me` when there is no working directory) and run it to completion. Those skills hold the interview protocol — design tree, frontier rounds, numbered questions each with a recommended answer — and it is not restated here.
+
+What this domain adds to that protocol: deeply challenge the user's technical assumptions and hardware readiness. The frontier questions for a show-control build are:
 
 * **Signal & Network Protocols:**
   - What protocols govern data movement? (OSC, Art-Net, sACN, MIDI, SMPTE Timecode, NDI)?
@@ -48,7 +50,7 @@ Before drafting signal flow diagrams or system configs, execute a mandatory `/gr
 
 ## 3. Target Directory & Scaffolding
 
-After aligning on system architecture through the `/grill-me` process:
+After aligning on system architecture through the grilling interview:
 1. **Confirm Output Directory:** Ask the user: *"In which project directory should the output show-control plan and architecture files be stored?"*
 2. **Scaffold Foundational Files:** Once confirmed, write the core show specification files (`agent.md`, `signal-flow.md`, `network-patch.json`, `failover-matrix.md`).
 
@@ -94,7 +96,7 @@ BDB MediaStorm is the master ideation and brainstorming engine for live show-con
 - **Exclude:** Do not use for generating video timelines or 3D meshes.
 
 ## Core Process
-1. Run an interactive `/grill-me` session to challenge assumptions about protocols, hardware, and bandwidth.
+1. Run `grill-with-docs` (or `grill-me`) to challenge assumptions about protocols, hardware, and bandwidth.
 2. Scaffold foundational files (`agent.md`, `signal-flow.md`, `network-patch.json`).
 3. Generate a strict Mermaid.js signal flow diagram mapping all protocols.
 4. Document a main/backup redundancy and failover matrix.
@@ -115,7 +117,7 @@ BDB MediaStorm is the master ideation and brainstorming engine for live show-con
 
 ## Verification
 
-- [ ] `/grill-me` session was completed with answers regarding protocols and bandwidth.
+- [ ] The grilling interview was completed with answers regarding protocols and bandwidth.
 - [ ] Output includes a Mermaid.js signal flow diagram.
 - [ ] A dedicated failover/blackout mechanism is documented.
 

@@ -56,8 +56,20 @@ rather than guessing one.
 (repeatable, quote a name with spaces) forces that skill into this run as a
 hard requirement for the build nodes, validated to exist before anything
 else runs — this is how you make the pipeline use your own private skill
-that isn't part of `.agents/nodes.json`'s registry. See
-[`.agents/graph.md`](../../../.agents/graph.md)'s "Mandatory Skill
+that isn't part of `.agents/nodes.json`'s registry.
+
+`<name>` is the **exact skill directory name**, not a description — `ui-component`,
+not "the UI one". Two ways to find it without leaving the terminal:
+
+- `/ask-tim` — the routing skill; start there when you know the *job* but not the name
+- `ls ~/.claude/skills` — the installed list, if you half-remember the spelling
+
+A name that does not resolve halts the run before any agent works, and the
+error now lists installed near-misses rather than only saying "not found".
+That is deliberate: silently running without a skill you explicitly demanded
+is worse than stopping.
+
+See [`.agents/graph.md`](../../../.agents/graph.md)'s "Mandatory Skill
 Injection" section for the full mechanics; nothing about it needs handling
 in this router file, since `args` is passed through as raw text either way.
 

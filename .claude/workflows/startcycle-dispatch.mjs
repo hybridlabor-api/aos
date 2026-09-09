@@ -387,8 +387,12 @@ if (mandatorySkillNames.length > 0) {
     `Check whether each of these skill names resolves to an installed skill with a real SKILL.md: ${JSON.stringify(mandatorySkillNames)}. ` +
       'Look under ~/.claude/skills/<name>/SKILL.md first (the global install location every harness syncs to); ' +
       'if this project has its own skills/ directory, also accept skills/<name>/SKILL.md or skills/<container>/<name>/SKILL.md. ' +
-      'This is a read-only lookup, not a reasoning task -- do not invent a path that does not exist, and do not guess a close match for a name that is not actually there.\n\n' +
-      'Return only: { "found": string[], "missing": string[] }.',
+      'This is a read-only lookup, not a reasoning task -- do not invent a path that does not exist, and never report a close match as `found`.\n\n' +
+      'For any name that does NOT resolve, list up to five installed skills whose directory names are plausible near-misses ' +
+      '(substring, obvious typo, or the same words in another order) in `suggestions`. Read the real directory listing to do this -- ' +
+      'suggest only names that actually exist on disk. `--skill=` requires an exact directory name, and a user who mistyped one ' +
+      'has no way to discover the right spelling from an error that only says "not found".\n\n' +
+      'Return only: { "found": string[], "missing": string[], "suggestions": string[] }.',
     {
       label: 'validate-mandatory-skills',
       model: 'haiku',
@@ -398,15 +402,21 @@ if (mandatorySkillNames.length > 0) {
         properties: {
           found: { type: 'array', items: { type: 'string' } },
           missing: { type: 'array', items: { type: 'string' } },
+          suggestions: { type: 'array', items: { type: 'string' } },
         },
       },
     }
   );
   const missing = skillCheckResult?.missing ?? [];
   if (missing.length > 0) {
+    const near = skillCheckResult?.suggestions ?? [];
     return await escalate(
       `--skill named skill(s) that could not be found on this machine: ${missing.join(', ')}. ` +
-        'Refusing to silently proceed without a mandated skill -- check the name (it must match an installed skill directory) and re-run.'
+        (near.length
+          ? `Did you mean: ${near.join(', ')}? `
+          : 'No installed skill has a similar name. ') +
+        '--skill= takes the exact skill directory name; run /ask-tim to find the one you want. ' +
+        'Refusing to silently proceed without a mandated skill.'
     );
   }
   mandatorySkills = skillCheckResult?.found ?? mandatorySkillNames;
