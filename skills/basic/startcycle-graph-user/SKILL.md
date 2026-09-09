@@ -57,20 +57,44 @@ command -v codex     >/dev/null 2>&1 && echo codex
 
 This machine may have none of these — the skill (and whoever installed this
 package) cannot assume Antigravity, OpenCode, or a Codex plugin connector is
-present. Pick the worker path in this priority order, first one found wins:
+present.
 
-1. **agy present** → workers run via `agy-job start --tier flash [--yolo] "<task>"`
-   (or `pro` for harder reasoning) — see the `antigravity` skill for the exact
-   invocation pattern and cost discipline. Separate compute pool, zero
-   Anthropic tokens for the work itself.
-2. **opencode present** → route worker tasks through it the same way (its own
-   subagent/session primitive), if the project already uses it.
-3. **codex present** → same idea, via the Codex CLI's own task-delegation
-   surface if this project has that plugin wired up.
-4. **none present** → fall back to Claude Code's own `Agent` tool for each
+**Prefer a plugin's own delegation subagent over shelling out to its CLI.**
+If a delegation plugin is installed, it exposes a subagent that already
+handles the wrapper flags, the cost discipline, and the digest contract for
+you — reach for that first, and only drop to a raw CLI call when no such
+subagent exists:
+
+| CLI | Plugin subagent (preferred) | Raw fallback |
+|---|---|---|
+| agy | `antigravity:antigravity-delegate` | `agy-job start --tier flash [--yolo] "<task>"` |
+| opencode | `opencode:opencode-rescue` | the CLI's own session primitive |
+| codex | `codex:codex-rescue` | the Codex CLI's task-delegation surface |
+
+These subagents are **Claude Code plugins**, so they exist only when that
+harness is running *and* the plugin is installed. Check what is actually
+available rather than assuming — on any other harness, or a machine without
+the plugins, the raw CLI column is the only path. Neither column ships with
+AOS: both depend on tooling the user installed separately.
+
+Pick the worker path in this priority order, first one found wins:
+
+1. **A delegation plugin subagent is available** → use it (table above).
+   Separate compute pool, zero Anthropic tokens for the work itself, and the
+   wrapper reports failures in a shape the plugin already knows how to read.
+2. **The CLI is present but its plugin subagent is not** → call the CLI
+   directly per the raw-fallback column, following the `antigravity` skill's
+   invocation pattern and cost discipline.
+3. **None present** → fall back to Claude Code's own `Agent` tool for each
    worker, with an explicit `model: "haiku"` override. This is the only path
    that costs Anthropic tokens for the worker step, and the only one
    guaranteed to exist everywhere — it is the floor, not the default.
+
+**Verify the delegation actually produced content — a status string is not a
+result.** A failing delegation has been observed returning
+`{"status": "SUCCESS", "usage": {"total": 0}}` with an *empty* body: success
+by every field except the one that matters. Check the returned text itself,
+and treat an empty body as a failure no matter what the status says.
 
 **This decision happens here, in your own turn, via Bash — never inside a
 `Workflow` script.** A `Workflow` script's body has no shell or filesystem
@@ -122,6 +146,8 @@ graph (`.agents/graph.md`) already does properly.
 | "The session is already on Opus, so the worker call inherits it fine." | That's exactly the cost this skill exists to avoid — force the tier explicitly every time. |
 | "This task has one obvious step, but a 3-node graph looks more thorough." | More nodes than the task needs is overhead, not rigor. Size the graph to the work. |
 | "I'll just call the Workflow tool and let the script figure out which backend to use." | The script can't — it has no shell access. That decision is yours, before the Workflow call, or not via Workflow at all. |
+| "The CLI is on PATH, so I'll shell out to it directly." | If its plugin subagent is installed, that's the supported path — it already handles the wrapper flags and cost discipline. Shell out only when no subagent exists. |
+| "The wrapper returned SUCCESS, so the work is done." | A failing delegation has returned `SUCCESS` with zero tokens and an empty body. Check the actual content, not the status field. |
 
 ## 7. Red Flags
 
@@ -133,5 +159,7 @@ graph (`.agents/graph.md`) already does properly.
 ## 8. Verification
 
 - [ ] Detection step actually ran (`command -v` checks), not assumed.
+- [ ] A plugin delegation subagent was preferred where one was available, rather than shelling out to the CLI anyway.
 - [ ] Each node's model was explicitly forced, not inherited.
+- [ ] Each worker's returned **content** was checked, not just its status field — an empty body is a failure regardless of a `SUCCESS` status.
 - [ ] Nothing persistent was left behind after the task completed.

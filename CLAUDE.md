@@ -15,6 +15,28 @@ Ask one question first: **do the workers need to see each other?**
 
 "Runs in parallel" is not a reason to reach for a team — subagents already run in parallel. Peer communication and dynamic task claiming are the only things a team adds.
 
+## Delegating to an external CLI
+Some work is cheaper on another provider's compute (bulk scaffolding, exhaustive
+test generation, long-context reads that distil to a digest). None of that tooling
+ships with AOS — it depends on CLIs and Claude Code plugins the user installed
+separately, so check what is actually present instead of assuming.
+
+**Prefer a plugin's delegation subagent over shelling out to its CLI.** Where one
+is installed it already handles the wrapper flags, cost discipline, and digest
+contract: `antigravity:antigravity-delegate` (agy), `opencode:opencode-rescue`,
+`codex:codex-rescue`. These are Claude Code plugins — on another harness, or a
+machine without them, calling the CLI directly is the only path.
+
+**Delegate only above the break-even.** A small, self-contained, or
+judgement-heavy task costs more to hand off and verify than to just do. Keep the
+digest, not the raw output.
+
+**Verify the result, never the status field.** A failing delegation has been
+observed returning `{"status": "SUCCESS", "usage": {"total": 0}}` with an empty
+body — success by every field except the one that matters. Check the returned
+content, and treat an empty body as failure regardless of status. Never report a
+delegated step as done on the strength of its own self-report.
+
 ## Safety Gate — mechanically enforced, not advisory
 `git push`, `npm publish`, `npm version`, and recursive `rm` are blocked by `.claude/hooks/go-gate.mjs` (registered in `.claude/settings.json`) unless your immediately preceding message is the literal word **GO**. This is a hook, not a rule I read and try to follow — it cannot be argued around, and it doesn't depend on this file being loaded.
 - A subagent does not inherit its orchestrator's GO.
