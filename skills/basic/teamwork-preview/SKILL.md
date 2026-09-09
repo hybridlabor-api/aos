@@ -1,15 +1,64 @@
 ---
 name: teamwork-preview
 description: Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. Enforces objective verification, integrity modes, and acceptance criteria across Antigravity, Claude Code, Cursor, OpenCode, Codex, and Roo Code.
+category: bdb-core
 ---
 
 # 🤝 Teamwork Preview — Multi-Agent Prompt Crafting & Delegation
 
-A structured, harness-neutral workflow to turn high-level user ideas into robust, objectively verifiable multi-agent project specifications and delegate them cleanly to execution swarms.
+A structured workflow to turn high-level user ideas into robust, objectively verifiable multi-agent project specifications and delegate them cleanly to execution swarms.
 
 Two-phase workflow:
 1. **Interactive Prompt Crafting (Steps 1–9)**: Iteratively define project goals, eliminate ambiguity, select integrity modes, and enforce objective verification mechanisms.
 2. **Delegation**: Hand off the validated specification to the target multi-agent team or execution harness.
+
+---
+
+## ▶️ On Claude Code: run the script, don't narrate the protocol
+
+**Action:** call the `Workflow` tool with `scriptPath` set to
+`$HOME/.claude/workflows/teamwork-dispatch.mjs` — resolve `$HOME` yourself rather
+than hardcoding a username — and `args` set to whatever the user said after the
+command, passed through verbatim. If they said nothing, pass no `args`; step 1
+asks.
+
+Use `scriptPath`, not `name`. By-name lookup for a custom workflow script has been
+observed to fail with `Workflow "..." not found` even when the file exists and its
+`meta.name` matches.
+
+Then wait for the call to finish and relay its result — the draft path, the
+validation outcome, and any issues it reports. Do not summarise or reinterpret it.
+
+**Do NOT walk through the nine steps yourself in response to this skill.** The
+protocol below is the specification the script implements; it is not a set of
+instructions to follow inline. This repo has already paid for that mistake once,
+recorded in `skills/basic/startcycle-graph/SKILL.md`: an earlier version embedded
+its pipeline in prose, the model followed it "in spirit" instead of invoking the
+script, and the entire graph — subagents, state, review, quality gate — silently
+never ran. A 9-step protocol with integrity modes and acceptance criteria is
+exactly the shape of thing that gets approximated.
+
+If the `Workflow` tool is unavailable (some harnesses have none; Claude Code can
+have Dynamic Workflows switched off in `/config`), *then* run the protocol below
+manually, in order, one step at a time.
+
+## 🌐 Which harnesses get which
+
+| | |
+|---|---|
+| **Claude Code** | The script above. Deterministic: it runs or it doesn't. |
+| **Codex · Cursor · OpenCode · Roo · Antigravity** | The prose protocol below, interpreted by that harness's model. |
+
+The `.mjs` script depends on Claude Code's Dynamic Workflows runtime — the ambient
+`agent()` global and the `Workflow` tool. No other harness exposes an equivalent
+today, so the prose is not a fallback there, it is the implementation. Both are
+kept in this one file deliberately: two files would drift, and the drift would be
+invisible until someone on the other harness got different behaviour.
+
+**This is not Antigravity's `/teamwork-preview`.** That command is compiled into
+the `agy` binary, with its own conductor/orchestrator/auditor agent types, and is
+maintained by Google. This is an independent implementation of the same idea on a
+different runtime. It will behave differently, and it does not claim otherwise.
 
 ---
 

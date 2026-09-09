@@ -2554,6 +2554,21 @@ function injectHarnessRules() {
             log.step(`Installed GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`);
         }, 'The harness injection below still runs.');
 
+        // Dispatcher scripts must land in ~/.claude/workflows/, because that is
+        // where the skills that route to them look: startcycle-graph's SKILL.md
+        // and teamwork-preview's both tell the model to call `Workflow` with
+        // scriptPath `$HOME/.claude/workflows/<name>.mjs`. installProjectHarness()
+        // copies them into a *project*, which only helps a project that opted into
+        // the local harness -- on a plain global install those paths did not exist
+        // at all, so the skill pointed at a file that was never delivered.
+        installStep(`install dispatcher workflows to ${path.join(homeDir, '.claude', 'workflows')}`, () => {
+            const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
+            if (fs.existsSync(workflowsSrc)) {
+                copyDirRecursiveSync(workflowsSrc, path.join(homeDir, '.claude', 'workflows'));
+                log.step(`Installed dispatcher workflows to ${path.join(homeDir, '.claude', 'workflows')}`);
+            }
+        }, '/startcycle-graph and /teamwork-preview fall back to their prose protocols.');
+
         const startcycleWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'startcycle.md');
         const sources = installStep('read the global rule sources', () => ({
             globalRules: fs.readFileSync(geminiMdSrc, 'utf8'),
