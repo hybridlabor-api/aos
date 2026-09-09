@@ -5,13 +5,19 @@
 
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
-[![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
+[![NPM Downloads](https://img.shields.io/npm/dw/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![skills](https://img.shields.io/badge/skills-154%20curated-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
+[![GitHub stars](https://img.shields.io/github/stars/hybridlabor-api/aos?style=flat&color=gold)](https://github.com/hybridlabor-api/aos/stargazers)
+[![last commit](https://img.shields.io/github/last-commit/hybridlabor-api/aos.svg)](https://github.com/hybridlabor-api/aos/commits/main)
 
-> **Supercharging AI coding agents with 154 hyper-curated skills, 21 local MCP wrappers, and a runnable multi-agent dispatcher graph.**
+[![skills](https://img.shields.io/badge/skills-169%20curated-brightgreen.svg)](docs/skills_table.md)
+[![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](mcps/)
+[![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#-installation)
+[![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
 
-Welcome to **BDB Agent OS — AOS v4.0.0**: 154 curated skills, 21 local MCP wrappers, and a dispatcher graph that turns them into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
+> **Supercharging AI coding agents with 169 hyper-curated skills, 21 local MCP wrappers, and a runnable multi-agent dispatcher graph.**
+
+Welcome to **BDB Agent OS — AOS v4.0.0**: 169 curated skills, 21 local MCP wrappers, and a dispatcher graph that turns them into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
 
 It is harness-neutral by design, not "optimized for one tool with others as an afterthought": the dispatcher graph runs on Claude Code's Dynamic Workflows, the same skills and MCP configuration install natively into **Google Antigravity, ChatGPT Codex / Codex CLI, Claude Desktop, Cursor, Aider, Roo Code, Cline, and Windsurf**, and the lightweight `/startcycle-graph-user` variant falls back to Claude Code's own subagents on any machine that has none of the above installed.
 
@@ -95,9 +101,9 @@ below for how the pipeline itself works.
 
 ---
 
-## 🌟 154 Optimized Skills
+## 🌟 169 Optimized Skills
 
-We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **154 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
+We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **169 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
 
 These skills are precision-engineered to ensure agents waste no time on redundant tasks and instead operate with maximum agency, strict architectural constraints, and robust context awareness.
 
