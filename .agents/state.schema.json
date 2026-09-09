@@ -89,6 +89,12 @@
         "additionalProperties": false
       }
     },
+    "mandatory_skills": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Skill names the user required via /startcycle-graph's --skill=<name> flag (repeatable), validated to exist before the run proceeds. Empty when the user didn't ask for one. Build nodes (and Architect) are told to actually apply these, not just have them available; Reviewer checks the resulting artifacts for evidence they were used and flags a contract-misread finding if not. See .agents/graph.md's 'Mandatory Skill Injection' section."
+    },
     "needs_human": {
       "type": "boolean",
       "default": false,

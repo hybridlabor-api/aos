@@ -138,6 +138,83 @@ next. This file defines *what each agent is*, not *what calls what*.
 - **Reads**: `state.artifacts.*`, `state.findings`, `state.approvals` · **Writes**: `state.gate`, `state.artifacts.report`, `state.phase: ship|done`
 
 ---
+
+# Auxiliary agents
+
+The six below are **not** pipeline nodes — they are never in `.agents/nodes.json`,
+never invoked by the dispatcher, and never part of the seven-agent routing above.
+They are standalone specialists you reach for directly. They live here rather than
+only in `.claude/agents/` so the installer compiles them for every harness
+(Antigravity, OpenCode, Codex, Cursor, Roo) instead of leaving them Claude-Code-only.
+
+Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — see
+`THIRD_PARTY_NOTICES.md`.
+
+---
+
+## 🕳️ silent-failure-hunter
+- **Role**: Reviews code for silent failures, swallowed errors, bad fallbacks, and missing error propagation. Finds the bugs that never raise.
+- **Model**: sonnet
+- **Primary Skills**:
+  - `systematic-debugging`
+  - `debugger`
+  - `clean-code`
+- **Output Artifact**: findings returned inline (writes no file)
+
+---
+
+## 🛡️ security-reviewer
+- **Role**: Security vulnerability detection and remediation. Use after writing code that handles user input, authentication, API endpoints, or sensitive data. Flags secrets, SSRF, injection, unsafe crypto, and OWASP Top 10.
+- **Model**: sonnet
+- **Primary Skills**:
+  - `systematic-debugging`
+  - `clean-code`
+  - `api-design-principles`
+- **Output Artifact**: findings returned inline (writes no file)
+
+---
+
+## 🔧 go-build-resolver
+- **Role**: Resolves Go build, vet, and compilation errors with minimal changes. Use when Go builds fail — relevant to `bdb-synapse`, which ships a Go binary.
+- **Model**: sonnet
+- **Primary Skills**:
+  - `golang-pro`
+  - `go-concurrency-patterns`
+  - `systematic-debugging`
+- **Output Artifact**: edits the failing sources directly
+
+---
+
+## 🗄️ database-reviewer
+- **Role**: PostgreSQL specialist for query optimization, schema design, security, and performance. Use when writing SQL, creating migrations, or troubleshooting database performance.
+- **Model**: sonnet
+- **Primary Skills**:
+  - `postgres-best-practices`
+  - `database-design`
+  - `drizzle-orm-expert`
+- **Output Artifact**: findings returned inline (writes no file)
+
+---
+
+## 📦 opensource-forker
+- **Role**: Forks a project for open-sourcing — copies files, strips secrets and credentials, replaces internal references with placeholders, generates `.env.example`, cleans git history. Run before `opensource-sanitizer`.
+- **Model**: haiku
+- **Primary Skills**:
+  - `github-repo`
+  - `bash-linux`
+- **Output Artifact**: `FORK_REPORT.md`
+
+---
+
+## 🧼 opensource-sanitizer
+- **Role**: Verifies an open-source fork is fully sanitized before release. Scans for leaked secrets, PII, internal references, and dangerous files; emits PASS/FAIL/PASS-WITH-WARNINGS. Run after `opensource-forker`, before any public release.
+- **Model**: sonnet
+- **Primary Skills**:
+  - `github-repo`
+  - `bash-linux`
+- **Output Artifact**: `SANITIZATION_REPORT.md`
+
+---
 ## 🔄 Context Boot Sequence
 Before executing any tasks, every agent MUST perform the following checks silently:
 1. **memB**: Retrieve past context and memories for the project folder.

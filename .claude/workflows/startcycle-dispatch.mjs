@@ -81,6 +81,14 @@ const MAX_ITERATIONS = 3;
 // correct on the first draft.
 let iteration = 0;
 
+// Populated from a --skill=<name> flag (repeatable) in the invocation text --
+// see extractMandatorySkills() and .agents/graph.md's "Mandatory Skill
+// Injection" section. Empty when the user didn't ask for one. Module-level
+// like `iteration` above, for the same reason: skillsNote() and the Reviewer
+// prompt both need it and neither is in a position to thread it through as a
+// parameter without touching every call site.
+let mandatorySkills = [];
+
 // Every sequential (non-build-role) agent gets the same note: read the full
 // state, and explicitly set state.iteration to the dispatcher's current
 // count so the persisted file (which .claude/hooks/graph-gate.mjs reads)
@@ -149,11 +157,27 @@ function reviewerStateNote() {
 // Applies to every node, build and sequential alike.
 function skillsNote(node) {
   const skills = Array.isArray(node?.skills) ? node.skills : [];
-  if (skills.length === 0) return '';
-  return (
-    ` Use these skills for this work: ${skills.join(', ')}. ` +
-    'Do not reach for skills outside this list unless the task genuinely requires it.'
-  );
+  const parts = [];
+  if (skills.length > 0) {
+    parts.push(
+      ` Use these skills for this work: ${skills.join(', ')}. ` +
+      'Do not reach for skills outside this list unless the task genuinely requires it.'
+    );
+  }
+  // A --skill flag is a hard requirement from the user, not the registry's
+  // own suggested allowlist above -- it applies on top of, never instead of,
+  // that list. Only nodes that actually produce work get told to use it:
+  // build-role nodes, plus Architect (who should fold the skill's guidance
+  // into the plan itself, not just leave it for Build to discover cold).
+  // Reviewer gets a separate mention in its own prompt below, framed as a
+  // check rather than a use.
+  if (mandatorySkills.length > 0 && (node?.role === 'build' || node?.id === 'architect')) {
+    parts.push(
+      ` The user explicitly required this run to use the following skill(s), via /startcycle-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
+      "This is a hard requirement, not a suggestion -- actually apply the skill's guidance in your work, and name in your returned summary how each one was applied."
+    );
+  }
+  return parts.join('');
 }
 
 // "a", "a or b", "a, b, or c" -- used for NODE_NAMES, itself derived from the
@@ -297,11 +321,95 @@ const techleadNode = { id: 'techlead', ...registryNodes.techlead };
 const reviewerNode = { id: 'reviewer', ...registryNodes.reviewer };
 const shippingNode = { id: 'shipping', ...registryNodes.shipping };
 
-const goal = typeof args === 'string' ? args : args?.goal;
-if (!goal) {
+const rawGoal = typeof args === 'string' ? args : args?.goal;
+if (!rawGoal) {
   return escalate(
     'startcycle-graph needs a goal, e.g. "Run /startcycle-graph on: add OAuth login with Google" -- nothing was invoked.'
   );
+}
+
+// --skill=<name>, repeatable, extracted out of the raw goal text before
+// anything else sees it -- e.g. "--skill=my-custom-skill Add OAuth login"
+// becomes goal "Add OAuth login" plus one mandated skill name. This is the
+// mechanism for injecting a skill this script has never heard of (a user's
+// own private skill, never part of .agents/nodes.json's registry) -- see
+// .agents/graph.md's "Mandatory Skill Injection" section.
+function extractMandatorySkills(text) {
+  // The `|--skill=(?=\s|$)` alternative deliberately matches a flag with an
+  // EMPTY value ("--skill= add OAuth"). Without it, `\S+` simply fails to
+  // match, the flag falls through as ordinary prose, and the run proceeds
+  // with no skill injected AND the literal "--skill=" still glued to the
+  // goal text handed to Architect -- a silent no-op on a typo, which is the
+  // exact failure mode the validation below exists to prevent. Capturing it
+  // as an empty name instead routes it into `malformed` and escalates.
+  const flagPattern = /--skill=("[^"]+"|'[^']+'|\S+)|--skill=(?=\s|$)/g;
+  const skills = [];
+  let malformed = 0;
+  const goal = text
+    .replace(flagPattern, (_, val) => {
+      if (val === undefined) { malformed++; return ''; }
+      const unquoted =
+        (val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))
+          ? val.slice(1, -1)
+          : val;
+      if (unquoted.trim() === '') { malformed++; return ''; }
+      skills.push(unquoted);
+      return '';
+    })
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return { skills, goal, malformed };
+}
+
+const { skills: skillsFromFlags, goal, malformed } = extractMandatorySkills(rawGoal);
+if (malformed > 0) {
+  return await escalate(
+    `--skill was given with an empty value (${malformed} time(s)). Write --skill=<name>, e.g. --skill=my-custom-skill. ` +
+      'Refusing to proceed rather than silently running without the skill you asked for.'
+  );
+}
+if (!goal) {
+  return await escalate(
+    'startcycle-graph needs actual goal text, not just --skill flag(s) -- e.g. "--skill=my-custom-skill add OAuth login with Google", not "--skill=my-custom-skill" alone.'
+  );
+}
+// Object-form args may also carry a structured list directly, for a future
+// caller that never goes through the string-flag convention at all.
+const skillsFromArgs = Array.isArray(args?.mandatorySkills) ? args.mandatorySkills : [];
+const mandatorySkillNames = [...new Set([...skillsFromFlags, ...skillsFromArgs])];
+
+// Validate before anything else runs -- same "never silently fall back or
+// guess" posture as the registry load above. This script has no filesystem
+// access of its own (comment block item #1), so validation is itself an
+// agent() call, not a local fs check.
+if (mandatorySkillNames.length > 0) {
+  const skillCheckResult = await agent(
+    `Check whether each of these skill names resolves to an installed skill with a real SKILL.md: ${JSON.stringify(mandatorySkillNames)}. ` +
+      'Look under ~/.claude/skills/<name>/SKILL.md first (the global install location every harness syncs to); ' +
+      'if this project has its own skills/ directory, also accept skills/<name>/SKILL.md or skills/<container>/<name>/SKILL.md. ' +
+      'This is a read-only lookup, not a reasoning task -- do not invent a path that does not exist, and do not guess a close match for a name that is not actually there.\n\n' +
+      'Return only: { "found": string[], "missing": string[] }.',
+    {
+      label: 'validate-mandatory-skills',
+      model: 'haiku',
+      schema: {
+        type: 'object',
+        required: ['found', 'missing'],
+        properties: {
+          found: { type: 'array', items: { type: 'string' } },
+          missing: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    }
+  );
+  const missing = skillCheckResult?.missing ?? [];
+  if (missing.length > 0) {
+    return await escalate(
+      `--skill named skill(s) that could not be found on this machine: ${missing.join(', ')}. ` +
+        'Refusing to silently proceed without a mandated skill -- check the name (it must match an installed skill directory) and re-run.'
+    );
+  }
+  mandatorySkills = skillCheckResult?.found ?? mandatorySkillNames;
 }
 
 // ---------------------------------------------------------------------
@@ -323,7 +431,7 @@ while (!approved) {
         : '') +
       `Turn this goal into a system plan with an explicit capability map (module boundaries, ` +
       `dependency direction, build order). Write it to production_artifacts/00_execution_plan.md. ` +
-      `Set state.goal, state.phase = "plan", state.artifacts.plan to that path. ` +
+      `Set state.goal, state.phase = "plan", state.artifacts.plan to that path, and state.mandatory_skills to ${JSON.stringify(mandatorySkills)}. ` +
       `Decide whether the goal needs the Media_EventTech build node (TouchDesigner/show-control/3D/media work) -- most goals don't.\n\n` +
       `Return only: { "planPath": string, "needsMedia": boolean }.`,
     {
@@ -349,6 +457,11 @@ while (!approved) {
     `You are acting as the ${techleadNode.label} agent (${techleadNode.personaFile}). ${dispatchNote(techleadNode)}${skillsNote(techleadNode)}\n\n` +
       `Read the plan at ${planPath}. Approve it only if it has an explicit capability map: ` +
       `module boundaries, dependency direction, and build order are all stated, not implicit. ` +
+      (mandatorySkills.length > 0
+        ? `The user also required this run to use the following skill(s) via /startcycle-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
+          `Reject the plan if it does not actually account for them — catching that here costs one planning round, ` +
+          `whereas letting it through wastes a full build cycle before Reviewer flags it.\n`
+        : '') +
       `Record your decision in state.json (plan approval, state.phase = "build" if approved).\n\n` +
       `Return only: { "approved": boolean, "reason": string }.`,
     {
@@ -459,6 +572,11 @@ while (!reviewedClean) {
       }, and the actual code). ` +
       `Do an adversarial review against the contract: find what is wrong, do not validate, do not summarize. ` +
       `Do not assume the implementation is correct just because it exists. ` +
+      (mandatorySkills.length > 0
+        ? `The user explicitly required these skill(s) to be used this run, via /startcycle-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
+          `If an artifact shows no sign of applying a mandated skill's guidance, that is a contract misread finding (blocking), owned by whichever build node should have applied it. ` +
+          `A mandated skill being merely available is not enough -- check for it actually being used.\n`
+        : '') +
       `Classify every finding by precedence: contract misread > valid & actionable (blocking) > valid trade-off (advisory) > noise (discard). ` +
       `Each finding must name which node owns fixing it: ${NODE_NAMES} -- no other value is valid. ` +
       `If you are re-reviewing after a repair round and an issue you flagged before is still present and still unfixed, ` +

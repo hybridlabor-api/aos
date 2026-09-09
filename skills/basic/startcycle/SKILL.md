@@ -80,6 +80,25 @@ Run only the streams the goal actually needs. A plain backend feature does not n
 
 3c is for TouchDesigner, show-control, DMX/grandMA3, 3D, or other media-pipeline goals — most goals are not this. Skip it unless the plan actually calls for it.
 
+> **Injecting a specific skill.** `/startcycle --skill=<name> <goal>`
+> (repeatable, quote a name with spaces) forces that skill into this run as
+> a hard requirement — for a private skill of your own that isn't part of
+> any build agent's own `skills:` frontmatter. Since this variant has no
+> dispatcher script or `state.json` to carry it automatically, the invoker
+> does the work `startcycle-graph`'s script does for you: extract the
+> `--skill=` flag(s) from the invocation text before anything else runs,
+> confirm each name resolves to a real `SKILL.md` (under
+> `~/.claude/skills/<name>/` or this project's own `skills/` tree) — stop
+> and tell the user if one doesn't, don't silently proceed without it —
+> note the validated list in `00_execution_plan.md`, and include it as a
+> **hard requirement, not a suggestion** in each Build stream's dispatch
+> prompt at step 3. Reviewer (step 4) checks the resulting artifacts for
+> evidence the skill was actually applied, not just available, and treats
+> an ignored mandate as a contract-misread finding. See
+> [`.agents/graph.md`](../../../.agents/graph.md)'s "Mandatory Skill
+> Injection" section for the full rationale — this is the same mechanic,
+> just invoker-driven instead of script-driven.
+
 ### 4. Reviewer
 - **Agent**: `reviewer`
 - **Reads**: the artifacts each build stream produced (01/02/03) and the plan's stated contract (`00_execution_plan.md`) — nothing else. Never the goal directly, never a build agent's own claim that it's done; passing that claim through biases the review toward agreement.

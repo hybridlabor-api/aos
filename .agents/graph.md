@@ -33,6 +33,49 @@ before returning — this is what replaces "hand-off," and it's why a node
 never needs another node's reasoning: `goal` and prior artifacts are always
 read from the same typed record, not re-derived from a sibling's prose.
 
+## Mandatory Skill Injection
+
+`/startcycle-graph --skill=<name> <goal>` (repeatable: `--skill=a --skill=b
+<goal>`, quote a name containing spaces) forces a specific skill into this
+run — for the case where you have your own private skill (never part of
+`.agents/nodes.json`'s registry, and never touched by AOS's installer per
+its foreign-file conflict policy) that you need applied regardless of what
+the registry's own per-node allowlist would have reached for.
+
+- The dispatcher script (`startcycle-dispatch.mjs`) extracts every
+  `--skill=` flag from the invocation text before anything else runs, then
+  validates each name resolves to a real installed skill (a `SKILL.md`
+  under `~/.claude/skills/<name>/` or this project's own `skills/` tree) via
+  a read-only lookup agent. **A name that doesn't resolve escalates
+  immediately** — same "never silently fall back or guess" posture as a
+  missing registry node id. This is a fail-fast check specifically so a
+  typo doesn't silently ship a run that never used the skill you asked for.
+  A flag written with an empty value (`--skill=` with nothing after it)
+  escalates for the same reason: it would otherwise inject nothing *and*
+  leave the literal `--skill=` glued to the goal text Architect reads.
+- The validated list is persisted to `state.mandatory_skills` (set by
+  Architect on the first write) and passed to every build node's prompt —
+  and Architect's own — as a **hard requirement, not a suggestion**,
+  layered on top of (never replacing) the registry's own per-node skill
+  allowlist.
+- **TechLead rejects a plan that ignores the mandate**, at the plan-approval
+  gate — one extra planning round instead of a wasted build cycle. Without
+  this the mandate is only caught downstream by Reviewer, i.e. after the
+  build nodes have already run against a plan that never accounted for it.
+- **Reviewer checks it was actually used, not just available.** An artifact
+  that shows no sign of applying a mandated skill's guidance is a
+  `contract_misread` finding (blocking), owned by whichever build node
+  should have applied it — the same precedence class as misreading the
+  plan itself, since an ignored `--skill` flag is exactly that.
+- Nodes that do **not** receive the mandate, deliberately: `shipping` (runs
+  mechanical gates — lint/typecheck/tests — and produces no artifact a skill
+  would shape).
+- `/startcycle` (the linear variant, no `state.json`) and
+  `/startcycle-graph-user` (throwaway, nothing persistent) support the same
+  `--skill=<name>` syntax — see each skill's own `SKILL.md` for how the
+  orchestrator threads it through without a durable state file to carry it
+  in.
+
 ## Nodes
 
 Seven, up from the original five — `Planner_Orchestrator` is split into

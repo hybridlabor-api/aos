@@ -37,9 +37,20 @@ yourself (e.g. `echo $HOME` or your own environment info) rather than
 hardcoding a username, giving
 `$HOME/.claude/workflows/startcycle-dispatch.mjs` — and `args` set to the
 goal text that follows `ARGUMENTS:` below this file's content. Pass the goal
-through verbatim. If there is no `ARGUMENTS:` text, pass no `args` (or
-`args: undefined`) — the workflow itself asks for a goal in that case rather
-than guessing one.
+through verbatim, including any `--skill=<name>` flag(s) it contains — the
+dispatcher script parses those itself (see below), do not strip or
+interpret them yourself. If there is no `ARGUMENTS:` text, pass no `args`
+(or `args: undefined`) — the workflow itself asks for a goal in that case
+rather than guessing one.
+
+**Injecting a specific skill.** `/startcycle-graph --skill=<name> <goal>`
+(repeatable, quote a name with spaces) forces that skill into this run as a
+hard requirement for the build nodes, validated to exist before anything
+else runs — this is how you make the pipeline use your own private skill
+that isn't part of `.agents/nodes.json`'s registry. See
+[`.agents/graph.md`](../../../.agents/graph.md)'s "Mandatory Skill
+Injection" section for the full mechanics; nothing about it needs handling
+in this router file, since `args` is passed through as raw text either way.
 
 Use `scriptPath`, not `name: "startcycle-dispatch"` — by-name lookup for a
 custom (non-built-in) workflow script has been observed to fail with

@@ -29,6 +29,24 @@ Do not invent more structure than the task has. A two-file edit doesn't need
 a Plan node — just do it. This skill is for the cases actually shaped like a
 small graph, not an excuse to always draw one.
 
+## 1b. Injecting a specific skill (optional)
+
+`/startcycle-graph-user --skill=<name> <task>` (repeatable, quote a name
+with spaces) forces that skill into this run as a hard requirement — for a
+private skill of the user's own this throwaway graph would otherwise never
+know to reach for. Extract any `--skill=` flag(s) from the invocation text
+before step 1, confirm each name resolves to a real `SKILL.md` (under
+`~/.claude/skills/<name>/` or this project's own `skills/` tree if it has
+one) — stop and tell the user if one doesn't, never silently proceed
+without it — and include it as a **hard requirement, not a suggestion** in
+the Plan node's and every Worker node's prompt. The Review node checks the
+combined output for evidence the skill was actually applied, not just
+mentioned, and calls that out explicitly if it wasn't. Nothing about this
+gets persisted, same as everything else in this skill — it's a per-run
+instruction, not a contract. See
+[`.agents/graph.md`](../../../.agents/graph.md)'s "Mandatory Skill
+Injection" section for the same mechanic in the durable graph variant.
+
 ## 2. Detect what's available — before deciding how workers run
 
 ```bash
