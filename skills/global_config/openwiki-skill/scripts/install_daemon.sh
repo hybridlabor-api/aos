@@ -39,14 +39,57 @@ if [ ! -f "$SCRIPT_PATH" ]; then
 fi
 SCRIPTS_DIR="$(dirname "$SCRIPT_PATH")"
 
-# 2. Install Python dependency
-echo "Installing google-genai SDK..."
-if command -v pip3 >/dev/null 2>&1; then
-    pip3 install --quiet google-genai 2>/dev/null || {
-        echo "Warning: pip3 install failed. You may need to install google-genai manually."
-    }
+# 2. Install Python dependency into a dedicated venv.
+#
+# Two bugs this replaces, both of which made the daemon unable to ever start:
+#   1. `pip3 install google-genai` fails on any PEP 668 "externally managed"
+#      interpreter (Homebrew/Debian python3) with externally-managed-environment,
+#      and the old `2>/dev/null` swallowed that message, so the log said only
+#      "pip3 install failed" with no cause.
+#   2. Even when it succeeded, it installed into whichever python3 was on PATH
+#      (e.g. Homebrew 3.14) while the macOS launcher ran the daemon under
+#      /usr/bin/python3 (Apple CommandLineTools 3.9) — a different interpreter
+#      that never saw the package.
+# A venv fixes both: it is immune to PEP 668, and DAEMON_PYTHON below pins the
+# launcher to the exact interpreter the package was installed into.
+VENV_DIR="$DAEMON_LOG_DIR/venv"
+DAEMON_PYTHON=""
+
+echo "Installing google-genai SDK into $VENV_DIR ..."
+mkdir -p "$DAEMON_LOG_DIR"
+
+if command -v uv >/dev/null 2>&1; then
+    # uv pip install --python <venv> never needs pip inside the venv, which is
+    # the failure memB hit when `uv venv --seed` silently under-delivered pip.
+    uv venv "$VENV_DIR" >/dev/null 2>&1 || true
+    if [ -x "$VENV_DIR/bin/python" ] && uv pip install --python "$VENV_DIR/bin/python" --quiet google-genai; then
+        DAEMON_PYTHON="$VENV_DIR/bin/python"
+    fi
+fi
+
+if [ -z "$DAEMON_PYTHON" ] && command -v python3 >/dev/null 2>&1; then
+    python3 -m venv "$VENV_DIR" >/dev/null 2>&1 || true
+    if [ -x "$VENV_DIR/bin/python" ] && "$VENV_DIR/bin/python" -m pip install --quiet google-genai; then
+        DAEMON_PYTHON="$VENV_DIR/bin/python"
+    fi
+fi
+
+if [ -z "$DAEMON_PYTHON" ]; then
+    # Do not hide the reason this time — print what actually failed.
+    echo "Warning: could not install google-genai into $VENV_DIR."
+    echo "         Reason (last attempt):"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -m venv "$VENV_DIR" 2>&1 | sed 's/^/           /' | head -5
+        "$VENV_DIR/bin/python" -m pip install google-genai 2>&1 | sed 's/^/           /' | head -8
+    else
+        echo "           python3 not found on PATH."
+    fi
+    echo "         The daemon will run in collect-only mode until this is resolved."
+    # Fall back to a bare interpreter so the launcher is still written; the
+    # daemon degrades to collect-only rather than not existing at all.
+    DAEMON_PYTHON="$(command -v python3 || echo /usr/bin/python3)"
 else
-    echo "Warning: pip3 not found. Install google-genai manually."
+    echo " -> google-genai installed; daemon will run under $DAEMON_PYTHON"
 fi
 
 # 3. Resolve API key
@@ -60,7 +103,7 @@ fi
 if [ -n "$GEMINI_KEY" ]; then
     export GEMINI_API_KEY="$GEMINI_KEY"
     echo "Verifying API key..."
-    VERIFY_OUTPUT=$(python3 "$SCRIPTS_DIR/verify_api_key.py" 2>&1)
+    VERIFY_OUTPUT=$("$DAEMON_PYTHON" "$SCRIPTS_DIR/verify_api_key.py" 2>&1)
     VERIFY_CODE=$?
     if [ $VERIFY_CODE -eq 0 ] && echo "$VERIFY_OUTPUT" | grep -q "VERIFIED_OK"; then
         echo " -> API key verified successfully."
@@ -170,7 +213,7 @@ if [ "$OS" = "macos" ]; then
     fi
 
     MACOS_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    write_launcher "/usr/bin/python3" "$MACOS_PATH"
+    write_launcher "$DAEMON_PYTHON" "$MACOS_PATH"
     echo " -> Launcher written to $LAUNCHER_PATH (mode 700; holds the API key, if any)."
 
     cat <<EOF > "$PLIST_PATH"
@@ -220,7 +263,7 @@ elif [ "$OS" = "linux" ]; then
         echo "Linux detected, but no usable systemd user session was found."
         echo "Skipping automatic daemon installation (no false success)."
         echo "Run it manually instead, e.g. via cron (every 2 hours):"
-        echo "  0 */2 * * *  python3 \"$SCRIPT_PATH\" --one-shot"
+        echo "  0 */2 * * *  $DAEMON_PYTHON \"$SCRIPT_PATH\" --one-shot"
         echo ""
         exit 1
     fi
@@ -228,7 +271,7 @@ elif [ "$OS" = "linux" ]; then
     mkdir -p "$SYSTEMD_DIR"
 
     LINUX_PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    write_launcher "python3" "$LINUX_PATH"
+    write_launcher "$DAEMON_PYTHON" "$LINUX_PATH"
     echo " -> Launcher written to $LAUNCHER_PATH (mode 700; holds the API key, if any)."
 
     cat > "$SYSTEMD_SERVICE" <<EOF
@@ -279,7 +322,7 @@ else
     echo "Unsupported OS: $OS"
     echo "Skipping automatic daemon installation (no false success)."
     echo "Run it manually via cron / task scheduler:"
-    echo "  python3 \"$SCRIPT_PATH\" --one-shot"
+    echo "  $DAEMON_PYTHON \"$SCRIPT_PATH\" --one-shot"
     exit 1
 fi
 
