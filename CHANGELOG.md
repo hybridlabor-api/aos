@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.1.0](https://github.com/hybridlabor-api/aos/compare/v4.0.2...v4.1.0) (2026-09-09)
+
+
+### Features
+
+* **agents,skills:** port 6 subagents and Plan Canvas from affaan-m/ECC ([87a9e92](https://github.com/hybridlabor-api/aos/commit/87a9e92fc52f8e62c11d15c5019a6b245587c41b))
+* **skills:** make Plan Canvas mandatory in bdbrainstorm and bdbmediastorm ([e5632d5](https://github.com/hybridlabor-api/aos/commit/e5632d5d554adb2af19b5a2463a201d15c95efaf))
+
+
+### Bug Fixes
+
+* **release:** resync release-please manifest to actual shipped version ([b62cfe6](https://github.com/hybridlabor-api/aos/commit/b62cfe6de6471bbc8574bf3a08b7d5fad0e33b14))
+
 ## [3.13.0-nodefox.2](https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/compare/v3.13.0-nodefox.1...v3.13.0-nodefox.2) (2026-09-05)
 
 
