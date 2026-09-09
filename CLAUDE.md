@@ -37,6 +37,24 @@ took **605s**. `agy-delegate` defaults to `--print-timeout 5m`, so it aborts at
 `--timeout 15m` for anything non-trivial. A short timeout does not read as
 "slow", it reads as "broken".
 
+**Match the model to the task, not to the default.** `agy-delegate`'s tiers map
+to models that can go stale (its built-in `flash` still points at Gemini 3.7
+while 3.8 ships). Either pass `--model "<exact name from \`agy models\`>"` per
+call, or remap the tiers once via the plugin's own options — as env vars those
+belong in `~/.zshenv`, not `~/.zshrc`, since `.zshrc` is only sourced for
+interactive shells and tool-invoked ones would never see them:
+
+| Work | Model |
+|---|---|
+| media, fast/mechanical coding, boilerplate | `Gemini 3.8 Flash (Medium)` → `CLAUDE_PLUGIN_OPTION_TIER_FLASH` |
+| trivial one-liners | `Gemini 3.8 Flash (Low)` → `CLAUDE_PLUGIN_OPTION_TIER_FLASH_LO` |
+| review, architecture, hard reasoning | `Claude Sonnet 4.6 (Thinking)` → `CLAUDE_PLUGIN_OPTION_TIER_PRO` |
+
+Adversarial review is the case that most repays a stronger model: a Flash tier
+tends to agree with what it is shown, which is the one thing a reviewer must
+not do. Re-check the names against `agy models` after an agy upgrade — the id
+carries both the version and the effort suffix.
+
 **Verify the result, never the status field.** A timed-out delegation returns
 `{"status": "SUCCESS", "usage": {"total": 0}}` with an empty body — success by
 every field except the one that matters, and the zero token counts are *not*

@@ -23,7 +23,17 @@ installed separately, so check what is present rather than assuming.
    prompt took **605s**. `agy-delegate` defaults to `--print-timeout 5m`, so it
    aborts at 300s and reports an empty body while the answer is still coming —
    pass `--timeout 15m` for anything non-trivial.
-4. **Verify the result, never the status field.** A timed-out delegation
+4. **Match the model to the task, not to the default.** The wrapper's tiers map
+   to models that go stale (built-in `flash` still points at Gemini 3.7 while
+   3.8 ships). Media and fast/mechanical coding → `Gemini 3.8 Flash (Medium)`;
+   trivial → `Gemini 3.8 Flash (Low)`; review, architecture and hard reasoning →
+   `Claude Sonnet 4.6 (Thinking)`. Adversarial review most repays the stronger
+   model: a Flash tier tends to agree with what it is shown, which is exactly
+   what a reviewer must not do. Pass `--model` per call, or remap the tiers once
+   via `CLAUDE_PLUGIN_OPTION_TIER_{FLASH,FLASH_LO,PRO}` — in `~/.zshenv`, not
+   `~/.zshrc`, which non-interactive tool shells never source. Re-check names
+   against `agy models` after an upgrade.
+5. **Verify the result, never the status field.** A timed-out delegation
    returns `{"status": "SUCCESS", "usage": {"total": 0}}` with an empty body —
    success by every field except the one that matters, and the zero token
    counts are *not* proof the prompt never arrived (headless usage reporting is
