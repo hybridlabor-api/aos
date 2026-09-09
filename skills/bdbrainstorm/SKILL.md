@@ -35,6 +35,7 @@ You are strictly required to enforce the following 6 pillars in your process:
 
 ### 6. Shipping Godmode & Pipeline Hand-off
 - Before the brainstorm concludes, verify that the plan satisfies the `godmode-shipping` rules (Spec-Driven Development, feature flags, rollback strategies).
+- **Mandatory — Plan Canvas review.** Write the aligned plan to a file, then run `aos-plan-canvas open <file>` followed by `aos-plan-canvas await <file>` and leave it running. The user reviews and annotates in the browser (Mermaid diagrams render live, click-to-annotate, chat rail); do not write `state.goal` or hand off to `/startcycle-graph` before an `approve` verdict comes back. A `request_changes` verdict means revise the plan file and reopen the session — it live-reloads. This runs identically regardless of which agent harness is executing this skill; it is a plain CLI, not a Claude-Code-specific mechanism. See the `plan-canvas` skill.
 - Present the aligned plan and hand off to `/startcycle-graph` for execution — write `state.goal` from this session's output and let `/startcycle-graph`'s dispatcher take it from there (see `.agents/graph.md`). This skill does not invoke `/startcycle-graph`'s agents itself; it produces the goal they read.
 
 ## Execution Rules
