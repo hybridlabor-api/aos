@@ -72,7 +72,8 @@
         "drizzle-orm-expert",
         "postgres-best-practices",
         "typescript-pro",
-        "python-pro"
+        "python-pro",
+        "bdbresilience"
       ],
       "instructions": "Implement the backend per the plan: DDD models, type-safe schemas, API routes, Clean Architecture. Write production_artifacts/02_backend_schema.md and the code."
     },
@@ -128,7 +129,8 @@
         "seo-audit",
         "wcag-audit-patterns",
         "github-repo",
-        "clean-code"
+        "clean-code",
+        "bdbresilience"
       ],
       "instructions": null
     }
