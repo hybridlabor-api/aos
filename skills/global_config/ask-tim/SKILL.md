@@ -1,12 +1,64 @@
 ---
 name: ask-tim
-description: Meta-skill for discovering and routing to the right skill out of the ~154 available options. Use when a user or agent is unsure which skill fits their intent, or needs to pick between overlapping choices (e.g. build pipelines, scraping tools, UI components).
+description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the ~169 available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
 category: bdb-core
+disable-model-invocation: true
 ---
 
-# `ask-tim`: The BDB Skill Routing Meta-Skill
+<!-- The flow map below is derived from mattpocock/skills' ask-matt (MIT, see
+     THIRD_PARTY_NOTICES.md). The route is AOS's own: most stations on
+     upstream's main flow have no AOS equivalent, so copying it verbatim would
+     have produced a router pointing at skills that do not exist. -->
 
-This is a discovery and routing guide. It does not perform work itself. Use it to map a user's intent to the correct specialized skill(s).
+# `ask-tim`: which way do I go?
+
+You don't remember every skill, so ask. This does no work itself.
+
+Two layers, answering different questions. **The flow map** answers *"which way?"* — the route work travels from an idea to something shipped, and which branch to take at each fork. **The catalogue** below it answers *"which skill?"* — grouped by domain, with overlap guidance for the cases where several look alike. Start with the flow; drop to the catalogue when you already know roughly where you are.
+
+---
+
+## The main flow: idea → ship
+
+The route most work travels.
+
+**1. Sharpen the idea.** `/grill-with-docs` whenever you are in a working directory — the interview *plus* a paper trail, writing settled terminology into `CONTEXT.md` and ADRs as it goes. Without a repo to write to, `/grill-me`. Both run the same `grilling` primitive; the difference is only whether the understanding survives the session.
+
+For a bigger or fuzzier idea, `/bdbrainstorm` runs the same interview inside a multi-agent debate (`/bdbmediastorm` for live show-control and event tech). Don't grill twice — those skills already do this step.
+
+**2. Branch: how much machinery does the build need?** This is the fork that matters, and picking wrong is expensive in both directions.
+
+- **`/startcycle`** — the linear chain, and the right answer for most daily work. Architect → TechLead → Build → Reviewer, hand-offs as plain files, no state machine.
+- **`/startcycle-graph`** — when you need the durable `state.json`, a Reviewer repair loop with a no-progress guard, an automated quality gate, and escalation to a human. Mission-critical or multi-session work. Runs headless.
+- **`/startcycle-graph-user`** — a throwaway 2–4 node fan-out for one-off parallel work. Nothing persistent left behind.
+- **Two-file edit?** No pipeline. Just do it.
+
+**3. Review the plan before it is built.** At the Architect→TechLead gate, `aos-plan-canvas open production_artifacts/00_execution_plan.md` opens the plan in a browser where you point at what should change instead of retyping it. Mandatory at the end of `/bdbrainstorm` and `/bdbmediastorm`; optional in `/startcycle`; deliberately not forced in `/startcycle-graph`, which runs headless.
+
+**4. Build, then review adversarially.** The pipelines invoke their own build and review nodes — you do not call these by hand. Reviewer's pass is a correctness check against the plan's contract; `godmode-shipping`'s gate is mechanical (lint, typecheck, tests). Two different checks, deliberately not merged.
+
+Reach for `test-driven-development` or `tdd-workflow` on their own when you want one behaviour built test-first without a whole pipeline, and `git-pr-review` when reviewing a branch or PR against a fixed point.
+
+**Forcing a specific skill into a run:** `--skill=<name>` on any startcycle variant makes it a hard requirement — for a private skill of your own no node would otherwise reach for. Validated before the run starts; a name that does not resolve halts rather than proceeding without it.
+
+---
+
+## On-ramps
+
+A starting situation that generates work, then merges onto the main flow.
+
+- **Issues piling up** → `/triage`. For work you did *not* create: bug reports, incoming requests, anything raw. Tickets a pipeline already produced are agent-ready — **do not triage them**.
+- **Something is broken** → `systematic-debugging` for a structured hunt, `debugger` for a plain error. Both refuse to theorise before there is a reproduction.
+- **You need a runnable answer, not an argument** → `/prototype`. Throwaway code to settle a question that conversation cannot, then bring what you learned back to the idea thread.
+- **Deploying or shipping infrastructure** → `godmode-shipping` gates a release; `bdb-deploy`, `vercel-deployment` and `cloudflare-workers-expert` do the actual shipping.
+
+---
+
+## What this flow does not cover
+
+Named so you don't go looking: AOS has no equivalent of a cross-session `handoff` file, and no `wayfinder`-style skill for charting a months-long effort as decision tickets. For work too large for one session, `/startcycle-graph`'s durable `state.json` is the closest thing — it is resumable, but it does not chart the fog for you.
+
+---
 
 ## 🧭 Intent Index (Table of Contents)
 
