@@ -21,12 +21,21 @@ several fields the schema doesn't define at all). Fix it first:
 mkdir -p .agents
 [ -f .agents/graph.md ] || cp "$HOME/.agents/graph.md" .agents/graph.md
 [ -f .agents/state.schema.json ] || cp "$HOME/.agents/state.schema.json" .agents/state.schema.json
+[ -f .agents/nodes.json ] || cp "$HOME/.agents/nodes.json" .agents/nodes.json
 ```
 
-If `$HOME/.agents/graph.md` or `$HOME/.agents/state.schema.json` doesn't
-exist either, stop and tell the user: this machine has no canonical copy of
-the graph contract to bootstrap from, and `/startcycle-graph` will produce a
-non-conforming `state.json` until one is installed. Don't silently proceed.
+`nodes.json` is not optional and is the one that fails loudest: it is the
+node registry the dispatcher loads as its very first step, and without it
+the run escalates immediately with *"`.agents/nodes.json` failed to load, or
+is missing required node id(s)"* — before Architect or any other agent has
+run. (Found exactly that way: a first run in a project that had followed
+this bootstrap step as it was previously written, which copied only the
+other two files.)
+
+If any of the three doesn't exist under `$HOME/.agents/` either, stop and
+tell the user: this machine has no canonical copy of the graph contract to
+bootstrap from, and `/startcycle-graph` cannot run correctly until one is
+installed. Don't silently proceed.
 (`.claude/agents/*.md`, the seven agent persona files, do NOT need this
 treatment — Claude Code resolves subagents from the user-level
 `~/.claude/agents/` fine without a project-local copy.)
