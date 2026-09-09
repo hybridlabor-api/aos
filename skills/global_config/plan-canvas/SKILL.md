@@ -26,9 +26,20 @@ AOS from [affaan-m/ECC](https://github.com/affaan-m/ECC).
 - You just wrote the `/startcycle` plan artifact,
   `production_artifacts/00_execution_plan.md`, and need the CONFIRM/approve
   decision — the canvas verdict replaces a typed "yes/proceed".
+- **Mandatory, not optional**, at the end of `bdbrainstorm` (before writing
+  `state.goal` / handing off to `/startcycle-graph`) and `bdbmediastorm`
+  (before the show-control architecture is considered final) — both produce
+  a plan/spec artifact a human must approve before anything downstream
+  proceeds. See each skill's own "Plan Canvas Review" section.
 - The user should *point at* what to change: reviewing designs, comparisons,
   reports, or any local `.md` / `.html` artifact.
 - The user asks for a visual review, or "open it in the browser".
+
+This tool is a plain Node CLI speaking JSON over a loopback HTTP server —
+it has no dependency on which agent harness invokes it (Claude Code, Codex,
+Gemini/Antigravity, OpenCode, Cursor). The trigger lives in each consuming
+skill's own instructions (synced to every harness by AOS's installer), not
+in a harness-specific hook.
 
 Do NOT use for: code review of diffs (`/code-review`), running web apps, or
 remote URLs. The canvas serves local artifact files only.
