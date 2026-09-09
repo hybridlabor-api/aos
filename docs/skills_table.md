@@ -48,6 +48,7 @@
 | `subagent-driven-development` | Use when executing implementation plans with independent tasks in the current session |
 | `tdd-workflow` | Test-Driven Development workflow principles. RED-GREEN-REFACTOR cycle. |
 | `tmux` | Expert tmux session, window, and pane management for terminal multiplexing, persistent remote workflows, and shell scripting automation. |
+| `teamwork-preview` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams across harnesses. |
 
 #### 🎨 Frontend & UI/UX
 | Skill Name | Description |
