@@ -19,11 +19,16 @@ installed separately, so check what is present rather than assuming.
 2. **Delegate only above the break-even.** A small, self-contained, or
    judgement-heavy task costs more to hand off and verify than to just do.
    Keep the digest, not the raw output.
-3. **Verify the result, never the status field.** A failing delegation has been
-   observed returning `{"status": "SUCCESS", "usage": {"total": 0}}` with an
-   empty body — success by every field except the one that matters. Treat an
-   empty body as failure regardless of status, and never report a delegated
-   step as done on the strength of its own self-report.
+3. **Give it a real timeout.** Measured 2026-09: a trivial headless `agy`
+   prompt took **605s**. `agy-delegate` defaults to `--print-timeout 5m`, so it
+   aborts at 300s and reports an empty body while the answer is still coming —
+   pass `--timeout 15m` for anything non-trivial.
+4. **Verify the result, never the status field.** A timed-out delegation
+   returns `{"status": "SUCCESS", "usage": {"total": 0}}` with an empty body —
+   success by every field except the one that matters, and the zero token
+   counts are *not* proof the prompt never arrived (headless usage reporting is
+   simply unpopulated). Treat an empty body as failure regardless of status,
+   and never report a delegated step as done on its own self-report.
 
 ## 🛑 CRITICAL TWO-PHASE GATE PROTOCOL (ABSOLUTE OVERRIDE / ADR-014)
 - **Strict Gate Condition:** Whenever a plan, review, audit, or multi-step action is requested, you are locked in STRICT READ-ONLY PLANNING MODE.

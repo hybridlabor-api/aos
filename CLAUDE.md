@@ -31,11 +31,18 @@ machine without them, calling the CLI directly is the only path.
 judgement-heavy task costs more to hand off and verify than to just do. Keep the
 digest, not the raw output.
 
-**Verify the result, never the status field.** A failing delegation has been
-observed returning `{"status": "SUCCESS", "usage": {"total": 0}}` with an empty
-body — success by every field except the one that matters. Check the returned
-content, and treat an empty body as failure regardless of status. Never report a
-delegated step as done on the strength of its own self-report.
+**Give it a real timeout.** Measured 2026-09: a trivial headless `agy` prompt
+took **605s**. `agy-delegate` defaults to `--print-timeout 5m`, so it aborts at
+300s and reports an empty body while the answer is still coming — pass
+`--timeout 15m` for anything non-trivial. A short timeout does not read as
+"slow", it reads as "broken".
+
+**Verify the result, never the status field.** A timed-out delegation returns
+`{"status": "SUCCESS", "usage": {"total": 0}}` with an empty body — success by
+every field except the one that matters, and the zero token counts are *not*
+proof the prompt never arrived (headless usage reporting is simply unpopulated).
+Check the returned content, treat an empty body as failure regardless of status,
+and never report a delegated step as done on the strength of its own self-report.
 
 ## Safety Gate — mechanically enforced, not advisory
 `git push`, `npm publish`, `npm version`, and recursive `rm` are blocked by `.claude/hooks/go-gate.mjs` (registered in `.claude/settings.json`) unless your immediately preceding message is the literal word **GO**. This is a hook, not a rule I read and try to follow — it cannot be argued around, and it doesn't depend on this file being loaded.

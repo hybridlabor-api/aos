@@ -90,11 +90,19 @@ Pick the worker path in this priority order, first one found wins:
    that costs Anthropic tokens for the worker step, and the only one
    guaranteed to exist everywhere — it is the floor, not the default.
 
+**Give the delegation a real timeout.** Measured 2026-09: a trivial headless
+`agy` prompt took **605s**. `agy-delegate` defaults to `--print-timeout 5m`,
+so it aborts at 300s and reports an empty body while the answer is still on
+its way — pass `--timeout 15m` for anything non-trivial. Budget worker
+wall-clock accordingly; this is the single most likely reason a fan-out
+"fails" on a machine where the CLI is perfectly healthy.
+
 **Verify the delegation actually produced content — a status string is not a
-result.** A failing delegation has been observed returning
-`{"status": "SUCCESS", "usage": {"total": 0}}` with an *empty* body: success
-by every field except the one that matters. Check the returned text itself,
-and treat an empty body as a failure no matter what the status says.
+result.** A timed-out delegation returns `{"status": "SUCCESS", "usage":
+{"total": 0}}` with an *empty* body: success by every field except the one
+that matters. The zero token counts are not proof the prompt never arrived —
+headless usage reporting is simply unpopulated. Check the returned text
+itself, and treat an empty body as a failure no matter what the status says.
 
 **This decision happens here, in your own turn, via Bash — never inside a
 `Workflow` script.** A `Workflow` script's body has no shell or filesystem
