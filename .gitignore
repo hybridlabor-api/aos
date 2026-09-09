@@ -24,3 +24,7 @@ patch_installer*.js
 
 # graph-gate.mjs progress marker — per-run scratch state, never source
 production_artifacts/.graph-gate-last-block
+
+# /startcycle per-cycle hand-off artifacts — overwritten every run, never source.
+# Public repo history shouldn't churn on disposable internal plan/review notes.
+production_artifacts/*.md
