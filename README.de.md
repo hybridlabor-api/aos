@@ -21,6 +21,7 @@
 [![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![skills](https://img.shields.io/badge/skills-154%20kuratiert-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
+[![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 
 > **Supercharging von KI-Coding-Agenten mit 154 hochkuratierten Skills, 21 lokalen MCP Wrappern und tiefgreifenden Integrationen für die Creative-Technology-Branche.**
 

@@ -14,6 +14,7 @@
 [![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](mcps/)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#-installation)
 [![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
+[![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 
 > **Supercharging AI coding agents with 169 hyper-curated skills, 21 local MCP wrappers, and a runnable multi-agent dispatcher graph.**
 
