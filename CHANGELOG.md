@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.2.0](https://github.com/hybridlabor-api/aos/compare/v4.1.0...v4.2.0) (2026-09-10)
+
+
+### Features
+
+* **ask-tim:** lead with a flow map, keep the catalogue beneath it ([4969c85](https://github.com/hybridlabor-api/aos/commit/4969c85378caf11e33788238bd95d11292fbbc42))
+* **skills:** add teamwork-preview prompt crafting and delegation skill ([11fe6f5](https://github.com/hybridlabor-api/aos/commit/11fe6f5cbeeea636dda6cfebc391d8ad625a194e))
+* **skills:** port the grilling family from mattpocock/skills (MIT) ([152225b](https://github.com/hybridlabor-api/aos/commit/152225bf6d69c9f47f4d52b937f480e9ac97271e))
+* **skills:** ship bdbresilience and register it on shipping+engineering ([68993cb](https://github.com/hybridlabor-api/aos/commit/68993cb4d201130e05c5f14363f8535381cde87e))
+* **startcycle:** add --skill=&lt;name&gt; mandatory skill injection ([4c376d5](https://github.com/hybridlabor-api/aos/commit/4c376d50a9397f14773fd315367089e0d1c54ae5))
+* **teamwork-preview:** executable workflow, and deliver dispatchers globally ([4360e84](https://github.com/hybridlabor-api/aos/commit/4360e844e8ff626d957345acc297f7d04b9ddb1c))
+
+
+### Bug Fixes
+
+* **--skill:** look in every harness's skills dir, not just ~/.claude ([506fa88](https://github.com/hybridlabor-api/aos/commit/506fa88f03c19b1eabf342df6a7f668faa79bb04))
+* **delegation:** agy is slow, not broken -- correct the timeout guidance ([f88b318](https://github.com/hybridlabor-api/aos/commit/f88b318568c5ebc9c52cfcf909af58447ed85b6c))
+* **openwiki:** daemon could never load its SDK -- venv + pinned interpreter ([962abcd](https://github.com/hybridlabor-api/aos/commit/962abcd787b38568494191b61973cd0ce088f246))
+* **skills:** wire grilling into the storms, and close three routing gaps ([64ffff4](https://github.com/hybridlabor-api/aos/commit/64ffff4c0104b4e1c77747e1f368b2b9815839c1))
+* **startcycle-graph:** bootstrap nodes.json, without it every first run dies ([dab1ea7](https://github.com/hybridlabor-api/aos/commit/dab1ea72793741fe382d424a1cdc0c50cd165d86))
+
 ## [4.1.0](https://github.com/hybridlabor-api/aos/compare/v4.0.2...v4.1.0) (2026-09-09)
 
 
