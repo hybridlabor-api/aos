@@ -1,5 +1,62 @@
 # Release Notes
 
+## Unreleased, continued (2026-09-10)
+
+- **`ask-tim` leads with a flow map now, not just a catalogue.** Derived from
+  [mattpocock/skills](https://github.com/mattpocock/skills)' `ask-matt`, but re-derived
+  over AOS's own inventory rather than copied — 12 of 14 skills on upstream's main flow
+  had no AOS equivalent, and copying the map verbatim would have produced a router
+  pointing at names that don't exist. The catalogue stays underneath as the lookup layer.
+- **The grilling family, ported (MIT).** `/grill-me` had been named as an entry point by
+  both `startcycle` and `bdbrainstorm` and never existed in AOS — the router was derived
+  from `ask-matt` without the skills it routes to. Ports `grilling` (the interview:
+  design tree, frontier rounds), `grill-me`, `grill-with-docs` (adds `domain-modeling`,
+  writing settled terms into `CONTEXT.md`/ADRs as they crystallise), and `domain-modeling`
+  itself. `bdbrainstorm` and `bdbmediastorm` previously referenced "`/grill-me` style"
+  interviews and then paraphrased the protocol themselves — porting the skills changed
+  nothing for either until they were updated to actually invoke `grill-with-docs`.
+- **`bdbresilience` shipped and registered — as guidance, not as a dependency.**
+  Copied in from the `bdb-cicd-resilience` sandbox repo at the commit *after* its own
+  documentation was corrected (a `leaseExpiresAt` field that never existed, 60× overstated
+  clock-skew tolerance, an absent `fsync`) — an earlier copy would have reintroduced those
+  claims. Registered in `.agents/nodes.json` on exactly two nodes: `shipping` (its triage
+  parsers read the same tsc/ESLint/Jest output the gate produces) and `engineering` (the
+  error taxonomy). Not on `reviewer` — considered and declined, recorded in the skill's
+  own contract file rather than silently omitted. AOS gains no npm dependency: the
+  distributed lock, the skill's headline capability, stays unusable by the dispatcher,
+  which the Workflow runtime gives no filesystem access — precisely why AOS solves its
+  own concurrent-write race with fragments instead of a lock.
+- **`teamwork-preview` is now an executable Workflow on Claude Code**, prose everywhere
+  else. All nine steps of the interactive prompt-crafting protocol became real
+  `agent()` calls with schema-validated returns, so control flow branches on data instead
+  of narration — the same lesson `startcycle-graph` already learned once, recorded in its
+  own file, after an earlier prose version was followed "in spirit" and silently skipped
+  the entire dispatcher. **This surfaced a real delivery gap**: the installer only ever
+  copied `.claude/workflows/` into a *project* via `--project-harness`, never to
+  `~/.claude/workflows/` — the global path both `startcycle-graph` and `teamwork-preview`
+  actually route through. On a plain global install, that path never existed.
+  Not a copy of Antigravity's own `/teamwork-preview`, which is compiled into the `agy`
+  binary — an independent implementation of the same idea, and it says so.
+- **Four small fixes found by testing the pipeline, not by reading it:**
+  - `--skill=<name>` on a typo said only "not found," with no way to discover the right
+    spelling. The validation step now returns installed near-misses ("Did you mean:
+    …?") and points at `/ask-tim`.
+  - That same validation, and three docs, checked only `~/.claude/skills` — one of five
+    directories the installer actually syncs to (`.claude`, `.agents`, `.codex`,
+    `.cursor`, `.roo`). A run driven from a non-Claude harness could have a skill
+    installed and still be told it doesn't exist.
+  - `ask-tim`'s media section listed `MCP_Manage` as "(Unreal, Rhino, Resolve,
+    TouchDesigner)" while four Adobe MCPs sit in `mcps/` — Premiere, After Effects and
+    Photoshop were unreachable through the router. Replaced with a source-material table
+    (code-generated → Remotion, existing footage → Resolve/Premiere, generative → the
+    Creator Extension engines).
+  - **First full end-to-end `/startcycle-graph` run, verified.** Architect → TechLead →
+    Engineering → Reviewer → Shipping on a real task (an HTTP `Retry-After` parser) with
+    `--skill=test-driven-development` forced in: TechLead recorded the mandate in the
+    plan as an "Iron Law," Reviewer ran `npm test` itself rather than trusting the claim
+    (12/12 passing, independently re-run), and the run reached `ready_to_ship` in a
+    single pass — zero repair iterations.
+
 ## Unreleased (open on the release-please PR as v4.2.0)
 Published to npm as `4.2.0-beta.0` under the `beta` dist-tag for testing; `latest`
 deliberately stays on 4.1.0, so nobody receives this without asking for it.

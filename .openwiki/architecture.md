@@ -155,6 +155,29 @@ table, edge predicates). Summary:
 4. **`Godmode_Shipping`**: automated testing, linting, WCAG, and SEO audit gate ➔ `production_artifacts/04_release_report.md`. Ships only with all gates green and a `GO`.
 5. **Knowledge Loop (`/ship`)**: automatic documentation sync with `openwiki-skill` and SQLite vector indexing with `memb-ingest`.
 
+**Mandatory skill injection (`--skill=<name>`):** validated against every harness's
+global skills directory before the run starts (a name that doesn't resolve escalates
+at iteration 0, before any agent works), then threaded as a hard requirement into
+Architect's plan and every build node's prompt. TechLead rejects a plan that ignores
+it; Reviewer treats an artifact showing no sign of it as a blocking finding. Verified
+end-to-end 2026-09-10 on a real task with `--skill=test-driven-development`: TechLead
+recorded it in the plan as an "Iron Law," Reviewer independently re-ran the test suite
+rather than trusting the claim, and the run reached `ready_to_ship` in one pass.
+
+**Skill discovery and ideation, layered on the same interview primitive:**
+- `/ask-tim` routes to the right skill via a flow map (`idea → ship`, branch points,
+  on-ramps) re-derived over AOS's actual inventory, with the domain catalogue kept
+  underneath for lookup.
+- `grilling` is the shared interview primitive (design tree, frontier rounds);
+  `grill-me` and `grill-with-docs` invoke it rather than restating it — the latter
+  also runs `domain-modeling`, writing settled terms into `CONTEXT.md`/ADRs inline.
+  `bdbrainstorm` and `bdbmediastorm` invoke `grill-with-docs` as their own interview
+  step.
+- `bdbresilience` (CI/CD error recovery, log triage, a two-phase GO gate) is
+  registered on `shipping` and `engineering` only — guidance via the skill allowlist,
+  no npm dependency. Its distributed-locking capability is not usable by the
+  dispatcher, which the Workflow runtime gives no filesystem access.
+
 ---
 
 ## 📁 Repository Directory Structure
