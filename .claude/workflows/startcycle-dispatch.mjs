@@ -385,8 +385,11 @@ const mandatorySkillNames = [...new Set([...skillsFromFlags, ...skillsFromArgs])
 if (mandatorySkillNames.length > 0) {
   const skillCheckResult = await agent(
     `Check whether each of these skill names resolves to an installed skill with a real SKILL.md: ${JSON.stringify(mandatorySkillNames)}. ` +
-      'Look under ~/.claude/skills/<name>/SKILL.md first (the global install location every harness syncs to); ' +
-      'if this project has its own skills/ directory, also accept skills/<name>/SKILL.md or skills/<container>/<name>/SKILL.md. ' +
+      'The installer syncs the same skill set to every harness it detects, so check all of these global locations, not just the first: ' +
+      '~/.claude/skills/<name>/SKILL.md, ~/.agents/skills/<name>/SKILL.md, ~/.codex/skills/<name>/SKILL.md, ' +
+      '~/.cursor/skills/<name>/SKILL.md, ~/.roo/skills/<name>/SKILL.md. A skill present in any one of them counts as installed — ' +
+      'this workflow may be driven from a harness whose directory is not ~/.claude. ' +
+      'If this project has its own skills/ directory, also accept skills/<name>/SKILL.md or skills/<container>/<name>/SKILL.md. ' +
       'This is a read-only lookup, not a reasoning task -- do not invent a path that does not exist, and never report a close match as `found`.\n\n' +
       'For any name that does NOT resolve, list up to five installed skills whose directory names are plausible near-misses ' +
       '(substring, obvious typo, or the same words in another order) in `suggestions`. Read the real directory listing to do this -- ' +

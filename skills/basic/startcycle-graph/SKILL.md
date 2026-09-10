@@ -62,7 +62,11 @@ that isn't part of `.agents/nodes.json`'s registry.
 not "the UI one". Two ways to find it without leaving the terminal:
 
 - `/ask-tim` — the routing skill; start there when you know the *job* but not the name
-- `ls ~/.claude/skills` — the installed list, if you half-remember the spelling
+- list the installed skills directly, if you half-remember the spelling. The installer
+  syncs the same set to every harness it detects, so use whichever path is yours:
+  `~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.cursor/skills`, or
+  `~/.roo/skills`. `ls ~/.agents/skills` is the safest guess on an unknown machine —
+  that one is written on every install regardless of harness.
 
 A name that does not resolve halts the run before any agent works, and the
 error now lists installed near-misses rather than only saying "not found".

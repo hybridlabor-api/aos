@@ -36,7 +36,9 @@ with spaces) forces that skill into this run as a hard requirement — for a
 private skill of the user's own this throwaway graph would otherwise never
 know to reach for. Extract any `--skill=` flag(s) from the invocation text
 before step 1, confirm each name resolves to a real `SKILL.md` (under
-`~/.claude/skills/<name>/` or this project's own `skills/` tree if it has
+any harness's global skills directory — `~/.claude/skills/<name>/`,
+`~/.agents/skills/`, `~/.codex/skills/`, `~/.cursor/skills/`, `~/.roo/skills/` —
+or this project's own `skills/` tree if it has
 one) — stop and tell the user if one doesn't, never silently proceed
 without it — and include it as a **hard requirement, not a suggestion** in
 the Plan node's and every Worker node's prompt. The Review node checks the

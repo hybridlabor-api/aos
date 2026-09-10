@@ -45,7 +45,9 @@ the registry's own per-node allowlist would have reached for.
 - The dispatcher script (`startcycle-dispatch.mjs`) extracts every
   `--skill=` flag from the invocation text before anything else runs, then
   validates each name resolves to a real installed skill (a `SKILL.md`
-  under `~/.claude/skills/<name>/` or this project's own `skills/` tree) via
+  under any harness's global skills directory — `~/.claude/skills/<name>/`,
+  `~/.agents/skills/`, `~/.codex/skills/`, `~/.cursor/skills/`, `~/.roo/skills/`,
+  all of which the installer writes — or this project's own `skills/` tree) via
   a read-only lookup agent. **A name that doesn't resolve escalates
   immediately** — same "never silently fall back or guess" posture as a
   missing registry node id. This is a fail-fast check specifically so a

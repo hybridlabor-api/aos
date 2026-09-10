@@ -88,7 +88,9 @@ Run only the streams the goal actually needs. A plain backend feature does not n
 > does the work `startcycle-graph`'s script does for you: extract the
 > `--skill=` flag(s) from the invocation text before anything else runs,
 > confirm each name resolves to a real `SKILL.md` (under
-> `~/.claude/skills/<name>/` or this project's own `skills/` tree) — stop
+> any harness's global skills directory — `~/.claude/skills/<name>/`,
+> `~/.agents/skills/`, `~/.codex/skills/`, `~/.cursor/skills/` or `~/.roo/skills/`
+> — or this project's own `skills/` tree) — stop
 > and tell the user if one doesn't, don't silently proceed without it —
 > note the validated list in `00_execution_plan.md`, and include it as a
 > **hard requirement, not a suggestion** in each Build stream's dispatch
