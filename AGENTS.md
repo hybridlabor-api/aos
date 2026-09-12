@@ -31,10 +31,20 @@ Two layers, and they are not the same thing.
 `npm publish`, `npm version`, and recursive `rm` unless the user's immediately
 preceding message is the literal word **GO**. This is a hook, not a rule an
 agent reads and tries to follow — it cannot be argued around, and it does not
-depend on this file being loaded. Its scope is deliberately narrow (see
-`docs/sessions/audit-agents.md` F-01/F-03): ordinary file edits and `git commit`
-are **not** blocked, because gating them makes routine work impossible while
-adding no protection — nothing has left the machine until a push.
+depend on this file being loaded. Ordinary file edits and `git commit` are
+**not** blocked by it.
+
+> **Unresolved: the shipped hook is narrower than the audit asked for.**
+> `docs/sessions/audit-agents.md` F-03 specifies a matcher of
+> `Write|Edit|Bash(git commit *|git push *|npm publish *|npm version *|rm *)`,
+> and the pre-2026-09 `AGENTS.md` and `GEMINI.md` both stated the same broader
+> rule in prose. What actually shipped covers only the four commands above, and
+> the hook's own header cites F-01/F-03 for that narrowing — which those
+> findings do not support. So the narrow scope is a real reversal of a P0
+> recommendation, not a clarification of it, and on harnesses without hook
+> support the broader prose rule was the only thing standing in for it.
+> This needs an owner's decision; until then, treat the broad rule as the
+> intent and the narrow hook as what is actually enforced.
 
 On harnesses without hook support the same four commands are still gated; there
 the rule is honoured rather than enforced, which makes it more important, not

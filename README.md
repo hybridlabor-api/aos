@@ -557,7 +557,7 @@ This repository contains deep-system configurations and documentation guidelines
 - [`bdb-vectorworks-mcp`](skills/global_config/bdb-vectorworks-mcp/SKILL.md)
 - [`bdb-touchdesigner-mcp`](skills/global_config/bdb-touchdesigner-mcp/SKILL.md)
 - [`bdb-computer-use-mcp`](skills/global_config/bdb-computer-use-mcp/SKILL.md)
-- [`bdb-grandma3-mcp.md`](skills/global_config/bdb-grandma3-mcp/SKILL.md)
+- [`bdb-grandma3-mcp`](skills/global_config/bdb-grandma3-mcp/SKILL.md)
 - [`bdb-resolume-mcp`](skills/global_config/bdb-resolume-mcp/SKILL.md)
 - [`bdb-adobe-suite-mcp`](skills/global_config/bdb-adobe-suite-mcp/SKILL.md)
 - [`bdb-memb-mcp`](skills/global_config/bdb-memb-mcp/SKILL.md)
