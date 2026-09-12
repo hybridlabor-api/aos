@@ -1,6 +1,6 @@
 {
   "name": "@hybridlabor-api/aos",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "description": "AOS — A Curated AI AGENT OS. Optimized agent skills and add-ons like memB, OpenWiki, Heimdall Token Saver, and Godmode architectures.",
   "main": "installer.js",
   "bin": {

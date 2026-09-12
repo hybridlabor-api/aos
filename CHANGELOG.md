@@ -1,5 +1,24 @@
 # Changelog
 
+## [4.3.0](https://github.com/hybridlabor-api/aos/compare/v4.2.0...v4.3.0) (2026-09-12)
+
+
+### Features
+
+* **ci:** validate the skill contract on every push ([0191f2c](https://github.com/hybridlabor-api/aos/commit/0191f2ce8c8685b06fa001344572fc70b9185a81))
+
+
+### Bug Fixes
+
+* address the independent review's confirmed findings ([ab92b05](https://github.com/hybridlabor-api/aos/commit/ab92b0543cf44f7bd72e4ced30e378e2fb367778))
+* **installer:** match the MCP guides by their new directory names ([5d4075b](https://github.com/hybridlabor-api/aos/commit/5d4075b7be78f58e9b0b106b73dce27a0c6dff2d))
+* **skills:** describe bdb-memb-mcp by the tools it actually exposes ([32f0c7d](https://github.com/hybridlabor-api/aos/commit/32f0c7dc4dcdd4d438997a4d6fac5e84e5db014c))
+* **skills:** make the twelve MCP guides discoverable by any harness ([75929c4](https://github.com/hybridlabor-api/aos/commit/75929c43644bc23be192a00de815506d74111339))
+* **skills:** remove pointers that resolve to nothing ([e168019](https://github.com/hybridlabor-api/aos/commit/e1680198b58a26010ae612504e85db784e2d3690))
+* **skills:** restore the copyright notice stripped from two Apache licences ([bda5794](https://github.com/hybridlabor-api/aos/commit/bda5794f0a0fb64f2566c4c8911ae3a6e8be0fad))
+* **skills:** restore the force of the agent-sudo requirement ([f99bd90](https://github.com/hybridlabor-api/aos/commit/f99bd902aa90ffb81c809fa8e97cad9f0e1c7669))
+* **skills:** stop seven descriptions from swallowing their category ([72cd8a3](https://github.com/hybridlabor-api/aos/commit/72cd8a30cf4dc1fd0b13e9c66692bf0750bb0e4a))
+
 ## [4.2.0](https://github.com/hybridlabor-api/aos/compare/v4.1.0...v4.2.0) (2026-09-10)
 
 
