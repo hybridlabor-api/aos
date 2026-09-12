@@ -45,7 +45,21 @@
     "skills/",
     "mcps/",
     "scripts/",
-    "vendor/"
+    "vendor/",
+    "!mcps/**/*.png",
+    "!mcps/**/*.jpg",
+    "!mcps/**/*.jpeg",
+    "!mcps/**/*.gif",
+    "!mcps/**/*.webp",
+    "!mcps/**/docs/**",
+    "!mcps/**/tests/**",
+    "!mcps/**/test/**",
+    "!mcps/**/__tests__/**",
+    "mcps/tdmcp/tests/**",
+    "mcps/touchdesigner-mcp/tests/**",
+    "!mcps/tdmcp/training/**/data/**",
+    "!assets/**/*.mp4",
+    "!assets/**/*.mov"
   ],
   "keywords": [
     "codex-plugin",
