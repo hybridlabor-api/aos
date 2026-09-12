@@ -2021,17 +2021,19 @@ function resolveTargetPaths(platformValue, customPaths) {
 }
 
 function getTierExcludeSkills(tier) {
+    // Matched against directory entry names by copyDirRecursiveSync, so these
+    // carry no extension: the MCP guides became <name>/SKILL.md directories.
     return tier === '2' ? [
-        'bdb-adobe-suite-mcp.md',
-        'bdb-after-effects-mcp.md',
-        'bdb-blender-mcp.md',
-        'bdb-davinci-mcp.md',
-        'bdb-grandma3-mcp.md',
-        'bdb-resolume-mcp.md',
-        'bdb-rhino-mcp.md',
-        'bdb-touchdesigner-mcp.md',
-        'bdb-unreal-mcp.md',
-        'bdb-vectorworks-mcp.md',
+        'bdb-adobe-suite-mcp',
+        'bdb-after-effects-mcp',
+        'bdb-blender-mcp',
+        'bdb-davinci-mcp',
+        'bdb-grandma3-mcp',
+        'bdb-resolume-mcp',
+        'bdb-rhino-mcp',
+        'bdb-touchdesigner-mcp',
+        'bdb-unreal-mcp',
+        'bdb-vectorworks-mcp',
         'bdbmediastorm'
     ] : [];
 }
