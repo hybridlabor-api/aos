@@ -1,7 +1,7 @@
 ---
 name: godmode-engineering
 description: BDB Engineering Godmode, enforcing strict Domain-Driven Design, TypeScript strictness, and Clean Architecture. Use when implementing backend/fullstack features or running the systematic 5-step debugging triage.
-category: bdb-core
+category: engineering-method
 ---
 
 # ⚙️ BDB Engineering Godmode

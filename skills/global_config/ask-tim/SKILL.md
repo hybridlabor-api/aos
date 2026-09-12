@@ -1,6 +1,6 @@
 ---
 name: ask-tim
-description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the ~169 available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
+description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the 187 available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
 category: bdb-core
 disable-model-invocation: true
 ---
@@ -289,6 +289,8 @@ Use these for 3D, motion, video and live show control.
 
 * **Godmodes**: Determine the overarching flow (3D, Media, EventTech).
 * **Implementations**: `MCP_Manage` drives the creative applications over MCP, `spline-3d-integration` (web 3D), `threejs-skills` (WebGL), `remotion` (React → MP4, deterministic frame counts).
+
+* **Per-application MCP guides**: once `MCP_Manage` has told you *which* server to use, these document the tool surface of one application each — `bdb-touchdesigner-mcp`, `bdb-resolume-mcp`, `bdb-grandma3-mcp`, `bdb-davinci-mcp`, `bdb-adobe-suite-mcp`, `bdb-after-effects-mcp`, `bdb-blender-mcp`, `bdb-unreal-mcp`, `bdb-rhino-mcp`, `bdb-vectorworks-mcp`. Reach for one only when you already know the application; `MCP_Manage` is the way in.
 
 ### Which video route?
 
