@@ -3,7 +3,7 @@ name: playwright-skill
 description: General-purpose browser automation skill. Use when a task needs custom Playwright code — end-to-end testing, scraping a JS-rendered page, or driving a browser interactively — executed via this skill's universal executor rather than a one-off script.
 category: library
 risk: unknown
-source: community
+source: lackeyjb (MIT)
 date_added: "2026-02-27"
 plugin:
   setup:
