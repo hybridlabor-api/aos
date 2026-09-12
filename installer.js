@@ -2731,7 +2731,8 @@ function injectHarnessRules() {
     }
 }
 
-// Merge the BDB gate hooks into a Claude Code settings.json without clobbering
+// Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --
+// into a Claude Code settings.json without clobbering
 // user-owned keys (v3.13 audit BLOCKER-3: the harness-dir copy used to
 // overwrite the file wholesale, silently dropping e.g. enabledPlugins). Only
 // BDB-owned hook entries -- identified by their script name inside `command` --
@@ -2743,14 +2744,22 @@ function injectHarnessRules() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs'];
+    // memb-inject reads the machine-global memB store under $HOME and is
+    // installed once per machine, so it stays $HOME-anchored even inside a
+    // project harness -- unlike the two gate hooks, which are per-checkout by
+    // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
+    // prompt in any project the harness was never installed into.
+    const machineGlobalHooks = ['memb-inject.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
             .map((h) => (h && typeof h.command === 'string' ? h.command : ''))
             .join(' ');
         return bdbHookScripts.some((name) => cmds.includes(name));
     };
-    const localize = (cmd) => (projectLocal ? cmd.split('${HOME}').join('$CLAUDE_PROJECT_DIR') : cmd);
+    const localize = (cmd) => (projectLocal && !machineGlobalHooks.some((n) => cmd.includes(n))
+        ? cmd.split('${HOME}').join('$CLAUDE_PROJECT_DIR')
+        : cmd);
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
             ...e,
@@ -2833,11 +2842,11 @@ function installProjectHarness() {
         }
     }, '/startcycle dispatch degrades to graph.md as a manual guide.');
 
-    installStep('copy gate hooks into project', () => {
+    installStep('copy hooks into project', () => {
         const hooksSrc = path.join(srcDir, '.claude', 'hooks');
         if (fs.existsSync(hooksSrc)) {
             copyDirRecursiveSync(hooksSrc, path.join(projectClaudeDir, 'hooks'));
-            log.step(`Copied gate hooks to ${path.join(projectClaudeDir, 'hooks')}`);
+            log.step(`Copied hooks to ${path.join(projectClaudeDir, 'hooks')}`);
         }
     }, 'go-gate / graph-gate enforcement stays inactive in this project.');
 

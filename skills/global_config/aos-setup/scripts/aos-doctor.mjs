@@ -91,9 +91,7 @@ function checkHooks() {
   for (const file of ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
     const p = path.join(hooksDir, file);
     add('hooks', file, existsSync(p), existsSync(p) ? p.replace(HOME, '~') : 'missing',
-      file === 'memb-inject.mjs'
-        ? 'Copy assets/memb-inject.mjs from this skill to ~/.claude/hooks/ and wire it as a UserPromptSubmit hook.'
-        : 'npx -y @hybridlabor-api/aos@latest (the installer ships and wires both gates).');
+      'npx -y @hybridlabor-api/aos@latest (the installer ships and wires all three).');
   }
 
   const settings = readJson(h('.claude', 'settings.json'));

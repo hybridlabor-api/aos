@@ -118,29 +118,28 @@ remember to query. On every prompt it reads the SQLite store directly and
 injects the relevant memories as context. It fails open: any error exits `0`
 and the prompt proceeds untouched.
 
-This is the piece most often missing on a second machine, because the installer
-does not ship it. Install it from this skill:
+Since v4.4.0 the installer ships `memb-inject.mjs` into `~/.claude/hooks/` and
+wires it as a `UserPromptSubmit` hook, so on a current install both doctor rows
+pass on their own. A machine where they fail is running an older AOS — the fix
+is the installer, not a manual copy:
 
 ```bash
-cp skills/global_config/aos-setup/assets/memb-inject.mjs ~/.claude/hooks/memb-inject.mjs
+npx -y @hybridlabor-api/aos@latest
 ```
 
-Then wire it in `~/.claude/settings.json` (merge into the existing `hooks`
-object — never replace it, the two gate hooks live there too):
+The wiring is merged into `~/.claude/settings.json`, never written over it:
+user keys and foreign hook entries survive, and a re-run replaces the BDB entry
+rather than adding a second copy.
 
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\"" }] }
-    ]
-  }
-}
-```
+Unlike the two gate hooks, this one stays `$HOME`-anchored even in a project
+harness — the memB store is machine-global, and pointing it at
+`$CLAUDE_PROJECT_DIR` would make it fail on every prompt in any project the
+harness was never installed into.
 
 Standing facts that should reach every prompt — persona, brand rules, house
 style — go one per line into `~/.MemBDB/ambient-persona.txt`. Lines starting
-with `#` are ignored. Ask the user what belongs there rather than inventing it.
+with `#` are ignored. This file is deliberately *not* shipped: ask the user
+what belongs there rather than inventing it, and never copy another machine's.
 
 Verify by starting a session and checking that the first prompt carries a
 `[memB Ambient Memory Context]` block.

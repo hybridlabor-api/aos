@@ -20,6 +20,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\""
+          }
+        ]
+      }
     ]
   }
 }
