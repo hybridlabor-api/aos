@@ -12,8 +12,7 @@ argument-hint: "[command] [url]"
 # SEO: Universal SEO Analysis Skill
 
 Comprehensive SEO analysis across all industries (SaaS, local services,
-e-commerce, publishers, agencies). Orchestrates 12 specialized sub-skills and 7 subagents
-(+ optional extension sub-skills like seo-dataforseo).
+e-commerce, publishers, agencies). Orchestrates 2 specialized sub-skills.
 
 ## When to Use
 - Use when the user asks for a full SEO audit or broad SEO strategy.
@@ -25,29 +24,15 @@ e-commerce, publishers, agencies). Orchestrates 12 specialized sub-skills and 7 
 | Command | What it does |
 |---------|-------------|
 | `/seo audit <url>` | Full website audit with parallel subagent delegation |
-| `/seo page <url>` | Deep single-page analysis |
-| `/seo sitemap <url or generate>` | Analyze or generate XML sitemaps |
-| `/seo schema <url>` | Detect, validate, and generate Schema.org markup |
-| `/seo images <url>` | Image optimization analysis |
 | `/seo technical <url>` | Technical SEO audit (9 categories) |
-| `/seo content <url>` | E-E-A-T and content quality analysis |
-| `/seo geo <url>` | AI Overviews / Generative Engine Optimization |
-| `/seo plan <business-type>` | Strategic SEO planning |
-| `/seo programmatic [url\|plan]` | Programmatic SEO analysis and planning |
-| `/seo competitor-pages [url\|generate]` | Competitor comparison page generation |
-| `/seo hreflang [url]` | Hreflang/i18n SEO audit and generation |
-| `/seo dataforseo [command]` | Live SEO data via DataForSEO (extension) |
-| `/seo image-gen [use-case] <description>` | AI image generation for SEO assets (extension) |
 
 ## Orchestration Logic
 
-When the user invokes `/seo audit`, delegate to subagents in parallel:
+When the user invokes `/seo audit`, delegate to subagents:
 1. Detect business type (SaaS, local, ecommerce, publisher, agency, other)
-2. Spawn subagents: seo-technical, seo-content, seo-schema, seo-sitemap, seo-performance, seo-visual, seo-geo
+2. Spawn subagent: seo-technical for technical SEO analysis
 3. Collect results and generate unified report with SEO Health Score (0-100)
 4. Create prioritized action plan (Critical -> High -> Medium -> Low)
-
-For individual commands, load the relevant sub-skill directly.
 
 ## Industry Detection
 
@@ -99,35 +84,15 @@ Weighted aggregate of all categories:
 
 ## Sub-Skills
 
-This skill orchestrates 12 specialized sub-skills (+ 2 extensions):
+This skill orchestrates 2 specialized sub-skills:
 
 1. **seo-audit** -- Full website audit with parallel delegation
-2. **seo-page** -- Deep single-page analysis
-3. **seo-technical** -- Technical SEO (9 categories)
-4. **seo-content** -- E-E-A-T and content quality
-5. **seo-schema** -- Schema markup detection and generation
-6. **seo-images** -- Image optimization
-7. **seo-sitemap** -- Sitemap analysis and generation
-8. **seo-geo** -- AI Overviews / GEO optimization
-9. **seo-plan** -- Strategic planning with templates
-10. **seo-programmatic** -- Programmatic SEO analysis and planning
-11. **seo-competitor-pages** -- Competitor comparison page generation
-12. **seo-hreflang** -- Hreflang/i18n SEO audit and generation
-13. **seo-dataforseo** -- Live SEO data via DataForSEO MCP (extension)
-14. **seo-image-gen** -- AI image generation for SEO assets via Gemini (extension)
+2. **seo-technical** -- Technical SEO (9 categories)
 
 ## Subagents
 
-For parallel analysis during audits:
+For analysis during audits:
 - `seo-technical` -- Crawlability, indexability, security, CWV
-- `seo-content` -- E-E-A-T, readability, thin content
-- `seo-schema` -- Detection, validation, generation
-- `seo-sitemap` -- Structure, coverage, quality gates
-- `seo-performance` -- Core Web Vitals measurement
-- `seo-visual` -- Screenshots, mobile testing, above-fold
-- `seo-geo` -- AI crawler access, llms.txt, citability, brand mention signals
-- `seo-dataforseo` -- Live SERP, keyword, backlink, local SEO data (extension, optional)
-- `seo-image-gen` -- SEO image audit and generation plan (extension, optional)
 
 ## Error Handling
 

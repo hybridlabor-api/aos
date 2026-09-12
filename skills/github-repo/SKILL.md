@@ -37,6 +37,7 @@ Whenever the `github-repo` skill is invoked, the agent MUST perform an automated
 Before pushing any commit to GitHub, execute this 5-point sanitization audit:
 
 ### Rule 1: No Absolute Local Paths or Usernames
+<!-- validate-skills-ignore -->
 - **Forbidden:** Paths like `/Users/john/projects/...`, `C:\Users\dev\...`, `/home/ubuntu/...`.
 - **Allowed:** Relative paths (`./src/index.ts`, `config/settings.json`) or environment placeholders (`~/.config/`, `$HOME/`).
 

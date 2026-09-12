@@ -192,7 +192,6 @@ Create the video components following Remotion best practices:
 
 **Reference Resources:**
 - Use `resources/screen-slide-template.tsx` as starting point
-- Follow `resources/composition-checklist.md` for completeness
 - Review examples in `examples/walkthrough/` directory
 
 ### Step 3: Preview and Refine

@@ -39,51 +39,7 @@ curl https://neon.com/llms.txt
 curl -H "Accept: text/markdown" https://neon.com/docs/<path>
 ```
 
-Don't guess docs pages. Use the `llms.txt` index to find the relevant URL or follow the links in the resources below.
-
-## Overview of Resources
-
-Reference the appropriate resource file based on the user's needs:
-
-### Core Guides
-
-| Area               | Resource                           | When to Use                                                    |
-| ------------------ | ---------------------------------- | -------------------------------------------------------------- |
-| What is Neon       | `references/what-is-neon.md`       | Understanding Neon concepts, architecture, core resources      |
-| Referencing Docs   | `references/referencing-docs.md`   | Looking up official documentation, verifying information       |
-| Features           | `references/features.md`           | Branching, autoscaling, scale-to-zero, instant restore         |
-| Getting Started    | `references/getting-started.md`    | Setting up a project, connection strings, dependencies, schema |
-| Connection Methods | `references/connection-methods.md` | Choosing drivers based on platform and runtime                 |
-| Developer Tools    | `references/devtools.md`           | VSCode extension, MCP server, Neon CLI (`neon init`)           |
-
-### Database Drivers & ORMs
-
-HTTP/WebSocket queries for serverless/edge functions.
-
-| Area              | Resource                        | When to Use                                         |
-| ----------------- | ------------------------------- | --------------------------------------------------- |
-| Serverless Driver | `references/neon-serverless.md` | `@neondatabase/serverless` - HTTP/WebSocket queries |
-| Drizzle ORM       | `references/neon-drizzle.md`    | Drizzle ORM integration with Neon                   |
-
-### Auth & Data API SDKs
-
-Authentication and PostgREST-style data API for Neon.
-
-| Area        | Resource                  | When to Use                                                         |
-| ----------- | ------------------------- | ------------------------------------------------------------------- |
-| Neon Auth   | `references/neon-auth.md` | `@neondatabase/auth` - Authentication only                          |
-| Neon JS SDK | `references/neon-js.md`   | `@neondatabase/neon-js` - Auth + Data API (PostgREST-style queries) |
-
-### Neon Platform API & CLI
-
-Managing Neon resources programmatically via REST API, SDKs, or CLI.
-
-| Area                  | Resource                            | When to Use                                  |
-| --------------------- | ----------------------------------- | -------------------------------------------- |
-| Platform API Overview | `references/neon-platform-api.md`   | Managing Neon resources via REST API         |
-| Neon CLI              | `references/neon-cli.md`            | Terminal workflows, scripts, CI/CD pipelines |
-| TypeScript SDK        | `references/neon-typescript-sdk.md` | `@neondatabase/api-client`                   |
-| Python SDK            | `references/neon-python-sdk.md`     | `neon-api` package                           |
+Don't guess docs pages. Use the `llms.txt` index to find the relevant URL.
 
 ## Limitations
 - Use this skill only when the task clearly matches the scope described above.

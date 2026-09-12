@@ -35,7 +35,7 @@ python scripts/auth.py logout
 
 ## Read Commands
 
-All operations via `scripts/sheets.py`. Auto-authenticates on first use if not logged in.
+Auto-authenticates on first use if not logged in.
 
 ```bash
 # Get spreadsheet content as plain text (default)
