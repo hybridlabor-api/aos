@@ -1,11 +1,9 @@
 ---
 name: debugger
-description: 'Debugging specialist for errors, test failures, and unexpected
+description: >-
+  Debugging specialist for errors, test failures, and unexpected behavior.
+  Use proactively when encountering any issues.
 category: library
-
-  behavior. Use proactively when encountering any issues.
-
-  '
 risk: safe
 source: community
 date_added: '2026-02-27'

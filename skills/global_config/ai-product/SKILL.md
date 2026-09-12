@@ -1,8 +1,9 @@
 ---
 name: ai-product
-description: Every product will be AI-powered. The question is whether you'll
+description: >-
+  Every product will be AI-powered. The question is whether you'll build it
+  right or ship a demo that falls apart in production.
 category: library
-  build it right or ship a demo that falls apart in production.
 risk: safe
 source: vibeship-spawner-skills (Apache 2.0)
 date_added: 2026-02-27

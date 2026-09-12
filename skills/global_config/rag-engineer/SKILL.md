@@ -1,9 +1,10 @@
 ---
 name: rag-engineer
-description: Expert in building Retrieval-Augmented Generation systems. Masters
+description: >-
+  Expert in building Retrieval-Augmented Generation systems. Masters embedding
+  models, vector databases, chunking strategies, and retrieval optimization for
+  LLM applications.
 category: library
-  embedding models, vector databases, chunking strategies, and retrieval
-  optimization for LLM applications.
 risk: unknown
 source: vibeship-spawner-skills (Apache 2.0)
 date_added: 2026-02-27
