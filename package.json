@@ -11,6 +11,11 @@
     "setup-saas": "bin/setup-saas.mjs",
     "aos-plan-canvas": "skills/global_config/plan-canvas/scripts/plan-canvas.js"
   },
+  "scripts": {
+    "validate": "node scripts/validate-skills.mjs",
+    "validate:strict": "node scripts/validate-skills.mjs --strict",
+    "test": "node scripts/validate-skills.mjs --selftest && node scripts/validate-skills.mjs"
+  },
   "publishConfig": {
     "access": "public"
   },

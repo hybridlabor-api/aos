@@ -20,7 +20,12 @@ jobs:
 
       - name: Check JS Syntax
         run: node --check installer.js
-        
+
+      - name: Validate skill contract
+        run: |
+          node scripts/validate-skills.mjs --selftest
+          node scripts/validate-skills.mjs
+
       - name: Validate JSON files
         run: |
           # Use jq to validate all JSON files (exclude json with comments like tsconfig/vscode/tauri)
