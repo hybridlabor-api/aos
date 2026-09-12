@@ -1,9 +1,10 @@
 ---
 name: bdb-memb-mcp
 description: >-
-  Model Context Protocol interface to the memB persistent agent memory layer
-  enabling read, write, update, and semantic search of memories locally and
-  offline across compatible developer agents.
+  Model Context Protocol interface to the memB persistent agent memory layer.
+  Use when an agent needs to add, search, list or delete persistent memories
+  locally and offline. Exposes add_memory, search_memory, list_memories and
+  delete_memory.
 category: bdb-core
 ---
 
