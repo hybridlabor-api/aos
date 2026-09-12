@@ -38,7 +38,11 @@ node ~/.claude/skills/aos-setup/scripts/aos-doctor.mjs            # from an inst
 Flags: `--json` for machine-readable output, `--net` to also compare the
 installed AOS version against npm.
 
-It reports 26 checks across six areas, each with the exact fix command:
+It reports up to 26 checks across six areas, each with the exact fix command.
+The exact number varies by machine: the LaunchAgent rows are macOS-only, the
+OpenWiki integrations row needs the CLI on `PATH`, the npm-version row needs
+`--net`, and the optional-module rows appear only for modules the manifest
+claims are installed.
 
 | Area | What is verified |
 |---|---|

@@ -2739,7 +2739,9 @@ function injectHarnessRules() {
 // are replaced or added; every other key and every foreign hook entry survives
 // untouched. With projectLocal, `${HOME}` hook paths are rewritten to
 // `$CLAUDE_PROJECT_DIR` so a project harness is self-contained on every
-// collaborator's checkout. If the existing file is not valid JSON(C), nothing
+// collaborator's checkout -- the shipped template already writes the gates
+// with `$CLAUDE_PROJECT_DIR` directly, so today that rewrite is a safety net
+// for a future `${HOME}`-written gate rather than machinery in active use. If the existing file is not valid JSON(C), nothing
 // is overwritten: the original is backed up as .corrupt_<ts>.bak and the
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.

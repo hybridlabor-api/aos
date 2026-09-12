@@ -15,9 +15,14 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
 import os from 'node:os';
 import path from 'node:path';
+
+// node:sqlite is imported dynamically INSIDE the try below, never at top level:
+// it was flagged behind --experimental-sqlite until Node 22.13, and a top-level
+// import that throws escapes this file's try/catch entirely — surfacing a hook
+// error on every prompt instead of failing open, which is the one thing this
+// hook must never do.
 
 const COLLECTION = 'bdb_agent_memory';
 const failOpen = () => process.exit(0);
@@ -48,6 +53,7 @@ try {
 
   const dbPath = path.join(home, '.MemBDB', 'memb.db');
   if (!existsSync(dbPath)) failOpen();
+  const { DatabaseSync } = await import('node:sqlite');
   const db = new DatabaseSync(dbPath, { readOnly: true });
   db.exec('PRAGMA busy_timeout = 5000;');
 

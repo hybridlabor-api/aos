@@ -14,17 +14,47 @@ const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
 const IS_MAC = process.platform === 'darwin';
+const IS_WIN = process.platform === 'win32';
 
 const h = (...p) => path.join(HOME, ...p);
-const AGENTS = h('.agents');
-const MCPS = h('.gemini', 'config', 'mcps');   // installer's canonical MCP code target
+
+const firstExisting = (candidates) => candidates.find((c) => existsSync(c)) || null;
+
+// installer.js moduleBasePath() resolves to ~/.agents only under npx; a global
+// `npm i -g` or a dev checkout puts the modules next to the package instead.
+// Probe every base rather than assuming the npx one, or a perfectly good
+// install reports as missing.
+const MODULE_BASES = [
+  h('.agents'),
+  h('.claude'),
+  ...(process.env.npm_config_prefix ? [path.join(process.env.npm_config_prefix, 'lib', 'node_modules')] : []),
+  '/usr/local/lib/node_modules',
+  '/opt/homebrew/lib/node_modules',
+];
+const findModule = (name) => firstExisting(MODULE_BASES.map((b) => path.join(b, name)));
+
+// resolveTargetPaths() sends the MCP payload to a different directory per
+// harness (installer.js:1968+), so ~/.gemini is one option among several.
+const MCP_DIRS = [
+  h('.gemini', 'config', 'mcps'),
+  h('Library', 'Application Support', 'Claude', 'mcps'),
+  ...(process.env.APPDATA ? [path.join(process.env.APPDATA, 'Claude', 'mcps')] : []),
+  h('.cursor', 'mcps'),
+  h('.codex', 'mcps'),
+  h('.windsurf', 'mcps'),
+];
 
 const results = [];
 const add = (area, name, ok, detail, fix) => results.push({ area, name, ok, detail, fix });
 
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 const tilde = (p) => (p || '').replace(HOME, '~');
-const which = (bin) => { try { return tilde(execFileSync('which', [bin], { encoding: 'utf8' }).trim()); } catch { return null; } };
+// `which` does not exist on native Windows; cmd ships `where`, which prints one
+// path per line.
+const which = (bin) => {
+  const probe = process.platform === 'win32' ? 'where' : 'which';
+  try { return tilde(execFileSync(probe, [bin], { encoding: 'utf8' }).trim().split(/\r?\n/)[0]); } catch { return null; }
+};
 const dirCount = (p) => { try { return readdirSync(p, { withFileTypes: true }).filter(d => d.isDirectory()).length; } catch { return 0; } };
 
 function portOpen(port, timeout = 1200) {
@@ -57,7 +87,7 @@ function checkPrereqs() {
 
 // ---------------------------------------------------------------- AOS core
 function checkAos() {
-  const manifestPath = path.join(AGENTS, '.bdb-manifest.json');
+  const manifestPath = h('.agents', '.bdb-manifest.json');
   const manifest = readJson(manifestPath);
   add('aos', 'install manifest', !!manifest,
     manifest ? `v${manifest.version} · tier ${manifest.tier} · modules: ${(manifest.installedModules || []).join(', ') || 'none'}` : `${manifestPath} missing`,
@@ -77,12 +107,33 @@ function checkAos() {
     ['Claude Code', h('.claude', 'skills')],
     ['Gemini / Antigravity', h('.gemini', 'config', 'skills')],
     ['Codex', h('.codex', 'skills')],
-    ['OpenCode', h('.config', 'opencode', 'skill')],
-  ];
+  ];  // OpenCode gets an MCP config but no skill sync from installer.js — no row for it.
+  // A non-empty skills directory proves nothing — it can hold one unrelated
+  // skill, or a stale partial sync. Require a sentinel that only AOS ships.
+  const SENTINEL = 'startcycle';
   const synced = harnesses.filter(([, p]) => dirCount(p) > 0);
-  add('aos', 'skills synced to harnesses', synced.length > 0,
-    synced.length ? synced.map(([n, p]) => `${n}: ${dirCount(p)}`).join(' · ') : 'no harness skill directory holds any skill',
+  const withSentinel = synced.filter(([, p]) => existsSync(path.join(p, SENTINEL, 'SKILL.md')));
+  add('aos', 'skills synced to harnesses', withSentinel.length > 0,
+    synced.length
+      ? synced.map(([n, p]) => `${n}: ${dirCount(p)}${existsSync(path.join(p, SENTINEL, 'SKILL.md')) ? '' : ' (no ' + SENTINEL + ' — partial/foreign)'}`).join(' · ')
+      : 'no harness skill directory holds any skill',
     'npx -y @hybridlabor-api/aos@latest and pick every harness you actually use.');
+
+  // The optional modules are opt-in, so absence is not a failure — but a
+  // manifest that claims one is installed while its directory is gone is.
+  const claimed = new Set(manifest?.installedModules || []);
+  for (const [id, dir, label] of [
+    ['memb', 'memB', 'memB'],
+    ['synapse', 'bdb-synapse', 'Synapse'],
+    ['remote', 'bdb-os-remote', 'OS Remote'],
+    ['creator', 'bdb-dev-creator-extension', 'Creator Extension'],
+    ['installer', 'bdb-dev-tool-installer', 'Tool Installer'],
+  ]) {
+    if (!claimed.has(id)) continue;
+    const found = findModule(dir);
+    add('aos', `module ${label}`, !!found, found ? tilde(found) : 'the manifest claims it is installed, but its directory is gone',
+      'npx -y @hybridlabor-api/aos@latest and re-enable the module.');
+  }
 }
 
 // ---------------------------------------------------------------- hooks
@@ -104,19 +155,19 @@ function checkHooks() {
 
 // ---------------------------------------------------------------- memB
 async function checkMemb() {
-  const membDir = path.join(AGENTS, 'memB');
-  add('memB', 'module', existsSync(membDir), membDir.replace(HOME, '~'),
+  const membDir = findModule('memB');
+  add('memB', 'module', !!membDir, membDir ? tilde(membDir) : `not found under: ${MODULE_BASES.map(tilde).join(', ')}`,
     'Run the installer and enable the memB optional module.');
 
-  const venvPy = path.join(membDir, IS_MAC || process.platform === 'linux' ? '.venv/bin/python' : '.venv/Scripts/python.exe');
-  add('memB', 'python venv', existsSync(venvPy), existsSync(venvPy) ? venvPy.replace(HOME, '~') : 'no .venv — requirements were never installed',
+  const venvPy = membDir && path.join(membDir, IS_WIN ? '.venv/Scripts/python.exe' : '.venv/bin/python');
+  add('memB', 'python venv', !!venvPy && existsSync(venvPy), venvPy && existsSync(venvPy) ? tilde(venvPy) : 'no .venv — requirements were never installed',
     'Re-run the installer, or: uv venv --seed .venv && uv pip install --python .venv/bin/python -r requirements.txt (in ~/.agents/memB).');
 
   const db = h('.MemBDB', 'memb.db');
   add('memB', 'vector store', existsSync(db), existsSync(db) ? '~/.MemBDB/memb.db' : 'no database yet (empty memory)',
     'Created on first write; run an ingest from /aos-project-init to seed it.');
 
-  add('memB', 'WebUI :8088', await portOpen(8088), 'daemon serving the memory UI',
+  add('memB', 'WebUI :8088', await portOpen(8088), 'something is listening (a bare TCP probe — it does not prove it is memB)',
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.memb.webui.plist (installer writes it).' : 'Start src/backend/server.py from the memB module.');
 
   if (IS_MAC) {
@@ -125,8 +176,8 @@ async function checkMemb() {
       'Re-run the installer with the memB WebUI option enabled.');
   }
 
-  const mcpPy = path.join(MCPS, 'memb-mcp', IS_MAC || process.platform === 'linux' ? '.venv/bin/python' : '.venv/Scripts/python.exe');
-  add('memB', 'memb-mcp server', existsSync(mcpPy), existsSync(mcpPy) ? mcpPy.replace(HOME, '~') : 'memb-mcp venv missing',
+  const mcpPy = firstExisting(MCP_DIRS.map((d) => path.join(d, 'memb-mcp', IS_WIN ? '.venv/Scripts/python.exe' : '.venv/bin/python')));
+  add('memB', 'memb-mcp server', !!mcpPy, mcpPy ? tilde(mcpPy) : `no memb-mcp venv under: ${MCP_DIRS.map(tilde).join(', ')}`,
     'Re-run the installer and select the memb-mcp MCP.');
 
   const claudeCfg = readJson(h('.claude.json'));
@@ -147,7 +198,12 @@ function checkOpenWiki() {
   if (bin) {
     try {
       const out = execFileSync(bin, ['integrations', 'list'], { encoding: 'utf8', timeout: 15000 });
-      const installed = out.split('\n').filter(l => l.includes('installed')).map(l => l.split('\t')[0]).filter(Boolean);
+      // The status enum includes "not-installed", whose substring would match a
+      // naive includes('installed') — compare the exact tab-separated field.
+      const installed = out.split('\n')
+        .map(l => l.split('\t'))
+        .filter(f => f[1]?.trim() === 'installed')
+        .map(f => f[0].trim());
       add('openwiki', 'host integrations', installed.length > 0, installed.length ? installed.join(', ') : 'no harness integration installed',
         'openwiki integrations install claude   (repeat for codex/cursor/opencode as needed).');
     } catch {
@@ -164,10 +220,19 @@ function checkOpenWiki() {
 
 // ---------------------------------------------------------------- Synapse
 async function checkSynapse() {
-  const bin = which('synapse') || (existsSync(h('.local', 'bin', 'synapse')) ? '~/.local/bin/synapse' : null);
-  add('synapse', 'binary on PATH', !!bin, bin || 'not found — ~/.local/bin may be missing from PATH',
-    'Re-run the installer (it symlinks ~/.local/bin/synapse), and add ~/.local/bin to PATH.');
-  add('synapse', 'daemon :7781', await portOpen(7781), '3D codebase visualizer',
+  // installer.js skips the ~/.local/bin symlink on Windows and leaves the
+  // binary inside the module, so look there too before calling it missing.
+  const moduleDir = findModule('bdb-synapse');
+  const inModule = moduleDir && firstExisting([
+    path.join(moduleDir, 'bin', IS_WIN ? 'synapse.js' : 'synapse'),
+    path.join(moduleDir, 'bin', 'synapse-darwin-arm64'),
+    path.join(moduleDir, 'bin', 'synapse-linux-amd64'),
+  ]);
+  const bin = which('synapse') || (existsSync(h('.local', 'bin', 'synapse')) ? '~/.local/bin/synapse' : null) || (inModule && tilde(inModule));
+  add('synapse', 'binary available', !!bin, bin || 'no binary on PATH or in the module',
+    IS_WIN ? 'Re-run the installer; on Windows the binary stays in the module rather than being symlinked.'
+           : 'Re-run the installer (it symlinks ~/.local/bin/synapse), and add ~/.local/bin to PATH.');
+  add('synapse', 'daemon :7781', await portOpen(7781), 'something is listening (a bare TCP probe — it does not prove it is Synapse)',
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781');
 }
 

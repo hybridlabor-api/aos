@@ -107,7 +107,7 @@ async function checkMemb() {
       'Ingest the project: python3 memb_ingest.py <project dir>  (see /aos-project-init, section 5)');
   } catch (e) {
     add('memB', 'project memories', false, `could not read the store (${e.message.split('\n')[0]})`,
-      'Needs Node >= 22 for node:sqlite; otherwise inspect via the memB WebUI on :8088.');
+      'node:sqlite is unflagged only from Node 22.13; on 22.5-22.12 upgrade Node (or pass --experimental-sqlite). Otherwise inspect via the memB WebUI on :8088.');
   }
 }
 

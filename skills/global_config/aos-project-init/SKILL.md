@@ -32,7 +32,9 @@ node ~/.claude/skills/aos-project-init/scripts/aos-project-doctor.mjs [dir]
 ```
 
 `[dir]` defaults to the current directory. `--json` for machine-readable
-output. 16 checks across five areas:
+output. Up to 16 checks across five areas — a folder that is not a git repo
+yet reports that one row and skips the rest of the `git` block, and the
+visibility row appears only for a GitHub remote:
 
 | Area | What is verified |
 |---|---|
@@ -97,7 +99,8 @@ Copies into the project, writing nothing to `$HOME`:
 
 - `.agents/` — the graph contract, node registry, state schema
 - `.claude/workflows/` — the dispatcher
-- `.claude/hooks/` — `go-gate.mjs` and `graph-gate.mjs`
+- `.claude/hooks/` — `go-gate.mjs`, `graph-gate.mjs` and `memb-inject.mjs`
+  (the memory hook stays `$HOME`-anchored; only the gates become project-local)
 - `.claude/agents/` — the agent definitions the dispatcher's prompts reference
 - `.claude/settings.json` — wired to the project-local hooks
 
@@ -117,9 +120,16 @@ basename**. Two consequences worth stating out loud:
 Seed the project by ingesting it:
 
 ```bash
-~/.gemini/config/mcps/memb-mcp/.venv/bin/python \
-  ~/.gemini/config/mcps/memb-mcp/memb_ingest.py <project dir>
+MCP=~/.gemini/config/mcps/memb-mcp          # Gemini / Antigravity install
+"$MCP/.venv/bin/python" "$MCP/memb_ingest.py" <project dir>
 ```
+
+The MCP payload does not always land there — the installer picks the directory
+per harness, so on a Claude-only machine it sits under
+`~/Library/Application Support/Claude/mcps/` (`%APPDATA%\Claude\mcps\` on
+Windows), and under `.cursor` / `.codex` / `.windsurf` for those. Take the path
+`/aos-setup`'s doctor prints in its `memb-mcp server` row rather than assuming
+this one.
 
 Add `--transcripts` only when past conversation logs should be pulled in too —
 that is off by default for a reason.
