@@ -373,7 +373,6 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 
 | Skill | Description |
 |-------|-------------|
-| `google-sheets-automation` | Lightweight Google Sheets integration with standalone OAuth authentication. Full read/write access. |
 | `MCP_Manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
 | `n8n-code-javascript` | Write JavaScript code in n8n Code nodes. `$input`/`$json`/`$node` syntax, HTTP requests, DateTime handling. |
 | `n8n-code-python` | Write Python code in n8n Code nodes. `_input`/`_json`/`_node` syntax and standard library. |
@@ -383,7 +382,6 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 | `notion-automation` | Automate Notion tasks via Rube MCP (Composio): pages, databases, blocks, comments, users. |
 | `obsidian-markdown` | Obsidian Flavored Markdown with wikilinks, embeds, callouts, properties, and Obsidian-specific syntax. |
 | `playwright-skill` | Browser automation and testing with Playwright. Path-aware installation across plugin systems. |
-| `senior-fullstack` | Complete toolkit for senior fullstack development with modern tools and best practices. |
 | `slack-automation` | Automate Slack workspace operations: messaging, search, channel management, and reaction workflows. |
 | `token-saver-config` | Context window output compression engine for CLI commands (60-99% token reduction). |
 | `webapp-testing` | Test local web applications with native Python Playwright scripts. |

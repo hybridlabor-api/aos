@@ -1,6 +1,6 @@
 ---
 name: ask-tim
-description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the 187 available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
+description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the 185 available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
 category: bdb-core
 disable-model-invocation: true
 ---
@@ -145,7 +145,7 @@ Use these skills for UI development, component architecture, and design taste.
 * **`zustand-store-ts`**: Client-side state stores with Zustand, typed and with middleware.
 * **`web-performance-optimization`**: Broader than component-level — Core Web Vitals, bundle size, caching across the whole app.
 * **`wcag-audit-patterns`**: Accessibility compliance auditing against WCAG 2.2, not general UX review.
-* **`senior-fullstack`** / **`frontend-dev-guidelines`**: General-purpose fullstack/frontend engineering standards when the task doesn't need a narrower skill above.
+* **`frontend-dev-guidelines`**: General-purpose frontend engineering standards when the task doesn't need a narrower skill above. For the backend half, `godmode-engineering` and `software-architecture`.
 * **`landing-page-generator`**: Specifically a high-converting marketing landing page (PAS/AIDA/BAB copy frameworks), not a general app page.
 
 ### Overlap: The UX Cluster

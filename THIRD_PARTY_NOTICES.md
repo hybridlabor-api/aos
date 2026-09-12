@@ -195,7 +195,7 @@ quoted verbatim from that file.
 | [anthropics/skills](https://github.com/anthropics/skills) | Apache-2.0 (per-skill `LICENSE.txt`; the repo has no root licence) | Copyright 2026 Anthropic, PBC. | `webapp-testing`, `web-artifacts-builder` |
 | [AgriciDaniel/claude-seo](https://github.com/AgriciDaniel/claude-seo) | MIT | Copyright (c) 2026 agricidaniel | `seo`, `seo-technical` |
 | [neondatabase/agent-skills](https://github.com/neondatabase/agent-skills) | Apache-2.0 | template placeholder upstream; holder is Neon | `using-neon` |
-| [sanjay3290/ai-skills](https://github.com/sanjay3290/ai-skills) | Apache-2.0 | see upstream `LICENSE` | `deep-research`, `google-sheets-automation` |
+| [sanjay3290/ai-skills](https://github.com/sanjay3290/ai-skills) | Apache-2.0 | see upstream `LICENSE` | `deep-research` |
 | [shadcn-ui/ui](https://github.com/shadcn-ui/ui) | MIT | Copyright (c) 2023 shadcn | `shadcn` |
 | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) | MIT | Copyright (c) 2026 Steph Ango | `obsidian-markdown` |
 | [alirezarezvani/claude-skills](https://github.com/alirezarezvani/claude-skills) | MIT | Copyright (c) 2025 Alireza Rezvani | `senior-frontend`, `landing-page-generator` |

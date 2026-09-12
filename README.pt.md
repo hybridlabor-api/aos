@@ -150,7 +150,6 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 | `github-repo` | Padrões e fluxos de trabalho para escrever, formatar, higienizar e publicar repositórios GitHub de alta qualidade, complementando a skill openwiki-skill. |
 | `github-workflow-automation` | Padrões para automatizar fluxos de trabalho do GitHub com assistência de IA, inspirados pelo [Gemini CLI](https://github.com/google-gemini/gemini-cli) e práticas modernas de DevOps. |
 | `go-playwright` | Capacidade especialista para automação de navegador robusta, furtiva e eficiente usando Playwright Go. |
-| `google-sheets-automation` | Integração leve com Google Sheets com autenticação OAuth autônoma. Não requer servidor MCP. Acesso completo de leitura/escrita. |
 | `n8n-code-javascript` | Escreva código JavaScript em nós Code do n8n. Use ao escrever JavaScript no n8n, usando sintaxe $input/$json/$node, fazendo requisições HTTP com $helpers, trabalhando com datas usando DateTime, solucionando erros de nó Code, ou escolhendo entre modos de nó Code. |
 | `n8n-code-python` | Escreva código Python em nós Code do n8n. Use ao escrever Python no n8n, usando sintaxe _input/_json/_node, trabalhando com a biblioteca padrão, ou quando precisar entender as limitações do Python em nós Code do n8n. |
 | `n8n-expression-syntax` | Valide a sintaxe de expressões n8n e corrija erros comuns. Use ao escrever expressões n8n, usando sintaxe {{}}, acessando variáveis $json/$node, solucionando erros de expressão, ou trabalhando com dados de webhook em fluxos de trabalho. |
@@ -298,7 +297,6 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 | `bdb-updater` | Verifique proativamente e instale atualizações no pacote BDB Antigravity Skills via NPM. |
 | `monorepo-management` | Construa monorepos eficientes e escaláveis que possibilitem compartilhamento de código, ferramentas consistentes e alterações atômicas em múltiplos pacotes e aplicações. |
 | `obsidian-markdown` | Crie e edite Obsidian Flavored Markdown com wikilinks, embeds, callouts, propriedades e outras sintaxes específicas do Obsidian. Use ao trabalhar com arquivos .md no Obsidian, ou quando o usuário mencionar wikilinks, callouts, frontmatter, tags, embeds ou notas Obsidian. |
-| `senior-fullstack` | Kit de ferramentas completo para fullstack sênior com ferramentas modernas e melhores práticas. |
 | `token-saver-config` | Motor de compressão de saída de janela de contexto para comandos CLI (60-99% de redução de tokens). |
 | `web-performance-optimization` | Otimize o desempenho de sites e aplicações web, incluindo velocidade de carregamento, Core Web Vitals, tamanho de bundle, estratégias de cache e desempenho de tempo de execução. |
 
