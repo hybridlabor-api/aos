@@ -106,6 +106,57 @@ An offline-first, local vector database and knowledge management engine:
 
 ---
 
+## 📐 The Skill Contract and Its Enforcement
+
+### What a skill is, structurally
+
+A skill is a **directory containing `SKILL.md`**. Every supported harness
+discovers skills by looking for `<skill-name>/SKILL.md`; none of them scans for
+loose Markdown. A `.md` file sitting directly in a category directory is
+therefore invisible to all of them at once — it is not a degraded skill, it is
+not a skill. Twelve `bdb-*-mcp` guides shipped in exactly that shape, each
+opening by describing itself as a skill file, and none of them loadable
+anywhere. Promoting them to directories raised the discoverable skill count
+from 175 to 187.
+
+Required frontmatter is `name` (matching the directory exactly), `description`,
+and `category` from a fixed set of six. The full contract, including the
+category routing table, lives in [AGENTS.md](../AGENTS.md).
+
+### Why enforcement is a plain script, not a hook
+
+`scripts/validate-skills.mjs` gates the contract in CI and via `npm run
+validate`. Two deliberate constraints shape it:
+
+- **No dependencies.** The CI workflow has no install step, so the validator
+  must run on a bare `node`.
+- **Not a `.claude/hooks/` check.** A hook only ever fires for Claude Code. AOS
+  installs into six harness directories, so a hook would enforce the contract
+  for one consumer and none of the other five. Gating the repository covers
+  them all.
+
+The validator resolves **YAML scalar boundaries** rather than matching lines.
+That distinction is the reason it exists: when a multi-line `description:` is
+left unquoted, it absorbs the `category:` line beneath it, and the key remains
+physically present on its own line while being semantically swallowed. A
+`grep "^category:"` passes every such file. Only a parser — or a scanner that
+tracks where a value actually ends — sees the defect.
+
+### One rulebook, not four
+
+`AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and `CODEX.md` had drifted into four
+different rulebooks. The English-only rule, the no-leaked-usernames rule and
+the Conventional Commits requirement existed only in `CLAUDE.md`, so an agent
+running under Codex or Cursor never saw them — which is how a skill came to
+ship with a German body.
+
+`AGENTS.md` is now the single source for every cross-harness rule. The other
+three carry only genuinely harness-specific content and point back to it.
+Nothing is duplicated, because a rule living in two files eventually disagrees
+with itself.
+
+---
+
 ## 🔄 BDB Agent Pipeline Architecture
 
 The structured lifecycle enforces quality, deterministic verification, and automated memory ingestion across all AI agents:
@@ -201,7 +252,7 @@ bdb-dev-optimized-agent-skills/
 │   ├── bdb_resolume_mcp/            # Resolume Arena REST API controller
 │   ├── memb-mcp/                    # memB local SQLite + ONNX vector memory server
 │   └── zavora_computer_use/         # Native precompiled OS automation binaries
-├── skills/                          # 154 curated agent skills
+├── skills/                          # 185 curated agent skills
 │   ├── global_config/               # System skills (openwiki-skill, memb-skill, MCP docs)
 │   └── ...                          # Domain-specific development and creative skills
 ├── tools/                           # Ecosystem tool extensions (e.g. obsidian-memb-plugin)

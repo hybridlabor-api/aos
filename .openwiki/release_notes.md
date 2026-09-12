@@ -1,6 +1,66 @@
 # Release Notes
 
-## Unreleased, continued (2026-09-10)
+## Unreleased (committed, awaiting the next release)
+
+`chore:` commits do not trigger a release-please bump, so the following is on
+`main` but not yet on npm. It ships with the next `feat:` or `fix:`.
+
+- **The published tarball is roughly halved: 42.6 MB → 21.0 MB, 6789 → 5755
+  files.** 104 of the 115 unpacked megabytes came from `mcps/`, which is
+  load-bearing — but a third of that was upstream README screenshots, upstream
+  `docs/` trees, and ML training splits that nothing reads at runtime. Excluded
+  from the tarball via `files` negation patterns rather than deleted, because
+  `mcps/` holds vendored upstream projects. See ADR-017 for the constraint that
+  makes `tests/` non-excludable in two of them.
+- **`google-sheets-automation` and `senior-fullstack` removed** (185 skills).
+  Both were documented capability with nothing behind it: the first gave sixteen
+  invocations of `scripts/sheets.py` and `scripts/auth.py`, a directory that has
+  never existed in the repo's history or in any of the seven harness install
+  targets; the second shipped three "scripts" of exactly 114 lines each and
+  three reference documents of exactly 103 lines each — one generator template
+  with the name substituted — while carrying `risk: critical`.
+- **`mcps/windows-computer-use-mcp/docs/_stale` deleted**, 86 files of
+  self-declared stale documentation with no inbound references.
+
+## v4.3.0 (2026-09-12) — Audit Remediation
+
+A full audit of all 175 skills, then the remediation. The headline finding was
+not security — a prior automated scan reported nine "critical" issues, every one
+a regex false positive — but attribution and discoverability.
+
+- **A skill-contract validator now gates every push.**
+  `scripts/validate-skills.mjs` runs in CI and via `npm run validate`. It has no
+  dependencies, because the CI workflow has no install step, and it is
+  deliberately not a `.claude/hooks/` check, because a hook would enforce
+  nothing for the five non-Claude-Code harnesses AOS installs into. It resolves
+  YAML scalar boundaries rather than matching lines — the defect class it exists
+  to catch passes a `grep` for the key.
+- **Twelve MCP guides became loadable skills.** They had been written as bare
+  `.md` files in `skills/global_config/`, where no harness can discover them.
+  Discoverable skill count: **175 → 187**.
+- **Seven skills had their `category:` swallowed** by an unquoted multi-line
+  `description:` above it, parsing as values like
+  `"library used by 60% of Fortune 500 companies."`. Repaired, with the
+  descriptions verified word-for-word against the originals.
+- **Attribution went from 3 credited upstreams to 21.** Each licence was
+  verified against the upstream's own `LICENSE` file via the GitHub API rather
+  than inferred. Two vendored Anthropic skills had their copyright line replaced
+  by the empty Apache placeholder — restored byte-identical, since Apache-2.0 §4
+  requires retaining it. Three skills declaring `source: community` in fact came
+  from Vercel, Supabase and a published MIT package. Four upstreams could not be
+  cleared and are named as such (ADR-016).
+- **`AGENTS.md` is now the single cross-harness rulebook.** The four instruction
+  files had drifted into four different rulebooks — the English-only rule existed
+  only in `CLAUDE.md`, which is how a skill shipped with a German body.
+- **Pointers that resolved to nothing were removed**, including `seo`'s claim to
+  orchestrate sixteen sub-skills when two exist, and `bdb-ecosystem-health`
+  invoking a script under the retired `~/bdb-dev/` workspace path.
+- **Installer fix:** the Basic Tier exclusion list matched the MCP guides by
+  their pre-move filenames, so a Basic install would have shipped all ten heavy
+  creative-application guides it exists to leave out. Invisible to the
+  validator; found by tracing what consumes the files.
+
+## v4.2.0, continued (2026-09-10)
 
 - **`ask-tim` leads with a flow map now, not just a catalogue.** Derived from
   [mattpocock/skills](https://github.com/mattpocock/skills)' `ask-matt`, but re-derived
@@ -57,7 +117,7 @@
     (12/12 passing, independently re-run), and the run reached `ready_to_ship` in a
     single pass — zero repair iterations.
 
-## Unreleased (open on the release-please PR as v4.2.0)
+## v4.2.0 (2026-09-10)
 Published to npm as `4.2.0-beta.0` under the `beta` dist-tag for testing; `latest`
 deliberately stays on 4.1.0, so nobody receives this without asking for it.
 

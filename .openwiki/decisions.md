@@ -124,3 +124,83 @@ This document records the foundational architectural decisions, rationale, and c
   3. **No inheritance, no silent retries:** A subagent spawned by an already-authorized orchestrator does not inherit that orchestrator's "GO". A release/publish/push command that is blocked, fails, or has an ambiguous outcome must not be retried without a fresh, explicit "GO" for that specific retry.
 - **Consequences:** Closes the exact loophole that produced an unreviewed `npm publish`. The gate's guarantee now holds regardless of whether a mutating command is typed directly by the agent or discovered inside a file the agent is following. Applied to the root `CLAUDE.md` in this repo and mirrored into the user's machine-wide `CLAUDE.md` / `GEMINI.md` so it binds every agent harness, not just this repository.
 
+
+---
+
+## ADR-015: The GO Gate's Hook Is a Subset of the Rule, Not the Rule
+
+- **Status:** Accepted (2026-09-12)
+- **Context:** ADR-014 names `git commit` and file writes among the tools the GO
+  gate forbids. `docs/sessions/audit-agents.md` F-03 specifies a matching
+  `PreToolUse` matcher: `Write|Edit|Bash(git commit *|git push *|npm publish *|npm version *|rm *)`.
+  What actually shipped in `.claude/hooks/go-gate.mjs` covers four commands —
+  `git push`, `npm publish`, `npm version`, recursive `rm` — and the hook's own
+  header cited F-01/F-03 as justification for that narrowing, which those
+  findings do not support. During the 2026-09 consolidation that incorrect
+  citation was carried into `AGENTS.md`, briefly making the repository's stated
+  rule narrower than ADR-014.
+- **Decision:**
+  1. **The broad rule stands and binds every harness.** On a request for a plan,
+     review, audit, or multi-step action, an agent is read-only until the user
+     answers with the literal `GO` — including file writes and `git commit`.
+  2. **The hook is documented as a subset, not as the rule.** It covers the four
+     commands whose blast radius leaves the machine. Its silence is not
+     permission.
+  3. **The hook is deliberately not broadened.** A `PreToolUse` matcher fires on
+     every tool call and cannot distinguish "the user asked for a plan" from
+     "the user asked me to build this" — the condition the rule turns on. A
+     blanket block on `Write`/`Edit`/`git commit` would refuse ordinary work in
+     every session until someone typed `GO`.
+- **Consequences:** The gap between rule and enforcement is real and is named as
+  such in `AGENTS.md` rather than argued away in either direction. On harnesses
+  without hook support — Antigravity, Codex, Cursor, Roo — the broad rule is the
+  only thing standing, which `GEMINI.md` and `CODEX.md` now state explicitly.
+
+---
+
+## ADR-016: Disclose Unresolvable Provenance Rather Than Remove the Skills
+
+- **Status:** Accepted (2026-09-12)
+- **Context:** `THIRD_PARTY_NOTICES.md` credited three upstreams. The skills'
+  own frontmatter named twenty-one. Verification against each repository's
+  `LICENSE` file via the GitHub API cleared seventeen; four could not be
+  cleared. `vibeship-spawner-skills` has no licence file at all and claims
+  Apache 2.0 only in its README (7 skills affected); `ClawForge` and
+  `CloudAI-X/threejs-skills` are the same shape (1 each); `Shpigford/skills`
+  now returns 404, so the provenance of `readme` cannot be verified at all.
+  Absent a licence file the default is all rights reserved.
+- **Decision:** Ship the affected skills, and record the problem explicitly in
+  `THIRD_PARTY_NOTICES.md` under "Unresolved provenance" with the specific
+  defect and the affected skills named. Do not quietly keep them uncredited,
+  and do not remove ten working skills over a missing file.
+- **Consequences:** Disclosure is what carries legal weight, and a maintainer
+  reading the notices sees exactly which claims are unbacked. Revisit if any
+  upstream author objects or adds a licence. A separate finding from the same
+  pass, two vendored Anthropic skills whose `LICENSE.txt` had its copyright line
+  replaced by the empty Apache placeholder, was not a judgement call and was
+  simply corrected.
+
+---
+
+## ADR-017: Slim the Published Tarball by Exclusion, Never by Deleting Vendored Code
+
+- **Status:** Accepted (2026-09-12)
+- **Context:** The published package was 42.6 MB across 6789 files. 104 of the
+  115 unpacked megabytes came from `mcps/`, which is load-bearing —
+  `mcp_config.json` starts servers from `__MCPS_DIR__` and `installer.js` copies
+  the trees to the target machine — but roughly a third of it is upstream README
+  screenshots, upstream `docs/` trees, and ML training splits that nothing reads
+  at runtime.
+- **Decision:** Exclude that ballast from the npm tarball via negation patterns
+  in `package.json`'s `files`, and leave the repository untouched. The `mcps/`
+  subtrees are vendored upstream projects; deleting their tests or images would
+  fight the next upstream sync, and their own READMEs reference those images.
+- **Consequences:** 42.6 MB → 21.0 MB, 6789 → 5755 files, with every upstream
+  licence file retained. One constraint discovered while implementing it is
+  load-bearing for any future change here: `installer.js` runs `npm run build`
+  inside each copied MCP folder on the user's machine, and both
+  `mcps/tdmcp/tsconfig.json` and `mcps/touchdesigner-mcp/tsconfig.json` list
+  `tests/` as a compile input, with tdmcp also listing
+  `training/showintent/src`. **Those paths cannot be excluded** — only the
+  training *data* can. Neither the skill validator nor `npm pack` detects this;
+  it is visible only by reading what consumes the files.

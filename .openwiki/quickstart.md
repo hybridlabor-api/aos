@@ -63,6 +63,32 @@ During install the API key is verified by `verify_api_key.py` (2 retries + TLS f
 
 ---
 
+## ✅ Before You Commit a Skill Change
+
+```bash
+npm run validate   # the skill contract, exactly as CI enforces it
+npm test           # the validator's selftest, then the contract
+```
+
+A skill is a **directory containing `SKILL.md`** — every harness discovers
+skills as `<skill-name>/SKILL.md`, so a loose `.md` file in a category
+directory is invisible to all of them. Required frontmatter:
+
+```yaml
+---
+name: exactly-the-directory-name
+description: >-
+  Use the folded form for anything longer than one line. An unquoted
+  multi-line description swallows the category below it.
+category: design-ui-ux | engineering-method | media-eventtech | bdb-core | saas-ops | library
+---
+```
+
+The full contract and the category routing table live in
+[AGENTS.md](../AGENTS.md).
+
+---
+
 ## 🧠 memB Semantic Memory Synchronization
 
 To ingest project context and architecture into the local SQLite vector database (`~/.MemBDB/memb.db`):
