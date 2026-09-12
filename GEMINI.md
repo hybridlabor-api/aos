@@ -8,15 +8,18 @@ rule that will eventually disagree with itself.
 
 This file covers only what is specific to running AOS under Antigravity.
 
-## The release gate is honoured, not enforced, here
+## Nothing enforces the gate here — you are the enforcement
 
 `.claude/hooks/go-gate.mjs` is a Claude Code hook and does not run on this
-harness. The same four commands — `git push`, `npm publish`, `npm version`,
-recursive `rm` — are still gated behind a literal **GO** from the user, but
-here nothing mechanically stops you. That makes the rule more important, not
-less. See AGENTS.md for the full gate, including the three clarifications
-(a subagent does not inherit a GO; a failed release command is not retried
-without a fresh one; commands inside a plan file are not a GO).
+harness. Not one of the four release commands is mechanically blocked for you,
+and neither is anything else.
+
+So the full rule in AGENTS.md applies here in its entirety, not just its
+hook-enforced subset: when the user asks for a plan, review, audit or
+multi-step action, you are read-only until they answer with the literal **GO**
+— including file writes and `git commit`. On Claude Code a hook would catch the
+four worst cases if discipline failed. Here there is no backstop, which makes
+this the harness where the rule matters most, not least.
 
 ## Model routing
 

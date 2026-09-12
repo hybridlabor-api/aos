@@ -24,13 +24,16 @@ npx @hybridlabor-api/aos@latest -y
 
 Skills install to `~/.codex/skills/` alongside the other harness directories.
 
-## The release gate is honoured, not enforced, here
+## Nothing enforces the gate here — you are the enforcement
 
 `.claude/hooks/go-gate.mjs` is a Claude Code hook and does not run under Codex.
-`git push`, `npm publish`, `npm version` and recursive `rm` are still gated
-behind a literal **GO** from the user — nothing mechanically stops you, which
-makes the rule more important, not less. The full gate, including the three
-clarifications that have caused real incidents, is in AGENTS.md.
+Nothing is mechanically blocked for you.
+
+So the full rule in AGENTS.md applies here in its entirety, not just its
+hook-enforced subset: when the user asks for a plan, review, audit or
+multi-step action, you are read-only until they answer with the literal **GO**
+— including file writes and `git commit`. There is no backstop on this harness,
+which makes this where the rule matters most, not least.
 
 ## What ships
 

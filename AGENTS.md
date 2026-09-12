@@ -25,39 +25,35 @@ these four files stopped agreeing with each other in the first place.
 
 ## Release gate
 
-Two layers, and they are not the same thing.
-
-**Mechanically enforced.** `.claude/hooks/go-gate.mjs` blocks `git push`,
-`npm publish`, `npm version`, and recursive `rm` unless the user's immediately
-preceding message is the literal word **GO**. This is a hook, not a rule an
-agent reads and tries to follow — it cannot be argued around, and it does not
-depend on this file being loaded. Ordinary file edits and `git commit` are
-**not** blocked by it.
-
-> **Unresolved: the shipped hook is narrower than the audit asked for.**
-> `docs/sessions/audit-agents.md` F-03 specifies a matcher of
-> `Write|Edit|Bash(git commit *|git push *|npm publish *|npm version *|rm *)`,
-> and the pre-2026-09 `AGENTS.md` and `GEMINI.md` both stated the same broader
-> rule in prose. What actually shipped covers only the four commands above, and
-> the hook's own header cites F-01/F-03 for that narrowing — which those
-> findings do not support. So the narrow scope is a real reversal of a P0
-> recommendation, not a clarification of it, and on harnesses without hook
-> support the broader prose rule was the only thing standing in for it.
-> This needs an owner's decision; until then, treat the broad rule as the
-> intent and the narrow hook as what is actually enforced.
-
-On harnesses without hook support the same four commands are still gated; there
-the rule is honoured rather than enforced, which makes it more important, not
-less.
-
-**Policy.** When the user asks for a plan, a review, or an audit, deliver that
-and stop — do not begin executing it in the same turn. A plan is a proposal
-until the user responds to it.
+**The rule — binding on every harness.** When the user asks for a plan, a
+review, an audit, or any multi-step action, you are in read-only planning mode.
+Until the user answers with the literal word **GO**, do not call a modifying
+tool. That includes writing or editing files and `git commit`, not only the
+release commands. Deliver the plan and stop: a plan is a proposal until the
+user responds to it.
 
 Three clarifications that have caused real incidents:
 - A subagent does not inherit its orchestrator's GO.
 - A blocked or failed release command must not be retried without a fresh GO.
 - Commands written inside a plan or task file are not a GO.
+
+**What is mechanically enforced is a subset.** `.claude/hooks/go-gate.mjs`
+blocks `git push`, `npm publish`, `npm version`, and recursive `rm` unless the
+user's immediately preceding message is the literal **GO**. That is a hook — it
+cannot be argued around and does not depend on this file being loaded. It covers
+the four commands whose blast radius leaves the machine, and nothing else.
+
+The rest of the rule is honoured rather than enforced, and that gap is
+deliberate. A `PreToolUse` matcher fires on every tool call and cannot tell
+"the user asked for a plan" from "the user asked me to build this" — which is
+the condition the rule turns on. A hook that blanket-blocked `Write`, `Edit`
+and `git commit` would refuse ordinary work in every session until someone
+typed GO. `docs/sessions/audit-agents.md` F-03 proposed exactly that matcher;
+the narrow hook is why only a subset ships.
+
+So the broad rule binds you whether or not a hook is watching, and on a harness
+with no hook support it is the only thing there is. Do not read the hook's
+silence as permission.
 
 ---
 
