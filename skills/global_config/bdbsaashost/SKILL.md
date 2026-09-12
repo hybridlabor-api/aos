@@ -78,7 +78,7 @@ Endpoints are resolved **dynamically** from the local project configuration (`.e
 2. **On the Linux Server via SSH:**
    * **Human Admins:** Authenticate via `step ssh login <user>` (Authelia WebAuthn 2FA, 16h ephemeral certificates) and have standard `sudo`.
    * **Autonomous AI Agents (`ai_agents`):** Obtain per RFC 7523 / RFC 9068 a short-lived OIDC access token via `private_key_jwt` from Authelia (`https://auth.<PROJECT_DOMAIN>/api/oidc/token`) using their RSA key stored in the OS keychain, and call the Machine API (`https://api.<PROJECT_DOMAIN>/tools/*`) with `Authorization: Bearer <token>`.
-   * **Privileged Commands on the Server:** Must be executed with `agent-sudo <command>`.
+   * **Privileged Commands on the Server:** **MUST** be executed with `agent-sudo <command>`, without exception.
 
 ---
 
