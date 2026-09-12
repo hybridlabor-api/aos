@@ -1,6 +1,7 @@
 ---
 name: bdb-after-effects-mcp
 description: Utilizes the After Effects MCP servers (after-effects-mcp and ae-mcp) to create compositions, layers, masks, keyframe animations, and run ExtendScript.
+category: media-eventtech
 ---
 
 # After Effects MCP — Integration and AI Agent Guide

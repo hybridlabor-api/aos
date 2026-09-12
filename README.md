@@ -549,18 +549,18 @@ This repository contains deep-system configurations and documentation guidelines
 <details>
 <summary><strong>View System Skills List</strong></summary>
 
-- [`bdb-unreal-mcp.md`](skills/global_config/bdb-unreal-mcp.md)
-- [`bdb-rhino-mcp.md`](skills/global_config/bdb-rhino-mcp.md)
-- [`bdb-davinci-mcp.md`](skills/global_config/bdb-davinci-mcp.md)
-- [`bdb-blender-mcp.md`](skills/global_config/bdb-blender-mcp.md)
-- [`bdb-after-effects-mcp.md`](skills/global_config/bdb-after-effects-mcp.md)
-- [`bdb-vectorworks-mcp.md`](skills/global_config/bdb-vectorworks-mcp.md)
-- [`bdb-touchdesigner-mcp.md`](skills/global_config/bdb-touchdesigner-mcp.md)
-- [`bdb-computer-use-mcp.md`](skills/global_config/bdb-computer-use-mcp.md)
-- [`bdb-grandma3-mcp.md`](skills/global_config/bdb-grandma3-mcp.md)
-- [`bdb-resolume-mcp.md`](skills/global_config/bdb-resolume-mcp.md)
-- [`bdb-adobe-suite-mcp.md`](skills/global_config/bdb-adobe-suite-mcp.md)
-- [`bdb-memb-mcp.md`](skills/global_config/bdb-memb-mcp.md)
+- [`bdb-unreal-mcp.md`](skills/global_config/bdb-unreal-mcp/SKILL.md)
+- [`bdb-rhino-mcp.md`](skills/global_config/bdb-rhino-mcp/SKILL.md)
+- [`bdb-davinci-mcp.md`](skills/global_config/bdb-davinci-mcp/SKILL.md)
+- [`bdb-blender-mcp.md`](skills/global_config/bdb-blender-mcp/SKILL.md)
+- [`bdb-after-effects-mcp.md`](skills/global_config/bdb-after-effects-mcp/SKILL.md)
+- [`bdb-vectorworks-mcp.md`](skills/global_config/bdb-vectorworks-mcp/SKILL.md)
+- [`bdb-touchdesigner-mcp.md`](skills/global_config/bdb-touchdesigner-mcp/SKILL.md)
+- [`bdb-computer-use-mcp.md`](skills/global_config/bdb-computer-use-mcp/SKILL.md)
+- [`bdb-grandma3-mcp.md`](skills/global_config/bdb-grandma3-mcp/SKILL.md)
+- [`bdb-resolume-mcp.md`](skills/global_config/bdb-resolume-mcp/SKILL.md)
+- [`bdb-adobe-suite-mcp.md`](skills/global_config/bdb-adobe-suite-mcp/SKILL.md)
+- [`bdb-memb-mcp.md`](skills/global_config/bdb-memb-mcp/SKILL.md)
 - [`openwiki-skill`](skills/global_config/openwiki-skill/SKILL.md): Direct Gemini-native integration of OpenWiki for autonomous, high-agency documentation management and release notes maintenance.
 - [`memb-skill`](skills/global_config/memb-skill/SKILL.md): BDB local-first long-term memory engine (memB). Query, remember, and adapt preferences, code architectures, and developer patterns across tasks.
 </details>

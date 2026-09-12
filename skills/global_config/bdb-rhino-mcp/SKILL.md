@@ -1,6 +1,7 @@
 ---
 name: bdb-rhino-mcp
 description: Utilizes the Rhino MCP servers (RhinoMCP and golem-rhino-mcp) to create and manipulate 3D models and run Grasshopper graphs.
+category: media-eventtech
 ---
 
 # Rhino 3D MCP — Integration and AI Agent Guide

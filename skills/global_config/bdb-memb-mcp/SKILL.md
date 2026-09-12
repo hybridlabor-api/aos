@@ -1,3 +1,12 @@
+---
+name: bdb-memb-mcp
+description: >-
+  Model Context Protocol interface to the memB persistent agent memory layer
+  enabling read, write, update, and semantic search of memories locally and
+  offline across compatible developer agents.
+category: bdb-core
+---
+
 # BDB memB Persistent Memory MCP Server
 
 The `memb-mcp` server provides a standard Model Context Protocol (MCP) interface to the **memB** persistent agent memory layer. It allows any compatible developer agent (such as Cursor, Google Antigravity, Claude Code, or VS Code Cline) to read, write, and query persistent memories locally and offline.

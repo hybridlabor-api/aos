@@ -1,6 +1,7 @@
 ---
 name: bdb-resolume-mcp
 description: Utilizes the Resolume Arena MCP server to trigger clips, clear layers, adjust speeds, and query composition status via the Resolume REST API.
+category: media-eventtech
 ---
 
 # Resolume Arena MCP — Integration and AI Agent Guide

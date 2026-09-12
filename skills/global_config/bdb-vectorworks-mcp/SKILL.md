@@ -1,6 +1,7 @@
 ---
 name: bdb-vectorworks-mcp
 description: Utilizes the Vectorworks RAG + MCP server to search and retrieve Python and VectorScript API documentation.
+category: media-eventtech
 ---
 
 # Vectorworks RAG MCP — Integration and AI Agent Guide

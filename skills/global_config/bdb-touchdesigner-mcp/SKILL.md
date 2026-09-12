@@ -1,6 +1,7 @@
 ---
 name: bdb-touchdesigner-mcp
 description: Utilizes the TouchDesigner MCP servers (tdmcp and touchdesigner-mcp) to create TOP/CHOP chains, script operators, inspect parameters, and debug node networks.
+category: media-eventtech
 ---
 
 # TouchDesigner MCP — Integration and AI Agent Guide

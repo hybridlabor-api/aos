@@ -1,6 +1,7 @@
 ---
 name: bdb-davinci-mcp
 description: Utilizes the DaVinci Resolve MCP servers to control timeline editing, media analysis, color grading, and Fusion/Fairlight scripting.
+category: media-eventtech
 ---
 
 # DaVinci Resolve MCP — Integration and AI Agent Guide

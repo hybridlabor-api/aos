@@ -1,6 +1,7 @@
 ---
 name: bdb-computer-use-mcp
 description: Utilizes native Rust/Node and Python-based computer-use-mcp servers to control macOS, Windows, and Linux desktops.
+category: engineering-method
 ---
 
 # Computer Use & OS Control MCP — Integration and AI Agent Guide

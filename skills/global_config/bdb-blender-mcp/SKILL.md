@@ -1,6 +1,7 @@
 ---
 name: bdb-blender-mcp
 description: Utilizes the Blender MCP server and addon to build 3D assets, apply materials, inspect scenes, and script bpy.
+category: media-eventtech
 ---
 
 # Blender MCP — Integration and AI Agent Guide

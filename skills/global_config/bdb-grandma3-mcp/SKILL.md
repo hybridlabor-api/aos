@@ -1,6 +1,7 @@
 ---
 name: bdb-grandma3-mcp
 description: Utilizes the grandMA3 MCP server to patch fixtures, execute console commands, and trigger macros via OSC.
+category: media-eventtech
 ---
 
 # grandMA3 MCP — Integration and AI Agent Guide

@@ -1,6 +1,7 @@
 ---
 name: bdb-unreal-mcp
 description: Utilizes the Unreal Engine MCP server to control UE5 via a native C++ Automation Bridge plugin.
+category: media-eventtech
 ---
 
 # Unreal Engine MCP — Integration and AI Agent Guide
