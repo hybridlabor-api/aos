@@ -3,7 +3,7 @@ name: web-artifacts-builder
 description: "To build powerful frontend claude.ai artifacts, follow these steps:"
 category: library
 risk: unknown
-source: community
+source: anthropics/skills (Apache-2.0)
 date_added: "2026-02-27"
 ---
 
