@@ -508,10 +508,30 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
 
     const diskHash = computeFileHash(targetPath);
 
-    // Case: foreign – no manifest entry AND disk hash unknown to this payload.
+    // Case: unrecognised content at a path this payload owns.
+    //
+    // This used to skip, on the reading that unknown content means a file the
+    // installer did not place. But resolveFileConflict only ever sees paths the
+    // payload is actively writing, so the path IS ours -- and the commonest
+    // cause of unknown content is simply an older release of our own file,
+    // installed before manifest tracking existed and therefore never adopted.
+    // Skipping froze those permanently: v4.4.0 still found skills on disk
+    // carrying pre-reorg ~/bdb-dev paths and a stale `category:`, untouched
+    // across every update since, because bootstrap adoption only catches a file
+    // that is byte-identical to the current payload.
+    //
+    // So update it, and keep the protection where it belongs -- in the backup,
+    // not in refusing to write. A genuine local edit is recoverable from .bak
+    // rather than silently outvoting the shipped version forever.
     if (!manifestEntry && !knownSourceHashes.has(diskHash)) {
-        log.warn(`[manifest] Foreign file at ${targetPath} — left untouched.`);
-        return 'skipped';
+        const bakPath = `${targetPath}.bak`;
+        try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
+            log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
+        }
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        log.warn(`[manifest] Unrecognised ${path.basename(targetPath)} backed up to ${bakPath}, shipped version written.`);
+        return 'bak';
     }
 
     // Case: first-run bootstrap – disk hash matches source hash but no manifest entry.

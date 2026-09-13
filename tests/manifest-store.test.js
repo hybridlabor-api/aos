@@ -68,14 +68,19 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
         }
     });
 
-    test('(b) a foreign file survives an update completely untouched', () => {
+    // Contract changed deliberately: unrecognised content at a path the payload
+    // owns is now updated with a .bak, not skipped. Skipping meant a skill
+    // installed before manifest tracking -- whose content no longer matches the
+    // current payload, so bootstrap adoption never catches it -- stayed frozen
+    // through every future update. The protection moved into the backup.
+    test('(b) unrecognised content at an owned path is updated, with a backup', () => {
         const { tmpBase, fakeHome, fakeSrc, manifestPath } = createIsolatedEnv();
         try {
             // Setup target with an existing foreign file (not in manifest, not in known hashes)
             const targetDir = path.join(fakeHome, '.gemini', 'config', 'skills', 'foreign-skill');
             fs.mkdirSync(targetDir, { recursive: true });
             const foreignFile = path.join(targetDir, 'custom.txt');
-            const foreignContent = 'User custom script that was not placed by installer';
+            const foreignContent = 'An older release of this file, or a local edit';
             fs.writeFileSync(foreignFile, foreignContent);
             const foreignHashBefore = computeFileHash(foreignFile);
 
@@ -98,12 +103,20 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
                 console.warn = origWarn;
             }
 
-            // Foreign file must be completely untouched
-            assert.strictEqual(fs.existsSync(foreignFile), true, 'Foreign file should still exist');
-            assert.strictEqual(fs.readFileSync(foreignFile, 'utf8'), foreignContent, 'Foreign content must remain untouched');
-            assert.strictEqual(computeFileHash(foreignFile), foreignHashBefore, 'Hash must not change');
-            assert.strictEqual(manifest[foreignFile], undefined, 'Foreign file should not be adopted into manifest');
-            assert.strictEqual(fs.existsSync(`${foreignFile}.bak`), false, 'No .bak should be created for foreign file');
+            // The shipped version must win...
+            assert.strictEqual(
+                fs.readFileSync(foreignFile, 'utf8'),
+                'Shipped file trying to overwrite custom.txt',
+                'shipped content must replace the unrecognised file',
+            );
+            assert.notStrictEqual(computeFileHash(foreignFile), foreignHashBefore, 'file must actually change');
+            assert.ok(manifest[foreignFile], 'the file is now tracked, so the next update is a clean overwrite');
+
+            // ...and nothing may be lost doing it.
+            assert.strictEqual(fs.existsSync(`${foreignFile}.bak`), true, 'previous content must be backed up');
+            assert.strictEqual(fs.readFileSync(`${foreignFile}.bak`, 'utf8'), foreignContent, 'backup must hold the original bytes');
+            // Not asserted here: that the user is told. log.warn() goes through
+            // clack to stdout, which this console.warn intercept cannot see.
         } finally {
             cleanup(tmpBase);
         }
