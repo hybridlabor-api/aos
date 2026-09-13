@@ -21,8 +21,30 @@ documentation and visualization layers silently do nothing.
 
 This skill closes that gap: **measure first, then fix only what is broken.**
 
-For per-project wiring — a new project folder, its `AGENTS.md`, its memB
-project binding, its wiki — use `/aos-project-init` after this one.
+This is also where a **new agent harness** gets wired: adding Codex or
+Antigravity to a machine that already runs Claude Code is this skill's job, not
+a reinstall.
+
+For per-project wiring — a folder's slug, its wiki, its memB binding — use
+`/aos-project-init` after this one.
+
+### What each harness can actually do
+
+Portability is not uniform, and pretending otherwise is how people end up
+believing memory works everywhere:
+
+| | Skills | MCP | Hooks |
+|---|---|---|---|
+| Claude Code | `~/.claude/skills` | `~/.claude.json` | **yes** |
+| Antigravity | `~/.gemini/config/skills` | `mcp_config.json` | no |
+| Codex | `~/.codex/skills` | `config.toml` | no |
+| OpenCode | — | `opencode.jsonc` | no |
+| Cursor / Roo | `bdb-skills` | `mcp.json` | no |
+
+Only Claude Code has hooks, so only there can memB inject per prompt. Elsewhere
+the same context arrives through the rule files that harness loads at start —
+see section 5 — which means it is as fresh as the last write, not as fresh as
+the prompt. Say so plainly rather than letting someone assume parity.
 
 ---
 
@@ -59,7 +81,35 @@ one covers a block the doctor can flag.
 
 ---
 
-## 2. Install or update AOS itself
+## 2. Machine configuration
+
+Two things are machine-specific and ship with **no** value, because AOS is a
+public package: one person's `web, media, infra` means nothing on someone
+else's disk.
+
+```bash
+aos-config propose     # read this machine's layout, suggest nothing more
+aos-config show        # what is configured now
+```
+
+`propose` looks for a workspace root (`~/dev`, `~/Projects`, `~/src`, `~/code`)
+and offers its immediate subdirectories as the domain vocabulary. **Present the
+proposal, do not apply it** — the user decides which of those are real domains
+and which are just folders. Then ask for the memB `user_id`, which must never
+be invented either.
+
+```bash
+aos-config set workspaceRoot ~/dev
+aos-config set domains bdb-core,web,media,agents,infra
+aos-config set userId <the user's memB id>
+```
+
+The result lands in `~/.agents/aos-config.json`. `/aos-project-init` reads it
+to offer a domain per project and refuses to guess when it is missing.
+
+---
+
+## 3. Install or update AOS itself
 
 ```bash
 npx -y @hybridlabor-api/aos@latest
@@ -88,7 +138,7 @@ a harness directory.
 
 ---
 
-## 3. memB — memory that actually retains
+## 4. memB — memory that actually retains
 
 memB is three separate pieces, and a machine can have any subset:
 
@@ -115,7 +165,7 @@ machine — `/aos-project-init` seeds it per project.
 
 ---
 
-## 4. The ambient memory hook
+## 5. The ambient memory hook
 
 The hook is what makes memB *ambient* rather than something an agent has to
 remember to query. On every prompt it reads the SQLite store directly and
@@ -149,6 +199,18 @@ harness — the memB store is machine-global, and pointing it at
 `$CLAUDE_PROJECT_DIR` would make it fail on every prompt in any project the
 harness was never installed into.
 
+**On a harness without hooks** — everything except Claude Code — the same
+context is written into the rule files that harness loads instead:
+
+```bash
+python3 ~/.agents/memB/memb_auto_inject.py --global      # GEMINI.md, CODEX.md, …
+python3 ~/.agents/memB/memb_auto_inject.py --dir <repo>  # a project's AGENTS.md
+```
+
+It merges into a delimited block and leaves everything outside it alone. The
+block carries the time it was written, because this path is only ever as fresh
+as its last run.
+
 Standing facts that should reach every prompt — persona, brand rules, house
 style — go one per line into `~/.MemBDB/ambient-persona.txt`. Lines starting
 with `#` are ignored. This file is deliberately *not* shipped: ask the user
@@ -159,7 +221,7 @@ Verify by starting a session and checking that the first prompt carries a
 
 ---
 
-## 5. OpenWiki
+## 6. OpenWiki
 
 ```bash
 npm install -g openwiki@latest        # CLI, needs Node >= 22
@@ -184,7 +246,7 @@ Wikis themselves are per-repository (`.openwiki/` in each project) — that is
 
 ---
 
-## 6. Synapse
+## 7. Synapse
 
 The installer downloads the module, symlinks the binary to
 `~/.local/bin/synapse` and registers a daemon on port `7781`. Two failure modes
@@ -200,7 +262,7 @@ If no pre-built binary exists for the platform, build it:
 
 ---
 
-## 7. The dashboard
+## 8. The dashboard
 
 `aos-dashboard` serves one page on `http://127.0.0.1:7900` showing every BDB
 service live — memB, Synapse, the OpenWiki daemon, AO Orchestrator and RemoteOS
@@ -228,7 +290,7 @@ closed and the question is why.
 
 ---
 
-## 8. Confirm
+## 9. Confirm
 
 Re-run the doctor. Do not report success from the fact that commands ran —
 report the doctor's own count:

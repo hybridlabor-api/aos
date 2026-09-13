@@ -1,10 +1,10 @@
 ---
 name: aos-project-init
 description: >-
-  Wire one project folder into AOS — git and private remote, AGENTS.md with its
-  harness symlinks, the dispatcher harness, an OpenWiki wiki, memB project
-  memory, and a Synapse map. Use when starting a new project, or when an
-  existing repo has drifted and its agents behave like they know nothing about it.
+  Interview a project folder into AOS and write the result: a stable slug and
+  domain in .aos/project.json, an OpenWiki wiki that is actually watched and
+  does not index junk, memB memory bound to the slug, a Synapse map, AGENTS.md
+  with its harness symlinks, and optionally CI and issue triage.
 category: bdb-core
 risk: low
 source: bdb
@@ -13,182 +13,149 @@ date_added: "2026-09-13"
 
 # AOS Project Init — Per Workspace
 
-A machine-level AOS install gives an agent the skills. It gives it nothing
-about *this* project: no repo rules, no memory bound to it, no wiki, no
-dispatcher contract. That per-project layer is what this skill installs.
+`/aos-setup` prepares the machine. This prepares one folder in it — and unlike
+the machine skill, **this one writes**. It asks what it cannot know, shows what
+it intends to write, and writes it once you agree.
 
-Machine-level setup is `/aos-setup` and comes first — this skill assumes memB,
-OpenWiki and Synapse already exist on the machine.
-
-**This is prompt-driven, not a script that runs blind.** Explore, report,
-confirm, then write.
+Everything it decides lands in `.aos/project.json`, so a second run knows what
+was already settled and changes only what you ask it to.
 
 ---
 
-## 1. Measure
+## 1. Preconditions
 
 ```bash
-node ~/.claude/skills/aos-project-init/scripts/aos-project-doctor.mjs [dir]
+aos-config show    # is this machine's vocabulary present?
 ```
 
-`[dir]` defaults to the current directory. `--json` for machine-readable
-output. Up to 16 checks across five areas — a folder that is not a git repo
-yet reports that one row and skips the rest of the `git` block, and the
-visibility row appears only for a GitHub remote:
+If it reports *unvollständig*, stop and run `/aos-setup` first. The domain list
+is per-machine and nothing ships with one — guessing here would invent a
+vocabulary the user never chose.
 
-| Area | What is verified |
-|---|---|
-| `git` | repo, `origin`, **private** visibility, `.gitignore` covers `.env` |
-| `docs` | `AGENTS.md`, and `CLAUDE.md` / `GEMINI.md` / `CODEX.md` as symlinks to it |
-| `harness` | `.agents/graph.md`, `.agents/nodes.json`, `.claude/{workflows,hooks,agents,settings.json}` |
-| `openwiki` | `.openwiki/` holds pages |
-| `memB` | memories bound to `project_id = <folder name>` |
-
-Report the failing rows before touching anything. On an existing repo, some
-failures are deliberate — a public repo that is meant to be public, a scratch
-folder with no remote. Ask rather than "fixing" those.
-
----
-
-## 2. Git and the remote
-
-```bash
-git init && git add -A && git commit -m "chore: initial commit"
-gh repo create <name> --private --source=. --remote=origin
-```
-
-Repositories are **private by default**. Verify rather than assume — the
-doctor reads actual visibility through `gh`, not intent. Live secrets never
-enter the repo: keep `.env` files outside it and commit a placeholder.
-
----
-
-## 3. AGENTS.md and its symlinks
-
-One file holds the repo's agent rules; every harness reads the same bytes:
-
-```bash
-cp ~/.claude/skills/aos-project-init/assets/AGENTS.template.md AGENTS.md
-ln -sf AGENTS.md CLAUDE.md
-ln -sf AGENTS.md GEMINI.md
-ln -sf AGENTS.md CODEX.md
-```
-
-Then fill the template in — see [AGENTS.template.md](./assets/AGENTS.template.md).
-Do not leave the placeholders: an `AGENTS.md` full of `<PROJECT NAME>` is worse
-than none, because agents will trust it. Interview the user for the stack, the
-commands, and above all the **domain notes** — the constraints that are not
-derivable from the code.
-
-If a real `CLAUDE.md` already exists with content of its own, merge it into
-`AGENTS.md` first and only then replace it with the symlink. Never silently
-overwrite it.
-
----
-
-## 4. The dispatcher harness
-
-Only for projects that will actually run `/startcycle-graph` — it is not
-required for a small repo.
-
-```bash
-npx -y @hybridlabor-api/aos --project-harness
-```
-
-Copies into the project, writing nothing to `$HOME`:
-
-- `.agents/` — the graph contract, node registry, state schema
-- `.claude/workflows/` — the dispatcher
-- `.claude/hooks/` — `go-gate.mjs`, `graph-gate.mjs` and `memb-inject.mjs`
-  (the memory hook stays `$HOME`-anchored; only the gates become project-local)
-- `.claude/agents/` — the agent definitions the dispatcher's prompts reference
-- `.claude/settings.json` — wired to the project-local hooks
-
-Take all of it or none: a bare `.agents/` copy leaves the graph contract
-half-installed, and the dispatcher's pointers resolve to nothing.
-
----
-
-## 5. memB — bind memory to this project
-
-memB scopes memories by `project_id`, and `project_id` is **the folder's
-basename**. Two consequences worth stating out loud:
-
-- Renaming the folder orphans every memory bound to the old name.
-- Two folders with the same basename share one memory scope.
-
-Seed the project by ingesting it:
-
-```bash
-MCP=~/.gemini/config/mcps/memb-mcp          # Gemini / Antigravity install
-"$MCP/.venv/bin/python" "$MCP/memb_ingest.py" <project dir>
-```
-
-The MCP payload does not always land there — the installer picks the directory
-per harness, so on a Claude-only machine it sits under
-`~/Library/Application Support/Claude/mcps/` (`%APPDATA%\Claude\mcps\` on
-Windows), and under `.cursor` / `.codex` / `.windsurf` for those. Take the path
-`/aos-setup`'s doctor prints in its `memb-mcp server` row rather than assuming
-this one.
-
-Add `--transcripts` only when past conversation logs should be pulled in too —
-that is off by default for a reason.
-
-Afterwards, write the decisions that matter through the memB MCP with an
-explicit `project_id`: `add_memory({ text: "…", category: "project_node",
-project_id: "<folder name>" })`. Never write credentials or high-entropy
-strings into memory.
-
-Re-run the doctor to confirm the count went above zero. An ingest script that
-exits `0` is not evidence that anything was stored.
-
----
-
-## 6. OpenWiki — the project wiki
-
-```bash
-openwiki --init              # first time, inside the project
-openwiki --update            # after significant changes
-```
-
-Pages land in `.openwiki/`. The machine-level daemon refreshes wikis every two
-hours once the repo has one; without `--init` this repo is simply skipped.
-
-Requires provider credentials from `/aos-setup` (`openwiki auth <provider>`).
-
----
-
-## 7. Synapse — spatial map
-
-```bash
-synapse map .
-```
-
-Optional, and useful mainly on a codebase large enough that structure is hard
-to hold in your head. Needs the daemon on `:7781` (`/aos-setup` covers it).
-
----
-
-## 8. Confirm
+Then measure this folder:
 
 ```bash
 node ~/.claude/skills/aos-project-init/scripts/aos-project-doctor.mjs
-# 16/16 checks pass. Project is fully wired.
 ```
 
-Report the doctor's own count, and name explicitly anything left failing on
-purpose. Then commit the new files — `chore:` for the harness wiring, `docs:`
-for `AGENTS.md`.
+Report the failing rows before touching anything. On an existing repo some
+failures are deliberate: a repo public on purpose, a scratch folder with no
+remote, a project nobody wants the wiki daemon to visit. Ask rather than
+"fixing" those.
+
+---
+
+## 2. The interview
+
+One question at a time, each with a proposal the user can accept in a word.
+Skip anything already settled in `.aos/project.json` unless asked to change it.
+
+**Name and slug.** Propose the folder name for both. The slug becomes the memB
+`project_id`, and it is written down precisely so it survives a rename: a
+binding derived from the basename orphans every memory the day the folder
+moves, and two folders sharing a basename share one memory scope.
+
+**Domain.** Offer the list from `aos-config`, preselected by what the path
+implies — the first segment under the workspace root. If the project sits
+outside that root, ask instead of guessing.
+
+**Wiki.** Three separate questions, because they are three separate things:
+initialise a wiki here at all · **watch it**, so the daemon refreshes it every
+2h · write `.openwikiignore`.
+
+Watching is not free. Every watched project with changes costs an LLM call per
+cycle, and a free-tier key hits quota on a handful. Recommend watching repos
+under active work and leaving archives out.
+
+**memB.** Bind the slug; offer a one-time ingest of the folder. Ingest reads a
+lot — offer it, never assume it.
+
+**Synapse.** A spatial map earns its keep on a codebase too large to hold in
+your head. Ask; do not default it on.
+
+**AGENTS.md.** If missing, offer the template. If a real `CLAUDE.md` already
+holds content, merge it into `AGENTS.md` first and only then replace it with a
+symlink. Never silently overwrite it.
+
+**With a GitHub remote, two more.** Skip both entirely without a remote — a
+local-only repo has nowhere to put them, and a skipped question is clearer than
+one answered "no".
+
+- **CI:** none · a gate (lint, typecheck, test — matched to the project type) ·
+  gate plus `release-please`.
+- **Triage:** none · GitHub labels (`needs-triage`, `needs-info`,
+  `ready-for-agent`, `ready-for-human`, `wontfix`) · local markdown in
+  `.scratch/`.
+
+`release-please` computes the version from Conventional Commits and nothing
+else: an unprefixed subject is invisible to it, and one `feat:` forces a minor
+bump however small the change. Offering it imposes that rule on the project, so
+write the rule into `AGENTS.md` in the same breath — and ask what the version
+policy is. Some repos here move in patch steps only, where `feat:` needs
+explicit permission.
+
+---
+
+## 3. Write
+
+Show every intended write as one list, then write on agreement.
+
+```json
+{
+  "name": "<Project Name>",
+  "slug": "<stable-slug>",
+  "domain": "<from aos-config>",
+  "openwiki": { "enabled": true, "watch": true },
+  "memb": { "projectId": "<stable-slug>" },
+  "synapse": false,
+  "ci": "gate",
+  "triage": "github"
+}
+```
+
+Then, only for what the interview enabled:
+
+```bash
+cp ~/.claude/skills/aos-project-init/assets/openwikiignore.template .openwikiignore
+openwiki --init                # needs `openwiki auth <provider>` from /aos-setup
+```
+
+When the user chose to watch it, add the absolute path to `projects` in
+`~/.openwiki/projects.json` — that file is the daemon's watch list. Merge into
+it; never rewrite it.
+
+For memB, write decisions through the MCP with the slug as `project_id` and the
+domain as `category`:
+
+```
+add_memory({ text: "…", category: "<domain>", project_id: "<slug>" })
+```
+
+Never write credentials or high-entropy strings into memory.
+
+---
+
+## 4. Confirm
+
+```bash
+node ~/.claude/skills/aos-project-init/scripts/aos-project-doctor.mjs
+```
+
+Report the doctor's own count, and name anything left failing on purpose. Then
+commit: `chore:` for wiring, `docs:` for `AGENTS.md`. Check the project's
+version policy before reaching for `feat:`.
 
 ---
 
 ## Red flags
 
-- Committing an `AGENTS.md` still holding template placeholders.
-- Replacing an existing `CLAUDE.md` with a symlink without merging its content.
-- Reporting the memB ingest as done from the script's exit code instead of the
-  memory count.
-- Installing the dispatcher harness into a repo that will never run the graph —
-  five directories of machinery nobody uses.
-- Renaming a project folder later without moving its memories to the new
-  `project_id`.
+- Inventing a domain because `aos-config` has none. Send the user to
+  `/aos-setup` instead.
+- Deriving the memB binding from the folder name once a slug exists.
+- Treating "has a wiki" as "is watched". They are different, and that gap is
+  why wikis sit stale for months.
+- Turning watching on for every repo. Quota is real.
+- Committing an `AGENTS.md` still full of template placeholders.
+- Asking about CI or GitHub triage in a repo with no remote.
+- Offering `release-please` without writing the Conventional Commits rule into
+  `AGENTS.md` — it is a trap otherwise.

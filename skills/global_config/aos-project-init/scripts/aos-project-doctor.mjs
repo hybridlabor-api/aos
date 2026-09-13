@@ -11,8 +11,17 @@ import path from 'node:path';
 const args = process.argv.slice(2).filter((a) => a !== '--json');
 const JSON_OUT = process.argv.includes('--json');
 const ROOT = path.resolve(args[0] || process.cwd());
-const PROJECT = path.basename(ROOT);
 const HOME = os.homedir();
+
+// .aos/project.json is what /aos-project-init writes. Its slug is the stable
+// memB project_id: deriving it from the folder name means a rename orphans
+// every memory bound to the old one, and two folders with the same basename
+// share a memory scope.
+const aosConfig = (() => {
+  try { return JSON.parse(readFileSync(path.join(ROOT, '.aos', 'project.json'), 'utf8')); }
+  catch { return null; }
+})();
+const PROJECT = aosConfig?.slug || path.basename(ROOT);
 
 const results = [];
 const add = (area, name, ok, detail, fix) => results.push({ area, name, ok, detail, fix });
@@ -42,6 +51,19 @@ function checkGit() {
   const ignore = existsSync(p('.gitignore')) ? readFileSync(p('.gitignore'), 'utf8') : '';
   add('git', '.gitignore covers .env', /(^|\n)\s*\.?\*?\.env/.test(ignore), ignore ? '.gitignore present' : 'no .gitignore',
     'Add `.env` and `*.env` to .gitignore; keep live secrets outside the repo.');
+}
+
+// ---------------------------------------------------------------- aos config
+function checkAosConfig() {
+  add('aos', '.aos/project.json', !!aosConfig,
+    aosConfig
+      ? `slug "${aosConfig.slug}"${aosConfig.domain ? ` · domain ${aosConfig.domain}` : ''}${aosConfig.watch ? ' · überwacht' : ''}`
+      : 'missing — memB binding falls back to the folder name, which breaks on rename',
+    'Run /aos-project-init in this folder.');
+
+  if (aosConfig && aosConfig.slug !== path.basename(ROOT)) {
+    add('aos', 'slug vs folder', true, `slug "${aosConfig.slug}" ≠ folder "${path.basename(ROOT)}" — intentional, the slug wins`, '');
+  }
 }
 
 // ---------------------------------------------------------------- agent docs
@@ -84,6 +106,20 @@ function checkWiki() {
   const pages = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
   add('openwiki', 'wiki initialised', pages.length > 0, pages.length ? `${pages.length} pages: ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? ' …' : ''}` : 'no .openwiki pages',
     'openwiki --init   (run inside the project; needs `openwiki auth <provider>` first)');
+
+  // Without this file OpenWiki loads zero rules and indexes .venv, node_modules
+  // and its own output — measured at 23% junk on one small repo.
+  add('openwiki', '.openwikiignore', existsSync(p('.openwikiignore')),
+    existsSync(p('.openwikiignore')) ? 'exclusions in place' : 'missing — the wiki will index dependencies and its own pages',
+    'cp ~/.claude/skills/aos-project-init/assets/openwikiignore.template .openwikiignore');
+
+  // A wiki that exists is not a wiki that is refreshed.
+  let watched = false;
+  try { watched = (JSON.parse(readFileSync(path.join(HOME, '.openwiki', 'projects.json'), 'utf8')).projects || []).includes(ROOT); }
+  catch { /* the daemon has not written it yet */ }
+  add('openwiki', 'watched by the daemon', watched || pages.length === 0,
+    watched ? 'in projects.json' : pages.length ? 'has a wiki but the daemon never refreshes it' : 'no wiki, nothing to watch',
+    'Add this path to ~/.openwiki/projects.json, or let /aos-project-init do it.');
 }
 
 // ---------------------------------------------------------------- memB
@@ -129,6 +165,7 @@ function report() {
 }
 
 checkGit();
+checkAosConfig();
 checkAgentDocs();
 checkHarness();
 checkWiki();

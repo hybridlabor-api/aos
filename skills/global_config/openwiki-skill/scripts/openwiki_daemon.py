@@ -82,27 +82,80 @@ def log(msg):
         pass
 
 
+DISCOVERY_DEPTH = 4
+
+
+def discover_wikis(roots):
+    """Every repository that already has a wiki, found rather than declared.
+
+    projects.json used to be a hand-maintained list seeded with a single entry,
+    and nothing ever added to it. A repo where someone ran `openwiki --init`
+    was simply never visited again: on the machine this was written for, 31
+    wikis existed and 3 were being refreshed, the oldest untouched for two
+    months. A wiki's own presence on disk is the only signal needed.
+    """
+    found = []
+    for root in roots:
+        root = os.path.expanduser(root)
+        if not os.path.isdir(root):
+            continue
+        base_depth = root.rstrip(os.sep).count(os.sep)
+        for dirpath, dirnames, _ in os.walk(root):
+            if dirpath.count(os.sep) - base_depth >= DISCOVERY_DEPTH:
+                dirnames[:] = []
+                continue
+            dirnames[:] = [d for d in dirnames
+                           if d not in ("node_modules", ".git", "venv", ".venv", "__pycache__")]
+            if ".openwiki" in dirnames:
+                found.append(os.path.abspath(dirpath))
+                dirnames.remove(".openwiki")
+    return sorted(set(found))
+
+
 def get_projects():
     config_file = os.path.join(LOG_DIR, "projects.json")
     os.makedirs(LOG_DIR, exist_ok=True)
 
-    if not os.path.exists(config_file):
+    data = {}
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, "r") as f:
+                data = json.load(f)
+        except Exception as e:
+            log(f"Error reading config: {e}")
+            data = {}
+
+    interval = data.get("interval_seconds", 7200)
+    pinned = [p for p in data.get("projects", []) if os.path.isdir(p)]
+
+    # `discovery_roots: []` in projects.json turns scanning off and keeps the
+    # list purely manual; anything explicitly listed is always kept.
+    roots = data.get("discovery_roots")
+    if roots is None:
+        roots = ["~/dev"]
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
-        default_data = {"projects": [repo_root], "interval_seconds": 7200}
+        if os.path.isdir(repo_root):
+            pinned.append(repo_root)
+
+    discovered = discover_wikis(roots) if roots else []
+    projects = sorted(set(pinned) | set(discovered))
+
+    new_ones = set(projects) - set(data.get("projects", []))
+    if new_ones:
+        log(f"Discovered {len(new_ones)} wiki(s) not previously tracked: "
+            + ", ".join(sorted(os.path.basename(p) for p in new_ones)))
+
+    if projects != data.get("projects") or "discovery_roots" not in data:
+        data["projects"] = projects
+        data["interval_seconds"] = interval
+        data.setdefault("discovery_roots", roots)
         try:
             with open(config_file, "w") as f:
-                json.dump(default_data, f, indent=2)
+                json.dump(data, f, indent=2)
         except Exception as e:
-            log(f"Error writing default config: {e}")
-            return [], 7200
+            log(f"Error writing config: {e}")
 
-    try:
-        with open(config_file, "r") as f:
-            data = json.load(f)
-            return data.get("projects", []), data.get("interval_seconds", 7200)
-    except Exception as e:
-        log(f"Error reading config: {e}")
-        return [], 7200
+    return projects, interval
 
 
 def find_helper():
