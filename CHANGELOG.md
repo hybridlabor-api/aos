@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.4.1](https://github.com/hybridlabor-api/aos/compare/v4.4.0...v4.4.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **installer:** refresh hooks on Quick Update, not only a fresh install ([738d365](https://github.com/hybridlabor-api/aos/commit/738d365b7b7ac3a2f5363e656f34f7c10de599be))
+* **installer:** stop freezing skills installed before manifest tracking ([5bf0d70](https://github.com/hybridlabor-api/aos/commit/5bf0d705830a63e34a62efab95ed970b34a36eb5))
+
 ## [4.4.0](https://github.com/hybridlabor-api/aos/compare/v4.3.0...v4.4.0) (2026-09-13)
 
 
