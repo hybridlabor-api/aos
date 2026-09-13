@@ -200,7 +200,35 @@ If no pre-built binary exists for the platform, build it:
 
 ---
 
-## 7. Confirm
+## 7. The dashboard
+
+`aos-dashboard` serves one page on `http://127.0.0.1:7900` showing every BDB
+service live — memB, Synapse, the OpenWiki daemon, AO Orchestrator and RemoteOS
+— with its version, port, LaunchAgent state, start/stop/restart, and its log
+files inline. It polls every five seconds.
+
+```bash
+aos-dashboard                 # opens the browser
+aos-dashboard --no-open       # just serve
+aos-dashboard --port 7901     # if 7900 is taken
+```
+
+It binds to `127.0.0.1` only, and every control action is matched against a
+fixed service table — an id or action the table does not contain is refused,
+and no value from the request ever reaches a shell or a file path.
+
+It also surfaces causes a port probe cannot see. The AO Orchestrator card
+checks the code signature of `~/.local/bin/ao`: a binary rebuilt and copied
+into place unsigned is SIGKILLed by AMFI at launch (exit 137), which otherwise
+looks like a daemon that is simply down, with nothing in the log. The fix it
+names is `codesign -s - -f ~/.local/bin/ao`.
+
+Use it when the user asks what is running, or when a doctor row says a port is
+closed and the question is why.
+
+---
+
+## 8. Confirm
 
 Re-run the doctor. Do not report success from the fact that commands ran —
 report the doctor's own count:
