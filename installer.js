@@ -1878,141 +1878,71 @@ async function installOSAgentWorkspace() {
         log.warn('Build it from source instead: github.com/hybridlabor-api/bdb-agent-orchestrator');
         return;
     }
+
     const osAgentDir = path.join(moduleBasePath(), 'bdb-agent-orchestrator');
+    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-agent-orchestrator', osAgentDir, 'BDB Agent Orchestrator')) {
+        log.warn('Skipping AO setup: the module could not be downloaded.');
+        return;
+    }
+    if (DRY_RUN) {
+        log.step('[dry-run] would link ~/.local/bin/ao and run `ao service install`');
+        return;
+    }
+
     const localBinDir = path.join(homeDir, '.local', 'bin');
     const binTarget = path.join(localBinDir, 'ao');
-
-    fs.mkdirSync(localBinDir, { recursive: true });
-    fs.mkdirSync(path.join(homeDir, '.ao', 'data'), { recursive: true });
-    fs.mkdirSync(path.join(homeDir, '.ao', 'logs'), { recursive: true });
-
-    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-agent-orchestrator', osAgentDir, 'BDB Agent Orchestrator')) {
-        log.warn('Skipping Agent Workspace setup: the module could not be downloaded.');
-        return;
-    }
-
-    if (DRY_RUN) {
-        log.step('[dry-run] would link ao binary + register LaunchAgent + Desktop App');
-        return;
-    }
-
     const daemonBin = path.join(osAgentDir, 'backend', 'ao-daemon');
-    if (fs.existsSync(daemonBin)) {
-        try {
-            fs.copyFileSync(daemonBin, binTarget);
-            fs.chmodSync(binTarget, '755');
-        } catch (e) { logDebug(e, 'operation'); }
+
+    if (!fs.existsSync(daemonBin)) {
+        log.warn(`AO binary missing at ${daemonBin} — package layout changed?`);
+        return;
     }
 
-    if (process.platform === 'darwin') {
-        const plistPath = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.agent-workspace.plist');
-        const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.bdb.agent-workspace</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>${binTarget}</string>
-    </array>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>AO_PORT</key>
-        <string>3101</string>
-        <key>AO_DATA_DIR</key>
-        <string>${path.join(homeDir, '.ao', 'data')}</string>
-        <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:${localBinDir}</string>
-    </dict>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>${path.join(homeDir, '.ao', 'logs', 'daemon.stdout.log')}</string>
-    <key>StandardErrorPath</key>
-    <string>${path.join(homeDir, '.ao', 'logs', 'daemon.stderr.log')}</string>
-</dict>
-</plist>`;
-        try {
-            fs.writeFileSync(plistPath, plistContent);
-            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            const isListening = await verifyDaemonListening(3101, 'Agent Workspace');
-            if (isListening) {
-                log.success('Agent Workspace LaunchAgent active (Port 3101)');
-            } else {
-                log.warn('Agent Workspace daemon did not respond on Port 3101 within timeout. You may need to start it manually or check for port conflicts.');
-            }
-        } catch (e) { logDebug(e, 'operation'); }
+    installStep('place the ao binary', () => {
+        fs.mkdirSync(localBinDir, { recursive: true });
+        // copyFileSync preserves bytes, so the package's ad-hoc signature
+        // survives. That matters: an unsigned binary at this path is SIGKILLed
+        // by AMFI on launch (exit 137) and reads as a daemon that simply will
+        // not start, with nothing in the log to say why.
+        fs.copyFileSync(daemonBin, binTarget);
+        fs.chmodSync(binTarget, 0o755);
+        log.step(`Installed ao to ${binTarget}`);
+    }, 'AO cannot be started without its binary.');
 
-        let appDir = '/Applications/BDB Agent Workspace.app';
+    try {
+        execSync(`codesign -v "${binTarget}"`, { stdio: 'ignore' });
+    } catch {
+        log.warn('The ao binary is not code-signed — AMFI will kill it at launch.');
         try {
-            fs.accessSync('/Applications', fs.constants.W_OK);
-        } catch (e) {
-            logDebug(e, 'write-access probe on /Applications');
-            appDir = path.join(homeDir, 'Applications', 'BDB Agent Workspace.app');
-            log.step('/Applications is not writable - falling back to ~/Applications');
-        }
-        try {
-            fs.mkdirSync(path.join(appDir, 'Contents', 'MacOS'), { recursive: true });
-            fs.mkdirSync(path.join(appDir, 'Contents', 'Resources'), { recursive: true });
-            const iconSrc = path.join(osAgentDir, 'frontend', 'assets', 'icon.icns');
-            if (fs.existsSync(iconSrc)) {
-                fs.copyFileSync(iconSrc, path.join(appDir, 'Contents', 'Resources', 'AppIcon.icns'));
-            }
-            const launcherScript = `#!/usr/bin/env bash
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:${localBinDir}:$PATH"
-if ! curl -s http://127.0.0.1:3101/healthz >/dev/null 2>&1; then
-    launchctl start com.bdb.agent-workspace 2>/dev/null || "${binTarget}" &
-    sleep 0.5
-fi
-if [ -d "/Applications/Google Chrome.app" ]; then
-    open -na "/Applications/Google Chrome.app" --args --app="http://127.0.0.1:3101" --user-data-dir="$HOME/.ao/chrome-app-profile"
-elif [ -d "/Applications/Brave Browser.app" ]; then
-    open -na "/Applications/Brave Browser.app" --args --app="http://127.0.0.1:3101" --user-data-dir="$HOME/.ao/brave-app-profile"
-else
-    open "http://127.0.0.1:3101"
-fi`;
-            const launcherPath = path.join(appDir, 'Contents', 'MacOS', 'app_launcher');
-            fs.writeFileSync(launcherPath, launcherScript);
-            fs.chmodSync(launcherPath, '755');
-            log.success(`Desktop App available under ${appDir}`);
-        } catch (e) { logDebug(e, 'operation'); }
-    } else if (process.platform === 'win32') {
-        const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
-        fs.mkdirSync(startupDir, { recursive: true });
-        const vbsPath = path.join(startupDir, 'com.bdb.agent-workspace.vbs');
-        const daemonBin = path.join(osAgentDir, 'backend', 'ao-daemon.exe');
-        const runBin = fs.existsSync(daemonBin) ? daemonBin : path.join(osAgentDir, 'backend', 'ao.exe');
-        if (fs.existsSync(runBin)) {
-            const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${osAgentDir}"\r\nWshShell.Run """${runBin}""", 0, False\r\n`;
-            try {
-                fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
-                spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
-                const isListening = await verifyDaemonListening(3101, 'Agent Workspace');
-                if (isListening) {
-                    log.success('Agent Workspace Windows Background Service registered & started (Port 3101)');
-                } else {
-                    log.warn('Agent Workspace Windows daemon did not respond on Port 3101 within timeout. You may need to start it manually or check for port conflicts.');
-                }
-            } catch (e) { logDebug(e, 'windows workspace daemon setup'); }
-        }
+            execSync(`codesign -s - -f "${binTarget}"`, { stdio: 'ignore' });
+            log.step('Signed it ad-hoc.');
+        } catch (e) { log.warn(`Could not sign it: ${e.message}`); }
     }
 
-    // This line used to print unconditionally -- directly under a warning that
-    // the port had not answered, and on Linux where no daemon is registered at
-    // all. Only claim the WebUI when something is actually listening.
-    if (await verifyDaemonListening(3101, 'Agent Workspace WebUI', 1500)) {
-        log.step('BDB Agent Workspace WebUI: http://localhost:3101');
-    } else if (process.platform !== 'darwin' && process.platform !== 'win32') {
-        log.warn(`Auto-start for the Agent Workspace is not wired on ${process.platform} yet. Start it manually from ${osAgentDir}.`);
+    // AO installs its own service, and does it for macOS, Windows and Linux.
+    // AOS used to hand-write a LaunchAgent instead, labelled
+    // com.bdb.agent-workspace, whose ProgramArguments were just the binary with
+    // NO subcommand -- so launchd started `ao`, which prints help and exits,
+    // and with KeepAlive kept restarting it. The daemon never ran, on any
+    // machine that installed AO through AOS. Delegating to the tool removes
+    // both the wrong label and the wrong arguments, and keeps working when the
+    // service definition changes upstream.
+    const legacyPlist = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.agent-workspace.plist');
+    if (fs.existsSync(legacyPlist)) {
+        try { execSync(`launchctl unload "${legacyPlist}" 2>/dev/null`, { stdio: 'ignore' }); } catch (e) { logDebug(e, 'unload legacy ao agent'); }
+        try { fs.unlinkSync(legacyPlist); log.step('Removed the old com.bdb.agent-workspace service.'); } catch (e) { logDebug(e, 'remove legacy plist'); }
+    }
+
+    installStep('register the AO service', () => {
+        execSync(`"${binTarget}" service install`, { stdio: 'ignore' });
+    }, 'Start it by hand with: ao service install');
+
+    if (await verifyDaemonListening(3101, 'AO Orchestrator', 8000)) {
+        log.success('AO Orchestrator running on http://localhost:3101');
     } else {
-        log.warn('Agent Workspace daemon is not answering on :3101 — see its log before assuming the WebUI is up.');
+        log.warn('AO did not answer on :3101 — check `ao service status` and `ao service logs`.');
     }
 }
-
 async function promptMemBIngestion(mcpCodeTarget) {
     if (isAutoYes || DRY_RUN) return;
 
@@ -3958,6 +3888,7 @@ if (require.main === module) {
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    installOSAgentWorkspace,
     downloadOrUpdateModule,
     detectPlatforms,
     markPlatformsExplicit,
