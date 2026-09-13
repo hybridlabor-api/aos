@@ -63,7 +63,20 @@ const SERVICES = [
     id: 'ao', name: 'AO Orchestrator', role: 'Agent workspace daemon',
     mark: 'ao-ant-mark.svg',
     port: 3101, url: 'http://127.0.0.1:3101', agent: 'com.bdb.ao.daemon',
-    module: h('.agents', 'bdb-os-agent-workspace'), pkg: '@hybridlabor-api/bdb-os-agent-workspace',
+    // Deliberately no module/pkg. Reading ~/.agents/bdb-os-agent-workspace
+    // reported the version of the ARCHIVED npm package (1.0.2, last published
+    // 2026-08-18) while the binary actually running was built from the current
+    // fork — a version string that looked authoritative and was wrong. AO now
+    // reports the version of the binary that is really running, and nothing
+    // else. Its source is git-only (hybridlabor-api/bdb-agent-orchestrator);
+    // there is no npm package to compare against.
+    module: null, pkg: null,
+    version: async () => {
+      const bin = h('.local', 'bin', 'ao');
+      if (!existsSync(bin)) return null;
+      try { return (await execFileP(bin, ['--version'])).stdout.trim().replace(/^ao version\s*/i, '') || null; }
+      catch { return null; }
+    },
     logs: [h('.ao', 'daemon.log')],
     // An `ao` binary rebuilt and copied into place without being re-signed is
     // SIGKILLed by AMFI on launch (exit 137). The daemon then reads as simply
@@ -180,6 +193,9 @@ async function updates({ force = false } = {}) {
 async function snapshot() {
   return Promise.all(SERVICES.map(async (s) => {
     const [listening, loaded] = await Promise.all([portOpen(s.port), agentLoaded(s.agent)]);
+    // A service may know its own version better than a package.json does.
+    let version = localVersion(s.module);
+    if (typeof s.version === 'function') { try { version = await s.version(); } catch { version = null; } }
     // A port-less service (OpenWiki) can only be judged by its LaunchAgent.
     const up = s.port ? listening : loaded;
     const logs = [];
@@ -193,7 +209,7 @@ async function snapshot() {
     if (s.health) { try { health = await s.health(); } catch { /* a health probe must never sink the page */ } }
     return {
       id: s.id, name: s.name, role: s.role, mark: s.mark, muted: !!s.muted,
-      port: s.port, url: s.url, up, loaded, version: localVersion(s.module),
+      port: s.port, url: s.url, up, loaded, version,
       logs, health, installed: !s.module || existsSync(s.module),
       projects: s.projectsFile ? openWikiProjects() : null,
       viewers: s.id === 'openwiki' ? [...viewers.entries()].map(([p, v]) => ({ project: p, port: v.port })) : null,
