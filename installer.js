@@ -814,9 +814,9 @@ function detectInstallState() {
         { id: 'synapse', dir: path.join(basePath, 'bdb-synapse') },
         { id: 'memb', dir: path.join(basePath, 'memB') },
         { id: 'remote', dir: path.join(basePath, 'bdb-os-remote') },
-        // AO: see promptOptionalModules() for why it is absent. An existing
-        // install of the archived predecessor is deliberately not detected
-        // either -- it should be removed, not carried forward.
+        { id: 'ao', dir: path.join(basePath, 'bdb-agent-orchestrator') },
+        // The archived predecessor is deliberately NOT detected: a copy of it
+        // should be removed, not carried forward into another install.
         { id: 'creator', dir: path.join(basePath, 'bdb-dev-creator-extension') },
         { id: 'installer', dir: path.join(basePath, 'bdb-dev-tool-installer') }
     ];
@@ -1862,7 +1862,22 @@ async function installDevToolInstaller() {
     }
 }
 
+// AO ships one prebuilt binary: backend/ao-daemon, Mach-O arm64. The package
+// carries Windows and Linux sources but nothing built for them, and its CLI
+// shim picks the first candidate path that EXISTS without checking whether it
+// can run — so on any other platform it hands spawn a Mach-O file and fails
+// with an exec-format error instead of the "go build" hint it means to give.
+// Installing it there would be installing something known not to work.
+function aoSupportedHere() {
+    return process.platform === 'darwin' && process.arch === 'arm64';
+}
+
 async function installOSAgentWorkspace() {
+    if (!aoSupportedHere()) {
+        log.warn(`AO ships only a macOS arm64 binary — skipping on ${process.platform}/${process.arch}.`);
+        log.warn('Build it from source instead: github.com/hybridlabor-api/bdb-agent-orchestrator');
+        return;
+    }
     const osAgentDir = path.join(moduleBasePath(), 'bdb-agent-orchestrator');
     const localBinDir = path.join(homeDir, '.local', 'bin');
     const binTarget = path.join(localBinDir, 'ao');
@@ -2056,18 +2071,11 @@ function verifyEcosystemInstallation() {
         { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', paths: [path.join(moduleBasePath(), 'bdb-synapse')] },
         { name: '2. memB', pkg: '@hybridlabor-api/memb', paths: [path.join(moduleBasePath(), 'memB'), path.join(geminiDir, 'config', 'mcps', 'memb-mcp')] },
         { name: '3. heimdall-token-saver', pkg: '@hybridlabor-api/heimdall-token-saver', paths: [path.join(moduleBasePath(), 'heimdall-token-saver'), path.join(srcDir, 'vendor', 'token-saver')] },
-        // AO is deliberately absent until its package is published. The old
-        // one, @hybridlabor-api/bdb-os-agent-workspace, must never come back:
-        // its repository is archived on GitHub and the last version it
-        // published (1.0.2, 2026-08-18) predates the archiving, so installing
-        // it hands out the build with the CDC loop defect. AO now lives in
-        // hybridlabor-api/bdb-agent-orchestrator, whose package is not on npm
-        // yet. Add the entry below once `npm view @hybridlabor-api/\
-        // bdb-agent-orchestrator version` answers.
-        { name: '4. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', paths: [path.join(moduleBasePath(), 'bdb-dev-creator-extension')] },
-        { name: '5. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', paths: [path.join(moduleBasePath(), 'bdb-os-remote')] },
-        { name: '6. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', paths: [path.join(moduleBasePath(), 'bdb-dev-tool-installer')] },
-        { name: '7. aos (bdb agent os)', pkg: '@hybridlabor-api/aos', paths: [srcDir] }
+        { name: '4. AO Agent Orchestrator', pkg: '@hybridlabor-api/bdb-agent-orchestrator', paths: [path.join(moduleBasePath(), 'bdb-agent-orchestrator')] },
+        { name: '5. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', paths: [path.join(moduleBasePath(), 'bdb-dev-creator-extension')] },
+        { name: '6. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', paths: [path.join(moduleBasePath(), 'bdb-os-remote')] },
+        { name: '7. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', paths: [path.join(moduleBasePath(), 'bdb-dev-tool-installer')] },
+        { name: '8. aos (bdb agent os)', pkg: '@hybridlabor-api/aos', paths: [srcDir] }
     ];
 
     for (const mod of modules) {
@@ -3125,14 +3133,13 @@ async function promptOptionalModules(installedModules) {
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: installSynapse },
         { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: () => installMemB(true) },
         { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: installOSRemoteGateway },
-        // AO is deliberately absent until its package is published. The old
-        // one, @hybridlabor-api/bdb-os-agent-workspace, must never come back:
-        // its repository is archived on GitHub and the last version it
-        // published (1.0.2, 2026-08-18) predates the archiving, so installing
-        // it hands out the build with the CDC loop defect. AO now lives in
-        // hybridlabor-api/bdb-agent-orchestrator, whose package is not on npm
-        // yet. Add the entry below once `npm view @hybridlabor-api/\
-        // bdb-agent-orchestrator version` answers.
+        // Offered only where it can actually run -- see aoSupportedHere(). The
+        // predecessor, @hybridlabor-api/bdb-os-agent-workspace, must never come
+        // back: its repository is archived and its last release predates the
+        // archiving, so it hands out the build with the CDC loop defect.
+        ...(aoSupportedHere()
+            ? [{ id: 'ao', name: 'AO Agent Orchestrator (Session telemetry & WebUI)', fn: installOSAgentWorkspace }]
+            : []),
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: installCreatorExtension },
         { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
     ];
