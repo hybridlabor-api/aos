@@ -47,7 +47,10 @@ const AGENTS = [
 ];
 
 const MODULE_DIRS = ['memB', 'bdb-synapse', 'bdb-os-remote', 'bdb-dev-creator-extension',
-  'bdb-dev-tool-installer', 'bdb-os-agent-workspace'].map((m) => h('.agents', m));
+  'bdb-dev-tool-installer',
+  'bdb-agent-orchestrator',      // AO
+  'bdb-os-agent-workspace',      // AO's archived predecessor, if still lying around
+].map((m) => h('.agents', m));
 
 const sha256 = (file) => {
   try { return createHash('sha256').update(readFileSync(file)).digest('hex'); }

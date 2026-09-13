@@ -119,6 +119,16 @@ function checkAos() {
       : 'no harness skill directory holds any skill',
     'npx -y @hybridlabor-api/aos@latest and pick every harness you actually use.');
 
+  // AO's predecessor. Its repository is archived and the last version it
+  // published predates the archiving, so a copy still on disk is the build
+  // carrying the CDC loop defect — worth naming, because nothing else will.
+  const retired = findModule('bdb-os-agent-workspace');
+  if (retired) {
+    add('aos', 'retired AO module', false,
+      `${tilde(retired)} — the archived predecessor of AO`,
+      `Remove it: rm -rf ${tilde(retired)} — AO now comes from hybridlabor-api/bdb-agent-orchestrator.`);
+  }
+
   // The optional modules are opt-in, so absence is not a failure — but a
   // manifest that claims one is installed while its directory is gone is.
   const claimed = new Set(manifest?.installedModules || []);
@@ -128,11 +138,19 @@ function checkAos() {
     ['remote', 'bdb-os-remote', 'OS Remote'],
     ['creator', 'bdb-dev-creator-extension', 'Creator Extension'],
     ['installer', 'bdb-dev-tool-installer', 'Tool Installer'],
+    ['ao', 'bdb-agent-orchestrator', 'AO Orchestrator'],
   ]) {
     if (!claimed.has(id)) continue;
     const found = findModule(dir);
-    add('aos', `module ${label}`, !!found, found ? tilde(found) : 'the manifest claims it is installed, but its directory is gone',
-      'npx -y @hybridlabor-api/aos@latest and re-enable the module.');
+    // AO is the exception: it is built from git, not fetched from npm, so a
+    // missing module directory is expected rather than a broken install.
+    // Telling someone to re-run the installer would send them nowhere.
+    const aoNote = 'AO is built from hybridlabor-api/bdb-agent-orchestrator; there is no npm package yet, so no module directory is expected. `ao --version` is what says whether it is really there.';
+    add('aos', `module ${label}`, !!found || id === 'ao',
+      found ? tilde(found)
+        : id === 'ao' ? (existsSync(h('.local', 'bin', 'ao')) ? 'built from git — binary present at ~/.local/bin/ao' : 'no binary at ~/.local/bin/ao')
+        : 'the manifest claims it is installed, but its directory is gone',
+      id === 'ao' ? aoNote : 'npx -y @hybridlabor-api/aos@latest and re-enable the module.');
   }
 }
 

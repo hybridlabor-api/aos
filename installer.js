@@ -814,10 +814,9 @@ function detectInstallState() {
         { id: 'synapse', dir: path.join(basePath, 'bdb-synapse') },
         { id: 'memb', dir: path.join(basePath, 'memB') },
         { id: 'remote', dir: path.join(basePath, 'bdb-os-remote') },
-        // bdb-os-agent-workspace: temporarily disabled -- see the comment in
-        // promptOptionalModules() below for why. Not re-detected as a fresh
-        // install; existing installs are still skipped explicitly in the
-        // update loop further down.
+        // AO: see promptOptionalModules() for why it is absent. An existing
+        // install of the archived predecessor is deliberately not detected
+        // either -- it should be removed, not carried forward.
         { id: 'creator', dir: path.join(basePath, 'bdb-dev-creator-extension') },
         { id: 'installer', dir: path.join(basePath, 'bdb-dev-tool-installer') }
     ];
@@ -1864,7 +1863,7 @@ async function installDevToolInstaller() {
 }
 
 async function installOSAgentWorkspace() {
-    const osAgentDir = path.join(moduleBasePath(), 'bdb-os-agent-workspace');
+    const osAgentDir = path.join(moduleBasePath(), 'bdb-agent-orchestrator');
     const localBinDir = path.join(homeDir, '.local', 'bin');
     const binTarget = path.join(localBinDir, 'ao');
 
@@ -1872,7 +1871,7 @@ async function installOSAgentWorkspace() {
     fs.mkdirSync(path.join(homeDir, '.ao', 'data'), { recursive: true });
     fs.mkdirSync(path.join(homeDir, '.ao', 'logs'), { recursive: true });
 
-    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-os-agent-workspace', osAgentDir, 'BDB OS Agent Workspace')) {
+    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-agent-orchestrator', osAgentDir, 'BDB Agent Orchestrator')) {
         log.warn('Skipping Agent Workspace setup: the module could not be downloaded.');
         return;
     }
@@ -2057,10 +2056,14 @@ function verifyEcosystemInstallation() {
         { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', paths: [path.join(moduleBasePath(), 'bdb-synapse')] },
         { name: '2. memB', pkg: '@hybridlabor-api/memb', paths: [path.join(moduleBasePath(), 'memB'), path.join(geminiDir, 'config', 'mcps', 'memb-mcp')] },
         { name: '3. heimdall-token-saver', pkg: '@hybridlabor-api/heimdall-token-saver', paths: [path.join(moduleBasePath(), 'heimdall-token-saver'), path.join(srcDir, 'vendor', 'token-saver')] },
-        // bdb-os-agent-workspace: temporarily disabled -- its main branch (both local
-        // and on GitHub) is frozen while the real work sits on unmerged WIP branches,
-        // so its published npm version doesn't reliably reflect what "latest" means
-        // right now. Re-add here once that's resolved.
+        // AO is deliberately absent until its package is published. The old
+        // one, @hybridlabor-api/bdb-os-agent-workspace, must never come back:
+        // its repository is archived on GitHub and the last version it
+        // published (1.0.2, 2026-08-18) predates the archiving, so installing
+        // it hands out the build with the CDC loop defect. AO now lives in
+        // hybridlabor-api/bdb-agent-orchestrator, whose package is not on npm
+        // yet. Add the entry below once `npm view @hybridlabor-api/\
+        // bdb-agent-orchestrator version` answers.
         { name: '4. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', paths: [path.join(moduleBasePath(), 'bdb-dev-creator-extension')] },
         { name: '5. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', paths: [path.join(moduleBasePath(), 'bdb-os-remote')] },
         { name: '6. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', paths: [path.join(moduleBasePath(), 'bdb-dev-tool-installer')] },
@@ -3122,10 +3125,14 @@ async function promptOptionalModules(installedModules) {
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: installSynapse },
         { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: () => installMemB(true) },
         { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: installOSRemoteGateway },
-        // bdb-os-agent-workspace: temporarily disabled -- its main branch (both local
-        // and on GitHub) is frozen while the real work sits on unmerged WIP branches,
-        // so its published npm version doesn't reliably reflect what "latest" means
-        // right now. Re-add here once that's resolved.
+        // AO is deliberately absent until its package is published. The old
+        // one, @hybridlabor-api/bdb-os-agent-workspace, must never come back:
+        // its repository is archived on GitHub and the last version it
+        // published (1.0.2, 2026-08-18) predates the archiving, so installing
+        // it hands out the build with the CDC loop defect. AO now lives in
+        // hybridlabor-api/bdb-agent-orchestrator, whose package is not on npm
+        // yet. Add the entry below once `npm view @hybridlabor-api/\
+        // bdb-agent-orchestrator version` answers.
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: installCreatorExtension },
         { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
     ];
@@ -3526,7 +3533,7 @@ async function runQuickUpdate(installState) {
         if (subId === 'synapse') await installSynapse();
         else if (subId === 'memb') await installMemB(false);
         else if (subId === 'remote') await installOSRemoteGateway();
-        // 'ao' (bdb-os-agent-workspace) intentionally skipped here even for
+        // 'ao' intentionally skipped here even for
         // existing installs -- see promptOptionalModules() for why.
         else if (subId === 'creator') await installCreatorExtension();
         else if (subId === 'installer') await installDevToolInstaller();
