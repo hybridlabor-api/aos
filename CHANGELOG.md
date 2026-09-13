@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.4.0](https://github.com/hybridlabor-api/aos/compare/v4.3.0...v4.4.0) (2026-09-13)
+
+
+### Features
+
+* **skills:** add aos-setup and aos-project-init ([9fe0768](https://github.com/hybridlabor-api/aos/commit/9fe0768fdbf634493ca8c8d03e8318416da20b84))
+
+
+### Bug Fixes
+
+* **installer:** ship and wire the memB ambient memory hook ([9f7ec6b](https://github.com/hybridlabor-api/aos/commit/9f7ec6b6aba33a408a9351680e85049b10544f5d))
+* **skills:** correct the doctors' install-layout and status assumptions ([478bfc7](https://github.com/hybridlabor-api/aos/commit/478bfc7cf60cc6b474261f9f89c3996781c29361))
+
 ## [4.3.0](https://github.com/hybridlabor-api/aos/compare/v4.2.0...v4.3.0) (2026-09-12)
 
 
