@@ -139,10 +139,35 @@ function checkAos() {
 // ---------------------------------------------------------------- hooks
 function checkHooks() {
   const hooksDir = h('.claude', 'hooks');
+
+  // Existence is not enough: an older install leaves a stale copy behind, and
+  // the row would go green over a hook carrying a bug this version fixed.
+  // Hooks that carry an `aos-hook-version:` line are checked against what this
+  // release expects; the ones that do not are existence-only.
+  const EXPECTED_VERSION = { 'memb-inject.mjs': 2 };
+  const versionOf = (text) => {
+    const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
+    return m ? Number(m[1]) : null;
+  };
+
   for (const file of ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
     const p = path.join(hooksDir, file);
-    add('hooks', file, existsSync(p), existsSync(p) ? p.replace(HOME, '~') : 'missing',
-      'npx -y @hybridlabor-api/aos@latest (the installer ships and wires all three).');
+    if (!existsSync(p)) {
+      add('hooks', file, false, 'missing',
+        'npx -y @hybridlabor-api/aos@latest (the installer ships and wires all three).');
+      continue;
+    }
+    const want = EXPECTED_VERSION[file];
+    if (!want) {
+      add('hooks', file, true, tilde(p), '');
+      continue;
+    }
+    const got = versionOf(readFileSync(p, 'utf8'));
+    add('hooks', file, got === want,
+      got === want ? `${tilde(p)} (v${got})`
+        : got === null ? `${tilde(p)} — predates version stamping, so it is older than v${want}`
+        : `${tilde(p)} — v${got}, this release ships v${want}`,
+      'npx -y @hybridlabor-api/aos@latest — Quick Update refreshes hooks from v4.4.1 on; an older installer never replaced them.');
   }
 
   const settings = readJson(h('.claude', 'settings.json'));

@@ -123,9 +123,11 @@ injects the relevant memories as context. It fails open: any error exits `0`
 and the prompt proceeds untouched.
 
 Since v4.4.0 the installer ships `memb-inject.mjs` into `~/.claude/hooks/` and
-wires it as a `UserPromptSubmit` hook, so on a current install both doctor rows
-pass on their own. A machine where they fail is running an older AOS — the fix
-is the installer, not a manual copy:
+wires it as a `UserPromptSubmit` hook. **v4.4.0's Quick Update did not** — it
+refreshes skills and submodules, and hooks are harness plumbing rather than
+skills, so a machine that already had AOS updated to 4.4.0 without ever
+receiving the hook. Fixed in v4.4.1; a machine that took that update needs one
+more run:
 
 ```bash
 npx -y @hybridlabor-api/aos@latest
@@ -134,6 +136,13 @@ npx -y @hybridlabor-api/aos@latest
 The wiring is merged into `~/.claude/settings.json`, never written over it:
 user keys and foreign hook entries survive, and a re-run replaces the BDB entry
 rather than adding a second copy.
+
+The hook carries an `aos-hook-version:` line on its second line, and the doctor
+compares it against what the installed release expects. That is why the row can
+read *stale* rather than simply passing: a hook file that exists and is wired
+can still be an old copy carrying a bug this version fixed. When you change the
+hook in a way machines must pick up, bump that line and the expected value in
+`aos-doctor.mjs` in the same commit — the test suite fails if the two disagree.
 
 Unlike the two gate hooks, this one stays `$HOME`-anchored even in a project
 harness — the memB store is machine-global, and pointing it at

@@ -2717,7 +2717,7 @@ function injectHarnessRules() {
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
             });
-            mergeBdbSettingsHooks(path.join(homeDir, '.claude', 'settings.json'));
+            installGlobalHooks();
         }, '');
 
         installStep('sync global .agents/', () => {
@@ -2729,6 +2729,22 @@ function injectHarnessRules() {
             }
         }, 'agents.md and workflows/startcycle.md may be missing globally.');
     }
+}
+
+// Deliver the hook scripts to ~/.claude/hooks/ and wire them in settings.json.
+// Both the full install and Quick Update funnel through here. Quick Update used
+// to do neither: it refreshes skills and submodules, but hooks are harness
+// plumbing rather than skills, so an existing install updating to a version
+// that adds or changes a hook silently never received it -- which is exactly
+// what happened to memb-inject.mjs in v4.4.0, on the machines that needed it
+// most (a fresh install got it; every machine that already had AOS did not).
+function installGlobalHooks() {
+    const hooksSrc = path.join(srcDir, '.claude', 'hooks');
+    if (fs.existsSync(hooksSrc)) {
+        copyDirRecursiveSync(hooksSrc, path.join(homeDir, '.claude', 'hooks'));
+        log.step(`Installed hooks to ${path.join(homeDir, '.claude', 'hooks')}`);
+    }
+    mergeBdbSettingsHooks(path.join(homeDir, '.claude', 'settings.json'));
 }
 
 // Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --
@@ -3298,6 +3314,10 @@ async function runQuickUpdate(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     s.stop('Skills refreshed');
 
+    installStep('refresh gate + memory hooks', () => {
+        installGlobalHooks();
+    }, 'Hooks keep whatever version this machine already had.');
+
     // OpenWiki setup only ever ran on a brand-new install (main()'s fresh-install
     // branch below) -- an existing install running Quick Update never got offered
     // it and never had its daemon schedule refreshed. promptCredentials() already
@@ -3728,6 +3748,7 @@ if (require.main === module) {
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
     mergeBdbSettingsHooks,
+    installGlobalHooks,
     installProjectHarness,
     mirrorMcpServersTo,
     // Manifest store (exported for verification tests)

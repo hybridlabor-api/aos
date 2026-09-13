@@ -4,7 +4,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+const { execFileSync } = require('child_process');
+
 const { mergeBdbSettingsHooks } = require('../installer.js');
+
+const REPO = path.resolve(__dirname, '..');
 
 const commandsFor = (settings, event) =>
     (settings.hooks[event] || []).flatMap((entry) => entry.hooks.map((h) => h.command));
@@ -86,5 +90,63 @@ describe('mergeBdbSettingsHooks', () => {
 
         assert.equal(fs.readFileSync(p, 'utf8'), '{ this is not json');
         assert.ok(fs.existsSync(`${p}.bdb-new.json`), 'merged result goes to a sidecar');
+    });
+});
+
+// installGlobalHooks() writes to $HOME, which installer.js resolves once at
+// module load — so this runs in a child process with HOME pointed at a temp
+// dir. That also exercises the real delivery path end to end rather than just
+// the settings merge.
+describe('installGlobalHooks (Quick Update delivery path)', () => {
+    let home;
+
+    test.beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'bdb-hook-home-')); });
+    test.afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
+
+    const run = () => execFileSync(
+        process.execPath,
+        ['-e', `require(${JSON.stringify(path.join(REPO, 'installer.js'))}).installGlobalHooks()`],
+        { env: { ...process.env, HOME: home }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+
+    test('delivers every hook script into a fresh $HOME and wires them', () => {
+        run();
+
+        for (const f of ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
+            assert.ok(fs.existsSync(path.join(home, '.claude', 'hooks', f)), `${f} not delivered`);
+        }
+        const s = readSettings(path.join(home, '.claude', 'settings.json'));
+        assert.ok(commandsFor(s, 'UserPromptSubmit').some((c) => c.includes('memb-inject.mjs')));
+        assert.ok(commandsFor(s, 'PreToolUse').some((c) => c.includes('go-gate.mjs')));
+    });
+
+    // The regression this whole change exists for: Quick Update refreshed
+    // skills but never hooks, so a machine that already had AOS kept running
+    // an old hook after updating.
+    test('replaces a stale hook left by an earlier install', () => {
+        const dst = path.join(home, '.claude', 'hooks');
+        fs.mkdirSync(dst, { recursive: true });
+        fs.writeFileSync(path.join(dst, 'memb-inject.mjs'), '// aos-hook-version: 1\nprocess.exit(0);\n');
+
+        run();
+
+        const shipped = fs.readFileSync(path.join(REPO, '.claude', 'hooks', 'memb-inject.mjs'), 'utf8');
+        const landed = fs.readFileSync(path.join(dst, 'memb-inject.mjs'), 'utf8');
+        assert.equal(landed, shipped, 'stale hook was not replaced');
+    });
+
+    // aos-doctor.mjs reads this line to spot a stale hook; if the stamp ever
+    // goes missing the doctor silently degrades to an existence check.
+    test('the shipped hook carries a version stamp the doctor can read', () => {
+        const shipped = fs.readFileSync(path.join(REPO, '.claude', 'hooks', 'memb-inject.mjs'), 'utf8');
+        const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(shipped);
+        assert.ok(m, 'no aos-hook-version line in the shipped hook');
+
+        const doctor = fs.readFileSync(
+            path.join(REPO, 'skills/global_config/aos-setup/scripts/aos-doctor.mjs'), 'utf8');
+        assert.ok(
+            new RegExp(`'memb-inject\\.mjs':\\s*${m[1]}\\b`).test(doctor),
+            `doctor expects a different version than the hook's v${m[1]}`,
+        );
     });
 });

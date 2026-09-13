@@ -1,6 +1,12 @@
 #!/usr/bin/env node
+// aos-hook-version: 2
 /**
  * memB ambient memory hook for Claude Code (UserPromptSubmit).
+ *
+ * The version line above is what /aos-setup's doctor reads to tell a current
+ * hook from a stale one left behind by an older install. Bump it whenever this
+ * file changes in a way a machine must actually pick up, and bump the expected
+ * value in aos-doctor.mjs in the same commit.
  *
  * Reads ~/.MemBDB/memb.db directly through node:sqlite and injects the most
  * relevant memories as ephemeral additionalContext — nothing is written to
