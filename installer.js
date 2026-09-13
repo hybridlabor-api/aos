@@ -493,7 +493,13 @@ function adoptFileIntoManifest(manifest, targetPath, sourceHash) {
 // payload (used to identify files we recognise even before manifest entry).
 function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes) {
     const sourceHash = computeFileHash(sourcePath);
-    if (!sourceHash) return 'skipped'; // unreadable source – skip
+    if (!sourceHash) {
+        // Every other branch of this function reports what it did; this one
+        // used to return silently, so a file that failed to install left no
+        // trace behind the enclosing "Synced BDB skills" success line.
+        log.warn(`[manifest] Could not read ${sourcePath} from the payload — ${path.basename(targetPath)} not installed.`);
+        return 'skipped';
+    }
 
     const manifestEntry = manifest[targetPath];
     const diskExists = fs.existsSync(targetPath);
@@ -524,7 +530,7 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     // not in refusing to write. A genuine local edit is recoverable from .bak
     // rather than silently outvoting the shipped version forever.
     if (!manifestEntry && !knownSourceHashes.has(diskHash)) {
-        const bakPath = `${targetPath}.bak`;
+        const bakPath = `${targetPath}.${timestamp}.bak`;
         try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
             log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
         }
@@ -549,7 +555,7 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
 
     // Case: ours + user-edited (manifest recorded our hash, but disk now differs).
     if (manifestEntry && diskHash !== manifestEntry.sha256) {
-        const bakPath = `${targetPath}.bak`;
+        const bakPath = `${targetPath}.${timestamp}.bak`;
         try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
             log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
         }
@@ -1476,23 +1482,34 @@ function checkModuleUpdate(pkgName, targetDir) {
     try {
         const localVer = JSON.parse(fs.readFileSync(modulePkgPath, 'utf8')).version;
         let remoteVer = null;
+        let checkFailed = false;
         try {
             remoteVer = execSync(`npm view ${pkgName} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
-        } catch (e) { logDebug(e, 'operation'); }
+        } catch (e) {
+            // Offline, a proxy, or a misconfigured registry. Swallowing this
+            // made every module report "up to date" forever on such a machine,
+            // indistinguishable from a real answer -- so say which one it is.
+            checkFailed = true;
+            logDebug(e, `npm view ${pkgName}`);
+        }
 
         if (remoteVer && localVer !== remoteVer) {
-            return { installed: true, updateAvailable: true, localVer, remoteVer };
+            return { installed: true, updateAvailable: true, localVer, remoteVer, checkFailed };
         }
-        return { installed: true, updateAvailable: false, localVer, remoteVer };
+        return { installed: true, updateAvailable: false, localVer, remoteVer, checkFailed };
     } catch (e) {
-        return { installed: true, updateAvailable: false, localVer: null, remoteVer: null };
+        return { installed: true, updateAvailable: false, localVer: null, remoteVer: null, checkFailed: true };
     }
 }
 
 function downloadOrUpdateModule(pkgName, targetDir, displayName) {
     const status = checkModuleUpdate(pkgName, targetDir);
     if (status.installed && !status.updateAvailable) {
-        log.step(`${displayName} is up to date (v${status.localVer})`);
+        if (status.checkFailed) {
+            log.warn(`${displayName}: could not reach the npm registry — keeping the installed v${status.localVer}, which may be stale.`);
+        } else {
+            log.step(`${displayName} is up to date (v${status.localVer})`);
+        }
         return true;
     }
 
@@ -1520,14 +1537,42 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
         const ok = runNpmWithRetry(`npm pack ${pkgName}@latest`, { stdio: 'ignore', cwd: targetDir }, `${displayName} download`);
         cleanNpmCacheOnWindows();
         const tarball = ok ? fs.readdirSync(targetDir).find(f => f.endsWith('.tgz')) : null;
-        if (tarball) {
-            execSync(`tar -xzf "${tarball}" --strip-components=1`, { stdio: 'ignore', cwd: targetDir });
-            fs.unlinkSync(path.join(targetDir, tarball));
-            s.stop(`${displayName} ready (v${status.remoteVer || 'latest'})`);
-            return true;
-        } else {
-            throw new Error("NPM pack returned no archive.");
+        if (!tarball) throw new Error("NPM pack returned no archive.");
+
+        // Unpacking straight over targetDir made an update a MERGE: a file the
+        // new version dropped stayed on disk forever, while package.json said
+        // the module was current. Unpack beside it and swap, so the tree that
+        // ends up installed is exactly the published one. The previous tree is
+        // kept until the swap succeeds, and restored if it does not.
+        const stagingDir = `${targetDir}.incoming-${timestamp}`;
+        const retiredDir = `${targetDir}.previous-${timestamp}`;
+        fs.rmSync(stagingDir, { recursive: true, force: true });
+        fs.mkdirSync(stagingDir, { recursive: true });
+        execSync(`tar -xzf "${path.join(targetDir, tarball)}" --strip-components=1 -C "${stagingDir}"`, { stdio: 'ignore' });
+        fs.unlinkSync(path.join(targetDir, tarball));
+
+        // Anything the module generated in place -- venvs, caches, local state
+        // -- is not in the tarball and must survive the swap.
+        const PRESERVE = ['.venv', 'venv', 'node_modules', '.env', 'data', 'logs'];
+        for (const keep of PRESERVE) {
+            const from = path.join(targetDir, keep);
+            if (fs.existsSync(from) && !fs.existsSync(path.join(stagingDir, keep))) {
+                fs.renameSync(from, path.join(stagingDir, keep));
+            }
         }
+
+        try {
+            fs.renameSync(targetDir, retiredDir);
+            fs.renameSync(stagingDir, targetDir);
+        } catch (swapError) {
+            if (fs.existsSync(retiredDir) && !fs.existsSync(targetDir)) fs.renameSync(retiredDir, targetDir);
+            fs.rmSync(stagingDir, { recursive: true, force: true });
+            throw swapError;
+        }
+        fs.rmSync(retiredDir, { recursive: true, force: true });
+
+        s.stop(`${displayName} ready (v${status.remoteVer || 'latest'})`);
+        return true;
     } catch (e) {
         s.stop(`Failed downloading ${displayName}: ${e.message}`);
         return false;
@@ -1547,7 +1592,14 @@ async function installMemB(interactive) {
         }));
     }
     const membDir = path.join(moduleBasePath(), 'memB');
-    downloadOrUpdateModule('@hybridlabor-api/memb', membDir, 'memB Vector Engine');
+    // A failed download used to fall through into venv setup and daemon
+    // registration, each of which then failed on its own terms or, worse,
+    // "succeeded" against a stale tree -- and the run still ended in a success
+    // banner. Stop at the module that could not be fetched.
+    if (!downloadOrUpdateModule('@hybridlabor-api/memb', membDir, 'memB Vector Engine')) {
+        log.warn('Skipping memB setup: the module could not be downloaded.');
+        return;
+    }
     if (DRY_RUN) {
         log.step('[dry-run] would bootstrap memB venv + pip requirements');
         return;
@@ -1659,7 +1711,10 @@ async function installMemB(interactive) {
 
 async function installSynapse() {
     const synapseDir = path.join(moduleBasePath(), 'bdb-synapse');
-    downloadOrUpdateModule('@hybridlabor-api/bdb-synapse', synapseDir, 'BDB Synapse');
+    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-synapse', synapseDir, 'BDB Synapse')) {
+        log.warn('Skipping Synapse setup: the module could not be downloaded.');
+        return;
+    }
     if (DRY_RUN) {
         log.step('[dry-run] would link synapse binary into ~/.local/bin/synapse + setup background daemon');
         return;
@@ -1773,7 +1828,10 @@ async function installSynapse() {
 
 async function installCreatorExtension() {
     const creatorDir = path.join(moduleBasePath(), 'bdb-dev-creator-extension');
-    downloadOrUpdateModule('@hybridlabor-api/bdb-dev-creator-extension', creatorDir, 'BDB Creator Extension');
+    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-dev-creator-extension', creatorDir, 'BDB Creator Extension')) {
+        log.warn('Skipping Creator Extension setup: the module could not be downloaded.');
+        return;
+    }
     if (DRY_RUN) {
         log.step('[dry-run] would run BDB Creator Extension setup');
         return;
@@ -1791,12 +1849,18 @@ async function installCreatorExtension() {
 
 async function installOSRemoteGateway() {
     const remoteDir = path.join(moduleBasePath(), 'bdb-os-remote');
-    downloadOrUpdateModule('@hybridlabor-api/bdb-os-remote', remoteDir, 'BDB OS Remote Gateway');
+    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-os-remote', remoteDir, 'BDB OS Remote Gateway')) {
+        log.warn('Skipping OS Remote Gateway setup: the module could not be downloaded.');
+        return;
+    }
 }
 
 async function installDevToolInstaller() {
     const toolInstallerDir = path.join(moduleBasePath(), 'bdb-dev-tool-installer');
-    downloadOrUpdateModule('@hybridlabor-api/bdb-dev-tool-installer', toolInstallerDir, 'BDB Dev Tool Installer');
+    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-dev-tool-installer', toolInstallerDir, 'BDB Dev Tool Installer')) {
+        log.warn('Skipping Dev Tool Installer setup: the module could not be downloaded.');
+        return;
+    }
 }
 
 async function installOSAgentWorkspace() {
@@ -1808,7 +1872,10 @@ async function installOSAgentWorkspace() {
     fs.mkdirSync(path.join(homeDir, '.ao', 'data'), { recursive: true });
     fs.mkdirSync(path.join(homeDir, '.ao', 'logs'), { recursive: true });
 
-    downloadOrUpdateModule('@hybridlabor-api/bdb-os-agent-workspace', osAgentDir, 'BDB OS Agent Workspace');
+    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-os-agent-workspace', osAgentDir, 'BDB OS Agent Workspace')) {
+        log.warn('Skipping Agent Workspace setup: the module could not be downloaded.');
+        return;
+    }
 
     if (DRY_RUN) {
         log.step('[dry-run] would link ao binary + register LaunchAgent + Desktop App');
@@ -1920,7 +1987,16 @@ fi`;
         }
     }
 
-    log.step('BDB Agent Workspace WebUI: http://localhost:3101');
+    // This line used to print unconditionally -- directly under a warning that
+    // the port had not answered, and on Linux where no daemon is registered at
+    // all. Only claim the WebUI when something is actually listening.
+    if (await verifyDaemonListening(3101, 'Agent Workspace WebUI', 1500)) {
+        log.step('BDB Agent Workspace WebUI: http://localhost:3101');
+    } else if (process.platform !== 'darwin' && process.platform !== 'win32') {
+        log.warn(`Auto-start for the Agent Workspace is not wired on ${process.platform} yet. Start it manually from ${osAgentDir}.`);
+    } else {
+        log.warn('Agent Workspace daemon is not answering on :3101 — see its log before assuming the WebUI is up.');
+    }
 }
 
 async function promptMemBIngestion(mcpCodeTarget) {
@@ -2031,7 +2107,21 @@ function verifyEcosystemInstallation() {
                 console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ Installed${colors.reset}`);
             }
         } else if (mod.name.includes('token-saver') && fs.existsSync(path.join(srcDir, 'vendor', 'token-saver'))) {
-            console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ v2.6.3 (Integrated)${colors.reset}`);
+            // Was a hardcoded "v2.6.3", which stopped being true the moment the
+            // vendored copy moved. Read it, and say so when it cannot be read.
+            let vendored = null;
+            for (const f of ['package.json', 'pyproject.toml', 'VERSION']) {
+                const vp = path.join(srcDir, 'vendor', 'token-saver', f);
+                if (!fs.existsSync(vp)) continue;
+                try {
+                    const raw = fs.readFileSync(vp, 'utf8');
+                    vendored = f === 'package.json'
+                        ? JSON.parse(raw).version
+                        : (raw.match(/^\s*version\s*=\s*["']?([\w.\-+]+)/m) || [])[1] || raw.trim().split('\n')[0];
+                } catch (e) { logDebug(e, `token-saver version from ${f}`); }
+                if (vendored) break;
+            }
+            console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ ${vendored ? `v${vendored} ` : ''}(Integrated)${colors.reset}`);
         } else {
             console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.dim}⚪ Optional / Not downloaded${colors.reset}`);
         }
@@ -2197,7 +2287,13 @@ async function installMcpsForTarget(paths, ctx) {
     if (selectedMcps.includes(CORE_MCP)) {
         const membMcpTarget = path.join(mcpCodeTarget, CORE_MCP);
         installStep(`download/update ${CORE_MCP} from npm`, () => {
-            downloadOrUpdateModule('@hybridlabor-api/memb', membMcpTarget, 'memB MCP');
+            // installStep only catches a throw, and downloadOrUpdateModule
+            // reports failure by returning false -- so without this the hint
+            // below never printed and the MCP config was written pointing at a
+            // path that had not been populated.
+            if (!downloadOrUpdateModule('@hybridlabor-api/memb', membMcpTarget, 'memB MCP')) {
+                throw new Error('npm pack did not produce the memb-mcp payload');
+            }
         }, 'memb-mcp installation skipped; MCP config may reference a missing path.');
     }
     log.step(`Installed selected MCP servers to ${mcpCodeTarget}`);
@@ -2242,7 +2338,11 @@ async function installMcpsForTarget(paths, ctx) {
                     ? path.join(membMcpFolder, '.venv', 'Scripts', 'python.exe')
                     : path.join(membMcpFolder, '.venv', 'bin', 'python');
 
-                if (!fs.existsSync(venvPython)) {
+                // The fs.* writes are covered by the global dry-run patch, but
+                // child processes are not -- these two would really create a venv.
+                if (DRY_RUN) {
+                    log.step(`[dry-run] would create the memb-mcp venv in ${membMcpFolder}`);
+                } else if (!fs.existsSync(venvPython)) {
                     try {
                         execSync(`uv venv --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
                     } catch (e1) {
@@ -3396,9 +3496,16 @@ async function runQuickUpdate(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     s.stop('Skills refreshed');
 
-    installStep('refresh gate + memory hooks', () => {
-        installGlobalHooks();
-    }, 'Hooks keep whatever version this machine already had.');
+    // Everything injectHarnessRules() delivers -- GEMINI.md, the dispatcher
+    // workflows the skills point at, the compiled subagent definitions, the
+    // harness rule files and the gate + memory hooks -- used to be
+    // fresh-install-only. v4.4.1 split just the hooks out of it for Quick
+    // Update; the rest stayed behind, so a machine that only ever quick-updates
+    // kept running first-install agent definitions and dispatcher scripts
+    // forever. Same defect as the hook, one layer up. Run the whole thing.
+    installStep('refresh harness rules, workflows, agents and hooks', () => {
+        injectHarnessRules();
+    }, 'Harness files keep whatever version this machine already had.');
 
     // OpenWiki setup only ever ran on a brand-new install (main()'s fresh-install
     // branch below) -- an existing install running Quick Update never got offered
@@ -3834,6 +3941,7 @@ if (require.main === module) {
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    downloadOrUpdateModule,
     detectPlatforms,
     markPlatformsExplicit,
     mergeBdbSettingsHooks,

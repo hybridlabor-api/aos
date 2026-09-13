@@ -16,6 +16,15 @@ const {
     copyDirRecursiveSync,
 } = require('../installer.js');
 
+// Backups carry the run's timestamp (installer.js), so a second run cannot
+// overwrite the first one's copy. Tests match on the shape, not a fixed name.
+function findBackup(file) {
+    const dir = path.dirname(file);
+    const base = path.basename(file);
+    const hit = fs.readdirSync(dir).find((f) => f.startsWith(base + '.') && f.endsWith('.bak'));
+    return hit ? path.join(dir, hit) : null;
+}
+
 function createIsolatedEnv() {
     const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'bdb-manifest-test-'));
     const fakeHome = path.join(tmpBase, 'home');
@@ -113,8 +122,9 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
             assert.ok(manifest[foreignFile], 'the file is now tracked, so the next update is a clean overwrite');
 
             // ...and nothing may be lost doing it.
-            assert.strictEqual(fs.existsSync(`${foreignFile}.bak`), true, 'previous content must be backed up');
-            assert.strictEqual(fs.readFileSync(`${foreignFile}.bak`, 'utf8'), foreignContent, 'backup must hold the original bytes');
+            const backup = findBackup(foreignFile);
+            assert.ok(backup, 'previous content must be backed up');
+            assert.strictEqual(fs.readFileSync(backup, 'utf8'), foreignContent, 'backup must hold the original bytes');
             // Not asserted here: that the user is told. log.warn() goes through
             // clack to stdout, which this console.warn intercept cannot see.
         } finally {
@@ -153,13 +163,13 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
             // Target file should now have the updated content
             assert.strictEqual(fs.readFileSync(targetFile, 'utf8'), '# Clean Skill v2.0 - Updated\n');
             assert.strictEqual(manifest[targetFile].sha256, computeFileHash(skillFile));
-            assert.strictEqual(fs.existsSync(`${targetFile}.bak`), false, 'No .bak should be created when ours was unmodified');
+            assert.strictEqual(findBackup(targetFile), null, 'No .bak should be created when ours was unmodified');
         } finally {
             cleanup(tmpBase);
         }
     });
 
-    test('(d) a hand-edited ours-file gets renamed to <file>.bak and warning logged, NOT silently overwritten', () => {
+    test('(d) a hand-edited ours-file is backed up to a timestamped .bak, NOT silently overwritten', () => {
         const { tmpBase, fakeHome, fakeSrc, manifestPath } = createIsolatedEnv();
         try {
             const skillDir = path.join(fakeSrc, 'skills', 'edited-skill');
@@ -191,8 +201,8 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
 
             // Assertions
             assert.strictEqual(result, 'bak', 'Conflict resolution should return bak');
-            const bakFile = `${targetFile}.bak`;
-            assert.strictEqual(fs.existsSync(bakFile), true, '.bak file must exist');
+            const bakFile = findBackup(targetFile);
+            assert.ok(bakFile, '.bak file must exist');
             assert.strictEqual(fs.readFileSync(bakFile, 'utf8'), userCustomContent, 'User modifications must be preserved in .bak');
             assert.strictEqual(fs.readFileSync(targetFile, 'utf8'), '# New Upstream Content v2.0\n', 'New version should be written to target');
             assert.strictEqual(manifest[targetFile].sha256, computeFileHash(skillFile), 'Manifest should be updated to new hash');
@@ -224,7 +234,7 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
             assert.strictEqual(result, 'wrote', 'Should adopt pre-existing matching file');
             assert.ok(manifest[targetFile], 'Manifest should now have entry for adopted file');
             assert.strictEqual(manifest[targetFile].sha256, computeFileHash(skillFile));
-            assert.strictEqual(fs.existsSync(`${targetFile}.bak`), false, 'No .bak should be created');
+            assert.strictEqual(findBackup(targetFile), null, 'No .bak should be created');
         } finally {
             cleanup(tmpBase);
         }

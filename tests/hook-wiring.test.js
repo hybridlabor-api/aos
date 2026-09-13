@@ -150,3 +150,34 @@ describe('installGlobalHooks (Quick Update delivery path)', () => {
         );
     });
 });
+
+// A module update used to unpack straight over the installed tree, so a file
+// the new version had dropped stayed on disk while package.json claimed the
+// module was current. Needs the network (npm pack), so it is skipped offline.
+describe('downloadOrUpdateModule (module replacement)', () => {
+    let dir;
+
+    test.beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdb-module-')); });
+    test.afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+    const online = () => {
+        try { execFileSync('npm', ['view', '@hybridlabor-api/bdb-synapse', 'version'], { timeout: 8000, stdio: 'ignore' }); return true; }
+        catch { return false; }
+    };
+
+    test('replaces the tree instead of merging into it, and keeps local state', { skip: !online() && 'npm registry unreachable' }, () => {
+        const mod = path.join(dir, 'mod');
+        fs.mkdirSync(path.join(mod, '.venv'), { recursive: true });
+        fs.writeFileSync(path.join(mod, 'package.json'), '{"name":"x","version":"0.0.1"}');
+        fs.writeFileSync(path.join(mod, 'DROPPED-BY-NEW-VERSION.md'), 'stale');
+        fs.writeFileSync(path.join(mod, '.venv', 'marker'), 'local state');
+
+        const { downloadOrUpdateModule } = require('../installer.js');
+        assert.equal(downloadOrUpdateModule('@hybridlabor-api/bdb-synapse', mod, 'test module'), true);
+
+        assert.ok(!fs.existsSync(path.join(mod, 'DROPPED-BY-NEW-VERSION.md')), 'a file absent from the new version must be gone');
+        assert.ok(fs.existsSync(path.join(mod, '.venv', 'marker')), 'local state outside the tarball must survive');
+        assert.notEqual(JSON.parse(fs.readFileSync(path.join(mod, 'package.json'), 'utf8')).version, '0.0.1');
+        assert.equal(fs.readdirSync(dir).filter((f) => /\.(incoming|previous)-/.test(f)).length, 0, 'no staging leftovers');
+    });
+});
