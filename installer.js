@@ -637,66 +637,123 @@ function resolveMcpsArg(availableMcps) {
     return matched;
 }
 
+// Platforms the user explicitly asked for, by detection key. A harness the
+// user names is installed as far as we are concerned, whether or not we can
+// find its binary -- they know their machine better than a PATH lookup does.
+const explicitPlatformKeys = new Set();
+const PLATFORM_KEYS_BY_OPTION = {
+    '1': 'antigravity',
+    '2': ['claudecode', 'claudedesktop'],
+    '3': 'cursor',
+    '5': 'codex',
+    '6': 'windsurf',
+    '7': 'vscode',
+    '8': 'aider',
+};
+
+function markPlatformsExplicit(optionValues) {
+    for (const v of optionValues || []) {
+        const keys = PLATFORM_KEYS_BY_OPTION[v];
+        if (!keys) continue;
+        for (const k of [].concat(keys)) explicitPlatformKeys.add(k);
+    }
+}
+
+// Where an application itself lives, per OS. Presence of the app is proof;
+// presence of a dot-directory is not.
+function appBundle(name) {
+    if (process.platform === 'darwin') return [`/Applications/${name}.app`, path.join(homeDir, 'Applications', `${name}.app`)];
+    if (process.platform === 'win32') return [path.join(process.env.LOCALAPPDATA || homeDir, 'Programs', name)];
+    return [`/usr/share/${name.toLowerCase()}`, `/opt/${name.toLowerCase()}`];
+}
+
+const anyExists = (paths) => paths.some((p) => fs.existsSync(p));
+const globExists = (dir, re) => {
+    try { return fs.readdirSync(dir).some((e) => re.test(e)); } catch { return false; }
+};
+
+// Detect installed agent harnesses.
+//
+// This used to test for a config *directory* and nothing else, which was
+// circular: syncSkillsToGlobalHarnesses() creates ~/.claude, ~/.codex,
+// ~/.cursor and ~/.roo unconditionally, so after one install the detector
+// found evidence the installer had planted itself. A machine with neither
+// Cursor nor VS Code nor Aider still reported all three, and skills were
+// written into directories nothing would ever read.
+//
+// Evidence now means the application itself and nothing else: a binary on
+// PATH, an installed app bundle, or an editor extension. Config files are
+// deliberately NOT evidence -- the installer writes ~/.claude.json,
+// ~/.cursor/mcp.json, ~/.roo/mcp_settings.json and the rest of them, so
+// trusting those reintroduces the same circularity one level down. (Written
+// after exactly that: an early cut of this fix still "found" Cursor and
+// Windsurf on a machine with neither, via files AOS had planted.)
+// The user's explicit choice counts too -- see markPlatformsExplicit().
 function detectPlatforms() {
+    const candidates = [
+        {
+            key: 'antigravity', name: 'Google Antigravity', path: geminiDir,
+            evidence: () => hasExecutable('agy') || anyExists(appBundle('Antigravity')),
+        },
+        {
+            key: 'codex', name: 'ChatGPT Codex CLI', path: path.join(homeDir, '.codex'),
+            evidence: () => hasExecutable('codex'),
+        },
+        {
+            key: 'claudecode', name: 'Claude Code CLI', path: path.join(homeDir, '.claude'),
+            evidence: () => hasExecutable('claude'),
+        },
+        {
+            key: 'claudedesktop', name: 'Claude Desktop',
+            path: process.platform === 'win32'
+                ? path.join(process.env.APPDATA || homeDir, 'Claude')
+                : path.join(homeDir, 'Library', 'Application Support', 'Claude'),
+            evidence: () => anyExists(appBundle('Claude')),
+        },
+        {
+            key: 'cursor', name: 'Cursor IDE',
+            path: process.platform === 'win32'
+                ? path.join(process.env.APPDATA || homeDir, 'Cursor')
+                : path.join(homeDir, 'Library', 'Application Support', 'Cursor'),
+            evidence: () => anyExists(appBundle('Cursor')) || hasExecutable('cursor'),
+        },
+        {
+            key: 'windsurf', name: 'Windsurf IDE',
+            path: process.platform === 'win32'
+                ? path.join(process.env.APPDATA || homeDir, 'Windsurf')
+                : path.join(homeDir, 'Library', 'Application Support', 'Windsurf'),
+            evidence: () => anyExists(appBundle('Windsurf')) || hasExecutable('windsurf'),
+        },
+        {
+            key: 'vscode', name: 'Roo Code / Cline / VS Code',
+            path: process.platform === 'win32'
+                ? path.join(process.env.APPDATA || homeDir, 'Code')
+                : path.join(homeDir, 'Library', 'Application Support', 'Code'),
+            evidence: () => anyExists(appBundle('Visual Studio Code'))
+                || hasExecutable('code')
+                || globExists(path.join(homeDir, '.vscode', 'extensions'), /roo|cline/i),
+        },
+        {
+            key: 'aider', name: 'Aider CLI', path: homeDir,
+            evidence: () => hasExecutable('aider'),
+        },
+        {
+            key: 'opencode', name: 'OpenCode CLI',
+            path: process.platform === 'win32'
+                ? path.join(process.env.APPDATA || homeDir, 'opencode')
+                : path.join(homeDir, '.config', 'opencode'),
+            evidence: () => hasExecutable('opencode'),
+        },
+    ];
+
     const detections = [];
-
-    if (fs.existsSync(geminiDir)) {
-        detections.push({ name: "Google Antigravity", path: geminiDir, key: "antigravity" });
+    for (const c of candidates) {
+        let present = false;
+        try { present = c.evidence(); } catch (e) { logDebug(e, `detect ${c.key}`); }
+        if (present || explicitPlatformKeys.has(c.key)) {
+            detections.push({ name: c.name, path: c.path, key: c.key, chosen: !present });
+        }
     }
-
-    const codexDir = path.join(homeDir, '.codex');
-    if (fs.existsSync(codexDir) || fs.existsSync(path.join(codexDir, 'config.toml'))) {
-        detections.push({ name: "ChatGPT Codex CLI", path: codexDir, key: "codex" });
-    }
-
-    const claudeCodeConfig = path.join(homeDir, '.claude.json');
-    const claudeCodeDir = path.join(homeDir, '.claude');
-    if (fs.existsSync(claudeCodeConfig) || fs.existsSync(claudeCodeDir)) {
-        detections.push({ name: "Claude Code CLI", path: claudeCodeDir, key: "claudecode" });
-    }
-
-    const claudePath = process.platform === 'win32'
-        ? path.join(process.env.APPDATA || homeDir, 'Claude')
-        : path.join(homeDir, 'Library', 'Application Support', 'Claude');
-    if (fs.existsSync(claudePath)) {
-        detections.push({ name: "Claude Desktop", path: claudePath, key: "claudedesktop" });
-    }
-
-    const cursorPath = process.platform === 'win32'
-        ? path.join(process.env.APPDATA || homeDir, 'Cursor')
-        : path.join(homeDir, 'Library', 'Application Support', 'Cursor');
-    if (fs.existsSync(cursorPath)) {
-        detections.push({ name: "Cursor IDE", path: cursorPath, key: "cursor" });
-    }
-
-    const windsurfPath = process.platform === 'win32'
-        ? path.join(process.env.APPDATA || homeDir, 'Windsurf')
-        : path.join(homeDir, 'Library', 'Application Support', 'Windsurf');
-    if (fs.existsSync(windsurfPath)) {
-        detections.push({ name: "Windsurf IDE", path: windsurfPath, key: "windsurf" });
-    }
-
-    const vscodePath = process.platform === 'win32'
-        ? path.join(process.env.APPDATA || homeDir, 'Code')
-        : path.join(homeDir, 'Library', 'Application Support', 'Code');
-    const rooPath = path.join(homeDir, '.roo');
-    const clinePath = path.join(homeDir, '.cline');
-    if (fs.existsSync(vscodePath) || fs.existsSync(rooPath) || fs.existsSync(clinePath)) {
-        detections.push({ name: "Roo Code / Cline / VS Code", path: vscodePath, key: "vscode" });
-    }
-
-    const aiderConf = path.join(homeDir, '.aider.conf.yml');
-    if (fs.existsSync(aiderConf) || fs.existsSync(path.join(homeDir, '.aider'))) {
-        detections.push({ name: "Aider CLI", path: homeDir, key: "aider" });
-    }
-
-    const opencodeDir = process.platform === 'win32'
-        ? path.join(process.env.APPDATA || homeDir, 'opencode')
-        : path.join(homeDir, '.config', 'opencode');
-    if (fs.existsSync(opencodeDir) || fs.existsSync(path.join(homeDir, '.opencode'))) {
-        detections.push({ name: "OpenCode CLI", path: fs.existsSync(opencodeDir) ? opencodeDir : path.join(homeDir, '.opencode'), key: "opencode" });
-    }
-
     return detections;
 }
 
@@ -985,15 +1042,20 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     const skillsBase = path.join(srcDir, 'skills');
     if (!fs.existsSync(skillsBase)) return;
 
+    // Mirror only into harnesses that are actually present. This list used to
+    // be unconditional, which both wrote skills nobody would read and planted
+    // the very directories detectPlatforms() then read back as proof the
+    // harness existed. ~/.agents is ours and always written.
+    const detectedKeys = new Set(detectPlatforms().map((d) => d.key));
     const extraSkillDestinations = [
-        path.join(homeDir, '.claude', 'skills'),
-        path.join(homeDir, '.agents', 'skills'),
-        path.join(homeDir, '.codex', 'skills'),
-        path.join(homeDir, '.cursor', 'skills'),
-        path.join(homeDir, '.roo', 'skills')
-    ];
+        { dir: path.join(homeDir, '.agents', 'skills'), key: null },
+        { dir: path.join(homeDir, '.claude', 'skills'), key: 'claudecode' },
+        { dir: path.join(homeDir, '.codex', 'skills'), key: 'codex' },
+        { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
+        { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
+    ].filter((d) => d.key === null || detectedKeys.has(d.key) || fs.existsSync(d.dir));
 
-    for (const dest of extraSkillDestinations) {
+    for (const { dir: dest } of extraSkillDestinations) {
         try {
             fs.mkdirSync(dest, { recursive: true });
             const rawDirs = fs.readdirSync(skillsBase);
@@ -3490,6 +3552,8 @@ async function main() {
     let wantsUniversal = true;
     let specificPlatforms = ['1'];
 
+    markPlatformsExplicit(PLATFORMS_ARG || []);
+
     if (PLATFORMS_ARG) {
         // Explicit targets win over both the menu and the auto-yes default.
         // '0' means universal; anything else means exactly those targets, so
@@ -3529,6 +3593,9 @@ async function main() {
             });
             if (sel === BACK) return 'back';
             ctx.selectedPlatforms = sel;
+            // A harness the user names counts as present even when no binary
+            // or app bundle turns up for it.
+            markPlatformsExplicit(sel);
         };
 
         const stepMode = async () => {
@@ -3767,6 +3834,8 @@ if (require.main === module) {
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    detectPlatforms,
+    markPlatformsExplicit,
     mergeBdbSettingsHooks,
     installGlobalHooks,
     installProjectHarness,
