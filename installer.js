@@ -3567,7 +3567,10 @@ async function main() {
     console.log(buildTelemetryCard({ installState, detections, daemonStatus }));
 
     if (DRY_RUN) {
-        log.warn('DRY-RUN MODE active - no files will be modified, no commands executed.');
+        // Precise on purpose: version comparison still queries the registry, and
+        // npm writes its own cache and logs under ~/.npm doing so. Nothing AOS
+        // owns is touched -- but claiming "no commands executed" was not true.
+        log.warn('DRY-RUN MODE active - nothing AOS owns is written. Read-only registry lookups still run (npm caches under ~/.npm).');
     }
     if (isAutoYes) {
         log.warn('Non-interactive/auto mode (-y): all defaults are accepted automatically.');
