@@ -811,7 +811,10 @@ function detectPlatforms() {
         },
         {
             key: 'codex', name: 'ChatGPT Codex CLI', path: path.join(homeDir, '.codex'),
-            evidence: () => hasExecutable('codex'),
+            // Codex ships two ways: the standalone CLI binary, and embedded in
+            // the ChatGPT desktop app. A machine can have either without the
+            // other (e.g. ChatGPT desktop only, codex never put on PATH).
+            evidence: () => hasExecutable('codex') || anyExists(appBundle('ChatGPT')),
         },
         {
             key: 'claudecode', name: 'Claude Code CLI', path: path.join(homeDir, '.claude'),
@@ -1171,13 +1174,20 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     // the very directories detectPlatforms() then read back as proof the
     // harness existed. ~/.agents is ours and always written.
     const detectedKeys = new Set(detectPlatforms().map((d) => d.key));
+    // No `|| fs.existsSync(d.dir)` fallback here on purpose: that fallback
+    // used to mean a directory AOS itself planted in a past run (before a
+    // harness was ever really detected) kept being "detected" forever,
+    // regardless of what detectPlatforms() found this run -- the exact
+    // circularity the block comment above warns about, just one layer down.
+    // A harness that stops being detected now simply stops receiving skill
+    // updates instead of perpetuating a false positive.
     const extraSkillDestinations = [
         { dir: path.join(homeDir, '.agents', 'skills'), key: null },
         { dir: path.join(homeDir, '.claude', 'skills'), key: 'claudecode' },
         { dir: path.join(homeDir, '.codex', 'skills'), key: 'codex' },
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
-    ].filter((d) => d.key === null || detectedKeys.has(d.key) || fs.existsSync(d.dir));
+    ].filter((d) => d.key === null || detectedKeys.has(d.key));
 
     for (const { dir: dest } of extraSkillDestinations) {
         try {
@@ -1245,15 +1255,42 @@ function maskApiKey(key) {
     return key.substring(0, 4) + '...' + key.substring(key.length - 4);
 }
 
-async function promptCredentials(referenceMcpDir) {
-    if (isAutoYes) return { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
+// Provider -> its own API key env var name. Used both to find a previously
+// configured non-Google provider's key (loadExistingEnv only special-cased
+// Gemini/GitHub, so a Groq/Grok/NVIDIA/OpenAI/OpenRouter setup was invisible
+// to "keep existing" and silently looked unconfigured) and to build the
+// isAutoYes default without re-deriving the same mapping twice.
+const PROVIDER_KEY_ENV_NAMES = {
+    google: 'GEMINI_API_KEY', groq: 'GROQ_API_KEY', grok: 'XAI_API_KEY',
+    nvidia: 'NVIDIA_API_KEY', openrouter: 'OPENROUTER_API_KEY',
+    openai: 'OPENAI_API_KEY', ollama: null, custom: 'OPENWIKI_API_KEY',
+};
 
+async function promptCredentials(referenceMcpDir) {
     const existingEnv = loadExistingEnv(referenceMcpDir);
-    const existingGemini = existingEnv['GEMINI_API_KEY'] || existingEnv['GOOGLE_API_KEY'] || existingEnv['OPENWIKI_API_KEY'] || '';
     const existingGithub = existingEnv['GITHUB_PERSONAL_ACCESS_TOKEN'] || existingEnv['GITHUB_TOKEN'] || '';
     const existingProvider = existingEnv['OPENWIKI_PROVIDER'] || 'google';
     const existingModel = existingEnv['OPENWIKI_MODEL'] || '';
     const existingBaseUrl = existingEnv['OPENWIKI_BASE_URL'] || '';
+    const existingKeyEnvName = PROVIDER_KEY_ENV_NAMES[existingProvider] || 'OPENWIKI_API_KEY';
+    // Gemini/Google/OpenWiki-generic keys are also accepted as a fallback so
+    // an old config written before OPENWIKI_PROVIDER existed still resolves.
+    const existingGemini = existingEnv[existingKeyEnvName] || existingEnv['GEMINI_API_KEY'] || existingEnv['GOOGLE_API_KEY'] || existingEnv['OPENWIKI_API_KEY'] || '';
+
+    if (isAutoYes) {
+        // A non-interactive run (npx -y, or an --auto submodule install) must
+        // never silently discard a provider already configured on this
+        // machine -- this used to hard-reset to an empty Google/Gemini
+        // default on every unattended re-run, wiping a previously-chosen
+        // NVIDIA/Nemotron (or any other) provider and key each time.
+        if (existingGemini || existingProvider === 'ollama') {
+            return { gemini: existingGemini, github: existingGithub, openwikiProvider: existingProvider, openwikiModel: existingModel, openwikiBaseUrl: existingBaseUrl, keyEnvName: existingKeyEnvName };
+        }
+        // Nothing configured yet on this machine: default to NVIDIA NIM /
+        // Nemotron. Google was only ever a placeholder default, never the
+        // intended house default.
+        return { gemini: "", github: existingGithub, openwikiProvider: "nvidia", openwikiModel: "nvidia/llama-3.1-nemotron-70b-instruct", openwikiBaseUrl: "https://integrate.api.nvidia.com/v1", keyEnvName: 'NVIDIA_API_KEY' };
+    }
 
     const hasKeys = Boolean(existingGemini || existingGithub);
 
@@ -1280,7 +1317,7 @@ async function promptCredentials(referenceMcpDir) {
                 openwikiProvider: existingProvider,
                 openwikiModel: existingModel,
                 openwikiBaseUrl: existingBaseUrl,
-                keyEnvName: existingProvider === 'google' ? 'GEMINI_API_KEY' : 'OPENWIKI_API_KEY'
+                keyEnvName: existingKeyEnvName
             };
         }
     }
