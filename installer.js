@@ -608,6 +608,88 @@ function initSessionManifest(existingManifest, sourceDirs) {
     _sessionHashes = buildKnownSourceHashes(sourceDirs);
 }
 
+// Skills that left the package in 4.4.2 (Plan 02: migrated to the private
+// aos-internal repo, per ~/dev/_plans/aos-2026-09-14/), by their flattened
+// directory name at a sync destination.
+//
+// This is deliberately a fixed list, not a diff against what the current
+// payload ships. A generic "anything on disk that is not in skills/ right
+// now" pass was tried first and swept up two unrelated things: skill folders
+// that MCP servers bundle inside their own package tree (e.g.
+// mcps/tdmcp/.agents/skills/...), which happen to share the literal path
+// segment "skills" but belong to a different install entirely; and skills
+// under skills/workspace_agents/, which syncSkillsToGlobalHarnesses already
+// deliberately excludes from the six global destinations, so a stray global
+// copy of one says nothing about whether it is safe to delete. Both are real
+// cleanup opportunities, but they are a separate investigation, not a side
+// effect of this migration's beta test.
+const SKILLS_REMOVED_IN_4_4_2 = new Set([
+    'bdbsaastraining', 'bdb-dev-os-skill', 'bdbsaashost', 'bdb-ecosystem-health', 'bdbsaas-ops',
+]);
+
+// The exact roots syncSkillsToGlobalHarnesses and the Gemini/Antigravity
+// config-skills path write into. Pruning only touches a manifest entry whose
+// path starts under one of these -- never one that merely contains a
+// "skills" segment somewhere deeper, which is what let the MCP-bundle and
+// workspace_agents cases above leak in during testing.
+function globalSkillDestRoots() {
+    return [
+        path.join(homeDir, '.agents', 'skills'),
+        path.join(homeDir, '.claude', 'skills'),
+        path.join(homeDir, '.codex', 'skills'),
+        path.join(homeDir, '.cursor', 'skills'),
+        path.join(homeDir, '.roo', 'skills'),
+        path.join(geminiDir, 'config', 'skills'),
+    ];
+}
+
+// syncSkillsToGlobalHarnesses (and its sibling copy loops) only ever add or
+// update -- nothing in that path ever deletes a skill that the current
+// payload no longer ships. That is fine for new skills and updated ones, but
+// it means a skill removed from a release stays on every user's disk
+// forever, through every future update, because nothing after the removal
+// ever looks at what is on disk that no longer has a source. This walks the
+// install manifest -- which already has one entry per file this installer
+// has ever placed -- for the specific skills 4.4.2 removed, under the six
+// known global skill roots, and deletes them. A user-modified file is backed
+// up first, the same way resolveFileConflict backs up a user edit it is
+// about to overwrite, rather than silently deleting local changes.
+function pruneRemovedSkills(manifest) {
+    if (!manifest) return;
+    const roots = globalSkillDestRoots();
+
+    const staleDirs = new Set();
+    let removedFiles = 0;
+    for (const targetPath of Object.keys(manifest)) {
+        const root = roots.find((r) => targetPath.startsWith(r + path.sep));
+        if (!root) continue;
+        const skillDirName = targetPath.slice(root.length + 1).split(path.sep)[0];
+        if (!SKILLS_REMOVED_IN_4_4_2.has(skillDirName)) continue;
+
+        if (fs.existsSync(targetPath)) {
+            const diskHash = computeFileHash(targetPath);
+            const manifestEntry = manifest[targetPath];
+            if (diskHash !== null && manifestEntry && diskHash !== manifestEntry.sha256) {
+                const bakPath = `${targetPath}.${timestamp}.bak`;
+                try { fs.copyFileSync(targetPath, bakPath); } catch (e) { logDebug(e, 'prune-removed-skill backup'); }
+                log.warn(`[manifest] Retired skill left a user-edited file, backed up to ${bakPath} instead of deleting it.`);
+            } else {
+                try { fs.unlinkSync(targetPath); removedFiles++; } catch (e) { logDebug(e, 'prune-removed-skill unlink'); }
+            }
+            staleDirs.add(path.join(root, skillDirName));
+        }
+        delete manifest[targetPath];
+    }
+
+    for (const dir of staleDirs) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { logDebug(e, 'prune-removed-skill rmdir'); }
+    }
+
+    if (staleDirs.size > 0) {
+        log.step(`Removed ${removedFiles} file(s) from ${staleDirs.size} retired skill install(s) no longer shipped.`);
+    }
+}
+
 function flushSessionManifest() {
     if (_sessionManifest) saveInstallManifest(_sessionManifest);
 }
@@ -3464,6 +3546,7 @@ async function runQuickUpdate(installState) {
         }
     }
     syncSkillsToGlobalHarnesses(excludeSkills);
+    pruneRemovedSkills(_sessionManifest);
     s.stop('Skills refreshed');
 
     // Everything injectHarnessRules() delivers -- GEMINI.md, the dispatcher
@@ -3868,6 +3951,7 @@ async function main() {
     }
 
     syncSkillsToGlobalHarnesses(excludeSkills);
+    pruneRemovedSkills(_sessionManifest);
     s.stop('Skills installed.');
 
     injectHarnessRules();
