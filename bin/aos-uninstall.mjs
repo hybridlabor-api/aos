@@ -50,7 +50,20 @@ const MODULE_DIRS = ['memB', 'bdb-synapse', 'bdb-os-remote', 'bdb-dev-creator-ex
   'bdb-dev-tool-installer',
   'bdb-agent-orchestrator',      // AO
   'bdb-os-agent-workspace',      // AO's archived predecessor, if still lying around
+  'bdb-dev-optimized-agent-skills', // AOS's own core payload cache, when a "from source" or non-npx run left one behind
 ].map((m) => h('.agents', m));
+
+// installer.js's detectInstallState() treats any of these as proof AOS is
+// still installed, independently of the manifest -- a leftover copy after
+// this uninstall runs was reported as "Current & Up-to-date" on the very
+// next launch, with the manifest already gone. Keep this list in exact sync
+// with the `legacyMarkers` array in installer.js's detectInstallState().
+const LEGACY_MARKERS = [
+  h('.agents', 'AGENTS.md'),
+  h('.gemini', 'config', 'skills', 'startcycle', 'SKILL.md'),
+  h('.agents', 'skills', 'startcycle', 'SKILL.md'),
+  h('.claude', 'skills', 'startcycle', 'SKILL.md'),
+];
 
 const sha256 = (file) => {
   try { return createHash('sha256').update(readFileSync(file)).digest('hex'); }
@@ -77,13 +90,14 @@ function plan() {
     .filter((a) => existsSync(a.plist));
 
   const modules = MODULE_DIRS.filter(existsSync);
+  const legacy = LEGACY_MARKERS.filter(existsSync);
   const data = PURGE ? DATA_PATHS.filter((d) => existsSync(d.path)) : [];
 
-  return { manifest, ours, edited, gone, agents, modules, data };
+  return { manifest, ours, edited, gone, agents, modules, legacy, data };
 }
 
 function describe(p) {
-  const { manifest, ours, edited, gone, agents, modules, data } = p;
+  const { manifest, ours, edited, gone, agents, modules, legacy, data } = p;
 
   if (!manifest) {
     console.log('Kein Installations-Manifest unter ' + tilde(MANIFEST) + '.');
@@ -109,6 +123,11 @@ function describe(p) {
   if (modules.length) {
     console.log('\nModule:');
     for (const m of modules) console.log(`    ${tilde(m)}`);
+  }
+  if (legacy.length) {
+    console.log(`\nInstallations-Marker (${legacy.length}) -- ohne diese hält die nächste`);
+    console.log('  Installation AOS für bereits aktuell installiert:');
+    for (const l of legacy) console.log(`    ${tilde(l)}`);
   }
 
   console.log('\nBleibt erhalten:');
@@ -140,7 +159,7 @@ function dirSize(p) {
 
 // ------------------------------------------------------------------ execute
 function execute(p) {
-  const { ours, edited, agents, modules, data } = p;
+  const { ours, edited, agents, modules, legacy, data } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
   let removed = 0, backed = 0;
 
@@ -160,6 +179,9 @@ function execute(p) {
 
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
   if (modules.length) console.log(`  ${modules.length} Module entfernt`);
+
+  for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
+  if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);
 
   // Only the BDB hook entries leave settings.json; everything else in it is
   // the user's and must survive an uninstall exactly as it survives an install.

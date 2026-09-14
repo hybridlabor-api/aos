@@ -3405,15 +3405,26 @@ function generateAndOpenLaunchpad() {
 
     const filePath = path.join(os.homedir(), '.agents', 'bdb-launchpad.html');
     fs.writeFileSync(filePath, html, 'utf-8');
+    const warnOpenFailed = (e) => log.warn(`Could not open the dashboard automatically (${e.message}). Open it yourself: ${filePath}`);
     try {
+        let child;
         if (process.platform === 'darwin') {
-            spawn('open', [filePath], { detached: true, stdio: 'ignore' }).unref();
+            child = spawn('open', [filePath], { detached: true, stdio: 'ignore' });
         } else if (process.platform === 'win32') {
-            spawn('cmd.exe', ['/c', 'start', '""', filePath], { detached: true, stdio: 'ignore' }).unref();
+            // cmd.exe /c start has a title-vs-path quoting quirk when the
+            // arguments come from spawn's argv array rather than a real shell --
+            // on a real Windows test run it silently opened nothing, and the
+            // failure was invisible: spawn() reports a bad launch asynchronously
+            // via 'error', not by throwing, so the try/catch around this call
+            // could never have caught it regardless of --verbose. explorer.exe
+            // on a plain file path has no title argument to misparse.
+            child = spawn('explorer', [filePath], { detached: true, stdio: 'ignore' });
         } else {
-            spawn('xdg-open', [filePath], { detached: true, stdio: 'ignore' }).unref();
+            child = spawn('xdg-open', [filePath], { detached: true, stdio: 'ignore' });
         }
-    } catch (e) { logDebug(e, 'launchpad open'); }
+        child.on('error', warnOpenFailed);
+        child.unref();
+    } catch (e) { warnOpenFailed(e); }
 }
 
 async function universalHarnessSync(primaryMcpConfigPath) {
