@@ -13,7 +13,7 @@ const SKILLS = join(REPO, 'skills');
 
 const CATEGORIES = new Set([
   'design-ui-ux', 'engineering-method', 'media-eventtech',
-  'bdb-core', 'saas-ops', 'library',
+  'bdb-core', 'saas-ops', 'library', 'engineering-hardware',
 ]);
 const REQUIRED = ['name', 'description', 'category'];
 

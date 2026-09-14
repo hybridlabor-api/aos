@@ -184,6 +184,7 @@
 #### 🔩 Engineering & Hardware
 | Skill Name | Description |
 |------------|-------------|
+| `godmode-hardware-pcb` | Architectural authority for electrical schematics, PCB layout, KiCad projects, and OpenSCAD enclosures — trace geometry, impedance, stackup, and DFM/DRC/ERC sign-off. Use when designing or reviewing physical hardware before it goes to fabrication. |
 | `code-first-hardware-design` | Programmatic schematic capture, circuit synthesis (SKiDL, text netlists, S-expressions), and parametric 3D CAD enclosure co-design (OpenSCAD/BOSL2). Use when generating circuits in code, exporting netlists, scripting KiCad schematics, or designing 3D enclosures. |
 | `pcb-constraint-definition` | Translates high-level hardware requirements into formal engineering constraints, layer stackup calculations, netclasses, and custom DRC rules for KiCad. Use when defining board constraints, stackup, impedance matching, power budgeting, or netclasses. |
 | `pcb-layout-routing-automation` | Floorplanning, component placement rules, high-speed differential pair routing, return path continuity, thermal via arrays, and keepout enforcement for KiCad PCB layouts. Use when placing footprints, routing traces, creating ground planes, or managing thermal/RF keepouts. |

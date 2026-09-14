@@ -128,12 +128,12 @@ name: exactly-the-directory-name
 description: >-
   What it does and when to reach for it. Use the folded form for
   anything longer than one line.
-category: one-of-the-five-below
+category: one-of-the-six-below
 ---
 ```
 
 `category:` must be exactly one of: `design-ui-ux`, `engineering-method`,
-`media-eventtech`, `bdb-core`, `library`.
+`media-eventtech`, `bdb-core`, `library`, `engineering-hardware`.
 
 A multi-line `description:` that is not quoted or folded will swallow the
 `category:` line below it. The value still *looks* present to `grep`; it is not
@@ -148,6 +148,7 @@ resolves scalar boundaries and catches exactly this.
 | Backend, architecture, testing | `engineering-method` | software-architecture, test-driven-development, systematic-debugging |
 | Show control, media, 3D | `media-eventtech` | godmode-eventtech, threejs-skills, MCP_Manage |
 | Pipeline and agent infrastructure | `bdb-core` | startcycle, startcycle-graph, startcycle-graph-user |
+| Electrical, PCB, physical hardware design | `engineering-hardware` | godmode-hardware-pcb, code-first-hardware-design, pcb-layout-routing-automation |
 | Language/framework specifics | `library` | typescript-pro, prisma-expert, nextjs-best-practices |
 
 Prefer the narrowest matching category. Do not pull a `library` skill for a task

@@ -309,8 +309,9 @@ Resolve and Premiere are interchangeable at this level: pick whichever is actual
 
 Use these for schematic capture, PCB layout, and physical hardware design (KiCad, OpenSCAD).
 
-* **Top Picks:** `code-first-hardware-design`, `pcb-constraint-definition`
+* **Top Picks:** `godmode-hardware-pcb`, `code-first-hardware-design`, `pcb-constraint-definition`
 
+* **Architectural authority**: `godmode-hardware-pcb` — enforces IPC-standard trace/impedance/stackup math and the headless ERC/DRC/DFM sign-off gate across the skills below; load it before starting schematic or layout work.
 * **Circuit synthesis & enclosures**: `code-first-hardware-design` — programmatic schematic capture (SKiDL, netlists, S-expressions) and parametric 3D CAD enclosure co-design (OpenSCAD/BOSL2).
 * **Constraints & stackup**: `pcb-constraint-definition` — translates hardware requirements into layer stackup, netclasses, impedance matching, and custom DRC rules before layout starts.
 * **Layout & routing**: `pcb-layout-routing-automation` — floorplanning, component placement, high-speed differential pair routing, thermal via arrays, and keepout enforcement.
