@@ -694,6 +694,32 @@ function flushSessionManifest() {
     if (_sessionManifest) saveInstallManifest(_sessionManifest);
 }
 
+// skills/global_legacy/ has not existed in the shipped payload for a long
+// time -- the three `if (dir === 'global_legacy')` copy branches elsewhere in
+// this file have been dead code ever since, since that name never appears in
+// a fresh fs.readdirSync(skillsBase). Nothing populates a fresh
+// targetLegacyDir any more, but nothing ever removed an OLD one either: a
+// real Windows install this session still had 126 stale legacy skill copies
+// sitting in .codex/skills/legacy, indexed alongside the current top-level
+// copies of the same skills by the harness's own skill picker -- the
+// "duplicate skills" a live test reported. Since the source category is
+// permanently gone, an existing legacy dir is unconditionally obsolete, not
+// merely unmanaged: retire it instead of recreating an eternally-empty
+// placeholder for it.
+function retireObsoleteLegacyDir(targetLegacyDir) {
+    if (!targetLegacyDir || !fs.existsSync(targetLegacyDir)) return;
+    if (fs.existsSync(path.join(srcDir, 'skills', 'global_legacy'))) {
+        fs.mkdirSync(targetLegacyDir, { recursive: true });
+        return;
+    }
+    try {
+        fs.rmSync(targetLegacyDir, { recursive: true, force: true });
+        log.step(`Removed retired legacy skill copies at ${targetLegacyDir} (global_legacy has not shipped in a long time).`);
+    } catch (e) {
+        logDebug(e, 'retire legacy dir');
+    }
+}
+
 function resolveMcpsArg(availableMcps) {
     const requested = mcpsArg.split(',').map(s => s.trim()).filter(Boolean);
     const wantsNone = requested.some(r => ['none', 'core', 'core-only'].includes(r.toLowerCase()));
@@ -911,13 +937,23 @@ function detectInstallState() {
     }
 
     const currentVersion = pkg.version || '3.9.6';
-    const updateAvailable = isInstalled && (localVersion !== currentVersion);
+    // Was a bare !== -- any version string difference counted as "update
+    // available", downgrade included. A real Windows session ran `@latest`
+    // (resolving to the actual latest stable, 4.4.1) against a machine
+    // already on 4.4.2-beta.3 and the installer silently treated dropping two
+    // versions the same as a normal update -- no distinction, no warning.
+    // isNewerVersion() already exists and already handles prerelease
+    // ordering correctly; this just uses it in both directions instead of
+    // only for the npm-registry freshness check it was written for.
+    const versionChanged = isInstalled && localVersion !== currentVersion;
+    const isDowngrade = versionChanged && isNewerVersion(currentVersion, localVersion);
+    const updateAvailable = versionChanged && !isDowngrade;
 
     // Extend: also load the file-level install manifest so the caller can
     // seed manifest-aware writes during this same session.
     const installManifest = loadInstallManifest();
 
-    return { isInstalled, localVersion, currentVersion, updateAvailable, installedModules, manifest, installManifest };
+    return { isInstalled, localVersion, currentVersion, updateAvailable, isDowngrade, installedModules, manifest, installManifest };
 }
 
 function saveManifest(data = {}) {
@@ -3542,7 +3578,7 @@ async function runQuickUpdate(installState) {
 
     fs.mkdirSync(backupDir, { recursive: true });
     fs.mkdirSync(paths.targetSkillDir, { recursive: true });
-    fs.mkdirSync(paths.targetLegacyDir, { recursive: true });
+    retireObsoleteLegacyDir(paths.targetLegacyDir);
     fs.mkdirSync(paths.targetWorkspaceDir, { recursive: true });
 
     // Initialize manifest for this update session.
@@ -3968,7 +4004,7 @@ async function main() {
 
         installStep(`create the skill target directories (${t.value})`, () => {
             fs.mkdirSync(t.targetSkillDir, { recursive: true });
-            fs.mkdirSync(t.targetLegacyDir, { recursive: true });
+            retireObsoleteLegacyDir(t.targetLegacyDir);
             fs.mkdirSync(t.targetWorkspaceDir, { recursive: true });
         }, 'The skill copies below will most likely be skipped as well.');
 
