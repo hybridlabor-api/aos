@@ -18,7 +18,9 @@
 
 > **Supercharging AI coding agents with 169 hyper-curated skills, 21 local MCP wrappers, and a runnable multi-agent dispatcher graph.**
 
-Welcome to **BDB Agent OS — AOS v4.0.0**: 169 curated skills, 21 local MCP wrappers, and a dispatcher graph that turns them into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
+Welcome to **BDB Agent OS — AOS**: 169 curated skills, 21 local MCP wrappers, an optional Hardware & PCB design module, and a dispatcher graph that turns all of it into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
+
+**Current release:** `v4.4.2` (beta channel) — see the NPM badge above for the exact published version.
 
 It is harness-neutral by design, not "optimized for one tool with others as an afterthought": the dispatcher graph runs on Claude Code's Dynamic Workflows, the same skills and MCP configuration install natively into **Google Antigravity, ChatGPT Codex / Codex CLI, Claude Desktop, Cursor, Aider, Roo Code, Cline, and Windsurf**, and the lightweight `/startcycle-graph-user` variant falls back to Claude Code's own subagents on any machine that has none of the above installed.
 
@@ -60,10 +62,11 @@ The installer features a fully automated Universal Sync engine. It scans your sy
 - **Local Project Harness:** Instead of installing globally into `$HOME`, drop the `.agents` contract, the gate hooks and the dispatcher workflow directly into a single project — `npx @hybridlabor-api/aos --project-harness`.
 
 ### 🧩 Ecosystem Integrations
-This package acts as the bridge to three major upstream capabilities:
-- **BDB OS Agent Workspace:** The Orchestration Layer for parallel AI agents. Start multiple isolated agent sessions via Git-Worktrees with live terminal control, automatic CI/CD feedback loops, and PR review routing.
+This package acts as the bridge to four major upstream capabilities:
+- **BDB AO — Agent Orchestrator:** The orchestration layer for parallel AI agents. Start multiple isolated agent sessions via Git worktrees with live terminal control, automatic CI/CD feedback loops, and PR review routing. Ships one prebuilt binary today (macOS, Apple Silicon); other platforms build from source. Supersedes the now-archived `bdb-os-agent-workspace` repository — do not install that one.
 - **BDB Creator Extension:** The heavy-lifting Agentic Media Pipeline. Gives agents local ComfyUI MCP capabilities (FLUX, SDXL), Image-to-3D generation (TripoSR, TRELLIS), and automated video production through OpenMontage and Remotion.
 - **BDB Synapse:** 3D Codebase Visualization & Agent Session Replay. Renders your repository as an interactive code city and replays agent sessions as light trails, showing which files were read, edited, and where friction occurred.
+- **BDB Hardware & PCB:** Optional electrical/PCB design module. Two local MCP servers (KiCad, OpenSCAD) exposing 55 tools, plus 5 skills covering schematic capture, layout/routing, and DFM sign-off. Install standalone or via this installer's optional-module picker; paired with the core `godmode-hardware-pcb` persona.
 
 ### 🔗 Recommended Companion Plugins (Claude Code)
 Neither of these ships inside this package — they are independent, community-maintained
@@ -110,9 +113,9 @@ These skills are precision-engineered to ensure agents waste no time on redundan
 
 ---
 
-### 🛡️ The 6 Godmodes (Apex Layer)
+### 🛡️ The 7 Godmodes (Apex Layer)
 
-Instead of letting agents wander through generic instructions, the top-tier of this repository enforces six **Hyper-Curated Godmodes**. Three of them are not just skills — they are the literal build/ship nodes the [dispatcher graph](#-aos-the-dispatcher-graph) invokes (`UI_UX`, `Engineering`, `Shipping`); the other three cover 3D, media and event-tech work the same way.
+Instead of letting agents wander through generic instructions, the top-tier of this repository enforces seven **Hyper-Curated Godmodes**. Three of them are not just skills — they are the literal build/ship nodes the [dispatcher graph](#-aos-the-dispatcher-graph) invokes (`UI_UX`, `Engineering`, `Shipping`); the other four cover 3D, media, event-tech, and hardware/PCB work the same way.
 
 | Godmode | Purpose |
 |---------|---------|
@@ -122,6 +125,7 @@ Instead of letting agents wander through generic instructions, the top-tier of t
 | **`godmode-eventtech`** | Architectural authority for real-time performance, signal flow, protocol routing, and hardware constraints in live show and event technology environments. |
 | **`godmode-3d-creation`** | MCP-First master orchestration for 3D generation, mesh reconstruction, and parametric CAD engineering. Interfaces with local 3D engines and MCP tools. |
 | **`godmode-media-creation`** | MCP-First master orchestration for all media creation pipelines (Video, Timeline Assembly, Beat Sync, Motion Design). Directly interfaces with local media engines and MCP tools. |
+| **`godmode-hardware-pcb`** | Architectural authority for electrical schematics, PCB layout, and OpenSCAD enclosure co-design. Enforces IPC-standard trace/impedance math and a headless KiCad ERC/DRC/DFM gate before anything ships to fabrication. Ships in core; the KiCad/OpenSCAD skills and MCP servers it drives live in the optional [**BDB Hardware & PCB**](#-bdb-hardware--pcb-electrical--enclosure-design-module) module. |
 
 ### 💻 Beyond Events: Full-Stack Software & Web Agents
 While heavily optimized for the creative tech industry, these skills are deeply rooted in core software engineering:
@@ -627,14 +631,17 @@ tail -f ~/.openwiki/daemon.log
 
 ---
 
-## 🖥️ BDB OS Agent Workspace: Parallel Multi-Agent Orchestration
+## 🖥️ BDB AO — Agent Orchestrator: Parallel Multi-Agent Orchestration
 
-[![Repo](https://img.shields.io/badge/repo-bdb--os--agent--workspace-blue.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
-[![harness](https://img.shields.io/badge/orchestration-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
-[![terminal](https://img.shields.io/badge/terminal-Live%20Control-purple.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
+[![Repo](https://img.shields.io/badge/repo-bdb--agent--orchestrator-blue.svg)](https://github.com/hybridlabor-api/bdb-agent-orchestrator)
+[![harness](https://img.shields.io/badge/orchestration-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-agent-orchestrator)
+[![terminal](https://img.shields.io/badge/terminal-Live%20Control-purple.svg)](https://github.com/hybridlabor-api/bdb-agent-orchestrator)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**BDB OS Agent Workspace** is the Desktop Meta-Harness and Orchestration Layer designed for parallel AI agents. It enables developers to spawn, manage, and coordinate multiple isolated agent sessions concurrently across independent Git Worktrees with real-time terminal feedback loops and automated PR review routing.
+**BDB AO** (`@hybridlabor-api/bdb-agent-orchestrator`, CLI: `ao`) is the Desktop Meta-Harness and Orchestration Layer designed for parallel AI agents. It enables developers to spawn, manage, and coordinate multiple isolated agent sessions concurrently across independent Git Worktrees with real-time terminal feedback loops and automated PR review routing.
+
+> [!NOTE]
+> AO replaces the earlier **BDB OS Agent Workspace** (`bdb-os-agent-workspace`). That repository is archived and its final release predates the archiving — it ships with a known defect in its CI/CD feedback loop. The AOS installer only ever offers AO; do not clone the old repo.
 
 ```mermaid
 flowchart TD
@@ -667,8 +674,9 @@ flowchart TD
 </details>
 
 <details>
-<summary><strong>🔌 Supported Harnesses & Direct Repository Link</strong></summary>
+<summary><strong>🔌 Platform Support, Supported Harnesses & Direct Repository Link</strong></summary>
 
+- **Platform Support:** Ships one prebuilt binary today — macOS, Apple Silicon (arm64). Windows and Linux sources are in the package but not prebuilt; build from source (`go build`) on those platforms.
 - **Supported Agent Harnesses:**
   - **Google Antigravity / AGY CLI**
   - **Claude Desktop & Claude Code**
@@ -676,10 +684,10 @@ flowchart TD
   - **Roo Code & Cline**
   - **ChatGPT Codex / Codex CLI**
   - **Aider & VS Code**
-- **Direct Repository:** Access the workspace orchestrator at [github.com/hybridlabor-api/bdb-os-agent-workspace](https://github.com/hybridlabor-api/bdb-os-agent-workspace).
+- **Direct Repository:** Access the orchestrator at [github.com/hybridlabor-api/bdb-agent-orchestrator](https://github.com/hybridlabor-api/bdb-agent-orchestrator).
 
 ```bash
-git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
+git clone https://github.com/hybridlabor-api/bdb-agent-orchestrator.git
 ```
 </details>
 
@@ -801,6 +809,64 @@ git clone https://github.com/hybridlabor-api/bdb-dev-creator-extension.git
 npx @hybridlabor-api/bdb-os-remote installer
 ```
 </details>
+
+---
+
+## ⚡ BDB Hardware & PCB: Electrical & Enclosure Design Module
+
+[![Repo](https://img.shields.io/badge/repo-bdb--hardware--pcb-blue.svg)](https://github.com/hybridlabor-api/bdb-hardware-pcb)
+[![tools](https://img.shields.io/badge/MCP%20tools-55-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-hardware-pcb)
+[![KiCad](https://img.shields.io/badge/KiCad-9%20%26%2010-orange.svg)](https://www.kicad.org/)
+[![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
+**BDB Hardware & PCB** (`@hybridlabor-api/bdb-hardware-pcb`) brings electrical
+schematic capture, PCB layout/routing, DFM sign-off, and parametric 3D
+enclosure design into the agent loop — governed by the core
+[`godmode-hardware-pcb`](#-the-7-godmodes-apex-layer) persona, which owns the
+IPC-standard trace/impedance math and the headless KiCad ERC/DRC/DFM gate no
+board is allowed to skip on its way to fabrication.
+
+```mermaid
+flowchart LR
+    A[Agent] -->|MCP| B[kicad-mcp-server]
+    A -->|MCP| C[openscad-mcp-server]
+    B --> D[Schematic Capture & ERC]
+    B --> E[PCB Layout & Routing]
+    B --> F[DRC / DFM / Gerber Sign-Off]
+    C --> G[Parametric Enclosure — OpenSCAD/BOSL2]
+    D & E & F & G --> H[Fabrication-Ready Output]
+```
+
+### Two MCP Servers, 55 Tools
+- **`kicad-mcp-server`** — 47 tools over stdio JSON-RPC for schematic capture, ERC, PCB layout, routing, DRC, and Gerber/BOM/CPL export. Targets **KiCad 9 & 10** via `kicad-cli`.
+- **`openscad-mcp-server`** — 8 tools for parametric 3D enclosure and mechanical co-design (OpenSCAD + BOSL2).
+
+### 5 Skills (`category: engineering-hardware`)
+
+| Skill | Description |
+|-------|-------------|
+| `schematic-datasheet-analysis` | Electrical rule auditing, datasheet grounding, pinout validation, power tree tracing, and negative-evidence analysis for KiCad schematics. |
+| `pcb-constraint-definition` | Translates high-level hardware requirements into formal engineering constraints, layer stackup, netclasses, and custom DRC rules for KiCad. |
+| `pcb-layout-routing-automation` | Floorplanning, placement rules, high-speed differential pair routing, return-path continuity, thermal via arrays, and keepout enforcement. |
+| `pcb-validation-dfm-signoff` | Automated DRC/ERC verification, SI/PI screening, fab-house DFM/DFA compliance, and production release sign-off. |
+| `code-first-hardware-design` | Programmatic schematic capture and circuit synthesis (SKiDL, text netlists, S-expressions) plus parametric 3D enclosure co-design. |
+
+### Install
+
+Same optional-module mechanism as `bdb-synapse` and
+`bdb-dev-creator-extension` — the main AOS installer downloads and runs it for
+you, or install it standalone on macOS, Linux, or Windows:
+
+```bash
+npx @hybridlabor-api/bdb-hardware-pcb
+```
+
+Supported harnesses: **Claude Code**, **OpenAI Codex**, and **Google
+Antigravity (Gemini)**. Verify a local install with:
+
+```bash
+./scripts/test_mcp_connection.sh --all
+```
 
 ---
 

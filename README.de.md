@@ -52,9 +52,11 @@ Der Installer verfügt jetzt über eine vollautomatische Universal Sync Engine. 
 - **Tier 9 - Local Project Harness:** Anstatt global in `$HOME` zu installieren, können Entwickler den `.agents` Contract und die Hooks nun direkt in isolierte Projektordner injizieren.
 
 ### 🧩 Ecosystem-Integrationen (v4.0.0)
-Dieses Paket dient als Brücke zu zwei gewaltigen vorgelagerten Funktionen (verfügbar als direkte Installationsziele über den Installer):
-- **BDB OS Agent Workspace:** Die Orchestrierungsschicht für parallele KI-Agenten. Starten Sie mehrere isolierte Agenten-Sitzungen über Git-Worktrees mit Live-Terminalsteuerung, automatischen CI/CD-Feedbackschleifen und PR-Review-Routing.
+Dieses Paket dient als Brücke zu vier gewaltigen vorgelagerten Funktionen (verfügbar als direkte Installationsziele über den Installer):
+- **BDB AO — Agent Orchestrator:** Die Orchestrierungsschicht für parallele KI-Agenten. Starten Sie mehrere isolierte Agenten-Sitzungen über Git-Worktrees mit Live-Terminalsteuerung, automatischen CI/CD-Feedbackschleifen und PR-Review-Routing. Ships mit einem vorkompilierten Binary (macOS, Apple Silicon); andere Plattformen bauen aus Quellcode. Setzt die jetzt archivierte `bdb-os-agent-workspace` Vorversion außer Kraft — installieren Sie die alte nicht.
 - **BDB Creator Extension:** Die leistungsstarke Agentic Media Pipeline. Verleiht Agenten lokale ComfyUI MCP-Fähigkeiten (FLUX, SDXL), Image-to-3D-Generierung (TripoSR, TRELLIS) und automatisierte Videoproduktion über OpenMontage und Remotion.
+- **BDB Synapse:** 3D-Codebase-Visualisierung & Agent-Session-Replay. Renderiert Ihr Repository als interaktive Code-Stadt und spielt Agent-Sessions als Lichtspur auf, die anzeigt, welche Dateien gelesen, bearbeitet und wo Friktion auftrat.
+- **BDB Hardware & PCB:** Optionales Electrical-/PCB-Design-Modul. Zwei lokale MCP-Server (KiCad, OpenSCAD) mit 55 Tools, plus 5 Skills für Schaltplan-Capture, Layout/Routing und DFM-Freigabe. Installieren Sie eigenständig oder über den optionalen Modul-Picker des Installers; gekoppelt mit der Core-Persona `godmode-hardware-pcb`.
 
 
 ### 🔗 Empfohlene Companion-Plugins (Claude Code)
@@ -86,8 +88,8 @@ Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Na
 
 Diese Skills sind präzise optimiert, damit Agenten keine Zeit mit redundanten Aufgaben verschwenden, sondern mit maximaler Autonomie, strengen Architekturvorgaben und robustem Kontextbewusstsein agieren.
 
-### 🛡️ Die 6 Godmodes (Apex Layer)
-Anstatt Agenten durch generische Anweisungen irren zu lassen, setzt die oberste Ebene dieses Repositories sechs **Hochkuratierte Godmodes** durch. Diese fungieren als ultimative Wächter für Ihre Codebasis:
+### 🛡️ Die 7 Godmodes (Apex Layer)
+Anstatt Agenten durch generische Anweisungen irren zu lassen, setzt die oberste Ebene dieses Repositories sieben **Hochkuratierte Godmodes** durch. Diese fungieren als ultimative Wächter für Ihre Codebasis:
 - **`godmode-engineering`**: Erzwingt Domain-Driven Design, strenge TypeScript-Prüfungen, Clean Architecture und systematisches Debugging.
 - **`godmode-ui-ux`**: Der Frontend-Goldstandard. Erzwingt BDB "Anti-Slop"-Prinzipien, Barrierefreiheit (Accessibility) und fluide Bewegungsdynamiken.
 - **`godmode-shipping`**: Der finale Wächter für Production Releases. Erzwingt Spec-Driven Development, Pre-Launch-Prüfungen und sichere Rollbacks.
@@ -580,14 +582,17 @@ tail -f ~/.openwiki/daemon.log
 
 ---
 
-## 🖥️ BDB OS Agent Workspace: Parallele Multi-Agenten-Orchestrierung
+## 🖥️ BDB AO — Agent Orchestrator: Parallele Multi-Agenten-Orchestrierung
 
-[![Repo](https://img.shields.io/badge/repo-bdb--os--agent--workspace-blue.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
-[![harness](https://img.shields.io/badge/orchestration-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
-[![terminal](https://img.shields.io/badge/terminal-Live%20Control-purple.svg)](https://github.com/hybridlabor-api/bdb-os-agent-workspace)
+[![Repo](https://img.shields.io/badge/repo-bdb--agent--orchestrator-blue.svg)](https://github.com/hybridlabor-api/bdb-agent-orchestrator)
+[![harness](https://img.shields.io/badge/orchestration-Git%20Worktrees-brightgreen.svg)](https://github.com/hybridlabor-api/bdb-agent-orchestrator)
+[![terminal](https://img.shields.io/badge/terminal-Live%20Control-purple.svg)](https://github.com/hybridlabor-api/bdb-agent-orchestrator)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**BDB OS Agent Workspace** ist der Desktop Meta-Harness und die Orchestrierungsschicht, entwickelt für parallele KI-Agenten. Es ermöglicht Entwicklern, mehrere isolierte Agenten-Sitzungen gleichzeitig über unabhängige Git-Worktrees hinweg zu starten, zu verwalten und zu koordinieren, inklusive Echtzeit-Terminal-Feedback-Schleifen und automatisiertem PR-Review-Routing.
+**BDB AO** (`@hybridlabor-api/bdb-agent-orchestrator`, CLI: `ao`) ist der Desktop Meta-Harness und die Orchestrierungsschicht, entwickelt für parallele KI-Agenten. Es ermöglicht Entwicklern, mehrere isolierte Agenten-Sitzungen gleichzeitig über unabhängige Git-Worktrees hinweg zu starten, zu verwalten und zu koordinieren, inklusive Echtzeit-Terminal-Feedback-Schleifen und automatisiertem PR-Review-Routing.
+
+> [!NOTE]
+> AO ersetzt den früheren **BDB OS Agent Workspace** (`bdb-os-agent-workspace`). Dieses Repository ist archiviert, und sein letztes Release stammt von vor der Archivierung — es enthält einen bekannten Defekt in seiner CI/CD-Feedback-Schleife. Der AOS-Installer bietet ausschließlich AO an; das alte Repository nicht klonen.
 
 ```mermaid
 flowchart TD
@@ -620,8 +625,9 @@ flowchart TD
 </details>
 
 <details>
-<summary><strong>🔌 Unterstützte Harnesses & Direkter Repository-Link</strong></summary>
+<summary><strong>🔌 Plattform-Support, Unterstützte Harnesses & Direkter Repository-Link</strong></summary>
 
+- **Plattform-Support:** Liefert heute ein vorgebautes Binary — macOS, Apple Silicon (arm64). Windows- und Linux-Quellen liegen im Paket, sind aber nicht vorgebaut; auf diesen Plattformen aus dem Quellcode bauen (`go build`).
 - **Unterstützte Agenten-Harnesses:**
   - **Google Antigravity / AGY CLI**
   - **Claude Desktop & Claude Code**
@@ -629,10 +635,10 @@ flowchart TD
   - **Roo Code & Cline**
   - **ChatGPT Codex / Codex CLI**
   - **Aider & VS Code**
-- **Direktes Repository:** Greifen Sie auf den Workspace-Orchestrator unter [github.com/hybridlabor-api/bdb-os-agent-workspace](https://github.com/hybridlabor-api/bdb-os-agent-workspace) zu.
+- **Direktes Repository:** Greifen Sie auf den Orchestrator unter [github.com/hybridlabor-api/bdb-agent-orchestrator](https://github.com/hybridlabor-api/bdb-agent-orchestrator) zu.
 
 ```bash
-git clone https://github.com/hybridlabor-api/bdb-os-agent-workspace.git
+git clone https://github.com/hybridlabor-api/bdb-agent-orchestrator.git
 ```
 </details>
 

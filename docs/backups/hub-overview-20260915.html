@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BDB Fleet Hub • Identity Portal Selection</title>
+  <link rel="icon" type="image/svg+xml" href="/brand/bdb-favicon-white.svg">
+  <link rel="alternate icon" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: #07080c;
+      color: #f1f5f9;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: absolute;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(155, 48, 196, 0.12) 0%, rgba(14, 165, 233, 0.05) 50%, transparent 70%);
+      filter: blur(80px);
+      pointer-events: none;
+    }
+    .container {
+      width: 100%;
+      max-width: 480px;
+      background: rgba(17, 19, 26, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      padding: 40px 36px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(16px);
+      position: relative;
+      z-index: 1;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #38bdf8;
+      margin-bottom: 20px;
+    }
+    .pulse {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 8px #38bdf8;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+    p.desc {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin-bottom: 32px;
+    }
+    .choice-group {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .choice-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-radius: 16px;
+      text-decoration: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+      position: relative;
+    }
+    .choice-aws {
+      background: rgba(155, 48, 196, 0.12);
+      border: 1px solid rgba(155, 48, 196, 0.35);
+    }
+    .choice-aws:hover {
+      background: rgba(155, 48, 196, 0.22);
+      border-color: rgba(155, 48, 196, 0.6);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px -5px rgba(155, 48, 196, 0.3);
+    }
+    .choice-gcp {
+      background: rgba(14, 165, 233, 0.08);
+      border: 1px solid rgba(14, 165, 233, 0.3);
+    }
+    .choice-gcp:hover {
+      background: rgba(14, 165, 233, 0.18);
+      border-color: rgba(14, 165, 233, 0.55);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.25);
+    }
+    .choice-info {
+      text-align: left;
+    }
+    .choice-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 3px;
+    }
+    .choice-sub {
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #94a3b8;
+    }
+    .arrow {
+      font-size: 18px;
+      color: #ffffff;
+      opacity: 0.6;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+    .choice-btn:hover .arrow {
+      transform: translateX(3px);
+      opacity: 1;
+    }
+    .footer {
+      margin-top: 32px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 11px;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .footer a {
+      color: #94a3b8;
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .footer a:hover {
+      color: #38bdf8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">
+      <span class="pulse"></span>
+      <span>BDB Zero-Trust Perimeter</span>
+    </div>
+
+    <h1>Select Identity Realm</h1>
+    <p class="desc">
+      The Fleet Operations Hub is protected by central single-sign-on. Choose your assigned identity provider to continue:
+    </p>
+
+    <div class="choice-group">
+      <a href="https://auth.awsbdb.rcentry.pro/?rd=https://hub.awsbdb.rcentry.pro/" class="choice-btn choice-aws">
+        <div class="choice-info">
+          <div class="choice-title">BDB Dev Intern (AWS)</div>
+          <div class="choice-sub">auth.awsbdb.rcentry.pro</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+      </a>
+
+      <a href="https://auth.rcentry.pro/?rd=https://hub.awsbdb.rcentry.pro/" class="choice-btn choice-gcp">
+        <div class="choice-info">
+          <div class="choice-title">rcentry.cloud (GCP / Netcup)</div>
+          <div class="choice-sub">auth.rcentry.pro</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+      </a>
+    </div>
+
+    <div class="footer">
+      <span>Step-CA SSH & TLS Enabled</span>
+      <a href="https://status.awsbdb.rcentry.pro" target="_blank">Status NOC &rarr;</a>
+    </div>
+  </div>
+</body>
+</html>
