@@ -68,8 +68,8 @@ const SERVICES = [
     // 2026-08-18) while the binary actually running was built from the current
     // fork — a version string that looked authoritative and was wrong. AO now
     // reports the version of the binary that is really running, and nothing
-    // else. Its source is git-only (hybridlabor-api/bdb-agent-orchestrator);
-    // there is no npm package to compare against.
+    // else. The published package exists, but the binary actually in place is
+    // frequently a local build from a fork branch and diverges from it.
     module: null, pkg: null,
     version: async () => {
       const bin = h('.local', 'bin', 'ao');

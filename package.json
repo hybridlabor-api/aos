@@ -62,7 +62,10 @@
     "mcps/touchdesigner-mcp/tests/**",
     "!mcps/tdmcp/training/**/data/**",
     "!assets/**/*.mp4",
-    "!assets/**/*.mov"
+    "!assets/**/*.mov",
+    "!mcps/**/queue.db*",
+    "!**/__pycache__/**",
+    "!**/*.pyc"
   ],
   "keywords": [
     "codex-plugin",

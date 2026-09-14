@@ -2301,12 +2301,12 @@ async function installMcpsForTarget(paths, ctx) {
     }
 
     const pythonMcps = [
-        { folder: 'golem-rhino-mcp', args: ['-m', 'mcp_server', '--help'] },
-        { folder: 'davinci-mcp-professional', args: ['main.py', '--help'] },
+        { folder: 'golem-rhino-mcp', args: ['-m', 'mcp_server', '--help'], uvArgs: true },
+        { folder: 'davinci-mcp-professional', args: ['main.py', '--help'], uvArgs: true },
         { folder: 'davinci-resolve-mcp-free', args: ['-r', 'requirements.txt', 'src/resolve_mcp_bridge.py', '--help'], uvArgs: true },
-        { folder: 'blender-mcp', args: ['-m', 'blender_mcp.server', '--help'] },
+        { folder: 'blender-mcp', args: ['-m', 'blender_mcp.server', '--help'], uvArgs: true },
         { folder: 'vectorworks-mcp', args: ['-r', 'requirements.txt', 'app/mcp_server.py', '--help'], uvArgs: true },
-        { folder: 'windows-computer-use-mcp', args: ['run_server.py', '--help'] }
+        { folder: 'windows-computer-use-mcp', args: ['run_server.py', '--help'], uvArgs: true }
     ];
     for (const mcp of pythonMcps.filter(m => selectedMcps.includes(m.folder))) {
         const targetFolder = path.join(mcpCodeTarget, mcp.folder);
@@ -2316,7 +2316,18 @@ async function installMcpsForTarget(paths, ctx) {
                 log.step(`[dry-run] would pre-warm Python deps for ${mcp.folder}`);
                 continue;
             }
-            spawnSync('uv', prewarmArgs, { cwd: targetFolder, stdio: 'ignore' });
+            const result = spawnSync('uv', prewarmArgs, { cwd: targetFolder, stdio: 'ignore' });
+            if (result.error) {
+                // uv itself is missing or unrunnable. That is one machine-level
+                // fact, not six per-MCP failures — say it once and stop trying.
+                log.warn(`uv could not be run (${result.error.message}) — skipping the Python prewarm for the remaining MCPs.`);
+                break;
+            }
+            if (result.status === 0) {
+                log.step(`Pre-warmed Python deps for ${mcp.folder}`);
+            } else {
+                log.warn(`Prewarm failed for ${mcp.folder}: uv exited ${result.status}. The MCP is configured but its dependencies may not resolve.`);
+            }
         }
     }
 

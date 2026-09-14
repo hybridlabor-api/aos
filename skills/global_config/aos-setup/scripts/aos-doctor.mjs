@@ -142,10 +142,11 @@ function checkAos() {
   ]) {
     if (!claimed.has(id)) continue;
     const found = findModule(dir);
-    // AO is the exception: it is built from git, not fetched from npm, so a
-    // missing module directory is expected rather than a broken install.
-    // Telling someone to re-run the installer would send them nowhere.
-    const aoNote = 'AO is built from hybridlabor-api/bdb-agent-orchestrator; there is no npm package yet, so no module directory is expected. `ao --version` is what says whether it is really there.';
+    // AO is distributed on npm as @hybridlabor-api/bdb-agent-orchestrator, but only
+    // with a prebuilt binary for macOS arm64. On all other platforms, the installer
+    // deliberately skips it and directs you to build from source, so a missing module
+    // directory is expected rather than a broken install.
+    const aoNote = 'AO is published on npm as @hybridlabor-api/bdb-agent-orchestrator with a prebuilt binary for macOS arm64 only; the installer skips it on other platforms and directs you to build from source, so a missing module directory is expected there. `ao --version` is what says whether it is really present.';
     add('aos', `module ${label}`, !!found || id === 'ao',
       found ? tilde(found)
         : id === 'ao' ? (existsSync(h('.local', 'bin', 'ao')) ? 'built from git — binary present at ~/.local/bin/ao' : 'no binary at ~/.local/bin/ao')
