@@ -8,7 +8,6 @@
     "bdb-dev-optimized-agent-skills": "installer.js",
     "bdb-agent-skills-pro": "installer.js",
     "bdb-agent-skills": "installer.js",
-    "setup-saas": "bin/setup-saas.mjs",
     "aos-plan-canvas": "skills/global_config/plan-canvas/scripts/plan-canvas.js",
     "aos-dashboard": "bin/aos-dashboard.mjs",
     "aos-config": "bin/aos-config.mjs",

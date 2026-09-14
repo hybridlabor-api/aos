@@ -867,14 +867,6 @@ Fügen Sie nur den Dispatcher-Contract (`.agents/`, die Gate-Hooks, den `/startc
 npx -y @hybridlabor-api/aos --project-harness
 ```
 
-### SaaS Workstation Bootstrapper
-
-Für die BDB Multi-Cloud Fleet: 2FA-Browser-Handshake, Step-CA-Zertifikat-Bootstrap, SSH-Konfig und FastMCP-Gateway-Injektion in jeden erkannten Editor:
-
-```bash
-npx -y @hybridlabor-api/aos setup-saas
-```
-
 ### Aus dem Quellcode (Contributing)
 
 ```bash

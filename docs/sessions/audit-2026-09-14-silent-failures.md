@@ -112,25 +112,3 @@ eleven skills, one identical sentence in ten. `synapse-integration-skill` is
    added after the `queue.db` finding above was reported as a live leak on the
    strength of a local `npm pack --dry-run`, and turned out on inspection of
    all four published versions never to have shipped.
-
----
-
-## Internal material in the public package
-
-A separate class from the above, found while checking the `queue.db` claim, and
-verified against the published 4.4.1 tarball rather than the working tree:
-
-- `skills/bdb-dev-os-skill/SKILL.md:3` describes itself as "internal maintainer
-  rules for the BDB Agent OS Ecosystem (Tim & Noah only)" and ships publicly.
-- `skills/bdbsaastraining/` is a staff onboarding curriculum for the real
-  production fleet — Step-CA SSH certificates, OIDC machine identity, container
-  provisioning. Its certificate template carries a real name, a job title and
-  the legal entity at `templates/certificate_template.html:501-502`.
-- `skills/global_config/bdbsaashost/SKILL.md` maps the fleet: hosting vendors,
-  service ports, approval-queue mechanics, decommission history.
-- `scripts/ecosystem-health-audit.js:19` hardcodes an internal folder path.
-
-Nothing here can be gated after publication. A skill's frontmatter, a runtime
-check or a permission flag is advice to an agent, not access control on bytes
-that are already in a tarball someone has downloaded. The only encapsulation
-that exists is not shipping the file.

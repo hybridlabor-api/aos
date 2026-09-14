@@ -1014,9 +1014,9 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
 // root-level leaf skill dumps into the same flat target, so each subsequent
 // one silently overwrites the previous one's SKILL.md -- found by tracing
 // why skills/bdbrainstorm/ and skills/global_config/bdbrainstorm/ both
-// existed with different content; the root-level one (and 5 siblings:
-// bdbsaastraining, github-repo, memb-ingest, bdb-dev-os-skill,
-// synapse-integration-skill) never survived a global sync intact.
+// existed with different content; the root-level one (and 3 siblings:
+// github-repo, memb-ingest, synapse-integration-skill) never survived a
+// global sync intact.
 function syncSkillEntry(fullPath, dirName, targetSkillDir, excludeSkills) {
     const isLeafSkill = fs.existsSync(path.join(fullPath, 'SKILL.md'));
     if (isLeafSkill) {
@@ -1982,17 +1982,6 @@ async function promptMemBIngestion(mcpCodeTarget) {
         }
     } else {
         log.warn('Ingestion script or python environment not found.');
-    }
-}
-
-async function promptEcosystemHealthScheduler() {
-    if (isAutoYes) return;
-    const doSchedule = pick(await askConfirm({
-        message: 'Enable automated Health Audit Cron Job (2x daily at 01:00 and 12:00)?',
-        initialValue: true
-    }));
-    if (doSchedule) {
-        log.success(`Health Audit Scheduler configured for 01:00 & 12:00. Script: ${path.join(srcDir, 'scripts', 'ecosystem-health-audit.js')}`);
     }
 }
 
@@ -3900,7 +3889,6 @@ async function main() {
     const justInstalled = await promptOptionalModules(installedModulesForPrompt) || [];
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
-    await promptEcosystemHealthScheduler();
 
     const alreadyHandled = justInstalled.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);

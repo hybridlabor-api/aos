@@ -270,14 +270,9 @@ Use these for raw problem solving and code hygiene.
 
 Specific utilities for the BDB environment.
 
-* **Top Picks:** `bdbsaashost`, `memb-skill`
+* **Top Pick:** `memb-skill`
 
-### Overlap: SaaS Ops
-* **`bdbsaas-ops`**: Retired. Do not use.
-* **`bdbsaashost`**: The active skill for managing the BDB Multi-Cloud Fleet (GCP, Oracle, Incus).
-* **`bdbsaastraining`**: For onboarding/training staff on the host engine.
-
-*Also see:* `bdb-ecosystem-health`, `bdb-dev-os-skill`, `memb-ingest`, `synapse-integration-skill`.
+*Also see:* `memb-ingest`, `synapse-integration-skill`.
 
 ---
 

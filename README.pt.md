@@ -800,14 +800,6 @@ Adicione apenas o contrato do dispatcher (`.agents/`, os hooks de portão, o flu
 npx -y @hybridlabor-api/aos --project-harness
 ```
 
-### SaaS Workstation Bootstrapper
-
-Para a Frota Multi-Cloud da BDB: Handshake 2FA no navegador, bootstrap de certificado Step-CA, configuração SSH e injeção do gateway FastMCP em todos os editores detectados:
-
-```bash
-npx -y @hybridlabor-api/aos setup-saas
-```
-
 ### A Partir da Fonte (Contribuindo)
 
 ```bash

@@ -915,14 +915,6 @@ Drop just the dispatcher contract (`.agents/`, the gate hooks, the `/startcycle-
 npx -y @hybridlabor-api/aos --project-harness
 ```
 
-### SaaS Workstation Bootstrapper
-
-For the BDB Multi-Cloud Fleet: 2FA browser handshake, Step-CA certificate bootstrap, SSH config, and FastMCP gateway injection into every detected editor:
-
-```bash
-npx -y @hybridlabor-api/aos setup-saas
-```
-
 ### From Source (Contributing)
 
 ```bash
