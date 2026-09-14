@@ -2247,7 +2247,11 @@ async function installMcpsForTarget(paths, ctx) {
             const ok = runNpmWithRetry('npm install --no-audit --no-fund', { cwd: targetFolder }, `npm install for ${mcpFolder}`);
             if (ok && (fs.existsSync(path.join(targetFolder, 'tsconfig.json')) || fs.existsSync(path.join(targetFolder, 'tsconfig.build.json')))) {
                 log.step(`Compiling TypeScript for ${mcpFolder}...`);
-                runNpmWithRetry('npm run build', { cwd: targetFolder }, `npm run build for ${mcpFolder}`);
+                const built = runNpmWithRetry('npm run build', { cwd: targetFolder }, `npm run build for ${mcpFolder}`);
+                // runNpmWithRetry already warned with the failure detail; this
+                // just makes the consequence visible now instead of only later,
+                // when the config-entry check below finds the missing dist file.
+                if (!built) log.warn(`${mcpFolder}: build failed -- its MCP config entry will be dropped if the expected output is missing.`);
             }
         }
     }
@@ -2350,6 +2354,28 @@ async function installMcpsForTarget(paths, ctx) {
         const parsedMcpConfig = JSON.parse(mcpConfigStr);
         const finalMcpServers = {};
         const availableFolders = fs.readdirSync(mcpSrcDir);
+
+        // A node MCP's build can fail (see above) or simply never run for a
+        // dist-based server that was skipped -- either way an entry pointing
+        // at a file that was never produced fails at MCP launch, far from the
+        // real cause. Derive the check from each entry's own args (node's
+        // first arg is always its entry script) instead of a hardcoded list of
+        // MCP names, so a fifth dist-based entry added later is covered too.
+        if (!DRY_RUN) {
+            for (const [key, val] of Object.entries(parsedMcpConfig.mcpServers)) {
+                if (val.command !== 'node' || !Array.isArray(val.args) || !val.args[0]) continue;
+                const entryArg = val.args[0];
+                if (!entryArg.startsWith('__MCPS_DIR__/')) continue;
+                const relPath = entryArg.slice('__MCPS_DIR__/'.length);
+                const mcpFolder = relPath.split('/')[0];
+                if (!selectedMcps.includes(mcpFolder)) continue; // not installed at all, already handled below
+                if (!fs.existsSync(path.join(mcpCodeTarget, relPath))) {
+                    log.warn(`${mcpFolder}: build produced no ${relPath.slice(mcpFolder.length + 1)} -- not registering ${key}`);
+                    skippedMcpConfigKeys.push(key);
+                }
+            }
+        }
+
         for (const [key, val] of Object.entries(parsedMcpConfig.mcpServers)) {
             let keep = !skippedMcpConfigKeys.includes(key);
             for (const available of availableFolders) {
