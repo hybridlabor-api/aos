@@ -87,6 +87,33 @@ auto-creates the GitHub Release, and auto-publishes to npm.
 
 ---
 
+## Before adding a check
+
+`docs/sessions/audit-2026-09-14-silent-failures.md` lists sixteen defects found
+in one session, all of one shape: a component reporting a state it is not in. A
+clean run, a green check, nothing delivered. They survived many releases
+precisely because the output said it worked.
+
+Five rules came out of it, and they bind any new check:
+
+1. Measure the thing, not a proxy. A port that answers is not the right
+   process; a directory that exists is not an installed application.
+2. Never read back your own writes as evidence — if the installer creates the
+   path, the path proves nothing.
+3. Distinguish "checked, fine" from "could not check". An offline registry must
+   not read as up to date.
+4. A discarded return value is a swallowed failure. `installStep()` catches
+   only throws.
+5. Every code path, not just the fresh one: Quick Update, `--project-harness`,
+   `-y`, `--dry-run` and the interactive path each need the step, or it does
+   not exist for the people on that path.
+
+`tests/installer-e2e.sh` exercises 18 of them against a throwaway `$HOME`. It
+sits outside `npm test` on purpose — real network, minutes to run — and belongs
+before a release.
+
+---
+
 ## Skill contract
 
 Every skill is a **directory** containing `SKILL.md`. Harnesses discover skills
