@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Metal Plate Gradients -->
+    <linearGradient id="plateLight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="60%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E7E7EA"/>
+    </linearGradient>
+
+    <linearGradient id="plateMid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9b30c4"/>
+      <stop offset="100%" stop-color="#51116F"/>
+    </linearGradient>
+
+    <linearGradient id="plateDark" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1C1C1F"/>
+      <stop offset="100%" stop-color="#050505"/>
+    </linearGradient>
+
+    </defs>
+
+<!-- ==================== ANTENNAE / SENSORS ==================== -->
+  <g id="antennae" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
+    <!-- Left Antenna (Stepped Voxel Column) -->
+    <rect x="180" y="45" width="20" height="30" rx="2" fill="url(#plateLight)"/>
+    <polygon points="180,45 190,25 200,45" fill="#FFFFFF"/>
+    <circle cx="190" cy="25" r="4" fill="#FFFFFF"/>
+    <rect x="186" y="80" width="22" height="34" rx="2" fill="url(#plateMid)"/>
+    <rect x="194" y="118" width="24" height="38" rx="2" fill="url(#plateDark)"/>
+    <rect x="202" y="160" width="26" height="38" rx="2" fill="url(#plateDark)"/>
+
+    <!-- Right Antenna (Stepped Voxel Column) -->
+    <rect x="312" y="45" width="20" height="30" rx="2" fill="url(#plateLight)"/>
+    <polygon points="312,45 322,25 332,45" fill="#FFFFFF"/>
+    <circle cx="322" cy="25" r="4" fill="#FFFFFF"/>
+    <rect x="304" y="80" width="22" height="34" rx="2" fill="url(#plateMid)"/>
+    <rect x="294" y="118" width="24" height="38" rx="2" fill="url(#plateDark)"/>
+    <rect x="284" y="160" width="26" height="38" rx="2" fill="url(#plateDark)"/>
+  </g>
+
+  <!-- ==================== HEAD &amp; CRANIUM ==================== -->
+  <g id="head" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
+    <!-- Top Keystone -->
+    <rect x="238" y="170" width="36" height="32" rx="3" fill="url(#plateLight)"/>
+    
+    <!-- Main Head Chassis Plate -->
+    <rect x="156" y="206" width="200" height="88" rx="6" fill="url(#plateDark)"/>
+    
+    <!-- Side Mandible Mounts -->
+    <rect x="136" y="230" width="20" height="40" rx="3" fill="url(#plateMid)"/>
+    <rect x="356" y="230" width="20" height="40" rx="3" fill="url(#plateMid)"/>
+  </g>
+
+  <!-- ==================== OPTICAL EYES (FACETTEN-AURA) ==================== -->
+  <g id="eyes">
+    <!-- Left Compound Eye Frame -->
+    <rect x="174" y="222" width="56" height="52" rx="5" fill="#000000" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="180" y="228" width="44" height="40" rx="3" fill="url(#plateDark)"/>
+    <circle cx="202" cy="248" r="14" fill="#FFFFFF" opacity="0.3"/>
+    <circle cx="202" cy="248" r="7" fill="#FFFFFF"/>
+    <circle cx="205" cy="245" r="2.5" fill="#FFFFFF"/>
+
+    <!-- Right Compound Eye Frame -->
+    <rect x="282" y="222" width="56" height="52" rx="5" fill="#000000" stroke="#FFFFFF" stroke-width="2"/>
+    <rect x="288" y="228" width="44" height="40" rx="3" fill="url(#plateDark)"/>
+    <circle cx="310" cy="248" r="14" fill="#FFFFFF" opacity="0.3"/>
+    <circle cx="310" cy="248" r="7" fill="#FFFFFF"/>
+    <circle cx="313" cy="245" r="2.5" fill="#FFFFFF"/>
+  </g>
+
+  <!-- ==================== MANDIBLES / GRILLE ==================== -->
+  <g id="mandibles" stroke="#000000" stroke-width="2.5">
+    <rect x="226" y="298" width="60" height="18" rx="3" fill="url(#plateLight)"/>
+    <!-- Stepped Mouth Grille -->
+    <rect x="236" y="303" width="10" height="8" rx="1.5" fill="#51116F"/>
+    <rect x="251" y="303" width="10" height="8" rx="1.5" fill="#51116F"/>
+    <rect x="266" y="303" width="10" height="8" rx="1.5" fill="#51116F"/>
+    
+    <!-- Pincer Mandibles -->
+    <polygon points="196,300 220,300 206,340" fill="url(#plateLight)"/>
+    <polygon points="316,300 292,300 306,340" fill="url(#plateLight)"/>
+  </g>
+
+  <!-- ==================== THORAX &amp; BDB INSIGNIA ==================== -->
+  <g id="thorax" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
+    <rect x="180" y="336" width="152" height="74" rx="6" fill="url(#plateMid)"/>
+    <!-- BDB Mini Hardware Stempel -->
+    <rect x="216" y="352" width="80" height="42" rx="4" fill="#0c0414" stroke="#FFFFFF" stroke-width="1.5"/>
+    <text x="256" y="378" fill="#FFFFFF" font-family="monospace" font-size="14" font-weight="900" text-anchor="middle" letter-spacing="3">BDB</text>
+  </g>
+</svg>
