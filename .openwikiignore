@@ -1,0 +1,62 @@
+# .openwikiignore — what the wiki agent must not read or write.
+#
+# OpenWiki ships with NO defaults: with no such file it loads zero rules and
+# indexes everything, including dependency trees and its own output. Measured
+# on one small repo: 33 of 145 graph nodes were junk — .venv internals and
+# .openwiki's own pages fed back into itself.
+#
+# gitignore syntax: `!` re-includes, a leading `/` anchors to the repo root,
+# a trailing `/` matches directories, and matching is case-insensitive.
+
+# Its own output — otherwise the wiki documents itself, recursively.
+.openwiki/
+
+# Dependencies. Someone else's code is not this project's documentation.
+node_modules/
+.venv/
+venv/
+vendor/
+Pods/
+.bundle/
+
+# Build output and caches — generated, never a source of truth.
+dist/
+build/
+out/
+target/
+coverage/
+.next/
+.turbo/
+.cache/
+__pycache__/
+*.pyc
+
+# Lockfiles: thousands of lines, no meaning for a reader.
+*.lock
+package-lock.json
+pnpm-lock.yaml
+uv.lock
+
+# Secrets. Nothing here may reach a model or a generated page.
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+secrets/
+
+# Version control internals.
+.git/
+
+# Binaries and media: no text to summarise, and expensive to read.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.pdf
+*.zip
+*.tgz
+*.mp4
+*.mov
