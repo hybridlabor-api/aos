@@ -47,6 +47,7 @@ const AGENTS = [
 ];
 
 const MODULE_DIRS = ['memB', 'bdb-synapse', 'bdb-os-remote', 'bdb-dev-creator-extension',
+  'bdb-hardware-pcb',
   'bdb-dev-tool-installer',
   'bdb-agent-orchestrator',      // AO
   'bdb-os-agent-workspace',      // AO's archived predecessor, if still lying around

@@ -181,6 +181,15 @@
 | `triage` | Move issues and external PRs through a state machine of triage roles, categorise, verify, and write agent-ready briefs. |
 | `typescript-pro` | Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns. |
 
+#### 🔩 Engineering & Hardware
+| Skill Name | Description |
+|------------|-------------|
+| `code-first-hardware-design` | Programmatic schematic capture, circuit synthesis (SKiDL, text netlists, S-expressions), and parametric 3D CAD enclosure co-design (OpenSCAD/BOSL2). Use when generating circuits in code, exporting netlists, scripting KiCad schematics, or designing 3D enclosures. |
+| `pcb-constraint-definition` | Translates high-level hardware requirements into formal engineering constraints, layer stackup calculations, netclasses, and custom DRC rules for KiCad. Use when defining board constraints, stackup, impedance matching, power budgeting, or netclasses. |
+| `pcb-layout-routing-automation` | Floorplanning, component placement rules, high-speed differential pair routing, return path continuity, thermal via arrays, and keepout enforcement for KiCad PCB layouts. Use when placing footprints, routing traces, creating ground planes, or managing thermal/RF keepouts. |
+| `pcb-validation-dfm-signoff` | Automated DRC/ERC verification, SI/PI screening, fab house DFM/DFA compliance, and production release sign-off for KiCad projects. Use when running final design rule checks, auditing manufacturing limits, generating Gerbers/BOM/CPL, or issuing DFM sign-off reports. |
+| `schematic-datasheet-analysis` | Electrical rule auditing, datasheet grounding, pinout validation, power tree tracing, and negative evidence analysis for KiCad schematics. Use when analyzing schematics, auditing pinmux/logic levels, checking component ratings, or validating datasheets. |
+
 #### 📦 Other Utilities
 | Skill Name | Description |
 |------------|-------------|

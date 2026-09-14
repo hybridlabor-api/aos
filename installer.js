@@ -900,6 +900,7 @@ function detectInstallState() {
         // The archived predecessor is deliberately NOT detected: a copy of it
         // should be removed, not carried forward into another install.
         { id: 'creator', dir: path.join(basePath, 'bdb-dev-creator-extension') },
+        { id: 'hardware', dir: path.join(basePath, 'bdb-hardware-pcb') },
         { id: 'installer', dir: path.join(basePath, 'bdb-dev-tool-installer') }
     ];
 
@@ -1928,6 +1929,25 @@ async function installCreatorExtension() {
     }
 }
 
+async function installHardwarePcb() {
+    const hwDir = path.join(moduleBasePath(), 'bdb-hardware-pcb');
+    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-hardware-pcb', hwDir, 'BDB Hardware & PCB (KiCad + OpenSCAD)')) {
+        log.warn('Skipping Hardware & PCB setup: the module could not be downloaded.');
+        return;
+    }
+    if (DRY_RUN) {
+        log.step('[dry-run] would run BDB Hardware & PCB setup');
+        return;
+    }
+    const installerScript = path.join(hwDir, 'installer.js');
+    if (fs.existsSync(installerScript)) {
+        const setupResult = spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: hwDir });
+        if (setupResult.status !== 0) {
+            log.warn(`Hardware & PCB setup note: exit code ${setupResult.status}`);
+        }
+    }
+}
+
 async function installOSRemoteGateway() {
     const remoteDir = path.join(moduleBasePath(), 'bdb-os-remote');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-os-remote', remoteDir, 'BDB OS Remote Gateway')) {
@@ -2074,9 +2094,10 @@ function verifyEcosystemInstallation() {
         { name: '3. heimdall-token-saver', pkg: '@hybridlabor-api/heimdall-token-saver', paths: [path.join(moduleBasePath(), 'heimdall-token-saver'), path.join(srcDir, 'vendor', 'token-saver')] },
         { name: '4. AO Agent Orchestrator', pkg: '@hybridlabor-api/bdb-agent-orchestrator', paths: [path.join(moduleBasePath(), 'bdb-agent-orchestrator')] },
         { name: '5. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', paths: [path.join(moduleBasePath(), 'bdb-dev-creator-extension')] },
-        { name: '6. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', paths: [path.join(moduleBasePath(), 'bdb-os-remote')] },
-        { name: '7. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', paths: [path.join(moduleBasePath(), 'bdb-dev-tool-installer')] },
-        { name: '8. aos (bdb agent os)', pkg: '@hybridlabor-api/aos', paths: [srcDir] }
+        { name: '6. bdb-hardware-pcb', pkg: '@hybridlabor-api/bdb-hardware-pcb', paths: [path.join(moduleBasePath(), 'bdb-hardware-pcb')] },
+        { name: '7. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', paths: [path.join(moduleBasePath(), 'bdb-os-remote')] },
+        { name: '8. bdb-dev-tool-installer', pkg: '@hybridlabor-api/bdb-dev-tool-installer', paths: [path.join(moduleBasePath(), 'bdb-dev-tool-installer')] },
+        { name: '9. aos (bdb agent os)', pkg: '@hybridlabor-api/aos', paths: [srcDir] }
     ];
 
     for (const mod of modules) {
@@ -3179,6 +3200,7 @@ async function promptOptionalModules(installedModules) {
             ? [{ id: 'ao', name: 'AO Agent Orchestrator (Session telemetry & WebUI)', fn: installOSAgentWorkspace }]
             : []),
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: installCreatorExtension },
+        { id: 'hardware', name: 'BDB Hardware & PCB (KiCad + OpenSCAD Electrical/PCB Design)', fn: installHardwarePcb },
         { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
     ];
 
@@ -3593,6 +3615,7 @@ async function runQuickUpdate(installState) {
         // 'ao' intentionally skipped here even for
         // existing installs -- see promptOptionalModules() for why.
         else if (subId === 'creator') await installCreatorExtension();
+        else if (subId === 'hardware') await installHardwarePcb();
         else if (subId === 'installer') await installDevToolInstaller();
     }
 

@@ -84,6 +84,7 @@ If the user's intent matches one of these, jump to the corresponding section:
 * **"I'm managing the BDB SaaS multi-cloud fleet"** ➔ [BDB Ecosystem & SaaS Ops](#bdb-ecosystem--saas-ops)
 * **"I need Three.js, 3D, or motion work"** ➔ [Media & EventTech](#media--eventtech)
 * **"I need live event tech, TouchDesigner, or Resolume help"** ➔ [Media & EventTech](#media--eventtech)
+* **"I need PCB layout, schematic capture, or electrical/hardware design"** ➔ [Electrical & Hardware Design](#electrical--hardware-design)
 
 ---
 
@@ -301,6 +302,22 @@ The choice is driven by where the pixels come from, not by the output format —
 | Concept not settled yet | `bdbmediastorm` first — it runs the grilling interview for show-control and media work |
 
 Resolve and Premiere are interchangeable at this level: pick whichever is actually installed. Both have a working MCP under `mcps/`.
+
+---
+
+## 🔩 Electrical & Hardware Design
+
+Use these for schematic capture, PCB layout, and physical hardware design (KiCad, OpenSCAD).
+
+* **Top Picks:** `code-first-hardware-design`, `pcb-constraint-definition`
+
+* **Circuit synthesis & enclosures**: `code-first-hardware-design` — programmatic schematic capture (SKiDL, netlists, S-expressions) and parametric 3D CAD enclosure co-design (OpenSCAD/BOSL2).
+* **Constraints & stackup**: `pcb-constraint-definition` — translates hardware requirements into layer stackup, netclasses, impedance matching, and custom DRC rules before layout starts.
+* **Layout & routing**: `pcb-layout-routing-automation` — floorplanning, component placement, high-speed differential pair routing, thermal via arrays, and keepout enforcement.
+* **Validation & sign-off**: `pcb-validation-dfm-signoff` — automated DRC/ERC, SI/PI screening, fab house DFM/DFA compliance, and production release sign-off (Gerbers/BOM/CPL).
+* **Schematic & datasheet auditing**: `schematic-datasheet-analysis` — electrical rule auditing, datasheet grounding, pinout validation, and power tree tracing.
+
+These ship in the separate `@hybridlabor-api/bdb-hardware-pcb` power-up module (KiCad + OpenSCAD MCP servers), not in this base skills package — install it as an optional AOS module when hardware work comes up.
 
 ---
 
