@@ -3662,12 +3662,14 @@ async function main() {
                 { value: 'quick', label: `⚡ Quick Update (v${installState.localVersion} ➔ v${installState.currentVersion})`, hint: 'refresh skills, templates & daemons' },
                 { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
                 { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'change targets, tier or options' },
+                { value: 'uninstall', label: '🗑️ Uninstall AOS', hint: 'remove what this installer placed; your data stays' },
                 { value: 'cancel', label: '❌ Exit' }
               ]
             : [
                 { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
                 { value: 'quick', label: '🔄 Verify & Refresh All Skills', hint: 're-sync and health check' },
                 { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'switch tier or targets' },
+                { value: 'uninstall', label: '🗑️ Uninstall AOS', hint: 'remove what this installer placed; your data stays' },
                 { value: 'cancel', label: '❌ Exit' }
               ];
 
@@ -3689,6 +3691,19 @@ async function main() {
         if (action === 'quick') {
             await runQuickUpdate(installState);
             outro('Quick Update complete.');
+            return;
+        }
+        if (action === 'uninstall') {
+            // aos-uninstall.mjs is its own script, not a function of this file --
+            // it is ESM (installer.js is CommonJS) and drives its own readline
+            // confirmation prompt, so it runs as a real child process with
+            // inherited stdio rather than being imported in-process.
+            const uninstallScript = path.join(srcDir, 'bin', 'aos-uninstall.mjs');
+            if (!fs.existsSync(uninstallScript)) {
+                log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: npx @hybridlabor-api/aos-uninstall`);
+                return;
+            }
+            spawnSync('node', [uninstallScript], { stdio: 'inherit' });
             return;
         }
     }
