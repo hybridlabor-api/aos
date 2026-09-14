@@ -65,7 +65,11 @@
     "!assets/**/*.mov",
     "!mcps/**/queue.db*",
     "!**/__pycache__/**",
-    "!**/*.pyc"
+    "!**/*.pyc",
+    "!mcps/vectorworks-mcp/**",
+    "!mcps/davinci-resolve-mcp/**",
+    "!mcps/davinci-mcp-professional/**",
+    "!mcps/blender-mcp-server/**"
   ],
   "keywords": [
     "codex-plugin",
