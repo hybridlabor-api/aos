@@ -44,11 +44,23 @@ installer does anything at all.
 
 ## Found, not yet fixed
 
-**Operational data in the public package.** `mcps/bdb-remoteos-mcp/queue.db`
-ships in the tarball: 134 real approval rows. `.npmignore` excludes it but has
-no effect — `package.json`'s `files` lists `"mcps/"` wholesale, and npm then
-does not consult `.npmignore` for that path. The exclusion has to be a negation
-inside `files` itself. Eleven `.pyc` files leak the same way.
+**Operational data one publish away from the public package — corrected.**
+`mcps/bdb-remoteos-mcp/queue.db` holds 134 real approval rows and `npm pack`
+included it. The first reading of this was that it had already shipped. That
+was wrong, and the correction matters more than the original claim: the
+published tarballs for 4.2.0, 4.3.0, 4.4.0 and 4.4.1 were each downloaded and
+searched, and every one contains zero matches for `queue.db` and `.pyc`. The
+file has never been in git; it is created at runtime by the MCP, so a release
+built from a clean checkout cannot contain it. A release published from a
+development machine would have — which is exactly what 4.4.2 was going to be.
+
+So this was a near miss, not a leak, and the lesson is about the check rather
+than the defect: `npm pack --dry-run` on a working tree answers "what would
+ship from *here*", which is not the same question as "what did ship". Only the
+published tarball answers the second one. Both fixes stay: the negation inside
+`files` (`.npmignore` has no effect on a path `files` includes wholesale), and
+`.gitignore`, so neither the store nor its `-shm`/`-wal` siblings can enter
+either channel from any machine.
 
 **~46 MB that has never worked.** `tdmcp`, `touchdesigner-mcp` and `unreal_mcp`
 declare `main` as `dist/index.js`; `dist/` is in no tarball. It exists only if
@@ -94,3 +106,31 @@ eleven skills, one identical sentence in ten. `synapse-integration-skill` is
 5. **Every code path, not just the fresh one.** Quick Update, `--project-harness`,
    `-y`, `--dry-run` and the interactive path each need the step, or the step
    does not exist for the people on that path.
+6. **Ask about the artefact people actually have.** A dry run on a working tree
+   describes a hypothetical release from that machine. What users installed is
+   the published tarball, and only downloading it answers that. This rule was
+   added after the `queue.db` finding above was reported as a live leak on the
+   strength of a local `npm pack --dry-run`, and turned out on inspection of
+   all four published versions never to have shipped.
+
+---
+
+## Internal material in the public package
+
+A separate class from the above, found while checking the `queue.db` claim, and
+verified against the published 4.4.1 tarball rather than the working tree:
+
+- `skills/bdb-dev-os-skill/SKILL.md:3` describes itself as "internal maintainer
+  rules for the BDB Agent OS Ecosystem (Tim & Noah only)" and ships publicly.
+- `skills/bdbsaastraining/` is a staff onboarding curriculum for the real
+  production fleet — Step-CA SSH certificates, OIDC machine identity, container
+  provisioning. Its certificate template carries a real name, a job title and
+  the legal entity at `templates/certificate_template.html:501-502`.
+- `skills/global_config/bdbsaashost/SKILL.md` maps the fleet: hosting vendors,
+  service ports, approval-queue mechanics, decommission history.
+- `scripts/ecosystem-health-audit.js:19` hardcodes an internal folder path.
+
+Nothing here can be gated after publication. A skill's frontmatter, a runtime
+check or a permission flag is advice to an agent, not access control on bytes
+that are already in a tarball someone has downloaded. The only encapsulation
+that exists is not shipping the file.
