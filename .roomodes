@@ -35,7 +35,7 @@
     {
       "slug": "godmode-eventtech",
       "name": "Godmode EventTech",
-      "roleDefinition": "Architectural Authority for Real-Time Performance, Signal Flow, and Hardware Limits in live environments. TouchDesigner, grandMA3, Resolume.",
+      "roleDefinition": "Architectural Authority for Real-Time Performance, Signal Flow, and Hardware Limits in live environments.",
       "groups": [
         "read",
         "edit",
@@ -46,7 +46,7 @@
     {
       "slug": "godmode-media-creation",
       "name": "Godmode Media Creation",
-      "roleDefinition": "AI Video Production & Pipeline Orchestrator. Master of OpenMontage and Palmier Pro MCPs.",
+      "roleDefinition": "AI Video Production & Pipeline Orchestrator.",
       "groups": [
         "read",
         "edit",
@@ -68,7 +68,7 @@
     {
       "slug": "godmode-shipping",
       "name": "Godmode Shipping",
-      "roleDefinition": "Release Gatekeeper & Quality Auditor. Webapp testing, WCAG, SEO, release validation.",
+      "roleDefinition": "Release Gatekeeper & Quality Auditor.",
       "groups": [
         "read",
         "command"

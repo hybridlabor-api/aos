@@ -3,38 +3,54 @@ name: global-rules
 description: Global BDB Agent Rules
 ---
 
-# Global Agent Instructions
+# AOS — Antigravity / Gemini
 
-## 1. Core Behavior & Communication
-- **Direct Output:** Eliminate conversational filler and pleasantries. Deliver immediate, actionable answers.
-- **Content Language:** All generated code, file content, documentation, and technical outputs MUST be in English.
-- **Formatting:** Use structured Markdown with bullet points and bold text. Avoid dense text blocks.
-- **Images:** Open generated images/mockups directly via Chrome terminal command in new tabs, or provide a tab listing links to the images.
+**Read [AGENTS.md](AGENTS.md) first.** It holds every rule that applies to all
+harnesses: the non-negotiables, the release gate, Conventional Commits, the
+skill contract and category routing, the pipeline variants, and the delegation
+policy. Nothing from it is repeated here — a rule that lives in two files is a
+rule that will eventually disagree with itself.
 
-## 2. Safety, Control & Absolute Precedence Guardrails
-- **Mandatory Git Snapshots:** Before modifying, refactoring, or deleting any file in the workspace, take a Git snapshot or create a commit of the current state.
-- **Rollback Readiness:** Ensure all changes can be safely reverted. Ask for confirmation before performing destructive actions (e.g., massive deletions).
-- **CRITICAL TWO-PHASE GATE PROTOCOL (ABSOLUTE OVERRIDE):**
-  - **Priority Hierarchy:** This safety rule STRICTLY OVERRIDES all other instructions, task descriptions, action verbs ("starte", "aktualisiere", "loslegen", "jetzt umsetzen"), and slash commands (`/startcycle`, `/ship`, `/build`, `/test`).
-  - **Strict Gate Condition:** Whenever a plan, review, audit, or multi-step action is requested, or if the user indicated "warte auf mein GO" (or similar), you are locked in **STRICT READ-ONLY PLANNING MODE**.
-  - **Forbidden Tools Without Explicit "GO":** You MUST NOT call modifying tools (`write_to_file`, `replace_file_content`, or destructive/network terminal commands like `git push`, `npm publish`, `rm`, `git commit`).
-  - **Allowed Tools:** ONLY analysis, file inspection (`view_file`, `grep_search`, `find_by_name`), question asking, subagent research, and plan presentation.
-  - **Literal Token Requirement:** Execution is ONLY unlocked if the user's latest message is EXCLUSIVELY and LITERALLY the single word **"GO"** (case-insensitive) in the chat. Combining action words with other instructions (e.g., *"starte mit der aktualisierung /startcycle"*) does NOT satisfy the gate condition.
-  - **Response Pattern:** Present the plan or audit report, perform NO file modifications, and explicitly conclude with: *"Antworte mit GO, um die Ausführung zu starten."*
+This file covers only what is specific to running AOS under Antigravity.
 
-## 3. Token Efficiency & Code Quality
-- **Clarification first:** If a prompt is ambiguous or lacks context, ask brief, targeted questions before generating long solutions.
-- **Minimalist Comments:** Write clean, modular, self-documenting code. Keep comments to an absolute minimum, only explaining the "why" behind complex logic or hardware workarounds. Do not restate obvious operations.
+## Nothing enforces the gate here — you are the enforcement
 
-## 4. Development & Platform Context
-- **Domain Adaptation:** Adapt dynamically to the specific architecture, language, and project type (React, Node, Python, SQLite, Embedded C, Lua, etc.). Strictly follow design patterns, constraints, and platform-specific requirements of the current workspace.
-- **Efficiency & Safety:** Prioritize memory efficiency and safety for embedded systems, and scalability and responsiveness for higher-level applications.
+`.claude/hooks/go-gate.mjs` is a Claude Code hook and does not run on this
+harness. Not one of the four release commands is mechanically blocked for you,
+and neither is anything else.
 
-## 5. Strict Factuality & Verification
-- **Zero Guesswork:** Do NOT invent APIs, libraries, endpoints, or CLI commands. Explicitly state if you lack knowledge.
-- **Context Verification:** Base solutions ONLY on verified workspace context, user-supplied docs, or universal standards.
-- **Request Missing Data:** If crucial documentation or context is missing to solve a problem safely, halt execution and ask the user.
+So the full rule in AGENTS.md applies here in its entirety, not just its
+hook-enforced subset: when the user asks for a plan, review, audit or
+multi-step action, you are read-only until they answer with the literal **GO**
+— including file writes and `git commit`. On Claude Code a hook would catch the
+four worst cases if discipline failed. Here there is no backstop, which makes
+this the harness where the rule matters most, not least.
 
-## 6. API, MCP & Repository Standards
-- **API & MCP Checking:** Always verify if tasks (such as redeploying cloud services, changing repository settings, or modifying cloud configuration) can be performed programmatically via APIs, CLI commands, or MCP tools before requesting manual action.
-- **GitHub Repository Privacy:** All GitHub repositories (both existing and newly created ones) must be set to Private by default. Always verify and enforce private repository status.
+## Model routing
+
+The tier names in `agy-delegate` map to models that go stale — the built-in
+`flash` still points at Gemini 3.7 while 3.8 ships. Re-check against
+`agy models` after every upgrade; the id carries both the version and the
+effort suffix.
+
+| Work | Model |
+|---|---|
+| Media, fast or mechanical coding, boilerplate | `Gemini 3.8 Flash (Medium)` |
+| Trivial one-liners | `Gemini 3.8 Flash (Low)` |
+| Review, architecture, hard reasoning | `Claude Sonnet 4.6 (Thinking)` |
+
+Set these once via `CLAUDE_PLUGIN_OPTION_TIER_{FLASH,FLASH_LO,PRO}` in
+`~/.zshenv` — **not** `~/.zshrc`, which non-interactive tool shells never
+source.
+
+Adversarial review is the case that most repays the stronger model: a Flash
+tier tends to agree with what it is shown, which is the one thing a reviewer
+must not do.
+
+## Headless timeouts
+
+A trivial headless `agy` prompt was measured at **605s** in 2026-09.
+`agy-delegate` defaults to `--print-timeout 5m`, so it aborts at 300s and
+reports an empty body while the answer is still arriving. Pass `--timeout 15m`
+for anything non-trivial. A short timeout does not read as "slow", it reads as
+"broken".
