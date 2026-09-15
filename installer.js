@@ -2252,7 +2252,17 @@ function verifyEcosystemInstallation() {
 function resolveTargetPaths(platformValue, customPaths) {
     let targetSkillDir = globalConfigDir;
     let targetLegacyDir = globalLegacyDir;
-    let targetWorkspaceDir = workspaceDir;
+    // NOT the module-level `workspaceDir` (process.cwd()-based) -- that default
+    // is only correct for the Cursor branch below and the explicit Local
+    // Project Harness selection (platformValue '4' with customPaths), both of
+    // which are genuinely project-scoped by design. For every other platform,
+    // including this function's own top-level default used by the universal
+    // tier ('1'), a global Quick Update inherited a directory relative to
+    // whatever the current working directory happened to be -- silently
+    // harmless when cwd sat under the user's own home dir, but a hard EPERM
+    // crash the one time a Windows user ran npx from C:\Windows\System32
+    // (PowerShell's default start directory, unwritable for a normal user).
+    let targetWorkspaceDir = path.join(homeDir, '.agents', 'workspace_skills');
     let targetMcpDir = path.join(geminiDir, 'config');
     let mcpConfigPath = path.join(targetMcpDir, 'mcp_config.json');
     // Secondary MCP stores that must receive the same servers as mcpConfigPath
