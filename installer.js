@@ -1996,6 +1996,91 @@ async function installSynapse() {
     }
 }
 
+async function installOpenWikiVisualizer() {
+    if (DRY_RUN) {
+        log.step('[dry-run] would register the OpenWiki Visualizer background daemon (Port 4321)');
+        return;
+    }
+    if (!hasExecutable('openwiki')) {
+        log.warn('Skipping OpenWiki Visualizer setup: the openwiki CLI was not found on PATH. Install it with: npm install -g openwiki@latest');
+        return;
+    }
+    // launchd starts agents with a minimal PATH that never includes npm's global
+    // bin dir, so resolve the absolute binary path now instead of relying on PATH at boot.
+    let openwikiBin = 'openwiki';
+    try {
+        const lookup = process.platform === 'win32' ? 'where openwiki' : 'command -v openwiki';
+        openwikiBin = execSync(lookup, { encoding: 'utf8' }).split(/\r?\n/)[0].trim() || 'openwiki';
+    } catch (e) { logDebug(e, 'openwiki path lookup'); }
+
+    if (process.platform === 'darwin') {
+        const plistPath = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.openwiki-visualize.plist');
+        const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bdb.openwiki-visualize</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${openwikiBin}</string>
+        <string>visualize</string>
+        <string>--port</string>
+        <string>4321</string>
+        <string>--no-open</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${homeDir}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${path.join(homeDir, '.openwiki', 'visualize.stdout.log')}</string>
+    <key>StandardErrorPath</key>
+    <string>${path.join(homeDir, '.openwiki', 'visualize.stderr.log')}</string>
+</dict>
+</plist>`;
+        try {
+            fs.mkdirSync(path.join(homeDir, '.openwiki'), { recursive: true });
+            fs.writeFileSync(plistPath, plistContent);
+            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
+            if (isListening) {
+                log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
+            } else {
+                log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+            }
+        } catch (e) { logDebug(e, 'openwiki visualizer plist setup'); }
+    } else if (process.platform === 'win32') {
+        const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+        fs.mkdirSync(startupDir, { recursive: true });
+        const visualizerLogDir = path.join(homeDir, '.openwiki');
+        fs.mkdirSync(visualizerLogDir, { recursive: true });
+        const stdoutLog = path.join(visualizerLogDir, 'visualize.stdout.log');
+        const stderrLog = path.join(visualizerLogDir, 'visualize.stderr.log');
+        const batPath = path.join(visualizerLogDir, 'run-openwiki-visualize.bat');
+        const runCmd = `"${openwikiBin}" visualize --port 4321 --no-open`;
+        const batContent = `@echo off\r\ncd /d "${homeDir}"\r\n${runCmd} >> "${stdoutLog}" 2>> "${stderrLog}"\r\n`;
+        const vbsPath = path.join(startupDir, 'com.bdb.openwiki-visualize.vbs');
+        const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${homeDir}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`;
+        try {
+            fs.writeFileSync(batPath, batContent, 'utf-8');
+            fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
+            spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
+            // Same reasoning as the Synapse Windows path: wscript -> WshShell.Run is
+            // multiple layers of indirection, so allow the generous 12s budget here too.
+            const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer', 12000);
+            if (isListening) {
+                log.success('OpenWiki Visualizer Windows Background Service registered & started (Port 4321)');
+            } else {
+                log.warn(`OpenWiki Visualizer Windows daemon did not respond on Port 4321 within timeout. Check ${stderrLog} for the actual error before assuming it's just slow to start.`);
+            }
+        } catch (e) { logDebug(e, 'windows openwiki visualizer daemon setup'); }
+    }
+}
+
 async function installCreatorExtension() {
     const creatorDir = path.join(moduleBasePath(), 'bdb-dev-creator-extension');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-dev-creator-extension', creatorDir, 'BDB Creator Extension')) {
@@ -3348,6 +3433,7 @@ function generateAndOpenLaunchpad() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BDB Agent OS – Launchpad</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNGRkZGRkYiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNFN0U3RUEiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Y2lyY2xlIGN4PSIyNTYiIGN5PSIyNTYiIHI9IjI0NiIgZmlsbD0iIzBhMGEwYSIgc3Ryb2tlPSIjOWIzMGM0IiBzdHJva2Utd2lkdGg9IjEyIi8+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNzAsNjgpIj48cGF0aCBmaWxsPSJ1cmwoI2EpIiBkPSJNMTgxLjYzLjA1YzEwMS4zOS0yLjQ3LDE4NC41Niw4MC4wOSwxOTAuMTQsMTc5LjkzLDUuNTMsOTkuMDMtNjYuMTYsMTg1LjQyLTE2NS4xMSwxOTUuNDYtODcuMzksOC44Ni0xNzEuMS00NS41Ni0xOTcuNjctMTI4Ljk2Qy0yOC43NCwxMjguMDMsNTYuNzgsMy4xLDE4MS42My4wNWgwWk0xNzcuNSwyMS4zQzY5LjA5LDI1LjMxLTcuMTYsMTI5LjYyLDIxLjc2LDIzNC41MmMxOC43Miw2Ny44OCw4MS41NiwxMTYuNywxNTEuNTMsMTIxLjMyLDEwNi4yMSw3LjAzLDE5NS42LTgxLjYzLDE3OS42OC0xODkuMDYtMTIuNTQtODQuNjUtODkuODEtMTQ4LjY2LTE3NS40Ny0xNDUuNDloMFoiLz48ZyBmaWxsPSIjRkZGRkZGIj48cGF0aCBkPSJNMTQ3LjY5LDEyMC4wNWMxMi4wNC4zNiwyNC42NC0uNzIsMzYuNjItLjA3LDI0LjI5LDEuMzIsNDEuMzcsMjAuMTMsNDIuOTEsNDMuOTktLjY5LDE2LjM1LjU3LDMzLjQyLS4yOCw0OS42OS0xLjMxLDI1LjQyLTE4LjU1LDQzLjc1LTQ0LjAyLDQ1LjY0LTkuNTkuNzItMjAuMTQuNjktMjkuNzguODQtNC45Ny4wOC05LjkuNjgtMTAuMzctNS42NnMuNDMtOS40MS4zNC0xNC4wM2MxMi42NS0xMS44NCwxNC43NS0zMS4xNyw0Ljc1LTQ1LjQxLS42My0uOS0yLjI2LTIuMzQtMi42Mi0zLjE3cy0uNDYtMTIuNTgtLjI2LTE0LjM3LDEuMS0zLjUyLDEuNDYtNS4xNmMxLjIxLTUuNDIsMS4wNi0xMS4yNi0uMzktMTYuNjItLjQxLTEuNTQtMS40OC0zLjU2LTEuNjMtNC45OS0uNDctNC4yOC0uMTQtOS42Ny0uMjYtMTQuMDgtLjExLTMuNTYtLjg0LTguNDMtLjU3LTExLjg2czEuMzItNC4zNSw0LjA4LTQuNzVoMFoiLz48cGF0aCBkPSJNMjMyLjY2LDEzMi40NmM5LjUzLjM2LDE5Ljc0LS43MiwyOS4xOS0uMDgsMjIuNjQsMS41MiwzMy45MiwyOC41OCwyMS45Myw0Ny4wNS0xLjQ5LDIuMy00LjMyLDQuNDctMy44NSw3LjQyLjQ3LDIuOTUsNS42NCw2LjIxLDcuNDIsOC4zLDExLjg4LDEzLjk2LDguNDEsMzUuNjktNi45MSw0NS40OS03Ljg1LDUuMDItMTQuNjksNC40My0yMy41Niw0Ljg2LTcuNjcuMzctMTYuMjQsMS4wNS0yMy45MS42NloiLz48cGF0aCBkPSJNOTAuNTksMTMzLjAzYzguODQtLjQ0LDI1LjI0LTEuMDgsMzMuMjMsMS45MiwxOC4wNyw2Ljc3LDIzLjk5LDI5Ljk2LDEzLjU2LDQ1LjctMS42LDIuNDEtNC41Miw0LjQ0LTMuMjgsNy43NS42OSwxLjg1LDUuNDEsNS40Miw3LjAzLDcuMzEsMTEuODYsMTMuODIsOC43NywzNS4yMy02LjI1LDQ1LjMzLTE1LjAyLDEwLjEtMjMuMzEsNS4yNy0zNC40NCw1LjU2WiIvPjwvZz48L2c+PC9zdmc+">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -3596,6 +3682,30 @@ function generateAndOpenLaunchpad() {
           <span class="status-dot" id="dot-remote" title="Checking..."></span>
         </div>
       </a>
+      <a class="card" href="http://127.0.0.1:4321" target="_blank">
+        <div class="card-content">
+          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="grad-openwiki" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#51116F"/></linearGradient></defs>
+            <rect x="26" y="16" width="48" height="68" rx="4" fill="url(#grad-openwiki)" opacity="0.9"/>
+            <line x1="36" y1="32" x2="64" y2="32" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/>
+            <line x1="36" y1="42" x2="64" y2="42" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/>
+            <line x1="36" y1="52" x2="52" y2="52" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/>
+            <circle cx="70" cy="68" r="14" fill="#0a0a0a" stroke="#FFFFFF" stroke-width="2"/>
+            <circle cx="65" cy="64" r="2.5" fill="#FFFFFF"/><circle cx="74" cy="63" r="2.5" fill="#FFFFFF"/><circle cx="70" cy="72" r="2.5" fill="#FFFFFF"/>
+            <line x1="65" y1="64" x2="74" y2="63" stroke="#FFFFFF" stroke-width="1.2" opacity="0.7"/>
+            <line x1="65" y1="64" x2="70" y2="72" stroke="#FFFFFF" stroke-width="1.2" opacity="0.7"/>
+            <line x1="74" y1="63" x2="70" y2="72" stroke="#FFFFFF" stroke-width="1.2" opacity="0.7"/>
+          </svg></div>
+          <div class="card-info">
+            <h2>OpenWiki</h2>
+            <p>Grounded Documentation & Evidence Graph</p>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="port-pill">:4321</span>
+          <span class="status-dot" id="dot-openwiki" title="Checking..."></span>
+        </div>
+      </a>
     </div>
     <div class="footer">
       <span>Autostart Daemons • 127.0.0.1</span>
@@ -3614,6 +3724,7 @@ function generateAndOpenLaunchpad() {
       checkHealth('http://127.0.0.1:7781', 'dot-synapse');
       checkHealth('http://127.0.0.1:3101', 'dot-ao');
       checkHealth('http://127.0.0.1:9080', 'dot-remote');
+      checkHealth('http://127.0.0.1:4321', 'dot-openwiki');
     }
     checkAllHealth();
     setInterval(checkAllHealth, 5000);
@@ -3841,6 +3952,7 @@ async function runQuickUpdate(installState) {
         const creds = await promptCredentials(paths.targetMcpDir);
         if (creds !== BACK) {
             await installOpenWikiDaemon(creds.gemini, paths.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+            await installOpenWikiVisualizer();
         }
     }
 
@@ -4253,6 +4365,7 @@ async function main() {
     }
 
     await installOpenWikiDaemon(creds.gemini, primaryTarget.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+    await installOpenWikiVisualizer();
     await installTokenSaver(primaryTarget.platformValue);
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];

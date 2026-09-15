@@ -94,6 +94,13 @@ fi
 
 # 3. Resolve provider and API key
 OPENWIKI_PROVIDER="${OPENWIKI_PROVIDER:-google}"
+# set -u is active; a provider that needs no model override/base URL (the
+# common case) never gets these exported, and the bare $OPENWIKI_MODEL /
+# $OPENWIKI_BASE_URL reads inside write_launcher()'s subshell used to abort
+# that subshell on "unbound variable" -- silently truncating the launcher
+# before it reached the API key export or the final exec line.
+OPENWIKI_MODEL="${OPENWIKI_MODEL:-}"
+OPENWIKI_BASE_URL="${OPENWIKI_BASE_URL:-}"
 
 # Map provider to its API key environment variable name
 case "$OPENWIKI_PROVIDER" in
