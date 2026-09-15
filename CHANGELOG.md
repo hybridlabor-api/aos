@@ -1,5 +1,52 @@
 # Changelog
 
+## [4.4.2](https://github.com/hybridlabor-api/aos/compare/v4.4.1...v4.4.2) (2026-09-15)
+
+
+### Features
+
+* add engineering-hardware category and godmode-hardware-pcb ([f86484c](https://github.com/hybridlabor-api/aos/commit/f86484c54c705f00ae34f0d55c0b6feecfeb11aa))
+* add live-preview-canvas skill (built via antigravity, not yet in the repo) ([672b719](https://github.com/hybridlabor-api/aos/commit/672b7196c481d2a5afbde3f56cf584d6b5672018))
+* **dashboard:** add aos-dashboard, a live view of every BDB service ([a6dac4f](https://github.com/hybridlabor-api/aos/commit/a6dac4fce8a5879c8a6bc3d1db1f86728ab8d392))
+* **launchpad:** add a favicon and an OpenWiki Visualizer card + autostart daemon ([0cdd6c1](https://github.com/hybridlabor-api/aos/commit/0cdd6c1f6f57519c0469b1a7a4d07978380d24b6))
+* **launchpad:** replace emoji branding with real BDB SVG marks ([fb9f8e8](https://github.com/hybridlabor-api/aos/commit/fb9f8e84697f95b356472cf5363e7258e4e473da))
+* register a real autostart entry for the launchpad dashboard itself ([ef4a53c](https://github.com/hybridlabor-api/aos/commit/ef4a53cf5e19741fcd3e441981fa82bc02a7f2b5))
+* wire bdb-hardware-pcb as an optional AOS module ([b87a520](https://github.com/hybridlabor-api/aos/commit/b87a520182e12fe4e0fe7663c504f9992cd53142))
+
+
+### Bug Fixes
+
+* Codex/ChatGPT-Desktop detection, self-perpetuating harness folders, isAutoYes credential reset ([89817d3](https://github.com/hybridlabor-api/aos/commit/89817d3e44615bd16a496f7aa286c0eb7459ac6d))
+* **dashboard:** report AO's running version, not an archived package's ([37473c6](https://github.com/hybridlabor-api/aos/commit/37473c60bafe6059a8c47b3c5d7689925011bbb1))
+* guard against a too-old Node.js before requiring anything ([57eb314](https://github.com/hybridlabor-api/aos/commit/57eb314e9158cd08d347fbe8601dab623aef1c7b))
+* **installer:** add an uninstall, in two stages ([e79bd2c](https://github.com/hybridlabor-api/aos/commit/e79bd2c89d5e7c5a7a3a2759d7154a8741ebdd61))
+* **installer:** close the audit findings — nine defects in one family ([514d36f](https://github.com/hybridlabor-api/aos/commit/514d36f4ae42981b2f2208ca84afe39e39e01dbd))
+* **installer:** detect harnesses by the software, not by its folders ([835fa6c](https://github.com/hybridlabor-api/aos/commit/835fa6c1c956dfae46e699a03fafcac412b96f2a))
+* **installer:** do not register an MCP whose build produced nothing ([6232ac1](https://github.com/hybridlabor-api/aos/commit/6232ac10a0f6e464fb66af2d2966a14389aab4be))
+* **installer:** enable AO, but only where its binary can run ([c6e6726](https://github.com/hybridlabor-api/aos/commit/c6e6726f4df6eb8d8a760bd03378e89aef040988))
+* **installer:** let AO install its own service instead of writing a broken one ([8e527c5](https://github.com/hybridlabor-api/aos/commit/8e527c53b2643cf0db83987c63dd4f55c452b732))
+* **installer:** point AO at bdb-agent-orchestrator, never at the archived one ([59f0030](https://github.com/hybridlabor-api/aos/commit/59f00306b8bbfae824966e931f0d24038c78fe0c))
+* **installer:** stop the dry-run banner claiming more than it does ([c4f421d](https://github.com/hybridlabor-api/aos/commit/c4f421d73fb9ff3945d8f365f422a0d0cbc3a9be))
+* kinetic-intro banner hardcoded v4.0.0, stale skill/MCP counts in all 3 READMEs, Node floor aligned to 20+ ([55adcdd](https://github.com/hybridlabor-api/aos/commit/55adcdd4f95d02dc738ebea5aa4b70566bc6777c))
+* launchpad dashboard never opened on Quick Update, and its dev-workflow guard used a path from before the workspace reorg ([32d5f12](https://github.com/hybridlabor-api/aos/commit/32d5f129bf068cfeeb8830bf294809ac08a86a5f))
+* **launchpad:** plain white wordmark instead of a gradient ([2b53b8e](https://github.com/hybridlabor-api/aos/commit/2b53b8e2be63b992cf87f283c07b6c9d605deeec))
+* **openwiki:** daemon launcher dropped every provider but Gemini ([fb9f8e8](https://github.com/hybridlabor-api/aos/commit/fb9f8e84697f95b356472cf5363e7258e4e473da))
+* **openwiki:** guard OPENWIKI_MODEL/BASE_URL against set -u under non-default providers ([0cdd6c1](https://github.com/hybridlabor-api/aos/commit/0cdd6c1f6f57519c0469b1a7a4d07978380d24b6))
+* prune retired skills from disk on update, not just from the package ([7f02005](https://github.com/hybridlabor-api/aos/commit/7f020055e8106692aedbb41e6157e77333250508))
+* remove BDB-internal skills, moved to private aos-internal repo ([87cefee](https://github.com/hybridlabor-api/aos/commit/87cefee61c089ccb1df63fa43360699475917a2e))
+* retire dead global_legacy dirs on update, detect version downgrades ([3768698](https://github.com/hybridlabor-api/aos/commit/3768698d8384316a22f1cf6ca411602af00327e3))
+* **skills:** make the setup skills configure, not just diagnose ([9ff238a](https://github.com/hybridlabor-api/aos/commit/9ff238a3c7ec464cda8406a94383e1f17f4bacc9))
+* stop shipping four MCPs no installer path can select ([2e9e028](https://github.com/hybridlabor-api/aos/commit/2e9e028433ffa7e897757940841d6fb99957004f))
+* stop shipping operational data, correct two false AO claims, repair the Python prewarm ([d99ad60](https://github.com/hybridlabor-api/aos/commit/d99ad60da023d2328464621456963246ba20d0b3))
+* surface Uninstall AOS in the main interactive menu ([80ba3f1](https://github.com/hybridlabor-api/aos/commit/80ba3f11694003fc8df4ca957ef99f6b5dcda6cd))
+* three real bugs found on a live Windows test round ([5442810](https://github.com/hybridlabor-api/aos/commit/54428106437b5f212431c53acba6e668df8af531))
+* universal-tier workspace skills dir defaulted to cwd, crashed on an unwritable cwd ([fffee2c](https://github.com/hybridlabor-api/aos/commit/fffee2c78636741b14c910dd69d2671520005d15))
+
+
+### Miscellaneous Chores
+
+* pin the next release to 4.4.2 ([b0566a9](https://github.com/hybridlabor-api/aos/commit/b0566a9dc576d0966a1182639a123109b79eca47))
+
 ## [4.4.1](https://github.com/hybridlabor-api/aos/compare/v4.4.0...v4.4.1) (2026-09-13)
 
 
