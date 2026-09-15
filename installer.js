@@ -3388,11 +3388,7 @@ function generateAndOpenLaunchpad() {
       margin-bottom: 6px;
     }
     .logo-mark { width: 36px; height: 36px; flex-shrink: 0; }
-    .logo-badge {
-      background: linear-gradient(135deg, #ffffff 0%, #c77dea 60%, #9b30c4 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
+    .logo-badge { color: #ffffff; }
     .tagline { color: var(--text-muted); font-size: 14px; font-weight: 400; }
     .grid { display: flex; flex-direction: column; gap: 12px; }
     .card {
