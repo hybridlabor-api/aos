@@ -3303,8 +3303,13 @@ function generateAndOpenLaunchpad() {
     if (process.env.SSH_CLIENT || process.env.SSH_TTY) return;
 
     // Local Developer Workflow Guard:
-    // Only generate and open the launchpad if running in a local developer repo environment or explicitly requested
-    const isDevWorkflow = fs.existsSync(path.join(homeDir, 'bdb-dev')) ||
+    // Only generate and open the launchpad if running in a local developer repo environment or explicitly requested.
+    // ~/bdb-dev was the pre-reorg workspace root; the State-0 reorg moved it to
+    // ~/dev/bdb-dev, but this check was never updated -- it has been silently
+    // false on every real dev machine since that reorg. Checking both keeps
+    // this working regardless of which layout a given machine still has.
+    const isDevWorkflow = fs.existsSync(path.join(homeDir, 'dev', 'bdb-dev')) ||
+                          fs.existsSync(path.join(homeDir, 'bdb-dev')) ||
                           process.env.BDB_DEV === '1' ||
                           process.argv.includes('--launchpad') ||
                           process.argv.includes('--dev');
@@ -3464,13 +3469,26 @@ function generateAndOpenLaunchpad() {
         <div class="card-content">
           <div class="card-icon">⚡</div>
           <div class="card-info">
-            <h2>Agent Workspace</h2>
-            <p>Multi-Agent Cockpit & Orchestrator</p>
+            <h2>AO — Agent Orchestrator</h2>
+            <p>Multi-Agent Cockpit & Git-Worktree Orchestration</p>
           </div>
         </div>
         <div class="card-meta">
           <span class="port-pill">:3101</span>
           <span class="status-dot" id="dot-ao" title="Checking..."></span>
+        </div>
+      </a>
+      <a class="card" href="http://127.0.0.1:9080" target="_blank">
+        <div class="card-content">
+          <div class="card-icon">🌐</div>
+          <div class="card-info">
+            <h2>RemoteOS Gateway</h2>
+            <p>Multi-Cloud Execution & 4-Eyes Approval Gateway</p>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="port-pill">:9080</span>
+          <span class="status-dot" id="dot-remote" title="Checking..."></span>
         </div>
       </a>
     </div>
@@ -3486,14 +3504,14 @@ function generateAndOpenLaunchpad() {
         .then(() => dot.classList.add('online'))
         .catch(() => dot.classList.remove('online'));
     }
-    checkHealth('http://127.0.0.1:8088', 'dot-memb');
-    checkHealth('http://127.0.0.1:7781', 'dot-synapse');
-    checkHealth('http://127.0.0.1:3101', 'dot-ao');
-    setInterval(() => {
+    function checkAllHealth() {
       checkHealth('http://127.0.0.1:8088', 'dot-memb');
       checkHealth('http://127.0.0.1:7781', 'dot-synapse');
       checkHealth('http://127.0.0.1:3101', 'dot-ao');
-    }, 5000);
+      checkHealth('http://127.0.0.1:9080', 'dot-remote');
+    }
+    checkAllHealth();
+    setInterval(checkAllHealth, 5000);
   </script>
 </body>
 </html>`;
@@ -3704,6 +3722,11 @@ async function runQuickUpdate(installState) {
 
     console.log('');
     verifyEcosystemInstallation();
+    // Fresh installs open this via universalHarnessSync(); Quick Update never
+    // did, so a dev-workflow machine only ever saw it once, on day one --
+    // every subsequent run is a Quick Update, which is what almost every
+    // real run after the first actually is.
+    generateAndOpenLaunchpad();
 }
 
 
