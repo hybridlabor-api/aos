@@ -18,7 +18,7 @@ these four files stopped agreeing with each other in the first place.
 2. **English only.** All generated content — code, docs, commit messages, skill bodies — ships in English.
 3. **Never leak local paths containing usernames.** Use `~` or `$HOME`, never `/Users/<name>/` or `/home/<name>/`. A skill that must *show* a forbidden path as a counter-example marks that line with `<!-- validate-skills-ignore -->`.
 4. **Never commit `.env` files, API keys, or credentials.**
-5. **GitHub repositories are Private by default.** Verify rather than assume. AOS itself is the one deliberate public exception.
+5. **GitHub repositories are Private by default.** Verify rather than assume. AOS itself is the one deliberate public exception — and that exception is permanent, not provisional: `hybridlabor-api/aos` stays public. BDB-internal material (the internal skills/scripts that must never sit in that public history) does not move back in to compensate; it ships as a **separate private npm package**, installable only through the AOS installer or another BDB tool installer — never visible via a public git clone.
 6. **Ask before destructive actions.** Mass deletion, history rewriting, and anything that discards uncommitted work needs explicit confirmation.
 
 ---
