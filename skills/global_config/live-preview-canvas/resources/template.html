@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Preview Canvas — Interactive Mockup Template</title>
+  <!-- Tailwind CSS via CDN for rapid, consistent styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f5f7ff',
+              500: '#4f46e5',
+              600: '#4338ca',
+              700: '#3730a3'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    /* Baseline styles & reset */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #0b0f19;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Stable highlighting for Plan Canvas element selection */
+    [data-preview-anchor]:hover {
+      outline: 2px dashed rgba(99, 102, 241, 0.4);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white pb-24">
+
+  <!-- =========================================================================
+       1. Top Header Bar
+       Semantic IDs and data-component attributes enable crystal-clear annotations
+       ========================================================================= -->
+  <header id="preview-header" data-component="header" class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">
+        P
+      </div>
+      <div>
+        <h1 class="text-base font-semibold text-white leading-tight">Feature Preview: <span id="feature-title" class="text-indigo-400">Component Mockup</span></h1>
+        <p class="text-xs text-slate-400">Interactive live prototype for visual review & red-pinning</p>
+      </div>
+    </div>
+
+    <!-- State Indicator / Action pill -->
+    <div class="flex items-center space-x-3">
+      <span id="active-state-badge" class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800">
+        <span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        Interactive (In-Memory)
+      </span>
+      <button id="btn-reset-mock" onclick="resetMockState()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 transition">
+        Reset State
+      </button>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       2. Main Canvas Content Area
+       ========================================================================= -->
+  <main class="flex-1 max-w-5xl w-full mx-auto px-6 py-8">
+
+    <!-- Information banner for reviewers -->
+    <section id="review-banner" data-component="instruction-banner" class="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-800 flex items-start justify-between">
+      <div>
+        <h2 class="text-sm font-semibold text-slate-200">Visual Audit Mode Active</h2>
+        <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+          Click any element to add a pinned comment, or use the bottom switcher to evaluate different layout variants and error states.
+        </p>
+      </div>
+      <div class="text-right text-xs text-slate-500 font-mono">
+        Hotkeys: <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">←</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">→</kbd> to cycle
+      </div>
+    </section>
+
+    <!-- VARIANT A: Standard View -->
+    <div id="view-variant-a" class="preview-variant space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Card 1 -->
+        <article id="card-stats-1" data-component="stat-card" class="p-5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm hover:border-slate-700 transition">
+          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Metric Alpha</div>
+          <div class="text-2xl font-bold text-white mt-2">1,482</div>
+          <div class="mt-2 text-xs text-emerald-400 flex items-center font-medium">
+            <span>↑ +12.4%</span>
+            <span class="text-slate-500 ml-1.5">vs last week</span>
+          </div>
+        </article>
+
+        <!-- Card 2 -->
+        <article id="card-stats-2" data-component="stat-card" class="p-5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm hover:border-slate-700 transition">
+          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Latency / Cook Cost</div>
+          <div class="text-2xl font-bold text-white mt-2">4.2 ms</div>
+          <div class="mt-2 text-xs text-indigo-400 flex items-center font-medium">
+            <span>Optimal 60 FPS</span>
+          </div>
+        </article>
+
+        <!-- Card 3 -->
+        <article id="card-stats-3" data-component="stat-card" class="p-5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm hover:border-slate-700 transition">
+          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Handlers</div>
+          <div class="text-2xl font-bold text-white mt-2" id="counter-value">9</div>
+          <div class="mt-2 flex space-x-2">
+            <button onclick="adjustCounter(1)" class="text-xs bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 px-2.5 py-1 rounded transition">+ Increment</button>
+            <button onclick="adjustCounter(-1)" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">- Decrement</button>
+          </div>
+        </article>
+      </div>
+
+      <!-- Action Panel / Primary Form -->
+      <section id="main-panel" data-component="action-panel" class="p-6 rounded-xl bg-slate-900 border border-slate-800">
+        <h3 class="text-base font-semibold text-white mb-4">Interactive Controls & Configuration</h3>
+        <div class="space-y-4">
+          <div>
+            <label for="input-channel" class="block text-xs font-medium text-slate-300 mb-1.5">Channel Name</label>
+            <input type="text" id="input-channel" value="live-preview/stream-01" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+          </div>
+          <div class="flex items-center space-x-4">
+            <button id="btn-primary-action" onclick="simulateAction()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-md shadow-indigo-600/20 transition flex items-center space-x-2">
+              <span>Execute Action</span>
+            </button>
+            <span id="action-status" class="text-xs text-slate-400">Ready</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- VARIANT B: Alternative Layout (Dense List) -->
+    <div id="view-variant-b" class="preview-variant hidden space-y-4">
+      <div id="dense-list-container" data-component="dense-list" class="rounded-xl bg-slate-900 border border-slate-800 divide-y divide-slate-800">
+        <div class="p-4 flex items-center justify-between">
+          <div>
+            <span class="text-sm font-medium text-white">Item #1: Audio Reactive Engine</span>
+            <p class="text-xs text-slate-400">FFT Peak extraction on CHOP chain 4</p>
+          </div>
+          <span class="text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-800">Active</span>
+        </div>
+        <div class="p-4 flex items-center justify-between">
+          <div>
+            <span class="text-sm font-medium text-white">Item #2: DMX Fixture Router</span>
+            <p class="text-xs text-slate-400">Universe 1-4 mapped to ArtNet node</p>
+          </div>
+          <span class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Standby</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- VARIANT C: Error / Edge-Case State -->
+    <div id="view-variant-c" class="preview-variant hidden">
+      <div id="error-boundary-mock" data-component="error-state" class="text-center py-12 px-6 rounded-xl bg-slate-900 border border-rose-900/40">
+        <div class="inline-flex h-12 w-12 rounded-full bg-rose-950/80 text-rose-400 items-center justify-center mb-3 border border-rose-800/60">
+          ⚠️
+        </div>
+        <h3 class="text-base font-semibold text-white">Connection Stream Interrupted</h3>
+        <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1.5 mb-6">
+          The upstream WebRTC signal timed out after 3000ms. Check loopback connection or proxy gateway.
+        </p>
+        <button onclick="switchVariant('A')" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition shadow-md shadow-rose-600/20">
+          Retry & Return to Variant A
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- =========================================================================
+       3. Floating Prototype Switcher Bar (Prototype Skill UI.md convention)
+       Allows immediate flipping between variants and states
+       ========================================================================= -->
+  <footer id="prototype-switcher-bar" data-component="switcher-bar" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 shadow-2xl rounded-full px-3 py-2 flex items-center space-x-2">
+    <button onclick="cycleVariant(-1)" aria-label="Previous Variant" class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </button>
+
+    <div class="flex items-center space-x-1">
+      <button onclick="switchVariant('A')" id="tab-btn-A" class="switcher-pill px-3 py-1 rounded-full text-xs font-medium transition bg-indigo-600 text-white shadow-sm">
+        Variant A (Grid)
+      </button>
+      <button onclick="switchVariant('B')" id="tab-btn-B" class="switcher-pill px-3 py-1 rounded-full text-xs font-medium transition text-slate-400 hover:text-slate-200">
+        Variant B (List)
+      </button>
+      <button onclick="switchVariant('C')" id="tab-btn-C" class="switcher-pill px-3 py-1 rounded-full text-xs font-medium transition text-slate-400 hover:text-slate-200">
+        Variant C (Error)
+      </button>
+    </div>
+
+    <button onclick="cycleVariant(1)" aria-label="Next Variant" class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+  </footer>
+
+  <!-- =========================================================================
+       4. In-Memory Mock Interaction Logic
+       ========================================================================= -->
+  <script>
+    const VARIANTS = ['A', 'B', 'C'];
+    let currentVariantIndex = 0;
+    let counter = 9;
+
+    function getVariantFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const v = params.get('variant');
+      return (v && VARIANTS.includes(v.toUpperCase())) ? v.toUpperCase() : 'A';
+    }
+
+    function switchVariant(variantKey) {
+      const normalized = variantKey.toUpperCase();
+      currentVariantIndex = VARIANTS.indexOf(normalized);
+      if (currentVariantIndex === -1) currentVariantIndex = 0;
+
+      // Update visibility
+      document.querySelectorAll('.preview-variant').forEach(el => el.classList.add('hidden'));
+      const activeEl = document.getElementById(`view-variant-${normalized.toLowerCase()}`);
+      if (activeEl) activeEl.classList.remove('hidden');
+
+      // Update pills
+      document.querySelectorAll('.switcher-pill').forEach(pill => {
+        pill.classList.remove('bg-indigo-600', 'text-white', 'shadow-sm');
+        pill.classList.add('text-slate-400');
+      });
+      const activePill = document.getElementById(`tab-btn-${normalized}`);
+      if (activePill) {
+        activePill.classList.add('bg-indigo-600', 'text-white', 'shadow-sm');
+        activePill.classList.remove('text-slate-400');
+      }
+
+      // Sync URL search param cleanly without reloading
+      const url = new URL(window.location);
+      url.searchParams.set('variant', normalized);
+      window.history.replaceState({}, '', url);
+    }
+
+    function cycleVariant(delta) {
+      currentVariantIndex = (currentVariantIndex + delta + VARIANTS.length) % VARIANTS.length;
+      switchVariant(VARIANTS[currentVariantIndex]);
+    }
+
+    function adjustCounter(delta) {
+      counter += delta;
+      document.getElementById('counter-value').textContent = counter;
+    }
+
+    function simulateAction() {
+      const statusEl = document.getElementById('action-status');
+      statusEl.textContent = 'Processing in memory...';
+      statusEl.className = 'text-xs text-amber-400 animate-pulse';
+      setTimeout(() => {
+        statusEl.textContent = 'Action executed successfully!';
+        statusEl.className = 'text-xs text-emerald-400 font-medium';
+      }, 400);
+    }
+
+    function resetMockState() {
+      counter = 9;
+      document.getElementById('counter-value').textContent = counter;
+      const statusEl = document.getElementById('action-status');
+      statusEl.textContent = 'Ready';
+      statusEl.className = 'text-xs text-slate-400';
+      switchVariant('A');
+    }
+
+    // Keyboard navigation (Arrow keys cycle variants when not typing in inputs)
+    window.addEventListener('keydown', (e) => {
+      const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (e.key === 'ArrowRight') cycleVariant(1);
+      if (e.key === 'ArrowLeft') cycleVariant(-1);
+    });
+
+    // Initialize variant on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      switchVariant(getVariantFromUrl());
+    });
+  </script>
+</body>
+</html>

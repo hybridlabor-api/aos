@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Preview: Multi-Agent Show Control Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #090d16;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased pb-28">
+
+  <!-- =========================================================================
+       Navigation & Review Bar
+       ========================================================================= -->
+  <header id="show-control-header" data-component="header" class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-40 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="h-9 w-9 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
+        ⚡
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <h1 id="app-title" class="text-sm font-semibold text-white tracking-wide">BDB Agent OS &bull; Live Show Controller</h1>
+          <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60">Live Mock</span>
+        </div>
+        <p id="app-subtitle" class="text-xs text-slate-400">Interactive Preview for Layout Review & Element Red-Pinning</p>
+      </div>
+    </div>
+
+    <!-- Live Status & In-Memory Trigger -->
+    <div id="header-actions" class="flex items-center space-x-3">
+      <div id="heartbeat-pill" class="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">
+        <span class="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <span>ONLINE &bull; 60 FPS</span>
+      </div>
+      <button id="btn-emergency-blackout" onclick="triggerPanic()" class="text-xs font-semibold bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white px-3 py-1.5 rounded-lg border border-rose-700/50 transition">
+        Blackout
+      </button>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       Main Workspace
+       ========================================================================= -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-6 py-6 space-y-6">
+
+    <!-- Reviewer Context Alert -->
+    <section id="review-banner" data-component="review-banner" class="p-4 rounded-xl bg-indigo-950/40 border border-indigo-800/50 flex items-center justify-between">
+      <div class="flex items-start space-x-3">
+        <div class="text-indigo-400 text-lg">💡</div>
+        <div>
+          <p class="text-xs font-medium text-indigo-200">
+            <strong>Designer / Reviewer Notice:</strong> You can click any card, button, or label to pin an annotation. Use the floating bar below to toggle between Layouts and the Panic state.
+          </p>
+        </div>
+      </div>
+      <span class="text-xs font-mono text-indigo-300 bg-indigo-900/60 px-2.5 py-1 rounded border border-indigo-700/50">
+        Auto-Reloads on Save
+      </span>
+    </section>
+
+    <!-- Top KPI Grid -->
+    <section id="kpi-grid" data-component="kpi-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="kpi-touchdesigner" class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+        <div class="flex justify-between items-start">
+          <span class="text-xs text-slate-400 uppercase font-medium">TouchDesigner</span>
+          <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-800">OK</span>
+        </div>
+        <div class="mt-2 text-2xl font-bold text-white">4.1ms</div>
+        <p class="text-xs text-slate-500 mt-1">GPU Cook Cost (RTX 4090)</p>
+      </div>
+
+      <div id="kpi-grandma" class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+        <div class="flex justify-between items-start">
+          <span class="text-xs text-slate-400 uppercase font-medium">grandMA3 Session</span>
+          <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-800">LOCKED</span>
+        </div>
+        <div class="mt-2 text-2xl font-bold text-white">Uni 1-8</div>
+        <p class="text-xs text-slate-500 mt-1">DMX over sACN / ArtNet</p>
+      </div>
+
+      <div id="kpi-resolume" class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+        <div class="flex justify-between items-start">
+          <span class="text-xs text-slate-400 uppercase font-medium">Resolume Arena</span>
+          <span class="text-[10px] font-mono text-amber-400 bg-amber-950 px-1.5 py-0.5 rounded border border-amber-800">STANDBY</span>
+        </div>
+        <div class="mt-2 text-2xl font-bold text-white">Deck 02</div>
+        <p class="text-xs text-slate-500 mt-1">Layer 3: Generative Pass</p>
+      </div>
+
+      <div id="kpi-agents" class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+        <div class="flex justify-between items-start">
+          <span class="text-xs text-slate-400 uppercase font-medium">Pipeline Cues</span>
+          <span class="text-[10px] font-mono text-indigo-400 bg-indigo-950 px-1.5 py-0.5 rounded border border-indigo-800">AUTO</span>
+        </div>
+        <div class="mt-2 text-2xl font-bold text-white" id="cue-counter">Cue 14/40</div>
+        <p class="text-xs text-slate-500 mt-1">Next: Intro Drop Strobes</p>
+      </div>
+    </section>
+
+    <!-- VARIANT A: Full Orchestration Board (Default) -->
+    <div id="view-variant-a" class="preview-variant space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left 2 Cols: Active Cue Stack & Audio Spectrum Mock -->
+        <div class="lg:col-span-2 space-y-6">
+          <section id="cue-stack-section" data-component="cue-stack" class="p-5 rounded-xl bg-slate-900 border border-slate-800">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-sm font-semibold text-white">Live Cue Sequencer</h2>
+              <div class="flex space-x-2">
+                <button onclick="advanceCue()" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-3 py-1 rounded-lg transition shadow-sm">
+                  ▶ Go Next Cue
+                </button>
+                <button onclick="resetCues()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700 transition">
+                  Restart
+                </button>
+              </div>
+            </div>
+
+            <div id="cue-list" class="space-y-2 font-mono text-xs">
+              <div id="cue-item-12" class="p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-slate-400">
+                <div class="flex items-center space-x-3">
+                  <span class="text-slate-500 font-bold">#12</span>
+                  <span class="text-slate-300">Ambient Drone - Blue Wash</span>
+                </div>
+                <span class="text-[10px] text-slate-500">COMPLETE</span>
+              </div>
+
+              <div id="cue-item-13" class="p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-slate-400">
+                <div class="flex items-center space-x-3">
+                  <span class="text-slate-500 font-bold">#13</span>
+                  <span class="text-slate-300">Beat Drop Transition - Strobe Pulse</span>
+                </div>
+                <span class="text-[10px] text-slate-500">COMPLETE</span>
+              </div>
+
+              <div id="cue-item-14" class="p-3 rounded-lg bg-indigo-950/40 border border-indigo-500/50 flex items-center justify-between text-white shadow-sm">
+                <div class="flex items-center space-x-3">
+                  <span class="text-indigo-400 font-bold">#14</span>
+                  <span class="font-medium text-indigo-100">Main Drop: Audio-Reactive Feedback Tunnel</span>
+                </div>
+                <span class="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded font-sans uppercase tracking-wider font-semibold">RUNNING</span>
+              </div>
+
+              <div id="cue-item-15" class="p-3 rounded-lg bg-slate-950/40 border border-slate-800/50 flex items-center justify-between text-slate-400">
+                <div class="flex items-center space-x-3">
+                  <span class="text-slate-500 font-bold">#15</span>
+                  <span>Post-Chorus: Particle Dissolve</span>
+                </div>
+                <span class="text-[10px] text-slate-500">STANDBY</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Interactive Mock Control Sliders -->
+          <section id="reactive-controls" data-component="reactive-controls" class="p-5 rounded-xl bg-slate-900 border border-slate-800">
+            <h3 class="text-sm font-semibold text-white mb-4">Real-Time Parameter Modulation</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <div class="flex justify-between text-xs text-slate-300 mb-1">
+                  <span>Feedback Gain</span>
+                  <span id="label-gain" class="font-mono text-indigo-400">0.82</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.01" value="0.82" oninput="updateSlider('gain', this.value)" class="w-full accent-indigo-500 cursor-pointer">
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs text-slate-300 mb-1">
+                  <span>FFT Bass Dampening</span>
+                  <span id="label-bass" class="font-mono text-indigo-400">0.45</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.01" value="0.45" oninput="updateSlider('bass', this.value)" class="w-full accent-indigo-500 cursor-pointer">
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right 1 Col: Live Event Log -->
+        <div class="space-y-6">
+          <section id="log-feed-section" data-component="log-feed" class="p-5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col h-[460px]">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-white">Event Dispatcher Log</h3>
+              <button onclick="clearLogs()" class="text-[11px] text-slate-400 hover:text-slate-200">Clear</button>
+            </div>
+            <div id="log-feed" class="flex-1 overflow-y-auto font-mono text-[11px] space-y-2 custom-scrollbar pr-1">
+              <div class="text-slate-500"><span class="text-slate-600">[03:32:01]</span> OSC /cue/14 fired to port 8000</div>
+              <div class="text-emerald-400"><span class="text-slate-600">[03:32:02]</span> TD TOP cook ok (4.1ms)</div>
+              <div class="text-indigo-300"><span class="text-slate-600">[03:32:04]</span> grandMA3 Macro 21 active</div>
+              <div class="text-slate-400"><span class="text-slate-600">[03:32:05]</span> MIDI beat sync: 128.0 BPM</div>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- VARIANT B: Compact Data Sheet (Table View) -->
+    <div id="view-variant-b" class="preview-variant hidden space-y-4">
+      <section id="table-section" data-component="compact-table" class="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-950 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+            <tr>
+              <th class="px-4 py-3">Fixture / Node</th>
+              <th class="px-4 py-3">Protocol</th>
+              <th class="px-4 py-3">Address</th>
+              <th class="px-4 py-3">FPS / Rate</th>
+              <th class="px-4 py-3 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800 font-mono">
+            <tr class="hover:bg-slate-800/40">
+              <td class="px-4 py-3 font-semibold text-white font-sans">Beam 350 Array</td>
+              <td class="px-4 py-3">sACN E1.31</td>
+              <td class="px-4 py-3">10.0.1.50:5568</td>
+              <td class="px-4 py-3">44 Hz</td>
+              <td class="px-4 py-3 text-right text-emerald-400">SYNCED</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="px-4 py-3 font-semibold text-white font-sans">Laser Pangolin FB4</td>
+              <td class="px-4 py-3">ILDA / IP</td>
+              <td class="px-4 py-3">10.0.2.10:1200</td>
+              <td class="px-4 py-3">30 kpps</td>
+              <td class="px-4 py-3 text-right text-emerald-400">ARMED</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="px-4 py-3 font-semibold text-white font-sans">Resolume Arena Deck</td>
+              <td class="px-4 py-3">OSC + Syphon</td>
+              <td class="px-4 py-3">127.0.0.1:7000</td>
+              <td class="px-4 py-3">60 FPS</td>
+              <td class="px-4 py-3 text-right text-indigo-400">ACTIVE</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <!-- VARIANT C: Panic / Blackout / Disconnected View -->
+    <div id="view-variant-c" class="preview-variant hidden">
+      <section id="panic-section" data-component="panic-view" class="p-8 rounded-xl bg-slate-900 border-2 border-rose-600/60 text-center space-y-4">
+        <div class="inline-flex h-14 w-14 rounded-full bg-rose-950 text-rose-400 items-center justify-center text-2xl font-bold border border-rose-800">
+          🛑
+        </div>
+        <h2 class="text-lg font-bold text-white">Emergency Blackout Triggered</h2>
+        <p class="text-xs text-slate-400 max-w-md mx-auto">
+          All sACN universes clamped to 0. TouchDesigner master OP bypassed. Resolume output blackout layer 1 active.
+        </p>
+        <div class="pt-2 flex justify-center space-x-3">
+          <button onclick="switchVariant('A')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition shadow-md shadow-indigo-600/20">
+            Resume Normal Flow (Variant A)
+          </button>
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+  <!-- =========================================================================
+       Floating Variant Switcher Bar
+       ========================================================================= -->
+  <footer id="prototype-switcher-bar" data-component="switcher-bar" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 shadow-2xl rounded-full px-3 py-2 flex items-center space-x-2">
+    <button onclick="cycleVariant(-1)" aria-label="Previous Variant" class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </button>
+
+    <div class="flex items-center space-x-1">
+      <button onclick="switchVariant('A')" id="tab-btn-A" class="switcher-pill px-3 py-1 rounded-full text-xs font-medium transition bg-indigo-600 text-white shadow-sm">
+        Variant A (Control Board)
+      </button>
+      <button onclick="switchVariant('B')" id="tab-btn-B" class="switcher-pill px-3 py-1 rounded-full text-xs font-medium transition text-slate-400 hover:text-slate-200">
+        Variant B (Table Matrix)
+      </button>
+      <button onclick="switchVariant('C')" id="tab-btn-C" class="switcher-pill px-3 py-1 rounded-full text-xs font-medium transition text-slate-400 hover:text-slate-200">
+        Variant C (Panic State)
+      </button>
+    </div>
+
+    <button onclick="cycleVariant(1)" aria-label="Next Variant" class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+  </footer>
+
+  <!-- =========================================================================
+       Interactive State Script
+       ========================================================================= -->
+  <script>
+    const VARIANTS = ['A', 'B', 'C'];
+    let currentVariantIndex = 0;
+    let cueNum = 14;
+
+    function getVariantFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const v = params.get('variant');
+      return (v && VARIANTS.includes(v.toUpperCase())) ? v.toUpperCase() : 'A';
+    }
+
+    function switchVariant(variantKey) {
+      const normalized = variantKey.toUpperCase();
+      currentVariantIndex = VARIANTS.indexOf(normalized);
+      if (currentVariantIndex === -1) currentVariantIndex = 0;
+
+      document.querySelectorAll('.preview-variant').forEach(el => el.classList.add('hidden'));
+      const activeEl = document.getElementById(`view-variant-${normalized.toLowerCase()}`);
+      if (activeEl) activeEl.classList.remove('hidden');
+
+      document.querySelectorAll('.switcher-pill').forEach(pill => {
+        pill.classList.remove('bg-indigo-600', 'text-white', 'shadow-sm');
+        pill.classList.add('text-slate-400');
+      });
+      const activePill = document.getElementById(`tab-btn-${normalized}`);
+      if (activePill) {
+        activePill.classList.add('bg-indigo-600', 'text-white', 'shadow-sm');
+        activePill.classList.remove('text-slate-400');
+      }
+
+      const url = new URL(window.location);
+      url.searchParams.set('variant', normalized);
+      window.history.replaceState({}, '', url);
+    }
+
+    function cycleVariant(delta) {
+      currentVariantIndex = (currentVariantIndex + delta + VARIANTS.length) % VARIANTS.length;
+      switchVariant(VARIANTS[currentVariantIndex]);
+    }
+
+    function advanceCue() {
+      cueNum++;
+      document.getElementById('cue-counter').textContent = `Cue ${cueNum}/40`;
+      addLog(`Dispatched Cue #${cueNum} over OSC`);
+    }
+
+    function resetCues() {
+      cueNum = 14;
+      document.getElementById('cue-counter').textContent = `Cue ${cueNum}/40`;
+      addLog(`Reset cue counter to Cue #14`);
+    }
+
+    function updateSlider(key, val) {
+      document.getElementById(`label-${key}`).textContent = val;
+    }
+
+    function addLog(msg) {
+      const feed = document.getElementById('log-feed');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = 'text-indigo-300';
+      div.innerHTML = `<span class="text-slate-600">[${time}]</span> ${msg}`;
+      feed.prepend(div);
+    }
+
+    function clearLogs() {
+      document.getElementById('log-feed').innerHTML = '<div class="text-slate-500 font-mono text-[11px]">Logs cleared.</div>';
+    }
+
+    function triggerPanic() {
+      switchVariant('C');
+      addLog('⚠️ BLACKOUT TRIGGERED');
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (e.key === 'ArrowRight') cycleVariant(1);
+      if (e.key === 'ArrowLeft') cycleVariant(-1);
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      switchVariant(getVariantFromUrl());
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Preview Canvas</title>
+    <style>
+        /* Inject Prototype CSS Here */
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f9fafb;
+        }
+
+        .prototype-container {
+            /* Put your prototype content here */
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        /* --- Feedback Layer Styles --- */
+        #feedback-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 9998;
+        }
+
+        .feedback-dot {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: #ef4444;
+            border: 2px solid white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .feedback-dot:hover::after {
+            content: attr(data-comment);
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 8px;
+            border-radius: 4px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            white-space: nowrap;
+            color: black;
+            font-size: 12px;
+            z-index: 9999;
+            margin-top: 4px;
+        }
+
+        #feedback-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        #feedback-controls button {
+            padding: 8px 16px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        #feedback-controls button:hover {
+            background: #2563eb;
+        }
+
+        #feedback-output {
+            display: none;
+            width: 300px;
+            height: 150px;
+            font-family: monospace;
+            font-size: 12px;
+            resize: none;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Inject Prototype HTML Here -->
+    <div class="prototype-container">
+        <h1>Prototype Area</h1>
+        <p>Click anywhere to leave a comment.</p>
+    </div>
+
+    <!-- Feedback Layer -->
+    <div id="feedback-layer"></div>
+    <div id="feedback-controls">
+        <button id="export-btn">Export Feedback</button>
+        <textarea id="feedback-output" readonly placeholder="Exported JSON will appear here..."></textarea>
+    </div>
+
+    <script>
+        const comments = [];
+        const layer = document.getElementById('feedback-layer');
+        const exportBtn = document.getElementById('export-btn');
+        const output = document.getElementById('feedback-output');
+        const controls = document.getElementById('feedback-controls');
+
+        // Handle clicks on the document to add feedback
+        document.addEventListener('click', (e) => {
+            // Ignore clicks inside the feedback controls or on existing dots
+            if (controls.contains(e.target) || e.target.classList.contains('feedback-dot')) {
+                return;
+            }
+
+            const text = prompt('Enter your feedback for this element:');
+            if (!text) return;
+
+            const x = e.clientX;
+            const y = e.clientY;
+
+            // Save to state
+            const comment = { id: Date.now(), x, y, text };
+            comments.push(comment);
+
+            // Draw dot
+            const dot = document.createElement('div');
+            dot.className = 'feedback-dot';
+            dot.style.left = `${x}px`;
+            dot.style.top = `${y}px`;
+            dot.setAttribute('data-comment', text);
+            
+            // Allow deleting comment on right click
+            dot.addEventListener('contextmenu', (evt) => {
+                evt.preventDefault();
+                if(confirm('Delete this comment?')) {
+                    const idx = comments.findIndex(c => c.id === comment.id);
+                    if(idx > -1) comments.splice(idx, 1);
+                    dot.remove();
+                }
+            });
+
+            layer.appendChild(dot);
+        });
+
+        // Export functionality
+        exportBtn.addEventListener('click', () => {
+            output.style.display = 'block';
+            output.value = JSON.stringify(comments, null, 2);
+            output.select();
+            document.execCommand('copy');
+            exportBtn.textContent = 'Copied to Clipboard!';
+            setTimeout(() => {
+                exportBtn.textContent = 'Export Feedback';
+            }, 2000);
+        });
+    </script>
+</body>
+</html>
