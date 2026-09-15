@@ -3563,6 +3563,47 @@ function generateAndOpenLaunchpad() {
         child.on('error', warnOpenFailed);
         child.unref();
     } catch (e) { warnOpenFailed(e); }
+
+    // Opening it once per install/update isn't the same as being available at
+    // every login -- memB/Synapse/AO all get a real autostart entry for their
+    // own background services, but the dashboard itself (a static file, not
+    // a process) never got the equivalent: something to open it automatically
+    // on login too, not just right after an installer run.
+    if (process.platform === 'darwin') {
+        const plistPath = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.launchpad.plist');
+        const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bdb.launchpad</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>open</string>
+        <string>${filePath}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>`;
+        // Deliberately no KeepAlive: this launches a browser tab, not a
+        // long-running service -- `open` exits the moment it's handed the
+        // file to the browser, and KeepAlive would make launchd treat that
+        // normal exit as a crash to restart, reopening the tab in a loop.
+        try {
+            fs.writeFileSync(plistPath, plistContent);
+            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+        } catch (e) { logDebug(e, 'launchpad autostart plist'); }
+    } else if (process.platform === 'win32') {
+        const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+        const vbsPath = path.join(startupDir, 'com.bdb.launchpad.vbs');
+        const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.Run """${filePath}""", 1, False\r\n`;
+        try {
+            fs.mkdirSync(startupDir, { recursive: true });
+            fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
+        } catch (e) { logDebug(e, 'launchpad autostart vbs'); }
+    }
 }
 
 async function universalHarnessSync(primaryMcpConfigPath) {
