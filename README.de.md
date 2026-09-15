@@ -20,10 +20,10 @@
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
 [![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![skills](https://img.shields.io/badge/skills-183%20kuratiert-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
+[![skills](https://img.shields.io/badge/skills-184%20kuratiert-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
 [![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 
-> **Supercharging von KI-Coding-Agenten mit 183 hochkuratierten Skills, 19 lokalen MCP Wrappern und tiefgreifenden Integrationen für die Creative-Technology-Branche.**
+> **Supercharging von KI-Coding-Agenten mit 184 hochkuratierten Skills, 19 lokalen MCP Wrappern und tiefgreifenden Integrationen für die Creative-Technology-Branche.**
 
 Willkommen im **BDB DEV Skills & MCP Configuration** Repository. Dieses Projekt dient als Rückgrat unseres Entwicklungs-Ecosystems für Creative & Full-Stack Development. Es erweitert KI-Agenten um hochspezialisierte Fähigkeiten, die speziell auf die Event- und Medientechnologie-Branche sowie auf allgemeine Software-Entwicklung zugeschnitten sind.
 
@@ -80,11 +80,11 @@ Keines dieser Plugins ist in diesem Paket enthalten — es handelt sich um unabh
 
 ## Übersicht
 
-Dieses Repo liefert drei Dinge: eine kuratierte Skill-Bibliothek für Coding-Agenten, einen Installer, der diese (plus 21 lokale MCP Wrapper) in das von Ihnen genutzte Harness einbindet, und einen Dispatcher-Graphen, der sie als Multi-Agenten Build-Pipeline orchestriert. Siehe [AOS: Der Dispatcher-Graph](#-aos-der-dispatcher-graph) weiter unten für Details zur Funktionsweise der Pipeline selbst.
+Dieses Repo liefert drei Dinge: eine kuratierte Skill-Bibliothek für Coding-Agenten, einen Installer, der diese (plus 19 lokale MCP Wrapper) in das von Ihnen genutzte Harness einbindet, und einen Dispatcher-Graphen, der sie als Multi-Agenten Build-Pipeline orchestriert. Siehe [AOS: Der Dispatcher-Graph](#-aos-der-dispatcher-graph) weiter unten für Details zur Funktionsweise der Pipeline selbst.
 
-## 🌟 183 Optimierte Skills
+## 🌟 184 Optimierte Skills
 
-Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Nach intensiven Tests, Filterungen und Verfeinerungen haben wir sie zu einem hochkuratierten Set von **183 Optimierten Skills** destilliert (mit nativer OpenWiki-Dokumentationsengine, dem **lokalen semantischen Gedächtnis memB** und jetzt der **Universal Agent Harness Synchronisation in v4.0.0**).
+Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Nach intensiven Tests, Filterungen und Verfeinerungen haben wir sie zu einem hochkuratierten Set von **184 Optimierten Skills** destilliert (mit nativer OpenWiki-Dokumentationsengine, dem **lokalen semantischen Gedächtnis memB** und jetzt der **Universal Agent Harness Synchronisation in v4.0.0**).
 
 Diese Skills sind präzise optimiert, damit Agenten keine Zeit mit redundanten Aufgaben verschwenden, sondern mit maximaler Autonomie, strengen Architekturvorgaben und robustem Kontextbewusstsein agieren.
 
@@ -93,8 +93,8 @@ Anstatt Agenten durch generische Anweisungen irren zu lassen, setzt die oberste 
 - **`godmode-engineering`**: Erzwingt Domain-Driven Design, strenge TypeScript-Prüfungen, Clean Architecture und systematisches Debugging.
 - **`godmode-ui-ux`**: Der Frontend-Goldstandard. Erzwingt BDB "Anti-Slop"-Prinzipien, Barrierefreiheit (Accessibility) und fluide Bewegungsdynamiken.
 - **`godmode-shipping`**: Der finale Wächter für Production Releases. Erzwingt Spec-Driven Development, Pre-Launch-Prüfungen und sichere Rollbacks.
-- **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 21 Creative-Tech MCP Wrappern steuert.
-- **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 21 Creative-Tech MCP Wrappern steuert.
+- **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 19 Creative-Tech MCP Wrappern steuert.
+- **`godmode-eventtech`**: Das oberste Regelwerk für die BDB Creator Engine, das 3D, Medien und 19 Creative-Tech MCP Wrappern steuert.
 - **`godmode-3d-creation`**: Steuert die Agentic-3D-Pipeline (TripoSR, TRELLIS) für generative Modelle und CAD-Strukturen.
 - **`godmode-media-creation`**: Orchestriert automatisierte Videoproduktion, Storytelling und ComfyUI-Generierungsschleifen.
 
@@ -118,7 +118,7 @@ Nachfolgend finden Sie die vollständige Übersicht aller in diesem Paket enthal
 |------------|-------------|
 | `godmode-3d-creation` | Orchestrierungs-Master-Skill für alle 3D-Generierungs-, Modellierungs- und Rekonstruktionsaufgaben. Agiert als 3D-Gehirn für die BDB Creator Extension. |
 | `godmode-engineering` | BDB Engineering Godmode. Erzwingt strenges Domain-Driven Design, TypeScript-Striktheit, Clean Architecture und systematisches 5-Stufen-Debugging. |
-| `godmode-eventtech` | BDB EventTech Godmode. Das oberste Regelwerk für die BDB Creator Engine, das Godmode-3D, Godmode-Media und die 21 Creative-Tech MCP Wrappern steuert. |
+| `godmode-eventtech` | BDB EventTech Godmode. Das oberste Regelwerk für die BDB Creator Engine, das Godmode-3D, Godmode-Media und die 19 Creative-Tech MCP Wrappern steuert. |
 | `godmode-media-creation` | Orchestrierungs-Master-Skill für alle Medienerstellungsaufgaben (Video, Audio, Bild, Motion Design). Agiert als Gehirn für die BDB Creator Extension. |
 | `godmode-shipping` | BDB Shipping Godmode. Der finale Wächter für Production Releases. Erzwingt Spec-Driven Development, strenge Pre-Launch-Prüfungen, Feature Flags und Rollback-Strategien. |
 | `godmode-ui-ux` | BDB UI/UX Godmode. Der absolute Goldstandard für Frontend-Design. Erzwingt Anti-Slop-Prinzipien, Enterprise-Barrierefreiheit, fluide Bewegungsdynamiken und datengestützte Design-Generierung über alle Agent-Harnesses hinweg. |
@@ -433,11 +433,11 @@ BDBrainstorm kombiniert Multi-Agenten-Brainstorming, den Slash-Befehl `/grill-me
 
 ---
 
-## 🔌 21 Lokale MCP Wrapper
+## 🔌 19 Lokale MCP Wrapper
 
 ![BDB Architecture Sketch](assets/bdb_architecture_sketch.jpg)
 
-Anstatt sich auf rudimentäre Python-Mocks oder fehlerhafte Remote-APIs zu verlassen, bündelt dieses Repository **21 eigene, lokale MCP-Wrapper** (im Ordner `mcps/`). Diese werden automatisch erstellt/aufgewärmt und ermöglichen Ihrem KI-Assistenten das Lesen, Schreiben und Ausführen von Befehlen in der führenden Kreativsoftware der Branche.
+Anstatt sich auf rudimentäre Python-Mocks oder fehlerhafte Remote-APIs zu verlassen, bündelt dieses Repository **19 eigene, lokale MCP-Wrapper** (im Ordner `mcps/`). Diese werden automatisch erstellt/aufgewärmt und ermöglichen Ihrem KI-Assistenten das Lesen, Schreiben und Ausführen von Befehlen in der führenden Kreativsoftware der Branche.
 
 <details>
 <summary><strong>🎨 Adobe Creative Cloud (Illustrator, Photoshop, After Effects, Premiere Pro)</strong></summary>
