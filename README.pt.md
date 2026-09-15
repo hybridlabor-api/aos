@@ -20,12 +20,12 @@
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
 [![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![skills](https://img.shields.io/badge/skills-154%20curadas-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
+[![skills](https://img.shields.io/badge/skills-183%20curadas-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
 [![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 
-> **Potencializando agentes de código de IA com 154 skills hipercuradas, 21 wrappers MCP locais e um grafo dispatcher de multi-agentes executável.**
+> **Potencializando agentes de código de IA com 183 skills hipercuradas, 19 wrappers MCP locais e um grafo dispatcher de multi-agentes executável.**
 
-Bem-vindo ao **BDB Agent OS — AOS v4.0.0**: 154 skills curadas, 21 wrappers MCP locais e um grafo dispatcher que os transforma em um verdadeiro pipeline de build multi-agente, não apenas uma biblioteca de prompts. Aponte para um objetivo e ele planeja, constrói, revisa e implementa através de sete nós de agentes coordenados — com um portão imposto mecanicamente antes que qualquer coisa vá ao ar.
+Bem-vindo ao **BDB Agent OS — AOS**: 183 skills curadas, 19 wrappers MCP locais e um grafo dispatcher que os transforma em um verdadeiro pipeline de build multi-agente, não apenas uma biblioteca de prompts. Aponte para um objetivo e ele planeja, constrói, revisa e implementa através de sete nós de agentes coordenados — com um portão imposto mecanicamente antes que qualquer coisa vá ao ar.
 
 É neutro em relação ao harness por design, não "otimizado para uma ferramenta com outras como reflexão tardia": o grafo dispatcher é executado no Dynamic Workflows do Claude Code, as mesmas skills e configuração MCP são instaladas nativamente no **Google Antigravity, ChatGPT Codex / Codex CLI, Claude Desktop, Cursor, Aider, Roo Code, Cline e Windsurf**, e a variante leve `/startcycle-graph-user` recorre aos próprios subagentes do Claude Code em qualquer máquina que não tenha nenhum dos acima instalados.
 
@@ -86,9 +86,9 @@ que você use, e um grafo dispatcher que os orquestra como um pipeline de
 build multi-agente. Veja [AOS: O Grafo Dispatcher](#-aos-o-grafo-dispatcher)
 abaixo para entender como o próprio pipeline funciona.
 
-## 🌟 ~154+ Skills Otimizadas (Atualizado para v4.0.0)
+## 🌟 183 Skills Otimizadas
 
-Começamos com um conjunto massivo de mais de 1.400 skills de IA brutas. Após rigorosos testes, filtragem e refinamento, destilamo-las em um conjunto hipercurado de **154+ Skills Otimizadas** (apresentando um motor nativo de documentação OpenWiki, o **cérebro de memória semântica local memB** e agora a **sincronização Universal Agent Harness na v4.0.0**).
+Começamos com um conjunto massivo de mais de 1.400 skills de IA brutas. Após rigorosos testes, filtragem e refinamento, destilamo-las em um conjunto hipercurado de **183 Skills Otimizadas** (apresentando um motor nativo de documentação OpenWiki, o **cérebro de memória semântica local memB** e agora a **sincronização Universal Agent Harness na v4.0.0**).
 
 Essas skills são projetadas com precisão para garantir que os agentes não percam tempo com tarefas redundantes e, em vez disso, operem com máxima autonomia, restrições arquitetônicas rígidas e robusta consciência de contexto.
 

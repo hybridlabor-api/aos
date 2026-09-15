@@ -10,15 +10,15 @@
 [![GitHub stars](https://img.shields.io/github/stars/hybridlabor-api/aos?style=flat&color=gold)](https://github.com/hybridlabor-api/aos/stargazers)
 [![last commit](https://img.shields.io/github/last-commit/hybridlabor-api/aos.svg)](https://github.com/hybridlabor-api/aos/commits/main)
 
-[![skills](https://img.shields.io/badge/skills-169%20curated-brightgreen.svg)](docs/skills_table.md)
-[![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](mcps/)
+[![skills](https://img.shields.io/badge/skills-183%20curated-brightgreen.svg)](docs/skills_table.md)
+[![MCPs](https://img.shields.io/badge/local%20MCPs-19-brightgreen.svg)](mcps/)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#-installation)
 [![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
 [![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 
-> **Supercharging AI coding agents with 169 hyper-curated skills, 21 local MCP wrappers, and a runnable multi-agent dispatcher graph.**
+> **Supercharging AI coding agents with 183 hyper-curated skills, 21 local MCP wrappers, and a runnable multi-agent dispatcher graph.**
 
-Welcome to **BDB Agent OS — AOS**: 169 curated skills, 21 local MCP wrappers, an optional Hardware & PCB design module, and a dispatcher graph that turns all of it into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
+Welcome to **BDB Agent OS — AOS**: 183 curated skills, 19 local MCP wrappers, an optional Hardware & PCB design module, and a dispatcher graph that turns all of it into a real multi-agent build pipeline, not just a prompt library. Point it at a goal and it plans, builds, reviews, and ships through seven coordinated agent nodes — with a mechanically enforced gate before anything actually goes live.
 
 **Current release:** `v4.4.2` (beta channel) — see the NPM badge above for the exact published version.
 
@@ -105,9 +105,9 @@ below for how the pipeline itself works.
 
 ---
 
-## 🌟 169 Optimized Skills
+## 🌟 183 Optimized Skills
 
-We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **169 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
+We started with a massive pool of over 1,400 raw AI skills. After rigorous testing, filtering, and refinement, we've distilled them down to a hyper-curated set of **183 Optimized Skills** (featuring a native OpenWiki documentation engine, the **memB local semantic memory brain**, and **Universal Agent Harness synchronization**).
 
 These skills are precision-engineered to ensure agents waste no time on redundant tasks and instead operate with maximum agency, strict architectural constraints, and robust context awareness.
 

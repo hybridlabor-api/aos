@@ -20,10 +20,10 @@
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
 [![runtime](https://img.shields.io/badge/node-20+-blue.svg)](https://github.com/hybridlabor-api/aos)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![skills](https://img.shields.io/badge/skills-154%20kuratiert-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
+[![skills](https://img.shields.io/badge/skills-183%20kuratiert-brightgreen.svg)](https://github.com/hybridlabor-api/aos)
 [![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 
-> **Supercharging von KI-Coding-Agenten mit 154 hochkuratierten Skills, 21 lokalen MCP Wrappern und tiefgreifenden Integrationen für die Creative-Technology-Branche.**
+> **Supercharging von KI-Coding-Agenten mit 183 hochkuratierten Skills, 19 lokalen MCP Wrappern und tiefgreifenden Integrationen für die Creative-Technology-Branche.**
 
 Willkommen im **BDB DEV Skills & MCP Configuration** Repository. Dieses Projekt dient als Rückgrat unseres Entwicklungs-Ecosystems für Creative & Full-Stack Development. Es erweitert KI-Agenten um hochspezialisierte Fähigkeiten, die speziell auf die Event- und Medientechnologie-Branche sowie auf allgemeine Software-Entwicklung zugeschnitten sind.
 
@@ -82,9 +82,9 @@ Keines dieser Plugins ist in diesem Paket enthalten — es handelt sich um unabh
 
 Dieses Repo liefert drei Dinge: eine kuratierte Skill-Bibliothek für Coding-Agenten, einen Installer, der diese (plus 21 lokale MCP Wrapper) in das von Ihnen genutzte Harness einbindet, und einen Dispatcher-Graphen, der sie als Multi-Agenten Build-Pipeline orchestriert. Siehe [AOS: Der Dispatcher-Graph](#-aos-der-dispatcher-graph) weiter unten für Details zur Funktionsweise der Pipeline selbst.
 
-## 🌟 ~154+ Optimierte Skills (Aktualisiert für v4.0.0)
+## 🌟 183 Optimierte Skills
 
-Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Nach intensiven Tests, Filterungen und Verfeinerungen haben wir sie zu einem hochkuratierten Set von **154+ Optimierten Skills** destilliert (mit nativer OpenWiki-Dokumentationsengine, dem **lokalen semantischen Gedächtnis memB** und jetzt der **Universal Agent Harness Synchronisation in v4.0.0**).
+Wir haben mit einem gewaltigen Pool von über 1.400 rohen KI-Skills begonnen. Nach intensiven Tests, Filterungen und Verfeinerungen haben wir sie zu einem hochkuratierten Set von **183 Optimierten Skills** destilliert (mit nativer OpenWiki-Dokumentationsengine, dem **lokalen semantischen Gedächtnis memB** und jetzt der **Universal Agent Harness Synchronisation in v4.0.0**).
 
 Diese Skills sind präzise optimiert, damit Agenten keine Zeit mit redundanten Aufgaben verschwenden, sondern mit maximaler Autonomie, strengen Architekturvorgaben und robustem Kontextbewusstsein agieren.
 

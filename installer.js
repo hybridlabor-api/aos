@@ -10,8 +10,8 @@
 // built-in global with no require() of its own, so this check itself runs
 // on any Node version ever shipped.
 const NODE_MAJOR = parseInt(process.version.slice(1).split('.')[0], 10);
-if (Number.isFinite(NODE_MAJOR) && NODE_MAJOR < 18) {
-    console.error(`\nAOS requires Node.js 18 or newer -- this machine has ${process.version}.\nInstall a current Node.js from https://nodejs.org and re-run.\n`);
+if (Number.isFinite(NODE_MAJOR) && NODE_MAJOR < 20) {
+    console.error(`\nAOS requires Node.js 20 or newer -- this machine has ${process.version}.\nInstall a current Node.js from https://nodejs.org and re-run.\n`);
     process.exit(1);
 }
 
@@ -3747,7 +3747,7 @@ async function runQuickUpdate(installState) {
 
 async function main() {
     const skipIntro = isAutoYes || process.argv.includes('--no-intro') || process.argv.includes('--no-animation');
-    await renderKineticIntro({ rotations: 1, fps: 12.5, skip: skipIntro });
+    await renderKineticIntro({ rotations: 1, fps: 12.5, skip: skipIntro, pkgVersion: pkg.version });
     console.log(buildWordmarkBanner());
 
     const installState = detectInstallState();

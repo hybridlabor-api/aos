@@ -4,7 +4,7 @@
   "description": "AOS — A Curated AI AGENT OS. Optimized agent skills and add-ons like memB, OpenWiki, Heimdall Token Saver, and Godmode architectures.",
   "main": "installer.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "bin": {
     "aos": "installer.js",
