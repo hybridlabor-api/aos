@@ -3348,6 +3348,9 @@ function generateAndOpenLaunchpad() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BDB Agent OS – Launchpad</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #090a0f;
@@ -3355,10 +3358,10 @@ function generateAndOpenLaunchpad() {
       --card-border: rgba(255, 255, 255, 0.08);
       --text: #f0f6fc;
       --text-muted: #8b949e;
-      --accent: #58a6ff;
+      --accent: #9b30c4;
       --green: #3fb950;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -3384,12 +3387,13 @@ function generateAndOpenLaunchpad() {
       letter-spacing: -0.5px;
       margin-bottom: 6px;
     }
+    .logo-mark { width: 36px; height: 36px; flex-shrink: 0; }
     .logo-badge {
-      background: linear-gradient(135deg, #58a6ff 0%, #bc8cff 100%);
+      background: linear-gradient(135deg, #ffffff 0%, #c77dea 60%, #9b30c4 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
-    .tagline { color: var(--text-muted); font-size: 14px; }
+    .tagline { color: var(--text-muted); font-size: 14px; font-weight: 400; }
     .grid { display: flex; flex-direction: column; gap: 12px; }
     .card {
       background: var(--card-bg);
@@ -3405,15 +3409,15 @@ function generateAndOpenLaunchpad() {
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .card:hover {
-      border-color: rgba(88, 166, 255, 0.4);
+      border-color: rgba(155, 48, 196, 0.45);
       transform: translateY(-2px);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     }
     .card-content { display: flex; align-items: center; gap: 14px; }
     .card-icon {
-      font-size: 22px;
       width: 40px;
       height: 40px;
+      padding: 6px;
       border-radius: 10px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.06);
@@ -3421,6 +3425,7 @@ function generateAndOpenLaunchpad() {
       align-items: center;
       justify-content: center;
     }
+    .card-icon svg { width: 100%; height: 100%; }
     .card-info h2 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
     .card-info p { font-size: 13px; color: var(--text-muted); }
     .card-meta {
@@ -3434,7 +3439,7 @@ function generateAndOpenLaunchpad() {
       background: rgba(255, 255, 255, 0.06);
       padding: 4px 10px;
       border-radius: 20px;
-      color: #79c0ff;
+      color: #c77dea;
     }
     .status-dot {
       width: 8px;
@@ -3460,13 +3465,43 @@ function generateAndOpenLaunchpad() {
 <body>
   <div class="container">
     <div class="header">
-      <div class="logo">🚀 <span class="logo-badge">BDB Agent OS</span></div>
+      <div class="logo">
+        <svg class="logo-mark" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="bdbPlateLight" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#FFFFFF"/><stop offset="60%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#E7E7EA"/>
+            </linearGradient>
+            <linearGradient id="bdbPlateDark" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#1C1C1F"/><stop offset="100%" stop-color="#050505"/>
+            </linearGradient>
+          </defs>
+          <circle cx="256" cy="256" r="195" fill="url(#bdbPlateDark)" stroke="#FFFFFF" stroke-width="2" stroke-opacity="0.6"/>
+          <circle cx="256" cy="256" r="175" fill="#0a0a0a"/>
+          <g transform="translate(70, 68) scale(1.0)">
+            <path fill="url(#bdbPlateLight)" d="M181.63.05c101.39-2.47,184.56,80.09,190.14,179.93,5.53,99.03-66.16,185.42-165.11,195.46-87.39,8.86-171.1-45.56-197.67-128.96C-28.74,128.03,56.78,3.1,181.63.05h0ZM177.5,21.3C69.09,25.31-7.16,129.62,21.76,234.52c18.72,67.88,81.56,116.7,151.53,121.32,106.21,7.03,195.6-81.63,179.68-189.06-12.54-84.65-89.81-148.66-175.47-145.49h0Z"/>
+            <g fill="#FFFFFF">
+              <path d="M147.69,120.05c12.04.36,24.64-.72,36.62-.07,24.29,1.32,41.37,20.13,42.91,43.99-.69,16.35.57,33.42-.28,49.69-1.31,25.42-18.55,43.75-44.02,45.64-9.59.72-20.14.69-29.78.84-4.97.08-9.9.68-10.37-5.66s.43-9.41.34-14.03c12.65-11.84,14.75-31.17,4.75-45.41-.63-.9-2.26-2.34-2.62-3.17s-.46-12.58-.26-14.37,1.1-3.52,1.46-5.16c1.21-5.42,1.06-11.26-.39-16.62-.41-1.54-1.48-3.56-1.63-4.99-.47-4.28-.14-9.67-.26-14.08-.11-3.56-.84-8.43-.57-11.86s1.32-4.35,4.08-4.75h0ZM162.03,135.5c-4.32.73-3.34,6.65-3.26,10.01.17,6.21.91,12.51,1.13,18.73.83,23.13-1.03,45.49-1.41,68.42-.07,3.93-1.27,10.87,4.01,11.46,10.36-.51,21.39,1.89,31.38-1.45,13.74-4.59,20.43-17.79,19.81-31.81-1.77-14.46-1.19-29.09-1.94-43.58-.52-10.12-3.97-20.33-12.44-26.46-10.8-7.82-24.82-4.88-37.29-5.34h0Z"/>
+              <path d="M232.66,132.46c9.53.36,19.74-.72,29.19-.08,22.64,1.52,33.92,28.58,21.93,47.05-1.49,2.3-4.32,4.47-3.85,7.42.47,2.95,5.64,6.21,7.42,8.3,11.88,13.96,8.41,35.69-6.91,45.49-7.85,5.02-14.69,4.43-23.56,4.86-7.67.37-16.24,1.05-23.91.66-1.66-.08-2.98-.73-3.68-2.32s-.52-7.28-.43-9.26c.36-6.63,3.52-13.04,3.89-20.39.58-11.38-.1-23.12-.3-34.49-.1-5.68.32-11.44-.3-17.08-.41-3.82-1.64-7.52-1.89-11.35-.25-3.85-.18-7.99-.26-11.88-.07-2.84-1.26-6.03,2.68-6.95h-.01ZM243.68,144.59c-3.41.77-2.55,6.7-2.66,9.2-.28,6.08-.58,12.36-.29,18.47.1,2.06.36,6.36.9,8.21.54,1.85.84,1.79,1.66,2.19,1.66.83,8-.68,10.26-.88,4.22-.39,8.12.03,12.28-1.24,16.76-5.12,16.53-26.53,1.01-33.02-15.52-6.5-13.5-2.7-18.82-2.98-5.31-.28-3.37-.17-4.36.06h.03ZM243.68,194.52c-3.49.79-2.58,8.66-2.68,11.39-.26,7.05-1.06,17.41.07,24.21,1.13,6.8,2.63,3.38,5.32,3.26,3.96-.19,8.36-1.32,12.4-1.67,5.85-.5,10.68.22,16.24-2.25,13.6-6.04,12.62-25.27-.46-31.46-5.63-2.66-9.89-1.97-15.78-2.43-3.57-.28-7.2-.92-10.76-1.1-1.12-.06-3.35-.17-4.36.06h0Z"/>
+              <path d="M90.59,133.03c8.84-.44,25.24-1.08,33.23,1.92,18.07,6.77,23.99,29.96,13.56,45.7-1.6,2.41-4.52,4.44-3.28,7.75.69,1.85,5.41,5.42,7.03,7.31,11.86,13.82,8.77,35.23-6.25,45.33-15.02,10.1-23.31,5.27-34.44,5.56-4.12.11-10.36.88-14.32.28-2.22-.34-3.45-2.79-3.48-4.83-.11-7.84.77-15.89,1.1-23.71.99-23.09,1.31-45.33.57-68.43-.14-4.15-1.05-9.79-.57-13.79.43-3.52,4.1-2.95,6.84-3.09h0ZM98.3,145.15c-1.71.29-2.98,1.7-3.21,3.41-.15,1.19-.23,3.13-.3,4.39-.39,8.01-.9,19.53.58,27.27.23,1.24.57,2.55,1.82,3.15,1.81.84,7.03-.55,9.32-.76,3.3-.3,6.62-.1,9.89-.59,21.2-3.21,21.02-29.7,1.28-34.86-4.36-1.14-13.16-1.92-17.79-2.07-.55-.01-1.03-.03-1.59.07h0ZM98.03,195.09c-4.25.88-2.46,6.76-3.24,9.72-.06,7.92-.55,15.86,0,23.75.22,3.21.77,5.75,4.57,5.67,3.82-.08,8.46-1.32,12.41-1.67,5.55-.48,11.21.12,16.48-2,14.62-5.88,13.53-26.13-.52-32.17-5.13-2.21-8.25-1.59-13.48-1.97-4.69-.34-9.7-1.23-14.35-1.38-.62-.01-1.26-.07-1.86.06h-.01Z"/>
+            </g>
+          </g>
+        </svg>
+        <span class="logo-badge">BDB Agent OS</span>
+      </div>
       <p class="tagline">Local Multi-Agent Ecosystem Hub</p>
     </div>
     <div class="grid">
       <a class="card" href="http://127.0.0.1:8088" target="_blank">
         <div class="card-content">
-          <div class="card-icon">🧠</div>
+          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="grad-memb" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#51116F"/></linearGradient></defs>
+            <polygon points="50,10 85,45 50,90 15,45" fill="url(#grad-memb)" opacity="0.9"/>
+            <polyline points="50,10 50,90" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/>
+            <polyline points="15,45 85,45" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/>
+            <line x1="50" y1="45" x2="70" y2="25" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5"/>
+            <line x1="50" y1="45" x2="30" y2="70" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5"/>
+            <circle cx="50" cy="45" r="4" fill="#FFFFFF"/><circle cx="70" cy="25" r="2" fill="#FFFFFF"/><circle cx="30" cy="70" r="2" fill="#FFFFFF"/>
+          </svg></div>
           <div class="card-info">
             <h2>memB Vector Memory</h2>
             <p>Autonomous Vector & Long-Term Memory</p>
@@ -3479,7 +3514,15 @@ function generateAndOpenLaunchpad() {
       </a>
       <a class="card" href="http://127.0.0.1:7781" target="_blank">
         <div class="card-content">
-          <div class="card-icon">🏙️</div>
+          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="grad-synapse" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#51116F"/></linearGradient></defs>
+            <rect x="20" y="55" width="14" height="30" rx="2" fill="url(#grad-synapse)" opacity="0.85"/>
+            <rect x="43" y="35" width="14" height="50" rx="2" fill="url(#grad-synapse)" opacity="0.9"/>
+            <rect x="66" y="45" width="14" height="40" rx="2" fill="url(#grad-synapse)" opacity="0.8"/>
+            <line x1="27" y1="55" x2="50" y2="35" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5"/>
+            <line x1="50" y1="35" x2="73" y2="45" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5"/>
+            <circle cx="27" cy="55" r="3" fill="#FFFFFF"/><circle cx="50" cy="35" r="3" fill="#FFFFFF"/><circle cx="73" cy="45" r="3" fill="#FFFFFF"/>
+          </svg></div>
           <div class="card-info">
             <h2>Synapse 3D</h2>
             <p>Interactive Codebase Topology & Sessions</p>
@@ -3492,7 +3535,40 @@ function generateAndOpenLaunchpad() {
       </a>
       <a class="card" href="http://127.0.0.1:3101" target="_blank">
         <div class="card-content">
-          <div class="card-icon">⚡</div>
+          <div class="card-icon"><svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="plateLight" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="60%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#E7E7EA"/></linearGradient>
+              <linearGradient id="plateMid" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#9b30c4"/><stop offset="100%" stop-color="#51116F"/></linearGradient>
+              <linearGradient id="plateDark" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#1C1C1F"/><stop offset="100%" stop-color="#050505"/></linearGradient>
+            </defs>
+            <g id="antennae" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
+              <rect x="180" y="45" width="20" height="30" rx="2" fill="url(#plateLight)"/><polygon points="180,45 190,25 200,45" fill="#FFFFFF"/><circle cx="190" cy="25" r="4" fill="#FFFFFF"/>
+              <rect x="186" y="80" width="22" height="34" rx="2" fill="url(#plateMid)"/><rect x="194" y="118" width="24" height="38" rx="2" fill="url(#plateDark)"/><rect x="202" y="160" width="26" height="38" rx="2" fill="url(#plateDark)"/>
+              <rect x="312" y="45" width="20" height="30" rx="2" fill="url(#plateLight)"/><polygon points="312,45 322,25 332,45" fill="#FFFFFF"/><circle cx="322" cy="25" r="4" fill="#FFFFFF"/>
+              <rect x="304" y="80" width="22" height="34" rx="2" fill="url(#plateMid)"/><rect x="294" y="118" width="24" height="38" rx="2" fill="url(#plateDark)"/><rect x="284" y="160" width="26" height="38" rx="2" fill="url(#plateDark)"/>
+            </g>
+            <g id="head" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
+              <rect x="238" y="170" width="36" height="32" rx="3" fill="url(#plateLight)"/>
+              <rect x="156" y="206" width="200" height="88" rx="6" fill="url(#plateDark)"/>
+              <rect x="136" y="230" width="20" height="40" rx="3" fill="url(#plateMid)"/><rect x="356" y="230" width="20" height="40" rx="3" fill="url(#plateMid)"/>
+            </g>
+            <g id="eyes">
+              <rect x="174" y="222" width="56" height="52" rx="5" fill="#000000" stroke="#FFFFFF" stroke-width="2"/><rect x="180" y="228" width="44" height="40" rx="3" fill="url(#plateDark)"/>
+              <circle cx="202" cy="248" r="14" fill="#FFFFFF" opacity="0.3"/><circle cx="202" cy="248" r="7" fill="#FFFFFF"/><circle cx="205" cy="245" r="2.5" fill="#FFFFFF"/>
+              <rect x="282" y="222" width="56" height="52" rx="5" fill="#000000" stroke="#FFFFFF" stroke-width="2"/><rect x="288" y="228" width="44" height="40" rx="3" fill="url(#plateDark)"/>
+              <circle cx="310" cy="248" r="14" fill="#FFFFFF" opacity="0.3"/><circle cx="310" cy="248" r="7" fill="#FFFFFF"/><circle cx="313" cy="245" r="2.5" fill="#FFFFFF"/>
+            </g>
+            <g id="mandibles" stroke="#000000" stroke-width="2.5">
+              <rect x="226" y="298" width="60" height="18" rx="3" fill="url(#plateLight)"/>
+              <rect x="236" y="303" width="10" height="8" rx="1.5" fill="#51116F"/><rect x="251" y="303" width="10" height="8" rx="1.5" fill="#51116F"/><rect x="266" y="303" width="10" height="8" rx="1.5" fill="#51116F"/>
+              <polygon points="196,300 220,300 206,340" fill="url(#plateLight)"/><polygon points="316,300 292,300 306,340" fill="url(#plateLight)"/>
+            </g>
+            <g id="thorax" stroke="#000000" stroke-width="2.5" stroke-linejoin="round">
+              <rect x="180" y="336" width="152" height="74" rx="6" fill="url(#plateMid)"/>
+              <rect x="216" y="352" width="80" height="42" rx="4" fill="#0c0414" stroke="#FFFFFF" stroke-width="1.5"/>
+              <text x="256" y="378" fill="#FFFFFF" font-family="monospace" font-size="14" font-weight="900" text-anchor="middle" letter-spacing="3">BDB</text>
+            </g>
+          </svg></div>
           <div class="card-info">
             <h2>AO — Agent Orchestrator</h2>
             <p>Multi-Agent Cockpit & Git-Worktree Orchestration</p>
@@ -3505,7 +3581,15 @@ function generateAndOpenLaunchpad() {
       </a>
       <a class="card" href="http://127.0.0.1:9080" target="_blank">
         <div class="card-content">
-          <div class="card-icon">🌐</div>
+          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="grad-remote" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#51116F"/></linearGradient></defs>
+            <circle cx="50" cy="50" r="32" fill="none" stroke="url(#grad-remote)" stroke-width="3" opacity="0.6"/>
+            <circle cx="50" cy="50" r="8" fill="url(#grad-remote)"/>
+            <circle cx="50" cy="14" r="4" fill="#FFFFFF"/><circle cx="82" cy="65" r="4" fill="#FFFFFF"/><circle cx="18" cy="65" r="4" fill="#FFFFFF"/>
+            <line x1="50" y1="50" x2="50" y2="18" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+            <line x1="50" y1="50" x2="79" y2="63" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+            <line x1="50" y1="50" x2="21" y2="63" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+          </svg></div>
           <div class="card-info">
             <h2>RemoteOS Gateway</h2>
             <p>Multi-Cloud Execution & 4-Eyes Approval Gateway</p>

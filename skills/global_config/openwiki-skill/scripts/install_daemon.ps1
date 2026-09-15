@@ -26,35 +26,84 @@ try {
     Write-Host "Warning: pip install failed. Install google-genai manually." -ForegroundColor Yellow
 }
 
-# 3. Resolve API key
-$GeminiKey = $env:GEMINI_API_KEY
-if ([string]::IsNullOrWhiteSpace($GeminiKey)) {
-    Write-Host ""
-    $GeminiKey = Read-Host "Enter your Gemini API key (or press Enter to skip)"
+# 3. Resolve provider and API key
+$OpenwikiProvider = $env:OPENWIKI_PROVIDER
+if ([string]::IsNullOrWhiteSpace($OpenwikiProvider)) {
+    $OpenwikiProvider = "google"
 }
 
-if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
-    Write-Host "Verifying API key..." -ForegroundColor Yellow
-    # verify_api_key.py reads GEMINI_API_KEY from its own process environment.
-    # A key typed at the Read-Host prompt above exists only in $GeminiKey, so it
-    # has to be published to this process before python is started - otherwise
-    # the child sees nothing and every interactively entered key fails the check
-    # and is discarded below.
-    $env:GEMINI_API_KEY = $GeminiKey
-    $VerifyScript = Join-Path $PSScriptRoot "verify_api_key.py"
-    $VerifyOutput = & python $VerifyScript 2>&1
-    $VerifyCode = $LASTEXITCODE
-    if ($VerifyCode -eq 0 -and ($VerifyOutput -match "VERIFIED_OK")) {
-        Write-Host " -> API key verified." -ForegroundColor Green
-        [System.Environment]::SetEnvironmentVariable("GEMINI_API_KEY", $GeminiKey, "User")
+# Map provider to its API key environment variable name
+$ApiKeyVar = switch ($OpenwikiProvider) {
+    "google"     { "GEMINI_API_KEY" }
+    "groq"       { "GROQ_API_KEY" }
+    "grok"       { "XAI_API_KEY" }
+    "xai"        { "XAI_API_KEY" }
+    "nvidia"     { "NVIDIA_API_KEY" }
+    "openrouter" { "OPENROUTER_API_KEY" }
+    "openai"     { "OPENAI_API_KEY" }
+    "custom"     { "OPENWIKI_API_KEY" }
+    "ollama"     { $null }
+    default      { "GEMINI_API_KEY"; $OpenwikiProvider = "google" }
+}
+
+# For Google provider, use the existing interactive flow with verification
+if ($OpenwikiProvider -eq "google") {
+    $ApiKey = $env:GEMINI_API_KEY
+    if ([string]::IsNullOrWhiteSpace($ApiKey)) {
+        Write-Host ""
+        $ApiKey = Read-Host "Enter your Gemini API key (or press Enter to skip)"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
+        Write-Host "Verifying API key..." -ForegroundColor Yellow
+        # verify_api_key.py reads GEMINI_API_KEY from its own process environment.
+        # A key typed at the Read-Host prompt above exists only in $ApiKey, so it
+        # has to be published to this process before python is started - otherwise
+        # the child sees nothing and every interactively entered key fails the check
+        # and is discarded below.
+        $env:GEMINI_API_KEY = $ApiKey
+        $VerifyScript = Join-Path $PSScriptRoot "verify_api_key.py"
+        $VerifyOutput = & python $VerifyScript 2>&1
+        $VerifyCode = $LASTEXITCODE
+        if ($VerifyCode -eq 0 -and ($VerifyOutput -match "VERIFIED_OK")) {
+            Write-Host " -> API key verified." -ForegroundColor Green
+            [System.Environment]::SetEnvironmentVariable("GEMINI_API_KEY", $ApiKey, "User")
+        } else {
+            Write-Host " -> WARNING: API key verification failed (with retry + TLS fallback)." -ForegroundColor Yellow
+            $VerifyOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+            Write-Host "    The daemon will run in collect-only mode until a valid key is set." -ForegroundColor Yellow
+            $ApiKey = ""
+        }
     } else {
-        Write-Host " -> WARNING: API key verification failed (with retry + TLS fallback)." -ForegroundColor Yellow
-        $VerifyOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
-        Write-Host "    The daemon will run in collect-only mode until a valid key is set." -ForegroundColor Yellow
-        $GeminiKey = ""
+        Write-Host "No API key provided. Daemon will run in collect-only mode." -ForegroundColor Yellow
     }
 } else {
-    Write-Host "No API key provided. Daemon will run in collect-only mode." -ForegroundColor Yellow
+    # For non-Google providers, skip verification and use the configured key
+    if ([string]::IsNullOrWhiteSpace($ApiKeyVar)) {
+        $ApiKey = ""
+    } else {
+        $ApiKey = (Get-Item -Path "env:$ApiKeyVar" -ErrorAction SilentlyContinue).Value
+        if ([string]::IsNullOrWhiteSpace($ApiKey)) {
+            $ApiKey = ""
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($ApiKey)) {
+        Write-Host "No API key provided for provider '$OpenwikiProvider'. Daemon will run in collect-only mode." -ForegroundColor Yellow
+    }
+}
+
+# Persist provider and model configuration
+[System.Environment]::SetEnvironmentVariable("OPENWIKI_PROVIDER", $OpenwikiProvider, "User")
+if (-not [string]::IsNullOrWhiteSpace($env:OPENWIKI_MODEL)) {
+    [System.Environment]::SetEnvironmentVariable("OPENWIKI_MODEL", $env:OPENWIKI_MODEL, "User")
+}
+if (-not [string]::IsNullOrWhiteSpace($env:OPENWIKI_BASE_URL)) {
+    [System.Environment]::SetEnvironmentVariable("OPENWIKI_BASE_URL", $env:OPENWIKI_BASE_URL, "User")
+}
+
+# Persist the appropriate API key
+if (-not [string]::IsNullOrWhiteSpace($ApiKey) -and -not [string]::IsNullOrWhiteSpace($ApiKeyVar)) {
+    [System.Environment]::SetEnvironmentVariable($ApiKeyVar, $ApiKey, "User")
 }
 
 # 4. Ensure log directory
@@ -171,8 +220,12 @@ if ($Registered) {
     Write-Host " -> Projects config: $DaemonLogDir\projects.json" -ForegroundColor Yellow
 }
 
-if (-not [string]::IsNullOrWhiteSpace($GeminiKey)) {
-    Write-Host " -> API key stored as the GEMINI_API_KEY user environment variable" -ForegroundColor Green
+if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
+    if (-not [string]::IsNullOrWhiteSpace($ApiKeyVar)) {
+        Write-Host " -> API key stored as the $ApiKeyVar user environment variable" -ForegroundColor Green
+    } else {
+        Write-Host " -> Provider configured: $OpenwikiProvider" -ForegroundColor Green
+    }
     Write-Host "    (not embedded in the task or the startup file)." -ForegroundColor Green
 }
 
