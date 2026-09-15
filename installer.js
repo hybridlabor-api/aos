@@ -1,5 +1,20 @@
 #!/usr/bin/env node
 
+// Node compatibility guard -- must run before any require() that could pull
+// in a dependency using the `node:` built-in scheme (@clack/prompts ->
+// @clack/core does `require('node:process')` internally), which only
+// resolves on Node >=14.18/>=16. On an older Node this crashed deep inside
+// that dependency with a bare "Cannot find module 'node:process'" -- no
+// mention of Node version anywhere -- reported from a real Windows machine
+// where the installer couldn't even start. Uses only process.version, a
+// built-in global with no require() of its own, so this check itself runs
+// on any Node version ever shipped.
+const NODE_MAJOR = parseInt(process.version.slice(1).split('.')[0], 10);
+if (Number.isFinite(NODE_MAJOR) && NODE_MAJOR < 18) {
+    console.error(`\nAOS requires Node.js 18 or newer -- this machine has ${process.version}.\nInstall a current Node.js from https://nodejs.org and re-run.\n`);
+    process.exit(1);
+}
+
 const fs = require('fs');
 const path = require('path');
 const os = require('os');

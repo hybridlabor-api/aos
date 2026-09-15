@@ -3,6 +3,9 @@
   "version": "4.4.2-beta.6",
   "description": "AOS — A Curated AI AGENT OS. Optimized agent skills and add-ons like memB, OpenWiki, Heimdall Token Saver, and Godmode architectures.",
   "main": "installer.js",
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "aos": "installer.js",
     "bdb-dev-optimized-agent-skills": "installer.js",
