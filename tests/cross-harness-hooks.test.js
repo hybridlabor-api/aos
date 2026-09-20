@@ -626,7 +626,8 @@ describe('Tier 3: Cross-Feature Interactions & Idempotency', () => {
         // 2. Run aos-doctor in JSON mode
         const docRes = runNodeScript(DOCTOR_SRC, {
             args: ['--json'],
-            env: { HOME: homeDir }
+            env: { HOME: homeDir },
+            timeout: 30000,
         });
 
         assert.ok(docRes.stdout && docRes.stdout.trim().length > 0, `Doctor should produce output, stderr: ${docRes.stderr}`);

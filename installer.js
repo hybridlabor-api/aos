@@ -59,6 +59,12 @@ const {
     log
 } = clack;
 
+// Defensive alias: @clack/prompts provides log.success, not log.ok.
+// Ensure any legacy or third-party call to log.ok safely routes to log.success.
+if (log && typeof log === 'object' && !log.ok) {
+    log.ok = log.success;
+}
+
 const {
     renderKineticIntro,
     buildHeroHeader,
@@ -2022,7 +2028,7 @@ async function installOpenWikiVisualizer() {
             log.warn('Skipping OpenWiki Visualizer setup: the openwiki CLI is not on PATH. Install it with: npm install -g openwiki@latest');
             return;
         }
-        log.ok('OpenWiki CLI installed.');
+        log.success('OpenWiki CLI installed.');
     }
     // launchd starts agents with a minimal PATH that never includes npm's global
     // bin dir, so resolve the absolute binary path now instead of relying on PATH at boot.
@@ -2151,7 +2157,8 @@ async function installOpenWikiVisualizer() {
         const stdoutLog = path.join(visualizerLogDir, 'visualize.stdout.log');
         const stderrLog = path.join(visualizerLogDir, 'visualize.stderr.log');
         const batPath = path.join(visualizerLogDir, 'run-openwiki-visualize.bat');
-        const runCmd = `"${openwikiBin}" visualize --port 4321 --no-open`;
+        const targetWikiArg = wikiPath ? `"${wikiPath}" ` : '';
+        const runCmd = `"${openwikiBin}" visualize ${targetWikiArg}--port 4321 --no-open`;
         const batContent = `@echo off\r\ncd /d "${homeDir}"\r\n${runCmd} >> "${stdoutLog}" 2>> "${stderrLog}"\r\n`;
         const vbsPath = path.join(startupDir, 'com.bdb.openwiki-visualize.vbs');
         const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${homeDir}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`;
