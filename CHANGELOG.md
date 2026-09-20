@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.5](https://github.com/hybridlabor-api/aos/compare/v4.6.4...v4.6.5) (2026-09-20)
+
+
+### Bug Fixes
+
+* support Windows daemon lifecycle in AOS ([#51](https://github.com/hybridlabor-api/aos/issues/51)) ([0f9cbf9](https://github.com/hybridlabor-api/aos/commit/0f9cbf93cbf8607996ef7b1bced496379ff43cc1))
+
 ## [4.6.4](https://github.com/hybridlabor-api/aos/compare/v4.6.3...v4.6.4) (2026-09-20)
 
 
