@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.2](https://github.com/hybridlabor-api/aos/compare/v4.6.1...v4.6.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* install openwiki CLI on demand and persist visualizer wiki path ([9782861](https://github.com/hybridlabor-api/aos/commit/9782861d9eb2d4764f9d8714ee1be4483a7836c4))
+
 ## [4.6.1](https://github.com/hybridlabor-api/aos/compare/v4.6.0...v4.6.1) (2026-09-20)
 
 
