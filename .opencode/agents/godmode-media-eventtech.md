@@ -1,6 +1,7 @@
 ---
 description: "Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers."
 mode: subagent
+model: opencode/muse-spark-1.3-contributor-free
 ---
 Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers.
 

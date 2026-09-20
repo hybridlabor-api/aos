@@ -1,0 +1,7 @@
+# Codex subagent configuration for database-reviewer
+name = "database-reviewer"
+description = "PostgreSQL specialist for query optimization, schema design, security, and performance. Use when writing SQL, creating migrations, or troubleshooting database performance."
+model = "gpt-4o"
+tier = "standard_fast"
+enabled = true
+prompt_file = "database-reviewer.md"

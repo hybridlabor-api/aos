@@ -1,0 +1,7 @@
+# Codex subagent configuration for opensource-forker
+name = "opensource-forker"
+description = "Forks a project for open-sourcing — copies files, strips secrets and credentials, replaces internal references with placeholders, generates `.env.example`, cleans git history. Run before `opensource-sanitizer`."
+model = "gpt-4o"
+tier = "standard_fast"
+enabled = true
+prompt_file = "opensource-forker.md"

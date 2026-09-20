@@ -1,0 +1,7 @@
+# Codex subagent configuration for godmode-media-eventtech
+name = "godmode-media-eventtech"
+description = "Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers."
+model = "gpt-4o"
+tier = "standard_fast"
+enabled = true
+prompt_file = "godmode-media-eventtech.md"

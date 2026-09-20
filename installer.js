@@ -2919,17 +2919,83 @@ function yamlQuote(str) {
     return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
 }
 
+// Canonical model tiers mapped to verified provider-specific model IDs for each harness.
+// Protects against vendor model churn and provides seamless cross-harness defaults.
+const CANONICAL_TIERS = {
+    reasoning_max: {
+        claude: 'opus',
+        antigravity: 'gemini-3.1-pro-high',
+        opencode: 'opencode/muse-spark-1.3-contributor-free',
+        codex: 'o3-mini'
+    },
+    standard_fast: {
+        claude: 'sonnet',
+        antigravity: 'gemini-3.8-flash-high',
+        opencode: 'opencode/muse-spark-1.3-contributor-free',
+        codex: 'gpt-4o'
+    },
+    trivial_low: {
+        claude: 'haiku',
+        antigravity: 'gemini-3.8-flash-low',
+        opencode: 'opencode/muse-spark-1.3-contributor-free',
+        codex: 'gpt-4o-mini'
+    }
+};
+
+// Loads .aos/pipeline.json or .aos/project.json containing role-to-model/harness mappings.
+function loadPipelineConfig(projectDir = currentDir) {
+    const candidates = [
+        path.join(projectDir, '.aos', 'pipeline.json'),
+        path.join(projectDir, '.aos', 'project.json'),
+        path.join(homeDir, '.aos', 'pipeline.json')
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p)) {
+            try {
+                const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+                if (data && data.pipeline) return data.pipeline;
+            } catch {}
+        }
+    }
+    return null;
+}
+
+// Resolves model ID, tier, and enabled status for a given agent role and target harness.
+function resolveAgentConfig(agentSlug, harness, pipelineConfig = null) {
+    const normSlug = agentSlug.toLowerCase().replace(/-/g, '_');
+    const roleCfg = pipelineConfig ? (pipelineConfig[normSlug] || pipelineConfig[agentSlug]) : null;
+    if (roleCfg) {
+        if (roleCfg.model) {
+            return {
+                model: roleCfg.model,
+                tier: roleCfg.tier || 'custom',
+                enabled: roleCfg.enabled !== false,
+                harness: roleCfg.harness || harness
+            };
+        }
+        if (roleCfg.tier && CANONICAL_TIERS[roleCfg.tier] && CANONICAL_TIERS[roleCfg.tier][harness]) {
+            return {
+                model: CANONICAL_TIERS[roleCfg.tier][harness],
+                tier: roleCfg.tier,
+                enabled: roleCfg.enabled !== false,
+                harness: roleCfg.harness || harness
+            };
+        }
+    }
+    const defaultTier = (normSlug === 'architect' || normSlug === 'reviewer') ? 'reasoning_max' : 'standard_fast';
+    const fallbackModel = (CANONICAL_TIERS[defaultTier] && CANONICAL_TIERS[defaultTier][harness]) || 'inherit';
+    return { model: fallbackModel, tier: defaultTier, enabled: true, harness };
+}
+
 // Generates .claude/agents/<name>.md — Claude Code's native subagent format.
 // Only frontmatter fields confirmed against code.claude.com/docs/en/sub-agents
-// are emitted (name, description, model). `tools:`/`permission`-style
-// allowlists are deliberately omitted rather than guessed from the MCP-server
-// list -- an unverified mapping there would silently over- or under-scope a
-// subagent's tool access, which is worse than inheriting the default set.
-function compileClaudeAgents(agents, targetDir) {
+// are emitted (name, description, model).
+function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
-        const model = a.model ? a.model.toLowerCase() : 'inherit';
+        const resolved = resolveAgentConfig(slug, 'claude', pipelineConfig);
+        const model = (resolved && resolved.model) ? resolved.model.toLowerCase() : (a.model ? a.model.toLowerCase() : 'inherit');
         const body = [
             a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
@@ -2950,18 +3016,13 @@ function compileClaudeAgents(agents, targetDir) {
     }
 }
 
-// Generates .opencode/agents/<name>.md. Only `description` and `mode` are
-// emitted -- confirmed fields per opencode.ai/docs/agents. `model` and
-// `permission` are left unset: OpenCode's model-id format and its mapping
-// from an MCP-server list to `permission` keys are not verified against its
-// docs, so guessing either would risk emitting a value OpenCode silently
-// can't resolve. `mode: subagent` is used for every generated agent, since
-// none of these five is meant to be a primary/default agent a user talks to
-// directly.
-function compileOpenCodeAgents(agents, targetDir) {
+// Generates .opencode/agents/<name>.md. Emits description, mode: subagent, and model.
+function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
+        const resolved = resolveAgentConfig(slug, 'opencode', pipelineConfig);
+        const model = resolved && resolved.model ? resolved.model : null;
         const body = [
             a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
@@ -2969,17 +3030,53 @@ function compileOpenCodeAgents(agents, targetDir) {
             a.output ? `**Output artifact(s):** ${a.output}` : null,
         ].filter(Boolean).join('\n\n');
 
-        const frontmatter = [
+        const frontmatterLines = [
             '---',
             `description: ${yamlQuote(a.role)}`,
             'mode: subagent',
-            '---',
-            '',
-        ].join('\n');
+        ];
+        if (model) {
+            frontmatterLines.push(`model: ${model}`);
+        }
+        frontmatterLines.push('---', '');
 
-        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
+        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatterLines.join('\n') + body + '\n');
     }
 }
+
+// Generates .codex/agents/<name>.toml and .codex/agents/<name>.md for ChatGPT Codex CLI.
+function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const a of agents) {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        const resolved = resolveAgentConfig(slug, 'codex', pipelineConfig);
+        const model = resolved && resolved.model ? resolved.model : 'o3-mini';
+
+        const tomlContent = [
+            `# Codex subagent configuration for ${slug}`,
+            `name = "${slug}"`,
+            `description = ${JSON.stringify(a.role)}`,
+            `model = "${model}"`,
+            `tier = "${resolved.tier || 'standard_fast'}"`,
+            `enabled = ${resolved.enabled !== false}`,
+            `prompt_file = "${slug}.md"`
+        ].join('\n');
+        fs.writeFileSync(path.join(targetDir, `${slug}.toml`), tomlContent + '\n');
+
+        const body = [
+            `# Role: ${a.name}`,
+            a.role,
+            a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
+            a.mcpServers.length ? `**MCP servers used:** ${a.mcpServers.join(', ')}` : null,
+            a.output ? `**Output artifact(s):** ${a.output}` : null,
+            '',
+            '## Instructions',
+            a.systemPrompt
+        ].filter(Boolean).join('\n\n');
+        fs.writeFileSync(path.join(targetDir, `${slug}.md`), body + '\n');
+    }
+}
+
 
 function injectHarnessRules() {
     const geminiMdSrc = path.join(srcDir, 'GEMINI.md');
@@ -3034,11 +3131,16 @@ function injectHarnessRules() {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
                     if (!fs.existsSync(agyAgentsDir)) fs.mkdirSync(agyAgentsDir, { recursive: true });
 
+                    const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
                     for (const a of agents) {
+                        const slug = a.name.toLowerCase().replace(/_/g, '-');
+                        const resolved = resolveAgentConfig(slug, 'antigravity', pipelineConfig);
                         const agentConfig = {
                             name: a.name,
                             description: a.role,
+                            model: resolved.model,
+                            model_tier: resolved.tier,
                             enable_write_tools: true,
                             enable_subagent_tools: true,
                             enable_mcp_tools: true,
@@ -3053,21 +3155,33 @@ function injectHarnessRules() {
 
             installStep('compile Claude Code subagents', () => {
                 if (agentsMdContent) {
+                    const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
                     const claudeAgentsDir = path.join(homeDir, '.claude', 'agents');
-                    compileClaudeAgents(agents, claudeAgentsDir);
+                    compileClaudeAgents(agents, claudeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to Claude Code subagents in ${claudeAgentsDir}`);
                 }
             }, 'Claude Code agents unchanged');
 
             installStep('compile OpenCode subagents', () => {
                 if (agentsMdContent) {
+                    const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
                     const opencodeAgentsDir = path.join(homeDir, '.opencode', 'agents');
-                    compileOpenCodeAgents(agents, opencodeAgentsDir);
+                    compileOpenCodeAgents(agents, opencodeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to OpenCode subagents in ${opencodeAgentsDir}`);
                 }
             }, 'OpenCode agents unchanged');
+
+            installStep('compile Codex subagents', () => {
+                if (agentsMdContent) {
+                    const pipelineConfig = loadPipelineConfig();
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const codexAgentsDir = path.join(homeDir, '.codex', 'agents');
+                    compileCodexAgents(agents, codexAgentsDir, pipelineConfig);
+                    log.step(`Compiled AGENTS.md to Codex subagents in ${codexAgentsDir}`);
+                }
+            }, 'Codex agents unchanged');
 
             const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
             installStep(`sync ${claudeMdPath}`, () => {
@@ -3513,10 +3627,20 @@ function installProjectHarness() {
     }, 'go-gate / graph-gate enforcement stays inactive in this project.');
 
     installStep('copy agent definitions into project', () => {
-        const agentsSrc = path.join(srcDir, '.claude', 'agents');
-        if (fs.existsSync(agentsSrc)) {
-            copyDirRecursiveSync(agentsSrc, path.join(projectClaudeDir, 'agents'));
-            log.step(`Copied agent definitions to ${path.join(projectClaudeDir, 'agents')}`);
+        const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
+        const pipelineConfig = loadPipelineConfig(currentDir);
+        if (fs.existsSync(agentsMdSrc)) {
+            const agents = parseAgentsMd(fs.readFileSync(agentsMdSrc, 'utf8'));
+            compileClaudeAgents(agents, path.join(projectClaudeDir, 'agents'), pipelineConfig);
+            compileOpenCodeAgents(agents, path.join(currentDir, '.opencode', 'agents'), pipelineConfig);
+            compileCodexAgents(agents, path.join(projectCodexDir, 'agents'), pipelineConfig);
+            log.step(`Compiled project agent definitions for Claude, OpenCode, and Codex`);
+        } else {
+            const agentsSrc = path.join(srcDir, '.claude', 'agents');
+            if (fs.existsSync(agentsSrc)) {
+                copyDirRecursiveSync(agentsSrc, path.join(projectClaudeDir, 'agents'));
+                log.step(`Copied agent definitions to ${path.join(projectClaudeDir, 'agents')}`);
+            }
         }
     }, 'The dispatcher runs, but its agent-file pointers resolve to nothing.');
 
@@ -4715,4 +4839,12 @@ module.exports = {
     flushSessionManifest,
     copyDirRecursiveSync,
     INSTALL_MANIFEST_PATH,
+    // Agent compilers & pipeline helpers
+    parseAgentsMd,
+    compileClaudeAgents,
+    compileOpenCodeAgents,
+    compileCodexAgents,
+    loadPipelineConfig,
+    resolveAgentConfig,
+    CANONICAL_TIERS,
 };

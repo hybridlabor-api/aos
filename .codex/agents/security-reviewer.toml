@@ -1,0 +1,7 @@
+# Codex subagent configuration for security-reviewer
+name = "security-reviewer"
+description = "Security vulnerability detection and remediation. Use after writing code that handles user input, authentication, API endpoints, or sensitive data. Flags secrets, SSRF, injection, unsafe crypto, and OWASP Top 10."
+model = "gpt-4o"
+tier = "standard_fast"
+enabled = true
+prompt_file = "security-reviewer.md"

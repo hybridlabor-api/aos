@@ -1,0 +1,7 @@
+# Codex subagent configuration for silent-failure-hunter
+name = "silent-failure-hunter"
+description = "Reviews code for silent failures, swallowed errors, bad fallbacks, and missing error propagation. Finds the bugs that never raise."
+model = "gpt-4o"
+tier = "standard_fast"
+enabled = true
+prompt_file = "silent-failure-hunter.md"

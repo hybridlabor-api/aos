@@ -1,0 +1,7 @@
+# Codex subagent configuration for go-build-resolver
+name = "go-build-resolver"
+description = "Resolves Go build, vet, and compilation errors with minimal changes. Use when Go builds fail — relevant to `bdb-synapse`, which ships a Go binary."
+model = "gpt-4o"
+tier = "standard_fast"
+enabled = true
+prompt_file = "go-build-resolver.md"

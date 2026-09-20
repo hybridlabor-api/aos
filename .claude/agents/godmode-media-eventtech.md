@@ -1,8 +1,7 @@
 ---
 name: godmode-media-eventtech
 description: "Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers."
-model: opus
-skills: [godmode-eventtech, godmode-media-creation, godmode-3d-creation, bdbmediastorm, MCP_Manage, threejs-skills, spline-3d-integration]
+model: sonnet
 ---
 Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers.
 

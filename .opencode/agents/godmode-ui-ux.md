@@ -1,6 +1,7 @@
 ---
 description: "Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics."
 mode: subagent
+model: opencode/muse-spark-1.3-contributor-free
 ---
 Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics.
 

@@ -1,0 +1,211 @@
+<!--
+  BDB Agent OS -- v4.5.0 update email banner.
+  Table-based, inline-styled for email client compatibility (Outlook/Gmail/Apple Mail).
+  Width: 600px (standard email content width). Drop this <table> straight into a mail body.
+  Layout modeled on a "Company Update" newsletter template: light header banner with a
+  big centered mark + issue line, then alternating icon-left/icon-right feature rows
+  (git-graph / brain / box / message-square-heart, all Lucide). Icons are static inline
+  SVG -- no animation, since real email clients strip <script> and don't reliably run
+  CSS keyframes across clients.
+-->
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center" style="width:600px; max-width:100%; background-color:#ffffff; border:1px solid #e5e5e5; border-radius:8px; overflow:hidden; font-family:Helvetica, Arial, sans-serif;">
+
+  <!-- ============ Header banner ============ -->
+  <tr>
+    <td align="center" style="background-color:#f3e8ff; padding:24px 24px 18px 24px;">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="52" height="52" style="display:block; margin:0 auto;">
+        <g transform="translate(70, 68)" fill="#0a0a0a">
+          <path d="M181.63.05c101.39-2.47,184.56,80.09,190.14,179.93,5.53,99.03-66.16,185.42-165.11,195.46-87.39,8.86-171.1-45.56-197.67-128.96C-28.74,128.03,56.78,3.1,181.63.05h0ZM177.5,21.3C69.09,25.31-7.16,129.62,21.76,234.52c18.72,67.88,81.56,116.7,151.53,121.32,106.21,7.03,195.6-81.63,179.68-189.06-12.54-84.65-89.81-148.66-175.47-145.49h0Z"/>
+          <path d="M147.69,120.05c12.04.36,24.64-.72,36.62-.07,24.29,1.32,41.37,20.13,42.91,43.99-.69,16.35.57,33.42-.28,49.69-1.31,25.42-18.55,43.75-44.02,45.64-9.59.72-20.14.69-29.78.84-4.97.08-9.9.68-10.37-5.66s.43-9.41.34-14.03c12.65-11.84,14.75-31.17,4.75-45.41-.63-.9-2.26-2.34-2.62-3.17s-.46-12.58-.26-14.37,1.1-3.52,1.46-5.16c1.21-5.42,1.06-11.26-.39-16.62-.41-1.54-1.48-3.56-1.63-4.99-.47-4.28-.14-9.67-.26-14.08-.11-3.56-.84-8.43-.57-11.86s1.32-4.35,4.08-4.75h0ZM162.03,135.5c-4.32.73-3.34,6.65-3.26,10.01.17,6.21.91,12.51,1.13,18.73.83,23.13-1.03,45.49-1.41,68.42-.07,3.93-1.27,10.87,4.01,11.46,10.36-.51,21.39,1.89,31.38-1.45,13.74-4.59,20.43-17.79,19.81-31.81-1.77-14.46-1.19-29.09-1.94-43.58-.52-10.12-3.97-20.33-12.44-26.46-10.8-7.82-24.82-4.88-37.29-5.34h0Z"/>
+          <path d="M232.66,132.46c9.53.36,19.74-.72,29.19-.08,22.64,1.52,33.92,28.58,21.93,47.05-1.49,2.3-4.32,4.47-3.85,7.42.47,2.95,5.64,6.21,7.42,8.3,11.88,13.96,8.41,35.69-6.91,45.49-7.85,5.02-14.69,4.43-23.56,4.86-7.67.37-16.24,1.05-23.91.66-1.66-.08-2.98-.73-3.68-2.32s-.52-7.28-.43-9.26c.36-6.63,3.52-13.04,3.89-20.39.58-11.38-.1-23.12-.3-34.49-.1-5.68.32-11.44-.3-17.08-.41-3.82-1.64-7.52-1.89-11.35-.25-3.85-.18-7.99-.26-11.88-.07-2.84-1.26-6.03,2.68-6.95h-.01ZM243.68,144.59c-3.41.77-2.55,6.7-2.66,9.2-.28,6.08-.58,12.36-.29,18.47.1,2.06.36,6.36.9,8.21.54,1.85.84,1.79,1.66,2.19,1.66.83,8-.68,10.26-.88,4.22-.39,8.12.03,12.28-1.24,16.76-5.12,16.53-26.53,1.01-33.02-15.52-6.5-13.5-2.7-18.82-2.98-5.31-.28-3.37-.17-4.36.06h.03ZM243.68,194.52c-3.49.79-2.58,8.66-2.68,11.39-.26,7.05-1.06,17.41.07,24.21,1.13,6.8,2.63,3.38,5.32,3.26,3.96-.19,8.36-1.32,12.4-1.67,5.85-.5,10.68.22,16.24-2.25,13.6-6.04,12.62-25.27-.46-31.46-5.63-2.66-9.89-1.97-15.78-2.43-3.57-.28-7.2-.92-10.76-1.1-1.12-.06-3.35-.17-4.36.06h0Z"/>
+          <path d="M90.59,133.03c8.84-.44,25.24-1.08,33.23,1.92,18.07,6.77,23.99,29.96,13.56,45.7-1.6,2.41-4.52,4.44-3.28,7.75.69,1.85,5.41,5.42,7.03,7.31,11.86,13.82,8.77,35.23-6.25,45.33-15.02,10.1-23.31,5.27-34.44,5.56-4.12.11-10.36.88-14.32.28-2.22-.34-3.45-2.79-3.48-4.83-.11-7.84.77-15.89,1.1-23.71.99-23.09,1.31-45.33.57-68.43-.14-4.15-1.05-9.79-.57-13.79.43-3.52,4.1-2.95,6.84-3.09h0ZM98.3,145.15c-1.71.29-2.98,1.7-3.21,3.41-.15,1.19-.23,3.13-.3,4.39-.39,8.01-.9,19.53.58,27.27.23,1.24.57,2.55,1.82,3.15,1.81.84,7.03-.55,9.32-.76,3.3-.3,6.62-.1,9.89-.59,21.2-3.21,21.02-29.7,1.28-34.86-4.36-1.14-13.16-1.92-17.79-2.07-.55-.01-1.03-.03-1.59.07h0ZM98.03,195.09c-4.25.88-2.46,6.76-3.24,9.72-.06,7.92-.55,15.86,0,23.75.22,3.21.77,5.75,4.57,5.67,3.82-.08,8.46-1.32,12.41-1.67,5.55-.48,11.21.12,16.48-2,14.62-5.88,13.53-26.13-.52-32.17-5.13-2.21-8.25-1.59-13.48-1.97-4.69-.34-9.7-1.23-14.35-1.38-.62-.01-1.26-.07-1.86.06h-.01Z"/>
+        </g>
+      </svg>
+      <div style="font-size:30px; font-weight:800; letter-spacing:-0.5px; color:#0a0a0a; padding-top:12px;">BDB AGENT OS</div>
+      <div style="font-size:13px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#7c1fa0; padding-top:6px;">Update &middot; AOS v4.5.0</div>
+    </td>
+  </tr>
+
+  <tr>
+    <td align="center" style="padding:20px 32px 8px 32px;">
+      <span style="font-size:14px; line-height:1.5; color:#4a4a4a;">AOS Skills &amp; Tools for Agents and Humans.</span>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:0 40px 32px 40px;">
+      <span style="font-size:12.5px; line-height:1.6; color:#6b6b6b;">
+        Countless fixes, plus a loop-and-graph engineering pipeline that actually delivers.
+      </span>
+    </td>
+  </tr>
+
+  <!-- ============ Feature 01 -- icon RIGHT (GitGraph / multi-agent pipeline) ============ -->
+  <tr>
+    <td style="padding:12px 40px 0 40px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td valign="middle">
+            <div style="font-size:17px; font-weight:700; color:#0a0a0a; line-height:1.3;">Multi-Agent Graph Pipeline &amp; Smarter Setup</div>
+            <div style="font-size:13px; color:#525252; line-height:1.65; padding-top:9px;">
+              The real headline this cycle: a sharper dispatcher graph routes every task straight to the
+              right domain — Backend, UI/UX, Show Control &amp; Media, Hardware &amp; PCB, or the Remote Gateway —
+              through <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">/startcycle</code>,
+              <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">/startcycle-graph</code> and
+              <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">/startcycle-graph-user</code>.
+              A new <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">ask-tim</code> skill router
+              helps you pick the right one, and <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">aos-setup</code> /
+              <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">aos-project-init</code> make
+              environment injection noticeably smoother.
+            </div>
+          </td>
+          <td width="112" align="center" valign="middle" style="padding-left:20px;">
+            <table role="presentation" width="100" height="100" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3e8ff; border-radius:20px; box-shadow:6px 6px 0 0 #ece2fb;">
+              <tr>
+                <td align="center" valign="middle">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#51116F" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="5" cy="6" r="3" />
+                    <path d="M5 9v6" />
+                    <circle cx="5" cy="18" r="3" />
+                    <path d="M12 3v18" />
+                    <circle cx="19" cy="6" r="3" />
+                    <path d="M16 15.7A9 9 0 0 0 19 9" />
+                  </svg>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ============ Feature 02 -- icon LEFT (Brain / memB / OpenWiki) ============ -->
+  <tr>
+    <td style="padding:52px 40px 0 40px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td width="112" align="center" valign="middle" style="padding-right:20px;">
+            <table role="presentation" width="100" height="100" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3e8ff; border-radius:20px; box-shadow:-6px 6px 0 0 #ece2fb;">
+              <tr>
+                <td align="center" valign="middle">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#51116F" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 18V5" />
+                    <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" />
+                    <path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5" />
+                    <path d="M17.997 5.125a4 4 0 0 1 2.526 5.77" />
+                    <path d="M18 18a4 4 0 0 0 2-7.464" />
+                    <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" />
+                    <path d="M6 18a4 4 0 0 1-2-7.464" />
+                    <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
+                  </svg>
+                </td>
+              </tr>
+            </table>
+          </td>
+          <td valign="middle">
+            <div style="font-size:17px; font-weight:700; color:#0a0a0a; line-height:1.3;">AO, memB &amp; the Documentation Engine</div>
+            <div style="font-size:13px; color:#525252; line-height:1.65; padding-top:9px;">
+              The agent ecosystem keeps evolving: memB's vector memory and OpenWiki's auto-generated,
+              evidence-grounded docs both got real upgrades this cycle — multi-provider LLM support and
+              a live background visualizer.
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ============ Feature 03 -- icon RIGHT (Box / design canvas) ============ -->
+  <tr>
+    <td style="padding:52px 40px 0 40px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td valign="middle">
+            <div style="font-size:17px; font-weight:700; color:#0a0a0a; line-height:1.3;">Intuitive Plan &amp; Design Canvas — 2D, 3D and Web</div>
+            <div style="font-size:13px; color:#525252; line-height:1.65; padding-top:9px;">
+              A new live-preview-canvas skill in combination with our plan-canvas turns any draft
+              into a click-to-annotate feedback loop. Paired with plan-canvas for comments and
+              decisions, it spans everything from web layouts to CAD, media and 3D scenes.
+            </div>
+          </td>
+          <td width="112" align="center" valign="middle" style="padding-left:20px;">
+            <table role="presentation" width="100" height="100" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3e8ff; border-radius:20px; box-shadow:6px 6px 0 0 #ece2fb;">
+              <tr>
+                <td align="center" valign="middle">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#51116F" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                    <path d="m3.3 7 8.7 5 8.7-5" />
+                    <path d="M12 22V12" />
+                  </svg>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ============ Feature 04 -- icon LEFT (MessageSquareHeart / new & rewritten skills) ============ -->
+  <tr>
+    <td style="padding:52px 40px 48px 40px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td width="112" align="center" valign="middle" style="padding-right:20px;">
+            <table role="presentation" width="100" height="100" cellpadding="0" cellspacing="0" border="0" style="background-color:#f3e8ff; border-radius:20px; box-shadow:-6px 6px 0 0 #ece2fb;">
+              <tr>
+                <td align="center" valign="middle">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#51116F" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+                    <path d="M7.5 9.5c0 .687.265 1.383.697 1.844l3.009 3.264a1.14 1.14 0 0 0 .407.314 1 1 0 0 0 .783-.004 1.14 1.14 0 0 0 .398-.31l3.008-3.264A2.77 2.77 0 0 0 16.5 9.5 2.5 2.5 0 0 0 12 8a2.5 2.5 0 0 0-4.5 1.5" />
+                  </svg>
+                </td>
+              </tr>
+            </table>
+          </td>
+          <td valign="middle">
+            <div style="font-size:17px; font-weight:700; color:#0a0a0a; line-height:1.3;">New &amp; Rewritten Skills Across the Stack</div>
+            <div style="font-size:13px; color:#525252; line-height:1.65; padding-top:9px;">
+              <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">Godmode_Hardware_PCB</code>
+              joins the dispatcher graph with a full schematic-to-fab pipeline. The Creator Extension got
+              real engine work, six ECC review subagents and Matt Pocock's grilling toolkit landed, and
+              <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">bdbdesignpro</code>
+              now gates every motion decision against BDB's brand and accessibility rules.
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td style="height:1px; background-color:#e5e5e5; line-height:1px; font-size:1px;">&nbsp;</td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:24px 40px 4px 40px;">
+      <span style="font-size:12.5px; color:#6b6b6b; line-height:1.6;">
+        <strong style="color:#0a0a0a;">AO</strong> — our own Agent cockpit is close to release, landing in the
+        next few days as part of BDB AOS v5.0.0.
+      </span>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:16px 24px 4px 24px;">
+      <img src="https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&amp;logoColor=white" width="150" height="20" alt="NVIDIA SkillSpector: CLEAN" style="display:inline-block; border:0;">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:16px 24px 8px 24px;">
+      <span style="font-size:12px; color:#4a4a4a; line-height:1.6;">
+        <a href="https://github.com/hybridlabor-api/aos" style="color:#7c1fa0; text-decoration:none;">github.com/hybridlabor-api/aos</a>
+        &nbsp;&middot;&nbsp;
+        <code style="background:#f3e8ff; padding:1px 5px; border-radius:4px; color:#7c1fa0;">npm i -g @hybridlabor-api/aos</code>
+      </span>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:8px 24px 24px 24px;">
+      <span style="font-size:11px; color:#9a9a9a; letter-spacing:0.3px;">&copy; Hybridlabor Global LLC &middot; BDB Agent OS</span>
+    </td>
+  </tr>
+</table>

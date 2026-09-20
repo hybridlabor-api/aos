@@ -1,0 +1,7 @@
+# Codex subagent configuration for godmode-ui-ux
+name = "godmode-ui-ux"
+description = "Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics."
+model = "gpt-4o"
+tier = "standard_fast"
+enabled = true
+prompt_file = "godmode-ui-ux.md"

@@ -1,8 +1,7 @@
 ---
 name: techlead
 description: "Reviews Architect's plan for a capability map (module boundaries, dependency direction, build order) before any build node starts. Approves or rejects the plan back to Architect. Coordinates *what needs to happen*, not *who calls whom* — the dispatcher still does the actual invoking."
-model: opus
-skills: [startcycle-graph, agent-pipeline, subagent-driven-development]
+model: gemini-3.8-flash-high
 ---
 Reviews Architect's plan for a capability map (module boundaries, dependency direction, build order) before any build node starts. Approves or rejects the plan back to Architect. Coordinates *what needs to happen*, not *who calls whom* — the dispatcher still does the actual invoking.
 
