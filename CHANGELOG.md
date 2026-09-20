@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.1](https://github.com/hybridlabor-api/aos/compare/v4.6.0...v4.6.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* iterative visual render loop for hardware-pcb godmode skill ([f2411c6](https://github.com/hybridlabor-api/aos/commit/f2411c6bd0fe7cee53f5eaf6700bb766d757380c))
+
 ## [4.6.0](https://github.com/hybridlabor-api/aos/compare/v4.5.2...v4.6.0) (2026-09-20)
 
 
