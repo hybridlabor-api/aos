@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.2](https://github.com/hybridlabor-api/aos/compare/v4.5.1...v4.5.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* **opencode:** add native plugin hooks, slim mcp profile, and skills wiring ([f015175](https://github.com/hybridlabor-api/aos/commit/f015175374ab0c9e6272a47793370ef6ce194abe))
+
 ## [4.5.1](https://github.com/hybridlabor-api/aos/compare/v4.5.0...v4.5.1) (2026-09-20)
 
 
