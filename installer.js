@@ -3564,6 +3564,51 @@ function installGlobalHooks() {
             log.warn(`Could not install OpenCode plugin: ${e.message}`);
         }
     }
+
+    // 5. Global CLI launcher binaries (aos-config, aos-dashboard, aos-uninstall)
+    installGlobalBinaries();
+}
+
+function installGlobalBinaries() {
+    const binSrc = path.join(srcDir, 'bin');
+    const globalAgentsBin = path.join(homeDir, '.agents', 'bin');
+    if (fs.existsSync(binSrc)) {
+        copyDirRecursiveSync(binSrc, globalAgentsBin);
+        log.step(`Installed CLI binaries to ${globalAgentsBin}`);
+    }
+
+    const localBinDir = path.join(homeDir, '.local', 'bin');
+    if (!fs.existsSync(localBinDir)) {
+        try { fs.mkdirSync(localBinDir, { recursive: true }); } catch (e) { logDebug(e, 'mkdir localBin'); }
+    }
+
+    const isWin = process.platform === 'win32';
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall'];
+
+    for (const name of cliBins) {
+        const targetMjs = path.join(globalAgentsBin, `${name}.mjs`);
+        if (!fs.existsSync(targetMjs)) continue;
+
+        // Shell wrapper for Unix / Git Bash
+        const shPath = path.join(localBinDir, name);
+        const shContent = `#!/bin/sh\nexec node "${targetMjs}" "$@"\n`;
+        try {
+            fs.writeFileSync(shPath, shContent, { mode: 0o755 });
+            try { fs.chmodSync(shPath, 0o755); } catch (e) { logDebug(e, `chmod ${shPath}`); }
+        } catch (e) { logDebug(e, `write ${shPath}`); }
+
+        // Windows CMD and PowerShell launchers
+        if (isWin) {
+            const cmdPath = path.join(localBinDir, `${name}.cmd`);
+            const cmdContent = `@echo off\r\nnode "${targetMjs}" %*\r\n`;
+            try { fs.writeFileSync(cmdPath, cmdContent); } catch (e) { logDebug(e, `write ${cmdPath}`); }
+
+            const ps1Path = path.join(localBinDir, `${name}.ps1`);
+            const ps1Content = `node "${targetMjs}" $args\r\n`;
+            try { fs.writeFileSync(ps1Path, ps1Content); } catch (e) { logDebug(e, `write ${ps1Path}`); }
+        }
+    }
+    log.step(`Wired CLI launcher binaries (aos-config, aos-dashboard, aos-uninstall) in ${localBinDir}`);
 }
 
 // Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --

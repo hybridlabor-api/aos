@@ -64,8 +64,10 @@ export function propose() {
   };
 }
 
+import { pathToFileURL } from 'node:url';
+
 // ------------------------------------------------------------------- CLI
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [cmd, key, ...rest] = process.argv.slice(2);
   const value = rest.join(' ');
 
