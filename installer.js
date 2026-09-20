@@ -3213,6 +3213,24 @@ function installGlobalHooks() {
         copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
     }
     mergeCodexTomlHooks(path.join(homeDir, '.codex', 'config.toml'));
+
+    // 4. OpenCode CLI
+    const opencodeDir = process.platform === 'win32'
+        ? path.join(process.env.APPDATA || homeDir, 'opencode')
+        : path.join(homeDir, '.config', 'opencode');
+    const opencodePluginSrc = path.join(srcDir, '.opencode', 'plugins', 'bdb-aos.js');
+    if (fs.existsSync(opencodePluginSrc)) {
+        const opencodePluginsDir = path.join(opencodeDir, 'plugins');
+        const opencodePluginDest = path.join(opencodePluginsDir, 'bdb-aos.js');
+        try {
+            fs.mkdirSync(opencodePluginsDir, { recursive: true });
+            fs.copyFileSync(opencodePluginSrc, opencodePluginDest);
+            try { fs.chmodSync(opencodePluginDest, 0o644); } catch (e) { logDebug(e, 'chmod opencode plugin'); }
+            log.step(`Installed OpenCode plugin to ${opencodePluginDest}`);
+        } catch (e) {
+            log.warn(`Could not install OpenCode plugin: ${e.message}`);
+        }
+    }
 }
 
 // Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --
@@ -4022,17 +4040,98 @@ async function universalHarnessSync(primaryMcpConfigPath) {
             const existing = readJsoncFile(targetPath);
             const data = existing && existing.mcp ? existing : Object.assign({}, existing || {}, { mcp: {} });
             if (masterMcpData.mcpServers) {
+                // OpenCode provider APIs (e.g. OpenAI-compatible, Console) enforce tool name length limits
+                // (e.g. max 64 chars) and context limits. Loading 20+ MCPs causes provider errors (e.g. 73-char tool names).
+                // OpenCode uses a slim profile: only core servers (memb_mcp, zavora_computer_use) are enabled by default.
+                const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use']);
+                const existingMcp = existing && existing.mcp ? existing.mcp : {};
+                const hasExistingKeys = Object.keys(existingMcp).length > 0;
+
                 for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
-                    const cmd = Array.isArray(val.command) ? val.command : [val.command];
-                    const args = Array.isArray(val.args) ? val.args : [];
+                    const rawCmd = Array.isArray(val.command) ? val.command : [val.command];
+                    const rawArgs = Array.isArray(val.args) ? val.args : [];
+                    const fullCmd = [...rawCmd, ...rawArgs].map(c => {
+                        if (c === '__PYTHON_BIN__') {
+                            return process.platform === 'win32'
+                                ? path.join(homeDir, '.gemini', 'config', 'mcps', 'memb-mcp', '.venv', 'Scripts', 'python.exe')
+                                : path.join(homeDir, '.gemini', 'config', 'mcps', 'memb-mcp', '.venv', 'bin', 'python');
+                        }
+                        return c;
+                    });
+
+                    const existingEntry = existingMcp[key];
+
+                    // If existing config is intentionally slimmed (has keys, but omitted this one), don't resurrect unless in slim set
+                    if (hasExistingKeys && !existingEntry && !OPENCODE_DEFAULT_SLIM.has(key)) {
+                        continue;
+                    }
+
+                    // Preserve user's explicit enabled/disabled setting; otherwise default to true only for slim set
+                    const isEnabled = existingEntry && typeof existingEntry.enabled === 'boolean'
+                        ? existingEntry.enabled
+                        : OPENCODE_DEFAULT_SLIM.has(key);
+
+                    let envObj = val.environment || val.env;
+                    if (envObj) {
+                        envObj = Object.assign({}, envObj);
+                        for (const [eKey, eVal] of Object.entries(envObj)) {
+                            if (eVal === '__GEMINI_API_KEY__') {
+                                envObj[eKey] = '${GEMINI_API_KEY}';
+                            }
+                        }
+                    }
+
                     data.mcp[key] = {
                         type: "local",
-                        command: [...cmd, ...args],
-                        enabled: true,
-                        ...(val.environment || val.env ? { environment: val.environment || val.env } : {})
+                        command: fullCmd,
+                        enabled: isEnabled,
+                        ...(envObj ? { environment: envObj } : {})
                     };
                 }
             }
+
+            // Wire BDB AOS Plugin for OpenCode
+            const opencodeDir = path.dirname(targetPath);
+            const pluginsDir = path.join(opencodeDir, 'plugins');
+            const pluginFile = path.join(pluginsDir, 'bdb-aos.js');
+            const pluginSrc = path.join(srcDir, '.opencode', 'plugins', 'bdb-aos.js');
+
+            try {
+                if (fs.existsSync(pluginSrc)) {
+                    fs.mkdirSync(pluginsDir, { recursive: true });
+                    fs.copyFileSync(pluginSrc, pluginFile);
+                    try { fs.chmodSync(pluginFile, 0o644); } catch (e) { logDebug(e, 'chmod pluginFile'); }
+                }
+            } catch (pluginErr) {
+                log.warn(`Could not install OpenCode plugin: ${pluginErr.message}`);
+            }
+
+            // Register plugin in opencode.jsonc if plugin file exists
+            if (fs.existsSync(pluginFile)) {
+                if (!Array.isArray(data.plugin)) {
+                    data.plugin = [];
+                }
+                const pluginPathNormalized = pluginFile.replace(/\\/g, '/');
+                const alreadyRegistered = data.plugin.some(p => {
+                    const str = typeof p === 'string' ? p : (Array.isArray(p) ? p[0] : '');
+                    return str.includes('bdb-aos');
+                });
+                if (!alreadyRegistered) {
+                    data.plugin.push(pluginPathNormalized);
+                }
+            }
+
+            // Register skills paths for OpenCode
+            if (!data.skills || typeof data.skills !== 'object') {
+                data.skills = { paths: [".agents/skills"] };
+            } else if (Array.isArray(data.skills.paths)) {
+                if (!data.skills.paths.includes(".agents/skills")) {
+                    data.skills.paths.push(".agents/skills");
+                }
+            } else {
+                data.skills.paths = [".agents/skills"];
+            }
+
             fs.mkdirSync(path.dirname(targetPath), { recursive: true });
             fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), { mode: 0o600 });
             try { fs.chmodSync(targetPath, 0o600); } catch (e) { logDebug(e, 'chmod targetPath'); }
