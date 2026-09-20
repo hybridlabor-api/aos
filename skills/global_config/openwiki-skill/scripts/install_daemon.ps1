@@ -3,6 +3,8 @@
 $UserHome = [System.Environment]::GetFolderPath('UserProfile')
 $ScriptPath = "$UserHome\.gemini\config\skills\openwiki-skill\scripts\openwiki_daemon.py"
 $DaemonLogDir = "$UserHome\.openwiki"
+$VenvDir = "$DaemonLogDir\venv"
+$DaemonPython = ""
 
 Write-Host "=========================================================" -ForegroundColor Cyan
 Write-Host " Installing OpenWiki Background Daemon (Windows Task Scheduler)" -ForegroundColor Cyan
@@ -18,12 +20,73 @@ if (-not (Test-Path $ScriptPath)) {
     }
 }
 
-# 2. Install Python dependency
-Write-Host "Installing google-genai SDK..." -ForegroundColor Yellow
-try {
-    pip install --quiet google-genai 2>$null
-} catch {
-    Write-Host "Warning: pip install failed. Install google-genai manually." -ForegroundColor Yellow
+# 2. Install Python dependency into a dedicated venv
+Write-Host "Installing google-genai SDK into $VenvDir ..." -ForegroundColor Yellow
+if (-not (Test-Path $DaemonLogDir)) {
+    New-Item -ItemType Directory -Force -Path $DaemonLogDir | Out-Null
+}
+
+$VenvPython = Join-Path $VenvDir "Scripts\python.exe"
+
+$UvCmd = Get-Command uv -ErrorAction SilentlyContinue
+if ($UvCmd) {
+    try {
+        & uv venv "$VenvDir" 2>&1 | Out-Null
+        if (Test-Path $VenvPython) {
+            $InstallOutput = & uv pip install --python $VenvPython --quiet google-genai 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $DaemonPython = $VenvPython
+            }
+        }
+    } catch {}
+}
+
+if ([string]::IsNullOrWhiteSpace($DaemonPython)) {
+    $SysCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($SysCmd) {
+        $SysPython = if ($SysCmd.Path) { $SysCmd.Path } elseif ($SysCmd.Source) { $SysCmd.Source } else { "python" }
+        try {
+            & $SysPython -m venv "$VenvDir" 2>&1 | Out-Null
+            if (Test-Path $VenvPython) {
+                $InstallOutput = & $VenvPython -m pip install --quiet google-genai 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    $DaemonPython = $VenvPython
+                }
+            }
+        } catch {}
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($DaemonPython)) {
+    Write-Host "Warning: could not install google-genai into $VenvDir." -ForegroundColor Yellow
+    Write-Host "         Reason (last attempt):" -ForegroundColor Yellow
+    $SysCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($SysCmd) {
+        $SysPython = if ($SysCmd.Path) { $SysCmd.Path } elseif ($SysCmd.Source) { $SysCmd.Source } else { "python" }
+        if (Test-Path $VenvPython) {
+            $diagOutput = & $VenvPython -m pip install google-genai 2>&1
+            if ($diagOutput) {
+                $diagOutput | Select-Object -First 8 | ForEach-Object { Write-Host "           $_" -ForegroundColor DarkGray }
+            }
+        } else {
+            $diagVenv = & $SysPython -m venv "$VenvDir" 2>&1
+            if ($diagVenv) {
+                $diagVenv | Select-Object -First 5 | ForEach-Object { Write-Host "           $_" -ForegroundColor DarkGray }
+            }
+        }
+    } else {
+        Write-Host "           python not found on PATH." -ForegroundColor DarkGray
+    }
+    Write-Host "         The daemon will run in collect-only mode until this is resolved." -ForegroundColor Yellow
+    if (Test-Path $VenvPython) {
+        $DaemonPython = $VenvPython
+    } elseif ($cmd = Get-Command python -ErrorAction SilentlyContinue) {
+        $DaemonPython = if ($cmd.Path) { $cmd.Path } elseif ($cmd.Source) { $cmd.Source } else { "python" }
+    } else {
+        $DaemonPython = "python"
+    }
+} else {
+    Write-Host " -> google-genai installed; daemon will run under $DaemonPython" -ForegroundColor Green
 }
 
 # 3. Resolve provider and API key
@@ -63,7 +126,10 @@ if ($OpenwikiProvider -eq "google") {
         # and is discarded below.
         $env:GEMINI_API_KEY = $ApiKey
         $VerifyScript = Join-Path $PSScriptRoot "verify_api_key.py"
-        $VerifyOutput = & python $VerifyScript 2>&1
+        if (-not (Test-Path $VerifyScript)) {
+            $VerifyScript = Join-Path (Split-Path $ScriptPath -Parent) "verify_api_key.py"
+        }
+        $VerifyOutput = & $DaemonPython $VerifyScript 2>&1
         $VerifyCode = $LASTEXITCODE
         if ($VerifyCode -eq 0 -and ($VerifyOutput -match "VERIFIED_OK")) {
             Write-Host " -> API key verified." -ForegroundColor Green
@@ -118,7 +184,7 @@ if (-not (Test-Path $DaemonLogDir)) {
 # write the key in clear text into the .cmd under
 # %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\, readable by any
 # process in the user context and routinely swept up by backups and sync folders.
-$DaemonCommand = "& { python '$ScriptPath' --one-shot }"
+$DaemonCommand = "& { & '$DaemonPython' '$ScriptPath' --one-shot }"
 $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -Command `"$DaemonCommand`""
 
 # 6. Trigger: every 2 hours via repetition
@@ -151,7 +217,7 @@ function Install-StartupFallback {
     Write-Host "      * startup entry   -> runs ONCE per logon (--one-shot)" -ForegroundColor Yellow
     Write-Host "    Documentation is refreshed only when you log in, or when you run" -ForegroundColor Yellow
     Write-Host "    the daemon manually:" -ForegroundColor Yellow
-    Write-Host "      python `"$ScriptPath`" --one-shot" -ForegroundColor DarkGray
+    Write-Host "      & `"$DaemonPython`" `"$ScriptPath`" --one-shot" -ForegroundColor DarkGray
     Write-Host "    To get the 2-hour schedule, re-run this installer from an elevated" -ForegroundColor Yellow
     Write-Host "    PowerShell (Run as administrator)." -ForegroundColor Yellow
 }
@@ -191,17 +257,40 @@ if ($BlockReason -ne "") {
         Write-Host "    a logon-only startup entry is used instead." -ForegroundColor DarkGray
     }
     Write-Host "Registering task '$TaskName'..." -ForegroundColor Yellow
-    try {
-        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force -ErrorAction Stop | Out-Null
-        $Registered = $true
+
+    $CurrentUserName = try { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { $env:USERNAME }
+    $UserPrincipal = try {
+        New-ScheduledTaskPrincipal -UserId $CurrentUserName -LogonType Interactive
     } catch {
-        $FailureMessage = $_.Exception.Message
-        Write-Warning "Scheduled task registration failed ($FailureMessage)."
-        $Reason = "scheduled task registration failed: $FailureMessage"
-        if (-not $IsElevated) {
-            $Reason = "$Reason (administrator rights are likely required on this system)"
+        $null
+    }
+
+    $TaskRegistered = $false
+    # First attempt: register using interactive user principal (needed for non-elevated users)
+    if ($UserPrincipal) {
+        try {
+            Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $UserPrincipal -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force -ErrorAction Stop | Out-Null
+            $TaskRegistered = $true
+            $Registered = $true
+        } catch {
+            Write-Verbose "Registration with interactive principal failed: $($_.Exception.Message). Trying default registration..."
         }
-        Install-StartupFallback -Command $DaemonCommand -Reason $Reason
+    }
+
+    # Second attempt: standard registration if principal registration was skipped or failed
+    if (-not $TaskRegistered) {
+        try {
+            Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force -ErrorAction Stop | Out-Null
+            $Registered = $true
+        } catch {
+            $FailureMessage = $_.Exception.Message
+            Write-Warning "Scheduled task registration failed ($FailureMessage)."
+            $Reason = "scheduled task registration failed: $FailureMessage"
+            if (-not $IsElevated) {
+                $Reason = "$Reason (administrator rights are likely required on this system)"
+            }
+            Install-StartupFallback -Command $DaemonCommand -Reason $Reason
+        }
     }
 }
 

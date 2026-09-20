@@ -603,6 +603,12 @@ server.listen(PORT, '127.0.0.1', () => {
   const url = `http://127.0.0.1:${PORT}`;
   console.log(`AOS Dashboard v${AOS_VERSION || '?'}: ${url}   (Strg-C beendet)`);
   if (!OPEN) return;
-  const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-  execFile(opener, [url], () => { /* no browser is not an error */ });
+  if (process.platform === 'win32') {
+    spawn('cmd.exe', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' })
+      .on('error', () => { /* no browser or spawn error is not fatal */ })
+      .unref();
+  } else {
+    const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
+    execFile(opener, [url], () => { /* no browser is not an error */ });
+  }
 });

@@ -163,7 +163,7 @@ function checkHooks() {
   // the row would go green over a hook carrying a bug this version fixed.
   // Hooks that carry an `aos-hook-version:` line are checked against what this
   // release expects; the ones that do not are existence-only.
-  const EXPECTED_VERSION = { 'memb-inject.mjs': 2 };
+  const EXPECTED_VERSION = { 'memb-inject.mjs': 3 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
     return m ? Number(m[1]) : null;
@@ -194,6 +194,48 @@ function checkHooks() {
   for (const [file, event] of [['go-gate.mjs', 'PreToolUse'], ['graph-gate.mjs', 'Stop'], ['memb-inject.mjs', 'UserPromptSubmit']]) {
     add('hooks', `${file} wired`, wired.includes(file), wired.includes(file) ? `present in ${event}` : `not referenced in ~/.claude/settings.json`,
       'Add it under the matching hooks event in ~/.claude/settings.json (see this skill, section 4).');
+  }
+
+  // Antigravity hook wiring
+  const agDir = h('.gemini', 'antigravity-cli');
+  const agHooksCandidate = existsSync(path.join(agDir, 'hooks.json'))
+    ? path.join(agDir, 'hooks.json')
+    : existsSync(h('.gemini', 'config', 'hooks.json'))
+      ? h('.gemini', 'config', 'hooks.json')
+      : existsSync(h('.agents', 'hooks.json'))
+        ? h('.agents', 'hooks.json')
+        : null;
+
+  if (existsSync(agDir) || existsSync(h('.gemini', 'config', 'skills')) || agHooksCandidate) {
+    const targetFile = agHooksCandidate || path.join(agDir, 'hooks.json');
+    if (existsSync(targetFile)) {
+      const agHooks = readJson(targetFile);
+      const agWired = JSON.stringify(agHooks?.hooks || {});
+      const hasMemb = agWired.includes('memb-inject.mjs');
+      add('hooks', 'Antigravity hooks.json wired', hasMemb,
+        hasMemb ? `wired in ${tilde(targetFile)}` : `memb-inject.mjs not wired in ${tilde(targetFile)}`,
+        'Run installer or mergeAntigravityHooks to wire hooks in hooks.json.');
+    } else {
+      add('hooks', 'Antigravity hooks.json', false, `missing ${tilde(targetFile)}`,
+        'Run installer to create and wire hooks.json for Antigravity.');
+    }
+  }
+
+  // Codex hook wiring
+  const codexDir = h('.codex');
+  const codexConf = path.join(codexDir, 'config.toml');
+  if (existsSync(codexDir) || existsSync(codexConf)) {
+    if (existsSync(codexConf)) {
+      let toml = '';
+      try { toml = readFileSync(codexConf, 'utf8'); } catch {}
+      const hasMemb = toml.includes('memb-inject.mjs');
+      add('hooks', 'Codex config.toml wired', hasMemb,
+        hasMemb ? `wired in ${tilde(codexConf)}` : `memb-inject.mjs not wired in ${tilde(codexConf)}`,
+        'Run installer or mergeCodexTomlHooks to wire hooks in config.toml.');
+    } else {
+      add('hooks', 'Codex config.toml', false, `missing ${tilde(codexConf)}`,
+        'Run installer to create and wire config.toml for Codex.');
+    }
   }
 }
 

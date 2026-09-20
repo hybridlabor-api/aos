@@ -3175,11 +3175,44 @@ function injectHarnessRules() {
 // most (a fresh install got it; every machine that already had AOS did not).
 function installGlobalHooks() {
     const hooksSrc = path.join(srcDir, '.claude', 'hooks');
+    const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
+
+    // 1. Claude Code
     if (fs.existsSync(hooksSrc)) {
         copyDirRecursiveSync(hooksSrc, path.join(homeDir, '.claude', 'hooks'));
         log.step(`Installed hooks to ${path.join(homeDir, '.claude', 'hooks')}`);
     }
+    if (fs.existsSync(workflowsSrc)) {
+        copyDirRecursiveSync(workflowsSrc, path.join(homeDir, '.claude', 'workflows'));
+    }
     mergeBdbSettingsHooks(path.join(homeDir, '.claude', 'settings.json'));
+
+    // 2. Google Antigravity
+    const agyHooksDir = path.join(geminiDir, 'config', 'hooks');
+    const agyWorkflowsDir = path.join(geminiDir, 'config', 'workflows');
+    if (fs.existsSync(hooksSrc)) {
+        copyDirRecursiveSync(hooksSrc, agyHooksDir);
+        log.step(`Installed hooks to ${agyHooksDir}`);
+    }
+    if (fs.existsSync(workflowsSrc)) {
+        copyDirRecursiveSync(workflowsSrc, agyWorkflowsDir);
+    }
+    mergeAntigravityHooks(path.join(geminiDir, 'config', 'hooks.json'));
+    if (fs.existsSync(path.join(geminiDir, 'antigravity-cli'))) {
+        mergeAntigravityHooks(path.join(geminiDir, 'antigravity-cli', 'hooks.json'));
+    }
+
+    // 3. OpenAI Codex CLI
+    const codexHooksDir = path.join(homeDir, '.codex', 'hooks');
+    const codexWorkflowsDir = path.join(homeDir, '.codex', 'workflows');
+    if (fs.existsSync(hooksSrc)) {
+        copyDirRecursiveSync(hooksSrc, codexHooksDir);
+        log.step(`Installed hooks to ${codexHooksDir}`);
+    }
+    if (fs.existsSync(workflowsSrc)) {
+        copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
+    }
+    mergeCodexTomlHooks(path.join(homeDir, '.codex', 'config.toml'));
 }
 
 // Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --
@@ -3258,9 +3291,158 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     }
 
     try {
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
         fs.writeFileSync(settingsPath, JSON.stringify(buildMerged(existing), null, 2) + '\n');
     } catch (e) {
         log.warn(`Could not write ${settingsPath}: ${e.message}`);
+    }
+}
+
+// Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
+// ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
+function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs'];
+    const isBdbEntry = (entry) => {
+        const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [entry])
+            .map((h) => (h && typeof h.command === 'string' ? h.command : (typeof h === 'string' ? h : '')))
+            .join(' ');
+        return bdbHookScripts.some((name) => cmds.includes(name));
+    };
+
+    const baseDir = path.dirname(hooksPath);
+    const hooksDir = projectLocal ? path.join(currentDir, '.agents', 'hooks') : path.join(baseDir, 'hooks');
+    const workflowsDir = projectLocal ? path.join(currentDir, '.agents', 'workflows') : path.join(baseDir, 'workflows');
+    const globalHooksDir = projectLocal ? path.join(homeDir, '.gemini', 'config', 'hooks') : hooksDir;
+
+    const bdbHooks = {
+        PreToolUse: [
+            {
+                matcher: "run_command|Bash",
+                hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'go-gate.mjs')}"`, timeout: 10000 }]
+            }
+        ],
+        Stop: [
+            {
+                hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'graph-gate.mjs')}"`, timeout: 10000 }]
+            }
+        ],
+        PreInvocation: [
+            {
+                hooks: [
+                    { type: "command", command: `node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`, timeout: 8000 },
+                    { type: "command", command: `node "${path.join(workflowsDir, 'startcycle-dispatch.mjs')}"`, timeout: 30000 }
+                ]
+            }
+        ]
+    };
+
+    const buildMerged = (existing) => {
+        const merged = existing && typeof existing === 'object' ? existing : {};
+        merged.hooks = merged.hooks && typeof merged.hooks === 'object' ? merged.hooks : {};
+        for (const [event, entries] of Object.entries(bdbHooks)) {
+            const foreignEntries = (Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [])
+                .filter((e) => !isBdbEntry(e));
+            merged.hooks[event] = [...foreignEntries, ...entries];
+        }
+        return merged;
+    };
+
+    let existing = null;
+    if (fs.existsSync(hooksPath)) {
+        existing = readJsonFile(hooksPath);
+        if (!existing) {
+            const backupCopy = `${hooksPath}.corrupt_${timestamp}.bak`;
+            const sideCarPath = `${hooksPath}.bdb-new.json`;
+            let backupWritten = true;
+            try {
+                fs.copyFileSync(hooksPath, backupCopy);
+            } catch (copyError) {
+                backupWritten = false;
+                log.warn(`Could not create the hooks backup: ${copyError.message}`);
+            }
+            try {
+                fs.writeFileSync(sideCarPath, JSON.stringify(buildMerged(null), null, 2) + '\n');
+            } catch (writeError) {
+                log.warn(`Could not write ${path.basename(sideCarPath)}: ${writeError.message}`);
+            }
+            log.warn(`${path.basename(hooksPath)} is not valid JSON - hook merge skipped, nothing overwritten.`);
+            if (backupWritten) log.warn(`Backup copy: ${backupCopy}`);
+            log.warn(`BDB-wired hooks: ${sideCarPath}`);
+            return;
+        }
+    }
+
+    try {
+        fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
+        fs.writeFileSync(hooksPath, JSON.stringify(buildMerged(existing), null, 2) + '\n');
+    } catch (e) {
+        log.warn(`Could not write ${hooksPath}: ${e.message}`);
+    }
+}
+
+// Merge the BDB hooks into ChatGPT Codex CLI's config.toml (~/.codex/config.toml or
+// .codex/config.toml), ensuring [features] hooks = true and preserving existing
+// non-BDB settings, comments, and MCP servers.
+function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
+    const baseDir = path.dirname(configTomlPath);
+    const hooksDir = projectLocal ? path.join(currentDir, '.codex', 'hooks') : path.join(baseDir, 'hooks');
+    const workflowsDir = projectLocal ? path.join(currentDir, '.codex', 'workflows') : path.join(baseDir, 'workflows');
+    const globalHooksDir = projectLocal ? path.join(homeDir, '.codex', 'hooks') : hooksDir;
+
+    const tomlSnippet = [
+        '# AOS:HOOKS:START',
+        '[[hooks.PreToolUse]]',
+        'matcher = "^(Bash|run_command)$"',
+        '[[hooks.PreToolUse.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(hooksDir, 'go-gate.mjs')}"`)}`,
+        'timeout = 30',
+        '',
+        '[[hooks.Stop]]',
+        '[[hooks.Stop.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(hooksDir, 'graph-gate.mjs')}"`)}`,
+        'timeout = 30',
+        '',
+        '[[hooks.UserPromptSubmit]]',
+        '[[hooks.UserPromptSubmit.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`)}`,
+        'timeout = 30',
+        '',
+        '[[hooks.UserPromptSubmit]]',
+        '[[hooks.UserPromptSubmit.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(workflowsDir, 'startcycle-dispatch.mjs')}"`)}`,
+        'timeout = 30',
+        '# AOS:HOOKS:END'
+    ].join('\n');
+
+    let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
+
+    // Ensure [features] hooks = true
+    const hasHooksFeature = /(?:hooks|codex_hooks)\s*=\s*true/m.test(content);
+    if (!hasHooksFeature) {
+        if (/^\[features\]/m.test(content)) {
+            content = content.replace(/^\[features\]/m, '[features]\nhooks = true');
+        } else {
+            content = `[features]\nhooks = true\n\n${content.trimStart()}`;
+        }
+    }
+
+    // Replace existing AOS:HOOKS block or append
+    const hookBlockRegex = /# AOS:HOOKS:START[\s\S]*?# AOS:HOOKS:END/;
+    if (hookBlockRegex.test(content)) {
+        content = content.replace(hookBlockRegex, tomlSnippet);
+    } else {
+        content = `${content.trimEnd()}\n\n${tomlSnippet}\n`;
+    }
+
+    try {
+        fs.mkdirSync(path.dirname(configTomlPath), { recursive: true });
+        fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
+    } catch (e) {
+        log.warn(`Could not write ${configTomlPath}: ${e.message}`);
     }
 }
 
@@ -3276,22 +3458,29 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
 // non-interactively via `--project-harness` (combine with -y for CI).
 function installProjectHarness() {
     const projectClaudeDir = path.join(currentDir, '.claude');
-    installStep(`create ${projectClaudeDir}`, () => {
+    const projectAgentsDir = path.join(currentDir, '.agents');
+    const projectCodexDir = path.join(currentDir, '.codex');
+
+    installStep(`create harness directories`, () => {
         fs.mkdirSync(projectClaudeDir, { recursive: true });
+        fs.mkdirSync(projectAgentsDir, { recursive: true });
+        fs.mkdirSync(projectCodexDir, { recursive: true });
     }, 'The harness copies below will most likely fail as well.');
 
     installStep('copy .agents/ contract into project', () => {
         const agentsSrc = path.join(srcDir, '.agents');
         if (!fs.existsSync(agentsSrc)) throw new Error(`missing payload: ${agentsSrc}`);
-        copyDirRecursiveSync(agentsSrc, path.join(currentDir, '.agents'));
-        log.step(`Copied .agents/ contract to ${path.join(currentDir, '.agents')}`);
+        copyDirRecursiveSync(agentsSrc, projectAgentsDir);
+        log.step(`Copied .agents/ contract to ${projectAgentsDir}`);
     }, 'graph.md / state.schema.json may be missing in the project.');
 
     installStep('copy dispatcher workflows into project', () => {
         const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
         if (fs.existsSync(workflowsSrc)) {
             copyDirRecursiveSync(workflowsSrc, path.join(projectClaudeDir, 'workflows'));
-            log.step(`Copied dispatcher workflows to ${path.join(projectClaudeDir, 'workflows')}`);
+            copyDirRecursiveSync(workflowsSrc, path.join(projectAgentsDir, 'workflows'));
+            copyDirRecursiveSync(workflowsSrc, path.join(projectCodexDir, 'workflows'));
+            log.step(`Copied dispatcher workflows to project harnesses`);
         }
     }, '/startcycle dispatch degrades to graph.md as a manual guide.');
 
@@ -3299,7 +3488,9 @@ function installProjectHarness() {
         const hooksSrc = path.join(srcDir, '.claude', 'hooks');
         if (fs.existsSync(hooksSrc)) {
             copyDirRecursiveSync(hooksSrc, path.join(projectClaudeDir, 'hooks'));
-            log.step(`Copied hooks to ${path.join(projectClaudeDir, 'hooks')}`);
+            copyDirRecursiveSync(hooksSrc, path.join(projectAgentsDir, 'hooks'));
+            copyDirRecursiveSync(hooksSrc, path.join(projectCodexDir, 'hooks'));
+            log.step(`Copied hooks to project harnesses`);
         }
     }, 'go-gate / graph-gate enforcement stays inactive in this project.');
 
@@ -3311,9 +3502,11 @@ function installProjectHarness() {
         }
     }, 'The dispatcher runs, but its agent-file pointers resolve to nothing.');
 
-    installStep('wire project .claude/settings.json to local hooks', () => {
+    installStep('wire project harnesses to local hooks', () => {
         mergeBdbSettingsHooks(path.join(projectClaudeDir, 'settings.json'), { projectLocal: true });
-        log.step(`Wired project hooks in ${path.join(projectClaudeDir, 'settings.json')}`);
+        mergeAntigravityHooks(path.join(projectAgentsDir, 'hooks.json'), { projectLocal: true });
+        mergeCodexTomlHooks(path.join(projectCodexDir, 'config.toml'), { projectLocal: true });
+        log.step(`Wired project hooks in Claude, Antigravity, and Codex configurations`);
     }, 'The gate hooks exist but are not auto-wired for this project.');
 
     log.success(`Project harness installed to ${currentDir}`);
@@ -4406,6 +4599,9 @@ module.exports = {
     detectPlatforms,
     markPlatformsExplicit,
     mergeBdbSettingsHooks,
+    mergeAntigravityHooks,
+    mergeCodexTomlHooks,
+    mergeCodexHooks: mergeCodexTomlHooks,
     installGlobalHooks,
     installProjectHarness,
     mirrorMcpServersTo,

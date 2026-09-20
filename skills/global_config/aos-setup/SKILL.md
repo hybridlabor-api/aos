@@ -36,15 +36,12 @@ believing memory works everywhere:
 | | Skills | MCP | Hooks |
 |---|---|---|---|
 | Claude Code | `~/.claude/skills` | `~/.claude.json` | **yes** |
-| Antigravity | `~/.gemini/config/skills` | `mcp_config.json` | no |
-| Codex | `~/.codex/skills` | `config.toml` | no |
+| Antigravity | `~/.gemini/config/skills` | `mcp_config.json` | **yes** (.agents/hooks.json / hooks.json) |
+| Codex | `~/.codex/skills` | `config.toml` | **yes** (config.toml) |
 | OpenCode | — | `opencode.jsonc` | no |
 | Cursor / Roo | `bdb-skills` | `mcp.json` | no |
 
-Only Claude Code has hooks, so only there can memB inject per prompt. Elsewhere
-the same context arrives through the rule files that harness loads at start —
-see section 5 — which means it is as fresh as the last write, not as fresh as
-the prompt. Say so plainly rather than letting someone assume parity.
+Claude Code, Google Antigravity, and OpenAI Codex have native hook support, allowing memB to inject ambient memory per prompt across all three harnesses. For hookless harnesses (Cursor, Roo, OpenCode, Windsurf), the same context arrives through the rule files that harness loads at start — see section 5 — which means it is as fresh as the last write, not as fresh as the prompt. Say so plainly rather than letting someone assume parity.
 
 ---
 
@@ -173,7 +170,8 @@ injects the relevant memories as context. It fails open: any error exits `0`
 and the prompt proceeds untouched.
 
 Since v4.4.0 the installer ships `memb-inject.mjs` into `~/.claude/hooks/` and
-wires it as a `UserPromptSubmit` hook. **v4.4.0's Quick Update did not** — it
+wires it as an automated prompt hook across Claude Code (`UserPromptSubmit` in `settings.json`),
+Google Antigravity (`PreInvocation` in `hooks.json` / `.agents/hooks.json`), and OpenAI Codex (`UserPromptSubmit` in `config.toml`). **v4.4.0's Quick Update did not** — it
 refreshes skills and submodules, and hooks are harness plumbing rather than
 skills, so a machine that already had AOS updated to 4.4.0 without ever
 receiving the hook. Fixed in v4.4.1; a machine that took that update needs one
@@ -183,7 +181,7 @@ more run:
 npx -y @hybridlabor-api/aos@latest
 ```
 
-The wiring is merged into `~/.claude/settings.json`, never written over it:
+The wiring is merged into `~/.claude/settings.json`, Antigravity `hooks.json`, and Codex `config.toml`, never written over them:
 user keys and foreign hook entries survive, and a re-run replaces the BDB entry
 rather than adding a second copy.
 
@@ -199,7 +197,7 @@ harness — the memB store is machine-global, and pointing it at
 `$CLAUDE_PROJECT_DIR` would make it fail on every prompt in any project the
 harness was never installed into.
 
-**On a harness without hooks** — everything except Claude Code — the same
+**On hookless harnesses** — Cursor, Roo, OpenCode, Windsurf — native hooks are not supported, so the same
 context is written into the rule files that harness loads instead:
 
 ```bash
