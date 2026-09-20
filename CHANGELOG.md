@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.6](https://github.com/hybridlabor-api/aos/compare/v4.6.5...v4.6.6) (2026-09-20)
+
+
+### Bug Fixes
+
+* **cli:** cross-platform launcher binaries and windows path handling ([#53](https://github.com/hybridlabor-api/aos/issues/53)) ([acb8f72](https://github.com/hybridlabor-api/aos/commit/acb8f72b9fb8c831afd853baf897cae6173648ca))
+
 ## [4.6.5](https://github.com/hybridlabor-api/aos/compare/v4.6.4...v4.6.5) (2026-09-20)
 
 
