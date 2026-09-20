@@ -33,4 +33,14 @@ describe('OpenWiki Visualizer & Logger Safety', () => {
         // Verify line 2031 was updated to log.success
         assert.ok(content.includes("log.success('OpenWiki CLI installed.');"), "OpenWiki CLI installed message must use log.success");
     });
+
+    test('installer.js contains safeRmDirSync and non-fatal retiredDir cleanup', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const content = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
+
+        assert.ok(content.includes('function safeRmDirSync('), 'installer.js must define safeRmDirSync');
+        assert.ok(content.includes('safeRmDirSync(retiredDir);'), 'downloadOrUpdateModule must use safeRmDirSync for retiredDir');
+        assert.ok(content.includes('ensurepip --default-pip'), 'installer.js must provide ensurepip fallback for memB venv');
+    });
 });

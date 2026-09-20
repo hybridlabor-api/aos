@@ -1072,6 +1072,15 @@ function moveIfExists(src, dest, label) {
     }
 }
 
+function safeRmDirSync(dirPath, maxRetries = 5, retryDelay = 200) {
+    if (!dirPath || !fs.existsSync(dirPath)) return;
+    try {
+        fs.rmSync(dirPath, { recursive: true, force: true, maxRetries, retryDelay });
+    } catch (err) {
+        logDebug(err, `safeRmDirSync: ${dirPath}`);
+    }
+}
+
 function copyDirRecursiveSync(source, target, excludeList = [], manifest = null, knownSourceHashes = null) {
     // Fall back to session-level state when no explicit manifest is passed.
     const mfst = manifest !== null ? manifest : _sessionManifest;
@@ -1722,7 +1731,21 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
         // kept until the swap succeeds, and restored if it does not.
         const stagingDir = `${targetDir}.incoming-${timestamp}`;
         const retiredDir = `${targetDir}.previous-${timestamp}`;
-        fs.rmSync(stagingDir, { recursive: true, force: true });
+
+        // Clean up any stale staging or retired directories left behind by earlier interrupted runs
+        try {
+            const parentDir = path.dirname(targetDir);
+            const baseName = path.basename(targetDir);
+            if (fs.existsSync(parentDir)) {
+                for (const item of fs.readdirSync(parentDir)) {
+                    if (item.startsWith(`${baseName}.incoming-`) || item.startsWith(`${baseName}.previous-`)) {
+                        safeRmDirSync(path.join(parentDir, item));
+                    }
+                }
+            }
+        } catch (_) {}
+
+        safeRmDirSync(stagingDir);
         fs.mkdirSync(stagingDir, { recursive: true });
         execSync(`tar -xzf "${path.join(targetDir, tarball)}" --strip-components=1 -C "${stagingDir}"`, { stdio: 'ignore' });
         fs.unlinkSync(path.join(targetDir, tarball));
@@ -1733,7 +1756,11 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
         for (const keep of PRESERVE) {
             const from = path.join(targetDir, keep);
             if (fs.existsSync(from) && !fs.existsSync(path.join(stagingDir, keep))) {
-                fs.renameSync(from, path.join(stagingDir, keep));
+                try {
+                    fs.renameSync(from, path.join(stagingDir, keep));
+                } catch (preserveErr) {
+                    logDebug(preserveErr, `preserve ${keep}`);
+                }
             }
         }
 
@@ -1741,11 +1768,17 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
             fs.renameSync(targetDir, retiredDir);
             fs.renameSync(stagingDir, targetDir);
         } catch (swapError) {
-            if (fs.existsSync(retiredDir) && !fs.existsSync(targetDir)) fs.renameSync(retiredDir, targetDir);
-            fs.rmSync(stagingDir, { recursive: true, force: true });
+            if (fs.existsSync(retiredDir) && !fs.existsSync(targetDir)) {
+                try { fs.renameSync(retiredDir, targetDir); } catch (_) {}
+            }
+            safeRmDirSync(stagingDir);
             throw swapError;
         }
-        fs.rmSync(retiredDir, { recursive: true, force: true });
+
+        // On Windows especially, deleting a directory that was just renamed or contains
+        // locked file handles can throw EPERM / EBUSY. Since targetDir already has the
+        // new version in place, failure to clean up retiredDir must be non-fatal.
+        safeRmDirSync(retiredDir);
 
         s.stop(`${displayName} ready (v${status.remoteVer || 'latest'})`);
         return true;
@@ -1809,6 +1842,17 @@ async function installMemB(interactive) {
             let hasUv = createdViaUv;
             if (!hasUv) {
                 try { execSync('uv --version', { stdio: 'ignore' }); hasUv = true; } catch (e) { hasUv = false; }
+            }
+            if (!hasUv && fs.existsSync(venvPython)) {
+                try {
+                    execSync(`"${venvPython}" -m pip --version`, { stdio: 'ignore' });
+                } catch (_) {
+                    try {
+                        execSync(`"${venvPython}" -m ensurepip --default-pip`, { cwd: membDir, stdio: 'ignore' });
+                    } catch (ePip) {
+                        logDebug(ePip, 'ensurepip bootstrap for memB');
+                    }
+                }
             }
             const uvInstall = (pkgsArg) => `uv pip install --python "${venvPython}" ${pkgsArg}`;
             const pipInstall = (pkgsArg) => `"${venvPython}" -m pip install ${pkgsArg} --timeout 30 --no-input`;
@@ -2076,11 +2120,12 @@ async function installOpenWikiVisualizer() {
     const ecosystemWiki = path.join(homeDir, '.openwiki', 'ecosystem-wiki');
     const syncScript = path.join(srcDir, 'skills', 'global_config', 'openwiki-skill', 'scripts', 'sync_ecosystem_wiki.py');
     if (!wikiPath) {
+        const pyBin = hasExecutable('python3') ? 'python3' : hasExecutable('python') ? 'python' : null;
         if (looksLikeWiki(ecosystemWiki)) {
             wikiPath = ecosystemWiki;
-        } else if (fs.existsSync(syncScript) && hasExecutable('python3')) {
+        } else if (fs.existsSync(syncScript) && pyBin) {
             try {
-                execSync(`python3 "${syncScript}"`, { stdio: 'ignore' });
+                execSync(`"${pyBin}" "${syncScript}"`, { stdio: 'ignore' });
                 if (looksLikeWiki(ecosystemWiki)) wikiPath = ecosystemWiki;
             } catch (e) { logDebug(e, 'ecosystem wiki sync'); }
         }
@@ -2091,6 +2136,9 @@ async function installOpenWikiVisualizer() {
             });
             if (!isCancel(answer) && answer && answer.trim()) {
                 const candidate = answer.trim().replace(/^~(?=$|\/|\\)/, homeDir);
+                if (!fs.existsSync(candidate)) {
+                    try { fs.mkdirSync(candidate, { recursive: true }); } catch (_) {}
+                }
                 if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
                     wikiPath = candidate;
                     if (!looksLikeWiki(candidate)) {
