@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.3](https://github.com/hybridlabor-api/aos/compare/v4.6.2...v4.6.3) (2026-09-20)
+
+
+### Bug Fixes
+
+* **installer:** resolve TypeError log.ok and pass visualizer wiki path on windows ([39f9fe1](https://github.com/hybridlabor-api/aos/commit/39f9fe16fc874e779f2fa3349b101ea65a3da85c))
+
 ## [4.6.2](https://github.com/hybridlabor-api/aos/compare/v4.6.1...v4.6.2) (2026-09-20)
 
 
