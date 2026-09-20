@@ -2546,6 +2546,11 @@ function verifyEcosystemInstallation() {
             console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.dim}⚪ Optional / Not downloaded${colors.reset}`);
         }
     }
+
+    console.log('');
+    console.log(`  ${colors.bold}━━━ BDB Agent OS Dashboard ━━━${colors.reset}`);
+    console.log(`  Interactive Control Center: npx aos-dashboard`);
+    console.log(`  ${colors.dim}(Live status & service control at http://127.0.0.1:7900)${colors.reset}`);
 }
 
 function resolveTargetPaths(platformValue, customPaths) {
@@ -3559,6 +3564,51 @@ function installGlobalHooks() {
             log.warn(`Could not install OpenCode plugin: ${e.message}`);
         }
     }
+
+    // 5. Global CLI launcher binaries (aos-config, aos-dashboard, aos-uninstall)
+    installGlobalBinaries();
+}
+
+function installGlobalBinaries() {
+    const binSrc = path.join(srcDir, 'bin');
+    const globalAgentsBin = path.join(homeDir, '.agents', 'bin');
+    if (fs.existsSync(binSrc)) {
+        copyDirRecursiveSync(binSrc, globalAgentsBin);
+        log.step(`Installed CLI binaries to ${globalAgentsBin}`);
+    }
+
+    const localBinDir = path.join(homeDir, '.local', 'bin');
+    if (!fs.existsSync(localBinDir)) {
+        try { fs.mkdirSync(localBinDir, { recursive: true }); } catch (e) { logDebug(e, 'mkdir localBin'); }
+    }
+
+    const isWin = process.platform === 'win32';
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall'];
+
+    for (const name of cliBins) {
+        const targetMjs = path.join(globalAgentsBin, `${name}.mjs`);
+        if (!fs.existsSync(targetMjs)) continue;
+
+        // Shell wrapper for Unix / Git Bash
+        const shPath = path.join(localBinDir, name);
+        const shContent = `#!/bin/sh\nexec node "${targetMjs}" "$@"\n`;
+        try {
+            fs.writeFileSync(shPath, shContent, { mode: 0o755 });
+            try { fs.chmodSync(shPath, 0o755); } catch (e) { logDebug(e, `chmod ${shPath}`); }
+        } catch (e) { logDebug(e, `write ${shPath}`); }
+
+        // Windows CMD and PowerShell launchers
+        if (isWin) {
+            const cmdPath = path.join(localBinDir, `${name}.cmd`);
+            const cmdContent = `@echo off\r\nnode "${targetMjs}" %*\r\n`;
+            try { fs.writeFileSync(cmdPath, cmdContent); } catch (e) { logDebug(e, `write ${cmdPath}`); }
+
+            const ps1Path = path.join(localBinDir, `${name}.ps1`);
+            const ps1Content = `node "${targetMjs}" $args\r\n`;
+            try { fs.writeFileSync(ps1Path, ps1Content); } catch (e) { logDebug(e, `write ${ps1Path}`); }
+        }
+    }
+    log.step(`Wired CLI launcher binaries (aos-config, aos-dashboard, aos-uninstall) in ${localBinDir}`);
 }
 
 // Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --
@@ -3954,26 +4004,59 @@ async function promptOptionalModules(installedModules) {
     return chosen;
 }
 
-function generateAndOpenLaunchpad() {
+// Module ids whose daemons ship a web interface or background service worth
+// surfacing in the launchpad (each has a card in the generated HTML below).
+const LAUNCHPAD_WEB_MODULES = ['memb', 'synapse', 'openwiki', 'ao', 'remote'];
+
+// Explicit opt-in flags that open the launchpad even outside a dev checkout.
+const LAUNCHPAD_OPEN_FLAGS = ['--launchpad', '--dashboard', '--open', '--dev'];
+
+// True on a local BDB dev checkout (or BDB_DEV=1). This is intentionally
+// narrower than the old isDevWorkflow check: CLI flags live in
+// shouldOpenLaunchpad(), not here, so callers can tell "dev machine" apart
+// from "user asked for it". Overrides exist for tests.
+function isDevEnvironment(overrides = {}) {
+    const home = overrides.homeDir || homeDir;
+    const env = overrides.env || process.env;
+    return fs.existsSync(path.join(home, 'dev', 'bdb-dev')) ||
+        fs.existsSync(path.join(home, 'bdb-dev')) ||
+        env.BDB_DEV === '1';
+}
+
+// True when the launchpad should be generated and opened: a dev checkout, an
+// explicit flag, or installed daemon/WebUI modules. Overrides exist for tests.
+function shouldOpenLaunchpad(installedModules = [], overrides = {}) {
+    const argv = overrides.argv || process.argv;
+    if (isDevEnvironment(overrides)) return true;
+    if (LAUNCHPAD_OPEN_FLAGS.some(f => argv.includes(f))) return true;
+    const installed = Array.isArray(installedModules) ? installedModules : [];
+    return installed.some(m => LAUNCHPAD_WEB_MODULES.includes(m));
+}
+
+// Boot autostart (login item) is opt-in only: an explicit flag or a dev
+// checkout. Regular end-user installs must not get an autostart entry that
+// opens a browser on every login. Overrides exist for tests.
+function shouldAutostartLaunchpad(overrides = {}) {
+    const argv = overrides.argv || process.argv;
+    if (argv.includes('--autostart-launchpad')) return true;
+    return isDevEnvironment(overrides);
+}
+
+function generateAndOpenLaunchpad(installedModules = []) {
     if (DRY_RUN) {
         log.step('[dry-run] would generate & open BDB Launchpad HTML');
-        return;
+        return false;
     }
-    if (process.env.SSH_CLIENT || process.env.SSH_TTY) return;
+    if (process.env.SSH_CLIENT || process.env.SSH_TTY) return false;
 
-    // Local Developer Workflow Guard:
-    // Only generate and open the launchpad if running in a local developer repo environment or explicitly requested.
+    // Decoupled from the dev-checkout layout: on a regular end-user machine
+    // (no ~/dev/bdb-dev, no ~/bdb-dev) the launchpad still opens when daemon
+    // modules are installed or an explicit flag was passed.
     // ~/bdb-dev was the pre-reorg workspace root; the State-0 reorg moved it to
-    // ~/dev/bdb-dev, but this check was never updated -- it has been silently
-    // false on every real dev machine since that reorg. Checking both keeps
-    // this working regardless of which layout a given machine still has.
-    const isDevWorkflow = fs.existsSync(path.join(homeDir, 'dev', 'bdb-dev')) ||
-                          fs.existsSync(path.join(homeDir, 'bdb-dev')) ||
-                          process.env.BDB_DEV === '1' ||
-                          process.argv.includes('--launchpad') ||
-                          process.argv.includes('--dev');
-    if (!isDevWorkflow) {
-        return;
+    // ~/dev/bdb-dev. Both are checked so this works regardless of which layout
+    // a given machine still has.
+    if (!shouldOpenLaunchpad(installedModules)) {
+        return false;
     }
 
     const html = `<!DOCTYPE html>
@@ -4309,6 +4392,12 @@ function generateAndOpenLaunchpad() {
     // own background services, but the dashboard itself (a static file, not
     // a process) never got the equivalent: something to open it automatically
     // on login too, not just right after an installer run.
+    // Opt-in only: without --autostart-launchpad (or a dev checkout) a regular
+    // end-user install must not drop a login item that opens a browser on
+    // every boot.
+    if (!shouldAutostartLaunchpad()) {
+        return true;
+    }
     if (process.platform === 'darwin') {
         const plistPath = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.launchpad.plist');
         const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
@@ -4344,9 +4433,10 @@ function generateAndOpenLaunchpad() {
             fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
         } catch (e) { logDebug(e, 'launchpad autostart vbs'); }
     }
+    return true;
 }
 
-async function universalHarnessSync(primaryMcpConfigPath) {
+async function universalHarnessSync(primaryMcpConfigPath, installedModules = []) {
     log.info('Universal Agent Harness Sync...');
     const detections = detectPlatforms();
     let masterMcpData = {};
@@ -4508,7 +4598,7 @@ async function universalHarnessSync(primaryMcpConfigPath) {
         }
     }
     log.success('Universal Sync Complete!');
-    generateAndOpenLaunchpad();
+    generateAndOpenLaunchpad(installedModules);
 }
 
 async function runQuickUpdate(installState) {
@@ -4614,7 +4704,7 @@ async function runQuickUpdate(installState) {
     // did, so a dev-workflow machine only ever saw it once, on day one --
     // every subsequent run is a Quick Update, which is what almost every
     // real run after the first actually is.
-    generateAndOpenLaunchpad();
+    generateAndOpenLaunchpad(modulesToUpdate);
 }
 
 
@@ -5013,7 +5103,7 @@ async function main() {
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
 
     if (wantsUniversal) {
-        await universalHarnessSync(primaryTarget.mcpConfigPath);
+        await universalHarnessSync(primaryTarget.mcpConfigPath, installedModulesForPrompt);
     }
 
     // Flush file-level install manifest after all writes are done.
@@ -5061,4 +5151,11 @@ module.exports = {
     loadPipelineConfig,
     resolveAgentConfig,
     CANONICAL_TIERS,
+    // Launchpad lifecycle (exported for regression tests)
+    generateAndOpenLaunchpad,
+    shouldOpenLaunchpad,
+    shouldAutostartLaunchpad,
+    isDevEnvironment,
+    LAUNCHPAD_WEB_MODULES,
+    LAUNCHPAD_OPEN_FLAGS,
 };

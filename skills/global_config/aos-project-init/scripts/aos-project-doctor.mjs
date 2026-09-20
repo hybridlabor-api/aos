@@ -55,6 +55,17 @@ function checkGit() {
 
 // ---------------------------------------------------------------- aos config
 function checkAosConfig() {
+  const machineConfig = (() => {
+    try { return JSON.parse(readFileSync(path.join(HOME, '.agents', 'aos-config.json'), 'utf8')); }
+    catch { return null; }
+  })();
+  const machineOk = !!(machineConfig?.workspaceRoot && machineConfig?.domains?.length && machineConfig?.userId);
+  add('aos', 'machine vocabulary', machineOk,
+    machineOk
+      ? `workspaceRoot "${machineConfig.workspaceRoot}" · ${machineConfig.domains.length} domains · userId "${machineConfig.userId}"`
+      : 'missing or incomplete in ~/.agents/aos-config.json — /aos-project-init requires machine vocabulary',
+    'Run /aos-setup (or `aos-config propose` / `aos-config set`) to configure machine vocabulary.');
+
   add('aos', '.aos/project.json', !!aosConfig,
     aosConfig
       ? `slug "${aosConfig.slug}"${aosConfig.domain ? ` · domain ${aosConfig.domain}` : ''}${aosConfig.watch ? ' · überwacht' : ''}`
