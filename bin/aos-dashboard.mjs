@@ -4,9 +4,10 @@
 //
 //   aos-dashboard [--port 7900] [--no-open]
 //
-// Binds to 127.0.0.1 only. Control actions run launchctl against a fixed
-// service table — the request never reaches a shell, and an id that is not in
-// the table is refused, so nothing a browser sends can widen what this can do.
+// Binds to 127.0.0.1 only. Control actions run against a fixed service table
+// using launchctl on macOS or the corresponding Windows service wrapper/task —
+// the request never reaches a shell, and an id that is not in the table is
+// refused, so nothing a browser sends can widen what this can do.
 
 import { createServer } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
@@ -22,6 +23,9 @@ const execFileP = promisify(execFile);
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
 const IS_MAC = process.platform === 'darwin';
+const WINDOWS_STARTUP_DIR = process.env.APPDATA
+  ? path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup')
+  : h('AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BRAND_DIR = path.join(PKG_ROOT, 'assets', 'brand');
 
@@ -104,6 +108,14 @@ const SERVICES = [
 
 const byId = new Map(SERVICES.map((s) => [s.id, s]));
 
+// Windows uses the VBS wrappers installed by the AOS installer for memB and
+// Synapse. The process patterns are constants, never request data, so the
+// dashboard cannot be turned into an arbitrary process launcher.
+const WINDOWS_DAEMONS = {
+  memb: { vbs: 'com.bdb.memb.webui.vbs', processPattern: 'src[\\\\/]backend[\\\\/]server\\.py' },
+  synapse: { vbs: 'com.bdb.synapse.vbs', processPattern: 'synapse\\.js.*serve' },
+};
+
 // ------------------------------------------------------------------ probing
 function portOpen(port, timeout = 800) {
   return new Promise((resolve) => {
@@ -127,11 +139,23 @@ const freePort = () => new Promise((resolve, reject) => {
 });
 
 async function agentLoaded(label) {
-  if (!IS_MAC) return null;
-  try {
-    const { stdout } = await execFileP('launchctl', ['list']);
-    return stdout.split('\n').some((l) => l.trim().endsWith(label));
-  } catch { return null; }
+  if (IS_MAC) {
+    try {
+      const { stdout } = await execFileP('launchctl', ['list']);
+      return stdout.split('\n').some((l) => l.trim().endsWith(label));
+    } catch { return null; }
+  }
+  if (process.platform === 'win32' && label === 'com.bdb.openwiki.daemon') {
+    try {
+      const { stdout } = await execFileP('powershell.exe', [
+        '-NoProfile', '-Command',
+        "$task = Get-ScheduledTask -TaskName 'BDB_OpenWiki_Daemon' -ErrorAction SilentlyContinue; if ($task) { $task.State }",
+      ], { timeout: 5000 });
+      const state = stdout.trim();
+      return state === 'Ready' || state === 'Running';
+    } catch { return null; }
+  }
+  return null;
 }
 
 const localVersion = (dir) => {
@@ -300,7 +324,42 @@ async function control(id, action) {
   const svc = byId.get(id);
   if (!svc) throw new Error('unknown service');
   if (!['start', 'stop', 'restart'].includes(action)) throw new Error('unknown action');
-  if (!IS_MAC) throw new Error('start/stop is wired for launchd (macOS) only');
+
+  if (process.platform === 'win32' && id === 'openwiki') {
+    // OpenWiki's refresh daemon is registered as a Scheduled Task on Windows,
+    // not as a launchd plist. Keep the command allowlisted and pass only a
+    // constant task name to PowerShell; browser input never becomes a command.
+    const run = (command) => execFileP('powershell.exe', [
+      '-NoProfile', '-Command', command,
+    ], { timeout: 10000 }).catch((e) => { throw new Error(e.stderr?.trim() || e.message); });
+    const task = "'BDB_OpenWiki_Daemon'";
+    if (action === 'stop' || action === 'restart') {
+      await run(`Stop-ScheduledTask -TaskName ${task} -ErrorAction SilentlyContinue`);
+    }
+    if (action === 'start' || action === 'restart') {
+      await run(`Start-ScheduledTask -TaskName ${task} -ErrorAction Stop`);
+    }
+    return { ok: true };
+  }
+
+  if (process.platform === 'win32' && WINDOWS_DAEMONS[id]) {
+    const daemon = WINDOWS_DAEMONS[id];
+    const vbsPath = path.join(WINDOWS_STARTUP_DIR, daemon.vbs);
+    if (!existsSync(vbsPath)) throw new Error(`no Windows startup wrapper installed for ${svc.name}`);
+    const run = (command) => execFileP('powershell.exe', [
+      '-NoProfile', '-Command', command,
+    ], { timeout: 10000 }).catch((e) => { throw new Error(e.stderr?.trim() || e.message); });
+    if (action === 'stop' || action === 'restart') {
+      const escapedPattern = daemon.processPattern.replace(/'/g, "''");
+      await run(`Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match '${escapedPattern}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`);
+    }
+    if (action === 'start' || action === 'restart') {
+      await execFileP('wscript.exe', [vbsPath], { timeout: 10000 });
+    }
+    return { ok: true };
+  }
+
+  if (!IS_MAC) throw new Error('start/stop is not available on this platform for this service');
 
   const plist = h('Library', 'LaunchAgents', `${svc.agent}.plist`);
   if (!existsSync(plist)) throw new Error(`no LaunchAgent installed for ${svc.name}`);
