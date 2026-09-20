@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.0](https://github.com/hybridlabor-api/aos/compare/v4.5.2...v4.6.0) (2026-09-20)
+
+
+### Features
+
+* **subagents:** multi-harness subagent architecture across claude, antigravity, opencode, and codex ([258a3a3](https://github.com/hybridlabor-api/aos/commit/258a3a3a458213292c472ede2253e0ee602a2aca))
+
 ## [4.5.2](https://github.com/hybridlabor-api/aos/compare/v4.5.1...v4.5.2) (2026-09-20)
 
 
