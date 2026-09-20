@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.1](https://github.com/hybridlabor-api/aos/compare/v4.5.0...v4.5.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **installer:** cross-harness hooks, windows openwiki daemon and dashboard opener ([ab08b9b](https://github.com/hybridlabor-api/aos/commit/ab08b9b0e2a0f53058dc5f60aab240db6af2ac2b))
+
 ## [4.5.0](https://github.com/hybridlabor-api/aos/compare/v4.4.1...v4.5.0) (2026-09-15)
 
 ### Features
