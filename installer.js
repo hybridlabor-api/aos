@@ -2002,8 +2002,27 @@ async function installOpenWikiVisualizer() {
         return;
     }
     if (!hasExecutable('openwiki')) {
-        log.warn('Skipping OpenWiki Visualizer setup: the openwiki CLI was not found on PATH. Install it with: npm install -g openwiki@latest');
-        return;
+        // Fresh machines always land here -- skipping leaves :4321 dead with
+        // only a warn line. Offer the global install instead.
+        let installCli = isAutoYes;
+        if (!isAutoYes) {
+            const answer = await askConfirm({
+                message: 'OpenWiki CLI not found. Install it globally (npm install -g openwiki@latest) so the :4321 visualizer daemon can run?',
+                initialValue: true,
+            });
+            installCli = !isCancel(answer) && !!answer;
+        }
+        if (installCli) {
+            try {
+                log.step('Installing OpenWiki CLI globally (npm install -g openwiki@latest)...');
+                execSync('npm install -g openwiki@latest', { stdio: 'ignore' });
+            } catch (e) { logDebug(e, 'openwiki cli install'); }
+        }
+        if (!hasExecutable('openwiki')) {
+            log.warn('Skipping OpenWiki Visualizer setup: the openwiki CLI is not on PATH. Install it with: npm install -g openwiki@latest');
+            return;
+        }
+        log.ok('OpenWiki CLI installed.');
     }
     // launchd starts agents with a minimal PATH that never includes npm's global
     // bin dir, so resolve the absolute binary path now instead of relying on PATH at boot.
@@ -2012,6 +2031,79 @@ async function installOpenWikiVisualizer() {
         const lookup = process.platform === 'win32' ? 'where openwiki' : 'command -v openwiki';
         openwikiBin = execSync(lookup, { encoding: 'utf8' }).split(/\r?\n/)[0].trim() || 'openwiki';
     } catch (e) { logDebug(e, 'openwiki path lookup'); }
+
+    // The openwiki CLI is a Node script (#!/usr/bin/env node shebang). Under
+    // launchd's minimal PATH there is no node either, so the agent died with
+    // "env: node: No such file or directory" (exit 127) on every boot until
+    // the interpreter itself is baked in as an absolute path.
+    let nodeBin = 'node';
+    try {
+        const lookup = process.platform === 'win32' ? 'where node' : 'command -v node';
+        nodeBin = execSync(lookup, { encoding: 'utf8' }).split(/\r?\n/)[0].trim() || 'node';
+    } catch (e) { logDebug(e, 'node path lookup'); }
+
+    // Which wiki :4321 serves is per-machine setup configuration, not a
+    // hardcoded path: every computer tracks different projects, and bare
+    // `openwiki visualize` only serves ~/openwiki, which never exists (the
+    // agent then exits 1 with "Wiki directory not found"). The choice is
+    // persisted in ~/.openwiki/visualizer.json so Quick Update reuses it
+    // without asking again; the bundled ecosystem aggregate is only the
+    // first-run default.
+    const visualizerConfigPath = path.join(homeDir, '.openwiki', 'visualizer.json');
+    const looksLikeWiki = (dir) => fs.existsSync(path.join(dir, 'index.md'))
+        || fs.existsSync(path.join(dir, 'openwiki'))
+        || fs.existsSync(path.join(dir, '.openwiki'));
+    const readVisualizerConfig = () => {
+        try {
+            const raw = JSON.parse(fs.readFileSync(visualizerConfigPath, 'utf8'));
+            if (raw && typeof raw.wikiPath === 'string' && fs.existsSync(raw.wikiPath)) return raw.wikiPath;
+        } catch (e) { logDebug(e, 'visualizer config read'); }
+        return null;
+    };
+    const writeVisualizerConfig = (wikiPath) => {
+        try {
+            fs.mkdirSync(path.dirname(visualizerConfigPath), { recursive: true });
+            fs.writeFileSync(visualizerConfigPath, JSON.stringify({ wikiPath, updatedAt: new Date().toISOString() }, null, 2));
+        } catch (e) { logDebug(e, 'visualizer config write'); }
+    };
+    let wikiPath = readVisualizerConfig();
+    const ecosystemWiki = path.join(homeDir, '.openwiki', 'ecosystem-wiki');
+    const syncScript = path.join(srcDir, 'skills', 'global_config', 'openwiki-skill', 'scripts', 'sync_ecosystem_wiki.py');
+    if (!wikiPath) {
+        if (looksLikeWiki(ecosystemWiki)) {
+            wikiPath = ecosystemWiki;
+        } else if (fs.existsSync(syncScript) && hasExecutable('python3')) {
+            try {
+                execSync(`python3 "${syncScript}"`, { stdio: 'ignore' });
+                if (looksLikeWiki(ecosystemWiki)) wikiPath = ecosystemWiki;
+            } catch (e) { logDebug(e, 'ecosystem wiki sync'); }
+        }
+        if (!wikiPath && !isAutoYes) {
+            const answer = await text({
+                message: `Which wiki should the :4321 visualizer serve? (directory) [default: ${ecosystemWiki}]`,
+                placeholder: ecosystemWiki,
+            });
+            if (!isCancel(answer) && answer && answer.trim()) {
+                const candidate = answer.trim().replace(/^~(?=$|\/|\\)/, homeDir);
+                if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+                    wikiPath = candidate;
+                    if (!looksLikeWiki(candidate)) {
+                        log.warn(`No wiki markers found in ${candidate} — the daemon may exit until a wiki is generated there.`);
+                    }
+                } else {
+                    log.warn(`Directory not found: ${candidate} — continuing without a visualizer path.`);
+                }
+            }
+        }
+    }
+    if (wikiPath) {
+        writeVisualizerConfig(wikiPath);
+    } else {
+        log.warn('OpenWiki Visualizer: no servable wiki configured — registering without a path, the daemon will exit until a wiki exists.');
+    }
+    const visualizeArgs = wikiPath
+        ? `<string>${nodeBin}</string>\n        <string>${openwikiBin}</string>\n        <string>visualize</string>\n        <string>${wikiPath}</string>\n        <string>--port</string>`
+        : `<string>${nodeBin}</string>\n        <string>${openwikiBin}</string>\n        <string>visualize</string>\n        <string>--port</string>`;
 
     if (process.platform === 'darwin') {
         const plistPath = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.openwiki-visualize.plist');
@@ -2023,9 +2115,7 @@ async function installOpenWikiVisualizer() {
     <string>com.bdb.openwiki-visualize</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${openwikiBin}</string>
-        <string>visualize</string>
-        <string>--port</string>
+        ${visualizeArgs}
         <string>4321</string>
         <string>--no-open</string>
     </array>
