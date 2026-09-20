@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.4](https://github.com/hybridlabor-api/aos/compare/v4.6.3...v4.6.4) (2026-09-20)
+
+
+### Bug Fixes
+
+* **installer:** handle windows EPERM during module swap and bootstrap pip in venv ([a772825](https://github.com/hybridlabor-api/aos/commit/a7728250319f9c657f5f947cf352d1acedef733d))
+
 ## [4.6.3](https://github.com/hybridlabor-api/aos/compare/v4.6.2...v4.6.3) (2026-09-20)
 
 
