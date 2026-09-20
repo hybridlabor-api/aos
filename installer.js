@@ -241,6 +241,42 @@ function hasExecutable(binary) {
     }
 }
 
+// Windows installers launched from an existing terminal can inherit a stale
+// PATH after Go was installed through winget or the official installer. The
+// Synapse JS launcher shells out to Go on first run, so discover the standard
+// install locations as well as PATH and persist the resolved bin directory in
+// the generated startup wrapper.
+function findWindowsGoBin() {
+    if (process.platform !== 'win32') return null;
+    const candidates = [];
+    try {
+        const found = execSync('where.exe go', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+            .split(/\r?\n/).map(s => s.trim()).find(Boolean);
+        if (found) candidates.push(path.dirname(found));
+    } catch (_) { /* PATH can be stale immediately after installation */ }
+
+    const roots = [
+        process.env.GOROOT,
+        process.env.ProgramW6432,
+        process.env.ProgramFiles,
+        process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : null,
+    ].filter(Boolean);
+    for (const root of roots) {
+        candidates.push(path.join(root, 'Go', 'bin'));
+        candidates.push(path.join(root, 'go', 'bin'));
+    }
+    return candidates.find(dir => fs.existsSync(path.join(dir, 'go.exe'))) || null;
+}
+
+function verifyPythonImports(pythonPath, cwd, importCode) {
+    const result = spawnSync(pythonPath, ['-c', importCode], {
+        cwd,
+        stdio: 'ignore',
+        timeout: 30000,
+    });
+    return !result.error && result.status === 0;
+}
+
 function resolveUnsupportedMcpConfigKeys() {
     const keys = unsupportedMcpConfigKeys.slice();
     conditionalMcpConfigKeys.forEach(entry => {
@@ -1864,6 +1900,30 @@ async function installMemB(interactive) {
             if (installWebUI && fs.existsSync(serverPy)) {
                 runPipWithRetry(installCmd('fastapi uvicorn'), { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
             }
+
+            // A partially upgraded venv can contain pydantic while missing or
+            // mismatching pydantic-core. That failure only appears later when
+            // the WebUI imports its models, so validate the actual interpreter
+            // before registering the daemon and repair the pair in place.
+            const importCheck = installWebUI && fs.existsSync(serverPy)
+                ? 'import pydantic, pydantic_core; from fastapi import FastAPI; import uvicorn'
+                : 'import pydantic, pydantic_core';
+            if (!verifyPythonImports(venvPython, membDir, importCheck)) {
+                log.warn('memB Python dependencies are inconsistent; repairing pydantic and pydantic-core.');
+                const repairPackages = installWebUI && fs.existsSync(serverPy)
+                    ? '--force-reinstall "pydantic>=2.7.3" "pydantic-core>=2.18.4" fastapi uvicorn'
+                    : '--force-reinstall "pydantic>=2.7.3" "pydantic-core>=2.18.4"';
+                const repaired = runPipWithRetry(
+                    installCmd(repairPackages),
+                    { cwd: membDir, stdio: 'inherit' },
+                    'repair memB Python dependencies',
+                    2,
+                    900000,
+                );
+                if (repaired && !verifyPythonImports(venvPython, membDir, importCheck)) {
+                    log.warn('memB dependency repair did not pass the import check; inspect the venv before starting the daemon.');
+                }
+            }
         } catch (e) {
             log.warn(`Failed memB standalone venv setup: ${e.message}`);
         }
@@ -2017,11 +2077,20 @@ async function installSynapse() {
             const stderrLog = path.join(synapseLogDir, 'daemon.stderr.log');
             const batPath = path.join(synapseLogDir, 'run-synapse.bat');
             const runCmd = binaryPath.endsWith('.js') ? `node "${binaryPath}" serve --port 7781` : `"${binaryPath}" serve --port 7781`;
+            const goBin = binaryPath.endsWith('.js') ? findWindowsGoBin() : null;
+            if (binaryPath.endsWith('.js') && goBin) {
+                log.step(`Synapse Windows wrapper will use Go from ${goBin}`);
+            } else if (binaryPath.endsWith('.js')) {
+                log.warn('Synapse Windows launcher requires Go on first run; install Go from https://go.dev/dl/ before starting the daemon.');
+            }
             // WshShell.Run has no stdout/stderr redirection of its own, so a crash on launch
             // (e.g. a missing dependency the binary shells out to) used to die silently with
             // nothing to diagnose short of reading source — route through a .bat wrapper that
             // redirects to the same ~/.synapse log files the macOS launchd plist already writes.
-            const batContent = `@echo off\r\ncd /d "${synapseDir}"\r\n${runCmd} >> "${stdoutLog}" 2>> "${stderrLog}"\r\n`;
+            const goSetup = goBin
+                ? `set "PATH=${goBin.replace(/%/g, '%%')};%PATH%"\r\n`
+                : `where.exe go >nul 2>&1 || (echo Go is required by the Synapse launcher. Install it from https://go.dev/dl/ and restart this daemon. >> "${stderrLog}" & exit /b 1)\r\n`;
+            const batContent = `@echo off\r\n${goSetup}cd /d "${synapseDir}"\r\n${runCmd} >> "${stdoutLog}" 2>> "${stderrLog}"\r\n`;
             const vbsPath = path.join(startupDir, 'com.bdb.synapse.vbs');
             const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${synapseDir}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`;
             try {
