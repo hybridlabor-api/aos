@@ -795,20 +795,22 @@ if (mandatorySkillNames.length > 0) {
       'this workflow may be driven from a harness whose directory is not ~/.claude. ' +
       'If this project has its own skills/ directory, also accept skills/<name>/SKILL.md or skills/<container>/<name>/SKILL.md. ' +
       'This is a read-only lookup, not a reasoning task -- do not invent a path that does not exist, and never report a close match as `found`.\n\n' +
-      'For any name that does NOT resolve, list up to five installed skills whose directory names are plausible near-misses ' +
+      'For any name that does NOT resolve, read lib/ecc-store-index.json and list exact available store item names in `store_matches`. ' +
+      'Also list up to five installed skills whose directory names are plausible near-misses ' +
       '(substring, obvious typo, or the same words in another order) in `suggestions`. Read the real directory listing to do this -- ' +
       'suggest only names that actually exist on disk. `--skill=` requires an exact directory name, and a user who mistyped one ' +
       'has no way to discover the right spelling from an error that only says "not found".\n\n' +
-      'Return only: { "found": string[], "missing": string[], "suggestions": string[] }.',
+      'Return only: { "found": string[], "missing": string[], "store_matches": string[], "suggestions": string[] }.',
     {
       label: 'validate-mandatory-skills',
       model: 'haiku',
       schema: {
         type: 'object',
-        required: ['found', 'missing'],
+        required: ['found', 'missing', 'store_matches'],
         properties: {
           found: { type: 'array', items: { type: 'string' } },
           missing: { type: 'array', items: { type: 'string' } },
+          store_matches: { type: 'array', items: { type: 'string' } },
           suggestions: { type: 'array', items: { type: 'string' } },
         },
       },
@@ -816,15 +818,21 @@ if (mandatorySkillNames.length > 0) {
   );
   const missing = skillCheckResult?.missing ?? [];
   if (missing.length > 0) {
+    const storeMatches = skillCheckResult?.store_matches ?? [];
     const near = skillCheckResult?.suggestions ?? [];
-    return await escalate(
-      `--skill named skill(s) that could not be found on this machine: ${missing.join(', ')}. ` +
-        (near.length
-          ? `Did you mean: ${near.join(', ')}? `
-          : 'No installed skill has a similar name. ') +
-        '--skill= takes the exact skill directory name; run /ask-tim to find the one you want. ' +
-        'Refusing to silently proceed without a mandated skill.'
-    );
+    let message = `--skill named skill(s) that could not be found on this machine: ${missing.join(', ')}. `;
+    if (storeMatches.length > 0) {
+      message += `Found in the AOS / ECC Store: ${storeMatches.join(', ')}. ` +
+        `Run: aos store install ${storeMatches.join(' ')} ` +
+        'Then re-run your startcycle command. ';
+    } else if (near.length > 0) {
+      message += `Did you mean: ${near.join(', ')}? `;
+    } else {
+      message += 'No installed or store skill has a similar name. ';
+    }
+    message += '--skill= takes the exact skill directory name; run /ask-tim to find the one you want. ' +
+      'Refusing to silently proceed without a mandated skill.';
+    return await escalate(message);
   }
   mandatorySkills = skillCheckResult?.found ?? mandatorySkillNames;
 }
