@@ -291,6 +291,28 @@ function relToRepo(p) {
   const r = path.resolve(String(p))
   return r === repo ? '' : r.startsWith(repo + path.sep) ? r.slice(repo.length + 1) : null
 }
+// AOS patch: native plan/todo tools across harnesses, normalized to the
+// {content, status} shape the frontend's run-todo rendering already expects.
+// - Claude: `TodoWrite`, input {todos:[{content,status}]}
+// - OpenCode: its real tool id is `todowrite` (verified live via `opencode
+//   run --format json`), but mcsc's opencode.js adapter title-cases the raw
+//   tool name before it reaches this hook (`part.tool.charAt(0).toUpperCase()
+//   + part.tool.slice(1)`), so it arrives here as `Todowrite`. Same input
+//   shape as Claude's, plus an extra `priority` field we ignore.
+// - Codex: `update_plan`, input {explanation?, plan:[{step,status}]}. NOT
+//   verified live (Codex CLI's `--json` stream errored on auth in the
+//   environment this was built in, see report.md) — mapped on Codex's
+//   publicly documented tool contract; re-verify once Codex is authenticated.
+function normalizeTodos(toolName, input) {
+  if (!input) return null
+  if ((toolName === 'TodoWrite' || toolName === 'Todowrite') && Array.isArray(input.todos)) {
+    return input.todos.map(t => ({ content: t.content, status: t.status }))
+  }
+  if (toolName === 'update_plan' && Array.isArray(input.plan)) {
+    return input.plan.map(t => ({ content: t.step, status: t.status }))
+  }
+  return null
+}
 function handleHookEvent(ev) {
   const cwd = ev.cwd || ''
   if (!(cwd === repo || cwd.startsWith(repo + path.sep))) return false
@@ -327,9 +349,8 @@ function handleHookEvent(ev) {
     run.recentTools.unshift({ name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now(), ms: Date.now() - started })
     if (run.recentTools.length > 8) run.recentTools.length = 8
     run.currentTool = null
-    if (ev.tool_name === 'TodoWrite' && ev.tool_input && Array.isArray(ev.tool_input.todos)) {
-      run.todos = ev.tool_input.todos.map(t => ({ content: t.content, status: t.status }))
-    }
+    const todos = normalizeTodos(ev.tool_name, ev.tool_input)
+    if (todos) run.todos = todos
     const rel = relToRepo(ev.tool_input && (ev.tool_input.file_path || ev.tool_input.notebook_path))
     if (rel) {
       heatFile(rel, Date.now())
@@ -503,15 +524,39 @@ function planStaleness() {
   const fresh = Date.now() - activity.at < 15 * 60e3
   return gap > 20 * 60e3 && fresh ? { stale: true, minutes: Math.round(gap / 60e3) } : { stale: false }
 }
+// AOS patch: when no plan file exists yet, synthesize one synthetic
+// component card per live run that has native todos (any harness — see
+// normalizeTodos above) so the board renders instead of the empty
+// "Waiting for the plan" state. A real plan file always wins outright: this
+// only runs when planText is empty, and never mixes with parsed.nodes.
+function syntheticPlanNodes() {
+  if (planText.length) return []
+  const out = []
+  for (const r of liveRuns()) {
+    if (!r.todos || !r.todos.length) continue
+    const id = 'live-' + r.id.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 20)
+    const done = r.todos.filter(t => t.status === 'completed').length
+    const status = r.todos.some(t => t.status === 'in_progress') ? 'active' : done === r.todos.length ? 'done' : 'pending'
+    out.push({
+      id, title: `${r.agent}'s live todos`, level: 'component', parent: null,
+      needs: [], links: [], files: [], tech: '', by: r.agent, kind: '', url: '',
+      status, synthetic: true,
+      touchedAt: r.lastEventAt, recent: [], filesList: [],
+    })
+  }
+  return out
+}
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   // AOS patch: include planFile (relative path) and aosPlan (boolean) for AOS UI customization
   const planFile = planArg ? path.relative(repo, planPath).split(path.sep).join('/') : undefined
   const aosPlan = Boolean(planArg)
+  const realPlanNodes = parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [], filesList: compFilesFor(n.id) } : n)
+  const planNodes = realPlanNodes.length ? realPlanNodes : syntheticPlanNodes()
   return {
     boards, port,
     runs: liveRuns(),
-    session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [], filesList: compFilesFor(n.id) } : n), tree,
+    session, plan: planNodes, tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0, treeTruncated,
     activity, recentActivity, planMtime, handoffs, asks, hotFiles: hotFiles(), cycles, // AOS patch: asks ride along so the open map updates live
