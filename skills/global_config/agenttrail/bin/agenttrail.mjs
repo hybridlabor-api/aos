@@ -20,6 +20,8 @@ const spawningPaths = new Set()
 let openBrowser = process.stdout.isTTY ? true : false
 let noOpen = false
 let hooksOnly = false
+const MAX_BODY_BYTES = 64 * 1024
+const MAX_CONTROL_BODY_BYTES = 4 * 1024
 let assumeYes = false
 let removeFlag = false
 let printFlag = false
@@ -57,6 +59,42 @@ for (let i = 0; i < argv.length; i++) {
 const planPath = planArg ? path.resolve(repo, planArg) : path.join(repo, 'PLAN.md')
 const atDir = path.join(repo, '.agenttrail')
 
+function realDirectory(value) {
+  if (typeof value !== 'string' || value.length === 0) return null
+  try {
+    const resolved = fs.realpathSync(path.resolve(value))
+    return fs.statSync(resolved).isDirectory() ? resolved : null
+  } catch {
+    return null
+  }
+}
+
+function isWithin(root, candidate) {
+  const relativePath = path.relative(root, candidate)
+  return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath))
+}
+
+function allowedSpawnDirectory(value) {
+  const target = realDirectory(value)
+  if (!target) return null
+  const roots = [repo]
+  for (const board of Array.isArray(boards) ? boards : []) if (board && board.repoPath) roots.push(board.repoPath)
+  try {
+    for (const file of fs.readdirSync(path.join(os.homedir(), '.agenttrail'))) {
+      if (!file.endsWith('.json')) continue
+      try {
+        const state = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.agenttrail', file), 'utf8'))
+        if (state && typeof state.repoPath === 'string') roots.push(state.repoPath)
+      } catch {}
+    }
+  } catch {}
+  for (const root of roots) {
+    const realRoot = realDirectory(root)
+    if (realRoot && isWithin(realRoot, target)) return target
+  }
+  return null
+}
+
 async function askYesNo(q) {
   if (assumeYes || !process.stdin.isTTY) return true
   const rl = (await import('node:readline')).createInterface({ input: process.stdin, output: process.stdout })
@@ -71,7 +109,7 @@ function copyToClipboard(text) {
   return import('node:child_process').then(cp => new Promise(res => {
     const cmd = process.platform === 'darwin' ? 'pbcopy' : 'xclip'
     const args = process.platform === 'darwin' ? [] : ['-selection', 'clipboard']
-    const p = cp.spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] })
+    const p = cp.spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'], shell: false })
     p.on('error', () => res(false)); p.on('close', () => res(true))
     p.stdin.end(text)
   })).catch(() => false)
@@ -87,8 +125,17 @@ if (cmd === 'ask') { process.exit(await askFlow()) }
 // each daemon keeps only events whose cwd lives inside its repo. Never blocks
 // the agent: 400ms cap, failures are silent.
 async function relayHook() {
-  let raw = ''
-  try { for await (const c of process.stdin) raw += c } catch {}
+  const chunks = []
+  let size = 0
+  try {
+    for await (const chunk of process.stdin) {
+      const buffer = Buffer.from(chunk)
+      size += buffer.length
+      if (size > MAX_BODY_BYTES) return
+      chunks.push(buffer)
+    }
+  } catch {}
+  const raw = Buffer.concat(chunks).toString('utf8')
   if (!raw) return
   // AOS patch: --agent <name> tags the hook event with the calling harness
   let body = raw
@@ -638,14 +685,14 @@ function throttleBroadcast() {
 }
 
 // ---------- sibling boards (multi-repo: one daemon per repo, boards link to each other) ----------
-let boards = [{ port, project: path.basename(repo), self: true }]
+let boards = [{ port, project: path.basename(repo), self: true, repoPath: repo }]
 async function discoverBoards() {
-  const found = [{ port, project: session.project, self: true }]
+  const found = [{ port, project: session.project, self: true, repoPath: repo }]
   await Promise.allSettled(Array.from({ length: 15 }, (_, i) => 5330 + i).filter(p => p !== port).map(async p => {
     try {
       const r = await fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(300) })
       const j = await r.json()
-      if (j && j.project) found.push({ port: p, project: j.project, self: false })
+      if (j && j.project) found.push({ port: p, project: j.project, self: false, repoPath: j.repoPath })
     } catch {}
   }))
   boards = found.sort((a, b) => a.port - b.port)
@@ -707,9 +754,18 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
   } else if (u.pathname.startsWith('/production_artifacts/')) {
     // AOS patch: serve pipeline artifacts so a card's relative `url:` (e.g. an archify diagram) opens
-    const root = path.join(repo, 'production_artifacts')
-    const f = path.resolve(repo, '.' + decodeURIComponent(u.pathname))
-    if (!f.startsWith(root + path.sep) || !fs.statSync(f, { throwIfNoEntry: false })?.isFile()) { res.writeHead(404).end(); return }
+    let root
+    let f
+    try {
+      root = fs.realpathSync(path.join(repo, 'production_artifacts'))
+      f = fs.realpathSync(path.resolve(repo, '.' + decodeURIComponent(u.pathname)))
+    } catch {
+      res.writeHead(404).end()
+      return
+    }
+    let isFile = false
+    try { isFile = fs.statSync(f).isFile() } catch {}
+    if (!isWithin(root, f) || !isFile) { res.writeHead(404).end(); return }
     const type = f.endsWith('.html') ? 'text/html' : f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.json') ? 'application/json' : 'text/plain'
     res.writeHead(200, { 'content-type': type + '; charset=utf-8' }).end(fs.readFileSync(f))
   } else if (u.pathname === '/whoami') {
@@ -746,30 +802,27 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, prompt: BACKFILL_PROMPT }))
     }).catch(e => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: String(e) })))
   } else if (u.pathname === '/setup-board' && req.method === 'POST') {
-    let body = ''
-    req.on('data', c => body += c)
-    req.on('end', async () => {
+    readCapped(req, res, async body => {
       let out = { ok: false, error: 'no board there' }
       try {
-        const p = Number(JSON.parse(body).port)
-        out = await fetch(`http://127.0.0.1:${p}/setup`, { method: 'POST', signal: AbortSignal.timeout(5000) }).then(r => r.json())
+        const p = Number(JSON.parse(body || '{}').port)
+        if (!Number.isInteger(p) || p < 1 || p > 65535) out = { ok: false, error: 'bad port' }
+        else out = await fetch(`http://127.0.0.1:${p}/setup`, { method: 'POST', signal: AbortSignal.timeout(5000) }).then(r => r.json())
       } catch {}
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out))
-    })
+    }, MAX_CONTROL_BODY_BYTES)
   } else if (u.pathname === '/spawn' && req.method === 'POST') {
-    let body = ''
-    req.on('data', c => body += c)
-    req.on('end', async () => {
+    readCapped(req, res, async body => {
       let out = { ok: false, error: 'bad request' }
       try {
-        const p = path.resolve(String(JSON.parse(body).path || ''))
-        if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) out = { ok: false, error: 'not a folder on this machine' }
+        const p = allowedSpawnDirectory(JSON.parse(body || '{}').path)
+        if (!p) out = { ok: false, error: 'spawn target is outside the allowed workspace' }
         else {
           let already = null
           for (const b of boards) {
             try {
               const w = await fetch(`http://127.0.0.1:${b.port}/whoami`, { signal: AbortSignal.timeout(300) }).then(r => r.json())
-              if (w.repoPath === p) { already = b.port; break }
+              if (w.repoPath && realDirectory(w.repoPath) === p) { already = b.port; break }
             } catch {}
           }
           if (already) out = { ok: true, already }
@@ -777,7 +830,7 @@ const server = http.createServer((req, res) => {
           else {
             spawningPaths.add(p); setTimeout(() => spawningPaths.delete(p), 30000)
             const cp = await import('node:child_process')
-            const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), p, '--no-open'], { detached: true, stdio: 'ignore' })
+            const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), p, '--no-open'], { detached: true, stdio: 'ignore', shell: false })
             child.unref()
             setTimeout(discoverBoards, 2500)
             setTimeout(discoverBoards, 6000)
@@ -786,11 +839,13 @@ const server = http.createServer((req, res) => {
         }
       } catch {}
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out))
-    })
+    }, MAX_CONTROL_BODY_BYTES)
   } else if (u.pathname === '/nudge') {
     const cwd = u.searchParams.get('cwd') || ''
     const st = planStaleness()
-    const mine = cwd === repo || cwd.startsWith(repo + path.sep)
+    const candidate = realDirectory(cwd)
+    const root = realDirectory(repo)
+    const mine = !!(candidate && root && isWithin(root, candidate))
     res.writeHead(200, { 'content-type': 'text/plain' }).end(mine && st.stale
       ? `Note from agenttrail: PLAN.md in this repo is ${st.minutes} minutes behind the code. Re-verify task statuses against what you and other sessions actually changed, mark your current task [~], and keep files: globs current.`
       : '')
@@ -811,12 +866,10 @@ const server = http.createServer((req, res) => {
     clients.add(res)
     req.on('close', () => clients.delete(res))
   } else if (u.pathname === '/hook' && req.method === 'POST') {
-    let body = ''
-    req.on('data', c => body += c)
-    req.on('end', () => {
-      try { if (handleHookEvent(JSON.parse(body))) hookTick() } catch {}
+    readCapped(req, res, body => {
+      try { if (handleHookEvent(JSON.parse(body || '{}'))) hookTick() } catch {}
       res.writeHead(200).end()
-    })
+    }, MAX_CONTROL_BODY_BYTES)
   } else if (u.pathname === '/ask' && req.method === 'POST') {
     // AOS patch: ask engine — register a question the human answers on the map.
     // Pure relay: an answer here never runs anything (go-gate keeps sole authority).
@@ -878,16 +931,29 @@ const server = http.createServer((req, res) => {
   } else res.writeHead(404).end()
 })
 // AOS patch: body reader for the ask/answer routes, capped at 4 KB
-function readCapped(req, res, cb) {
-  let body = ''
+function readCapped(req, res, cb, maxBytes = MAX_CONTROL_BODY_BYTES) {
+  const chunks = []
+  let size = 0
   let done = false
-  req.on('data', c => {
+  req.on('data', chunk => {
     if (done) return
-    body += c
-    if (body.length > 4096) { done = true; body = ''; res.writeHead(413, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'body too large' })); req.destroy() }
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
+    size += buffer.length
+    if (size > maxBytes) {
+      done = true
+      chunks.length = 0
+      res.writeHead(413, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'body too large' }))
+      req.destroy()
+      return
+    }
+    chunks.push(buffer)
   })
-  req.on('end', () => { if (!done) { done = true; cb(body) } })
-  req.on('error', () => {})
+  req.on('end', () => {
+    if (done) return
+    done = true
+    cb(Buffer.concat(chunks).toString('utf8'))
+  })
+  req.on('error', () => { done = true })
 }
 let lastHookTick = 0
 function hookTick() {
@@ -928,7 +994,7 @@ function onListen() {
   }
   if (openBrowser && !noOpen) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
-    import('node:child_process').then(cp => cp.spawn(opener, [`http://localhost:${port}`], { stdio: 'ignore', detached: true }))
+    import('node:child_process').then(cp => cp.spawn(opener, [`http://localhost:${port}`], { stdio: 'ignore', detached: true, shell: false }))
   }
   firstRunFlow()
 }
@@ -1015,7 +1081,7 @@ async function upAll() {
   for (const k of known) {
     const live = await fetch(`http://127.0.0.1:${k.port}/whoami`, { signal: AbortSignal.timeout(300) }).then(r => r.json()).catch(() => null)
     if (live) { console.log(`already up: ${k.repo} (:${k.port})`); continue }
-    const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), k.repo, '--port', String(k.port), '--no-open'], { detached: true, stdio: 'ignore' })
+    const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), k.repo, '--port', String(k.port), '--no-open'], { detached: true, stdio: 'ignore', shell: false })
     child.unref()
     console.log(`started: ${k.repo} (:${k.port})`)
   }

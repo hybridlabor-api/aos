@@ -58,8 +58,8 @@ agents calling agents; see `audit-agents.md` F-17 for why that's corrected.
 
 | Node | Role | Reads | Writes |
 |---|---|---|---|
-| **Architect** | Turns the goal into a system plan | `state.goal` | `state.artifacts.plan` |
-| **TechLead** | Approves/rejects the plan's capability map | `state.artifacts.plan` | plan approval, `state.phase` |
+| **Architect** | Turns the goal into a system plan | `state.goal` | `state.artifacts.plan`, `state.artifacts.architecture` (`production_artifacts/00_architecture.json` + `production_artifacts/00_architecture.html` via `aos-archify deliver`, linked with a `url:` line) |
+| **TechLead** | Approves/rejects the plan's capability map | `state.artifacts.plan` | plan approval, `state.phase` (rejects on a failed architecture gate: missing spec/HTML, missing `url:` link, or no passing showcase receipt) |
 | **Godmode_UI_UX** | Frontend implementation | plan, own findings | `state.artifacts.frontend` |
 | **Godmode_Engineering** | Backend implementation | plan, own findings | `state.artifacts.backend` |
 | **Godmode_Media_EventTech** | Media/show-control implementation (if the goal needs it) | plan, own findings | `state.artifacts.media` |
