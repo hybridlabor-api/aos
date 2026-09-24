@@ -219,8 +219,9 @@ function touchComponents(file, at) {
 // todo, streaming tool line, recent calls — pinned to a component on the map.
 const runs = {} // session id -> run
 const handoffs = [] // {c, from, to, at} — one session picks up where another stopped
+// AOS patch: `done` distinguishes a finished run (SessionEnd) from one waiting for its user (Stop)
 function runFor(id, cwd) {
-  return runs[id] || (runs[id] = { id, agent: 'claude', cwd, startedAt: Date.now(), lastEventAt: Date.now(), todos: [], currentTool: null, recentTools: [], componentId: null, ended: false })
+  return runs[id] || (runs[id] = { id, agent: 'claude', cwd, startedAt: Date.now(), lastEventAt: Date.now(), todos: [], currentTool: null, recentTools: [], componentId: null, ended: false, done: false })
 }
 function toolDetail(input = {}) {
   const p = input.file_path || input.notebook_path
@@ -240,10 +241,11 @@ function handleHookEvent(ev) {
   run.lastEventAt = Date.now()
   stateDirty = true
   const kind = ev.hook_event_name
-  if (kind === 'SessionStart') run.ended = false
-  else if (kind === 'Stop' || kind === 'SessionEnd') { run.ended = true; run.currentTool = null }
+  if (kind === 'SessionStart') { run.ended = false; run.done = false } // AOS patch: a new session starts neither ended nor done
+  else if (kind === 'Stop' || kind === 'SessionEnd') { run.ended = true; run.currentTool = null; run.done = kind === 'SessionEnd' } // AOS patch: SessionEnd = finished, Stop = waiting for you
   else if (kind === 'PreToolUse') {
     run.ended = false
+    run.done = false // AOS patch: an ended run that resumes is no longer done
     run.currentTool = { name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now() }
     if (ev.tool_name === 'Task' && ev.tool_input) {
       const name = String(ev.tool_input.description || ev.tool_input.subagent_type || 'sub-agent').slice(0, 60)
@@ -255,6 +257,7 @@ function handleHookEvent(ev) {
     if (sa) { sa.ended = true; sa.endedAt = Date.now() }
   } else if (kind === 'PostToolUse') {
     run.ended = false
+    run.done = false // AOS patch: keep done in sync when a run resumes
     const started = run.currentTool && run.currentTool.name === ev.tool_name ? run.currentTool.at : Date.now()
     run.recentTools.unshift({ name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now(), ms: Date.now() - started })
     if (run.recentTools.length > 8) run.recentTools.length = 8
