@@ -33,7 +33,7 @@ Generate a project-specific DESIGN.md containing:
 - IF brand colors defined → Color bans (Lila Ban, etc.) = SUSPENDED
 - IF brand fonts defined → Font bans (Inter Ban, etc.) = SUSPENDED  
 - Pattern-level Anti-Slop (no generic dashboards, no emojis, no card overuse) = ALWAYS ACTIVE
-- IF no brand defined → Use defaults from design-tokens.json + all Anti-Slop bans ACTIVE
+- IF no brand defined → Select ONE aesthetic archetype from `references/taste-archetypes.md` (Utilitarian Minimalist, Industrial Brutalist, High-End Tactile, Ethereal Modern) + all Anti-Slop bans ACTIVE
 
 ## 1. Anti-Slop Directive
 
