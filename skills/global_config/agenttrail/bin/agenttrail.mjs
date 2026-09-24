@@ -26,10 +26,15 @@ let printFlag = false
 // AOS patch: --plan <path> and --agent <name> flags
 let planArg = null
 let agentArg = null
+// AOS patch: ask engine — `ask "<question>" [--timeout 10s|30m|2h|N]` blocks until the map answers
+let askWords = null
+let askTimeoutArg = null
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
   else if (a === 'hook') cmd = 'hook'
+  // AOS patch: ask engine CLI — asks the human a question via the map
+  else if (a === 'ask') cmd = 'ask'
   else if (a === '--port') port = parseInt(argv[++i], 10)
   else if (a === '--open') openBrowser = true
   else if (a === '--no-open') { noOpen = true; openBrowser = false }
@@ -42,6 +47,10 @@ for (let i = 0; i < argv.length; i++) {
   // AOS patch: --plan <path> and --agent <name> flags
   else if (a === '--plan') planArg = argv[++i]
   else if (a === '--agent') agentArg = argv[++i]
+  // AOS patch: --timeout for the ask engine (10s|30m|2h|<minutes>, default 30m)
+  else if (a === '--timeout') askTimeoutArg = argv[++i]
+  // AOS patch: in ask mode the remaining positional words form the question, not the repo
+  else if (cmd === 'ask') (askWords = askWords || []).push(a)
   else repo = path.resolve(a)
 }
 // AOS patch: --plan <path> overrides the default PLAN.md location
@@ -71,6 +80,8 @@ if (cmd === 'init') { hooksOnly ? installHooks() : await init(); process.exit(0)
 if (cmd === 'up') { await upAll(); process.exit(0) }
 if (cmd === 'autostart') { autostart(); process.exit(0) }
 if (cmd === 'hook') { await relayHook(); process.exit(0) }
+// AOS patch: ask engine CLI — blocks until the map answers; exit 0 = go, 1 = deny/timeout
+if (cmd === 'ask') { process.exit(await askFlow()) }
 
 // reads a claude code hook payload on stdin and fans it out to local daemons;
 // each daemon keeps only events whose cwd lives inside its repo. Never blocks
@@ -106,6 +117,53 @@ async function relayHook() {
       }
     }
   } catch {}
+}
+
+// ---------- AOS patch: ask engine CLI ----------
+// `agenttrail ask "<question>" [--timeout 10s|30m|2h|<minutes>] [--agent <name>]` blocks
+// until the map answers. Exit 0 = go, 1 = deny/timeout. Pure question relay: this runs
+// nothing itself and never touches a session transcript — go-gate keeps sole authority
+// over guarded commands (git push / npm publish / npm version / recursive rm).
+function parseTimeoutArg(v) {
+  const m = String(v || '').trim().match(/^(\d+)(s|m|h)?$/i)
+  if (!m) return 30 * 60e3 // default 30 minutes
+  const n = parseInt(m[1], 10)
+  const u = (m[2] || 'm').toLowerCase()
+  return Math.min(n * (u === 's' ? 1e3 : u === 'h' ? 3600e3 : 60e3), 24 * 3600e3)
+}
+// find this repo's daemon by probing GET /whoami on 127.0.0.1:5330-5344 and matching
+// repoPath — same discovery as bootDedup; AGENTTRAIL_PORT wins when set. Both sides are
+// symlink-normalized so a daemon started via /tmp matches a cwd of /private/tmp (macOS).
+async function findDaemon() {
+  const norm = p => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
+  const here = norm(repo)
+  const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : Array.from({ length: 15 }, (_, i) => 5330 + i)
+  const hits = await Promise.all(ports.map(p =>
+    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => (w && norm(w.repoPath) === here) ? p : null).catch(() => null)))
+  return hits.find(Boolean) || null
+}
+async function askFlow() {
+  const question = (askWords || []).join(' ').trim()
+  if (!question) { console.error('usage: aos-trail ask "<question>" [--timeout 10s|30m|2h|<minutes>] [--agent <name>]'); return 1 }
+  const daemonPort = await findDaemon()
+  if (!daemonPort) { console.error('no agenttrail daemon running for this repo — start: aos-trail . --plan <plan.md>'); return 1 }
+  const base = `http://127.0.0.1:${daemonPort}`
+  const timeoutMs = parseTimeoutArg(askTimeoutArg)
+  const created = await fetch(`${base}/ask`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ question, timeoutMs, askedBy: agentArg || 'agent' }),
+    signal: AbortSignal.timeout(5000),
+  }).then(r => r.json()).catch(() => null)
+  if (!created || !created.ok) { console.error('could not register the question with the daemon'); return 1 }
+  console.log(`waiting for your answer on the map: http://localhost:${daemonPort}`)
+  const deadline = Date.now() + timeoutMs + 5000 // grace past the daemon's own expiry flip
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 1000))
+    const st = await fetch(`${base}/ask/${created.id}`, { signal: AbortSignal.timeout(2000) }).then(r => r.json()).catch(() => null)
+    if (st && st.ask && st.ask.status !== 'pending') return st.ask.status === 'go' ? 0 : 1
+  }
+  return 1 // deny by default: timeout, daemon gone, or answer never came
 }
 
 // ---------- PLAN.md parser (convention v2: components, owner-first names) ----------
@@ -221,7 +279,7 @@ const runs = {} // session id -> run
 const handoffs = [] // {c, from, to, at} — one session picks up where another stopped
 // AOS patch: `done` distinguishes a finished run (SessionEnd) from one waiting for its user (Stop)
 function runFor(id, cwd) {
-  return runs[id] || (runs[id] = { id, agent: 'claude', cwd, startedAt: Date.now(), lastEventAt: Date.now(), todos: [], currentTool: null, recentTools: [], componentId: null, ended: false, done: false })
+  return runs[id] || (runs[id] = { id, agent: 'claude', cwd, startedAt: Date.now(), lastEventAt: Date.now(), todos: [], currentTool: null, recentTools: [], componentId: null, ended: false, done: false, waiting: null })
 }
 function toolDetail(input = {}) {
   const p = input.file_path || input.notebook_path
@@ -243,9 +301,15 @@ function handleHookEvent(ev) {
   const kind = ev.hook_event_name
   if (kind === 'SessionStart') { run.ended = false; run.done = false } // AOS patch: a new session starts neither ended nor done
   else if (kind === 'Stop' || kind === 'SessionEnd') { run.ended = true; run.currentTool = null; run.done = kind === 'SessionEnd' } // AOS patch: SessionEnd = finished, Stop = waiting for you
+  else if (kind === 'Notification') { // AOS patch: UNVERIFIED event name — see decisions; unknown events still return false below, so a wrong name changes nothing
+    run.waiting = String(ev.message || '').slice(0, 120)
+    run.ended = false
+    run.done = false
+  }
   else if (kind === 'PreToolUse') {
     run.ended = false
     run.done = false // AOS patch: an ended run that resumes is no longer done
+    run.waiting = null // AOS patch: a resumed run is no longer waiting on the human
     run.currentTool = { name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now() }
     if (ev.tool_name === 'Task' && ev.tool_input) {
       const name = String(ev.tool_input.description || ev.tool_input.subagent_type || 'sub-agent').slice(0, 60)
@@ -258,6 +322,7 @@ function handleHookEvent(ev) {
   } else if (kind === 'PostToolUse') {
     run.ended = false
     run.done = false // AOS patch: keep done in sync when a run resumes
+    run.waiting = null // AOS patch: a resumed run is no longer waiting on the human
     const started = run.currentTool && run.currentTool.name === ev.tool_name ? run.currentTool.at : Date.now()
     run.recentTools.unshift({ name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now(), ms: Date.now() - started })
     if (run.recentTools.length > 8) run.recentTools.length = 8
@@ -307,6 +372,9 @@ function liveRuns() {
 // Lives under ~/.agenttrail keyed by repo path — never touches the repo itself.
 const stateFile = path.join(os.homedir(), '.agenttrail', crypto.createHash('sha1').update(repo).digest('hex').slice(0, 12) + '.json')
 let stateDirty = false
+// AOS patch: ask engine state — questions awaiting the human + the timestamped decision log
+let asks = [] // {id, question, askedBy, askedAt, expiryAt, status:'pending'|'go'|'deny', decidedAt, by, expired}
+let decisions = [] // [{question, decision, by:'you'|'timeout', at}] — newest last, capped
 function loadState() {
   try {
     const st = JSON.parse(fs.readFileSync(stateFile, 'utf8'))
@@ -314,6 +382,8 @@ function loadState() {
     recentActivity = st.recentActivity || []
     Object.assign(runs, st.runs || {})
     cycles = st.cycles || []
+    asks = Array.isArray(st.asks) ? st.asks : [] // AOS patch: ask engine survives restarts
+    decisions = Array.isArray(st.decisions) ? st.decisions : [] // AOS patch: decision log survives restarts
     Object.assign(compTouched, st.compTouched || {})
     Object.assign(compRecent, st.compRecent || {})
     Object.assign(fileHeat, st.fileHeat || {})
@@ -324,13 +394,30 @@ function saveState() {
   stateDirty = false
   try {
     fs.mkdirSync(path.dirname(stateFile), { recursive: true })
-    fs.writeFileSync(stateFile, JSON.stringify({ repoPath: repo, port, activity, recentActivity, compTouched, compRecent, runs, fileHeat, cycles }))
+    fs.writeFileSync(stateFile, JSON.stringify({ repoPath: repo, port, activity, recentActivity, compTouched, compRecent, runs, fileHeat, cycles, asks, decisions }))
   } catch {}
 }
 loadState()
 stateDirty = true // boot save: registers this repo for `agenttrail up`
 setInterval(saveState, 15000).unref()
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stateDirty = true; saveState(); process.exit(0) })
+
+// AOS patch: ask engine — a pending question past its deadline auto-denies and is logged
+// like a human decision, with by:'timeout'; runs on every read and on a 1s interval tick
+function expireAsks() {
+  const now = Date.now()
+  let changed = false
+  for (const a of asks) {
+    if (a.status === 'pending' && now >= a.expiryAt) {
+      a.status = 'deny'; a.expired = true; a.decidedAt = now; a.by = 'timeout'
+      decisions.push({ question: a.question, decision: 'deny', by: 'timeout', at: new Date().toISOString() })
+      if (decisions.length > 100) decisions.splice(0, decisions.length - 100)
+      changed = true
+    }
+  }
+  if (changed) { stateDirty = true; broadcastTick() }
+}
+setInterval(expireAsks, 1000).unref()
 
 // ---------- repo tree (vs-code-style explorer, folders first) ----------
 const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv|\.build|\.pytest_cache|\.ruff_cache|\.cache|\.DS_Store)(\/|$)/
@@ -427,7 +514,7 @@ function model() {
     session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [], filesList: compFilesFor(n.id) } : n), tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0, treeTruncated,
-    activity, recentActivity, planMtime, handoffs, hotFiles: hotFiles(), cycles,
+    activity, recentActivity, planMtime, handoffs, asks, hotFiles: hotFiles(), cycles, // AOS patch: asks ride along so the open map updates live
     planStale: planStaleness(), lints: lintPlan(), hooksInstalled: hooksInstalled(),
     planFile, aosPlan,
     now: Date.now(),
@@ -441,7 +528,7 @@ function send(obj) {
 function broadcast() { send(model()) }
 // activity ticks carry only what moved — the 600KB tree stays home
 function broadcastTick() {
-  send({ partial: true, runs: liveRuns(), activity, recentActivity, touched: { ...compTouched }, compRecent, handoffs, hotFiles: hotFiles(), now: Date.now() })
+  send({ partial: true, runs: liveRuns(), activity, recentActivity, touched: { ...compTouched }, compRecent, handoffs, asks, hotFiles: hotFiles(), now: Date.now() }) // AOS patch: asks ride along so open questions update live
 }
 
 // ---------- watcher ----------
@@ -685,8 +772,78 @@ const server = http.createServer((req, res) => {
       try { if (handleHookEvent(JSON.parse(body))) hookTick() } catch {}
       res.writeHead(200).end()
     })
+  } else if (u.pathname === '/ask' && req.method === 'POST') {
+    // AOS patch: ask engine — register a question the human answers on the map.
+    // Pure relay: an answer here never runs anything (go-gate keeps sole authority).
+    readCapped(req, res, body => {
+      let q = null, askedBy = 'agent', timeoutMs = 30 * 60e3
+      try {
+        const j = JSON.parse(body || '{}')
+        if (typeof j.question === 'string' && j.question.trim()) q = j.question.trim().slice(0, 500)
+        if (Number.isFinite(j.timeoutMs) && j.timeoutMs > 0) timeoutMs = Math.min(j.timeoutMs, 24 * 3600e3)
+        if (typeof j.askedBy === 'string' && j.askedBy.trim()) askedBy = j.askedBy.trim().slice(0, 60)
+      } catch {}
+      if (!q) { res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'question required' })); return }
+      const now = Date.now()
+      const ask = { id: crypto.randomUUID(), question: q, askedBy, askedAt: now, expiryAt: now + timeoutMs, status: 'pending', decidedAt: null, by: null, expired: false }
+      asks.push(ask)
+      if (asks.length > 100) { const i = asks.findIndex(x => x.status !== 'pending'); asks.splice(i === -1 ? 0 : i, 1) } // cap: drop oldest resolved
+      stateDirty = true
+      broadcastTick()
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, id: ask.id, port }))
+    })
+  } else if (u.pathname.startsWith('/ask/') && req.method === 'GET') {
+    // AOS patch: ask engine — poll one question; a pending one past expiry flips to
+    // deny (by:'timeout', logged) on read; carries the last 10 decisions for the map
+    expireAsks()
+    const a = asks.find(x => x.id === u.pathname.slice(5))
+    if (!a) res.writeHead(404, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'unknown ask' }))
+    else res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, ask: a, decisions: decisions.slice(-10) }))
+  } else if (u.pathname === '/answer' && req.method === 'POST') {
+    // AOS patch: ask engine, CSRF-hard. Requires exact `content-type: application/json`
+    // (foreign form posts die here; cross-origin fetches die in the preflight this
+    // server never answers — no OPTIONS handler, no Access-Control-* headers anywhere)
+    // and, when an `origin` header is present, it must be the map's own
+    // http://localhost:<port> / http://127.0.0.1:<port>. Non-browser local callers
+    // (AO, scripts) legitimately send no Origin and stay allowed. Loopback-only bind.
+    const ct = req.headers['content-type']
+    const origin = req.headers['origin']
+    const ownOrigin = origin === `http://localhost:${port}` || origin === `http://127.0.0.1:${port}`
+    if (ct !== 'application/json' || (origin !== undefined && !ownOrigin)) {
+      res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'forbidden' }))
+    } else {
+      readCapped(req, res, body => {
+        let id = null, decision = null
+        try {
+          const j = JSON.parse(body || '{}')
+          if (typeof j.id === 'string') id = j.id
+          if (j.decision === 'go' || j.decision === 'deny') decision = j.decision
+        } catch {}
+        const a = id ? asks.find(x => x.id === id) : null
+        if (!a || !decision) { res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'bad request' })); return }
+        if (a.status !== 'pending') { res.writeHead(409, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'already decided' })); return }
+        a.status = decision; a.decidedAt = Date.now(); a.by = 'you'
+        decisions.push({ question: a.question, decision, by: 'you', at: new Date().toISOString() })
+        if (decisions.length > 100) decisions.splice(0, decisions.length - 100)
+        stateDirty = true
+        broadcastTick()
+        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true }))
+      })
+    }
   } else res.writeHead(404).end()
 })
+// AOS patch: body reader for the ask/answer routes, capped at 4 KB
+function readCapped(req, res, cb) {
+  let body = ''
+  let done = false
+  req.on('data', c => {
+    if (done) return
+    body += c
+    if (body.length > 4096) { done = true; body = ''; res.writeHead(413, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'body too large' })); req.destroy() }
+  })
+  req.on('end', () => { if (!done) { done = true; cb(body) } })
+  req.on('error', () => {})
+}
 let lastHookTick = 0
 function hookTick() {
   const now = Date.now()

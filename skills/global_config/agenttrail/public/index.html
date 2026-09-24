@@ -184,9 +184,38 @@ function checkSessionId(id){if(!id)return;if(seenSessionId===null)seenSessionId=
 async function pollWorld(){try{const d=await(await fetch('/world')).json();if(Array.isArray(d)&&d.length){W=d;if(M){const self=d.find(x=>x.port===M.port);if(self)checkSessionId(self.session&&self.session.id)}render()}}catch{}}
 setInterval(pollWorld,2000)
 function syncSelfIntoW(){if(!M)return;const i=W.findIndex(b=>b.port===M.port);const lite={...M};delete lite.tree;if(i>=0)W[i]=lite;else{W.push(lite);W.sort((a,b)=>a.port-b.port)}}
+// AOS patch: asks panel — open questions from the daemon, GO/Nein to answer, decisions log
+let askDecisions=[],answering=new Set(),askSig=''
+function selfAsks(){return((M&&M.asks)||[]).slice().sort((a,b)=>(a.askedAt||0)-(b.askedAt||0))}
+function askStatusLabel(a){return a.expired||a.status==='expired'?'Abgelaufen':a.status==='go'?'GO':a.status==='deny'?'Nein':'Wartet auf dich'}
+function askCardHtml(a){
+  const dim=!!(a.expired||a.status==='expired'||a.status==='go'||a.status==='deny'),busy=answering.has(String(a.id))
+  const btn=(d,cls)=>`<button class="btn ${cls}" type="button" data-id="${esc(String(a.id))}" data-decision="${d}" onclick="answerAsk(this.dataset.id,this.dataset.decision)"${dim||busy?' disabled':''}>${d==='go'?'GO':'Nein'}</button>`
+  return`<div class="run-card${dim?' ended':''}" data-ask="${esc(String(a.id))}"${dim?' style="opacity:.6;cursor:default"':''}>
+    <div class="run-head"><span class="run-live-dot"></span><span class="run-name">${esc(askStatusLabel(a))}</span>${a.askedBy?`<span style="color:var(--faint);font-size:11.5px">· ${esc(a.askedBy)}</span>`:''}<span class="run-elapsed"><span class="t-ago" data-at="${a.askedAt||Date.now()}"></span></span></div>
+    <div class="run-task" style="white-space:normal">${esc(a.question)}</div>
+    ${dim?'':`<div class="actions" style="margin-top:10px">${btn('go','accent')}${btn('deny','')}</div>`}
+  </div>`}
+function decisionsHtml(){
+  return`<div class="run-card ended" style="cursor:default"><div class="run-task" style="margin-top:0;white-space:normal;color:var(--faint)">Entscheidungen</div>${askDecisions.map(d=>{const ts=d.at?Date.parse(d.at):NaN
+    return`<div class="run-hist"${d.question?` title="${esc(d.question)}"`:''}><span class="hd">${esc(String(d.by||'?'))} · ${isFinite(ts)?`<span class="t-ago" data-at="${ts}"></span>`:esc(String(d.at||''))} · ${esc(String(d.decision||''))}</span></div>`}).join('')}</div>`}
+async function refreshDecisions(){
+  const sig=selfAsks().map(a=>`${String(a.id)}:${a.status}:${a.expired?1:0}`).join('|')
+  if(sig===askSig)return;askSig=sig
+  const asks=selfAsks(),newest=asks[asks.length-1]
+  if(!newest){askDecisions=[];renderRuns();return}
+  try{const d=await(await fetch('/ask/'+encodeURIComponent(String(newest.id)))).json();if(Array.isArray(d.decisions))askDecisions=d.decisions}catch{}
+  renderRuns();renderTimes()}
+async function answerAsk(key,decision){
+  const ask=selfAsks().find(x=>String(x.id)===String(key));if(!ask)return
+  if(answering.has(String(ask.id)))return;answering.add(String(ask.id));renderRuns()
+  try{const r=await fetch('/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:ask.id,decision})})
+    if(!r.ok){const e=await r.json().catch(()=>({}));toast(e.error||'answer rejected',6000)}}
+  catch{toast('could not reach the daemon',6000)}
+  answering.delete(String(ask.id));askSig='';renderRuns();renderTimes();refreshDecisions()}
 es.onmessage=e=>{clearTimeout(connectionTimer);const d=JSON.parse(e.data)
-  if(d.partial&&M){M.activity=d.activity;M.recentActivity=d.recentActivity;M.runs=d.runs||M.runs||[];M.handoffs=d.handoffs||M.handoffs||[];M.hotFiles=d.hotFiles||{};for(const n of M.plan)if(n.level==='component'){n.touchedAt=d.touched[n.id]||null;n.recent=(d.compRecent||{})[n.id]||n.recent||[]}syncSelfIntoW();render();return}
-  M=d;checkSessionId(d.session&&d.session.id);syncSelfIntoW();if(!W.length)pollWorld();render()}
+  if(d.partial&&M){M.activity=d.activity;M.recentActivity=d.recentActivity;M.runs=d.runs||M.runs||[];M.handoffs=d.handoffs||M.handoffs||[];M.hotFiles=d.hotFiles||{};M.asks=d.asks||M.asks||[];for(const n of M.plan)if(n.level==='component'){n.touchedAt=d.touched[n.id]||null;n.recent=(d.compRecent||{})[n.id]||n.recent||[]}syncSelfIntoW();render();refreshDecisions();return}
+  M=d;checkSessionId(d.session&&d.session.id);syncSelfIntoW();if(!W.length)pollWorld();render();refreshDecisions()}
 es.onerror=()=>{if(!M){clearTimeout(connectionTimer);connectionTimer=setTimeout(renderConnectionError,1200)}}
 setInterval(()=>{if(M)renderTimes()},1000)
 function isOpen(p){if(userClosed.has(p.id))return false;if(userOpen.has(p.id))return true;return p.status==='active'}
@@ -509,6 +538,8 @@ function copyBackfill(){copy('Read the "agenttrail plan convention" section in C
 let lastRunsHtml=''
 function renderRuns(){
   const boards=boardsAll()
+  // AOS patch: pin open asks ("Wartet auf dich") oldest-first, with the decisions log, above the session cards
+  const asksHtml=selfAsks().map(askCardHtml).join('')+(askDecisions.length?decisionsHtml():'')
   const runs=boards.flatMap(b=>(b.runs||[]).map(x=>({...x,__port:b.port,__project:b.project,__plan:b.plan})))
   const groups=[]
   for(const b of boards){
@@ -535,10 +566,10 @@ function renderRuns(){
     const hist=r.recentTools.slice(0,5).map(t=>`<div class="run-hist"><span class="hd">${esc(t.name)} · ${esc(t.detail||'')}</span><span>${t.ms>1200?Math.round(t.ms/1000)+'s':t.ms+'ms'}</span></div>`).join('')
     const icon=agentIcon(r.agent)
     const key=r.__port+':'+r.id
-    // AOS patch: SessionEnd runs show Finished, Stop runs keep Idle — waiting for you, and a live run with no tool line shows Working…
+    // AOS patch: SessionEnd runs show Finished, Stop runs show Wartet auf dich (Notification runs append their waiting reason), and a live run with no tool line shows Working…
     return`<div class="run-card ${r.ended?'ended':''} ${openRuns.has(key)?'open':''}" data-run="${esc(key)}">
       <div class="run-head"><span class="run-agent"><svg viewBox="0 0 24 24"><path fill="${agentColor(r.agent)}" d="${icon||''}"/></svg></span><span class="run-name">${esc(r.agent)}</span><span style="color:var(--faint);font-size:11.5px">· ${esc(r.__project)}</span><span class="run-live-dot"></span><span class="run-elapsed"><span class="t-ago" data-at="${r.startedAt}"></span>${comp?` · in <a href="#" style="color:var(--accent);text-decoration:none" onclick="event.preventDefault();event.stopPropagation();focusComp('${r.__port}:${comp.id}')">${esc(comp.title)}</a>`:''}</span></div>
-      ${cur?`<div class="run-task">${esc(cur.content)}</div>`:r.ended&&r.done?`<div class="run-task" style="color:var(--dim)">Finished</div>`:r.ended?`<div class="run-task" style="color:var(--dim)">Idle — waiting for you</div>`:!toolLine?`<div class="run-task" style="color:var(--dim)">Working…</div>`:''}
+      ${cur?`<div class="run-task">${esc(cur.content)}</div>`:r.ended&&r.done?`<div class="run-task" style="color:var(--dim)">Finished</div>`:r.ended?`<div class="run-task" style="color:var(--dim)">Wartet auf dich${r.waiting?': '+esc(r.waiting):''}</div>`:!toolLine?`<div class="run-task" style="color:var(--dim)">Working…</div>`:''}
       ${toolLine}
       ${(r.subagents||[]).filter(s=>!s.ended).map(s=>`<div class="run-sub"><span class="run-sub-dot"></span><span class="run-sub-name">${esc(s.name)}</span><span class="run-sub-ago t-ago" data-at="${s.startedAt}"></span></div>`).join('')}
       <div class="run-detail">${(r.subagents||[]).filter(s=>s.ended).map(s=>`<div class="run-sub ended"><span class="run-sub-tick">✓</span><span class="run-sub-name">${esc(s.name)}</span></div>`).join('')}${todos}${hist?`<div style="margin-top:8px">${hist}</div>`:''}</div>
@@ -559,10 +590,10 @@ function renderRuns(){
       const path=stages.filter((t,i)=>t!==stages[i-1]).join(' → ')
       return `<div class="cycle-row"><span class="cycle-when">${day}</span><span class="cycle-what">${esc(c.__project)} · ${c.sessions.length} session${c.sessions.length>1?'s':''}${path?` · ${esc(path)}`:''}</span></div>`
     }).join('')
-  const out=html+hint+(past?`<div class="run-cycle" style="margin-top:10px">Past cycles</div>${past}`:'')
+  const out=asksHtml+html+hint+(past?`<div class="run-cycle" style="margin-top:10px">Past cycles</div>${past}`:'')
   if(out!==lastRunsHtml){lastRunsHtml=out;$('runs').innerHTML=out}
 }
-$('runs').addEventListener('click',e=>{const c=e.target.closest('.run-card');if(!c)return;const id=c.dataset.run
+$('runs').addEventListener('click',e=>{if(e.target.closest('[data-ask]'))return;const c=e.target.closest('.run-card');if(!c)return;const id=c.dataset.run
   openRuns.has(id)?openRuns.delete(id):openRuns.add(id);renderRuns();renderTimes()})
 const MM_W=150
 function renderMinimap(){
