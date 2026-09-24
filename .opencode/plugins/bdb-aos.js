@@ -7,6 +7,8 @@
  *    unless the user explicitly authorized it with the literal word "GO".
  * 2. chat.message: Ambient memory injection (memB). Injects relevant project & user
  *    memories as ephemeral context from ~/.MemBDB/memb.db via node:sqlite.
+ * 3. tool.execute.before/after: Best-effort live-map telemetry for the AOS
+ *    agenttrail daemon (PreToolUse/PostToolUse, fire-and-forget).
  *
  * Zero external runtime dependencies. Fails open on memory lookup, fails closed
  * on unguarded destructive actions.
@@ -33,6 +35,50 @@ function isGuardedCommand(cmd) {
 function verifyGoAuthorized(lastPrompt) {
   const trimmed = (lastPrompt || '').trim();
   return trimmed.toUpperCase() === 'GO';
+}
+
+// Best-effort fire-and-forget telemetry for the AOS live map (agenttrail daemon).
+// 300 ms timeout per request, all errors swallowed, never throws. Self-contained
+// on purpose: the plugin must not import from mcps/.
+const pendingArgs = new Map();
+
+async function postTrail(event) {
+  const body = JSON.stringify(event);
+  const ports = process.env.AGENTTRAIL_PORT
+    ? [Number(process.env.AGENTTRAIL_PORT)]
+    : Array.from({ length: 15 }, (_, i) => 5330 + i);
+  await Promise.allSettled(
+    ports.map((port) =>
+      fetch(`http://127.0.0.1:${port}/hook`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(300),
+      }).catch(() => {})
+    )
+  );
+}
+
+function mapTrailToolName(name) {
+  const lower = (name || '').toLowerCase();
+  if (lower === 'edit') return 'Edit';
+  if (lower === 'write') return 'Write';
+  if (lower === 'bash') return 'Bash';
+  if (lower === 'read') return 'Read';
+  return lower ? lower.charAt(0).toUpperCase() + lower.slice(1) : '';
+}
+
+function mapTrailToolInput(args, directory) {
+  const mapped = {};
+  if (args && typeof args === 'object') {
+    if (typeof args.filePath === 'string' && args.filePath) {
+      mapped.file_path = path.resolve(directory, args.filePath);
+    }
+    if (typeof args.command === 'string') {
+      mapped.command = args.command;
+    }
+  }
+  return mapped;
 }
 
 // Extract ambient memory from local memB database
@@ -133,6 +179,20 @@ export default async function bdbAosPlugin(input) {
     },
 
     'tool.execute.before': async (toolInput, toolOutput) => {
+      // Live-map telemetry first; must never affect the go-gate logic below.
+      try {
+        const tool_name = mapTrailToolName(toolInput.tool);
+        const tool_input = mapTrailToolInput(toolOutput?.args, directory);
+        pendingArgs.set(toolInput.callID, tool_input);
+        postTrail({
+          hook_event_name: 'PreToolUse',
+          session_id: toolInput.sessionID,
+          cwd: directory,
+          agent: 'opencode',
+          tool_name,
+          tool_input,
+        });
+      } catch {}
       const toolName = (toolInput.tool || '').toLowerCase();
       // Intercept bash, terminal, or command execution tools
       if (toolName === 'bash' || toolName === 'terminal' || toolName === 'shell' || toolName === 'exec' || toolName === 'run_command') {
@@ -166,6 +226,21 @@ export default async function bdbAosPlugin(input) {
           }
         }
       }
+    },
+
+    'tool.execute.after': async (toolInput) => {
+      try {
+        const tool_input = pendingArgs.get(toolInput.callID);
+        pendingArgs.delete(toolInput.callID);
+        postTrail({
+          hook_event_name: 'PostToolUse',
+          session_id: toolInput.sessionID,
+          cwd: directory,
+          agent: 'opencode',
+          tool_name: mapTrailToolName(toolInput.tool),
+          tool_input,
+        });
+      } catch {}
     },
   };
 }

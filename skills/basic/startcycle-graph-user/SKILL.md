@@ -138,6 +138,9 @@ that silently inherits that is the exact waste this tiering exists to avoid.
 - Report the outcome directly to the user. Nothing gets written to
   `.agents/`, no `state.json`, no persistent contract — this graph existed for
   the duration of the task and is gone once it's done.
+- Optionally run `aos-trail . --no-open` (no `--plan`, because this variant
+  writes no plan file) to watch the workers' file activity live in the
+  browser; see the `agenttrail` skill.
 
 ## 5. When to reach for `/startcycle-graph` instead
 

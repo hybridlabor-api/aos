@@ -92,6 +92,27 @@ if (!fs && typeof process !== 'undefined') {
   } catch {}
 }
 
+function readStdinSync() {
+  const chunks = [];
+  const buffer = Buffer.alloc(64 * 1024);
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    let bytes;
+    try {
+      bytes = fs.readSync(0, buffer, 0, buffer.length, null);
+    } catch (error) {
+      if (error?.code === 'EAGAIN' || error?.code === 'EWOULDBLOCK') {
+        Atomics.wait(sleeper, 0, 0, 2);
+        continue;
+      }
+      throw error;
+    }
+    if (bytes === 0) break;
+    chunks.push(Buffer.from(buffer.subarray(0, bytes)));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 let inputGoal = null;
 let inputSkills = [];
 let isHookInvocation = false;
@@ -100,7 +121,7 @@ let isHookInvocation = false;
 if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && fs) {
   try {
     let stdinRaw = '';
-    try { stdinRaw = fs.readFileSync(0, 'utf8').trim(); } catch {}
+    try { stdinRaw = readStdinSync().trim(); } catch {}
     if (stdinRaw) {
       isHookInvocation = true;
       let payload = null;
@@ -817,6 +838,13 @@ if (BUILD_NODES.length === 0) {
 
 const NODE_ENUM = BUILD_NODES.map((n) => n.id);
 const NODE_NAMES = humanList(NODE_ENUM);
+
+// Live map (agenttrail skill, Trigger B): best-effort, never blocks or fails the run.
+// aos-trail exits on its own when a map for this repo is already running.
+try {
+  child_process?.spawn('aos-trail', [process.cwd(), '--plan', 'production_artifacts/00_execution_plan.md', '--no-open'],
+    { detached: true, stdio: 'ignore', shell: process.platform === 'win32' }).on('error', () => {}).unref();
+} catch { /* no child_process in this runtime: run without the map */ }
 
 let findings = [];
 let reviewedClean = false;

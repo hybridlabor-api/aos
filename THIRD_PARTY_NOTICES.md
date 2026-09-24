@@ -231,6 +231,54 @@ redistributable.
 | `CloudAI-X/threejs-skills` | No `LICENSE` file; README claims MIT. | `threejs-skills` |
 | `Shpigford/skills` | Repository returns **404** — deleted, renamed, or made private. Provenance cannot be verified at all. | `readme` |
 
+## tt-a1i/archify
+
+<https://github.com/tt-a1i/archify> — MIT. Copyright (c) 2026 tt-a1i (Archify),
+Copyright (c) 2025 Cocoon AI (based on Cocoon-AI/architecture-diagram-generator, MIT).
+
+`skills/global_config/archify/` is upstream `archify/` at commit `9e35d2b`,
+without `test/`, rendered example HTML, and the remote update check
+(`scripts/check-update.mjs`, `scripts/update-contract.mjs`); AOS pins the version.
+The skill's own `LICENSE` and `THIRD_PARTY_NOTICES.md` ship alongside it.
+
+---
+
+## sodiumsun/agenttrail
+
+<https://github.com/sodiumsun/agenttrail> — MIT.
+
+`skills/global_config/agenttrail/` carries the Map runtime only
+(`bin/agenttrail.mjs`, `public/index.html`) at commit `e4ba2da`, with its
+`LICENSE`. Kitchen is not included. Four patches, each marked `// AOS patch:`:
+a `--plan <path>` flag, a `hook --agent <name>` flag, serving files under
+`production_artifacts/` so a card's relative `url:` opens, and AOS wording in
+the page when `--plan` is set (real plan path, no upstream init/backfill hints).
+
+---
+
+## duriantaco/skylos
+
+<https://github.com/duriantaco/skylos> — Apache-2.0. Copyright duriantaco.
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`0c95b002424453983d5c96708cf7865939745d98`. Diff-based AST and static security
+analyzer feeding the shipping gate, for `bdb-security-audit` and
+`godmode-shipping`.
+
+---
+
+## SnailSploit/claude-red
+
+<https://github.com/SnailSploit/claude-red> — MIT.
+Copyright (c) 2024-2025 SnailSploit / Kai Aizen.
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`739512a8588b28ff3b554e669391c22508602878`. Defensive audit heuristics and
+vulnerability checklists for `bdb-security-audit` and `security-reviewer`;
+the upstream offensive exploit content is stripped and not carried over.
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in
