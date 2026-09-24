@@ -4810,6 +4810,12 @@ async function runQuickUpdate(installState) {
 
 
 async function main() {
+    if (process.argv[2] === 'store') {
+        const storeScript = path.join(srcDir, 'bin', 'aos-store.mjs');
+        const result = spawnSync(process.execPath, [storeScript, ...process.argv.slice(3)], { stdio: 'inherit' });
+        process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
     const skipIntro = isAutoYes || process.argv.includes('--no-intro') || process.argv.includes('--no-animation');
     await renderKineticIntro({ rotations: 1, fps: 12.5, skip: skipIntro, pkgVersion: pkg.version });
     console.log(buildWordmarkBanner());

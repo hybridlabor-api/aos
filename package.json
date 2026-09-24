@@ -16,12 +16,14 @@
     "aos-archify": "skills/global_config/archify/bin/archify.mjs",
     "aos-dashboard": "bin/aos-dashboard.mjs",
     "aos-config": "bin/aos-config.mjs",
+    "aos-store": "bin/aos-store.mjs",
     "aos-uninstall": "bin/aos-uninstall.mjs"
   },
   "scripts": {
     "validate": "node scripts/validate-skills.mjs",
     "validate:strict": "node scripts/validate-skills.mjs --strict",
-    "test": "node scripts/validate-skills.mjs --selftest && node scripts/validate-skills.mjs"
+    "store:index": "node scripts/build-ecc-store-index.mjs",
+    "test": "node scripts/validate-skills.mjs --selftest && node scripts/validate-skills.mjs && node tests/aos-store.test.mjs"
   },
   "publishConfig": {
     "access": "public"

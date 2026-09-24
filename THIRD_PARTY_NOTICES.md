@@ -99,7 +99,15 @@ browser-internal identifiers private to the served page
 No ECC tests, hooks (`scripts/hooks/plan-canvas-*.js`), or the
 `commands/plan-canvas.md` wrapper were ported.
 
-### License text
+### 3. Store index
+
+The AOS Store exposes selected ECC Markdown capabilities through
+`lib/ecc-store-index.json` at pinned commit
+`e482e579415fde18357cafce70f177ae19fd7f03`. The index contains only
+`skills/**/SKILL.md` and `agents/*.md` metadata. Installation verifies the raw
+Markdown SHA-256 before writing it. Scripts, hooks, rules, and non-entrypoint
+Markdown files are excluded from the Phase 1 store.
+
 
 ```
 MIT License
