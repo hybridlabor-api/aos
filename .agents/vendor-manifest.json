@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
   "description": "Pinned upstream vendor repositories tracked for AOS skills and tools",
-  "updated_at": "2026-09-24T03:56:00Z",
+  "updated_at": "2026-09-24T07:27:44Z",
   "vendors": {
     "superdesign-skill": {
       "upstream": "https://github.com/superdesigndev/superdesign-skill",
@@ -33,6 +33,18 @@
       "pinned_commit": "57ce4c9bb912f01a0078b154318bf67c5cbf780f",
       "purpose": "Hyperframes project-to-launch-video generator",
       "target_skill": "brag (post-shipping release hook)"
+    },
+    "skylos": {
+      "upstream": "https://github.com/duriantaco/skylos",
+      "pinned_commit": "0c95b002424453983d5c96708cf7865939745d98",
+      "purpose": "Diff-based AST and static security analyzer for shipping gate",
+      "target_skill": "bdb-security-audit, godmode-shipping"
+    },
+    "claude-red": {
+      "upstream": "https://github.com/SnailSploit/claude-red",
+      "pinned_commit": "739512a8588b28ff3b554e669391c22508602878",
+      "purpose": "Defensive audit heuristics and vulnerability checklists (offensive exploits stripped)",
+      "target_skill": "bdb-security-audit, security-reviewer"
     }
   }
 }

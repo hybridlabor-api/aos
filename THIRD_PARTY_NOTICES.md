@@ -255,6 +255,29 @@ a `--plan <path>` flag, a `hook --agent <name>` flag, and serving files under
 
 ---
 
+## duriantaco/skylos
+
+<https://github.com/duriantaco/skylos> — Apache-2.0. Copyright duriantaco.
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`0c95b002424453983d5c96708cf7865939745d98`. Diff-based AST and static security
+analyzer feeding the shipping gate, for `bdb-security-audit` and
+`godmode-shipping`.
+
+---
+
+## SnailSploit/claude-red
+
+<https://github.com/SnailSploit/claude-red> — MIT.
+Copyright (c) 2024-2025 SnailSploit / Kai Aizen.
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`739512a8588b28ff3b554e669391c22508602878`. Defensive audit heuristics and
+vulnerability checklists for `bdb-security-audit` and `security-reviewer`;
+the upstream offensive exploit content is stripped and not carried over.
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in

@@ -133,7 +133,8 @@
         "wcag-audit-patterns",
         "github-repo",
         "clean-code",
-        "bdbresilience"
+        "bdbresilience",
+        "bdb-security-audit"
       ],
       "instructions": null
     }
