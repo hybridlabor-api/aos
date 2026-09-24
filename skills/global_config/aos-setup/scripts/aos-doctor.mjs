@@ -57,6 +57,11 @@ const which = (bin) => {
 };
 const dirCount = (p) => { try { return readdirSync(p, { withFileTypes: true }).filter(d => d.isDirectory()).length; } catch { return 0; } };
 
+// npm's Windows shim is deja.cmd, and Node refuses to spawn .cmd/.bat without
+// a shell (CVE-2024-27980), so every deja probe goes through one on Windows.
+// All args used here are JSON flags and single-token prefixes — no metacharacters.
+const runDeja = (args) => execFileSync('deja', args, { encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'ignore'], shell: IS_WIN });
+
 function portOpen(port, timeout = 1200) {
   return new Promise((resolve) => {
     const s = connect({ host: '127.0.0.1', port });
@@ -272,6 +277,58 @@ async function checkMemb() {
     'Re-run the installer; it writes the MCP block for every harness you pick.');
 }
 
+// ---------------------------------------------------------------- deja
+async function checkDeja() {
+  const bin = which('deja');
+  add('deja', 'deja on PATH', !!bin, bin || 'not on PATH', 'npm install -g @vshulcz/deja-vu@0.21.1');
+  if (!bin) return;
+
+  let doc = null;
+  try {
+    doc = JSON.parse(runDeja(['doctor', '--json', '--offline'])); // --offline keeps the version check off the network
+  } catch (e) {
+    add('deja', 'deja CLI not runnable', false, String(e.message || e).split('\n')[0],
+      'Reinstall: npm install -g @vshulcz/deja-vu@0.21.1');
+    return;
+  }
+  const idx = doc?.index || {};
+  const readAt = idx.sources_read_at;
+  const ok = idx.state === 'ok' && (idx.stale_stores ?? 0) === 0;
+  add('deja', 'index status', ok,
+    `${idx.state ?? 'unknown'}${idx.stale_stores ? `, ${idx.stale_stores} stale store(s)` : ''}${readAt != null ? `, sources read at ${typeof readAt === 'string' ? readAt : JSON.stringify(readAt)}` : ''}`,
+    ok ? '' : 'deja index');
+
+  // Redaction self-check (techlead condition): a hit is a confirmed unredacted
+  // secret only when returned hit text carries a full key shape; a bare prefix
+  // hit ("task-", "xoxo") is noise and must never fail the doctor. When deja
+  // returns no hit text at all, warn instead of failing.
+  const STRICT = [/AIza[0-9A-Za-z_-]{35}/, /ghp_[A-Za-z0-9]{36}/, /sk-[A-Za-z0-9_-]{20,}/, /xox[abprs]-[A-Za-z0-9-]{10,}/];
+  const TIERS = new Set(['exact', 'close', 'stemmed', 'semantic', 'error']); // 'relevance' = nothing matched
+  const TEXT_KEYS = ['text', 'snippet', 'excerpt', 'content', 'body', 'chunk', 'message', 'preview', 'match', 'line'];
+  const confirmed = [];
+  const unverified = [];
+  for (const prefix of ['AIza', 'ghp_', 'sk-', 'xox']) {
+    let env = null;
+    try { env = JSON.parse(runDeja(['search', '--json', prefix])); } catch { continue; }
+    if (!TIERS.has(env?.tier)) continue;
+    for (const hit of env.hits || []) {
+      const label = `${hit?.session?.id || '?'} (${hit?.session?.harness || '?'})`;
+      const text = TEXT_KEYS.map((k) => hit?.[k]).find((v) => typeof v === 'string' && v) || null;
+      if (!text) { unverified.push(label); continue; }
+      if (STRICT.some((re) => re.test(text))) confirmed.push(label);
+    }
+  }
+  if (confirmed.length) {
+    add('deja', 'redaction self-check', false, `unredacted secret in: ${confirmed.join(', ')}`,
+      'deja forget --session <id> — once per listed session, then re-run this doctor.');
+  } else if (unverified.length) {
+    add('deja', 'redaction self-check', true,
+      `possible secret, verify with deja show <id> — no hit text returned to test for: ${unverified.join(', ')}`, '');
+  } else {
+    add('deja', 'redaction self-check', true, 'no unredacted keys in returned hit text', '');
+  }
+}
+
 // ---------------------------------------------------------------- OpenWiki
 function checkOpenWiki() {
   const bin = which('openwiki');
@@ -342,6 +399,7 @@ checkPrereqs();
 checkAos();
 checkHooks();
 await checkMemb();
+await checkDeja();
 checkOpenWiki();
 await checkSynapse();
 report();
