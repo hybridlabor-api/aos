@@ -134,6 +134,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           model: {
             type: "string",
             description: "Optional model override."
+          },
+          variant: {
+            type: "string",
+            description: "Optional model variant (reasoning effort, e.g. high/max/minimal)."
           }
         },
         required: ["prompt"]
@@ -198,6 +202,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     cwd: process.cwd(),
     prompt: args.prompt,
     model: args.model,
+    variant: args.variant,
     signal
   };
 

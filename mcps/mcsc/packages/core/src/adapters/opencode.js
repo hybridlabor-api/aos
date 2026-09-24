@@ -6,6 +6,7 @@ const MAX_OUTPUT = 1024 * 1024 * 50; // 50MB, mirrors the old execFile maxBuffer
 
 /**
  * CliAdapter shelling out to `opencode run --auto --format json [--model <model>] <prompt>`.
+ * Optional `req.variant` is passed through as `--variant <variant>` (model reasoning effort).
  * Reads stdout line by line: assistant text parts are collected and joined as
  * `output`; tool events are forwarded to the live map as PreToolUse/PostToolUse.
  *
@@ -27,6 +28,7 @@ export async function delegate(req) {
   const env = { ...process.env, MCSC_CALLER: 'opencode' };
   const args = ['run', '--auto', '--format', 'json'];
   if (req.model) args.push('--model', req.model);
+  if (req.variant) args.push('--variant', String(req.variant));
   args.push(req.prompt);
 
   const child = spawn('opencode', args, {
