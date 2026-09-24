@@ -3626,13 +3626,14 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs'];
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
     // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
-    // prompt in any project the harness was never installed into.
-    const machineGlobalHooks = ['memb-inject.mjs'];
+    // prompt in any project the harness was never installed into. trail-relay
+    // talks to machine-global live-map daemons, so it is anchored the same way.
+    const machineGlobalHooks = ['memb-inject.mjs', 'trail-relay.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
             .map((h) => (h && typeof h.command === 'string' ? h.command : ''))
@@ -3697,7 +3698,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [entry])
             .map((h) => (h && typeof h.command === 'string' ? h.command : (typeof h === 'string' ? h : '')))
@@ -3715,11 +3716,17 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
             {
                 matcher: "run_command|Bash",
                 hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'go-gate.mjs')}"`, timeout: 10000 }]
+            },
+            {
+                hooks: [{ type: "command", command: `node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent agy --event PreToolUse`, timeout: 2000 }]
             }
         ],
         Stop: [
             {
                 hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'graph-gate.mjs')}"`, timeout: 10000 }]
+            },
+            {
+                hooks: [{ type: "command", command: `node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent agy --event Stop`, timeout: 2000 }]
             }
         ],
         PreInvocation: [
@@ -3811,6 +3818,18 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(workflowsDir, 'startcycle-dispatch.mjs')}"`)}`,
         'timeout = 30',
+        '',
+        '[[hooks.PreToolUse]]',
+        '[[hooks.PreToolUse.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event PreToolUse`)}`,
+        'timeout = 2',
+        '',
+        '[[hooks.Stop]]',
+        '[[hooks.Stop.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event Stop`)}`,
+        'timeout = 2',
         '# AOS:HOOKS:END'
     ].join('\n');
 
