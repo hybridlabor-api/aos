@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { emitTrail } from '../trail.js';
 const execFileAsync = promisify(execFile);
 
 /**
@@ -9,6 +10,12 @@ const execFileAsync = promisify(execFile);
  * @returns {Promise<{ exit: number; output: string; attestation: { kind: 'confirmed' | 'unavailable'; modelId?: string; sessionRef?: string } }>}
  */
 export async function delegate(req) {
+  const trailEvent = {
+    session_id: `mcsc-agy-${process.pid}-${Date.now()}`,
+    cwd: req.cwd || process.cwd(),
+    agent: 'agy',
+  };
+  emitTrail({ ...trailEvent, hook_event_name: 'SessionStart' });
   try {
     const args = [];
     if (req.model) args.push('--model', req.model);
@@ -46,6 +53,7 @@ export async function delegate(req) {
       parsed = JSON.parse(raw);
     } catch {
       // If we can't parse JSON, we cannot attest the model.
+      emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
       return {
         exit: 0,
         output: raw.trim(),
@@ -58,6 +66,7 @@ export async function delegate(req) {
       const sessionRef = parsed.conversation_id || parsed.session || parsed.sessionId || parsed.id;
 
       if (modelId) {
+        emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
         return {
           exit: 0,
           output: raw.trim(),
@@ -70,6 +79,7 @@ export async function delegate(req) {
       }
     }
 
+    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
     return {
       exit: 0,
       output: raw.trim(),
@@ -77,12 +87,14 @@ export async function delegate(req) {
     };
   } catch (e) {
     if (e.name === 'AbortError') {
+      emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
       return {
         exit: 1,
         output: 'Cancelled by orchestrator',
         attestation: { kind: 'unavailable' }
       };
     }
+    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
     return {
       exit: 1,
       output: (e.stderr || e.message || '').trim(),

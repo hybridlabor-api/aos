@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { emitTrail } from '../trail.js';
 const execFileAsync = promisify(execFile);
 
 /**
@@ -9,6 +10,12 @@ const execFileAsync = promisify(execFile);
  * @returns {Promise<{ exit: number; output: string; attestation: { kind: 'unavailable'; } }>}
  */
 export async function delegate(req) {
+  const trailEvent = {
+    session_id: `mcsc-opencode-${process.pid}-${Date.now()}`,
+    cwd: req.cwd || process.cwd(),
+    agent: 'opencode',
+  };
+  emitTrail({ ...trailEvent, hook_event_name: 'SessionStart' });
   try {
     const env = { ...process.env, MCSC_CALLER: 'opencode' };
     const args = ['run', '--auto'];
@@ -29,6 +36,7 @@ export async function delegate(req) {
     run.child.stdin.end();
     const { stdout, stderr } = await run;
     // opencode does not provide a machine-parseable model-confirmation mechanism
+    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
     return {
       exit: 0,
       output: stdout || stderr,
@@ -36,12 +44,14 @@ export async function delegate(req) {
     };
   } catch (e) {
     if (e.name === 'AbortError') {
+      emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
       return {
         exit: 1,
         output: 'Cancelled by orchestrator',
         attestation: { kind: 'unavailable' }
       };
     }
+    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
     return {
       exit: 1,
       output: (e.stderr || e.message || '').trim(),
