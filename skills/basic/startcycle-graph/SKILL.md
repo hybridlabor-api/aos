@@ -118,6 +118,19 @@ the status-mark rules from the `agenttrail` skill: `[~]` before starting,
 `[x]` when done, `[!]` when stuck, with `by: <agent>`, saving the plan file
 immediately.
 
+## Architecture diagram (Archify, native)
+
+Architect authors `production_artifacts/00_architecture.json` (editable truth)
+and delivers `production_artifacts/00_architecture.html` (read-only) via
+`aos-archify validate` / `aos-archify deliver` with `--quality showcase --json`
+at the Architect→TechLead boundary; only a passing showcase receipt (9/9
+checks, 0 errors) sets `state.artifacts.architecture`, and a failed
+validate/deliver preserves the previous HTML and escalates instead of
+proceeding silently. The plan links the diagram with a
+`url: production_artifacts/00_architecture.html` line so the live map opens it
+from the card. Review the HTML in plan-canvas alongside the plan:
+`aos-plan-canvas open production_artifacts/00_architecture.html`.
+
 ## Why this file is a thin router, not a spec
 
 The full contract — state schema, node/edge table, the Stop-hook

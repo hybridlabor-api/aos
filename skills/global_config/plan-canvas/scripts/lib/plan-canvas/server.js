@@ -97,6 +97,23 @@ function readJsonBody(req) {
   });
 }
 
+function isWithin(root, candidate) {
+  const relativePath = path.relative(root, candidate);
+  return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath));
+}
+
+function confinedArtifactPath(file, workspaceRoot) {
+  if (typeof file !== 'string' || file.length === 0 || /^[a-z][a-z0-9+.-]*:\/\//i.test(file)) return null;
+  try {
+    const root = fs.realpathSync(path.resolve(workspaceRoot));
+    const candidate = fs.realpathSync(path.isAbsolute(file) ? file : path.resolve(root, file));
+    if (!isWithin(root, candidate) || !fs.statSync(candidate).isFile()) return null;
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
 function sendJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -120,6 +137,7 @@ function createPlanCanvasServer({
   idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
   heartbeatMs = 15000,
   thinkingStaleMs = DEFAULT_THINKING_STALE_MS,
+  workspaceRoot = process.cwd(),
   typingExpiryMs = DEFAULT_TYPING_EXPIRY_MS,
   presenceSweepMs = DEFAULT_PRESENCE_SWEEP_MS,
   onIdleShutdown = null,
@@ -287,10 +305,11 @@ function createPlanCanvasServer({
       if (!body.file || typeof body.file !== 'string') {
         return sendJson(res, 400, { error: 'file is required' });
       }
-      if (!fs.existsSync(path.resolve(body.file))) {
-        return sendJson(res, 404, { error: `artifact not found: ${body.file}` });
+      const artifactPath = confinedArtifactPath(body.file, workspaceRoot);
+      if (!artifactPath) {
+        return sendJson(res, 403, { error: 'artifact path is outside the workspace' });
       }
-      const { session, refused } = store.open(body.file, { reopen: Boolean(body.reopen) });
+      const { session, refused } = store.open(artifactPath, { reopen: Boolean(body.reopen) });
       if (refused) {
         return sendJson(res, 409, {
           status: 'user-ended',
@@ -514,9 +533,15 @@ function createPlanCanvasServer({
 
     // Sibling assets resolve relative to the artifact's directory and must
     // stay confined to it.
-    const baseDir = path.dirname(session.file);
-    const resolved = path.resolve(baseDir, assetPath);
-    if (resolved !== baseDir && !resolved.startsWith(baseDir + path.sep)) {
+    let baseDir;
+    let resolved;
+    try {
+      baseDir = fs.realpathSync(path.dirname(session.file));
+      resolved = fs.realpathSync(path.resolve(baseDir, assetPath));
+    } catch {
+      return sendJson(res, 404, { error: 'asset not found' });
+    }
+    if (!isWithin(baseDir, resolved)) {
       return sendJson(res, 403, { error: 'asset path escapes artifact directory' });
     }
     let data;

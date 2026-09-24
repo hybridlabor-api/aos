@@ -24,6 +24,7 @@
       "description": "Paths to the human-readable markdown artifacts nodes produce. state.json is what edges evaluate; these stay the readable payload. Known keys are documented below; additionalProperties stays a typed string-or-null (not fully open) so a registry-driven build domain beyond these can validate without making this object permissive to arbitrary JSON.",
       "properties": {
         "plan": { "type": ["string", "null"] },
+        "architecture": { "type": ["string", "null"] },
         "frontend": { "type": ["string", "null"] },
         "backend": { "type": ["string", "null"] },
         "media": { "type": ["string", "null"] },
@@ -95,6 +96,29 @@
       "items": { "type": "string" },
       "default": [],
       "description": "Skill names the user required via /startcycle-graph's --skill=<name> flag (repeatable), validated to exist before the run proceeds. Empty when the user didn't ask for one. Build nodes (and Architect) are told to actually apply these, not just have them available; Reviewer checks the resulting artifacts for evidence they were used and flags a contract-misread finding if not. See .agents/graph.md's 'Mandatory Skill Injection' section."
+    },
+    "pipeline": {
+      "type": "string",
+      "description": "AO scaffold metadata: which pipeline bootstrapped this run, e.g. startcycle-graph."
+    },
+    "planCanvasRequired": {
+      "type": "boolean",
+      "description": "AO scaffold metadata: whether the plan-canvas review is required before build."
+    },
+    "roles": {
+      "type": "object",
+      "description": "AO scaffold metadata: per-role enablement flags.",
+      "additionalProperties": { "type": "boolean" }
+    },
+    "models": {
+      "type": "object",
+      "description": "AO scaffold metadata: per-role model routing labels.",
+      "additionalProperties": { "type": "string" }
+    },
+    "harnesses": {
+      "type": "object",
+      "description": "AO scaffold metadata: per-role harness assignments.",
+      "additionalProperties": { "type": "string" }
     },
     "needs_human": {
       "type": "boolean",
