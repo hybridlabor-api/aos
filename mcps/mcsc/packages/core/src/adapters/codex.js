@@ -18,16 +18,19 @@ export async function delegate(req) {
     // Recursion Guard
     const env = { ...process.env, MCSC_CALLER: 'codex' };
 
-    const { stdout, stderr } = await execFileAsync(
+    const run = execFileAsync(
       'codex', args,
-      { 
-        cwd: req.cwd, 
+      {
+        cwd: req.cwd,
         encoding: 'utf-8',
         maxBuffer: 1024 * 1024 * 50, // 50MB Limit
         env,
         signal: req.signal
       }
     );
+    // An open stdin pipe makes the CLI wait for input forever.
+    run.child.stdin.end();
+    const { stdout, stderr } = await run;
     
     return { exit: 0, output: stdout || stderr };
   } catch (e) {

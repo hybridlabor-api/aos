@@ -25,17 +25,20 @@ export async function delegate(req) {
     
     const env = { ...process.env, MCSC_CALLER: 'agy' };
 
-    const { stdout, stderr } = await execFileAsync(
+    const run = execFileAsync(
       'agy',
       args,
-      { 
-        cwd: req.cwd, 
+      {
+        cwd: req.cwd,
         encoding: 'utf-8',
         maxBuffer: 1024 * 1024 * 50,
         env,
         signal: req.signal
       }
     );
+    // An open stdin pipe makes the CLI wait for input forever.
+    run.child.stdin.end();
+    const { stdout, stderr } = await run;
 
     const raw = stdout || stderr;
     let parsed;

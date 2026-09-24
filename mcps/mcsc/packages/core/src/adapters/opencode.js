@@ -14,17 +14,20 @@ export async function delegate(req) {
     const args = ['run', '--auto'];
     if (req.model) args.push('--model', req.model);
     args.push(req.prompt);
-    const { stdout, stderr } = await execFileAsync(
+    const run = execFileAsync(
       'opencode',
       args,
-      { 
-        cwd: req.cwd, 
+      {
+        cwd: req.cwd,
         encoding: 'utf-8',
         maxBuffer: 1024 * 1024 * 50,
         env,
         signal: req.signal
       }
     );
+    // An open stdin pipe makes the CLI wait for input forever.
+    run.child.stdin.end();
+    const { stdout, stderr } = await run;
     // opencode does not provide a machine-parseable model-confirmation mechanism
     return {
       exit: 0,
