@@ -23,6 +23,9 @@ let hooksOnly = false
 let assumeYes = false
 let removeFlag = false
 let printFlag = false
+// AOS patch: --plan <path> and --agent <name> flags
+let planArg = null
+let agentArg = null
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
@@ -36,9 +39,13 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--remove') removeFlag = true
   else if (a === '--print') printFlag = true
   else if (a === '--hooks-only') hooksOnly = true
+  // AOS patch: --plan <path> and --agent <name> flags
+  else if (a === '--plan') planArg = argv[++i]
+  else if (a === '--agent') agentArg = argv[++i]
   else repo = path.resolve(a)
 }
-const planPath = path.join(repo, 'PLAN.md')
+// AOS patch: --plan <path> overrides the default PLAN.md location
+const planPath = planArg ? path.resolve(repo, planArg) : path.join(repo, 'PLAN.md')
 const atDir = path.join(repo, '.agenttrail')
 
 async function askYesNo(q) {
@@ -72,9 +79,18 @@ async function relayHook() {
   let raw = ''
   try { for await (const c of process.stdin) raw += c } catch {}
   if (!raw) return
+  // AOS patch: --agent <name> tags the hook event with the calling harness
+  let body = raw
+  if (agentArg) {
+    try {
+      const ev = JSON.parse(raw)
+      ev.agent = agentArg
+      body = JSON.stringify(ev)
+    } catch {}
+  }
   const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : Array.from({ length: 15 }, (_, i) => 5330 + i)
   await Promise.allSettled(ports.map(p => fetch(`http://127.0.0.1:${p}/hook`, {
-    method: 'POST', body: raw, signal: AbortSignal.timeout(400),
+    method: 'POST', body, signal: AbortSignal.timeout(400),
   }).catch(() => {})))
   // SessionStart: ask daemons for a staleness nudge — stdout lands in the agent's context
   try {
@@ -84,7 +100,8 @@ async function relayHook() {
         try {
           const r = await fetch(`http://127.0.0.1:${p}/nudge?cwd=${encodeURIComponent(ev.cwd)}`, { signal: AbortSignal.timeout(400) })
           const t = (await r.text()).trim()
-          if (t) { console.log(t); break }
+          // AOS patch: only Claude prints the nudge — other harnesses may treat hook stdout as structured output
+          if (t && (!agentArg || agentArg === 'claude')) { console.log(t); break }
         } catch {}
       }
     }
@@ -549,6 +566,13 @@ const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
+  } else if (u.pathname.startsWith('/production_artifacts/')) {
+    // AOS patch: serve pipeline artifacts so a card's relative `url:` (e.g. an archify diagram) opens
+    const root = path.join(repo, 'production_artifacts')
+    const f = path.resolve(repo, '.' + decodeURIComponent(u.pathname))
+    if (!f.startsWith(root + path.sep) || !fs.statSync(f, { throwIfNoEntry: false })?.isFile()) { res.writeHead(404).end(); return }
+    const type = f.endsWith('.html') ? 'text/html' : f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.json') ? 'application/json' : 'text/plain'
+    res.writeHead(200, { 'content-type': type + '; charset=utf-8' }).end(fs.readFileSync(f))
   } else if (u.pathname === '/whoami') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port, repoPath: repo }))
   } else if (u.pathname === '/board-lite') {
