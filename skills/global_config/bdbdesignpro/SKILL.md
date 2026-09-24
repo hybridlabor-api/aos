@@ -1,21 +1,21 @@
 ---
 name: bdbdesignpro
-description: "Use when choosing an animation engine, defining motion tokens, adding scroll effects or micro-interactions, or auditing motion for accessibility and performance in BDB projects. Covers engine selection (GSAP, Motion.dev, Anime.js, React-Spring, Three.js, CSS Native), BDB brand-locked motion tokens, and the anti-slop/a11y quality gate."
+description: "Use when choosing an animation engine, defining motion tokens, adding scroll effects or micro-interactions, or auditing motion for accessibility and performance. Covers engine selection (GSAP, Motion.dev, Anime.js, React-Spring, Three.js, CSS Native), DTCG motion tokens, and the anti-slop/a11y quality gate."
 category: design-ui-ux
 user-invocable: true
 risk: safe
 date_added: "2026-09-05"
 ---
 
-# `/bdbdesignpro` — Motion Engine Router & BDB Anti-Slop Gate
+# `/bdbdesignpro` — Motion Engine Router & Anti-Slop Gate
 
-Routes creative-motion decisions to the right engine and enforces BDB-specific motion policy (brand tokens, accessibility, anti-slop). It does not teach any third-party library's API — that's the vendor's job, or an installed upstream skill's (see [engine-routing.md](./references/engine-routing.md)).
+Routes creative-motion decisions to the right engine and enforces motion quality policy (timing tokens, spring physics, accessibility, anti-slop). It does not teach any third-party library's API — that's the vendor's job, or an installed upstream skill's (see [engine-routing.md](./references/engine-routing.md)).
 
 ---
 
 ## 🎯 When to Use
 - Choosing between GSAP, Motion.dev, Anime.js, React-Spring, Three.js, or CSS Native for a specific interaction.
-- Defining or applying BDB-branded motion tokens (durations, easing, brand-locked colors).
+- Defining or applying DTCG motion tokens (durations, easing, spring curves).
 - Auditing existing motion for `prefers-reduced-motion`, layout thrashing, or cleanup leaks.
 - Scaffolding the **Interaction & Motion Strategy** section of a `01_frontend_spec.md` during `/startcycle`.
 

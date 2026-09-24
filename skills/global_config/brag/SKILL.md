@@ -1,7 +1,7 @@
 ---
 name: brag
 description: Turn the current project website into a short, polished, shareable launch video using Hyperframes. Post-shipping release hook. Use when someone says "/brag", "make a launch video", or wants to showcase what they shipped.
-category: media
+category: media-eventtech
 user-invocable: true
 ---
 

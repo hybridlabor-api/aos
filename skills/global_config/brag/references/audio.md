@@ -73,7 +73,7 @@ assets/sfx/impact/impactBell_heavy_000.ogg
 assets/music/happy-beats-business-moves-vol-1-by-ende-dot-app.mp3
 ```
 
-Never use absolute paths (starting with `/Users/...`) — they will silently fail in the renderer.
+Never use absolute filesystem paths (such as `$HOME` or root `/`) — they will silently fail in the renderer. Use project-relative paths.
 
 ---
 

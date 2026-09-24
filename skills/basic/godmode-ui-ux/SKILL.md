@@ -135,7 +135,7 @@ Master orchestration skill for UI/UX design, enforcing high-agency design taste 
 - Exclude when performing pure backend or DevOps tasks.
 
 ## Core Process
-1. Analyze the requested UI against StyleSeed guidelines.
+1. Analyze the requested UI against project `DESIGN.md` and Anti-Slop guidelines.
 2. Ensure all spacing and colors utilize DTCG design tokens.
 3. Implement explicit loading, error, and empty states.
 4. Apply fluid motion physics for interactions.
