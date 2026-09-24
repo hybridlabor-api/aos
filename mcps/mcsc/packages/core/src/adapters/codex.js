@@ -14,7 +14,10 @@ export async function delegate(req) {
   const trailEvent = {
     session_id: `mcsc-codex-${process.pid}-${Date.now()}`,
     cwd: req.cwd || process.cwd(),
-    agent: 'codex',
+    agent:
+      typeof req.label === 'string' && req.label.length > 0
+        ? `codex:${req.label}`
+        : 'codex',
   };
   emitTrail({ ...trailEvent, hook_event_name: 'SessionStart' });
   try {
@@ -39,15 +42,15 @@ export async function delegate(req) {
     run.child.stdin.end();
     const { stdout, stderr } = await run;
     
-    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+    emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
     return { exit: 0, output: stdout || stderr };
   } catch (e) {
-    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+    emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
     if (e.name === 'AbortError') {
-      emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+      emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
       return { exit: 1, output: 'Cancelled by orchestrator' };
     }
-    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+    emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
     return { exit: 1, output: (e.stderr || e.message || '').trim() };
   }
 }

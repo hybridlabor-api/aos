@@ -4,6 +4,7 @@
  * @property {string} prompt
  * @property {string} model
  * @property {string} cwd
+ * @property {string} [variant] Optional model variant (reasoning effort) passed to `opencode run --variant`.
  */
 
 /**

@@ -44,7 +44,9 @@ function runNodeScript(scriptPath, { args = [], input = '', env = {}, cwd = null
     });
 }
 
-// Helper to create mock SQLite memB database
+// Helper to create mock SQLite memB database. Uses the same schema the hook
+// queries (id-keyed memb_vectors + an fts5 shadow table) so FTS recall paths
+// are exercisable, not just the project-card query.
 function createMockMembDb(dbPath, records = []) {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     let DatabaseSync;
@@ -58,16 +60,23 @@ function createMockMembDb(dbPath, records = []) {
     const db = new DatabaseSync(dbPath);
     db.exec(`
         CREATE TABLE IF NOT EXISTS memb_vectors (
-            rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT PRIMARY KEY,
             collection TEXT,
-            payload TEXT
+            vector BLOB,
+            payload TEXT,
+            created_at TEXT
         );
+        CREATE VIRTUAL TABLE IF NOT EXISTS memb_fts USING fts5(id, collection, content);
     `);
 
-    const insert = db.prepare('INSERT INTO memb_vectors (collection, payload) VALUES (?, ?)');
-    for (const rec of records) {
-        insert.run('bdb_agent_memory', JSON.stringify(rec));
-    }
+    const insert = db.prepare('INSERT INTO memb_vectors (id, collection, payload) VALUES (?, ?, ?)');
+    const insertFts = db.prepare('INSERT INTO memb_fts (id, collection, content) VALUES (?, ?, ?)');
+    records.forEach((rec, i) => {
+        const id = `row-${i}-${JSON.stringify(rec).length}`;
+        const payload = JSON.stringify(rec);
+        insert.run(id, 'bdb_agent_memory', payload);
+        insertFts.run(id, 'bdb_agent_memory', String(rec.memory || rec.data || ''));
+    });
     db.close();
     return true;
 }
@@ -287,10 +296,10 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-r3-'));
             mockDbPath = path.join(tmpDir, '.MemBDB', 'memb.db');
             createMockMembDb(mockDbPath, [
-                { user_id: 'bdb_developer', project_id: 'my-web-app', data: 'Architecture: React + Express backend' },
-                { user_id: 'test_dev', metadata: { project_id: 'my-web-app' }, memory: 'Developer preferences: tabs over spaces' },
-                { user_id: 'bdb_developer', project: 'my-web-app', data: 'Wiki: Deployment requires Node 22' },
-                { user_id: 'other_dev', project_id: 'other-app', data: 'Secret token for other app' }
+                { user_id: 'bdb_developer', project_id: 'my-web-app', category: 'project_card', data: 'Architecture: React + Express backend' },
+                { user_id: 'test_dev', metadata: { project_id: 'my-web-app', category: 'project_card' }, memory: 'Developer preferences: tabs over spaces' },
+                { user_id: 'bdb_developer', project: 'my-web-app', category: 'project_card', data: 'Wiki: Deployment requires Node 22' },
+                { user_id: 'other_dev', project_id: 'other-app', category: 'project_card', data: 'Secret token for other app' }
             ]);
         });
 
@@ -298,11 +307,11 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
-        test('hook carries version stamp 3', () => {
+        test('hook carries version stamp 5', () => {
             const content = fs.readFileSync(MEMB_INJECT_SRC, 'utf8');
             const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
             assert.ok(m, 'memb-inject.mjs must contain aos-hook-version header');
-            assert.equal(m[1], '3', `Expected version 3, got ${m[1]}`);
+            assert.equal(m[1], '5', `Expected version 5, got ${m[1]}`);
         });
 
         test('parses Antigravity workspacePaths input and returns tri-format JSON', () => {
@@ -419,12 +428,12 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 'SKILL.md must not claim only Claude Code has hooks');
         });
 
-        test('aos-doctor.mjs expects hook version 3 for memb-inject.mjs', () => {
+        test('aos-doctor.mjs expects hook version 5 for memb-inject.mjs', () => {
             assert.ok(fs.existsSync(DOCTOR_SRC), 'aos-doctor.mjs must exist');
             const doc = fs.readFileSync(DOCTOR_SRC, 'utf8');
 
-            assert.ok(/'memb-inject\.mjs':\s*3\b/.test(doc),
-                'EXPECTED_VERSION in aos-doctor.mjs must specify 3 for memb-inject.mjs');
+            assert.ok(/'memb-inject\.mjs':\s*5\b/.test(doc),
+                'EXPECTED_VERSION in aos-doctor.mjs must specify 5 for memb-inject.mjs');
         });
 
         test('aos-doctor.mjs inspects hook wiring across detected harnesses', () => {
@@ -665,8 +674,8 @@ describe('Tier 4: Real-World Multi-Harness Simulations', () => {
 
         mockDbPath = path.join(tmpDir, '.MemBDB', 'memb.db');
         createMockMembDb(mockDbPath, [
-            { user_id: 'bdb_developer', project_id: 'shop-service', data: 'Shop Service uses Stripe API v2024' },
-            { user_id: 'alice', project_id: 'shop-service', memory: 'Alice prefers mock payment mode during tests' }
+            { user_id: 'bdb_developer', project_id: 'shop-service', category: 'project_card', data: 'Shop Service uses Stripe API v2024' },
+            { user_id: 'alice', project_id: 'shop-service', category: 'project_card', memory: 'Alice prefers mock payment mode during tests' }
         ]);
     });
 
@@ -702,7 +711,7 @@ describe('Tier 4: Real-World Multi-Harness Simulations', () => {
     test('Scenario 2: OpenAI Codex UserPromptSubmit hook simulation', () => {
         const payload = JSON.stringify({
             session_id: 'codex-sess-5678',
-            prompt: 'Check test payments configuration',
+            prompt: 'How is the Stripe service configured?',
             cwd: projDir,
             hook_event_name: 'UserPromptSubmit'
         });
@@ -715,9 +724,13 @@ describe('Tier 4: Real-World Multi-Harness Simulations', () => {
         assert.equal(res.status, 0);
         const parsed = JSON.parse(res.stdout);
 
-        // Codex contract validation
+        // Codex contract validation. Since hook v5 a UserPromptSubmit injects
+        // FTS recall hits only -- identity and project cards came in at
+        // SessionStart and are not repeated on every prompt.
         assert.ok(typeof parsed.systemMessage === 'string', 'systemMessage must be a string');
-        assert.ok(parsed.systemMessage.includes('shop-service'), 'systemMessage must contain project memories');
+        assert.ok(parsed.systemMessage.includes('Stripe API v2024'), 'systemMessage must contain the recalled FTS hit');
+        assert.ok(!parsed.systemMessage.includes('- Project ['), 'UserPromptSubmit must not repeat project cards');
+        assert.ok(!parsed.systemMessage.includes('Alice prefers mock payment mode'), 'Unmatched memories must not leak in');
     });
 
     test('Scenario 3: Claude Code UserPromptSubmit hook simulation', () => {

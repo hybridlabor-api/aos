@@ -74,6 +74,10 @@
         "GEMINI_API_KEY": "__GEMINI_API_KEY__"
       }
     },
+    "deja": {
+      "command": "deja",
+      "args": ["mcp"]
+    },
     "open_design_mcp": {
       "command": "npx",
       "args": ["-y", "open-design-mcp", "__MCPS_DIR__/open-design"],
