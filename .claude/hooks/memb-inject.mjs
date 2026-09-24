@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// aos-hook-version: 3
+// aos-hook-version: 4
 /**
  * memB ambient memory hook for Claude Code, Google Antigravity, and OpenAI Codex.
  *
@@ -44,6 +44,15 @@ export function pickTerms(prompt) {
     .filter((w) => w.length > 3 && !STOPWORDS.has(w));
   return [...new Set(words)].sort((a, b) => b.length - a.length).slice(0, 4);
 }
+
+// Category of a payload, read from the same dual JSON paths the step-2
+// whitelist matches against. Empty string = uncategorized (legacy/raw rows),
+// which never pass the injection whitelist.
+export const categoryOf = (payload) => {
+  const p = JSON.parse(payload);
+  const v = p?.category ?? p?.metadata?.category;
+  return v == null ? '' : String(v).trim();
+};
 
 // Helper to find project root by walking upward from candidate start directory
 function findProjectRoot(startDir, homeDir) {
@@ -187,6 +196,10 @@ async function main() {
               OR json_extract(payload, '$.user_id') IN (${uPlaceholders})
               OR json_extract(payload, '$.metadata.user_id') IN (${uPlaceholders})
             )
+            AND (
+              json_extract(payload, '$.category') IN ('project_card','godmode')
+              OR json_extract(payload, '$.metadata.category') IN ('project_card','godmode')
+            )
           ORDER BY rowid DESC
           LIMIT 5
         `;
@@ -238,6 +251,8 @@ async function main() {
             if (/^\[[^\]|]+\|[^\]|]+\|/.test(text)) continue; // imported file chunk
             const hitProject = projectOf(r.payload);
             if (hitProject && !candidateProjectIds.includes(hitProject)) continue;
+            const cat = categoryOf(r.payload);
+            if (cat !== 'project_card' && cat !== 'godmode') continue;
             if (!contextItems.some((e) => e.includes(text.slice(0, 50)))) {
               contextItems.push(`- Domain memory: ${text.slice(0, 180)}`);
             }

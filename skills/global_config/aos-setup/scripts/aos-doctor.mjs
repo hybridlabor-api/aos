@@ -168,7 +168,7 @@ function checkHooks() {
   // the row would go green over a hook carrying a bug this version fixed.
   // Hooks that carry an `aos-hook-version:` line are checked against what this
   // release expects; the ones that do not are existence-only.
-  const EXPECTED_VERSION = { 'memb-inject.mjs': 3 };
+  const EXPECTED_VERSION = { 'memb-inject.mjs': 4 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
     return m ? Number(m[1]) : null;
@@ -275,6 +275,61 @@ async function checkMemb() {
   const servers = Object.keys(claudeCfg?.mcpServers || {});
   add('memB', 'memb_mcp registered', servers.some(s => s.includes('memb')), servers.length ? `${servers.length} MCP servers configured` : 'no mcpServers in ~/.claude.json',
     'Re-run the installer; it writes the MCP block for every harness you pick.');
+}
+
+// ---------------------------------------------------------------- memory
+async function checkMemory() {
+  const dbPath = h('.MemBDB', 'memb.db');
+  if (!existsSync(dbPath)) {
+    add('memory', 'identity layer', false, 'no ~/.MemBDB/memb.db yet',
+      'Run /aos-setup — the identity interview creates it.');
+    return;
+  }
+
+  let rows = [];
+  try {
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    db.exec('PRAGMA busy_timeout = 5000;');
+    rows = db.prepare(`
+      SELECT substr(json_extract(payload, '$.data'), 1, 500) AS head,
+             json_extract(payload, '$.category') AS c,
+             json_extract(payload, '$.metadata.category') AS mc,
+             json_extract(payload, '$.project_id') AS p,
+             json_extract(payload, '$.metadata.project_id') AS mp
+      FROM memb_vectors
+      WHERE collection = 'bdb_agent_memory'
+    `).all();
+    db.close();
+  } catch (e) {
+    add('memory', 'identity layer', false, `memb.db unreadable: ${String(e.message || e).split('\n')[0]}`,
+      'Check ~/.MemBDB/memb.db — the doctor opens it read-only.');
+    return;
+  }
+
+  const total = rows.length;
+
+  const godmode = rows.filter((r) =>
+    (r.c === 'godmode' || r.mc === 'godmode') && r.p == null && r.mp == null).length;
+  add('memory', 'identity layer', godmode >= 10, `${godmode} godmode facts (need ≥ 10)`,
+    "Run /aos-setup, section 'The identity layer' — 20-40 facts via memb-mcp add_memory (category godmode).");
+
+  const raw = rows.filter((r) => /^\[[^\]|]+\|[^\]|]+\|/.test(r.head || '')).length;
+  const share = total ? raw / total : 0;
+  add('memory', 'raw file chunks', share <= 0.5,
+    `${raw} of ${total} rows (${Math.round(share * 100)}%) are raw ingest chunks — search-only, never injected`,
+    'Run /aos-project-init per project — project cards replace the dumps.');
+
+  const STALE = [
+    ['old bdb-dev root', /(?<!dev\/)bdb-dev\//],
+    ['docs/_stale', /docs\/_stale/],
+    ['.worktrees', /\.worktrees/],
+  ];
+  const staleOk = !rows.some((r) => STALE.some(([, re]) => re.test(r.head || '')));
+  const staleDetail = STALE.map(([label, re]) =>
+    `${label}: ${rows.filter((r) => re.test(r.head || '')).length}`).join(' · ');
+  add('memory', 'stale paths', staleOk, staleDetail,
+    'Re-ingest with the fixed IGNORE_DIRS (memB repo) and remove stale rows.');
 }
 
 // ---------------------------------------------------------------- deja
@@ -399,6 +454,7 @@ checkPrereqs();
 checkAos();
 checkHooks();
 await checkMemb();
+await checkMemory();
 await checkDeja();
 checkOpenWiki();
 await checkSynapse();

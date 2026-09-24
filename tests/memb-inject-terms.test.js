@@ -47,3 +47,22 @@ test('pickTerms de-duplicates case-insensitively and skips words of length <= 3'
     'caps at 4 terms, longest first (stable order)'
   );
 });
+
+test('categoryOf reads the whitelist category from flat and metadata payload paths', async () => {
+  const { categoryOf } = await loadHook();
+  assert.strictEqual(typeof categoryOf, 'function', 'hook must export categoryOf');
+
+  assert.strictEqual(categoryOf('{"category":"godmode"}'), 'godmode');
+  assert.strictEqual(categoryOf('{"metadata":{"category":"godmode"}}'), 'godmode');
+  assert.strictEqual(categoryOf('{"category":"project_card"}'), 'project_card');
+  assert.strictEqual(categoryOf('{"category":" project_card "}'), 'project_card', 'value is trimmed');
+});
+
+test('categoryOf returns an empty string for uncategorized or null payloads', async () => {
+  const { categoryOf } = await loadHook();
+
+  assert.strictEqual(categoryOf('{}'), '');
+  assert.strictEqual(categoryOf('{"memory":"legacy domain row without category"}'), '');
+  assert.strictEqual(categoryOf('{"metadata":{}}'), '');
+  assert.strictEqual(categoryOf('null'), '');
+});

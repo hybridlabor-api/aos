@@ -287,10 +287,10 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-r3-'));
             mockDbPath = path.join(tmpDir, '.MemBDB', 'memb.db');
             createMockMembDb(mockDbPath, [
-                { user_id: 'bdb_developer', project_id: 'my-web-app', data: 'Architecture: React + Express backend' },
-                { user_id: 'test_dev', metadata: { project_id: 'my-web-app' }, memory: 'Developer preferences: tabs over spaces' },
-                { user_id: 'bdb_developer', project: 'my-web-app', data: 'Wiki: Deployment requires Node 22' },
-                { user_id: 'other_dev', project_id: 'other-app', data: 'Secret token for other app' }
+                { user_id: 'bdb_developer', project_id: 'my-web-app', category: 'project_card', data: 'Architecture: React + Express backend' },
+                { user_id: 'test_dev', metadata: { project_id: 'my-web-app', category: 'project_card' }, memory: 'Developer preferences: tabs over spaces' },
+                { user_id: 'bdb_developer', project: 'my-web-app', category: 'project_card', data: 'Wiki: Deployment requires Node 22' },
+                { user_id: 'other_dev', project_id: 'other-app', category: 'project_card', data: 'Secret token for other app' }
             ]);
         });
 
@@ -298,11 +298,11 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
-        test('hook carries version stamp 3', () => {
+        test('hook carries version stamp 4', () => {
             const content = fs.readFileSync(MEMB_INJECT_SRC, 'utf8');
             const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
             assert.ok(m, 'memb-inject.mjs must contain aos-hook-version header');
-            assert.equal(m[1], '3', `Expected version 3, got ${m[1]}`);
+            assert.equal(m[1], '4', `Expected version 4, got ${m[1]}`);
         });
 
         test('parses Antigravity workspacePaths input and returns tri-format JSON', () => {
@@ -419,12 +419,12 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 'SKILL.md must not claim only Claude Code has hooks');
         });
 
-        test('aos-doctor.mjs expects hook version 3 for memb-inject.mjs', () => {
+        test('aos-doctor.mjs expects hook version 4 for memb-inject.mjs', () => {
             assert.ok(fs.existsSync(DOCTOR_SRC), 'aos-doctor.mjs must exist');
             const doc = fs.readFileSync(DOCTOR_SRC, 'utf8');
 
-            assert.ok(/'memb-inject\.mjs':\s*3\b/.test(doc),
-                'EXPECTED_VERSION in aos-doctor.mjs must specify 3 for memb-inject.mjs');
+            assert.ok(/'memb-inject\.mjs':\s*4\b/.test(doc),
+                'EXPECTED_VERSION in aos-doctor.mjs must specify 4 for memb-inject.mjs');
         });
 
         test('aos-doctor.mjs inspects hook wiring across detected harnesses', () => {
@@ -665,8 +665,8 @@ describe('Tier 4: Real-World Multi-Harness Simulations', () => {
 
         mockDbPath = path.join(tmpDir, '.MemBDB', 'memb.db');
         createMockMembDb(mockDbPath, [
-            { user_id: 'bdb_developer', project_id: 'shop-service', data: 'Shop Service uses Stripe API v2024' },
-            { user_id: 'alice', project_id: 'shop-service', memory: 'Alice prefers mock payment mode during tests' }
+            { user_id: 'bdb_developer', project_id: 'shop-service', category: 'project_card', data: 'Shop Service uses Stripe API v2024' },
+            { user_id: 'alice', project_id: 'shop-service', category: 'project_card', memory: 'Alice prefers mock payment mode during tests' }
         ]);
     });
 

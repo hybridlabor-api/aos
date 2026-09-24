@@ -401,16 +401,19 @@ describe('Challenger Suite 2: memB Injection Hook Robustness', () => {
             {
                 project_id: 'user_test_proj',
                 user_id: 'alice',
+                category: 'project_card',
                 memory: 'Alice specific preference for user_test_proj'
             },
             {
                 project_id: 'user_test_proj',
                 user_id: 'bdb_developer',
+                category: 'project_card',
                 memory: 'Baseline system rule for user_test_proj'
             },
             {
                 project_id: 'user_test_proj',
                 user_id: 'charlie',
+                category: 'project_card',
                 memory: 'Charlie confidential record'
             }
         ];
@@ -462,6 +465,7 @@ describe('Challenger Suite 2: memB Injection Hook Robustness', () => {
     test('tri-format JSON output structure compliance', () => {
         createMockMembDb(mockDbPath, [{
             project_id: 'tri_format_proj',
+            category: 'project_card',
             memory: 'High agency frontend taste tokens'
         }]);
 
