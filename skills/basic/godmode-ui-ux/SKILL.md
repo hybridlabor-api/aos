@@ -33,7 +33,7 @@ Generate a project-specific DESIGN.md containing:
 - IF brand colors defined → Color bans (Lila Ban, etc.) = SUSPENDED
 - IF brand fonts defined → Font bans (Inter Ban, etc.) = SUSPENDED  
 - Pattern-level Anti-Slop (no generic dashboards, no emojis, no card overuse) = ALWAYS ACTIVE
-- IF no brand defined → Use defaults from design-tokens.json + all Anti-Slop bans ACTIVE
+- IF no brand defined → Select ONE aesthetic archetype from `references/taste-archetypes.md` (Utilitarian Minimalist, Industrial Brutalist, High-End Tactile, Ethereal Modern) + all Anti-Slop bans ACTIVE
 
 ## 1. Anti-Slop Directive
 
@@ -135,7 +135,7 @@ Master orchestration skill for UI/UX design, enforcing high-agency design taste 
 - Exclude when performing pure backend or DevOps tasks.
 
 ## Core Process
-1. Analyze the requested UI against StyleSeed guidelines.
+1. Analyze the requested UI against project `DESIGN.md` and Anti-Slop guidelines.
 2. Ensure all spacing and colors utilize DTCG design tokens.
 3. Implement explicit loading, error, and empty states.
 4. Apply fluid motion physics for interactions.
