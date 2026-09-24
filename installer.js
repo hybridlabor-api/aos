@@ -1828,6 +1828,50 @@ function moduleBasePath() {
     return scriptDir.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
 }
 
+// deja resolves its exclude file as $XDG_CONFIG_HOME/deja/exclude, falling
+// back to $HOME/.config on ALL platforms including Windows -- do not switch
+// this to os.UserConfigDir()/APPDATA, deja would never read that file there.
+function ensureDejaExclude(excludePath) {
+    fs.mkdirSync(path.dirname(excludePath), { recursive: true });
+    let existing = '';
+    if (fs.existsSync(excludePath)) {
+        existing = fs.readFileSync(excludePath, 'utf8');
+    }
+    // deja skips comment lines when matching, so a '# secret' line does not
+    // count as the pattern being present. Only a line trimming to exactly
+    // 'secret' counts -- never rewrite, reorder or deduplicate user lines.
+    if (existing.split(/\r?\n/).some(line => line.trim() === 'secret')) return false;
+    let content = existing;
+    if (content.length > 0 && !content.endsWith('\n')) content += '\n';
+    fs.writeFileSync(excludePath, `${content}secret\n`);
+    return true;
+}
+
+async function installDeja() {
+    if (DRY_RUN) {
+        log.step('[dry-run] would install deja-vu 0.21.1 globally and add its exclude pattern');
+        return;
+    }
+    try {
+        log.step('Installing deja-vu session memory...');
+        execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore' });
+    } catch (e) {
+        log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
+    }
+    if (!hasExecutable('deja')) {
+        log.warn('deja is not on PATH. Install it with: npm install -g @vshulcz/deja-vu@0.21.1');
+    }
+    const base = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
+    const excludePath = path.join(base, 'deja', 'exclude');
+    try {
+        if (ensureDejaExclude(excludePath)) {
+            log.step(`Added 'secret' to the deja exclude list at ${excludePath}`);
+        }
+    } catch (e) {
+        log.warn(`Could not update the deja exclude list at ${excludePath}: ${e.message}. Add the line 'secret' to it by hand.`);
+    }
+}
+
 async function installMemB(interactive) {
     let installWebUI = true;
     if (interactive && !isAutoYes) {
@@ -1845,6 +1889,7 @@ async function installMemB(interactive) {
         log.warn('Skipping memB setup: the module could not be downloaded.');
         return;
     }
+    await installDeja();
     if (DRY_RUN) {
         log.step('[dry-run] would bootstrap memB venv + pip requirements');
         return;
@@ -2846,6 +2891,13 @@ async function installMcpsForTarget(paths, ctx) {
     const skippedMcpConfigKeys = resolveUnsupportedMcpConfigKeys();
     try {
         const parsedMcpConfig = JSON.parse(mcpConfigStr);
+        // npm's Windows shim is deja.cmd, which Node refuses to spawn without
+        // a shell (EINVAL since the CVE-2024-27980 fix) -- wrap the command in
+        // cmd /c here so every generated config, the Codex TOML block and the
+        // ~/.claude.json mirror get the launchable form.
+        if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
+            parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+        }
         const finalMcpServers = {};
         const availableFolders = fs.readdirSync(mcpSrcDir);
 
@@ -5169,6 +5221,7 @@ module.exports = {
     installProjectHarness,
     promptMcpSelection,
     mirrorMcpServersTo,
+    ensureDejaExclude,
     // Manifest store (exported for verification tests)
     computeFileHash,
     getInstallManifestPath,
