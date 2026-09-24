@@ -187,13 +187,16 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         const hooksPath = path.join(tmpDir, 'hooks.json');
         fs.writeFileSync(hooksPath, JSON.stringify({ hooks: {} }));
 
-        for (let i = 0; i < 5; i++) {
+        installer.mergeAntigravityHooks(hooksPath);
+        const once = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
+        for (let i = 0; i < 4; i++) {
             installer.mergeAntigravityHooks(hooksPath);
         }
 
         const final = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
-        assert.strictEqual(final.hooks.PreToolUse.length, 1, 'PreToolUse must not duplicate on repeated runs');
-        assert.strictEqual(final.hooks.Stop.length, 1, 'Stop must not duplicate on repeated runs');
+        // PreToolUse and Stop each carry two AOS entries (gate + trail-relay); what must hold is that re-runs add none.
+        assert.strictEqual(final.hooks.PreToolUse.length, once.hooks.PreToolUse.length, 'PreToolUse must not duplicate on repeated runs');
+        assert.strictEqual(final.hooks.Stop.length, once.hooks.Stop.length, 'Stop must not duplicate on repeated runs');
         assert.strictEqual(final.hooks.PreInvocation.length, 1, 'PreInvocation must not duplicate on repeated runs');
     });
 
