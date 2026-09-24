@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Rulebook Schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "match": {
+            "type": "object"
+          },
+          "candidates": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "cli": {
+                  "type": "string",
+                  "enum": ["agy", "opencode", "codex", "native"]
+                }
+              },
+              "required": ["cli"]
+            }
+          }
+        },
+        "required": ["id", "match", "candidates"]
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "fallback": {
+          "type": "string",
+          "enum": ["native"]
+        },
+        "on_unresolvable": {
+          "type": "string",
+          "enum": ["native"]
+        }
+      },
+      "required": ["fallback", "on_unresolvable"]
+    }
+  },
+  "required": ["version", "rules", "defaults"]
+}
