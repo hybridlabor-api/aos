@@ -168,7 +168,7 @@ function checkHooks() {
   // the row would go green over a hook carrying a bug this version fixed.
   // Hooks that carry an `aos-hook-version:` line are checked against what this
   // release expects; the ones that do not are existence-only.
-  const EXPECTED_VERSION = { 'memb-inject.mjs': 4 };
+  const EXPECTED_VERSION = { 'memb-inject.mjs': 5 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
     return m ? Number(m[1]) : null;

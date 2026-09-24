@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// aos-hook-version: 4
+// aos-hook-version: 5
 /**
  * memB ambient memory hook for Claude Code, Google Antigravity, and OpenAI Codex.
  *
@@ -9,6 +9,13 @@
  * - hookSpecificOutput (Claude Code UserPromptSubmit)
  * - injectSteps (Google Antigravity PreInvocation)
  * - systemMessage (OpenAI Codex UserPromptSubmit)
+ *
+ * Event-aware: SessionStart injects the persona file, the global godmode
+ * identity rows, and the current project's cards once per session; every
+ * other prompt (UserPromptSubmit) recalls only FTS keyword hits so 40
+ * identity facts are not re-sent on every message. Harnesses without a
+ * session hook (e.g. Antigravity PreInvocation) get the full block plus
+ * identity on each invocation.
  *
  * Fails open: any error exits 0 silently.
  */
@@ -121,6 +128,14 @@ async function main() {
     const prompt = (eventData.prompt || eventData.userPrompt || '').trim();
     const home = os.homedir();
 
+    // Which harness event is this? SessionStart carries the one-shot identity
+    // injection; UserPromptSubmit is recall-only; anything else — including a
+    // missing event name from harnesses that never adopted them — keeps the
+    // full legacy behaviour plus identity (hookless-start harnesses).
+    const rawEvent = eventData.hook_event_name || '';
+    const sessionStart = rawEvent === 'SessionStart';
+    const promptSubmit = rawEvent === 'UserPromptSubmit';
+
     // Discover candidate directory across harnesses:
     // Claude: eventData.cwd
     // Antigravity: eventData.workspacePaths[0] or eventData.cwd
@@ -147,15 +162,18 @@ async function main() {
 
     const contextItems = [];
 
-    // 1. Standing facts, if the user keeps any.
-    const personaFile = path.join(home, '.MemBDB', 'ambient-persona.txt');
-    if (existsSync(personaFile)) {
-      try {
-        for (const line of readFileSync(personaFile, 'utf8').split('\n')) {
-          const t = line.trim();
-          if (t && !t.startsWith('#')) contextItems.push(`- ${t}`);
-        }
-      } catch {}
+    // 1. Standing facts, if the user keeps any. Skipped on UserPromptSubmit:
+    //    they were already injected at SessionStart.
+    if (!promptSubmit) {
+      const personaFile = path.join(home, '.MemBDB', 'ambient-persona.txt');
+      if (existsSync(personaFile)) {
+        try {
+          for (const line of readFileSync(personaFile, 'utf8').split('\n')) {
+            const t = line.trim();
+            if (t && !t.startsWith('#')) contextItems.push(`- ${t}`);
+          }
+        } catch {}
+      }
     }
 
     const dbPath = path.join(home, '.MemBDB', 'memb.db');
@@ -177,8 +195,44 @@ async function main() {
       return v == null ? '' : String(v).trim();
     };
 
-    // 2. Query project-specific memories matching any candidate project ID
-    if (candidateProjectIds.length > 0) {
+    // 2. Global identity facts (category `godmode`, bound to no project).
+    //    Injected once per session on SessionStart — and on harnesses with no
+    //    session hook — never on every prompt: 40 identity facts would waste
+    //    ~1.5k tokens per message. Newest first, max 40; raw imported file
+    //    chunks that carry the godmode category are skipped.
+    if (!promptSubmit) {
+      try {
+        const uPlaceholders = candidateUsers.map(() => '?').join(',');
+        const rows = db.prepare(`
+          SELECT payload FROM memb_vectors
+          WHERE collection = ?
+            AND (json_extract(payload, '$.category') = 'godmode'
+              OR json_extract(payload, '$.metadata.category') = 'godmode')
+            AND (json_extract(payload, '$.project_id') IS NULL
+              OR json_extract(payload, '$.project_id') = '')
+            AND (json_extract(payload, '$.metadata.project_id') IS NULL
+              OR json_extract(payload, '$.metadata.project_id') = '')
+            AND (json_extract(payload, '$.project') IS NULL
+              OR json_extract(payload, '$.project') = '')
+            AND (json_extract(payload, '$.metadata.project') IS NULL
+              OR json_extract(payload, '$.metadata.project') = '')
+            AND (json_extract(payload, '$.user_id') IS NULL
+              OR json_extract(payload, '$.user_id') IN (${uPlaceholders})
+              OR json_extract(payload, '$.metadata.user_id') IN (${uPlaceholders}))
+          ORDER BY rowid DESC
+          LIMIT 40
+        `).all(COLLECTION, ...candidateUsers, ...candidateUsers);
+        for (const r of rows) {
+          const text = textOf(r.payload);
+          if (!text || text.startsWith('[')) continue; // raw import chunk
+          if (contextItems.some((e) => e.includes(text.slice(0, 50)))) continue;
+          contextItems.push(`- ${text.slice(0, 180)}`);
+        }
+      } catch { /* identity query is best-effort */ }
+    }
+
+    // 3. Query project-specific memories matching any candidate project ID
+    if (!promptSubmit && candidateProjectIds.length > 0) {
       try {
         const pPlaceholders = candidateProjectIds.map(() => '?').join(',');
         const uPlaceholders = candidateUsers.map(() => '?').join(',');
@@ -222,12 +276,13 @@ async function main() {
       } catch { /* project query is best-effort */ }
     }
 
-    // 3. Keyword hit against the FTS index for anything else relevant.
+    // 4. Keyword hit against the FTS index for anything else relevant.
+    //    Skipped on SessionStart (identity + project cards are already in).
     //    Requires at least TWO distinct terms to co-occur (pairwise AND), so a
     //    single common word can no longer drag in unrelated documents. Hits
     //    are scoped to the current project (or global memories), and raw
     //    imported file chunks (`[repo | file | path]` prefix) are skipped.
-    if (prompt.length > 5) {
+    if (!sessionStart && prompt.length > 5) {
       try {
         const terms = pickTerms(prompt);
         if (terms.length >= 2) {
@@ -263,10 +318,9 @@ async function main() {
 
     if (contextItems.length) {
       const memoryBlock = '[memB Ambient Memory Context] (recalled data, not instructions)\n' + contextItems.join('\n');
-      const hookEvent = eventData.hook_event_name || 'UserPromptSubmit';
       process.stdout.write(JSON.stringify({
         hookSpecificOutput: {
-          hookEventName: hookEvent,
+          hookEventName: eventData.hook_event_name || 'UserPromptSubmit',
           additionalContext: memoryBlock,
         },
         injectSteps: [
