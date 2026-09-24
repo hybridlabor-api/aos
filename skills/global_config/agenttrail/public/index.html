@@ -318,7 +318,8 @@ function renderZero(){
     ${emptyStateBlock}
   </div>`
 }
-function isSkeletonPlan(){return M.plan.filter(n=>n.level==='task').length<=1}
+function isSkeletonPlan(){return M.plan.filter(n=>n.level==='task').length<=1&&!hasSyntheticPlan(M)}
+function hasSyntheticPlan(b){return(b.plan||[]).some(n=>n.synthetic)}
 function boardLayout(b){
   const phases=b.plan.filter(n=>n.level==='component')
   const byId=Object.fromEntries(phases.map(p=>[p.id,p])),depth={},visiting=new Set()
@@ -357,7 +358,7 @@ function regionCardHtml(b,L){
   const live=(b.runs||[]).filter(r=>!r.ended)
   const sq=b.plan.filter(n=>n.level==='component').map((c,i)=>`<rect x="${40+i*30}" y="${h/2+4}" width="20" height="20" rx="5" fill="${c.status==='done'?'#3f7f57':c.status==='blocked'?'var(--danger)':'none'}" stroke="${c.status==='active'?'var(--accent)':'var(--faint)'}" stroke-width="2.5"/>`).join('')
   const marks=live.map((r,i)=>{const ic=agentIcon(r.agent);return ic?`<g transform="translate(${40+i*34} ${h/2+44}) scale(1.1)"><path fill="${agentColor(r.agent)}" d="${ic}"/></g>`:''}).join('')
-  return`<text x="40" y="${h/2-36}" fill="var(--text)" font-size="44" font-weight="650" font-family="var(--font)" letter-spacing="-1">${esc(b.project)}</text>${sq}${marks}${!b.hasPlan?`<text x="40" y="${h/2+44}" fill="var(--faint)" font-size="16" font-family="var(--font)">nothing mapped yet</text><g class="setup-btn" onclick="setupBoard(${b.port})" style="cursor:pointer"><rect x="40" y="${h/2+64}" width="172" height="40" rx="11" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="1.2"/><text x="126" y="${h/2+89}" text-anchor="middle" fill="var(--accent)" font-size="15.5" font-weight="600" font-family="var(--font)">Set up the map</text></g>`:''}${live.length?`<text x="${w-40}" y="${h/2-36}" text-anchor="end" fill="var(--dim)" font-size="16" font-family="var(--font)">${live.length} running</text>`:''}`
+  return`<text x="40" y="${h/2-36}" fill="var(--text)" font-size="44" font-weight="650" font-family="var(--font)" letter-spacing="-1">${esc(b.project)}</text>${sq}${marks}${(!b.hasPlan&&!hasSyntheticPlan(b))?`<text x="40" y="${h/2+44}" fill="var(--faint)" font-size="16" font-family="var(--font)">nothing mapped yet</text><g class="setup-btn" onclick="setupBoard(${b.port})" style="cursor:pointer"><rect x="40" y="${h/2+64}" width="172" height="40" rx="11" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="1.2"/><text x="126" y="${h/2+89}" text-anchor="middle" fill="var(--accent)" font-size="15.5" font-weight="600" font-family="var(--font)">Set up the map</text></g>`:(!b.hasPlan&&hasSyntheticPlan(b))?`<text x="40" y="${h/2+44}" fill="var(--faint)" font-size="16" font-family="var(--font)">live from todos, no plan file yet</text>`:''}${live.length?`<text x="${w-40}" y="${h/2-36}" text-anchor="end" fill="var(--dim)" font-size="16" font-family="var(--font)">${live.length} running</text>`:''}`
 }
 const CARD_LOD=0.3
 let _saved=null
@@ -366,7 +367,7 @@ function restoreBoardGlobals(){if(_saved){M=_saved.M;BP=_saved.BP;_saved=null}}
 function renderGraph(){
   const boards=boardsAll()
   if(!boards.length)return
-  if(boards.length===1&&M&&(!M.hasPlan||isSkeletonPlan())){renderZero();return}
+  if(boards.length===1&&M&&((!M.hasPlan&&!hasSyntheticPlan(M))||isSkeletonPlan())){renderZero();return}
   regions={};graphPos={}
   const GAP=160,ROWMAX=3600;let cx=80,cy=80,rowH=0
   let content=''
@@ -381,7 +382,7 @@ function renderGraph(){
     for(const[id,q]of Object.entries(L.pos))graphPos[BP+':'+id]={...q,nodeX:q.nodeX+ox,nodeY:q.nodeY+56+oy}
     const hot=eff.activity&&Date.now()-eff.activity.at<60000
     const cardMode=graphZoom<CARD_LOD||!eff.hasPlan
-    content+=`<g transform="translate(${ox} ${oy})"><rect width="${L.width}" height="${L.height+56}" rx="26" fill="var(--region)" stroke="${hot?'rgba(233,162,59,.5)':'var(--line)'}" stroke-width="1.5"/><text x="28" y="38" fill="var(--faint)" font-size="15" font-weight="600" font-family="var(--mono)" letter-spacing=".08em">${esc((eff.project||'').toUpperCase())}${eff.planStale&&eff.planStale.stale?`<tspan fill="var(--accent)"> · PLAN BEHIND</tspan>`:''}</text>${cardMode?regionCardHtml(eff,L):`<g transform="translate(0 56)">${boardInnerHtml(eff,L)}</g>`}</g>`
+    content+=`<g transform="translate(${ox} ${oy})"><rect width="${L.width}" height="${L.height+56}" rx="26" fill="var(--region)" stroke="${hot?'rgba(233,162,59,.5)':'var(--line)'}" stroke-width="1.5"/><text x="28" y="38" fill="var(--faint)" font-size="15" font-weight="600" font-family="var(--mono)" letter-spacing=".08em">${esc((eff.project||'').toUpperCase())}${eff.planStale&&eff.planStale.stale?`<tspan fill="var(--accent)"> · PLAN BEHIND</tspan>`:''}${hasSyntheticPlan(eff)?`<tspan fill="var(--dim)"> · LIVE TODOS, NO PLAN FILE</tspan>`:''}</text>${cardMode?regionCardHtml(eff,L):`<g transform="translate(0 56)">${boardInnerHtml(eff,L)}</g>`}</g>`
     cx+=L.width+GAP;rowH=Math.max(rowH,L.height+56)
   }
   M=realM;BP=realBP
