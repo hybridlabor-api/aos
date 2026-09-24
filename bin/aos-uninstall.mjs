@@ -39,6 +39,8 @@ const DATA_PATHS = [
   { path: h('.synapse'), what: 'Synapse logs and reports' },
   { path: h('.memb'), what: 'memB WebUI logs' },
   { path: h('.ao'), what: 'AO Orchestrator logs' },
+  { path: h('.cache', 'deja'), what: 'deja-vu Index — alle indizierten Agenten-Sessions' },
+  { path: h('.config', 'deja'), what: 'deja-vu Privacy-Config — Ausschlussliste und Tombstones' },
 ];
 
 const AGENTS = [
@@ -180,6 +182,58 @@ function execute(p) {
 
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
   if (modules.length) console.log(`  ${modules.length} Module entfernt`);
+
+  try {
+    execFileSync('npm', ['uninstall', '-g', '@vshulcz/deja-vu'], { stdio: 'ignore', shell: process.platform === 'win32' });
+    console.log('  deja-vu (npm) entfernt');
+  } catch {
+    console.log('  deja-vu nicht per npm entfernt — von Hand entfernen: npm uninstall -g @vshulcz/deja-vu');
+  }
+
+  const dejaMcpJson = [
+    h('.gemini', 'config', 'mcp_config.json'),
+    process.platform === 'win32'
+      ? path.join(process.env.APPDATA || HOME, 'Claude', 'claude_desktop_config.json')
+      : h('Library', 'Application Support', 'Claude', 'claude_desktop_config.json'),
+    h('.claude.json'),
+    h('.cursor', 'mcp.json'),
+    h('.roo', 'mcp_settings.json'),
+    h('.cline', 'mcp_settings.json'),
+    h('.windsurf', 'mcp.json'),
+    h('.aider', 'mcp.json'),
+  ];
+  for (const f of dejaMcpJson.filter(existsSync)) {
+    try {
+      const cfg = JSON.parse(readFileSync(f, 'utf8'));
+      if (cfg.mcpServers && cfg.mcpServers.deja) {
+        delete cfg.mcpServers.deja;
+        writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
+        console.log(`  deja-Eintrag aus ${tilde(f)} entfernt`);
+      }
+    } catch { console.log(`  ${tilde(f)} nicht lesbar — von Hand prüfen`); }
+  }
+
+  const opencodeCfg = h('.config', 'opencode', 'opencode.jsonc');
+  if (existsSync(opencodeCfg) && /"deja"\s*:/.test(readFileSync(opencodeCfg, 'utf8'))) {
+    console.log(`  ${tilde(opencodeCfg)} enthält noch einen deja-Eintrag — von Hand entfernen (JSONC, wird nicht automatisch umgeschrieben)`);
+  }
+
+  const codexToml = h('.codex', 'config.toml');
+  if (existsSync(codexToml)) {
+    try {
+      const raw = readFileSync(codexToml, 'utf8');
+      const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+      const lines = raw.split(/\r?\n/);
+      const i = lines.findIndex((l) => l.trim() === '[mcp_servers.deja]');
+      if (i !== -1) {
+        let j = i + 1;
+        while (j < lines.length && !lines[j].trimStart().startsWith('[') && lines[j].trim() !== '# AOS:MCP:END') j++;
+        lines.splice(i, j - i);
+        writeFileSync(codexToml, lines.join(eol));
+        console.log(`  deja-Tabelle aus ${tilde(codexToml)} entfernt`);
+      }
+    } catch { console.log(`  ${tilde(codexToml)} nicht lesbar — von Hand prüfen`); }
+  }
 
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);
