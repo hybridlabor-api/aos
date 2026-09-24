@@ -231,6 +231,30 @@ redistributable.
 | `CloudAI-X/threejs-skills` | No `LICENSE` file; README claims MIT. | `threejs-skills` |
 | `Shpigford/skills` | Repository returns **404** — deleted, renamed, or made private. Provenance cannot be verified at all. | `readme` |
 
+## tt-a1i/archify
+
+<https://github.com/tt-a1i/archify> — MIT. Copyright (c) 2026 tt-a1i (Archify),
+Copyright (c) 2025 Cocoon AI (based on Cocoon-AI/architecture-diagram-generator, MIT).
+
+`skills/global_config/archify/` is upstream `archify/` at commit `9e35d2b`,
+without `test/`, rendered example HTML, and the remote update check
+(`scripts/check-update.mjs`, `scripts/update-contract.mjs`); AOS pins the version.
+The skill's own `LICENSE` and `THIRD_PARTY_NOTICES.md` ship alongside it.
+
+---
+
+## sodiumsun/agenttrail
+
+<https://github.com/sodiumsun/agenttrail> — MIT.
+
+`skills/global_config/agenttrail/` carries the Map runtime only
+(`bin/agenttrail.mjs`, `public/index.html`) at commit `e4ba2da`, with its
+`LICENSE`. Kitchen is not included. Three patches, each marked `// AOS patch:`:
+a `--plan <path>` flag, a `hook --agent <name>` flag, and serving files under
+`production_artifacts/` so a card's relative `url:` opens.
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in

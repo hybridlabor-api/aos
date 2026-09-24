@@ -9,6 +9,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/go-gate.mjs\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
+            "timeout": 2
+          }
+        ]
       }
     ],
     "Stop": [
@@ -17,6 +26,48 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/graph-gate.mjs\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
+            "timeout": 2
           }
         ]
       }
