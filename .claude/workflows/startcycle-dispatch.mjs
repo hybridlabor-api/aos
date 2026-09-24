@@ -92,6 +92,27 @@ if (!fs && typeof process !== 'undefined') {
   } catch {}
 }
 
+function readStdinSync() {
+  const chunks = [];
+  const buffer = Buffer.alloc(64 * 1024);
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    let bytes;
+    try {
+      bytes = fs.readSync(0, buffer, 0, buffer.length, null);
+    } catch (error) {
+      if (error?.code === 'EAGAIN' || error?.code === 'EWOULDBLOCK') {
+        Atomics.wait(sleeper, 0, 0, 2);
+        continue;
+      }
+      throw error;
+    }
+    if (bytes === 0) break;
+    chunks.push(Buffer.from(buffer.subarray(0, bytes)));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 let inputGoal = null;
 let inputSkills = [];
 let isHookInvocation = false;
@@ -100,7 +121,7 @@ let isHookInvocation = false;
 if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && fs) {
   try {
     let stdinRaw = '';
-    try { stdinRaw = fs.readFileSync(0, 'utf8').trim(); } catch {}
+    try { stdinRaw = readStdinSync().trim(); } catch {}
     if (stdinRaw) {
       isHookInvocation = true;
       let payload = null;
