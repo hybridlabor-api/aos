@@ -818,6 +818,13 @@ if (BUILD_NODES.length === 0) {
 const NODE_ENUM = BUILD_NODES.map((n) => n.id);
 const NODE_NAMES = humanList(NODE_ENUM);
 
+// Live map (agenttrail skill, Trigger B): best-effort, never blocks or fails the run.
+// aos-trail exits on its own when a map for this repo is already running.
+try {
+  child_process?.spawn('aos-trail', [process.cwd(), '--plan', 'production_artifacts/00_execution_plan.md', '--no-open'],
+    { detached: true, stdio: 'ignore', shell: process.platform === 'win32' }).on('error', () => {}).unref();
+} catch { /* no child_process in this runtime: run without the map */ }
+
 let findings = [];
 let reviewedClean = false;
 let nodesToRun = BUILD_NODES; // first pass: everyone applicable
