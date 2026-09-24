@@ -13,7 +13,10 @@ export async function delegate(req) {
   const trailEvent = {
     session_id: `mcsc-agy-${process.pid}-${Date.now()}`,
     cwd: req.cwd || process.cwd(),
-    agent: 'agy',
+    agent:
+      typeof req.label === 'string' && req.label.length > 0
+        ? `agy:${req.label}`
+        : 'agy',
   };
   emitTrail({ ...trailEvent, hook_event_name: 'SessionStart' });
   try {
@@ -53,7 +56,7 @@ export async function delegate(req) {
       parsed = JSON.parse(raw);
     } catch {
       // If we can't parse JSON, we cannot attest the model.
-      emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+      emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
       return {
         exit: 0,
         output: raw.trim(),
@@ -66,7 +69,7 @@ export async function delegate(req) {
       const sessionRef = parsed.conversation_id || parsed.session || parsed.sessionId || parsed.id;
 
       if (modelId) {
-        emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+        emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
         return {
           exit: 0,
           output: raw.trim(),
@@ -79,7 +82,7 @@ export async function delegate(req) {
       }
     }
 
-    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+    emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
     return {
       exit: 0,
       output: raw.trim(),
@@ -87,14 +90,14 @@ export async function delegate(req) {
     };
   } catch (e) {
     if (e.name === 'AbortError') {
-      emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+      emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
       return {
         exit: 1,
         output: 'Cancelled by orchestrator',
         attestation: { kind: 'unavailable' }
       };
     }
-    emitTrail({ ...trailEvent, hook_event_name: 'Stop' });
+    emitTrail({ ...trailEvent, hook_event_name: 'SessionEnd' });
     return {
       exit: 1,
       output: (e.stderr || e.message || '').trim(),
