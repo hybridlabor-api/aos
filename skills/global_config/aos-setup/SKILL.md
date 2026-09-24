@@ -57,7 +57,7 @@ node ~/.claude/skills/aos-setup/scripts/aos-doctor.mjs            # from an inst
 Flags: `--json` for machine-readable output, `--net` to also compare the
 installed AOS version against npm.
 
-It reports up to 26 checks across six areas, each with the exact fix command.
+It reports up to 29 checks across seven areas, each with the exact fix command.
 The exact number varies by machine: the LaunchAgent rows are macOS-only, the
 OpenWiki integrations row needs the CLI on `PATH`, the npm-version row needs
 `--net`, and the optional-module rows appear only for modules the manifest
@@ -71,6 +71,7 @@ claims are installed.
 | `memB` | module, venv, `~/.MemBDB/memb.db`, WebUI on `:8088`, autostart, `memb-mcp` venv, MCP registration |
 | `openwiki` | CLI, `~/.openwiki/.env` credentials, harness integrations, 2-hourly refresh daemon |
 | `synapse` | binary on `PATH`, daemon on `:7781` |
+| `memory` | identity layer (≥ 10 godmode facts), share of raw file chunks, stale paths |
 
 Exit code is `0` only when every check passes. **Report the failing rows to the
 user before changing anything**, then work the sections below in order — each
@@ -103,6 +104,36 @@ aos-config set userId <the user's memB id>
 
 The result lands in `~/.agents/aos-config.json`. `/aos-project-init` reads it
 to offer a domain per project and refuses to guess when it is missing.
+
+### The identity layer (godmode facts)
+
+With `workspaceRoot` and `userId` set, section 2 has one more job: the identity
+interview, which fills memB's godmode layer — the standing facts about the
+person this machine belongs to, injected into every prompt. The doctor's
+`memory` rows report whether this layer exists.
+
+Run it as a conversation, one question at a time: who the user is and their
+role, company and brands, how the workspace is structured, and their ground
+rules. Propose sources instead of asking blind — glob `WORKSPACE.md`,
+`AGENTS.md` and `agents.md` directly under the configured workspace root (e.g.
+`~/dev/WORKSPACE.md`) and offer each as source material before using it. Never
+read the whole tree.
+
+From the answers, draft **20–40 facts**, one sentence each, each ≤ 300 chars.
+Show the full numbered list to the user and save only after explicit
+confirmation — writes happen only on a literal GO.
+
+Save each fact via the memb-mcp `add_memory` tool, exactly this shape:
+
+```js
+add_memory({ text: <fact>, category: "godmode", infer: false })
+```
+
+The shape is load-bearing. No `project_id`: omitting it stores the fact
+globally, which is what makes it identity rather than project context.
+`infer: false`: the text is stored verbatim, never LLM-rewritten. `user_id`
+defaults to `bdb_developer`, which the ambient hook accepts as its baseline
+user. Never write credentials or high-entropy strings into a fact.
 
 ---
 
@@ -317,3 +348,5 @@ Then hand off: **the machine is ready; per-project setup runs through
   something is ingested.
 - Copying the reference machine's persona file verbatim onto someone else's
   computer. Ask what their standing facts are.
+- Saving godmode facts the user never saw — the interview shows the list
+  first, always.

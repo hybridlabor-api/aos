@@ -67,8 +67,21 @@ Watching is not free. Every watched project with changes costs an LLM call per
 cycle, and a free-tier key hits quota on a handful. Recommend watching repos
 under active work and leaving archives out.
 
-**memB.** Bind the slug; offer a one-time ingest of the folder. Ingest reads a
-lot — offer it, never assume it.
+**memB.** Bind the slug, then draft a project card instead of offering a file
+dump. Read the project yourself — `README.md`, `AGENTS.md`/`CLAUDE.md`,
+`package.json`/`pyproject.toml`, and the `.aos/project.json` this interview
+settles — and distill a **project card: 3–8 facts**, each ≤ 300 chars, each
+prefixed with its date `(YYYY-MM-DD)`, covering what the project is, where it
+lives, stack, status, and settled decisions. Show the numbered list and save
+only on the user's confirmation:
+
+```
+add_memory({ text: "(2026-09-24) …", category: "project_card", project_id: "<stable-slug>", infer: false })
+```
+
+The slug settled above is the `project_id`, so the hook's candidate matching
+finds the card. Facts stay small and dated because cards are shown to every
+future prompt in this project.
 
 **Synapse.** A spatial map earns its keep on a codebase too large to hold in
 your head. Ask; do not default it on.
@@ -126,12 +139,17 @@ When the user chose to watch it, add the absolute path to `projects` in
 `~/.openwiki/projects.json` — that file is the daemon's watch list. Merge into
 it; never rewrite it.
 
-For memB, write decisions through the MCP with the slug as `project_id` and the
-domain as `category`:
+For memB, write the project card through the MCP with the slug as `project_id`
+and `project_card` as `category` — domain-category rows are dead weight, since
+the hook whitelist only injects `project_card`/`godmode`:
 
 ```
-add_memory({ text: "…", category: "<domain>", project_id: "<slug>" })
+add_memory({ text: "(2026-09-24) …", category: "project_card", project_id: "<stable-slug>", infer: false })
 ```
+
+Raw file ingest is opt-in only — if the user explicitly asks for a dump, run
+`python3 ~/.gemini/config/mcps/memb-mcp/memb_ingest.py <path>`; the default
+answer is no.
 
 Never write credentials or high-entropy strings into memory.
 
@@ -161,3 +179,5 @@ version policy before reaching for `feat:`.
 - Asking about CI or GitHub triage in a repo with no remote.
 - Offering `release-please` without writing the Conventional Commits rule into
   `AGENTS.md` — it is a trap otherwise.
+- Writing project memories under the domain as category — the hook never
+  injects them.
