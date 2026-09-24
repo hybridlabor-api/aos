@@ -4564,7 +4564,7 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
                 // OpenCode provider APIs (e.g. OpenAI-compatible, Console) enforce tool name length limits
                 // (e.g. max 64 chars) and context limits. Loading 20+ MCPs causes provider errors (e.g. 73-char tool names).
                 // OpenCode uses a slim profile: only core servers (memb_mcp, zavora_computer_use) are enabled by default.
-                const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use']);
+                const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use', 'deja']);
                 const existingMcp = existing && existing.mcp ? existing.mcp : {};
                 const hasExistingKeys = Object.keys(existingMcp).length > 0;
 
@@ -4688,6 +4688,14 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
             syncMcpConfig(path.join(homeDir, '.aider', 'mcp.json'));
         } else if (d.key === 'opencode') {
             syncOpencodeConfig(path.join(d.path, 'opencode.jsonc'));
+        } else if (d.key === 'codex') {
+            // Universal Sync never had a branch for Codex, so its config.toml
+            // was never updated here even though the log claimed it was.
+            try {
+                mergeCodexTomlMcpServers(path.join(d.path, 'config.toml'), masterMcpData.mcpServers || {});
+            } catch (e) {
+                log.warn(`Failed to sync MCP to ${path.join(d.path, 'config.toml')}: ${e.message}`);
+            }
         }
     }
     log.success('Universal Sync Complete!');
