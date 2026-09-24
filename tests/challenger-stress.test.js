@@ -187,13 +187,16 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         const hooksPath = path.join(tmpDir, 'hooks.json');
         fs.writeFileSync(hooksPath, JSON.stringify({ hooks: {} }));
 
-        for (let i = 0; i < 5; i++) {
+        installer.mergeAntigravityHooks(hooksPath);
+        const once = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
+        for (let i = 0; i < 4; i++) {
             installer.mergeAntigravityHooks(hooksPath);
         }
 
         const final = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
-        assert.strictEqual(final.hooks.PreToolUse.length, 1, 'PreToolUse must not duplicate on repeated runs');
-        assert.strictEqual(final.hooks.Stop.length, 1, 'Stop must not duplicate on repeated runs');
+        // PreToolUse and Stop each carry two AOS entries (gate + trail-relay); what must hold is that re-runs add none.
+        assert.strictEqual(final.hooks.PreToolUse.length, once.hooks.PreToolUse.length, 'PreToolUse must not duplicate on repeated runs');
+        assert.strictEqual(final.hooks.Stop.length, once.hooks.Stop.length, 'Stop must not duplicate on repeated runs');
         assert.strictEqual(final.hooks.PreInvocation.length, 1, 'PreInvocation must not duplicate on repeated runs');
     });
 
@@ -398,16 +401,19 @@ describe('Challenger Suite 2: memB Injection Hook Robustness', () => {
             {
                 project_id: 'user_test_proj',
                 user_id: 'alice',
+                category: 'project_card',
                 memory: 'Alice specific preference for user_test_proj'
             },
             {
                 project_id: 'user_test_proj',
                 user_id: 'bdb_developer',
+                category: 'project_card',
                 memory: 'Baseline system rule for user_test_proj'
             },
             {
                 project_id: 'user_test_proj',
                 user_id: 'charlie',
+                category: 'project_card',
                 memory: 'Charlie confidential record'
             }
         ];
@@ -459,6 +465,7 @@ describe('Challenger Suite 2: memB Injection Hook Robustness', () => {
     test('tri-format JSON output structure compliance', () => {
         createMockMembDb(mockDbPath, [{
             project_id: 'tri_format_proj',
+            category: 'project_card',
             memory: 'High agency frontend taste tokens'
         }]);
 

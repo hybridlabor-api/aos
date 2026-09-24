@@ -60,6 +60,9 @@ A straight-line run through the BDB agent roster. Whoever invokes this skill inv
 - **Reads**: the goal (or `/bdbrainstorm` / `/grill-me` output), existing architecture.
 - **Action**: turns the goal into a system plan with an explicit capability map — module boundaries, dependency direction, what streams the goal actually touches.
 - **Writes**: `production_artifacts/00_execution_plan.md`
+- The plan uses the agenttrail component convention: `## Name {#id}` components with optional `needs:` / `files:` lines, and tasks as `- [ ] ... {#id}`.
+- The Architect renders the architecture with `aos-archify` to `production_artifacts/00_architecture.html` and links it from the relevant component with a `url:` line.
+- Plan-canvas can review that HTML too.
 
 ### 2. TechLead
 - **Agent**: `techlead`
@@ -70,6 +73,9 @@ A straight-line run through the BDB agent roster. Whoever invokes this skill inv
 > **Optional — Plan Canvas.** Before or alongside TechLead's gate, the plan can be reviewed in the browser: `aos-plan-canvas open production_artifacts/00_execution_plan.md`, then `aos-plan-canvas await …`. An `approve` verdict is a human confirmation of the gate. This is optional; the pipeline runs unchanged without it. See the `plan-canvas` skill.
 
 ### 3. Build (parallel, stream-selective)
+
+**Trigger B — start the live map:** `aos-trail . --plan production_artifacts/00_execution_plan.md --no-open` (safe to run twice: it reuses a map already running for this repo). Inside AO (env var `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. Tell each build agent to mark its tasks `[~]` before starting work, `[x]` when done, `[!]` when stuck, with an indented `by: <agent>` line, saving the plan file immediately after each change. See the `agenttrail` skill.
+
 Run only the streams the goal actually needs. A plain backend feature does not need step 3a or 3c; a pure copy change does not need 3b. Each stream's `skills:` frontmatter already lists what it should reach for — the invoker passes that list through rather than restating it here.
 
 | Stream | Agent | Reads | Writes |
@@ -110,6 +116,7 @@ Run only the streams the goal actually needs. A plain backend feature does not n
   3. valid trade-off (advisory)
   4. noise
 - **Writes**: `production_artifacts/review_findings.md`
+- **Optional — architecture delta**: compare planned vs built architecture with `aos-archify` (see the `archify` skill, architecture delta).
 
 **The linear pipeline ends here by default.** A plain build or refactor goal is done at step 4 — it does not automatically drag a quality gate and release report behind it.
 

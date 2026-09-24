@@ -38,6 +38,7 @@ const INSTALLER_PATH = path.join(REPO_ROOT, 'installer.js');
 const MEMB_INJECT_PATH = path.join(REPO_ROOT, '.claude', 'hooks', 'memb-inject.mjs');
 const STARTCYCLE_DISPATCH_PATH = path.join(REPO_ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
 const DOCTOR_PATH = path.join(REPO_ROOT, 'skills', 'global_config', 'aos-setup', 'scripts', 'aos-doctor.mjs');
+const DOCTOR_ENV = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' };
 
 const installer = require(INSTALLER_PATH);
 
@@ -57,15 +58,22 @@ function createSqliteDb(dbPath, records = []) {
   const db = new DatabaseSync(dbPath);
   db.exec(`
     CREATE TABLE IF NOT EXISTS memb_vectors (
-      rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT PRIMARY KEY,
       collection TEXT,
-      payload TEXT
+      vector BLOB,
+      payload TEXT,
+      created_at TEXT
     );
+    CREATE VIRTUAL TABLE IF NOT EXISTS memb_fts USING fts5(id, collection, content);
   `);
-  const stmt = db.prepare('INSERT INTO memb_vectors (collection, payload) VALUES (?, ?)');
-  for (const rec of records) {
-    stmt.run('bdb_agent_memory', JSON.stringify(rec));
-  }
+  const insert = db.prepare('INSERT INTO memb_vectors (id, collection, payload) VALUES (?, ?, ?)');
+  const insertFts = db.prepare('INSERT INTO memb_fts (id, collection, content) VALUES (?, ?, ?)');
+  records.forEach((record, index) => {
+    const id = `row-${index}`;
+    const payload = JSON.stringify(record);
+    insert.run(id, 'bdb_agent_memory', payload);
+    insertFts.run(id, 'bdb_agent_memory', String(record.memory || record.data || ''));
+  });
   db.close();
 }
 
@@ -112,17 +120,15 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual(parsed.name, 'user-antigravity-config', 'preserves top-level metadata');
       assert.strictEqual(parsed.hooks.CustomEvent.length, 1, 'preserves foreign custom event intact');
 
-      // Verify PreToolUse has exactly 1 foreign hook + 1 BDB hook
-      assert.strictEqual(parsed.hooks.PreToolUse.length, 2, 'PreToolUse has exactly 2 entries (1 foreign, 1 BDB)');
       const preToolCommands = parsed.hooks.PreToolUse.flatMap(e => e.hooks.map(h => h.command));
       assert.strictEqual(preToolCommands.filter(c => c.includes('go-gate.mjs')).length, 1, 'exactly 1 go-gate hook');
+      assert.strictEqual(preToolCommands.filter(c => c.includes('trail-relay.mjs')).length, 1, 'exactly 1 Antigravity trail relay hook');
       assert.strictEqual(preToolCommands.filter(c => c.includes('custom-pre-tool')).length, 1, 'exactly 1 foreign tool hook');
 
-      // Verify Stop has exactly 1 hook
-      assert.strictEqual(parsed.hooks.Stop.length, 1, 'Stop has exactly 1 entry');
-      assert(parsed.hooks.Stop[0].hooks[0].command.includes('graph-gate.mjs'));
+      const stopCommands = parsed.hooks.Stop.flatMap(e => e.hooks.map(h => h.command));
+      assert.strictEqual(stopCommands.filter(c => c.includes('graph-gate.mjs')).length, 1, 'exactly 1 graph-gate hook');
+      assert.strictEqual(stopCommands.filter(c => c.includes('trail-relay.mjs')).length, 1, 'exactly 1 Antigravity trail relay hook');
 
-      // Verify PreInvocation has exactly 1 entry with 2 sub-hooks (memb-inject, startcycle-dispatch)
       assert.strictEqual(parsed.hooks.PreInvocation.length, 1, 'PreInvocation has exactly 1 entry');
       assert.strictEqual(parsed.hooks.PreInvocation[0].hooks.length, 2, 'PreInvocation has exactly 2 hooks');
       const preInvocCmds = parsed.hooks.PreInvocation[0].hooks.map(h => h.command);
@@ -175,11 +181,11 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual(startMatches.length, 1, 'exactly 1 # AOS:HOOKS:START delimiter');
       assert.strictEqual(endMatches.length, 1, 'exactly 1 # AOS:HOOKS:END delimiter');
 
-      // Verify hook counts inside config.toml
       assert.strictEqual((content.match(/go-gate\.mjs/g) || []).length, 1, 'exactly 1 go-gate hook');
       assert.strictEqual((content.match(/graph-gate\.mjs/g) || []).length, 1, 'exactly 1 graph-gate hook');
-      assert.strictEqual((content.match(/memb-inject\.mjs/g) || []).length, 1, 'exactly 1 memb-inject hook');
+      assert.strictEqual((content.match(/memb-inject\.mjs/g) || []).length, 2, 'exactly 2 memb-inject hooks');
       assert.strictEqual((content.match(/startcycle-dispatch\.mjs/g) || []).length, 1, 'exactly 1 startcycle-dispatch hook');
+      assert.strictEqual((content.match(/trail-relay\.mjs/g) || []).length, 2, 'exactly 2 trail-relay hooks');
 
       // 11th run snapshot check
       const snapshotBefore = fs.readFileSync(tomlFile, 'utf8');
@@ -198,8 +204,8 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       }
 
       const agContent = JSON.parse(fs.readFileSync(agHooksFile, 'utf8'));
-      assert.strictEqual(agContent.hooks.PreToolUse.length, 1);
-      assert.strictEqual(agContent.hooks.Stop.length, 1);
+      assert.strictEqual(agContent.hooks.PreToolUse.length, 2);
+      assert.strictEqual(agContent.hooks.Stop.length, 2);
       assert.strictEqual(agContent.hooks.PreInvocation.length, 1);
 
       const cdxContent = fs.readFileSync(cdxConfigFile, 'utf8');
@@ -230,16 +236,19 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       // Create test SQLite memories
       createSqliteDb(mockDbPath, [
         {
+          category: 'project_card',
           project_id: 'alpha-service',
           user_id: 'engineer_jane',
           data: 'Alpha service strictly implements hexagonal architecture.'
         },
         {
+          category: 'project_card',
           project: 'alpha-service',
           user_id: 'bdb_developer',
           memory: 'Standard build command for alpha service is pnpm build.'
         },
         {
+          category: 'project_card',
           metadata: { project_id: 'other-service' },
           user_id: 'engineer_jane',
           data: 'Other service memory that must not be leaked to alpha service.'
@@ -304,11 +313,11 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert(!out.systemMessage.includes('Other service memory'));
     });
 
-    test('memb-inject: Claude Code simulation with hook_event_name and cwd', () => {
+    test('memb-inject: Claude Code SessionStart simulation with cwd', () => {
       const claudePayload = JSON.stringify({
-        prompt: 'Build service',
+        prompt: '',
         cwd: mockProjectDir,
-        hook_event_name: 'UserPromptSubmit'
+        hook_event_name: 'SessionStart'
       });
 
       const res = runNode(MEMB_INJECT_PATH, {
@@ -322,7 +331,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
 
       assert.strictEqual(res.status, 0);
       const out = JSON.parse(res.stdout);
-      assert.strictEqual(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
+      assert.strictEqual(out.hookSpecificOutput.hookEventName, 'SessionStart');
       assert(out.hookSpecificOutput.additionalContext.includes('hexagonal architecture'));
     });
 
@@ -414,7 +423,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       // Run doctor with mock HOME
       let res = runNode(DOCTOR_PATH, {
         args: ['--json'],
-        env: { HOME: mockHome }
+        env: { HOME: mockHome, ...DOCTOR_ENV }
       });
       let doc = JSON.parse(res.stdout);
       assert(Array.isArray(doc.results), 'doc has results array');
@@ -428,7 +437,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
 
       res = runNode(DOCTOR_PATH, {
         args: ['--json'],
-        env: { HOME: mockHome }
+        env: { HOME: mockHome, ...DOCTOR_ENV }
       });
       doc = JSON.parse(res.stdout);
       agHookCheck = doc.results.find(r => r.area === 'hooks' && r.name.includes('Antigravity'));
@@ -442,7 +451,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       // Doctor without config.toml
       let res = runNode(DOCTOR_PATH, {
         args: ['--json'],
-        env: { HOME: mockHome }
+        env: { HOME: mockHome, ...DOCTOR_ENV }
       });
       let doc = JSON.parse(res.stdout);
       let cdxCheck = doc.results.find(r => r.area === 'hooks' && r.name.includes('Codex'));
@@ -455,38 +464,36 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
 
       res = runNode(DOCTOR_PATH, {
         args: ['--json'],
-        env: { HOME: mockHome }
+        env: { HOME: mockHome, ...DOCTOR_ENV }
       });
       doc = JSON.parse(res.stdout);
       cdxCheck = doc.results.find(r => r.area === 'hooks' && r.name.includes('Codex'));
       assert.strictEqual(cdxCheck.ok, true, 'reports wired config.toml after merge');
     });
 
-    test('aos-doctor: verifies memb-inject.mjs version 3 requirement', () => {
+    test('aos-doctor: verifies memb-inject.mjs version 5 requirement', () => {
       const hooksDir = path.join(mockHome, '.claude', 'hooks');
       fs.mkdirSync(hooksDir, { recursive: true });
 
-      // Stale v2 hook
-      fs.writeFileSync(path.join(hooksDir, 'memb-inject.mjs'), '// aos-hook-version: 2\n');
+      fs.writeFileSync(path.join(hooksDir, 'memb-inject.mjs'), '// aos-hook-version: 4\n');
       let res = runNode(DOCTOR_PATH, {
         args: ['--json'],
-        env: { HOME: mockHome }
+        env: { HOME: mockHome, ...DOCTOR_ENV }
       });
       let doc = JSON.parse(res.stdout);
       let membCheck = doc.results.find(r => r.area === 'hooks' && r.name === 'memb-inject.mjs');
-      assert.strictEqual(membCheck.ok, false, 'flags v2 hook as failing');
-      assert(membCheck.detail.includes('v2, this release ships v3'));
+      assert.strictEqual(membCheck.ok, false, 'flags v4 hook as failing');
+      assert(membCheck.detail.includes('v4, this release ships v5'));
 
-      // Current v3 hook
-      fs.writeFileSync(path.join(hooksDir, 'memb-inject.mjs'), '// aos-hook-version: 3\n');
+      fs.writeFileSync(path.join(hooksDir, 'memb-inject.mjs'), '// aos-hook-version: 5\n');
       res = runNode(DOCTOR_PATH, {
         args: ['--json'],
-        env: { HOME: mockHome }
+        env: { HOME: mockHome, ...DOCTOR_ENV }
       });
       doc = JSON.parse(res.stdout);
       membCheck = doc.results.find(r => r.area === 'hooks' && r.name === 'memb-inject.mjs');
-      assert.strictEqual(membCheck.ok, true, 'approves v3 hook');
-      assert(membCheck.detail.includes('(v3)'));
+      assert.strictEqual(membCheck.ok, true, 'approves v5 hook');
+      assert(membCheck.detail.includes('(v5)'));
     });
   });
 
@@ -546,15 +553,21 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
         prompt: `/startcycle-graph ${largeGoal}`
       });
 
-      const res = runNode(STARTCYCLE_DISPATCH_PATH, {
-        input: payload,
-        env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
-        cwd: REPO_ROOT
-      });
+      for (let i = 0; i < 5; i++) {
+        const res = runNode(STARTCYCLE_DISPATCH_PATH, {
+          input: payload,
+          env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
+          cwd: REPO_ROOT,
+          timeout: 30000
+        });
 
-      assert.strictEqual(res.status, 0, 'exits 0 on large payload');
-      const out = JSON.parse(res.stdout.trim());
-      assert(out.result);
+        assert.strictEqual(res.status, 0, 'exits 0 on large payload');
+        assert(res.stdout, 'returns a response for large payload');
+        const out = JSON.parse(res.stdout.trim());
+        assert(out.injectSteps, 'contains injectSteps');
+        assert(out.systemMessage, 'contains systemMessage');
+        assert(out.result, 'contains execution result');
+      }
     });
   });
 });

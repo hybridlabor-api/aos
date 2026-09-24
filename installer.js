@@ -1828,6 +1828,50 @@ function moduleBasePath() {
     return scriptDir.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
 }
 
+// deja resolves its exclude file as $XDG_CONFIG_HOME/deja/exclude, falling
+// back to $HOME/.config on ALL platforms including Windows -- do not switch
+// this to os.UserConfigDir()/APPDATA, deja would never read that file there.
+function ensureDejaExclude(excludePath) {
+    fs.mkdirSync(path.dirname(excludePath), { recursive: true });
+    let existing = '';
+    if (fs.existsSync(excludePath)) {
+        existing = fs.readFileSync(excludePath, 'utf8');
+    }
+    // deja skips comment lines when matching, so a '# secret' line does not
+    // count as the pattern being present. Only a line trimming to exactly
+    // 'secret' counts -- never rewrite, reorder or deduplicate user lines.
+    if (existing.split(/\r?\n/).some(line => line.trim() === 'secret')) return false;
+    let content = existing;
+    if (content.length > 0 && !content.endsWith('\n')) content += '\n';
+    fs.writeFileSync(excludePath, `${content}secret\n`);
+    return true;
+}
+
+async function installDeja() {
+    if (DRY_RUN) {
+        log.step('[dry-run] would install deja-vu 0.21.1 globally and add its exclude pattern');
+        return;
+    }
+    try {
+        log.step('Installing deja-vu session memory...');
+        execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore' });
+    } catch (e) {
+        log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
+    }
+    if (!hasExecutable('deja')) {
+        log.warn('deja is not on PATH. Install it with: npm install -g @vshulcz/deja-vu@0.21.1');
+    }
+    const base = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
+    const excludePath = path.join(base, 'deja', 'exclude');
+    try {
+        if (ensureDejaExclude(excludePath)) {
+            log.step(`Added 'secret' to the deja exclude list at ${excludePath}`);
+        }
+    } catch (e) {
+        log.warn(`Could not update the deja exclude list at ${excludePath}: ${e.message}. Add the line 'secret' to it by hand.`);
+    }
+}
+
 async function installMemB(interactive) {
     let installWebUI = true;
     if (interactive && !isAutoYes) {
@@ -1845,6 +1889,7 @@ async function installMemB(interactive) {
         log.warn('Skipping memB setup: the module could not be downloaded.');
         return;
     }
+    await installDeja();
     if (DRY_RUN) {
         log.step('[dry-run] would bootstrap memB venv + pip requirements');
         return;
@@ -2846,6 +2891,13 @@ async function installMcpsForTarget(paths, ctx) {
     const skippedMcpConfigKeys = resolveUnsupportedMcpConfigKeys();
     try {
         const parsedMcpConfig = JSON.parse(mcpConfigStr);
+        // npm's Windows shim is deja.cmd, which Node refuses to spawn without
+        // a shell (EINVAL since the CVE-2024-27980 fix) -- wrap the command in
+        // cmd /c here so every generated config, the Codex TOML block and the
+        // ~/.claude.json mirror get the launchable form.
+        if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
+            parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+        }
         const finalMcpServers = {};
         const availableFolders = fs.readdirSync(mcpSrcDir);
 
@@ -2903,7 +2955,7 @@ async function installMcpsForTarget(paths, ctx) {
             ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')
             : path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'bin', 'python');
         const pythonBinValue = pythonBinPath.split('\\').join('/');
-        const geminiKeyValue = creds.gemini || process.env.GEMINI_API_KEY || '';
+        const geminiKeyValue = (creds.keyEnvName === 'GEMINI_API_KEY' ? creds.gemini : '') || process.env.GEMINI_API_KEY || '';
         mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, () => JSON.stringify(pythonBinValue).slice(1, -1));
         mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, () => JSON.stringify(geminiKeyValue).slice(1, -1));
     }
@@ -2939,39 +2991,12 @@ async function installMcpsForTarget(paths, ctx) {
     if (!mcpTemplate.ok) {
         log.warn(`No MCP config was written: the template could not be read. ${configName} left untouched.`);
     } else if (isTomlConfig) {
-        const snippetPath = `${paths.mcpConfigPath}.bdb-mcp-servers.toml`;
-        const tomlKey = (k) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k));
-        const tomlValue = (v) => {
-            if (Array.isArray(v)) return `[${v.map(tomlValue).join(', ')}]`;
-            if (v && typeof v === 'object') {
-                const pairs = Object.entries(v).map(([k, x]) => `${tomlKey(k)} = ${tomlValue(x)}`);
-                return `{ ${pairs.join(', ')} }`;
-            }
-            if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-            return JSON.stringify(String(v));
-        };
         try {
-            const servers = JSON.parse(mcpConfigStr).mcpServers || {};
-            const tables = Object.entries(servers).map(([name, cfg]) => {
-                const rows = [`[mcp_servers.${tomlKey(name)}]`];
-                Object.entries(cfg || {}).forEach(([k, v]) => rows.push(`${tomlKey(k)} = ${tomlValue(v)}`));
-                return rows.join('\n');
-            });
-            const snippet = [
-                '# BDB MCP servers for Codex, generated by installer.beta.js.',
-                `# Append these tables to ${configName}; if you ran the installer`,
-                '# before, replace the [mcp_servers.*] tables of the same name',
-                '# instead of adding them a second time.',
-                '',
-                tables.join('\n\n'),
-                ''
-            ].join('\n');
-            // Snippets can embed injected API keys — keep them user-readable only.
-            fs.writeFileSync(snippetPath, snippet, { mode: 0o600 });
-            try { fs.chmodSync(snippetPath, 0o600); } catch (e) { logDebug(e, 'chmod snippetPath'); }
-            log.warn(`${configName} is TOML; written as snippet instead: ${snippetPath}`);
+            const skipped = mergeCodexTomlMcpServers(paths.mcpConfigPath, JSON.parse(mcpConfigStr).mcpServers || {});
+            log.step(`Merged BDB MCP servers into ${configName}`);
+            if (skipped.length) log.step(`Kept your own entries for: ${skipped.join(', ')}`);
         } catch (e) {
-            log.warn(`Could not write the Codex TOML snippet: ${e.message}`);
+            log.warn(`Could not merge MCP servers into ${configName}: ${e.message}`);
         }
     } else if (mode === 'merge' && fs.existsSync(paths.mcpConfigPath) && !existingConfigIsEmpty()) {
         const oldConfig = readJsonFile(paths.mcpConfigPath);
@@ -3626,13 +3651,14 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs'];
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
     // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
-    // prompt in any project the harness was never installed into.
-    const machineGlobalHooks = ['memb-inject.mjs'];
+    // prompt in any project the harness was never installed into. trail-relay
+    // talks to machine-global live-map daemons, so it is anchored the same way.
+    const machineGlobalHooks = ['memb-inject.mjs', 'trail-relay.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
             .map((h) => (h && typeof h.command === 'string' ? h.command : ''))
@@ -3697,7 +3723,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [entry])
             .map((h) => (h && typeof h.command === 'string' ? h.command : (typeof h === 'string' ? h : '')))
@@ -3715,11 +3741,17 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
             {
                 matcher: "run_command|Bash",
                 hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'go-gate.mjs')}"`, timeout: 10000 }]
+            },
+            {
+                hooks: [{ type: "command", command: `node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent agy --event PreToolUse`, timeout: 2000 }]
             }
         ],
         Stop: [
             {
                 hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'graph-gate.mjs')}"`, timeout: 10000 }]
+            },
+            {
+                hooks: [{ type: "command", command: `node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent agy --event Stop`, timeout: 2000 }]
             }
         ],
         PreInvocation: [
@@ -3776,6 +3808,46 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
     }
 }
 
+// Writes the AOS MCP servers into Codex's config.toml between AOS:MCP markers,
+// replacing the block on re-runs. A server the user already declared outside the
+// block is skipped: a second [mcp_servers.<name>] table would make the file invalid TOML.
+function mergeCodexTomlMcpServers(configTomlPath, servers) {
+    const tomlKey = (k) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k));
+    const tomlValue = (v) => {
+        if (Array.isArray(v)) return `[${v.map(tomlValue).join(', ')}]`;
+        if (v && typeof v === 'object') {
+            const pairs = Object.entries(v).map(([k, x]) => `${tomlKey(k)} = ${tomlValue(x)}`);
+            return `{ ${pairs.join(', ')} }`;
+        }
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        return JSON.stringify(String(v));
+    };
+    let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
+    const blockRegex = /# AOS:MCP:START[\s\S]*?# AOS:MCP:END\n?/;
+    const outside = content.replace(blockRegex, '');
+    const tables = [];
+    const skipped = [];
+    Object.entries(servers || {}).forEach(([name, cfg]) => {
+        const header = `[mcp_servers.${tomlKey(name)}]`;
+        const headerRegex = new RegExp(`^${header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm');
+        if (headerRegex.test(outside)) { skipped.push(name); return; }
+        const rows = [header];
+        Object.entries(cfg || {}).forEach(([k, v]) => rows.push(`${tomlKey(k)} = ${tomlValue(v)}`));
+        tables.push(rows.join('\n'));
+    });
+    const block = ['# AOS:MCP:START', tables.join('\n\n'), '# AOS:MCP:END'].join('\n');
+    if (blockRegex.test(content)) {
+        content = content.replace(blockRegex, `${block}\n`);
+    } else if (content.length) {
+        content = `${content.trimEnd()}\n\n${block}\n`;
+    } else {
+        content = `${block}\n`;
+    }
+    fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
+    try { fs.chmodSync(configTomlPath, 0o600); } catch (e) { logDebug(e, 'chmod configTomlPath'); }
+    return skipped;
+}
+
 // Merge the BDB hooks into ChatGPT Codex CLI's config.toml (~/.codex/config.toml or
 // .codex/config.toml), ensuring [features] hooks = true and preserving existing
 // non-BDB settings, comments, and MCP servers.
@@ -3806,11 +3878,29 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`)}`,
         'timeout = 30',
         '',
+        '[[hooks.SessionStart]]',
+        '[[hooks.SessionStart.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`)}`,
+        'timeout = 30',
+        '',
         '[[hooks.UserPromptSubmit]]',
         '[[hooks.UserPromptSubmit.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(workflowsDir, 'startcycle-dispatch.mjs')}"`)}`,
         'timeout = 30',
+        '',
+        '[[hooks.PreToolUse]]',
+        '[[hooks.PreToolUse.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event PreToolUse`)}`,
+        'timeout = 2',
+        '',
+        '[[hooks.Stop]]',
+        '[[hooks.Stop.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event Stop`)}`,
+        'timeout = 2',
         '# AOS:HOOKS:END'
     ].join('\n');
 
@@ -3926,6 +4016,9 @@ async function promptMcpSelection(tier) {
             .filter(d => !d.name.startsWith('.') && d.name !== '__pycache__')
             .map(d => d.name);
     } catch (e) { return []; }
+
+    // memb-mcp ships via npm, not as a folder under mcps/, so readdir never lists it.
+    if (!availableMcps.includes(CORE_MCP)) availableMcps.push(CORE_MCP);
 
     if (tier === '2') {
         const basicMcps = ['computer-use-mcp', 'memb-mcp', 'windows-computer-use-mcp'];
@@ -4471,7 +4564,7 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
                 // OpenCode provider APIs (e.g. OpenAI-compatible, Console) enforce tool name length limits
                 // (e.g. max 64 chars) and context limits. Loading 20+ MCPs causes provider errors (e.g. 73-char tool names).
                 // OpenCode uses a slim profile: only core servers (memb_mcp, zavora_computer_use) are enabled by default.
-                const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use']);
+                const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use', 'deja']);
                 const existingMcp = existing && existing.mcp ? existing.mcp : {};
                 const hasExistingKeys = Object.keys(existingMcp).length > 0;
 
@@ -4595,6 +4688,14 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
             syncMcpConfig(path.join(homeDir, '.aider', 'mcp.json'));
         } else if (d.key === 'opencode') {
             syncOpencodeConfig(path.join(d.path, 'opencode.jsonc'));
+        } else if (d.key === 'codex') {
+            // Universal Sync never had a branch for Codex, so its config.toml
+            // was never updated here even though the log claimed it was.
+            try {
+                mergeCodexTomlMcpServers(path.join(d.path, 'config.toml'), masterMcpData.mcpServers || {});
+            } catch (e) {
+                log.warn(`Failed to sync MCP to ${path.join(d.path, 'config.toml')}: ${e.message}`);
+            }
         }
     }
     log.success('Universal Sync Complete!');
@@ -5129,9 +5230,12 @@ module.exports = {
     mergeAntigravityHooks,
     mergeCodexTomlHooks,
     mergeCodexHooks: mergeCodexTomlHooks,
+    mergeCodexTomlMcpServers,
     installGlobalHooks,
     installProjectHarness,
+    promptMcpSelection,
     mirrorMcpServersTo,
+    ensureDejaExclude,
     // Manifest store (exported for verification tests)
     computeFileHash,
     getInstallManifestPath,

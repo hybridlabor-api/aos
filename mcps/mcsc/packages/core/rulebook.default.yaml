@@ -1,0 +1,49 @@
+version: 1
+# Model ids are the SHORT ids agy reports in `agy models` (left column) --
+# e.g. "gemini-3.8-flash-medium", not "Gemini 3.8 Flash (Medium)" and not
+# "gemini-flash-3.8". Verify with `agy models` after any agy upgrade; the
+# ids carry both the version AND the effort suffix (-low/-medium/-high),
+# so dropping the suffix does not resolve.
+rules:
+  # Media + fast/mechanical coding -> newest Flash. Cheap, quick, and the
+  # tier that actually has media capability.
+  - id: media-generation
+    match: {task_type: [image-gen, video-gen, media]}
+    candidates:
+      - {cli: agy, model: "gemini-3.8-flash-medium"}
+      - {cli: native}
+
+  - id: fast-coding
+    match: {task_type: [boilerplate, quick-check, scaffold, mechanical-edit]}
+    candidates:
+      - {cli: agy, model: "gemini-3.8-flash-medium"}
+      - {cli: opencode, model_select: {provider: opencode, prefer: [free]}}
+      - {cli: native}
+
+  # Research reads a lot and distils -- same family, more effort headroom.
+  - id: deep-research
+    match: {task_type: [research, web-search, docs-survey]}
+    candidates:
+      - {cli: agy, model: "gemini-3.8-flash-high"}
+      - {cli: opencode, model_select: {provider: opencode, prefer: [free], match: "*gemini*"}}
+      - {cli: native}
+
+  # Review needs real judgment to be adversarial rather than agreeable --
+  # Sonnet, not a Flash tier.
+  - id: review
+    match: {task_type: [review, code-review, adversarial-review]}
+    candidates:
+      - {cli: agy, model: "claude-sonnet-4-6"}
+      - {cli: native}
+
+  # Architecture/refactor planning: mistakes here propagate to every
+  # downstream worker, so this is the one place worth the top tier.
+  - id: complex-code
+    match: {task_type: [architecture, refactor-plan], min_complexity: high}
+    candidates:
+      - {cli: agy, model: "claude-opus-4-6-thinking"}
+      - {cli: agy, model: "claude-sonnet-4-6"}
+      - {cli: codex, model: "gpt-5-codex"}
+      - {cli: native}
+
+defaults: {fallback: native, on_unresolvable: native}

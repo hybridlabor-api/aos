@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const { mergeBdbSettingsHooks } = require('../installer.js');
 
@@ -151,29 +151,72 @@ describe('installGlobalHooks (Quick Update delivery path)', () => {
     });
 });
 
-// A module update used to unpack straight over the installed tree, so a file
-// the new version had dropped stayed on disk while package.json claimed the
-// module was current. Needs the network (npm pack), so it is skipped offline.
 describe('downloadOrUpdateModule (module replacement)', () => {
     let dir;
+    let fixtureTarball;
+    let fakeNpmDir;
+    let resultPath;
 
-    test.beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdb-module-')); });
+    test.beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdb-module-'));
+        const fixtureRoot = path.join(dir, 'fixture');
+        const packageRoot = path.join(fixtureRoot, 'package');
+        fs.mkdirSync(packageRoot, { recursive: true });
+        fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({
+            name: '@hybridlabor-api/bdb-synapse',
+            version: '1.2.1'
+        }));
+        fs.writeFileSync(path.join(packageRoot, 'index.js'), 'module.exports = {};\n');
+        fixtureTarball = path.join(dir, 'fixture.tgz');
+        resultPath = path.join(dir, 'result.json');
+        execFileSync('tar', ['-czf', fixtureTarball, '-C', fixtureRoot, 'package']);
+
+        fakeNpmDir = path.join(dir, 'bin');
+        fs.mkdirSync(fakeNpmDir, { recursive: true });
+        const fakeNpmScript = path.join(fakeNpmDir, 'fake-npm.js');
+        fs.writeFileSync(fakeNpmScript, [
+            "const fs = require('node:fs');",
+            "const path = require('node:path');",
+            "const [command] = process.argv.slice(2);",
+            "if (command === 'view') process.stdout.write('1.2.1\\n');",
+            "else if (command === 'pack') fs.copyFileSync(process.env.FAKE_TARBALL, path.join(process.cwd(), 'fixture.tgz'));",
+            'else process.exit(1);',
+            ''
+        ].join('\n'));
+        if (process.platform === 'win32') {
+            fs.writeFileSync(path.join(fakeNpmDir, 'npm.cmd'), `@echo off\r\n"${process.execPath}" "${fakeNpmScript}" %*\r\n`);
+        } else {
+            const npmPath = path.join(fakeNpmDir, 'npm');
+            fs.writeFileSync(npmPath, `#!/bin/sh\nexec "${process.execPath}" "${fakeNpmScript}" "$@"\n`);
+            fs.chmodSync(npmPath, 0o755);
+        }
+    });
     test.afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
 
-    const online = () => {
-        try { execFileSync('npm', ['view', '@hybridlabor-api/bdb-synapse', 'version'], { timeout: 8000, stdio: 'ignore' }); return true; }
-        catch { return false; }
-    };
-
-    test('replaces the tree instead of merging into it, and keeps local state', { skip: !online() && 'npm registry unreachable' }, () => {
+    test('replaces the tree instead of merging into it, and keeps local state', () => {
         const mod = path.join(dir, 'mod');
         fs.mkdirSync(path.join(mod, '.venv'), { recursive: true });
         fs.writeFileSync(path.join(mod, 'package.json'), '{"name":"x","version":"0.0.1"}');
         fs.writeFileSync(path.join(mod, 'DROPPED-BY-NEW-VERSION.md'), 'stale');
         fs.writeFileSync(path.join(mod, '.venv', 'marker'), 'local state');
 
-        const { downloadOrUpdateModule } = require('../installer.js');
-        assert.equal(downloadOrUpdateModule('@hybridlabor-api/bdb-synapse', mod, 'test module'), true);
+        const childScript = [
+            `const fs = require('node:fs');`,
+            `const { downloadOrUpdateModule } = require(${JSON.stringify(path.join(REPO, 'installer.js'))});`,
+            `const ok = downloadOrUpdateModule(${JSON.stringify('@hybridlabor-api/bdb-synapse')}, ${JSON.stringify(mod)}, 'test module');`,
+            `fs.writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify({ ok }));`
+        ].join('');
+        const res = spawnSync(process.execPath, ['-e', childScript], {
+            env: {
+                ...process.env,
+                PATH: `${fakeNpmDir}${path.delimiter}${process.env.PATH || ''}`,
+                FAKE_TARBALL: fixtureTarball
+            },
+            encoding: 'utf8',
+            timeout: 30000
+        });
+        assert.equal(res.status, 0, res.stderr);
+        assert.equal(JSON.parse(fs.readFileSync(resultPath, 'utf8')).ok, true);
 
         assert.ok(!fs.existsSync(path.join(mod, 'DROPPED-BY-NEW-VERSION.md')), 'a file absent from the new version must be gone');
         assert.ok(fs.existsSync(path.join(mod, '.venv', 'marker')), 'local state outside the tarball must survive');

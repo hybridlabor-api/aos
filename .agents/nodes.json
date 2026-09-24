@@ -45,6 +45,8 @@
       "optional": false,
       "skills": [
         "godmode-ui-ux",
+        "bdbdesignpro",
+        "editable-design",
         "senior-frontend",
         "landing-page-generator",
         "shadcn",
@@ -125,12 +127,14 @@
       "optional": false,
       "skills": [
         "godmode-shipping",
+        "brag",
         "webapp-testing",
         "seo-audit",
         "wcag-audit-patterns",
         "github-repo",
         "clean-code",
-        "bdbresilience"
+        "bdbresilience",
+        "bdb-security-audit"
       ],
       "instructions": null
     }

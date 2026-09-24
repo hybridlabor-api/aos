@@ -76,7 +76,7 @@ Define hardware and software nodes as strict bounded contexts:
 
 ## 5. Mandatory — Plan Canvas Review
 
-Before this session concludes, run `aos-plan-canvas open <file>` against `signal-flow.md` (or the combined show-control spec), then `aos-plan-canvas await <file>` and leave it running. The user reviews the signal flow diagram, hardware topology, and failover matrix in the browser (Mermaid renders live, click-to-annotate, chat rail). Do not consider the show architecture finalized before an `approve` verdict. A `request_changes` verdict means revise the artifact and reopen — it live-reloads. This is a plain CLI tool, identical regardless of which agent harness runs this skill. See the `plan-canvas` skill.
+Before this session concludes, run `aos-plan-canvas open <file>` against `signal-flow.md` (or the combined show-control spec), then `aos-plan-canvas await <file>` and leave it running. The user reviews the signal flow diagram, hardware topology, and failover matrix in the browser (Mermaid renders live, click-to-annotate, chat rail). Do not consider the show architecture finalized before an `approve` verdict. A `request_changes` verdict means revise the artifact and reopen — it live-reloads. This is a plain CLI tool, identical regardless of which agent harness runs this skill. See the `plan-canvas` skill. If a build follows the approve, Trigger A starts the live map (`agenttrail` skill); `aos-archify` can render the signal flow as a workflow or architecture diagram for the review.
 
 ---
 

@@ -111,6 +111,14 @@ One backstop exists, and it is not an excuse to skip the above:
   end the session, and start implementing. `request-changes` means revise the
   artifact (the canvas live-reloads it) and keep the loop going.
 
+**After approve — start the live map (Trigger A).** When the approved artifact
+is a build plan (e.g. `production_artifacts/00_execution_plan.md`) and a
+multi-agent build follows, start the aos-trail live map:
+`aos-trail . --plan production_artifacts/00_execution_plan.md --no-open` — it
+prints a URL (default http://localhost:5330). Inside AO (env var
+`AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. See the `agenttrail`
+skill. Not needed for reviews that are not followed by a build.
+
 **3. Always respond in the canvas**, then keep listening. One command does both:
 
 ```bash

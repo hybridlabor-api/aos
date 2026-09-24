@@ -106,6 +106,18 @@ the model followed it "in spirit" inline instead of invoking the script —
 silently skipping the whole graph, with no `state.json`, no subagents, no
 Reviewer, and no quality gate ever running).
 
+## Live map
+
+When the build phase begins, the dispatcher starts the aos-trail live map
+(Trigger B) with the command below; it is safe to run twice, since
+`aos-trail` reuses a map already running for this repo:
+`aos-trail . --plan production_artifacts/00_execution_plan.md --no-open`
+(it prints a URL, default http://localhost:5330; inside AO, where
+`AO_BROWSER_CAPABILITY` is set, also run `ao preview <url>`). Agents follow
+the status-mark rules from the `agenttrail` skill: `[~]` before starting,
+`[x]` when done, `[!]` when stuck, with `by: <agent>`, saving the plan file
+immediately.
+
 ## Why this file is a thin router, not a spec
 
 The full contract — state schema, node/edge table, the Stop-hook

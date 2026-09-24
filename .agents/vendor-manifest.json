@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Pinned upstream vendor repositories tracked for AOS skills and tools",
+  "updated_at": "2026-09-24T07:27:44Z",
+  "vendors": {
+    "superdesign-skill": {
+      "upstream": "https://github.com/superdesigndev/superdesign-skill",
+      "pinned_commit": "f9f05cd988c247dce6c072eaf9ac6b162f2ffc4b",
+      "purpose": "Design tokens, typography hierarchy, spacing scale, component patterns, dsh",
+      "target_skill": "godmode-ui-ux"
+    },
+    "taste-skill": {
+      "upstream": "https://github.com/Leonxlnx/taste-skill",
+      "pinned_commit": "c184364c58658b2f131b4ae8bd3d206cabb3deee",
+      "purpose": "Aesthetic archetypes (Swiss, Minimalist, Luxury, Soft, Tactical) and taste injection",
+      "target_skill": "godmode-ui-ux"
+    },
+    "anti-slop": {
+      "upstream": "https://github.com/miqdadbadjuber/anti-slop",
+      "pinned_commit": "0e384b7bff3301c8ec56dea300330772fed28e6a",
+      "purpose": "Strict negative rules, banned buzzwords, banned generic patterns, touch zones",
+      "target_skill": "godmode-ui-ux, reviewer"
+    },
+    "editable-design": {
+      "upstream": "https://github.com/yejy53/Editable-Design",
+      "pinned_commit": "42ab412fec1d5f32cb86c107430e9fb69674200f",
+      "purpose": "Fixed-canvas visual design, interactive editor.html, exploded layer inspection",
+      "target_skill": "editable-design"
+    },
+    "brag": {
+      "upstream": "https://github.com/latent-spaces/brag",
+      "pinned_commit": "57ce4c9bb912f01a0078b154318bf67c5cbf780f",
+      "purpose": "Hyperframes project-to-launch-video generator",
+      "target_skill": "brag (post-shipping release hook)"
+    },
+    "skylos": {
+      "upstream": "https://github.com/duriantaco/skylos",
+      "pinned_commit": "0c95b002424453983d5c96708cf7865939745d98",
+      "purpose": "Diff-based AST and static security analyzer for shipping gate",
+      "target_skill": "bdb-security-audit, godmode-shipping"
+    },
+    "claude-red": {
+      "upstream": "https://github.com/SnailSploit/claude-red",
+      "pinned_commit": "739512a8588b28ff3b554e669391c22508602878",
+      "purpose": "Defensive audit heuristics and vulnerability checklists (offensive exploits stripped)",
+      "target_skill": "bdb-security-audit, security-reviewer"
+    }
+  }
+}

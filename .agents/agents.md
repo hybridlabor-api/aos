@@ -170,6 +170,7 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — see
   - `systematic-debugging`
   - `clean-code`
   - `api-design-principles`
+  - `bdb-security-audit`
 - **Output Artifact**: findings returned inline (writes no file)
 
 ---

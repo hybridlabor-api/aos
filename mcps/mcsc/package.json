@@ -1,0 +1,14 @@
+{
+  "name": "@hybridlabor-api/mcsc",
+  "version": "0.1.0",
+  "description": "Multi-CLI Subagent Configurator (MCSC) MCP Server for local subagent delegation",
+  "type": "module",
+  "main": "server.js",
+  "bin": {
+    "mcsc": "./packages/core/bin/mcsc.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "js-yaml": "^5.4.1"
+  }
+}
