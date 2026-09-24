@@ -415,6 +415,9 @@ function planStaleness() {
 }
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
+  // AOS patch: include planFile (relative path) and aosPlan (boolean) for AOS UI customization
+  const planFile = planArg ? path.relative(repo, planPath).split(path.sep).join('/') : undefined
+  const aosPlan = Boolean(planArg)
   return {
     boards, port,
     runs: liveRuns(),
@@ -423,6 +426,7 @@ function model() {
     hasPlan: planText.length > 0, treeTruncated,
     activity, recentActivity, planMtime, handoffs, hotFiles: hotFiles(), cycles,
     planStale: planStaleness(), lints: lintPlan(), hooksInstalled: hooksInstalled(),
+    planFile, aosPlan,
     now: Date.now(),
   }
 }
@@ -708,7 +712,15 @@ async function firstRunFlow() {
 }
 function onListen() {
   console.log(`agenttrail · ${session.project} · http://localhost:${port}`)
-  if (!planText) console.log('no PLAN.md found — run `agenttrail init` in the repo to scaffold one')
+  // AOS patch: when --plan is given, show a different startup message
+  if (!planText) {
+    if (planArg) {
+      const planFile = path.relative(repo, planPath).split(path.sep).join('/')
+      console.log(`waiting for the plan: ${planFile}`)
+    } else {
+      console.log('no PLAN.md found — run `agenttrail init` in the repo to scaffold one')
+    }
+  }
   if (openBrowser && !noOpen) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
     import('node:child_process').then(cp => cp.spawn(opener, [`http://localhost:${port}`], { stdio: 'ignore', detached: true }))

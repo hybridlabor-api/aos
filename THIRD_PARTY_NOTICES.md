@@ -249,9 +249,10 @@ The skill's own `LICENSE` and `THIRD_PARTY_NOTICES.md` ship alongside it.
 
 `skills/global_config/agenttrail/` carries the Map runtime only
 (`bin/agenttrail.mjs`, `public/index.html`) at commit `e4ba2da`, with its
-`LICENSE`. Kitchen is not included. Three patches, each marked `// AOS patch:`:
-a `--plan <path>` flag, a `hook --agent <name>` flag, and serving files under
-`production_artifacts/` so a card's relative `url:` opens.
+`LICENSE`. Kitchen is not included. Four patches, each marked `// AOS patch:`:
+a `--plan <path>` flag, a `hook --agent <name>` flag, serving files under
+`production_artifacts/` so a card's relative `url:` opens, and AOS wording in
+the page when `--plan` is set (real plan path, no upstream init/backfill hints).
 
 ---
 
