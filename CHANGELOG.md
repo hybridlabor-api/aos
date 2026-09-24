@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.0](https://github.com/hybridlabor-api/aos/compare/v4.6.6...v4.7.0) (2026-09-24)
+
+
+### Features
+
+* AOS 4.7.0 - Live Pipeline Map, deja-vu Memory, memB Second Brain & Security Engine ([#55](https://github.com/hybridlabor-api/aos/issues/55)) ([a943785](https://github.com/hybridlabor-api/aos/commit/a9437859520e6626f05933d8adb627f2c045582d))
+
 ## [4.6.6](https://github.com/hybridlabor-api/aos/compare/v4.6.5...v4.6.6) (2026-09-20)
 
 
