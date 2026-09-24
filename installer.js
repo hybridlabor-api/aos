@@ -2903,7 +2903,7 @@ async function installMcpsForTarget(paths, ctx) {
             ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')
             : path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'bin', 'python');
         const pythonBinValue = pythonBinPath.split('\\').join('/');
-        const geminiKeyValue = creds.gemini || process.env.GEMINI_API_KEY || '';
+        const geminiKeyValue = (creds.keyEnvName === 'GEMINI_API_KEY' ? creds.gemini : '') || process.env.GEMINI_API_KEY || '';
         mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, () => JSON.stringify(pythonBinValue).slice(1, -1));
         mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, () => JSON.stringify(geminiKeyValue).slice(1, -1));
     }
@@ -3945,6 +3945,9 @@ async function promptMcpSelection(tier) {
             .filter(d => !d.name.startsWith('.') && d.name !== '__pycache__')
             .map(d => d.name);
     } catch (e) { return []; }
+
+    // memb-mcp ships via npm, not as a folder under mcps/, so readdir never lists it.
+    if (!availableMcps.includes(CORE_MCP)) availableMcps.push(CORE_MCP);
 
     if (tier === '2') {
         const basicMcps = ['computer-use-mcp', 'memb-mcp', 'windows-computer-use-mcp'];
@@ -5150,6 +5153,7 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     installGlobalHooks,
     installProjectHarness,
+    promptMcpSelection,
     mirrorMcpServersTo,
     // Manifest store (exported for verification tests)
     computeFileHash,
