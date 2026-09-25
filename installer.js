@@ -1810,17 +1810,16 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
             }
         }
 
-        // On Windows a running daemon (e.g. memB WebUI on :8088) holds open
+        // Phase 1: retire the live tree. On Windows a running daemon holds open
         // file handles into targetDir — retry with brief backoff before failing.
-        // ponytail: 3 retries × 500ms; escalate to process kill if this ceiling matters
-        let swapped = false;
-        for (let attempt = 0; attempt < 3 && !swapped; attempt++) {
+        // ponytail: 3 retries × 600ms; escalate to process kill if this ceiling matters
+        let phase1Done = false;
+        for (let attempt = 0; attempt < 3 && !phase1Done; attempt++) {
             try {
                 fs.renameSync(targetDir, retiredDir);
-                fs.renameSync(stagingDir, targetDir);
-                swapped = true;
-            } catch (swapError) {
-                const retriable = swapError.code === 'EPERM' || swapError.code === 'EBUSY';
+                phase1Done = true;
+            } catch (retireError) {
+                const retriable = retireError.code === 'EPERM' || retireError.code === 'EBUSY';
                 if (retriable && attempt < 2) {
                     const delayMs = 600 * (attempt + 1);
                     try {
@@ -1832,12 +1831,19 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
                     } catch (_) {}
                     continue;
                 }
-                if (fs.existsSync(retiredDir) && !fs.existsSync(targetDir)) {
-                    try { fs.renameSync(retiredDir, targetDir); } catch (_) {}
-                }
                 safeRmDirSync(stagingDir);
-                throw swapError;
+                throw retireError;
             }
+        }
+
+        // Phase 2: promote the staging tree. stagingDir was just unpacked and
+        // has no open handles, so a single attempt is sufficient.
+        try {
+            fs.renameSync(stagingDir, targetDir);
+        } catch (promoteError) {
+            try { fs.renameSync(retiredDir, targetDir); } catch (_) {}
+            safeRmDirSync(stagingDir);
+            throw promoteError;
         }
 
         // On Windows especially, deleting a directory that was just renamed or contains
