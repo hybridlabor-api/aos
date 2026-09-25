@@ -12,6 +12,8 @@
     "bin/",
     "themes/",
     "scripts/",
+    "extensions/",
+    "!packages/aos-cli/node_modules",
     "README.md"
   ],
   "scripts": {

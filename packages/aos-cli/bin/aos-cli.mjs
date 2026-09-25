@@ -25,7 +25,11 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const agents = path.join(os.homedir(), '.agents');
 
-const args = ['--theme', path.join(root, 'themes', 'aos.json'), '--use-theme', 'aos'];
+const args = [
+    '--theme', path.join(root, 'themes', 'aos.json'),
+    '--use-theme', 'aos',
+    '--extension', path.join(root, 'extensions', 'aos.ts'),
+];
 
 // pi discovers AGENTS.md from the working directory and its ancestors only, and
 // ~/.agents/AGENTS.md is neither. Without this flag the dispatcher graph -- the

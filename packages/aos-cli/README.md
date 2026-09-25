@@ -8,6 +8,15 @@ aos-cli "why is the go build failing"
 aos-cli --continue
 ```
 
+## In-session commands
+
+| | |
+|---|---|
+| `/aos-status` | Runs `aos-doctor --json` and shows every check, with the failing ones marked |
+| `/aos` | Menu: status, or the command to run outside for install / update / uninstall |
+
+Both are **read-only**. `aos-doctor --json` exits 1 whenever a check is not ok, which is the normal "something needs attention" answer, so the exit code is ignored and the report's own `ok` field decides. The install, update and uninstall entries do not spawn the installer: it animates and prompts, and nesting it inside pi's TUI corrupts both renderers. They report the command to run in a separate terminal instead.
+
 ## What it actually is
 
 A launcher, not a reimplementation. It adds three things to a plain `pi`:
@@ -26,6 +35,8 @@ Everything else — the agent loop, the model providers, the TUI, sessions, MCP-
 
 - AOS CLI and the AOS installer version and update independently. A pi update never drags in a 98 MB AOS reinstall.
 - AOS CLI runs without AOS installed — it just starts with no AOS skills and says so.
+- **It is not a pipeline executor.** The 7-node dispatcher graph reaches pi as instructions in `~/.agents/AGENTS.md`, not as machinery: the nodes are agent definitions, and the main session acts as the dispatcher, which is what `.agents/graph.md` specifies anyway. There is no `state.json` loop.
+- **No MCP.** pi has no MCP client, so memB, deja and mcsc are not available here. AOS CLI is a chat + skills harness; the other seven harnesses remain the machinery.
 
 ## Install
 
@@ -41,8 +52,10 @@ Requires Node >= 22.19 — pi's floor. The AOS installer itself still supports N
 ## Layout
 
 ```
-bin/aos-cli.mjs     the launcher (~40 lines)
-themes/aos.json     pi dark theme, AOS palette
+bin/aos-cli.mjs          the launcher (~40 lines)
+themes/aos.json          pi dark theme, AOS palette
+extensions/aos.ts        /aos and /aos-status
+scripts/check-theme.mjs  theme contract guard, run by `npm test`
 ```
 
 ## Licence
