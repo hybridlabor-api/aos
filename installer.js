@@ -3608,7 +3608,7 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall'];
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor'];
 
     for (const name of cliBins) {
         const targetMjs = path.join(globalAgentsBin, `${name}.mjs`);
@@ -4809,10 +4809,35 @@ async function runQuickUpdate(installState) {
 }
 
 
+function buildAoAnnouncementBanner() {
+    return [
+        '\x1b[36m╭──────────────────────────────────────────────────────────────────────────────╮\x1b[0m',
+        '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m   \x1b[1m\x1b[35m🚀 BDB AGENT ORCHESTRATOR APP — FINALE BETA JETZT VERFÜGBAR!\x1b[0m              \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m   Die nächste Generation der Cross-Harness Multi-Agenten-Orchestrierung      \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m   ist jetzt als finale Beta für alle User freigeschaltet.                    \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m   • \x1b[1mDashboard & WebUI:\x1b[0m  http://localhost:3101                                \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m   • \x1b[1mService-Befehl:\x1b[0m     ao service install  (Hintergrunddienst aktivieren)   \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m   • \x1b[1mQuick Launch:\x1b[0m       ao open  oder  ao service status                     \x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m   • \x1b[1mFeatures:\x1b[0m           Session-Telemetrie, Live-AgentTrail & Multi-Workspaces\x1b[36m│\x1b[0m',
+        '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
+        '\x1b[36m╰──────────────────────────────────────────────────────────────────────────────╯\x1b[0m\n'
+    ].join('\n');
+}
+
 async function main() {
     if (process.argv[2] === 'store') {
         const storeScript = path.join(srcDir, 'bin', 'aos-store.mjs');
         const result = spawnSync(process.execPath, [storeScript, ...process.argv.slice(3)], { stdio: 'inherit' });
+        process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
+    if (process.argv[2] === 'doctor' || process.argv[2] === 'checkup' || process.argv.includes('--doctor')) {
+        const doctorScript = path.join(srcDir, 'bin', 'aos-doctor.mjs');
+        const doctorArgs = process.argv.slice(process.argv[2] === 'doctor' || process.argv[2] === 'checkup' ? 3 : 2).filter(a => a !== '--doctor');
+        const result = spawnSync(process.execPath, [doctorScript, ...doctorArgs], { stdio: 'inherit' });
         process.exitCode = result.status == null ? 1 : result.status;
         return;
     }
@@ -4833,6 +4858,7 @@ async function main() {
 
     intro(buildHeroHeader(pkg.version));
     console.log(buildTelemetryCard({ installState, detections, daemonStatus }));
+    console.log(buildAoAnnouncementBanner());
 
     if (DRY_RUN) {
         // Precise on purpose: version comparison still queries the registry, and
@@ -4875,12 +4901,14 @@ async function main() {
         const options = installState.updateAvailable
             ? [
                 { value: 'quick', label: `⚡ Quick Update (v${installState.localVersion} ➔ v${installState.currentVersion})`, hint: 'refresh skills, templates & daemons' },
+                { value: 'doctor', label: '🩺 Run System Checkup / Doctor', hint: 'verify environment, placement, daemons & AO' },
                 { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
                 { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'change targets, tier or options' },
                 { value: 'uninstall', label: '🗑️ Uninstall AOS', hint: 'remove what this installer placed; your data stays' },
                 { value: 'cancel', label: '❌ Exit' }
               ]
             : [
+                { value: 'doctor', label: '🩺 Run System Checkup / Doctor', hint: 'verify environment, placement, daemons & AO' },
                 { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
                 { value: 'quick', label: '🔄 Verify & Refresh All Skills', hint: 're-sync and health check' },
                 { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'switch tier or targets' },
@@ -4896,6 +4924,12 @@ async function main() {
 
         if (action === 'cancel') {
             outro('Cancelled.');
+            return;
+        }
+        if (action === 'doctor') {
+            const doctorScript = path.join(srcDir, 'bin', 'aos-doctor.mjs');
+            spawnSync(process.execPath, [doctorScript], { stdio: 'inherit' });
+            outro('System Checkup complete.');
             return;
         }
         if (action === 'project') {
