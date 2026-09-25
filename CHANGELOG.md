@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.0](https://github.com/hybridlabor-api/aos/compare/v4.7.2...v4.8.0) (2026-09-25)
+
+
+### Features
+
+* **installer:** enable cross-platform AO and native Windows Synapse support ([bd5699f](https://github.com/hybridlabor-api/aos/commit/bd5699fa451363b3e9741e8ad4336be8a50e9e69))
+
 ## [4.7.2](https://github.com/hybridlabor-api/aos/compare/v4.7.1...v4.7.2) (2026-09-25)
 
 
