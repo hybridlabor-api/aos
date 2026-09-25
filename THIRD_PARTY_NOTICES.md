@@ -298,12 +298,17 @@ Five workflow skills are vendored under `skills/global_config/`, each carried
 whole with its companion files: `verification-before-completion`,
 `requesting-code-review` (plus `code-reviewer.md`),
 `finishing-a-development-branch`, `using-git-worktrees`, and
-`dispatching-parallel-agents`. A sixth, `writing-plans`, is not vendored: AOS
-retains its own version of that skill (`source: community`).
+`dispatching-parallel-agents`. A sixth, `writing-plans`, **replaces** the AOS
+version of that skill; the superseded AOS original is kept alongside it as
+`writing-plans-legacy` (`source: community`, marked `deprecated_by`) rather than
+deleted.
 
 AOS modifications: `category:`, `source:` and `date_added:` added to the
 frontmatter; the `superpowers:` namespace prefix stripped from cross-skill
-references so they resolve to AOS skill names.
+references so they resolve to AOS skill names. AOS adaptations to
+`writing-plans`: the plan output path is kept at AOS's `docs/plans/` rather
+than upstream's `docs/superpowers/plans/`, and the AOS `risk: critical` marker
+is carried over.
 
 AOS already vendored four other skills from this repository earlier
 (`brainstorming`, `test-driven-development`, `executing-plans`,
