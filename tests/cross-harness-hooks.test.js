@@ -236,6 +236,31 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(commandsFor(data, 'Stop').some(c => c.includes('graph-gate.mjs')));
             assert.ok(commandsFor(data, 'UserPromptSubmit').some(c => c.includes('memb-inject.mjs')));
         });
+
+        test('Antigravity installer populates ~/.gemini/antigravity-cli/hooks with go-gate.mjs', () => {
+            const agyCliDir = path.join(tmpDir, '.gemini', 'antigravity-cli');
+            fs.mkdirSync(agyCliDir, { recursive: true });
+
+            if (typeof installer.installGlobalHooks === 'function') {
+                installer.installGlobalHooks({ targetHome: tmpDir, targetGemini: path.join(tmpDir, '.gemini') });
+            }
+
+            const agyCliHookFile = path.join(agyCliDir, 'hooks', 'go-gate.mjs');
+            assert.ok(fs.existsSync(agyCliHookFile), 'go-gate.mjs must be copied to ~/.gemini/antigravity-cli/hooks/');
+        });
+
+        test('OpenCode plugin carries complete set of guarded patterns', () => {
+            const pluginPath = path.join(REPO_ROOT, '.opencode', 'plugins', 'bdb-aos.js');
+            assert.ok(fs.existsSync(pluginPath), 'bdb-aos.js plugin must exist');
+            const content = fs.readFileSync(pluginPath, 'utf8');
+
+            assert.ok(content.includes('git\\s+push'), 'OpenCode plugin must guard git push');
+            assert.ok(content.includes('npm\\s+publish'), 'OpenCode plugin must guard npm publish');
+            assert.ok(content.includes('gh\\s+pr\\s+merge'), 'OpenCode plugin must guard gh pr merge');
+            assert.ok(content.includes('gh\\s+release\\s+create'), 'OpenCode plugin must guard gh release create');
+            assert.ok(content.includes('git\\s+reset\\s+--hard'), 'OpenCode plugin must guard git reset --hard');
+            assert.ok(content.includes('git\\s+clean'), 'OpenCode plugin must guard git clean');
+        });
     });
 
     describe('R2: Workflow Execution via Hooks (startcycle-dispatch.mjs)', () => {

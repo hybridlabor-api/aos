@@ -19,10 +19,14 @@ import os from 'node:os';
 import path from 'node:path';
 
 const GUARDED_PATTERNS = [
-  /^\s*git\s+push\b/i,
-  /^\s*npm\s+publish\b/i,
-  /^\s*npm\s+version\b/i,
-  /^\s*rm\s+(-\w*[rR]\w*|--recursive)\b/i,
+  /(?:^|[;&|]\s*)git\s+push\b/i,
+  /(?:^|[;&|]\s*)npm\s+publish\b/i,
+  /(?:^|[;&|]\s*)npm\s+version\b/i,
+  /(?:^|[;&|]\s*)gh\s+pr\s+merge\b/i,
+  /(?:^|[;&|]\s*)gh\s+release\s+create\b/i,
+  /(?:^|[;&|]\s*)git\s+reset\s+--hard\b/i,
+  /(?:^|[;&|]\s*)git\s+clean\s+-[a-zA-Z]*f\b/i,
+  /(?:^|[;&|]\s*)rm\s+(?:-\w*[rR]\w*|--recursive)\b/i,
 ];
 
 let lastHumanPrompt = '';

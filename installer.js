@@ -3625,23 +3625,23 @@ function injectHarnessRules() {
 // that adds or changes a hook silently never received it -- which is exactly
 // what happened to memb-inject.mjs in v4.4.0, on the machines that needed it
 // most (a fresh install got it; every machine that already had AOS did not).
-function installGlobalHooks() {
+function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } = {}) {
     const hooksSrc = path.join(srcDir, '.claude', 'hooks');
     const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
 
     // 1. Claude Code
     if (fs.existsSync(hooksSrc)) {
-        copyDirRecursiveSync(hooksSrc, path.join(homeDir, '.claude', 'hooks'));
-        log.step(`Installed hooks to ${path.join(homeDir, '.claude', 'hooks')}`);
+        copyDirRecursiveSync(hooksSrc, path.join(targetHome, '.claude', 'hooks'));
+        log.step(`Installed hooks to ${path.join(targetHome, '.claude', 'hooks')}`);
     }
     if (fs.existsSync(workflowsSrc)) {
-        copyDirRecursiveSync(workflowsSrc, path.join(homeDir, '.claude', 'workflows'));
+        copyDirRecursiveSync(workflowsSrc, path.join(targetHome, '.claude', 'workflows'));
     }
-    mergeBdbSettingsHooks(path.join(homeDir, '.claude', 'settings.json'));
+    mergeBdbSettingsHooks(path.join(targetHome, '.claude', 'settings.json'));
 
     // 2. Google Antigravity
-    const agyHooksDir = path.join(geminiDir, 'config', 'hooks');
-    const agyWorkflowsDir = path.join(geminiDir, 'config', 'workflows');
+    const agyHooksDir = path.join(targetGemini, 'config', 'hooks');
+    const agyWorkflowsDir = path.join(targetGemini, 'config', 'workflows');
     if (fs.existsSync(hooksSrc)) {
         copyDirRecursiveSync(hooksSrc, agyHooksDir);
         log.step(`Installed hooks to ${agyHooksDir}`);
@@ -3649,14 +3649,24 @@ function installGlobalHooks() {
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, agyWorkflowsDir);
     }
-    mergeAntigravityHooks(path.join(geminiDir, 'config', 'hooks.json'));
-    if (fs.existsSync(path.join(geminiDir, 'antigravity-cli'))) {
-        mergeAntigravityHooks(path.join(geminiDir, 'antigravity-cli', 'hooks.json'));
+    mergeAntigravityHooks(path.join(targetGemini, 'config', 'hooks.json'));
+    const agyCliDir = path.join(targetGemini, 'antigravity-cli');
+    if (fs.existsSync(agyCliDir)) {
+        const agyCliHooksDir = path.join(agyCliDir, 'hooks');
+        const agyCliWorkflowsDir = path.join(agyCliDir, 'workflows');
+        if (fs.existsSync(hooksSrc)) {
+            copyDirRecursiveSync(hooksSrc, agyCliHooksDir);
+            log.step(`Installed hooks to ${agyCliHooksDir}`);
+        }
+        if (fs.existsSync(workflowsSrc)) {
+            copyDirRecursiveSync(workflowsSrc, agyCliWorkflowsDir);
+        }
+        mergeAntigravityHooks(path.join(agyCliDir, 'hooks.json'));
     }
 
     // 3. OpenAI Codex CLI
-    const codexHooksDir = path.join(homeDir, '.codex', 'hooks');
-    const codexWorkflowsDir = path.join(homeDir, '.codex', 'workflows');
+    const codexHooksDir = path.join(targetHome, '.codex', 'hooks');
+    const codexWorkflowsDir = path.join(targetHome, '.codex', 'workflows');
     if (fs.existsSync(hooksSrc)) {
         copyDirRecursiveSync(hooksSrc, codexHooksDir);
         log.step(`Installed hooks to ${codexHooksDir}`);
@@ -3664,12 +3674,12 @@ function installGlobalHooks() {
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
     }
-    mergeCodexTomlHooks(path.join(homeDir, '.codex', 'config.toml'));
+    mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'));
 
     // 4. OpenCode CLI
     const opencodeDir = process.platform === 'win32'
-        ? path.join(process.env.APPDATA || homeDir, 'opencode')
-        : path.join(homeDir, '.config', 'opencode');
+        ? path.join(process.env.APPDATA || targetHome, 'opencode')
+        : path.join(targetHome, '.config', 'opencode');
     const opencodePluginSrc = path.join(srcDir, '.opencode', 'plugins', 'bdb-aos.js');
     if (fs.existsSync(opencodePluginSrc)) {
         const opencodePluginsDir = path.join(opencodeDir, 'plugins');

@@ -1,51 +1,32 @@
 #!/usr/bin/env node
-// PreToolUse gate for outward-facing / hard-to-reverse Bash commands.
+// PreToolUse gate for outward-facing / hard-to-reverse commands across harnesses:
+// - Antigravity / Gemini CLI (hooks.json PreToolUse)
+// - Claude Code (.claude/hooks/go-gate.mjs)
 //
-// Scope (deliberately narrow — see audit-agents.md F-01/F-03): git push, npm
-// publish, npm version, and recursive rm. Plain Write/Edit/git commit are NOT
-// gated here — Claude Code checkpoints those and they're locally reversible;
-// gating them too would just re-create the "over-scoped rule nobody reads"
-// problem this hook exists to fix.
+// Scope:
+// 1. git push
+// 2. npm publish
+// 3. npm version
+// 4. gh pr merge
+// 5. gh release create
+// 6. git reset --hard
+// 7. git clean -f (force clean untracked files)
+// 8. rm -r / rm -rf (recursive deletions)
 //
-// Gate validity: open only if the LAST human-typed user message in the
-// transcript is the literal word "GO" (case-insensitive, trimmed). Any other
-// message closes it again — matches "no silent retries" / "a fresh GO per
-// action" from CLAUDE.md.
-//
-// Transcript format (v3.13 audit BLOCKER-1): Claude Code transcript JSONL
-// entries carry the entry kind in a top-level `type` field ("user"), with the
-// payload nested under `message.content` — a top-level `role` exists on zero
-// lines of a real transcript, so matching on it blocked the gate forever.
-// Two traps the parser below handles explicitly:
-//   1. `message.content` is EITHER a plain string OR an array of typed blocks
-//      — always run it through extractText(), never assume one shape.
-//   2. Tool results are ALSO `type: "user"` entries (their blocks are
-//      `tool_result`), and subagent turns are user entries flagged
-//      `isSidechain: true`. Neither is the human: entries with no text block
-//      are skipped, and sidechain entries are skipped outright — so the scan
-//      lands on the last message a human actually typed.
-//
-// Fails closed: if the transcript can't be read or parsed, block rather than
-// guess.
-//
-// Why a PreToolUse hook and not a CLAUDE.md rule: per
-// code.claude.com/docs/en/hooks-guide, "PreToolUse hooks fire before any
-// permission-mode check, in every permission mode, including dontAsk. A hook
-// that returns permissionDecision: 'deny' blocks the tool even in
-// bypassPermissions mode or with --dangerously-skip-permissions." Exiting 2
-// blocks unconditionally the same way. So this gate cannot be sidestepped by
-// switching permission modes -- which prose in CLAUDE.md never could
-// guarantee. (Hooks can tighten restrictions but not loosen them: a hook
-// returning "allow" still can't override a deny rule from settings.)
+// Gate validity: open ONLY if the LAST human-typed user message in the transcript
+// is the literal word "GO" (case-insensitive, trimmed). Any other message closes it.
 
 import { readFileSync } from "node:fs";
 
 const GUARDED_PATTERNS = [
-  /^\s*git\s+push\b/i,
-  /^\s*npm\s+publish\b/i,
-  /^\s*npm\s+version\b/i,
-  // recursive rm in any flag order/style: -r, -R, -rf, -fr, --recursive
-  /^\s*rm\s+(-\w*[rR]\w*|--recursive)\b/i,
+  /(?:^|[;&|]\s*)git\s+push\b/i,
+  /(?:^|[;&|]\s*)npm\s+publish\b/i,
+  /(?:^|[;&|]\s*)npm\s+version\b/i,
+  /(?:^|[;&|]\s*)gh\s+pr\s+merge\b/i,
+  /(?:^|[;&|]\s*)gh\s+release\s+create\b/i,
+  /(?:^|[;&|]\s*)git\s+reset\s+--hard\b/i,
+  /(?:^|[;&|]\s*)git\s+clean\s+-[a-zA-Z]*f\b/i,
+  /(?:^|[;&|]\s*)rm\s+(?:-\w*[rR]\w*|--recursive)\b/i,
 ];
 
 function readStdin() {
@@ -56,16 +37,31 @@ function readStdin() {
   }
 }
 
-function block(reason) {
-  process.stderr.write(`Blocked by go-gate hook: ${reason}\n`);
-  process.exit(2);
+function respond(isAgy, allowed, reason = "", command = "") {
+  if (isAgy) {
+    if (allowed) {
+      console.log(JSON.stringify({ decision: "allow" }));
+    } else {
+      console.log(JSON.stringify({
+        decision: "deny",
+        reason: `[MECHANICAL GO-GATE BLOCKED] Der Befehl "${command.slice(0, 100)}" wurde blockiert. Er erfordert ein frisches, isoliertes "GO" als letzte Benutzereingabe. ${reason}`
+      }));
+    }
+    process.exit(0);
+  } else {
+    // Claude Code harness
+    if (allowed) {
+      process.exit(0);
+    } else {
+      process.stderr.write(
+        `Blocked by go-gate hook: command "${command.slice(0, 80)}" requires a fresh, literal "GO" as your last message. ${reason}\n`
+      );
+      process.exit(2);
+    }
+  }
 }
 
-function allow() {
-  process.exit(0);
-}
-
-function extractText(content) {
+function extractClaudeText(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
@@ -76,13 +72,15 @@ function extractText(content) {
   return "";
 }
 
-function isHumanUserEntry(entry) {
-  if (!entry || typeof entry !== "object") return false;
-  // `type` is the authoritative field in real transcripts; `role` kept as a
-  // defensive fallback in case a future/alternate export flattens it.
-  if (entry.type !== "user" && entry.role !== "user") return false;
-  if (entry.isSidechain === true) return false; // subagent turn, not the human
-  return true;
+function extractAgyText(rawContent) {
+  if (!rawContent || typeof rawContent !== "string") return "";
+  // Strip metadata tags if present
+  let text = rawContent.replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/gi, "");
+  const match = text.match(/<USER_REQUEST>([\s\S]*?)<\/USER_REQUEST>/i);
+  if (match) {
+    text = match[1];
+  }
+  return text.trim();
 }
 
 function lastUserMessageIsGo(transcriptPath) {
@@ -99,54 +97,76 @@ function lastUserMessageIsGo(transcriptPath) {
     try {
       entry = JSON.parse(lines[i]);
     } catch {
-      continue; // tolerate partial/trailing lines from an in-progress write
+      continue; // tolerate partial/trailing lines
     }
-    if (!isHumanUserEntry(entry)) continue;
-    // Tool results are user-role entries with no text block; extractText()
-    // lifts only text blocks, so those yield "" and are skipped -- the scan
-    // lands on the last entry a human actually typed.
-    const content = entry.message?.content ?? entry.content;
-    const text = extractText(content).trim();
-    if (!text) continue;
-    return { ok: text.toUpperCase() === "GO", reason: `last user message was: ${JSON.stringify(text)}` };
+
+    // 1. Antigravity transcript entry format
+    if (entry.type === "USER_INPUT" || entry.source === "USER_EXPLICIT") {
+      const text = extractAgyText(entry.content);
+      if (!text) continue;
+      const isGo = /^GO$/i.test(text.trim());
+      return { ok: isGo, reason: `last user message was: ${JSON.stringify(text)}` };
+    }
+
+    // 2. Claude Code transcript entry format
+    if (entry.type === "user" || entry.role === "user") {
+      if (entry.isSidechain === true) continue;
+      const content = entry.message?.content ?? entry.content;
+      const text = extractClaudeText(content).trim();
+      if (!text) continue;
+      const isGo = /^GO$/i.test(text);
+      return { ok: isGo, reason: `last user message was: ${JSON.stringify(text)}` };
+    }
   }
+
   return { ok: false, reason: "no user message found in transcript" };
 }
 
 function main() {
-  let input;
-  try {
-    input = JSON.parse(readStdin());
-  } catch (e) {
-    block(`could not parse hook input (${e.message})`);
-    return;
+  const rawInput = readStdin();
+  let input = {};
+  if (rawInput.trim()) {
+    try {
+      input = JSON.parse(rawInput);
+    } catch (e) {
+      // If we cannot parse hook input, fail closed
+      respond(true, false, `could not parse hook input: ${e.message}`, "unknown");
+      return;
+    }
   }
 
-  const command = input?.tool_input?.command;
-  if (typeof command !== "string") {
-    allow(); // not a Bash call with a command string; nothing for this hook to check
+  // Detect harness
+  const isAgy = !!(input?.toolCall || input?.conversationId || input?.artifactDirectoryPath || input?.workspacePaths);
+
+  const command =
+    input?.toolCall?.args?.CommandLine ||
+    input?.toolCall?.args?.command ||
+    input?.tool_input?.command ||
+    input?.command ||
+    "";
+
+  if (typeof command !== "string" || !command.trim()) {
+    respond(isAgy, true);
     return;
   }
 
   const isGuarded = GUARDED_PATTERNS.some((re) => re.test(command));
   if (!isGuarded) {
-    allow();
+    respond(isAgy, true);
     return;
   }
 
-  const transcriptPath = input?.transcript_path;
+  const transcriptPath = input?.transcriptPath || input?.transcript_path;
   if (!transcriptPath) {
-    block("no transcript_path in hook input — cannot verify GO");
+    respond(isAgy, false, "no transcriptPath in hook input — cannot verify GO", command);
     return;
   }
 
   const result = lastUserMessageIsGo(transcriptPath);
   if (result.ok) {
-    allow();
+    respond(isAgy, true, "", command);
   } else {
-    block(
-      `command "${command.slice(0, 80)}" requires a fresh, literal "GO" as your last message. ${result.reason}.`
-    );
+    respond(isAgy, false, result.reason, command);
   }
 }
 
