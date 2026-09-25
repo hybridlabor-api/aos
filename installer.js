@@ -1710,8 +1710,12 @@ function checkModuleUpdate(pkgName, targetDir) {
         let remoteVer = null;
         let checkFailed = false;
         try {
-            const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-            remoteVer = execFileSync(npmBin, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000, shell: process.platform === 'win32' }).trim();
+            const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+            if (process.platform === 'win32') {
+                remoteVer = execSync(`"${npmCmd}" view ${pkgName} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+            } else {
+                remoteVer = execFileSync(npmCmd, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+            }
         } catch (e) {
             // Offline, a proxy, or a misconfigured registry. Swallowing this
             // made every module report "up to date" forever on such a machine,
@@ -1806,15 +1810,34 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
             }
         }
 
-        try {
-            fs.renameSync(targetDir, retiredDir);
-            fs.renameSync(stagingDir, targetDir);
-        } catch (swapError) {
-            if (fs.existsSync(retiredDir) && !fs.existsSync(targetDir)) {
-                try { fs.renameSync(retiredDir, targetDir); } catch (_) {}
+        // On Windows a running daemon (e.g. memB WebUI on :8088) holds open
+        // file handles into targetDir — retry with brief backoff before failing.
+        // ponytail: 3 retries × 500ms; escalate to process kill if this ceiling matters
+        let swapped = false;
+        for (let attempt = 0; attempt < 3 && !swapped; attempt++) {
+            try {
+                fs.renameSync(targetDir, retiredDir);
+                fs.renameSync(stagingDir, targetDir);
+                swapped = true;
+            } catch (swapError) {
+                const retriable = swapError.code === 'EPERM' || swapError.code === 'EBUSY';
+                if (retriable && attempt < 2) {
+                    const delayMs = 600 * (attempt + 1);
+                    try {
+                        if (process.platform === 'win32') {
+                            execSync(`powershell -NoProfile -Command "Start-Sleep -Milliseconds ${delayMs}"`, { stdio: 'ignore' });
+                        } else {
+                            execSync(`sleep ${delayMs / 1000}`, { stdio: 'ignore' });
+                        }
+                    } catch (_) {}
+                    continue;
+                }
+                if (fs.existsSync(retiredDir) && !fs.existsSync(targetDir)) {
+                    try { fs.renameSync(retiredDir, targetDir); } catch (_) {}
+                }
+                safeRmDirSync(stagingDir);
+                throw swapError;
             }
-            safeRmDirSync(stagingDir);
-            throw swapError;
         }
 
         // On Windows especially, deleting a directory that was just renamed or contains
@@ -2562,10 +2585,15 @@ async function installOSAgentWorkspace() {
         execFileSync(binTarget, ['service', 'install'], { stdio: 'ignore' });
     }, 'Start it by hand with: ao service install');
 
-    if (await verifyDaemonListening(3101, 'AO Orchestrator', 8000)) {
+    // Windows startup entries fire asynchronously — give the service more time
+    const aoTimeout = process.platform === 'win32' ? 20000 : 8000;
+    if (await verifyDaemonListening(3101, 'AO Orchestrator', aoTimeout)) {
         log.success('AO Orchestrator running on http://localhost:3101');
     } else {
-        log.warn('AO did not answer on :3101 — check `ao service status` and `ao service logs`.');
+        const hint = process.platform === 'win32'
+            ? 'Run `ao service install` again or log out and back in, then check `ao service status`.'
+            : 'Check `ao service status` and `ao service logs`.';
+        log.warn(`AO did not answer on :3101 — ${hint}`);
     }
 }
 async function promptMemBIngestion(mcpCodeTarget) {
@@ -2639,8 +2667,10 @@ function verifyEcosystemInstallation() {
                 let newerVersion = null;
                 let newerTag = null;
                 try {
-                    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-                    const distTagsJson = execFileSync(npmBin, ['view', mod.pkg, 'dist-tags', '--json'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000, shell: process.platform === 'win32' }).trim();
+                    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+                    const distTagsJson = process.platform === 'win32'
+                        ? execSync(`"${npmCmd}" view ${mod.pkg} dist-tags --json`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim()
+                        : execFileSync(npmCmd, ['view', mod.pkg, 'dist-tags', '--json'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
                     const distTags = JSON.parse(distTagsJson);
                     for (const [tag, ver] of Object.entries(distTags)) {
                         if (isNewerVersion(localVer, ver)) {
