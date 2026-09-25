@@ -1257,6 +1257,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
         { dir: path.join(homeDir, '.codex', 'skills'), key: 'codex' },
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
+        { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
     ].filter((d) => d.key === null || detectedKeys.has(d.key));
 
     for (const { dir: dest } of extraSkillDestinations) {
