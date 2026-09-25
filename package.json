@@ -24,8 +24,10 @@
     "validate": "node scripts/validate-skills.mjs",
     "validate:strict": "node scripts/validate-skills.mjs --strict",
     "store:index": "node scripts/build-ecc-store-index.mjs",
+    "plugin:build": "node scripts/build-plugin-manifest.mjs",
+    "plugin:check": "node scripts/build-plugin-manifest.mjs --check",
     "doctor": "node bin/aos-doctor.mjs",
-    "test": "node scripts/validate-skills.mjs --selftest && node scripts/validate-skills.mjs && node tests/aos-store.test.mjs && node tests/aos-doctor.test.mjs"
+    "test": "node scripts/validate-skills.mjs --selftest && node scripts/validate-skills.mjs && node scripts/build-plugin-manifest.mjs --check && node tests/aos-store.test.mjs && node tests/aos-doctor.test.mjs && node tests/build-plugin-manifest.test.mjs"
   },
   "publishConfig": {
     "access": "public"
