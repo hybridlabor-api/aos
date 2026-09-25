@@ -340,6 +340,41 @@ references so they resolve to AOS skill names; the Docker example user
 
 ---
 
+## davila7/claude-code-templates
+
+<https://github.com/davila7/claude-code-templates> — MIT.
+Copyright (c) 2025 Daniel (San) Ávila.
+
+`conventional-commits` (`.claude/hooks/conventional-commits.mjs`) and
+`env-file-protection` (`.claude/hooks/env-file-protection.mjs`) are ported from
+upstream's `conventional-commits.py` and `env-file-protection.json`, selected
+from a set of 62 hooks. Tracked in `.agents/vendor-manifest.json`.
+
+Both are ports, not verbatim copies, and the differences are behavioural:
+
+- **Python to .mjs.** Upstream ships Python. Node is already a hard AOS install
+  dependency and every other AOS hook is `.mjs`; `python3` is absent on a stock
+  Windows install, where the installer also runs.
+- **Both harnesses.** Upstream's `env-file-protection` is an inline `echo`
+  guarded by a matcher `if` field, which Antigravity and the Gemini CLI ignore —
+  there it would fire on every write. The check lives in code instead, and both
+  hooks emit the Antigravity `{"decision":...}` stdout form as well as the
+  Claude Code stderr/exit-2 form.
+- **`.env.example` and friends are allowed.** Upstream's matcher blocks
+  `.env*`, which contradicts its own advice to put new values in
+  `.env.example`. Templates (`example`, `sample`, `template`, `dist`) are
+  committed and hold no live secret, so they are exempt here.
+- **Both hooks fail open.** An unreadable payload or an unextractable commit
+  message allows the call, unlike `go-gate`, which fails closed. A regex miss
+  must not wedge a commit.
+
+Upstream's `secret-scanner`, `tdd-gate`, and `dangerous-command-blocker` were
+reviewed and **not** shipped; they remain available on demand from the ECC
+store. Reasons are in `docs/handover/` and the branch description for
+`feat/cicd-skills-import`.
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in

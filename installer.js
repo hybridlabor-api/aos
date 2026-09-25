@@ -3792,7 +3792,7 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
@@ -3864,7 +3864,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [entry])
             .map((h) => (h && typeof h.command === 'string' ? h.command : (typeof h === 'string' ? h : '')))
@@ -3881,7 +3881,14 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
         PreToolUse: [
             {
                 matcher: "run_command|Bash",
-                hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'go-gate.mjs')}"`, timeout: 10000 }]
+                hooks: [
+                    { type: "command", command: `node "${path.join(hooksDir, 'go-gate.mjs')}"`, timeout: 10000 },
+                    { type: "command", command: `node "${path.join(hooksDir, 'conventional-commits.mjs')}"`, timeout: 10000 }
+                ]
+            },
+            {
+                matcher: "write_file|edit_file|replace|Write|Edit|MultiEdit",
+                hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'env-file-protection.mjs')}"`, timeout: 10000 }]
             },
             {
                 hooks: [{ type: "command", command: `node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent agy --event PreToolUse`, timeout: 2000 }]
