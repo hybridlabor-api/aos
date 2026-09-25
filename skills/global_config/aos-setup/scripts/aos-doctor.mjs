@@ -52,7 +52,7 @@ const tilde = (p) => (p || '').replace(HOME, '~');
 // `which` does not exist on native Windows; cmd ships `where`, which prints one
 // path per line.
 const which = (bin) => {
-  const probe = process.platform === 'win32' ? 'where' : 'which';
+  const probe = process.platform === 'win32' ? 'where.exe' : 'which';
   try { return tilde(execFileSync(probe, [bin], { encoding: 'utf8' }).trim().split(/\r?\n/)[0]); } catch { return null; }
 };
 const dirCount = (p) => { try { return readdirSync(p, { withFileTypes: true }).filter(d => d.isDirectory()).length; } catch { return 0; } };
@@ -100,7 +100,13 @@ function checkAos() {
 
   if (manifest && NET) {
     try {
-      const latest = execFileSync('npm', ['view', '@hybridlabor-api/aos', 'version'], { encoding: 'utf8', timeout: 8000 }).trim();
+      const npmBin = IS_WIN ? 'npm.cmd' : 'npm';
+      const latest = execFileSync(npmBin, ['view', '@hybridlabor-api/aos', 'version'], {
+        encoding: 'utf8',
+        timeout: 8000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        shell: IS_WIN
+      }).trim();
       add('aos', 'version vs npm', manifest.version === latest, `local v${manifest.version} · npm v${latest}`,
         'npx -y @hybridlabor-api/aos@latest');
     } catch {

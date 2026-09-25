@@ -1,79 +1,79 @@
 # 🔍 Adversarial Review Brief: AOS v4.7.2 Release Candidate (PR #59)
 
-> **Zweck:** Unabhängige, adversariale Überprüfung (Doubt-Driven Development) der Änderungen für Release **v4.7.2** zur Behebung der Review-Findings **F-01 bis F-04**.  
-> **Repository:** `/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills`  
+> **Purpose:** Independent adversarial audit (Doubt-Driven Development) of changes for release **v4.7.2** resolving review findings **F-01 through F-04**.  
+> **Repository:** `~/dev/bdb-dev/bdb-dev-optimized-agent-skills`  
 > **Branch:** `release/v4.7.2`  
-> **Commit:** `55f5907`  
 > **PR:** [hybridlabor-api/aos#59](https://github.com/hybridlabor-api/aos/pull/59)  
 
 ---
 
-## 1. Übersicht der Änderungen
+## 1. Overview of Changes
 
-| Finding | Klasse | Datei(en) | Beschreibung des Fixes |
+| Finding | Class | File(s) | Fix Description |
 |---|---|---|---|
-| **F-01** | `[CONTRACT_MISREAD]` | [`bin/aos-doctor.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-doctor.mjs) | `NET`-Flag verdrahtet: Version-Check gegen npm wird ohne `--net` übersprungen (100% offline-first). Mit `--net` wird die Version abgefragt. |
-| **F-02** | `[VALID_ACTIONABLE]` | [`bin/aos-store.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-store.mjs) | Offline-Guard: `download()` erfordert zwingend `--net`. Dispatcher & Docs angepasst. `--dry-run` bleibt netzwerkfrei. |
-| **F-03** | `[VALID_ACTIONABLE]` | [`bin/aos-doctor.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-doctor.mjs) | Shell-Injection eliminiert: `execSync(\`codesign -v "${aoBin}"\`)` durch `execFileSync('codesign', ['-v', aoBin], { stdio: 'ignore' })` ersetzt. |
-| **F-04** | `[VALID_ACTIONABLE]` | [`installer.js`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/installer.js), [`bin/aos-doctor.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-doctor.mjs) | Windows-Probes auf `where.exe` vereinheitlicht. POSIX `command -v` mit Regex `^[a-zA-Z0-9._-]+$` gegen Command-Injection gehärtet. |
+| **F-01** | `[CONTRACT_MISREAD]` | `bin/aos-doctor.mjs`, `skills/global_config/aos-setup/scripts/aos-doctor.mjs` | Wired `NET` flag and Windows `.cmd` execution (`npm.cmd` + `{ shell: IS_WIN }`). Network version check against npm is skipped in offline mode by default, executed cleanly on Windows and POSIX when `--net` is passed. |
+| **F-02** | `[VALID_ACTIONABLE]` | `bin/aos-store.mjs` | Offline guard: non-dry-run installations require explicit `--net` flag to download upstream community skills. Dispatcher and docs updated. `--dry-run` remains completely offline. |
+| **F-03** | `[VALID_ACTIONABLE]` | `bin/aos-doctor.mjs`, `installer.js` | Shell injection eliminated: removed string interpolation in `codesign`, `launchctl`, and `ao service install` in favor of argument arrays via `execFileSync`. Removed unused `execSync` imports. |
+| **F-04** | `[VALID_ACTIONABLE]` | `installer.js`, `bin/aos-doctor.mjs`, `skills/global_config/aos-setup/scripts/aos-doctor.mjs` | Windows probes standardized on `where.exe` across installer and doctor. Hardened POSIX binary regex to `^[a-zA-Z0-9][a-zA-Z0-9._-]*$` to reject option injection (e.g. leading `-`). |
+| **P-01** | `[VALID_ACTIONABLE]` | `package.json`, `.npmignore` | Excluded `docs/handover/**` from npm tarball distribution, and sanitized internal developer references to generic relative paths. |
 
-Zusätzlich wurden Unit Tests für `--net` vs. offline in [`tests/aos-doctor.test.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/aos-doctor.test.mjs) und [`tests/aos-store.test.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/aos-store.test.mjs) ergänzt.
-
----
-
-## 2. Checkliste für den Reviewer
-
-Prüfe die folgenden Punkte kritisch und adversarial:
-
-1. **Keine verbleibende Shell-Injection:**
-   - Gibt es in `bin/aos-doctor.mjs` oder `installer.js` noch String-Interpolationen in `execSync`?
-   - Ist die Regex `^[a-zA-Z0-9._-]+$` für `command -v ${binary}` in `installer.js` ausreichend restriktiv?
-2. **Offline-First Vertrag eingehalten:**
-   - Läuft `node bin/aos-doctor.mjs --json` ohne Internetverbindung komplett durch, ohne Netzwerk-Sockets auf externe IPs zu öffnen?
-   - Verweigert `node bin/aos-store.mjs install <skill>` ohne `--net` reproduzierbar den Download?
-3. **Cross-Platform Robustheit:**
-   - Verhält sich `where.exe` unter Windows erwartungsgemäß?
-   - Werden Nicht-Windows-Systeme (macOS, Linux Container) durch den `IS_WIN`-Pfad nicht beeinträchtigt?
-4. **Test-Vollständigkeit:**
-   - Laufen alle Tests (`npm test` und Security Suites) lokal fehlerfrei durch?
-   - Testen die neuen Tests in `tests/aos-doctor.test.mjs` und `tests/aos-store.test.mjs` echte Grenzfälle oder sind sie trivial?
+Unit tests added and verified in `tests/aos-doctor.test.mjs` and `tests/aos-store.test.mjs`.
 
 ---
 
-## 3. Verifikations-Befehle
+## 2. Review Checklist
+
+Verify the following points adversarially:
+
+1. **No Remaining Shell Injections:**
+   - Confirm `bin/aos-doctor.mjs` and `installer.js` use `execFileSync` with argument arrays for external commands.
+   - Verify regex `^[a-zA-Z0-9][a-zA-Z0-9._-]*$` in `installer.js:hasExecutable` disallows leading hyphens and shell metacharacters.
+2. **Offline-First Contract:**
+   - Verify `node bin/aos-doctor.mjs --json` runs completely without outbound network sockets.
+   - Verify `node bin/aos-store.mjs install <skill>` without `--net` aborts before attempting network access.
+3. **Cross-Platform Robustness:**
+   - Verify `where.exe` is consistently queried on Windows.
+   - Verify `npm.cmd` and `shell: IS_WIN` are properly used on Windows for npm checks.
+4. **Package Sanitization:**
+   - Run `npm pack --dry-run` and verify `docs/handover` is NOT included in the published files.
+5. **Test Completeness:**
+   - Run all test suites (`npm test` and security suites).
+
+---
+
+## 3. Verification Commands
 
 ```bash
-cd /Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills
-git checkout release/v4.7.2
-
-# 1. Diff zum Main-Branch prüfen
+# 1. Inspect diff against main
 git diff origin/main..HEAD
 
-# 2. Offline-Test des Doctors
+# 2. Offline doctor test
 node bin/aos-doctor.mjs --json
 
-# 3. Online-Test des Doctors
+# 3. Online doctor test
 node bin/aos-doctor.mjs --json --net
 
-# 4. Offline-Guard des Stores
+# 4. Offline store guard
 node bin/aos-store.mjs install django-patterns --project
-# (Muss mit "requires internet access ... Pass --net" abbrechen)
 
-# 5. Volle Testsuite ausführen
+# 5. Full test suite
 npm test
 
-# 6. Security- & Contract-Suites
+# 6. Security and contract test suites
 node --test tests/agenttrail-security.test.mjs tests/plan-canvas-security.test.mjs tests/archify-contract.test.mjs tests/mcsc-registration.test.mjs
+
+# 7. Verify npm pack output excludes handover docs
+npm pack --dry-run 2>&1 | grep "docs/handover"
 ```
 
 ---
 
-## 4. Erwartetes Format des Review-Reports
+## 4. Expected Report Format
 
-Klassifiziere alle gefundenen Punkte nach folgendem Schema:
-- `[CONTRACT_MISREAD]`: Bruch eines definierten Vertrages (z. B. Offline-First, API-Signatur, Schema).
-- `[VALID_ACTIONABLE]`: Echter Bug, Sicherheitslücke oder unerwünschte Regression mit konkretem Handlungsbedarf.
-- `[VALID_TRADEOFF]`: Bewusste Architekturentscheidung mit dokumentiertem Trade-off (kein Blocker).
-- `[NOISE]`: Stilistische Präferenzen ohne technische Auswirkung.
+Classify findings by precedence:
+- `[CONTRACT_MISREAD]`: Architectural or interface contract breach.
+- `[VALID_ACTIONABLE]`: Bug, security vulnerability, or unintended regression requiring immediate fix.
+- `[VALID_TRADEOFF]`: Intentional tradeoff with documented rationale.
+- `[NOISE]`: Informational or stylistic note.
 
-**Urteil:** `SHIP` oder `DO NOT SHIP` mit Begründung.
+Verdict: `SHIP` or `DO NOT SHIP` with explicit rationale.

@@ -52,6 +52,7 @@
     ".codex-plugin/",
     ".opencode/",
     "docs/",
+    "!docs/handover/**",
     "assets/",
     "skills/",
     "mcps/",

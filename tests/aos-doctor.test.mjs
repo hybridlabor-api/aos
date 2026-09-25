@@ -71,4 +71,5 @@ test('aos-doctor: executes registry check when --net is passed', () => {
   const npmNetCheck = dataNet.results.find(r => r.name === 'Version vs npm');
   assert.ok(npmNetCheck, 'Doctor must include Version vs npm check');
   assert.doesNotMatch(npmNetCheck.detail, /Skipped \(offline mode/i);
+  assert.match(npmNetCheck.detail, /local v[\d.]+\s*·\s*npm v[\d.]+/i);
 });

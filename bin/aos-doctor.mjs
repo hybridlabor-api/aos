@@ -6,7 +6,7 @@
 //   node bin/aos-doctor.mjs [--json] [--net]
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { connect } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -110,7 +110,13 @@ function checkAosCore() {
   // Network version check gated by --net
   if (NET) {
     try {
-      const latest = execFileSync('npm', ['view', '@hybridlabor-api/aos', 'version'], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      const npmBin = IS_WIN ? 'npm.cmd' : 'npm';
+      const latest = execFileSync(npmBin, ['view', '@hybridlabor-api/aos', 'version'], {
+        encoding: 'utf8',
+        timeout: 8000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        shell: IS_WIN
+      }).trim();
       const currentVer = manifest?.version || '4.7.1';
       add('aos-core', 'Version vs npm', currentVer === latest, `local v${currentVer} · npm v${latest}`,
         'Run: npx @hybridlabor-api/aos@latest');

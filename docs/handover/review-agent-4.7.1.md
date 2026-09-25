@@ -1,81 +1,80 @@
 # 🔍 Review Handover: AOS v4.7.1 Release Candidate & Cross-Ecosystem Sync
 
-> **Zweck dieses Dokuments:**  
-> Detaillierte Übergabe für den Review-Agenten zur Durchführung eines unabhängigen, adversarialen Audits (Doubt-Driven-Development) des anstehenden Release-Stands **v4.7.1 (PR #57)** sowie der ungesendeten Commits in **AO** und **MCSC**.
+> **Purpose:**  
+> Adversarial audit briefing (Doubt-Driven Development) for the release candidate **v4.7.1 (PR #57)** and cross-ecosystem synchronization with **AO** and **MCSC**.
 
 ---
 
-## 1. Absolute Pfade & Repositories
+## 1. Repositories & Components
 
-| Komponente | Absoluter Pfad im Dateisystem | Branch / Referenz | Zustand |
+| Component | Relative Path | Branch / Reference | Status |
 |---|---|---|---|
-| **AOS Kernel** | `/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills` | `release/v4.7.1` | **PR #57** auf GitHub aktiv |
-| **AO Orchestrator** | `/Users/timrennings/dev/agents/bdb-agent-orchestrator` | `main` | 27 Commits lokal voraus |
-| **MCSC Gateway** | `/Users/timrennings/dev/sandbox/multi-cli-subagent-configurator` | `main` | 2 Commits lokal voraus |
+| **AOS Kernel** | `~/dev/bdb-dev/bdb-dev-optimized-agent-skills` | `release/v4.7.1` | **PR #57** merged |
+| **AO Orchestrator** | `~/dev/agents/bdb-agent-orchestrator` | `main` | local branch |
+| **MCSC Gateway** | `~/dev/sandbox/multi-cli-subagent-configurator` | `main` | local branch |
 
 ---
 
-## 2. Zu prüfende Kern-Dateien in AOS (`release/v4.7.1`)
+## 2. Core Files to Inspect in AOS (`release/v4.7.1`)
 
-1. **System-Checkup & Diagnostik:**
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-doctor.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-doctor.mjs)
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/aos-doctor.test.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/aos-doctor.test.mjs)
-2. **Installer & CLI-Integration:**
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/installer.js`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/installer.js) (AO Beta-Banner, `doctor`-Routing, Windows `.cmd`/`.ps1`-Wrapper)
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/package.json`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/package.json)
+1. **System Health & Diagnostics:**
+   - `bin/aos-doctor.mjs`
+   - `tests/aos-doctor.test.mjs`
+2. **Installer & CLI Integration:**
+   - `installer.js` (AO Beta-Banner, `doctor`-Routing, Windows `.cmd`/`.ps1`-Wrapper)
+   - `package.json`
 3. **Offline ECC Store:**
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-store.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-store.mjs)
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/lib/ecc-store-index.json`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/lib/ecc-store-index.json)
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/aos-store.test.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/aos-store.test.mjs)
-4. **MCSC & Native Todo-Streaming:**
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/mcp_config.json`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/mcp_config.json)
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/skills/global_config/mcsc/SKILL.md`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/skills/global_config/mcsc/SKILL.md)
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/skills/global_config/agenttrail/bin/agenttrail.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/skills/global_config/agenttrail/bin/agenttrail.mjs)
-5. **Archify-Verträge & Security-Hardening:**
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/lib/aos-archify-contract.mjs`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/lib/aos-archify-contract.mjs)
-   - [`/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/skills/global_config/plan-canvas/scripts/lib/plan-canvas/server.js`](file:///Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/skills/global_config/plan-canvas/scripts/lib/plan-canvas/server.js)
+   - `bin/aos-store.mjs`
+   - `lib/ecc-store-index.json`
+   - `tests/aos-store.test.mjs`
+4. **MCSC & Native Todo Streaming:**
+   - `mcp_config.json`
+   - `skills/global_config/mcsc/SKILL.md`
+   - `skills/global_config/agenttrail/bin/agenttrail.mjs`
+5. **Archify Contracts & Security Hardening:**
+   - `lib/aos-archify-contract.mjs`
+   - `skills/global_config/plan-canvas/scripts/lib/plan-canvas/server.js`
 
 ---
 
-## 3. Kritisches Prüf-Raster (Fokus für das Audit)
+## 3. Critical Verification Points
 
 1. **Cross-Platform Robustness (macOS vs. Windows):**
-   - Prüfe, ob in `aos-doctor.mjs` und `installer.js` Windows-Pfade korrekt aufgelöst werden (`where.exe`, `%APPDATA%`, `process.platform === 'win32'`).
-   - Stelle sicher, dass der AMFI-Codesigning-Check (`codesign -v`) unter Windows und Linux nicht crasht, sondern übersprungen wird.
-2. **Sicherheits-Grenzen & Path Traversal:**
-   - Verifiziere die Funktion `resolveWithinDir` in Plan-Canvas: Verhindert sie zuverlässig Directory-Traversal (`../../etc/passwd`)?
-   - Verifiziere die Funktion `readCapped` in AgentTrail: Schützt sie zuverlässig vor Memory Exhaustion (OOM) bei Payload-Größen > 1 MB?
-3. **Hook-Interferenz & GO-Gate:**
-   - Stelle sicher, dass keine der neuen CLI-Tools die Hooks `go-gate.mjs` oder `graph-gate.mjs` umgehen oder blockieren.
-4. **Offline-Funktionalität:**
-   - Teste, dass `aos-store` und `aos-doctor` offline ohne Netzwerkaufrufe stabil funktionieren (außer bei expliziter Flagge `--net`).
+   - Check path resolution in `aos-doctor.mjs` and `installer.js` (`where.exe`, `%APPDATA%`, `process.platform === 'win32'`).
+   - Ensure the AMFI codesigning probe (`codesign -v`) does not crash on Windows/Linux.
+2. **Security Boundaries & Path Traversal:**
+   - Verify `resolveWithinDir` in Plan-Canvas prevents directory traversal (`../../etc/passwd`).
+   - Verify `readCapped` in AgentTrail protects against memory exhaustion (OOM) on large payloads (> 1 MB).
+3. **Hook Interference & GO-Gate:**
+   - Ensure CLI tools do not bypass `go-gate.mjs` or `graph-gate.mjs`.
+4. **Offline Functionality:**
+   - Test that `aos-store` and `aos-doctor` operate without outbound requests unless `--net` is explicitly passed.
 
 ---
 
-## 4. Test-Befehle zur Verifikation
+## 4. Verification Commands
 
 ```bash
-# 1. Alle Unit-Tests im AOS-Repo ausführen
-npm --prefix /Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills test
+# 1. Run all unit tests in AOS
+npm test
 
-# 2. Spezifische Sicherheits- und Integrations-Suiten testen
-node /Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/agenttrail-security.test.mjs
-node /Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/plan-canvas-security.test.mjs
-node /Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/tests/archify-contract.test.mjs
+# 2. Security and contract test suites
+node tests/agenttrail-security.test.mjs
+node tests/plan-canvas-security.test.mjs
+node tests/archify-contract.test.mjs
 
-# 3. Doctor-Funktion im JSON-Modus prüfen
-node /Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/bin/aos-doctor.mjs --json
+# 3. Doctor in JSON mode
+node bin/aos-doctor.mjs --json
 ```
 
 ---
 
-## 5. Output-Anforderung an den Review-Agenten
+## 5. Output Format for Review Findings
 
-Der Review-Agent soll seinen Bericht nach folgendem Standard strukturieren:
-- **Klassifizierung:**
-  - `[CONTRACT_MISREAD]` (Blocker: Verstoß gegen Architekturverträge)
-  - `[VALID_ACTIONABLE]` (Blocker: Echter Bug oder Sicherheitslücke)
-  - `[TRADEOFF]` (Non-Blocker: Akzeptable technische Einschränkung)
-  - `[NOISE]` (Unwichtig: Stil-/Kosmetik-Hinweise)
-- **Ergebnis-Datei:**  
-  Speichern unter `/Users/timrennings/dev/bdb-dev/bdb-dev-optimized-agent-skills/production_artifacts/review_findings.md`.
+Classify all findings according to precedence:
+- `[CONTRACT_MISREAD]` (Blocker: breach of architecture contract)
+- `[VALID_ACTIONABLE]` (Blocker: actionable bug, vulnerability, or regression)
+- `[VALID_TRADEOFF]` (Non-blocker: intentional tradeoff)
+- `[NOISE]` (Informational / style preference)
+
+Output artifact: `production_artifacts/review_findings.md`.

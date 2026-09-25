@@ -236,7 +236,7 @@ function hasExecutable(binary) {
         if (process.platform === 'win32') {
             execFileSync('where.exe', [binary], { stdio: 'ignore' });
         } else {
-            if (!/^[a-zA-Z0-9._-]+$/.test(binary)) return false;
+            if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(binary)) return false;
             execSync(`command -v ${binary}`, { stdio: 'ignore' });
         }
         return true;
@@ -2196,8 +2196,11 @@ async function installOpenWikiVisualizer() {
     // bin dir, so resolve the absolute binary path now instead of relying on PATH at boot.
     let openwikiBin = 'openwiki';
     try {
-        const lookup = process.platform === 'win32' ? 'where openwiki' : 'command -v openwiki';
-        openwikiBin = execSync(lookup, { encoding: 'utf8' }).split(/\r?\n/)[0].trim() || 'openwiki';
+        if (process.platform === 'win32') {
+            openwikiBin = execFileSync('where.exe', ['openwiki'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(/\r?\n/)[0].trim() || 'openwiki';
+        } else {
+            openwikiBin = execSync('command -v openwiki', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(/\r?\n/)[0].trim() || 'openwiki';
+        }
     } catch (e) { logDebug(e, 'openwiki path lookup'); }
 
     // The openwiki CLI is a Node script (#!/usr/bin/env node shebang). Under
@@ -2206,8 +2209,11 @@ async function installOpenWikiVisualizer() {
     // the interpreter itself is baked in as an absolute path.
     let nodeBin = 'node';
     try {
-        const lookup = process.platform === 'win32' ? 'where node' : 'command -v node';
-        nodeBin = execSync(lookup, { encoding: 'utf8' }).split(/\r?\n/)[0].trim() || 'node';
+        if (process.platform === 'win32') {
+            nodeBin = execFileSync('where.exe', ['node'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(/\r?\n/)[0].trim() || 'node';
+        } else {
+            nodeBin = execSync('command -v node', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(/\r?\n/)[0].trim() || 'node';
+        }
     } catch (e) { logDebug(e, 'node path lookup'); }
 
     // Which wiki :4321 serves is per-machine setup configuration, not a
@@ -2448,11 +2454,11 @@ async function installOSAgentWorkspace() {
     }, 'AO cannot be started without its binary.');
 
     try {
-        execSync(`codesign -v "${binTarget}"`, { stdio: 'ignore' });
+        execFileSync('codesign', ['-v', binTarget], { stdio: 'ignore' });
     } catch {
         log.warn('The ao binary is not code-signed — AMFI will kill it at launch.');
         try {
-            execSync(`codesign -s - -f "${binTarget}"`, { stdio: 'ignore' });
+            execFileSync('codesign', ['-s', '-', '-f', binTarget], { stdio: 'ignore' });
             log.step('Signed it ad-hoc.');
         } catch (e) { log.warn(`Could not sign it: ${e.message}`); }
     }
@@ -2467,12 +2473,12 @@ async function installOSAgentWorkspace() {
     // service definition changes upstream.
     const legacyPlist = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.agent-workspace.plist');
     if (fs.existsSync(legacyPlist)) {
-        try { execSync(`launchctl unload "${legacyPlist}" 2>/dev/null`, { stdio: 'ignore' }); } catch (e) { logDebug(e, 'unload legacy ao agent'); }
+        try { execFileSync('launchctl', ['unload', legacyPlist], { stdio: 'ignore' }); } catch (e) { logDebug(e, 'unload legacy ao agent'); }
         try { fs.unlinkSync(legacyPlist); log.step('Removed the old com.bdb.agent-workspace service.'); } catch (e) { logDebug(e, 'remove legacy plist'); }
     }
 
     installStep('register the AO service', () => {
-        execSync(`"${binTarget}" service install`, { stdio: 'ignore' });
+        execFileSync(binTarget, ['service', 'install'], { stdio: 'ignore' });
     }, 'Start it by hand with: ao service install');
 
     if (await verifyDaemonListening(3101, 'AO Orchestrator', 8000)) {
@@ -2946,8 +2952,11 @@ async function installMcpsForTarget(paths, ctx) {
 
     let uvPath = 'uv';
     try {
-        const whichCmd = process.platform === 'win32' ? 'where uv' : 'which uv';
-        uvPath = execSync(whichCmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split(/\r?\n/)[0];
+        if (process.platform === 'win32') {
+            uvPath = execFileSync('where.exe', ['uv'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }).trim().split(/\r?\n/)[0];
+        } else {
+            uvPath = execSync('command -v uv', { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }).trim().split(/\r?\n/)[0];
+        }
     } catch (e) {
         if (fs.existsSync(path.join(homeDir, '.local', 'bin', 'uv'))) uvPath = path.join(homeDir, '.local', 'bin', 'uv');
         else if (fs.existsSync(path.join(homeDir, '.cargo', 'bin', 'uv'))) uvPath = path.join(homeDir, '.cargo', 'bin', 'uv');
