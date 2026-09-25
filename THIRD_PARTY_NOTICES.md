@@ -287,6 +287,54 @@ the upstream offensive exploit content is stripped and not carried over.
 
 ---
 
+## obra/superpowers
+
+<https://github.com/obra/superpowers> — MIT. Copyright (c) 2025 Jesse Vincent.
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`8ca22dba9a94f28898bbce59f2537ff4d87c747d` (v6.4.2).
+
+Five workflow skills are vendored under `skills/global_config/`, each carried
+whole with its companion files: `verification-before-completion`,
+`requesting-code-review` (plus `code-reviewer.md`),
+`finishing-a-development-branch`, `using-git-worktrees`, and
+`dispatching-parallel-agents`. A sixth, `writing-plans`, is not vendored: AOS
+retains its own version of that skill (`source: community`).
+
+AOS modifications: `category:`, `source:` and `date_added:` added to the
+frontmatter; the `superpowers:` namespace prefix stripped from cross-skill
+references so they resolve to AOS skill names.
+
+AOS already vendored four other skills from this repository earlier
+(`brainstorming`, `test-driven-development`, `executing-plans`,
+`subagent-driven-development`) without recording it here. Those imports still
+carry the `superpowers:` prefix in their cross-references.
+
+---
+
+## akin-ozer/cc-devops-skills
+
+<https://github.com/akin-ozer/cc-devops-skills> — Apache-2.0.
+Copyright [yyyy] [name of copyright owner] (upstream ships the unfilled
+Apache-2.0 notice).
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`276af751e659315aaf56d3ad13d7c26f4e72e28a`.
+
+Four generator/validator pairs are vendored under `skills/global_config/`, each
+carried whole including its `references/`, `scripts/`, `examples/`, `docs/` and
+`test/` subtrees: `github-actions-generator` + `github-actions-validator`,
+`dockerfile-generator` + `dockerfile-validator`, `bash-script-generator` +
+`bash-script-validator`, `makefile-generator` + `makefile-validator`.
+
+AOS modifications: `category:`, `source:` and `date_added:` added to the
+frontmatter; the `devops-skills:` namespace prefix stripped from cross-skill
+references so they resolve to AOS skill names; the Docker example user
+`appuser` renamed to `app` throughout `dockerfile-generator` and
+`dockerfile-validator` to satisfy the E-PATH01 username check.
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in
