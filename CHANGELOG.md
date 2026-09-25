@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.1](https://github.com/hybridlabor-api/aos/compare/v4.7.0...v4.7.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* AOS 4.7.1 - System Doctor, AO Beta, Store Offline Index, Native Plans & Archify Contracts ([#57](https://github.com/hybridlabor-api/aos/issues/57)) ([1e032ef](https://github.com/hybridlabor-api/aos/commit/1e032efa82845e8a969c112c9d589e1c0b2131cf))
+
 ## [4.7.0](https://github.com/hybridlabor-api/aos/compare/v4.6.6...v4.7.0) (2026-09-24)
 
 
