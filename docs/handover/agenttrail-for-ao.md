@@ -10,7 +10,7 @@ Probe `http://127.0.0.1:5330` through `5344` and match `repoPath` against the re
 
 ```sh
 curl -s http://127.0.0.1:$p/whoami
-# {"project":"aos","port":5330,"repoPath":"/Users/tim/dev/bdb-dev/aos-wt-go"}
+# {"project":"aos","port":5330,"repoPath":"/path/to/project-repo"}
 ```
 
 Stop at the first match. If no daemon answers there is nothing to mirror — do not spawn a daemon from AO; the asker's CLI already prints `start: aos-trail . --plan …` on stderr (00_execution_plan.md:5). The `AGENTTRAIL_PORT` env var pins a single port and wins over the probe range (agenttrail.mjs:91).

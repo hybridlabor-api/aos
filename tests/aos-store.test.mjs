@@ -30,3 +30,9 @@ test('store CLI dry-run does not write files', () => {
   const output = run(['install', 'django-patterns', '--project', '--dry-run']);
   assert.match(output, /\[dry-run\] write/);
 });
+
+test('store CLI install requires --net flag to download', () => {
+  const result = spawnSync(process.execPath, [cli, 'install', 'django-patterns', '--project'], { cwd: root, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr || result.stdout, /requires internet access.*Pass --net/i);
+});

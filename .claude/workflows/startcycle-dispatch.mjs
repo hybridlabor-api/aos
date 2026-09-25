@@ -823,7 +823,7 @@ if (mandatorySkillNames.length > 0) {
     let message = `--skill named skill(s) that could not be found on this machine: ${missing.join(', ')}. `;
     if (storeMatches.length > 0) {
       message += `Found in the AOS / ECC Store: ${storeMatches.join(', ')}. ` +
-        `Run: aos store install ${storeMatches.join(' ')} ` +
+        `Run: aos store install ${storeMatches.join(' ')} --net ` +
         'Then re-run your startcycle command. ';
     } else if (near.length > 0) {
       message += `Did you mean: ${near.join(', ')}? `;

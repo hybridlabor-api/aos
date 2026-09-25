@@ -6,7 +6,7 @@
 //   node bin/aos-doctor.mjs [--json] [--net]
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { connect } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -49,7 +49,7 @@ const add = (area, name, ok, detail, fix, warningOnly = false) => {
 };
 
 const which = (bin) => {
-  const probe = IS_WIN ? 'where' : 'which';
+  const probe = IS_WIN ? 'where.exe' : 'which';
   try {
     return tilde(execFileSync(probe, [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0]);
   } catch {
@@ -106,6 +106,26 @@ function checkAosCore() {
   add('aos-core', 'Install Manifest', !!manifest,
     manifest ? `v${manifest.version || '4.x'} · tier ${manifest.tier || 'full'} · modules: ${(manifest.installedModules || []).join(', ') || 'default'}` : `${manifestPath} missing or unreadable`,
     'Run the AOS installer: npx @hybridlabor-api/aos@latest');
+
+  // Network version check gated by --net
+  if (NET) {
+    try {
+      const npmBin = IS_WIN ? 'npm.cmd' : 'npm';
+      const latest = execFileSync(npmBin, ['view', '@hybridlabor-api/aos', 'version'], {
+        encoding: 'utf8',
+        timeout: 8000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        shell: IS_WIN
+      }).trim();
+      const currentVer = manifest?.version || '4.7.1';
+      add('aos-core', 'Version vs npm', currentVer === latest, `local v${currentVer} · npm v${latest}`,
+        'Run: npx @hybridlabor-api/aos@latest');
+    } catch {
+      add('aos-core', 'Version vs npm', false, 'npm view failed (offline or network timeout)', 'Re-run with network or omit --net', true);
+    }
+  } else {
+    add('aos-core', 'Version vs npm', true, 'Skipped (offline mode — pass --net to check npm)', '', true);
+  }
 
   // Check store index
   const storeIndexCandidates = [
@@ -284,7 +304,7 @@ async function checkDaemonsAndModules() {
   if (IS_MAC && aoBin) {
     let signed = false;
     try {
-      execSync(`codesign -v "${aoBin}"`, { stdio: 'ignore' });
+      execFileSync('codesign', ['-v', aoBin], { stdio: 'ignore' });
       signed = true;
     } catch {}
     add('security', 'AO Binary Signature (AMFI)', signed,

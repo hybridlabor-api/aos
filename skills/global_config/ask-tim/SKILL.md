@@ -46,7 +46,7 @@ Reach for `test-driven-development` or `tdd-workflow` on their own when you want
 When no native AOS skill fits, search the markdown-only ECC store before starting a pipeline:
 
 - `aos store search <query>` finds available fallback skills and agents.
-- `aos store install <name>` installs a verified item after explicit user action.
+- `aos store install <name> --net` installs a verified item after explicit user action.
 - `aos store list --type=skills` and `aos store list --type=agents` show the catalogue.
 - The core remains the trusted AOS skill set; the store is a fallback, not a reason to bypass the startcycle validation.
 - A missing `--skill` is reported by the dispatcher with the exact install command. It never downloads during a run.
