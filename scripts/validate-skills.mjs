@@ -17,6 +17,19 @@ const CATEGORIES = new Set([
 ]);
 const REQUIRED = ['name', 'description', 'category'];
 
+// The Agent Skills specification constrains `name` to lowercase letters,
+// numbers, and single hyphens, max 64 chars. A harness that enforces the spec
+// drops such a skill silently, so a self-consistent name==directory pair is
+// not enough: `MCP_Manage` matched its own directory perfectly and was still
+// unloadable by pi. Tolerant harnesses hide this; strict ones lose the skill.
+const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const NAME_MAX = 64;
+
+// Charset and length are one rule. Keeping them as two expressions meant the
+// selftest could assert the charset and pass while the length limit lived only
+// in validate() -- the two can drift, and then the test proves nothing.
+const isValidSkillName = (v) => v.length <= NAME_MAX && NAME_RE.test(v);
+
 // Names that are stand-ins or service accounts rather than a person. The rule
 // is about leaking a human's username; `/home/agent` on the SaaS fleet is a
 // role account and is meant to be written down.
@@ -108,6 +121,18 @@ export function scanFrontmatter(text) {
       }
     } else {
       eatIndented(false);                                  // plain scalar
+      // A plain (unquoted) scalar containing ": " is a nested mapping as far as
+      // YAML is concerned. The scanner above takes the rest of the line as the
+      // value and sees nothing wrong, and so does every lenient harness — but
+      // a spec-conformant reader parses it as a map, drops the frontmatter, and
+      // the skill never loads. `description: live map: of a build` is the shape.
+      if (/:(\s|$)/.test(restT)) {
+        issues.push({
+          code: 'E-YAML04', key,
+          msg: `plain value of \`${key}\` contains ":" — YAML reads the rest as a nested mapping, not text. ` +
+               'Quote the value or fold it (>-); as written the frontmatter does not parse.',
+        });
+      }
     }
 
     if (swallowed.length) {
@@ -247,11 +272,21 @@ function validate() {
     }
 
     const name = byKey.get('name');
-    if (name && unquote(name.value) !== dirName) {
-      findings.push({
-        level: 'error', code: 'E-FM04', file: rel, line: name.line,
-        msg: `\`name: ${unquote(name.value)}\` does not match its directory \`${dirName}\``,
-      });
+    if (name) {
+      const value = unquote(name.value);
+      if (!isValidSkillName(value)) {
+        findings.push({
+          level: 'error', code: 'E-NAME01', file: rel, line: name.line,
+          msg: `\`name: ${value}\` is not spec-valid — lowercase a-z, 0-9 and single hyphens only, max ${NAME_MAX} chars. ` +
+               'A harness that enforces the Agent Skills spec will not load this skill at all.',
+        });
+      }
+      if (value !== dirName) {
+        findings.push({
+          level: 'error', code: 'E-FM04', file: rel, line: name.line,
+          msg: `\`name: ${value}\` does not match its directory \`${dirName}\``,
+        });
+      }
     }
 
     const desc = byKey.get('description');
@@ -383,8 +418,48 @@ function selftest() {
   assert.equal(quoted.issues.length, 0);
   assert.equal(quoted.keys.find((k) => k.key === 'category').value, 'library');
 
+  // A plain scalar holding ": " is a nested mapping to a real YAML reader, so
+  // the frontmatter does not parse and the skill never loads. Every lenient
+  // harness accepts it, which is how agenttrail shipped: the shape passed this
+  // validator, Claude Code and Antigravity, and only pi rejected it.
+  const colon = scanFrontmatter([
+    '---', 'name: agenttrail', 'description: Live map of a build: which component',
+    'category: bdb-core', '---',
+  ].join('\n'));
+  assert.ok(
+    colon.issues.some((i) => i.code === 'E-YAML04'),
+    'a plain scalar containing ": " must be reported',
+  );
+  assert.equal(colon.keys.find((k) => k.key === 'description').value, 'Live map of a build: which component');
+
+  // A colon that is not followed by whitespace is not a mapping boundary --
+  // URLs and times are the common false positive.
+  const url = scanFrontmatter([
+    '---', 'name: firecrawl', 'description: See https://example.com/a:b for the API',
+    'category: library', '---',
+  ].join('\n'));
+  assert.ok(!url.issues.some((i) => i.code === 'E-YAML04'), 'a colon inside a URL is not a mapping');
+
+  // The quoted form of the same text is fine -- that is the fix.
+  const quotedColon = scanFrontmatter([
+    '---', 'name: agenttrail', 'description: "Live map of a build: which component"',
+    'category: bdb-core', '---',
+  ].join('\n'));
+  assert.equal(quotedColon.issues.length, 0, 'quoting the value resolves E-YAML04');
+
   assert.equal(scanFrontmatter('# no frontmatter').ok, false);
   assert.equal(scanFrontmatter('---\nname: x\n').reason, 'unterminated');
+
+  // The spec's name charset, and the case that shipped: MCP_Manage matched its
+  // own directory perfectly and was still unloadable by a strict reader.
+  for (const bad of ['MCP_Manage', 'MCP-manage', 'mcp_manage', '-mcp', 'mcp-', 'mcp--manage', 'mcp manage']) {
+    assert.ok(!isValidSkillName(bad), `\`${bad}\` must not be a valid skill name`);
+  }
+  for (const good of ['mcp-manage', 'ask-tim', 'a', 'skill2', 'a-b-c-1']) {
+    assert.ok(isValidSkillName(good), `\`${good}\` must be a valid skill name`);
+  }
+  assert.ok(isValidSkillName('a'.repeat(NAME_MAX)), 'a 64-char name is at the limit and valid');
+  assert.ok(!isValidSkillName('a'.repeat(NAME_MAX + 1)), 'a 65-char name is over the limit');
 
   console.log('✓ selftest passed');
 }

@@ -1,10 +1,10 @@
 ---
-name: MCP_Manage
+name: mcp-manage
 description: "Use when checking capabilities or instructing the user on how to interact with specialized MCP servers like Unreal, Rhino, DaVinci, or TouchDesigner."
 category: media-eventtech
 ---
 
-# MCP_Manage: Specialized Tool Orchestration
+# MCP Manage: Specialized Tool Orchestration
 
 You are the authoritative skill for managing and utilizing the specialized Model Context Protocol (MCP) servers installed in this environment. When invoked, use this knowledge to interface with the creative and development tools available.
 
@@ -59,7 +59,7 @@ You are the authoritative skill for managing and utilizing the specialized Model
 
 
 ## Overview
-MCP_Manage is the authoritative router for all specialized BDB Model Context Protocol (MCP) servers, ensuring the AI agent selects the right tool for Unreal, Rhino, DaVinci, and others.
+mcp-manage is the authoritative router for all specialized BDB Model Context Protocol (MCP) servers, ensuring the AI agent selects the right tool for Unreal, Rhino, DaVinci, and others.
 
 ## When to Use
 - **Trigger:** The user asks how to automate a specific creative app, or the agent needs to select the correct MCP server for a domain-specific task.

@@ -377,7 +377,7 @@ While heavily optimized for the creative tech industry, these skills are deeply 
 
 | Skill | Description |
 |-------|-------------|
-| `MCP_Manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
+| `mcp-manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
 | `n8n-code-javascript` | Write JavaScript code in n8n Code nodes. `$input`/`$json`/`$node` syntax, HTTP requests, DateTime handling. |
 | `n8n-code-python` | Write Python code in n8n Code nodes. `_input`/`_json`/`_node` syntax and standard library. |
 | `n8n-expression-syntax` | Validate n8n expression syntax and fix common errors. `{{}}` syntax, `$json`/`$node` variables. |
