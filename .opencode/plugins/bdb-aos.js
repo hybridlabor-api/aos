@@ -180,6 +180,29 @@ export default async function bdbAosPlugin(input) {
           });
         }
       } catch {}
+
+      // Recognize and wire /startcycle-graph workflow
+      const graphMatch = fullText.match(/^\/startcycle-graph(?:\s+(.*))?$/is);
+      if (graphMatch) {
+        const goal = (graphMatch[1] || '').trim();
+        const graphInstructions = [
+          `[AOS Autonomous Graph Workflow Engine - Active]`,
+          `Goal: "${goal || 'Execute planned architecture cycle'}"`,
+          `State Schema: .agents/state.schema.json`,
+          `Persisted State: production_artifacts/state.json`,
+          `Available Nodes: .agents/nodes.json (Architect -> TechLead -> Build [UI_UX, Engineering, Media] -> Reviewer -> Shipping)`,
+          `Rule: Nodes never call each other. Dispatch each node turn in sequence, evaluate state.json, and enforce Reviewer & Shipping gates before completion.`
+        ].join('\n');
+
+        msgOutput.parts.unshift({
+          id: `startcycle-${Date.now()}`,
+          sessionID: msgInput.sessionID,
+          messageID: msgInput.messageID || '',
+          type: 'text',
+          text: graphInstructions,
+          synthetic: true,
+        });
+      }
     },
 
     'tool.execute.before': async (toolInput, toolOutput) => {
