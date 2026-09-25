@@ -45,6 +45,12 @@
       "pinned_commit": "739512a8588b28ff3b554e669391c22508602878",
       "purpose": "Defensive audit heuristics and vulnerability checklists (offensive exploits stripped)",
       "target_skill": "bdb-security-audit, security-reviewer"
+    },
+    "ecc-store": {
+      "upstream": "https://github.com/affaan-m/ECC",
+      "pinned_commit": "e482e579415fde18357cafce70f177ae19fd7f03",
+      "purpose": "Markdown-only fallback store for skills and auxiliary subagents",
+      "target": "lib/ecc-store-index.json"
     }
   }
 }

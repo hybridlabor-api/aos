@@ -78,6 +78,10 @@
       "command": "deja",
       "args": ["mcp"]
     },
+    "mcsc": {
+      "command": "node",
+      "args": ["__MCPS_DIR__/mcsc/server.js"]
+    },
     "open_design_mcp": {
       "command": "npx",
       "args": ["-y", "open-design-mcp", "__MCPS_DIR__/open-design"],

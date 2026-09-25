@@ -92,6 +92,21 @@ if (!fs && typeof process !== 'undefined') {
   } catch {}
 }
 
+let archifyContractPromise;
+async function loadArchifyContract() {
+  if (!archifyContractPromise) {
+    archifyContractPromise = (async () => {
+      if (typeof process === 'undefined') return null;
+      try {
+        return await import(new URL('../../lib/aos-archify-contract.mjs', import.meta.url).href);
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return archifyContractPromise;
+}
+
 function readStdinSync() {
   const chunks = [];
   const buffer = Buffer.alloc(64 * 1024);
@@ -346,12 +361,54 @@ if (typeof globalThis.agent === 'undefined') {
       return { phase: 'escalated' };
     }
 
+    if (label.startsWith('archify-verify')) {
+      const failVerify = (error) => ({ validateOk: false, deliverOk: false, checksPassed: 0, checkCount: 9, error: String(error).slice(0, 400) });
+      if (!fs || !path || !child_process) return failVerify('archify verify has no process runtime in this environment');
+      const contract = await loadArchifyContract();
+      if (!contract || typeof contract.runArchifyBoundary !== 'function') return failVerify('archify contract unavailable');
+      const repoRoot = process.cwd();
+      const spec = contract.ARCHITECTURE_SPEC_PATH;
+      const html = contract.ARCHITECTURE_HTML_PATH;
+      const localBin = typeof contract.resolveArchifyBin === 'function' ? contract.resolveArchifyBin(repoRoot) : null;
+      const run = (args, options) => child_process.spawnSync(
+        localBin ? process.execPath : 'aos-archify',
+        [...(localBin ? [localBin] : []), ...args],
+        {
+          cwd: options.cwd,
+          encoding: 'utf8',
+          timeout: options.timeoutMs,
+          maxBuffer: options.maxBuffer,
+          shell: false,
+        }
+      );
+      try {
+        const result = await contract.runArchifyBoundary({
+          bin: localBin,
+          cwd: repoRoot,
+          specPath: spec,
+          htmlPath: html,
+          run,
+        });
+        if (!result || result.ok !== true) return failVerify((result && result.error) || 'archify boundary failed');
+        return {
+          validateOk: result.validate?.status === 0,
+          deliverOk: result.deliver?.status === 0,
+          checksPassed: result.receipt?.checksPassed ?? 0,
+          checkCount: result.receipt?.checkCount ?? contract.ARCHITECTURE_CHECK_COUNT ?? 9,
+          error: '',
+        };
+      } catch (error) {
+        return failVerify((error && error.message) || 'archify boundary executor failed');
+      }
+    }
+
     // LLM Agent Steps: runner adapter / graceful execution
     if (child_process) {
       try {
         const agyRes = child_process.spawnSync('agy', ['--print', prompt, '--output-format', 'json', '--print-timeout', '30s'], {
           encoding: 'utf8',
           timeout: 35000,
+          shell: false,
         });
         if (agyRes.status === 0 && agyRes.stdout) {
           const jsonMatch = agyRes.stdout.match(/\{[\s\S]*\}/);
@@ -571,6 +628,38 @@ async function mergeStateD() {
   );
 }
 
+async function verifyArchifyArtifacts() {
+  return await agent(
+    'You are the dedicated /startcycle-graph archify-verify step -- a deterministic check, not a reasoning task. ' +
+      'Working directory is the repository root. Run exactly these two commands in this order, ' +
+      'each as an argument array with no shell and no string interpolation: ' +
+      'first ["validate", "architecture", "production_artifacts/00_architecture.json", "--quality", "showcase", "--json"], ' +
+      'then ["deliver", "architecture", "production_artifacts/00_architecture.json", "production_artifacts/00_architecture.html", "--quality", "showcase", "--json"], ' +
+      'both via the node archify binary at skills/global_config/archify/bin/archify.mjs with a 120 second timeout each. ' +
+      'Only run deliver when validate exits 0. Read at most 65536 bytes of each command output. ' +
+      'Deliver passes only on a showcase receipt with 9 of 9 checks and 0 errors plus sha256 evidence for specification and artifact. ' +
+      'On any non-zero exit, oversized output, or invalid receipt, report failure and preserve the previous HTML artifact untouched -- ' +
+      'never invent success and never write state.artifacts.architecture yourself. ' +
+      'Keep any logged output bounded to 400 characters with home directories and long hashes redacted.\n\n' +
+      'Return only: { "validateOk": boolean, "deliverOk": boolean, "checksPassed": number, "checkCount": number, "error": string }.',
+    {
+      label: `archify-verify-${iteration}`,
+      model: 'haiku',
+      schema: {
+        type: 'object',
+        required: ['validateOk', 'deliverOk', 'checksPassed', 'checkCount', 'error'],
+        properties: {
+          validateOk: { type: 'boolean' },
+          deliverOk: { type: 'boolean' },
+          checksPassed: { type: 'number' },
+          checkCount: { type: 'number' },
+          error: { type: 'string' },
+        },
+      },
+    }
+  );
+}
+
 // ---------------------------------------------------------------------
 // Load the node registry. First thing this run does, per comment block
 // item #4 -- everything below is derived from this, nothing is hardcoded.
@@ -706,20 +795,22 @@ if (mandatorySkillNames.length > 0) {
       'this workflow may be driven from a harness whose directory is not ~/.claude. ' +
       'If this project has its own skills/ directory, also accept skills/<name>/SKILL.md or skills/<container>/<name>/SKILL.md. ' +
       'This is a read-only lookup, not a reasoning task -- do not invent a path that does not exist, and never report a close match as `found`.\n\n' +
-      'For any name that does NOT resolve, list up to five installed skills whose directory names are plausible near-misses ' +
+      'For any name that does NOT resolve, read lib/ecc-store-index.json and list exact available store item names in `store_matches`. ' +
+      'Also list up to five installed skills whose directory names are plausible near-misses ' +
       '(substring, obvious typo, or the same words in another order) in `suggestions`. Read the real directory listing to do this -- ' +
       'suggest only names that actually exist on disk. `--skill=` requires an exact directory name, and a user who mistyped one ' +
       'has no way to discover the right spelling from an error that only says "not found".\n\n' +
-      'Return only: { "found": string[], "missing": string[], "suggestions": string[] }.',
+      'Return only: { "found": string[], "missing": string[], "store_matches": string[], "suggestions": string[] }.',
     {
       label: 'validate-mandatory-skills',
       model: 'haiku',
       schema: {
         type: 'object',
-        required: ['found', 'missing'],
+        required: ['found', 'missing', 'store_matches'],
         properties: {
           found: { type: 'array', items: { type: 'string' } },
           missing: { type: 'array', items: { type: 'string' } },
+          store_matches: { type: 'array', items: { type: 'string' } },
           suggestions: { type: 'array', items: { type: 'string' } },
         },
       },
@@ -727,15 +818,21 @@ if (mandatorySkillNames.length > 0) {
   );
   const missing = skillCheckResult?.missing ?? [];
   if (missing.length > 0) {
+    const storeMatches = skillCheckResult?.store_matches ?? [];
     const near = skillCheckResult?.suggestions ?? [];
-    return await escalate(
-      `--skill named skill(s) that could not be found on this machine: ${missing.join(', ')}. ` +
-        (near.length
-          ? `Did you mean: ${near.join(', ')}? `
-          : 'No installed skill has a similar name. ') +
-        '--skill= takes the exact skill directory name; run /ask-tim to find the one you want. ' +
-        'Refusing to silently proceed without a mandated skill.'
-    );
+    let message = `--skill named skill(s) that could not be found on this machine: ${missing.join(', ')}. `;
+    if (storeMatches.length > 0) {
+      message += `Found in the AOS / ECC Store: ${storeMatches.join(', ')}. ` +
+        `Run: aos store install ${storeMatches.join(' ')} ` +
+        'Then re-run your startcycle command. ';
+    } else if (near.length > 0) {
+      message += `Did you mean: ${near.join(', ')}? `;
+    } else {
+      message += 'No installed or store skill has a similar name. ';
+    }
+    message += '--skill= takes the exact skill directory name; run /ask-tim to find the one you want. ' +
+      'Refusing to silently proceed without a mandated skill.';
+    return await escalate(message);
   }
   mandatorySkills = skillCheckResult?.found ?? mandatorySkillNames;
 }
@@ -759,9 +856,14 @@ while (!approved) {
         : '') +
       `Turn this goal into a system plan with an explicit capability map (module boundaries, ` +
       `dependency direction, build order). Write it to production_artifacts/00_execution_plan.md. ` +
-      `Set state.goal, state.phase = "plan", state.artifacts.plan to that path, and state.mandatory_skills to ${JSON.stringify(mandatorySkills)}. ` +
+      `Author the architecture as Archify architecture JSON to production_artifacts/00_architecture.json, ` +
+      `run aos-archify validate architecture production_artifacts/00_architecture.json --quality showcase --json during repair and ` +
+      `aos-archify deliver architecture production_artifacts/00_architecture.json production_artifacts/00_architecture.html --quality showcase --json once for final acceptance, ` +
+      `link it from the relevant plan component with a url: production_artifacts/00_architecture.html line, ` +
+      `and set state.goal, state.phase = "plan", state.artifacts.plan to the plan path, state.artifacts.architecture to production_artifacts/00_architecture.html only on a passing showcase receipt (9/9 checks, 0 errors), and state.mandatory_skills to ${JSON.stringify(mandatorySkills)}. ` +
+      `On a failed validate/deliver preserve the previous HTML and report deliverOk false instead of proceeding silently. ` +
       `Decide whether the goal needs the Media_EventTech build node (TouchDesigner/show-control/3D/media work) -- most goals don't.\n\n` +
-      `Return only: { "planPath": string, "needsMedia": boolean }.`,
+      `Return only: { "planPath": string, "needsMedia": boolean, "architectureSpec": string, "architectureHtml": string, "deliverOk": boolean }.`,
     {
       label: `architect-${iteration}`,
       agentType: architectNode.agentType,
@@ -769,22 +871,78 @@ while (!approved) {
       schema: {
         type: 'object',
         required: ['planPath', 'needsMedia'],
-        properties: { planPath: { type: 'string' }, needsMedia: { type: 'boolean' } },
+        properties: {
+          planPath: { type: 'string' },
+          needsMedia: { type: 'boolean' },
+          architectureSpec: { type: 'string' },
+          architectureHtml: { type: 'string' },
+          deliverOk: { type: 'boolean' },
+        },
       },
     }
   );
 
   planPath = architectResult?.planPath;
   needsMedia = !!architectResult?.needsMedia;
+  const architectureSpec = architectResult?.architectureSpec || 'production_artifacts/00_architecture.json';
+  const architectureHtml = architectResult?.architectureHtml || 'production_artifacts/00_architecture.html';
+  const deliverOk = architectResult?.deliverOk !== false;
 
   if (!planPath) {
     return await escalate('Architect did not return a plan path.');
   }
+  if (!deliverOk) {
+    iteration++;
+    if (iteration >= MAX_ITERATIONS) {
+      return await escalate(
+        'Archify deliver reported failure at the Architect step; previous HTML preserved.',
+        { planPath }
+      );
+    }
+    lastRejectionReason = 'Archify deliver/validate failed; previous HTML preserved. Repair the spec and deliver again.';
+    continue;
+  }
+  if (architectureSpec !== 'production_artifacts/00_architecture.json' || architectureHtml !== 'production_artifacts/00_architecture.html') {
+    iteration++;
+    if (iteration >= MAX_ITERATIONS) {
+      return await escalate(
+        'Archify boundary rejected untrusted artifact paths; previous HTML preserved.',
+        { planPath }
+      );
+    }
+    lastRejectionReason = 'Archify boundary rejected untrusted artifact paths; previous HTML preserved. Use production_artifacts/00_architecture.json and production_artifacts/00_architecture.html.';
+    continue;
+  }
+  const boundaryResult = await verifyArchifyArtifacts();
+  if (!boundaryResult || boundaryResult.validateOk !== true || boundaryResult.deliverOk !== true) {
+    iteration++;
+    const boundaryError = typeof boundaryResult?.error === 'string' && boundaryResult.error
+      ? boundaryResult.error.slice(0, 400)
+      : 'archify validate/deliver failed';
+    if (iteration >= MAX_ITERATIONS) {
+      return await escalate(
+        `Archify boundary verification failed; previous HTML preserved: ${boundaryError}`,
+        { planPath }
+      );
+    }
+    lastRejectionReason = `Archify boundary verification failed; previous HTML preserved: ${boundaryError}. Repair the spec and deliver again.`;
+    continue;
+  }
+  try {
+    if (fs && fs.existsSync && fs.existsSync(architectureHtml) && child_process) {
+      const canvas = child_process.spawn('aos-plan-canvas', ['open', architectureHtml, '--no-open'], { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: false, detached: true });
+      if (canvas && typeof canvas.on === 'function') canvas.on('error', () => {});
+      if (canvas && typeof canvas.unref === 'function') canvas.unref();
+    }
+  } catch {}
 
   const techLeadResult = await agent(
     `You are acting as the ${techleadNode.label} agent (${techleadNode.personaFile}). ${dispatchNote(techleadNode)}${skillsNote(techleadNode)}\n\n` +
       `Read the plan at ${planPath}. Approve it only if it has an explicit capability map: ` +
       `module boundaries, dependency direction, and build order are all stated, not implicit. ` +
+      `Apply the architecture gate: reject unless ${architectureSpec} and ${architectureHtml} both exist, ` +
+      `the plan links the diagram with a url: ${architectureHtml} line, ` +
+      `and the deliver receipt is a passing showcase receipt (9/9 checks, 0 errors, failure preserves the previous HTML). ` +
       (mandatorySkills.length > 0
         ? `The user also required this run to use the following skill(s) via /startcycle-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
           `Reject the plan if it does not actually account for them — catching that here costs one planning round, ` +
@@ -843,7 +1001,7 @@ const NODE_NAMES = humanList(NODE_ENUM);
 // aos-trail exits on its own when a map for this repo is already running.
 try {
   child_process?.spawn('aos-trail', [process.cwd(), '--plan', 'production_artifacts/00_execution_plan.md', '--no-open'],
-    { detached: true, stdio: 'ignore', shell: process.platform === 'win32' }).on('error', () => {}).unref();
+    { detached: true, stdio: 'ignore', shell: false }).on('error', () => {}).unref();
 } catch { /* no child_process in this runtime: run without the map */ }
 
 let findings = [];
@@ -1011,7 +1169,7 @@ while (!reviewedClean) {
 // state.d + merge treatment as the build/review loop above.
 // ---------------------------------------------------------------------
 
-const GATE_KEYS = ['lint', 'typecheck', 'tests', 'a11y', 'seo'];
+const GATE_KEYS = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
 const GATE_VALUE_ENUM = ['pass', 'fail', 'skip'];
 let allGatesPass = false;
 let lastGate = null;
@@ -1020,7 +1178,7 @@ while (!allGatesPass) {
   const shipResult = await agent(
     `You are acting as the ${shippingNode.label} agent (${shippingNode.personaFile}). ${dispatchNote(shippingNode)}${skillsNote(shippingNode)}\n\n` +
       `Run the automated quality gate against the artifacts from the plan at ${planPath}: lint, typecheck, ` +
-      `tests, a11y, seo. Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect ` +
+      `tests, a11y, seo, security. Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect ` +
       `which apply; use "skip" only for a check that genuinely doesn't apply to this repo, not for one you didn't run). ` +
       `Write production_artifacts/04_release_report.md and update state.gate. ` +
       `If every gate check is 'pass' or 'skip', you must also set state.phase = "ready_to_ship" in state.json.\n\n` +

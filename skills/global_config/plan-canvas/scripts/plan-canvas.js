@@ -186,7 +186,8 @@ async function ensureServer({ stateDir, port }) {
   const child = spawn(process.execPath, [__filename, 'server', '--port', String(port)], {
     detached: true,
     stdio: ['ignore', logFd, logFd],
-    env: { ...process.env, AOS_PLAN_CANVAS_STATE_DIR: stateDir }
+    env: { ...process.env, AOS_PLAN_CANVAS_STATE_DIR: stateDir },
+    shell: false
   });
   child.unref();
   fs.closeSync(logFd);
@@ -204,7 +205,7 @@ function openBrowser(url) {
       : platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
         : ['xdg-open', [url]];
   try {
-    spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref();
+    spawn(cmd, args, { detached: true, stdio: 'ignore', shell: false }).unref();
     return true;
   } catch {
     return false;
@@ -357,6 +358,7 @@ async function cmdServer(args, { stateDir, port }) {
   };
   const canvas = createPlanCanvasServer({
     store,
+    workspaceRoot: process.cwd(),
     host: hostArg || DEFAULT_HOST,
     version: VERSION,
     idleTimeoutMs: resolveIdleTimeoutMs(),
