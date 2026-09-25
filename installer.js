@@ -1709,7 +1709,8 @@ function checkModuleUpdate(pkgName, targetDir) {
         let remoteVer = null;
         let checkFailed = false;
         try {
-            remoteVer = execSync(`npm view ${pkgName} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+            const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+            remoteVer = execFileSync(npmBin, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000, shell: process.platform === 'win32' }).trim();
         } catch (e) {
             // Offline, a proxy, or a misconfigured registry. Swallowing this
             // made every module report "up to date" forever on such a machine,
@@ -2050,13 +2051,23 @@ async function installSynapse() {
     }
 
     const isWin = process.platform === 'win32';
-    const binaryName = isWin ? 'synapse.js' : 'synapse';
-    let binaryPath = path.join(synapseDir, 'bin', binaryName);
-    if (!fs.existsSync(binaryPath)) {
-        if (process.platform === 'darwin' && fs.existsSync(path.join(synapseDir, 'bin', 'synapse-darwin-arm64'))) {
-            binaryPath = path.join(synapseDir, 'bin', 'synapse-darwin-arm64');
-        } else if (process.platform === 'linux' && fs.existsSync(path.join(synapseDir, 'bin', 'synapse-linux-amd64'))) {
-            binaryPath = path.join(synapseDir, 'bin', 'synapse-linux-amd64');
+    let binaryPath;
+    if (isWin) {
+        if (fs.existsSync(path.join(synapseDir, 'bin', 'synapse.exe'))) {
+            binaryPath = path.join(synapseDir, 'bin', 'synapse.exe');
+        } else if (fs.existsSync(path.join(synapseDir, 'bin', 'synapse-windows-amd64.exe'))) {
+            binaryPath = path.join(synapseDir, 'bin', 'synapse-windows-amd64.exe');
+        } else {
+            binaryPath = path.join(synapseDir, 'bin', 'synapse.js');
+        }
+    } else {
+        binaryPath = path.join(synapseDir, 'bin', 'synapse');
+        if (!fs.existsSync(binaryPath)) {
+            if (process.platform === 'darwin' && fs.existsSync(path.join(synapseDir, 'bin', 'synapse-darwin-arm64'))) {
+                binaryPath = path.join(synapseDir, 'bin', 'synapse-darwin-arm64');
+            } else if (process.platform === 'linux' && fs.existsSync(path.join(synapseDir, 'bin', 'synapse-linux-amd64'))) {
+                binaryPath = path.join(synapseDir, 'bin', 'synapse-linux-amd64');
+            }
         }
     }
 
@@ -2406,75 +2417,144 @@ async function installDevToolInstaller() {
     }
 }
 
-// AO ships one prebuilt binary: backend/ao-daemon, Mach-O arm64. The package
-// carries Windows and Linux sources but nothing built for them, and its CLI
-// shim picks the first candidate path that EXISTS without checking whether it
-// can run — so on any other platform it hands spawn a Mach-O file and fails
-// with an exec-format error instead of the "go build" hint it means to give.
-// Installing it there would be installing something known not to work.
+// AO is fully supported across macOS (arm64, amd64), Linux (amd64, arm64), and Windows (amd64).
 function aoSupportedHere() {
-    return process.platform === 'darwin' && process.arch === 'arm64';
+    return ['darwin', 'linux', 'win32'].includes(process.platform);
 }
 
 async function installOSAgentWorkspace() {
     if (!aoSupportedHere()) {
-        log.warn(`AO ships only a macOS arm64 binary — skipping on ${process.platform}/${process.arch}.`);
-        log.warn('Build it from source instead: github.com/hybridlabor-api/bdb-agent-orchestrator');
+        log.warn(`AO is not supported on ${process.platform}/${process.arch}.`);
         return;
     }
 
-    const osAgentDir = path.join(moduleBasePath(), 'bdb-agent-orchestrator');
-    if (!downloadOrUpdateModule('@hybridlabor-api/bdb-agent-orchestrator', osAgentDir, 'BDB Agent Orchestrator')) {
-        log.warn('Skipping AO setup: the module could not be downloaded.');
-        return;
+    const isWin = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const isLinux = process.platform === 'linux';
+
+    // Discover AO directory: check local development checkouts first, then moduleBasePath
+    const candidateDirs = [
+        path.join(homeDir, 'dev', 'agents', 'bdb-agent-orchestrator'),
+        path.join(homeDir, 'dev', 'bdb-dev', 'bdb-agent-orchestrator'),
+        path.join(moduleBasePath(), 'bdb-agent-orchestrator')
+    ];
+    const osAgentDir = candidateDirs.find(d => fs.existsSync(d)) || candidateDirs[candidateDirs.length - 1];
+    const isLocalGitRepo = fs.existsSync(path.join(osAgentDir, '.git'));
+
+    if (isLocalGitRepo) {
+        log.step(`Using local development workspace for AO: ${osAgentDir}`);
+    } else {
+        if (!downloadOrUpdateModule('@hybridlabor-api/bdb-agent-orchestrator', osAgentDir, 'BDB Agent Orchestrator')) {
+            log.warn('Skipping AO setup: the module could not be downloaded.');
+            return;
+        }
     }
     if (DRY_RUN) {
-        log.step('[dry-run] would link ~/.local/bin/ao and run `ao service install`');
+        log.step('[dry-run] would link ao binary and run `ao service install`');
         return;
     }
 
-    const localBinDir = path.join(homeDir, '.local', 'bin');
-    const binTarget = path.join(localBinDir, 'ao');
-    const daemonBin = path.join(osAgentDir, 'backend', 'ao-daemon');
+    const localBinDir = isWin
+        ? path.join(process.env.LOCALAPPDATA || homeDir, 'Programs', 'ao')
+        : path.join(homeDir, '.local', 'bin');
+    const binTarget = path.join(localBinDir, isWin ? 'ao.exe' : 'ao');
 
-    if (!fs.existsSync(daemonBin)) {
-        log.warn(`AO binary missing at ${daemonBin} — package layout changed?`);
-        return;
+    // Platform-specific binary lookup
+    const candidateBinaries = [];
+    if (isWin) {
+        candidateBinaries.push(
+            path.join(osAgentDir, 'backend', 'bin', 'ao-windows-amd64.exe'),
+            path.join(osAgentDir, 'backend', 'bin', 'ao.exe'),
+            path.join(osAgentDir, 'backend', 'ao.exe')
+        );
+    } else if (isMac) {
+        if (process.arch === 'arm64') {
+            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-darwin-arm64'));
+        } else {
+            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-darwin-amd64'));
+        }
+        candidateBinaries.push(
+            path.join(osAgentDir, 'backend', 'ao-daemon'),
+            path.join(osAgentDir, 'backend', 'bin', 'ao'),
+            path.join(osAgentDir, 'backend', 'ao')
+        );
+    } else if (isLinux) {
+        if (process.arch === 'arm64') {
+            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-linux-arm64'));
+        } else {
+            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-linux-amd64'));
+        }
+        candidateBinaries.push(
+            path.join(osAgentDir, 'backend', 'ao-daemon'),
+            path.join(osAgentDir, 'backend', 'bin', 'ao'),
+            path.join(osAgentDir, 'backend', 'ao')
+        );
     }
+    let daemonBin = candidateBinaries.find(p => fs.existsSync(p));
 
-    installStep('place the ao binary', () => {
-        fs.mkdirSync(localBinDir, { recursive: true });
-        // copyFileSync preserves bytes, so the package's ad-hoc signature
-        // survives. That matters: an unsigned binary at this path is SIGKILLed
-        // by AMFI on launch (exit 137) and reads as a daemon that simply will
-        // not start, with nothing in the log to say why.
-        fs.copyFileSync(daemonBin, binTarget);
-        fs.chmodSync(binTarget, 0o755);
-        log.step(`Installed ao to ${binTarget}`);
-    }, 'AO cannot be started without its binary.');
-
-    try {
-        execFileSync('codesign', ['-v', binTarget], { stdio: 'ignore' });
-    } catch {
-        log.warn('The ao binary is not code-signed — AMFI will kill it at launch.');
+    // Fallback: compile from Go source if Go is installed and binary is not pre-built
+    if (!daemonBin && hasExecutable('go') && fs.existsSync(path.join(osAgentDir, 'backend', 'cmd', 'ao'))) {
+        const s = spinner();
+        s.start('Compiling AO daemon binary from Go source...');
         try {
-            execFileSync('codesign', ['-s', '-', '-f', binTarget], { stdio: 'ignore' });
-            log.step('Signed it ad-hoc.');
-        } catch (e) { log.warn(`Could not sign it: ${e.message}`); }
+            const buildTarget = path.join(osAgentDir, 'backend', 'bin', isWin ? 'ao.exe' : 'ao');
+            fs.mkdirSync(path.dirname(buildTarget), { recursive: true });
+            execFileSync('go', ['build', '-ldflags=-s -w', '-o', buildTarget, './cmd/ao'], {
+                cwd: path.join(osAgentDir, 'backend'),
+                stdio: 'ignore'
+            });
+            daemonBin = buildTarget;
+            s.stop('Compiled AO daemon binary successfully.');
+        } catch (e) {
+            s.stop(`Failed to compile AO from source: ${e.message}`);
+        }
+    }
+
+    // Fallback: if already installed and functional, keep it
+    if (!daemonBin && fs.existsSync(binTarget)) {
+        try {
+            execFileSync(binTarget, ['--version'], { stdio: 'ignore' });
+            log.step(`Keeping existing working AO binary at ${binTarget}`);
+            daemonBin = binTarget;
+        } catch (_) {}
+    }
+
+    if (!daemonBin) {
+        log.warn(`AO binary missing in ${osAgentDir} — package layout changed or Go build needed.`);
+        return;
+    }
+
+    if (daemonBin !== binTarget) {
+        installStep('place the ao binary', () => {
+            fs.mkdirSync(localBinDir, { recursive: true });
+            fs.copyFileSync(daemonBin, binTarget);
+            if (!isWin) {
+                fs.chmodSync(binTarget, 0o755);
+            }
+            log.step(`Installed ao to ${binTarget}`);
+        }, 'AO cannot be started without its binary.');
+    }
+
+    // macOS only: code-sign ad-hoc to prevent AMFI SIGKILL
+    if (isMac) {
+        try {
+            execFileSync('codesign', ['-v', binTarget], { stdio: 'ignore' });
+        } catch {
+            log.warn('The ao binary is not code-signed — AMFI will kill it at launch.');
+            try {
+                execFileSync('codesign', ['-s', '-', '-f', binTarget], { stdio: 'ignore' });
+                log.step('Signed it ad-hoc.');
+            } catch (e) { log.warn(`Could not sign it: ${e.message}`); }
+        }
     }
 
     // AO installs its own service, and does it for macOS, Windows and Linux.
-    // AOS used to hand-write a LaunchAgent instead, labelled
-    // com.bdb.agent-workspace, whose ProgramArguments were just the binary with
-    // NO subcommand -- so launchd started `ao`, which prints help and exits,
-    // and with KeepAlive kept restarting it. The daemon never ran, on any
-    // machine that installed AO through AOS. Delegating to the tool removes
-    // both the wrong label and the wrong arguments, and keeps working when the
-    // service definition changes upstream.
-    const legacyPlist = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.agent-workspace.plist');
-    if (fs.existsSync(legacyPlist)) {
-        try { execFileSync('launchctl', ['unload', legacyPlist], { stdio: 'ignore' }); } catch (e) { logDebug(e, 'unload legacy ao agent'); }
-        try { fs.unlinkSync(legacyPlist); log.step('Removed the old com.bdb.agent-workspace service.'); } catch (e) { logDebug(e, 'remove legacy plist'); }
+    if (isMac) {
+        const legacyPlist = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.agent-workspace.plist');
+        if (fs.existsSync(legacyPlist)) {
+            try { execFileSync('launchctl', ['unload', legacyPlist], { stdio: 'ignore' }); } catch (e) { logDebug(e, 'unload legacy ao agent'); }
+            try { fs.unlinkSync(legacyPlist); log.step('Removed the old com.bdb.agent-workspace service.'); } catch (e) { logDebug(e, 'remove legacy plist'); }
+        }
     }
 
     installStep('register the AO service', () => {
@@ -2534,7 +2614,7 @@ function verifyEcosystemInstallation() {
         { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', paths: [path.join(moduleBasePath(), 'bdb-synapse')] },
         { name: '2. memB', pkg: '@hybridlabor-api/memb', paths: [path.join(moduleBasePath(), 'memB'), path.join(geminiDir, 'config', 'mcps', 'memb-mcp')] },
         { name: '3. heimdall-token-saver', pkg: '@hybridlabor-api/heimdall-token-saver', paths: [path.join(moduleBasePath(), 'heimdall-token-saver'), path.join(srcDir, 'vendor', 'token-saver')] },
-        { name: '4. AO Agent Orchestrator', pkg: '@hybridlabor-api/bdb-agent-orchestrator', paths: [path.join(moduleBasePath(), 'bdb-agent-orchestrator')] },
+        { name: '4. AO Agent Orchestrator', pkg: '@hybridlabor-api/bdb-agent-orchestrator', paths: [path.join(homeDir, 'dev', 'agents', 'bdb-agent-orchestrator'), path.join(moduleBasePath(), 'bdb-agent-orchestrator')] },
         { name: '5. bdb-dev-creator-extension', pkg: '@hybridlabor-api/bdb-dev-creator-extension', paths: [path.join(moduleBasePath(), 'bdb-dev-creator-extension')] },
         { name: '6. bdb-hardware-pcb', pkg: '@hybridlabor-api/bdb-hardware-pcb', paths: [path.join(moduleBasePath(), 'bdb-hardware-pcb')] },
         { name: '7. bdb-os-remote', pkg: '@hybridlabor-api/bdb-os-remote', paths: [path.join(moduleBasePath(), 'bdb-os-remote')] },
@@ -2558,7 +2638,8 @@ function verifyEcosystemInstallation() {
                 let newerVersion = null;
                 let newerTag = null;
                 try {
-                    const distTagsJson = execSync(`npm view ${mod.pkg} dist-tags --json`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+                    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+                    const distTagsJson = execFileSync(npmBin, ['view', mod.pkg, 'dist-tags', '--json'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000, shell: process.platform === 'win32' }).trim();
                     const distTags = JSON.parse(distTagsJson);
                     for (const [tag, ver] of Object.entries(distTags)) {
                         if (isNewerVersion(localVer, ver)) {
@@ -4795,8 +4876,7 @@ async function runQuickUpdate(installState) {
         if (subId === 'synapse') await installSynapse();
         else if (subId === 'memb') await installMemB(false);
         else if (subId === 'remote') await installOSRemoteGateway();
-        // 'ao' intentionally skipped here even for
-        // existing installs -- see promptOptionalModules() for why.
+        else if (subId === 'ao' && aoSupportedHere()) await installOSAgentWorkspace();
         else if (subId === 'creator') await installCreatorExtension();
         else if (subId === 'hardware') await installHardwarePcb();
         else if (subId === 'installer') await installDevToolInstaller();
