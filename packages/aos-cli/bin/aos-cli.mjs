@@ -42,6 +42,50 @@ if (existsSync(dispatch)) {
     console.error('         Starting without the AOS skills and the dispatcher graph.');
 }
 
+// pi advertises every discovered skill by name and description in EVERY system
+// prompt. Measured on this machine: 210 skills, ~11.150 tokens per request, of
+// which the four firecrawl entries alone are ~2.250. That is a permanent tax on
+// every turn to make one skill discoverable.
+//
+// core-skills.json narrows it to the handful worth having always. pi does the
+// work natively: --no-skills stops the discovery walk, and each --skill is added
+// back explicitly. --skill alone would not do it -- it appends to discovery
+// rather than replacing it.
+//
+// The tradeoff is that a skill outside this list is not merely unadvertised but
+// unreachable, not even via /skill:name. `aos-store` is how one gets added.
+const core = coreSkills();
+if (core.length) {
+    args.push('--no-skills');
+    for (const name of core) args.push('--skill', path.join(agents, 'skills', name));
+}
+
+/**
+ * The core skill list, skipping names that are not installed.
+ *
+ * A missing entry is not fatal: the point of the list is to cut the prompt
+ * tax, and a skill that was pruned or renamed upstream should quietly reduce
+ * the set rather than stop pi from starting.
+ */
+function coreSkills() {
+    const file = path.join(root, 'core-skills.json');
+    let names;
+    try {
+        names = JSON.parse(readFileSync(file, 'utf8'));
+    } catch (err) {
+        console.error(`AOS CLI: core-skills.json unreadable (${err.message}) -- loading all skills.`);
+        return [];
+    }
+    if (!Array.isArray(names)) {
+        console.error('AOS CLI: core-skills.json is not a list -- loading all skills.');
+        return [];
+    }
+    const found = names.filter((n) => typeof n === 'string' && existsSync(path.join(agents, 'skills', n)));
+    const absent = names.length - found.length;
+    if (absent) console.error(`AOS CLI: ${absent} core skill(s) not installed, skipped.`);
+    return found;
+}
+
 // Find pi's CLI entry by walking up to the package root that declares it.
 // Neither require.resolve nor a fixed depth works: pi's `exports` map exports
 // only its library entry, so `@earendil-works/pi-coding-agent/package.json`

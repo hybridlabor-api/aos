@@ -8,6 +8,23 @@ aos-cli "why is the go build failing"
 aos-cli --continue
 ```
 
+## Which skills are loaded
+
+**Ten, not all of them.** pi advertises every discovered skill by name and description in *every* system prompt. Measured on this machine: 210 skills, **~11,150 tokens per request**, of which the four `firecrawl` entries alone are ~2,250. That is a permanent tax on every turn.
+
+`core-skills.json` narrows that to the handful worth having always:
+
+```
+ask-tim  aos-setup  aos-project-init  mcp-manage  systematic-debugging
+planning-with-files  token-saver-config  archify  deja-memory  grill-me
+```
+
+Edit the file. It is a flat list of directory names under `~/.agents/skills/`, nothing more.
+
+**The tradeoff, stated plainly:** a skill outside that list is not merely unadvertised — it is unreachable, `/skill:name` included. That is the cost of `--no-skills`, and it is why `aos-store` is how one gets added. If you want a skill in every session, put it in the list.
+
+Names that are not installed are skipped with a note rather than being fatal: the list should quietly shrink when a skill is pruned, not stop pi from starting.
+
 ## In-session commands
 
 | | |

@@ -13,6 +13,7 @@
     "themes/",
     "scripts/",
     "extensions/",
+    "core-skills.json",
     "!packages/aos-cli/node_modules",
     "README.md"
   ],
