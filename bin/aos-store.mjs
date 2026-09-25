@@ -12,6 +12,7 @@ const index = JSON.parse(readFileSync(INDEX_PATH, 'utf8'));
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const project = args.includes('--project');
+const net = args.includes('--net');
 const positional = args.filter((arg) => !arg.startsWith('--'));
 const option = (name) => args.find((arg) => arg === name || arg.startsWith(`${name}=`))?.split('=').slice(1).join('=');
 
@@ -121,6 +122,9 @@ async function install(name) {
     for (const target of targets) console.log(`[dry-run] write ${target}`);
     return;
   }
+  if (!net) {
+    throw new Error(`Downloading '${name}' requires internet access to fetch from upstream GitHub. Pass --net to confirm: aos store install ${name} --net`);
+  }
   const content = await download(item.upstream_path);
   const digest = createHash('sha256').update(content).digest('hex');
   if (digest !== item.sha256) throw new Error(`SHA-256 mismatch for ${name}: expected ${item.sha256}, got ${digest}`);
@@ -135,7 +139,7 @@ function usage() {
   console.log('Usage:');
   console.log('  aos store list [--type=skills|agents]');
   console.log('  aos store search <query>');
-  console.log('  aos store install <name> [--project] [--dry-run]');
+  console.log('  aos store install <name> [--project] [--dry-run] [--net]');
 }
 
 async function main() {

@@ -41,7 +41,7 @@ function verifyDaemonListening(port, name, timeoutMs = 4000) {
         tryConnect();
     });
 }
-const { execSync, spawn, spawnSync, exec } = require('child_process');
+const { execSync, spawn, spawnSync, exec, execFileSync } = require('child_process');
 const clack = require('@clack/prompts');
 
 const {
@@ -233,8 +233,12 @@ const conditionalMcpConfigKeys = [
 
 function hasExecutable(binary) {
     try {
-        const lookup = process.platform === 'win32' ? `where ${binary}` : `command -v ${binary}`;
-        execSync(lookup, { stdio: 'ignore' });
+        if (process.platform === 'win32') {
+            execFileSync('where.exe', [binary], { stdio: 'ignore' });
+        } else {
+            if (!/^[a-zA-Z0-9._-]+$/.test(binary)) return false;
+            execSync(`command -v ${binary}`, { stdio: 'ignore' });
+        }
         return true;
     } catch (e) {
         return false;
@@ -250,7 +254,7 @@ function findWindowsGoBin() {
     if (process.platform !== 'win32') return null;
     const candidates = [];
     try {
-        const found = execSync('where.exe go', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+        const found = execFileSync('where.exe', ['go'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
             .split(/\r?\n/).map(s => s.trim()).find(Boolean);
         if (found) candidates.push(path.dirname(found));
     } catch (_) { /* PATH can be stale immediately after installation */ }

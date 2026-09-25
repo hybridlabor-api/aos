@@ -46,3 +46,29 @@ test('aos-doctor: verifies AO presence and daemon reporting', () => {
   assert.ok(aoCheck, 'Doctor must include AO Agent Orchestrator check');
   assert.ok(typeof aoCheck.detail === 'string');
 });
+
+test('aos-doctor: distinguishes offline mode from --net registry check', () => {
+  let stdoutOffline = '';
+  try {
+    stdoutOffline = execFileSync(process.execPath, [doctorScript, '--json'], { encoding: 'utf8' });
+  } catch (err) {
+    stdoutOffline = err.stdout;
+  }
+  const dataOffline = JSON.parse(stdoutOffline);
+  const npmOfflineCheck = dataOffline.results.find(r => r.name === 'Version vs npm');
+  assert.ok(npmOfflineCheck, 'Doctor must include Version vs npm check');
+  assert.match(npmOfflineCheck.detail, /Skipped/i);
+});
+
+test('aos-doctor: executes registry check when --net is passed', () => {
+  let stdoutNet = '';
+  try {
+    stdoutNet = execFileSync(process.execPath, [doctorScript, '--json', '--net'], { encoding: 'utf8' });
+  } catch (err) {
+    stdoutNet = err.stdout;
+  }
+  const dataNet = JSON.parse(stdoutNet);
+  const npmNetCheck = dataNet.results.find(r => r.name === 'Version vs npm');
+  assert.ok(npmNetCheck, 'Doctor must include Version vs npm check');
+  assert.doesNotMatch(npmNetCheck.detail, /Skipped \(offline mode/i);
+});
