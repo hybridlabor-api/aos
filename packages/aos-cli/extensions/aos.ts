@@ -22,6 +22,21 @@ import { Container, SelectItem, SelectList, Text } from "@earendil-works/pi-tui"
 
 const DASHBOARD_PORT = 7900;
 const DOCTOR_TIMEOUT_MS = 20_000;
+const AUTH_TIMEOUT_MS = 8_000;
+
+/**
+ * Providers to check for credentials, in priority order.
+ *
+ * A second provider slots in here and nowhere else -- the check, the status
+ * row and the startup notice all read this list. pi owns provider auth, not the
+ * AOS installer: it already has a `/login` command, and the AOS installer has no
+ * business asking for an Anthropic key it will never use itself. AOS CLI only
+ * has to notice when nothing is configured and point at `/login`.
+ *
+ * Deliberately short. Reporting "no configured provider (checked: ...)" with an
+ * honest list beats claiming a global state this process cannot actually see.
+ */
+const PROVIDERS = ["anthropic", "google"] as const;
 
 interface DoctorResult {
 	area: string;
@@ -72,6 +87,54 @@ function runDoctor(): Promise<DoctorReport> {
 	});
 }
 
+/**
+ * Ask pi whether one provider has usable credentials.
+ *
+ * `pi auth check --provider <name> --json` is a documented CLI surface and
+ * exits 0 for every verdict, including not_ready, so the JSON is the answer and
+ * the exit code carries nothing. `pi --list-models` was the tempting shortcut
+ * and is wrong: it lists every provider pi knows about whether or not a key is
+ * present, so a model in the list says nothing about being able to use it.
+ *
+ * A provider this check cannot reach at all is "unknown", never "not ready" --
+ * those are different states and reporting one as the other is how a health
+ * check ends up lying.
+ */
+function checkProvider(provider: string): Promise<"ready" | "not_ready" | "unknown"> {
+	return new Promise((resolve) => {
+		// argv[1] is pi's own bundle, because pi is the process running this
+		// extension. PATH is the fallback for a launch that re-execs a bare `pi`.
+		const entry = process.argv[1];
+		const [command, prefix] =
+			entry && /pi/i.test(entry) ? [process.execPath, [entry]] : ["pi", []];
+
+		const child = spawn(command, [...prefix, "auth", "check", "--provider", provider, "--json"], {
+			timeout: AUTH_TIMEOUT_MS,
+			shell: process.platform === "win32",
+		});
+		let out = "";
+		child.stdout?.on("data", (c) => {
+			out += c;
+		});
+		child.once("error", () => resolve("unknown"));
+		child.once("close", () => {
+			try {
+				const parsed = JSON.parse(out) as { status?: string };
+				resolve(parsed.status === "ready" ? "ready" : "not_ready");
+			} catch {
+				resolve("unknown");
+			}
+		});
+	});
+}
+
+/** One row per provider, ready ones first, for the status overlay. */
+async function providerStatus(): Promise<{ provider: string; state: string }[]> {
+	return Promise.all(
+		PROVIDERS.map(async (provider) => ({ provider, state: await checkProvider(provider) })),
+	);
+}
+
 function portOpen(port: number, timeoutMs = 500): Promise<boolean> {
 	return new Promise((resolve) => {
 		const socket = connect({ port, host: "127.0.0.1" });
@@ -95,6 +158,8 @@ async function showStatus(ctx: ExtensionContext): Promise<void> {
 		failure = err instanceof Error ? err.message : String(err);
 	}
 	const dashboardUp = await portOpen(DASHBOARD_PORT);
+	const providers = await providerStatus();
+	const anyReady = providers.some((p) => p.state === "ready");
 
 	await ctx.ui.custom<void>((tui, theme, _kb, done) => {
 		const container = new Container();
@@ -130,6 +195,15 @@ async function showStatus(ctx: ExtensionContext): Promise<void> {
 				}`,
 			),
 		);
+		container.addChild(
+			new Text(
+				`${mark(anyReady)} Model ${
+					anyReady
+						? theme.fg("success", providers.filter((p) => p.state === "ready").map((p) => p.provider).join(", "))
+						: theme.fg("error", "no provider configured -- run /login in pi")
+				}`,
+			),
+		);
 		container.addChild(new Text(""));
 		container.addChild(new Text(theme.fg("dim", "esc or enter to close")));
 		container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
@@ -150,6 +224,27 @@ async function showStatus(ctx: ExtensionContext): Promise<void> {
 }
 
 export default function aosCommands(pi: ExtensionAPI) {
+	// Fire and forget on session_start: never block startup on it, and never
+	// repeat the notice. A user without credentials can still read skills, run
+	// /aos-status and browse -- only sending a message needs a model, so this is
+	// a notice, not a gate.
+	let warnedNoProvider = false;
+	pi.on("session_start", async (_event, ctx) => {
+		if (warnedNoProvider) return;
+		const providers = await providerStatus();
+		if (providers.some((p) => p.state === "ready")) return;
+		warnedNoProvider = true;
+		const unknown = providers.filter((p) => p.state === "unknown").map((p) => p.provider);
+		ctx.ui.notify(
+			`No model provider configured (checked: ${providers.map((p) => p.provider).join(", ")}). ` +
+				`Run /login in pi before sending a message.`,
+			"warning",
+		);
+		if (unknown.length) {
+			ctx.ui.notify(`Could not reach pi's auth check for: ${unknown.join(", ")} -- treated as unverified, not as unconfigured.`, "info");
+		}
+	});
+
 	pi.registerCommand("aos-status", {
 		description: "AOS health, failing checks and daemon status",
 		handler: async (_args, ctx) => {
