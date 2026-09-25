@@ -225,9 +225,18 @@ async function showStatus(ctx: ExtensionContext): Promise<void> {
 
 export default function aosCommands(pi: ExtensionAPI) {
 	// Fire and forget on session_start: never block startup on it, and never
-	// repeat the notice. A user without credentials can still read skills, run
+	// repeat. A user without credentials can still read skills, run
 	// /aos-status and browse -- only sending a message needs a model, so this is
 	// a notice, not a gate.
+	//
+	// It says "at startup" on purpose. This handler runs once, so a /login
+	// completed inside the session leaves the warning standing next to a working
+	// model -- and a notice that is visible after you acted on it is worse than
+	// none, because it reads as a current fact. pi has no event this extension
+	// can rely on for "a login just landed", so rather than invent a poll or
+	// guess at an API, the wording states when it was true and /aos-status is
+	// the live reading. Measured: `pi auth check` returns ready/oauth once the
+	// browser flow completes, so that command and nothing else is the truth.
 	let warnedNoProvider = false;
 	pi.on("session_start", async (_event, ctx) => {
 		if (warnedNoProvider) return;
@@ -236,8 +245,8 @@ export default function aosCommands(pi: ExtensionAPI) {
 		warnedNoProvider = true;
 		const unknown = providers.filter((p) => p.state === "unknown").map((p) => p.provider);
 		ctx.ui.notify(
-			`No model provider configured (checked: ${providers.map((p) => p.provider).join(", ")}). ` +
-				`Run /login in pi before sending a message.`,
+			`No model provider was configured at startup (checked: ${providers.map((p) => p.provider).join(", ")}). ` +
+				`Run /login to add one -- or /aos-status for the current state.`,
 			"warning",
 		);
 		if (unknown.length) {
