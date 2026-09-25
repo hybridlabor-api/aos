@@ -58,6 +58,8 @@
     "mcps/",
     "scripts/",
     "vendor/",
+    "packages/aos-cli/",
+    "!packages/aos-cli/node_modules",
     "!mcps/**/*.png",
     "!mcps/**/*.jpg",
     "!mcps/**/*.jpeg",

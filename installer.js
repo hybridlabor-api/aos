@@ -115,8 +115,8 @@ if (mcpsArgRaw && mcpsArg === null) {
 // not express that in a script or CI, and got Antigravity as their primary
 // target instead. Values match the menu: 0 universal, 1 Antigravity,
 // 2 Claude Desktop/Code, 3 Cursor, 4 custom, 5 Codex, 6 Windsurf, 7 Roo/Cline,
-// 8 Aider (9 = project harness has its own --project-harness flag).
-const VALID_PLATFORMS = ['0', '1', '2', '3', '4', '5', '6', '7', '8'];
+// 8 Aider, 10 AOS CLI (9 = project harness has its own --project-harness flag).
+const VALID_PLATFORMS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '10'];
 const platformsArgRaw = process.argv.find(a => a === '--platforms' || a.startsWith('--platforms='));
 let PLATFORMS_ARG = null;
 if (platformsArgRaw) {
@@ -4967,6 +4967,40 @@ function buildAoAnnouncementBanner() {
     ].join('\n');
 }
 
+// AOS CLI ships as a separate npm package under packages/ for one reason: pi
+// updates on its own cadence, and folding it into this release cycle would turn
+// every pi bump into a full AOS reinstall. So it installs as an ordinary global
+// package and pulls pi in as its own dependency -- and it writes nothing to
+// ~/.agents, because it reads that directory rather than owning it.
+function installAosCli() {
+    const pkgDir = path.join(srcDir, 'packages', 'aos-cli');
+    const manual = 'cd packages/aos-cli && npm install -g .';
+
+    if (!fs.existsSync(path.join(pkgDir, 'package.json'))) {
+        log.warn(`AOS CLI package missing at ${pkgDir} -- skipped. Install it later: ${manual}`);
+        return;
+    }
+    if (hasExecutable('aos-cli')) {
+        log.step('aos-cli is already on PATH.');
+        return;
+    }
+    if (DRY_RUN) {
+        log.step('[dry-run] would run: npm install -g <packages/aos-cli>');
+        return;
+    }
+
+    const res = installStep('install AOS CLI', () => {
+        log.step('Installing AOS CLI globally (pi is installed as its dependency)...');
+        execSync(`npm install -g ${JSON.stringify(pkgDir)}`, { stdio: 'ignore' });
+    }, `The rest of AOS is installed. Install AOS CLI later: ${manual}`);
+
+    if (res.ok && hasExecutable('aos-cli')) {
+        log.success('AOS CLI installed -- run `aos-cli`.');
+    } else if (res.ok) {
+        log.warn('AOS CLI is installed but `aos-cli` is not on PATH. launchd and some Windows shells start with a PATH that omits npm\'s global bin.');
+    }
+}
+
 async function main() {
     if (process.argv[2] === 'store') {
         const storeScript = path.join(srcDir, 'bin', 'aos-store.mjs');
@@ -5108,6 +5142,7 @@ async function main() {
         { value: '7', label: 'Roo Code / Cline / VS Code', hint: '~/.roo' },
         { value: '8', label: 'Aider CLI', hint: '~/.aider' },
         { value: '9', label: '📁 Local Project Harness', hint: 'copy dispatcher contract to current project' },
+        { value: '10', label: '🖥️ AOS CLI', hint: 'pi harness -- reads ~/.agents, no own skill copy' },
         { value: '4', label: '⚙️ Custom Installation', hint: 'specify paths manually' }
     ];
 
@@ -5137,7 +5172,7 @@ async function main() {
         selectedMcps = await promptMcpSelection(tier);
     } else {
         const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null };
-        const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness' };
+        const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness', '10': 'AOS CLI' };
 
         const stepTier = async () => {
             const t = await selectWithBack({
@@ -5303,7 +5338,22 @@ async function main() {
         fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
     }, 'The installation continues, but existing files are not backed up.');
 
-    const targets = specificPlatforms.map(p => ({
+    // '10' is an action, not a directory target. AOS CLI reads
+    // ~/.agents/skills, which syncSkillsToGlobalHarnesses() already writes --
+    // left in this list it would fall through resolveTargetPaths()'s universal
+    // defaults and install a second full copy of every skill somewhere nobody
+    // reads them from.
+    const aosCliRequested = specificPlatforms.includes('10');
+    const dirPlatforms = specificPlatforms.filter(p => p !== '10');
+
+    if (aosCliRequested && dirPlatforms.length === 0) {
+        // AOS CLI alone would have no skills to load, and an empty target list
+        // leaves primaryTarget undefined for everything downstream of it.
+        log.warn('AOS CLI was the only target -- adding the universal skill target so it has something to load.');
+        dirPlatforms.push('1');
+    }
+
+    const targets = dirPlatforms.map(p => ({
         value: p,
         ...resolveTargetPaths(p, customPaths)
     }));
@@ -5390,10 +5440,13 @@ async function main() {
     // Flush file-level install manifest after all writes are done.
     flushSessionManifest();
 
+    // After the skill sync, because AOS CLI is useless without ~/.agents.
+    if (aosCliRequested) installAosCli();
+
     console.log('');
     verifyEcosystemInstallation();
 
-    outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+    outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
 }
 
 if (require.main === module) {
