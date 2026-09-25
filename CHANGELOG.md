@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.2](https://github.com/hybridlabor-api/aos/compare/v4.7.1...v4.7.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* resolve adversarial review findings F-01 to F-04 and harden path lookups ([#59](https://github.com/hybridlabor-api/aos/issues/59)) ([13cd1f6](https://github.com/hybridlabor-api/aos/commit/13cd1f6c8e0d4df815c29119293d56bb46e5f473))
+
 ## [4.7.1](https://github.com/hybridlabor-api/aos/compare/v4.7.0...v4.7.1) (2026-09-25)
 
 
