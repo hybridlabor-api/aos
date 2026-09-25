@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.9.0](https://github.com/hybridlabor-api/aos/compare/v4.8.0...v4.9.0) (2026-09-25)
+
+
+### Features
+
+* **opencode:** wire /startcycle-graph workflow context into bdb-aos plugin ([a9d8b66](https://github.com/hybridlabor-api/aos/commit/a9d8b662a2b1b5c02e482bc369fc749a19257c8f))
+* **skills:** add universal ao-orchestrator skill across all harnesses ([4d92e1a](https://github.com/hybridlabor-api/aos/commit/4d92e1a128899b2b9b484cf45093f2ede11bdb35))
+
+
+### Bug Fixes
+
+* **hooks:** harden GO-gate cross-harness enforcement and populate antigravity-cli hooks ([200db0f](https://github.com/hybridlabor-api/aos/commit/200db0ff5b3e40fac99e7e2e6316360357f51cf0))
+* **installer:** resolve Windows-specific EPERM, AO timeout and DEP0190 on Node 24 ([35b54da](https://github.com/hybridlabor-api/aos/commit/35b54da7c40e0d26b467aa4cbf0ee8e4e8432c08))
+* **installer:** split rename swap into two phases to avoid ENOENT on retry ([5aa76cf](https://github.com/hybridlabor-api/aos/commit/5aa76cf6f196025bdd0e1626b4240dc771e47ae1))
+
 ## [4.8.0](https://github.com/hybridlabor-api/aos/compare/v4.7.2...v4.8.0) (2026-09-25)
 
 
