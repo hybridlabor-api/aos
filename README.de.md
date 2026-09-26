@@ -164,7 +164,7 @@ Nachfolgend finden Sie die vollständige Übersicht aller in diesem Paket enthal
 #### 🎨 Frontend & UI/UX
 | Skill-Name | Beschreibung |
 |------------|-------------|
-| `MCP_Manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
+| `mcp-manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
 | `api-design-principles` | Master REST and GraphQL API design principles to build intuitive, scalable, and maintainable APIs that delight developers and stand the test of time. |
 | `api-patterns` | API design principles and decision-making. REST vs GraphQL vs tRPC selection, response formats, versioning, pagination. |
 | `database-design` | Database design principles and decision-making. Schema design, indexing strategy, ORM selection, serverless databases. |

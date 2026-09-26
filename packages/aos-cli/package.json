@@ -1,0 +1,29 @@
+{
+  "name": "@hybridlabor-api/aos-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AOS CLI -- the AOS dispatcher contract and skills on the pi coding agent",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "aos-cli": "bin/aos-cli.mjs"
+  },
+  "files": [
+    "bin/",
+    "themes/",
+    "scripts/",
+    "extensions/",
+    "core-skills.json",
+    "!packages/aos-cli/node_modules",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node scripts/check-theme.mjs"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.87.1"
+  }
+}
