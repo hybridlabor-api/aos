@@ -1916,6 +1916,21 @@ async function installMemB(interactive) {
         }));
     }
     const membDir = path.join(moduleBasePath(), 'memB');
+    // On Windows the memB WebUI process holds open file handles inside membDir.
+    // The atomic rename inside downloadOrUpdateModule fails with EPERM as long as
+    // those handles are live — retry backoff cannot help. Kill the process on
+    // port 8088 before attempting the download so the rename succeeds.
+    if (process.platform === 'win32') {
+        try {
+            execSync(
+                'powershell -NoProfile -Command "' +
+                'Get-NetTCPConnection -LocalPort 8088 -ErrorAction SilentlyContinue |' +
+                ' Select-Object -ExpandProperty OwningProcess |' +
+                ' ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"',
+                { stdio: 'ignore' }
+            );
+        } catch (_) {}
+    }
     // A failed download used to fall through into venv setup and daemon
     // registration, each of which then failed on its own terms or, worse,
     // "succeeded" against a stale tree -- and the run still ended in a success
@@ -2722,7 +2737,7 @@ function verifyEcosystemInstallation() {
 
     console.log('');
     console.log(`  ${colors.bold}━━━ BDB Agent OS Dashboard ━━━${colors.reset}`);
-    console.log(`  Interactive Control Center: npx aos-dashboard`);
+    console.log(`  Interactive Control Center: aos-dashboard`);
     console.log(`  ${colors.dim}(Live status & service control at http://127.0.0.1:7900)${colors.reset}`);
 }
 
@@ -4910,18 +4925,24 @@ async function runQuickUpdate(installState) {
         injectHarnessRules();
     }, 'Harness files keep whatever version this machine already had.');
 
-    // OpenWiki setup only ever ran on a brand-new install (main()'s fresh-install
-    // branch below) -- an existing install running Quick Update never got offered
-    // it and never had its daemon schedule refreshed. promptCredentials() already
-    // detects an existing key and collapses to a single "keep existing" prompt in
-    // that case, so this is a no-op confirm for anyone already configured and a
-    // real one-time offer for anyone who isn't (including installs from before
-    // this feature existed).
+    // OpenWiki: if already configured, refresh the daemon silently (no prompt).
+    // Only ask when there is no key yet — i.e. a first-time offer or a machine
+    // that predates this feature. This avoids the "keep existing?" confirmation
+    // on every Quick Update for users who have already set up OpenWiki.
     if (!isAutoYes) {
-        const creds = await promptCredentials(paths.targetMcpDir);
-        if (creds !== BACK) {
-            await installOpenWikiDaemon(creds.gemini, paths.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+        const _owEnv = loadExistingEnv(paths.targetMcpDir);
+        const _owProvider = _owEnv['OPENWIKI_PROVIDER'] || 'google';
+        const _owKeyName = PROVIDER_KEY_ENV_NAMES[_owProvider] || 'GEMINI_API_KEY';
+        const _owKey = _owEnv[_owKeyName] || _owEnv['GEMINI_API_KEY'] || _owEnv['GOOGLE_API_KEY'] || _owEnv['OPENWIKI_API_KEY'] || '';
+        if (_owKey || _owProvider === 'ollama') {
+            await installOpenWikiDaemon(_owKey, paths.targetSkillDir, { provider: _owProvider, model: _owEnv['OPENWIKI_MODEL'] || '', baseUrl: _owEnv['OPENWIKI_BASE_URL'] || '' });
             await installOpenWikiVisualizer();
+        } else {
+            const creds = await promptCredentials(paths.targetMcpDir);
+            if (creds !== BACK) {
+                await installOpenWikiDaemon(creds.gemini, paths.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+                await installOpenWikiVisualizer();
+            }
         }
     }
 
