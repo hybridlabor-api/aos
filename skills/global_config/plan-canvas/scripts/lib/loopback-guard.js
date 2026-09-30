@@ -39,20 +39,36 @@ function isAllowedHostHeader(hostHeader, allowedHostnames) {
 }
 
 // Origin is absent on same-origin navigations and CLI clients; when present
-// it must resolve to an allowed hostname.
-function isAllowedOrigin(originHeader, allowedHostnames) {
+// it must resolve to an allowed hostname. Loopback hostnames alone are not
+// enough: any other local web app (another dev server on 127.0.0.1) would pass
+// that test, so callers that know their port pass it and the origin must match
+// it too.
+function isAllowedOrigin(originHeader, allowedHostnames, allowedPort) {
   if (!originHeader || typeof originHeader !== 'string') return true;
   try {
     const url = new URL(originHeader);
-    return allowedHostnames.has(url.hostname.toLowerCase());
+    if (!allowedHostnames.has(url.hostname.toLowerCase())) return false;
+    if (allowedPort === undefined || allowedPort === null) return true;
+    const originPort = url.port || (url.protocol === 'https:' ? '443' : '80');
+    return originPort === String(allowedPort);
   } catch {
     return false;
   }
 }
 
+// Browsers label every request with Sec-Fetch-Site. A cross-site or same-site
+// request from another origin must never drive the canvas. Absent means a CLI
+// client or an old browser; Origin still applies to those.
+function isAllowedFetchSite(value) {
+  if (!value || typeof value !== 'string') return true;
+  const site = value.trim().toLowerCase();
+  return site === 'same-origin' || site === 'none';
+}
+
 module.exports = {
   LOOPBACK_HOSTNAMES,
   buildAllowedHostnames,
+  isAllowedFetchSite,
   isAllowedHostHeader,
   isAllowedOrigin,
   parseHostHeader
