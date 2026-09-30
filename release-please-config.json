@@ -1,1 +1,10 @@
-{"packages": {".": {"release-type": "node"}}}
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "extra-files": [
+        { "type": "json", "path": ".claude-plugin/plugin.json", "jsonpath": "$.version" }
+      ]
+    }
+  }
+}

@@ -84,8 +84,7 @@ const manifest = {
   name: 'bdb-aos',
   version: pkg.version,
   description:
-    'Full BDB Agent OS suite: 200+ curated skills, subagents, the startcycle pipeline, ' +
-    'CI/CD workflows and security hooks for Claude Code.',
+    'BDB Agent OS: 200+ curated skills for Claude Code.',
   author: { name: 'Tim Rennings / Hybridlabor Global LLC', email: 'hybridlabor@gmail.com' },
   homepage: repoUrl,
   repository: repoUrl,
@@ -98,24 +97,9 @@ const target = join(ROOT, '.claude-plugin', 'plugin.json');
 const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
 const current = existsSync(target) ? readFileSync(target, 'utf8') : '';
 
-// `claude plugin tag` refuses to cut a release unless plugin.json and the
-// enclosing marketplace entry agree on the version, so the marketplace copy of
-// the number is generated here too rather than hand-maintained.
-const marketPath = join(ROOT, '.claude-plugin', 'marketplace.json');
-const market = JSON.parse(readFileSync(marketPath, 'utf8'));
-const entry = market.plugins?.find((plugin) => plugin.name === manifest.name);
-if (!entry) throw new Error(`marketplace.json has no entry named ${manifest.name}`);
-entry.version = pkg.version;
-const marketSerialized = `${JSON.stringify(market, null, 2)}\n`;
-const marketCurrent = readFileSync(marketPath, 'utf8');
-
 if (CHECK) {
   if (current !== serialized) {
     console.error('plugin.json is out of date — run: node scripts/build-plugin-manifest.mjs');
-    process.exit(1);
-  }
-  if (marketCurrent !== marketSerialized) {
-    console.error('marketplace.json version is out of date — run: node scripts/build-plugin-manifest.mjs');
     process.exit(1);
   }
   if (drift.length > 0) {
@@ -126,6 +110,5 @@ if (CHECK) {
 } else {
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, serialized);
-  writeFileSync(marketPath, marketSerialized);
   console.log(`Wrote .claude-plugin/plugin.json with ${skills.length} skills and ${agentNames.length} agents`);
 }

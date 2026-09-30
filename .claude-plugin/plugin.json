@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "bdb-aos",
-  "version": "4.10.0",
-  "description": "Full BDB Agent OS suite: 200+ curated skills, subagents, the startcycle pipeline, CI/CD workflows and security hooks for Claude Code.",
+  "version": "4.11.0",
+  "description": "BDB Agent OS: 200+ curated skills for Claude Code.",
   "author": {
     "name": "Tim Rennings / Hybridlabor Global LLC",
     "email": "hybridlabor@gmail.com"
