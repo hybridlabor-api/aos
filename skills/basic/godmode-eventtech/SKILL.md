@@ -1,6 +1,6 @@
 ---
 name: godmode-eventtech
-description: "Use for any event production work: pre-show ops, vendor coordination, production planning, client briefs, budget, scheduling, and technical show-control execution (signal flows, OSC/DMX, MCP orchestration, hardware limits)."
+description: "Use for real-time performance and multimedia operator work: technical show-control execution (signal flows, OSC/DMX, MCP orchestration, hardware limits) for tools like grandMA3, Resolume, Unreal, Rhino, Vectorworks, and Adobe MCP."
 category: media-eventtech
 ---
 
