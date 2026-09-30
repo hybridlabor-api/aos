@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.12.0](https://github.com/hybridlabor-api/aos/compare/v4.11.0...v4.12.0) (2026-09-30)
+
+
+### Features
+
+* **store:** /aos-store web UI with complete multi-file installs ([#70](https://github.com/hybridlabor-api/aos/issues/70)) ([ff5e8ec](https://github.com/hybridlabor-api/aos/commit/ff5e8ecf7029a50c4728592d25366b4bfc9b11ca))
+
+
+### Bug Fixes
+
+* **skills:** move root SKILL.md into skills/bdb-aos so skills CLI discovers all skills ([#72](https://github.com/hybridlabor-api/aos/issues/72)) ([033e810](https://github.com/hybridlabor-api/aos/commit/033e8107cf72416eb2bfcdc0232a8efb2d6497b9))
+
 ## [4.11.0](https://github.com/hybridlabor-api/aos/compare/v4.10.0...v4.11.0) (2026-09-30)
 
 
