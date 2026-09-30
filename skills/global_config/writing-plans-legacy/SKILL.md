@@ -111,9 +111,22 @@ git commit -m "feat: add specific feature"
 
 ## Execution Handoff
 
-After saving the plan, offer execution choice:
+After saving the plan, you **MUST** open it in the Plan Canvas for the user to review. Do not ask them to read the markdown file in the terminal.
 
-**"Plan complete and saved to `docs/plans/<filename>.md`. Two execution options:**
+1. **Render Architecture:** If the plan contains complex flows, render them using `aos-archify` (see `archify` skill).
+2. **Open Canvas:** Run `aos-plan-canvas open docs/plans/<filename>.md` (or `.html` if using archify).
+3. **Await Feedback:** Run `aos-plan-canvas await docs/plans/<filename>.md` as a background task. 
+
+Tell the user:
+**"Plan complete and saved! Ich habe den Plan im Canvas für dich geöffnet. Bitte schau ihn dir im Browser an und gib mir dort dein Feedback oder klicke auf Approve."**
+
+*(If running in OpenCode, always explicitly print the Canvas URL in chat so the user can click it).*
+
+Wait for the `approve` verdict from the Canvas before proceeding to execution.
+
+**When the plan is approved, offer execution choice:**
+
+**"Plan is approved. Two execution options:**
 
 **1. Subagent-Driven (this session)** - I dispatch fresh subagent per task, review between tasks, fast iteration
 
