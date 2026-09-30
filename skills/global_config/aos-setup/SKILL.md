@@ -232,7 +232,7 @@ harness was never installed into.
 context is written into the rule files that harness loads instead:
 
 ```bash
-python3 ~/.agents/memB/memb_auto_inject.py --global      # GEMINI.md, CODEX.md, …
+python3 ~/.agents/memB/memb_auto_inject.py --global      # RULES.md, CODEX.md, …
 python3 ~/.agents/memB/memb_auto_inject.py --dir <repo>  # a project's AGENTS.md
 ```
 

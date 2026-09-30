@@ -1,7 +1,7 @@
 # BDB Skills — Agent Rules
 
 **This file is the single source for every rule that applies to all harnesses.**
-`CLAUDE.md`, `GEMINI.md` and `CODEX.md` carry only what is genuinely specific to
+`CLAUDE.md`, `RULES.md` and `CODEX.md` carry only what is genuinely specific to
 their own harness and point back here for everything else. If a rule matters on
 more than one harness, it belongs in this file and nowhere else — that is how
 these four files stopped agreeing with each other in the first place.

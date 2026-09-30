@@ -43,7 +43,7 @@
     "bin/",
     "lib/",
     "mcp_config.json",
-    "GEMINI.md",
+    "RULES.md",
     "CODEX.md",
     "CLAUDE.md",
     "THIRD_PARTY_NOTICES.md",

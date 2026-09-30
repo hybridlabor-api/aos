@@ -3454,13 +3454,13 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
 
 
 function injectHarnessRules() {
-    const geminiMdSrc = path.join(srcDir, 'GEMINI.md');
+    const geminiMdSrc = path.join(srcDir, 'RULES.md');
     const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
 
     if (fs.existsSync(geminiMdSrc)) {
-        installStep(`install GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`, () => {
-            copyDirRecursiveSync(geminiMdSrc, path.join(geminiDir, 'GEMINI.md'));
-            log.step(`Installed GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`);
+        installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
+            copyDirRecursiveSync(geminiMdSrc, path.join(geminiDir, 'RULES.md'));
+            log.step(`Installed RULES.md to ${path.join(geminiDir, 'RULES.md')}`);
         }, 'The harness injection below still runs.');
 
         // Dispatcher scripts must land in ~/.claude/workflows/, because that is
@@ -4892,7 +4892,7 @@ async function runQuickUpdate(installState) {
     pruneRemovedSkills(_sessionManifest);
     s.stop('Skills refreshed');
 
-    // Everything injectHarnessRules() delivers -- GEMINI.md, the dispatcher
+    // Everything injectHarnessRules() delivers -- RULES.md, the dispatcher
     // workflows the skills point at, the compiled subagent definitions, the
     // harness rule files and the gate + memory hooks -- used to be
     // fresh-install-only. v4.4.1 split just the hooks out of it for Quick
@@ -5025,7 +5025,7 @@ async function main() {
         path.join(srcDir, '.cursor'),
         path.join(srcDir, '.github'),
         path.join(srcDir, '.codex-plugin'),
-        path.join(srcDir, 'GEMINI.md'),
+        path.join(srcDir, 'RULES.md'),
         path.join(srcDir, 'AGENTS.md'),
         path.join(srcDir, 'CLAUDE.md'),
         path.join(srcDir, 'CODEX.md'),
