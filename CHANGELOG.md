@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.10.0](https://github.com/hybridlabor-api/aos/compare/v4.9.0...v4.10.0) (2026-09-30)
+
+
+### Features
+
+* **arch:** Phase 0 and 2 optimizations ([#64](https://github.com/hybridlabor-api/aos/issues/64)) ([d19ca2a](https://github.com/hybridlabor-api/aos/commit/d19ca2ada80b67c14932a538d7ca1dff51f44e71))
+* **cli:** AOS CLI and CICD Skills Import ([#66](https://github.com/hybridlabor-api/aos/issues/66)) ([9cbc7ae](https://github.com/hybridlabor-api/aos/commit/9cbc7ae47c9fd04caf2f22b19b764da631877e54))
+
+
+### Bug Fixes
+
+* **canvas:** Opencode integration and default canvas for plans ([#67](https://github.com/hybridlabor-api/aos/issues/67)) ([db17242](https://github.com/hybridlabor-api/aos/commit/db17242f4e1bfca4f9bf60eadd9bf3ba8f9427bf))
+
 ## [4.9.0](https://github.com/hybridlabor-api/aos/compare/v4.8.0...v4.9.0) (2026-09-30)
 
 
