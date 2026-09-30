@@ -48,6 +48,10 @@ This file exists so anyone (human or agent) asking "what's the BDB software
 lifecycle?" gets the real shape of it, without re-deriving it from `graph.md`
 line by line. It is descriptive, not an alternate entry point.
 
+Optional post-ship step, outside the graph: `/design-control-loop` sets up a
+recurring improvement loop in CI for a quality goal. It is started manually and
+the dispatcher never calls it.
+
 ## 2. When to Use
 - Use when you need the lifecycle framing (define → plan → build → verify →
   ship) to structure a conversation or a manual walkthrough.
