@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
   "description": "Pinned upstream vendor repositories tracked for AOS skills and tools",
-  "updated_at": "2026-09-24T07:27:44Z",
+  "updated_at": "2026-09-25T19:27:14Z",
   "vendors": {
     "superdesign-skill": {
       "upstream": "https://github.com/superdesigndev/superdesign-skill",
@@ -51,6 +51,28 @@
       "pinned_commit": "e482e579415fde18357cafce70f177ae19fd7f03",
       "purpose": "Markdown-only fallback store for skills and auxiliary subagents",
       "target": "lib/ecc-store-index.json"
+    },
+    "superpowers": {
+      "upstream": "https://github.com/obra/superpowers",
+      "pinned_commit": "8ca22dba9a94f28898bbce59f2537ff4d87c747d",
+      "purpose": "Evidence-before-claims, code review dispatch, branch finishing, worktree isolation and parallel agent dispatch workflow skills",
+      "target_skill": "skills/global_config/{verification-before-completion,requesting-code-review,finishing-a-development-branch,using-git-worktrees,dispatching-parallel-agents}"
+    },
+    "cc-devops-skills": {
+      "upstream": "https://github.com/akin-ozer/cc-devops-skills",
+      "pinned_commit": "276af751e659315aaf56d3ad13d7c26f4e72e28a",
+      "purpose": "Generator/validator pairs for GitHub Actions, Dockerfile, bash scripts and Makefiles, with reference libraries",
+      "target_skill": "skills/global_config/{github-actions,dockerfile,bash-script,makefile}-{generator,validator}"
+    },
+    "claude-code-templates": {
+      "upstream": "https://github.com/davila7/claude-code-templates",
+      "pinned_commit": "691832ad9c2506d15a8b752826135f0afa83d197",
+      "purpose": "Conventional-commit enforcement and .env write protection, ported from Python to .mjs for both Claude Code and Antigravity",
+      "target": ".claude/hooks/{conventional-commits,env-file-protection}.mjs",
+      "source_commits": {
+        "conventional-commits.py": "92fdaa1f87b45cfc7b881f03ee69d2bad27b09d3",
+        "env-file-protection.json": "36fa6dbd5d8a45a62628b634aa48410f4d39682d"
+      }
     }
   }
 }

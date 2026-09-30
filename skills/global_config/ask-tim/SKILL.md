@@ -294,9 +294,9 @@ Use these for 3D, motion, video and live show control.
 * **Top Picks:** `godmode-media-creation` (video and montage), `godmode-eventtech` (live shows), `godmode-3d-creation` (meshes and scenes)
 
 * **Godmodes**: Determine the overarching flow (3D, Media, EventTech).
-* **Implementations**: `MCP_Manage` drives the creative applications over MCP, `spline-3d-integration` (web 3D), `threejs-skills` (WebGL), `remotion` (React → MP4, deterministic frame counts).
+* **Implementations**: `mcp-manage` drives the creative applications over MCP, `spline-3d-integration` (web 3D), `threejs-skills` (WebGL), `remotion` (React → MP4, deterministic frame counts).
 
-* **Per-application MCP guides**: once `MCP_Manage` has told you *which* server to use, these document the tool surface of one application each — `bdb-touchdesigner-mcp`, `bdb-resolume-mcp`, `bdb-grandma3-mcp`, `bdb-davinci-mcp`, `bdb-adobe-suite-mcp`, `bdb-after-effects-mcp`, `bdb-blender-mcp`, `bdb-unreal-mcp`, `bdb-rhino-mcp`, `bdb-vectorworks-mcp`. Reach for one only when you already know the application; `MCP_Manage` is the way in.
+* **Per-application MCP guides**: once `mcp-manage` has told you *which* server to use, these document the tool surface of one application each — `bdb-touchdesigner-mcp`, `bdb-resolume-mcp`, `bdb-grandma3-mcp`, `bdb-davinci-mcp`, `bdb-adobe-suite-mcp`, `bdb-after-effects-mcp`, `bdb-blender-mcp`, `bdb-unreal-mcp`, `bdb-rhino-mcp`, `bdb-vectorworks-mcp`. Reach for one only when you already know the application; `mcp-manage` is the way in.
 
 ### Which video route?
 
@@ -305,8 +305,8 @@ The choice is driven by where the pixels come from, not by the output format —
 | Source material | Route |
 |---|---|
 | Code-generated motion graphics, text, brand animation | `remotion` — React components rendered to MP4, deterministic and exactly frame-accurate |
-| Existing footage: cutting, colour, beat-sync | `godmode-media-creation` + `MCP_Manage` → **DaVinci Resolve** (`davinci-resolve-mcp`) or **Adobe Premiere** (`adobe_uxp_mcp`) |
-| Compositing, motion design over footage | `MCP_Manage` → **After Effects** (`ae-mcp`, `after-effects-mcp`), or **Photoshop** for stills (`adobe_uxp_mcp`) |
+| Existing footage: cutting, colour, beat-sync | `godmode-media-creation` + `mcp-manage` → **DaVinci Resolve** (`davinci-resolve-mcp`) or **Adobe Premiere** (`adobe_uxp_mcp`) |
+| Compositing, motion design over footage | `mcp-manage` → **After Effects** (`ae-mcp`, `after-effects-mcp`), or **Photoshop** for stills (`adobe_uxp_mcp`) |
 | Generative visuals: audio-reactive, shaders, real-time | `godmode-eventtech` → TouchDesigner MCP, then `record_movie` |
 | Generative *assets*: text→3D, image→3D, AI video | The **Creator Extension** engines — TRELLIS and TripoSR (3D), Text-to-CAD, OpenMontage (multimodal montage), Video-Shotcraft (shot direction), Palmier-Pro (timeline and grading), driven through `comfyui-mcp`. Installed as a separate power-up module, not a skill in this catalogue. |
 | Concept not settled yet | `bdbmediastorm` first — it runs the grilling interview for show-control and media work |

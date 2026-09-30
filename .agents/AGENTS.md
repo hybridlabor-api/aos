@@ -95,7 +95,7 @@ next. This file defines *what each agent is*, not *what calls what*.
   - `godmode-media-creation`
   - `godmode-3d-creation`
   - `bdbmediastorm`
-  - `MCP_Manage`
+  - `mcp-manage`
   - `threejs-skills`
   - `spline-3d-integration`
 - **MCP Servers**:

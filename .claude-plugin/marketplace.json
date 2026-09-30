@@ -1,0 +1,23 @@
+{
+  "name": "bdb-marketplace",
+  "owner": {
+    "name": "Hybridlabor Global LLC",
+    "email": "hybridlabor@gmail.com"
+  },
+  "metadata": {
+    "description": "BDB Agent OS — production-grade AI agent skills and workflows",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "bdb-aos",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/hybridlabor-api/aos.git"
+      },
+      "description": "Full BDB Agent OS suite: 200+ curated skills, subagents, startcycle pipeline, CI/CD workflows and security hooks for Claude Code.",
+      "version": "4.8.0",
+      "strict": true
+    }
+  ]
+}
