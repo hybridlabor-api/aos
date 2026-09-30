@@ -164,6 +164,10 @@ Reaching `ready_to_ship` is not shipping. [`.claude/hooks/go-gate.mjs`](.claude/
 
 ## Tools
 
+![BDB system components overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
+
+*Conceptual overview from v3.4.0. Components have grown since; the sections below are current.*
+
 | Tool | Command | What it does |
 |---|---|---|
 | Plan Canvas | `aos-plan-canvas open <file>` (skill `plan-canvas`) | Opens a plan or HTML artifact in a local browser canvas where you annotate elements, chat, and approve or request changes. Plans from the pipelines open here by default. |
@@ -405,6 +409,10 @@ flowchart LR
 ### Heimdall Token Saver — CLI Output Compression
 
 `@hybridlabor-api/heimdall-token-saver`: compresses repeated CLI output via ambient hooks on every harness. Reduces token overhead on large projects. Skill: `token-saver-config`.
+
+![Token savings with Heimdall Token Saver](assets/bdb_savings_graph_sketch.jpg)
+
+*Illustrative sketch from v3.x. The percentages are the project's own estimates, not measurements made for this README.*
 
 ---
 
