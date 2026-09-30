@@ -115,8 +115,8 @@ if (mcpsArgRaw && mcpsArg === null) {
 // not express that in a script or CI, and got Antigravity as their primary
 // target instead. Values match the menu: 0 universal, 1 Antigravity,
 // 2 Claude Desktop/Code, 3 Cursor, 4 custom, 5 Codex, 6 Windsurf, 7 Roo/Cline,
-// 8 Aider (9 = project harness has its own --project-harness flag).
-const VALID_PLATFORMS = ['0', '1', '2', '3', '4', '5', '6', '7', '8'];
+// 8 Aider, 10 AOS CLI (9 = project harness has its own --project-harness flag).
+const VALID_PLATFORMS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '10'];
 const platformsArgRaw = process.argv.find(a => a === '--platforms' || a.startsWith('--platforms='));
 let PLATFORMS_ARG = null;
 if (platformsArgRaw) {
@@ -1916,6 +1916,21 @@ async function installMemB(interactive) {
         }));
     }
     const membDir = path.join(moduleBasePath(), 'memB');
+    // On Windows the memB WebUI process holds open file handles inside membDir.
+    // The atomic rename inside downloadOrUpdateModule fails with EPERM as long as
+    // those handles are live — retry backoff cannot help. Kill the process on
+    // port 8088 before attempting the download so the rename succeeds.
+    if (process.platform === 'win32') {
+        try {
+            execSync(
+                'powershell -NoProfile -Command "' +
+                'Get-NetTCPConnection -LocalPort 8088 -ErrorAction SilentlyContinue |' +
+                ' Select-Object -ExpandProperty OwningProcess |' +
+                ' ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"',
+                { stdio: 'ignore' }
+            );
+        } catch (_) {}
+    }
     // A failed download used to fall through into venv setup and daemon
     // registration, each of which then failed on its own terms or, worse,
     // "succeeded" against a stale tree -- and the run still ended in a success
@@ -2722,7 +2737,7 @@ function verifyEcosystemInstallation() {
 
     console.log('');
     console.log(`  ${colors.bold}━━━ BDB Agent OS Dashboard ━━━${colors.reset}`);
-    console.log(`  Interactive Control Center: npx aos-dashboard`);
+    console.log(`  Interactive Control Center: aos-dashboard`);
     console.log(`  ${colors.dim}(Live status & service control at http://127.0.0.1:7900)${colors.reset}`);
 }
 
@@ -3792,7 +3807,7 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
@@ -3864,7 +3879,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [entry])
             .map((h) => (h && typeof h.command === 'string' ? h.command : (typeof h === 'string' ? h : '')))
@@ -3881,7 +3896,14 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
         PreToolUse: [
             {
                 matcher: "run_command|Bash",
-                hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'go-gate.mjs')}"`, timeout: 10000 }]
+                hooks: [
+                    { type: "command", command: `node "${path.join(hooksDir, 'go-gate.mjs')}"`, timeout: 10000 },
+                    { type: "command", command: `node "${path.join(hooksDir, 'conventional-commits.mjs')}"`, timeout: 10000 }
+                ]
+            },
+            {
+                matcher: "write_file|edit_file|replace|Write|Edit|MultiEdit",
+                hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'env-file-protection.mjs')}"`, timeout: 10000 }]
             },
             {
                 hooks: [{ type: "command", command: `node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent agy --event PreToolUse`, timeout: 2000 }]
@@ -4903,18 +4925,24 @@ async function runQuickUpdate(installState) {
         injectHarnessRules();
     }, 'Harness files keep whatever version this machine already had.');
 
-    // OpenWiki setup only ever ran on a brand-new install (main()'s fresh-install
-    // branch below) -- an existing install running Quick Update never got offered
-    // it and never had its daemon schedule refreshed. promptCredentials() already
-    // detects an existing key and collapses to a single "keep existing" prompt in
-    // that case, so this is a no-op confirm for anyone already configured and a
-    // real one-time offer for anyone who isn't (including installs from before
-    // this feature existed).
+    // OpenWiki: if already configured, refresh the daemon silently (no prompt).
+    // Only ask when there is no key yet — i.e. a first-time offer or a machine
+    // that predates this feature. This avoids the "keep existing?" confirmation
+    // on every Quick Update for users who have already set up OpenWiki.
     if (!isAutoYes) {
-        const creds = await promptCredentials(paths.targetMcpDir);
-        if (creds !== BACK) {
-            await installOpenWikiDaemon(creds.gemini, paths.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+        const _owEnv = loadExistingEnv(paths.targetMcpDir);
+        const _owProvider = _owEnv['OPENWIKI_PROVIDER'] || 'google';
+        const _owKeyName = PROVIDER_KEY_ENV_NAMES[_owProvider] || 'GEMINI_API_KEY';
+        const _owKey = _owEnv[_owKeyName] || _owEnv['GEMINI_API_KEY'] || _owEnv['GOOGLE_API_KEY'] || _owEnv['OPENWIKI_API_KEY'] || '';
+        if (_owKey || _owProvider === 'ollama') {
+            await installOpenWikiDaemon(_owKey, paths.targetSkillDir, { provider: _owProvider, model: _owEnv['OPENWIKI_MODEL'] || '', baseUrl: _owEnv['OPENWIKI_BASE_URL'] || '' });
             await installOpenWikiVisualizer();
+        } else {
+            const creds = await promptCredentials(paths.targetMcpDir);
+            if (creds !== BACK) {
+                await installOpenWikiDaemon(creds.gemini, paths.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+                await installOpenWikiVisualizer();
+            }
         }
     }
 
@@ -4965,6 +4993,40 @@ function buildAoAnnouncementBanner() {
         '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
         '\x1b[36m╰──────────────────────────────────────────────────────────────────────────────╯\x1b[0m\n'
     ].join('\n');
+}
+
+// AOS CLI ships as a separate npm package under packages/ for one reason: pi
+// updates on its own cadence, and folding it into this release cycle would turn
+// every pi bump into a full AOS reinstall. So it installs as an ordinary global
+// package and pulls pi in as its own dependency -- and it writes nothing to
+// ~/.agents, because it reads that directory rather than owning it.
+function installAosCli() {
+    const pkgDir = path.join(srcDir, 'packages', 'aos-cli');
+    const manual = 'cd packages/aos-cli && npm install -g .';
+
+    if (!fs.existsSync(path.join(pkgDir, 'package.json'))) {
+        log.warn(`AOS CLI package missing at ${pkgDir} -- skipped. Install it later: ${manual}`);
+        return;
+    }
+    if (hasExecutable('aos-cli')) {
+        log.step('aos-cli is already on PATH.');
+        return;
+    }
+    if (DRY_RUN) {
+        log.step('[dry-run] would run: npm install -g <packages/aos-cli>');
+        return;
+    }
+
+    const res = installStep('install AOS CLI', () => {
+        log.step('Installing AOS CLI globally (pi is installed as its dependency)...');
+        execSync(`npm install -g ${JSON.stringify(pkgDir)}`, { stdio: 'ignore' });
+    }, `The rest of AOS is installed. Install AOS CLI later: ${manual}`);
+
+    if (res.ok && hasExecutable('aos-cli')) {
+        log.success('AOS CLI installed -- run `aos-cli`.');
+    } else if (res.ok) {
+        log.warn('AOS CLI is installed but `aos-cli` is not on PATH. launchd and some Windows shells start with a PATH that omits npm\'s global bin.');
+    }
 }
 
 async function main() {
@@ -5108,6 +5170,7 @@ async function main() {
         { value: '7', label: 'Roo Code / Cline / VS Code', hint: '~/.roo' },
         { value: '8', label: 'Aider CLI', hint: '~/.aider' },
         { value: '9', label: '📁 Local Project Harness', hint: 'copy dispatcher contract to current project' },
+        { value: '10', label: '🖥️ AOS CLI', hint: 'pi harness -- reads ~/.agents, no own skill copy' },
         { value: '4', label: '⚙️ Custom Installation', hint: 'specify paths manually' }
     ];
 
@@ -5137,7 +5200,7 @@ async function main() {
         selectedMcps = await promptMcpSelection(tier);
     } else {
         const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null };
-        const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness' };
+        const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness', '10': 'AOS CLI' };
 
         const stepTier = async () => {
             const t = await selectWithBack({
@@ -5303,7 +5366,22 @@ async function main() {
         fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
     }, 'The installation continues, but existing files are not backed up.');
 
-    const targets = specificPlatforms.map(p => ({
+    // '10' is an action, not a directory target. AOS CLI reads
+    // ~/.agents/skills, which syncSkillsToGlobalHarnesses() already writes --
+    // left in this list it would fall through resolveTargetPaths()'s universal
+    // defaults and install a second full copy of every skill somewhere nobody
+    // reads them from.
+    const aosCliRequested = specificPlatforms.includes('10');
+    const dirPlatforms = specificPlatforms.filter(p => p !== '10');
+
+    if (aosCliRequested && dirPlatforms.length === 0) {
+        // AOS CLI alone would have no skills to load, and an empty target list
+        // leaves primaryTarget undefined for everything downstream of it.
+        log.warn('AOS CLI was the only target -- adding the universal skill target so it has something to load.');
+        dirPlatforms.push('1');
+    }
+
+    const targets = dirPlatforms.map(p => ({
         value: p,
         ...resolveTargetPaths(p, customPaths)
     }));
@@ -5390,10 +5468,13 @@ async function main() {
     // Flush file-level install manifest after all writes are done.
     flushSessionManifest();
 
+    // After the skill sync, because AOS CLI is useless without ~/.agents.
+    if (aosCliRequested) installAosCli();
+
     console.log('');
     verifyEcosystemInstallation();
 
-    outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+    outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
 }
 
 if (require.main === module) {

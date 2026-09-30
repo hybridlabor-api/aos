@@ -287,6 +287,94 @@ the upstream offensive exploit content is stripped and not carried over.
 
 ---
 
+## obra/superpowers
+
+<https://github.com/obra/superpowers> — MIT. Copyright (c) 2025 Jesse Vincent.
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`8ca22dba9a94f28898bbce59f2537ff4d87c747d` (v6.4.2).
+
+Five workflow skills are vendored under `skills/global_config/`, each carried
+whole with its companion files: `verification-before-completion`,
+`requesting-code-review` (plus `code-reviewer.md`),
+`finishing-a-development-branch`, `using-git-worktrees`, and
+`dispatching-parallel-agents`. A sixth, `writing-plans`, **replaces** the AOS
+version of that skill; the superseded AOS original is kept alongside it as
+`writing-plans-legacy` (`source: community`, marked `deprecated_by`) rather than
+deleted.
+
+AOS modifications: `category:`, `source:` and `date_added:` added to the
+frontmatter; the `superpowers:` namespace prefix stripped from cross-skill
+references so they resolve to AOS skill names. AOS adaptations to
+`writing-plans`: the plan output path is kept at AOS's `docs/plans/` rather
+than upstream's `docs/superpowers/plans/`, and the AOS `risk: critical` marker
+is carried over.
+
+AOS already vendored four other skills from this repository earlier
+(`brainstorming`, `test-driven-development`, `executing-plans`,
+`subagent-driven-development`) without recording it here. Those imports still
+carry the `superpowers:` prefix in their cross-references.
+
+---
+
+## akin-ozer/cc-devops-skills
+
+<https://github.com/akin-ozer/cc-devops-skills> — Apache-2.0.
+Copyright [yyyy] [name of copyright owner] (upstream ships the unfilled
+Apache-2.0 notice).
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`276af751e659315aaf56d3ad13d7c26f4e72e28a`.
+
+Four generator/validator pairs are vendored under `skills/global_config/`, each
+carried whole including its `references/`, `scripts/`, `examples/`, `docs/` and
+`test/` subtrees: `github-actions-generator` + `github-actions-validator`,
+`dockerfile-generator` + `dockerfile-validator`, `bash-script-generator` +
+`bash-script-validator`, `makefile-generator` + `makefile-validator`.
+
+AOS modifications: `category:`, `source:` and `date_added:` added to the
+frontmatter; the `devops-skills:` namespace prefix stripped from cross-skill
+references so they resolve to AOS skill names; the Docker example user
+`appuser` renamed to `app` throughout `dockerfile-generator` and
+`dockerfile-validator` to satisfy the E-PATH01 username check.
+
+---
+
+## davila7/claude-code-templates
+
+<https://github.com/davila7/claude-code-templates> — MIT.
+Copyright (c) 2025 Daniel (San) Ávila.
+
+`conventional-commits` (`.claude/hooks/conventional-commits.mjs`) and
+`env-file-protection` (`.claude/hooks/env-file-protection.mjs`) are ported from
+upstream's `conventional-commits.py` and `env-file-protection.json`, selected
+from a set of 62 hooks. Tracked in `.agents/vendor-manifest.json`.
+
+Both are ports, not verbatim copies, and the differences are behavioural:
+
+- **Python to .mjs.** Upstream ships Python. Node is already a hard AOS install
+  dependency and every other AOS hook is `.mjs`; `python3` is absent on a stock
+  Windows install, where the installer also runs.
+- **Both harnesses.** Upstream's `env-file-protection` is an inline `echo`
+  guarded by a matcher `if` field, which Antigravity and the Gemini CLI ignore —
+  there it would fire on every write. The check lives in code instead, and both
+  hooks emit the Antigravity `{"decision":...}` stdout form as well as the
+  Claude Code stderr/exit-2 form.
+- **`.env.example` and friends are allowed.** Upstream's matcher blocks
+  `.env*`, which contradicts its own advice to put new values in
+  `.env.example`. Templates (`example`, `sample`, `template`, `dist`) are
+  committed and hold no live secret, so they are exempt here.
+- **Both hooks fail open.** An unreadable payload or an unextractable commit
+  message allows the call, unlike `go-gate`, which fails closed. A regex miss
+  must not wedge a commit.
+
+Upstream's `secret-scanner`, `tdd-gate`, and `dangerous-command-blocker` were
+reviewed and **not** shipped; they remain available on demand from the ECC
+store. Reasons are in `docs/handover/` and the branch description for
+`feat/cicd-skills-import`.
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in

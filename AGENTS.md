@@ -146,7 +146,7 @@ resolves scalar boundaries and catches exactly this.
 |---|---|---|
 | Frontend, UI, visual design | `design-ui-ux` | senior-frontend, ui-component, tailwind-patterns |
 | Backend, architecture, testing | `engineering-method` | software-architecture, test-driven-development, systematic-debugging |
-| Show control, media, 3D | `media-eventtech` | godmode-eventtech, threejs-skills, MCP_Manage |
+| Show control, media, 3D | `media-eventtech` | godmode-eventtech, threejs-skills, mcp-manage |
 | Pipeline and agent infrastructure | `bdb-core` | startcycle, startcycle-graph, startcycle-graph-user |
 | Electrical, PCB, physical hardware design | `engineering-hardware` | godmode-hardware-pcb, code-first-hardware-design, pcb-layout-routing-automation |
 | Language/framework specifics | `library` | typescript-pro, prisma-expert, nextjs-best-practices |

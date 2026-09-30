@@ -167,7 +167,7 @@ Abaixo está a visão geral completa de todas as skills curadas de agentes inclu
 #### 🎨 Frontend & UI/UX
 | Nome da Skill | Descrição |
 |------------|-------------|
-| `MCP_Manage` | Gerencia os servidores MCP especializados da BDB incluindo Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools e TouchDesigner. |
+| `mcp-manage` | Gerencia os servidores MCP especializados da BDB incluindo Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools e TouchDesigner. |
 | `api-design-principles` | Domine princípios de design de API REST e GraphQL para construir APIs intuitivas, escaláveis e de fácil manutenção que encantam os desenvolvedores e resistem ao teste do tempo. |
 | `api-patterns` | Princípios de design de API e tomada de decisões. Seleção entre REST vs GraphQL vs tRPC, formatos de resposta, versionamento, paginação. |
 | `database-design` | Princípios de design de banco de dados e tomada de decisões. Design de esquema, estratégia de indexação, seleção de ORM, bancos de dados serverless. |

@@ -5,9 +5,16 @@ category: library
 risk: critical
 source: community
 date_added: "2026-02-27"
+deprecated_by: github-actions-generator
 ---
 
 # GitHub Actions Templates
+
+> **Superseded.** `github-actions-generator` (+ `github-actions-validator`) replaces
+> this skill: it generates workflows through a validation loop with a
+> best-practices reference library, where this one is a flat pattern list.
+> Kept for the existing patterns; prefer the generator for anything new.
+> See also `ci-pipeline`, which orchestrates the generator.
 
 Production-ready GitHub Actions workflow patterns for testing, building, and deploying applications.
 

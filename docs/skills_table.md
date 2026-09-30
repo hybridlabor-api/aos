@@ -52,7 +52,7 @@
 #### 🎨 Frontend & UI/UX
 | Skill Name | Description |
 |------------|-------------|
-| `MCP_Manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
+| `mcp-manage` | Manages the BDB specialized MCP servers including Unreal Engine, Rhino 7/8, DaVinci Resolve, grandMA3, Resolume, GitHub, Chrome DevTools, and TouchDesigner. |
 | `api-design-principles` | Master REST and GraphQL API design principles to build intuitive, scalable, and maintainable APIs that delight developers and stand the test of time. |
 | `api-patterns` | API design principles and decision-making. REST vs GraphQL vs tRPC selection, response formats, versioning, pagination. |
 | `bdbdesignpro` | Use when choosing an animation engine, defining motion tokens, adding scroll effects or micro-interactions, or auditing motion for accessibility and performance in BDB projects. Covers engine selection (GSAP, Motion.dev, Anime.js, React-Spring, Three.js, CSS Native), BDB brand-locked motion tokens, and the anti-slop/a11y quality gate. |
