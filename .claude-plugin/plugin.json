@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "bdb-aos",
-  "version": "4.8.0",
+  "version": "4.10.0",
   "description": "Full BDB Agent OS suite: 200+ curated skills, subagents, the startcycle pipeline, CI/CD workflows and security hooks for Claude Code.",
   "author": {
     "name": "Tim Rennings / Hybridlabor Global LLC",
@@ -20,6 +20,8 @@
   ],
   "skills": [
     "./skills/basic/ao-orchestrator",
+    "./skills/basic/bdb-eventagency-skill",
+    "./skills/basic/bdb-shipping-skill",
     "./skills/basic/bdbhtmlmanueldocs",
     "./skills/basic/bdbmediastorm",
     "./skills/basic/godmode-3d-creation",
@@ -162,6 +164,7 @@
     "./skills/global_config/react-best-practices",
     "./skills/global_config/react-component-performance",
     "./skills/global_config/react-patterns",
+    "./skills/global_config/read-the-damn-docs",
     "./skills/global_config/readme",
     "./skills/global_config/remotion",
     "./skills/global_config/requesting-code-review",
