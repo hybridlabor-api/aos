@@ -2609,10 +2609,7 @@ async function installOSAgentWorkspace() {
     if (daemonBin !== binTarget) {
         installStep('place the ao binary', () => {
             fs.mkdirSync(localBinDir, { recursive: true });
-            fs.copyFileSync(daemonBin, binTarget);
-            if (!isWin) {
-                fs.chmodSync(binTarget, 0o755);
-            }
+            installBinaryAtomically(daemonBin, binTarget);
             log.step(`Installed ao to ${binTarget}`);
         }, 'AO cannot be started without its binary.');
     }
@@ -5250,6 +5247,20 @@ function installAosCli() {
     }
 }
 
+// A running daemon may execute dest; overwriting its inode keeps stale code-signature
+// state on macOS and every new exec dies with SIGKILL. Rename gives dest a fresh inode.
+function installBinaryAtomically(src, dest) {
+    const tmp = path.join(path.dirname(dest), `.${path.basename(dest)}.${process.pid}.${Date.now()}.tmp`);
+    try {
+        fs.copyFileSync(src, tmp);
+        if (process.platform !== 'win32') fs.chmodSync(tmp, 0o755);
+        fs.renameSync(tmp, dest);
+    } catch (e) {
+        try { fs.unlinkSync(tmp); } catch (_) {}
+        throw e;
+    }
+}
+
 async function main() {
     if (process.argv[2] === 'store') {
         const storeScript = path.join(srcDir, 'bin', 'aos-store.mjs');
@@ -5704,6 +5715,7 @@ if (require.main === module) {
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    installBinaryAtomically,
     installOSAgentWorkspace,
     downloadOrUpdateModule,
     detectPlatforms,
