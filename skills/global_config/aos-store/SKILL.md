@@ -47,7 +47,7 @@ Some harnesses (e.g. OpenCode) cannot open a browser automatically. **Always pri
 - **Show Installed:** Marks what is already installed and which items are AOS Core (always included).
 - **Preview:** "+ Add" first shows the exact target paths for the chosen scope (global or project); nothing is written yet.
 - **Confirm:** Every install requires explicit user confirmation — nothing is installed silently.
-- **Limitations:** Skills with extra files (beyond the core SKILL.md) are shown as not installable yet.
+- **Multi-file skills:** Skills with extra files (scripts, references) install completely, every file verified by SHA-256. Skills that ship a `hooks/` folder are copied only; their hooks are not registered in your harness settings (the preview warns).
 
 ## Health Check
 
