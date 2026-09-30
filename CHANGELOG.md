@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.12.1](https://github.com/hybridlabor-api/aos/compare/v4.12.0...v4.12.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **plugin:** declare Apache-2.0 and drop the hooks claim from plugin manifests ([#75](https://github.com/hybridlabor-api/aos/issues/75)) ([214bf5d](https://github.com/hybridlabor-api/aos/commit/214bf5da3f5c8882c901e3a2638ba32f08447565))
+* **release:** let release-please bump plugin.json and marketplace.json versions ([#77](https://github.com/hybridlabor-api/aos/issues/77)) ([16fe711](https://github.com/hybridlabor-api/aos/commit/16fe7118c51c0cab6da97eafec36cee1beebb68a))
+
 ## [4.12.0](https://github.com/hybridlabor-api/aos/compare/v4.11.0...v4.12.0) (2026-09-30)
 
 
