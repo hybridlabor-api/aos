@@ -64,6 +64,12 @@
       "purpose": "Generator/validator pairs for GitHub Actions, Dockerfile, bash scripts and Makefiles, with reference libraries",
       "target_skill": "skills/global_config/{github-actions,dockerfile,bash-script,makefile}-{generator,validator}"
     },
+    "humanlayer-skills": {
+      "upstream": "https://github.com/humanlayer/skills",
+      "pinned_commit": "ca7c8088db69e315a8b2deea43820270457f8f3c",
+      "purpose": "Interview-driven generator for recurring agentic control loops in CI (manual, opt-in, not a pipeline node)",
+      "target_skill": "design-control-loop"
+    },
     "claude-code-templates": {
       "upstream": "https://github.com/davila7/claude-code-templates",
       "pinned_commit": "691832ad9c2506d15a8b752826135f0afa83d197",

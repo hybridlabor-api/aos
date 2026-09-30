@@ -413,6 +413,48 @@ store. Reasons are in `docs/handover/` and the branch description for
 
 ---
 
+## humanlayer/skills
+
+<https://github.com/humanlayer/skills> — MIT. Copyright (c) 2026 HumanLayer.
+
+Tracked in `.agents/vendor-manifest.json` at pinned commit
+`ca7c8088db69e315a8b2deea43820270457f8f3c`.
+
+One skill is vendored as `skills/global_config/design-control-loop/`
+(`SKILL.md` plus its 10 `references/` files, including the unmodified
+`agent-iteration.ts` and `workflow-template.yml` templates). The upstream
+`.claude-plugin/plugin.json` was not carried over.
+
+AOS modifications, all in `SKILL.md` only: `category:`, `source:` and `license:`
+added to the frontmatter; one delimited "AOS notes" section inserted directly
+after the H1. Upstream prose and all `references/` files are byte-identical.
+
+```
+MIT License
+
+Copyright (c) 2026 HumanLayer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in
