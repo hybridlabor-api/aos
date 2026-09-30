@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { localAgents, localSkills, targetsFor as sharedTargetsFor } from '../lib/store-shared.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const INDEX_PATH = join(ROOT, 'lib', 'ecc-store-index.json');
@@ -33,49 +33,8 @@ function findItem(name) {
   return null;
 }
 
-function localSkillNames() {
-  const names = new Set();
-  const visit = (dir) => {
-    if (!existsSync(dir)) return;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) visit(fullPath);
-      else if (entry.name === 'SKILL.md') names.add(basename(dirname(fullPath)));
-    }
-  };
-  visit(join(ROOT, 'skills'));
-  return names;
-}
-
-function localAgentNames() {
-  const names = new Set();
-  for (const dir of [join(ROOT, '.claude', 'agents'), join(ROOT, '.agents', 'agents'), join(ROOT, 'agents')]) {
-    if (!existsSync(dir)) continue;
-    for (const entry of readdirSync(dir)) names.add(entry.replace(/\.md$/i, ''));
-  }
-  return names;
-}
-
-function globalRoots(type) {
-  const home = homedir();
-  return type === 'skills'
-    ? [
-      join(home, '.agents', 'skills'),
-      join(home, '.claude', 'skills'),
-      join(home, '.codex', 'skills'),
-      join(home, '.cursor', 'skills'),
-      join(home, '.roo', 'skills'),
-      join(home, '.gemini', 'config', 'skills'),
-    ]
-    : [
-      join(home, '.agents', 'agents'),
-      join(home, '.claude', 'agents'),
-      join(home, '.codex', 'agents'),
-      join(home, '.cursor', 'agents'),
-      join(home, '.roo', 'agents'),
-      join(home, '.gemini', 'config', 'agents'),
-    ];
-}
+const localSkillNames = () => new Set(localSkills(ROOT).keys());
+const localAgentNames = () => new Set(localAgents(ROOT).keys());
 
 function printItems(items) {
   if (items.length === 0) {
@@ -96,16 +55,7 @@ async function download(upstreamPath) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-function targetsFor(type, name) {
-  if (project) {
-    return type === 'skills'
-      ? [join(process.cwd(), 'skills', name, 'SKILL.md')]
-      : [join(process.cwd(), 'agents', `${name}.md`)];
-  }
-  return globalRoots(type).map((root) => type === 'skills'
-    ? join(root, name, 'SKILL.md')
-    : join(root, `${name}.md`));
-}
+const targetsFor = (type, name) => sharedTargetsFor(type, name, { project });
 
 async function install(name) {
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(`Invalid store name: ${name}`);
@@ -140,6 +90,7 @@ function usage() {
   console.log('  aos store list [--type=skills|agents]');
   console.log('  aos store search <query>');
   console.log('  aos store install <name> [--project] [--dry-run] [--net]');
+  console.log('  aos store ui [--port=N] [--no-open]');
 }
 
 async function main() {
@@ -154,6 +105,11 @@ async function main() {
     if (!query) throw new Error('Search requires a query.');
     const items = allItems(option('--type') || '').filter(({ name, item }) => `${name} ${item.description} ${item.category}`.toLowerCase().includes(query));
     printItems(items);
+    return;
+  }
+  if (command === 'ui') {
+    const { startUi } = await import('../lib/store-ui/server.mjs');
+    await startUi({ argv: args });
     return;
   }
   if (command === 'install') {

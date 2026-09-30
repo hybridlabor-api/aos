@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AOS Store</title>
+<style>
+:root{--paper:oklch(0.97 0.012 95);--paper-2:oklch(0.93 0.018 95);--ink:oklch(0.18 0.025 265);--muted:oklch(0.46 0.025 265);--line:oklch(0.84 0.018 95);--green:oklch(0.72 0.17 145);--green-deep:oklch(0.40 0.12 145);--white:oklch(0.995 0.006 95);--serif:Georgia,"Times New Roman",serif;--sans:"Avenir Next",Avenir,"Segoe UI",sans-serif;--radius:1rem}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.5}
+button,input,select{font:inherit;color:inherit}:focus-visible{outline:3px solid var(--green-deep);outline-offset:3px}
+.container{width:min(calc(100% - 3rem),76rem);margin:0 auto}
+main{padding:2.3rem 0 6rem}
+.kicker{margin:0 0 1rem;color:var(--green-deep);font-size:.7rem;font-weight:850;letter-spacing:.16em;text-transform:uppercase}
+.topbar{display:flex;align-items:center;justify-content:space-between;min-height:4.5rem;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:.65rem;font-size:.76rem;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+.mark{display:grid;width:2rem;height:2rem;place-items:center;border:1px solid var(--green-deep);border-radius:.3rem;color:var(--green-deep);font-size:.65rem;letter-spacing:0}
+.nav{color:var(--muted);font-size:.78rem;display:flex;gap:1.2rem;align-items:center}
+.button{display:inline-flex;min-height:2.4rem;align-items:center;justify-content:center;border:1px solid var(--ink);border-radius:999px;padding:.4rem .95rem;background:var(--ink);color:var(--white);font-size:.74rem;font-weight:800;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+.button.secondary{border-color:var(--line);background:transparent;color:var(--ink)}
+.button[aria-pressed=true],.button.on{background:var(--green);border-color:var(--green);color:var(--ink)}
+.button:hover{background:var(--green);border-color:var(--green);color:var(--ink)}
+.button:disabled{opacity:.5;cursor:not-allowed}
+.state{color:var(--green-deep);font-size:.65rem;font-weight:850;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.state::before{display:inline-block;width:.4rem;height:.4rem;margin-right:.4rem;border-radius:50%;background:var(--green);content:""}
+.cat{color:var(--muted);font-size:.64rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase}
+.search{width:100%;min-height:2.9rem;border:1px solid var(--line);border-radius:999px;padding:.6rem 1.1rem;background:var(--white)}
+.tabs{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem}
+.chip{border:1px solid var(--line);border-radius:999px;padding:.4rem .7rem;background:transparent;color:var(--muted);cursor:pointer;font-size:.7rem}
+.chip:hover,.chip[aria-pressed=true]{border-color:var(--ink);background:var(--ink);color:var(--white)}
+.chip b{font-weight:850;margin-left:.3rem;opacity:.6}
+.strip{display:flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:var(--radius);background:var(--white);margin:1.5rem 0}
+.strip>div{flex:1 1 7rem;padding:.9rem 1.1rem;border-right:1px solid var(--line)}.strip>div:last-child{border:0}
+.strip strong{display:block;font-family:var(--serif);font-size:1.9rem;font-weight:500;letter-spacing:-.06em;line-height:1}
+.strip small{color:var(--muted);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;font-weight:850}
+.ledger{display:grid;grid-template-columns:15rem 1fr;gap:2rem;padding-top:2rem}
+.rail{position:sticky;top:3.2rem;align-self:start;display:grid;gap:1rem}
+.rail .chips{flex-direction:column}.rail .chip{text-align:left;border-radius:.6rem;display:flex;justify-content:space-between}
+.rail h1{font-family:var(--serif);font-weight:500;font-size:2.4rem;letter-spacing:-.07em;line-height:.95;margin:0}
+.row{display:grid;grid-template-columns:1.1rem minmax(0,1.3fr) minmax(0,2fr) 6rem 6rem 8rem;gap:1rem;align-items:center;padding:.6rem .8rem;border-bottom:1px solid var(--line);font-size:.8rem}
+.row.head{position:sticky;top:2.1rem;background:var(--paper);z-index:2;color:var(--muted);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;font-weight:850}
+.row .n{font-family:var(--serif);font-size:1rem;letter-spacing:-.03em;overflow:hidden;text-overflow:ellipsis}
+.dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--line)}.dot.g{background:var(--green)}
+.rowwrap{background:var(--white);border-left:1px solid var(--line);border-right:1px solid var(--line)}
+.rowwrap .cmd{margin:0 .8rem .7rem}.rowwrap .cmdnote{margin:-.4rem .8rem .7rem}
+.cmd{display:flex;gap:.5rem;align-items:center;margin-top:.5rem;padding:.5rem .6rem;border-radius:.6rem;background:var(--ink);color:var(--white)}
+.cmd code{flex:1;font-size:.72rem;overflow-x:auto;white-space:nowrap}.cmd .button{min-height:1.8rem;padding:.2rem .7rem;background:var(--green);border-color:var(--green);color:var(--ink)}
+.cmdnote{font-size:.64rem;color:var(--muted);margin:.3rem 0 0}
+.empty{padding:3rem 1rem;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--radius)}
+.src{font-size:.65rem;font-weight:850}
+.detail{padding:.6rem .8rem;background:var(--white);border-left:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:.75rem;line-height:1.6;color:var(--muted)}
+@media(max-width:760px){.ledger{grid-template-columns:1fr}.rail{position:static}.row{grid-template-columns:1rem 1fr 6rem}.row .d,.row .c,.row .s{display:none}.row.head{display:none}}
+
+.scope{display:flex;gap:.4rem;align-items:center}
+.badge{display:inline-block;margin-left:.5rem;padding:.1rem .45rem;border:1px solid var(--line);border-radius:999px;background:var(--paper-2);color:var(--muted);font-size:.58rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;white-space:nowrap}
+dialog{width:min(40rem,calc(100% - 2rem));border:1px solid var(--ink);border-radius:var(--radius);background:var(--white);color:var(--ink);padding:1.4rem}
+dialog::backdrop{background:oklch(0.18 0.025 265/.4)}
+dialog h2{font-family:var(--serif);font-weight:500;margin:0 0 .6rem}
+dialog pre{margin:.6rem 0;padding:.7rem;border-radius:.6rem;background:var(--ink);color:var(--white);font-size:.7rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+dialog .acts{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
+.err{color:oklch(0.5 0.2 25);font-size:.75rem}
+</style></head><body>
+<div class="container"><main id="app"></main></div>
+<dialog id="dlg"></dialog>
+<script>
+const TOKEN='__TOKEN__';
+const S={tab:'skill',sub:'discover',scope:'global',q:'',cat:'',src:'',expanded:new Set(),data:null,busy:null,detail:{}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const key=i=>i.kind+':'+i.name;
+const find=k=>S.data.items.find(i=>key(i)===k);
+const base=()=>S.data.items.filter(i=>i.kind===S.tab);
+const visible=()=>{const q=S.q.toLowerCase();return base().filter(i=>(S.sub==='installed')===i.installed&&(!S.cat||i.category===S.cat)&&(!S.src||i.source===S.src)&&(!q||(i.name+' '+i.description+' '+i.category).toLowerCase().includes(q)))};
+const uniq=f=>[...new Set(S.data.items.map(f))].sort();
+const count=(f,v)=>base().filter(i=>f(i)===v).length;
+const chip=(a,v,label,n)=>`<button class="chip" aria-pressed="${S[a]===v}" data-a="${a}" data-v="${esc(v)}">${esc(label)}<b>${n}</b></button>`;
+function strip(){const all=S.data.items;const n=s=>all.filter(i=>i.source===s).length;return `<div class="strip"><div><strong>${all.length}</strong><small>total</small></div><div><strong>${n('AOS Core')}</strong><small>AOS Core</small></div><div><strong>${n('ECC')}</strong><small>ECC</small></div></div>`}
+function tabs(){const n=base(),ic=n.filter(i=>i.installed).length,k=x=>S.data.items.filter(i=>i.kind===x).length;return `<div class="tabs">${chip('tab','skill','Skills',k('skill'))}${chip('tab','agent','Agents',k('agent'))}<span style="width:1rem"></span>${chip('sub','installed','Installed',ic)}${chip('sub','discover','Discover',n.length-ic)}</div>`}
+const scopeToggle=()=>`<div class="scope"><span class="kicker" style="margin:0">Scope</span>${chip('scope','global','Global','')}${chip('scope','project','Project','')}</div>`;
+function act(i){
+  if(i.core) return '<span class="state">AOS Core</span>';
+  if(i.installed) return `<span class="state">Installed</span>`;
+  if(i.multiFile) return `<button class="button secondary" disabled title="Install incomplete: upstream ${esc(i.upstreamPath.replace(/SKILL\.md$/,''))} has more files than SKILL.md">+ Add</button>`;
+  if(S.busy===key(i)) return '<button class="button" disabled>Working...</button>';
+  return `<button class="button secondary" data-a="add" data-v="${esc(key(i))}">+ Add</button>`;
+}
+function row(i){
+  const k=key(i),open=S.expanded.has(k);
+  const badge=i.multiFile?'<span class="badge">contains extra files \u2014 install incomplete</span>':'';
+  let h=`<div class="rowwrap"><div class="row"><span class="dot ${i.installed?'g':''}"></span><span class="n" data-a="exp" data-v="${esc(k)}" style="cursor:pointer" title="Show description">${esc(i.name)}${badge}</span><span class="d" style="color:var(--muted)">${esc(i.description)}</span><span class="c cat">${esc(i.category)}</span><span class="s src">${esc(i.source)}</span><span style="text-align:right">${act(i)}</span></div>`;
+  if(open){const d=i.core?i.description:S.detail[k];h+=`<div class="detail">${d===undefined?'Loading...':esc(d)}</div>`}
+  return h+'</div>';
+}
+function render(){
+  const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,l=visible();
+  document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><p class="kicker" style="margin:0">Active scope: ${S.scope==='global'?'Global (harness roots in ~)':'Project ('+esc(S.data.cwd)+')'}</p>${scopeToggle()}<input class="search" id="q" type="search" placeholder="Search ${S.tab}s" value="${esc(S.q)}" aria-label="Search">${tabs()}<div><p class="kicker">Category</p><div class="chips">${chip('cat','','all',base().length)}${uniq(i=>i.category).map(c=>chip('cat',c,c,count(i=>i.category,c))).join('')}</div></div><div><p class="kicker">Source</p><div class="chips">${chip('src','','all',base().length)}${uniq(i=>i.source).map(s=>chip('src',s,s,count(i=>i.source,s))).join('')}</div></div></aside><section><p class="kicker">${l.length} of ${base().length} ${S.tab}s</p>${strip()}<div class="row head"><span></span><span>name</span><span class="d">description</span><span class="c">category</span><span class="s">source</span><span style="text-align:right">state</span></div>${l.length?l.map(row).join(''):`<div class="empty">${S.sub==='installed'?'Nothing installed yet.':'No matches.'}</div>`}</section></div>`;
+  if(fq){const q=document.getElementById('q');q.focus();q.setSelectionRange(pos,pos)}
+}
+async function load(){
+  const r=await fetch('/api/catalog?scope='+S.scope);
+  if(!r.ok) throw new Error('catalog '+r.status);
+  S.data=await r.json();
+}
+async function post(path,item){
+  const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json','x-store-token':TOKEN},body:JSON.stringify({name:item.name,kind:item.kind,scope:S.scope})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error||r.status);
+  return d;
+}
+const dlg=document.getElementById('dlg');
+const scopeName=()=>S.scope==='global'?'Global':'Project';
+async function preview(k){
+  const i=find(k);S.busy=k;render();
+  try{
+    const d=await post('/api/preview',i);
+    const ok=d.ok&&d.targets.length;
+    dlg.innerHTML=`<h2>Add ${esc(i.name)}</h2><p class="kicker">${scopeName()} scope \u2014 will write ${d.targets.length} file(s)</p><pre>${esc(ok?d.targets.join('\n'):(d.stdout+d.stderr).trim())}</pre><p class="cmdnote">Downloads SKILL/agent file from ECC at ${esc(S.data.pinned_commit.slice(0,10))}, verified by SHA-256.</p><div id="res"></div><div class="acts"><button class="button secondary" data-a="close">Cancel</button>${ok?`<button class="button" data-a="confirm" data-v="${esc(k)}">Install to ${scopeName()}</button>`:''}</div>`;
+    dlg.showModal();
+  }catch(e){alert('Preview failed: '+e.message)}
+  finally{S.busy=null;render()}
+}
+async function confirmInstall(k,btn){
+  const i=find(k);btn.disabled=true;btn.textContent='Installing...';
+  const res=dlg.querySelector('#res');
+  try{
+    const d=await post('/api/install',i);
+    if(!d.ok||!d.installed) throw new Error((d.stderr||d.stdout||'install failed').trim());
+    dlg.close();await load();
+  }catch(e){res.innerHTML=`<p class="err">${esc(e.message)}</p>`;btn.disabled=false;btn.textContent='Retry'}
+  render();
+}
+async function expand(k){
+  if(S.expanded.has(k)){S.expanded.delete(k);return}
+  S.expanded.add(k);
+  const i=find(k);
+  if(!i.core&&S.detail[k]===undefined){render();
+    try{const r=await fetch(`/api/detail?name=${encodeURIComponent(i.name)}&kind=${i.kind}`);const d=await r.json();if(!r.ok)throw new Error(d.error);S.detail[k]=d.description||i.description}
+    catch(e){S.detail[k]=i.description+' (full description unavailable: '+e.message+')'}}
+}
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-a]');if(!b||b.disabled)return;const a=b.dataset.a,v=b.dataset.v;
+  if(a==='close')return dlg.close();
+  if(a==='confirm')return confirmInstall(v,b);
+  if(a==='add')return preview(v);
+  if(a==='tab'){S.tab=v;S.cat='';S.src=''}
+  else if(a==='sub'||a==='cat'||a==='src')S[a]=v;
+  else if(a==='scope'){S.scope=v;await load()}
+  else if(a==='exp')await expand(v);
+  render();
+});
+document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;render()}});
+load().then(render).catch(e=>{document.getElementById('app').textContent='Failed to load catalog: '+e.message});
+</script></body></html>

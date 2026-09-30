@@ -4520,6 +4520,16 @@ function generateAndOpenLaunchpad(installedModules = []) {
       background-color: var(--green);
       box-shadow: 0 0 10px rgba(63, 185, 80, 0.6);
     }
+    .card-hint {
+      display: none;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      font-style: italic;
+    }
+    .card.offline .card-hint {
+      display: block;
+    }
     .footer {
       margin-top: 28px;
       text-align: center;
@@ -4691,6 +4701,25 @@ function generateAndOpenLaunchpad(installedModules = []) {
           <span class="status-dot" id="dot-openwiki" title="Checking..."></span>
         </div>
       </a>
+      <a class="card" href="http://127.0.0.1:4322" target="_blank">
+        <div class="card-content">
+          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="grad-store" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#9b30c4"/></linearGradient></defs>
+            <rect x="20" y="20" width="60" height="60" rx="4" fill="url(#grad-store)" opacity="0.85"/>
+            <rect x="28" y="28" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="45" y="28" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="62" y="28" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/>
+            <rect x="28" y="48" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="45" y="48" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="62" y="48" width="12" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/>
+          </svg></div>
+          <div class="card-info">
+            <h2>AOS Store</h2>
+            <p>Browse & install skills and agents</p>
+            <div class="card-hint">offline — run: aos-store ui</div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="port-pill">:4322</span>
+          <span class="status-dot" id="dot-store" title="Checking..."></span>
+        </div>
+      </a>
     </div>
     <div class="footer">
       <span>Autostart Daemons • 127.0.0.1</span>
@@ -4700,9 +4729,16 @@ function generateAndOpenLaunchpad(installedModules = []) {
     function checkHealth(url, dotId) {
       const dot = document.getElementById(dotId);
       if (!dot) return;
+      const card = dot.closest('.card');
       fetch(url, { mode: 'no-cors' })
-        .then(() => dot.classList.add('online'))
-        .catch(() => dot.classList.remove('online'));
+        .then(() => {
+          dot.classList.add('online');
+          if (card) card.classList.remove('offline');
+        })
+        .catch(() => {
+          dot.classList.remove('online');
+          if (card) card.classList.add('offline');
+        });
     }
     function checkAllHealth() {
       checkHealth('http://127.0.0.1:8088', 'dot-memb');
@@ -4710,6 +4746,7 @@ function generateAndOpenLaunchpad(installedModules = []) {
       checkHealth('http://127.0.0.1:3101', 'dot-ao');
       checkHealth('http://127.0.0.1:9080', 'dot-remote');
       checkHealth('http://127.0.0.1:4321', 'dot-openwiki');
+      checkHealth('http://127.0.0.1:4322', 'dot-store');
     }
     checkAllHealth();
     setInterval(checkAllHealth, 5000);
