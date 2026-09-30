@@ -74,8 +74,7 @@ function main() {
     try {
       input = JSON.parse(rawInput);
     } catch {
-      respond(true, true);
-      return;
+      process.exit(0);
     }
   }
 
