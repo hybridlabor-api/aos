@@ -5262,6 +5262,26 @@ function installBinaryAtomically(src, dest) {
 }
 
 async function main() {
+    const args = process.argv.slice(2);
+    if (args.includes('--version') || args.includes('-V')) {
+        console.log(pkg.version);
+        return;
+    }
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`Usage: aos [command] [options]
+
+Commands:
+  store            Browse and install skills
+  doctor|checkup   Check the installation
+
+Options:
+  -y, --yes        Non-interactive install (implied without a TTY)
+  --dry-run        Show what would change
+  --verbose, -v    Verbose output
+  -V, --version    Print the version and exit
+  -h, --help       Print this help and exit`);
+        return;
+    }
     if (process.argv[2] === 'store') {
         const storeScript = path.join(srcDir, 'bin', 'aos-store.mjs');
         const result = spawnSync(process.execPath, [storeScript, ...process.argv.slice(3)], { stdio: 'inherit' });
