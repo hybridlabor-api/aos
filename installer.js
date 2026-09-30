@@ -3320,7 +3320,16 @@ async function installMcpsForTarget(paths, ctx) {
 // spaces) rather than matching the first alphanumeric run anywhere in the
 // block, so it can't accidentally pick up a word from prose if the heading
 // format changes.
-function parseAgentsMd(content) {
+function loadCommonSkills(dir = srcDir) {
+    try {
+        const reg = JSON.parse(fs.readFileSync(path.join(dir, '.agents', 'nodes.json'), 'utf8'));
+        return Array.isArray(reg.common) ? reg.common.filter((s) => typeof s === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
     const blocks = content.split(/\n## /).slice(1);
     const agents = [];
     for (const raw of blocks) {
@@ -3350,7 +3359,7 @@ function parseAgentsMd(content) {
             name,
             role: roleMatch[1].trim(),
             model: modelMatch ? modelMatch[1].trim() : null,
-            skills: extractListAfter('Primary Skills'),
+            skills: [...new Set([...extractListAfter('Primary Skills'), ...commonSkills])],
             mcpServers: extractListAfter('MCP Servers'),
             output: outputMatch ? outputMatch[1].trim() : null,
             systemPrompt: raw.trim(),
@@ -5726,6 +5735,7 @@ module.exports = {
     INSTALL_MANIFEST_PATH,
     // Agent compilers & pipeline helpers
     parseAgentsMd,
+    loadCommonSkills,
     compileClaudeAgents,
     compileOpenCodeAgents,
     compileCodexAgents,

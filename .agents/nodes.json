@@ -1,6 +1,7 @@
 {
   "version": 1,
   "description": "Declarative node registry for /startcycle-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher.",
+  "common": ["read-the-damn-docs", "agenttrail", "archify", "plan-canvas", "stay-within-limits", "quick-recap", "verification-before-completion"],
   "nodes": {
     "architect": {
       "label": "Architect",
