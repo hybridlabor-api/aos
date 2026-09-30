@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.13.0](https://github.com/hybridlabor-api/aos/compare/v4.12.1...v4.13.0) (2026-09-30)
+
+
+### Features
+
+* **plugin:** ship the Claude plugin from plugins/bdb-aos (about 31 MB instead of 156 MB) ([#85](https://github.com/hybridlabor-api/aos/issues/85)) ([44a3458](https://github.com/hybridlabor-api/aos/commit/44a3458072e21b8083117d5245d2ddd3d26ed6c1))
+* **skills:** vendor humanlayer design-control-loop as an opt-in skill ([#82](https://github.com/hybridlabor-api/aos/issues/82)) ([01068f3](https://github.com/hybridlabor-api/aos/commit/01068f3895f0240ce2c5c87967e23f8d099e648f))
+* **store:** add Scenario (scenario-labs/skills, MIT) as a second catalog source ([#83](https://github.com/hybridlabor-api/aos/issues/83)) ([5258568](https://github.com/hybridlabor-api/aos/commit/5258568bcd03aa66b6fbf55009cd2dc88003626c))
+
+
+### Bug Fixes
+
+* **agents:** use a role's pipeline.json model only for its own harness ([#87](https://github.com/hybridlabor-api/aos/issues/87)) ([ca3b156](https://github.com/hybridlabor-api/aos/commit/ca3b15657f9589163b9d75d2613ebab4cec7eabb))
+* **release:** read release settings from release-please-config.json only ([#78](https://github.com/hybridlabor-api/aos/issues/78)) ([75dd7ec](https://github.com/hybridlabor-api/aos/commit/75dd7ecd5020034c67cae33ca9de550688d6208a))
+* **release:** tag releases without the component prefix ([#80](https://github.com/hybridlabor-api/aos/issues/80)) ([54fb598](https://github.com/hybridlabor-api/aos/commit/54fb59853b836df83efd012f571e4c9a51135c22))
+
 ## [4.12.1](https://github.com/hybridlabor-api/aos/compare/v4.12.0...v4.12.1) (2026-09-30)
 
 
