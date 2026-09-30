@@ -309,7 +309,7 @@ dependency.
 
 <https://github.com/BuilderIO/skills> — MIT. Copyright (c) 2026 Builder.io.
 
-Eight skills are adapted under `skills/global_config/`: `read-the-damn-docs`, `stay-within-limits`, `quick-recap`, `plan-arbiter`, `factory-human-digest`, `factory-collect`, `factory-lookback` and `factory-review-prs`. The four Factory skills and `plan-arbiter` have `installer-group` dropped and `category`/`source` added; in `factory-collect`, `factory-lookback` and `factory-review-prs` reply, close, approve, merge and publish actions are reduced to drafts or readiness reports that need the user's GO, and all of them carry an "AOS safety rules" section. `plan-arbiter` drops `agents/openai.yaml` and adds an AOS section on double plans. `stay-within-limits` and `quick-recap` are carried over with `category:` and `source:` added; `stay-within-limits` pins `ccusage` to 20.0.26 instead of `@latest`, and `quick-recap` no longer asks the installer to inject a managed `AGENTS.md` / `CLAUDE.md` block. `read-the-damn-docs` is described below:
+Eleven skills are adapted under `skills/global_config/`: `read-the-damn-docs`, `stay-within-limits`, `quick-recap`, `plan-arbiter`, `factory-human-digest`, `factory-collect`, `factory-lookback`, `factory-review-prs`, `visual-plan`, `visual-recap`, and `visual-edit`. The four Factory skills and `plan-arbiter` have `installer-group` dropped and `category`/`source` added; in `factory-collect`, `factory-lookback` and `factory-review-prs` reply, close, approve, merge and publish actions are reduced to drafts or readiness reports that need the user's GO, and all of them carry an "AOS safety rules" section. `plan-arbiter` drops `agents/openai.yaml` and adds an AOS section on double plans. `stay-within-limits` and `quick-recap` are carried over with `category:` and `source:` added; `stay-within-limits` pins `ccusage` to 20.0.26 instead of `@latest`, and `quick-recap` no longer asks the installer to inject a managed `AGENTS.md` / `CLAUDE.md` block. The three visual skills (`visual-plan`, `visual-recap`, `visual-edit`) are optional and drive the Agent-Native Plan/Design services through MCP connectors (`plan` and `design`) that AOS does NOT register; you connect them yourself if needed. Each carries an "AOS notes" section. `read-the-damn-docs` is described below:
 the docs-first trigger list, the source hierarchy, the required workflow, the
 must-trigger examples, and the "if docs are unavailable" rule. AOS additionally
 adds a Verification section, a `category:` key (Builder's own validator forbids
@@ -318,8 +318,8 @@ guesswork* rule, and a pointer to the installed `firecrawl-search` /
 `firecrawl-scrape` tools. Prose only — the upstream `agents/openai.yaml` and
 README were not carried over, and no executable from the repo is referenced.
 
-The other 16 skills in that repo (as of commit 0dba9ef) are **not** vendored. Six of them
-(`visual-plan`, `visual-recap`, `visual-edit`, `an`, `turn-into-app`, `rewind`)
+In the three visual skills, five path-like mentions (`/sign-in`, `/live-edit-bridge`, `/read-file`, `/write-file`, `/visualize-repo`) were reworded so the AOS validator does not read them as skill references. The other 13 skills in that repo (as of commit 0dba9ef) are **not** vendored. Three of them
+(`an`, `turn-into-app`, `rewind`) plus three others
 are build artefacts synced from a different upstream by
 `scripts/sync-agent-native-skills.mjs`, and the repo's own documentation says
 not to treat them as standalone. Its `.mcp.json` and plugin manifests register
