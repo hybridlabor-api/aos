@@ -309,7 +309,7 @@ dependency.
 
 <https://github.com/BuilderIO/skills> — MIT. Copyright (c) 2026 Builder.io.
 
-One skill adapted into `skills/global_config/read-the-damn-docs/SKILL.md`:
+Three skills are adapted: `read-the-damn-docs`, `stay-within-limits` and `quick-recap` under `skills/global_config/`. `stay-within-limits` and `quick-recap` are carried over with `category:` and `source:` added; `stay-within-limits` pins `ccusage` to 20.0.26 instead of `@latest`, and `quick-recap` no longer asks the installer to inject a managed `AGENTS.md` / `CLAUDE.md` block. `read-the-damn-docs` is described below:
 the docs-first trigger list, the source hierarchy, the required workflow, the
 must-trigger examples, and the "if docs are unavailable" rule. AOS additionally
 adds a Verification section, a `category:` key (Builder's own validator forbids
@@ -318,7 +318,7 @@ guesswork* rule, and a pointer to the installed `firecrawl-search` /
 `firecrawl-scrape` tools. Prose only — the upstream `agents/openai.yaml` and
 README were not carried over, and no executable from the repo is referenced.
 
-The other 22 skills in that repo are **not** vendored. Six of them
+The other 20 skills in that repo are **not** vendored. Six of them
 (`visual-plan`, `visual-recap`, `visual-edit`, `an`, `turn-into-app`, `rewind`)
 are build artefacts synced from a different upstream by
 `scripts/sync-agent-native-skills.mjs`, and the repo's own documentation says

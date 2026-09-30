@@ -11,7 +11,7 @@
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue.svg)](package.json)
-[![skills](https://img.shields.io/badge/skills-214%20curated-brightgreen.svg)](#skills)
+[![skills](https://img.shields.io/badge/skills-216%20curated-brightgreen.svg)](#skills)
 [![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#mcp-servers)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#supported-harnesses)
 [![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
@@ -27,7 +27,7 @@ Built for people who already run **Claude Code, Google Antigravity, Codex CLI, O
 
 After install you have:
 
-- **<!-- count:skills -->214<!-- /count --> skills** in six categories, discoverable by every harness as `<name>/SKILL.md`.
+- **<!-- count:skills -->216<!-- /count --> skills** in six categories, discoverable by every harness as `<name>/SKILL.md`.
 - **<!-- count:agents -->13<!-- /count --> subagents** (Architect, TechLead, Reviewer, the Godmodes, security and silent-failure reviewers) compiled into each harness's native agent format.
 - **<!-- count:mcps -->21<!-- /count --> MCP servers** for creative software, OS control, memory and cross-harness delegation.
 - **Three pipelines** — `/startcycle`, `/startcycle-graph`, `/startcycle-graph-user` — and a **GO gate** that mechanically blocks `git push`, `npm publish`, `npm version` and recursive `rm`.
@@ -208,7 +208,7 @@ Install it through the AOS installer with the AOS CLI target: `npx -y @hybridlab
 npx skills add hybridlabor-api/aos
 ```
 
-This discovers all <!-- count:skills -->214<!-- /count --> curated skills and installs them into the universal `~/.agents/skills` directory (used by all harnesses and the AOS CLI).
+This discovers all <!-- count:skills -->216<!-- /count --> curated skills and installs them into the universal `~/.agents/skills` directory (used by all harnesses and the AOS CLI).
 
 ---
 
@@ -249,7 +249,7 @@ The dispatcher graph compiles these agents, available as Claude Code subagents a
 
 ### Skills by Category
 
-<!-- count:skills -->214<!-- /count --> curated skills, discoverable by every harness:
+<!-- count:skills -->216<!-- /count --> curated skills, discoverable by every harness:
 
 - **bdb-core** (31 skills): Core AOS infrastructure, pipelines, tools, and utilities — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agent-orchestrator`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill`, and more.
 - **design-ui-ux** (19 skills): Frontend, UI design, accessibility, tokens, motion, anti-slop — `senior-frontend`, `ui-component`, `ui-review`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns`, and more.
@@ -264,7 +264,7 @@ The full catalog with detailed descriptions: [docs/skills_table.md](docs/skills_
 
 ## Skills
 
-<!-- count:skills -->214<!-- /count --> skills, curated from open-source and proprietary collections, covering the full software development and creative pipeline. Every skill is a directory with a `SKILL.md` frontmatter declaring `name`, `description`, and one `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
+<!-- count:skills -->216<!-- /count --> skills, curated from open-source and proprietary collections, covering the full software development and creative pipeline. Every skill is a directory with a `SKILL.md` frontmatter declaring `name`, `description`, and one `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
 
 **Persona Layer:** The **Godmode** skills are specialized personas that directly map to the build and ship nodes of the dispatcher graph:
 
