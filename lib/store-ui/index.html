@@ -56,6 +56,8 @@ dialog h2{font-family:var(--serif);font-weight:500;margin:0 0 .6rem}
 dialog pre{margin:.6rem 0;padding:.7rem;border-radius:.6rem;background:var(--ink);color:var(--white);font-size:.7rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
 dialog .acts{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
 .err{color:oklch(0.5 0.2 25);font-size:.75rem}
+.badge.warn{border-color:oklch(0.5 0.2 25);color:oklch(0.5 0.2 25)}
+.warnbox{padding:.6rem .8rem;border:2px solid oklch(0.5 0.2 25);border-radius:.6rem;color:oklch(0.5 0.2 25);font-size:.78rem;font-weight:700}
 </style></head><body>
 <div class="container"><main id="app"></main></div>
 <dialog id="dlg"></dialog>
@@ -70,7 +72,7 @@ const visible=()=>{const q=S.q.toLowerCase();return base().filter(i=>(S.sub==='i
 const uniq=f=>[...new Set(S.data.items.map(f))].sort();
 const count=(f,v)=>base().filter(i=>f(i)===v).length;
 const chip=(a,v,label,n)=>`<button class="chip" aria-pressed="${S[a]===v}" data-a="${a}" data-v="${esc(v)}">${esc(label)}<b>${n}</b></button>`;
-function strip(){const all=S.data.items;const n=s=>all.filter(i=>i.source===s).length;return `<div class="strip"><div><strong>${all.length}</strong><small>total</small></div><div><strong>${n('AOS Core')}</strong><small>AOS Core</small></div><div><strong>${n('ECC')}</strong><small>ECC</small></div></div>`}
+function strip(){const all=S.data.items;return `<div class="strip"><div><strong>${all.length}</strong><small>total</small></div>${uniq(i=>i.source).map(s=>`<div><strong>${all.filter(i=>i.source===s).length}</strong><small>${esc(s)}</small></div>`).join('')}</div>`}
 function tabs(){const n=base(),ic=n.filter(i=>i.installed).length,k=x=>S.data.items.filter(i=>i.kind===x).length;return `<div class="tabs">${chip('tab','skill','Skills',k('skill'))}${chip('tab','agent','Agents',k('agent'))}<span style="width:1rem"></span>${chip('sub','installed','Installed',ic)}${chip('sub','discover','Discover',n.length-ic)}</div>`}
 const scopeToggle=()=>`<div class="scope"><span class="kicker" style="margin:0">Scope</span>${chip('scope','global','Global','')}${chip('scope','project','Project','')}</div>`;
 function act(i){
@@ -81,7 +83,7 @@ function act(i){
 }
 function row(i){
   const k=key(i),open=S.expanded.has(k);
-  const badge=i.fileCount>1?`<span class="badge">${i.fileCount} files</span>`:'';
+  const badge=(i.fileCount>1?`<span class="badge">${i.fileCount} files</span>`:'')+(i.execBridge?'<span class="badge warn">exec bridge</span>':'')+(i.requires.length?`<span class="badge">+${i.requires.length} required</span>`:'');
   let h=`<div class="rowwrap"><div class="row"><span class="dot ${i.installed?'g':''}"></span><span class="n" data-a="exp" data-v="${esc(k)}" style="cursor:pointer" title="Show description">${esc(i.name)}${badge}</span><span class="d" style="color:var(--muted)">${esc(i.description)}</span><span class="c cat">${esc(i.category)}</span><span class="s src">${esc(i.source)}</span><span style="text-align:right">${act(i)}</span></div>`;
   if(open){const d=i.core?i.description:S.detail[k];h+=`<div class="detail">${d===undefined?'Loading...':esc(d)}</div>`}
   return h+'</div>';
@@ -109,9 +111,16 @@ async function preview(k){
   try{
     const d=await post('/api/preview',i);
     const ok=d.ok&&d.targets.length;
-    const tc=i.fileCount>0?Math.round(d.targets.length/i.fileCount):1;const size=i.totalSize!=null?` = ${i.fileCount} file(s) \u00d7 ${tc} target(s), ${(i.totalSize/1024).toFixed(1)} KB each`:'';
-    const warn=i.hasHooks?'<p class="err">Includes hooks \u2014 copied only, NOT registered in your harness settings; the skill may need manual wiring.</p>':'';
-    dlg.innerHTML=`<h2>Add ${esc(i.name)}</h2><p class="kicker">${scopeName()} scope \u2014 will write ${d.targets.length} file(s)${size}</p>${warn}<pre style="max-height:16rem;overflow:auto">${esc(ok?d.targets.join('\n'):(d.stdout+d.stderr).trim())}</pre><p class="cmdnote">Downloads ${i.fileCount>1?i.fileCount+' files':'the file'} from ECC at ${esc(S.data.pinned_commit.slice(0,10))}, each verified by SHA-256.</p><div id="res"></div><div class="acts"><button class="button secondary" data-a="close">Cancel</button>${ok?`<button class="button" data-a="confirm" data-v="${esc(k)}">Install to ${scopeName()}</button>`:''}</div>`;
+    const m=d.meta||{};
+    const fc=m.fileCount||i.fileCount,tc=fc>0?Math.round(d.targets.length/fc):1;const size=m.totalSize>0?` = ${fc} file(s) \u00d7 ${tc} target(s), ${(m.totalSize/1024).toFixed(1)} KB each`:(i.totalSize!=null?` = ${i.fileCount} file(s) \u00d7 ${tc} target(s), ${(i.totalSize/1024).toFixed(1)} KB each`:'');
+    const warn=(i.hasHooks?'<p class="err">Includes hooks \u2014 copied only, NOT registered in your harness settings; the skill may need manual wiring.</p>':'')
+      +(m.execBridge?`<p class="warnbox">Warning: contains a script that executes code received over a local socket or file channel without authentication \u2014 install only if you use this bridge.<br><span style="font-weight:400">${esc((m.execBridgeFiles||[]).map(f=>f.skill+'/'+f.path).join(', '))}</span></p>`:(m.hasScripts?`<p class="cmdnote">Contains ${m.scriptCount} script file(s) that run on your machine when the skill is used. Review them before use.</p>`:''))
+      +(m.software&&m.software.length?`<p class="cmdnote">Needs third-party software that is not included: ${esc(m.software.join(', '))}.</p>`:'')
+      +(m.requires&&m.requires.length?`<p class="cmdnote">Also installs required skill(s): ${esc(m.requires.join(', '))}.</p>`:'');
+    const srcLabel=m.source||i.source,pin=(m.pinned_commit||S.data.pinned_commit).slice(0,10);
+    const lic=m.license?` \u2014 ${esc(m.license)}${m.copyright?', '+esc(m.copyright):''}`:'';
+    const nfiles=m.fileCount||i.fileCount;
+    dlg.innerHTML=`<h2>Add ${esc(i.name)}</h2><p class="kicker">${scopeName()} scope \u2014 will write ${d.targets.length} file(s)${size}</p><p class="cmdnote">Source: ${esc(srcLabel)}${lic}${m.thirdParty?' (third-party content)':''}</p>${warn}<pre style="max-height:16rem;overflow:auto">${esc(ok?d.targets.join('\n'):(d.stdout+d.stderr).trim())}</pre><p class="cmdnote">Downloads ${nfiles>1?nfiles+' files':'the file'} from ${esc(srcLabel)} at ${esc(pin)}, each verified by SHA-256.</p><div id="res"></div><div class="acts"><button class="button secondary" data-a="close">Cancel</button>${ok?`<button class="button" data-a="confirm" data-v="${esc(k)}">Install to ${scopeName()}</button>`:''}</div>`;
     dlg.showModal();
   }catch(e){alert('Preview failed: '+e.message)}
   finally{S.busy=null;render()}
