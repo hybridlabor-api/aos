@@ -8,7 +8,9 @@ source: bdb
 
 # deja: On-Demand Session Memory
 
-`deja` indexes this machine's agent transcripts into a local, secret-redacted store and answers three questions on demand. It is installed together with memB. There is no boot sequence — never call deja at session start; reach for it at one of the moments below.
+`deja` indexes this machine's agent transcripts into a local, secret-redacted store and answers three questions on demand. It is installed together with memB.
+
+The session start is already covered: the memB hook (`memb-inject.mjs`) appends `deja wip` for the current project to its SessionStart block, under "Last session here". Read that instead of calling `deja wip` yourself at start; reach for deja at one of the moments below.
 
 ## 1. An error just happened
 
