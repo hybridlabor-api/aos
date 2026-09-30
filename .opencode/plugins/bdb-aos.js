@@ -31,6 +31,100 @@ const GUARDED_PATTERNS = [
 
 let lastHumanPrompt = '';
 
+// ---------------------------------------------------------------------------
+// Graph gate (W-5, W-6)
+//
+// The loop-keeper for /startcycle-graph on a harness with no Stop hook. Claude
+// Code blocks the exit in .claude/hooks/graph-gate.mjs; OpenCode has no Stop
+// event, so the same contract is kept by nudging the session awake on
+// session.idle while production_artifacts/state.json still has open work.
+//
+// This is deliberately dumb: it reads state.json and it prompts. It never
+// dispatches a node, never decides who runs next, and never writes state.json --
+// the dispatcher owns that file, and a gate that writes the state it is
+// measured against proves nothing. Everything here fails open.
+// ---------------------------------------------------------------------------
+
+const STATE_REL = path.join('production_artifacts', 'state.json');
+const TERMINAL_PHASES = new Set(['done', 'escalated']);
+const GATE_FIELDS = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
+// Bounded so a stalled run nudges and then goes quiet instead of looping. The
+// ceiling mirrors state.max_iterations; past it the human is the loop-breaker.
+const MAX_NUDGES = 3;
+
+const PIPELINE_COMMANDS = [
+    { name: 'startcycle-graph', skill: 'startcycle-graph', goal: '' },
+    { name: 'startcycle-graph-user', skill: 'startcycle-graph-user', goal: '' },
+    { name: 'startcycle', skill: 'startcycle', goal: '' },
+];
+
+// sessionID -> { signature, nudges }
+const nudgeState = new Map();
+
+function readGraphState(directory) {
+    if (!directory) return null;
+    const p = path.join(directory, STATE_REL);
+    try {
+        if (!existsSync(p)) return null;
+        const parsed = JSON.parse(readFileSync(p, 'utf8'));
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+// Returns null when nothing blocks, else { signature, text }.
+function openGraphGate(state) {
+    if (!state) return null;
+
+    const reasons = [];
+
+    const phase = typeof state.phase === 'string' ? state.phase : null;
+    if (phase && !TERMINAL_PHASES.has(phase)) {
+        reasons.push(`state.phase is "${phase}" (terminal phases: ${[...TERMINAL_PHASES].join(', ')})`);
+    }
+
+    const findings = Array.isArray(state.findings) ? state.findings : [];
+    const openBlocking = findings
+        .filter(f => f && f.severity === 'blocking' && f.status === 'open')
+        .map(f => f.id || '<unnamed>');
+    if (openBlocking.length) {
+        reasons.push(`${openBlocking.length} open blocking finding(s): ${openBlocking.join(', ')}`);
+    }
+
+    const gate = state.gate && typeof state.gate === 'object' ? state.gate : null;
+    if (gate) {
+        const failed = GATE_FIELDS.filter(f => gate[f] === 'fail').map(f => `gate.${f}`);
+        if (failed.length) reasons.push(`quality gate failing: ${failed.join(', ')}`);
+    }
+
+    if (!reasons.length) return null;
+    return {
+        signature: `${phase}|${openBlocking.join(',')}|${reasons.length}`,
+        text: reasons.join('; '),
+    };
+}
+
+function buildGraphNudge(gate) {
+    return [
+        '[AOS Graph Gate] The /startcycle-graph run is not finished: ' + gate.text + '.',
+        'Read production_artifacts/state.json and .agents/graph.md, then dispatch the',
+        'next node the edge table requires. If state.iteration >= state.max_iterations,',
+        'or a repair round reports the same blocking finding id again, set phase to',
+        '"escalated" and hand control back to the user instead of looping.',
+    ].join(' ');
+}
+
+// The pipeline group. /startcycle-graph also resolves natively from
+// ~/.config/opencode/commands/startcycle-graph.md; this is the fallback for the
+// names that have no command file, and it also covers a project that predates
+// the payload.
+function matchPipelineCommand(text) {
+    const m = text.match(/^\/(startcycle(?:-graph-user|-graph)?)(?:\s+(.*))?$/is);
+    if (!m) return null;
+    return PIPELINE_COMMANDS.find(c => c.name === m[1].toLowerCase()) || null;
+}
+
 function isGuardedCommand(cmd) {
   if (typeof cmd !== 'string') return false;
   return GUARDED_PATTERNS.some((re) => re.test(cmd));
@@ -158,6 +252,36 @@ export default async function bdbAosPlugin(input) {
   const directory = input.directory || process.cwd();
 
   return {
+    // W-6 loop-keeper. Fires whenever a session goes idle. Reads the graph
+    // state and, while work is still open, prompts the session to continue.
+    // Never throws: a graph that cannot be read must not wedge the session.
+    event: async ({ event }) => {
+      try {
+        if (!event || event.type !== 'session.idle') return;
+        const sessionID = event.properties && event.properties.sessionID;
+        if (!sessionID || !input.client) return;
+
+        const gate = openGraphGate(readGraphState(directory));
+        if (!gate) return;
+
+        const prev = nudgeState.get(sessionID);
+        const nudges = prev ? prev.nudges : 0;
+        // Nudge once per distinct state, and never more than the ceiling. An
+        // unchanged gate is a stalled run, not a reason to loop.
+        if (prev && prev.signature === gate.signature) return;
+        if (nudges >= MAX_NUDGES) return;
+
+        nudgeState.set(sessionID, { signature: gate.signature, nudges: nudges + 1 });
+        await input.client.session.prompt({
+          path: { id: sessionID },
+          body: { parts: [{ type: 'text', text: buildGraphNudge(gate) }] },
+          query: directory ? { directory } : undefined,
+        });
+      } catch {
+        // Fail open. A graph gate that breaks the session is worse than no gate.
+      }
+    },
+
     'chat.message': async (msgInput, msgOutput) => {
       // Capture the user prompt text for GO-gate verification
       const textParts = (msgOutput.parts || []).filter((p) => p && p.type === 'text' && typeof p.text === 'string');
@@ -181,13 +305,14 @@ export default async function bdbAosPlugin(input) {
         }
       } catch {}
 
-      // Recognize and wire /startcycle-graph workflow
-      const graphMatch = fullText.match(/^\/startcycle-graph(?:\s+(.*))?$/is);
-      if (graphMatch) {
-        const goal = (graphMatch[1] || '').trim();
+      // Recognize and wire the AOS pipeline group
+      const pipeline = matchPipelineCommand(fullText);
+      if (pipeline) {
+        const goal = fullText.slice(pipeline.name.length + 1).trim();
         const graphInstructions = [
-          `[AOS Autonomous Graph Workflow Engine - Active]`,
+          `[AOS Pipeline - ${pipeline.name} - Active]`,
           `Goal: "${goal || 'Execute planned architecture cycle'}"`,
+          `Skill: skills/basic/${pipeline.skill}/SKILL.md`,
           `State Schema: .agents/state.schema.json`,
           `Persisted State: production_artifacts/state.json`,
           `Available Nodes: .agents/nodes.json (Architect -> TechLead -> Build [UI_UX, Engineering, Media] -> Reviewer -> Shipping)`,

@@ -263,6 +263,118 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
         });
     });
 
+    // R1-bis: the OpenCode payload. installOpencodePlugin is the single copy
+    // site -- the Quick Update path (injectHarnessRules -> installGlobalHooks)
+    // and the fresh-install path (universalHarnessSync -> syncOpencodeConfig)
+    // both reach it. Before the extract each path had its own copy and the
+    // Quick Update one never registered the plugin in opencode.jsonc.
+    describe('R1-bis: OpenCode Plugin Installation (installOpencodePlugin)', () => {
+        let tmpDir;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-oc-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        function run(args) {
+            return spawnSync(process.execPath, ['-e', args], { encoding: 'utf8', timeout: 20000 });
+        }
+
+        const CALL = (configPath) =>
+            `const i = require(${JSON.stringify(INSTALLER_PATH)});` +
+            `i.installOpencodePlugin({ targetHome: ${JSON.stringify(tmpDir)}, configPath: ${JSON.stringify(configPath)} });`;
+
+        test('installGlobalHooks installs the plugin AND registers it in opencode.jsonc', () => {
+            // The Quick Update path. It must not merely copy the file: an
+            // unregistered plugin is a no-op even though it sits on disk.
+            const res = run(
+                `const i = require(${JSON.stringify(INSTALLER_PATH)});` +
+                `i.installGlobalHooks({ targetHome: ${JSON.stringify(tmpDir)}, targetGemini: ${JSON.stringify(path.join(tmpDir, '.gemini'))} });`
+            );
+            assert.strictEqual(res.status, 0, `installGlobalHooks threw: ${res.stderr}`);
+
+            const pluginFile = path.join(tmpDir, '.config', 'opencode', 'plugins', 'bdb-aos.js');
+            assert.ok(fs.existsSync(pluginFile), 'plugin must be copied to ~/.config/opencode/plugins/');
+
+            const cfgPath = path.join(tmpDir, '.config', 'opencode', 'opencode.jsonc');
+            assert.ok(fs.existsSync(cfgPath), 'opencode.jsonc must be written by the Quick Update path');
+            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+            assert.ok(Array.isArray(cfg.plugin), 'plugin must be an array');
+            assert.ok(
+                cfg.plugin.some(p => String(p).includes('bdb-aos')),
+                'bdb-aos.js must be registered in the plugin array'
+            );
+        });
+
+        test('is idempotent -- a second run does not duplicate the registration', () => {
+            const cfgPath = path.join(tmpDir, '.config', 'opencode', 'opencode.jsonc');
+            run(CALL(cfgPath));
+            run(CALL(cfgPath));
+            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+            const hits = cfg.plugin.filter(p => String(p).includes('bdb-aos'));
+            assert.strictEqual(hits.length, 1, `bdb-aos registered ${hits.length}x, expected exactly 1`);
+        });
+
+        test('preserves user-owned keys in an existing opencode.jsonc', () => {
+            const cfgDir = path.join(tmpDir, '.config', 'opencode');
+            fs.mkdirSync(cfgDir, { recursive: true });
+            const cfgPath = path.join(cfgDir, 'opencode.jsonc');
+            fs.writeFileSync(cfgPath, JSON.stringify({
+                $schema: 'https://opencode.ai/config.json',
+                model: 'anthropic/claude-sonnet-4-5',
+                plugin: ['opencode-helicone-session'],
+            }, null, 2));
+
+            run(CALL(cfgPath));
+            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+            assert.strictEqual(cfg.model, 'anthropic/claude-sonnet-4-5', 'user model must survive');
+            assert.ok(cfg.plugin.includes('opencode-helicone-session'), 'foreign plugin entries must survive');
+            assert.ok(cfg.plugin.some(p => String(p).includes('bdb-aos')), 'bdb-aos must be added');
+        });
+
+        test('shipped slash-command payload is copied alongside the plugin', () => {
+            const cmdSrc = path.join(REPO_ROOT, '.opencode', 'commands', 'startcycle-graph.md');
+            assert.ok(fs.existsSync(cmdSrc), 'startcycle-graph.md command payload must exist in the repo');
+
+            const cfgPath = path.join(tmpDir, '.config', 'opencode', 'opencode.jsonc');
+            run(CALL(cfgPath));
+            const cmdDest = path.join(tmpDir, '.config', 'opencode', 'commands', 'startcycle-graph.md');
+            assert.ok(fs.existsSync(cmdDest), 'command must be copied to ~/.config/opencode/commands/');
+        });
+
+        test('skill paths are guarded by existence -- no dead entries', () => {
+            // The regression: skills.paths unconditionally carried ".agents/skills",
+            // which resolves to nothing outside an AOS-bootstrapped project while
+            // the installer reported success.
+            const cfgPath = path.join(tmpDir, '.config', 'opencode', 'opencode.jsonc');
+            run(CALL(cfgPath));
+            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+            const paths = (cfg.skills && cfg.skills.paths) || [];
+
+            const homeAgents = path.join(tmpDir, '.agents', 'skills');
+            if (fs.existsSync(homeAgents)) {
+                assert.ok(paths.includes(homeAgents), 'existing ~/.agents/skills must be registered');
+            } else {
+                assert.ok(
+                    !paths.includes(homeAgents),
+                    'must not register ~/.agents/skills when it does not exist'
+                );
+            }
+        });
+
+        test('a malformed opencode.jsonc does not throw', () => {
+            const cfgDir = path.join(tmpDir, '.config', 'opencode');
+            fs.mkdirSync(cfgDir, { recursive: true });
+            const cfgPath = path.join(cfgDir, 'opencode.jsonc');
+            fs.writeFileSync(cfgPath, '{ this is not json ');
+            const res = run(CALL(cfgPath));
+            assert.strictEqual(res.status, 0, `must fail open, not crash: ${res.stderr}`);
+        });
+    });
+
     describe('R2: Workflow Execution via Hooks (startcycle-dispatch.mjs)', () => {
 
         test('startcycle-dispatch.mjs exits cleanly (0) on non-command prompts without throwing ReferenceError', () => {
