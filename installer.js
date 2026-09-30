@@ -3674,6 +3674,94 @@ function injectHarnessRules() {
     }
 }
 
+// Copy the OpenCode plugin + command payload and register both in
+// opencode.jsonc. This is the single copy site: the Quick Update path
+// (injectHarnessRules -> installGlobalHooks) and the fresh-install path
+// (universalHarnessSync -> syncOpencodeConfig) both reach it, so a version that
+// adds or changes the plugin can no longer ship to one path and miss the other.
+//
+// `data` is mutated in place when the caller owns the config write (Universal
+// Sync merges MCP servers in the same pass and writes once). When `data` is
+// omitted the function loads and saves the config itself, which is what lets the
+// Quick Update path register the plugin as well as copy it.
+function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null } = {}) {
+    const opencodeDir = configPath
+        ? path.dirname(configPath)
+        : (process.platform === 'win32'
+            ? path.join(process.env.APPDATA || targetHome, 'opencode')
+            : path.join(targetHome, '.config', 'opencode'));
+
+    const pluginSrc = path.join(srcDir, '.opencode', 'plugins', 'bdb-aos.js');
+    let pluginInstalled = false;
+    if (fs.existsSync(pluginSrc)) {
+        const pluginDest = path.join(opencodeDir, 'plugins', 'bdb-aos.js');
+        try {
+            fs.mkdirSync(path.dirname(pluginDest), { recursive: true });
+            fs.copyFileSync(pluginSrc, pluginDest);
+            try { fs.chmodSync(pluginDest, 0o644); } catch (e) { logDebug(e, 'chmod opencode plugin'); }
+            pluginInstalled = true;
+            log.step(`Installed OpenCode plugin to ${pluginDest}`);
+        } catch (e) {
+            log.warn(`Could not install OpenCode plugin: ${e.message}`);
+        }
+    }
+
+    // Slash-command payloads. Without these the /startcycle-graph command has no
+    // native resolution and only survives as a raw-text match in the plugin.
+    const commandsSrc = path.join(srcDir, '.opencode', 'commands');
+    if (fs.existsSync(commandsSrc)) {
+        try {
+            copyDirRecursiveSync(commandsSrc, path.join(opencodeDir, 'commands'));
+            log.step(`Installed OpenCode commands to ${path.join(opencodeDir, 'commands')}`);
+        } catch (e) {
+            log.warn(`Could not install OpenCode commands: ${e.message}`);
+        }
+    }
+
+    if (!pluginInstalled) return data;
+
+    const ownsWrite = data === null;
+    if (ownsWrite) {
+        if (!configPath) return data;
+        data = readJsoncFile(configPath) || {};
+    }
+
+    // Register the plugin.
+    if (!Array.isArray(data.plugin)) data.plugin = [];
+    const pluginPathNormalized = path.join(opencodeDir, 'plugins', 'bdb-aos.js').replace(/\\/g, '/');
+    const alreadyRegistered = data.plugin.some(p => {
+        const str = typeof p === 'string' ? p : (Array.isArray(p) ? p[0] : '');
+        return str.includes('bdb-aos');
+    });
+    if (!alreadyRegistered) data.plugin.push(pluginPathNormalized);
+
+    // Register skill paths. Each is guarded by existsSync so the config never
+    // names a directory that is not there -- a relative ".agents/skills" entry
+    // silently resolves to nothing outside an AOS-bootstrapped project.
+    const homeAgentsSkills = path.join(targetHome, '.agents', 'skills');
+    const desired = ['.agents/skills'];
+    if (fs.existsSync(homeAgentsSkills)) desired.unshift(homeAgentsSkills.replace(/\\/g, '/'));
+    if (!data.skills || typeof data.skills !== 'object' || !Array.isArray(data.skills.paths)) {
+        data.skills = { paths: desired.slice() };
+    } else {
+        data.skills.paths = data.skills.paths.filter(p => p !== '.agents/skills' || fs.existsSync(path.join(process.cwd(), p)));
+        for (const p of desired) {
+            if (!data.skills.paths.includes(p)) data.skills.paths.push(p);
+        }
+    }
+
+    if (ownsWrite) {
+        try {
+            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+            fs.writeFileSync(configPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+            try { fs.chmodSync(configPath, 0o600); } catch (e) { logDebug(e, 'chmod opencode config'); }
+        } catch (e) {
+            log.warn(`Could not write ${configPath}: ${e.message}`);
+        }
+    }
+    return data;
+}
+
 // Deliver the hook scripts to ~/.claude/hooks/ and wire them in settings.json.
 // Both the full install and Quick Update funnel through here. Quick Update used
 // to do neither: it refreshes skills and submodules, but hooks are harness
@@ -3733,22 +3821,15 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'));
 
     // 4. OpenCode CLI
-    const opencodeDir = process.platform === 'win32'
-        ? path.join(process.env.APPDATA || targetHome, 'opencode')
-        : path.join(targetHome, '.config', 'opencode');
-    const opencodePluginSrc = path.join(srcDir, '.opencode', 'plugins', 'bdb-aos.js');
-    if (fs.existsSync(opencodePluginSrc)) {
-        const opencodePluginsDir = path.join(opencodeDir, 'plugins');
-        const opencodePluginDest = path.join(opencodePluginsDir, 'bdb-aos.js');
-        try {
-            fs.mkdirSync(opencodePluginsDir, { recursive: true });
-            fs.copyFileSync(opencodePluginSrc, opencodePluginDest);
-            try { fs.chmodSync(opencodePluginDest, 0o644); } catch (e) { logDebug(e, 'chmod opencode plugin'); }
-            log.step(`Installed OpenCode plugin to ${opencodePluginDest}`);
-        } catch (e) {
-            log.warn(`Could not install OpenCode plugin: ${e.message}`);
-        }
-    }
+    installOpencodePlugin({
+        targetHome,
+        configPath: path.join(
+            process.platform === 'win32'
+                ? path.join(process.env.APPDATA || targetHome, 'opencode')
+                : path.join(targetHome, '.config', 'opencode'),
+            'opencode.jsonc'
+        ),
+    });
 
     // 5. Global CLI launcher binaries (aos-config, aos-dashboard, aos-uninstall)
     installGlobalBinaries();
@@ -4778,47 +4859,10 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
                 }
             }
 
-            // Wire BDB AOS Plugin for OpenCode
-            const opencodeDir = path.dirname(targetPath);
-            const pluginsDir = path.join(opencodeDir, 'plugins');
-            const pluginFile = path.join(pluginsDir, 'bdb-aos.js');
-            const pluginSrc = path.join(srcDir, '.opencode', 'plugins', 'bdb-aos.js');
-
-            try {
-                if (fs.existsSync(pluginSrc)) {
-                    fs.mkdirSync(pluginsDir, { recursive: true });
-                    fs.copyFileSync(pluginSrc, pluginFile);
-                    try { fs.chmodSync(pluginFile, 0o644); } catch (e) { logDebug(e, 'chmod pluginFile'); }
-                }
-            } catch (pluginErr) {
-                log.warn(`Could not install OpenCode plugin: ${pluginErr.message}`);
-            }
-
-            // Register plugin in opencode.jsonc if plugin file exists
-            if (fs.existsSync(pluginFile)) {
-                if (!Array.isArray(data.plugin)) {
-                    data.plugin = [];
-                }
-                const pluginPathNormalized = pluginFile.replace(/\\/g, '/');
-                const alreadyRegistered = data.plugin.some(p => {
-                    const str = typeof p === 'string' ? p : (Array.isArray(p) ? p[0] : '');
-                    return str.includes('bdb-aos');
-                });
-                if (!alreadyRegistered) {
-                    data.plugin.push(pluginPathNormalized);
-                }
-            }
-
-            // Register skills paths for OpenCode
-            if (!data.skills || typeof data.skills !== 'object') {
-                data.skills = { paths: [".agents/skills"] };
-            } else if (Array.isArray(data.skills.paths)) {
-                if (!data.skills.paths.includes(".agents/skills")) {
-                    data.skills.paths.push(".agents/skills");
-                }
-            } else {
-                data.skills.paths = [".agents/skills"];
-            }
+            // Wire BDB AOS Plugin for OpenCode. `data` is handed in because this
+            // function owns the write -- it merges MCP servers in the same pass.
+            // homeDir matches how the opencode harness entry builds its path.
+            installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
 
             fs.mkdirSync(path.dirname(targetPath), { recursive: true });
             fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), { mode: 0o600 });
@@ -5497,6 +5541,7 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
     installGlobalHooks,
+    installOpencodePlugin,
     installProjectHarness,
     promptMcpSelection,
     mirrorMcpServersTo,
