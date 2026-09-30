@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.13.2](https://github.com/hybridlabor-api/aos/compare/v4.13.1...v4.13.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* **hooks:** go-gate fails closed, global hook paths, idempotent Codex merge, uninstall symmetry ([#89](https://github.com/hybridlabor-api/aos/issues/89)) ([c59ce96](https://github.com/hybridlabor-api/aos/commit/c59ce967d40b8606abbc5ad13a355bacbb8889b7))
+* **installer:** report module failures honestly, keep existing env secrets, atomic manifest writes ([#88](https://github.com/hybridlabor-api/aos/issues/88)) ([89b26e6](https://github.com/hybridlabor-api/aos/commit/89b26e69788127577bf885dd2773f3d3f7bb7255))
+
 ## [4.13.1](https://github.com/hybridlabor-api/aos/compare/v4.13.0...v4.13.1) (2026-09-30)
 
 
