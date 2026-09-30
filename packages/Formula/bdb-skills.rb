@@ -11,7 +11,7 @@ class BdbSkills < Formula
     # Copy the folders containing the actual skills, configs, and markdown files
     prefix.install "skills"
     prefix.install "mcp_config.json"
-    prefix.install "GEMINI.md"
+    prefix.install "RULES.md"
   end
 
   def caveats

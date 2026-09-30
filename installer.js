@@ -2921,7 +2921,7 @@ async function installMcpsForTarget(paths, ctx) {
     }
     log.step(`Installed selected MCP servers to ${mcpCodeTarget}`);
 
-    const nodeMcps = ['adobe_uxp_mcp', 'unreal_mcp', 'tdmcp', 'touchdesigner-mcp', 'davinci-resolve-mcp', 'after-effects-mcp', 'computer-use-mcp'];
+    const nodeMcps = ['adobe_uxp_mcp', 'unreal_mcp', 'tdmcp', 'touchdesigner-mcp', 'davinci-resolve-mcp', 'after-effects-mcp', 'computer-use-mcp', 'mcsc'];
     for (const mcpFolder of nodeMcps.filter(m => selectedMcps.includes(m))) {
         const targetFolder = path.join(mcpCodeTarget, mcpFolder);
         if (fs.existsSync(path.join(targetFolder, 'package.json'))) {
@@ -3469,13 +3469,17 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
 
 
 function injectHarnessRules() {
-    const geminiMdSrc = path.join(srcDir, 'GEMINI.md');
+    const rulesMdSrc = path.join(srcDir, 'RULES.md');
     const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
 
-    if (fs.existsSync(geminiMdSrc)) {
-        installStep(`install GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`, () => {
-            copyDirRecursiveSync(geminiMdSrc, path.join(geminiDir, 'GEMINI.md'));
-            log.step(`Installed GEMINI.md to ${path.join(geminiDir, 'GEMINI.md')}`);
+    if (fs.existsSync(rulesMdSrc)) {
+        installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
+            copyDirRecursiveSync(rulesMdSrc, path.join(geminiDir, 'RULES.md'));
+            // Keep GEMINI.md in sync for backwards compatibility with Antigravity CLI harnesses
+            try {
+                fs.copyFileSync(rulesMdSrc, path.join(geminiDir, 'GEMINI.md'));
+            } catch (e) { logDebug(e, 'sync GEMINI.md fallback'); }
+            log.step(`Installed RULES.md to ${path.join(geminiDir, 'RULES.md')}`);
         }, 'The harness injection below still runs.');
 
         // Dispatcher scripts must land in ~/.claude/workflows/, because that is
@@ -3495,7 +3499,7 @@ function injectHarnessRules() {
 
         const startcycleWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'startcycle.md');
         const sources = installStep('read the global rule sources', () => ({
-            globalRules: fs.readFileSync(geminiMdSrc, 'utf8'),
+            globalRules: fs.readFileSync(rulesMdSrc, 'utf8'),
             startcycleContent: fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '',
             agentsMdContent: fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : ''
         }), 'Cursor, Claude, Copilot and Codex keep their current instruction files.');
@@ -4914,7 +4918,7 @@ async function runQuickUpdate(installState) {
     pruneRemovedSkills(_sessionManifest);
     s.stop('Skills refreshed');
 
-    // Everything injectHarnessRules() delivers -- GEMINI.md, the dispatcher
+    // Everything injectHarnessRules() delivers -- RULES.md, the dispatcher
     // workflows the skills point at, the compiled subagent definitions, the
     // harness rule files and the gate + memory hooks -- used to be
     // fresh-install-only. v4.4.1 split just the hooks out of it for Quick
@@ -5087,7 +5091,7 @@ async function main() {
         path.join(srcDir, '.cursor'),
         path.join(srcDir, '.github'),
         path.join(srcDir, '.codex-plugin'),
-        path.join(srcDir, 'GEMINI.md'),
+        path.join(srcDir, 'RULES.md'),
         path.join(srcDir, 'AGENTS.md'),
         path.join(srcDir, 'CLAUDE.md'),
         path.join(srcDir, 'CODEX.md'),

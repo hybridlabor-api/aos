@@ -83,7 +83,7 @@ function checkAgentDocs() {
   add('docs', 'AGENTS.md', existsSync(agents), existsSync(agents) ? `${readFileSync(agents, 'utf8').split('\n').length} lines` : 'missing — no repo-specific agent rules',
     'Write AGENTS.md (see the /aos-project-init template).');
 
-  for (const alias of ['CLAUDE.md', 'GEMINI.md', 'CODEX.md']) {
+  for (const alias of ['CLAUDE.md', 'RULES.md', 'CODEX.md']) {
     const f = p(alias);
     let ok = false; let detail = 'missing';
     if (existsSync(f)) {

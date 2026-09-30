@@ -287,6 +287,44 @@ the upstream offensive exploit content is stripped and not carried over.
 
 ---
 
+## talkvalue/event-agency-skills
+
+<https://github.com/talkvalue/event-agency-skills> — Apache-2.0.
+Copyright talkvalue contributors. Upstream carries no explicit copyright line
+in `README.md`, `CONTRIBUTING.md`, or the plugin manifests; the attribution
+above is the repository's own `LICENSE` grant.
+
+Prose techniques adapted into `skills/basic/bdb-eventagency-skill/SKILL.md`:
+stakeholder-type inbox classification with temporal priority overrides,
+vendor-type failure-impact tiers, phase-based escalation thresholds
+(T-30 → show day), BLOCKED-means-ours item semantics, the speaker materials
+deadline framework (D-30 / D-21 / D-14 / D-7 / D-1), and post-event
+performance-tier reporting. Upstream scripts, Composio tool bindings, and all
+Python were not carried over; the skill is self-contained prose with no
+dependency.
+
+---
+
+## BuilderIO/skills
+
+<https://github.com/BuilderIO/skills> — MIT. Copyright (c) 2026 Builder.io.
+
+One skill adapted into `skills/global_config/read-the-damn-docs/SKILL.md`:
+the docs-first trigger list, the source hierarchy, the required workflow, the
+must-trigger examples, and the "if docs are unavailable" rule. AOS additionally
+adds a Verification section, a `category:` key (Builder's own validator forbids
+one, AOS requires it), a division-of-labour note against the `AGENTS.md` *Zero
+guesswork* rule, and a pointer to the installed `firecrawl-search` /
+`firecrawl-scrape` tools. Prose only — the upstream `agents/openai.yaml` and
+README were not carried over, and no executable from the repo is referenced.
+
+The other 22 skills in that repo are **not** vendored. Six of them
+(`visual-plan`, `visual-recap`, `visual-edit`, `an`, `turn-into-app`, `rewind`)
+are build artefacts synced from a different upstream by
+`scripts/sync-agent-native-skills.mjs`, and the repo's own documentation says
+not to treat them as standalone. Its `.mcp.json` and plugin manifests register
+external HTTP MCP servers without a prompt, so the plugin surface must never be
+installed.
 ## obra/superpowers
 
 <https://github.com/obra/superpowers> — MIT. Copyright (c) 2025 Jesse Vincent.

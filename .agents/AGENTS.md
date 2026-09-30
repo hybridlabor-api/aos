@@ -15,6 +15,7 @@ next. This file defines *what each agent is*, not *what calls what*.
 - **Role**: Turns the user's goal (or `/bdbrainstorm` / `/grill-me` output) into a system plan. Reads existing architecture before proposing changes. Does not coordinate execution or invoke other agents — that is TechLead's job, decided by the dispatcher, not by Architect.
 - **Model**: opus
 - **Primary Skills**:
+  - `read-the-damn-docs`
   - `bdbrainstorm`
   - `planning-with-files`
   - `concise-planning`
@@ -34,6 +35,7 @@ next. This file defines *what each agent is*, not *what calls what*.
 - **Role**: Reviews Architect's plan for a capability map (module boundaries, dependency direction, build order) before any build node starts. Approves or rejects the plan back to Architect. Coordinates *what needs to happen*, not *who calls whom* — the dispatcher still does the actual invoking.
 - **Model**: opus
 - **Primary Skills**:
+  - `read-the-damn-docs`
   - `startcycle-graph`
   - `agent-pipeline`
   - `subagent-driven-development`

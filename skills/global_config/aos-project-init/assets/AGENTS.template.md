@@ -3,7 +3,7 @@
 One-paragraph description of what this project is and who uses it. An agent
 that reads only this file should understand what it is touching.
 
-> Harness files: `CLAUDE.md`, `GEMINI.md` and `CODEX.md` are symlinks to this
+> Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` are symlinks to this
 > file. Every rule lives here exactly once.
 
 ## Stack

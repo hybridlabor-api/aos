@@ -544,7 +544,11 @@ function renderMarkdownArtifactHtml(bodyHtml, { title, sdkSrc }) {
 ${TOKENS_CSS}
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.65;font-size:14.5px}
-  .doc{max-width:860px;margin:0 auto;padding:44px 36px 90px}
+  /* Two tracks: tables, code and diagrams take the whole frame; prose keeps a
+     readable measure. A single narrow column starved wide tables, and a single
+     wide column made body text unreadable. */
+  .doc{max-width:min(1560px,100%);margin:0 auto;padding:44px 36px 90px}
+  .doc>p,.doc>ul,.doc>ol,.doc>blockquote{max-width:104ch}
   h1,h2,h3,h4,h5,h6{line-height:1.25;margin:1.6em 0 .55em;letter-spacing:-.01em}
   h1{font-size:26px;margin-top:.3em;padding-bottom:.45em;border-bottom:1px solid var(--border)}
   h1:after{content:'';display:block;width:56px;height:3px;margin-top:14px;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--pink))}
@@ -563,7 +567,11 @@ ${TOKENS_CSS}
   pre code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.55}
   blockquote{border-left:3px solid var(--accent);background:var(--accent-glow);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:8px 14px;color:var(--text2)}
   table{width:100%;border-collapse:collapse;font-size:13px;display:block;overflow-x:auto}
-  th,td{text-align:left;padding:7px 12px;border:1px solid var(--border)}
+  /* a clipped column must look scrollable, not truncated: keep the scrollbar visible */
+  table::-webkit-scrollbar{height:9px}
+  table::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:99px}
+  table::-webkit-scrollbar-track{background:var(--bg3);border-radius:99px}
+  th,td{text-align:left;padding:7px 10px;border:1px solid var(--border)}
   th{background:var(--bg3);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);white-space:nowrap}
   tbody tr:hover{background:var(--surface-hover)}
   hr{border:none;border-top:1px solid var(--border);margin:1.6em 0}
