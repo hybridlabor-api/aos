@@ -139,6 +139,8 @@ When the user chose to watch it, add the absolute path to `projects` in
 `~/.openwiki/projects.json` — that file is the daemon's watch list. Merge into
 it; never rewrite it.
 
+**Domain Registration (WORKTREE.md)**: Every project belongs to a domain (e.g., `~/dev/bdb-dev/`). To ensure multi-agent navigation works, the parent domain directory must have a `WORKTREE.md` acting as a map. Check if `../WORKTREE.md` exists. If it does, append a link to this new project specifying its Slug, Domain, active Harnesses, and a pointer to its `.aos/project.json`. If it doesn't exist, create it with a simple markdown list structure.
+
 For memB, write the project card through the MCP with the slug as `project_id`
 and `project_card` as `category` — domain-category rows are dead weight, since
 the hook whitelist only injects `project_card`/`godmode`:
