@@ -4056,60 +4056,64 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
     const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
-    const isBdbEntry = (entry) => {
-        const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [entry])
-            .map((h) => (h && typeof h.command === 'string' ? h.command : (typeof h === 'string' ? h : '')))
-            .join(' ');
-        return bdbHookScripts.some((name) => cmds.includes(name));
-    };
+    const isBdbHandler = (h) => typeof h?.command === 'string' && bdbHookScripts.some((name) => h.command.includes(name));
 
     const baseDir = path.dirname(hooksPath);
     const hooksDir = projectLocal ? path.join(currentDir, '.agents', 'hooks') : path.join(baseDir, 'hooks');
     const workflowsDir = projectLocal ? path.join(currentDir, '.agents', 'workflows') : path.join(baseDir, 'workflows');
     const globalHooksDir = projectLocal ? path.join(homeDir, '.gemini', 'config', 'hooks') : hooksDir;
 
+    const cmd = (dir, script, args = '') => `node "${path.join(dir, script)}"${args}`;
     const bdbHooks = {
         PreToolUse: [
             {
                 matcher: "run_command|Bash",
                 hooks: [
-                    { type: "command", command: `node "${path.join(hooksDir, 'go-gate.mjs')}"`, timeout: 10000 },
-                    { type: "command", command: `node "${path.join(hooksDir, 'conventional-commits.mjs')}"`, timeout: 10000 }
+                    { type: "command", command: cmd(hooksDir, 'go-gate.mjs'), timeout: 10 },
+                    { type: "command", command: cmd(hooksDir, 'conventional-commits.mjs'), timeout: 10 }
                 ]
             },
             {
                 matcher: "write_file|edit_file|replace|Write|Edit|MultiEdit",
-                hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'env-file-protection.mjs')}"`, timeout: 10000 }]
+                hooks: [{ type: "command", command: cmd(hooksDir, 'env-file-protection.mjs'), timeout: 10 }]
             },
             {
-                hooks: [{ type: "command", command: `node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent agy --event PreToolUse`, timeout: 2000 }]
+                matcher: "*",
+                hooks: [{ type: "command", command: cmd(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 2 }]
             }
         ],
         Stop: [
-            {
-                hooks: [{ type: "command", command: `node "${path.join(hooksDir, 'graph-gate.mjs')}"`, timeout: 10000 }]
-            },
-            {
-                hooks: [{ type: "command", command: `node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent agy --event Stop`, timeout: 2000 }]
-            }
+            { type: "command", command: cmd(hooksDir, 'graph-gate.mjs'), timeout: 10 },
+            { type: "command", command: cmd(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 2 }
         ],
         PreInvocation: [
-            {
-                hooks: [
-                    { type: "command", command: `node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`, timeout: 8000 },
-                    { type: "command", command: `node "${path.join(workflowsDir, 'startcycle-dispatch.mjs')}"`, timeout: 30000 }
-                ]
-            }
+            { type: "command", command: cmd(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
+            { type: "command", command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
         ]
+    };
+
+    // Drops BDB handlers (old wrapped or current shape), keeps foreign ones, and
+    // rewraps flat events so previously written `{ hooks: [...] }` entries migrate.
+    const keepForeign = (event, entries) => {
+        const out = [];
+        for (const e of Array.isArray(entries) ? entries : []) {
+            const nested = e && Array.isArray(e.hooks);
+            if (bdbHooks[event][0].hooks) {
+                if (!nested) { if (!isBdbHandler(e)) out.push(e); continue; }
+                const kept = e.hooks.filter((h) => !isBdbHandler(h));
+                if (kept.length) out.push({ ...e, hooks: kept });
+            } else {
+                out.push(...(nested ? e.hooks : [e]).filter((h) => !isBdbHandler(h)));
+            }
+        }
+        return out;
     };
 
     const buildMerged = (existing) => {
         const merged = existing && typeof existing === 'object' ? existing : {};
         merged.hooks = merged.hooks && typeof merged.hooks === 'object' ? merged.hooks : {};
         for (const [event, entries] of Object.entries(bdbHooks)) {
-            const foreignEntries = (Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [])
-                .filter((e) => !isBdbEntry(e));
-            merged.hooks[event] = [...foreignEntries, ...entries];
+            merged.hooks[event] = [...keepForeign(event, merged.hooks[event]), ...entries];
         }
         return merged;
     };
@@ -4141,7 +4145,9 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
 
     try {
         fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
-        fs.writeFileSync(hooksPath, JSON.stringify(buildMerged(existing), null, 2) + '\n');
+        const tmpPath = `${hooksPath}.${process.pid}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(buildMerged(existing), null, 2) + '\n');
+        fs.renameSync(tmpPath, hooksPath);
     } catch (e) {
         log.warn(`Could not write ${hooksPath}: ${e.message}`);
     }
