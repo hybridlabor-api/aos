@@ -1,4 +1,4 @@
-![AOS — BDB Agent OS](assets/header-v4.jpg)
+![AOS — BDB Agent OS](assets/header-v5.png)
 
 🌐 **Language / Sprache / Idioma**: **English** | [ 🇩🇪 Deutsch ](README.de.md) | [ 🇵🇹 Português ](README.pt.md)
 
