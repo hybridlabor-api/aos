@@ -40,6 +40,7 @@ test('health', async () => {
 test('catalog merges AOS Core and ECC with scope-aware state', async () => {
   const d = await (await fetch(base + '/api/catalog?scope=project')).json();
   assert.equal(d.scope, 'project');
+  assert.ok(d.items.every((i) => Array.isArray(i.requires)), 'the UI reads requires.length on every item');
   assert.ok(d.items.some((i) => i.source === 'AOS Core' && i.kind === 'skill'));
   assert.ok(d.items.some((i) => i.source === 'ECC' && i.kind === 'agent'));
   assert.ok(d.items.find((i) => i.name === 'frontend-slides').fileCount > 1);
