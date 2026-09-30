@@ -3721,9 +3721,14 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     if (!pluginInstalled) return data;
 
     const ownsWrite = data === null;
+    let beforeSerialized = null;
     if (ownsWrite) {
         if (!configPath) return data;
-        data = readJsoncFile(configPath) || {};
+        const existing = readJsoncFile(configPath) || {};
+        // Snapshot before mutating: `data` becomes the same object, so
+        // comparing afterwards would always report "unchanged".
+        beforeSerialized = JSON.stringify(existing, null, 2);
+        data = existing;
     }
 
     // Register the plugin.
@@ -3735,25 +3740,32 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     });
     if (!alreadyRegistered) data.plugin.push(pluginPathNormalized);
 
-    // Register skill paths. Each is guarded by existsSync so the config never
-    // names a directory that is not there -- a relative ".agents/skills" entry
-    // silently resolves to nothing outside an AOS-bootstrapped project.
-    const homeAgentsSkills = path.join(targetHome, '.agents', 'skills');
+    // Skill paths. `.agents/skills` stays project-relative on purpose: it is the
+    // per-project contract, and OpenCode resolves it against each project, so it
+    // is meaningful in a bootstrapped project and inert elsewhere. The absolute
+    // ~/.agents/skills is added only when it is really there -- registering a
+    // path that does not exist is the defect this replaces.
+    const homeAgentsSkills = path.join(targetHome, '.agents', 'skills').replace(/\\/g, '/');
     const desired = ['.agents/skills'];
-    if (fs.existsSync(homeAgentsSkills)) desired.unshift(homeAgentsSkills.replace(/\\/g, '/'));
+    if (fs.existsSync(homeAgentsSkills)) desired.unshift(homeAgentsSkills);
     if (!data.skills || typeof data.skills !== 'object' || !Array.isArray(data.skills.paths)) {
         data.skills = { paths: desired.slice() };
     } else {
-        data.skills.paths = data.skills.paths.filter(p => p !== '.agents/skills' || fs.existsSync(path.join(process.cwd(), p)));
         for (const p of desired) {
             if (!data.skills.paths.includes(p)) data.skills.paths.push(p);
         }
     }
 
     if (ownsWrite) {
+        // Write only on a real change. readJsoncFile strips comments, so
+        // serialising an unchanged config would silently eat a user's comments
+        // for no benefit. When a write is genuinely needed the comments in the
+        // file are lost -- acceptable, and worth saying out loud in the PR.
+        const serialized = JSON.stringify(data, null, 2);
+        if (beforeSerialized === serialized) return data;
         try {
             fs.mkdirSync(path.dirname(configPath), { recursive: true });
-            fs.writeFileSync(configPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+            fs.writeFileSync(configPath, serialized, { mode: 0o600 });
             try { fs.chmodSync(configPath, 0o600); } catch (e) { logDebug(e, 'chmod opencode config'); }
         } catch (e) {
             log.warn(`Could not write ${configPath}: ${e.message}`);
