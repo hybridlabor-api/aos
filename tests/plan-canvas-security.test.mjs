@@ -59,3 +59,83 @@ describe('Plan-Canvas artifact confinement', () => {
     assert.equal(linkResult.status, 403);
   });
 });
+
+const guard = require('../skills/global_config/plan-canvas/scripts/lib/loopback-guard.js');
+const http = await import('node:http');
+
+function rawRequest(port, { method = 'POST', pathName = '/api/end', headers = {}, body = '{"file":"nope.md"}' } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, method, path: pathName, headers: { host: `127.0.0.1:${port}`, 'content-type': 'application/json', ...headers } }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+    req.setTimeout(3000, () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+describe('Plan-Canvas request provenance', () => {
+  let ws;
+  let srv;
+  let port;
+
+  before(async () => {
+    ws = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-canvas-prov-'));
+    srv = createPlanCanvasServer({ store: createSessionStore({ stateDir: path.join(ws, '.state') }), workspaceRoot: ws, idleTimeoutMs: 0 });
+    port = (await srv.listen(0)).port;
+  });
+
+  after(async () => {
+    if (srv) await srv.close().catch(() => {});
+    if (ws) fs.rmSync(ws, { recursive: true, force: true });
+  });
+
+  test('unit: origin must match the port when one is given', () => {
+    const hosts = guard.buildAllowedHostnames('127.0.0.1');
+    assert.equal(guard.isAllowedOrigin('http://127.0.0.1:4519', hosts, 4519), true);
+    assert.equal(guard.isAllowedOrigin('http://localhost:4519', hosts, 4519), true);
+    assert.equal(guard.isAllowedOrigin('http://127.0.0.1:8081', hosts, 4519), false);
+    assert.equal(guard.isAllowedOrigin('http://evil.example:4519', hosts, 4519), false);
+    assert.equal(guard.isAllowedOrigin('null', hosts, 4519), false);
+    assert.equal(guard.isAllowedOrigin(undefined, hosts, 4519), true);
+    assert.equal(guard.isAllowedOrigin('http://127.0.0.1:8081', hosts), true, 'legacy call without a port is unchanged');
+  });
+
+  test('unit: fetch-site only accepts same-origin, none or absent', () => {
+    assert.equal(guard.isAllowedFetchSite(undefined), true);
+    assert.equal(guard.isAllowedFetchSite('same-origin'), true);
+    assert.equal(guard.isAllowedFetchSite('none'), true);
+    assert.equal(guard.isAllowedFetchSite('cross-site'), false);
+    assert.equal(guard.isAllowedFetchSite('same-site'), false);
+  });
+
+  test('a CLI request without Origin is served', async () => {
+    const r = await rawRequest(port);
+    assert.notEqual(r.status, 403);
+  });
+
+  test('the canvas UI origin (same port) is served', async () => {
+    const r = await rawRequest(port, { headers: { origin: `http://127.0.0.1:${port}`, 'sec-fetch-site': 'same-origin' } });
+    assert.notEqual(r.status, 403);
+  });
+
+  test('another local web app on a different loopback port is refused', async () => {
+    const r = await rawRequest(port, { headers: { origin: `http://127.0.0.1:${port + 1}` } });
+    assert.equal(r.status, 403);
+    assert.match(r.body, /forbidden origin/);
+  });
+
+  test('a cross-site browser request is refused even with a matching-looking origin', async () => {
+    const r = await rawRequest(port, { headers: { origin: `http://127.0.0.1:${port}`, 'sec-fetch-site': 'cross-site' } });
+    assert.equal(r.status, 403);
+    assert.match(r.body, /forbidden fetch site/);
+  });
+
+  test('shutdown and feedback endpoints are covered by the same gate', async () => {
+    const other = { origin: `http://localhost:${port + 1}` };
+    assert.equal((await rawRequest(port, { pathName: '/shutdown', headers: other })).status, 403);
+    assert.equal((await rawRequest(port, { pathName: '/api/session/aaaaaaaaaaaa/feedback', headers: other })).status, 403);
+  });
+});

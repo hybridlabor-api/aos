@@ -16,7 +16,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
-const { buildAllowedHostnames, isAllowedHostHeader, isAllowedOrigin } = require('../loopback-guard');
+const { buildAllowedHostnames, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin } = require('../loopback-guard');
 const { renderMarkdown } = require('./markdown');
 const { artifactSdkJs } = require('./sdk');
 const {
@@ -157,6 +157,7 @@ function createPlanCanvasServer({
   let idleTimer = null;
   let presenceSweep = null;
   let closed = false;
+  let boundPort = null; // set once listening; pins the allowed Origin port
 
   // --- presence + SSE ---------------------------------------------------
 
@@ -559,8 +560,11 @@ function createPlanCanvasServer({
     if (!isAllowedHostHeader(req.headers.host, allowedHostnames)) {
       return sendJson(res, 403, { error: 'forbidden host header' });
     }
-    if (!isAllowedOrigin(req.headers.origin, allowedHostnames)) {
+    if (!isAllowedOrigin(req.headers.origin, allowedHostnames, boundPort)) {
       return sendJson(res, 403, { error: 'forbidden origin' });
+    }
+    if (!isAllowedFetchSite(req.headers['sec-fetch-site'])) {
+      return sendJson(res, 403, { error: 'forbidden fetch site' });
     }
     const url = new URL(req.url, `http://${req.headers.host}`);
     const { pathname } = url;
@@ -641,6 +645,7 @@ function createPlanCanvasServer({
     return new Promise((resolve, reject) => {
       server.once('error', reject);
       server.listen(port, host, () => {
+        boundPort = server.address().port;
         armIdleTimer();
         resolve({ port: server.address().port, host });
       });
