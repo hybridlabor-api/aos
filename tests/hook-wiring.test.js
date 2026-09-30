@@ -224,3 +224,36 @@ describe('downloadOrUpdateModule (module replacement)', () => {
         assert.equal(fs.readdirSync(dir).filter((f) => /\.(incoming|previous)-/.test(f)).length, 0, 'no staging leftovers');
     });
 });
+
+describe('global settings merge (P1)', () => {
+    let home;
+    test.beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'bdb-global-')); });
+    test.afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
+
+    test('installGlobalHooks: every command resolves to an installed file, no $CLAUDE_PROJECT_DIR', () => {
+        // Subprocess with HOME=tmp: installer.js captures os.homedir() at load time.
+        execFileSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(REPO, 'installer.js'))}).installGlobalHooks()`],
+            { env: { ...process.env, HOME: home, USERPROFILE: home }, stdio: 'ignore' });
+        const raw = fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8');
+        assert.ok(!raw.includes('CLAUDE_PROJECT_DIR'));
+        const cmds = Object.values(JSON.parse(raw).hooks).flat().flatMap((e) => e.hooks.map((h) => h.command));
+        assert.ok(cmds.length >= 6);
+        for (const c of cmds) {
+            const m = c.match(/"\$HOME\/([^"]+\.mjs)"/);
+            assert.ok(m, `unexpected command form: ${c}`);
+            assert.ok(fs.existsSync(path.join(home, m[1])), `missing ${m[1]}`);
+        }
+    });
+
+    test('write is atomic (no tmp left), backs up valid file, keeps last 3 backups, preserves mode', () => {
+        const p = path.join(home, 'settings.json');
+        fs.writeFileSync(p, JSON.stringify({ theme: 'dark' }), { mode: 0o600 });
+        for (let i = 0; i < 5; i++) mergeBdbSettingsHooks(p);
+        const files = fs.readdirSync(home);
+        assert.equal(files.filter((f) => f.endsWith('.bak')).length, 3);
+        assert.equal(files.filter((f) => f.endsWith('.tmp')).length, 0);
+        assert.equal(fs.statSync(p).mode & 0o777, 0o600);
+        const bak = files.filter((f) => f.endsWith('.bak')).sort()[0];
+        assert.ok(JSON.parse(fs.readFileSync(path.join(home, bak), 'utf8')));
+    });
+});

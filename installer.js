@@ -3920,9 +3920,11 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
             .join(' ');
         return bdbHookScripts.some((name) => cmds.includes(name));
     };
-    const localize = (cmd) => (projectLocal && !machineGlobalHooks.some((n) => cmd.includes(n))
-        ? cmd.split('${HOME}').join('$CLAUDE_PROJECT_DIR')
-        : cmd);
+    // Global installs must point at the copies installGlobalHooks put under
+    // $HOME/.claude/hooks; $CLAUDE_PROJECT_DIR would not exist in other projects.
+    const localize = (cmd) => (projectLocal
+        ? (machineGlobalHooks.some((n) => cmd.includes(n)) ? cmd : cmd.split('${HOME}').join('$CLAUDE_PROJECT_DIR'))
+        : cmd.split('$CLAUDE_PROJECT_DIR/.claude/hooks/').join('$HOME/.claude/hooks/'));
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
             ...e,
@@ -3969,7 +3971,16 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
 
     try {
         fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-        fs.writeFileSync(settingsPath, JSON.stringify(buildMerged(existing), null, 2) + '\n');
+        const tmpPath = `${settingsPath}.${process.pid}.tmp`;
+        if (existing) {
+            fs.copyFileSync(settingsPath, `${settingsPath}.${process.hrtime.bigint()}.bak`);
+            const dir = path.dirname(settingsPath);
+            const base = path.basename(settingsPath);
+            const baks = fs.readdirSync(dir).filter((f) => f.startsWith(`${base}.`) && /\.\d{13,}\.bak$/.test(f)).sort();
+            for (const old of baks.slice(0, -3)) fs.rmSync(path.join(dir, old), { force: true });
+        }
+        fs.writeFileSync(tmpPath, JSON.stringify(buildMerged(existing), null, 2) + '\n', { mode: existing ? fs.statSync(settingsPath).mode & 0o777 : 0o644 });
+        fs.renameSync(tmpPath, settingsPath);
     } catch (e) {
         log.warn(`Could not write ${settingsPath}: ${e.message}`);
     }
