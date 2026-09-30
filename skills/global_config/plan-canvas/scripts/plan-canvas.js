@@ -365,8 +365,26 @@ function awaitRequest(port, key, timeoutMs) {
   });
 }
 
+// A bdb-plan-builder session is keyed by the built plan.builder.html, but agents
+// know the plan by its folder or plan.mdx; follow either to the built artifact.
+function resolveArtifactArg(file) {
+  if (!file) return file;
+  const abs = path.resolve(file);
+  try {
+    const dir = fs.statSync(abs).isDirectory() ? abs : path.basename(abs) === 'plan.mdx' ? path.dirname(abs) : null;
+    if (dir) {
+      const built = path.join(dir, 'plan.builder.html');
+      if (fs.existsSync(built)) return built;
+    }
+  } catch (_) {
+    // fall through: a missing path is reported by the command itself
+  }
+  return file;
+}
+
 async function cmdAwait(file, args, { stateDir, port }) {
   if (!file) throw new Error('await requires a file path');
+  file = resolveArtifactArg(file);
   if (!(await healthCheck(port))) {
     return { status: 'no-server', hint: 'no canvas server is running; use `open` first', stateDir };
   }
@@ -395,6 +413,7 @@ async function cmdAwait(file, args, { stateDir, port }) {
 // Show the human an activity indicator in the canvas chat. Cheap and
 // fire-and-forget: a failed signal must never derail the actual work.
 async function cmdTyping(file, args, { port }) {
+  file = resolveArtifactArg(file);
   if (!file) throw new Error('typing requires a file path');
   const state = valueAfter(args, '--state') || 'typing';
   if (!(await healthCheck(port))) return { status: 'no-server' };
@@ -422,6 +441,7 @@ function cmdPending({ stateDir }) {
 }
 
 async function cmdEnd(file, { port }) {
+  file = resolveArtifactArg(file);
   if (!file) throw new Error('end requires a file path');
   if (!(await healthCheck(port))) return { status: 'no-server' };
   const res = await request(port, 'POST', '/api/end', { file: path.resolve(file) });

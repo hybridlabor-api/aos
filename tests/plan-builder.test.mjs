@@ -262,6 +262,27 @@ describe('BDB Plan Builder', () => {
     }
   });
 
+  test('await, typing and end accept the plan folder or plan.mdx, not only the built html', async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-plan-builder-state-'));
+    const port = await freePort();
+    const env = { AOS_PLAN_CANVAS_STATE_DIR: stateDir, AOS_PLAN_CANVAS_PORT: String(port) };
+    try {
+      const opened = await runCommand(['open', dir, '--mode', 'bdb-plan-builder', '--no-open'], env, dir);
+      assert.equal(opened.code, 0, opened.stdout + opened.stderr);
+      for (const target of [dir, path.join(dir, 'plan.mdx')]) {
+        const waiting = await runCommand(['await', target, '--timeout-ms', '200'], env, dir);
+        assert.equal(waiting.code, 0, waiting.stdout + waiting.stderr);
+        assert.equal(JSON.parse(waiting.stdout).status, 'waiting', `await ${target}`);
+      }
+      const ended = await runCommand(['end', dir], env, dir);
+      assert.equal(ended.code, 0, ended.stdout + ended.stderr);
+      assert.equal(JSON.parse(ended.stdout).status, 'ended');
+      await runCommand(['stop'], env, dir);
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
   test('open --mode bdb-plan-builder without plan.mdx exits 2', async () => {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-plan-builder-noplan-'));
     const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-plan-builder-state-'));
