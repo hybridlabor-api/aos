@@ -305,6 +305,29 @@ dependency.
 
 ---
 
+## BuilderIO/skills
+
+<https://github.com/BuilderIO/skills> — MIT. Copyright (c) 2026 Builder.io.
+
+One skill adapted into `skills/global_config/read-the-damn-docs/SKILL.md`:
+the docs-first trigger list, the source hierarchy, the required workflow, the
+must-trigger examples, and the "if docs are unavailable" rule. AOS additionally
+adds a Verification section, a `category:` key (Builder's own validator forbids
+one, AOS requires it), a division-of-labour note against the `AGENTS.md` *Zero
+guesswork* rule, and a pointer to the installed `firecrawl-search` /
+`firecrawl-scrape` tools. Prose only — the upstream `agents/openai.yaml` and
+README were not carried over, and no executable from the repo is referenced.
+
+The other 22 skills in that repo are **not** vendored. Six of them
+(`visual-plan`, `visual-recap`, `visual-edit`, `an`, `turn-into-app`, `rewind`)
+are build artefacts synced from a different upstream by
+`scripts/sync-agent-native-skills.mjs`, and the repo's own documentation says
+not to treat them as standalone. Its `.mcp.json` and plugin manifests register
+external HTTP MCP servers without a prompt, so the plugin surface must never be
+installed.
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in
