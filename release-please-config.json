@@ -1,5 +1,6 @@
 {
   "include-component-in-tag": false,
+  "versioning": "always-bump-patch",
   "packages": {
     ".": {
       "release-type": "node",
