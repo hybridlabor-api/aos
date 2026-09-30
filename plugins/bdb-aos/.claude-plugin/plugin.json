@@ -89,6 +89,7 @@
     "./skills/global_config/debugger",
     "./skills/global_config/deep-research",
     "./skills/global_config/deja-memory",
+    "./skills/global_config/design-control-loop",
     "./skills/global_config/design-spells",
     "./skills/global_config/dispatching-parallel-agents",
     "./skills/global_config/docker-expert",
