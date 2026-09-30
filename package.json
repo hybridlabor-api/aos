@@ -27,7 +27,7 @@
     "plugin:build": "node scripts/build-plugin-manifest.mjs",
     "plugin:check": "node scripts/build-plugin-manifest.mjs --check",
     "doctor": "node bin/aos-doctor.mjs",
-    "test": "node scripts/validate-skills.mjs --selftest && node scripts/validate-skills.mjs && node scripts/build-plugin-manifest.mjs --check && node --test tests/opencode-graph-gate.test.js && node --test tests/cross-harness-hooks.test.js && node tests/aos-store.test.mjs && node --test tests/aos-store-ui.test.mjs && node tests/aos-store-scenario.test.mjs && node tests/aos-doctor.test.mjs && node tests/build-plugin-manifest.test.mjs"
+    "test": "node scripts/validate-skills.mjs --selftest && node scripts/validate-skills.mjs && node scripts/build-plugin-manifest.mjs --check && node --test tests/opencode-graph-gate.test.js && node --test tests/cross-harness-hooks.test.js && node tests/aos-store.test.mjs && node --test tests/aos-store-ui.test.mjs && node tests/aos-store-scenario.test.mjs && node tests/aos-doctor.test.mjs && node tests/build-plugin-manifest.test.mjs && node --test tests/agent-models.test.js"
   },
   "publishConfig": {
     "access": "public"
