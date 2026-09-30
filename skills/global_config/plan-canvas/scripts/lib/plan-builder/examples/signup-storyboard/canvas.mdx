@@ -1,0 +1,124 @@
+<DesignBoard title="Lumen Notes - signup storyboard" version={1} transitions={[
+  { from: "welcome", to: "create", label: "tap Continue" },
+  { from: "create", to: "verify", label: "submit" },
+  { from: "verify", to: "workspace", label: "code accepted" },
+  { from: "workspace", to: "invite", label: "create workspace" },
+  { from: "invite", to: "dashboard", label: "send or skip" },
+]}>
+<Section id="account" title="Create the account" subtitle="Three steps from first launch to a verified address. Every screen is a low-fidelity sketch, not final UI.">
+<Artboard id="welcome" label="Welcome" surface="mobile" x={80} y={120} width={320} height={580} order={1}>
+<Screen surface="mobile" caption="First launch, signed out.">
+  <FrameScreen>
+    <StatusBar />
+    <Col full>
+      <Box dashed>
+        <Row><IconSquare active /><Title text="Lumen Notes" /></Row>
+        <Lines n={2} widths={[70, 48]} />
+      </Box>
+      <Text value="Notes that stay in sync on every device." tone="muted" />
+      <Lines n={3} widths={[90, 76, 60]} />
+      <Btn label="Continue with email" primary />
+      <Text value="Already have an account? Sign in" tone="muted" />
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="create" label="Create account" surface="mobile" x={600} y={120} width={320} height={580} order={2}>
+<Screen surface="mobile">
+  <FrameScreen>
+    <StatusBar />
+    <Col full>
+      <Title text="Create account" />
+      <Box>
+        <Text value="Email" tone="muted" />
+        <Lines n={1} widths={[58]} />
+      </Box>
+      <Box>
+        <Text value="Password" tone="muted" />
+        <Lines n={1} widths={[36]} />
+      </Box>
+      <Row><IconSquare active /><Text value="I agree to the terms" /></Row>
+      <Divider />
+      <Btn label="Create account" primary />
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="verify" label="Verify email" surface="mobile" x={1120} y={120} width={320} height={580} order={3}>
+<Screen surface="mobile">
+  <FrameScreen>
+    <StatusBar />
+    <Col full>
+      <Title text="Check your inbox" />
+      <Text value="We sent a six digit code." tone="muted" />
+      <Row><IconSquare /><IconSquare /><IconSquare /><IconSquare /><IconSquare /><IconSquare /></Row>
+      <Lines n={2} widths={[84, 52]} />
+      <Btn label="Open mail app" primary />
+      <Text value="Resend code" tone="muted" />
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+</Section>
+<Section id="first-run" title="First run" subtitle="Workspace setup and the empty state a new user lands on.">
+<Artboard id="workspace" label="Name your workspace" surface="mobile" x={1120} y={980} width={320} height={580} order={4}>
+<Screen surface="mobile">
+  <FrameScreen>
+    <StatusBar />
+    <Col full>
+      <Title text="Name your workspace" />
+      <Box><Lines n={1} widths={[44]} /></Box>
+      <SectionLabel label="Use it for" />
+      <TaskRow title="Personal" done note="default" />
+      <TaskRow title="Team" />
+      <TaskRow title="School" />
+      <Btn label="Create workspace" primary />
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="invite" label="Invite teammates" surface="mobile" x={600} y={980} width={320} height={580} order={5}>
+<Screen surface="mobile">
+  <FrameScreen>
+    <StatusBar />
+    <Col full>
+      <Title text="Invite teammates" />
+      <Row><IconSquare active /><Lines n={1} widths={[70]} /></Row>
+      <Row><IconSquare /><Lines n={1} widths={[56]} /></Row>
+      <Row><IconSquare /><Lines n={1} widths={[64]} /></Row>
+      <Divider />
+      <Btn label="Send invites" primary />
+      <Text value="Skip for now" tone="muted" />
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="dashboard" label="Empty dashboard" surface="mobile" x={80} y={980} width={320} height={580} order={6}>
+<Screen surface="mobile" caption="Nothing is created for the user yet.">
+  <FrameScreen>
+    <StatusBar />
+    <Col full>
+      <Row><Title text="Today" /><IconSquare active /></Row>
+      <Box dashed>
+        <Skeleton lines={3} widths={[80, 64, 72]} />
+      </Box>
+      <Text value="No notes yet" tone="muted" />
+      <Btn label="New note" primary />
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+</Section>
+
+<Annotation id="note-password" title="Password rules" targetId="create" placement="bottom">
+
+Show the rule list only after the first keystroke, so the form starts calm.
+
+</Annotation>
+
+<Annotation id="note-code" title="Code entry" targetId="verify" placement="right">
+
+Paste fills all six boxes at once. The code expires after ten minutes.
+
+</Annotation>
+</DesignBoard>

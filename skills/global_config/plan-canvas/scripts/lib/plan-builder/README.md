@@ -57,7 +57,7 @@ The lowercase conceptual names are accepted as aliases.
 | `Diagram` (`diagram`) | `data.html`, `data.css`, `data.source`, `data.nodes`, `data.edges`, `frame`, `label` | sandboxed frame for HTML; Mermaid for `source`; table for nodes/edges |
 | `Mermaid` (`mermaid`) | `source`, `code`, `label` | `<pre class="mermaid">` + pinned ESM loader |
 | `FileTree` (`file-tree`) | `entries[]` with `path`, `change`, `note`, `snippet`, `depth` | change-badged monospace tree |
-| `WireframeBlock` (`wireframe`), `Screen` (`screen`) | `html`, `surface`, `css`, `label`, `height` | sandboxed frame (no `allow-scripts`) |
+| `WireframeBlock` (`wireframe`), `Screen` (`screen`) | `html`, `surface`, `css`, `label`, `caption`, `height`, or wireframe-kit children | `html`: sandboxed frame (no `allow-scripts`); kit children: low-fi markup, see [Wireframe kit](#wireframe-kit) |
 | `Diff` (`diff`) | `before`, `after`, `filename`, `language`, `mode`, `summary`, `annotations[]` | split or unified two-pane diff |
 | `Code` (`code`), `AnnotatedCode` (`annotated-code`) | `code`, `filename`, `language`, `annotations[]` | code block + margin notes |
 | `Endpoint` (`endpoint`, `api-endpoint`, `ApiEndpoint`) | `method`, `path`, `params[]`, `examples[]`, children prose | method/path header, param table, JSON examples |
@@ -66,14 +66,19 @@ The lowercase conceptual names are accepted as aliases.
 | `Columns` (`columns`) | `columns[].label` + nested blocks | two-column grid, stacked on phones |
 | `TabsBlock` (`tabs`, `Tabs`) | `tabs[].label` + nested blocks | stacked labelled groups (no click JS — the annotation layer owns clicks) |
 | `CustomHtml` (`custom-html`) | `html`, `css`, `label`, `height` | sandboxed frame, **no `allow-scripts`** |
-| `RichText` (`rich-text`) | markdown children | prose |
-| `Callout` | `tone` + markdown children | bordered card |
-| `Checklist` | `items[]` | labelled items |
-| `Table` | `columns`, `rows` | JSON card |
+| `RichText` (`rich-text`) | `title`, markdown children | prose |
+| `Callout` | `tone`, `title`, markdown children | bordered card |
+| `Checklist` (`checklist`) | `title`, `items[]` (strings or `{label, checked, note}`), children: `- [x] item` lines or `<Item checked>` tags | checkbox list |
+| `Table` (`table`) | `title`, `columns[]`, `rows[]` (arrays, or objects keyed by column), or a markdown table as children | bordered table, inline markdown in cells |
+| `CodeTabs` (`code-tabs`) | `tabs[]` with `label`, `language`, `code` | one card, every tab stacked under its filename |
+| `Decision` (`decision`) | `title`, `question`, `options[]` (`label`, `detail`, `recommended`), `recommended` (id, label or index), `rationale` or children prose | question, option cards with a `recommended` badge, rationale |
+| `HtmlBlock` (`html-block`) | `html` or children, `title`, `css`, `height` | sandboxed frame, **no `allow-scripts`** (same as `CustomHtml`) |
+| `ImplementationMap` (`implementation-map`) | `title`, `files[]` (`path`, `title`, `note`, `change`, `snippet`), or children lines | file list with change badges; an unparsable `files` shows its escaped raw text in a visible card plus a warning |
+| `Compare` (`compare`) | `before`, `after` (markdown, `{html}`), `beforeLabel`, `afterLabel`, or `<Before>`/`<After>` children, or exactly two child blocks | Before / After two-column comparison |
 | `Json`, `OpenApiSpec` (`openapi`) | `code`/`data`, `spec` | code block |
 | `DesignBoard`, `Section` | children | pass-through (canvas.mdx containers) |
-| `Artboard` | `title`, children | card wrapping the artboard's `Screen` |
-| `Annotation` | markdown children or `text` | designer-note card |
+| `Artboard` | `id`, `label`/`title`, `surface`, `x`, `y`, `width`, `height`, `order`, children | card wrapping the artboard's `Screen`; absolutely positioned when `x`/`y` are set, see [Absolute board layout](#absolute-board-layout) |
+| `Annotation` | `title`, markdown children or `text`, `targetId`, `placement`, `x`, `y` | small muted note with an arrow glyph |
 | `Connector` | `label`/`text` | connector label card |
 
 **Unknown tag → visible card.** Any tag not in the table renders as a bordered
@@ -81,6 +86,81 @@ The lowercase conceptual names are accepted as aliases.
 adds a line to `warnings` (also shown in a banner at the top of the page).
 Content is never dropped silently. A block that fails to render becomes an error
 card instead of taking the document down.
+
+## Prop syntax
+
+`{...}` attribute values are JSON **or** a data-only JavaScript literal:
+unquoted keys, single quotes, trailing commas, comments and `'a' + 'b'` string
+concatenation all parse. Nothing is evaluated; an expression that is neither
+becomes a warning and the raw text is kept.
+
+## Wireframe kit
+
+A `<Screen>` (or `<FrameScreen>`) without an `html` prop whose children are tags
+renders the kit below as plain markup in the page (no iframe). Low-fi look:
+muted greys on dark, 1px borders, the BDB accent only for `active`/`primary`/done
+states, and a hand-drawn font stack from local fonts only (`Segoe Print`,
+`Bradley Hand`, `Marker Felt`, `cursive`). An empty `<Screen>` renders an empty frame.
+
+| Tag | Props | Renders |
+|---|---|---|
+| `FrameScreen`, `Main`, `Col`, `Row` | `full` | flex containers; `full` fills the remaining space |
+| `Box`, `Card` | `dashed`, `full` | thin bordered container |
+| `Lines` | `n`, `widths[]` (percent) | `n` text bars |
+| `IconSquare` | `active` | small rounded square, accent when active |
+| `Divider`, `StatusBar` | | rule; phone status strip |
+| `TaskRow` | `title`, `done`, `note` | checkbox row |
+| `Text` | `value` (or children), `tone="muted"`, `weight="bold"` | handwritten text |
+| `Title`, `SectionLabel`, `Btn`, `Chips` | `text`, `label`, `label`/`primary`, `items[]` | heading, caps label, button, chip row |
+| `Skeleton` | `lines` + `widths`, or `width`/`height` | placeholder bars |
+
+An unknown kit tag renders a small labelled placeholder (`<Name>`) and adds a
+warning. Semantic `<Screen html={...}/>` is unchanged: sandboxed iframe.
+
+## Absolute board layout
+
+If any `<Artboard>` carries numeric `x` and `y`, the board switches from numbered
+flow rows to an absolute canvas with a dotted grid:
+
+- Artboards sit at `x`/`y` with `width`/`height` (defaults from `surface`), sorted in
+  the DOM by `order` (shown as a small number chip); the canvas is the bounding box
+  of everything plus a margin.
+- The artboard `label` sits above the frame, a `Screen` `caption` under it, and a
+  `Section` `title`/`subtitle` becomes a numbered label above its artboards.
+- `Annotation` goes under (`placement="bottom"`, default), above, left or right of
+  its `targetId` artboard, or at its own `x`/`y`. Notes for the same target stack.
+- Artboards without coordinates, annotations without a target or position, and
+  non-artboard blocks are listed in a tray below the canvas.
+- Connectors are unchanged: only stated `transitions` / `Connector` / `edges`.
+  A coordinate-free canvas keeps the flow-row layout.
+
+## Visual recap
+
+A plan whose frontmatter has `kind: recap` (or whose `.plan-state.json` has
+`"kind": "recap"`) gets a recap header instead of the plain title: the eyebrow
+`VISUAL RECAP`, a large title, a subtitle, and a chip row.
+
+| Frontmatter | Chip |
+|---|---|
+| `title`, `subtitle` (or `summary`) | title, subtitle |
+| `pr` | `PR #214` |
+| `branch`, `base` | `branch feat/x → main` |
+| `commit`, `author`, `date` | commit, `by …`, date |
+| `files` | `4 files` |
+| `additions`, `deletions` | `+186`, `−41` |
+
+Fields that are missing are skipped. Use `<Compare>` for the Before / After
+comparison:
+
+```mdx
+<Compare>
+<Before><Screen surface="mobile">...</Screen></Before>
+<After><Screen surface="mobile">...</Screen></After>
+</Compare>
+```
+
+`<Compare before="..." after="..." />` takes markdown, and a `<Compare>` with
+exactly two child blocks (paragraphs count) pairs them as before and after.
 
 ## Board view
 
@@ -116,14 +196,19 @@ own container and arrows are not drawn (a hidden list keeps the relations
 readable). Below 900px the side navigation is hidden when the page is
 board-only.
 
-**Demo:** `aos-plan-canvas open lib/plan-builder/examples/demo-plan --mode bdb-plan-builder`
-(4 screens, 3 transitions, 2 numbered sections, one Mermaid diagram).
+**Demos** (`aos-plan-canvas open lib/plan-builder/examples/<name> --mode bdb-plan-builder`):
+
+- `demo-plan`: 4 screens, 3 transitions, 2 numbered sections, one Mermaid diagram.
+- `signup-storyboard`: 6 absolutely positioned kit artboards, 2 sections, 5 transitions, 2 annotations.
+- `recap-demo`: `kind: recap` header, Before/After, implementation map, table, code tabs.
+
+All demo content is invented.
 
 ## Security
 
 - Everything from the plan is escaped (`escapeHtml`, and `renderMarkdown` escapes
   before any inline rule runs).
-- Raw HTML — `custom-html`, and the `html` of wireframe/diagram blocks — only
+- Raw HTML — `custom-html`, `HtmlBlock`, and the `html` of wireframe/diagram blocks — only
   reaches `<iframe sandbox srcdoc=...>` **without `allow-scripts`**.
 - Attribute values are JSON-parsed, never evaluated. Template-literal
   interpolation is refused with a warning.
@@ -134,10 +219,12 @@ board-only.
 |---|---|
 | `index.js` | `renderPlanFolder` / `renderPlanSource` / re-export `parseMdx` |
 | `mdx.js` | frontmatter, headings, prose, JSX-like tags; never throws |
-| `render.js` | block → HTML, Mermaid loader, page shell |
+| `render.js` | block → HTML, flow and absolute boards, recap header, Mermaid loader, page shell |
+| `kit.js` | wireframe kit tags → markup |
 | `board-client.js` | pan/zoom + arrow routing, inlined only when a board exists |
 | `theme.css` | BDB CI theme, inlined into the output |
 | `examples/demo-plan/` | richer demo: plan.mdx + canvas.mdx |
+| `examples/signup-storyboard/`, `examples/recap-demo/` | kit storyboard and recap demos |
 
 Adding this directory is also what flips `bdb-plan-builder` to **available** in
 `aos-plan-canvas modes`.

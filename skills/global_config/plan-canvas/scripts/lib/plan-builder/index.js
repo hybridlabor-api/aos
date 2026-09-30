@@ -71,10 +71,11 @@ function renderPlanSource(source = {}) {
   }
 
   const state = source.state && typeof source.state === 'object' ? source.state : {};
+  const kind = text(frontmatter.kind) || text(state.kind);
   const title = source.title || frontmatter.title || state.title || 'Plan';
   const status = text(frontmatter.status || state.status || state.kind);
   const meta = [
-    state.kind ? `kind: ${state.kind}` : '',
+    kind ? `kind: ${kind}` : '',
     state.localOnly ? 'local-only' : '',
     `${warnings.length} warning(s)`
   ].filter(Boolean).join(' · ');
@@ -89,7 +90,8 @@ function renderPlanSource(source = {}) {
     warnings,
     hasMermaid: ctx.hasMermaid,
     hasBoard: ctx.boards > 0,
-    boardOnly: ctx.boards > 0 && ctx.docBlocks === 0
+    boardOnly: ctx.boards > 0 && ctx.docBlocks === 0,
+    recap: kind === 'recap' ? frontmatter : null
   });
   return { html, warnings };
 }

@@ -1,0 +1,37 @@
+---
+title: Lumen Notes - Signup Storyboard
+status: draft
+---
+
+# Signup flow
+
+## Goal
+
+A new visitor reaches an empty, ready-to-use dashboard in six screens or fewer. All names and data in this example are invented.
+
+## Decision
+
+<Decision title="Verification method" question="How do we verify the email address?" options={[
+  { id: "code", label: "Six digit code", detail: "Works when the mail app opens on another device.", recommended: true },
+  { id: "link", label: "Magic link", detail: "One tap, but breaks when the link opens in a different browser." },
+]}>
+
+A code survives a device switch, which is the common failure for links.
+
+</Decision>
+
+## Acceptance
+
+<Checklist title="Done when" items={[
+  { label: "Every screen fits one viewport without scrolling", checked: true },
+  { label: "Back from any step keeps the typed values" },
+  { label: "Expired codes show a resend action" },
+]} />
+
+## Build map
+
+<ImplementationMap files={[
+  { path: "app/signup/welcome.tsx", change: "added", note: "Entry screen and sign-in link" },
+  { path: "app/signup/verify.tsx", change: "added", note: "Code boxes with paste handling" },
+  { path: "app/auth/session.ts", change: "modified", note: "Create the workspace after the first verified session" },
+]} />

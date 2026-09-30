@@ -322,6 +322,233 @@ describe('BDB Plan Builder', () => {
         assert.ok(hue < 70 || hue > 260, `${hex} (hue ${Math.round(hue)}) is a cool accent`);
       }
     });
+
+    describe('wireframe kit', () => {
+      const KIT = /&lt;(FrameScreen|Col|Row|Box|Lines|IconSquare|Divider|StatusBar|TaskRow|Text|Title|Skeleton|Main)\b/;
+      const kitCanvas = (inner) => `<DesignBoard><Artboard id="a" label="A" surface="mobile"><Screen surface="mobile" caption="Cap &amp; note"><FrameScreen>${inner}</FrameScreen></Screen></Artboard></DesignBoard>`;
+
+      test('kit tags become structure, never raw tag text', () => {
+        const { html, warnings } = renderPlanSource({
+          plan: '# T',
+          canvas: kitCanvas('<StatusBar /><Col full><Box dashed><Row><IconSquare active /><IconSquare /></Row><Lines n={3} widths={[80, 50]} /></Box><Divider /><TaskRow title="Do it" done note="now" /><Title text="Hi" /><Text value="quiet" tone="muted" /><Skeleton lines={2} /></Col>')
+        });
+        assert.deepEqual(warnings, []);
+        assert.ok(!KIT.test(html), 'raw kit tag text leaked into the page');
+        assert.match(html, /<div class="k-col full">/);
+        assert.match(html, /<div class="k-box dashed">/);
+        assert.equal((html.match(/<i class="k-icon/g) || []).length, 2);
+        assert.equal((html.match(/<i class="k-icon on">/g) || []).length, 1, 'only active uses the accent');
+        assert.equal((html.match(/<i class="k-bar"/g) || []).length, 5);
+        assert.ok(html.includes('width:80%') && html.includes('width:50%'));
+        assert.match(html, /<hr class="k-div">/);
+        assert.match(html, /class="k-task done"/);
+        assert.ok(html.includes('Cap &amp;amp; note') || html.includes('Cap &amp; note'), 'caption rendered');
+        assert.ok(!(html.match(/<iframe/g) || []).length, 'kit screens are markup, not frames');
+        balanced(html);
+      });
+
+      test('an unknown kit tag is a labelled placeholder plus a warning', () => {
+        const { html, warnings } = renderPlanSource({ plan: '# T', canvas: kitCanvas('<Sparkle glow />') });
+        assert.match(html, /<div class="k-unknown">&lt;Sparkle&gt;<\/div>/);
+        assert.ok(warnings.some((w) => w.includes('Sparkle')));
+      });
+
+      test('semantic Screen html still renders in the sandboxed frame', () => {
+        const { html, warnings } = renderPlanSource({ plan: '# T\n\n<Screen surface="mobile" html={\'<p>plain</p>\'} />' });
+        assert.deepEqual(warnings, []);
+        assert.match(html, /<iframe[^>]*sandbox[^>]*>/);
+        assert.ok(!html.includes('class="kit-screen"'));
+      });
+
+      test('hostile text and widths in kit tags stay inert', () => {
+        const { html } = renderPlanSource({
+          plan: '# T',
+          canvas: kitCanvas('<Text value="<img src=x onerror=alert(1)>" /><Title text="<script>alert(9)</script>" /><Lines n={1} widths={["50%;background:url(x)"]} /><Btn label="a&quot;b" />')
+        });
+        assert.ok(!html.includes('<img src=x'));
+        assert.ok(!html.includes('<script>alert(9)</script>'));
+        assert.ok(!html.includes('url(x)'));
+        assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
+        balanced(html);
+      });
+    });
+
+    describe('absolute board layout', () => {
+      const ab = (id, extra) => `<Artboard id="${id}" label="Shot ${id}" surface="mobile" ${extra}><Screen surface="mobile" html={'<p>${id}</p>'} /></Artboard>`;
+      const ABS = '<DesignBoard transitions={[{from:"a",to:"b",label:"next"}]}><Section title="Flow" subtitle="Two steps">' +
+        ab('a', 'x={100} y={50} width={300} height={200} order={2}') +
+        ab('b', 'x={600} y={50} width={300} height={200} order={1}') +
+        '</Section><Annotation targetId="a" placement="bottom" title="Note">Mind the gap.</Annotation></DesignBoard>';
+
+      test('positions come from x/y/width/height and the canvas is sized to the bounding box', () => {
+        const { html, warnings } = renderPlanSource({ plan: '# T', canvas: ABS });
+        assert.deepEqual(warnings, []);
+        assert.match(html, /<section class="board board-abs"/);
+        assert.match(html, /class="board-canvas abs" style="width:\d+px;min-height:\d+px"/);
+        // minX=100, minY=50-28 (label headroom) minus the section label above the artboards.
+        const lefts = [...html.matchAll(/class="bcard ab pos" id="[^"]+" style="left:(\d+)px;top:(\d+)px;width:300px;height:200px"/g)];
+        assert.equal(lefts.length, 2);
+        const [first, second] = lefts.map((m) => [Number(m[1]), Number(m[2])]);
+        assert.equal(first[0], 72 + 500, 'order 1 (x=600) is rendered first');
+        assert.equal(second[0], 72);
+        assert.equal(first[1], second[1]);
+        assert.equal((html.match(/class="edge"/g) || []).length, 1);
+        balanced(html);
+      });
+
+      test('section labels, artboard labels above frames, annotation under its target', () => {
+        const { html } = renderPlanSource({ plan: '# T', canvas: ABS });
+        assert.match(html, /<div class="sec-title">1 · Flow<\/div><div class="sec-sub">Two steps<\/div>/);
+        assert.match(html, /<div class="ab-label"><span class="ab-n">1<\/span>Shot b<\/div>/);
+        const frameTop = Number(/id="bc-1-\d+" style="left:72px;top:(\d+)px;width:300px/.exec(html)[1]);
+        const note = /class="bcard bnote pos" id="[^"]+" style="left:72px;top:(\d+)px;width:300px"/.exec(html);
+        assert.ok(note, 'annotation is placed at its target x');
+        assert.equal(Number(note[1]), frameTop + 200 + 16, 'annotation sits 16px under the frame');
+        assert.match(html, /<span class="glyph" aria-hidden="true">&#8599;<\/span>Note/);
+      });
+
+      test('coordinate-free canvases keep the flow layout; unpositioned artboards go to a tray', () => {
+        const flow = renderPlanSource({ plan: '# T', canvas: ABS.replace(/ x=\{\d+\} y=\{\d+\}/g, '') });
+        assert.match(flow.html, /class="brow"/);
+        assert.ok(!flow.html.includes('class="board-canvas abs"'));
+        const mixed = renderPlanSource({ plan: '# T', canvas: ABS.replace('</Section>', ab('c', '') + '</Section>') });
+        assert.match(mixed.html, /class="abs-tray"/);
+        assert.match(mixed.html, /Shot c/);
+        balanced(mixed.html);
+      });
+
+      test('unknown connector endpoints still warn and draw nothing', () => {
+        const { html, warnings } = renderPlanSource({ plan: '# T', canvas: ABS.replace('"to":"b"', '"to":"zzz"').replace('to:"b"', 'to:"zzz"') });
+        assert.ok(!html.includes('class="edge"'));
+        assert.ok(warnings.some((w) => w.includes('unknown card')));
+      });
+    });
+
+    describe('additional blocks', () => {
+      test('JS-literal props parse without a warning', () => {
+        const blocks = parseMdx("<Checklist items={[{ id: 'i1', label: 'a}', checked: true, },]} />");
+        assert.deepEqual(blocks.warnings, []);
+        assert.equal(blocks[0].props.items[0].label, 'a}');
+      });
+
+      test('Checklist reads the items prop and markdown children', () => {
+        const { html, warnings } = renderPlanSource({ plan: '<Checklist title="Ship it" items={[{label:"a",checked:true},"b"]}>\n\n- [x] c\n- [ ] d\n\n</Checklist>' });
+        assert.deepEqual(warnings, []);
+        assert.equal((html.match(/<li class="done">/g) || []).length, 2);
+        assert.equal((html.match(/<span class="cbox"/g) || []).length, 4);
+        assert.ok(html.includes('Ship it'));
+      });
+
+      test('Table renders columns/rows and markdown children', () => {
+        const byProp = renderPlanSource({ plan: '<Table columns={["Name","Kind"]} rows={[["a","<b>x</b>"],{Name:"c",Kind:"d"}]} />' });
+        assert.deepEqual(byProp.warnings, []);
+        assert.match(byProp.html, /<th>Name<\/th><th>Kind<\/th>/);
+        assert.ok(byProp.html.includes('&lt;b&gt;x&lt;/b&gt;') && !byProp.html.includes('<b>x</b>'));
+        assert.match(byProp.html, /<td>c<\/td><td>d<\/td>/);
+        const byMarkdown = renderPlanSource({ plan: '<Table>\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n</Table>' });
+        assert.match(byMarkdown.html, /<th[^>]*>a<\/th>/);
+      });
+
+      test('CodeTabs shows every tab with escaped code', () => {
+        const { html, warnings } = renderPlanSource({ plan: '<CodeTabs tabs={[{label:"a.ts",language:"ts",code:"<script>1</script>"},{label:"b.ts",code:"x"}]} />' });
+        assert.deepEqual(warnings, []);
+        assert.ok(html.includes('a.ts') && html.includes('b.ts'));
+        assert.ok(html.includes('&lt;script&gt;1&lt;/script&gt;') && !html.includes('<script>1</script>'));
+      });
+
+      test('Decision marks the recommended option and keeps hostile text inert', () => {
+        const { html } = renderPlanSource({
+          plan: '<Decision title="T" question="<img src=x onerror=alert(1)>?" options={[{id:"o1",label:"One",detail:"<b>d</b>"},{id:"o2",label:"Two",recommended:true}]}>\n\nBecause <script>alert(2)</script>.\n\n</Decision>'
+        });
+        assert.equal((html.match(/<li class="opt rec">/g) || []).length, 1);
+        assert.match(html, /Two <span class="badge">recommended<\/span>/);
+        assert.ok(html.includes('rationale'));
+        assert.ok(!html.includes('<img src=x') && !html.includes('<script>alert(2)</script>') && !html.includes('<b>d</b>'));
+      });
+
+      test('HtmlBlock is sandboxed without allow-scripts', () => {
+        const { html } = renderPlanSource({ plan: '<HtmlBlock title="Card" html={\'<script>alert(5)</script><b>hi</b>\'} />' });
+        const frames = html.match(/<iframe[^>]*>/g) || [];
+        assert.equal(frames.length, 1);
+        assert.ok(!frames[0].includes('allow-scripts'));
+        assert.ok(!html.includes('<script>alert(5)</script>'));
+        assert.ok(html.includes('Card'));
+      });
+
+      test('ImplementationMap lists files with change badges', () => {
+        const { html, warnings } = renderPlanSource({ plan: "<ImplementationMap files={[{ path: 'a/b.ts', change: 'added', note: 'n1', title: 'T1' }, 'plain.ts']} />" });
+        assert.deepEqual(warnings, []);
+        assert.match(html, /<span class="badge added">added<\/span><span class="path">a\/b\.ts<\/span>/);
+        assert.ok(html.includes('T1') && html.includes('n1') && html.includes('plain.ts'));
+      });
+
+      test('a malformed ImplementationMap shows its raw text and warns', () => {
+        const { html, warnings } = renderPlanSource({ plan: '<ImplementationMap files={[{path: <b>x</b>}]} />' });
+        assert.ok(warnings.some((w) => w.includes('ImplementationMap')));
+        assert.match(html, /class="card unsupported"/);
+        assert.ok(html.includes('[{path: &lt;b&gt;x&lt;/b&gt;}]'), 'raw text visible and escaped');
+        assert.ok(!html.includes('<b>x</b>'));
+      });
+    });
+
+    describe('visual recap', () => {
+      const RECAP = '---\ntitle: Recap <b>T</b>\nsubtitle: What changed\nkind: recap\npr: "#9"\nbranch: feat/x\nbase: main\nfiles: 3\nadditions: 12\ndeletions: 4\n---\n\n<Compare beforeLabel="Was" afterLabel="Now" before="old" after="new" />\n\n<Compare>\n<Before>\n\nleft prose\n\n</Before>\n<After>\n\nright prose\n\n</After>\n</Compare>\n\n<Compare>\n\nfirst\n\nsecond\n\n</Compare>';
+
+      test('recap plans get the recap header with chips', () => {
+        const { html, warnings } = renderPlanSource({ plan: RECAP });
+        assert.deepEqual(warnings, []);
+        assert.match(html, /<div class="recap-eyebrow">VISUAL RECAP<\/div>/);
+        assert.match(html, /<h1 class="doc-title recap-title">Recap &lt;b&gt;T&lt;\/b&gt;<\/h1>/);
+        assert.match(html, /<p class="recap-sub">What changed<\/p>/);
+        for (const chip of ['#9', 'feat/x → main', '3 files', '+12', '−4']) assert.ok(html.includes(chip), `missing chip ${chip}`);
+        assert.ok(!html.includes('<b>T</b>'));
+        balanced(html);
+      });
+
+      test('state kind recap works too, and other plans keep the plain title', () => {
+        const viaState = renderPlanSource({ plan: '# T', state: { kind: 'recap' }, title: 'From state' });
+        assert.match(viaState.html, /recap-head/);
+        assert.ok(!renderPlanSource({ plan: FIXTURE_PLAN }).html.includes('<header class="recap-head">'));
+      });
+
+      test('Compare renders Before and After columns from props, tags and paired blocks', () => {
+        const { html } = renderPlanSource({ plan: RECAP });
+        assert.equal((html.match(/<div class="compare">/g) || []).length, 3);
+        assert.equal((html.match(/cmp-side before/g) || []).length, 3);
+        assert.equal((html.match(/cmp-side after/g) || []).length, 3);
+        assert.ok(html.includes('>Was</div>') && html.includes('>Now</div>'));
+        for (const probe of ['old', 'new', 'left prose', 'right prose', 'first', 'second']) assert.ok(html.includes(probe), probe);
+      });
+    });
+
+    describe('examples', () => {
+      const load = (name) => {
+        const dir = path.join(builderDir, 'examples', name);
+        const read = (file) => (fs.existsSync(path.join(dir, file)) ? fs.readFileSync(path.join(dir, file), 'utf8') : undefined);
+        return renderPlanSource({ plan: read('plan.mdx'), canvas: read('canvas.mdx') });
+      };
+
+      test('signup-storyboard: 6 positioned artboards, 2 sections, 5 arrows, 2 annotations', () => {
+        const { html, warnings } = load('signup-storyboard');
+        assert.deepEqual(warnings, []);
+        assert.equal((html.match(/class="bcard ab pos"/g) || []).length, 6);
+        assert.equal((html.match(/class="sec-title"/g) || []).length, 2);
+        assert.equal((html.match(/class="edge"/g) || []).length, 5);
+        assert.equal((html.match(/<div class="annot">/g) || []).length, 2);
+        assert.ok(!/&lt;(FrameScreen|Col|Row|Box|Lines|Btn)\b/.test(html));
+        assert.ok(!(html.match(/<iframe/g) || []).length);
+        balanced(html);
+      });
+
+      test('recap-demo: recap header and before/after', () => {
+        const { html, warnings } = load('recap-demo');
+        assert.deepEqual(warnings, []);
+        assert.match(html, /VISUAL RECAP/);
+        assert.match(html, /class="cmp-side before"/);
+        assert.match(html, /class="cmp-side after"/);
+        balanced(html);
+      });
+    });
   });
 
   test('renderPlanFolder writes plan.builder.html next to the plan', () => {

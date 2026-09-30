@@ -13,10 +13,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const { escapeHtml, renderMarkdown, slugify } = require('../plan-canvas/markdown');
+const { escapeHtml, renderMarkdown, renderInline, slugify } = require('../plan-canvas/markdown');
 // Same pinned Mermaid ESM build (and AOS_PLAN_CANVAS_MERMAID_URL override) as
 // lib/plan-canvas/ui.js — one CDN, one pin, no second URL to invent.
 const { mermaidUrl } = require('../plan-canvas/ui');
+const { renderKit } = require('./kit');
 
 function mermaidLoaderScript(url) {
   return `<script type="module">
@@ -83,7 +84,7 @@ const WF_TOKENS = `:root{
 .wf-pill,.wf-accent{color:var(--wf-accent-fg);background:var(--wf-accent);border-radius:999px;padding:2px 8px}
 button.primary{background:var(--wf-accent);color:var(--wf-accent-fg);border:0;border-radius:var(--wf-radius);padding:6px 12px}`;
 
-function sandboxFrame(html, label, { height = 420, css = '' } = {}) {
+function sandboxFrame(html, label, { height = 420, css = '', bare = false } = {}) {
   const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;padding:16px;background:var(--wf-paper);color:var(--wf-ink);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;box-sizing:border-box}
 *{box-sizing:border-box}
@@ -91,11 +92,9 @@ img{max-width:100%}
 ${WF_TOKENS}
 ${css}
 </style></head><body>${String(html == null ? '' : html)}</body></html>`;
-  return [
-    `<div class="frame-wrap"><div class="label">${esc(label)}</div>`,
-    `<iframe class="frame" sandbox loading="lazy" title="${esc(label)}" height="${Number(height) || 420}" srcdoc="${esc(doc)}"></iframe>`,
-    '</div>'
-  ].join('');
+  const iframe = `<iframe class="frame" sandbox loading="lazy" title="${esc(label)}" height="${Number(height) || 420}" srcdoc="${esc(doc)}"></iframe>`;
+  if (bare) return iframe;
+  return `<div class="frame-wrap"><div class="label">${esc(label)}</div>${iframe}</div>`;
 }
 
 function card(label, inner, extraClass = '') {
@@ -297,25 +296,228 @@ function renderTabs(block, ctx) {
 
 function renderCustomHtml(block) {
   const html = block.props.html != null ? block.props.html : childRaw(block);
-  return card(text(block.props.label, 'custom html'), sandboxFrame(asText(html), text(block.props.label, 'custom html'), { height: block.props.height, css: asText(block.props.css) }));
+  const label = text(block.props.label || block.props.title, 'custom html');
+  return card(label, sandboxFrame(asText(html), label, { height: block.props.height, css: asText(block.props.css) }));
+}
+
+const SURFACE_SIZE = { mobile: [320, 580], popover: [360, 420], panel: [360, 480], tablet: [600, 700], browser: [720, 520], desktop: [960, 640] };
+
+function numProp(value) {
+  if (value === undefined || value === null || value === true || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function within(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function isScreenTag(child) {
+  return child.type === 'tag' && /^(screen|wireframeblock)$/i.test(child.name);
 }
 
 function renderScreen(block, ctx) {
   const label = text(block.props.label || block.props.title, text(block.props.surface, 'screen'));
-  const html = block.props.html != null ? asText(block.props.html) : childRaw(block);
-  if (html) return sandboxFrame(html, label, { height: block.props.height, css: asText(block.props.css) });
-  // A WireframeBlock body is normally a single <Screen>; without an html
-  // payload its children are ordinary blocks.
-  return renderPayload(block.children, ctx);
+  const ab = ctx.ab || {};
+  const height = block.props.height != null ? block.props.height : ab.height;
+  const caption = text(block.props.caption);
+  const captionHtml = caption ? `<div class="screen-caption">${esc(caption)}</div>` : '';
+  const kids = block.children || [];
+
+  if (block.props.html != null) {
+    return sandboxFrame(asText(block.props.html), label, { height, css: asText(block.props.css), bare: ab.abs }) + captionHtml;
+  }
+  // A WireframeBlock body is normally a single <Screen>.
+  if (kids.some(isScreenTag)) return renderPayload(kids, ctx);
+  if (kids.length && !kids.some((c) => c.type === 'tag')) {
+    return sandboxFrame(childRaw(block), label, { height, css: asText(block.props.css), bare: ab.abs }) + captionHtml;
+  }
+
+  const surface = Object.hasOwn(WIDTHS, text(block.props.surface).toLowerCase()) ? text(block.props.surface).toLowerCase() : '';
+  const minHeight = ab.abs ? '' : ` style="min-height:${within(numProp(height) || 300, 120, 2400)}px"`;
+  const screen = `<div class="kit-screen${surface ? ' s-' + surface : ''}"${minHeight}>${renderKit(kids, ctx)}</div>`;
+  if (ab.abs || ctx.ab) return screen + captionHtml;
+  return `<div class="frame-wrap"><div class="label">${esc(label)}</div>${screen}</div>${captionHtml}`;
+}
+
+function withArtboard(block, ctx, abs, fn) {
+  const previous = ctx.ab;
+  ctx.ab = { abs, height: numProp(block.props.height), surface: surfaceOf(block) };
+  try {
+    return fn();
+  } finally {
+    ctx.ab = previous;
+  }
 }
 
 function renderRichText(block) {
-  return `<div class="prose">${renderMarkdown(childText(block))}</div>`;
+  const title = text(block.props.title);
+  return `<div class="prose">${title ? `<h3 class="rt-title">${esc(title)}</h3>` : ''}${renderMarkdown(childText(block))}</div>`;
 }
 
 function renderCallout(block) {
   const tone = text(block.props.tone, 'note');
-  return card(`callout · ${tone}`, `<div class="prose">${renderMarkdown(childText(block))}</div>`);
+  const title = text(block.props.title);
+  return card(`callout · ${tone}`, (title ? `<div class="callout-title">${esc(title)}</div>` : '') +
+    `<div class="prose">${renderMarkdown(childText(block))}</div>`);
+}
+
+function annotationHtml(block) {
+  const title = text(block.props.title);
+  const body = childText(block) || text(block.props.text) || text(block.props.body);
+  return '<div class="annot">' +
+    (title ? `<div class="annot-title"><span class="glyph" aria-hidden="true">&#8599;</span>${esc(title)}</div>` : '') +
+    `<div class="annot-body${title ? '' : ' glyphed'}">${renderMarkdown(body)}</div></div>`;
+}
+
+// --- checklist, table, code tabs, decision, html, implementation map, compare
+
+const CHECK_LINE_RE = /^\s*(?:[-*]\s+)?(?:\[([ xX])\]\s+)?(.+?)\s*$/;
+
+function checklistItems(block) {
+  const items = [];
+  for (const raw of asArray(block.props.items)) {
+    if (raw && typeof raw === 'object') {
+      items.push({ label: asText(raw.label ?? raw.text ?? raw.title), checked: Boolean(raw.checked ?? raw.done), note: asText(raw.note ?? raw.detail) });
+    } else if (asText(raw).trim()) items.push({ label: asText(raw).trim(), checked: false, note: '' });
+  }
+  for (const child of block.children || []) {
+    if (child.type === 'tag') {
+      const label = asText(child.props.label ?? child.props.text) || childRaw(child);
+      items.push({ label, checked: Boolean(child.props.checked ?? child.props.done), note: '' });
+    } else if (child.type === 'prose') {
+      for (const line of child.text.split('\n')) {
+        const m = CHECK_LINE_RE.exec(line);
+        if (m && m[2]) items.push({ label: m[2], checked: m[1] === 'x' || m[1] === 'X', note: '' });
+      }
+    }
+  }
+  return items;
+}
+
+function renderChecklist(block) {
+  const items = checklistItems(block);
+  const label = text(block.props.title || block.props.label, 'checklist');
+  if (!items.length) return card(label, '<div class="note">no items</div>');
+  const rows = items.map((item) => `<li class="${item.checked ? 'done' : ''}"><span class="cbox" aria-hidden="true"></span>` +
+    `<span class="ctext">${renderInline(item.label)}${item.note ? ` <span class="detail">${esc(item.note)}</span>` : ''}</span>` +
+    `<span class="sr-only">${item.checked ? 'done' : 'open'}</span></li>`).join('');
+  return card(label, `<ul class="checklist">${rows}</ul>`);
+}
+
+function renderDataTable(block) {
+  const label = text(block.props.title || block.props.label, 'table');
+  const columns = asArray(block.props.columns).map((c) => (c && typeof c === 'object'
+    ? { key: asText(c.key ?? c.id ?? c.label), label: asText(c.label ?? c.title ?? c.key) }
+    : { key: asText(c), label: asText(c) }));
+  let rows = asArray(block.props.rows);
+  if (!columns.length && rows.length && rows[0] && typeof rows[0] === 'object' && !Array.isArray(rows[0])) {
+    for (const key of Object.keys(rows[0])) columns.push({ key, label: key });
+  }
+  if (!rows.length) {
+    const md = childText(block);
+    return card(label, md ? `<div class="prose">${renderMarkdown(md)}</div>` : '<div class="note">no rows</div>');
+  }
+  rows = rows.map((row) => {
+    if (Array.isArray(row)) return row;
+    if (row && typeof row === 'object') {
+      return columns.length ? columns.map((c) => row[c.key] ?? row[c.label] ?? '') : Object.values(row);
+    }
+    return [row];
+  });
+  const head = columns.length ? `<thead><tr>${columns.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>` : '';
+  const body = rows.map((row) => `<tr>${row.map((cell) => `<td>${renderInline(asText(cell))}</td>`).join('')}</tr>`).join('');
+  return card(label, `<div class="table-wrap"><table class="data">${head}<tbody>${body}</tbody></table></div>`);
+}
+
+function renderCodeTabs(block) {
+  const tabs = asArray(block.props.tabs);
+  if (!tabs.length) return card(text(block.props.title || block.props.label, 'code tabs'), '<div class="note">no tabs</div>');
+  const panes = tabs.map((tab, idx) => {
+    const t = tab && typeof tab === 'object' ? tab : { code: asText(tab) };
+    const label = text(t.label || t.title || t.filename, `tab ${idx + 1}`);
+    return `<div class="tab-pane"><div class="filename">${esc(label)}${t.language ? ' · ' + esc(text(t.language)) : ''}</div>` +
+      codeBlock(t.code != null ? t.code : t.body, text(t.language)) + '</div>';
+  }).join('');
+  return `<div class="card flush code-tabs">${panes}</div>`;
+}
+
+function isRecommended(option, index, props) {
+  if (option.recommended) return true;
+  const mark = props.recommended ?? props.chosen ?? props.selected;
+  if (mark === undefined || mark === true) return false;
+  return String(mark) === String(option.id) || String(mark) === String(option.label) || (typeof mark === 'number' && mark === index);
+}
+
+function renderDecision(block) {
+  const title = text(block.props.title);
+  const question = text(block.props.question || block.props.title);
+  const options = asArray(block.props.options).map((raw) => (raw && typeof raw === 'object' ? raw : { label: asText(raw) }));
+  const rows = options.map((o, i) => {
+    const rec = isRecommended(o, i, block.props);
+    return `<li class="opt${rec ? ' rec' : ''}"><div class="opt-label">${esc(asText(o.label ?? o.title ?? o.id))}` +
+      (rec ? ' <span class="badge">recommended</span>' : '') + '</div>' +
+      (o.detail || o.description ? `<div class="detail">${esc(asText(o.detail ?? o.description))}</div>` : '') + '</li>';
+  }).join('');
+  const rationale = childText(block) || text(block.props.rationale);
+  return card(title && title !== question ? title : 'decision',
+    (question ? `<div class="q">${esc(question)}</div>` : '') +
+    (rows ? `<ul class="options">${rows}</ul>` : '<div class="note">no options</div>') +
+    (rationale ? `<div class="rationale"><div class="label">rationale</div><div class="prose">${renderMarkdown(rationale)}</div></div>` : ''));
+}
+
+function renderImplementationMap(block, ctx) {
+  const label = text(block.props.title || block.props.label, 'implementation map');
+  const raw = block.props.files;
+  if ((block.props._unparsed || []).includes('files')) {
+    ctx.warnings.push('<ImplementationMap> files could not be parsed; raw text shown');
+    return card(label, '<div class="note">The files list could not be parsed. The raw text is shown so nothing is lost.</div>' +
+      `<pre><code>${esc(asText(raw))}</code></pre>`, 'unsupported');
+  }
+  let entries;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) entries = Object.entries(raw).map(([k, v]) => (v && typeof v === 'object' ? { path: k, ...v } : { path: k, note: v }));
+  else entries = asArray(raw);
+  if (!entries.length) {
+    entries = (block.children || []).filter((c) => c.type === 'prose')
+      .flatMap((c) => c.text.split('\n')).map((l) => l.replace(/^\s*[-*]\s+/, '').trim()).filter(Boolean);
+  }
+  if (!entries.length) return card(label, '<div class="note">no files</div>');
+  const items = entries.map((entry) => {
+    if (!entry || typeof entry !== 'object') return `<li><span class="path">${esc(asText(entry))}</span></li>`;
+    const change = text(entry.change ?? entry.status ?? entry.kind);
+    return '<li>' + (change ? `<span class="badge ${esc(change)}">${esc(change)}</span>` : '') +
+      `<span class="path">${esc(asText(entry.path ?? entry.file ?? entry.name))}</span>` +
+      (entry.title ? `<div class="impl-title">${esc(asText(entry.title))}</div>` : '') +
+      (entry.note ?? entry.description ? `<div class="impl-note">${esc(asText(entry.note ?? entry.description))}</div>` : '') +
+      (entry.snippet ? codeBlock(entry.snippet) : '') + '</li>';
+  });
+  return card(label, `<ul class="tree impl">${items.join('')}</ul>`);
+}
+
+function compareSide(block, name, ctx) {
+  const child = (block.children || []).find((c) => c.type === 'tag' && c.name.toLowerCase() === name);
+  if (child) return child.props.html != null ? renderPayload({ html: child.props.html }, ctx) : renderBlocks(child.children, ctx);
+  return null;
+}
+
+function renderCompare(block, ctx) {
+  let before = compareSide(block, 'before', ctx);
+  let after = compareSide(block, 'after', ctx);
+  if (before === null && after === null) {
+    const paired = (block.children || [])
+      .flatMap((c) => (c.type === 'prose' ? c.text.split(/\n\s*\n/).map((t) => ({ type: 'prose', text: t })) : [c]))
+      .filter((c) => c.type === 'tag' || c.type === 'prose');
+    if (paired.length === 2) {
+      before = renderBlocks([paired[0]], ctx);
+      after = renderBlocks([paired[1]], ctx);
+    }
+  }
+  if (before === null) before = block.props.before !== undefined ? renderPayload(block.props.before, ctx) : '<div class="note">empty</div>';
+  if (after === null) after = block.props.after !== undefined ? renderPayload(block.props.after, ctx) : '<div class="note">empty</div>';
+  const side = (cls, title, body) => `<div class="cmp-side ${cls}"><div class="cmp-label">${esc(title)}</div><div class="cmp-body">${body}</div></div>`;
+  return '<div class="compare">' +
+    side('before', text(block.props.beforeLabel, 'Before'), before) +
+    side('after', text(block.props.afterLabel, 'After'), after) + '</div>';
 }
 
 function renderUnknown(block, ctx) {
@@ -350,14 +552,19 @@ const HANDLERS = {
   Callout: renderCallout,
   Json: (block) => card('json', codeBlock(block.props.code != null ? block.props.code : block.props.data, 'json')),
   OpenApiSpec: (block) => card('openapi spec', codeBlock(block.props.code != null ? block.props.code : block.props.spec, 'yaml')),
-  Checklist: (block) => renderQuestionForm({ ...block, props: { questions: asArray(block.props.items).map((it, i) => ({ title: text(it && it.label ? it.label : it, `item ${i + 1}`), mode: 'check' })) } }),
-  Table: (block) => card(text(block.props.label, 'table'), codeBlock(JSON.stringify({ columns: block.props.columns, rows: block.props.rows }, null, 2), 'json')),
+  Checklist: renderChecklist,
+  Table: renderDataTable,
+  CodeTabs: renderCodeTabs,
+  Decision: renderDecision,
+  HtmlBlock: renderCustomHtml,
+  ImplementationMap: renderImplementationMap,
+  Compare: renderCompare,
   // canvas.mdx containers: pass-through so artboards and their Screen bodies
   // still render instead of collapsing into one unsupported card.
   DesignBoard: (block, ctx) => renderPayload(block.children, ctx),
   Section: (block, ctx) => renderPayload(block.children, ctx),
-  Artboard: (block, ctx) => card(text(block.props.title || block.props.label, 'artboard'), renderPayload(block.children, ctx)),
-  Annotation: (block) => `<div class="card"><div class="label">annotation</div><div class="prose">${renderMarkdown(childText(block) || text(block.props.text) || text(block.props.body))}</div></div>`,
+  Artboard: (block, ctx) => card(text(block.props.title || block.props.label, 'artboard'), withArtboard(block, ctx, false, () => renderPayload(block.children, ctx))),
+  Annotation: annotationHtml,
   Connector: (block) => card('connector', `<div class="note">${esc(asText(block.props.label || block.props.text || ''))}</div>`)
 };
 
@@ -382,6 +589,11 @@ const ALIASES = {
   json: 'Json',
   checklist: 'Checklist',
   table: 'Table',
+  'code-tabs': 'CodeTabs',
+  decision: 'Decision',
+  'html-block': 'HtmlBlock',
+  'implementation-map': 'ImplementationMap',
+  compare: 'Compare',
   openapi: 'OpenApiSpec'
 };
 
@@ -518,8 +730,229 @@ function isNodeDiagram(block) {
   return !(data.html || block.props.html || data.source || block.props.source) && asArray(data.nodes).length > 0;
 }
 
+function resolveEdges(relations, known, ctx) {
+  const edges = [];
+  for (const rel of relations) {
+    const from = known.get(rel.from);
+    const to = known.get(rel.to);
+    if (!from || !to) {
+      ctx.warnings.push(`board relation ${rel.from} -> ${rel.to} names an unknown card; no arrow drawn`);
+      continue;
+    }
+    edges.push({ from, to, label: rel.label, names: `${rel.from} to ${rel.to}` });
+  }
+  return edges;
+}
+
+function edgeSvg(edges, index) {
+  if (!edges.length) return '';
+  return `<svg class="board-edges" aria-hidden="true" focusable="false"><defs>` +
+    `<marker id="bm-arrow-${index}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="edge-head" d="M0 0L10 5L0 10z"/></marker></defs>` +
+    edges.map((e) => `<g class="edge" data-from="${e.from}" data-to="${e.to}"><path class="edge-line" d="" marker-end="url(#bm-arrow-${index})"/>` +
+      `<text class="edge-label" text-anchor="middle">${esc(e.label)}</text></g>`).join('') +
+    '</svg>' +
+    `<ul class="sr-only">${edges.map((e) => `<li>${esc(e.names)}${e.label ? ': ' + esc(e.label) : ''}</li>`).join('')}</ul>`;
+}
+
+function boardShell(index, canvasInner, { abs = false, canvasStyle = '' } = {}) {
+  return `<section class="board${abs ? ' board-abs' : ''}" aria-label="Visual board ${index}">` +
+    `<div class="board-viewport"><div class="board-stage"><div class="board-canvas${abs ? ' abs' : ''}"${canvasStyle ? ` style="${canvasStyle}"` : ''}>${canvasInner}</div></div></div>` +
+    '<div class="board-zoom" role="group" aria-label="Board zoom">' +
+    '<button type="button" data-zoom="out" aria-label="Zoom out">&minus;</button>' +
+    '<output class="zoom-readout" aria-live="polite">100%</output>' +
+    '<button type="button" data-zoom="in" aria-label="Zoom in">+</button>' +
+    '<button type="button" data-zoom="fit" aria-label="Fit board to view">fit</button>' +
+    '<button type="button" data-zoom="reset" aria-label="Reset zoom to 100 percent">1:1</button>' +
+    '</div></section>';
+}
+
+// --- absolute layout ------------------------------------------------------
+// Artboards that carry x/y are placed on a canvas sized to their bounding box.
+// Only numbers computed here reach a style attribute.
+
+const ABS_MARGIN = 72;
+
+function isAbsoluteArtboard(block) {
+  return block.type === 'tag' && block.name === 'Artboard' && numProp(block.props.x) !== null && numProp(block.props.y) !== null;
+}
+
+function hasAbsolute(blocks) {
+  return (blocks || []).some((b) => isAbsoluteArtboard(b) || (b.type === 'tag' && (b.name === 'DesignBoard' || b.name === 'Section') && hasAbsolute(b.children)));
+}
+
+function artboardBox(block) {
+  const [dw, dh] = SURFACE_SIZE[surfaceOf(block).toLowerCase()] || [420, 520];
+  return {
+    x: within(numProp(block.props.x), -20000, 20000),
+    y: within(numProp(block.props.y), -20000, 20000),
+    width: within(numProp(block.props.width) ?? dw, 40, 6000),
+    height: within(numProp(block.props.height) ?? dh, 40, 6000)
+  };
+}
+
+function hasCaption(block) {
+  return (block.children || []).some((c) => c.type === 'tag' && text(c.props.caption));
+}
+
+function estimateNoteHeight(block, width) {
+  const body = childText(block) || text(block.props.text) || text(block.props.body);
+  const lines = body.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / Math.max(12, width / 6.6))), 0);
+  return (text(block.props.title) ? 22 : 0) + lines * 19 + 8;
+}
+
+function renderAbsoluteBoard(blocks, ctx, index) {
+  const relations = [];
+  const known = new Map();
+  const sections = [];
+  const artboards = [];
+  const notes = [];
+  const tray = [];
+  let section = null;
+  let count = 0;
+  const nextId = () => `bc-${index}-${++count}`;
+  const collect = (list) => {
+    for (const raw of asArray(list)) {
+      const rel = relationOf(raw);
+      if (rel) relations.push(rel);
+    }
+  };
+  const register = (id, block, extra = []) => {
+    for (const key of [block.props && block.props.id, block.props && block.props.blockId, ...extra]) if (key) known.set(String(key), id);
+  };
+
+  const walk = (list) => {
+    for (const block of list || []) {
+      try {
+        if (block.type === 'heading') tray.push(`<h3 class="btitle">${esc(block.text)}</h3>`);
+        else if (block.type === 'prose') tray.push(`<div class="bcard w-wide">${card('', `<div class="prose">${renderMarkdown(block.text)}</div>`)}</div>`);
+        else if (block.type === 'tag') walkTag(block);
+        else tray.push(`<div class="bcard">${renderBlocks([block], ctx)}</div>`);
+      } catch (error) {
+        ctx.warnings.push(`render failed for ${block && block.name ? '<' + block.name + '>' : 'a block'}: ${error.message}`);
+        tray.push(`<div class="bcard">${errorCard('render failed', error.message)}</div>`);
+      }
+    }
+  };
+
+  const walkTag = (block) => {
+    collect(block.props.transitions);
+    if (block.name === 'DesignBoard') return walk(block.children);
+    if (block.name === 'Section') {
+      const previous = section;
+      section = { title: text(block.props.title || block.props.label), subtitle: text(block.props.subtitle), boxes: [] };
+      sections.push(section);
+      walk(block.children);
+      section = previous;
+      return undefined;
+    }
+    if (block.name === 'Connector') {
+      const rel = relationOf(block.props);
+      if (rel) relations.push(rel);
+      return undefined;
+    }
+    if (block.name === 'Annotation') {
+      notes.push(block);
+      return undefined;
+    }
+    if (isAbsoluteArtboard(block)) {
+      const box = artboardBox(block);
+      const item = { block, box, id: nextId(), order: numProp(block.props.order), seq: artboards.length, caption: hasCaption(block) };
+      artboards.push(item);
+      if (section) section.boxes.push(box);
+      register(item.id, block, [slugify(text(block.props.label || block.props.title))]);
+      return undefined;
+    }
+    const id = nextId();
+    register(id, block, [slugify(text(block.props.title || block.props.label))]);
+    tray.push(`<div class="bcard ${widthClass(block)}" id="${id}">${renderTag(block, ctx)}</div>`);
+    return undefined;
+  };
+
+  walk(blocks);
+  artboards.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.seq - b.seq);
+
+  const byKey = new Map();
+  for (const item of artboards) {
+    for (const key of [item.block.props.id, item.block.props.blockId, slugify(text(item.block.props.label || item.block.props.title))]) {
+      if (key && !byKey.has(String(key))) byKey.set(String(key), item);
+    }
+  }
+
+  const rects = artboards.map((a) => ({ x: a.box.x, y: a.box.y - 28, w: a.box.width, h: a.box.height + 28 + (a.caption ? 30 : 0) }));
+
+  const sectionLabels = [];
+  let number = 0;
+  for (const s of sections.filter((sec) => sec.title && sec.boxes.length)) {
+    const x = Math.min(...s.boxes.map((b) => b.x));
+    const y = Math.min(...s.boxes.map((b) => b.y));
+    const right = Math.max(...s.boxes.map((b) => b.x + b.width));
+    const width = within(right - x, 300, 640);
+    const height = 22 + (s.subtitle ? Math.ceil(s.subtitle.length / (width / 6.4)) * 17 + 4 : 0);
+    const top = y - 46;
+    rects.push({ x, y: top - height, w: width, h: height });
+    sectionLabels.push({ html: (n) => `<div class="sec-label pos" style="left:${n.x(x)}px;top:${n.y(top)}px;width:${width}px">` +
+      `<div class="sec-title">${esc(`${++number} · ${s.title}`)}</div>` +
+      (s.subtitle ? `<div class="sec-sub">${esc(s.subtitle)}</div>` : '') + '</div>' });
+  }
+
+  const stacks = new Map();
+  const placedNotes = [];
+  for (const note of notes) {
+    const target = byKey.get(text(note.props.targetId));
+    const nx = numProp(note.props.x);
+    const ny = numProp(note.props.y);
+    let place = null;
+    if (target) {
+      const placement = ['top', 'right', 'bottom', 'left'].includes(text(note.props.placement)) ? text(note.props.placement) : 'bottom';
+      const t = target.box;
+      const width = within(numProp(note.props.width) ?? (placement === 'top' || placement === 'bottom' ? Math.min(t.width, 320) : 240), 120, 640);
+      const height = estimateNoteHeight(note, width);
+      const key = `${target.id}:${placement}`;
+      const used = stacks.get(key) || 0;
+      stacks.set(key, used + height + 14);
+      if (placement === 'bottom') place = { x: t.x, y: t.y + t.height + 16 + (target.caption ? 30 : 0) + used, width, height };
+      else if (placement === 'top') place = { x: t.x, y: t.y - 40 - used - height, width, height };
+      else if (placement === 'right') place = { x: t.x + t.width + 32, y: t.y + used, width, height };
+      else place = { x: t.x - 32 - width, y: t.y + used, width, height };
+    } else if (nx !== null && ny !== null) {
+      const width = within(numProp(note.props.width) ?? 260, 120, 640);
+      place = { x: within(nx, -20000, 20000), y: within(ny, -20000, 20000), width, height: estimateNoteHeight(note, width) };
+    }
+    if (place) {
+      rects.push({ x: place.x, y: place.y, w: place.width, h: place.height });
+      placedNotes.push({ note, place, id: nextId() });
+    } else {
+      tray.push(`<div class="bcard bnote" id="${nextId()}" style="width:260px">${annotationHtml(note)}</div>`);
+    }
+  }
+
+  const minX = rects.length ? Math.min(...rects.map((r) => r.x)) : 0;
+  const minY = rects.length ? Math.min(...rects.map((r) => r.y)) : 0;
+  const maxX = rects.length ? Math.max(...rects.map((r) => r.x + r.w)) : 0;
+  const maxY = rects.length ? Math.max(...rects.map((r) => r.y + r.h)) : 0;
+  const off = { x: (v) => Math.round(v + ABS_MARGIN - minX), y: (v) => Math.round(v + ABS_MARGIN - minY) };
+  const width = Math.round(maxX - minX + ABS_MARGIN * 2);
+  const height = Math.round(maxY - minY + ABS_MARGIN * 2);
+
+  const abHtml = artboards.map((a) => {
+    const label = text(a.block.props.label || a.block.props.title || a.block.props.id, 'artboard');
+    const inner = withArtboard(a.block, ctx, true, () => renderPayload(a.block.children, ctx));
+    return `<div class="bcard ab pos" id="${a.id}" style="left:${off.x(a.box.x)}px;top:${off.y(a.box.y)}px;width:${a.box.width}px;height:${a.box.height}px">` +
+      `<div class="ab-label">${a.order !== null ? `<span class="ab-n">${esc(String(a.order))}</span>` : ''}${esc(label)}</div>` +
+      `<div class="ab-frame">${inner}</div></div>`;
+  }).join('');
+
+  const noteHtml = placedNotes.map(({ note, place, id }) => `<div class="bcard bnote pos" id="${id}" style="left:${off.x(place.x)}px;top:${off.y(place.y)}px;width:${place.width}px">${annotationHtml(note)}</div>`).join('');
+
+  const trayHtml = tray.length ? `<div class="abs-tray" style="padding-top:${height - ABS_MARGIN + 40}px">${tray.join('')}</div>` : '';
+  const edges = resolveEdges(relations, known, ctx);
+  const inner = edgeSvg(edges, index) + sectionLabels.map((s) => s.html(off)).join('') + abHtml + noteHtml + trayHtml;
+  return boardShell(index, inner, { abs: true, canvasStyle: `width:${width}px;min-height:${height}px` });
+}
+
 function renderBoard(blocks, ctx) {
   const index = ctx.boards = (ctx.boards || 0) + 1;
+  if (hasAbsolute(blocks)) return renderAbsoluteBoard(blocks, ctx, index);
   const rows = [];
   const relations = [];
   const known = new Map();
@@ -585,16 +1018,7 @@ function renderBoard(blocks, ctx) {
 
   walk(blocks);
 
-  const edges = [];
-  for (const rel of relations) {
-    const from = known.get(rel.from);
-    const to = known.get(rel.to);
-    if (!from || !to) {
-      ctx.warnings.push(`board relation ${rel.from} -> ${rel.to} names an unknown card; no arrow drawn`);
-      continue;
-    }
-    edges.push({ from, to, label: rel.label, names: `${rel.from} to ${rel.to}` });
-  }
+  const edges = resolveEdges(relations, known, ctx);
 
   let number = 0;
   const rowHtml = rows.filter((r) => r.cards.length).map((r) => {
@@ -602,24 +1026,7 @@ function renderBoard(blocks, ctx) {
     return `<div class="brow">${title}<div class="bcards">${r.cards.join('')}</div></div>`;
   }).join('');
 
-  const svg = edges.length
-    ? `<svg class="board-edges" aria-hidden="true" focusable="false"><defs>` +
-      `<marker id="bm-arrow-${index}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="edge-head" d="M0 0L10 5L0 10z"/></marker></defs>` +
-      edges.map((e) => `<g class="edge" data-from="${e.from}" data-to="${e.to}"><path class="edge-line" d="" marker-end="url(#bm-arrow-${index})"/>` +
-        `<text class="edge-label" text-anchor="middle">${esc(e.label)}</text></g>`).join('') +
-      '</svg>' +
-      `<ul class="sr-only">${edges.map((e) => `<li>${esc(e.names)}${e.label ? ': ' + esc(e.label) : ''}</li>`).join('')}</ul>`
-    : '';
-
-  return `<section class="board" aria-label="Visual board ${index}">` +
-    `<div class="board-viewport"><div class="board-stage"><div class="board-canvas">${svg}${rowHtml}</div></div></div>` +
-    '<div class="board-zoom" role="group" aria-label="Board zoom">' +
-    '<button type="button" data-zoom="out" aria-label="Zoom out">&minus;</button>' +
-    '<output class="zoom-readout" aria-live="polite">100%</output>' +
-    '<button type="button" data-zoom="in" aria-label="Zoom in">+</button>' +
-    '<button type="button" data-zoom="fit" aria-label="Fit board to view">fit</button>' +
-    '<button type="button" data-zoom="reset" aria-label="Reset zoom to 100 percent">1:1</button>' +
-    '</div></section>';
+  return boardShell(index, edgeSvg(edges, index) + rowHtml);
 }
 
 // Document blocks with board islands: a heading tagged {#board} hands its
@@ -660,7 +1067,29 @@ function boardScript() {
   return `<script>\n${fs.readFileSync(path.join(__dirname, 'board-client.js'), 'utf8')}</script>`;
 }
 
-function page({ title, status, meta, headings, body, warnings, hasMermaid, hasBoard, boardOnly }) {
+const RECAP_CHIPS = [
+  ['pr', 'PR', (v) => v],
+  ['branch', 'branch', (v, fm) => (fm.base ? `${v} \u2192 ${fm.base}` : v)],
+  ['commit', 'commit', (v) => v],
+  ['files', 'files', (v) => `${v} file${Number(v) === 1 ? '' : 's'}`],
+  ['additions', '', (v) => `+${v}`, 'add'],
+  ['deletions', '', (v) => `\u2212${v}`, 'del'],
+  ['author', 'by', (v) => v],
+  ['date', '', (v) => v]
+];
+
+function recapHeader(title, frontmatter) {
+  const chips = RECAP_CHIPS
+    .filter(([key]) => frontmatter[key] !== undefined && frontmatter[key] !== '' && frontmatter[key] !== true)
+    .map(([key, label, format, tone]) => `<li class="${tone || ''}">${label ? `<span class="k">${esc(label)}</span>` : ''}${esc(format(String(frontmatter[key]), frontmatter))}</li>`);
+  const subtitle = text(frontmatter.subtitle || frontmatter.summary);
+  return '<header class="recap-head"><div class="recap-eyebrow">VISUAL RECAP</div>' +
+    `<h1 class="doc-title recap-title">${esc(title)}</h1>` +
+    (subtitle ? `<p class="recap-sub">${esc(subtitle)}</p>` : '') +
+    (chips.length ? `<ul class="recap-chips">${chips.join('')}</ul>` : '') + '</header>';
+}
+
+function page({ title, status, meta, headings, body, warnings, hasMermaid, hasBoard, boardOnly, recap }) {
   const warningBlock = warnings.length
     ? `<div class="warnings"><span class="label">${warnings.length} rendering warning${warnings.length === 1 ? '' : 's'}</span><ul>${warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>`
     : '';
@@ -685,7 +1114,7 @@ ${meta ? `<span class="meta">${esc(meta)}</span>` : ''}
 <nav class="sidenav" aria-label="Sections">${navHtml(headings)}</nav>
 <main>
 ${warningBlock}
-<h1 class="doc-title">${esc(title)}</h1>
+${recap ? recapHeader(title, recap) : `<h1 class="doc-title">${esc(title)}</h1>`}
 <div class="flow">${body}</div>
 <footer class="footer">Built by BDB Plan Builder from the plan folder beside this file. Edit the MDX and re-run the build.<span class="vp-mark">VISUAL PLAN</span></footer>
 </main>

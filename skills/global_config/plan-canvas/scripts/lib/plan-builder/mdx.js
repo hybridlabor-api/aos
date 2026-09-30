@@ -18,12 +18,122 @@ const HEADING_RE = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const FENCE_RE = /^\s*```/;
 const NAME_RE = /^[A-Za-z][A-Za-z0-9._-]*/;
 
+const ESCAPES = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', 0: '\0' };
+const MAX_DEPTH = 100;
+
+// Data-only JS literal parser (unquoted keys, single quotes, trailing commas,
+// comments, `'a' + 'b'`). Nothing is evaluated; anything else throws.
+function parseLiteral(src) {
+  let i = 0;
+  const fail = (message) => { throw new Error(`${message} at ${i}`); };
+  const ws = () => {
+    for (;;) {
+      while (i < src.length && /\s/.test(src[i])) i += 1;
+      if (src.startsWith('//', i)) {
+        while (i < src.length && src[i] !== '\n') i += 1;
+      } else if (src.startsWith('/*', i)) {
+        const end = src.indexOf('*/', i + 2);
+        if (end < 0) fail('unterminated comment');
+        i = end + 2;
+      } else return;
+    }
+  };
+  const string = () => {
+    const quote = src[i++];
+    let out = '';
+    while (i < src.length && src[i] !== quote) {
+      const ch = src[i++];
+      if (ch === '\\') {
+        const next = src[i++];
+        if (next === 'u') { out += String.fromCharCode(parseInt(src.slice(i, i + 4), 16)); i += 4; }
+        else if (next === 'x') { out += String.fromCharCode(parseInt(src.slice(i, i + 2), 16)); i += 2; }
+        else if (next !== '\n') out += Object.hasOwn(ESCAPES, next) ? ESCAPES[next] : next;
+      } else {
+        if (quote === '`' && ch === '$' && src[i] === '{') fail('template interpolation');
+        out += ch;
+      }
+    }
+    if (i >= src.length) fail('unterminated string');
+    i += 1;
+    return out;
+  };
+  const key = () => {
+    ws();
+    if ('"\'`'.includes(src[i])) return string();
+    const m = /^[A-Za-z_$][\w$]*|^-?\d+/.exec(src.slice(i));
+    if (!m) fail('bad key');
+    i += m[0].length;
+    return m[0];
+  };
+  const list = (close, depth, item) => {
+    i += 1;
+    for (;;) {
+      ws();
+      if (src[i] === close) { i += 1; return; }
+      if (i >= src.length) fail('unterminated literal');
+      item(depth);
+      ws();
+      if (src[i] === ',') i += 1;
+      else if (src[i] !== close) fail('expected , or ' + close);
+    }
+  };
+  const value = (depth) => {
+    if (depth > MAX_DEPTH) fail('nested too deep');
+    ws();
+    const ch = src[i];
+    if (ch === '[') {
+      const out = [];
+      list(']', depth, (d) => out.push(value(d + 1)));
+      return out;
+    }
+    if (ch === '{') {
+      const out = {};
+      list('}', depth, (d) => {
+        const name = key();
+        ws();
+        if (src[i++] !== ':') fail('expected :');
+        Object.defineProperty(out, name, { value: value(d + 1), enumerable: true, writable: true, configurable: true });
+      });
+      return out;
+    }
+    if ('"\'`'.includes(ch)) {
+      let out = string();
+      ws();
+      while (src[i] === '+') {
+        i += 1;
+        const more = value(depth + 1);
+        if (typeof more !== 'string') fail('only strings can be concatenated');
+        out += more;
+        ws();
+      }
+      return out;
+    }
+    const num = /^-?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(src.slice(i));
+    if (num) { i += num[0].length; return Number(num[0]); }
+    const word = /^[A-Za-z]+/.exec(src.slice(i));
+    if (word && Object.hasOwn({ true: 1, false: 1, null: 1, undefined: 1 }, word[0])) {
+      i += word[0].length;
+      return { true: true, false: false, null: null, undefined: undefined }[word[0]];
+    }
+    return fail('unsupported value');
+  };
+  const result = value(0);
+  ws();
+  if (i < src.length) fail('trailing characters');
+  return result;
+}
+
 function decodeExpression(body, warnings, tag, key) {
   const raw = body.trim();
   if (!raw) return '';
   try {
     return JSON.parse(raw);
   } catch {
+    try {
+      return parseLiteral(raw);
+    } catch {
+      // fall through to the bare-string and raw-text handling below
+    }
     // Bare strings are common in hand-written MDX (`{code='x'}`); keep them.
     if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
       return raw.slice(1, -1);
@@ -44,7 +154,8 @@ function scanTag(text, start) {
   for (let i = start + 1 + name.length; i < text.length; i++) {
     const ch = text[i];
     if (quote) {
-      if (ch === quote) quote = null;
+      if (ch === '\\' && depth > 0) i += 1;
+      else if (ch === quote) quote = null;
       continue;
     }
     if (ch === '"' || ch === "'" || ch === '`') {
@@ -96,6 +207,8 @@ function closingIndex(text, from, name) {
 
 function parseAttributes(attrsText, warnings, tagName) {
   const props = {};
+  // Keys whose {expression} could not be parsed; blocks that must not drop data read this.
+  Object.defineProperty(props, '_unparsed', { value: [], enumerable: false });
   let i = 0;
   const text = attrsText;
   const skipSpace = () => {
@@ -132,8 +245,13 @@ function parseAttributes(attrsText, warnings, tagName) {
     if (ch === '{') {
       let depth = 0;
       let end = -1;
+      let q = null;
       for (let j = i; j < text.length; j++) {
-        if (text[j] === '{') depth += 1;
+        if (q) {
+          if (text[j] === '\\') j += 1;
+          else if (text[j] === q) q = null;
+        } else if (text[j] === '"' || text[j] === "'" || text[j] === '`') q = text[j];
+        else if (text[j] === '{') depth += 1;
         else if (text[j] === '}') {
           depth -= 1;
           if (depth === 0) {
@@ -144,7 +262,9 @@ function parseAttributes(attrsText, warnings, tagName) {
       }
       const body = end < 0 ? text.slice(i + 1) : text.slice(i + 1, end);
       i = end < 0 ? text.length : end + 1;
+      const before = warnings.length;
       props[key] = decodeExpression(body, warnings, tagName, key);
+      if (warnings.length > before) props._unparsed.push(key);
       continue;
     }
     props[key] = true;
@@ -268,4 +388,4 @@ function parseMdx(text) {
   return blocks;
 }
 
-module.exports = { parseMdx, scanTag, parseAttributes };
+module.exports = { parseMdx, scanTag, parseAttributes, parseLiteral };
