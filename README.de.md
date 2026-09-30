@@ -411,10 +411,6 @@ flowchart LR
 
 `@hybridlabor-api/heimdall-token-saver`: komprimiert wiederholte CLI-Ausgabe über Ambient Hooks auf jedem Harness. Reduziert Token-Overhead bei großen Projekten. Skill: `token-saver-config`.
 
-![Token savings with Heimdall Token Saver](assets/bdb_savings_graph_sketch.jpg)
-
-*Illustrative Skizze aus v3.x. Die Prozentwerte sind Schätzungen des Projekts, keine für dieses README durchgeführten Messungen.*
-
 ---
 
 ## Aktualisierung

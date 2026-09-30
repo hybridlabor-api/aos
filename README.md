@@ -411,10 +411,6 @@ flowchart LR
 
 `@hybridlabor-api/heimdall-token-saver`: compresses repeated CLI output via ambient hooks on every harness. Reduces token overhead on large projects. Skill: `token-saver-config`.
 
-![Token savings with Heimdall Token Saver](assets/bdb_savings_graph_sketch.jpg)
-
-*Illustrative sketch from v3.x. The percentages are the project's own estimates, not measurements made for this README.*
-
 ---
 
 ## Updating
