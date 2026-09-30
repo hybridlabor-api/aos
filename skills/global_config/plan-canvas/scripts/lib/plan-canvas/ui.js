@@ -632,6 +632,8 @@ ${sessions.length ? `<table><thead><tr><th>Artifact</th><th>Path</th><th>Status<
 module.exports = {
   canvasCss,
   canvasClientJs,
+  mermaidLoaderScript,
+  mermaidUrl,
   renderCanvasHtml,
   renderMarkdownArtifactHtml,
   renderSessionListHtml

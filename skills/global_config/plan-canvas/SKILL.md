@@ -222,6 +222,10 @@ aos-plan-canvas open <file> --mode <chosen-id>
 
 `bdb-plan-builder` (labeled "BDB Plan Builder") and `builder` (labeled "Builder.io Visual Plan") are listed only when they are detected — respectively when `lib/plan-builder/index.js` exists in this skill's scripts directory, or when a `visual-plan` skill with a SKILL.md file is found in any of the configured skill directories (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.config/opencode/skills`, `~/.gemini/config/skills`, or custom paths in `AOS_PLAN_CANVAS_SKILL_DIRS`). Until then, only `standard` is available.
 
+### `bdb-plan-builder`
+
+For an Agent-Native-style **plan folder** (`plan.mdx` plus optional `canvas.mdx`, `prototype.mdx`, `.plan-state.json`), `open` renders the folder into ONE self-contained `plan.builder.html` in the BDB look next to the plan, then opens *that* file through the normal HTML artifact path — so annotation, chat and verdict work with no extra steps. Point it at the folder or at `plan.mdx` itself; a path with no `plan.mdx` exits 2 with the reason. Edit the MDX and re-run `open` to rebuild. Await `<plan-dir>/plan.builder.html`, not the folder.
+
 ## Relationship to `/startcycle`
 
 **Plan approval flow** — Architect writes

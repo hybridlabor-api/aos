@@ -68,6 +68,8 @@ function usage() {
     '',
     'Options:',
     '  open:  --mode <id>    Select planning mode (default: standard)',
+    '                   bdb-plan-builder builds <plan-dir>/plan.builder.html from',
+    '                   plan.mdx and opens that file instead',
     '         --no-open      Do not launch a browser window',
     '         --reopen       Reopen a session the user ended from the browser',
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
@@ -300,9 +302,24 @@ async function cmdOpen(file, args, { stateDir, port }) {
     return { error: `Mode not available: ${mode} (${modeConfig.reason})` };
   }
 
+  // bdb-plan-builder owns the artifact: it renders the plan folder to one
+  // self-contained HTML file next to plan.mdx, then that file goes through the
+  // normal session path unchanged.
+  let artifact = path.resolve(file);
+  let built = null;
+  if (mode === 'bdb-plan-builder') {
+    built = require('./lib/plan-builder').renderPlanFolder(file);
+    if (!built.outFile) {
+      const message = built.error || 'plan builder produced no output';
+      process.stderr.write(`${message}\n`);
+      return { error: message, mode };
+    }
+    artifact = built.outFile;
+  }
+
   await ensureServer({ stateDir, port });
   const res = await request(port, 'POST', '/api/sessions', {
-    file: path.resolve(file),
+    file: artifact,
     reopen: args.includes('--reopen')
   });
   if (res.statusCode === 409) return res.body;
@@ -314,8 +331,10 @@ async function cmdOpen(file, args, { stateDir, port }) {
     url,
     browser: launched ? 'opened' : 'not opened',
     mode,
-    next_step:
-      'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
+    ...(built ? { artifact: built.outFile, warnings: built.warnings } : {}),
+    next_step: built && built.warnings.length
+      ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas await <dir>/plan.builder.html\` and leave it running.`
+      : 'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
   };
 }
 

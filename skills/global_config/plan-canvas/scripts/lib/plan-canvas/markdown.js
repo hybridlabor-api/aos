@@ -298,4 +298,4 @@ function renderMarkdown(text) {
   return out.join('\n');
 }
 
-module.exports = { renderMarkdown, escapeHtml, slugify };
+module.exports = { renderMarkdown, renderInline, escapeHtml, slugify };
