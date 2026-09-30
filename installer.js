@@ -2906,7 +2906,7 @@ async function installMcpsForTarget(paths, ctx) {
     }
     log.step(`Installed selected MCP servers to ${mcpCodeTarget}`);
 
-    const nodeMcps = ['adobe_uxp_mcp', 'unreal_mcp', 'tdmcp', 'touchdesigner-mcp', 'davinci-resolve-mcp', 'after-effects-mcp', 'computer-use-mcp'];
+    const nodeMcps = ['adobe_uxp_mcp', 'unreal_mcp', 'tdmcp', 'touchdesigner-mcp', 'davinci-resolve-mcp', 'after-effects-mcp', 'computer-use-mcp', 'mcsc'];
     for (const mcpFolder of nodeMcps.filter(m => selectedMcps.includes(m))) {
         const targetFolder = path.join(mcpCodeTarget, mcpFolder);
         if (fs.existsSync(path.join(targetFolder, 'package.json'))) {
@@ -3454,12 +3454,16 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
 
 
 function injectHarnessRules() {
-    const geminiMdSrc = path.join(srcDir, 'RULES.md');
+    const rulesMdSrc = path.join(srcDir, 'RULES.md');
     const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
 
-    if (fs.existsSync(geminiMdSrc)) {
+    if (fs.existsSync(rulesMdSrc)) {
         installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
-            copyDirRecursiveSync(geminiMdSrc, path.join(geminiDir, 'RULES.md'));
+            copyDirRecursiveSync(rulesMdSrc, path.join(geminiDir, 'RULES.md'));
+            // Keep GEMINI.md in sync for backwards compatibility with Antigravity CLI harnesses
+            try {
+                fs.copyFileSync(rulesMdSrc, path.join(geminiDir, 'GEMINI.md'));
+            } catch (e) { logDebug(e, 'sync GEMINI.md fallback'); }
             log.step(`Installed RULES.md to ${path.join(geminiDir, 'RULES.md')}`);
         }, 'The harness injection below still runs.');
 
@@ -3480,7 +3484,7 @@ function injectHarnessRules() {
 
         const startcycleWorkflowSrc = path.join(srcDir, '.agents', 'workflows', 'startcycle.md');
         const sources = installStep('read the global rule sources', () => ({
-            globalRules: fs.readFileSync(geminiMdSrc, 'utf8'),
+            globalRules: fs.readFileSync(rulesMdSrc, 'utf8'),
             startcycleContent: fs.existsSync(startcycleWorkflowSrc) ? fs.readFileSync(startcycleWorkflowSrc, 'utf8') : '',
             agentsMdContent: fs.existsSync(agentsMdSrc) ? fs.readFileSync(agentsMdSrc, 'utf8') : ''
         }), 'Cursor, Claude, Copilot and Codex keep their current instruction files.');
