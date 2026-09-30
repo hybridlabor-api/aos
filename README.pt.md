@@ -15,6 +15,7 @@
 [![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#servidores-mcp)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#harnesses-suportados)
 [![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
+[![skills.sh](https://skills.sh/b/hybridlabor-api/aos)](https://skills.sh/hybridlabor-api/aos)
 
 AOS instala uma biblioteca de skills curada, um roster de subagentes, hooks de portão e um pipeline multi-agente executável em todos os harnesses de agentes de código da sua máquina.
 
