@@ -621,3 +621,11 @@ A trivial headless `agy` prompt was measured at **605s** in 2026-09.
 reports an empty body while the answer is still arriving. Pass `--timeout 15m`
 for anything non-trivial. A short timeout does not read as "slow", it reads as
 "broken".
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+See [AGENTS.md](AGENTS.md) for OpenWiki agent instructions.
+
+<!-- OPENWIKI:END -->

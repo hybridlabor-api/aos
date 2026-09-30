@@ -208,6 +208,27 @@ installed separately, so check what is present rather than assuming.
 ## Working style
 
 - **Clarification first.** If a prompt is ambiguous or lacks context, ask a brief, targeted question before generating a long solution.
-- **Zero guesswork.** Do not invent APIs, libraries, endpoints, or CLI commands. Say so when you lack knowledge, and verify against docs or code first.
+- **Zero guesswork.** Do not invent APIs, libraries, endpoints, or CLI commands. Say so when you lack knowledge, and verify against docs or code first. Concretely — read first, write second — when any of these fire:
+  - An error mentions deprecation, an unknown or undocumented option, a missing export, invalid config, an unsupported field, a changed default, or a version mismatch.
+  - You are about to write "usually", "probably", "I think", "from memory", or "as far as I know" about how something behaves.
+  - The choice is expensive to reverse: a public wire format, a database schema, a migration strategy, persistent IDs, event or topic names, an auth flow, a public CLI surface.
+  - You are adding a dependency, or calling an endpoint you have not seen in the code, its README, or its docs in *this* session.
+
+  **Source hierarchy — highest first:** local ADRs, schemas, and generated types → the project's own source and tests → the official documentation for the exact installed version → the changelog → inference. Inference is the last resort, never the first, and never the only one.
+
+  **Name the source.** When you consulted documentation to answer or build something, say which one in the response (`Read: <url or path>`). An unverified claim and a verified claim must not look the same on the page.
 - **Minimal comments.** Explain *why* for non-obvious logic, never *what*. Self-documenting code over commentary.
 - **API/MCP first.** Before requesting a manual action — redeploying a service, changing repo settings — check whether an API, CLI, or MCP tool can do it.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository has a generated `openwiki/` evidence index. It is optional just-in-time context, not required startup reading.
+
+- Treat source code and tests as authoritative. A brief's unknowns and review items are verification gaps, not automatic requirements.
+- Prefer the narrowest quiet validation that proves the changed behavior. Preserve complete failure output.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->
