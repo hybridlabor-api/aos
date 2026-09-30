@@ -85,6 +85,18 @@ function hash(content) {
   return createHash('sha256').update(content).digest('hex');
 }
 
+// Blobs at the pinned commit (the checkout is that commit); only multi-file skills record a list to keep the index small.
+function skillFiles(dir) {
+  const out = runGit(['ls-tree', '-r', '-z', 'HEAD', `${dir}/`]).split('\0').filter(Boolean).map((line) => {
+    const [meta, path] = line.split('\t');
+    const [mode, kind] = meta.split(' ');
+    if (kind !== 'blob' || mode === '120000') throw new Error(`Unsupported entry in ${dir}: ${line}`);
+    const data = readFileSync(join(checkout, path));
+    return { path: path.slice(dir.length + 1), sha256: hash(data), size: data.length, exec: mode === '100755' };
+  });
+  return out.sort((a, b) => (a.path < b.path ? -1 : 1));
+}
+
 function itemFromFile(file, type) {
   const content = readFileSync(file, 'utf8');
   const name = type === 'skills'
@@ -102,6 +114,10 @@ function itemFromFile(file, type) {
     sha256: hash(content),
     upstream_path: relative(checkout, file).split(sep).join('/'),
   };
+  if (type === 'skills') {
+    const files = skillFiles(dirname(base.upstream_path));
+    if (files.length > 1) base.files = files;
+  }
   return { name, item: base, warnings: compatibilityWarnings(content) };
 }
 
@@ -139,7 +155,7 @@ try {
     subagents: Object.fromEntries(Object.entries(subagents).sort(([a], [b]) => a.localeCompare(b))),
   };
   const output = JSON.stringify(index) + '\n';
-  if (Buffer.byteLength(output) >= 100 * 1024) throw new Error(`Store index exceeds 100 KB: ${Buffer.byteLength(output)} bytes`);
+  if (Buffer.byteLength(output) >= 300 * 1024) throw new Error(`Store index exceeds 300 KB: ${Buffer.byteLength(output)} bytes`);
   writeFileSync(OUTPUT_PATH, output);
   console.log(`Wrote ${OUTPUT_PATH} with ${Object.keys(skills).length} skills and ${Object.keys(subagents).length} subagents (${Buffer.byteLength(output)} bytes).`);
 } finally {

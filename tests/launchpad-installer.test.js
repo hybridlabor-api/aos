@@ -142,3 +142,33 @@ describe('dashboard promotion', () => {
         assert.match(installerSrc, /spawn\('explorer', \[filePath\]/);
     });
 });
+
+describe('AOS Store card on launchpad', () => {
+    test('store card is present in generated launchpad HTML', () => {
+        assert.match(installerSrc, /AOS Store/);
+        assert.match(installerSrc, /Browse & install skills and agents/);
+    });
+
+    test('store card has correct port pill and status dot', () => {
+        assert.match(installerSrc, /:4322/);
+        assert.match(installerSrc, /id="dot-store"/);
+    });
+
+    test('store card has correct href', () => {
+        assert.match(installerSrc, /href="http:\/\/127\.0\.0\.1:4322"/);
+    });
+
+    test('checkHealth is called for store endpoint on port 4322', () => {
+        assert.match(installerSrc, /checkHealth\('http:\/\/127\.0\.0\.1:4322', 'dot-store'\)/);
+    });
+
+    test('store is not in LAUNCHPAD_WEB_MODULES (on-demand service)', () => {
+        assert.match(installerSrc, /const LAUNCHPAD_WEB_MODULES = \['memb', 'synapse', 'openwiki', 'ao', 'remote'\]/);
+        assert.ok(!installerSrc.match(/LAUNCHPAD_WEB_MODULES.*'store'/), 'store should not be in LAUNCHPAD_WEB_MODULES');
+    });
+
+    test('store card has offline hint', () => {
+        assert.match(installerSrc, /offline — run: aos-store ui/);
+        assert.match(installerSrc, /\.card-hint/);
+    });
+});

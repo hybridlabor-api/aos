@@ -16,7 +16,7 @@
         "url": "https://github.com/hybridlabor-api/aos.git"
       },
       "description": "Full BDB Agent OS suite: 200+ curated skills, subagents, startcycle pipeline, CI/CD workflows and security hooks for Claude Code.",
-      "version": "4.10.0",
+      "version": "4.11.0",
       "strict": true
     }
   ]
