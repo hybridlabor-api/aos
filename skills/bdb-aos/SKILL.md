@@ -1,5 +1,6 @@
 ---
 name: bdb-aos
+category: bdb-core
 description: >-
   Entry point for the BDB Agent OS suite installed as a Claude Code plugin.
   Use to find out which of the 200+ AOS skills, the seven startcycle subagents,
