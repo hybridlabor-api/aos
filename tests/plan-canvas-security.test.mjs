@@ -133,6 +133,23 @@ describe('Plan-Canvas request provenance', () => {
     assert.match(r.body, /forbidden fetch site/);
   });
 
+  test('the sandboxed artifact iframe can still load the sdk and sibling assets', async () => {
+    // The canvas iframe has no allow-same-origin, so its subresource requests
+    // are labelled Sec-Fetch-Site: cross-site. Read-only static paths must stay served.
+    const sdk = await rawRequest(port, { method: 'GET', pathName: '/sdk.js', body: '', headers: { 'sec-fetch-site': 'cross-site' } });
+    assert.equal(sdk.status, 200);
+    const asset = await rawRequest(port, { method: 'GET', pathName: '/artifact/aaaaaaaaaaaa/logo.png', body: '', headers: { 'sec-fetch-site': 'cross-site' } });
+    assert.notEqual(asset.status, 403, 'a missing asset is 404, never a fetch-site refusal');
+  });
+
+  test('cross-site is still refused for API, canvas pages and state changes', async () => {
+    const cross = { 'sec-fetch-site': 'cross-site' };
+    assert.equal((await rawRequest(port, { method: 'GET', pathName: '/api/sessions', body: '', headers: cross })).status, 403);
+    assert.equal((await rawRequest(port, { method: 'GET', pathName: '/canvas/aaaaaaaaaaaa', body: '', headers: cross })).status, 403);
+    assert.equal((await rawRequest(port, { method: 'POST', pathName: '/api/end', headers: cross })).status, 403);
+    assert.equal((await rawRequest(port, { method: 'POST', pathName: '/sdk.js', headers: cross })).status, 403);
+  });
+
   test('shutdown and feedback endpoints are covered by the same gate', async () => {
     const other = { origin: `http://localhost:${port + 1}` };
     assert.equal((await rawRequest(port, { pathName: '/shutdown', headers: other })).status, 403);

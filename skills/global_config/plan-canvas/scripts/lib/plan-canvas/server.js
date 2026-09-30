@@ -130,6 +130,8 @@ function sendHtml(res, statusCode, html, { csp = true } = {}) {
   res.end(html);
 }
 
+const STATIC_READ_PATH = /^\/(sdk\.js|artifact\/[a-f0-9]{12}\/.*)$/;
+
 function createPlanCanvasServer({
   store,
   host = DEFAULT_HOST,
@@ -563,11 +565,15 @@ function createPlanCanvasServer({
     if (!isAllowedOrigin(req.headers.origin, allowedHostnames, boundPort)) {
       return sendJson(res, 403, { error: 'forbidden origin' });
     }
-    if (!isAllowedFetchSite(req.headers['sec-fetch-site'])) {
-      return sendJson(res, 403, { error: 'forbidden fetch site' });
-    }
     const url = new URL(req.url, `http://${req.headers.host}`);
     const { pathname } = url;
+    // The artifact iframe is sandboxed without allow-same-origin, so its script
+    // and asset loads arrive as Sec-Fetch-Site: cross-site. Only those read-only
+    // static paths may skip the fetch-site check; everything else keeps it.
+    const isStaticRead = req.method === 'GET' && STATIC_READ_PATH.test(pathname);
+    if (!isStaticRead && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
+      return sendJson(res, 403, { error: 'forbidden fetch site' });
+    }
 
     Promise.resolve()
       .then(() => {
