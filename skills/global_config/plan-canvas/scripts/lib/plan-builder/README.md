@@ -99,8 +99,7 @@ becomes a warning and the raw text is kept.
 A `<Screen>` (or `<FrameScreen>`) without an `html` prop whose children are tags
 renders the kit below as plain markup in the page (no iframe). Low-fi look:
 muted greys on dark, 1px borders, the BDB accent only for `active`/`primary`/done
-states, and a hand-drawn font stack from local fonts only (`Segoe Print`,
-`Bradley Hand`, `Marker Felt`, `cursive`). An empty `<Screen>` renders an empty frame.
+states, and the same UI font stack as plan-canvas and the AOS store (no handwriting font). An empty `<Screen>` renders an empty frame.
 
 | Tag | Props | Renders |
 |---|---|---|
@@ -110,7 +109,7 @@ states, and a hand-drawn font stack from local fonts only (`Segoe Print`,
 | `IconSquare` | `active` | small rounded square, accent when active |
 | `Divider`, `StatusBar` | | rule; phone status strip |
 | `TaskRow` | `title`, `done`, `note` | checkbox row |
-| `Text` | `value` (or children), `tone="muted"`, `weight="bold"` | handwritten text |
+| `Text` | `value` (or children), `tone="muted"`, `weight="bold"` | wireframe text |
 | `Title`, `SectionLabel`, `Btn`, `Chips` | `text`, `label`, `label`/`primary`, `items[]` | heading, caps label, button, chip row |
 | `Skeleton` | `lines` + `widths`, or `width`/`height` | placeholder bars |
 

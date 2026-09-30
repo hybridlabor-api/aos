@@ -299,10 +299,10 @@ pre.mermaid.mermaid-unrendered::before {
 @media (max-width: 900px) { body.board-only .sidenav { display: none; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 
-/* ---------- wireframe kit (low-fi, hand-drawn text, local fonts only) ---------- */
+/* ---------- wireframe kit (low-fi; same UI font as plan-canvas and the AOS store) ---------- */
 
 .kit-screen {
-  --sketch: 'Segoe Print', 'Bradley Hand', 'Marker Felt', cursive;
+  --sketch: var(--font);
   --k-line: #4a4a4a; --k-fill: #2a2a2a; --k-mute: #8a8a8a;
   display: flex; flex-direction: column; gap: 10px; padding: 14px; height: 100%;
   background: #0d0d0d; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden;
