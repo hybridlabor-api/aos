@@ -2609,10 +2609,7 @@ async function installOSAgentWorkspace() {
     if (daemonBin !== binTarget) {
         installStep('place the ao binary', () => {
             fs.mkdirSync(localBinDir, { recursive: true });
-            fs.copyFileSync(daemonBin, binTarget);
-            if (!isWin) {
-                fs.chmodSync(binTarget, 0o755);
-            }
+            installBinaryAtomically(daemonBin, binTarget);
             log.step(`Installed ao to ${binTarget}`);
         }, 'AO cannot be started without its binary.');
     }
@@ -5250,7 +5247,41 @@ function installAosCli() {
     }
 }
 
+// A running daemon may execute dest; overwriting its inode keeps stale code-signature
+// state on macOS and every new exec dies with SIGKILL. Rename gives dest a fresh inode.
+function installBinaryAtomically(src, dest) {
+    const tmp = path.join(path.dirname(dest), `.${path.basename(dest)}.${process.pid}.${Date.now()}.tmp`);
+    try {
+        fs.copyFileSync(src, tmp);
+        if (process.platform !== 'win32') fs.chmodSync(tmp, 0o755);
+        fs.renameSync(tmp, dest);
+    } catch (e) {
+        try { fs.unlinkSync(tmp); } catch (_) {}
+        throw e;
+    }
+}
+
 async function main() {
+    const args = process.argv.slice(2);
+    if (args.includes('--version') || args.includes('-V')) {
+        console.log(pkg.version);
+        return;
+    }
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(`Usage: aos [command] [options]
+
+Commands:
+  store            Browse and install skills
+  doctor|checkup   Check the installation
+
+Options:
+  -y, --yes        Non-interactive install (implied without a TTY)
+  --dry-run        Show what would change
+  --verbose, -v    Verbose output
+  -V, --version    Print the version and exit
+  -h, --help       Print this help and exit`);
+        return;
+    }
     if (process.argv[2] === 'store') {
         const storeScript = path.join(srcDir, 'bin', 'aos-store.mjs');
         const result = spawnSync(process.execPath, [storeScript, ...process.argv.slice(3)], { stdio: 'inherit' });
@@ -5704,6 +5735,7 @@ if (require.main === module) {
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    installBinaryAtomically,
     installOSAgentWorkspace,
     downloadOrUpdateModule,
     detectPlatforms,

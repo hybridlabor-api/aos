@@ -147,7 +147,7 @@ deliberately stays on 4.1.0, so nobody receives this without asking for it.
   package. Now installs into `~/.openwiki/venv` and pins the launcher, the key check and
   the printed cron fallback to that same interpreter.
 - **Delegation policy, documented for the first time.** AOS had none: the plugin
-  delegation subagents (`antigravity:antigravity-delegate`, `opencode:opencode-rescue`,
+  delegation subagents (`antigravity:delegate`, `opencode:opencode-rescue`,
   `codex:codex-rescue`) were mentioned nowhere, and the only place delegation appeared
   described it purely as raw shell calls. Three rules now in `CLAUDE.md`, `AGENTS.md` and
   `GEMINI.md`: prefer a plugin's subagent over shelling out; delegate only above the

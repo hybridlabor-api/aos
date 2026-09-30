@@ -69,7 +69,7 @@ subagent exists:
 
 | CLI | Plugin subagent (preferred) | Raw fallback |
 |---|---|---|
-| agy | `antigravity:antigravity-delegate` | `agy-job start --tier flash [--yolo] "<task>"` |
+| agy | `antigravity:delegate` | `agy-job start --tier flash [--yolo] "<task>"` |
 | opencode | `opencode:opencode-rescue` | the CLI's own session primitive |
 | codex | `codex:codex-rescue` | the Codex CLI's task-delegation surface |
 

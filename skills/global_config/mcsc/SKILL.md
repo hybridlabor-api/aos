@@ -15,7 +15,7 @@ AOS-installed repo — not a Claude-Code-only convenience.
 ## Why this exists
 
 Three separate, harness-specific delegation paths already exist (the Claude
-Code plugins `antigravity:antigravity-delegate`, `opencode:opencode-rescue`,
+Code plugins `antigravity:delegate`, `opencode:opencode-rescue`,
 `codex:codex-rescue` — see AGENTS.md's "Delegating to an external CLI"). Those
 are fine for interactive delegation *from a Claude Code session*, but they are
 Claude-Code-only, and none of them tell agenttrail's live board what is

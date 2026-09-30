@@ -64,16 +64,15 @@ async function init() {
 
   const customRulebook = path.resolve(process.cwd(), 'rulebook.yaml');
   const defaultRulebook = path.resolve(__dirname, '../core/rulebook.default.yaml');
-  const rulebookPath = fs.existsSync(customRulebook) ? customRulebook : defaultRulebook;
 
   try {
-    if (fs.existsSync(rulebookPath)) {
-      rules = loadRulebook(rulebookPath);
-      const now = Date.now();
-      offerTable = await buildOfferTable(rules, inventory, now);
-    }
+    rules = await loadRulebook({
+      defaultsPath: defaultRulebook,
+      overridePath: fs.existsSync(customRulebook) ? customRulebook : undefined,
+    });
+    offerTable = await buildOfferTable(rules, inventory, Date.now());
   } catch (e) {
-    console.error(`[mcsc-mcp] Warning: could not load rulebook from ${rulebookPath}: ${e.message}`);
+    console.error(`[mcsc-mcp] Warning: could not load rulebook from ${defaultRulebook}: ${e.message}`);
   }
 }
 
