@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-// Generates .claude-plugin/plugin.json and the plugin-root agents/ directory.
+// Generates .claude-plugin/plugin.json, the plugin-root agents/ directory and the
+// subfolder plugin plugins/bdb-aos/ (same manifest data + skills/agents symlinks
+// into the repo root, so the marketplace install cache stays small).
 //
 // Claude Code resolves plugin components two different ways, and only one of
 // them is obvious:
@@ -21,7 +23,7 @@
 //
 // Usage: node scripts/build-plugin-manifest.mjs [--check]
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -94,9 +96,20 @@ const manifest = {
   skills,
 };
 
-const target = join(ROOT, '.claude-plugin', 'plugin.json');
 const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
-const current = existsSync(target) ? readFileSync(target, 'utf8') : '';
+const SUBDIR = join(ROOT, 'plugins', 'bdb-aos');
+// Both manifests come from the same data; the subfolder one resolves the same
+// ./skills/... paths through its symlinks.
+const targets = [
+  join(ROOT, '.claude-plugin', 'plugin.json'),
+  join(SUBDIR, '.claude-plugin', 'plugin.json'),
+];
+const stale = targets.filter((t) => !existsSync(t) || readFileSync(t, 'utf8') !== serialized);
+const links = { skills: '../../skills', agents: '../../agents' };
+const badLinks = Object.entries(links).filter(([name, to]) => {
+  const path = join(SUBDIR, name);
+  return !existsSync(path) || !lstatSync(path).isSymbolicLink() || readlinkSync(path) !== to;
+});
 
 // `claude plugin tag` refuses to cut a release unless plugin.json and the
 // enclosing marketplace entry agree on the version, so the marketplace copy of
@@ -110,8 +123,12 @@ const marketSerialized = `${JSON.stringify(market, null, 2)}\n`;
 const marketCurrent = readFileSync(marketPath, 'utf8');
 
 if (CHECK) {
-  if (current !== serialized) {
-    console.error('plugin.json is out of date — run: node scripts/build-plugin-manifest.mjs');
+  if (stale.length > 0) {
+    console.error(`plugin.json is out of date (${stale.map((t) => relative(ROOT, t)).join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
+    process.exit(1);
+  }
+  if (badLinks.length > 0) {
+    console.error(`plugins/bdb-aos symlinks missing or wrong (${badLinks.map(([n]) => n).join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
   if (marketCurrent !== marketSerialized) {
@@ -122,10 +139,16 @@ if (CHECK) {
     console.error(`agents/ is out of date (${drift.join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
-  console.log(`plugin manifest up to date: ${skills.length} skills, ${agentNames.length} agents`);
+  console.log(`plugin manifests up to date: ${skills.length} skills, ${agentNames.length} agents`);
 } else {
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, serialized);
+  for (const t of targets) {
+    mkdirSync(dirname(t), { recursive: true });
+    writeFileSync(t, serialized);
+  }
+  for (const [name, to] of badLinks) {
+    rmSync(join(SUBDIR, name), { force: true });
+    symlinkSync(to, join(SUBDIR, name));
+  }
   writeFileSync(marketPath, marketSerialized);
-  console.log(`Wrote .claude-plugin/plugin.json with ${skills.length} skills and ${agentNames.length} agents`);
+  console.log(`Wrote 2 plugin.json files with ${skills.length} skills and ${agentNames.length} agents`);
 }
