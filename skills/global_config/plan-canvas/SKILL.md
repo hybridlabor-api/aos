@@ -3,7 +3,7 @@ name: plan-canvas
 description: Open plans and HTML artifacts in a local browser canvas where the human annotates elements, chats, and approves or requests changes without leaving the page. Use when presenting a plan for review, or when feedback like "move this, change that" is easier pointed at than typed.
 category: bdb-core
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   origin: affaan-m/ECC
   license: MIT
 ---
@@ -28,6 +28,10 @@ AOS from [affaan-m/ECC](https://github.com/affaan-m/ECC).
   decision — the canvas verdict replaces a typed "yes/proceed".
 - **Mandatory, not optional**, at the end of `bdbrainstorm` (before writing
   `state.goal` / handing off to `/startcycle-graph`) and `bdbmediastorm`
+- **Visual Extensions (BuilderIO Integration):** When generating plans, always ask the human which Canvas version they prefer:
+  - **Plan-Canvas Preview**: Standard markdown/html review.
+  - **Archify Canvas**: For strict architecture schema validation.
+  - **Visual Ecosystem**: Use `/visual-plan` (turn text plans into rich visual plans), `/visual-recap` (turn diffs into interactive visual recaps), or `/visual-edit` (open a running local app for visual editing).
   (before the show-control architecture is considered final) — both produce
   a plan/spec artifact a human must approve before anything downstream
   proceeds. See each skill's own "Plan Canvas Review" section.

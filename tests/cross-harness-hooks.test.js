@@ -332,11 +332,11 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
-        test('hook carries version stamp 5', () => {
+        test('hook carries version stamp 6', () => {
             const content = fs.readFileSync(MEMB_INJECT_SRC, 'utf8');
             const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
             assert.ok(m, 'memb-inject.mjs must contain aos-hook-version header');
-            assert.equal(m[1], '5', `Expected version 5, got ${m[1]}`);
+            assert.equal(m[1], '6', `Expected version 6, got ${m[1]}`);
         });
 
         test('parses Antigravity workspacePaths input and returns tri-format JSON', () => {
@@ -453,12 +453,12 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 'SKILL.md must not claim only Claude Code has hooks');
         });
 
-        test('aos-doctor.mjs expects hook version 5 for memb-inject.mjs', () => {
+        test('aos-doctor.mjs expects hook version 6 for memb-inject.mjs', () => {
             assert.ok(fs.existsSync(DOCTOR_SRC), 'aos-doctor.mjs must exist');
             const doc = fs.readFileSync(DOCTOR_SRC, 'utf8');
 
-            assert.ok(/'memb-inject\.mjs':\s*5\b/.test(doc),
-                'EXPECTED_VERSION in aos-doctor.mjs must specify 5 for memb-inject.mjs');
+            assert.ok(/'memb-inject\.mjs':\s*6\b/.test(doc),
+                'EXPECTED_VERSION in aos-doctor.mjs must specify 6 for memb-inject.mjs');
         });
 
         test('aos-doctor.mjs inspects hook wiring across detected harnesses', () => {

@@ -37,7 +37,7 @@ const {
   resolvePort
 } = require('./lib/plan-canvas/server');
 
-const VERSION = '1.0.0';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
+const VERSION = '1.0.1';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
                            // Bump when the vendored JS changes, to force a stale detached server to restart.
 
 const SAFE_REQUEST_PATHS = new Set([

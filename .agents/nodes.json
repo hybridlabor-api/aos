@@ -12,6 +12,7 @@
       "writes": null,
       "optional": false,
       "skills": [
+        "read-the-damn-docs",
         "bdbrainstorm",
         "planning-with-files",
         "concise-planning",
@@ -29,6 +30,7 @@
       "writes": null,
       "optional": false,
       "skills": [
+        "read-the-damn-docs",
         "startcycle-graph",
         "agent-pipeline",
         "subagent-driven-development"
