@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.13.1](https://github.com/hybridlabor-api/aos/compare/v4.13.0...v4.13.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **store:** UI crashed with 'reading length' on AOS Core items lacking requires ([#91](https://github.com/hybridlabor-api/aos/issues/91)) ([910a889](https://github.com/hybridlabor-api/aos/commit/910a889a43eeb9dbb30cd181eebf23b3182eed7f))
+
 ## [4.13.0](https://github.com/hybridlabor-api/aos/compare/v4.12.1...v4.13.0) (2026-09-30)
 
 
