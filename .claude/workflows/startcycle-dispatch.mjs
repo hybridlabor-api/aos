@@ -200,7 +200,29 @@ if (inputGoal === null && ambientArgs) {
 // 4. Standalone runtime shims for pipeline() and agent()
 if (typeof globalThis.pipeline === 'undefined') {
   globalThis.pipeline = async function standalonePipeline(items, fn) {
-    return Promise.all(items.map((item) => fn(item)));
+    // Hard cap on parallel children. An unbounded Promise.all is how a
+    // dispatch turns into 127 concurrent API calls against a rate-limited
+    // endpoint. Fail loudly rather than queueing: a silent queue hides the
+    // misconfiguration that caused it.
+    // ponytail: cap is a fixed default, not adaptive. Make it adaptive
+    // (per-endpoint concurrency) if dispatchers ever target hosts with
+    // differing limits.
+    const cap = (() => {
+      const raw = process.env.AOS_MAX_PARALLEL_AGENTS;
+      const n = raw === undefined ? 8 : Number.parseInt(raw, 10);
+      return Number.isInteger(n) && n > 0 ? n : 8;
+    })();
+
+    const list = Array.from(items ?? []);
+    if (list.length > cap) {
+      throw new Error(
+        `Refusing to dispatch ${list.length} parallel agents: AOS_MAX_PARALLEL_AGENTS cap is ${cap}. ` +
+          `Raise the cap explicitly, or reduce the node set. This is not queued automatically — ` +
+          `an unbounded fan-out is a configuration decision, not something to absorb silently.`
+      );
+    }
+
+    return Promise.all(list.map((item) => fn(item)));
   };
 }
 
