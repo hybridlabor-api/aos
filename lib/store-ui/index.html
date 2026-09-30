@@ -31,11 +31,11 @@ main{padding:2.3rem 0 6rem}
 .strip strong{display:block;font-family:var(--serif);font-size:1.9rem;font-weight:500;letter-spacing:-.06em;line-height:1}
 .strip small{color:var(--muted);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;font-weight:850}
 .ledger{display:grid;grid-template-columns:15rem 1fr;gap:2rem;padding-top:2rem}
-.rail{position:sticky;top:3.2rem;align-self:start;display:grid;gap:1rem}
+.rail{position:sticky;top:1rem;align-self:start;display:grid;gap:1rem}
 .rail .chips{flex-direction:column}.rail .chip{text-align:left;border-radius:.6rem;display:flex;justify-content:space-between}
 .rail h1{font-family:var(--serif);font-weight:500;font-size:2.4rem;letter-spacing:-.07em;line-height:.95;margin:0}
 .row{display:grid;grid-template-columns:1.1rem minmax(0,1.3fr) minmax(0,2fr) 6rem 6rem 8rem;gap:1rem;align-items:center;padding:.6rem .8rem;border-bottom:1px solid var(--line);font-size:.8rem}
-.row.head{position:sticky;top:2.1rem;background:var(--paper);z-index:2;color:var(--muted);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;font-weight:850}
+.row.head{position:sticky;top:0;background:var(--paper);z-index:2;color:var(--muted);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;font-weight:850}
 .row .n{font-family:var(--serif);font-size:1rem;letter-spacing:-.03em;overflow:hidden;text-overflow:ellipsis}
 .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--line)}.dot.g{background:var(--green)}
 .rowwrap{background:var(--white);border-left:1px solid var(--line);border-right:1px solid var(--line)}
@@ -109,9 +109,9 @@ async function preview(k){
   try{
     const d=await post('/api/preview',i);
     const ok=d.ok&&d.targets.length;
-    const size=i.totalSize!=null?`, ${(i.totalSize/1024).toFixed(1)} KB per target`:'';
+    const tc=i.fileCount>0?Math.round(d.targets.length/i.fileCount):1;const size=i.totalSize!=null?` = ${i.fileCount} file(s) \u00d7 ${tc} target(s), ${(i.totalSize/1024).toFixed(1)} KB each`:'';
     const warn=i.hasHooks?'<p class="err">Includes hooks \u2014 copied only, NOT registered in your harness settings; the skill may need manual wiring.</p>':'';
-    dlg.innerHTML=`<h2>Add ${esc(i.name)}</h2><p class="kicker">${scopeName()} scope \u2014 will write ${d.targets.length} file(s)${size}</p>${warn}<pre style="max-height:16rem;overflow:auto">${esc(ok?d.targets.join('\n'):(d.stdout+d.stderr).trim())}</pre><p class="cmdnote">Downloads SKILL/agent file from ECC at ${esc(S.data.pinned_commit.slice(0,10))}, verified by SHA-256.</p><div id="res"></div><div class="acts"><button class="button secondary" data-a="close">Cancel</button>${ok?`<button class="button" data-a="confirm" data-v="${esc(k)}">Install to ${scopeName()}</button>`:''}</div>`;
+    dlg.innerHTML=`<h2>Add ${esc(i.name)}</h2><p class="kicker">${scopeName()} scope \u2014 will write ${d.targets.length} file(s)${size}</p>${warn}<pre style="max-height:16rem;overflow:auto">${esc(ok?d.targets.join('\n'):(d.stdout+d.stderr).trim())}</pre><p class="cmdnote">Downloads ${i.fileCount>1?i.fileCount+' files':'the file'} from ECC at ${esc(S.data.pinned_commit.slice(0,10))}, each verified by SHA-256.</p><div id="res"></div><div class="acts"><button class="button secondary" data-a="close">Cancel</button>${ok?`<button class="button" data-a="confirm" data-v="${esc(k)}">Install to ${scopeName()}</button>`:''}</div>`;
     dlg.showModal();
   }catch(e){alert('Preview failed: '+e.message)}
   finally{S.busy=null;render()}
