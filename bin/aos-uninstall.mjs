@@ -244,7 +244,7 @@ function execute(p) {
   if (existsSync(settings)) {
     try {
       const s = JSON.parse(readFileSync(settings, 'utf8'));
-      const bdb = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs'];
+      const bdb = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
       let touched = false;
       for (const [event, entries] of Object.entries(s.hooks || {})) {
         const kept = entries.filter((e) => !(e.hooks || []).some((x) => bdb.some((n) => String(x.command).includes(n))));

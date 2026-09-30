@@ -946,3 +946,62 @@ describe('Tier 5: Adversarial Stress & Integrity', () => {
         assert.ok(duration < 5000, `Large prompt processing took too long: ${duration}ms`);
     });
 });
+
+describe('go-gate fails closed on unparseable input (P1)', () => {
+    const GO_GATE = path.join(REPO_ROOT, '.claude', 'hooks', 'go-gate.mjs');
+    test('non-JSON stdin: exit 2, stderr reason, deny JSON on stdout', () => {
+        const r = runNodeScript(GO_GATE, { input: 'not json' });
+        assert.strictEqual(r.status, 2);
+        assert.match(r.stderr, /could not parse hook input/);
+        assert.strictEqual(JSON.parse(r.stdout).decision, 'deny');
+    });
+    test('empty stdin still allows (documented fail-open)', () => {
+        assert.strictEqual(runNodeScript(GO_GATE, { input: '' }).status, 0);
+    });
+});
+
+describe('Codex hook merge idempotency (P1)', () => {
+    const { mergeCodexTomlHooks } = require('../installer.js');
+    const dupBlock = (n) => Array.from({ length: n }, () => [
+        '[[hooks.PreToolUse]]', 'matcher = "^(Bash|run_command)$"', '[[hooks.PreToolUse.hooks]]',
+        'type = "command"', 'command = "node \\"/old/.codex/hooks/go-gate.mjs\\""', 'timeout = 30', '# AOS:HOOKS:END', '',
+    ].join('\n')).join('\n');
+    const fixture = [
+        '[features]', 'hooks = true', '',
+        '# AOS:HARDWARE:START', '[mcp_servers.kicad]', 'command = "kicad-mcp"', '# AOS:HARDWARE:END', '',
+        '[model]', 'name = "x"', '', dupBlock(8),
+        '[[hooks.PreToolUse]]', 'matcher = "^Mine$"', '[[hooks.PreToolUse.hooks]]', 'type = "command"', 'command = "node /my/own.mjs"', '',
+        '# AOS:HARDWARE2:START', '[tail]', 'k = 1', '',
+    ].join('\n');
+
+    test('dedupes duplicates without START marker, keeps foreign sections, rerun is byte-identical', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-codex-'));
+        try {
+            const p = path.join(dir, '.codex', 'config.toml');
+            fs.mkdirSync(path.dirname(p));
+            fs.writeFileSync(p, fixture);
+            mergeCodexTomlHooks(p);
+            const a = fs.readFileSync(p, 'utf8');
+            assert.strictEqual(a.match(/go-gate\.mjs/g).length, 1);
+            assert.strictEqual(a.match(/# AOS:HOOKS:START/g).length, 1);
+            assert.strictEqual(a.match(/# AOS:HOOKS:END/g).length, 1);
+            for (const keep of ['# AOS:HARDWARE:START', '# AOS:HARDWARE:END', '[mcp_servers.kicad]', '[model]', '/my/own.mjs', '# AOS:HARDWARE2:START', '[tail]']) {
+                assert.ok(a.includes(keep), `lost ${keep}`);
+            }
+            mergeCodexTomlHooks(p);
+            assert.strictEqual(fs.readFileSync(p, 'utf8'), a);
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    test('fresh file and marker-present file are stable too', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-codex-'));
+        try {
+            const p = path.join(dir, 'config.toml');
+            mergeCodexTomlHooks(p);
+            const a = fs.readFileSync(p, 'utf8');
+            mergeCodexTomlHooks(p);
+            assert.strictEqual(fs.readFileSync(p, 'utf8'), a);
+            assert.strictEqual(a.match(/go-gate\.mjs/g).length, 1);
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+});

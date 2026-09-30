@@ -129,9 +129,11 @@ function main() {
     try {
       input = JSON.parse(rawInput);
     } catch (e) {
-      // If we cannot parse hook input, fail closed
-      respond(true, false, `could not parse hook input: ${e.message}`, "unknown");
-      return;
+      // Harness unknown: deny JSON on stdout (Antigravity) plus stderr + exit 2 (Claude Code/Codex) closes every path.
+      const reason = `could not parse hook input: ${e.message}`;
+      console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
+      process.stderr.write(`Blocked by go-gate hook: ${reason}\n`);
+      process.exit(2);
     }
   }
 
