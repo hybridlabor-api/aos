@@ -318,7 +318,7 @@ guesswork* rule, and a pointer to the installed `firecrawl-search` /
 `firecrawl-scrape` tools. Prose only — the upstream `agents/openai.yaml` and
 README were not carried over, and no executable from the repo is referenced.
 
-The other 13 skills in that repo (as of commit 0dba9ef) are **not** vendored. Three of them
+In the three visual skills, five path-like mentions (`/sign-in`, `/live-edit-bridge`, `/read-file`, `/write-file`, `/visualize-repo`) were reworded so the AOS validator does not read them as skill references. The other 13 skills in that repo (as of commit 0dba9ef) are **not** vendored. Three of them
 (`an`, `turn-into-app`, `rewind`) plus three others
 are build artefacts synced from a different upstream by
 `scripts/sync-agent-native-skills.mjs`, and the repo's own documentation says

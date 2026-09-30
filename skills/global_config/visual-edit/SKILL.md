@@ -25,7 +25,7 @@ for a worked onboarding-flow example.
 - If you need to start an Agent-Native framework app yourself, use
   `AUTH_DISABLED=1` with its normal dev command. This is local-only and gives
   the visual editor the framework's dev identity without a user login.
-- If an agent-owned local server redirects a requested screen to `/sign-in`,
+- If an agent-owned local server redirects a requested screen to its sign-in route,
   restart that server with `AUTH_DISABLED=1` and probe the route again before
   opening Design. Never present a sign-in page as the requested screen.
 - Before calling `open-visual-edit`, verify the target URL responds. Start an
@@ -259,8 +259,8 @@ check meaningful URL, hover, focus, scroll, and modal states.
 
 The live-edit bridge is unlocked by a shared secret (the "bridge token") that
 must match on two sides: the local bridge process, and the user's connection row
-in Design (which the browser reads to authorize `/live-edit-bridge`,
-`/read-file`, `/write-file`). Get them to match by letting the
+in Design (which the browser reads to authorize the live-edit-bridge, read-file and
+write-file endpoints). Get them to match by letting the
 `open-visual-edit` action mint the token, then starting the
 bridge with it. This is the only ordering that works for the remote-MCP flow -
 the bridge cannot push its own token to the server without a CLI auth token, so

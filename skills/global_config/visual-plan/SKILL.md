@@ -497,7 +497,7 @@ not hit an OAuth wall:
 npx @agent-native/core@latest skills add visual-plans
 ```
 
-After that, `/visual-plan`, `/visual-recap`, and `/visualize-repo` are the
+After that, `/visual-plan`, `/visual-recap`, and Builder's visualize-repo (not part of AOS) are the
 installed slash commands. If you only need one command, use
 `skills add visual-plan`, `skills add visual-recap`, or
 `skills add visualize-repo` instead. The other planning modes
