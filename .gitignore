@@ -35,3 +35,7 @@ mcps/**/queue.db
 mcps/**/queue.db-shm
 mcps/**/queue.db-wal
 production_artifacts/state.json
+
+# AO project pipeline mapping (role -> harness -> model), written by the AO "AOS Pipeline Wizard".
+# Project-local; must not be baked into the shipped agent files.
+.aos/pipeline.json
