@@ -526,12 +526,24 @@ function loadInstallManifest(customPath = null) {
     return {};
 }
 
+// Temp file in the same directory + rename: a crash mid-write cannot leave a truncated manifest.
+function writeFileAtomic(filePath, data) {
+    const tmp = `${filePath}.${process.pid}.tmp`;
+    try {
+        fs.writeFileSync(tmp, data);
+        fs.renameSync(tmp, filePath);
+    } catch (e) {
+        try { fs.unlinkSync(tmp); } catch (_) {}
+        throw e;
+    }
+}
+
 function saveInstallManifest(manifest, customPath = null) {
     if (DRY_RUN) return;
     const manifestPath = customPath || getInstallManifestPath();
     try {
         fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+        writeFileAtomic(manifestPath, JSON.stringify(manifest, null, 2));
     } catch (e) {
         log.warn(`Could not write install manifest: ${e.message}`);
     }
@@ -978,7 +990,11 @@ function detectInstallState() {
                 } catch (e) { logDebug(e, 'operation'); }
             }
         }
-        if (!localVersion) localVersion = '3.8.0';
+        if (!localVersion) {
+            // ponytail: placeholder only feeds the version display/compare; pruning is driven by the file manifest, not this value.
+            log.step('Previous AOS version is unknown (no manifest); assuming 3.8.0 for the update comparison only.');
+            localVersion = '3.8.0';
+        }
     }
 
     const basePath = scriptDir.includes('_npx') ? path.join(homeDir, '.agents') : path.dirname(srcDir);
@@ -1039,7 +1055,7 @@ function saveManifest(data = {}) {
             platform: process.platform,
             ...data
         });
-        fs.writeFileSync(manifestPath, JSON.stringify(updated, null, 2));
+        writeFileAtomic(manifestPath, JSON.stringify(updated, null, 2));
     } catch (e) { logDebug(e, 'manifest read/parse'); }
 }
 
@@ -1216,6 +1232,20 @@ function syncSkillEntry(fullPath, dirName, targetSkillDir, excludeSkills) {
     } else {
         copyDirRecursiveSync(fullPath, targetSkillDir, excludeSkills);
     }
+}
+
+function redactSecrets(text) {
+    return String(text)
+        .replace(/([\w.-]*(?:key|token|secret|passw(?:or)?d|auth|credential)[\w.-]*\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gi, '$1[redacted]')
+        .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+        .replace(/\b(?:sk|ghp|gho|ghs|xox[a-z])[-_][A-Za-z0-9_-]{16,}/g, '[redacted]');
+}
+
+// execFileSync error -> one message that keeps the child's own stderr/stdout (last 2 KB, redacted).
+function describeExecError(e) {
+    const out = [e && e.stderr, e && e.stdout].map((b) => (b ? b.toString() : '').trim()).filter(Boolean).join('\n');
+    const head = redactSecrets(String((e && e.message) || e).split('\n')[0]).slice(0, 300);
+    return out ? `${head}\n${redactSecrets(out.slice(-2048))}` : head;
 }
 
 function installStep(what, fn, hint) {
@@ -1937,7 +1967,7 @@ async function installMemB(interactive) {
     // banner. Stop at the module that could not be fetched.
     if (!downloadOrUpdateModule('@hybridlabor-api/memb', membDir, 'memB Vector Engine')) {
         log.warn('Skipping memB setup: the module could not be downloaded.');
-        return;
+        return false;
     }
     await installDeja();
     if (DRY_RUN) {
@@ -1945,6 +1975,7 @@ async function installMemB(interactive) {
         return;
     }
 
+    let membOk = true;
     const reqFile = path.join(membDir, 'requirements.txt');
     const serverPy = path.join(membDir, 'src', 'backend', 'server.py');
     if (fs.existsSync(reqFile)) {
@@ -2017,10 +2048,12 @@ async function installMemB(interactive) {
                 );
                 if (repaired && !verifyPythonImports(venvPython, membDir, importCheck)) {
                     log.warn('memB dependency repair did not pass the import check; inspect the venv before starting the daemon.');
+                    membOk = false;
                 }
             }
         } catch (e) {
             log.warn(`Failed memB standalone venv setup: ${e.message}`);
+            membOk = false;
         }
     }
 
@@ -2082,13 +2115,14 @@ async function installMemB(interactive) {
             } catch (e) { logDebug(e, 'windows memb daemon setup'); }
         }
     }
+    return membOk;
 }
 
 async function installSynapse() {
     const synapseDir = path.join(moduleBasePath(), 'bdb-synapse');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-synapse', synapseDir, 'BDB Synapse')) {
         log.warn('Skipping Synapse setup: the module could not be downloaded.');
-        return;
+        return false;
     }
     if (DRY_RUN) {
         log.step('[dry-run] would link synapse binary into ~/.local/bin/synapse + setup background daemon');
@@ -2217,6 +2251,7 @@ async function installSynapse() {
         }
     } else {
         log.warn(`No pre-built binary for this platform. Compile with: cd "${synapseDir}" && go build -o ${binaryName} ./cmd/synapse/`);
+        return false;
     }
 }
 
@@ -2410,7 +2445,7 @@ async function installCreatorExtension() {
     const creatorDir = path.join(moduleBasePath(), 'bdb-dev-creator-extension');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-dev-creator-extension', creatorDir, 'BDB Creator Extension')) {
         log.warn('Skipping Creator Extension setup: the module could not be downloaded.');
-        return;
+        return false;
     }
     if (DRY_RUN) {
         log.step('[dry-run] would run BDB Creator Extension setup');
@@ -2423,6 +2458,7 @@ async function installCreatorExtension() {
             : spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: creatorDir });
         if (setupResult.status !== 0) {
             log.warn(`Creator Extension setup note: exit code ${setupResult.status}`);
+            return false;
         }
     }
 }
@@ -2431,7 +2467,7 @@ async function installHardwarePcb() {
     const hwDir = path.join(moduleBasePath(), 'bdb-hardware-pcb');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-hardware-pcb', hwDir, 'BDB Hardware & PCB (KiCad + OpenSCAD)')) {
         log.warn('Skipping Hardware & PCB setup: the module could not be downloaded.');
-        return;
+        return false;
     }
     if (DRY_RUN) {
         log.step('[dry-run] would run BDB Hardware & PCB setup');
@@ -2442,6 +2478,7 @@ async function installHardwarePcb() {
         const setupResult = spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: hwDir });
         if (setupResult.status !== 0) {
             log.warn(`Hardware & PCB setup note: exit code ${setupResult.status}`);
+            return false;
         }
     }
 }
@@ -2450,7 +2487,7 @@ async function installOSRemoteGateway() {
     const remoteDir = path.join(moduleBasePath(), 'bdb-os-remote');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-os-remote', remoteDir, 'BDB OS Remote Gateway')) {
         log.warn('Skipping OS Remote Gateway setup: the module could not be downloaded.');
-        return;
+        return false;
     }
 }
 
@@ -2458,7 +2495,7 @@ async function installDevToolInstaller() {
     const toolInstallerDir = path.join(moduleBasePath(), 'bdb-dev-tool-installer');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-dev-tool-installer', toolInstallerDir, 'BDB Dev Tool Installer')) {
         log.warn('Skipping Dev Tool Installer setup: the module could not be downloaded.');
-        return;
+        return false;
     }
 }
 
@@ -2470,7 +2507,7 @@ function aoSupportedHere() {
 async function installOSAgentWorkspace() {
     if (!aoSupportedHere()) {
         log.warn(`AO is not supported on ${process.platform}/${process.arch}.`);
-        return;
+        return false;
     }
 
     const isWin = process.platform === 'win32';
@@ -2491,7 +2528,7 @@ async function installOSAgentWorkspace() {
     } else {
         if (!downloadOrUpdateModule('@hybridlabor-api/bdb-agent-orchestrator', osAgentDir, 'BDB Agent Orchestrator')) {
             log.warn('Skipping AO setup: the module could not be downloaded.');
-            return;
+            return false;
         }
     }
     if (DRY_RUN) {
@@ -2566,7 +2603,7 @@ async function installOSAgentWorkspace() {
 
     if (!daemonBin) {
         log.warn(`AO binary missing in ${osAgentDir} — package layout changed or Go build needed.`);
-        return;
+        return false;
     }
 
     if (daemonBin !== binTarget) {
@@ -2602,9 +2639,14 @@ async function installOSAgentWorkspace() {
         }
     }
 
-    installStep('register the AO service', () => {
-        execFileSync(binTarget, ['service', 'install'], { stdio: 'ignore' });
+    const serviceStep = installStep('register the AO service', () => {
+        try {
+            execFileSync(binTarget, ['service', 'install'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) {
+            throw new Error(describeExecError(e));
+        }
     }, 'Start it by hand with: ao service install');
+    if (!serviceStep.ok) return false;
 
     // Windows startup entries fire asynchronously — give the service more time
     const aoTimeout = process.platform === 'win32' ? 20000 : 8000;
@@ -2660,6 +2702,9 @@ async function promptMemBIngestion(mcpCodeTarget) {
 }
 
 function verifyEcosystemInstallation() {
+    for (const f of moduleFailures) {
+        console.log(`  • ${colors.bold}${f.name}${colors.reset} ➔ ${colors.yellow}❌ NOT installed: ${f.reason.split('\n')[0]}${colors.reset}`);
+    }
     const modules = [
         { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', paths: [path.join(moduleBasePath(), 'bdb-synapse')] },
         { name: '2. memB', pkg: '@hybridlabor-api/memb', paths: [path.join(moduleBasePath(), 'memB'), path.join(geminiDir, 'config', 'mcps', 'memb-mcp')] },
@@ -2839,6 +2884,18 @@ function getTierExcludeSkills(tier) {
 // primary write above owns its file wholesale, but a secondary store belongs
 // to another product and is very likely to already hold the user's own
 // servers -- so this merges per server key and never replaces the file.
+// An unattended run has no credentials of its own (empty strings); those must never
+// replace a value the user already has in a server's env block.
+function keepExistingEnvValues(incomingServers, previousServers) {
+    for (const [key, incoming] of Object.entries(incomingServers || {})) {
+        const prevEnv = previousServers && previousServers[key] && previousServers[key].env;
+        if (!incoming || typeof incoming !== 'object' || !incoming.env || !prevEnv || typeof prevEnv !== 'object') continue;
+        for (const [k, v] of Object.entries(incoming.env)) {
+            if (v === '' && typeof prevEnv[k] === 'string' && prevEnv[k] !== '') incoming.env[k] = prevEnv[k];
+        }
+    }
+}
+
 function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
     if (!Array.isArray(extraPaths) || extraPaths.length === 0) return;
 
@@ -2862,7 +2919,9 @@ function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
             }
             const data = existing || {};
             data.mcpServers = data.mcpServers && typeof data.mcpServers === 'object' ? data.mcpServers : {};
-            for (const [key, val] of Object.entries(servers)) data.mcpServers[key] = val;
+            const mirrored = JSON.parse(JSON.stringify(servers));
+            keepExistingEnvValues(mirrored, data.mcpServers);
+            for (const [key, val] of Object.entries(mirrored)) data.mcpServers[key] = val;
             fs.mkdirSync(path.dirname(target), { recursive: true });
             // Carries injected API keys, same as the primary config. The `mode`
             // option only applies when writeFileSync CREATES the file -- an
@@ -3182,6 +3241,7 @@ async function installMcpsForTarget(paths, ctx) {
                     if (!incoming || typeof incoming !== 'object') return;
                     if (!incoming.env && previous.env) incoming.env = previous.env;
                 });
+                keepExistingEnvValues(newServers, oldServers);
                 oldConfig.mcpServers = Object.assign({}, oldServers, newServers);
                 fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2), { mode: 0o600 });
                 try { fs.chmodSync(paths.mcpConfigPath, 0o600); } catch (e) { logDebug(e, 'chmod mcpConfigPath'); }
@@ -4350,13 +4410,33 @@ async function promptOptionalModules(installedModules) {
         required: false
     }));
 
+    return (await runModuleInstalls(allModules, chosen, installedModules)).installed;
+}
+
+// Module installers return false (or throw) on failure; undefined/true mean success.
+// Only successes are recorded, so the manifest never claims a module that is not there.
+const moduleFailures = [];
+async function runModuleInstalls(allModules, chosen, installedModules) {
+    const installed = [];
+    const failed = [];
     for (const mod of allModules) {
-        if (chosen.includes(mod.id)) {
-            await mod.fn();
-            installedModules.push(mod.id);
+        if (!chosen.includes(mod.id)) continue;
+        let reason = null;
+        try {
+            if (await mod.fn() === false) reason = 'installation reported a failure (see warnings above)';
+        } catch (e) {
+            reason = e && e.message ? e.message : String(e);
+        }
+        if (reason === null) {
+            installed.push(mod.id);
+            if (!installedModules.includes(mod.id)) installedModules.push(mod.id);
+        } else {
+            failed.push({ id: mod.id, name: mod.name, reason });
+            moduleFailures.push({ id: mod.id, name: mod.name, reason });
+            log.warn(`${mod.name} was not installed: ${reason}`);
         }
     }
-    return chosen;
+    return { installed, failed };
 }
 
 // Module ids whose daemons ship a web interface or background service worth
@@ -5586,6 +5666,9 @@ module.exports = {
     downloadOrUpdateModule,
     detectPlatforms,
     markPlatformsExplicit,
+    runModuleInstalls,
+    describeExecError,
+    keepExistingEnvValues,
     mergeBdbSettingsHooks,
     mergeAntigravityHooks,
     mergeCodexTomlHooks,
