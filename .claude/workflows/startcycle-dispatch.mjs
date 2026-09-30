@@ -545,15 +545,20 @@ function reviewerStateNote() {
   );
 }
 
-// Injects each node's registry-declared skills as an explicit allowlist.
+// Skills every node should know about (registry `common`), set once the registry is loaded.
+let commonSkills = [];
+
+// Injects the node's registry-declared skills plus the shared `common` set as
+// the preferred skills. Other installed skills stay usable when they fit.
 // Applies to every node, build and sequential alike.
 function skillsNote(node) {
-  const skills = Array.isArray(node?.skills) ? node.skills : [];
+  const own = Array.isArray(node?.skills) ? node.skills : [];
+  const skills = [...new Set([...commonSkills, ...own])];
   const parts = [];
   if (skills.length > 0) {
     parts.push(
-      ` Use these skills for this work: ${skills.join(', ')}. ` +
-      'Do not reach for skills outside this list unless the task genuinely requires it.'
+      ` Prefer these skills for this work: ${skills.join(', ')}. ` +
+      'Any other installed skill may be used when the task genuinely calls for it.'
     );
   }
   // A --skill flag is a hard requirement from the user, not the registry's
@@ -693,6 +698,7 @@ const REGISTRY_SCHEMA = {
   properties: {
     version: { type: 'number' },
     description: { type: 'string' },
+    common: { type: 'array', items: { type: 'string' } },
     nodes: {
       type: 'object',
       minProperties: 1,
@@ -733,6 +739,7 @@ const registryResult = await agent(
 );
 
 const registryNodes = registryResult?.nodes ?? {};
+commonSkills = Array.isArray(registryResult?.common) ? registryResult.common.filter((s) => typeof s === 'string') : [];
 const missingNodeIds = REQUIRED_NODE_IDS.filter((id) => !registryNodes[id]);
 if (missingNodeIds.length > 0) {
   return await escalate(
