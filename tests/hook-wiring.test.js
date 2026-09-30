@@ -257,3 +257,42 @@ describe('global settings merge (P1)', () => {
         assert.ok(JSON.parse(fs.readFileSync(path.join(home, bak), 'utf8')));
     });
 });
+
+describe('hook install/uninstall round trip (P1)', () => {
+    test('uninstall removes exactly the AOS hook files and settings entries, keeps user entries', () => {
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bdb-roundtrip-'));
+        const shim = fs.mkdtempSync(path.join(os.tmpdir(), 'bdb-npm-shim-'));
+        try {
+            // Fake npm: uninstall must never reach the real global npm.
+            fs.writeFileSync(path.join(shim, 'npm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+            const env = { ...process.env, HOME: home, USERPROFILE: home, PATH: `${shim}${path.delimiter}${process.env.PATH}` };
+            const claude = path.join(home, '.claude');
+            fs.mkdirSync(claude, { recursive: true });
+            const userHook = { type: 'command', command: 'node /my/own/hook.mjs' };
+            fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({
+                theme: 'dark',
+                hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [userHook] }] },
+            }));
+            const installer = JSON.stringify(path.join(REPO, 'installer.js'));
+            execFileSync(process.execPath, ['-e', `
+                const i = require(${installer});
+                i.initSessionManifest({}, []);
+                i.installGlobalHooks();
+                i.flushSessionManifest();`], { env, stdio: 'ignore' });
+
+            const hookFiles = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+            for (const f of hookFiles) assert.ok(fs.existsSync(path.join(claude, 'hooks', f)), `install missing ${f}`);
+
+            execFileSync(process.execPath, [path.join(REPO, 'bin', 'aos-uninstall.mjs'), '--yes'], { env, stdio: 'ignore' });
+
+            const s = readSettings(path.join(claude, 'settings.json'));
+            assert.equal(s.theme, 'dark');
+            const left = Object.values(s.hooks).flat().flatMap((e) => e.hooks.map((h) => h.command));
+            assert.deepEqual(left, [userHook.command]);
+            for (const f of hookFiles) assert.ok(!fs.existsSync(path.join(claude, 'hooks', f)), `uninstall left ${f}`);
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true });
+            fs.rmSync(shim, { recursive: true, force: true });
+        }
+    });
+});
