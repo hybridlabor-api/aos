@@ -287,6 +287,24 @@ the upstream offensive exploit content is stripped and not carried over.
 
 ---
 
+## talkvalue/event-agency-skills
+
+<https://github.com/talkvalue/event-agency-skills> — Apache-2.0.
+Copyright talkvalue contributors. Upstream carries no explicit copyright line
+in `README.md`, `CONTRIBUTING.md`, or the plugin manifests; the attribution
+above is the repository's own `LICENSE` grant.
+
+Prose techniques adapted into `skills/basic/bdb-eventagency-skill/SKILL.md`:
+stakeholder-type inbox classification with temporal priority overrides,
+vendor-type failure-impact tiers, phase-based escalation thresholds
+(T-30 → show day), BLOCKED-means-ours item semantics, the speaker materials
+deadline framework (D-30 / D-21 / D-14 / D-7 / D-1), and post-event
+performance-tier reporting. Upstream scripts, Composio tool bindings, and all
+Python were not carried over; the skill is self-contained prose with no
+dependency.
+
+---
+
 ## Note on `mcps/`
 
 Sub-repositories vendored under `mcps/` carry their own `LICENSE` files in
