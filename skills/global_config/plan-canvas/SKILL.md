@@ -28,16 +28,13 @@ AOS from [affaan-m/ECC](https://github.com/affaan-m/ECC).
   decision — the canvas verdict replaces a typed "yes/proceed".
 - **Mandatory, not optional**, at the end of `bdbrainstorm` (before writing
   `state.goal` / handing off to `/startcycle-graph`) and `bdbmediastorm`
-- **Visual Extensions (BuilderIO Integration):** When generating plans, always ask the human which Canvas version they prefer:
-  - **Plan-Canvas Preview**: Standard markdown/html review.
-  - **Archify Canvas**: For strict architecture schema validation.
-  - **Visual Ecosystem**: Use `/visual-plan` (turn text plans into rich visual plans), `/visual-recap` (turn diffs into interactive visual recaps), or `/visual-edit` (open a running local app for visual editing).
   (before the show-control architecture is considered final) — both produce
   a plan/spec artifact a human must approve before anything downstream
   proceeds. See each skill's own "Plan Canvas Review" section.
 - The user should *point at* what to change: reviewing designs, comparisons,
   reports, or any local `.md` / `.html` artifact.
 - The user asks for a visual review, or "open it in the browser".
+- The artifact is an Archify diagram (the standalone HTML that `archify` produces): `.html` artifacts render as-is with the annotation layer, so architecture reviews use the same loop.
 
 This tool is a plain Node CLI speaking JSON over a loopback HTTP server —
 it has no dependency on which agent harness invokes it (Claude Code, Codex,
