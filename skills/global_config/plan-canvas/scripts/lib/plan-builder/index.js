@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { parseMdx } = require('./mdx');
-const { renderBoard, renderDocument, page } = require('./render');
+const { renderBoard, renderDocument, prototypeHint, page } = require('./render');
 const { slugify } = require('../plan-canvas/markdown');
 
 const PLAN_FILE = 'plan.mdx';
@@ -48,11 +48,13 @@ function readIfPresent(dir, file, warnings) {
  */
 function renderPlanSource(source = {}) {
   const warnings = [];
-  const ctx = { warnings, headings: [], ids: new Map(), hasMermaid: false, boards: 0, docBlocks: 0 };
+  const ctx = { warnings, headings: [], ids: new Map(), hasMermaid: false, boards: 0, docBlocks: 0, dir: source.dir || null };
   const sections = [];
+  const allBlocks = [];
 
   const render = (mdx, heading, asBoard) => {
     const blocks = parseMdx(text(mdx));
+    allBlocks.push(...blocks);
     for (const warning of blocks.warnings || []) warnings.push(warning);
     if (heading) {
       const id = uniqueHeading(heading, ctx);
@@ -69,6 +71,8 @@ function renderPlanSource(source = {}) {
     if (!text(mdx)) continue;
     render(mdx, extra.title, extra.board);
   }
+
+  sections.push(prototypeHint(allBlocks, frontmatter));
 
   const state = source.state && typeof source.state === 'object' ? source.state : {};
   const kind = text(frontmatter.kind) || text(state.kind);
@@ -153,7 +157,7 @@ function renderPlanFolder(dirOrFile) {
     return { error: `could not read ${planPath}: ${error.message}`, warnings };
   }
 
-  const source = { plan: planText };
+  const source = { plan: planText, dir };
   for (const extra of OPTIONAL_SOURCES) {
     const mdx = readIfPresent(dir, extra.file, warnings);
     if (mdx) source[extra.key] = mdx;

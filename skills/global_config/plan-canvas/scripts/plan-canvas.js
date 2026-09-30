@@ -59,6 +59,7 @@ function usage() {
     '  aos-plan-canvas                  Show server status and sessions',
     '  aos-plan-canvas modes            List available planning modes as JSON',
     '  aos-plan-canvas open <file>      Open (or resume) a review session',
+    '  aos-plan-canvas trail <plan-dir|plan.mdx>  Write an agenttrail plan file from a plan folder',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
     '  aos-plan-canvas pending          Show feedback queued for no listener',
     '  aos-plan-canvas typing <file>    Show a thinking/typing indicator in chat',
@@ -72,6 +73,8 @@ function usage() {
     '                   plan.mdx and opens that file instead',
     '         --no-open      Do not launch a browser window',
     '         --reopen       Reopen a session the user ended from the browser',
+    '  trail: --out <file>   Output inside the workspace (default production_artifacts/00_execution_plan.md)',
+    '         --force        Overwrite an existing output file',
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
     '         --timeout-ms <n>  Return {status:"waiting"} after n ms (tests/debug only)',
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
@@ -514,6 +517,17 @@ async function main(argv = process.argv.slice(2)) {
         return 2;
       }
       output(result);
+    }
+    else if (command === 'trail') {
+      const { writeTrail, TrailError } = require('./lib/plan-builder/trail');
+      try {
+        output(writeTrail(args[0], { out: valueAfter(args, '--out'), force: args.includes('--force') }));
+      } catch (error) {
+        if (!(error instanceof TrailError)) throw error;
+        process.stderr.write(`${error.message}\n`);
+        output({ error: error.message });
+        return 2;
+      }
     }
     else if (command === 'await') output(await cmdAwait(args[0], args, context));
     else if (command === 'pending') output(cmdPending(context));

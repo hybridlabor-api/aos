@@ -65,6 +65,7 @@ The lowercase conceptual names are accepted as aliases.
 | `QuestionForm` (`question-form`) | `title`, `questions[]` with `title`, `mode`, `options[]` | Open Questions card, recommended option marked |
 | `Columns` (`columns`) | `columns[].label` + nested blocks | two-column grid, stacked on phones |
 | `TabsBlock` (`tabs`, `Tabs`) | `tabs[].label` + nested blocks | stacked labelled groups (no click JS — the annotation layer owns clicks) |
+| `Archify` (`archify`) | `src` (relative `.html` inside the plan folder), `label`, `height` | delivered Archify diagram in `<iframe sandbox="allow-scripts">` (never `allow-same-origin`), caption and link row; see [Archify](#archify) |
 | `CustomHtml` (`custom-html`) | `html`, `css`, `label`, `height` | sandboxed frame, **no `allow-scripts`** |
 | `RichText` (`rich-text`) | `title`, markdown children | prose |
 | `Callout` | `tone`, `title`, markdown children | bordered card |
@@ -203,10 +204,41 @@ board-only.
 
 All demo content is invented.
 
+## Archify
+
+`<Archify src="00_architecture.html" label="System" height={560} />` embeds the
+standalone HTML produced by the `archify` skill. `src` is resolved against the
+plan folder and must stay inside it: `..`, absolute paths, URLs and symlink
+escapes show an error card plus a warning, as does a missing file ("file not
+found"), a non-`.html` file, or a file over 5 MB. The page runs in
+`sandbox="allow-scripts"` only (no same-origin, forms, popups or top
+navigation) and a link row opens the file standalone.
+
+## Prototype hint
+
+If any `Artboard` or `Screen` has `surface` `web` or `desktop`, or the `plan.mdx`
+frontmatter says `prototype: suggest`, the document ends with one "Suggested next
+step" callout naming those screens and saying a throwaway prototype can be built
+with the `prototype` skill. It is plain escaped text and starts nothing.
+`prototype: skip`, or a plan with no such screens, omits it.
+
+## Trail export
+
+`aos-plan-canvas trail <plan-dir|plan.mdx> [--out <file>] [--force]` writes an
+agenttrail plan file (`trail.js`) so `aos-trail . --plan <file> --no-open` shows
+the live map after approval. Components: headings tagged `{#id}` and `<Section
+id title>`, in document order across `plan.mdx`, `canvas.mdx`, `prototype.mdx`.
+`needs`: `<Section needs=[...]>` or frontmatter `needs-<id>: a, b`. `files`:
+`<ImplementationMap>` entries. Tasks: `<Checklist>` items (`{#id}` kept, else
+generated). The default output is `production_artifacts/00_execution_plan.md`; it must resolve
+inside the workspace root (cwd), is never overwritten without `--force`, and no
+components means exit 2. Prints `{out, components, tasks, next_step}`.
+
 ## Security
 
 - Everything from the plan is escaped (`escapeHtml`, and `renderMarkdown` escapes
   before any inline rule runs).
+- `Archify` is the one sandbox that allows scripts (`allow-scripts`, no same-origin), for a file read from inside the plan folder.
 - Raw HTML — `custom-html`, `HtmlBlock`, and the `html` of wireframe/diagram blocks — only
   reaches `<iframe sandbox srcdoc=...>` **without `allow-scripts`**.
 - Attribute values are JSON-parsed, never evaluated. Template-literal
@@ -217,6 +249,7 @@ All demo content is invented.
 | File | Role |
 |---|---|
 | `index.js` | `renderPlanFolder` / `renderPlanSource` / re-export `parseMdx` |
+| `trail.js` | agenttrail plan file from a plan folder |
 | `mdx.js` | frontmatter, headings, prose, JSX-like tags; never throws |
 | `render.js` | block → HTML, flow and absolute boards, recap header, Mermaid loader, page shell |
 | `kit.js` | wireframe kit tags → markup |

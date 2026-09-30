@@ -300,6 +300,86 @@ function renderCustomHtml(block) {
   return card(label, sandboxFrame(asText(html), label, { height: block.props.height, css: asText(block.props.css) }));
 }
 
+const ARCHIFY_MAX_BYTES = 5 * 1024 * 1024;
+
+// Returns { file } or { reason } for an <Archify src>; src must stay inside the plan folder.
+function resolveArchifySrc(dir, src) {
+  if (!src) return { reason: 'src is required' };
+  if (!dir) return { reason: 'needs a plan folder on disk to resolve src' };
+  if (src.includes('\0') || path.isAbsolute(src) || /^[a-z][a-z0-9+.-]*:|^[\\/]/i.test(src)) return { reason: 'src must be a relative path inside the plan folder' };
+  if (src.split(/[\\/]/).includes('..')) return { reason: 'src must not contain ".."' };
+  if (!/\.html?$/i.test(src)) return { reason: 'src must be an .html file' };
+  let root;
+  let real;
+  try {
+    root = fs.realpathSync(dir);
+    real = fs.realpathSync(path.resolve(root, src));
+  } catch {
+    return { missing: true };
+  }
+  const rel = path.relative(root, real);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return { reason: 'src resolves outside the plan folder' };
+  let stat;
+  try { stat = fs.statSync(real); } catch { return { missing: true }; }
+  if (!stat.isFile()) return { missing: true };
+  if (stat.size > ARCHIFY_MAX_BYTES) return { reason: `file is ${stat.size} bytes; the limit is ${ARCHIFY_MAX_BYTES}` };
+  return { file: real };
+}
+
+// allow-scripts only, never allow-same-origin: the diagram runs, but cannot reach the page or its origin.
+function renderArchify(block, ctx) {
+  const src = text(block.props.src);
+  const label = text(block.props.label || block.props.title, 'architecture diagram');
+  const found = resolveArchifySrc(ctx.dir, src);
+  if (found.missing || found.reason) {
+    const message = found.missing ? 'file not found' : found.reason;
+    ctx.warnings.push(`<Archify src="${src}"> ${message}`);
+    return errorCard(`Archify diagram: ${message}`, src);
+  }
+  let html;
+  try {
+    html = fs.readFileSync(found.file, 'utf8');
+  } catch (error) {
+    ctx.warnings.push(`<Archify src="${src}"> could not read file: ${error.message}`);
+    return errorCard('Archify diagram: could not read file', src);
+  }
+  const height = within(numProp(block.props.height) || 560, 200, 2400);
+  const href = src.split(/[\\/]/).map(encodeURIComponent).join('/');
+  return `<div class="card archify"><div class="label">${esc(label)}</div>` +
+    `<iframe class="frame" sandbox="allow-scripts" loading="lazy" title="${esc(label)}" height="${height}" srcdoc="${esc(html)}"></iframe>` +
+    `<div class="screen-caption">${esc(label)}</div>` +
+    `<div class="links"><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">open standalone</a> <span class="path">${esc(src)}</span></div></div>`;
+}
+
+const PROTOTYPE_SURFACES = new Set(['web', 'desktop']);
+
+function screenNames(blocks, found = []) {
+  for (const block of blocks || []) {
+    if (block.type !== 'tag') continue;
+    const isBoard = block.name === 'Artboard';
+    if (isBoard || isScreenTag(block)) {
+      if (PROTOTYPE_SURFACES.has(surfaceOf(block).toLowerCase())) {
+        const name = text(block.props.label || block.props.title || block.props.id, 'screen');
+        if (!found.includes(name)) found.push(name);
+      }
+      if (isBoard) continue;
+    }
+    screenNames(block.children, found);
+  }
+  return found;
+}
+
+// A hint only: plain escaped text, nothing is started.
+function prototypeHint(blocks, frontmatter = {}) {
+  const mode = text(frontmatter.prototype).toLowerCase();
+  if (mode === 'skip') return '';
+  const names = screenNames(blocks);
+  if (!names.length && mode !== 'suggest') return '';
+  const which = names.length ? `Screens with a web or desktop surface: ${names.join(', ')}. ` : '';
+  return '<div class="card prototype-hint"><div class="label">Suggested next step</div>' +
+    `<div class="prose"><p>${esc(which)}A throwaway prototype can be built with the <code>prototype</code> skill. Nothing is started automatically.</p></div></div>`;
+}
+
 const SURFACE_SIZE = { mobile: [320, 580], popover: [360, 420], panel: [360, 480], tablet: [600, 700], browser: [720, 520], desktop: [960, 640] };
 
 function numProp(value) {
@@ -548,6 +628,7 @@ const HANDLERS = {
   TabsBlock: renderTabs,
   Tabs: renderTabs,
   CustomHtml: renderCustomHtml,
+  Archify: renderArchify,
   RichText: renderRichText,
   Callout: renderCallout,
   Json: (block) => card('json', codeBlock(block.props.code != null ? block.props.code : block.props.data, 'json')),
@@ -584,6 +665,7 @@ const ALIASES = {
   columns: 'Columns',
   tabs: 'TabsBlock',
   'custom-html': 'CustomHtml',
+  archify: 'Archify',
   'rich-text': 'RichText',
   callout: 'Callout',
   json: 'Json',
@@ -657,11 +739,14 @@ function errorCard(message, detail) {
     (detail ? `<pre><code>${esc(detail)}</code></pre>` : '') + '</div>';
 }
 
+const ID_TAG_RE = /\s*\{#[A-Za-z0-9-]+\}\s*$/;
+
 function renderHeading(block, ctx) {
   const level = Math.min(Math.max(block.level, 2), 4);
-  const id = uniqueId(slugify(block.text) || 'section', ctx);
-  ctx.headings.push({ id, text: block.text, level });
-  return `<h${level} class="sec" id="${esc(id)}">${esc(block.text)}</h${level}>`;
+  const shown = block.text.replace(ID_TAG_RE, '') || block.text;
+  const id = uniqueId(slugify(shown) || 'section', ctx);
+  ctx.headings.push({ id, text: shown, level });
+  return `<h${level} class="sec" id="${esc(id)}">${esc(shown)}</h${level}>`;
 }
 
 // Markdown headings inside a prose chunk already carry an id from
@@ -1125,4 +1210,4 @@ ${hasBoard ? boardScript() : ''}
 </html>`;
 }
 
-module.exports = { renderBlocks, renderBoard, renderDocument, renderTag, page, mermaidUrl, escapeHtml };
+module.exports = { checklistItems, prototypeHint, renderBlocks, renderBoard, renderDocument, renderTag, page, mermaidUrl, escapeHtml };

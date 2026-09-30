@@ -150,6 +150,21 @@ if a revision takes more than a minute.
 
 **4. End** when review concludes: `aos-plan-canvas end <file>`.
 
+#### After approval
+
+Once the human approves a `bdb-plan-builder` plan, derive the live map from the same folder (run from the workspace root):
+
+```bash
+aos-plan-canvas trail <plan-dir>        # writes production_artifacts/00_execution_plan.md
+aos-trail . --plan production_artifacts/00_execution_plan.md --no-open
+```
+
+`trail` turns headings tagged `{#id}` and `<Section id title>` into components (`needs` from `<Section needs=[...]>` or frontmatter `needs-<id>: a, b`, `files` from `<ImplementationMap>`, tasks from `<Checklist>`, `url:` from an `<Archify>` whose file lives under `production_artifacts/`). It prints `{out, components, tasks, next_step}`; `--out <file>` must stay inside the workspace, an existing file is never overwritten without `--force`, and a plan with no components exits 2. It starts nothing. Inside an AO session (`AO_BROWSER_CAPABILITY` set), also run `ao preview <url>` with the URL `aos-trail` prints, as the `agenttrail` skill says.
+
+**Prototype hint.** A plan with `web`/`desktop` artboards or screens (or frontmatter `prototype: suggest`) ends with one "Suggested next step" callout naming them and pointing at the `prototype` skill for a throwaway prototype. It is plain text and starts nothing; `prototype: skip` turns it off.
+
+**Archify block.** `<Archify src="00_architecture.html" label="..." height={560} />` embeds a diagram from the `archify` skill (copy its standalone HTML into the plan folder first) in a sandboxed iframe (`allow-scripts` only). `src` is relative to the plan folder and must stay inside it; `..`, absolute paths, symlink escapes, missing files and files over 5 MB show an error card plus a warning.
+
 ## Relationship to `/startcycle`
 
 An `approve` verdict on `production_artifacts/00_execution_plan.md` satisfies
