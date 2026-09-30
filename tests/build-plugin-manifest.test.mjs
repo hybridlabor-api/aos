@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
@@ -37,6 +37,33 @@ for (const entry of manifest.skills) {
 // out of the file.
 assert.ok(!('agents' in manifest), 'the agents manifest key is a no-op; agents load by convention');
 
+run('--check');
+
+// Subfolder plugin: identical manifest, symlinks into the repo root.
+const SUB = join(ROOT, 'plugins', 'bdb-aos');
+const SUB_MANIFEST = join(SUB, '.claude-plugin', 'plugin.json');
+const subOriginal = readFileSync(SUB_MANIFEST, 'utf8');
+assert.equal(subOriginal, original, 'subfolder plugin.json must match the root manifest');
+assert.equal(entry.source, './plugins/bdb-aos', 'marketplace entry must point at the subfolder plugin');
+for (const name of ['skills', 'agents']) {
+  assert.ok(lstatSync(join(SUB, name)).isSymbolicLink(), `plugins/bdb-aos/${name} must be a symlink`);
+  assert.equal(readlinkSync(join(SUB, name)), `../../${name}`);
+}
+assert.ok(readFileSync(join(SUB, manifest.skills[0], 'SKILL.md'), 'utf8').length > 0, 'skills resolve through the symlink');
+
+try {
+  writeFileSync(SUB_MANIFEST, '{"name":"bdb-aos"}\n');
+  assert.throws(() => run('--check'), /out of date/, '--check must fail on a stale subfolder manifest');
+} finally {
+  writeFileSync(SUB_MANIFEST, subOriginal);
+}
+try {
+  rmSync(join(SUB, 'agents'));
+  assert.throws(() => run('--check'), /symlinks/, '--check must fail on a missing symlink');
+} finally {
+  rmSync(join(SUB, 'agents'), { force: true });
+  symlinkSync('../../agents', join(SUB, 'agents'));
+}
 run('--check');
 
 try {
