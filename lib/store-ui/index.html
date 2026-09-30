@@ -83,7 +83,7 @@ function act(i){
 }
 function row(i){
   const k=key(i),open=S.expanded.has(k);
-  const badge=(i.fileCount>1?`<span class="badge">${i.fileCount} files</span>`:'')+(i.execBridge?'<span class="badge warn">exec bridge</span>':'')+(i.requires.length?`<span class="badge">+${i.requires.length} required</span>`:'');
+  const badge=(i.fileCount>1?`<span class="badge">${i.fileCount} files</span>`:'')+(i.execBridge?'<span class="badge warn">exec bridge</span>':'')+((i.requires||[]).length?`<span class="badge">+${i.requires.length} required</span>`:'');
   let h=`<div class="rowwrap"><div class="row"><span class="dot ${i.installed?'g':''}"></span><span class="n" data-a="exp" data-v="${esc(k)}" style="cursor:pointer" title="Show description">${esc(i.name)}${badge}</span><span class="d" style="color:var(--muted)">${esc(i.description)}</span><span class="c cat">${esc(i.category)}</span><span class="s src">${esc(i.source)}</span><span style="text-align:right">${act(i)}</span></div>`;
   if(open){const d=i.core?i.description:S.detail[k];h+=`<div class="detail">${d===undefined?'Loading...':esc(d)}</div>`}
   return h+'</div>';
