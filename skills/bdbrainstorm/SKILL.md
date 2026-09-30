@@ -41,6 +41,12 @@ You are strictly required to enforce the following 6 pillars in your process:
 - Present the aligned plan and hand off to `/startcycle-graph` for execution — write `state.goal` from this session's output and let `/startcycle-graph`'s dispatcher take it from there (see `.agents/graph.md`). This skill does not invoke `/startcycle-graph`'s agents itself; it produces the goal they read.
 - For a recurring quality goal, run `/design-control-loop` after shipping (manual, opt-in; not part of the graph).
 
+## Competing Plans
+
+If the brainstorm yields two viable directions, have two different agents each
+write a plan file and compare them with the `plan-arbiter` skill before
+handing off to `/startcycle-graph`. Review the arbiter's memo in `plan-canvas`.
+
 ## Execution Rules
 1. **Never skip the debate:** Ideas must be contested by subagents and the user before finalization.
 2. **Never build alone:** Always use subagents for implementation.

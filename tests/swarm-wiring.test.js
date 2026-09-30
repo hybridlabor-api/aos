@@ -65,3 +65,14 @@ test('the seven pipeline nodes keep their order and models', () => {
         assert.ok(n.model, `${id} has a model`);
     }
 });
+
+test('every skill a node declares is also listed in .agents/AGENTS.md', () => {
+    const compiled = parseAgentsMd(agentsMd);
+    const key = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
+    const byName = Object.fromEntries(compiled.map((a) => [key(a.name), a]));
+    for (const [id, node] of Object.entries(nodes.nodes)) {
+        const agent = byName[key(node.agentType)];
+        assert.ok(agent, `${id} has no agent block in AGENTS.md`);
+        for (const s of node.skills) assert.ok(agent.skills.includes(s), `${id}: ${s} is in nodes.json but not in AGENTS.md`);
+    }
+});

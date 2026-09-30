@@ -157,6 +157,15 @@ the **Architect → TechLead gate (step 1 → 2)** of `/startcycle`: it is a hum
 confirmation that the plan is ready for the capability-map review. This is
 optional — the pipeline runs unchanged without it.
 
+## Competing plans (double plan)
+
+When two plans exist for one goal, for example one from Claude Code and one from
+another harness such as Gemini (`agy`) or Codex, run the `plan-arbiter` skill
+over both and open its decision memo here. Keep each plan as its own file
+(`production_artifacts/00_execution_plan.md` and `00_execution_plan.b.md`), open
+the memo with `open`, and let the human pick Adopt, Hybrid or Revise first with
+the verdict. The arbiter never invokes the second agent; the dispatcher does.
+
 ## Diagrams (Mermaid)
 
 When part of the plan is a flow, architecture, sequence, state machine, ER
