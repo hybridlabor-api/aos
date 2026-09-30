@@ -1,6 +1,6 @@
 ---
 name: godmode-eventtech
-description: "Use when designing real-time live performance architectures, signal flows, protocol routings (OSC, DMX), or validating hardware limits."
+description: "Use for any event production work: pre-show ops, vendor coordination, production planning, client briefs, budget, scheduling, and technical show-control execution (signal flows, OSC/DMX, MCP orchestration, hardware limits)."
 category: media-eventtech
 ---
 
@@ -11,6 +11,9 @@ This skill is the architectural authority for **Real-Time Performance, Signal Fl
 ---
 
 ## 1. Role & Architectural Boundaries
+
+For agency-layer tasks (vendor management, production coordination, inbox triage,
+pre-show logistics), load `bdb-eventagency-skill` alongside this skill.
 
 * **Real-Time & Live Show Authority:** Focuses on deterministic frame timing, zero-latency signal routing, hardware boundaries, and physical protocol management (OSC, Art-Net, sACN, DMX, MIDI, SMPTE, NDI, Spout/Syphon).
 * **Peer Integration:** Operates alongside specialized media and 3D creation skills, enforcing strict hardware stability, network bandwidth limits, and live-environment fault tolerance across all event technology systems.
