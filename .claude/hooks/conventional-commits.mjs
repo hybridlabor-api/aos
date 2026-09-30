@@ -57,8 +57,8 @@ function respond(isAgy, allowed, reason = "", message = "") {
 // "cannot tell" and must be treated as allowed.
 function extractMessage(command) {
   // -m "msg" / -m 'msg'
-  const inline = command.match(/git\s+commit[\s\S]*?-m\s+["']([^"']+)["']/);
-  if (inline) return inline[1];
+  const inline = command.match(/git\s+commit[\s\S]*?-m\s+(?:"([^"]+)"|'([^']+)')/);
+  if (inline) return inline[1] ?? inline[2];
 
   // -m "$(cat <<'EOF' ... EOF)"
   const heredoc = command.match(/git\s+commit[\s\S]*?-m\s+"?\$\(cat\s+<<['"]?EOF['"]?\s*\n([\s\S]+?)\nEOF/);
@@ -94,9 +94,8 @@ function main() {
     try {
       input = JSON.parse(rawInput);
     } catch {
-      // Unparseable input: fail open, same reasoning as an unreadable message.
-      respond(true, true);
-      return;
+      // Unparseable input: fail open, no stdout (isAgy unknown).
+      process.exit(0);
     }
   }
 

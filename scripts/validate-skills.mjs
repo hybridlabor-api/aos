@@ -49,7 +49,7 @@ function findClosingQuote(s, from, q) {
   for (let i = from; i < s.length; i++) {
     if (s[i] !== q) continue;
     if (q === "'" && s[i + 1] === "'") { i++; continue; }   // '' escapes a quote
-    if (q === '"' && s[i - 1] === '\\') continue;
+    if (q === '"') { let b = 0, j = i - 1; while (j >= from && s[j] === '\\') { b++; j--; } if (b % 2 !== 0) continue; }
     return i;
   }
   return -1;
