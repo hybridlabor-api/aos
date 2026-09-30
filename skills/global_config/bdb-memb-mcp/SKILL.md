@@ -58,8 +58,7 @@ Deletes a specific memory segment using its UUID.
 
 ## 🔒 Security Hardening
 
-The `memb-mcp` server runs a pre-ingestion regex filter that blocks or redacts standard credential patterns:
-*   API keys (Google Cloud, OpenAI, GitHub, etc.)
-*   Plaintext passwords
-*   Database URLs
-This safeguards your workspace metadata and prevents credentials from leaking into vector repositories.
+The `memb-mcp` server has **no automatic credential filter** today: it stores whatever an agent sends it.
+*   Never ingest credentials: API keys (Google Cloud, OpenAI, GitHub, etc.), plaintext passwords, database URLs.
+*   The protection is the rule in this skill (and in `memb-skill`) plus human review of stored memories.
+*   An automatic pre-ingestion filter is planned but not released.

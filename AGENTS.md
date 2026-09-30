@@ -128,12 +128,12 @@ name: exactly-the-directory-name
 description: >-
   What it does and when to reach for it. Use the folded form for
   anything longer than one line.
-category: one-of-the-six-below
+category: one-of-the-categories-below
 ---
 ```
 
 `category:` must be exactly one of: `design-ui-ux`, `engineering-method`,
-`media-eventtech`, `bdb-core`, `library`, `engineering-hardware`.
+`media-eventtech`, `bdb-core`, `saas-ops`, `library`, `engineering-hardware`.
 
 A multi-line `description:` that is not quoted or folded will swallow the
 `category:` line below it. The value still *looks* present to `grep`; it is not
