@@ -5,9 +5,16 @@
 # AOS — BDB Agent OS
 
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
+[![NPM Downloads](https://img.shields.io/npm/dw/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
+[![GitHub stars](https://img.shields.io/github/stars/hybridlabor-api/aos?style=flat&color=gold)](https://github.com/hybridlabor-api/aos/stargazers)
+[![last commit](https://img.shields.io/github/last-commit/hybridlabor-api/aos.svg)](https://github.com/hybridlabor-api/aos/commits/main)
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue.svg)](package.json)
+[![skills](https://img.shields.io/badge/skills-213%20curated-brightgreen.svg)](#skills)
+[![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#servidores-mcp)
+[![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#harnesses-suportados)
+[![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 
 AOS instala uma biblioteca de skills curada, um roster de subagentes, hooks de portão e um pipeline multi-agente executável em todos os harnesses de agentes de código da sua máquina.
 
@@ -27,6 +34,34 @@ Após a instalação, você tem:
 
 ---
 
+## O Grafo do Dispatcher
+
+O grafo é agnóstico quanto ao harness e roda no Dynamic Workflows do Claude Code, na execução paralela do Antigravity e em qualquer harness de agente compatível.
+
+```mermaid
+flowchart LR
+    U(["👤 User"])
+    A["<b>Architect</b><br/><span>System Plan</span>"]
+    T["<b>TechLead</b><br/><span>Capability Map</span>"]
+    UX["<b>UI_UX</b><br/><span>Frontend</span>"]
+    EN["<b>Engineering</b><br/><span>Backend</span>"]
+    ME["<b>Media_EventTech</b><br/><span>Creative</span>"]
+    R["<b>Reviewer</b><br/><span>QA</span>"]
+    S["<b>Shipping</b><br/><span>Gate</span>"]
+
+    U --> A --> T
+    T --> UX & EN & ME
+    UX & EN & ME --> R
+    R --> S
+
+    T -.->|reject| A
+    R -.->|findings| UX
+    S -.->|gate fail| EN
+    R -.->|escalate| U
+```
+
+---
+
 ## Instalar
 
 Requisitos: Node.js >= 20. macOS, Linux e Windows (PowerShell).
@@ -43,7 +78,7 @@ npx -y @hybridlabor-api/aos@latest
 |---|---|
 | Quick Update | Atualiza skills, templates, hooks e módulos instalados para a versão que você acabou de executar |
 | Run System Checkup / Doctor | Executa `aos doctor`: dependências, posicionamento de arquivos, daemons, hooks |
-| Drop Local Project Harness | Copia o contrato do dispatcher no diretório atual (veja abaixo) |
+| Drop Local Project Harness | Copia o contrato do dispatcher para o diretório atual (veja abaixo) |
 | Reconfigure System | Muda alvos, camada ou opções |
 | Uninstall AOS | Remove o que o instalador colocou; seus dados permanecem |
 
@@ -91,7 +126,9 @@ Toda instalação também escreve a cópia universal em `~/.agents/skills`, que 
 
 O contrato vive em [`.agents/graph.md`](.agents/graph.md), o roster de nós em [`.agents/nodes.json`](.agents/nodes.json), o dispatcher executável em [`.claude/workflows/startcycle-dispatch.mjs`](.claude/workflows/startcycle-dispatch.mjs).
 
-**Uma regra: nós nunca invocam uns aos outros.** Um dispatcher lê `production_artifacts/state.json` após cada nó retornar e decide o que executa a seguir. Não há cadeia de repasse e nenhum agente dizendo a outro agente para prosseguir.
+**Uma regra: os nós nunca se invocam.** Um dispatcher lê `production_artifacts/state.json` após cada nó retornar e decide o que executa a seguir. Não há cadeia de repasse e nenhum agente dizendo a outro agente para prosseguir. Este design garante fidelidade de contexto, auditabilidade em um único local da lógica de roteamento e portabilidade entre harnesses.
+
+Cada nó lê o plano e seu estado anterior, executa seu trabalho, escreve seu artefato e fragmentos de estado, e retorna. O dispatcher mescla fragmentos de estado por nó (`state.d/<node>.json`), avalia predicados de borda e roteia para o próximo nó — ou escala para o usuário se uma guarda de falta de progresso dispara (mesmo achado bloqueador no segundo ciclo de reparo) ou o teto de iteração é atingido.
 
 ```mermaid
 flowchart LR
@@ -121,11 +158,15 @@ O que mantém o grafo completo honesto:
 
 ## O portão GO
 
-Alcançar `ready_to_ship` não é enviar. [`.claude/hooks/go-gate.mjs`](.claude/hooks/go-gate.mjs) é um hook `PreToolUse` que bloqueia `git push`, `npm publish`, `npm version` e `rm` recursivo a menos que sua mensagem imediatamente anterior seja a palavra literal **GO**. É um hook, não uma regra que um agente é convidado a respeitar: dispara antes de qualquer verificação de modo de permissão e não pode ser contornado. O instalador conecta o mesmo portão em Antigravity, Codex e OpenCode; em harnesses sem suporte a hook, a regra em [AGENTS.md](AGENTS.md) se aplica e o agente é a execução. Um subagente nunca herda o GO do seu orquestrador, e um comando de lançamento falhado precisa de um novo.
+Alcançar `ready_to_ship` não é enviar. [`.claude/hooks/go-gate.mjs`](.claude/hooks/go-gate.mjs) é um hook `PreToolUse` que bloqueia `git push`, `npm publish`, `npm version` e `rm` recursivo a menos que sua mensagem imediatamente anterior seja a palavra literal **GO**. É um hook, não uma regra que um agente é convidado a respeitar: dispara antes de qualquer verificação de modo de permissão e não pode ser contornado. O instalador conecta o mesmo portão em Antigravity, Codex e OpenCode; em harnesses sem suporte a hook, a regra em [AGENTS.md](AGENTS.md) se aplica e o agente é a execução. Um subagente nunca herda o GO de seu orquestrador, e um comando de lançamento que falha precisa de um novo GO.
 
 ---
 
 ## Ferramentas
+
+![BDB system components overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
+
+*Visão conceitual da v3.4.0. Os componentes cresceram desde então; as seções abaixo estão atualizadas.*
 
 | Ferramenta | Comando | O que faz |
 |---|---|---|
@@ -140,6 +181,36 @@ Alcançar `ready_to_ship` não é enviar. [`.claude/hooks/go-gate.mjs`](.claude/
 
 ---
 
+## AOS CLI
+
+Um harness CLI leve construído em [pi](https://github.com/earendil-works/pi), um agente de codificação que roda no terminal. AOS CLI lê `~/.agents/skills` (escrito pelo instalador) e `~/.agents/AGENTS.md` (o grafo do dispatcher como instruções do sistema), não roda servidores MCP próprios e precisa de **Node >= 22.19** (piso do pi, mais alto do que o instalador AOS principal).
+
+```bash
+aos-cli "what is the fastest way to fix this bug"
+aos-cli --continue                    # resume the previous session
+```
+
+O launcher da CLI (`packages/aos-cli/bin/aos-cli.mjs`) vem com um tema escuro AOS (`aos.json`), as dez skills principais de `core-skills.json` (ask-tim, aos-setup, systematic-debugging, archify, etc.) e dois comandos apenas leitura em sessão (`/aos` mostra o menu de instalação; `/aos-status` roda a verificação de saúde).
+
+Instale através do instalador AOS com o alvo AOS CLI: `npx -y @hybridlabor-api/aos@latest -y --platforms=10`. O pacote é privado e não é publicado no npm, então `npm i -g @hybridlabor-api/aos-cli` não funciona.
+
+
+---
+
+## Plugins e Marketplace
+
+**Manifesto do plugin:** `.claude-plugin/plugin.json` + `marketplace.json` (gerado por `npm run plugin:build`). O caminho de instalação do marketplace Claude está sendo finalizado; por enquanto, o instalador npm acima é a rota de instalação suportada.
+
+**Descoberta de skills:** Todo harness encontra skills em seu diretório nativo (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.roo/skills`, etc.). Para procurar e instalar skills adicionais após a instalação:
+
+```bash
+npx skills add hybridlabor-api/aos
+```
+
+Isto descobre todas as <!-- count:skills -->213<!-- /count --> skills curadas e as instala no diretório universal `~/.agents/skills` (usado por todos os harnesses e o AOS CLI).
+
+---
+
 ## Memória e conhecimento
 
 Instalado como módulos opcionais pelo instalador; `aos doctor` os verifica e o Launchpad os mostra.
@@ -149,27 +220,73 @@ Instalado como módulos opcionais pelo instalador; `aos doctor` os verifica e o 
 - **OpenWiki** (CLI `openwiki`) — gera e atualiza uma wiki fundamentada de uma base de código, com um visualizador na porta 4321 e um daemon de fundo. Skill: `openwiki-skill`; a própria wiki deste repo está sob [`.openwiki/`](.openwiki/quickstart.md).
 - **Synapse** (`@hybridlabor-api/bdb-synapse`) — renderiza um repositório como uma cidade de código 3D e repassa sessões de agentes através dela. Skill: `synapse-integration-skill`.
 
-`aos-setup` traz uma máquina para um estado verificado para todos os quatro; `aos-project-init` vincula um projeto a eles (slug, wiki, memória, `AGENTS.md`).
+`aos-setup` leva uma máquina a um estado verificado para os quatro; `aos-project-init` vincula um projeto a eles (slug, wiki, memória, `AGENTS.md`).
+
+---
+
+## O que está incluído
+
+### Os <!-- count:agents -->13<!-- /count --> Subagentes
+
+O grafo do dispatcher compila estes agentes, disponíveis como subagentes Claude Code e carregáveis em Antigravity, Cursor, Codex, OpenCode e outros:
+
+| Agente | Propósito |
+|---|---|
+| **Architect** | Transforma o objetivo do usuário em um plano de sistema. Lê a arquitetura existente antes de propor mudanças. |
+| **TechLead** | Revisa o plano para um mapa de capacidade (limites de módulo, direção de dependência, ordem de compilação) antes de qualquer nó de compilação iniciar. Aprova ou rejeita de volta para Architect. |
+| **UI_UX** | Designer de Frontend Líder. Impõe princípios Anti-Slop, tokens DTCG, gosto frontend de alta agência e dinâmica de movimento fluido. |
+| **Engineering** | Engenheiro Senior Fullstack & Backend. Impõe Domain-Driven Design, Clean Architecture, ciclos TDD e melhores práticas de banco de dados. |
+| **Media_EventTech** | Especialista em Creative-Tech & Show-Control. Governa modelagem 3D, redes TouchDesigner, DaVinci Resolve, iluminação e Resolume. |
+| **Reviewer** | Revisão adversária da saída do nó de compilação contra o contrato do plano. Modelado na disciplina doubt-driven-development. |
+| **Shipping** | Gatekeeper de Liberação & Auditor de QA. Roda o portão de qualidade automatizado (lint, typecheck, testes, a11y, seo) e impõe o portão GO. |
+| **Database Reviewer** | Especialista PostgreSQL para otimização de consulta, design de schema, segurança e performance. |
+| **Security Reviewer** | Detecção e remediação de vulnerabilidades de segurança. Marca segredos, SSRF, injeção, criptografia insegura e OWASP Top 10. |
+| **Silent-Failure Hunter** | Revisa código para falhas silenciosas, erros engolidos, fallbacks ruins e propagação de erro ausente. |
+| **Go-Build Resolver** | Resolve erro de build de Go, vet e compilação com mudanças mínimas. |
+| **Opensource Forker** | Faz fork de um projeto para open-sourcing — remove segredos, substitui referências internas, gera `.env.example`. |
+| **Opensource Sanitizer** | Verifica se um fork de open-source está totalmente sanitizado. Escaneia segredos vazados, PII, referências internas. |
+
+### Skills por Categoria
+
+<!-- count:skills -->213<!-- /count --> skills curadas, descobríveis por todo harness:
+
+- **bdb-core** (30 skills): Infraestrutura AOS principal, pipelines, ferramentas e utilidades — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agent-orchestrator`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill` e mais.
+- **design-ui-ux** (19 skills): Frontend, design UI, acessibilidade, tokens, movimento, anti-slop — `senior-frontend`, `ui-component`, `ui-review`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` e mais.
+- **engineering-method** (46 skills): Arquitetura, testes, debugging, CI/CD, qualidade de código — `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `dockerfile-validator` e mais.
+- **library** (98 skills): Especificidades de linguagem/framework — TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go e mais.
+- **media-eventtech** (19 skills): 3D, vídeo, controle de shows, design espacial — `godmode-eventtech`, `synapse-integration-skill`, `threejs-skills`, `blender-expert` e mais.
+- **engineering-hardware** (1 skill): Design de PCB e elétrico — `godmode-hardware-pcb`.
+
+O catálogo completo com descrições detalhadas: [docs/skills_table.md](docs/skills_table.md) — nota: este arquivo está desatualizado e lista 164 de 213 skills.
 
 ---
 
 ## Skills
 
-<!-- count:skills -->213<!-- /count --> skills, cada uma um diretório com um `SKILL.md` cujo frontmatter declara `name`, `description` e uma `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`. O catálogo completo está em [docs/skills_table.md](docs/skills_table.md).
+<!-- count:skills -->213<!-- /count --> skills, curadas de coleções de código aberto e proprietárias, cobrindo o pipeline completo de desenvolvimento de software e criativo. Cada skill é um diretório com um `SKILL.md` frontmatter declarando `name`, `description` e uma `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
 
-Os sete **Godmodes** sob `skills/basic` são a camada de persona; três deles são os nós de compilação e envio do grafo.
+**Camada de Persona:** As skills **Godmode** são personas especializadas que mapeiam diretamente para os nós de compilação e envio do grafo do dispatcher:
 
-| Godmode | Possui |
-|---|---|
-| `godmode-engineering` | DDD, Clean Architecture, TypeScript rigoroso, depuração sistemática. O nó `Engineering`. |
-| `godmode-ui-ux` | Frontend anti-slop, tokens DTCG, movimento, acessibilidade. O nó `UI_UX`. |
-| `godmode-shipping` | Verificações pré-lançamento, portão de qualidade, rollback seguro. O nó `Shipping`. |
-| `godmode-eventtech` | Controle de shows, fluxo de sinais, protocolos, hardware de evento ao vivo. |
-| `godmode-3d-creation` | Geração 3D primeiro MCP, reconstrução de malha, CAD paramétrico. |
-| `godmode-media-creation` | Vídeo, montagem de timeline, pipelines de design de movimento. |
-| `godmode-hardware-pcb` | Esquemáticos, layout de PCB, portão KiCad ERC/DRC/DFM, co-design de invólucro. |
+| Godmode | Possui | Mapeia para |
+|---|---|---|
+| `godmode-engineering` | Domain-Driven Design, Clean Architecture, TypeScript/Python rigoroso, debugging sistemático, melhores práticas de banco de dados. | Nó **Engineering** |
+| `godmode-ui-ux` | Princípios frontend anti-slop, tokens DTCG, dinâmica de movimento, acessibilidade (WCAG), gosto de alta agência. | Nó **UI_UX** |
+| `godmode-shipping` | Verificações pré-lançamento, portões de qualidade automatizados, procedimentos de rollback seguro, execução do portão Go. | Nó **Shipping** |
+| `godmode-eventtech` | Controle de shows, fluxo de sinal, iluminação DMX, redes TouchDesigner, servidores de mídia Resolume, hardware de evento ao vivo. | Nó **Media_EventTech** |
+| `godmode-3d-creation` | Geração 3D first-MCP, reconstrução de malha, CAD paramétrico, modelagem espacial. | Especialista opcional |
+| `godmode-media-creation` | Produção de vídeo, montagem de timeline, pipelines de design de movimento, OpenMontage, Remotion. | Especialista opcional |
+| `godmode-hardware-pcb` | Esquemáticos elétricos, layout e roteamento de PCB, portão KiCad ERC/DRC/DFM, co-design de invólucro, OpenSCAD. | Especialista opcional |
 
-Outros pontos de entrada que valem a pena conhecer: `ask-tim` (qual skill se encaixa), `bdbrainstorm` e `bdbmediastorm` (ideação multi-agente terminando em um plano), `teamwork-preview` (elaboração de prompt e delegação), a família `grilling` (`grill-me`, `grill-with-docs`, `triage`), `ci-pipeline` e os geradores e validadores `github-actions-*` / `dockerfile-*` / `makefile-*`, `bdb-security-audit`, `bdbresilience`.
+**Pontos de Entrada & Navegação:**
+- **`ask-tim`** — Recomendação de skill por descrição
+- **`bdbrainstorm`** e **`bdbmediastorm`** — Sessões de ideação multi-agente terminando em um plano executável
+- **`teamwork-preview`** — Elaboração de prompt, delegação de função, setup de colaboração
+- **Família Grilling** — `grill-me` (auditoria geral), `grill-with-docs` (fundamentada em documentação), `triage` (priorização)
+- **CI/CD & Geradores** — `ci-pipeline`, `github-actions-generator`, `dockerfile-generator`, `makefile-generator`
+- **Qualidade de Código** — `bdb-security-audit`, `systematic-debugging`, `silent-failure-hunter`, `bdbresilience`
+- **Especialistas de Framework** — Cobertura completa de TypeScript, React, Next.js, Drizzle ORM, Prisma, Python, Go e mais
+
+O catálogo completo com descrições e detalhes: [docs/skills_table.md](docs/skills_table.md) (nota: atualmente lista 164 de 213).
 
 A biblioteca também é legível pela CLI `skills`:
 
@@ -181,32 +298,121 @@ npx skills add hybridlabor-api/aos
 
 ## Servidores MCP
 
-[`mcp_config.json`](mcp_config.json) define <!-- count:mcps -->21<!-- /count --> servidores, construídos ou aquecidos pelo instalador de `mcps/` e mesclados em cada configuração MCP do harness:
+[`mcp_config.json`](mcp_config.json) define <!-- count:mcps -->21<!-- /count --> servidores, construídos ou aquecidos pelo instalador de `mcps/` e mesclados em cada configuração MCP do harness. Cada servidor expõe ferramentas para um domínio específico; todo harness vê o mesmo conjunto, evitando incompatibilidades por ferramenta.
 
-- **Software criativo:** Unreal Engine, Rhino / Grasshopper (primário + fallback), DaVinci Resolve, Blender, After Effects (primário + fallback), ponte Adobe UXP, TouchDesigner (MindDesigner `tdmcp` + backup), grandMA3, Resolume, Open Design.
-- **Controle de SO:** `zavora_computer_use` (macOS / Linux, binário nativo), `bdb_windows_computer_use`.
-- **Memória e delegação:** `memb_mcp`, `deja`, `mcsc`.
-- **Infraestrutura:** `github`, `chrome-devtools`, `bdb_remoteos_mcp` (gateway multi-nuvem com aprovações 4-olhos).
+**Integrações de software criativo** (pares primário e fallback para redundância):
+- **Unreal Engine** — `bdb_unreal_mcp` (Web Remote Control API na porta 30010), skill: `bdb-unreal-mcp`
+- **Rhino 3D & Grasshopper** — `bdb_rhino_mcp` (roteador Yak de McNeel) + `bdb_rhino_mcp_fallback` (GOLEM 3D, 105 ferramentas), skill: `bdb-rhino-mcp`
+- **DaVinci Resolve** — `bdb_davinci_mcp` (scripts de workspace, 162 ferramentas) + `bdb_davinci_mcp_studio` (Node.js para Studio) + `bdb_davinci_mcp_fallback`, skill: `bdb-davinci-mcp`
+- **Blender** — `bdb_blender_mcp` (integração de socket) + `bdb_blender_mcp_fallback`, skill: `bdb-blender-mcp`
+- **After Effects** — `bdb_after_effects_mcp` + `bdb_after_effects_mcp_fallback`, skill: `bdb-after-effects-mcp`
+- **TouchDesigner** — `bdb_touchdesigner_mcp` (ponte MindDesigner na porta 9980) + `bdb_touchdesigner_mcp_fallback`, skill: `bdb-touchdesigner-mcp`
+- **Adicional:** grandMA3 (OSC/UDP na porta 8000), Resolume (REST API na porta 8080), Vectorworks (RAG semântico na porta 8765), ponte Adobe UXP, Open Design
 
-Cada servidor criativo tem uma skill de guia (`bdb-unreal-mcp`, `bdb-touchdesigner-mcp`, `bdb-davinci-mcp`, ...) que ensina ao agente as assinaturas de ferramenta. Portas por servidor, pares primário/fallback e notas de plataforma: [docs/mcp-servers.md](docs/mcp-servers.md).
+**Controle de SO & automação de sistema:**
+- **macOS/Linux** — `zavora_computer_use` (binário NAPI Rust nativo, sem compilação em tempo de execução), skill: `bdb-computer-use-mcp`
+- **Windows** — `bdb_windows_computer_use` (Win32 / COM / UIAutomation, OCR local com Tesseract)
+
+**Memória, delegação & infraestrutura:**
+- **memB** — `memb_mcp` (memória vetorial offline local, SQLite + modelo ONNX)
+- **deja** — indexação local de transcrito (segredos redatados)
+- **mcsc** — delegação de tarefa multi-harness
+- **GitHub** — ferramentas MCP nativas para issues, PRs, workflows
+- **Chrome DevTools** — automação de navegador & debugging
+- **RemoteOS** — gateway de execução multi-nuvem com mecanismo de aprovação 4-olhos
 
 ---
 
 ## Módulos opcionais
 
-O seletor de módulo do instalador oferece, e Quick Update mantém atual:
+O instalador oferece esses módulos na seleção, e o Quick Update os mantém atualizados. Todos são opcionais; AOS funciona autossuficiente sem nenhum deles.
 
-| Módulo | Pacote |
-|---|---|
-| memB | `@hybridlabor-api/memb` |
-| Synapse | `@hybridlabor-api/bdb-synapse` |
-| Heimdall Token Saver (hooks de compressão de saída CLI) | `@hybridlabor-api/heimdall-token-saver` |
-| AO — Agent Orchestrator (agentes paralelos em Git worktrees) | `@hybridlabor-api/bdb-agent-orchestrator` |
-| Creator Extension (ComfyUI, image-to-3D, vídeo) | `@hybridlabor-api/bdb-dev-creator-extension` |
-| Hardware & PCB (módulo de design KiCad e OpenSCAD, orientado por `godmode-hardware-pcb`) | `@hybridlabor-api/bdb-hardware-pcb` |
-| OS Remote (gateway de execução remota) | `@hybridlabor-api/bdb-os-remote` |
+### memB — Memória Vetorial Local
 
-Detalhes para cada: [docs/ecosystem.md](docs/ecosystem.md).
+`@hybridlabor-api/memb`: memória vetorial offline, local com servidor MCP, WebUI na porta 8088 e hook ambiente que injeta memórias relevantes em sessões Claude Code. Skill: `memb-skill`, `memb-ingest`, `bdb-memb-mcp`.
+
+### deja — Indexação de Transcrito
+
+`@vshulcz/deja-vu`: indexa seus transcritos de agentes localmente (segredos redatados), com `deja fix` em um erro, `deja wip` para retomar, `deja search` para sessões passadas. Instalado com memB. Skill: `deja-memory`.
+
+### OpenWiki — Documentação Viva
+
+CLI `openwiki`: gera e atualiza uma wiki fundamentada de uma base de código, com um visualizador na porta 4321 e um daemon de fundo. Skill: `openwiki-skill`. Wiki deste repo: [.openwiki/](.openwiki/quickstart.md).
+
+### Synapse — Cidade de Código 3D
+
+`@hybridlabor-api/bdb-synapse`: renderiza um repositório como uma cidade de código 3D e repassa sessões de agentes como rastros de luz. Skill: `synapse-integration-skill`.
+
+```mermaid
+flowchart LR
+    A[Agent Session Logs] -->|JSONL Parsing| B[Go Trace Adapters]
+    B --> C[Normalized Event Stream]
+    D[Repository Tree] -->|Deterministic Layout| E[3D Citymap Generator]
+    C & E --> F[Local Go Server]
+    F --> G[React + Three.js WebGL Frontend]
+    G --> H[Interactive 3D Code City]
+```
+
+### AO — Orquestrador de Agente
+
+`@hybridlabor-api/bdb-agent-orchestrator`: agentes paralelos em Git worktrees com controle de terminal ao vivo e loops de feedback CI/CD automatizados. Skill: `agent-orchestrator`.
+
+```mermaid
+flowchart TD
+    A[Desktop IDE Meta-Harness] --> B[Git Worktree Orchestrator]
+    B --> C[Agent Session 1: Feature Build]
+    B --> D[Agent Session 2: Refactoring]
+    B --> E[Agent Session N: Test & Verification]
+    C --> F[Live Terminal Control & Process Monitor]
+    D --> F
+    E --> F
+    F --> G[Automatic CI/CD Feedback Loops]
+    G --> H[PR Review & Merge Routing]
+    H --> I[Central Git Repository]
+```
+
+### Creator Extension — Mídia & 3D
+
+`@hybridlabor-api/bdb-dev-creator-extension`: capacidades ComfyUI MCP (FLUX, SDXL), image-to-3D (TripoSR, TRELLIS) e produção de vídeo automatizada (OpenMontage, Remotion). Skill: `bdb-dev-creator-extension`.
+
+```mermaid
+flowchart LR
+    A[Core Skills Agent] -->|MCP Request| B[BDB Creator Extension Router]
+    B --> C[3D Generation Suite]
+    B --> D[Cinema Video Suite]
+    B --> E[Local ComfyUI MCP Engine]
+    C --> C1[TRELLIS: High-Fidelity 3D]
+    C --> C2[TripoSR: Fast Mesh]
+    C --> C3[CadQuery: Text-to-CAD]
+    D --> D1[OpenMontage AI Director]
+    D --> D2[Remotion Video-Shotcraft]
+    E --> E1[FLUX.1 Image Gen]
+    E --> E2[SDXL Pipeline]
+    C1 & C2 & C3 & D1 & D2 & E1 & E2 --> F[Rendered Media & Spatial Assets]
+```
+
+### Hardware & PCB — Design Elétrico
+
+`@hybridlabor-api/bdb-hardware-pcb`: módulo de design KiCad e OpenSCAD, orientado por skill `godmode-hardware-pcb`. Expõe portão ERC/DRC, assinatura de gerber e design paramétrico de invólucro. Skills: `godmode-hardware-pcb`, `bdb-hardware-pcb`.
+
+```mermaid
+flowchart LR
+    A[Agent] -->|MCP| B[kicad-mcp-server]
+    A -->|MCP| C[openscad-mcp-server]
+    B --> D[Schematic Capture & ERC]
+    B --> E[PCB Layout & Routing]
+    B --> F[DRC / DFM / Gerber Sign-Off]
+    C --> G[Parametric Enclosure]
+    D & E & F & G --> H[Fabrication-Ready Output]
+```
+
+### Heimdall Token Saver — Compressão de Saída CLI
+
+`@hybridlabor-api/heimdall-token-saver`: comprime saída CLI repetida via hooks ambiente em todo harness. Reduz sobrecarga de token em projetos grandes. Skill: `token-saver-config`.
+
+![Token savings with Heimdall Token Saver](assets/bdb_savings_graph_sketch.jpg)
+
+*Esboço ilustrativo da v3.x. Os percentuais são estimativas do próprio projeto, não medições feitas para este README.*
 
 ---
 
@@ -218,7 +424,7 @@ Execute o mesmo comando novamente. O instalador vê a versão instalada, oferece
 npx -y @hybridlabor-api/aos@latest
 ```
 
-Não há um subcomando `aos update`. Se você uma vez executou `npm i -g @hybridlabor-api/aos`, um simples `aos` no seu PATH executa essa cópia congelada e sua versão, não a mais recente; ou atualize (`npm i -g @hybridlabor-api/aos@latest`) ou remova e fique com `npx`. O instalador imprime o comando de atualização em si sempre que uma versão mais recente existe; a skill `bdb-updater` envolve a mesma verificação para uso dentro de uma sessão.
+Não há um subcomando `aos update`. Se você já executou `npm i -g @hybridlabor-api/aos` alguma vez, um simples `aos` no seu PATH executa essa cópia congelada e sua versão, não a mais recente; ou atualize (`npm i -g @hybridlabor-api/aos@latest`) ou remova e fique com `npx`. O instalador imprime o comando de atualização em si sempre que uma versão mais recente existe; a skill `bdb-updater` envolve a mesma verificação para uso dentro de uma sessão.
 
 ## Desinstalar
 
@@ -228,7 +434,7 @@ aos-uninstall --purge      # also removes ~/.MemBDB, ~/.openwiki, ~/.synapse, ~/
 aos-uninstall --dry-run    # list everything, delete nothing
 ```
 
-O desinstalador funciona a partir do manifesto de instalação: um arquivo que ainda corresponde ao hash que AOS escreveu é removido, um arquivo que você editou é de backup, um arquivo que AOS nunca escreveu não é tocado. A mesma ação está no menu do instalador.
+O desinstalador funciona a partir do manifesto de instalação: um arquivo que ainda corresponde ao hash que AOS escreveu é removido, um arquivo que você editou é salvo como backup, um arquivo que AOS nunca escreveu não é tocado. A mesma ação está no menu do instalador.
 
 ---
 
@@ -245,7 +451,7 @@ O desinstalador funciona a partir do manifesto de instalação: um arquivo que a
 
 - Pacote: [npmjs.com/package/@hybridlabor-api/aos](https://www.npmjs.com/package/@hybridlabor-api/aos)
 - Fonte e issues: [github.com/hybridlabor-api/aos](https://github.com/hybridlabor-api/aos) · [issues](https://github.com/hybridlabor-api/aos/issues)
-- [CHANGELOG.md](CHANGELOG.md) · [docs/skills_table.md](docs/skills_table.md) · [docs/cli.md](docs/cli.md) · [docs/mcp-servers.md](docs/mcp-servers.md) · [docs/ecosystem.md](docs/ecosystem.md)
+- [CHANGELOG.md](CHANGELOG.md) · [docs/skills_table.md](docs/skills_table.md)
 - Repos irmãos: [bdb-agent-orchestrator](https://github.com/hybridlabor-api/bdb-agent-orchestrator) · [bdb-synapse](https://github.com/hybridlabor-api/bdb-synapse) · [bdb-dev-creator-extension](https://github.com/hybridlabor-api/bdb-dev-creator-extension) · [bdb-hardware-pcb](https://github.com/hybridlabor-api/bdb-hardware-pcb) · [bdb-os-remote](https://github.com/hybridlabor-api/bdb-os-remote)
 
 Licença: [Apache-2.0](LICENSE).
