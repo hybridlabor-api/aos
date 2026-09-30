@@ -35,6 +35,7 @@
     "./skills/basic/startcycle-graph",
     "./skills/basic/startcycle-graph-user",
     "./skills/basic/teamwork-preview",
+    "./skills/bdb-aos",
     "./skills/bdbrainstorm",
     "./skills/github-repo",
     "./skills/global_config/agent-manager-skill",
