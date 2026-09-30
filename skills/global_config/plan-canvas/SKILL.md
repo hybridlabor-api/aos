@@ -79,10 +79,13 @@ If your turn ends with nothing listening, the message sits in the queue and,
 from the human's side of the glass, sending appears to do nothing at all.
 
 So **run `await` as a background task** when your harness supports one (in
-Claude Code, a Bash call with `run_in_background: true`). It exits the moment
+Claude Code, a Bash call with `run_in_background: true`; in Antigravity, use `WaitMsBeforeAsync: 500`). It exits the moment
 feedback arrives and the harness hands you the JSON, which keeps the loop alive
 across turns instead of dying with the foreground call. A foreground `await`
 works too, but only until the harness time-limits it.
+
+> **OpenCode Limitations**: OpenCode currently lacks reactive background tasks (like AGY's `WaitMsBeforeAsync`) or background shells. If you are running in OpenCode, you must poll explicitly if needed (e.g., `aos-plan-canvas await <file> --timeout-ms 10000`), or launch the opencode-subagent to handle the waiting. 
+> Furthermore, OpenCode's execution environment often fails to launch the default browser automatically. **Whenever you use `open` or `await`, ALWAYS print the direct Canvas URL to the user in chat (e.g., "🔗 Canvas geöffnet: http://127.0.0.1:4519/canvas/...")** so they can click it manually.
 
 One backstop exists, and it is not an excuse to skip the above:
 

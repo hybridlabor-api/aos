@@ -182,24 +182,24 @@ If you find issues, fix them inline. No need to re-review — just fix and move 
 
 ## Execution Handoff
 
-After saving and self-reviewing the plan, link it for your human partner
-to read. If they have already explicitly supplied an execution method, ask
-them to review the plan and confirm it captures what they want; wait for that
-review before implementation, then use the preserved method. Otherwise, ask
-them to review the plan and choose an execution method before implementation.
+After saving and self-reviewing the plan, you **MUST** open it in the Plan Canvas for the user to review. Do not ask them to read the markdown file in the terminal.
 
-**When no execution method has already been supplied:**
+1. **Render Architecture:** If the plan contains complex flows, render them using `aos-archify` (see `archify` skill).
+2. **Open Canvas:** Run `aos-plan-canvas open docs/plans/<filename>.md` (or `.html` if using archify).
+3. **Await Feedback:** Run `aos-plan-canvas await docs/plans/<filename>.md` as a background task. 
 
-**"Plan complete and saved to `docs/plans/<filename>.md`. Please review the plan. Which execution approach would you prefer?**
+Tell the user:
+**"Plan complete and saved! Ich habe den Plan im Canvas für dich geöffnet. Bitte schau ihn dir im Browser an und gib mir dort dein Feedback oder klicke auf Approve."**
 
-- **Subagent-driven** - A fresh subagent implements each task and a fresh reviewer checks it before the next one starts, then a whole-branch review at the end. Most thorough; costs a fresh context per task and per review.
-- **Native** - I implement every task myself in this session, the way this harness runs work, then one fresh reviewer on the most capable model checks the whole branch. Cheapest and fastest; no independent review until the end. Runs well with a mid-tier session model, since the plan carries the design.
+*(If running in OpenCode, always explicitly print the Canvas URL in chat so the user can click it).*
 
-**For this plan I recommend <one of the two>, because <one sentence from the plan: how much the tasks depend on each other's interfaces, how many there are, what a shipped mistake would cost>. Does the plan capture what you want, and which approach should we use?"**
+Wait for the `approve` verdict from the Canvas before proceeding to execution.
 
-**When an execution method has already been supplied:**
+**When the plan is approved, ask for the execution method (if not already supplied):**
 
-**"Plan complete and saved to `docs/plans/<filename>.md`. Please review the plan. Does it capture what you want?"**
+**"Welchen Ausführungsansatz sollen wir wählen?**
+- **Subagent-driven** - Ein frischer Subagent für jede Aufgabe. (Am gründlichsten, aber teurer).
+- **Native** - Ich implementiere alle Tasks selbst nacheinander in dieser Session. (Schneller, günstiger)."
 
 **If Subagent-driven chosen:**
 - **REQUIRED SUB-SKILL:** Use subagent-driven-development
