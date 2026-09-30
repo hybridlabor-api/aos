@@ -40,3 +40,5 @@ This is the primitive. Two skills compose it, and neither duplicates it:
 Grilling produces a shared understanding, not a plan. Once the frontier is empty, hand off to whichever pipeline the work actually needs — `/startcycle` for a straight run, `/startcycle-graph` when the durable record and repair loop earn their overhead, `/startcycle-graph-user` for a throwaway fan-out. `/bdbrainstorm` and `/bdbmediastorm` invoke this skill as their own interview step rather than restating it.
 
 **Do not use the `AskUserQuestion` tool for a grilling round.** A round is numbered questions with recommended answers, answered in prose, in whatever order the user likes — several at once, or one with a correction to another. Forcing that into fixed-choice widgets loses exactly the nuance the interview exists to surface.
+
+**When the grilling ends in a written plan,** run `aos-plan-canvas modes` and offer the planning mode before opening it: standard plan-canvas (preselected) or, if detected, the pro planner. Ask every time. See "Planning mode choice" in the `plan-canvas` skill.

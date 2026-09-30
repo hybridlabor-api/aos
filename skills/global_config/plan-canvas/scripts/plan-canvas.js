@@ -21,6 +21,7 @@
 
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -56,6 +57,7 @@ function usage() {
     '',
     'Usage:',
     '  aos-plan-canvas                  Show server status and sessions',
+    '  aos-plan-canvas modes            List available planning modes as JSON',
     '  aos-plan-canvas open <file>      Open (or resume) a review session',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
     '  aos-plan-canvas pending          Show feedback queued for no listener',
@@ -65,14 +67,15 @@ function usage() {
     '  aos-plan-canvas server           Run the server in the foreground',
     '',
     'Options:',
-    '  open:  --no-open      Do not launch a browser window',
+    '  open:  --mode <id>    Select planning mode (default: standard)',
+    '         --no-open      Do not launch a browser window',
     '         --reopen       Reopen a session the user ended from the browser',
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
     '         --timeout-ms <n>  Return {status:"waiting"} after n ms (tests/debug only)',
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
     '  server: --port <n> --host <h>',
     '',
-    'Environment: AOS_PLAN_CANVAS_PORT, AOS_PLAN_CANVAS_STATE_DIR, AOS_PLAN_CANVAS_IDLE_MS'
+    'Environment: AOS_PLAN_CANVAS_PORT, AOS_PLAN_CANVAS_STATE_DIR, AOS_PLAN_CANVAS_IDLE_MS, AOS_PLAN_CANVAS_SKILL_DIRS'
   ].join('\n');
 }
 
@@ -225,9 +228,78 @@ async function cmdStatus({ stateDir, port }) {
   return { server: `http://${DEFAULT_HOST}:${port}`, version: health.version, sessions: sessions.body.sessions };
 }
 
+function cmdModes() {
+  return resolveModes();
+}
+
+function resolveModes() {
+  const modes = [
+    {
+      id: 'standard',
+      label: 'Standard Plan Canvas',
+      available: true,
+      reason: null
+    }
+  ];
+
+  // Check for bdb-plan-builder
+  const planBuilderPath = path.resolve(__dirname, 'lib', 'plan-builder', 'index.js');
+  modes.push({
+    id: 'bdb-plan-builder',
+    label: 'BDB Plan Builder',
+    available: fs.existsSync(planBuilderPath),
+    reason: fs.existsSync(planBuilderPath) ? null : 'bdb-plan-builder not installed'
+  });
+
+  // Check for visual-plan skill
+  const skillDirs = (process.env.AOS_PLAN_CANVAS_SKILL_DIRS || [
+    path.join(process.env.HOME || os.homedir(), '.claude', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.agents', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.codex', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.config', 'opencode', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.gemini', 'config', 'skills')
+  ].join(':')).split(':');
+
+  let visualPlanFound = false;
+  for (const dir of skillDirs) {
+    const skillMdPath = path.join(dir, 'visual-plan', 'SKILL.md');
+    if (fs.existsSync(skillMdPath)) {
+      visualPlanFound = true;
+      break;
+    }
+  }
+
+  modes.push({
+    id: 'builder',
+    label: 'Builder.io Visual Plan',
+    available: visualPlanFound,
+    reason: visualPlanFound ? null : 'visual-plan skill not found'
+  });
+
+  return {
+    default: 'standard',
+    modes
+  };
+}
+
 async function cmdOpen(file, args, { stateDir, port }) {
   if (!file) throw new Error('open requires a file path');
   if (!fs.existsSync(path.resolve(file))) throw new Error(`artifact not found: ${file}`);
+
+  const mode = valueAfter(args, '--mode') || 'standard';
+  const modesInfo = resolveModes();
+  const modeConfig = modesInfo.modes.find(m => m.id === mode);
+
+  if (!modeConfig) {
+    process.stderr.write(`Unknown mode: ${mode}\n`);
+    return { error: `Unknown mode: ${mode}` };
+  }
+
+  if (!modeConfig.available) {
+    process.stderr.write(`Mode not available: ${mode} (${modeConfig.reason})\n`);
+    return { error: `Mode not available: ${mode} (${modeConfig.reason})` };
+  }
+
   await ensureServer({ stateDir, port });
   const res = await request(port, 'POST', '/api/sessions', {
     file: path.resolve(file),
@@ -241,6 +313,7 @@ async function cmdOpen(file, args, { stateDir, port }) {
     status: 'open',
     url,
     browser: launched ? 'opened' : 'not opened',
+    mode,
     next_step:
       'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
   };
@@ -394,7 +467,15 @@ async function main(argv = process.argv.slice(2)) {
   const context = { stateDir, port: (recorded && recorded.port) || resolvePort() };
   try {
     if (command === null) output(await cmdStatus(context));
-    else if (command === 'open') output(await cmdOpen(args[0], args, context));
+    else if (command === 'modes') output(cmdModes());
+    else if (command === 'open') {
+      const result = await cmdOpen(args[0], args, context);
+      if (result.error) {
+        output(result);
+        return 2;
+      }
+      output(result);
+    }
     else if (command === 'await') output(await cmdAwait(args[0], args, context));
     else if (command === 'pending') output(cmdPending(context));
     else if (command === 'typing') output(await cmdTyping(args[0], args, context));
