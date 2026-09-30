@@ -208,6 +208,122 @@ describe('BDB Plan Builder', () => {
     assert.match(html, /<iframe[^>]*sandbox[^>]*>/);
   });
 
+  describe('board view', () => {
+    const CANVAS = '<DesignBoard transitions={[{"from":"a","to":"b","label":"go <next>"}]}><Section title="Entry"><Artboard id="a" title="One"><Screen surface="mobile" html={\'<div>x</div>\'} /></Artboard><Artboard id="b" title="Two"><Screen surface="mobile" html={\'<div>y</div>\'} /></Artboard></Section></DesignBoard>';
+    const VOID = new Set(['meta', 'br', 'hr', 'img', 'input', 'link', 'path', 'circle']);
+
+    function balanced(html) {
+      const stripped = html
+        .replace(/<script[\s\S]*?<\/script>/g, '<script></script>')
+        .replace(/<style[\s\S]*?<\/style>/g, '<style></style>')
+        .replace(/<!DOCTYPE[^>]*>/i, '');
+      const stack = [];
+      for (const m of stripped.matchAll(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g)) {
+        const [, close, name, rest] = m;
+        if (close) assert.equal(stack.pop(), name, `unbalanced </${name}>`);
+        else if (!VOID.has(name) && !rest.endsWith('/')) stack.push(name);
+      }
+      assert.deepEqual(stack, []);
+    }
+
+    test('canvas plan gets a board, plain plan does not', () => {
+      const withCanvas = renderPlanSource({ plan: '# T', canvas: CANVAS });
+      assert.match(withCanvas.html, /<section class="board"/);
+      assert.match(withCanvas.html, /<h3 class="btitle">1 · Entry<\/h3>/);
+      const plain = renderPlanSource({ plan: FIXTURE_PLAN });
+      assert.ok(!plain.html.includes('class="board"'));
+      assert.ok(!plain.html.includes('board-client') && !plain.html.includes("classList.add('js')"), 'no board script on a plain plan');
+    });
+
+    test('arrows only when the plan states transitions', () => {
+      const linked = renderPlanSource({ plan: '# T', canvas: CANVAS });
+      assert.equal((linked.html.match(/class="edge"/g) || []).length, 1);
+      assert.match(linked.html, /<marker id="bm-arrow-1"/);
+      assert.match(linked.html, /marker-end="url\(#bm-arrow-1\)"/);
+      assert.ok(linked.html.includes('go &lt;next&gt;'));
+      assert.ok(!linked.html.includes('go <next>'));
+      const bare = renderPlanSource({ plan: '# T', canvas: CANVAS.replace(/ transitions=\{.*?\}>/, '>') });
+      assert.ok(bare.html.includes('class="board"'));
+      assert.ok(!bare.html.includes('<svg'), 'no relation data, no arrows');
+      const dangling = renderPlanSource({ plan: '# T', canvas: CANVAS.replace('"to":"b"', '"to":"zzz"') });
+      assert.ok(!dangling.html.includes('class="edge"'));
+      assert.ok(dangling.warnings.some(w => w.includes('unknown card')));
+    });
+
+    test('diagram nodes and edges become cards and arrows', () => {
+      const plan = '## Flow {#board}\n\n<Diagram data={{"nodes":[{"id":"x","label":"Start"},{"id":"y","label":"End"}],"edges":[{"from":"x","to":"y","label":"then"}]}} />\n\n## After\n\nprose';
+      const { html } = renderPlanSource({ plan });
+      assert.match(html, /<section class="board"/);
+      assert.equal((html.match(/class="edge"/g) || []).length, 1);
+      assert.ok(html.includes('<h2 class="sec" id="flow">Flow</h2>'), 'board marker stripped from the heading');
+      assert.ok(html.indexOf('id="after"') > html.indexOf('</section>'), 'prose after the group stays in the document');
+    });
+
+    test('a block with the board prop is boarded', () => {
+      const { html } = renderPlanSource({ plan: '<Mermaid board source="flowchart LR\\nA-->B" />' });
+      assert.match(html, /<section class="board"/);
+    });
+
+    test('zoom controls, readout and labelled buttons are present', () => {
+      const { html } = renderPlanSource({ plan: '# T', canvas: CANVAS });
+      assert.match(html, /<output class="zoom-readout"[^>]*>100%<\/output>/);
+      for (const mode of ['in', 'out', 'fit', 'reset']) {
+        assert.match(html, new RegExp(`<button type="button" data-zoom="${mode}" aria-label="[^"]+"`));
+      }
+    });
+
+    test('board script leaves clicks on cards to the annotation layer', () => {
+      const { html } = renderPlanSource({ plan: '# T', canvas: CANVAS });
+      const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+      const clicks = [...script.matchAll(/(\S+)\.addEventListener\('click'/g)].map(m => m[1]);
+      assert.deepEqual(clicks, ['btn'], 'only the zoom buttons listen for click');
+      assert.ok(!/bcard[^\n]*addEventListener/.test(script));
+      for (const m of script.matchAll(/preventDefault/g)) {
+        const before = script.slice(Math.max(0, m.index - 450), m.index);
+        assert.match(before, /'wheel'|'keydown'/, 'preventDefault only for wheel zoom and Space');
+      }
+      assert.ok(!/alert|eval\(|fetch\(|XMLHttpRequest/.test(script));
+    });
+
+    test('board output stays escaped, sandboxed and well-formed', () => {
+      const hostile = '<DesignBoard><Section title="<img src=x onerror=alert(1)>"><Artboard id="a" title="<b>t</b>"><Screen surface="mobile" html={\'<script>alert(3)</script>\'} /></Artboard></Section></DesignBoard>';
+      const { html } = renderPlanSource({ plan: '# T', canvas: hostile });
+      assert.ok(!html.includes('<img src=x'));
+      assert.ok(!html.includes('<script>alert(3)</script>'));
+      for (const frame of html.match(/<iframe[^>]*>/g) || []) assert.ok(!frame.includes('allow-scripts'));
+      balanced(html);
+      balanced(renderPlanSource({ plan: '# T', canvas: CANVAS }).html);
+    });
+
+    test('demo plan renders a 4-screen, 3-arrow, 2-section board', () => {
+      const demo = path.join(builderDir, 'examples/demo-plan');
+      const plan = fs.readFileSync(path.join(demo, 'plan.mdx'), 'utf8');
+      const canvas = fs.readFileSync(path.join(demo, 'canvas.mdx'), 'utf8');
+      const { html, warnings } = renderPlanSource({ plan, canvas });
+      assert.deepEqual(warnings, []);
+      assert.equal((html.match(/class="bcard[ "]/g) || []).length, 5);
+      assert.equal((html.match(/<iframe/g) || []).length, 4);
+      assert.equal((html.match(/class="edge"/g) || []).length, 3);
+      assert.ok(html.includes('1 · Auth Entry') && html.includes('2 · Outcome'));
+      assert.ok(html.includes('class="mermaid"'));
+      balanced(html);
+    });
+
+    test('theme adds no blue, green or cyan accents', () => {
+      const css = fs.readFileSync(path.join(builderDir, 'theme.css'), 'utf8');
+      for (const hex of css.match(/#[0-9a-fA-F]{6}\b/g) || []) {
+        const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        if (max - min < 24) continue;
+        const hue = max === r ? ((g - b) / (max - min) * 60 + 360) % 360
+          : max === g ? (b - r) / (max - min) * 60 + 120
+            : (r - g) / (max - min) * 60 + 240;
+        assert.ok(hue < 70 || hue > 260, `${hex} (hue ${Math.round(hue)}) is a cool accent`);
+      }
+    });
+  });
+
   test('renderPlanFolder writes plan.builder.html next to the plan', () => {
     const result = renderPlanFolder(dir);
     assert.equal(result.outFile, path.join(dir, 'plan.builder.html'));

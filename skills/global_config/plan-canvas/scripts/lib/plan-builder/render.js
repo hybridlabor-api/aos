@@ -479,11 +479,188 @@ function navHtml(headings) {
   return `<h2>on this page</h2><ol>${items}</ol>`;
 }
 
+
+// --- board ---------------------------------------------------------------
+// Visual blocks laid out as numbered rows of cards. Arrows come only from
+// relations the plan states (transitions / Connector / data.edges); nothing is
+// inferred. Positions are measured in the browser (board-client.js).
+
+const BOARD_HEADING_RE = /\s*\{#board\}\s*$/;
+const WIDTHS = { mobile: 'mobile', popover: 'narrow', panel: 'narrow', tablet: 'tablet', browser: 'wide', desktop: 'wide' };
+const WIDE_TAGS = new Set(['Mermaid', 'Diagram', 'Diff', 'Code', 'AnnotatedCode', 'FileTree', 'DataModel', 'Endpoint']);
+
+function surfaceOf(block) {
+  if (block.props && block.props.surface) return String(block.props.surface);
+  for (const child of block.children || []) {
+    const found = child && child.type === 'tag' ? surfaceOf(child) : '';
+    if (found) return found;
+  }
+  return '';
+}
+
+function widthClass(block) {
+  const surface = WIDTHS[surfaceOf(block).toLowerCase()];
+  if (surface) return 'w-' + surface;
+  return WIDE_TAGS.has(block.name) ? 'w-wide' : '';
+}
+
+function relationOf(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const from = raw.from ?? raw.fromId ?? raw.source ?? raw.sourceId;
+  const to = raw.to ?? raw.toId ?? raw.target ?? raw.targetId;
+  if (from === undefined || to === undefined) return null;
+  return { from: String(from), to: String(to), label: text(raw.label ?? raw.text) };
+}
+
+function isNodeDiagram(block) {
+  if (block.name !== 'Diagram') return false;
+  const data = block.props.data && typeof block.props.data === 'object' ? block.props.data : {};
+  return !(data.html || block.props.html || data.source || block.props.source) && asArray(data.nodes).length > 0;
+}
+
+function renderBoard(blocks, ctx) {
+  const index = ctx.boards = (ctx.boards || 0) + 1;
+  const rows = [];
+  const relations = [];
+  const known = new Map();
+  let cardCount = 0;
+  let row = null;
+
+  const startRow = (title) => { row = { title, cards: [] }; rows.push(row); };
+  const addCard = (html, cls, keys) => {
+    if (!row) startRow('');
+    cardCount += 1;
+    const id = `bc-${index}-${cardCount}`;
+    for (const key of keys) if (key) known.set(String(key), id);
+    row.cards.push(`<div class="bcard${cls ? ' ' + cls : ''}" id="${id}">${html}</div>`);
+  };
+  const collect = (list) => {
+    for (const raw of asArray(list)) {
+      const rel = relationOf(raw);
+      if (rel) relations.push(rel);
+    }
+  };
+
+  const walk = (list) => {
+    for (const block of list || []) {
+      try {
+        if (block.type === 'heading') startRow(block.text);
+        else if (block.type === 'prose') addCard(card('', `<div class="prose">${renderMarkdown(block.text)}</div>`), 'w-wide', []);
+        else if (block.type === 'tag') walkTag(block);
+        else addCard(renderBlocks([block], ctx), '', []);
+      } catch (error) {
+        ctx.warnings.push(`render failed for ${block && block.name ? '<' + block.name + '>' : 'a block'}: ${error.message}`);
+        addCard(errorCard('render failed', error.message), '', []);
+      }
+    }
+  };
+
+  const walkTag = (block) => {
+    collect(block.props.transitions);
+    if (block.name === 'DesignBoard') return walk(block.children);
+    if (block.name === 'Section') {
+      startRow(text(block.props.title || block.props.label));
+      return walk(block.children);
+    }
+    if (block.name === 'Connector') {
+      const rel = relationOf(block.props);
+      if (rel) relations.push(rel);
+      return undefined;
+    }
+    if (isNodeDiagram(block)) {
+      const data = block.props.data;
+      asArray(data.nodes).forEach((node, i) => {
+        const obj = node && typeof node === 'object' ? node : { label: asText(node) };
+        const id = text(obj.id, String(i));
+        const label = text(obj.label || obj.text || obj.id, 'node');
+        addCard(card(label, obj.description ? `<div class="note">${esc(asText(obj.description))}</div>` : ''), 'bnode', [id]);
+      });
+      collect(data.edges);
+      return undefined;
+    }
+    const keys = [block.props.id, block.props.blockId, slugify(text(block.props.title || block.props.label))];
+    addCard(renderTag(block, ctx), widthClass(block), keys);
+    return undefined;
+  };
+
+  walk(blocks);
+
+  const edges = [];
+  for (const rel of relations) {
+    const from = known.get(rel.from);
+    const to = known.get(rel.to);
+    if (!from || !to) {
+      ctx.warnings.push(`board relation ${rel.from} -> ${rel.to} names an unknown card; no arrow drawn`);
+      continue;
+    }
+    edges.push({ from, to, label: rel.label, names: `${rel.from} to ${rel.to}` });
+  }
+
+  let number = 0;
+  const rowHtml = rows.filter((r) => r.cards.length).map((r) => {
+    const title = r.title ? `<h3 class="btitle">${esc(`${++number} · ${r.title}`)}</h3>` : '';
+    return `<div class="brow">${title}<div class="bcards">${r.cards.join('')}</div></div>`;
+  }).join('');
+
+  const svg = edges.length
+    ? `<svg class="board-edges" aria-hidden="true" focusable="false"><defs>` +
+      `<marker id="bm-arrow-${index}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="edge-head" d="M0 0L10 5L0 10z"/></marker></defs>` +
+      edges.map((e) => `<g class="edge" data-from="${e.from}" data-to="${e.to}"><path class="edge-line" d="" marker-end="url(#bm-arrow-${index})"/>` +
+        `<text class="edge-label" text-anchor="middle">${esc(e.label)}</text></g>`).join('') +
+      '</svg>' +
+      `<ul class="sr-only">${edges.map((e) => `<li>${esc(e.names)}${e.label ? ': ' + esc(e.label) : ''}</li>`).join('')}</ul>`
+    : '';
+
+  return `<section class="board" aria-label="Visual board ${index}">` +
+    `<div class="board-viewport"><div class="board-stage"><div class="board-canvas">${svg}${rowHtml}</div></div></div>` +
+    '<div class="board-zoom" role="group" aria-label="Board zoom">' +
+    '<button type="button" data-zoom="out" aria-label="Zoom out">&minus;</button>' +
+    '<output class="zoom-readout" aria-live="polite">100%</output>' +
+    '<button type="button" data-zoom="in" aria-label="Zoom in">+</button>' +
+    '<button type="button" data-zoom="fit" aria-label="Fit board to view">fit</button>' +
+    '<button type="button" data-zoom="reset" aria-label="Reset zoom to 100 percent">1:1</button>' +
+    '</div></section>';
+}
+
+// Document blocks with board islands: a heading tagged {#board} hands its
+// section (up to the next heading of the same or a higher level) to the board,
+// and a run of blocks carrying a `board` prop becomes one board.
+function renderDocument(blocks, ctx) {
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (run.length) ctx.docBlocks = (ctx.docBlocks || 0) + run.filter((b) => b.type !== 'heading').length;
+    if (run.length) out.push(renderBlocks(run, ctx));
+    run = [];
+  };
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    if (block.type === 'heading' && BOARD_HEADING_RE.test(block.text)) {
+      flush();
+      out.push(renderBlocks([{ ...block, text: block.text.replace(BOARD_HEADING_RE, '') }], ctx));
+      const group = [];
+      while (i + 1 < blocks.length && !(blocks[i + 1].type === 'heading' && blocks[i + 1].level <= block.level)) group.push(blocks[++i]);
+      out.push(renderBoard(group, ctx));
+    } else if (block.type === 'tag' && block.props.board) {
+      flush();
+      const group = [block];
+      while (i + 1 < blocks.length && blocks[i + 1].type === 'tag' && blocks[i + 1].props.board) group.push(blocks[++i]);
+      out.push(renderBoard(group, ctx));
+    } else run.push(block);
+  }
+  flush();
+  return out.join('\n');
+}
+
 function themeCss() {
   return fs.readFileSync(path.join(__dirname, 'theme.css'), 'utf8');
 }
 
-function page({ title, status, meta, headings, body, warnings, hasMermaid }) {
+function boardScript() {
+  return `<script>\n${fs.readFileSync(path.join(__dirname, 'board-client.js'), 'utf8')}</script>`;
+}
+
+function page({ title, status, meta, headings, body, warnings, hasMermaid, hasBoard, boardOnly }) {
   const warningBlock = warnings.length
     ? `<div class="warnings"><span class="label">${warnings.length} rendering warning${warnings.length === 1 ? '' : 's'}</span><ul>${warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>`
     : '';
@@ -497,7 +674,7 @@ function page({ title, status, meta, headings, body, warnings, hasMermaid }) {
 ${themeCss()}
 </style>
 </head>
-<body>
+<body${boardOnly ? ' class="board-only"' : ''}>
 <header class="topbar">
 <span class="mark"></span>
 <span class="title">${esc(title)}</span>
@@ -510,12 +687,13 @@ ${meta ? `<span class="meta">${esc(meta)}</span>` : ''}
 ${warningBlock}
 <h1 class="doc-title">${esc(title)}</h1>
 <div class="flow">${body}</div>
-<footer class="footer">Built by BDB Plan Builder from the plan folder beside this file. Edit the MDX and re-run the build.</footer>
+<footer class="footer">Built by BDB Plan Builder from the plan folder beside this file. Edit the MDX and re-run the build.<span class="vp-mark">VISUAL PLAN</span></footer>
 </main>
 </div>
 ${hasMermaid ? mermaidLoaderScript(mermaidUrl()) : ''}
+${hasBoard ? boardScript() : ''}
 </body>
 </html>`;
 }
 
-module.exports = { renderBlocks, renderTag, page, mermaidUrl, escapeHtml };
+module.exports = { renderBlocks, renderBoard, renderDocument, renderTag, page, mermaidUrl, escapeHtml };

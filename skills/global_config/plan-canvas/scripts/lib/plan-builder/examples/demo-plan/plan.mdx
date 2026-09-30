@@ -1,0 +1,18 @@
+---
+title: Demo Plan - Sign-in Flow
+status: draft
+---
+
+# Sign-in flow
+
+## Goal
+
+Let a returning user sign in with an email link, and show a clear error when the link has expired. All data here is invented for the demo.
+
+## Sequence
+
+<Mermaid label="Sign-in sequence" source={"sequenceDiagram\n  participant U as User\n  participant A as App\n  participant M as Mailer\n  U->>A: request link\n  A->>M: send link\n  M-->>U: email\n  U->>A: open link\n  A-->>U: signed in"} />
+
+## Open questions
+
+<QuestionForm title="Open Questions" questions={[{"title":"How long is a link valid?","mode":"single","options":[{"label":"15 minutes","recommended":true},{"label":"1 hour"}]}]} />

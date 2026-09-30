@@ -19,13 +19,13 @@ const fs = require('fs');
 const path = require('path');
 
 const { parseMdx } = require('./mdx');
-const { renderBlocks, page } = require('./render');
+const { renderBoard, renderDocument, page } = require('./render');
 const { slugify } = require('../plan-canvas/markdown');
 
 const PLAN_FILE = 'plan.mdx';
 const OUTPUT_FILE = 'plan.builder.html';
 const OPTIONAL_SOURCES = [
-  { key: 'canvas', file: 'canvas.mdx', title: 'Canvas' },
+  { key: 'canvas', file: 'canvas.mdx', title: 'Canvas', board: true },
   { key: 'prototype', file: 'prototype.mdx', title: 'Prototype' }
 ];
 
@@ -48,10 +48,10 @@ function readIfPresent(dir, file, warnings) {
  */
 function renderPlanSource(source = {}) {
   const warnings = [];
-  const ctx = { warnings, headings: [], ids: new Map(), hasMermaid: false };
+  const ctx = { warnings, headings: [], ids: new Map(), hasMermaid: false, boards: 0, docBlocks: 0 };
   const sections = [];
 
-  const render = (mdx, heading) => {
+  const render = (mdx, heading, asBoard) => {
     const blocks = parseMdx(text(mdx));
     for (const warning of blocks.warnings || []) warnings.push(warning);
     if (heading) {
@@ -59,7 +59,7 @@ function renderPlanSource(source = {}) {
       ctx.headings.push({ id, text: heading, level: 2 });
       sections.push(`<h2 class="sec" id="${id}">${heading}</h2>`);
     }
-    sections.push(renderBlocks(blocks, ctx));
+    sections.push(asBoard ? renderBoard(blocks, ctx) : renderDocument(blocks, ctx));
     return blocks.frontmatter || {};
   };
 
@@ -67,7 +67,7 @@ function renderPlanSource(source = {}) {
   for (const extra of OPTIONAL_SOURCES) {
     const mdx = source[extra.key];
     if (!text(mdx)) continue;
-    render(mdx, extra.title);
+    render(mdx, extra.title, extra.board);
   }
 
   const state = source.state && typeof source.state === 'object' ? source.state : {};
@@ -87,7 +87,9 @@ function renderPlanSource(source = {}) {
     headings: ctx.headings,
     body,
     warnings,
-    hasMermaid: ctx.hasMermaid
+    hasMermaid: ctx.hasMermaid,
+    hasBoard: ctx.boards > 0,
+    boardOnly: ctx.boards > 0 && ctx.docBlocks === 0
   });
   return { html, warnings };
 }

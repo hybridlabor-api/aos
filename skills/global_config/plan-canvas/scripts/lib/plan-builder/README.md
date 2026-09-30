@@ -82,6 +82,43 @@ adds a line to `warnings` (also shown in a banner at the top of the page).
 Content is never dropped silently. A block that fails to render becomes an error
 card instead of taking the document down.
 
+## Board view
+
+Visual blocks render on a dark, pan/zoomable **board**: numbered rows of
+fixed-width cards (`1 · Auth Entry`), SVG arrows with small muted labels, a
+zoom control bottom-left, and a `VISUAL PLAN` mark in the footer.
+
+**Board markup rule** (everything else stays document-style):
+
+1. Everything in `canvas.mdx` is a board. `<Section title>` (or a Markdown
+   heading) starts a numbered row; `<DesignBoard>` is pass-through.
+2. In `plan.mdx`, a heading tagged `{#board}` (`## Flow {#board}`) hands its
+   section, up to the next heading of the same or a higher level, to a board.
+   The tag is stripped from the heading text.
+3. A block carrying a `board` prop (`<Mermaid board ... />`) is boarded; a run
+   of such blocks shares one board.
+4. A plan with none of these renders exactly as before and ships no board JS.
+
+**Arrows** are drawn only from relations the plan states, never inferred:
+`transitions={[{from, to, label}]}` on any container, `<Connector from to
+label />`, or `data.edges` of a node/edge `Diagram` (its nodes become cards).
+`from`/`to` match a card `id` (or `blockId`, or the slug of its title; `source`,
+`target`, `fromId`, `toId` are accepted too). An unknown endpoint adds a warning
+and draws no arrow.
+
+**Interaction** (`board-client.js`, inlined, no dependencies): `+`, `-`, `fit`,
+`1:1` buttons and Ctrl/Cmd+wheel zoom with a percentage readout; drag empty
+background or hold Space and drag to pan. The script never listens for clicks
+on cards or text (the annotation layer owns those) and only calls
+`preventDefault` for Ctrl/Cmd+wheel and the Space key over a board. Arrow paths
+are measured in the browser, so without JS the board simply scrolls inside its
+own container and arrows are not drawn (a hidden list keeps the relations
+readable). Below 900px the side navigation is hidden when the page is
+board-only.
+
+**Demo:** `aos-plan-canvas open lib/plan-builder/examples/demo-plan --mode bdb-plan-builder`
+(4 screens, 3 transitions, 2 numbered sections, one Mermaid diagram).
+
 ## Security
 
 - Everything from the plan is escaped (`escapeHtml`, and `renderMarkdown` escapes
@@ -98,7 +135,9 @@ card instead of taking the document down.
 | `index.js` | `renderPlanFolder` / `renderPlanSource` / re-export `parseMdx` |
 | `mdx.js` | frontmatter, headings, prose, JSX-like tags; never throws |
 | `render.js` | block → HTML, Mermaid loader, page shell |
+| `board-client.js` | pan/zoom + arrow routing, inlined only when a board exists |
 | `theme.css` | BDB CI theme, inlined into the output |
+| `examples/demo-plan/` | richer demo: plan.mdx + canvas.mdx |
 
 Adding this directory is also what flips `bdb-plan-builder` to **available** in
 `aos-plan-canvas modes`.
