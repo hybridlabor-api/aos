@@ -946,3 +946,16 @@ describe('Tier 5: Adversarial Stress & Integrity', () => {
         assert.ok(duration < 5000, `Large prompt processing took too long: ${duration}ms`);
     });
 });
+
+describe('go-gate fails closed on unparseable input (P1)', () => {
+    const GO_GATE = path.join(REPO_ROOT, '.claude', 'hooks', 'go-gate.mjs');
+    test('non-JSON stdin: exit 2, stderr reason, deny JSON on stdout', () => {
+        const r = runNodeScript(GO_GATE, { input: 'not json' });
+        assert.strictEqual(r.status, 2);
+        assert.match(r.stderr, /could not parse hook input/);
+        assert.strictEqual(JSON.parse(r.stdout).decision, 'deny');
+    });
+    test('empty stdin still allows (documented fail-open)', () => {
+        assert.strictEqual(runNodeScript(GO_GATE, { input: '' }).status, 0);
+    });
+});
