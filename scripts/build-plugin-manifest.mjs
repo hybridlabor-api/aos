@@ -84,12 +84,12 @@ const manifest = {
   name: 'bdb-aos',
   version: pkg.version,
   description:
-    'Full BDB Agent OS suite: 200+ curated skills, subagents, the startcycle pipeline, ' +
-    'CI/CD workflows and security hooks for Claude Code.',
+    'Full BDB Agent OS suite: 200+ curated skills, 13 subagents and the startcycle pipelines for Claude Code. ' +
+    'Gate hooks and MCP servers are installed by the AOS installer.',
   author: { name: 'Tim Rennings / Hybridlabor Global LLC', email: 'hybridlabor@gmail.com' },
   homepage: repoUrl,
   repository: repoUrl,
-  license: 'proprietary',
+  license: 'Apache-2.0',
   keywords: ['skills', 'agent-os', 'cicd', 'multiagent', 'startcycle', 'bdb'],
   skills,
 };
