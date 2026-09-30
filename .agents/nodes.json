@@ -17,7 +17,8 @@
         "bdbrainstorm",
         "planning-with-files",
         "concise-planning",
-        "archify"
+        "archify",
+        "plan-arbiter"
       ],
       "instructions": null
     },
@@ -34,7 +35,8 @@
         "read-the-damn-docs",
         "startcycle-graph",
         "agent-pipeline",
-        "subagent-driven-development"
+        "subagent-driven-development",
+        "plan-arbiter"
       ],
       "instructions": null
     },

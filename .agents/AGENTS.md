@@ -19,6 +19,7 @@ next. This file defines *what each agent is*, not *what calls what*.
   - `bdbrainstorm`
   - `planning-with-files`
   - `concise-planning`
+  - `plan-arbiter`
 - **MCP Servers**:
   - `openwiki-skill`
   - `memb_mcp`
@@ -39,6 +40,7 @@ next. This file defines *what each agent is*, not *what calls what*.
   - `startcycle-graph`
   - `agent-pipeline`
   - `subagent-driven-development`
+  - `plan-arbiter`
 - **MCP Servers**:
   - `memb_mcp`
 - **Output Artifact**: capability-map approval recorded in `state.json` (no separate markdown file — this is a gate, not a deliverable)
@@ -59,6 +61,8 @@ next. This file defines *what each agent is*, not *what calls what*.
   - `react-best-practices`
   - `ui-component`
   - `ui-tokens`
+  - `bdbdesignpro`
+  - `editable-design`
 - **MCP Servers**:
   - `open_design_mcp`
   - `chrome-devtools`
@@ -79,6 +83,7 @@ next. This file defines *what each agent is*, not *what calls what*.
   - `postgres-best-practices`
   - `typescript-pro`
   - `python-pro`
+  - `bdbresilience`
 - **MCP Servers**:
   - `github`
   - `memb_mcp`
@@ -138,6 +143,9 @@ next. This file defines *what each agent is*, not *what calls what*.
   - `wcag-audit-patterns`
   - `github-repo`
   - `clean-code`
+  - `brag`
+  - `bdbresilience`
+  - `bdb-security-audit`
 - **MCP Servers**:
   - `github`
   - `chrome-devtools`
