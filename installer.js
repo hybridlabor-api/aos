@@ -3354,27 +3354,27 @@ function loadPipelineConfig(projectDir = currentDir) {
 function resolveAgentConfig(agentSlug, harness, pipelineConfig = null) {
     const normSlug = agentSlug.toLowerCase().replace(/-/g, '_');
     const roleCfg = pipelineConfig ? (pipelineConfig[normSlug] || pipelineConfig[agentSlug]) : null;
-    if (roleCfg) {
-        if (roleCfg.model) {
-            return {
-                model: roleCfg.model,
-                tier: roleCfg.tier || 'custom',
-                enabled: roleCfg.enabled !== false,
-                harness: roleCfg.harness || harness
-            };
-        }
-        if (roleCfg.tier && CANONICAL_TIERS[roleCfg.tier] && CANONICAL_TIERS[roleCfg.tier][harness]) {
-            return {
-                model: CANONICAL_TIERS[roleCfg.tier][harness],
-                tier: roleCfg.tier,
-                enabled: roleCfg.enabled !== false,
-                harness: roleCfg.harness || harness
-            };
-        }
+    // A role's model/harness describes where AO runs that role; only valid for that harness.
+    const ownHarness = !!roleCfg && (!roleCfg.harness || roleCfg.harness === harness);
+    if (roleCfg && ownHarness && roleCfg.model) {
+        return {
+            model: roleCfg.model,
+            tier: roleCfg.tier || 'custom',
+            enabled: roleCfg.enabled !== false,
+            harness
+        };
+    }
+    if (roleCfg && roleCfg.tier && CANONICAL_TIERS[roleCfg.tier] && CANONICAL_TIERS[roleCfg.tier][harness]) {
+        return {
+            model: CANONICAL_TIERS[roleCfg.tier][harness],
+            tier: roleCfg.tier,
+            enabled: roleCfg.enabled !== false,
+            harness
+        };
     }
     const defaultTier = (normSlug === 'architect' || normSlug === 'reviewer') ? 'reasoning_max' : 'standard_fast';
     const fallbackModel = (CANONICAL_TIERS[defaultTier] && CANONICAL_TIERS[defaultTier][harness]) || 'inherit';
-    return { model: fallbackModel, tier: defaultTier, enabled: true, harness };
+    return { model: fallbackModel, tier: defaultTier, enabled: !(roleCfg && roleCfg.model && roleCfg.enabled === false), harness };
 }
 
 // Generates .claude/agents/<name>.md — Claude Code's native subagent format.
@@ -3385,7 +3385,8 @@ function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
         const resolved = resolveAgentConfig(slug, 'claude', pipelineConfig);
-        const model = (resolved && resolved.model) ? resolved.model.toLowerCase() : (a.model ? a.model.toLowerCase() : 'inherit');
+        let model = (resolved && resolved.model) ? resolved.model.toLowerCase() : (a.model ? a.model.toLowerCase() : 'inherit');
+        if (!/^(opus|sonnet|haiku|inherit|claude-.+)$/.test(model)) model = CANONICAL_TIERS[resolved.tier in CANONICAL_TIERS ? resolved.tier : 'standard_fast'].claude;
         const body = [
             a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
@@ -3412,7 +3413,8 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
         const resolved = resolveAgentConfig(slug, 'opencode', pipelineConfig);
-        const model = resolved && resolved.model ? resolved.model : null;
+        let model = resolved && resolved.model ? resolved.model : null;
+        if (model && !model.includes('/')) model = CANONICAL_TIERS[resolved.tier in CANONICAL_TIERS ? resolved.tier : 'standard_fast'].opencode;
         const body = [
             a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
