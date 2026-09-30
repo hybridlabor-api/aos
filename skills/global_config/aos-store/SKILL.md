@@ -1,6 +1,6 @@
 ---
 name: aos-store
-description: Browse, preview, and install AOS Core + ECC skills and agents from a local web UI. Use when exploring or adding new skills to a project.
+description: Browse, preview, and install AOS Core, ECC and Scenario skills and agents from a local web UI. Use when exploring or adding new skills to a project.
 category: bdb-core
 metadata:
   version: "1.0.0"
@@ -13,7 +13,7 @@ A web UI for discovering and installing AOS skills and agents. Lists what is alr
 
 ## When to Use
 
-- You want to explore available AOS Core + ECC skills and agents in a local web UI.
+- You want to explore available AOS Core, ECC and Scenario skills and agents in a local web UI.
 - You need to preview a skill or agent before installing it.
 - You want to install skills or agents globally (all harnesses) or into the current project, with explicit confirmation before each install.
 
@@ -43,7 +43,7 @@ Some harnesses (e.g. OpenCode) cannot open a browser automatically. **Always pri
 
 ## Store Features
 
-- **Browse:** Lists all available AOS Core and ECC skills and agents.
+- **Browse:** Lists all available AOS Core, ECC and Scenario skills and agents. Scenario items are MIT-licensed third-party skills; some contain scripts (the preview warns, and flags bridges that execute received code).
 - **Show Installed:** Marks what is already installed and which items are AOS Core (always included).
 - **Preview:** "+ Add" first shows the exact target paths for the chosen scope (global or project); nothing is written yet.
 - **Confirm:** Every install requires explicit user confirmation — nothing is installed silently.

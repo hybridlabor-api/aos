@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchSkillFiles, fileTargets, localAgents, localSkills, targetsFor as sharedTargetsFor, validateFiles, writeSkillFiles } from '../lib/store-shared.mjs';
+import { fetchSkillFiles, fileTargets, findItem, installPlan, loadSources, localAgents, localSkills, planSkillFiles, planSummary, targetsFor as sharedTargetsFor, validateFiles, writePlan } from '../lib/store-shared.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const INDEX_PATH = process.env.AOS_STORE_INDEX || join(ROOT, 'lib', 'ecc-store-index.json');
-const RAW_BASE = (process.env.AOS_STORE_RAW_BASE || 'https://raw.githubusercontent.com/affaan-m/ECC').replace(/\/+$/, '');
-const index = JSON.parse(readFileSync(INDEX_PATH, 'utf8'));
+const sources = loadSources(ROOT);
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const project = args.includes('--project');
@@ -17,21 +15,9 @@ const net = args.includes('--net');
 const positional = args.filter((arg) => !arg.startsWith('--'));
 const option = (name) => args.find((arg) => arg === name || arg.startsWith(`${name}=`))?.split('=').slice(1).join('=');
 
-function loadIndex() {
-  if (!index.pinned_commit || !index.skills || !index.subagents) throw new Error('Invalid AOS store index');
-  return index;
-}
-
 function allItems(type) {
   const selected = type === 'agents' || type === 'subagents' ? 'subagents' : 'skills';
-  return Object.entries(index[selected] || {}).map(([name, item]) => ({ name, item, type: selected }));
-}
-
-function findItem(name) {
-  for (const type of ['skills', 'subagents']) {
-    if (index[type]?.[name]) return { name, item: index[type][name], type };
-  }
-  return null;
+  return sources.flatMap((src) => Object.entries(src.index[selected] || {}).map(([name, item]) => ({ name, item, type: selected, src })));
 }
 
 const localSkillNames = () => new Set(localSkills(ROOT).keys());
@@ -42,15 +28,15 @@ function printItems(items) {
     console.log('No store items found.');
     return;
   }
-  for (const { name, item, type } of items) {
+  for (const { name, item, type, src } of items) {
     const kind = type === 'skills' ? 'skill' : 'agent';
-    console.log(`${kind}\t${name}\t${item.category}\t${item.description}`);
+    console.log(`${kind}\t${name}\t${item.category}\t${src.label}\t${item.description}`);
   }
   console.log(`\n${items.length} item(s).`);
 }
 
-async function download(upstreamPath) {
-  const url = `${RAW_BASE}/${index.pinned_commit}/${upstreamPath}`;
+async function download(src, upstreamPath) {
+  const url = `${src.raw_base}/${src.pinned_commit}/${upstreamPath}`;
   const response = await fetch(url, { headers: { 'user-agent': 'aos-store' } });
   if (!response.ok) throw new Error(`Download failed (${response.status}): ${url}`);
   return Buffer.from(await response.arrayBuffer());
@@ -60,42 +46,60 @@ const targetsFor = (type, name) => sharedTargetsFor(type, name, { project });
 
 async function install(name) {
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(`Invalid store name: ${name}`);
-  const found = findItem(name);
+  const found = findItem(sources, name);
   if (!found) throw new Error(`Store item not found: ${name}`);
-  const { item, type } = found;
+  const { type, src } = found;
   const coreNames = type === 'skills' ? localSkillNames() : localAgentNames();
   if (coreNames.has(name)) {
     console.log(`Skipped ${name}: AOS core already provides it.`);
     return;
   }
-  const targets = targetsFor(type, name);
-  const multi = type === 'skills' && item.files?.length > 1;
-  if (multi) validateFiles(item.files);
+  const plan = installPlan(sources, found).filter((p) => !(p.type === 'skills' && p.name !== name && localSkillNames().has(p.name)));
+  for (const p of plan) if (p.item.files?.length > 1) validateFiles(p.item.files);
+  const multi = (p) => p.type === 'skills' && p.item.files?.length > 1;
+  const summary = planSummary(plan);
+  const notes = [];
+  if (summary.requires.length) notes.push(`also installs required skill(s): ${summary.requires.join(', ')}`);
+  if (summary.execBridge) notes.push(`WARNING: contains a script that executes code received over a local socket or file channel without authentication (${summary.execBridgeFiles.map((f) => `${f.skill}/${f.path}`).join(', ')}); install only if you use this bridge`);
+  else if (summary.hasScripts) notes.push(`WARNING: contains ${summary.scriptCount} script file(s); review before use`);
   if (dryRun) {
-    for (const target of targets) {
-      if (multi) for (const file of fileTargets(target, item.files)) console.log(`[dry-run] write ${file}`);
-      else console.log(`[dry-run] write ${target}`);
+    for (const note of notes) console.log(note);
+    for (const p of plan) {
+      for (const target of targetsFor(p.type, p.name)) {
+        if (multi(p)) for (const file of fileTargets(target, p.item.files)) console.log(`[dry-run] write ${file}`);
+        else console.log(`[dry-run] write ${target}`);
+      }
     }
     return;
   }
   if (!net) {
     throw new Error(`Downloading '${name}' requires internet access to fetch from upstream GitHub. Pass --net to confirm: aos store install ${name} --net`);
   }
-  if (multi) {
-    const files = await fetchSkillFiles(RAW_BASE, index.pinned_commit, dirname(item.upstream_path), item.files);
-    for (const target of targets) {
-      const written = writeSkillFiles(target, files);
-      console.log(`Installed ${name} (${written.length} files) -> ${dirname(target)}`);
+  // All-or-nothing: download, hash-check and path-check every skill in memory before the first write.
+  const writes = [];
+  for (const p of plan) {
+    const pSrc = p.src;
+    let files;
+    if (multi(p)) {
+      files = await fetchSkillFiles(pSrc.raw_base, pSrc.pinned_commit, dirname(p.item.upstream_path), p.item.files);
+    } else {
+      const content = await download(pSrc, p.item.upstream_path);
+      const digest = createHash('sha256').update(content).digest('hex');
+      if (digest !== p.item.sha256) throw new Error(`SHA-256 mismatch for ${p.name}: expected ${p.item.sha256}, got ${digest}`);
+      files = null;
+      for (const target of targetsFor(p.type, p.name)) writes.push({ name: p.name, single: { target, content } });
     }
-    return;
+    if (files) for (const target of targetsFor(p.type, p.name)) writes.push({ name: p.name, target, plan: planSkillFiles(target, files) });
   }
-  const content = await download(item.upstream_path);
-  const digest = createHash('sha256').update(content).digest('hex');
-  if (digest !== item.sha256) throw new Error(`SHA-256 mismatch for ${name}: expected ${item.sha256}, got ${digest}`);
-  for (const target of targets) {
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, content);
-    console.log(`Installed ${name} -> ${target}`);
+  for (const note of notes) console.log(note);
+  for (const w of writes) {
+    if (w.single) {
+      mkdirSync(dirname(w.single.target), { recursive: true });
+      writeFileSync(w.single.target, w.single.content);
+      console.log(`Installed ${w.name} -> ${w.single.target}`);
+    } else {
+      console.log(`Installed ${w.name} (${writePlan(w.plan).length} files) -> ${dirname(w.target)}`);
+    }
   }
 }
 
@@ -108,7 +112,6 @@ function usage() {
 }
 
 async function main() {
-  loadIndex();
   const command = positional[0] || 'list';
   if (command === 'list') {
     printItems(allItems(option('--type') || 'skills'));
