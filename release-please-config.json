@@ -1,1 +1,1 @@
-{"packages": {".": {"release-type": "node", "versioning": "always-bump-patch"}}}
+{"packages": {".": {"release-type": "node"}}}
