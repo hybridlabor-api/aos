@@ -4,10 +4,11 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { localAgents, localSkills, targetsFor as sharedTargetsFor } from '../lib/store-shared.mjs';
+import { fetchSkillFiles, fileTargets, localAgents, localSkills, targetsFor as sharedTargetsFor, validateFiles, writeSkillFiles } from '../lib/store-shared.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const INDEX_PATH = join(ROOT, 'lib', 'ecc-store-index.json');
+const INDEX_PATH = process.env.AOS_STORE_INDEX || join(ROOT, 'lib', 'ecc-store-index.json');
+const RAW_BASE = (process.env.AOS_STORE_RAW_BASE || 'https://raw.githubusercontent.com/affaan-m/ECC').replace(/\/+$/, '');
 const index = JSON.parse(readFileSync(INDEX_PATH, 'utf8'));
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
@@ -49,7 +50,7 @@ function printItems(items) {
 }
 
 async function download(upstreamPath) {
-  const url = `https://raw.githubusercontent.com/affaan-m/ECC/${index.pinned_commit}/${upstreamPath}`;
+  const url = `${RAW_BASE}/${index.pinned_commit}/${upstreamPath}`;
   const response = await fetch(url, { headers: { 'user-agent': 'aos-store' } });
   if (!response.ok) throw new Error(`Download failed (${response.status}): ${url}`);
   return Buffer.from(await response.arrayBuffer());
@@ -68,12 +69,25 @@ async function install(name) {
     return;
   }
   const targets = targetsFor(type, name);
+  const multi = type === 'skills' && item.files?.length > 1;
+  if (multi) validateFiles(item.files);
   if (dryRun) {
-    for (const target of targets) console.log(`[dry-run] write ${target}`);
+    for (const target of targets) {
+      if (multi) for (const file of fileTargets(target, item.files)) console.log(`[dry-run] write ${file}`);
+      else console.log(`[dry-run] write ${target}`);
+    }
     return;
   }
   if (!net) {
     throw new Error(`Downloading '${name}' requires internet access to fetch from upstream GitHub. Pass --net to confirm: aos store install ${name} --net`);
+  }
+  if (multi) {
+    const files = await fetchSkillFiles(RAW_BASE, index.pinned_commit, dirname(item.upstream_path), item.files);
+    for (const target of targets) {
+      const written = writeSkillFiles(target, files);
+      console.log(`Installed ${name} (${written.length} files) -> ${dirname(target)}`);
+    }
+    return;
   }
   const content = await download(item.upstream_path);
   const digest = createHash('sha256').update(content).digest('hex');

@@ -42,7 +42,9 @@ test('catalog merges AOS Core and ECC with scope-aware state', async () => {
   assert.equal(d.scope, 'project');
   assert.ok(d.items.some((i) => i.source === 'AOS Core' && i.kind === 'skill'));
   assert.ok(d.items.some((i) => i.source === 'ECC' && i.kind === 'agent'));
-  assert.ok(d.items.find((i) => i.name === 'frontend-slides').multiFile);
+  assert.ok(d.items.find((i) => i.name === 'frontend-slides').fileCount > 1);
+  assert.equal(d.items.find((i) => i.name === 'django-patterns').fileCount, 1);
+  assert.equal(d.items.find((i) => i.name === 'ck').hasHooks, true);
   assert.equal(d.items.find((i) => i.name === 'django-patterns').installed, false);
 });
 
@@ -68,15 +70,20 @@ test('preview in project scope targets the UI cwd', async () => {
   assert.deepEqual(d.targets, [join(cwd, 'skills', 'django-patterns', 'SKILL.md')]);
 });
 
-test('multi-file skills and Core items are refused', async () => {
-  assert.equal((await call('/api/install', { name: 'frontend-slides', kind: 'skill' })).status, 409);
+test('multi-file skills preview all files (no 409); Core items are refused', async () => {
+  const idx = JSON.parse(readFileSync(join(root, 'lib', 'ecc-store-index.json'), 'utf8'));
+  const res = await call('/api/preview', { name: 'frontend-slides', kind: 'skill', scope: 'project' });
+  assert.equal(res.status, 200);
+  const d = await res.json();
+  assert.deepEqual(d.targets, idx.skills['frontend-slides'].files.map((f) => join(cwd, 'skills', 'frontend-slides', f.path)));
+  for (const t of d.targets) assert.ok(!existsSync(t));
   const core = (await (await fetch(base + '/api/catalog')).json()).items.find((i) => i.core && i.kind === 'skill');
   assert.equal((await call('/api/preview', { name: core.name, kind: 'skill' })).status, 409);
 });
 
-test('multi-file list only names real index skills', () => {
-  const idx = JSON.parse(readFileSync(join(root, 'lib', 'ecc-store-index.json'), 'utf8'));
-  const list = JSON.parse(readFileSync(join(root, 'lib', 'store-ui', 'multi-file-skills.json'), 'utf8'));
-  assert.equal(list.length, 35);
-  for (const n of list) assert.ok(idx.skills[n], n);
+test('no multi-file gating left in UI or server', () => {
+  for (const f of ['lib/store-ui/index.html', 'lib/store-ui/server.mjs']) {
+    assert.doesNotMatch(readFileSync(join(root, f), 'utf8'), /multiFile|multi-file-skills|install incomplete/);
+  }
+  assert.ok(!existsSync(join(root, 'lib', 'store-ui', 'multi-file-skills.json')));
 });
