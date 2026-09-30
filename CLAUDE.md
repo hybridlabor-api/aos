@@ -23,7 +23,7 @@ These ship as Claude Code plugins and are the preferred path over shelling out
 to the underlying CLI, because they already handle wrapper flags, cost
 discipline, and the digest contract:
 
-- `antigravity:antigravity-delegate` — agy / Gemini
+- `antigravity:delegate` — agy / Gemini
 - `opencode:opencode-rescue`
 - `codex:codex-rescue`
 
