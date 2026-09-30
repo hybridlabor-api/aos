@@ -4189,13 +4189,35 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         }
     }
 
-    // Replace existing AOS:HOOKS block or append
-    const hookBlockRegex = /# AOS:HOOKS:START[\s\S]*?# AOS:HOOKS:END/;
-    if (hookBlockRegex.test(content)) {
-        content = content.replace(hookBlockRegex, tomlSnippet);
-    } else {
-        content = `${content.trimEnd()}\n\n${tomlSnippet}\n`;
+    // Drop every AOS hook entry (marker block or not, duplicates included), then append one fresh block.
+    const bdbCodexScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'startcycle-dispatch.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const isAosMarker = (l) => /^\s*# AOS:HOOKS:(START|END)\s*$/.test(l);
+    const eol = content.includes('\r\n') ? '\r\n' : '\n';
+    const lines = content.split(/\r?\n/).filter((l) => !isAosMarker(l));
+    const sections = [];
+    for (const l of lines) {
+        if (/^\s*\[/.test(l) || !sections.length) sections.push([l]);
+        else sections[sections.length - 1].push(l);
     }
+    const isHookHeader = (sec) => /^\s*\[\[hooks\.\w+\]\]\s*$/.test(sec[0]);
+    const isHookInner = (sec) => /^\s*\[\[hooks\.\w+\.hooks\]\]\s*$/.test(sec[0]);
+    const kept = [];
+    for (let i = 0; i < sections.length; i++) {
+        if (!isHookHeader(sections[i])) { kept.push(sections[i]); continue; }
+        let j = i + 1;
+        while (j < sections.length && isHookInner(sections[j])) j++;
+        const group = sections.slice(i, j);
+        const ours = group.some((sec) => sec.some((l) => /^\s*command\s*=/.test(l) && bdbCodexScripts.some((n) => l.includes(n))));
+        if (ours) {
+            // keep trailing blanks/comments (they may belong to another tool's marker)
+            const tail = group.flat();
+            let end = tail.length;
+            while (end > 0 && /^\s*(#.*)?$/.test(tail[end - 1])) end--;
+            if (end < tail.length) kept.push(tail.slice(end));
+        } else kept.push(...group);
+        i = j - 1;
+    }
+    content = `${kept.flat().join(eol).trimEnd()}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
 
     try {
         fs.mkdirSync(path.dirname(configTomlPath), { recursive: true });
