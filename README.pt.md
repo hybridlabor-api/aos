@@ -11,7 +11,7 @@
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue.svg)](package.json)
-[![skills](https://img.shields.io/badge/skills-213%20curated-brightgreen.svg)](#skills)
+[![skills](https://img.shields.io/badge/skills-214%20curated-brightgreen.svg)](#skills)
 [![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#servidores-mcp)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#harnesses-suportados)
 [![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
@@ -26,7 +26,7 @@ Construído para pessoas que já executam **Claude Code, Google Antigravity, Cod
 
 Após a instalação, você tem:
 
-- **<!-- count:skills -->213<!-- /count --> skills** em seis categorias, descobríveis por cada harness como `<name>/SKILL.md`.
+- **<!-- count:skills -->214<!-- /count --> skills** em seis categorias, descobríveis por cada harness como `<name>/SKILL.md`.
 - **<!-- count:agents -->13<!-- /count --> subagentes** (Architect, TechLead, Reviewer, os Godmodes, revisores de segurança e falhas silenciosas) compilados em cada formato nativo de agente do harness.
 - **<!-- count:mcps -->21<!-- /count --> servidores MCP** para software criativo, controle de SO, memória e delegação entre harnesses.
 - **Três pipelines** — `/startcycle`, `/startcycle-graph`, `/startcycle-graph-user` — e um **portão GO** que bloqueia mecanicamente `git push`, `npm publish`, `npm version` e `rm` recursivo.
@@ -207,7 +207,7 @@ Instale através do instalador AOS com o alvo AOS CLI: `npx -y @hybridlabor-api/
 npx skills add hybridlabor-api/aos
 ```
 
-Isto descobre todas as <!-- count:skills -->213<!-- /count --> skills curadas e as instala no diretório universal `~/.agents/skills` (usado por todos os harnesses e o AOS CLI).
+Isto descobre todas as <!-- count:skills -->214<!-- /count --> skills curadas e as instala no diretório universal `~/.agents/skills` (usado por todos os harnesses e o AOS CLI).
 
 ---
 
@@ -248,22 +248,22 @@ O grafo do dispatcher compila estes agentes, disponíveis como subagentes Claude
 
 ### Skills por Categoria
 
-<!-- count:skills -->213<!-- /count --> skills curadas, descobríveis por todo harness:
+<!-- count:skills -->214<!-- /count --> skills curadas, descobríveis por todo harness:
 
-- **bdb-core** (30 skills): Infraestrutura AOS principal, pipelines, ferramentas e utilidades — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agent-orchestrator`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill` e mais.
+- **bdb-core** (31 skills): Infraestrutura AOS principal, pipelines, ferramentas e utilidades — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agent-orchestrator`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill` e mais.
 - **design-ui-ux** (19 skills): Frontend, design UI, acessibilidade, tokens, movimento, anti-slop — `senior-frontend`, `ui-component`, `ui-review`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` e mais.
 - **engineering-method** (46 skills): Arquitetura, testes, debugging, CI/CD, qualidade de código — `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `dockerfile-validator` e mais.
 - **library** (98 skills): Especificidades de linguagem/framework — TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go e mais.
 - **media-eventtech** (19 skills): 3D, vídeo, controle de shows, design espacial — `godmode-eventtech`, `synapse-integration-skill`, `threejs-skills`, `blender-expert` e mais.
 - **engineering-hardware** (1 skill): Design de PCB e elétrico — `godmode-hardware-pcb`.
 
-O catálogo completo com descrições detalhadas: [docs/skills_table.md](docs/skills_table.md) — nota: este arquivo está desatualizado e lista 164 de 213 skills.
+O catálogo completo com descrições detalhadas: [docs/skills_table.md](docs/skills_table.md) — nota: este arquivo está desatualizado e lista 164 de 214 skills.
 
 ---
 
 ## Skills
 
-<!-- count:skills -->213<!-- /count --> skills, curadas de coleções de código aberto e proprietárias, cobrindo o pipeline completo de desenvolvimento de software e criativo. Cada skill é um diretório com um `SKILL.md` frontmatter declarando `name`, `description` e uma `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
+<!-- count:skills -->214<!-- /count --> skills, curadas de coleções de código aberto e proprietárias, cobrindo o pipeline completo de desenvolvimento de software e criativo. Cada skill é um diretório com um `SKILL.md` frontmatter declarando `name`, `description` e uma `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
 
 **Camada de Persona:** As skills **Godmode** são personas especializadas que mapeiam diretamente para os nós de compilação e envio do grafo do dispatcher:
 
@@ -286,7 +286,7 @@ O catálogo completo com descrições detalhadas: [docs/skills_table.md](docs/sk
 - **Qualidade de Código** — `bdb-security-audit`, `systematic-debugging`, `silent-failure-hunter`, `bdbresilience`
 - **Especialistas de Framework** — Cobertura completa de TypeScript, React, Next.js, Drizzle ORM, Prisma, Python, Go e mais
 
-O catálogo completo com descrições e detalhes: [docs/skills_table.md](docs/skills_table.md) (nota: atualmente lista 164 de 213).
+O catálogo completo com descrições e detalhes: [docs/skills_table.md](docs/skills_table.md) (nota: atualmente lista 164 de 214).
 
 A biblioteca também é legível pela CLI `skills`:
 
