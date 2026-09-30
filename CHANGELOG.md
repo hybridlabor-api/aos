@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.0](https://github.com/hybridlabor-api/aos/compare/v4.10.0...v4.11.0) (2026-09-30)
+
+
+### Features
+
+* **opencode:** harness plugin with graph loop-keeper and installer payload ([#68](https://github.com/hybridlabor-api/aos/issues/68)) ([837e5fb](https://github.com/hybridlabor-api/aos/commit/837e5fb32fa85e5b082cb0f92ce30f52517f158e))
+
 ## [4.10.0](https://github.com/hybridlabor-api/aos/compare/v4.9.0...v4.10.0) (2026-09-30)
 
 
