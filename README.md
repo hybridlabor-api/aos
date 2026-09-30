@@ -5,9 +5,16 @@
 # AOS — BDB Agent OS
 
 [![NPM Version](https://img.shields.io/npm/v/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
+[![NPM Downloads](https://img.shields.io/npm/dw/@hybridlabor-api/aos.svg)](https://www.npmjs.com/package/@hybridlabor-api/aos)
+[![GitHub stars](https://img.shields.io/github/stars/hybridlabor-api/aos?style=flat&color=gold)](https://github.com/hybridlabor-api/aos/stargazers)
+[![last commit](https://img.shields.io/github/last-commit/hybridlabor-api/aos.svg)](https://github.com/hybridlabor-api/aos/commits/main)
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue.svg)](package.json)
+[![skills](https://img.shields.io/badge/skills-213%20curated-brightgreen.svg)](#skills)
+[![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#mcp-servers)
+[![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#supported-harnesses)
+[![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 
 AOS installs a curated skill library, a subagent roster, gate hooks and a runnable multi-agent build pipeline into every coding-agent harness on your machine.
 
@@ -24,6 +31,34 @@ After install you have:
 - **<!-- count:mcps -->21<!-- /count --> MCP servers** for creative software, OS control, memory and cross-harness delegation.
 - **Three pipelines** — `/startcycle`, `/startcycle-graph`, `/startcycle-graph-user` — and a **GO gate** that mechanically blocks `git push`, `npm publish`, `npm version` and recursive `rm`.
 - **Tools:** Plan Canvas, agenttrail, archify, the AOS Store, the Launchpad dashboard and `aos doctor`.
+
+---
+
+## The Dispatcher Graph
+
+The graph is harness-neutral and runs on Claude Code's Dynamic Workflows, Antigravity's parallel execution, and any compatible agent harness.
+
+```mermaid
+flowchart LR
+    U(["👤 User"])
+    A["<b>Architect</b><br/><span>System Plan</span>"]
+    T["<b>TechLead</b><br/><span>Capability Map</span>"]
+    UX["<b>UI_UX</b><br/><span>Frontend</span>"]
+    EN["<b>Engineering</b><br/><span>Backend</span>"]
+    ME["<b>Media_EventTech</b><br/><span>Creative</span>"]
+    R["<b>Reviewer</b><br/><span>QA</span>"]
+    S["<b>Shipping</b><br/><span>Gate</span>"]
+
+    U --> A --> T
+    T --> UX & EN & ME
+    UX & EN & ME --> R
+    R --> S
+
+    T -.->|reject| A
+    R -.->|findings| UX
+    S -.->|gate fail| EN
+    R -.->|escalate| U
+```
 
 ---
 
@@ -91,7 +126,9 @@ Every install also writes the universal copy to `~/.agents/skills`, which is wha
 
 The contract lives in [`.agents/graph.md`](.agents/graph.md), the node roster in [`.agents/nodes.json`](.agents/nodes.json), the executable dispatcher in [`.claude/workflows/startcycle-dispatch.mjs`](.claude/workflows/startcycle-dispatch.mjs).
 
-**One rule: nodes never invoke each other.** A dispatcher reads `production_artifacts/state.json` after each node returns and decides what runs next. There is no hand-off chain and no agent telling another agent to go.
+**One rule: nodes never invoke each other.** A dispatcher reads `production_artifacts/state.json` after each node returns and decides what runs next. There is no hand-off chain and no agent telling another agent to go. This design ensures context fidelity, single-place auditability of routing logic, and portability across harnesses.
+
+Each node reads the plan and its own prior state, executes its work, writes its artifact and state fragments, and returns. The dispatcher merges per-node state fragments (`state.d/<node>.json`), evaluates edge predicates, and routes to the next node — or escalates to the user if a no-progress guard triggers (same blocking finding on the second repair cycle) or the iteration ceiling is reached.
 
 ```mermaid
 flowchart LR
@@ -140,6 +177,36 @@ Reaching `ready_to_ship` is not shipping. [`.claude/hooks/go-gate.mjs`](.claude/
 
 ---
 
+## AOS CLI
+
+A lightweight CLI harness built on [pi](https://github.com/earendil-works/pi), a coding agent that runs in the terminal. AOS CLI reads `~/.agents/skills` (written by the installer) and `~/.agents/AGENTS.md` (the dispatcher graph as system instructions), runs no MCP servers of its own, and needs **Node >= 22.19** (pi's floor, higher than the main AOS installer).
+
+```bash
+aos-cli "what is the fastest way to fix this bug"
+aos-cli --continue                    # resume the previous session
+```
+
+The CLI launcher (`packages/aos-cli/bin/aos-cli.mjs`) ships with an AOS-themed dark mode (`aos.json`), the ten core skills from `core-skills.json` (ask-tim, aos-setup, systematic-debugging, archify, etc.), and two in-session read-only commands (`/aos` shows the install menu; `/aos-status` runs the health check).
+
+Install it through the AOS installer with the AOS CLI target: `npx -y @hybridlabor-api/aos@latest -y --platforms=10`. The package is private and is not published on npm, so `npm i -g @hybridlabor-api/aos-cli` does not work.
+
+
+---
+
+## Plugins and Marketplace
+
+**Plugin manifest:** `.claude-plugin/plugin.json` + `marketplace.json` (generated by `npm run plugin:build`). The Claude marketplace installation path is being finalized; for now, the npm installer above is the supported installation route.
+
+**Skills discovery:** Every harness finds skills in its native directory (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.roo/skills`, etc.). To browse and install additional skills after install:
+
+```bash
+npx skills add hybridlabor-api/aos
+```
+
+This discovers all <!-- count:skills -->213<!-- /count --> curated skills and installs them into the universal `~/.agents/skills` directory (used by all harnesses and the AOS CLI).
+
+---
+
 ## Memory and knowledge
 
 Installed as optional modules by the installer; `aos doctor` verifies them and the Launchpad shows them.
@@ -153,23 +220,69 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 
 ---
 
+## What's Included
+
+### The <!-- count:agents -->13<!-- /count --> Subagents
+
+The dispatcher graph compiles these agents, available as Claude Code subagents and loadable into Antigravity, Cursor, Codex, OpenCode and others:
+
+| Agent | Purpose |
+|---|---|
+| **Architect** | Turns the user's goal into a system plan. Reads existing architecture before proposing changes. |
+| **TechLead** | Reviews the plan for a capability map (module boundaries, dependency direction, build order) before any build node starts. Approves or rejects back to Architect. |
+| **UI_UX** | Lead Frontend Designer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics. |
+| **Engineering** | Senior Fullstack & Backend Engineer. Enforces Domain-Driven Design, Clean Architecture, TDD cycles, and database best practices. |
+| **Media_EventTech** | Creative-Tech & Show-Control Specialist. Governs 3D modeling, TouchDesigner networks, DaVinci Resolve, lighting, and Resolume. |
+| **Reviewer** | Adversarial review of build-node output against the plan's contract. Modeled on doubt-driven-development discipline. |
+| **Shipping** | Release Gatekeeper & QA Auditor. Runs the automated quality gate (lint, typecheck, tests, a11y, seo) and enforces the GO gate. |
+| **Database Reviewer** | PostgreSQL specialist for query optimization, schema design, security, and performance. |
+| **Security Reviewer** | Security vulnerability detection and remediation. Flags secrets, SSRF, injection, unsafe crypto, and OWASP Top 10. |
+| **Silent-Failure Hunter** | Reviews code for silent failures, swallowed errors, bad fallbacks, and missing error propagation. |
+| **Go-Build Resolver** | Resolves Go build, vet, and compilation errors with minimal changes. |
+| **Opensource Forker** | Forks a project for open-sourcing — strips secrets, replaces internal references, generates `.env.example`. |
+| **Opensource Sanitizer** | Verifies an open-source fork is fully sanitized. Scans for leaked secrets, PII, internal references. |
+
+### Skills by Category
+
+<!-- count:skills -->213<!-- /count --> curated skills, discoverable by every harness:
+
+- **bdb-core** (30 skills): Core AOS infrastructure, pipelines, tools, and utilities — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agent-orchestrator`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill`, and more.
+- **design-ui-ux** (19 skills): Frontend, UI design, accessibility, tokens, motion, anti-slop — `senior-frontend`, `ui-component`, `ui-review`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns`, and more.
+- **engineering-method** (46 skills): Architecture, testing, debugging, CI/CD, code quality — `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `dockerfile-validator`, and more.
+- **library** (98 skills): Language/framework specifics — TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go, and more.
+- **media-eventtech** (19 skills): 3D, video, show control, spatial design — `godmode-eventtech`, `synapse-integration-skill`, `threejs-skills`, `blender-expert`, and more.
+- **engineering-hardware** (1 skill): PCB and electrical design — `godmode-hardware-pcb`.
+
+The full catalog with detailed descriptions: [docs/skills_table.md](docs/skills_table.md) — note: this file is out of date and lists 164 of 213 skills.
+
+---
+
 ## Skills
 
-<!-- count:skills -->213<!-- /count --> skills, every one a directory with a `SKILL.md` whose frontmatter declares `name`, `description` and one `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`. The full catalog is in [docs/skills_table.md](docs/skills_table.md).
+<!-- count:skills -->213<!-- /count --> skills, curated from open-source and proprietary collections, covering the full software development and creative pipeline. Every skill is a directory with a `SKILL.md` frontmatter declaring `name`, `description`, and one `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
 
-The seven **Godmodes** under `skills/basic` are the persona layer; three of them are the build and ship nodes of the graph.
+**Persona Layer:** The **Godmode** skills are specialized personas that directly map to the build and ship nodes of the dispatcher graph:
 
-| Godmode | Owns |
-|---|---|
-| `godmode-engineering` | DDD, Clean Architecture, strict TypeScript, systematic debugging. The `Engineering` node. |
-| `godmode-ui-ux` | Anti-slop frontend, DTCG tokens, motion, accessibility. The `UI_UX` node. |
-| `godmode-shipping` | Pre-launch checks, quality gate, safe rollback. The `Shipping` node. |
-| `godmode-eventtech` | Show control, signal flow, protocols, live-event hardware. |
-| `godmode-3d-creation` | MCP-first 3D generation, mesh reconstruction, parametric CAD. |
-| `godmode-media-creation` | Video, timeline assembly, motion design pipelines. |
-| `godmode-hardware-pcb` | Schematics, PCB layout, KiCad ERC/DRC/DFM gate, enclosure co-design. |
+| Godmode | Owns | Maps to |
+|---|---|---|
+| `godmode-engineering` | Domain-Driven Design, Clean Architecture, strict TypeScript/Python, systematic debugging, database best practices. | **Engineering** node |
+| `godmode-ui-ux` | Anti-slop frontend principles, DTCG design tokens, motion dynamics, accessibility (WCAG), high-agency taste. | **UI_UX** node |
+| `godmode-shipping` | Pre-launch checks, automated quality gates, safe rollback procedures, Go-gate enforcement. | **Shipping** node |
+| `godmode-eventtech` | Show control, signal flow, DMX lighting, TouchDesigner networks, Resolume media servers, live-event hardware. | **Media_EventTech** node |
+| `godmode-3d-creation` | MCP-first 3D generation, mesh reconstruction, parametric CAD, spatial modeling. | Optional specialist |
+| `godmode-media-creation` | Video production, timeline assembly, motion design pipelines, OpenMontage, Remotion. | Optional specialist |
+| `godmode-hardware-pcb` | Electrical schematics, PCB layout and routing, KiCad ERC/DRC/DFM gate, enclosure co-design, OpenSCAD. | Optional specialist |
 
-Other entry points worth knowing: `ask-tim` (which skill fits), `bdbrainstorm` and `bdbmediastorm` (multi-agent ideation ending in a plan), `teamwork-preview` (prompt crafting and delegation), the `grilling` family (`grill-me`, `grill-with-docs`, `triage`), `ci-pipeline` and the `github-actions-*` / `dockerfile-*` / `makefile-*` generators and validators, `bdb-security-audit`, `bdbresilience`.
+**Entry Points & Navigation:**
+- **`ask-tim`** — Skill recommendation by description
+- **`bdbrainstorm`** and **`bdbmediastorm`** — Multi-agent ideation sessions ending in an executable plan
+- **`teamwork-preview`** — Prompt crafting, role delegation, collaboration setup
+- **Grilling family** — `grill-me` (general audit), `grill-with-docs` (documentation-grounded), `triage` (prioritization)
+- **CI/CD & Generators** — `ci-pipeline`, `github-actions-generator`, `dockerfile-generator`, `makefile-generator`
+- **Code Quality** — `bdb-security-audit`, `systematic-debugging`, `silent-failure-hunter`, `bdbresilience`
+- **Framework Specialists** — Full coverage of TypeScript, React, Next.js, Drizzle ORM, Prisma, Python, Go, and more
+
+The full catalog with descriptions and details: [docs/skills_table.md](docs/skills_table.md) (note: currently lists 164 of 213).
 
 The library is also readable by the `skills` CLI:
 
@@ -181,32 +294,117 @@ npx skills add hybridlabor-api/aos
 
 ## MCP servers
 
-[`mcp_config.json`](mcp_config.json) defines <!-- count:mcps -->21<!-- /count --> servers, built or warmed by the installer from `mcps/` and merged into each harness's MCP configuration:
+[`mcp_config.json`](mcp_config.json) defines <!-- count:mcps -->21<!-- /count --> servers, built or warmed by the installer from `mcps/` and merged into each harness's MCP configuration. Each server exposes tools for a specific domain; every harness sees the same set, avoiding per-tool incompatibilities.
 
-- **Creative software:** Unreal Engine, Rhino / Grasshopper (primary + fallback), DaVinci Resolve, Blender, After Effects (primary + fallback), Adobe UXP bridge, TouchDesigner (MindDesigner `tdmcp` + backup), grandMA3, Resolume, Open Design.
-- **OS control:** `zavora_computer_use` (macOS / Linux, native binary), `bdb_windows_computer_use`.
-- **Memory and delegation:** `memb_mcp`, `deja`, `mcsc`.
-- **Infrastructure:** `github`, `chrome-devtools`, `bdb_remoteos_mcp` (multi-cloud gateway with 4-eyes approvals).
+**Creative software integrations** (primary and fallback pairs for redundancy):
+- **Unreal Engine** — `bdb_unreal_mcp` (Web Remote Control API on port 30010), skill: `bdb-unreal-mcp`
+- **Rhino 3D & Grasshopper** — `bdb_rhino_mcp` (McNeel's Yak router) + `bdb_rhino_mcp_fallback` (GOLEM 3D, 105 tools), skill: `bdb-rhino-mcp`
+- **DaVinci Resolve** — `bdb_davinci_mcp` (workspace scripts, 162 tools) + `bdb_davinci_mcp_studio` (Node.js for Studio) + `bdb_davinci_mcp_fallback`, skill: `bdb-davinci-mcp`
+- **Blender** — `bdb_blender_mcp` (socket integration) + `bdb_blender_mcp_fallback`, skill: `bdb-blender-mcp`
+- **After Effects** — `bdb_after_effects_mcp` + `bdb_after_effects_mcp_fallback`, skill: `bdb-after-effects-mcp`
+- **TouchDesigner** — `bdb_touchdesigner_mcp` (MindDesigner bridge on port 9980) + `bdb_touchdesigner_mcp_fallback`, skill: `bdb-touchdesigner-mcp`
+- **Additional:** grandMA3 (OSC/UDP on port 8000), Resolume (REST API on port 8080), Vectorworks (semantic RAG on port 8765), Adobe UXP bridge, Open Design
 
-Each creative server has a guide skill (`bdb-unreal-mcp`, `bdb-touchdesigner-mcp`, `bdb-davinci-mcp`, ...) that teaches the agent the tool signatures. Per-server ports, primary/fallback pairs and platform notes: [docs/mcp-servers.md](docs/mcp-servers.md).
+**OS control & system automation:**
+- **macOS/Linux** — `zavora_computer_use` (native Rust NAPI binary, no runtime compile), skill: `bdb-computer-use-mcp`
+- **Windows** — `bdb_windows_computer_use` (Win32 / COM / UIAutomation, local OCR with Tesseract)
+
+**Memory, delegation & infrastructure:**
+- **memB** — `memb_mcp` (local offline vector memory, SQLite + ONNX model)
+- **deja** — local transcript indexing (secrets redacted)
+- **mcsc** — multi-harness task delegation
+- **GitHub** — native MCP tools for issues, PRs, workflows
+- **Chrome DevTools** — browser automation & debugging
+- **RemoteOS** — multi-cloud execution gateway with 4-eyes approval engine
 
 ---
 
 ## Optional modules
 
-The installer's module picker offers, and Quick Update keeps current:
+The installer's module picker offers, and Quick Update keeps current. All are optional; AOS works standalone without any of them.
 
-| Module | Package |
-|---|---|
-| memB | `@hybridlabor-api/memb` |
-| Synapse | `@hybridlabor-api/bdb-synapse` |
-| Heimdall Token Saver (CLI output compression hooks) | `@hybridlabor-api/heimdall-token-saver` |
-| AO — Agent Orchestrator (parallel agents in Git worktrees) | `@hybridlabor-api/bdb-agent-orchestrator` |
-| Creator Extension (ComfyUI, image-to-3D, video) | `@hybridlabor-api/bdb-dev-creator-extension` |
-| Hardware & PCB (KiCad and OpenSCAD design module, driven by `godmode-hardware-pcb`) | `@hybridlabor-api/bdb-hardware-pcb` |
-| OS Remote (remote execution gateway) | `@hybridlabor-api/bdb-os-remote` |
+### memB — Local Vector Memory
 
-Details for each: [docs/ecosystem.md](docs/ecosystem.md).
+`@hybridlabor-api/memb`: offline, local vector memory with an MCP server, WebUI on port 8088, and an ambient hook that injects relevant memories into Claude Code sessions. Skill: `memb-skill`, `memb-ingest`, `bdb-memb-mcp`.
+
+### deja — Transcript Indexing
+
+`@vshulcz/deja-vu`: indexes your agent transcripts locally (secrets redacted), with `deja fix` on an error, `deja wip` to resume, `deja search` for past sessions. Installed with memB. Skill: `deja-memory`.
+
+### OpenWiki — Living Documentation
+
+`openwiki` CLI: generates and refreshes a grounded wiki of a codebase, with a visualizer on port 4321 and a background daemon. Skill: `openwiki-skill`. This repo's wiki: [.openwiki/](.openwiki/quickstart.md).
+
+### Synapse — 3D Code City
+
+`@hybridlabor-api/bdb-synapse`: renders a repository as a 3D code city and replays agent sessions as light trails. Skill: `synapse-integration-skill`.
+
+```mermaid
+flowchart LR
+    A[Agent Session Logs] -->|JSONL Parsing| B[Go Trace Adapters]
+    B --> C[Normalized Event Stream]
+    D[Repository Tree] -->|Deterministic Layout| E[3D Citymap Generator]
+    C & E --> F[Local Go Server]
+    F --> G[React + Three.js WebGL Frontend]
+    G --> H[Interactive 3D Code City]
+```
+
+### AO — Agent Orchestrator
+
+`@hybridlabor-api/bdb-agent-orchestrator`: parallel agents in Git worktrees with live terminal control and automated CI/CD feedback loops. Skill: `agent-orchestrator`.
+
+```mermaid
+flowchart TD
+    A[Desktop IDE Meta-Harness] --> B[Git Worktree Orchestrator]
+    B --> C[Agent Session 1: Feature Build]
+    B --> D[Agent Session 2: Refactoring]
+    B --> E[Agent Session N: Test & Verification]
+    C --> F[Live Terminal Control & Process Monitor]
+    D --> F
+    E --> F
+    F --> G[Automatic CI/CD Feedback Loops]
+    G --> H[PR Review & Merge Routing]
+    H --> I[Central Git Repository]
+```
+
+### Creator Extension — Media & 3D
+
+`@hybridlabor-api/bdb-dev-creator-extension`: ComfyUI MCP capabilities (FLUX, SDXL), image-to-3D (TripoSR, TRELLIS), and automated video production (OpenMontage, Remotion). Skill: `bdb-dev-creator-extension`.
+
+```mermaid
+flowchart LR
+    A[Core Skills Agent] -->|MCP Request| B[BDB Creator Extension Router]
+    B --> C[3D Generation Suite]
+    B --> D[Cinema Video Suite]
+    B --> E[Local ComfyUI MCP Engine]
+    C --> C1[TRELLIS: High-Fidelity 3D]
+    C --> C2[TripoSR: Fast Mesh]
+    C --> C3[CadQuery: Text-to-CAD]
+    D --> D1[OpenMontage AI Director]
+    D --> D2[Remotion Video-Shotcraft]
+    E --> E1[FLUX.1 Image Gen]
+    E --> E2[SDXL Pipeline]
+    C1 & C2 & C3 & D1 & D2 & E1 & E2 --> F[Rendered Media & Spatial Assets]
+```
+
+### Hardware & PCB — Electrical Design
+
+`@hybridlabor-api/bdb-hardware-pcb`: KiCad and OpenSCAD design module, driven by `godmode-hardware-pcb` skill. Exposes ERC/DRC gate, gerber sign-off, and parametric enclosure design. Skills: `godmode-hardware-pcb`, `bdb-hardware-pcb`.
+
+```mermaid
+flowchart LR
+    A[Agent] -->|MCP| B[kicad-mcp-server]
+    A -->|MCP| C[openscad-mcp-server]
+    B --> D[Schematic Capture & ERC]
+    B --> E[PCB Layout & Routing]
+    B --> F[DRC / DFM / Gerber Sign-Off]
+    C --> G[Parametric Enclosure]
+    D & E & F & G --> H[Fabrication-Ready Output]
+```
+
+### Heimdall Token Saver — CLI Output Compression
+
+`@hybridlabor-api/heimdall-token-saver`: compresses repeated CLI output via ambient hooks on every harness. Reduces token overhead on large projects. Skill: `token-saver-config`.
 
 ---
 
@@ -245,7 +443,7 @@ The uninstaller works from the install manifest: a file that still matches the h
 
 - Package: [npmjs.com/package/@hybridlabor-api/aos](https://www.npmjs.com/package/@hybridlabor-api/aos)
 - Source and issues: [github.com/hybridlabor-api/aos](https://github.com/hybridlabor-api/aos) · [issues](https://github.com/hybridlabor-api/aos/issues)
-- [CHANGELOG.md](CHANGELOG.md) · [docs/skills_table.md](docs/skills_table.md) · [docs/cli.md](docs/cli.md) · [docs/mcp-servers.md](docs/mcp-servers.md) · [docs/ecosystem.md](docs/ecosystem.md)
+- [CHANGELOG.md](CHANGELOG.md) · [docs/skills_table.md](docs/skills_table.md)
 - Sibling repos: [bdb-agent-orchestrator](https://github.com/hybridlabor-api/bdb-agent-orchestrator) · [bdb-synapse](https://github.com/hybridlabor-api/bdb-synapse) · [bdb-dev-creator-extension](https://github.com/hybridlabor-api/bdb-dev-creator-extension) · [bdb-hardware-pcb](https://github.com/hybridlabor-api/bdb-hardware-pcb) · [bdb-os-remote](https://github.com/hybridlabor-api/bdb-os-remote)
 
 License: [Apache-2.0](LICENSE).
