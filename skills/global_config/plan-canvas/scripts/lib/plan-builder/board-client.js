@@ -57,7 +57,10 @@
     }
 
     function fit() {
-      zoomTo(Math.min(1, vp.clientWidth / canvas.offsetWidth, vp.clientHeight / canvas.offsetHeight), 0, 0);
+      // Fit the width; a tall board scrolls vertically instead of shrinking to an unreadable scale.
+      var byWidth = Math.min(1, vp.clientWidth / canvas.offsetWidth);
+      var byHeight = vp.clientHeight / canvas.offsetHeight;
+      zoomTo(byHeight < byWidth ? Math.max(byHeight, Math.min(byWidth, 0.45)) : byWidth, 0, 0);
       vp.scrollLeft = 0;
       vp.scrollTop = 0;
     }
