@@ -4522,6 +4522,107 @@ function shouldAutostartLaunchpad(overrides = {}) {
     return isDevEnvironment(overrides);
 }
 
+// Plan Canvas autostart is strictly opt-in (--autostart-plan-canvas): unlike
+// the launchpad opener it is NOT implied by a dev checkout. The server never
+// idle-exits there (AOS_PLAN_CANVAS_IDLE_MS=0 is honoured by server.js).
+const PLAN_CANVAS_LABEL = 'com.bdb.plan-canvas';
+
+function shouldAutostartPlanCanvas(overrides = {}) {
+    const argv = overrides.argv || process.argv;
+    return argv.includes('--autostart-plan-canvas');
+}
+
+function buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }) {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${PLAN_CANVAS_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${nodeBin}</string>
+        <string>${scriptPath}</string>
+        <string>server</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>AOS_PLAN_CANVAS_IDLE_MS</key>
+        <string>0</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>${home}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>${path.join(logDir, 'plan-canvas.stdout.log')}</string>
+    <key>StandardErrorPath</key>
+    <string>${path.join(logDir, 'plan-canvas.stderr.log')}</string>
+</dict>
+</plist>`;
+}
+
+// Same bat + hidden-vbs-in-Startup mechanism as the OpenWiki visualizer.
+function buildPlanCanvasWinFiles({ nodeBin, scriptPath, home, logDir, batPath }) {
+    const out = path.join(logDir, 'plan-canvas.stdout.log');
+    const err = path.join(logDir, 'plan-canvas.stderr.log');
+    return {
+        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\n`,
+        vbs: `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${home}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`,
+    };
+}
+
+function installPlanCanvasAutostart(overrides = {}) {
+    if (!shouldAutostartPlanCanvas(overrides)) return false;
+    if ((overrides.dryRun ?? DRY_RUN)) {
+        log.step('[dry-run] would register the Plan Canvas background server (Port 4519, no idle exit)');
+        return false;
+    }
+    const home = overrides.homeDir || homeDir;
+    const platform = overrides.platform || process.platform;
+    const scriptPath = [
+        path.join(home, '.agents', 'skills', 'plan-canvas', 'scripts', 'plan-canvas.js'),
+        path.join(srcDir, 'skills', 'global_config', 'plan-canvas', 'scripts', 'plan-canvas.js'),
+    ].find(p => fs.existsSync(p));
+    if (!scriptPath) {
+        log.warn('Plan Canvas autostart skipped: plan-canvas.js not found. Start it with: aos-plan-canvas server');
+        return false;
+    }
+    const nodeBin = overrides.nodeBin || process.execPath;
+    const logDir = path.join(home, '.agents', 'logs');
+    try {
+        fs.mkdirSync(logDir, { recursive: true });
+        if (platform === 'darwin') {
+            const plistPath = path.join(home, 'Library', 'LaunchAgents', `${PLAN_CANVAS_LABEL}.plist`);
+            fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+            fs.writeFileSync(plistPath, buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }));
+            if (!overrides.skipLaunchctl) {
+                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            }
+            log.success('Plan Canvas LaunchAgent registered (Port 4519)');
+        } else if (platform === 'win32') {
+            const startupDir = path.join(overrides.appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+            fs.mkdirSync(startupDir, { recursive: true });
+            const batPath = path.join(home, '.agents', 'run-plan-canvas.bat');
+            const vbsPath = path.join(startupDir, `${PLAN_CANVAS_LABEL}.vbs`);
+            const files = buildPlanCanvasWinFiles({ nodeBin, scriptPath, home, logDir, batPath });
+            fs.writeFileSync(batPath, files.bat, 'utf-8');
+            fs.writeFileSync(vbsPath, files.vbs, 'utf-8');
+            if (!overrides.skipLaunchctl) spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
+            log.success('Plan Canvas Startup entry registered (Port 4519)');
+        } else {
+            log.step('Plan Canvas autostart is only wired for macOS and Windows. Start it with: aos-plan-canvas server');
+            return false;
+        }
+        return true;
+    } catch (e) { logDebug(e, 'plan canvas autostart'); return false; }
+}
+
 function generateAndOpenLaunchpad(installedModules = []) {
     if (DRY_RUN) {
         log.step('[dry-run] would generate & open BDB Launchpad HTML');
@@ -4656,6 +4757,16 @@ function generateAndOpenLaunchpad(installedModules = []) {
     }
     .card.offline .card-hint {
       display: block;
+    }
+    .card-hint code {
+      font-family: var(--mono);
+      font-style: normal;
+      color: #ffffff;
+      background: #0a0a0a;
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      padding: 1px 6px;
+      cursor: copy;
     }
     .footer {
       margin-top: 28px;
@@ -4847,6 +4958,25 @@ function generateAndOpenLaunchpad(installedModules = []) {
           <span class="status-dot" id="dot-store" title="Checking..."></span>
         </div>
       </a>
+      <a class="card" href="http://127.0.0.1:4519/" target="_blank">
+        <div class="card-content">
+          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="grad-plancanvas" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#9b30c4"/></linearGradient></defs>
+            <rect x="18" y="22" width="64" height="56" rx="4" fill="url(#grad-plancanvas)" opacity="0.85"/>
+            <rect x="26" y="30" width="22" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/><rect x="52" y="30" width="22" height="14" rx="1.5" fill="#0a0a0a" opacity="0.6"/>
+            <line x1="26" y1="54" x2="74" y2="54" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/><line x1="26" y1="64" x2="56" y2="64" stroke="#0a0a0a" stroke-width="2.5" opacity="0.5"/>
+          </svg></div>
+          <div class="card-info">
+            <h2>Plan Canvas</h2>
+            <p>Review plans in the browser: annotate, chat, approve</p>
+            <div class="card-hint">offline — run: <code data-copy="aos-plan-canvas server" title="Click to copy">aos-plan-canvas server</code></div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="port-pill">:4519</span>
+          <span class="status-dot" id="dot-plancanvas" title="Checking..."></span>
+        </div>
+      </a>
     </div>
     <div class="footer">
       <span>Autostart Daemons • 127.0.0.1</span>
@@ -4874,7 +5004,26 @@ function generateAndOpenLaunchpad(installedModules = []) {
       checkHealth('http://127.0.0.1:9080', 'dot-remote');
       checkHealth('http://127.0.0.1:4321', 'dot-openwiki');
       checkHealth('http://127.0.0.1:4322', 'dot-store');
+      checkHealth('http://127.0.0.1:4519', 'dot-plancanvas');
     }
+    document.addEventListener('click', (ev) => {
+      const el = ev.target.closest && ev.target.closest('[data-copy]');
+      if (!el) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const text = el.getAttribute('data-copy');
+      const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        ta.remove();
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(fallback);
+      else fallback();
+      el.title = 'Copied';
+    }, true);
     checkAllHealth();
     setInterval(checkAllHealth, 5000);
   </script>
@@ -5087,6 +5236,7 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
     }
     log.success('Universal Sync Complete!');
     generateAndOpenLaunchpad(installedModules);
+    installPlanCanvasAutostart();
 }
 
 async function runQuickUpdate(installState) {
@@ -5784,6 +5934,10 @@ module.exports = {
     generateAndOpenLaunchpad,
     shouldOpenLaunchpad,
     shouldAutostartLaunchpad,
+    shouldAutostartPlanCanvas,
+    buildPlanCanvasPlist,
+    buildPlanCanvasWinFiles,
+    installPlanCanvasAutostart,
     isDevEnvironment,
     LAUNCHPAD_WEB_MODULES,
     LAUNCHPAD_OPEN_FLAGS,
