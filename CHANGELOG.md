@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.16.0](https://github.com/hybridlabor-api/aos/compare/v4.15.0...v4.16.0) (2026-10-01)
+
+
+### Features
+
+* **aos-acp:** add --model flag and reject fable workers ([#117](https://github.com/hybridlabor-api/aos/issues/117)) ([be70958](https://github.com/hybridlabor-api/aos/commit/be70958cf4cb442a952b537e0e546a8ab2d78b20))
+* **playbooks:** wave 2 — pb-master, pb-ship, pb-harness-work, pb-worktrees-land, pb-clip-from-moodboard ([#118](https://github.com/hybridlabor-api/aos/issues/118)) ([0eede24](https://github.com/hybridlabor-api/aos/commit/0eede24bb7fff6aa467d7aa4e1285f42f7d4a7f9))
+* **playbooks:** wave 3 — 24 playbooks across engineering, AOS, design, content, media, ops and everyday work ([#125](https://github.com/hybridlabor-api/aos/issues/125)) ([20a1ce2](https://github.com/hybridlabor-api/aos/commit/20a1ce234f3fe45287fb4aef47ffb052f55bfaca))
+
+
+### Bug Fixes
+
+* **installer:** never downgrade the AO binary, keep user-edited agents, honest version line ([#124](https://github.com/hybridlabor-api/aos/issues/124)) ([bd85238](https://github.com/hybridlabor-api/aos/commit/bd8523837a47ed6604d5baa5249f0a2331f7448a))
+
 ## [4.15.0](https://github.com/hybridlabor-api/aos/compare/v4.14.1...v4.15.0) (2026-10-01)
 
 
