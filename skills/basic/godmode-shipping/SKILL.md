@@ -41,6 +41,9 @@ This Godmode extends beyond standard software development. It STRICTLY governs c
 *   **MediaStorm Deployments:** When executing `/bdbmediastorm` for TouchDesigner, Unreal Engine, or Adobe Suite workflows, you must enforce rigorous release management for `.tox` files, Unreal Blueprints, and showfiles.
 *   **Show-Ready Validation:** Never push a creative-tech update to a live production environment (e.g., a running installation or live show) without a verified fallback or backup showfile. 
 
+## Visual recap
+After the gates pass, `/pr-recap` can build a Plan Builder recap page of the diff with the Verified and Not verified checks. It is informational and does not gate the release. Posting it anywhere stays a human decision.
+
 ## Universal Agent Harness Integration
 This Godmode is universally compatible and governs all extensions, including the BDB Creator Engine.
 *   **Cursor:** Auto-injected via `.cursor/rules/godmode-shipping.mdc`.

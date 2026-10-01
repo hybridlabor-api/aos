@@ -76,6 +76,8 @@ copies one into an empty folder (builder mode: `plan.mdx` and `canvas.mdx` if pr
 standard mode: `plan.md`). A non-empty target or an unknown id exits 2. Then fill in
 the example content and `open` the result. The server's `GET /` page is a read-only overview of open reviews, templates and visual skills.
 
+On Builder pages, blocks carry ids like `src-plan.mdx-L42`: an annotation `selector` starting with `#src-plan\.mdx-L42` (CSS-escaped) means "edit `plan.mdx` at line 42" (`canvas.mdx` likewise; headings keep their slug id and carry `data-src` only).
+
 ### Stay listening, or the human talks to an empty chair
 
 Feedback only reaches you while an `await` is actually parked on the session.
@@ -125,8 +127,8 @@ One backstop exists, and it is not an excuse to skip the above:
 **After approve — start the live map (Trigger A).** When the approved artifact
 is a build plan (e.g. `production_artifacts/00_execution_plan.md`) and a
 multi-agent build follows, start the aos-trail live map:
-`aos-trail . --plan production_artifacts/00_execution_plan.md --no-open` — it
-prints a URL (default http://localhost:5330). Inside AO (env var
+`aos-trail --ensure` — it
+prints a URL (default http://localhost:5330). Put the live-map link in your reply (the autostart hook also adds it as context when active). Inside AO (env var
 `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. See the `agenttrail`
 skill. Not needed for reviews that are not followed by a build.
 

@@ -511,3 +511,19 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## keli-wen/agentic-harness-patterns-skill
+
+- **Upstream:** <https://github.com/keli-wen/agentic-harness-patterns-skill> (commit 17549f5)
+- **License:** MIT
+- **Copyright:** Copyright (c) 2026
+
+Ported to `skills/global_config/agentic-harness-patterns/` (English variant only; the `-zh` variant is not shipped):
+
+| File | Upstream source |
+|---|---|
+| `skills/global_config/agentic-harness-patterns/SKILL.md` | `skills/agentic-harness-patterns/SKILL.md` (frontmatter: added `category` and `metadata`) |
+| `skills/global_config/agentic-harness-patterns/metadata.json` | `skills/agentic-harness-patterns/metadata.json` |
+| `skills/global_config/agentic-harness-patterns/references/**` | `skills/agentic-harness-patterns/references/**` (unchanged) |

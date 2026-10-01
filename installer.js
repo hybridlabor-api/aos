@@ -3784,6 +3784,11 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         }
     }
 
+    const trailLibSrc = path.join(srcDir, '.opencode', 'plugins', 'lib');
+    if (fs.existsSync(trailLibSrc)) {
+        try { copyDirRecursiveSync(trailLibSrc, path.join(opencodeDir, 'plugins', 'lib')); } catch (e) { log.warn(`Could not install OpenCode plugin lib: ${e.message}`); }
+    }
+
     // Slash-command payloads. Without these the /startcycle-graph command has no
     // native resolution and only survives as a raw-text match in the plugin.
     const commandsSrc = path.join(srcDir, '.opencode', 'commands');
@@ -3982,14 +3987,14 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
     // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
     // prompt in any project the harness was never installed into. trail-relay
     // talks to machine-global live-map daemons, so it is anchored the same way.
-    const machineGlobalHooks = ['memb-inject.mjs', 'trail-relay.mjs'];
+    const machineGlobalHooks = ['memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
             .map((h) => (h && typeof h.command === 'string' ? h.command : ''))

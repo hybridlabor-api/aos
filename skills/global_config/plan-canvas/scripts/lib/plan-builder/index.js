@@ -52,7 +52,8 @@ function renderPlanSource(source = {}) {
   const sections = [];
   const allBlocks = [];
 
-  const render = (mdx, heading, asBoard) => {
+  const render = (mdx, heading, asBoard, file) => {
+    ctx.src = file;
     const blocks = parseMdx(text(mdx));
     allBlocks.push(...blocks);
     for (const warning of blocks.warnings || []) warnings.push(warning);
@@ -65,11 +66,11 @@ function renderPlanSource(source = {}) {
     return blocks.frontmatter || {};
   };
 
-  const frontmatter = render(source.plan, null);
+  const frontmatter = render(source.plan, null, false, PLAN_FILE);
   for (const extra of OPTIONAL_SOURCES) {
     const mdx = source[extra.key];
     if (!text(mdx)) continue;
-    render(mdx, extra.title, extra.board);
+    render(mdx, extra.title, extra.board, extra.file);
   }
 
   sections.push(prototypeHint(allBlocks, frontmatter));

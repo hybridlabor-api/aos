@@ -110,3 +110,6 @@ Capture everything resolved during grilling under "established so far" so the wo
 ## Resuming a previous session
 
 If prior triage notes exist on the issue or PR, read them, check whether the reporter has answered any outstanding questions, and present an updated picture before continuing. Don't re-ask resolved questions.
+
+## Visual recap
+To get oriented on a PR quickly, `/pr-recap --pr <n>` builds a local page from its diff (read-only `gh pr view`). It is informational and does not gate triage, and it never posts a comment.

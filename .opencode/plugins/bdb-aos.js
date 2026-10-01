@@ -174,6 +174,22 @@ function mapTrailToolInput(args, directory) {
   return mapped;
 }
 
+// Live-map autostart: on the first subagent spawn per session, ensure the agenttrail map runs
+// and show its URL. Best-effort; never affects the gate logic.
+const trailSeen = new Set();
+async function trailAutostart(toolInput, directory, client) {
+  try {
+    const lib = await import('./lib/trail-autostart.js');
+    if (!lib.isSpawnTool(toolInput.tool) || trailSeen.has(toolInput.sessionID)) return;
+    const r = lib.trailEnsure({ cwd: directory, sessionId: toolInput.sessionID });
+    if (!r) return;
+    trailSeen.add(toolInput.sessionID);
+    await client?.tui?.showToast?.({
+      body: { title: 'AOS agenttrail', message: r.url, variant: 'info' },
+    });
+  } catch {}
+}
+
 export default async function bdbAosPlugin(input) {
   const directory = input.directory || process.cwd();
 
@@ -288,6 +304,7 @@ export default async function bdbAosPlugin(input) {
         pendingArgs.set(toolInput.callID, tool_input);
         trail('PreToolUse', toolInput.sessionID, { tool_name, tool_input });
       } catch {}
+      await trailAutostart(toolInput, directory, input.client);
       const toolName = (toolInput.tool || '').toLowerCase();
       // Intercept bash, terminal, or command execution tools
       if (toolName === 'bash' || toolName === 'terminal' || toolName === 'shell' || toolName === 'exec' || toolName === 'run_command') {

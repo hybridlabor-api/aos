@@ -255,7 +255,7 @@ describe('BDB Plan Builder', () => {
       const { html } = renderPlanSource({ plan });
       assert.match(html, /<section class="board"/);
       assert.equal((html.match(/class="edge"/g) || []).length, 1);
-      assert.ok(html.includes('<h2 class="sec" id="flow">Flow</h2>'), 'board marker stripped from the heading');
+      assert.match(html, /<h2[^>]* class="sec" id="flow">Flow<\/h2>/, 'board marker stripped from the heading');
       assert.ok(html.indexOf('id="after"') > html.indexOf('</section>'), 'prose after the group stays in the document');
     });
 
@@ -513,7 +513,7 @@ describe('BDB Plan Builder', () => {
 
       test('Compare renders Before and After columns from props, tags and paired blocks', () => {
         const { html } = renderPlanSource({ plan: RECAP });
-        assert.equal((html.match(/<div class="compare">/g) || []).length, 3);
+        assert.equal((html.match(/<div[^>]* class="compare">/g) || []).length, 3);
         assert.equal((html.match(/cmp-side before/g) || []).length, 3);
         assert.equal((html.match(/cmp-side after/g) || []).length, 3);
         assert.ok(html.includes('>Was</div>') && html.includes('>Now</div>'));
@@ -654,7 +654,8 @@ describe('BDB Plan Builder', () => {
     assert.match(css.match(/^\.sidenav \{[^}]*\}/m)[0], /background: var\(--paper\)/);
     assert.match(css, /\.flow > \.compare::before[^{]*\{ display: none; \}/);
     const { html } = renderPlanSource({ plan: '# T\n\n<Compare beforeLabel="Old" afterLabel="New">\n<Before>\nold\n</Before>\n<After>\nnew\n</After>\n</Compare>\n' });
-    const compare = html.slice(html.indexOf('<div class="compare">'), html.indexOf('<div class="compare">') + 600);
+    const compareAt = html.search(/<div[^>]* class="compare">/);
+    const compare = html.slice(compareAt, compareAt + 800);
     assert.equal((compare.match(/class="cmp-side /g) || []).length, 2);
     assert.match(compare, /cmp-side before.*cmp-side after/s);
   });
@@ -679,5 +680,33 @@ describe('BDB Plan Builder', () => {
     } finally {
       fs.rmSync(out, { recursive: true, force: true });
     }
+  });
+});
+describe('plan source anchors', () => {
+  const SRC = '---\ntitle: T\n---\n\n# Top\n\nprose line\n\n## Two <img src=x onerror=1> "q"\n\n<Callout title="c">\nhi\n</Callout>\n\n<Code code="y" />\n';
+
+  test('parser records the real 1-based source line of every block', () => {
+    const blocks = parseMdx(SRC);
+    assert.deepEqual(blocks.map((b) => [b.type, b.line]), [['heading', 5], ['prose', 7], ['heading', 9], ['tag', 11], ['tag', 15]]);
+    assert.equal(blocks[3].children[0].line, 12);
+  });
+
+  test('rendered blocks carry unique valid ids and data-src with the matching line', () => {
+    const { html } = renderPlanSource({ plan: SRC, canvas: '<Code code="c" />\n' });
+    const ids = [...html.matchAll(/ id="(src-[^"]*)"/g)].map((m) => m[1]);
+    assert.equal(new Set(ids).size, ids.length);
+    for (const id of ids) assert.match(id, /^src-(plan|canvas)\.mdx-L\d{1,6}$/);
+    for (const line of [7, 11, 15]) assert.ok(html.includes(`id="src-plan.mdx-L${line}" data-src="plan.mdx:${line}"`), `line ${line}`);
+    assert.ok(html.includes('data-src="plan.mdx:5"'));
+    assert.ok(html.includes('data-src="plan.mdx:9"'));
+    assert.ok(html.includes('id="src-canvas.mdx-L1"'));
+    for (const m of html.matchAll(/data-src="([^"]*)"/g)) assert.match(m[1], /^[A-Za-z0-9_.-]+\.mdx:\d{1,6}$/);
+  });
+
+  test('hostile heading text cannot reach an id or data-src', () => {
+    const { html } = renderPlanSource({ plan: '## x" onmouseover="alert(1)\n\ntext\n' });
+    assert.ok(!/data-src="[^"]*onmouseover/.test(html));
+    assert.ok(!/ id="src-[^"]*onmouseover/.test(html));
+    assert.ok(!html.includes('<h2 data-src="plan.mdx:1" class="sec" id="x" onmouseover'));
   });
 });
