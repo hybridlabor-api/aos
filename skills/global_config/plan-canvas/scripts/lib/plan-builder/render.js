@@ -1171,6 +1171,24 @@ function boardScript() {
   return `<script>\n${fs.readFileSync(path.join(__dirname, 'board-client.js'), 'utf8')}</script>`;
 }
 
+const NAV_TOGGLE_SCRIPT = `<script>
+(function () {
+  var K = 'bdb-plan-builder:nav-hidden', b = document.querySelector('.nav-toggle');
+  function set(h) {
+    document.body.classList.toggle('nav-collapsed', h);
+    b.setAttribute('aria-pressed', String(h));
+    b.textContent = h ? 'Show sections' : 'Hide sections';
+  }
+  var h = false;
+  try { h = localStorage.getItem(K) === '1'; } catch (e) {}
+  set(h);
+  b.addEventListener('click', function () {
+    h = !h; set(h);
+    try { localStorage.setItem(K, h ? '1' : '0'); } catch (e) {}
+  });
+})();
+</script>`;
+
 const RECAP_CHIPS = [
   ['pr', 'PR', (v) => v],
   ['branch', 'branch', (v, fm) => (fm.base ? `${v} \u2192 ${fm.base}` : v)],
@@ -1213,6 +1231,7 @@ ${themeCss()}
 <span class="title">${esc(title)}</span>
 ${status ? `<span class="status">${esc(status)}</span>` : ''}
 ${meta ? `<span class="meta">${esc(meta)}</span>` : ''}
+<button class="nav-toggle" type="button" aria-pressed="false" title="Show or hide the section navigation">Hide sections</button>
 </header>
 <div class="shell">
 <nav class="sidenav" aria-label="Sections">${navHtml(headings)}</nav>
@@ -1225,6 +1244,7 @@ ${recap ? recapHeader(title, recap) : `<h1 class="doc-title">${esc(title)}</h1>`
 </div>
 ${hasMermaid ? mermaidLoaderScript(mermaidUrl()) : ''}
 ${hasBoard ? boardScript() : ''}
+${NAV_TOGGLE_SCRIPT}
 </body>
 </html>`;
 }

@@ -24,7 +24,8 @@ const {
   canvasClientJs,
   renderCanvasHtml,
   renderMarkdownArtifactHtml,
-  renderSessionListHtml
+  renderHomeHtml,
+  VISUAL_SKILLS
 } = require('./ui');
 
 const DEFAULT_PORT = 4519;
@@ -131,6 +132,27 @@ function sendHtml(res, statusCode, html, { csp = true } = {}) {
 }
 
 const STATIC_READ_PATH = /^\/(sdk\.js|artifact\/[a-f0-9]{12}\/.*)$/;
+
+function skillDescription(file) {
+  try {
+    const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(file, 'utf8'));
+    const m = fm && /^description:\s*(.*)$/m.exec(fm[1]);
+    return m ? m[1].trim().replace(/^(["'])(.*)\1$/, '$2') : '';
+  } catch { return ''; }
+}
+
+function homeData(store) {
+  // Lazy: plan-canvas.js requires this module at load time.
+  const { cmdTemplates, findSkillMd } = require('../../plan-canvas');
+  return {
+    sessions: store.list(),
+    templates: cmdTemplates(),
+    skills: VISUAL_SKILLS.map(name => {
+      const file = findSkillMd(name);
+      return { name, installed: Boolean(file), description: file ? skillDescription(file) : '' };
+    })
+  };
+}
 
 function createPlanCanvasServer({
   store,
@@ -588,7 +610,7 @@ function createPlanCanvasServer({
           return undefined;
         }
         if (req.method === 'GET' && pathname === '/') {
-          return sendHtml(res, 200, renderSessionListHtml(store.list()));
+          return sendHtml(res, 200, renderHomeHtml(homeData(store)));
         }
         if (req.method === 'GET' && pathname === '/canvas.css') {
           res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' });

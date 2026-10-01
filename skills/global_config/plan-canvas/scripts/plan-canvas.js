@@ -241,6 +241,24 @@ function cmdModes() {
   return resolveModes();
 }
 
+function skillDirList() {
+  return (process.env.AOS_PLAN_CANVAS_SKILL_DIRS || [
+    path.join(process.env.HOME || os.homedir(), '.claude', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.agents', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.codex', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.config', 'opencode', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.gemini', 'config', 'skills')
+  ].join(':')).split(':');
+}
+
+function findSkillMd(name) {
+  for (const dir of skillDirList()) {
+    const p = path.join(dir, name, 'SKILL.md');
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 function resolveModes() {
   const modes = [
     {
@@ -261,22 +279,7 @@ function resolveModes() {
   });
 
   // Check for visual-plan skill
-  const skillDirs = (process.env.AOS_PLAN_CANVAS_SKILL_DIRS || [
-    path.join(process.env.HOME || os.homedir(), '.claude', 'skills'),
-    path.join(process.env.HOME || os.homedir(), '.agents', 'skills'),
-    path.join(process.env.HOME || os.homedir(), '.codex', 'skills'),
-    path.join(process.env.HOME || os.homedir(), '.config', 'opencode', 'skills'),
-    path.join(process.env.HOME || os.homedir(), '.gemini', 'config', 'skills')
-  ].join(':')).split(':');
-
-  let visualPlanFound = false;
-  for (const dir of skillDirs) {
-    const skillMdPath = path.join(dir, 'visual-plan', 'SKILL.md');
-    if (fs.existsSync(skillMdPath)) {
-      visualPlanFound = true;
-      break;
-    }
-  }
+  const visualPlanFound = Boolean(findSkillMd('visual-plan'));
 
   modes.push({
     id: 'builder',
@@ -603,4 +606,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, ensureServer, healthCheck };
+module.exports = { main, ensureServer, healthCheck, cmdTemplates, findSkillMd };

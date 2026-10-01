@@ -241,15 +241,19 @@ Starter plans live in `templates/<id>/` (`meta.json`, `plan.mdx`, optional
 `canvas.mdx`, `standard.md`).
 
 ```bash
-aos-plan-canvas templates                         # JSON: id, label, description, useWhen, hasBoard
+aos-plan-canvas templates                         # JSON: id, label, description, useWhen, hasBoard (= has a design canvas)
 aos-plan-canvas new <template-id> <target-dir>    # --mode bdb-plan-builder (default) | standard
 ```
 
 Builder mode copies `plan.mdx` (and `canvas.mdx` when the template has a board,
 never `meta.json`); standard mode writes `plan.md` from `standard.md`. A
 non-empty target exits **2** and nothing is overwritten; an unknown id exits
-**2** and lists the valid ids. `new` never starts the canvas server. A template
+**2** and lists the valid ids. A "board" template includes a design canvas (screens + arrows). `new` never starts the canvas server. The home page (`GET /`) lists templates, open reviews and installed visual skills read-only. A template
 folder without a readable `meta.json` is skipped by `templates`.
+
+## Section navigation
+
+The left section list has a "Hide sections" toggle in the top bar; the choice is kept in `localStorage` (page works without it). On phone width the list stays visible.
 
 ## Security
 

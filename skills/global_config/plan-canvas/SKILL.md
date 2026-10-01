@@ -71,10 +71,10 @@ aos-plan-canvas await production_artifacts/00_execution_plan.md
 
 When starting a new plan, offer the template choice first: `aos-plan-canvas templates`
 prints the available templates as JSON (`id`, `label`, `description`, `useWhen`,
-`hasBoard`), and `aos-plan-canvas new <template-id> <target-dir> [--mode standard|bdb-plan-builder]`
+`hasBoard`; "board" = design canvas with screens + arrows), and `aos-plan-canvas new <template-id> <target-dir> [--mode standard|bdb-plan-builder]`
 copies one into an empty folder (builder mode: `plan.mdx` and `canvas.mdx` if present;
 standard mode: `plan.md`). A non-empty target or an unknown id exits 2. Then fill in
-the example content and `open` the result.
+the example content and `open` the result. The server's `GET /` page is a read-only overview of open reviews, templates and visual skills.
 
 ### Stay listening, or the human talks to an empty chair
 

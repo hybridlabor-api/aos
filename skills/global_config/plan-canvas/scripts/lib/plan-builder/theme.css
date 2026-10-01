@@ -59,6 +59,14 @@ code { font-family: var(--mono); font-size: 0.86em; background: var(--card); bor
   color: var(--accent-2); border: 1px solid var(--accent); border-radius: 999px; padding: 5px 9px;
 }
 .topbar .meta { font: 11px/1 var(--mono); color: var(--ink-3); margin-left: auto; }
+.nav-toggle {
+  font: 500 11px/1 var(--font); color: var(--ink-2); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; cursor: pointer;
+}
+.topbar .nav-toggle { margin-left: auto; }
+.topbar .meta ~ .nav-toggle { margin-left: 0; }
+.nav-toggle:hover { color: var(--ink); border-color: var(--accent); }
+body.nav-collapsed .sidenav { display: none; }
 
 .shell { display: flex; align-items: flex-start; gap: 32px; max-width: 1280px; margin: 0 auto; padding: 0 20px 96px; }
 
@@ -234,6 +242,8 @@ pre.mermaid.mermaid-unrendered::before {
 /* ---------- phone ---------- */
 
 @media (max-width: 860px) {
+  .nav-toggle { display: none; }
+  body.nav-collapsed .sidenav { display: block; }
   .shell { display: block; padding: 0 14px 64px; }
   .sidenav {
     position: static; max-height: none; overflow: visible;
