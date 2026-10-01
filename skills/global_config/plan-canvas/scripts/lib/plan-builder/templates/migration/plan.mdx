@@ -1,0 +1,172 @@
+---
+title: Lantern Ledger - Database Cutover
+status: draft
+needs-snapshot: prep
+needs-replicate: prep, snapshot
+needs-verify: replicate
+needs-cutover: verify
+needs-decommission: cutover
+---
+
+# Lantern Ledger: Move from legacy Postgres 12 to managed Postgres 16
+
+<Callout tone="note" title="How to use this template">
+
+Replace the system names, sizes, dates and owners with your own. Keep the phase structure, the rollback trigger and the cutover checklist: they are what make a migration reviewable. Delete the open questions you have already answered. All names and numbers below are invented.
+
+</Callout>
+
+## Goal
+
+Move the Lantern Ledger billing database (410 GB, 38 tables) from a self-hosted Postgres 12 VM to a managed Postgres 16 cluster with at most 10 minutes of write downtime and no lost invoices.
+
+- Cutover happens in one maintenance window on a Sunday, 02:00 to 04:00 UTC.
+- The old database stays readable and in sync for 14 days as the rollback path.
+- Every row count and a checksum of the money columns match before traffic moves.
+
+## Decision
+
+<Decision title="How do we move the data?" question="Which method gets 410 GB across with the shortest write freeze?" options={[
+  { id: "logical", label: "Logical replication, then switch", detail: "Initial copy runs live, changes stream until cutover. Freeze is minutes.", recommended: true },
+  { id: "dump", label: "Dump and restore in the window", detail: "Simple, but the freeze would last about 5 hours at our measured speed." },
+  { id: "vendor", label: "Vendor migration service", detail: "Least work for us, but opaque failure modes and per-GB cost." },
+]}>
+
+Logical replication keeps the freeze short and lets us verify the target for days before the switch. The cost is that sequences and large objects need a manual step at cutover, which is on the checklist.
+
+</Decision>
+
+## Timeline
+
+<Mermaid label="Phases and dates" source={"gantt\n  dateFormat YYYY-MM-DD\n  axisFormat %d %b\n  section Prepare\n  Inventory and schema diff     :prep, 2026-11-02, 5d\n  Target cluster and network    :infra, 2026-11-04, 4d\n  section Copy\n  Snapshot and initial load     :snap, 2026-11-09, 3d\n  Streaming replication         :repl, after snap, 7d\n  section Prove\n  Verification and dry run      :ver, 2026-11-16, 4d\n  section Cutover\n  Maintenance window            :crit, cut, 2026-11-22, 1d\n  Rollback watch                :watch, after cut, 14d\n  section Close\n  Decommission old VM           :done, dec, 2026-12-07, 2d"} />
+
+## Phases
+
+<Table title="Phase plan" columns={["Phase", "Outcome", "Exit criterion", "Owner"]} rows={[
+  ["1 Prepare", "Inventory, schema diff, target cluster", "Schema applies cleanly on PG 16", "Mara (platform)"],
+  ["2 Copy", "Snapshot loaded, replication streaming", "Lag under 5 seconds for 24 hours", "Mara (platform)"],
+  ["3 Prove", "Verification and one full dry run", "Counts and checksums match, dry run under 10 minutes", "Joss (backend)"],
+  ["4 Cutover", "Writes frozen, final sync, traffic switched", "Smoke tests green, error rate at baseline", "Mara and Joss"],
+  ["5 Watch", "Old database kept as warm fallback", "14 quiet days, no rollback trigger hit", "Joss (backend)"],
+  ["6 Close", "Old VM snapshotted and removed", "Sign-off from finance on the final report", "Ines (finance ops)"],
+]} />
+
+## Build map
+
+### Prepare {#prep}
+
+<Checklist title="Prepare tasks" items={[
+  { label: "Inventory tables, extensions and large objects", checked: true },
+  { label: "Diff schema between PG 12 and PG 16, fix incompatibilities", checked: true },
+  { label: "Provision the managed cluster and private network peering" },
+  { label: "Lower DNS TTL for the database alias to 60 seconds" },
+]} />
+
+<ImplementationMap files={[
+  { path: "migration/schema_diff.sql", change: "added", note: "Reviewed differences and fixes" },
+  { path: "infra/db-cluster.tf", change: "added", note: "Managed cluster, replicas, backups" },
+]} />
+
+### Snapshot and initial load {#snapshot}
+
+<Checklist title="Snapshot tasks" items={[
+  { label: "Create the publication on the source for all 38 tables" },
+  { label: "Run the initial copy with four parallel workers" },
+  { label: "Record the start position and row counts" },
+]} />
+
+<ImplementationMap files={[
+  { path: "migration/publication.sql", change: "added", note: "Publication and replication slot" },
+  { path: "migration/initial_load.sh", change: "added", note: "Parallel table copy with logging" },
+]} />
+
+### Replication {#replicate}
+
+<Checklist title="Replication tasks" items={[
+  { label: "Subscribe and let changes stream" },
+  { label: "Alert when lag exceeds 30 seconds" },
+  { label: "Plan sequence resync for cutover" },
+]} />
+
+<ImplementationMap files={[
+  { path: "migration/subscription.sql", change: "added", note: "Subscription on the target" },
+  { path: "ops/alerts/replication-lag.yml", change: "added", note: "Lag alert and runbook link" },
+]} />
+
+### Verify {#verify}
+
+<Checklist title="Verify tasks" items={[
+  { label: "Row counts equal on all 38 tables" },
+  { label: "Checksum of amount and tax columns equal" },
+  { label: "Replay one week of read queries against the target" },
+  { label: "Full dry run on a clone, stopwatch under 10 minutes" },
+]} />
+
+<ImplementationMap files={[
+  { path: "migration/verify.py", change: "added", note: "Counts and checksums per table" },
+  { path: "migration/replay_reads.sh", change: "added", note: "Read replay and latency compare" },
+]} />
+
+### Cutover {#cutover}
+
+<Checklist title="Cutover checklist" items={[
+  { label: "T-60 min: status page notice posted and on-call confirmed" },
+  { label: "T-30 min: last backup of the source verified restorable" },
+  { label: "T-10 min: pause the invoice scheduler and background workers" },
+  { label: "T-0: set source to read-only, confirm zero active writers" },
+  { label: "T+2 min: replication lag is zero, final counts match" },
+  { label: "T+4 min: resync sequences, enable constraints, run ANALYZE" },
+  { label: "T+6 min: switch the DNS alias and app config to the target" },
+  { label: "T+8 min: start workers, run the smoke test suite" },
+  { label: "T+10 min: go or rollback decision, announce on the status page" },
+]} />
+
+<ImplementationMap files={[
+  { path: "migration/cutover_runbook.md", change: "added", note: "Minute by minute script with owners" },
+  { path: "migration/sequences.sql", change: "added", note: "Sequence resync for every serial column" },
+]} />
+
+### Decommission {#decommission}
+
+<Checklist title="Decommission tasks" items={[
+  { label: "Stop reverse replication after 14 quiet days" },
+  { label: "Take a final snapshot and archive it for one year" },
+  { label: "Delete the old VM and the replication slot" },
+]} />
+
+<ImplementationMap files={[
+  { path: "migration/final_report.md", change: "added", note: "Counts, timings, incidents, sign-off" },
+]} />
+
+## Agent trail
+
+<AgentTrail />
+
+## Rollback
+
+<Callout tone="warning" title="Rollback trigger and path">
+
+Roll back if any of these hold within the first 24 hours: smoke tests fail twice, p95 write latency is above 400 ms for 10 minutes, or any checksum differs. Path: freeze writes on the target, point the alias back to the old VM (kept in sync by reverse replication), unpause the workers, post a status update. Target time to roll back: 8 minutes. After 24 hours, a rollback needs a fresh GO from the owner.
+
+</Callout>
+
+## Risks
+
+<Table title="Risk register" columns={["Risk", "Likelihood", "Impact", "Mitigation"]} rows={[
+  ["Replication lag grows during the Friday batch", "Medium", "High", "Schedule the window after the batch, alert at 30 s"],
+  ["Sequences not resynced, duplicate key errors", "Medium", "High", "Scripted resync on the checklist, tested in the dry run"],
+  ["Extension missing on managed Postgres", "Low", "High", "Found in the inventory phase, replace before the copy"],
+  ["DNS caches keep old address", "Medium", "Medium", "TTL 60 s a week ahead, app uses the alias only"],
+  ["Cutover runs longer than the window", "Low", "Medium", "Dry run timing, hard stop at T+20 min triggers rollback"],
+]} />
+
+## Open questions
+
+<QuestionForm title="Open Questions" questions={[
+  { title: "How long do we keep the old VM?", mode: "single", options: [
+    { label: "14 days", recommended: true }, { label: "30 days" }, { label: "Delete right after cutover" } ] },
+  { title: "Who can call the rollback?", mode: "single", options: [
+    { label: "The on-call engineer", recommended: true }, { label: "Only the migration owner" } ] },
+  { title: "Which extras do we add to the window?", mode: "multi", options: [
+    { label: "Upgrade the connection pooler" }, { label: "Enable query insights" }, { label: "Rotate database passwords" } ] },
+]} />

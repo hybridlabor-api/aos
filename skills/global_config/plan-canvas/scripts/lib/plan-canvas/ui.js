@@ -127,6 +127,10 @@ function canvasCss() {
   .panel{width:340px;flex:none;display:flex;flex-direction:column;border-left:1px solid var(--border);background:var(--bg2)}
   .panel h2{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);padding:12px 14px 8px}
 
+  body.chat-hidden .panel{display:none}
+  .icon-btn .count{display:none;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--accent);color:#fff;font-size:10px;font-weight:600;line-height:16px;text-align:center}
+  .icon-btn .count.show{display:inline-block}
+
   .verdict{display:flex;gap:8px;padding:0 14px 12px;border-bottom:1px solid var(--border)}
   .verdict button{flex:1;height:30px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .12s}
   .verdict .approve{border:1px solid var(--green);background:var(--green-glow);color:var(--green)}
@@ -236,6 +240,32 @@ function canvasClientJs() {
     applyTheme(theme);
   });
 
+  // --- conversation panel ---------------------------------------------
+  const chatKey = 'ecc-plan-canvas:chat-hidden';
+  let chatHidden = false;
+  try { chatHidden = localStorage.getItem(chatKey) === '1'; } catch { /* site data blocked */ }
+  function applyChatHidden() {
+    document.body.classList.toggle('chat-hidden', chatHidden);
+    $('chatBtn').setAttribute('aria-pressed', String(chatHidden));
+    $('chatBtnLabel').textContent = chatHidden ? 'Show chat' : 'Hide chat';
+  }
+  function updateChatCount() {
+    const el = $('chatCount');
+    el.textContent = String(queue.length);
+    el.classList.toggle('show', chatHidden && queue.length > 0);
+  }
+  function toggleChat() {
+    chatHidden = !chatHidden;
+    try { localStorage.setItem(chatKey, chatHidden ? '1' : '0'); } catch { /* site data blocked */ }
+    applyChatHidden();
+    updateChatCount();
+  }
+  applyChatHidden();
+  $('chatBtn').addEventListener('click', toggleChat);
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); toggleChat(); }
+  }, true);
+
   // --- annotate mode -------------------------------------------------
   let annotate = true;
   function setAnnotate(on) {
@@ -273,6 +303,7 @@ function canvasClientJs() {
   function addToQueue(item) { queue.push(item); persistQueue(); renderQueue(); }
   function renderQueue() {
     queueEl.innerHTML = '';
+    updateChatCount();
     queue.forEach((item, i) => {
       const pill = document.createElement('div');
       pill.className = 'pill kind-' + item.kind;
@@ -498,13 +529,14 @@ function renderCanvasHtml(session, { clientPath = '/client.js', cssPath = '/canv
   <div id="annotate" class="toggle" role="switch" aria-pressed="true" title="Toggle annotate mode (Cmd/Ctrl+I)">
     <span>Annotate</span><span class="track"><span class="knob"></span></span>
   </div>
+  <button id="chatBtn" class="icon-btn" type="button" aria-pressed="false" title="Show or hide the conversation panel (Cmd/Ctrl+J)"><span id="chatBtnLabel">Hide chat</span><span id="chatCount" class="count"></span></button>
   <button id="themeBtn" class="icon-btn" type="button">light</button>
   <button id="reloadBtn" class="icon-btn" type="button" title="Reload artifact">Reload</button>
   <button id="endBtn" class="icon-btn danger" type="button">End session</button>
 </header>
 <div class="layout">
   <main class="frame">
-    <iframe id="artifact" title="Artifact under review" src="${artifactSrc}" data-artifact-src="${artifactSrc}" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+    <iframe id="artifact" title="Artifact under review" src="${artifactSrc}" data-artifact-src="${artifactSrc}" sandbox="allow-scripts allow-forms allow-popups" allow="fullscreen"></iframe>
     <div id="endedOverlay" class="overlay"><div class="card"><h3>Session ended</h3><p id="endedWho"></p></div></div>
   </main>
   <aside class="panel">
@@ -592,39 +624,100 @@ ${hasMermaid ? mermaidLoaderScript(mermaidUrl()) : ''}
 </html>`;
 }
 
-// Landing page listing sessions (GET /).
-function renderSessionListHtml(sessions) {
-  const rows = sessions.map(s => {
-    const status = s.status === 'ended' ? `ended by ${escapeHtml(s.endedBy || 'agent')}` : s.status;
-    const link = s.status === 'ended'
-      ? escapeHtml(path.basename(s.file))
-      : `<a href="/canvas/${escapeHtml(s.key)}">${escapeHtml(path.basename(s.file))}</a>`;
-    return `<tr><td>${link}</td><td class="mono">${escapeHtml(s.file)}</td><td><span class="badge ${escapeHtml(s.status)}">${status}</span></td></tr>`;
-  }).join('\n');
+const VISUAL_SKILLS = ['visual-plan', 'visual-recap', 'visual-review', 'visual-edit', 'prototype', 'archify', 'agenttrail'];
+
+function artifactKind(file) {
+  const base = path.basename(String(file));
+  if (base === 'plan.builder.html') return 'BDB Plan Builder';
+  if (/\.html?$/i.test(base)) return 'HTML artifact';
+  return 'Standard markdown';
+}
+
+const HOME_CSS = `
+  :root{--bg:#0a0a0a;--card:#161616;--line:#262626;--ink:#fff;--ink2:#b8b8b8;--ink3:#7a7a7a;--accent:#9b30c4;--accent2:#c05ee6;
+    --font:-apple-system,BlinkMacSystemFont,'SF Pro Display','Inter','Segoe UI',Roboto,sans-serif;--mono:'SF Mono','Fira Code','JetBrains Mono',Menlo,monospace}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--font);background:var(--bg);color:var(--ink);line-height:1.5;padding:32px 20px 64px}
+  main{max-width:1000px;margin:0 auto}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .mark{width:12px;height:12px;border-radius:3px;background:var(--accent)}
+  h1{font-size:20px;letter-spacing:-.01em}
+  h2{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin:32px 0 12px}
+  .sub{font-size:13px;color:var(--ink2)}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+  .card .t{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+  .card .d{font-size:12.5px;color:var(--ink2)}
+  .card .u{font-size:12px;color:var(--ink3)}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .chip{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--ink2);white-space:nowrap}
+  .chip.accent{border-color:var(--accent);color:var(--accent2)}
+  .chip.ok{border-color:var(--accent);color:#fff;background:rgba(155,48,196,.25)}
+  .chip.missing{color:var(--ink3)}
+  .mono,code{font-family:var(--mono);font-size:11.5px;color:var(--ink2);overflow-wrap:anywhere}
+  code.cmd{display:block;background:#0f0f0f;border:1px solid var(--line);border-radius:6px;padding:6px 8px;user-select:all}
+  .empty{color:var(--ink3);font-size:13px}
+  .card.ended{opacity:.6}
+`;
+
+function chip(text, cls = '', title = '') {
+  return `<span class="chip ${cls}"${title ? ` title="${escapeHtml(title)}"` : ''}>${escapeHtml(text)}</span>`;
+}
+
+function sessionCard(s) {
+  const ended = s.status === 'ended';
+  const base = path.basename(s.file);
+  const name = escapeHtml(/^(plan\.builder\.html|plan\.md|index\.html)$/.test(base) ? `${path.basename(path.dirname(s.file))}/${base}` : base);
+  const title = ended ? name : `<a href="/canvas/${escapeHtml(s.key)}">${name}</a>`;
+  const status = ended ? `ended by ${s.endedBy || 'agent'}` : s.status;
+  const pending = Number(s.pending) > 0 ? chip(`${s.pending} pending feedback`, 'accent') : '';
+  return `<div class="card${ended ? ' ended' : ''}"><div class="t">${title}</div>
+<div class="row">${chip(artifactKind(s.file), 'accent')}${chip(status, ended ? '' : 'ok')}${pending}</div>
+<div class="mono">${escapeHtml(s.file)}</div></div>`;
+}
+
+function templateCard(t) {
+  const board = t.hasBoard ? chip('board', 'accent', 'includes a design canvas with screens and arrows') : '';
+  return `<div class="card"><div class="t">${escapeHtml(t.label || t.id)} <span class="mono">${escapeHtml(t.id)}</span></div>
+<div class="row">${board}</div>
+<div class="d">${escapeHtml(t.description || '')}</div>
+<div class="u">Use when: ${escapeHtml(t.useWhen || '')}</div>
+<code class="cmd">aos-plan-canvas new ${escapeHtml(t.id)} &lt;dir&gt;</code></div>`;
+}
+
+function skillCard(k) {
+  const desc = String(k.description || '');
+  const short = desc.length > 140 ? `${desc.slice(0, 139).trimEnd()}…` : desc;
+  return `<div class="card"><div class="t">${escapeHtml(k.name)}</div>
+<div class="row">${k.installed ? chip('installed', 'ok') : chip('missing', 'missing')}</div>
+<div class="d">${escapeHtml(short)}</div></div>`;
+}
+
+// Landing page (GET /): open reviews, plan templates, visual skills. Read-only, no scripts.
+function renderHomeHtml({ sessions = [], templates = [], skills = [] } = {}) {
+  const sorted = [...sessions].sort((a, b) =>
+    (a.status === 'ended') - (b.status === 'ended') || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Plan Canvas · sessions</title>
-<style>
-${TOKENS_CSS}
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:var(--font);background:var(--bg);color:var(--text);padding:40px;line-height:1.5}
-  .logo{width:30px;height:30px;background:linear-gradient(135deg,var(--accent),var(--pink));border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff;margin-right:10px;vertical-align:middle}
-  h1{font-size:18px;display:inline-block;vertical-align:middle}
-  table{margin-top:24px;border-collapse:collapse;width:100%;max-width:900px;font-size:13px}
-  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)}
-  th{color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
-  a{color:var(--accent);text-decoration:none}
-  .mono{font-family:var(--mono);font-size:11.5px;color:var(--text2)}
-  .badge{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--bg3);border:1px solid var(--border);color:var(--text2)}
-  .badge.open,.badge.feedback{color:var(--green);border-color:var(--green);background:var(--green-glow)}
-  .empty{margin-top:24px;color:var(--text3);font-size:13px}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan Canvas</title>
+<style>${HOME_CSS}</style>
 </head>
 <body>
-<span class="logo">E</span><h1>Plan Canvas sessions</h1>
-${sessions.length ? `<table><thead><tr><th>Artifact</th><th>Path</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="empty">No sessions yet. Ask your agent to open a plan with the plan-canvas skill.</p>'}
+<main>
+<header><span class="mark"></span><h1>Plan Canvas</h1></header>
+<p class="sub">Review plans and HTML artifacts with your agent. Start new ones from the terminal; this page only lists what exists.</p>
+<h2>Open reviews</h2>
+${sorted.length ? `<div class="grid">${sorted.map(sessionCard).join('\n')}</div>` : '<p class="empty">No sessions yet. Ask your agent to open a plan with the plan-canvas skill.</p>'}
+<h2>Plan templates</h2>
+${templates.length ? `<div class="grid">${templates.map(templateCard).join('\n')}</div>` : '<p class="empty">No templates found.</p>'}
+<h2>Visual skills</h2>
+<div class="grid">${skills.map(skillCard).join('\n')}</div>
+</main>
 </body>
 </html>`;
 }
@@ -632,7 +725,10 @@ ${sessions.length ? `<table><thead><tr><th>Artifact</th><th>Path</th><th>Status<
 module.exports = {
   canvasCss,
   canvasClientJs,
+  mermaidLoaderScript,
+  mermaidUrl,
   renderCanvasHtml,
   renderMarkdownArtifactHtml,
-  renderSessionListHtml
+  renderHomeHtml,
+  VISUAL_SKILLS
 };

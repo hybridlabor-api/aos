@@ -1,0 +1,72 @@
+---
+title: Offline drafts for the notes editor
+subtitle: Drafts now survive a lost connection and sync when the network returns. Invented example.
+kind: recap
+pr: "#214"
+branch: feat/offline-drafts
+base: main
+commit: 4f2a9c1
+files: 4
+additions: 186
+deletions: 41
+author: sample-author
+date: 2026-01-15
+---
+
+## What changed
+
+Typing in the editor no longer stops when the connection drops. Each edit is written to a local queue first and replayed in order once the network is back.
+
+## Before and after
+
+<Compare>
+<Before>
+<Screen surface="mobile" caption="Connection lost">
+  <FrameScreen>
+    <Col full>
+      <Title text="Untitled note" />
+      <Lines n={3} widths={[90, 70, 40]} />
+      <Box dashed><Text value="Could not save. Retry" tone="muted" /></Box>
+    </Col>
+  </FrameScreen>
+</Screen>
+</Before>
+<After>
+<Screen surface="mobile" caption="Connection lost">
+  <FrameScreen>
+    <Col full>
+      <Title text="Untitled note" />
+      <Lines n={3} widths={[90, 70, 40]} />
+      <Row><IconSquare active /><Text value="Saved on this device" tone="muted" /></Row>
+    </Col>
+  </FrameScreen>
+</Screen>
+</After>
+</Compare>
+
+## Files
+
+<ImplementationMap files={[
+  { path: "editor/draft-queue.ts", change: "added", note: "Ordered local queue with replay" },
+  { path: "editor/save.ts", change: "modified", note: "Write to the queue before the network call" },
+  { path: "editor/status-pill.tsx", change: "modified", note: "New 'Saved on this device' state" },
+  { path: "editor/legacy-retry.ts", change: "removed", note: "Replaced by the queue" },
+]} />
+
+## Behaviour
+
+<Table columns={["State", "Before", "After"]} rows={[
+  ["Offline typing", "Edits lost on reload", "Edits kept and replayed"],
+  ["Reconnect", "Manual retry", "Automatic replay in order"],
+]} />
+
+<CodeTabs tabs={[
+  { label: "draft-queue.ts", language: "ts", code: "export function enqueue(edit: Edit) {\n  queue.push(edit);\n  persist(queue);\n}" },
+  { label: "save.ts", language: "ts", code: "await enqueue(edit);\nif (online) await flush();" },
+]} />
+
+<Callout tone="note" title="Review focus">
+
+Check the replay order when two tabs edit the same note.
+
+</Callout>

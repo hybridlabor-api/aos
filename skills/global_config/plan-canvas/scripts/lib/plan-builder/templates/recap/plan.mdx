@@ -1,0 +1,67 @@
+---
+title: Retry failed exports automatically
+subtitle: Failed Lanternfish exports now retry with backoff and show their state to the customer. Invented example.
+kind: recap
+pr: "#142"
+branch: feat/export-retry
+base: main
+commit: 4c8a1f0
+files: 5
+additions: 318
+deletions: 24
+author: sample-author
+date: 2026-03-09
+---
+
+<Callout tone="note" title="How to use this template">
+
+Replace the Lanternfish example with your own change: update the frontmatter chips (PR, branch, commit, counts), rewrite the summary and the reason, list the files you really touched, and record the checks you actually ran. Delete sections you do not need. All names and numbers here are invented.
+
+</Callout>
+
+## What changed
+
+Failed exports used to disappear: the job died, the customer saw a spinner and support had to re-run it by hand. Exports now retry up to three times with growing delays, and the export list shows each job as Queued, Running, Retrying or Failed.
+
+- Retry delays are 1, 5 and 25 minutes.
+- A job that exhausts its retries stays visible with the last error message.
+- Customers can re-run a failed export with one click.
+
+<ImplementationMap title="Changed files" files={[
+  { path: "worker/export-runner.ts", change: "modified", note: "Wrap the run in retry with backoff" },
+  { path: "worker/retry-policy.ts", change: "added", note: "Delay table and attempt counter" },
+  { path: "api/exports/list.ts", change: "modified", note: "Return state and last error" },
+  { path: "app/exports/export-row.tsx", change: "modified", note: "State badge and re-run button" },
+  { path: "tests/export-retry.test.ts", change: "added", note: "Backoff, exhaustion and re-run cases" },
+]} />
+
+## Why
+
+<Table title="Reasons" columns={["Problem", "Evidence", "Fixed by"]} rows={[
+  ["About 4 percent of exports failed once", "Support ticket sample", "Automatic retry"],
+  ["Customers could not tell failed from slow", "Five tickets asking if an export was stuck", "Visible job state"],
+  ["Support re-ran jobs by hand", "About 6 manual re-runs per week", "Re-run button"],
+]} />
+
+## How verified
+
+<Checklist title="Checks">
+- [x] Unit tests for backoff delays and attempt limit
+- [x] Integration test: a job that fails twice then succeeds ends as Done
+- [x] Manual run on staging with a forced failure, state badge changed as expected
+- [ ] Load test with 300 queued jobs (not run yet)
+</Checklist>
+
+## Follow-ups
+
+<Callout tone="warn" title="Not done in this change">
+
+Customers are not emailed when an export finally fails, and the retry delays are fixed in code rather than configurable. Both are listed as follow-up tasks.
+
+</Callout>
+
+<Checklist title="Follow-ups">
+- [ ] Email the customer after the final failure
+- [ ] Make the delay table configurable per plan
+- [ ] Run the 300 job load test on staging
+</Checklist>

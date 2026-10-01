@@ -1,0 +1,105 @@
+---
+title: Fix duplicate invoice emails
+status: draft
+needs-fix: repro
+needs-test: fix
+needs-rollout: fix, test
+---
+
+# Fix: duplicate invoice emails
+
+<Callout tone="note" title="How to use this template">
+
+Replace the Ledgerly example with your bug: rewrite the symptom, the reproduction steps, the root cause with real file paths, the Diff with the actual before and after, and the regression test. Keep the sections in this order, a reviewer reads top to bottom. All names here are invented.
+
+</Callout>
+
+## Symptom
+
+Ledgerly is a fictional invoicing service. Since release 2.14 some customers receive the same invoice email two or three times. Support counted 38 reports in nine days, all for invoices sent from the scheduled run at 06:00 UTC.
+
+- Affected: scheduled invoices only, manual sends are fine.
+- Impact: customer confusion, no double charge.
+- Severity: medium, no data loss.
+
+## Reproduction {#repro}
+
+<Table title="Steps" columns={["Step", "Action", "Expected", "Actual"]} rows={[
+  ["1", "Create an invoice scheduled for 06:00 UTC", "Status scheduled", "Status scheduled"],
+  ["2", "Start two scheduler workers", "Both idle", "Both idle"],
+  ["3", "Let the 06:00 tick fire", "One email", "Two emails"],
+  ["4", "Check the invoice row", "sent_at set once", "sent_at set twice, 40 ms apart"],
+]} />
+
+Reproduces locally in about one run in three with two workers and an artificial 50 ms delay in the mail client.
+
+## Root cause
+
+The scheduler selects due invoices and sends them in two separate steps. Two workers can select the same row before either marks it as sent.
+
+<Mermaid label="Race between two workers" source={"sequenceDiagram\n  participant W1 as Worker 1\n  participant DB as Database\n  participant W2 as Worker 2\n  W1->>DB: SELECT due invoices\n  W2->>DB: SELECT due invoices\n  DB-->>W1: invoice 4012\n  DB-->>W2: invoice 4012\n  W1->>W1: send email\n  W2->>W2: send email\n  W1->>DB: UPDATE sent_at\n  W2->>DB: UPDATE sent_at"} />
+
+<Callout tone="warning" title="Why it appeared in 2.14">
+
+Release 2.14 raised the worker count from one to three. With one worker the race could not happen, so the missing claim step went unnoticed for two years.
+
+</Callout>
+
+## Fix plan {#fix}
+
+Claim the row atomically before sending. The claim is a single UPDATE that only succeeds for one worker.
+
+<Decision title="How do we claim an invoice?" question="Which mechanism prevents two workers from sending the same invoice?" options={[
+  { id: "claim", label: "Atomic claim with UPDATE ... WHERE status = 'scheduled'", detail: "One statement, no new infrastructure, safe across workers.", recommended: true },
+  { id: "lock", label: "Advisory lock per invoice", detail: "Works, but the lock must be released on every error path." },
+  { id: "single", label: "Back to one worker", detail: "Hides the bug and loses the throughput gain." },
+]}>
+
+The atomic claim fixes the cause in the one place every send path goes through, and a crashed worker is recovered by a timeout on the claim.
+
+</Decision>
+
+<Diff filename="server/scheduler/send-due.ts" language="typescript" summary="Claim before send" before={"const due = await db.invoices.findDue(now);\nfor (const inv of due) {\n  await mailer.send(inv);\n  await db.invoices.markSent(inv.id, now);\n}"} after={"const due = await db.invoices.findDue(now);\nfor (const inv of due) {\n  const claimed = await db.invoices.claim(inv.id, workerId, now);\n  if (!claimed) continue;\n  await mailer.send(inv);\n  await db.invoices.markSent(inv.id, now);\n}"} />
+
+<ImplementationMap files={[
+  { path: "server/scheduler/send-due.ts", change: "modified", note: "Claim each invoice before sending" },
+  { path: "server/db/invoices.ts", change: "modified", note: "claim(): UPDATE status to sending, only from scheduled" },
+  { path: "server/db/migrations/031_invoice_claim.sql", change: "added", note: "claimed_by and claimed_at columns" },
+]} />
+
+## Regression test {#test}
+
+<Code filename="server/scheduler/send-due.test.ts" language="typescript" code={"test('two workers send an invoice once', async () => {\n  const inv = await seedScheduledInvoice();\n  await Promise.all([runWorker('w1'), runWorker('w2')]);\n  expect(mailer.sent).toHaveLength(1);\n  expect(await db.invoices.get(inv.id)).toMatchObject({ status: 'sent' });\n});"} />
+
+<Checklist title="Test plan" items={[
+  { label: "Test fails on the current main branch" },
+  { label: "Test passes with the fix, 200 runs in a row" },
+  { label: "Crashed worker: claim expires after 5 minutes and the invoice is retried" },
+  { label: "Manual send path is unchanged" },
+]} />
+
+## Rollout {#rollout}
+
+<Checklist title="Rollout tasks" items={[
+  { label: "Run migration 031 before deploying the code" },
+  { label: "Deploy and watch duplicate-send alert for one day" },
+  { label: "Reply to the 38 affected tickets" },
+]} />
+
+<AgentTrail />
+
+## Risks
+
+<Table title="Risks" columns={["Risk", "Mitigation"]} rows={[
+  ["A crashed worker leaves invoices stuck in sending", "Claim expires after 5 minutes, a sweep resets it to scheduled"],
+  ["Migration locks the invoices table", "Add nullable columns only, no backfill"],
+]} />
+
+## Open questions
+
+<QuestionForm title="Open Questions" questions={[
+  { title: "Should customers who got duplicates receive an apology email?", mode: "single", options: [
+    { label: "No, a support reply is enough", recommended: true }, { label: "Yes, one short email" } ] },
+  { title: "Add an idempotency key to the mail provider call as well?", mode: "single", options: [
+    { label: "Yes, as a follow-up", recommended: true }, { label: "Not needed" } ] },
+]} />

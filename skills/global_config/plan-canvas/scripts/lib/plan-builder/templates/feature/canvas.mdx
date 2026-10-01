@@ -1,0 +1,81 @@
+<DesignBoard title="Trailmark - Saved Routes storyboard" version={1} transitions={[
+  { from: "map", to: "save", label: "Tap Save" },
+  { from: "save", to: "list", label: "Save route" },
+  { from: "list", to: "detail", label: "Open a route" },
+  { from: "detail", to: "list", label: "Remove" },
+]}>
+<Section title="1 Save and revisit" subtitle="From the map to a saved route. Low-fidelity sketches, not final UI.">
+<Artboard id="map" label="Map" surface="mobile" x={80} y={120} width={320} height={480} order={1}>
+<Screen surface="mobile" caption="Route selected on the map.">
+  <FrameScreen>
+    <StatusBar />
+    <Title text="Ridge Loop" />
+    <Text value="9.4 km, 3 h 10 min" tone="muted" />
+    <Box full dashed>
+      <Text value="Map preview" tone="muted" />
+    </Box>
+    <Row>
+      <Btn label="Start" primary />
+      <Btn label="Save" />
+    </Row>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="save" label="Save sheet" surface="mobile" x={480} y={120} width={320} height={480} order={2}>
+<Screen surface="mobile" caption="Bottom sheet over the map.">
+  <FrameScreen>
+    <StatusBar />
+    <Title text="Save route" />
+    <Box>
+      <Text value="Name" tone="muted" />
+      <Text value="Ridge Loop" />
+    </Box>
+    <TaskRow title="Keep available offline" done />
+    <TaskRow title="Sync to my other devices" done />
+    <Divider />
+    <Btn label="Save route" primary />
+    <Btn label="Cancel" />
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="list" label="Saved list" surface="mobile" x={880} y={120} width={320} height={480} order={3}>
+<Screen surface="mobile" caption="Works in airplane mode.">
+  <FrameScreen>
+    <StatusBar />
+    <Title text="Saved routes" />
+    <Chips items={[{"label":"Recent","active":true},{"label":"Nearby"},{"label":"A-Z"}]} />
+    <Card>
+      <Text value="Ridge Loop" weight="bold" />
+      <Text value="9.4 km, synced" tone="muted" />
+    </Card>
+    <Card>
+      <Text value="Lake Shore Walk" weight="bold" />
+      <Text value="4.1 km, pending" tone="muted" />
+    </Card>
+    <Card>
+      <Text value="Quarry Climb" weight="bold" />
+      <Text value="12.8 km, synced" tone="muted" />
+    </Card>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="detail" label="Route detail" surface="mobile" x={1280} y={120} width={320} height={480} order={4}>
+<Screen surface="mobile" caption="Remove is a text button, not a trash icon.">
+  <FrameScreen>
+    <StatusBar />
+    <Title text="Ridge Loop" />
+    <Box full dashed>
+      <Text value="Map preview" tone="muted" />
+    </Box>
+    <Row>
+      <Text value="9.4 km" weight="bold" />
+      <Text value="620 m up" tone="muted" />
+    </Row>
+    <Btn label="Start" primary />
+    <Btn label="Remove from saved" />
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Annotation targetId="list" title="Sync state">Each row shows synced or pending so a hiker knows what a second device will see.</Annotation>
+</Section>
+</DesignBoard>

@@ -3,7 +3,7 @@ name: plan-canvas
 description: Open plans and HTML artifacts in a local browser canvas where the human annotates elements, chats, and approves or requests changes without leaving the page. Use when presenting a plan for review, or when feedback like "move this, change that" is easier pointed at than typed.
 category: bdb-core
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
   origin: affaan-m/ECC
   license: MIT
 ---
@@ -68,6 +68,13 @@ aos-plan-canvas open production_artifacts/00_execution_plan.md
 #    queued feedback is never lost.
 aos-plan-canvas await production_artifacts/00_execution_plan.md
 ```
+
+When starting a new plan, offer the template choice first: `aos-plan-canvas templates`
+prints the available templates as JSON (`id`, `label`, `description`, `useWhen`,
+`hasBoard`; "board" = design canvas with screens + arrows), and `aos-plan-canvas new <template-id> <target-dir> [--mode standard|bdb-plan-builder]`
+copies one into an empty folder (builder mode: `plan.mdx` and `canvas.mdx` if present;
+standard mode: `plan.md`). A non-empty target or an unknown id exits 2. Then fill in
+the example content and `open` the result. The server's `GET /` page is a read-only overview of open reviews, templates and visual skills.
 
 ### Stay listening, or the human talks to an empty chair
 
@@ -150,6 +157,21 @@ if a revision takes more than a minute.
 
 **4. End** when review concludes: `aos-plan-canvas end <file>`.
 
+#### After approval
+
+Once the human approves a `bdb-plan-builder` plan, derive the live map from the same folder (run from the workspace root):
+
+```bash
+aos-plan-canvas trail <plan-dir>        # writes production_artifacts/00_execution_plan.md
+aos-trail . --plan production_artifacts/00_execution_plan.md --no-open
+```
+
+`trail` turns headings tagged `{#id}` and `<Section id title>` into components (`needs` from `<Section needs=[...]>` or frontmatter `needs-<id>: a, b`, `files` from `<ImplementationMap>`, tasks from `<Checklist>`, `url:` from an `<Archify>` whose file lives under `production_artifacts/`). It prints `{out, components, tasks, next_step}`; `--out <file>` must stay inside the workspace, an existing file is never overwritten without `--force`, and a plan with no components exits 2. It starts nothing. Inside an AO session (`AO_BROWSER_CAPABILITY` set), also run `ao preview <url>` with the URL `aos-trail` prints, as the `agenttrail` skill says.
+
+**Prototype hint.** A plan with `web`/`desktop` artboards or screens (or frontmatter `prototype: suggest`) ends with one "Suggested next step" callout naming them and pointing at the `prototype` skill for a throwaway prototype. It is plain text and starts nothing; `prototype: skip` turns it off.
+
+**Archify block.** `<Archify src="00_architecture.html" label="..." height={560} />` embeds a diagram from the `archify` skill (copy its standalone HTML into the plan folder first) in a sandboxed iframe (`allow-scripts` only). `src` is relative to the plan folder and must stay inside it; `..`, absolute paths, symlink escapes, missing files and files over 5 MB show an error card plus a warning.
+
 ## Relationship to `/startcycle`
 
 An `approve` verdict on `production_artifacts/00_execution_plan.md` satisfies
@@ -221,6 +243,10 @@ aos-plan-canvas open <file> --mode <chosen-id>
 ```
 
 `bdb-plan-builder` (labeled "BDB Plan Builder") and `builder` (labeled "Builder.io Visual Plan") are listed only when they are detected — respectively when `lib/plan-builder/index.js` exists in this skill's scripts directory, or when a `visual-plan` skill with a SKILL.md file is found in any of the configured skill directories (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.config/opencode/skills`, `~/.gemini/config/skills`, or custom paths in `AOS_PLAN_CANVAS_SKILL_DIRS`). Until then, only `standard` is available.
+
+### `bdb-plan-builder`
+
+For an Agent-Native-style **plan folder** (`plan.mdx` plus optional `canvas.mdx`, `prototype.mdx`, `.plan-state.json`), `open` renders the folder into ONE self-contained `plan.builder.html` in the BDB look next to the plan, then opens *that* file through the normal HTML artifact path — so annotation, chat and verdict work with no extra steps. Point it at the folder or at `plan.mdx` itself; a path with no `plan.mdx` exits 2 with the reason. Edit the MDX and re-run `open` to rebuild. Await `<plan-dir>/plan.builder.html`, not the folder.
 
 ## Relationship to `/startcycle`
 

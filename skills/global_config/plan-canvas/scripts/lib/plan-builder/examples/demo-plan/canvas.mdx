@@ -1,0 +1,19 @@
+<DesignBoard transitions={[{"from":"entry","to":"check-email","label":"submit email"},{"from":"check-email","to":"home","label":"open link"},{"from":"check-email","to":"expired","label":"link too old"}]}>
+<Section title="Auth Entry">
+<Artboard id="entry" title="Sign in">
+<Screen surface="mobile" html={'<div class="wf-card"><h3>Welcome back</h3><p class="wf-muted">Enter your email</p><p>name@example.com</p><button class="primary">Send link</button></div>'} />
+</Artboard>
+<Artboard id="check-email" title="Check your email">
+<Screen surface="mobile" html={'<div class="wf-card"><h3>Link sent</h3><p class="wf-muted">Open the link on this device.</p></div>'} />
+</Artboard>
+</Section>
+<Section title="Outcome">
+<Artboard id="home" title="Home">
+<Screen surface="mobile" html={'<div class="wf-card"><h3>Signed in</h3><p class="wf-muted">Your projects</p></div>'} />
+</Artboard>
+<Artboard id="expired" title="Link expired">
+<Screen surface="mobile" html={'<div class="wf-card"><h3>This link expired</h3><button class="primary">Send a new link</button></div>'} />
+</Artboard>
+<Annotation>Expired links never reveal whether the email has an account.</Annotation>
+</Section>
+</DesignBoard>

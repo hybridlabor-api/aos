@@ -1,0 +1,225 @@
+---
+title: Tidewater Night - Show Control Plan
+status: draft
+needs-network: load-in
+needs-lighting: network
+needs-video: network
+needs-audio: network
+needs-programming: lighting, video, audio
+needs-rehearsal: programming
+---
+
+# Tidewater Night: Technical Plan for the Live Show
+
+<Callout tone="note" title="How to use this template">
+
+Replace the show, venue, fixture counts, universes and cues with your own. Keep the signal flow, the patch table, the cue list and the failure plan: crew reads these first. The board in the Canvas section is a rough plan view; redraw it for your stage. All names and numbers below are invented.
+
+</Callout>
+
+## Goal
+
+Run a 75 minute festival headline set with synchronised lighting, LED wall video and a two-person audio team, driven by one timecode source and with a defined fallback for every critical link.
+
+- Show opens on timecode 01:00:00:00 and every cue is repeatable from any song start.
+- A single failure in network, media or console never causes a full blackout.
+- Load-in is done by 14:00, line check by 16:00, doors at 19:00.
+
+## Decision
+
+<Decision title="Who is the timecode master?" question="Which device drives lighting and video cues?" options={[
+  { id: "audio", label: "Audio playback laptop, LTC out", detail: "Band tracks and cues share one clock, musicians can stop the show.", recommended: true },
+  { id: "lighting", label: "Lighting console internal clock", detail: "Simple, but video drifts if the console restarts." },
+  { id: "manual", label: "Manual GO from each operator", detail: "No single point of failure, but cues drift between departments." },
+]}>
+
+LTC from the audio playback laptop is distributed to the console and the media server. Both fall back to their internal clocks if LTC drops, which is on the failure plan.
+
+</Decision>
+
+## Signal flow
+
+<Mermaid label="Control, video and audio signal flow" source={"flowchart LR\n  PB[Audio playback laptop] -- LTC --> CON[Lighting console]\n  PB -- LTC --> MSA[Media server A]\n  PB -- LTC --> MSB[Media server B standby]\n  PB -- audio --> DESK[Audio desk]\n  CON -- sACN u1-8 --> SW[Network switch]\n  SW --> N1[DMX node 1]\n  SW --> N2[DMX node 2]\n  N1 --> TR[Truss fixtures]\n  N2 --> FL[Floor fixtures]\n  MSA -- SDI --> PROC[LED processor]\n  MSB -. SDI standby .-> PROC\n  PROC --> WALL[LED wall]\n  DESK --> PA[PA system]"} />
+
+<Diagram label="Network layout" data={{
+  nodes: [
+    { id: "switch", label: "Core switch, 24 port" },
+    { id: "console", label: "Lighting console, VLAN 10" },
+    { id: "nodes", label: "DMX nodes 1 and 2, VLAN 10" },
+    { id: "media", label: "Media servers A and B, VLAN 20" },
+  ],
+  edges: [
+    { from: "console", to: "switch", label: "1G copper" },
+    { from: "switch", to: "nodes", label: "1G copper" },
+    { from: "media", to: "switch", label: "10G fibre" },
+  ],
+}} />
+
+## Patch and universes
+
+<Table title="Universe map (sACN)" columns={["Universe", "Node / port", "Fixtures", "Channels used", "Position"]} rows={[
+  ["1", "Node 1 / A", "12 moving spots", "384 of 512", "Truss 1"],
+  ["2", "Node 1 / B", "8 LED washes", "280 of 512", "Truss 1"],
+  ["3", "Node 1 / C", "6 strobes", "48 of 512", "Floor"],
+  ["4", "Node 1 / D", "Spare", "0", "Reserve"],
+  ["5", "Node 2 / A", "16 LED battens", "256 of 512", "Back truss"],
+  ["6", "Node 2 / B", "4 haze units, 2 fans", "24 of 512", "Floor"],
+  ["7-8", "Node 2 / C-D", "Pixel tape, 300 pixels", "900 of 1024", "Wall surround"],
+]} />
+
+<DataModel entities={[
+  { name: "Fixture", fields: [
+    { name: "fixtureId", type: "int", note: "Console fixture number, unique" },
+    { name: "type", type: "string", note: "Spot, wash, strobe, batten, pixel" },
+    { name: "universe", type: "int", note: "sACN universe 1 to 8" },
+    { name: "address", type: "int", note: "DMX start address 1 to 512" },
+    { name: "mode", type: "string", note: "Personality, for example 24 channel" },
+  ] },
+  { name: "Cue", fields: [
+    { name: "cueNumber", type: "decimal", note: "Console cue, for example 12.5" },
+    { name: "timecode", type: "string", note: "HH:MM:SS:FF" },
+    { name: "department", type: "enum", note: "light, video, audio, fx" },
+  ] },
+]} />
+
+## Cue list
+
+<Table title="Show cues (excerpt)" columns={["Cue", "Timecode", "Song / moment", "Lighting", "Video", "FX"]} rows={[
+  ["1", "01:00:00:00", "Intro tape", "Blackout then slow blue fade", "Wall: opening loop", "Haze on"],
+  ["10", "01:03:20:00", "Song 1 downbeat", "Full wash, spot chase", "Wall: live camera mix", "None"],
+  ["24", "01:18:45:12", "Song 4 drop", "Strobe burst 3 s", "Wall: white flash, then pattern", "CO2 jets"],
+  ["38", "01:41:10:00", "Ballad", "Warm amber, two followspots", "Wall: slow footage", "None"],
+  ["52", "02:02:00:00", "Encore break", "House half, wash low", "Wall: countdown", "Haze off"],
+  ["60", "02:15:00:00", "Closing", "Slow fade to black", "Wall: logo, then black", "None"],
+]} />
+
+## Build map
+
+### Load-in and rigging {#load-in}
+
+<Checklist title="Load-in checklist" items={[
+  { label: "Truss hung, motors tested, safety signed off" },
+  { label: "Power distribution tested, earth and RCD checked" },
+  { label: "Rack A powered, UPS holding for 10 minutes" },
+  { label: "LED wall built, tiles counted and addressed" },
+  { label: "FOH cabling labelled and strain relieved" },
+]} />
+
+<ImplementationMap files={[
+  { path: "venue/power-plan.pdf", change: "added", note: "Distribution and phase balance" },
+  { path: "venue/rigging-plan.pdf", change: "added", note: "Truss and motor loads" },
+]} />
+
+### Network {#network}
+
+<Checklist title="Network tasks" items={[
+  { label: "VLAN 10 control and VLAN 20 video configured" },
+  { label: "Static addresses assigned and labelled on every device" },
+  { label: "sACN multicast limited to VLAN 10" },
+  { label: "Ping and bandwidth test between FOH and Rack A" },
+]} />
+
+<ImplementationMap files={[
+  { path: "network/address-plan.csv", change: "added", note: "Device, address, VLAN, port" },
+  { path: "network/switch-config.txt", change: "added", note: "VLAN and multicast settings" },
+]} />
+
+### Lighting {#lighting}
+
+<Checklist title="Lighting tasks" items={[
+  { label: "Patch fixtures to universes 1 to 8" },
+  { label: "Focus and colour check on every truss position" },
+  { label: "Program looks for all songs" },
+]} />
+
+<ImplementationMap files={[
+  { path: "lighting/show-file-v3.show", change: "modified", note: "Patch, groups, palettes and cues" },
+]} />
+
+### Video {#video}
+
+<Checklist title="Video tasks" items={[
+  { label: "Map LED wall to the media server canvas" },
+  { label: "Load content and verify frame rate at 50 fps" },
+  { label: "Mirror media server A to B and test the switch" },
+]} />
+
+<ImplementationMap files={[
+  { path: "video/wall-map.json", change: "added", note: "Tile layout and processor settings" },
+  { path: "video/content/", change: "added", note: "Loops and song visuals, ProRes" },
+]} />
+
+### Audio and timecode {#audio}
+
+<Checklist title="Audio tasks" items={[
+  { label: "Playback laptop outputs LTC on channel 8" },
+  { label: "Line check every input and monitor mix" },
+  { label: "Verify LTC arrives at console and both media servers" },
+]} />
+
+<ImplementationMap files={[
+  { path: "audio/stage-plot.pdf", change: "added", note: "Inputs, monitors and stage layout" },
+  { path: "audio/playback-session.als", change: "added", note: "Tracks and LTC lane" },
+]} />
+
+### Programming and sync {#programming}
+
+<Checklist title="Programming tasks" items={[
+  { label: "Import the cue list and attach timecode events" },
+  { label: "Run each song from the middle and from the start" },
+  { label: "Write the operator cheat sheet" },
+]} />
+
+<ImplementationMap files={[
+  { path: "show/cue-list.csv", change: "added", note: "Single source for all departments" },
+  { path: "show/operator-notes.md", change: "added", note: "GO buttons, hold points and fallbacks" },
+]} />
+
+### Rehearsal and doors {#rehearsal}
+
+<Checklist title="Rehearsal tasks" items={[
+  { label: "Full run with the band at 16:00" },
+  { label: "Failure drills: pull LTC, pull media server A, pull a DMX node" },
+  { label: "Final go from the production manager at 18:30" },
+]} />
+
+## Agent trail
+
+<AgentTrail />
+
+## Failure and blackout plan
+
+<Table title="Failure modes and responses" columns={["Failure", "Detected by", "Immediate response", "Recovery"]} rows={[
+  ["LTC lost", "Console timecode lamp, media server clock", "Both switch to internal clock, operators GO manually", "Re-sync at the next song start"],
+  ["Media server A fails", "Wall black or frozen", "Video operator flips to server B on the processor", "Reboot A, keep B live for the set"],
+  ["DMX node 1 fails", "Truss fixtures freeze", "Console outputs to spare node on universe 4 port", "Replace node during the next break"],
+  ["Network switch fails", "All sACN lost, fixtures hold last look", "Swap to the spare switch, config is on USB", "Verify addresses, resume"],
+  ["Power loss on stage", "Lights and wall dark", "Audio on UPS keeps playback, house lights on emergency circuit", "Hold the show until power is confirmed"],
+  ["Emergency stop", "Production manager call", "Console blackout, haze and CO2 off, house lights up", "No restart without a safety sign-off"],
+]} />
+
+<Callout tone="warning" title="Blackout rule">
+
+A deliberate blackout is a console cue (cue 1 and cue 60) and never a power switch. If any department calls "stop", all effects (strobe, CO2, haze) go off first, then lights fade to house. Only the production manager restarts the show.
+
+</Callout>
+
+## Risks
+
+<Table title="Risk register" columns={["Risk", "Likelihood", "Impact", "Mitigation"]} rows={[
+  ["Wireless interference from the neighbouring stage", "Medium", "High", "Frequency coordination, wired backups for key mics"],
+  ["Strobe bursts exceed the venue photosensitivity limit", "Low", "High", "Cap at 3 Hz, warning signs, approval in the safety plan"],
+  ["Rain reaches the front of house", "Medium", "Medium", "Covered FOH tent, cable ramps, tarp for the rack"],
+  ["Content delivered late", "Medium", "Medium", "Delivery deadline two days before, placeholder loops loaded"],
+]} />
+
+## Open questions
+
+<QuestionForm title="Open Questions" questions={[
+  { title: "Do we run followspots from FOH or a side tower?", mode: "single", options: [
+    { label: "Side tower", recommended: true }, { label: "FOH" } ] },
+  { title: "Is a second haze unit allowed by the venue?", mode: "single", options: [
+    { label: "Yes, with smoke detector isolation", recommended: true }, { label: "No, one unit only" } ] },
+  { title: "Which extras do we want?", mode: "multi", options: [
+    { label: "Audience-facing blinders" }, { label: "Live camera on the wall" }, { label: "Wireless DMX backup" } ] },
+]} />

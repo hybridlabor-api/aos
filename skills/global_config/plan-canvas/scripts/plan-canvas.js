@@ -38,7 +38,7 @@ const {
   resolvePort
 } = require('./lib/plan-canvas/server');
 
-const VERSION = '1.0.1';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
+const VERSION = '1.0.2';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
                            // Bump when the vendored JS changes, to force a stale detached server to restart.
 
 const SAFE_REQUEST_PATHS = new Set([
@@ -58,7 +58,10 @@ function usage() {
     'Usage:',
     '  aos-plan-canvas                  Show server status and sessions',
     '  aos-plan-canvas modes            List available planning modes as JSON',
+    '  aos-plan-canvas templates        List plan templates as JSON ({id,label,description,useWhen,hasBoard})',
+    '  aos-plan-canvas new <template-id> <target-dir>  Copy a plan template into a new folder',
     '  aos-plan-canvas open <file>      Open (or resume) a review session',
+    '  aos-plan-canvas trail <plan-dir|plan.mdx>  Write an agenttrail plan file from a plan folder',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
     '  aos-plan-canvas pending          Show feedback queued for no listener',
     '  aos-plan-canvas typing <file>    Show a thinking/typing indicator in chat',
@@ -68,8 +71,14 @@ function usage() {
     '',
     'Options:',
     '  open:  --mode <id>    Select planning mode (default: standard)',
+    '                   bdb-plan-builder builds <plan-dir>/plan.builder.html from',
+    '                   plan.mdx and opens that file instead',
     '         --no-open      Do not launch a browser window',
     '         --reopen       Reopen a session the user ended from the browser',
+    '  new:   --mode <id>    bdb-plan-builder (default: plan.mdx, canvas.mdx) or standard (plan.md);',
+    '                   refuses a non-empty target (exit 2)',
+    '  trail: --out <file>   Output inside the workspace (default production_artifacts/00_execution_plan.md)',
+    '         --force        Overwrite an existing output file',
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
     '         --timeout-ms <n>  Return {status:"waiting"} after n ms (tests/debug only)',
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
@@ -232,6 +241,24 @@ function cmdModes() {
   return resolveModes();
 }
 
+function skillDirList() {
+  return (process.env.AOS_PLAN_CANVAS_SKILL_DIRS || [
+    path.join(process.env.HOME || os.homedir(), '.claude', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.agents', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.codex', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.config', 'opencode', 'skills'),
+    path.join(process.env.HOME || os.homedir(), '.gemini', 'config', 'skills')
+  ].join(':')).split(':');
+}
+
+function findSkillMd(name) {
+  for (const dir of skillDirList()) {
+    const p = path.join(dir, name, 'SKILL.md');
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 function resolveModes() {
   const modes = [
     {
@@ -252,22 +279,7 @@ function resolveModes() {
   });
 
   // Check for visual-plan skill
-  const skillDirs = (process.env.AOS_PLAN_CANVAS_SKILL_DIRS || [
-    path.join(process.env.HOME || os.homedir(), '.claude', 'skills'),
-    path.join(process.env.HOME || os.homedir(), '.agents', 'skills'),
-    path.join(process.env.HOME || os.homedir(), '.codex', 'skills'),
-    path.join(process.env.HOME || os.homedir(), '.config', 'opencode', 'skills'),
-    path.join(process.env.HOME || os.homedir(), '.gemini', 'config', 'skills')
-  ].join(':')).split(':');
-
-  let visualPlanFound = false;
-  for (const dir of skillDirs) {
-    const skillMdPath = path.join(dir, 'visual-plan', 'SKILL.md');
-    if (fs.existsSync(skillMdPath)) {
-      visualPlanFound = true;
-      break;
-    }
-  }
+  const visualPlanFound = Boolean(findSkillMd('visual-plan'));
 
   modes.push({
     id: 'builder',
@@ -300,9 +312,24 @@ async function cmdOpen(file, args, { stateDir, port }) {
     return { error: `Mode not available: ${mode} (${modeConfig.reason})` };
   }
 
+  // bdb-plan-builder owns the artifact: it renders the plan folder to one
+  // self-contained HTML file next to plan.mdx, then that file goes through the
+  // normal session path unchanged.
+  let artifact = path.resolve(file);
+  let built = null;
+  if (mode === 'bdb-plan-builder') {
+    built = require('./lib/plan-builder').renderPlanFolder(file);
+    if (!built.outFile) {
+      const message = built.error || 'plan builder produced no output';
+      process.stderr.write(`${message}\n`);
+      return { error: message, mode };
+    }
+    artifact = built.outFile;
+  }
+
   await ensureServer({ stateDir, port });
   const res = await request(port, 'POST', '/api/sessions', {
-    file: path.resolve(file),
+    file: artifact,
     reopen: args.includes('--reopen')
   });
   if (res.statusCode === 409) return res.body;
@@ -314,8 +341,10 @@ async function cmdOpen(file, args, { stateDir, port }) {
     url,
     browser: launched ? 'opened' : 'not opened',
     mode,
-    next_step:
-      'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
+    ...(built ? { artifact: built.outFile, warnings: built.warnings } : {}),
+    next_step: built && built.warnings.length
+      ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas await <dir>/plan.builder.html\` and leave it running.`
+      : 'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
   };
 }
 
@@ -346,8 +375,26 @@ function awaitRequest(port, key, timeoutMs) {
   });
 }
 
+// A bdb-plan-builder session is keyed by the built plan.builder.html, but agents
+// know the plan by its folder or plan.mdx; follow either to the built artifact.
+function resolveArtifactArg(file) {
+  if (!file) return file;
+  const abs = path.resolve(file);
+  try {
+    const dir = fs.statSync(abs).isDirectory() ? abs : path.basename(abs) === 'plan.mdx' ? path.dirname(abs) : null;
+    if (dir) {
+      const built = path.join(dir, 'plan.builder.html');
+      if (fs.existsSync(built)) return built;
+    }
+  } catch (_) {
+    // fall through: a missing path is reported by the command itself
+  }
+  return file;
+}
+
 async function cmdAwait(file, args, { stateDir, port }) {
   if (!file) throw new Error('await requires a file path');
+  file = resolveArtifactArg(file);
   if (!(await healthCheck(port))) {
     return { status: 'no-server', hint: 'no canvas server is running; use `open` first', stateDir };
   }
@@ -376,6 +423,7 @@ async function cmdAwait(file, args, { stateDir, port }) {
 // Show the human an activity indicator in the canvas chat. Cheap and
 // fire-and-forget: a failed signal must never derail the actual work.
 async function cmdTyping(file, args, { port }) {
+  file = resolveArtifactArg(file);
   if (!file) throw new Error('typing requires a file path');
   const state = valueAfter(args, '--state') || 'typing';
   if (!(await healthCheck(port))) return { status: 'no-server' };
@@ -403,6 +451,7 @@ function cmdPending({ stateDir }) {
 }
 
 async function cmdEnd(file, { port }) {
+  file = resolveArtifactArg(file);
   if (!file) throw new Error('end requires a file path');
   if (!(await healthCheck(port))) return { status: 'no-server' };
   const res = await request(port, 'POST', '/api/end', { file: path.resolve(file) });
@@ -454,6 +503,51 @@ async function cmdServer(args, { stateDir, port }) {
   return new Promise(() => {}); // run until a signal or idle shutdown
 }
 
+const TEMPLATES_DIR = path.join(__dirname, 'lib', 'plan-builder', 'templates');
+
+function cmdTemplates() {
+  let ids = [];
+  try { ids = fs.readdirSync(TEMPLATES_DIR); } catch { /* no templates dir */ }
+  const list = [];
+  for (const id of ids.sort()) {
+    try {
+      const m = JSON.parse(fs.readFileSync(path.join(TEMPLATES_DIR, id, 'meta.json'), 'utf8'));
+      list.push({ id: m.id || id, label: m.label, description: m.description, useWhen: m.useWhen, hasBoard: Boolean(m.hasBoard) });
+    } catch { /* skip templates without readable meta.json */ }
+  }
+  return list;
+}
+
+function cmdNew(args) {
+  const fail = (error) => {
+    process.stderr.write(`${error}\n`);
+    output({ error });
+    return 2;
+  };
+  const mode = valueAfter(args, '--mode') || 'bdb-plan-builder';
+  const [id, target] = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--mode');
+  const ids = cmdTemplates().map(t => t.id);
+  if (!id || !ids.includes(id)) return fail(`Unknown template "${id || ''}". Valid ids: ${ids.join(', ') || '(none)'}`);
+  if (!target) return fail('Usage: aos-plan-canvas new <template-id> <target-dir> [--mode standard|bdb-plan-builder]');
+  if (mode !== 'standard' && mode !== 'bdb-plan-builder') return fail(`Unknown mode "${mode}". Valid modes: standard, bdb-plan-builder`);
+  const dir = path.resolve(target);
+  if (fs.existsSync(dir) && (!fs.statSync(dir).isDirectory() || fs.readdirSync(dir).length)) {
+    return fail(`Refusing to overwrite non-empty target: ${dir}`);
+  }
+  const src = path.join(TEMPLATES_DIR, id);
+  const files = mode === 'standard' ? [['standard.md', 'plan.md']] : [['plan.mdx', 'plan.mdx'], ['canvas.mdx', 'canvas.mdx']];
+  fs.mkdirSync(dir, { recursive: true });
+  const written = [];
+  for (const [from, to] of files) {
+    if (!fs.existsSync(path.join(src, from))) continue;
+    fs.copyFileSync(path.join(src, from), path.join(dir, to));
+    written.push(path.join(dir, to));
+  }
+  const entry = mode === 'standard' ? 'plan.md' : 'plan.mdx';
+  output({ template: id, mode, dir, files: written, next_step: `aos-plan-canvas open ${path.join(dir, entry)}${mode === 'standard' ? '' : ' --mode bdb-plan-builder'}` });
+  return 0;
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = argv.slice();
   if (args.includes('--help') || args.includes('-h')) {
@@ -468,6 +562,8 @@ async function main(argv = process.argv.slice(2)) {
   try {
     if (command === null) output(await cmdStatus(context));
     else if (command === 'modes') output(cmdModes());
+    else if (command === 'templates') output(cmdTemplates());
+    else if (command === 'new') return cmdNew(args);
     else if (command === 'open') {
       const result = await cmdOpen(args[0], args, context);
       if (result.error) {
@@ -475,6 +571,17 @@ async function main(argv = process.argv.slice(2)) {
         return 2;
       }
       output(result);
+    }
+    else if (command === 'trail') {
+      const { writeTrail, TrailError } = require('./lib/plan-builder/trail');
+      try {
+        output(writeTrail(args[0], { out: valueAfter(args, '--out'), force: args.includes('--force') }));
+      } catch (error) {
+        if (!(error instanceof TrailError)) throw error;
+        process.stderr.write(`${error.message}\n`);
+        output({ error: error.message });
+        return 2;
+      }
     }
     else if (command === 'await') output(await cmdAwait(args[0], args, context));
     else if (command === 'pending') output(cmdPending(context));
@@ -499,4 +606,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, ensureServer, healthCheck };
+module.exports = { main, ensureServer, healthCheck, cmdTemplates, findSkillMd };

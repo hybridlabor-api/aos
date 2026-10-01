@@ -65,14 +65,14 @@ describe('Plan Canvas modes', () => {
     assert.strictEqual(output.default, 'standard');
   });
 
-  test('bdb-plan-builder is unavailable when lib/plan-builder/index.js does not exist', async () => {
+  test('bdb-plan-builder is available because lib/plan-builder/index.js exists', async () => {
     const result = await runCommand(['modes']);
     const output = JSON.parse(result.stdout);
 
     const builder = output.modes.find(m => m.id === 'bdb-plan-builder');
     assert.ok(builder);
-    assert.strictEqual(builder.available, false);
-    assert.ok(builder.reason);
+    assert.strictEqual(builder.available, true);
+    assert.strictEqual(builder.reason, null);
   });
 
   test('builder mode detection with AOS_PLAN_CANVAS_SKILL_DIRS', async () => {

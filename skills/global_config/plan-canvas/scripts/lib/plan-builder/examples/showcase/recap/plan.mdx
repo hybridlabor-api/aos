@@ -1,0 +1,102 @@
+---
+title: Share links with expiry and revoke
+subtitle: Notes can be shared through a read-only link that expires after seven days and can be revoked in one click. Invented example.
+kind: recap
+pr: "#318"
+branch: feat/share-links
+base: main
+commit: 9b3e7d2
+files: 8
+additions: 642
+deletions: 57
+author: sample-author
+date: 2026-02-03
+---
+
+## Summary
+
+Until now a note could only be read by workspace members. This change adds read-only share links for people outside the team. A link carries a random token, expires after seven days unless the owner picks another period, and can be revoked at any time. Recipients see a clean read-only page; expired or revoked links show a Gone page instead of an error.
+
+- Tokens are 128 bit random values stored hashed; the plain token only appears in the URL.
+- The public page never loads the editor bundle, so it opens fast on slow connections.
+- Owners see who opened a link and how often, without personal data.
+
+## Before and after
+
+<Compare>
+<Before>
+<Screen surface="web" caption="Share dialog before: members only">
+  <FrameScreen>
+    <Row><Title text="Share note" /><Btn label="Close" /></Row>
+    <Chips items={[{ label: "People", active: true }]} />
+    <Row><IconSquare active /><Lines n={2} widths={[60, 36]} /></Row>
+    <Row><IconSquare /><Lines n={2} widths={[54, 30]} /></Row>
+    <Row><IconSquare /><Lines n={2} widths={[66, 34]} /></Row>
+    <Box dashed><Text value="Only workspace members can open this note." tone="muted" /></Box>
+    <Divider />
+    <Row><Btn label="Invite member" primary /></Row>
+  </FrameScreen>
+</Screen>
+</Before>
+<After>
+<Screen surface="web" caption="Share dialog after: link tab with expiry">
+  <FrameScreen>
+    <Row><Title text="Share note" /><Btn label="Close" /></Row>
+    <Chips items={[{ label: "Link", active: true }, { label: "People" }]} />
+    <Box><Text value="Anyone with the link can view" /><Lines n={1} widths={[72]} /></Box>
+    <SectionLabel label="Link expires" />
+    <TaskRow title="In 7 days" done note="default" />
+    <TaskRow title="In 30 days" />
+    <TaskRow title="Never" />
+    <Row><IconSquare active /><Lines n={2} widths={[60, 36]} /></Row>
+    <Divider />
+    <Row><Btn label="Revoke link" /><Btn label="Copy link" primary /></Row>
+  </FrameScreen>
+</Screen>
+</After>
+</Compare>
+
+## Files
+
+<ImplementationMap title="Changed files" files={[
+  { path: "db/migrations/0012_share_links.sql", change: "added", note: "share_links table with hashed token and expiry" },
+  { path: "api/share/index.ts", change: "added", note: "Create, list and revoke links" },
+  { path: "api/share/resolve.ts", change: "added", note: "Public lookup, returns note or Gone" },
+  { path: "app/s/shared-note.tsx", change: "added", note: "Read-only page without the editor bundle" },
+  { path: "app/notes/share-dialog.tsx", change: "modified", note: "Link tab, expiry options, revoke" },
+  { path: "api/notes/item.ts", change: "modified", note: "Expose share count on the note" },
+  { path: "app/notes/legacy-share-modal.tsx", change: "removed", note: "Replaced by the new dialog" },
+  { path: "tests/share-links.test.ts", change: "added", note: "Expiry, revoke and permission cases" },
+]} />
+
+## Behaviour
+
+<Table title="Link states" columns={["State", "Recipient sees", "Owner sees", "Next step"]} rows={[
+  ["Active", "Read-only note", "Open count", "Revoke or wait for expiry"],
+  ["Expired", "Gone page", "Expired badge", "Create a new link"],
+  ["Revoked", "Gone page within one minute", "Revoked badge", "Create a new link"],
+  ["Note archived", "Gone page", "Link paused", "Restore the note to resume"],
+]} />
+
+<CodeTabs tabs={[
+  { label: "share/index.ts", language: "ts", code: "export async function createLink(noteId: string, days = 7) {\n  const token = randomToken(16);\n  await db.insert('share_links', {\n    note_id: noteId,\n    token_hash: sha256(token),\n    expires_at: addDays(now(), days),\n  });\n  return `${BASE_URL}/s/${token}`;\n}" },
+  { label: "share/resolve.ts", language: "ts", code: "export async function resolve(token: string) {\n  const link = await db.findOne('share_links', { token_hash: sha256(token) });\n  if (!link || link.revoked_at || link.expires_at < now()) return null;\n  return db.get('notes', link.note_id);\n}" },
+  { label: "0012_share_links.sql", language: "sql", code: "CREATE TABLE share_links (\n  id BIGSERIAL PRIMARY KEY,\n  note_id BIGINT NOT NULL REFERENCES notes(id),\n  token_hash TEXT NOT NULL UNIQUE,\n  expires_at TIMESTAMPTZ NOT NULL,\n  revoked_at TIMESTAMPTZ\n);" },
+]} />
+
+## Decision
+
+<Decision title="Token storage" question="How do we store share tokens?" options={[
+  { id: "hash", label: "Store only a hash", detail: "A database leak does not expose working links.", recommended: true },
+  { id: "plain", label: "Store the token", detail: "Lets us show the link again, but a leak exposes every link." },
+]}>
+
+The dialog shows the full link once. After that only the owner can revoke it and create a new one, which is an acceptable cost for the safer default.
+
+</Decision>
+
+<Callout tone="note" title="Review focus">
+
+Check that revoke is visible to the public resolver within one minute, and that an archived note never leaks through an active link.
+
+</Callout>

@@ -1,0 +1,53 @@
+<DesignBoard title="Tidewater Night - stage and rack layout" version={1} transitions={[
+  { from: "foh", to: "rack", label: "fibre, 2 x 1G" },
+  { from: "rack", to: "stage", label: "DMX / sACN, video" },
+  { from: "foh", to: "video", label: "NDI and SDI" },
+  { from: "video", to: "stage", label: "LED wall feed" },
+]}>
+<Section title="1 Layout" subtitle="Low-fidelity plan view. Positions are indicative, not a rigging drawing.">
+<Artboard id="foh" label="FOH position" surface="web" x={60} y={120} width={360} height={260} order={1}>
+<Screen surface="web" caption="Audio desk, lighting console and show laptop.">
+  <FrameScreen>
+    <Title text="Front of house" />
+    <Row>
+      <Box><Text value="Lighting console" weight="bold" /><Lines n={2} widths={[80,50]} /></Box>
+      <Box><Text value="Audio desk" weight="bold" /><Lines n={2} widths={[70,45]} /></Box>
+    </Row>
+    <Box dashed><Text value="Show laptop: timecode master, backup on UPS" tone="muted" /></Box>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="rack" label="Stage-left rack" surface="web" x={520} y={120} width={360} height={260} order={2}>
+<Screen surface="web" caption="Network, DMX and power distribution.">
+  <FrameScreen>
+    <Title text="Rack A (12U)" />
+    <Box><Text value="Switch, VLAN 10 control, VLAN 20 video" /></Box>
+    <Box><Text value="Node 1 universes 1-4, Node 2 universes 5-8" /></Box>
+    <Chips items={[{"label":"UPS 1500 VA","active":true},{"label":"Spare node"}]} />
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="video" label="Video position" surface="web" x={60} y={460} width={360} height={240} order={3}>
+<Screen surface="web" caption="Media server and signal conversion.">
+  <FrameScreen>
+    <Title text="Video booth" />
+    <Box><Text value="Media server A (live)" weight="bold" /><Lines n={1} widths={[60]} /></Box>
+    <Box dashed><Text value="Media server B (hot standby, mirrored)" tone="muted" /></Box>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="stage" label="Stage" surface="web" x={520} y={460} width={360} height={240} order={4}>
+<Screen surface="web" caption="Truss, LED wall and floor fixtures.">
+  <FrameScreen>
+    <Title text="Stage" />
+    <Row>
+      <Box><Text value="Truss 1: 12 spots, 8 washes" /></Box>
+      <Box><Text value="LED wall 6 x 3.5 m" /></Box>
+    </Row>
+    <Box dashed><Text value="Floor: 6 strobes, 4 haze units" tone="muted" /></Box>
+  </FrameScreen>
+</Screen>
+</Artboard>
+</Section>
+<Annotation targetId="rack" placement="right" title="Keep DMX runs under 100 m per line, use the spare node if a line fails." />
+</DesignBoard>

@@ -1,0 +1,173 @@
+---
+title: Beacon Mobile 4.2 - Release Plan
+status: draft
+needs-freeze: scope
+needs-qa: freeze
+needs-staged: qa
+needs-full: staged
+needs-retro: full
+---
+
+# Beacon Mobile 4.2 Release
+
+<Callout tone="note" title="How to use this template">
+
+Replace the product, version, scope items, thresholds and owners with your own. Keep the go/no-go gate and the rollback section: they are the part reviewers care about. Remove channels you do not use. All names and numbers below are invented.
+
+</Callout>
+
+## Goal
+
+Ship Beacon Mobile 4.2 (offline maps and a new onboarding) to all users within five days of code freeze, with crash-free sessions at or above 99.5 percent at every stage.
+
+- Release candidate frozen on Monday 9 Nov, full rollout by Friday 13 Nov.
+- No stage widens while a blocking metric is red.
+- Support and marketing know the final scope 48 hours before the first stage.
+
+## Scope
+
+<Table title="Release scope" columns={["Item", "Type", "Owner", "Status", "Flag"]} rows={[
+  ["Offline maps for saved regions", "Feature", "Priya", "Done", "offline_maps"],
+  ["New onboarding with three steps", "Feature", "Tomas", "In QA", "onboarding_v2"],
+  ["Fix: location drift in background mode", "Fix", "Lena", "Done", "none"],
+  ["Dark theme for the settings screen", "Polish", "Tomas", "Done", "none"],
+  ["Route sharing by link", "Feature", "Priya", "Cut to 4.3", "route_share"],
+]} />
+
+## Decision
+
+<Decision title="How do we roll out?" question="Which rollout shape gives early signal with the smallest blast radius?" options={[
+  { id: "staged", label: "Staged: 5, 25, 100 percent", detail: "Two hold points with metric checks; widest exposure only after 48 hours of data.", recommended: true },
+  { id: "big", label: "Full release at once", detail: "Fastest, but any regression hits everyone and a store rollback takes days." },
+  { id: "beta", label: "Open beta for two weeks first", detail: "Safest signal, but delays the marketing date and splits support." },
+]}>
+
+Staged rollout through the store console plus server-side flags lets us stop at 5 or 25 percent and switch features off without a new build.
+
+</Decision>
+
+## Rollout
+
+<Mermaid label="Rollout stages" source={"flowchart LR\n  A[Code freeze Mon] --> B[QA and soak Tue-Wed]\n  B --> C{Go / No-go Wed 16:00}\n  C -- go --> D[5 percent Thu 09:00]\n  C -- no-go --> X[Fix and re-cut RC]\n  D --> E{24h metrics ok?}\n  E -- yes --> F[25 percent Fri 09:00]\n  E -- no --> R[Halt and roll back flags]\n  F --> G{24h metrics ok?}\n  G -- yes --> H[100 percent Sat 09:00]\n  G -- no --> R\n  H --> I[Retro Mon]"} />
+
+## Go / no-go
+
+<Checklist title="Go / no-go gate (Wednesday 16:00)" items={[
+  { label: "All scope items Done or explicitly cut", checked: true },
+  { label: "Release candidate passed the regression suite on 12 devices" },
+  { label: "No open blocker or critical bug" },
+  { label: "Crash-free sessions on the internal soak build at 99.7 percent or higher" },
+  { label: "Feature flags verified on and off in staging" },
+  { label: "Store listing, screenshots and release notes approved" },
+  { label: "Support macros and the known-issues list published" },
+  { label: "Rollback rehearsed: flags off and store halt tested" },
+]} />
+
+## Build map
+
+### Scope and freeze {#scope}
+
+<Checklist title="Scope tasks" items={[
+  { label: "Cut route sharing to 4.3", checked: true },
+  { label: "Tag release candidate and bump version to 4.2.0" },
+]} />
+
+<ImplementationMap files={[
+  { path: "release/scope-4.2.md", change: "added", note: "Final scope and cut list" },
+  { path: "app/version.json", change: "modified", note: "Version 4.2.0, build number" },
+]} />
+
+### Freeze and regression {#freeze}
+
+<Checklist title="Freeze tasks" items={[
+  { label: "Branch protection on the release branch" },
+  { label: "Changelog assembled from merged pull requests" },
+]} />
+
+<ImplementationMap files={[
+  { path: "CHANGELOG.md", change: "modified", note: "User-facing 4.2 notes" },
+]} />
+
+### QA and soak {#qa}
+
+<Checklist title="QA tasks" items={[
+  { label: "Run regression on 12 devices" },
+  { label: "Two day internal soak with 80 staff phones" },
+  { label: "Upgrade test from 4.0 and 4.1 builds" },
+]} />
+
+<ImplementationMap files={[
+  { path: "qa/device-matrix.csv", change: "modified", note: "Devices and OS versions covered" },
+  { path: "qa/soak-report.md", change: "added", note: "Crash and battery numbers" },
+]} />
+
+### Staged rollout {#staged}
+
+<Checklist title="Staged rollout tasks" items={[
+  { label: "Release to 5 percent, watch for 24 hours" },
+  { label: "Raise to 25 percent after the metric check" },
+]} />
+
+<ImplementationMap files={[
+  { path: "ops/rollout-dashboard.json", change: "added", note: "Crash-free, ANR, rating and support volume" },
+]} />
+
+### Full rollout {#full}
+
+<Checklist title="Full rollout tasks" items={[
+  { label: "Raise to 100 percent" },
+  { label: "Send the announcement and update the help center" },
+]} />
+
+<ImplementationMap files={[
+  { path: "comms/announcement.md", change: "added", note: "Blog post and in-app message" },
+]} />
+
+### Retro {#retro}
+
+<Checklist title="Retro tasks" items={[
+  { label: "Compare stage metrics with the forecast" },
+  { label: "Record what to change in the next release" },
+]} />
+
+## Agent trail
+
+<AgentTrail />
+
+## Communications
+
+<Table title="Comms plan" columns={["When", "Audience", "Channel", "Owner", "Message"]} rows={[
+  ["Mon 9 Nov", "Internal", "Team chat", "Priya", "Freeze done, scope final"],
+  ["Wed 11 Nov", "Support", "Briefing and macros", "Lena", "What changed, known issues, escalation path"],
+  ["Thu 12 Nov", "Early users", "In-app note at 5 percent", "Tomas", "New onboarding is rolling out"],
+  ["Sat 14 Nov", "All users", "Blog post and store notes", "Marta (marketing)", "Offline maps are here"],
+  ["On rollback", "Everyone affected", "Status page and in-app banner", "On-call lead", "What happened, what we did, next update time"],
+]} />
+
+## Rollback
+
+<Callout tone="warning" title="Halt and rollback rules">
+
+Halt the rollout if crash-free sessions drop below 99.5 percent, ANR rate exceeds 0.5 percent, or support volume doubles against baseline for two hours. First action: switch the affected flag off (under 5 minutes, no build needed). If a bug lives outside a flag: halt the store rollout and ship 4.2.1 as a hotfix, target within 24 hours. Users who already updated cannot be downgraded, so hotfix speed matters more than a revert.
+
+</Callout>
+
+## Risks
+
+<Table title="Risk register" columns={["Risk", "Likelihood", "Impact", "Mitigation"]} rows={[
+  ["Offline maps exhaust device storage", "Medium", "High", "Storage warning, 500 MB cap, flag off switch"],
+  ["Store review delays the first stage", "Medium", "Medium", "Submit on Tuesday, keep two days of slack"],
+  ["Onboarding change lowers signup completion", "Low", "High", "A/B at 5 percent, compare funnel before widening"],
+  ["Support overwhelmed on launch day", "Medium", "Medium", "Macros ready, extra shift on Saturday"],
+]} />
+
+## Open questions
+
+<QuestionForm title="Open Questions" questions={[
+  { title: "Do we announce before or after the 100 percent step?", mode: "single", options: [
+    { label: "After, once metrics are stable", recommended: true }, { label: "At the 25 percent step" } ] },
+  { title: "Who holds the go/no-go vote?", mode: "single", options: [
+    { label: "Release manager with QA and support", recommended: true }, { label: "Product lead alone" } ] },
+  { title: "Which extra checks join the gate?", mode: "multi", options: [
+    { label: "Accessibility pass" }, { label: "Battery benchmark" }, { label: "Privacy review of new permissions" } ] },
+]} />

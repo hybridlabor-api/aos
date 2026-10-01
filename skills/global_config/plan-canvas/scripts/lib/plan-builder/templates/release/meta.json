@@ -1,0 +1,1 @@
+{"id":"release","label":"Release","description":"Release plan with scope table, go/no-go checklist, rollout diagram, comms and rollback.","useWhen":"You ship a version to users and need an agreed scope, a go/no-go gate, a staged rollout and a way back.","hasBoard":false}

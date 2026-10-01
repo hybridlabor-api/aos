@@ -1,0 +1,1 @@
+{"id":"bugfix","label":"Bug fix","description":"Reproduction, root cause, fix plan, diff and regression test for one defect.","useWhen":"You are fixing a defect and want the cause, the fix and the proof written down before coding.","hasBoard":false}

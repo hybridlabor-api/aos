@@ -24,7 +24,8 @@ const {
   canvasClientJs,
   renderCanvasHtml,
   renderMarkdownArtifactHtml,
-  renderSessionListHtml
+  renderHomeHtml,
+  VISUAL_SKILLS
 } = require('./ui');
 
 const DEFAULT_PORT = 4519;
@@ -128,6 +129,29 @@ function sendHtml(res, statusCode, html, { csp = true } = {}) {
   }
   res.writeHead(statusCode, headers);
   res.end(html);
+}
+
+const STATIC_READ_PATH = /^\/(sdk\.js|artifact\/[a-f0-9]{12}\/.*)$/;
+
+function skillDescription(file) {
+  try {
+    const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(file, 'utf8'));
+    const m = fm && /^description:\s*(.*)$/m.exec(fm[1]);
+    return m ? m[1].trim().replace(/^(["'])(.*)\1$/, '$2') : '';
+  } catch { return ''; }
+}
+
+function homeData(store) {
+  // Lazy: plan-canvas.js requires this module at load time.
+  const { cmdTemplates, findSkillMd } = require('../../plan-canvas');
+  return {
+    sessions: store.list(),
+    templates: cmdTemplates(),
+    skills: VISUAL_SKILLS.map(name => {
+      const file = findSkillMd(name);
+      return { name, installed: Boolean(file), description: file ? skillDescription(file) : '' };
+    })
+  };
 }
 
 function createPlanCanvasServer({
@@ -563,11 +587,15 @@ function createPlanCanvasServer({
     if (!isAllowedOrigin(req.headers.origin, allowedHostnames, boundPort)) {
       return sendJson(res, 403, { error: 'forbidden origin' });
     }
-    if (!isAllowedFetchSite(req.headers['sec-fetch-site'])) {
-      return sendJson(res, 403, { error: 'forbidden fetch site' });
-    }
     const url = new URL(req.url, `http://${req.headers.host}`);
     const { pathname } = url;
+    // The artifact iframe is sandboxed without allow-same-origin, so its script
+    // and asset loads arrive as Sec-Fetch-Site: cross-site. Only those read-only
+    // static paths may skip the fetch-site check; everything else keeps it.
+    const isStaticRead = req.method === 'GET' && STATIC_READ_PATH.test(pathname);
+    if (!isStaticRead && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
+      return sendJson(res, 403, { error: 'forbidden fetch site' });
+    }
 
     Promise.resolve()
       .then(() => {
@@ -582,7 +610,7 @@ function createPlanCanvasServer({
           return undefined;
         }
         if (req.method === 'GET' && pathname === '/') {
-          return sendHtml(res, 200, renderSessionListHtml(store.list()));
+          return sendHtml(res, 200, renderHomeHtml(homeData(store)));
         }
         if (req.method === 'GET' && pathname === '/canvas.css') {
           res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' });
