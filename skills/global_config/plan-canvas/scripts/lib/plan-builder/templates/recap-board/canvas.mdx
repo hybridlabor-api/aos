@@ -1,0 +1,63 @@
+<DesignBoard title="Pocketlog - settings before and after" version={1} transitions={[
+  { from: "before", to: "after", label: "change" },
+]}>
+<Section id="compare" title="Settings screen" subtitle="Low-fidelity sketches of the old and the new screen. Numbers on the AFTER notes match the change list in the plan.">
+<Artboard id="before" label="BEFORE" surface="mobile" x={80} y={120} width={320} height={600} order={1}>
+<Screen surface="mobile" caption="One flat list of toggles, no save feedback.">
+  <FrameScreen>
+    <StatusBar />
+    <Col full>
+      <Title text="Settings" />
+      <Row><IconSquare active /><Text value="Dark mode" /></Row>
+      <Row><IconSquare /><Text value="Sound effects" /></Row>
+      <Row><IconSquare active /><Text value="Daily reminder" /></Row>
+      <Row><IconSquare /><Text value="Weekly summary" /></Row>
+      <Row><IconSquare active /><Text value="Auto sync" /></Row>
+      <Row><IconSquare active /><Text value="Wi-Fi only" /></Row>
+      <Row><IconSquare /><Text value="Backup" /></Row>
+      <Text value="7 more toggles below" tone="muted" />
+      <Btn label="Save" />
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="after" label="AFTER" surface="mobile" x={560} y={120} width={320} height={600} order={2}>
+<Screen surface="mobile" caption="Three groups, save state in the footer.">
+  <FrameScreen>
+    <StatusBar />
+    <Col full>
+      <Title text="Settings" />
+      <SectionLabel label="Account" />
+      <Row><IconSquare active /><Text value="Auto sync" /></Row>
+      <Row><IconSquare active /><Text value="Wi-Fi only" /></Row>
+      <SectionLabel label="Notifications" />
+      <Row><IconSquare active /><Text value="Daily reminder" /></Row>
+      <Row><IconSquare /><Text value="Weekly summary" /></Row>
+      <SectionLabel label="Data" />
+      <Row><IconSquare /><Text value="Backup" /></Row>
+      <Divider />
+      <Row><IconSquare active /><Text value="All changes saved" tone="muted" /></Row>
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+</Section>
+
+<Annotation id="m1" title="1 Grouped sections" targetId="after" placement="right">
+
+Account, Notifications and Data replace one list of 14 toggles.
+
+</Annotation>
+
+<Annotation id="m2" title="2 Most used first" targetId="after" placement="right">
+
+Auto sync and Daily reminder lead their groups.
+
+</Annotation>
+
+<Annotation id="m3" title="3 Save state" targetId="after" placement="right">
+
+The footer replaces the Save button and shows Saving or All changes saved.
+
+</Annotation>
+</DesignBoard>

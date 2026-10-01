@@ -245,6 +245,8 @@ aos-plan-canvas templates                         # JSON: id, label, description
 aos-plan-canvas new <template-id> <target-dir>    # --mode bdb-plan-builder (default) | standard
 ```
 
+Recap templates: `recap` (minimal), `recap-review` (document-style recap for a PR or merge decision: summary, changed areas with FileTree and ImplementationMap, decisions with the rejected alternative, a before/after `Compare`, a commands table plus an explicit Verified / Not verified split, risks) and `recap-board` (design canvas with BEFORE and AFTER artboards, a labelled `change` connector and numbered `Annotation` markers on AFTER, plus a short `plan.mdx` whose numbered change list matches the markers).
+
 Builder mode copies `plan.mdx` (and `canvas.mdx` when the template has a board,
 never `meta.json`); standard mode writes `plan.md` from `standard.md`. A
 non-empty target exits **2** and nothing is overwritten; an unknown id exits

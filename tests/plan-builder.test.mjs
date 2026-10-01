@@ -645,4 +645,39 @@ describe('BDB Plan Builder', () => {
       fs.rmSync(stateDir, { recursive: true, force: true });
     }
   });
+  test('polish: sticky bars are opaque and compare columns share one row', () => {
+    const css = fs.readFileSync(path.join(builderDir, 'theme.css'), 'utf8');
+    const topbar = css.match(/^\.topbar \{[^}]*\}/m)[0];
+    assert.match(topbar, /position: sticky/);
+    assert.match(topbar, /background: var\(--paper\)/);
+    assert.doesNotMatch(topbar, /rgba/);
+    assert.match(css.match(/^\.sidenav \{[^}]*\}/m)[0], /background: var\(--paper\)/);
+    assert.match(css, /\.flow > \.compare::before[^{]*\{ display: none; \}/);
+    const { html } = renderPlanSource({ plan: '# T\n\n<Compare beforeLabel="Old" afterLabel="New">\n<Before>\nold\n</Before>\n<After>\nnew\n</After>\n</Compare>\n' });
+    const compare = html.slice(html.indexOf('<div class="compare">'), html.indexOf('<div class="compare">') + 600);
+    assert.equal((compare.match(/class="cmp-side /g) || []).length, 2);
+    assert.match(compare, /cmp-side before.*cmp-side after/s);
+  });
+
+  test('polish: mermaid theme sets label backgrounds to the card color', () => {
+    const { html } = renderPlanSource({ plan: FIXTURE_PLAN });
+    assert.match(html, /edgeLabelBackground: '#161616'/);
+    assert.match(html, /labelBoxBkgColor: '#161616'/);
+    assert.match(html, /useMaxWidth: true/);
+    assert.match(html, /critBkgColor: '#6a2285'/);
+  });
+
+  test('polish: show-control network table has no empty detail cell', () => {
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-plan-builder-sc-'));
+    try {
+      fs.copyFileSync(path.join(builderDir, 'templates/show-control/plan.mdx'), path.join(out, 'plan.mdx'));
+      const html = fs.readFileSync(renderPlanFolder(out).htmlPath || path.join(out, 'plan.builder.html'), 'utf8');
+      const card = html.match(/Network layout.*?<\/table>/s)[0];
+      const cells = [...card.matchAll(/<tr><td[^>]*>.*?<\/td><td[^>]*>(.*?)<\/td><\/tr>/gs)].map((m) => m[1].trim());
+      assert.ok(cells.length >= 7);
+      assert.ok(cells.every(Boolean), 'empty detail cell: ' + JSON.stringify(cells));
+    } finally {
+      fs.rmSync(out, { recursive: true, force: true });
+    }
+  });
 });

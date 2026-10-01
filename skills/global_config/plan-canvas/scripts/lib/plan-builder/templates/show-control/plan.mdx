@@ -43,10 +43,10 @@ LTC from the audio playback laptop is distributed to the console and the media s
 
 <Diagram label="Network layout" data={{
   nodes: [
-    { id: "switch", label: "Core switch, 24 port" },
-    { id: "console", label: "Lighting console, VLAN 10" },
-    { id: "nodes", label: "DMX nodes 1 and 2, VLAN 10" },
-    { id: "media", label: "Media servers A and B, VLAN 20" },
+    { id: "switch", label: "Core switch, 24 port", description: "Managed 24 port switch, 4 SFP+ uplinks, IGMP snooping on for sACN" },
+    { id: "console", label: "Lighting console, VLAN 10", description: "2.0.10.10 /24, one 1G port to the switch, sACN universes 1-8" },
+    { id: "nodes", label: "DMX nodes 1 and 2, VLAN 10", description: "2.0.10.21 and 2.0.10.22 /24, 4 DMX ports each, ports 3-4 on the switch" },
+    { id: "media", label: "Media servers A and B, VLAN 20", description: "2.0.20.11 and 2.0.20.12 /24, 10G fibre on SFP+ ports 23-24" },
   ],
   edges: [
     { from: "console", to: "switch", label: "1G copper" },

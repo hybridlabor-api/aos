@@ -1,0 +1,49 @@
+---
+title: Settings screen redesign
+subtitle: "The flat settings list became grouped sections with a clear save state. Invented example."
+kind: recap
+pr: "#203"
+branch: feat/settings-groups
+base: main
+commit: 5be41c9
+files: 7
+additions: 262
+deletions: 118
+author: sample-author
+date: 2026-05-12
+---
+
+<Callout tone="note" title="How to use this template">
+
+Use it when the change is visible. The design canvas next to this document (canvas.mdx) shows BEFORE and AFTER side by side with a labelled "change" arrow and numbered markers on the AFTER screen. Replace the Pocketlog example: redraw both artboards with your own screen or system, keep the marker numbers and the numbered list below in step, and record what you really verified. All names and numbers are invented.
+
+</Callout>
+
+## Summary
+
+- **What:** the Pocketlog settings screen is now grouped into Account, Notifications and Data, and shows whether changes are saved.
+- **Why:** 14 flat toggles hid the two settings people look for most, and nothing showed when a change had been stored.
+- **Scope:** layout and save feedback only. No setting was added, removed or renamed.
+
+## What changed
+
+The numbers match the markers on the AFTER screen in the canvas.
+
+1. **Grouped sections.** Toggles sit under three headings instead of one list of 14.
+2. **Most used first.** Sync and Reminders moved to the top of their groups.
+3. **Save state.** A footer shows "All changes saved" or "Saving..." instead of a Save button.
+
+## Verification
+
+<Columns columns={[
+  { label: "Verified", blocks: "- Screen renders at 360 and 412 px width in the emulator\n- Toggle changes persist after an app restart\n- Screen reader reads group headings in order" },
+  { label: "Not verified", blocks: "- Small 320 px devices\n- Right-to-left languages\n- Slow network: the Saving state was only seen on a fast connection" },
+]} />
+
+## Follow-ups
+
+<Checklist title="Follow-ups">
+- [ ] Check the 320 px width and fix any clipping
+- [ ] Review the screen with a right-to-left language
+- [ ] Add an error state when saving fails
+</Checklist>
