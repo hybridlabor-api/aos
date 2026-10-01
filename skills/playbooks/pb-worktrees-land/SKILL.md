@@ -32,16 +32,16 @@ What you get: an inventory of your worktrees with a class for each, and the merg
 ## Steps
 1. Ask — repos (default as above) → run log in the start directory — repo list confirmed; stops for approval
 2. using-git-worktrees — per repo: `git -C <repo> worktree list --porcelain` → inventory table (path, branch, HEAD) in the run log — the main worktree, the worktree running this playbook, and any entry marked `locked` or `prunable` are `keep`
-3. github — `git -C <repo> fetch origin --prune`; default branch from `git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD` → both in the run log — fetch fails → log it, classify against the local refs, mark the table "stale"
+3. github — `gh auth status` (fails → log it, skip the squash predicate, only ancestry merges count); `git -C <repo> fetch origin --prune`; default branch: `default=$(git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD); default=${default#origin/}` (the command prints `origin/main`) → both in the run log — fetch fails → log it, classify against the local refs, mark the table "stale"
 4. Classify, first match wins:
-   - `dirty`: `git -C <wt> status --porcelain` is non-empty
+   - `dirty`: `git -C <wt> status --porcelain --ignored` shows anything other than `!!` entries; `!!` (ignored files, deleted by removal) are listed per row in the GO line
    - detached HEAD (no `<branch>`): always `local-only`, never removed
    - `merged`: `git -C <repo> merge-base --is-ancestor <branch> origin/<default>`, or (squash merge) `gh pr list -R <owner/repo> --head <branch> --state merged --json number,headRefOid` has a PR whose `headRefOid` equals the worktree `HEAD` (`git -C <wt> rev-parse HEAD`); a reused branch name with a different `headRefOid` does not count
    - `remote-only`: the upstream exists and `git -C <wt> rev-list --count @{u}..HEAD` is 0 (safe on the remote, unmerged)
    - `local-only`: everything else; commits exist only here
    - check: every row has exactly one class plus the output of its evidence command
 5. visual-recap — per non-merged worktree: recap link; without the `plan` connector log `git -C <wt> log --oneline origin/<default>..HEAD` and `git -C <wt> diff --stat origin/<default>...HEAD` instead — one recap or fallback per row
-6. [GO] removal list = rows classified `merged` and not `keep`, shown in full with these exact commands per row: `git -C <repo> worktree remove <path>` (never `--force`; git refuses dirty trees), then `git -C <repo> branch -d <branch>` (`-d` refuses squash-merged branches → log "branch kept, needs -D, human decides"; never `-D`). The run stops here until the human types GO. GO covers exactly that list, once. The hook does not guard these commands, so GO is by contract. Never remove dirty, remote-only, local-only or `keep` rows, and never use `rm -r`.
+6. [GO] removal list = rows classified `merged` and not `keep`, shown in full with these exact commands per row: `git -C <repo> worktree remove <path>` (a branch with zero commits shows as `merged (empty)`; never `--force`; git refuses dirty trees), then `git -C <repo> branch -d <branch>` (`-d` refuses squash-merged branches → log "branch kept, needs -D, human decides"; never `-D`). The run stops here until the human types GO. GO covers exactly that list, once. The hook does not guard these commands, so GO is by contract. Never remove dirty, remote-only, local-only or `keep` rows, and never use `rm -r`.
 7. Verify — `git -C <repo> worktree list` → removed paths are gone, kept rows unchanged
 8. Hand-off — remote-only and local-only rows → next action per row in the run log ("land via /pb-ship", or "push needs GO in that worktree") — nothing runs
 
