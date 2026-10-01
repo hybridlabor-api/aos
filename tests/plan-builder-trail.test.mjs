@@ -96,6 +96,26 @@ describe('plan-canvas trail', () => {
     assert.ok(text.includes('## Shopping cart {#cart}\nfiles: [src/cart.ts, src/cart-ui.tsx]\n- [ ] Totals are correct {#cart-totals}'));
   });
 
+  test('a Checklist or ImplementationMap outside any component is reported, not silently dropped', () => {
+    const orphan = path.join(ws, 'plans', 'orphan');
+    fs.mkdirSync(orphan, { recursive: true });
+    fs.writeFileSync(path.join(orphan, 'plan.mdx'), [
+      '## Real component {#real}', '',
+      '<Checklist items={["task a"]} />', '',
+      '## Acceptance', '',
+      '<Checklist items={["lost task"]} />', '',
+      '<ImplementationMap files={[{ path: "lost/file.ts" }]} />', ''
+    ].join('\n'));
+    const r = run(['trail', 'plans/orphan', '--out', 'out/orphan-plan.md'], ws);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.ok((out.warnings || []).some((w) => /Checklist is not under a component/.test(w)), r.stdout);
+    assert.ok((out.warnings || []).some((w) => /ImplementationMap is not under a component/.test(w)), r.stdout);
+    const file = fs.readFileSync(path.join(ws, 'out', 'orphan-plan.md'), 'utf8');
+    assert.ok(file.includes('task a'));
+    assert.ok(!file.includes('lost task'));
+  });
+
   test('refuses to overwrite without --force, then overwrites with it', () => {
     const again = run(['trail', 'plans/checkout'], ws);
     assert.equal(again.code, 2);
@@ -210,13 +230,15 @@ describe('Archify block', () => {
   test('happy path: sandbox allow-scripts only, caption and link row', () => {
     const r = build('<Archify src="arch.html" label="System map" height={500} />');
     assert.deepEqual(r.warnings, []);
-    const frame = r.html.match(/<iframe[^>]*class="frame"[^>]*>/)[0];
+    const frame = r.html.match(/<iframe[^>]*class="archify-frame"[^>]*>/)[0];
     assert.match(frame, /sandbox="allow-scripts"/);
     for (const bad of ['allow-same-origin', 'allow-forms', 'allow-popups', 'allow-top-navigation']) assert.ok(!frame.includes(bad), bad);
-    assert.match(frame, /height="500"/);
+    assert.match(frame, /style="height:500px"/);
+    assert.ok(!r.html.includes('card archify'), 'the diagram is not wrapped in a card');
+    assert.match(r.html, /<figure class="archify-block">/);
+    assert.match(r.html, /\.archify-frame \{[^}]*calc\(100vh/);
     assert.match(r.html, /DIAGRAM-MARK/);
-    assert.match(r.html, /screen-caption">System map</);
-    assert.match(r.html, /<a href="arch\.html" target="_blank" rel="noopener noreferrer">open standalone/);
+        assert.match(r.html, /<a href="arch\.html" target="_blank" rel="noopener noreferrer">open standalone/);
     assert.ok(!r.html.includes('<svg><title>DIAGRAM-MARK'), 'file content rides escaped in srcdoc');
   });
 
@@ -225,7 +247,7 @@ describe('Archify block', () => {
       const r = build(`<Archify src="${src}" />`);
       assert.match(r.html, /error-card/, src);
       assert.ok(!r.html.includes('SECRET'), src);
-      assert.ok(!r.html.includes('<iframe class="frame" sandbox="allow-scripts"'), src);
+      assert.ok(!r.html.includes('<iframe class="archify-frame" sandbox="allow-scripts"'), src);
       assert.ok(r.warnings.some((w) => w.includes('<Archify')), src);
     }
   });

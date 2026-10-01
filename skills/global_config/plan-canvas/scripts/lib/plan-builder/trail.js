@@ -94,12 +94,18 @@ function derive(dir, { workspaceRoot = process.cwd() } = {}) {
         const m = HEADING_ID_RE.exec(block.text);
         if (m && m[1].toLowerCase() !== 'board') {
           cur = open(block.text.replace(HEADING_ID_RE, ''), m[1], frontmatter[`needs-${m[1].toLowerCase()}`]);
+        } else if (block.level <= 2) {
+          cur = current;
         }
         continue;
       }
       if (block.type !== 'tag') continue;
       if (block.name === 'Section' && block.props.id) {
         walk(block.children || [], open(block.props.title || block.props.id, block.props.id, block.props.needs));
+        continue;
+      }
+      if ((block.name === 'ImplementationMap' || block.name === 'Checklist') && !cur) {
+        warnings.push(`${block.name} is not under a component and was ignored; add {#id} to the heading above it`);
         continue;
       }
       if (block.name === 'ImplementationMap' && cur) {

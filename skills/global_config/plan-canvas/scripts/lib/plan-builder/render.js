@@ -343,12 +343,14 @@ function renderArchify(block, ctx) {
     ctx.warnings.push(`<Archify src="${src}"> could not read file: ${error.message}`);
     return errorCard('Archify diagram: could not read file', src);
   }
-  const height = within(numProp(block.props.height) || 560, 200, 2400);
+  // No card and no fixed inner box: the diagram sits on the page background and
+  // takes the viewport height by default so its toolbar and legend stay reachable.
+  const explicit = numProp(block.props.height);
+  const style = explicit ? ` style="height:${within(explicit, 200, 2400)}px"` : '';
   const href = src.split(/[\\/]/).map(encodeURIComponent).join('/');
-  return `<div class="card archify"><div class="label">${esc(label)}</div>` +
-    `<iframe class="frame" sandbox="allow-scripts" loading="lazy" title="${esc(label)}" height="${height}" srcdoc="${esc(html)}"></iframe>` +
-    `<div class="screen-caption">${esc(label)}</div>` +
-    `<div class="links"><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">open standalone</a> <span class="path">${esc(src)}</span></div></div>`;
+  return `<figure class="archify-block"><figcaption class="label">${esc(label)}</figcaption>` +
+    `<iframe class="archify-frame" sandbox="allow-scripts" loading="lazy" title="${esc(label)}"${style} srcdoc="${esc(html)}"></iframe>` +
+    `<div class="links"><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">open standalone</a> <span class="path">${esc(src)}</span></div></figure>`;
 }
 
 const PROTOTYPE_SURFACES = new Set(['web', 'desktop']);
