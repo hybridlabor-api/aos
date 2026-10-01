@@ -113,7 +113,7 @@ describe('aos-trail --ensure', () => {
     const env = { AOS_TRAIL_OPENER: rec.script };
     const a = await run(['--cwd', repo, '--session', 'sess/1'], env);
     assert.deepEqual([a.started, a.opened, a.url, a.reason], [false, true, `http://127.0.0.1:${LO + 1}`, null]);
-    await sleep(500);
+    for (let i = 0; i < 40 && rec.calls().length < 1; i++) await sleep(100);
     assert.deepEqual(rec.calls(), [`http://127.0.0.1:${LO + 1}`]);
     const b = await run(['--cwd', repo, '--session', 'sess/1'], env);
     assert.equal(b.opened, false);
@@ -151,7 +151,7 @@ describe('aos-trail --ensure', () => {
     fs.renameSync(ao.script, path.join(ao.bin, 'ao'));
     const out = await run(['--cwd', repo, '--session', 'ao'], { AO_BROWSER_CAPABILITY: '1', PATH: `${ao.bin}${path.delimiter}${process.env.PATH}`, AOS_TRAIL_OPENER: '/nonexistent' });
     assert.equal(out.opened, true);
-    await sleep(300);
+    for (let i = 0; i < 40 && ao.calls().length < 1; i++) await sleep(100);
     assert.deepEqual(ao.calls(), [`preview http://127.0.0.1:${LO + 1}`]);
   });
 
