@@ -382,7 +382,7 @@ export default async function bdbAosPlugin(input) {
 
       // /bdb-aos:gogate from the human in a root session: record it; the gate verifies it against opencode.db at use.
       try {
-        const reply = s.parentID ? null : applyGogate(fullText, { key: ocKey(msgInput.sessionID), source: `opencode:${msgInput.sessionID}`, uuid: msgInput.messageID || msgOutput.message?.id || null });
+        const reply = s.parentID ? null : applyGogate(fullText, { key: ocKey(msgInput.sessionID), source: `opencode:${msgInput.sessionID}`, uuid: msgInput.messageID || msgOutput.message?.id || null, opencode: true });
         if (reply) msgOutput.parts.unshift({ id: `gogate-${Date.now()}`, sessionID: msgInput.sessionID, messageID: msgInput.messageID || '', type: 'text', text: reply, synthetic: true });
       } catch {}
 
@@ -480,10 +480,10 @@ export default async function bdbAosPlugin(input) {
             const root = await rootSessionId(input.client, toolInput.sessionID, tokenOnly ? undefined : s.parentID);
             if (root) {
               const key = ocKey(root);
-              const eff = effectiveGate(key, { source: `opencode:${root}`, cmds: opencodeGogateCommands(root) });
+              const eff = effectiveGate(key, { source: `opencode:${root}`, cmds: opencodeGogateCommands(root), opencode: true });
               for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
-              if (eff.mode === 'off' || (eff.mode === 'soft' && grantsCover(cmd, eff.grants))) {
-                gateLog(key, `${eff.mode === 'off' ? 'off' : 'grant'}: allowed ${JSON.stringify(cmd.slice(0, 200))}`);
+              if (eff.mode === 'soft' && grantsCover(cmd, eff.grants)) { // `off` is never honoured on OpenCode
+                gateLog(key, `grant: allowed ${JSON.stringify(cmd.slice(0, 200))}`);
                 authorized = true;
               }
             }

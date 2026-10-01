@@ -78,7 +78,9 @@ function gateStoreTarget(filePath) {
   const abs = resolve(filePath.replace(/^~(?=\/|$)/, process.env.HOME || "~"));
   let real = abs;
   try { real = `${realpathSync(dirname(abs))}/${basename(abs)}`; } catch { /* parent missing: string check only */ }
-  return GATE_STORE.test(abs) || GATE_STORE.test(real) || GATE_STORE.test(`${abs}/`);
+  let realFile = "";
+  try { realFile = realpathSync(abs); } catch { /* file does not exist yet */ } // a symlinked FILE pointing into the store
+  return GATE_STORE.test(abs) || GATE_STORE.test(real) || GATE_STORE.test(`${abs}/`) || (!!realFile && GATE_STORE.test(realFile));
 }
 
 export function envFileReason(filePath) {

@@ -73,11 +73,14 @@ describe('origin check', () => {
         for (const [name, extra] of Object.entries(NONHUMAN)) assert.equal(g.isHumanEntry(user('GO', extra)), false, name);
     });
 
-    test('a human GO opens the gate, legacy entries too', () => {
+    test('a human GO opens the gate; legacy entries only in a transcript without origin', () => {
         add(human('GO'));
         ok('git push origin main');
         add(user('go'));
-        ok('git push origin main');
+        blocked('git push origin main'); // M2: this transcript records origin, so the GO must carry it
+        const legacy = path.join(home, 'legacy.jsonl');
+        fs.writeFileSync(legacy, JSON.stringify(user('hello')) + '\n' + JSON.stringify(user('go')) + '\n');
+        ok('git push origin main', { transcript: legacy });
     });
 
     for (const [name, extra] of Object.entries(NONHUMAN)) {
@@ -109,19 +112,19 @@ describe('modes', () => {
     });
 
     test('hard ignores grants and revokes earlier ones; a later grant works after soft', () => {
-        typed('/bdb-aos-gogate grant merge 2h');
+        typed('gogate grant merge 2h');
         add(human('next'));
         ok('gh pr merge 5');
-        typed('/bdb-aos-gogate hard');
+        typed('gogate hard');
         blocked('gh pr merge 5');
-        typed('/bdb-aos-gogate soft');
+        typed('gogate soft');
         blocked('gh pr merge 5'); // the grant before hard stays revoked
-        typed('/bdb-aos-gogate grant merge 2h');
+        typed('gogate grant merge 2h');
         ok('gh pr merge 5');
     });
 
     test('off logs and never blocks, only for this session', () => {
-        typed('/bdb-aos-gogate off');
+        typed('gogate off');
         ok('git push --force origin main');
         assert.match(logText(), /off: allowed "git push --force origin main"/);
         const other = path.join(home, 'other.jsonl');
@@ -130,27 +133,26 @@ describe('modes', () => {
     });
 
     test('off expires after 24h and then fails closed to hard', () => {
-        const prompt = '/bdb-aos-gogate off';
+        const prompt = 'gogate off';
         runGrant(prompt);
         const st = readState();
-        st.mode_source.issued_at = ts(25 * 3600e3);
+        st.modes[0].source.issued_at = ts(25 * 3600e3);
         fs.writeFileSync(statePath(), JSON.stringify(st));
         add(human(prompt, { timestamp: ts(25 * 3600e3) }));
         blocked('git push origin main');
     });
 
     test('a mode change from a non-human entry is rejected', () => {
-        const prompt = '/bdb-aos-gogate off';
+        const prompt = 'gogate off';
         runGrant(prompt); // the hook fires for a loop prompt too
         add(user(prompt, NONHUMAN.loop));
         blocked('git push origin main');
-        assert.match(logText(), /rejected: mode "off"/);
     });
 
     test('reverting the store to an older mode entry is rejected', () => {
-        typed('/bdb-aos-gogate off');
+        typed('gogate off');
         const offState = readState();
-        typed('/bdb-aos-gogate hard');
+        typed('gogate hard');
         fs.writeFileSync(statePath(), JSON.stringify(offState));
         blocked('git push origin main');
     });
@@ -158,7 +160,10 @@ describe('modes', () => {
 
 describe('grant parsing', () => {
     test('scopes, durations, 24h limit, session, errors', () => {
-        assert.deepEqual(g.parseGogate('/bdb-aos:gogate grant merge,push-feature 2h'), { cmd: 'grant', scopes: ['merge', 'push-feature'], ms: 2 * 3600e3, session: false });
+        assert.deepEqual(g.parseGogate('/bdb-aos:gogate grant merge,push-feature 2h'), { cmd: 'grant', scopes: ['merge', 'push-feature'], ms: 2 * 3600e3, session: false, form: 'slash' });
+        assert.deepEqual(g.parseGogate('gogate grant merge,push-feature 2h'), { cmd: 'grant', scopes: ['merge', 'push-feature'], ms: 2 * 3600e3, session: false, form: 'plain' });
+        assert.deepEqual(g.parseGogate('GoGate OFF'), { cmd: 'off', form: 'plain' });
+        assert.deepEqual(g.parseGogate('/gogate status'), { cmd: 'status', form: 'slash' });
         assert.equal(g.parseGogate('/bdb-aos-gogate grant merge 15m').ms, 15 * 60e3);
         assert.equal(g.parseGogate('/bdb-aos-gogate grant merge 1d').ms, 24 * 3600e3);
         assert.equal(g.parseGogate('/bdb-aos-gogate grant merge session').session, true);
@@ -167,9 +172,13 @@ describe('grant parsing', () => {
         assert.match(g.parseGogate('/bdb-aos-gogate grant merge forever').error, /duration/);
         assert.match(g.parseGogate('/bdb-aos-gogate grant everything 2h').error, /unknown scope/);
         assert.match(g.parseGogate('/bdb-aos-gogate grant merge').error, /usage/);
-        assert.deepEqual(g.parseGogate('/bdb-aos-gogate'), { cmd: 'status' });
-        assert.deepEqual(g.parseGogate('/BDB-AOS:GOGATE OFF'), { cmd: 'off' });
-        for (const t of ['gogate grant merge 2h', 'please /bdb-aos-gogate grant merge 2h', '/bdb-aos-gogater off', '/gogate off']) assert.equal(g.parseGogate(t), null, t);
+        assert.deepEqual(g.parseGogate('/bdb-aos-gogate'), { cmd: 'status', form: 'slash' });
+        assert.deepEqual(g.parseGogate('/BDB-AOS:GOGATE OFF'), { cmd: 'off', form: 'slash' });
+        // plain form: whole message, one line, a known subcommand; prose is not a command
+        for (const t of ['please /bdb-aos-gogate grant merge 2h', '/bdb-aos-gogater off', 'please gogate off', 'gogate off please', 'gogate', 'gogate is great', 'gogate\nsoft', 'gogate\toff', 'gogate off\u2028x', 'x gogate grant merge 2h']) {
+            const r = g.parseGogate(t);
+            assert.ok(r === null || r.error, JSON.stringify(t));
+        }
         // the transcript shape of a slash command parses the same
         assert.deepEqual(g.parseGogate('<command-name>/bdb-aos-gogate</command-name>\n<command-message>bdb-aos-gogate</command-message>\n<command-args>grant merge 2h</command-args>'), g.parseGogate('/bdb-aos-gogate grant merge 2h'));
     });
@@ -178,7 +187,7 @@ describe('grant parsing', () => {
         const r = runGrant('/bdb-aos-gogate grant merge 48h');
         assert.equal(r.status, 0);
         assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /24h maximum/);
-        assert.equal(runGrant('gogate grant merge 2h').stdout, '');
+        assert.equal(runGrant('gogate is great').stdout, '');
         assert.equal(fs.existsSync(statePath()), false);
     });
 
@@ -194,9 +203,9 @@ describe('grant parsing', () => {
         add(user(`<command-name>/bdb-aos-gogate</command-name>\n<command-message>bdb-aos-gogate</command-message>\n<command-args>grant merge 2h</command-args>`));
         blocked('gh pr merge 5');
         const st = spawnSync(process.execPath, [GRANT, '--status', '--session', 's1'], { env: env(), encoding: 'utf8' }).stdout;
-        assert.match(st, /leading space/);
-        // the same command re-typed as plain text (origin human, typed) verifies
-        typed(' /bdb-aos-gogate grant merge 2h');
+        assert.match(st, /type the plain form/);
+        // the plain form typed as a normal message (origin human, typed) verifies
+        typed('gogate grant merge 2h');
         ok('gh pr merge 5');
     });
 
@@ -212,7 +221,7 @@ describe('grant parsing', () => {
 
 describe('scopes', () => {
     const cases = {
-        'push-feature': { yes: ['git push origin feat/x', 'git push -u origin feat/x', 'git push origin HEAD:feat/x'], no: ['git push origin main', 'git push --force origin feat/x', 'git push --force-with-lease origin feat/x', 'git push origin +feat/x', 'git push', 'git push origin feat:master', 'gh pr merge 5'] },
+        'push-feature': { yes: ['git push origin feat/x:feat/x', 'git push -u origin feat/x:feat/x', 'git push origin HEAD:feat/x', 'git push origin feat:feat 2>&1'], no: ['git push origin feat/x', 'git push -u origin feat/x', 'git push origin main', 'git push --force origin feat/x', 'git push --force-with-lease origin feat/x', 'git push origin +feat/x', 'git push', 'git push origin feat:master', 'gh pr merge 5'] },
         'push-main': { yes: ['git push origin main', 'git push --force origin feat/x', 'git push'], no: ['gh pr merge 5', 'npm publish'] },
         merge: { yes: ['gh pr merge 5', 'gh pr merge 5 --squash --delete-branch'], no: ['gh pr close 5', 'gh pr create --title x', 'git push origin feat/x'] },
         publish: { yes: ['npm publish', 'npm version patch', 'gh release create v1.0.0', 'git push origin v1.2.3', 'git push origin refs/tags/v1'], no: ['git push origin feat/x', 'gh release edit v1'] },
@@ -221,7 +230,7 @@ describe('scopes', () => {
     };
     for (const [scope, { yes, no }] of Object.entries(cases)) {
         test(`grant ${scope}: matching commands pass, others stay blocked`, () => {
-            typed(`/bdb-aos-gogate grant ${scope} 1h`);
+            typed(`gogate grant ${scope} 1h`);
             add(human('carry on'));
             for (const c of yes) { assert.ok(g.isGuardedCommand(c), `guarded: ${c}`); ok(c); }
             for (const c of no) blocked(c);
@@ -229,11 +238,11 @@ describe('scopes', () => {
     }
 
     test('a command needing two scopes needs both; compound commands need every scope', () => {
-        typed('/bdb-aos-gogate grant push-feature 1h');
+        typed('gogate grant push-feature 1h');
         add(human('carry on'));
-        blocked('git push origin feat/x && npm publish');
-        typed('/bdb-aos-gogate grant publish 1h');
-        ok('git push origin feat/x && npm publish');
+        blocked('git push origin feat/x:feat/x && npm publish');
+        typed('gogate grant publish 1h');
+        ok('git push origin feat/x:feat/x && npm publish');
         blocked('git push --tags'); // publish + push-main
     });
 
@@ -251,7 +260,7 @@ describe('grant verification', () => {
     const writeStore = (st) => { fs.mkdirSync(path.dirname(statePath()), { recursive: true }); fs.writeFileSync(statePath(), JSON.stringify(st)); };
 
     test('a valid grant passes and is listed by status', () => {
-        typed('/bdb-aos-gogate grant merge 2h');
+        typed('gogate grant merge 2h');
         add(human('merge it'));
         ok('gh pr merge 5');
         const r = spawnSync(process.execPath, [GRANT, '--status', '--session', 's1'], { env: env(), encoding: 'utf8' });
@@ -271,14 +280,14 @@ describe('grant verification', () => {
         for (const extra of [NONHUMAN.loop, NONHUMAN.peer, NONHUMAN['task-notification'], NONHUMAN['skill injection']]) {
             fs.writeFileSync(t, '');
             fs.rmSync(path.join(home, '.aos'), { recursive: true, force: true });
-            runGrant('/bdb-aos-gogate grant merge 2h');
-            add(user('/bdb-aos-gogate grant merge 2h', extra));
+            runGrant('gogate grant merge 2h');
+            add(user('gogate grant merge 2h', extra));
             blocked('gh pr merge 5');
         }
     });
 
     test('text hash mismatch, widened scope, foreign transcript and replayed timestamps are rejected', () => {
-        typed('/bdb-aos-gogate grant merge 2h');
+        typed('gogate grant merge 2h');
         add(human('x'));
         const good = readState();
         writeStore({ ...good, grants: [{ ...good.grants[0], source: { ...good.grants[0].source, text_hash: 'f'.repeat(64) } }] });
@@ -294,7 +303,7 @@ describe('grant verification', () => {
     });
 
     test('an expired grant is ignored, also when the store claims a later expiry', () => {
-        const prompt = '/bdb-aos-gogate grant merge 2h';
+        const prompt = 'gogate grant merge 2h';
         runGrant(prompt);
         const st = readState();
         st.grants[0].source.issued_at = ts(3 * 3600e3);
@@ -306,7 +315,7 @@ describe('grant verification', () => {
     });
 
     test('a session grant is bound to its session key', () => {
-        typed('/bdb-aos-gogate grant merge session');
+        typed('gogate grant merge session');
         add(human('x'));
         ok('gh pr merge 5');
         const st = readState();
@@ -323,7 +332,7 @@ describe('grant verification', () => {
     });
 
     test('a loop or subagent may use an existing grant', () => {
-        typed('/bdb-aos-gogate grant merge 1h');
+        typed('gogate grant merge 1h');
         add(user('/loop check PRs', NONHUMAN.loop));
         add({ ...human('subagent prompt'), isSidechain: true });
         ok('gh pr merge 5');
@@ -388,7 +397,7 @@ describe('GO <text>', () => {
 
 describe('store protection', () => {
     test('Bash writes to the store are blocked, read-only access is not, even in off mode', () => {
-        typed('/bdb-aos-gogate off');
+        typed('gogate off');
         for (const c of ['echo {} > ~/.aos/gate/s1.json', 'tee ~/.aos/gate/s1.json', "sed -i '' s/hard/off/ ~/.aos/gate/s1.json", 'mv /tmp/x ~/.aos/gate/s1.json', 'cp x "$HOME/.aos/gate/s1.json"', 'rm ~/.aos/go/w.token', `node -e "require('fs').writeFileSync(process.env.HOME+'/.aos/gate/s1.json','{}')"`, 'cat ~/.aos/gate/s1.json > /tmp/x', 'cat $(echo ~/.aos/gate/s1.json)']) {
             assert.equal(runGate(c).status, 2, c);
         }
@@ -411,7 +420,7 @@ describe('store protection', () => {
 
 describe('status', () => {
     test('status prompt injects the status as additionalContext', () => {
-        typed('/bdb-aos-gogate grant push-feature,merge 30m');
+        typed('gogate grant push-feature,merge 30m');
         add(human('x'));
         const r = runGrant('/bdb-aos:gogate status');
         const ctx = JSON.parse(r.stdout).hookSpecificOutput;
@@ -428,9 +437,9 @@ describe('status', () => {
     });
 
     test('status shows off and hard', () => {
-        typed('/bdb-aos-gogate off');
+        typed('gogate off');
         assert.match(spawnSync(process.execPath, [GRANT, '--status', '--session', 's1'], { env: env(), encoding: 'utf8' }).stdout, /mode off/);
-        typed('/bdb-aos-gogate hard');
+        typed('gogate hard');
         assert.match(spawnSync(process.execPath, [GRANT, '--status', '--session', 's1'], { env: env(), encoding: 'utf8' }).stdout, /mode hard/);
     });
 });

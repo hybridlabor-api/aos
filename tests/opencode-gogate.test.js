@@ -118,7 +118,7 @@ describe('GO <text> in OpenCode', () => {
 });
 
 describe('grants in OpenCode', () => {
-    const grantText = '/bdb-aos-gogate grant merge 1h';
+    const grantText = 'gogate grant merge 1h';
 
     test('a human grant in a root session is recorded and verified against opencode.db', async () => {
         const { hooks, id } = await boot();
@@ -148,6 +148,36 @@ describe('grants in OpenCode', () => {
             await say(hooks, id, 'm1', [{ type: 'text', text: grantText }]); // the hook saw plain text, the db says otherwise
             await assert.rejects(run(hooks, id, 'gh pr merge 5'), BLOCK, JSON.stringify(flag));
         }
+    });
+
+    // Review 2, H3: opencode.db has no human-origin signal.
+    test('off is never honoured on OpenCode', async () => {
+        const { hooks, id } = await boot();
+        seed({ [id]: null }, [{ id: 'm1', session: id, parts: [{ type: 'text', text: 'gogate off' }] }]);
+        const out = [{ type: 'text', text: 'gogate off' }];
+        await say(hooks, id, 'm1', out);
+        assert.ok(out.some((p) => p.synthetic && /not available on OpenCode/.test(p.text)));
+        await assert.rejects(run(hooks, id, 'git push origin main'), BLOCK);
+        // even a store entry written by hand for a real plain `gogate off` is not honoured
+        fs.mkdirSync(path.join(home, '.aos', 'gate'), { recursive: true });
+        const key = g.sessionKey(`oc-${id}`);
+        fs.writeFileSync(path.join(home, '.aos', 'gate', `${key}.json`), JSON.stringify({ transcript: `opencode:${id}`, grants: [], modes: [{ mode: 'off', source: { transcript: `opencode:${id}`, uuid: 'm1', issued_at: new Date().toISOString(), text_hash: g.textHash('gogate off') } }] }));
+        await assert.rejects(run(hooks, id, 'git push origin main'), BLOCK);
+    });
+
+    test('grants are capped at 2h and only the plain form counts', async () => {
+        const { hooks, id } = await boot();
+        seed({ [id]: null }, [{ id: 'm1', session: id, parts: [{ type: 'text', text: 'gogate grant merge 1d' }] }]);
+        await say(hooks, id, 'm1', [{ type: 'text', text: 'gogate grant merge 1d' }]);
+        const eff = g.effectiveGate(g.sessionKey(`oc-${id}`), { source: `opencode:${id}`, cmds: g.opencodeGogateCommands(id), opencode: true });
+        assert.equal(eff.grants.length, 1);
+        assert.ok(eff.grants[0].until <= Date.now() + 2 * 3600e3 + 1000, 'capped at 2h');
+        await run(hooks, id, 'gh pr merge 5');
+
+        const b = await boot();
+        seed({ [b.id]: null }, [{ id: 'm1', session: b.id, parts: [{ type: 'text', text: '/bdb-aos:gogate grant merge 1h' }] }]);
+        await say(b.hooks, b.id, 'm1', [{ type: 'text', text: '/bdb-aos:gogate grant merge 1h' }]);
+        await assert.rejects(run(b.hooks, b.id, 'gh pr merge 5'), BLOCK);
     });
 
     test('a grant pointing at another message id is rejected', async () => {

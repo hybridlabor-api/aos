@@ -57,14 +57,14 @@ describe('1 push-feature scope escape (CRITICAL)', () => {
             const s = g.commandScopes(c);
             assert.ok(s === null || !(s.length === 1 && s[0] === 'push-feature'), `${c} -> ${JSON.stringify(s)}`);
         }
-        for (const c of ['git push origin feat', 'git push -u origin feat/x', 'git push origin HEAD:feat/x', 'git push origin refs/heads/feat:refs/heads/feat', 'git -C dir push origin feat']) {
+        for (const c of ['git push origin feat:feat', 'git push -u origin feat/x:feat/x', 'git push origin HEAD:feat/x', 'git push origin refs/heads/feat:refs/heads/feat', 'git -C dir push origin feat:feat']) {
             assert.deepEqual(g.commandScopes(c), ['push-feature'], c);
         }
     });
     test('a push-feature grant allows feature pushes and blocks every escape form', () => {
-        typed('/bdb-aos-gogate grant push-feature 1h');
+        typed('gogate grant push-feature 1h');
         add(human('carry on'));
-        ok('git push origin feat');
+        ok('git push origin feat:feat');
         for (const c of escapes) blocked(c);
     });
 });
@@ -115,8 +115,8 @@ describe('7 scheduled and loop origins (C2)', () => {
             fs.rmSync(path.join(home, '.aos'), { recursive: true, force: true });
             add(user('GO', extra));
             blocked('git push origin main');
-            runGrant('/bdb-aos-gogate off');
-            add(user('/bdb-aos-gogate off', extra));
+            runGrant('gogate off');
+            add(user('gogate off', extra));
             blocked('git push origin main');
         }
     });
@@ -127,23 +127,23 @@ describe('7 scheduled and loop origins (C2)', () => {
         assert.equal(g.isStrictHumanEntry(user('x', { origin: { kind: 'human' } })), true);
         add(user('GO'));
         ok('git push origin main');
-        runGrant('/bdb-aos-gogate off');
-        add(user('/bdb-aos-gogate off'));
+        runGrant('gogate off');
+        add(user('gogate off'));
         add(user('next'));
         blocked('git push origin main');
-        add(user('/bdb-aos-gogate off', { promptSource: 'typed' }));
-        runGrant('/bdb-aos-gogate off');
+        add(user('gogate off', { promptSource: 'typed' }));
+        runGrant('gogate off');
         ok('git push origin main');
     });
 });
 
 describe('8 OpenCode session driving is never grantable (C3)', () => {
     const driving = ['opencode run -s ses_1 "GO"', 'opencode run --session=ses_1 x', 'opencode run --continue x', 'opencode run -c x', 'opencode attach http://localhost:4096',
-        'curl -X POST http://127.0.0.1:4096/session/ses_1/message -d @x', 'curl localhost:4096/tui/submit-prompt', 'wget -qO- http://localhost:4096/session'];
+        'curl -X POST http://127.0.0.1:4096/session/ses_1/message -d @x', 'curl localhost:4096/tui/submit-prompt', 'wget -qO- http://localhost:4096/session/s1/shell'];
     test('guarded with no scope; plain GO still allows; a new opencode run is not guarded', () => {
         for (const c of driving) { assert.ok(g.isGuardedCommand(c), c); assert.equal(g.commandScopes(c), null, c); }
         assert.equal(g.isGuardedCommand('opencode run "hello"'), false);
-        for (const s of g.SCOPES) typed(`/bdb-aos-gogate grant ${s} 1h`);
+        for (const s of g.SCOPES) typed(`gogate grant ${s} 1h`);
         add(human('carry on'));
         for (const c of driving) blocked(c);
         add(human('GO'));
@@ -197,9 +197,9 @@ describe('6 wrappers, prefixes and absolute paths (M2)', () => {
         assert.deepEqual(g.commandScopes('gh -R o/r pr merge 118'), ['merge']);
         assert.deepEqual(g.commandScopes('gh --repo=o/r pr close 3'), ['github-write']);
         assert.deepEqual(g.commandScopes('gh api -fbody=x repos/o/r/issues/1/comments'), ['github-write']);
-        assert.deepEqual(g.commandScopes('/usr/bin/git push origin feat'), ['push-feature']);
-        assert.deepEqual(g.commandScopes('git --no-pager push origin feat'), ['push-feature']);
-        assert.deepEqual(g.commandScopes('sudo -u me git push origin feat'), ['push-feature']);
+        assert.deepEqual(g.commandScopes('/usr/bin/git push origin feat:feat'), ['push-feature']);
+        assert.deepEqual(g.commandScopes('git --no-pager push origin feat:feat'), ['push-feature']);
+        assert.deepEqual(g.commandScopes('sudo -u me git push origin feat:feat'), ['push-feature']);
         assert.deepEqual(g.commandScopes('rm "-rf" x'), ['destructive']);
         assert.equal(g.commandScopes('git -c alias.p=push p origin main'), null);
         assert.equal(g.commandScopes("bash -c 'git push origin feat'"), null);
@@ -210,7 +210,7 @@ describe('9 low findings', () => {
     test('session keys of different ids never collide', () => {
         assert.notEqual(g.sessionKey('Sess-A'), g.sessionKey('sess-A'));
         assert.equal(g.sessionKey('0f1e2d3c-aaaa-bbbb-cccc-123456789abc'), '0f1e2d3c-aaaa-bbbb-cccc-123456789abc');
-        typed('/bdb-aos-gogate off');
+        typed('gogate off');
         ok('git push origin main');
         blocked('git push origin main', { session: 'S1' });
     });
@@ -227,12 +227,12 @@ describe('9 low findings', () => {
     test('go-grant tells the human when the store cannot be written', () => {
         fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
         fs.writeFileSync(path.join(home, '.aos', 'gate'), 'not a dir');
-        const r = runGrant('/bdb-aos-gogate grant merge 1h');
+        const r = runGrant('gogate grant merge 1h');
         assert.equal(r.status, 0);
         assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /could NOT record/);
     });
     test('session grants are described honestly in the status', () => {
-        typed('/bdb-aos-gogate grant merge session');
+        typed('gogate grant merge session');
         const out = spawnSync(process.execPath, [GRANT, '--status', '--session', 's1'], { env: env(), encoding: 'utf8' }).stdout;
         assert.match(out, /session = this session id, max 24h, survives --resume/);
     });
