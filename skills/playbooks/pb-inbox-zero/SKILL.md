@@ -12,7 +12,7 @@ requires:
   skills: [memb-skill]
   agents: []
   mcps: []
-  store: []
+  store: [email-ops]
 go_points: [send replies]
 outputs: ["triage.md", "drafts.md", "run-log.md"]
 verify: "every mail in the export appears exactly once in triage.md"
@@ -29,7 +29,7 @@ What you get: your email backlog sorted into reply / delegate / archive / ignore
 - A save folder — asked once; default `./pb-inbox-zero-<date>/`
 
 ## Steps
-1. Ask once — save folder, mail export folder, optional sending connector → `run-log.md` — the export folder holds at least one .eml or .mbox; if you have neither an export nor a connector, stop with `Missing mail source: export your inbox to .eml/.mbox` and write nothing but the run log
+1. Ask once — save folder, mail export folder, optional sending connector (email-ops if `test -d ~/.claude/skills/email-ops` passes; absent → logged "Missing store item: email-ops, install via aos-store" and the run continues with the connector the human names, or none) → `run-log.md` — the export folder holds at least one .eml or .mbox; if you have neither an export nor a connector, stop with `Missing mail source: export your inbox to .eml/.mbox` and write nothing but the run log
 2. Read every mail → `triage.md`, one row per mail: sender, subject, date, class (reply / delegate / archive / ignore), one-line reason, source file — every mail in the export appears exactly once; the row count equals the mail count
 3. memb-skill — optional, ask first: search open commitments to the senders to inform the class — skipped and logged if memB is not installed
 4. For each reply row → `drafts.md`: recipient as name + address (`?` blocks sending until you fill it), subject, body — draft only, nothing is sent

@@ -28,17 +28,18 @@ What you get: a new AOS version on npm through the release-please PR, never a ha
 - repo (optional) — the AOS checkout, default the current directory; `<owner/repo>` comes from `git -C <repo> remote get-url origin`
 
 ## Steps
-1. Preflight — `gh auth status` and `test -f ~/.claude/skills/bdb-ecosystem-health/SKILL.md` → run log header — gh missing or unauthenticated → log it, give the `gh auth login` hint, stop; skill absent → log "Missing skill: bdb-ecosystem-health (installed locally only, not shipped by AOS). Step 7 skipped." and continue
-2. github — commits since the last tag (`git -C <repo> describe --tags --abbrev=0`, then `git -C <repo> log <tag>..HEAD --format=%s`) → subject list in the run log, every non-Conventional subject flagged (release-please cannot see it, see AGENTS.md) — stops for approval
+1. Preflight — `gh auth status` and `test -f ~/.claude/skills/bdb-ecosystem-health/SKILL.md` → run log header — gh missing or unauthenticated → log it, give the `gh auth login` hint, stop; skill absent → log "Missing skill: bdb-ecosystem-health (installed locally only, not shipped by AOS). Drift report in step 7 skipped; the npm check still runs." and continue
+2. github — commits since the last tag (`git -C <repo> fetch --tags`, then `git -C <repo> describe --tags --abbrev=0`, then `git -C <repo> log <tag>..HEAD --format=%s`) → subject list in the run log, every non-Conventional subject flagged (release-please cannot see it, see AGENTS.md) — stops for approval
 3. github — `gh pr list -R <owner/repo> --state open --head release-please--branches--main --json number,title,headRefName` → the release PR number in the run log — none → stop with "no release PR"
 4. Review and gate on that PR, using these skills:
    - git-pr-review — `gh pr view <n> -R <owner/repo> --json commits` → description draft in the run log — draft only, nothing posted
    - visual-recap — `plan` connector present → recap link; absent → log "visual-recap skipped: no plan connector" and paste `gh pr diff <n> -R <owner/repo> --name-only` instead; no `npx` without approval
    - reviewer (agent) — `gh pr diff <n> -R <owner/repo>`; the contract is the commit list from step 2, never the PR body → findings table — any open `blocking` finding stops the run
-   - godmode-shipping — `gh pr checks <n> -R <owner/repo>` all pass (pending, `gh pr checks` exit 8, counts as not passed) → exit codes in the run log
+   - bdb-shipping-skill — door class of the release PR (two-way or one-way; unclear counts as one-way) → class in the run log; one-way → ADR-lite `production_artifacts/decisions/<date>-<slug>.md` — class recorded
+   - godmode-shipping — `gh pr checks <n> -R <owner/repo>` all pass (pending, `gh pr checks` exit 8, counts as not passed), plus the local gate exactly as pb-ship step 8 gives it (scratch worktree from `pull/<n>/head`, lint, typecheck and test scripts that exist, a fork PR skips the local gate and is held, worktree removed without `--force`) → exit codes in the run log
 5. [GO] github — `gh pr merge <n> -R <owner/repo> --squash` — the WAITING FOR GO line names PR number, title, base branch, method and the version in `.release-please-manifest.json`. The run stops here until the human types GO. (The hook guards `gh pr merge`.) Never `npm version` or `npm publish` by hand.
-6. github — `gh run list -R <owner/repo> --branch main --limit 1 --json databaseId`, then `gh run watch <id> -R <owner/repo> --exit-status` for the release workflow → conclusion in the run log — exit 0
-7. bdb-ecosystem-health — drift check → report in the run log — skipped if step 1 logged the missing skill; otherwise `npm view @hybridlabor-api/aos version` equals the version in `.release-please-manifest.json` on main
+6. github — `<sha>` = the merge commit (`gh pr view <n> -R <owner/repo> --json mergeCommit -q .mergeCommit.oid`); `gh run list -R <owner/repo> --workflow release-please.yml --commit <sha> --limit 1 --json databaseId` (wait until a run exists), then `gh run watch <id> -R <owner/repo> --exit-status` → conclusion in the run log — exit 0
+7. npm check and drift — `npm view @hybridlabor-api/aos version` → run log — always run; equals the version in `.release-please-manifest.json` on main. bdb-ecosystem-health drift report only if step 1 found the skill
 8. quick-recap — run log → final line `🟢|🟡|🔴` with the released version — line written
 
 Run log: `production_artifacts/pb-release-aos-<date>.md` in the start directory, never committed
