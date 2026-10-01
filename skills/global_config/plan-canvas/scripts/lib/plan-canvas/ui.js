@@ -504,7 +504,7 @@ function renderCanvasHtml(session, { clientPath = '/client.js', cssPath = '/canv
 </header>
 <div class="layout">
   <main class="frame">
-    <iframe id="artifact" title="Artifact under review" src="${artifactSrc}" data-artifact-src="${artifactSrc}" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+    <iframe id="artifact" title="Artifact under review" src="${artifactSrc}" data-artifact-src="${artifactSrc}" sandbox="allow-scripts allow-forms allow-popups" allow="fullscreen"></iframe>
     <div id="endedOverlay" class="overlay"><div class="card"><h3>Session ended</h3><p id="endedWho"></p></div></div>
   </main>
   <aside class="panel">

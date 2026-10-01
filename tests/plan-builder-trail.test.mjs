@@ -232,6 +232,8 @@ describe('Archify block', () => {
     assert.deepEqual(r.warnings, []);
     const frame = r.html.match(/<iframe[^>]*class="archify-frame"[^>]*>/)[0];
     assert.match(frame, /sandbox="allow-scripts"/);
+    assert.match(frame, /allow="fullscreen"/);
+    assert.match(r.html, /btn-present/, 'fullscreen bridge rides in the escaped srcdoc');
     for (const bad of ['allow-same-origin', 'allow-forms', 'allow-popups', 'allow-top-navigation']) assert.ok(!frame.includes(bad), bad);
     assert.match(frame, /style="height:500px"/);
     assert.ok(!r.html.includes('card archify'), 'the diagram is not wrapped in a card');

@@ -327,6 +327,20 @@ function resolveArchifySrc(dir, src) {
 }
 
 // allow-scripts only, never allow-same-origin: the diagram runs, but cannot reach the page or its origin.
+// Archify's "Present" is an in-page stage, so inside this frame it stays in the frame.
+// The bridge mirrors that stage onto real browser fullscreen (the iframe has allow="fullscreen").
+const FULLSCREEN_BRIDGE = `<script>(function(){var b=document.getElementById('btn-present');if(!b||!document.documentElement.requestFullscreen)return;
+function presenting(){var l=document.getElementById('present-label');return /^exit/i.test((l?l.textContent:'')||b.getAttribute('aria-label')||'');}
+function sync(){var on=presenting();
+if(on&&!document.fullscreenElement){document.documentElement.requestFullscreen().catch(function(){});}
+else if(!on&&document.fullscreenElement){document.exitFullscreen().catch(function(){});}}
+new MutationObserver(sync).observe(b,{attributes:true,childList:true,characterData:true,subtree:true});})();</script>`;
+
+function withFullscreenBridge(html) {
+  const at = html.lastIndexOf('</body>');
+  return at === -1 ? html + FULLSCREEN_BRIDGE : html.slice(0, at) + FULLSCREEN_BRIDGE + html.slice(at);
+}
+
 function renderArchify(block, ctx) {
   const src = text(block.props.src);
   const label = text(block.props.label || block.props.title, 'architecture diagram');
@@ -345,11 +359,12 @@ function renderArchify(block, ctx) {
   }
   // No card and no fixed inner box: the diagram sits on the page background and
   // takes the viewport height by default so its toolbar and legend stay reachable.
+  html = withFullscreenBridge(html);
   const explicit = numProp(block.props.height);
   const style = explicit ? ` style="height:${within(explicit, 200, 2400)}px"` : '';
   const href = src.split(/[\\/]/).map(encodeURIComponent).join('/');
   return `<figure class="archify-block"><figcaption class="label">${esc(label)}</figcaption>` +
-    `<iframe class="archify-frame" sandbox="allow-scripts" loading="lazy" title="${esc(label)}"${style} srcdoc="${esc(html)}"></iframe>` +
+    `<iframe class="archify-frame" sandbox="allow-scripts" allow="fullscreen" loading="lazy" title="${esc(label)}"${style} srcdoc="${esc(html)}"></iframe>` +
     `<div class="links"><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">open standalone</a> <span class="path">${esc(src)}</span></div></figure>`;
 }
 
