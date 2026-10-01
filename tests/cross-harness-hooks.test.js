@@ -108,7 +108,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             const hooksPath = path.join(tmpDir, '.agents', 'hooks.json');
 
             if (typeof installer.mergeAntigravityHooks === 'function') {
-                installer.mergeAntigravityHooks(hooksPath, { projectLocal: true });
+                installer.mergeAntigravityHooks(hooksPath, { projectLocal: true, selfCheck: () => ({ status: 0, stderr: '' }) });
             } else {
                 // If not exported directly, invoke installer via sub-process or helper
                 execFileSync(
@@ -150,7 +150,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             }, null, 2));
 
             if (typeof installer.mergeAntigravityHooks === 'function') {
-                installer.mergeAntigravityHooks(hooksPath);
+                installer.mergeAntigravityHooks(hooksPath, { selfCheck: () => ({ status: 0, stderr: '' }) });
             } else {
                 execFileSync(
                     process.execPath,

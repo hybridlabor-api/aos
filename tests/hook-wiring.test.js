@@ -80,7 +80,7 @@ describe('mergeBdbSettingsHooks', () => {
         assert.ok(!memb.includes('$CLAUDE_PROJECT_DIR'));
 
         const gate = commandsFor(s, 'PreToolUse').find((c) => c.includes('go-gate.mjs'));
-        assert.ok(gate.includes('$CLAUDE_PROJECT_DIR'), 'gates stay project-local');
+        assert.ok(gate.includes('${CLAUDE_PROJECT_DIR}'), 'gates stay project-local');
     });
 
     test('never overwrites a settings.json that is not valid JSON', () => {

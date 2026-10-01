@@ -4004,8 +4004,8 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     // Global installs must point at the copies installGlobalHooks put under
     // $HOME/.claude/hooks; $CLAUDE_PROJECT_DIR would not exist in other projects.
     const localize = (cmd) => (projectLocal
-        ? (machineGlobalHooks.some((n) => cmd.includes(n)) ? cmd : cmd.split('${HOME}').join('$CLAUDE_PROJECT_DIR'))
-        : cmd.split('$CLAUDE_PROJECT_DIR/.claude/hooks/').join('$HOME/.claude/hooks/'));
+        ? (machineGlobalHooks.some((n) => cmd.includes(n)) ? cmd : cmd.split('${HOME}').join('${CLAUDE_PROJECT_DIR}').replace(/\$CLAUDE_PROJECT_DIR\b/g, '${CLAUDE_PROJECT_DIR}'))
+        : cmd.replace(/\$\{?CLAUDE_PROJECT_DIR\}?\/\.claude\/hooks\//g, '$HOME/.claude/hooks/'));
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
             ...e,
@@ -4067,18 +4067,61 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     }
 }
 
+// agy runs a hook command through `sh -c` / `cmd /c` with cwd = the hooks.json folder, and
+// cmd cannot parse the \" Go emits for quotes. So the command is relative and quote-free.
+function agyHookCommand(hooksJsonDir, scriptPath, args = '') {
+    const rel = path.relative(hooksJsonDir, scriptPath).split(path.sep).join('/');
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || /[\s"'&|<>^%]/.test(rel)) {
+        throw new Error(`agy hook script must sit under ${hooksJsonDir} with a plain path, got ${scriptPath}`);
+    }
+    return `node ${rel}${args}`;
+}
+
+// Runs every AOS command of a hooks.json once with `{}` on stdin, the way agy does.
+// Returns [{ command, reason }] for each failure; `spawn` is injectable for tests.
+function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
+    const bdbScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const data = readJsonFile(hooksPath);
+    const commands = [];
+    const walk = (v) => {
+        if (Array.isArray(v)) v.forEach(walk);
+        else if (v && typeof v === 'object') {
+            if (typeof v.command === 'string' && bdbScripts.some((n) => v.command.includes(n))) commands.push(v.command);
+            Object.values(v).forEach(walk);
+        }
+    };
+    walk(data && data.hooks);
+    const [shell, flag] = process.platform === 'win32' ? ['cmd', '/c'] : ['sh', '-c'];
+    const failures = [];
+    for (const command of [...new Set(commands)]) {
+        // AGENTTRAIL_PORT=1: the no-op payload must not show up on a live map.
+        const r = spawn(shell, [flag, command], { cwd: path.dirname(hooksPath), input: '{}', encoding: 'utf8', timeout: 5000, windowsHide: true, env: { ...process.env, AGENTTRAIL_PORT: '1' } });
+        const stderr = String((r && r.stderr) || '');
+        let reason = null;
+        if (!r || r.error) reason = `spawn failed: ${r && r.error ? r.error.message : 'no result'}`;
+        else if (r.status !== 0) reason = `exit ${r.status}\n  ${stderr.trim().slice(0, 500)}`;
+        else if (/MODULE_NOT_FOUND|Cannot find module/.test(stderr)) reason = `module not found\n  ${stderr.trim().slice(0, 500)}`;
+        if (reason) failures.push({ command, reason });
+    }
+    return failures;
+}
+
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
-function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
+function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = spawnSync } = {}) {
     const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     const isBdbHandler = (h) => typeof h?.command === 'string' && bdbHookScripts.some((name) => h.command.includes(name));
 
     const baseDir = path.dirname(hooksPath);
-    const hooksDir = projectLocal ? path.join(currentDir, '.agents', 'hooks') : path.join(baseDir, 'hooks');
-    const workflowsDir = projectLocal ? path.join(currentDir, '.agents', 'workflows') : path.join(baseDir, 'workflows');
-    const globalHooksDir = projectLocal ? path.join(homeDir, '.gemini', 'config', 'hooks') : hooksDir;
+    // Commands are relative to hooks.json's folder, so every script must live under it
+    // (installProjectHarness copies the hooks into .agents/hooks for the project-local file).
+    const hooksDir = path.join(baseDir, 'hooks');
+    const workflowsDir = path.join(baseDir, 'workflows');
+    const globalHooksDir = hooksDir;
 
-    const cmd = (dir, script, args = '') => `node "${path.join(dir, script)}"${args}`;
+    const cmd = (dir, script, args = '') => agyHookCommand(baseDir, path.join(dir, script), args);
+    // Observability hooks must never block a tool call when they cannot start.
+    const obs = (dir, script, args = '') => cmd(dir, script, `${args} || exit 0`);
     const bdbHooks = {
         PreToolUse: [
             {
@@ -4094,15 +4137,15 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
             },
             {
                 matcher: "*",
-                hooks: [{ type: "command", command: cmd(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 2 }]
+                hooks: [{ type: "command", command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 2 }]
             }
         ],
         Stop: [
             { type: "command", command: cmd(hooksDir, 'graph-gate.mjs'), timeout: 10 },
-            { type: "command", command: cmd(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 2 }
+            { type: "command", command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 2 }
         ],
         PreInvocation: [
-            { type: "command", command: cmd(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
+            { type: "command", command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
             { type: "command", command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
         ]
     };
@@ -4160,9 +4203,19 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false } = {}) {
 
     try {
         fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
+        const previousRaw = existing ? fs.readFileSync(hooksPath, 'utf8') : null;
         const tmpPath = `${hooksPath}.${process.pid}.tmp`;
         fs.writeFileSync(tmpPath, JSON.stringify(buildMerged(existing), null, 2) + '\n');
         fs.renameSync(tmpPath, hooksPath);
+        if (!DRY_RUN) {
+            const failures = selfCheckAgyHooks(hooksPath, selfCheck);
+            if (failures.length) {
+                if (previousRaw === null) fs.unlinkSync(hooksPath);
+                else fs.writeFileSync(hooksPath, previousRaw);
+                log.warn(`Antigravity hook self-check FAILED for ${hooksPath}; the previous hooks.json was ${previousRaw === null ? 'removed (none existed)' : 'restored'}.`);
+                for (const f of failures) log.warn(`  command: ${f.command}\n  ${f.reason}`);
+            }
+        }
     } catch (e) {
         log.warn(`Could not write ${hooksPath}: ${e.message}`);
     }
@@ -5916,6 +5969,8 @@ module.exports = {
     keepExistingEnvValues,
     mergeBdbSettingsHooks,
     mergeAntigravityHooks,
+    agyHookCommand,
+    selfCheckAgyHooks,
     mergeCodexTomlHooks,
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
