@@ -8,6 +8,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { connect } from 'node:net';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -300,6 +301,20 @@ async function checkDaemonsAndModules() {
       ? 'Enable AO in the installer or run: ao service install'
       : 'AO binary is arm64 macOS native; build from source on other platforms: github.com/hybridlabor-api/bdb-agent-orchestrator', false);
 
+  // Installed ao vs a local AO checkout's HEAD, read from the binary's embedded build info.
+  const aoCheckout = firstExisting([h('dev', 'agents', 'bdb-agent-orchestrator'), h('dev', 'bdb-dev', 'bdb-agent-orchestrator')]);
+  if (aoBin && aoCheckout && existsSync(path.join(aoCheckout, '.git'))) {
+    const { readGoBuildInfo } = createRequire(import.meta.url)('../installer.js');
+    const build = readGoBuildInfo(aoBin.replace(/^~/, HOME));
+    let head = null;
+    try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
+    const same = !!(build && head && build.revision === head && !build.modified);
+    add('daemons', 'AO revision vs checkout', same,
+      !build ? 'Installed ao has no readable build revision'
+        : `Installed ${build.revision.slice(0, 9)}${build.modified ? ' (dirty build)' : ''} · checkout HEAD ${head ? head.slice(0, 9) : 'unknown'}`,
+      `Rebuild from a clean checkout: cd ${tilde(path.join(aoCheckout, 'backend'))} && go build -ldflags='-s -w' -o ~/.local/bin/ao.new ./cmd/ao && mv ~/.local/bin/ao.new ~/.local/bin/ao && ao service install`, true);
+  }
+
   // Code-signing check for AO on macOS
   if (IS_MAC && aoBin) {
     let signed = false;
@@ -318,15 +333,15 @@ function printAoAnnouncement() {
   console.log(`
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │                                                                              │
-│   🚀 BDB AGENT ORCHESTRATOR APP — FINALE BETA JETZT VERFÜGBAR!              │
+│   BDB AGENT ORCHESTRATOR APP — FINAL BETA NOW AVAILABLE                      │
 │                                                                              │
-│   Die nächste Generation der Cross-Harness Multi-Agenten-Orchestrierung      │
-│   ist jetzt als finale Beta für alle User freigeschaltet.                    │
+│   The next generation of cross-harness multi-agent orchestration             │
+│   is now open to every user as a final beta.                                 │
 │                                                                              │
 │   • Dashboard & WebUI:  http://localhost:3101                                │
-│   • Service-Befehl:     ao service install  (Hintergrunddienst aktivieren)   │
-│   • Quick Launch:       ao open  oder  ao service status                     │
-│   • Features:           Session-Telemetrie, Live-AgentTrail & Multi-Workspaces│
+│   • Service command:    ao service install  (enables the background service) │
+│   • Quick launch:       ao open  or  ao service status                       │
+│   • Features:           session telemetry, live AgentTrail, multi-workspaces │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 `);

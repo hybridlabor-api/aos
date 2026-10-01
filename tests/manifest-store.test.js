@@ -169,7 +169,7 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
         }
     });
 
-    test('(d) a hand-edited ours-file is backed up to a timestamped .bak, NOT silently overwritten', () => {
+    test('(d) a hand-edited ours-file is kept and the shipped version is written to <file>.new', () => {
         const { tmpBase, fakeHome, fakeSrc, manifestPath } = createIsolatedEnv();
         try {
             const skillDir = path.join(fakeSrc, 'skills', 'edited-skill');
@@ -199,13 +199,11 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
             // Re-run update
             const result = resolveFileConflict(skillFile, targetFile, manifest, knownHashes);
 
-            // Assertions
-            assert.strictEqual(result, 'bak', 'Conflict resolution should return bak');
-            const bakFile = findBackup(targetFile);
-            assert.ok(bakFile, '.bak file must exist');
-            assert.strictEqual(fs.readFileSync(bakFile, 'utf8'), userCustomContent, 'User modifications must be preserved in .bak');
-            assert.strictEqual(fs.readFileSync(targetFile, 'utf8'), '# New Upstream Content v2.0\n', 'New version should be written to target');
-            assert.strictEqual(manifest[targetFile].sha256, computeFileHash(skillFile), 'Manifest should be updated to new hash');
+            // Assertions: the user's file wins, the shipped version lands next to it.
+            assert.strictEqual(result, 'kept', 'Conflict resolution should keep the user edit');
+            assert.strictEqual(fs.readFileSync(targetFile, 'utf8'), userCustomContent, 'User modifications must stay in place');
+            assert.strictEqual(fs.readFileSync(`${targetFile}.new`, 'utf8'), '# New Upstream Content v2.0\n', 'New version should be written to <file>.new');
+            assert.strictEqual(findBackup(targetFile), null, 'No .bak is needed when nothing was overwritten');
         } finally {
             cleanup(tmpBase);
         }
