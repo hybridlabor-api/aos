@@ -19,7 +19,6 @@ outputs: ["production_artifacts/pb-ship-<date>.md", "production_artifacts/pb-shi
 verify: "gh pr view <n> --json state -q .state == MERGED for every PR the log marks merged; gate exit 0 logged for each"
 difficulty: intermediate
 est_time: 20-60 min
-disable-model-invocation: true
 ---
 
 # Ship the day's PRs

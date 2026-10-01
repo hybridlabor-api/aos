@@ -19,7 +19,6 @@ outputs: ["docs/sessions/master-<date>.md", "production_artifacts/pb-master-<dat
 verify: "handover lists every roster session with open/closed GO state; no file older than 10 min in ~/.aos/go/ unless listed as stale in the handover"
 difficulty: advanced
 est_time: 15 min setup, then session-long
-disable-model-invocation: true
 ---
 
 # One control session over several agents

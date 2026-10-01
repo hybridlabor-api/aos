@@ -19,7 +19,6 @@ outputs: ["production_artifacts/pb-worktrees-land-<date>.md"]
 verify: "git -C <repo> worktree list no longer shows any path the log marks removed; every removed branch was merged before removal"
 difficulty: intermediate
 est_time: 10-30 min
-disable-model-invocation: true
 ---
 
 # Land and clean up worktrees

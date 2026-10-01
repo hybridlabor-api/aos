@@ -20,7 +20,6 @@ outputs: ["production_artifacts/00_execution_plan.md", "production_artifacts/pb-
 verify: "npm test exit 0 on the pushed SHA; gh pr view <branch> --json state -q .state == OPEN"
 difficulty: advanced
 est_time: 1-3 h
-disable-model-invocation: true
 ---
 
 # Change the harness safely

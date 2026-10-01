@@ -20,7 +20,6 @@ outputs: ["renders/<project>/concept.md", "renders/<project>/look.tox", "renders
 verify: "ffprobe shows 1080x1920 and 1920x1080 at the asked duration; comfyui get_history status success; get_td_node_errors empty"
 difficulty: advanced
 est_time: 1-3 h
-disable-model-invocation: true
 ---
 
 # Moodboard to social clip
