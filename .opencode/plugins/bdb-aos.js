@@ -130,6 +130,15 @@ async function ownSessionName(client, sessionID) {
   } catch { return ''; }
 }
 
+// Only plain text parts are human turns: synthetic = model-only, ignored = display-only,
+// aos_bus = bus delivery (both copies). Each excluded on its own, so safety never hangs on one flag.
+const isHumanText = (p) => p && p.type === 'text' && typeof p.text === 'string' && !p.synthetic && !p.ignored && !p.metadata?.aos_bus;
+const isNonHuman = (p) => p && (p.synthetic || p.ignored || p.metadata?.aos_bus);
+
+// A plugin reload (SIGUSR2) re-runs init on the cached module in the same process:
+// stop the previous instance's timers and keep its bus names alive. Keyed by directory.
+const busInstances = new Map();
+
 // Best-effort fire-and-forget telemetry for the AOS live map (agenttrail daemon).
 // 300 ms timeout per request, all errors swallowed, never throws. Self-contained
 // on purpose: the plugin must not import from mcps/.
@@ -200,7 +209,12 @@ export default async function bdbAosPlugin(input) {
     return sessions.get(id);
   };
   // aos-bus: bus name -> sessionID of the root session that owns it.
-  const busNames = new Map();
+  const prevBus = busInstances.get(directory);
+  for (const t of prevBus?.timers || []) clearInterval(t);
+  const busNames = prevBus?.names || new Map();
+  const busTimers = [];
+  busInstances.set(directory, { timers: busTimers, names: busNames });
+  const every = (ms, fn) => { const t = setInterval(fn, ms); t.unref?.(); busTimers.push(t); };
   const BUS_PROMPT_TIMEOUT_MS = Number(process.env.AOS_BUS_PROMPT_TIMEOUT_MS) || 10 * 60 * 1000;
   const BUS_BUSY_MAX_MS = Number(process.env.AOS_BUS_BUSY_MAX_MS) || 10 * 60 * 1000;
   const ensureBus = async (id, parentID) => {
@@ -226,9 +240,13 @@ export default async function bdbAosPlugin(input) {
   };
   process.on('exit', () => { for (const name of busNames.keys()) bus.unregisterSession(name); });
 
+  // Heartbeat on its own timer (the poll loop can sit in one prompt for minutes); readers drop a
+  // registration whose mtime is older than bus.STALE_MS. touchSession only touches this pid's files.
+  every(5000, () => { for (const name of busNames.keys()) bus.touchSession(name); });
+
   const busyFirst = new Map(); // inbox file -> time of its first busy attempt
   let polling = false;
-  setInterval(async () => {
+  every(1000, async () => {
     if (polling || !busNames.size) return;
     polling = true;
     try {
@@ -244,18 +262,25 @@ export default async function bdbAosPlugin(input) {
           sess(sessionID).prompt = '';
           try {
             let timer;
+            const text = `[aos-bus from ${m.from}] ${m.text}`;
+            const metadata = { aos_bus: { from: m.from, uid: m.uid, ts: m.ts } };
             const res = await Promise.race([input.client.session.prompt({
               path: { id: sessionID },
               query: directory ? { directory } : undefined,
               body: {
                 noReply: !m.wake,
-                parts: [{ type: 'text', text: `[aos-bus from ${m.from}] ${m.text}`, synthetic: true, metadata: { aos_bus: { from: m.from, uid: m.uid, ts: m.ts } } }],
+                // OpenCode 1.18.30: the TUI hides synthetic parts and the model never sees ignored
+                // ones, so one copy each. Neither counts as a human turn (isHumanText).
+                parts: [
+                  { type: 'text', text, synthetic: true, metadata },
+                  { type: 'text', text, ignored: true, metadata },
+                ],
               },
             }), new Promise((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error('aos-bus prompt timeout'), { timedOut: true })), BUS_PROMPT_TIMEOUT_MS); timer.unref?.(); })]).finally(() => clearTimeout(timer));
             if (res?.error) throw res.error;
             unlinkSync(claim);
             busyFirst.delete(m.file);
-            input.client.tui?.showToast?.({ body: { title: 'aos-bus', message: `from ${m.from}`, variant: 'info' } })?.catch?.(() => {});
+            input.client.tui?.showToast?.({ body: { title: 'aos-bus', message: `from ${m.from}`, variant: 'info', duration: 15000 } })?.catch?.(() => {});
           } catch (e) {
             // Busy: hand the file back and retry next tick, up to BUS_BUSY_MAX_MS after the first busy attempt.
             const isBusy = /busy/i.test(`${e?.name} ${e?.message} ${e?.data?.message}`);
@@ -270,7 +295,7 @@ export default async function bdbAosPlugin(input) {
       }
     } catch {} finally { polling = false; }
   // ponytail: 1 s poll; fs.watch if latency matters. A wake turn is awaited, so it delays later messages until it ends.
-  }, 1000).unref();
+  });
   const trail = (hook_event_name, session_id, extra = {}) =>
     void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
 
@@ -322,14 +347,15 @@ export default async function bdbAosPlugin(input) {
     },
 
     'chat.message': async (msgInput, msgOutput) => {
-      const textParts = (msgOutput.parts || []).filter((p) => p && p.type === 'text' && typeof p.text === 'string' && !p.synthetic);
+      const textParts = (msgOutput.parts || []).filter(isHumanText);
       const fullText = textParts.map((p) => p.text).join('\n').trim();
       const s = sess(msgInput.sessionID);
       void ensureBus(msgInput.sessionID);
       s.prompt = fullText;
-      // All-synthetic message (aos-bus, nudges): never a human GO, skip memB/pipeline/token.
+      // No human text (aos-bus pair, nudges): never a human GO, skip memB/pipeline/token.
       const parts = msgOutput.parts || [];
-      if (parts.length > 0 && parts.every((p) => p && p.synthetic)) { s.prompt = ''; return; }
+      const texts = parts.filter((p) => p && p.type === 'text');
+      if ((parts.length > 0 && parts.every((p) => p && p.synthetic)) || (texts.length > 0 && texts.every(isNonHuman))) { s.prompt = ''; return; }
 
       try {
         if (!s.parentID) issueGoToken(fullText, { session_id: msgInput.sessionID, message_id: msgInput.messageID || msgOutput.message?.id });
@@ -413,7 +439,7 @@ export default async function bdbAosPlugin(input) {
                 const m = msgs[i];
                 if ((m.info?.role ?? m.role) === 'user') {
                   const parts = m.parts || [];
-                  const text = parts.filter((p) => p.type === 'text' && !p.synthetic).map((p) => p.text).join('\n').trim();
+                  const text = parts.filter(isHumanText).map((p) => p.text).join('\n').trim();
                   authorized = text.toUpperCase() === 'GO';
                   break;
                 }

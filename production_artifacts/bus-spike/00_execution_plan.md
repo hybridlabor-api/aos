@@ -55,7 +55,7 @@ files: .claude/hooks/aos-bus.mjs, package.json
   by: engineering
 - [x] `registerSession({name, sessionID, cwd})` / `unregisterSession(name, pid)`: write the registry file 0600 and `ensurePrivateDir` the inbox; unregister only if `pid` matches. `sendMessage`/`readInbox` derive the inbox from `busPaths(name)`, never from the registry's `inbox` field {#bus-registry}
   by: engineering
-- [x] `listSessions()`: read the registry and drop entries whose pid is dead (`process.kill(pid, 0)`) {#bus-list}
+- [x] `listSessions()`: read the registry and drop entries whose pid is dead (`process.kill(pid, 0)`) or whose file mtime is older than `STALE_MS` (env `AOS_BUS_STALE_MS`, default 15 s). `touchSession(name, pid)` refreshes the mtime only when the registry's pid equals `pid` (bus-tui fix: a killed TUI leaves its file behind and pids get reused) {#bus-list}
   by: engineering
 - [x] `sendMessage(name, text, {from, wake})`:
   - target must be registered and alive, inbox must pass `checkPrivateDir`
@@ -85,8 +85,9 @@ files: .opencode/plugins/bdb-aos.js
 - [x] One `setInterval(1000).unref()` per plugin instance. For each registered name whose registry entry shows this pid and session as owner: `readInbox` (`*.json` only), then for each message:
   - claim it by `rename(<x>.json, <x>.inflight)`; a failed rename skips the message (another instance has it)
   - **first** set `sess(sessionID).prompt = ''` (the go-gate checks this cache before any DB/messages lookup; do not rely on `chat.message` firing for plugin-initiated prompts, or a stale human `GO` would authorize the woken turn)
-  - call `client.session.prompt({ path:{id: sessionID}, query:{directory}, body:{ noReply: !wake, parts:[{ type:'text', text:'[aos-bus from '+from+'] '+text, synthetic:true, metadata:{ aos_bus:{from, uid, ts} } }] } })`
-  - on success: unlink the claim and call `client.tui.showToast({ body:{ title:'aos-bus', message:'from '+from, variant:'info' } })` (best-effort)
+  - call `client.session.prompt({ path:{id: sessionID}, query:{directory}, body:{ noReply: !wake, parts:[ {type:'text', text: T, synthetic:true, metadata}, {type:'text', text: T, ignored:true, metadata} ] } })` with `T = '[aos-bus from '+from+'] '+text` and `metadata = { aos_bus:{from, uid, ts} }`. Bus-tui fix: the OpenCode 1.18.30 TUI never renders synthetic parts and the model never sees ignored parts, so the synthetic copy is for the model and the ignored copy for the human
+  - on success: unlink the claim and call `client.tui.showToast({ body:{ title:'aos-bus', message:'from '+from, variant:'info', duration:15000 } })` (best-effort)
+  - a separate 5 s heartbeat timer calls `touchSession` for this instance's names; a plugin re-init (SIGUSR2 reload, same cached module) clears the previous instance's poller and heartbeat and inherits its bus names
   - on `busy`: rename the claim back to `.json` and retry each tick for up to 10 min (`AOS_BUS_BUSY_MAX_MS`) from the first busy attempt (in-memory; a restart restarts the clock), then park as `.failed`
   - on prompt timeout (10 min, `AOS_BUS_PROMPT_TIMEOUT_MS`, prompt not aborted): park as `.timeout` (delivery unknown)
   - on any other error: park as `.failed` (not delivered)
@@ -97,7 +98,7 @@ files: .opencode/plugins/bdb-aos.js
   - Contract deltas ratified by TechLead 2026-10-01 (see `02_backend_schema.md` Repair round 2)
   {#plugin-poll}
   by: engineering
-- [x] In `chat.message`, if `fullText` is empty (an all-synthetic message, i.e. bus or nudge), set `s.prompt = ''` and return before memB/pipeline/issueGoToken. This saves a memB lookup per bus message and keeps the gate closed {#plugin-chat-guard}
+- [x] In `chat.message`, if every part is synthetic, or every text part is synthetic, ignored or carries `metadata.aos_bus` (bus pair, nudge), set `s.prompt = ''` and return before memB/pipeline/issueGoToken. This saves a memB lookup per bus message and keeps the gate closed {#plugin-chat-guard}
   by: engineering
 
 ## go-gate (verify, change only if needed) {#go-gate}
@@ -108,6 +109,7 @@ files: .claude/hooks/go-gate.mjs
 - [x] No change expected (see Verified facts). If the live smoke shows `synthetic` is NOT persisted in `part.data`:
   - add a `metadata.aos_bus` / `[aos-bus ` prefix exclusion to `opencodeLastUser` and to the plugin's messages fallback
   - and record the finding in the doc
+  - Bus-tui fix: every human-text filter (plugin `chat.message`, plugin messages fallback, `opencodeLastUser`) now drops parts that are `synthetic` OR `ignored` OR carry `metadata.aos_bus`; an ignored-only `GO` would otherwise count as human
   {#go-gate-conditional}
   by: engineering
 

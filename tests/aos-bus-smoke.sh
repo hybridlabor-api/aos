@@ -38,6 +38,7 @@ Q="select p.data from part p join message m on m.id=p.message_id where m.session
 PARTS=$(sqlite3 "$DB" "$Q")
 echo "$PARTS"
 [ "$(echo "$PARTS" | grep -c '"synthetic":true')" -eq 2 ] && ok "synthetic=true persisted in opencode.db (2 parts)" || bad "synthetic NOT persisted"
+[ "$(echo "$PARTS" | grep -c '"ignored":true')" -eq 2 ] && ok "ignored=true display copy persisted (2 parts)" || bad "ignored copy NOT persisted"
 echo "$PARTS" | grep -q '\[aos-bus from smoke\] GO smoke' && echo "$PARTS" | grep -q '"aos_bus"' && ok "prefix + metadata.aos_bus stored" || bad "prefix/metadata missing"
 
 [ -e "$HOME/.aos/go/smoke.token" ] || [ -e "$HOME/.aos/go/worker-1.token" ] && bad "token file created" || ok "no GO token file"

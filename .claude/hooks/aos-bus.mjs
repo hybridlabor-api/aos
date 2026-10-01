@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // aos-bus spike: master -> running OpenCode session via per-session inbox files.
-// Library + CLI. The receiver (OpenCode plugin) injects each message as a synthetic part.
+// Library + CLI. The receiver (OpenCode plugin) injects each message as a synthetic + ignored part pair.
 
 import {
-  chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync,
+  chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, utimesSync, writeFileSync,
 } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -52,6 +52,20 @@ export function unregisterSession(name, pid = process.pid) {
   } catch { /* already gone */ }
 }
 
+// A registration is live only while its owner keeps touching it: a pid check alone passes
+// for a reused pid, and a killed or exited TUI leaves the file behind (no exit hook fires).
+export const STALE_MS = Number(process.env.AOS_BUS_STALE_MS) || 15_000;
+
+export function touchSession(name, pid = process.pid) {
+  try {
+    const p = busPaths(name);
+    if (JSON.parse(readFileSync(p.reg, "utf8")).pid !== pid) return false;
+    const now = new Date();
+    utimesSync(p.reg, now, now);
+    return true;
+  } catch { return false; }
+}
+
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
 
 export function listSessions() {
@@ -61,8 +75,9 @@ export function listSessions() {
   try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch { /* none */ }
   for (const f of files) {
     try {
-      const r = JSON.parse(readFileSync(join(dir, f), "utf8"));
-      if (Number.isInteger(r.pid) && alive(r.pid)) out.push(r);
+      const file = join(dir, f);
+      const r = JSON.parse(readFileSync(file, "utf8"));
+      if (Number.isInteger(r.pid) && alive(r.pid) && Date.now() - lstatSync(file).mtimeMs < STALE_MS) out.push(r);
     } catch { /* corrupt entry */ }
   }
   return out;

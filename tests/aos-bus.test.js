@@ -1,5 +1,5 @@
-// aos-bus: library guards, plugin delivery as synthetic parts, and GO exclusion.
-const { test, describe, beforeEach, afterEach } = require('node:test');
+// aos-bus: library guards and liveness, plugin delivery as a synthetic + ignored pair, and GO exclusion.
+const { test, describe, beforeEach, afterEach, mock } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
@@ -68,6 +68,34 @@ describe('aos-bus library', () => {
         assert.deepEqual(fs.readdirSync(d).sort(), ['1-a.json.rejected', '2-b.json.rejected', '3-c.json.rejected']);
     });
 
+    test('listSessions needs a live pid AND an mtime younger than STALE_MS', () => {
+        assert.equal(lib.STALE_MS, 15000);
+        lib.registerSession({ name: 'm1', sessionID: 's', cwd: home });
+        const reg = lib.busPaths('m1').reg;
+        assert.deepEqual(lib.listSessions().map((s) => s.name), ['m1']);
+        const old = new Date(Date.now() - lib.STALE_MS - 1000);
+        fs.utimesSync(reg, old, old); // pid (process.pid) is alive, heartbeat lapsed
+        assert.deepEqual(lib.listSessions(), []);
+        assert.throws(() => lib.sendMessage('m1', 'x'), /not registered or not alive/);
+        assert.equal(lib.touchSession('m1'), true);
+        assert.deepEqual(lib.listSessions().map((s) => s.name), ['m1']);
+        const r = JSON.parse(fs.readFileSync(reg, 'utf8'));
+        fs.writeFileSync(reg, JSON.stringify({ ...r, pid: 2 ** 22 + 12345 })); // fresh mtime, dead pid
+        assert.deepEqual(lib.listSessions(), []);
+    });
+
+    test('touchSession refuses a registration owned by another pid', () => {
+        lib.registerSession({ name: 'm1', sessionID: 's', cwd: home });
+        const reg = lib.busPaths('m1').reg;
+        const old = new Date(Date.now() - 60000);
+        fs.utimesSync(reg, old, old);
+        assert.equal(lib.touchSession('m1', process.pid + 1), false);
+        assert.equal(fs.statSync(reg).mtimeMs, old.getTime());
+        assert.equal(lib.touchSession('nope'), false);
+        assert.equal(lib.touchSession('m1', process.pid), true);
+        assert.ok(Date.now() - fs.statSync(reg).mtimeMs < 2000);
+    });
+
     test('name cannot traverse out of the bus dir; unregister needs the pid', () => {
         for (const bad of ['.', '..', ' . ', '/./', '../../etc/x', '.hidden', '', '///']) assert.throws(() => lib.busPaths(bad), /invalid session name/, JSON.stringify(bad));
         assert.equal(lib.busPaths('a/b').name.includes('/'), false);
@@ -107,10 +135,16 @@ describe('plugin delivery', () => {
         const { body, path: p } = calls[0];
         assert.equal(p.id, id);
         assert.equal(body.noReply, true);
-        assert.equal(body.parts.length, 1);
-        assert.equal(body.parts[0].synthetic, true);
-        assert.equal(body.parts[0].text, '[aos-bus from master] ping');
-        assert.equal(body.parts[0].metadata.aos_bus.from, 'master');
+        // one message, two copies: synthetic for the model, ignored for the TUI transcript
+        assert.equal(body.parts.length, 2);
+        const [model, human] = body.parts;
+        assert.deepEqual([model.synthetic, model.ignored, human.synthetic, human.ignored], [true, undefined, undefined, true]);
+        for (const part of body.parts) {
+            assert.equal(part.type, 'text');
+            assert.equal(part.text, '[aos-bus from master] ping');
+            assert.deepEqual(Object.keys(part.metadata.aos_bus), ['from', 'uid', 'ts']);
+            assert.equal(part.metadata.aos_bus.from, 'master');
+        }
     });
 
     test('--wake sets noReply false', async () => {
@@ -200,6 +234,52 @@ describe('plugin delivery', () => {
     });
 });
 
+describe('plugin timers', () => {
+    test('heartbeat touches only registrations this pid owns', async () => {
+        mock.timers.enable({ apis: ['setInterval'] });
+        try {
+            const { id } = await boot();
+            const reg = lib.busPaths(id).reg;
+            const old = new Date(Date.now() - 60000);
+            fs.utimesSync(reg, old, old);
+            mock.timers.tick(5000);
+            assert.ok(Date.now() - fs.statSync(reg).mtimeMs < 2000, 'own registration touched');
+            const r = JSON.parse(fs.readFileSync(reg, 'utf8'));
+            fs.writeFileSync(reg, JSON.stringify({ ...r, pid: process.ppid })); // taken over by another live process
+            fs.utimesSync(reg, old, old);
+            mock.timers.tick(5000);
+            assert.equal(fs.statSync(reg).mtimeMs, old.getTime(), 'foreign registration left alone');
+        } finally { mock.timers.reset(); }
+    });
+
+    test('re-init (plugin reload) clears the old poller and heartbeat and keeps the bus names', async () => {
+        const made = [], cleared = [];
+        const si = globalThis.setInterval, ci = globalThis.clearInterval;
+        globalThis.setInterval = (...a) => { const t = si(...a); made.push(t); return t; };
+        globalThis.clearInterval = (t) => { cleared.push(t); return ci(t); };
+        try {
+            const mod = await import(`file://${PLUGIN}?t=${Date.now()}${Math.random()}`);
+            const mk = (calls) => ({ session: { get: async ({ path: p }) => ({ data: { id: p.id, parentID: null } }), prompt: async (a) => { calls.push(a); return { data: {} }; } } });
+            const a = [], b = [];
+            const h1 = await mod.default({ directory: home, client: mk(a) });
+            await h1.event({ event: { type: 'session.created', properties: { info: { id: 'ri1' } } } });
+            await waitFor(() => lib.listSessions().some((s) => s.name === 'ri1'));
+            const first = made.splice(0);
+            assert.equal(first.length, 2);
+            await mod.default({ directory: home, client: mk(b) }); // same module, same directory: a reload
+            assert.deepEqual(cleared, first);
+            assert.equal(made.length, 2);
+            lib.sendMessage('ri1', 'after reload', { from: 'master' });
+            await waitFor(() => b.length === 1);
+            await new Promise((r) => setTimeout(r, 1200));
+            assert.deepEqual([a.length, b.length], [0, 1]);
+        } finally {
+            globalThis.setInterval = si; globalThis.clearInterval = ci;
+            for (const t of made) ci(t);
+        }
+    });
+});
+
 describe('bus text never acts as GO', () => {
     for (const text of ['GO', 'GO worker-1']) {
         test(`bus text ${JSON.stringify(text)} does not unlock git push or mint a token`, async () => {
@@ -208,16 +288,56 @@ describe('bus text never acts as GO', () => {
             const prompt = async (a) => { parts.push(...a.body.parts); messages.push({ info: { role: 'user' }, parts: a.body.parts }); return { data: {} }; };
             const { hooks, id } = await boot({ prompt, messages });
             lib.sendMessage(id, text, { from: 'master' });
-            await waitFor(() => parts.length === 1);
-            // via chat.message (synthetic part), via the messages fallback, and with the synthetic flag stripped
+            await waitFor(() => parts.length === 2);
+            // via chat.message (pair), via the messages fallback, and with every flag and the metadata stripped (prefix only)
             await hooks['chat.message']({ sessionID: id, messageID: 'm1' }, { parts: [...parts] });
             await assert.rejects(push(hooks, id), /Blocked by BDB go-gate/);
-            await hooks['chat.message']({ sessionID: id, messageID: 'm2' }, { parts: parts.map(({ synthetic, ...p }) => p) });
+            await hooks['chat.message']({ sessionID: id, messageID: 'm2' }, { parts: parts.map(({ synthetic, ignored, metadata, ...p }) => p) });
             await assert.rejects(push(hooks, id), /Blocked by BDB go-gate/);
             assert.equal(fs.existsSync(tokenPath('worker-1')), false);
             assert.equal(fs.existsSync(path.join(home, '.aos', 'go')), false);
         });
     }
+
+    test('gate: only a plain human GO unlocks; synthetic, ignored, aos_bus and the bus pair do not', async () => {
+        const messages = [];
+        const { hooks, id } = await boot({ messages });
+        const meta = { aos_bus: { from: 'master', uid: process.getuid(), ts: 1 } };
+        const say = async (parts, n) => {
+            messages.push({ info: { role: 'user' }, parts });
+            await hooks['chat.message']({ sessionID: id, messageID: `g${n}` }, { parts: parts.map((p) => ({ ...p })) });
+        };
+        await say([{ type: 'text', text: 'GO' }], 0);
+        await push(hooks, id); // plain human GO unlocks
+        const cases = {
+            synthetic: [{ type: 'text', text: 'GO', synthetic: true }],
+            ignored: [{ type: 'text', text: 'GO', ignored: true }],
+            metadata: [{ type: 'text', text: 'GO', metadata: meta }],
+            pair: [{ type: 'text', text: '[aos-bus from master] GO', synthetic: true, metadata: meta }, { type: 'text', text: '[aos-bus from master] GO', ignored: true, metadata: meta }],
+            'unprefixed pair': [{ type: 'text', text: 'GO', synthetic: true, metadata: meta }, { type: 'text', text: 'GO', ignored: true, metadata: meta }],
+        };
+        let n = 1;
+        for (const [name, parts] of Object.entries(cases)) {
+            await say([{ type: 'text', text: 'GO' }], n++);
+            await push(hooks, id);
+            await say(parts, n++); // a bus/flagged message after the human GO closes the gate again
+            await assert.rejects(push(hooks, id), /Blocked by BDB go-gate/, name);
+        }
+    });
+
+    test('chat.message with an all-bus message mints no token and wires no pipeline', async () => {
+        const { hooks, id } = await boot();
+        const meta = { aos_bus: { from: 'master' } };
+        const out = { parts: [{ type: 'text', text: 'GO worker-1', synthetic: true, metadata: meta }, { type: 'text', text: 'GO worker-1', ignored: true, metadata: meta }] };
+        await hooks['chat.message']({ sessionID: id, messageID: 'b1' }, out);
+        assert.equal(fs.existsSync(tokenPath('worker-1')), false);
+        const pipe = { parts: [{ type: 'text', text: '/startcycle-graph go', ignored: true, metadata: meta }] };
+        await hooks['chat.message']({ sessionID: id, messageID: 'b2' }, pipe);
+        assert.equal(pipe.parts.length, 1);
+        // control: the same text from the human does mint
+        await hooks['chat.message']({ sessionID: id, messageID: 'h1' }, { parts: [{ type: 'text', text: 'GO worker-1' }] });
+        assert.equal(fs.existsSync(tokenPath('worker-1')), true);
+    });
 
     test('stale human GO does not authorize after a wake delivery', async () => {
         const { hooks, calls, id } = await boot();

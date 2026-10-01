@@ -300,6 +300,17 @@ describe('go-gate.mjs OpenCode-issued token', () => {
         assert.equal(runGate(w).status, 2);
     });
 
+    test('blocked: ignored-only, aos_bus-only and the aos-bus pair are not human text', () => {
+        const meta = { aos_bus: { from: 'master' } };
+        const pair = { id: 'msg_2', t: 2, parts: [{ type: 'text', text: 'GO worker-1', synthetic: true, metadata: meta }, { type: 'text', text: 'GO worker-1', ignored: true, metadata: meta }] };
+        for (const m of [goMsg('msg_2', 2, { ignored: true }), goMsg('msg_2', 2, { metadata: meta }), pair]) {
+            fs.rmSync(dbPath(), { force: true }); fs.rmSync(`${dbPath()}-wal`, { force: true });
+            seed([m]);
+            ocToken();
+            assert.equal(runGate(worker()).status, 2, JSON.stringify(m.parts));
+        }
+    });
+
     test('a child (non-root) session never grants GO', () => {
         seed([goMsg('msg_2', 2)], 'ses_parent');
         ocToken();
