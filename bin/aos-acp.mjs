@@ -9,7 +9,7 @@
 //   aos-acp <claude|codex|opencode|agy> --name <worker> [--cwd <dir>]
 //           (--prompt "<text>" | --prompt-file <f>) [--allow-default deny|allow]
 //           [--go-wait <sec>] [--consume|--no-consume] [--log <file>]
-//           [--timeout <sec>] [--cmd "<custom agent command>"]
+//           [--model <id>] [--timeout <sec>] [--cmd "<custom agent command>"]
 
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
@@ -130,8 +130,9 @@ export async function run(opts) {
     ? "agy has no sanctioned ACP adapter (antigravity-acp breaches Google's Antigravity terms); delegate via the mcsc skill instead"
     : `unknown adapter "${opts.adapter}" (claude|codex|opencode)`);
   if (adapter?.cwdFlag && !opts.cmd) cmd.push(adapter.cwdFlag, opts.cwd);
+  if (/fable/i.test(opts.model || "")) throw new Error(`model "${opts.model}" rejected: workers run on opus, sonnet or haiku only`);
   const consume = opts.consume ?? adapter?.consume ?? true;
-  log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume });
+  log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, model: opts.model || "adapter default" });
 
   let sessionId;
   const out = opts.stdout || process.stdout;
@@ -169,6 +170,8 @@ export async function run(opts) {
     log("initialized", { agent: init?.agentInfo, auth: init?.authMethods });
     ({ sessionId } = await client.request("session/new", { cwd: opts.cwd, mcpServers: [] }));
     log("session", { sessionId });
+    // ACP session config option "model": claude-agent-acp, codex-acp and opencode all implement it.
+    if (opts.model) await client.request("session/set_config_option", { sessionId, configId: "model", value: opts.model });
     const res = await client.request("session/prompt", { sessionId, prompt: [{ type: "text", text: opts.prompt }] });
     out.write("\n");
     log("done", { stopReason: res?.stopReason });
@@ -194,12 +197,13 @@ export function parseArgs(argv) {
     else if (a === "--go-wait") o.goWait = Number(v), i++;
     else if (a === "--timeout") o.timeout = Number(v), i++;
     else if (a === "--log") o.log = v, i++;
+    else if (a === "--model") o.model = v, i++;
     else if (a === "--cmd") o.cmd = v, i++;
     else if (a === "--consume") o.consume = true;
     else if (a === "--no-consume") o.consume = false;
     else throw new Error(`unknown argument ${a}`);
   }
-  if (!o.adapter || !o.name || !o.prompt) throw new Error("usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow] [--go-wait <sec>] [--no-consume] [--log <file>] [--timeout <sec>]");
+  if (!o.adapter || !o.name || !o.prompt) throw new Error("usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>]");
   if (!["deny", "allow"].includes(o.allowDefault)) throw new Error("--allow-default must be deny or allow");
   return o;
 }
