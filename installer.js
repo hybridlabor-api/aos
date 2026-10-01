@@ -2549,11 +2549,20 @@ function parseGoBuildInfo(text) {
 }
 
 // Never trade the installed ao for a build that is not provably newer and clean.
-function decideAoInstall({ installedExists, installed, candidate }) {
+// allowDirty: the AOS_AO_DEV_BUILD opt-in. daemonRunning/candidateIsRelease
+// only matter when the installed binary's revision is unreadable: a clean
+// published release may then replace it, but not while some daemon of unknown
+// build is running.
+function decideAoInstall({ installedExists, installed, candidate, allowDirty = false, candidateIsRelease = false, daemonRunning = true }) {
     if (!installedExists) return { install: true, reason: 'no ao installed yet' };
     if (!candidate) return { install: false, reason: 'the candidate build has no readable revision' };
-    if (candidate.modified) return { install: false, reason: `the candidate ${candidate.revision.slice(0, 9)} is a dirty build (vcs.modified=true)` };
-    if (!installed) return { install: false, reason: 'the installed binary\'s revision is unreadable, so a downgrade cannot be ruled out' };
+    if (candidate.modified && !allowDirty) return { install: false, reason: `the candidate ${candidate.revision.slice(0, 9)} is a dirty build (vcs.modified=true)` };
+    if (!installed) {
+        if (candidateIsRelease && !candidate.modified && daemonRunning === false) {
+            return { install: true, reason: `the installed binary's revision is unreadable and no daemon is running; installing the clean release ${candidate.revision.slice(0, 9)}` };
+        }
+        return { install: false, reason: 'the installed binary\'s revision is unreadable, so a downgrade cannot be ruled out' };
+    }
     if (candidate.revision === installed.revision) return { install: false, reason: `already at ${installed.revision.slice(0, 9)}` };
     const c = Date.parse(candidate.time || '');
     const i = Date.parse(installed.time || '');
@@ -2571,10 +2580,6 @@ function checkAoWorkspace(dir, git = (args) => execFileSync('git', ['--no-option
     } catch (e) {
         return { ok: false, reason: `git could not read it (${String(e.message).split('\n')[0]})` };
     }
-}
-
-function aoManualBuildCommand(dir, binTarget) {
-    return `cd "${path.join(dir, 'backend')}" && go build -ldflags='-s -w' -o "${binTarget}.new" ./cmd/ao && mv "${binTarget}.new" "${binTarget}" && ao service install`;
 }
 
 // Builds into a temp dir: a build left in the checkout's gitignored backend/bin
@@ -2611,9 +2616,26 @@ function describeAoVersion({ exists, build, record, latest }) {
     return { text: `v${version} (Up to date)`, updateAvailable: false };
 }
 
-// Back up, swap atomically, register the service, wait for :3101. A failed swap
-// or service install puts the previous binary back.
-async function installAoBinary({ src, dest, stamp = timestamp, serviceInstall, waitForDaemon }) {
+// The daemon's running.json (AO backend/internal/runfile: pid, port, startedAt).
+// pid+startedAt tells a restarted daemon from the old one still on :3101.
+function readAoDaemonIdentity(file = process.env.AO_RUN_FILE || path.join(homeDir, '.ao', 'running.json')) {
+    const data = readJsonFile(file);
+    if (!data || data.pid == null) return null;
+    return data.startedAt ? `${data.pid}@${data.startedAt}` : String(data.pid);
+}
+
+async function waitUntil(check, timeoutMs, pollMs = 300) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        if (check()) return true;
+        if (Date.now() >= deadline) return false;
+        await new Promise((r) => setTimeout(r, pollMs));
+    }
+}
+
+// Back up, swap atomically, register the service, wait for a NEW daemon on
+// :3101. A failed swap or service install puts the previous binary back.
+async function installAoBinary({ src, dest, stamp = timestamp, serviceInstall, waitForDaemon, readIdentity = readAoDaemonIdentity, restartWaitMs = AO_DAEMON_WAIT_MS }) {
     let backup = null;
     if (src) {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -2630,6 +2652,7 @@ async function installAoBinary({ src, dest, stamp = timestamp, serviceInstall, w
         }
         log.step(`Installed ao to ${dest}${backup ? ` (previous binary kept at ${backup})` : ''}`);
     }
+    const before = readIdentity();
     try {
         await serviceInstall(dest);
     } catch (e) {
@@ -2640,16 +2663,74 @@ async function installAoBinary({ src, dest, stamp = timestamp, serviceInstall, w
         log.warn(`AO service install failed: ${e.message}${backup ? `. Restored the previous ao from ${backup}` : ''}. Start it by hand with: ao service install`);
         return { ok: false, backup, restored: !!backup };
     }
+    // No identity before (file missing/unreadable): the port check is all we have.
+    const restarted = before ? await waitUntil(() => { const now = readIdentity(); return !!now && now !== before; }, restartWaitMs) : true;
     const listening = await waitForDaemon();
-    if (listening) {
+    const backupNote = backup ? ` The previous binary is at ${backup} (restore: mv "${backup}" "${dest}" && ao service install).` : '';
+    if (listening && restarted) {
         log.success('AO Orchestrator running on http://localhost:3101');
+    } else if (listening) {
+        log.warn(`AO on :3101 is still the old process (${before}); it was not restarted, probably because it does not run under the AO service. Restart it: ao service install, then check ao service status (or stop it and start it the way it was started).${backupNote}`);
     } else {
         const hint = process.platform === 'win32'
             ? 'Run `ao service install` again or log out and back in, then check `ao service status`.'
             : 'Check `ao service status` and `ao service logs`.';
-        log.warn(`AO did not answer on :3101 within ${Math.round(AO_DAEMON_WAIT_MS / 1000)}s. ${hint}${backup ? ` The previous binary is at ${backup} (restore: mv "${backup}" "${dest}" && ao service install).` : ''}`);
+        log.warn(`AO did not answer on :3101 within ${Math.round(AO_DAEMON_WAIT_MS / 1000)}s. ${hint}${backupNote}`);
     }
-    return { ok: true, backup, listening };
+    return { ok: true, backup, listening, restarted };
+}
+
+function aoPlatformBinaries(dir) {
+    const b = (...p) => path.join(dir, 'backend', ...p);
+    if (process.platform === 'win32') return [b('bin', 'ao-windows-amd64.exe'), b('bin', 'ao.exe'), b('ao.exe')];
+    const plat = process.platform === 'darwin' ? 'darwin' : 'linux';
+    const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+    return [b('bin', `ao-${plat}-${arch}`), b('ao-daemon'), b('bin', 'ao'), b('ao')];
+}
+
+// Picks the binary this run may install. A local checkout counts only when it
+// is a release source (clean, HEAD on a tag) or AOS_AO_DEV_BUILD=1 opts in;
+// otherwise the published release package is used, never the dev checkout.
+function selectAoCandidate({
+    checkoutDir, isLocalGitRepo, releaseDir,
+    devOptIn = process.env.AOS_AO_DEV_BUILD === '1',
+    dryRun = DRY_RUN,
+    checkWorkspace = checkAoWorkspace,
+    download = (dir) => downloadOrUpdateModule(AO_PKG, dir, 'BDB Agent Orchestrator'),
+    build = buildAoFromSource,
+    candidatesIn = aoPlatformBinaries,
+}) {
+    if (isLocalGitRepo) {
+        const ws = checkWorkspace(checkoutDir);
+        if (ws.ok) {
+            if (dryRun) return { bin: null, source: 'dry-run' };
+            // A prebuilt binary counts only when it was built clean from this exact HEAD.
+            const prebuilt = candidatesIn(checkoutDir).find((p) => {
+                const info = readGoBuildInfo(p);
+                return info && !info.modified && info.revision === ws.head;
+            });
+            return { bin: prebuilt || build(checkoutDir), source: 'checkout' };
+        }
+        if (devOptIn) {
+            log.warn(`AOS_AO_DEV_BUILD=1: building ao from ${checkoutDir} HEAD although ${ws.reason}; a downgrade is still refused.`);
+            if (dryRun) return { bin: null, source: 'dry-run' };
+            return { bin: build(checkoutDir), source: 'dev', allowDirty: true };
+        }
+        log.warn(`The AO checkout ${checkoutDir} is not a release source (${ws.reason}; Go also counts untracked files as uncommitted), so the published release is used. To build from the checkout instead, rerun with AOS_AO_DEV_BUILD=1.`);
+    }
+    if (fs.existsSync(path.join(releaseDir, '.git'))) {
+        log.warn(`${releaseDir} is a git checkout; not downloading the release over it. Keeping the installed ao.`);
+        return { bin: null, source: 'release-dir-is-checkout' };
+    }
+    if (dryRun) {
+        log.step(`[dry-run] would download ${AO_PKG} to ${releaseDir}`);
+        return { bin: null, source: 'dry-run' };
+    }
+    if (!download(releaseDir)) {
+        log.warn(`Could not download ${AO_PKG}; keeping the installed ao.`);
+        return { bin: null, source: 'download-failed' };
+    }
+    return { bin: candidatesIn(releaseDir).find((p) => fs.existsSync(p)) || null, source: 'release' };
 }
 
 async function installOSAgentWorkspace() {
@@ -2658,94 +2739,36 @@ async function installOSAgentWorkspace() {
         return false;
     }
 
-    const isWin = process.platform === 'win32';
-    const isMac = process.platform === 'darwin';
-    const isLinux = process.platform === 'linux';
-
-    // Discover AO directory: check local development checkouts first, then moduleBasePath
-    const candidateDirs = [
+    const releaseDir = path.join(moduleBasePath(), 'bdb-agent-orchestrator');
+    const checkoutDir = [
         path.join(homeDir, 'dev', 'agents', 'bdb-agent-orchestrator'),
         path.join(homeDir, 'dev', 'bdb-dev', 'bdb-agent-orchestrator'),
-        path.join(moduleBasePath(), 'bdb-agent-orchestrator')
-    ];
-    const osAgentDir = candidateDirs.find(d => fs.existsSync(d)) || candidateDirs[candidateDirs.length - 1];
-    const isLocalGitRepo = fs.existsSync(path.join(osAgentDir, '.git'));
+    ].find((d) => fs.existsSync(path.join(d, '.git')));
+    if (checkoutDir) log.step(`Found a local AO checkout: ${checkoutDir}`);
 
-    if (isLocalGitRepo) {
-        log.step(`Found a local AO checkout: ${osAgentDir}`);
-    } else {
-        if (!downloadOrUpdateModule(AO_PKG, osAgentDir, 'BDB Agent Orchestrator')) {
-            log.warn('Skipping AO setup: the module could not be downloaded.');
-            return false;
-        }
-    }
+    const pick = selectAoCandidate({ checkoutDir, isLocalGitRepo: !!checkoutDir, releaseDir });
     if (DRY_RUN) {
-        log.step('[dry-run] would link ao binary and run `ao service install`');
+        log.step('[dry-run] would install the ao binary and run `ao service install`');
         return;
     }
 
     const binTarget = aoBinTarget();
-
-    // Platform-specific binary lookup
-    const candidateBinaries = [];
-    if (isWin) {
-        candidateBinaries.push(
-            path.join(osAgentDir, 'backend', 'bin', 'ao-windows-amd64.exe'),
-            path.join(osAgentDir, 'backend', 'bin', 'ao.exe'),
-            path.join(osAgentDir, 'backend', 'ao.exe')
-        );
-    } else if (isMac) {
-        if (process.arch === 'arm64') {
-            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-darwin-arm64'));
-        } else {
-            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-darwin-amd64'));
-        }
-        candidateBinaries.push(
-            path.join(osAgentDir, 'backend', 'ao-daemon'),
-            path.join(osAgentDir, 'backend', 'bin', 'ao'),
-            path.join(osAgentDir, 'backend', 'ao')
-        );
-    } else if (isLinux) {
-        if (process.arch === 'arm64') {
-            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-linux-arm64'));
-        } else {
-            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-linux-amd64'));
-        }
-        candidateBinaries.push(
-            path.join(osAgentDir, 'backend', 'ao-daemon'),
-            path.join(osAgentDir, 'backend', 'bin', 'ao'),
-            path.join(osAgentDir, 'backend', 'ao')
-        );
-    }
-
-    let daemonBin = null;
-    if (isLocalGitRepo) {
-        const ws = checkAoWorkspace(osAgentDir);
-        if (!ws.ok) {
-            log.warn(`The AO checkout is not a release source: ${ws.reason}. ${fs.existsSync(binTarget) ? `Keeping ${binTarget}.` : 'No ao installed.'} To install from it anyway: ${aoManualBuildCommand(osAgentDir, binTarget)}`);
-        } else {
-            // A prebuilt binary counts only when it was built clean from this exact HEAD.
-            daemonBin = candidateBinaries.find((p) => {
-                const b = readGoBuildInfo(p);
-                return b && !b.modified && b.revision === ws.head;
-            }) || buildAoFromSource(osAgentDir);
-        }
-    } else {
-        daemonBin = candidateBinaries.find(p => fs.existsSync(p)) || buildAoFromSource(osAgentDir);
-    }
-
     const installedExists = fs.existsSync(binTarget);
     let src = null;
     let candidate = null;
-    if (daemonBin && daemonBin !== binTarget) {
-        candidate = readGoBuildInfo(daemonBin);
-        const verdict = decideAoInstall({ installedExists, installed: installedExists ? readGoBuildInfo(binTarget) : null, candidate });
-        if (verdict.install) src = daemonBin;
+    if (pick.bin) {
+        candidate = readGoBuildInfo(pick.bin);
+        const installed = installedExists ? readGoBuildInfo(binTarget) : null;
+        const daemonRunning = installedExists && !installed
+            ? (readAoDaemonIdentity() !== null || await verifyDaemonListening(3101, 'AO Orchestrator', 1500))
+            : true;
+        const verdict = decideAoInstall({ installedExists, installed, candidate, allowDirty: !!pick.allowDirty, candidateIsRelease: pick.source === 'release', daemonRunning });
+        if (verdict.install) src = pick.bin;
         else log.step(`Keeping ${binTarget}: ${verdict.reason}.`);
     }
 
     if (!src && !installedExists) {
-        log.warn(`AO binary missing in ${osAgentDir} — package layout changed or Go build needed.`);
+        log.warn(`No ao binary could be installed (${pick.source}).`);
         return false;
     }
     // Unchanged binary and a live daemon: nothing to restart.
@@ -2761,8 +2784,8 @@ async function installOSAgentWorkspace() {
         waitForDaemon: () => verifyDaemonListening(3101, 'AO Orchestrator', AO_DAEMON_WAIT_MS),
     });
     if (result.ok && src) {
-        const pkgJson = readJsonFile(path.join(osAgentDir, 'package.json')) || {};
-        saveManifest({ ao: { version: pkgJson.version || null, revision: candidate ? candidate.revision : null, modified: !!(candidate && candidate.modified), installedAt: new Date().toISOString() } });
+        const pkgJson = readJsonFile(path.join(pick.source === 'release' ? releaseDir : checkoutDir, 'package.json')) || {};
+        saveManifest({ ao: { version: pick.source === 'dev' ? null : (pkgJson.version || null), revision: candidate ? candidate.revision : null, modified: !!(candidate && candidate.modified), installedAt: new Date().toISOString() } });
     }
     return result.ok ? undefined : false;
 }
@@ -6111,6 +6134,8 @@ module.exports = {
     decideAoInstall,
     checkAoWorkspace,
     installAoBinary,
+    readAoDaemonIdentity,
+    selectAoCandidate,
     describeAoVersion,
     buildAoAnnouncementBanner,
     agentsNotShippedAsFiles,

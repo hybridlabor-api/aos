@@ -9,11 +9,13 @@ const path = require('path');
 const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-qu-home-'));
 process.env.HOME = tmpHome;
 process.env.USERPROFILE = tmpHome;
+delete process.env.AO_RUN_FILE;
+delete process.env.AOS_AO_DEV_BUILD;
 test.after(() => fs.rmSync(tmpHome, { recursive: true, force: true }));
 
 const {
     readGoBuildInfo, parseGoBuildInfo, decideAoInstall, checkAoWorkspace, installAoBinary,
-    describeAoVersion, buildAoAnnouncementBanner, agentsNotShippedAsFiles, parseAgentsMd,
+    describeAoVersion, buildAoAnnouncementBanner, readAoDaemonIdentity, selectAoCandidate, agentsNotShippedAsFiles, parseAgentsMd,
     resolveFileConflict, buildKnownSourceHashes, computeFileHash,
 } = require('../installer.js');
 
@@ -122,7 +124,7 @@ test('installAoBinary backs up the previous binary, swaps, and waits for the dae
         serviceInstall: async (bin) => { calls.push(['service', fs.readFileSync(bin, 'utf8')]); },
         waitForDaemon: async () => { calls.push(['wait']); return true; },
     });
-    assert.deepStrictEqual(r, { ok: true, backup: `${dest}.bak-T1`, listening: true });
+    assert.deepStrictEqual(r, { ok: true, backup: `${dest}.bak-T1`, listening: true, restarted: true });
     assert.strictEqual(fs.readFileSync(dest, 'utf8'), 'NEW-BINARY');
     assert.strictEqual(fs.readFileSync(`${dest}.bak-T1`, 'utf8'), 'OLD-BINARY');
     assert.deepStrictEqual(calls, [['service', 'NEW-BINARY'], ['wait']]);
@@ -147,7 +149,7 @@ test('installAoBinary restores the backup when the service install fails', async
 test('installAoBinary reports a silent daemon without claiming success and keeps the backup', async () => {
     const { dest, src } = aoFixture();
     const r = await installAoBinary({ src, dest, stamp: 'T3', serviceInstall: async () => {}, waitForDaemon: async () => false });
-    assert.deepStrictEqual(r, { ok: true, backup: `${dest}.bak-T3`, listening: false });
+    assert.deepStrictEqual(r, { ok: true, backup: `${dest}.bak-T3`, listening: false, restarted: true });
     assert.strictEqual(fs.readFileSync(`${dest}.bak-T3`, 'utf8'), 'OLD-BINARY');
 });
 
@@ -227,4 +229,129 @@ test('the AO announcement banner is English and its box is aligned', () => {
     for (const word of german) assert.ok(!plain.includes(word), `banner still contains German "${word}"`);
     const widths = new Set(plain.split('\n').map((l) => [...l].length));
     assert.deepStrictEqual([...widths], [80]);
+});
+
+test('readAoDaemonIdentity uses pid+startedAt, pid alone, or null when running.json is missing', () => {
+    const dir = tmpDir();
+    const f = path.join(dir, 'running.json');
+    assert.strictEqual(readAoDaemonIdentity(f), null);
+    fs.writeFileSync(f, JSON.stringify({ pid: 42, port: 3101, startedAt: '2026-10-01T20:00:00Z' }));
+    assert.strictEqual(readAoDaemonIdentity(f), '42@2026-10-01T20:00:00Z');
+    fs.writeFileSync(f, JSON.stringify({ pid: 42, port: 3101 }));
+    assert.strictEqual(readAoDaemonIdentity(f), '42');
+    fs.writeFileSync(f, 'garbage');
+    assert.strictEqual(readAoDaemonIdentity(f), null);
+});
+
+test('restart wait: a changed daemon identity after the service install is a success', async () => {
+    const { dest, src } = aoFixture();
+    let id = '100@t0';
+    const r = await installAoBinary({
+        src, dest, stamp: 'R1', restartWaitMs: 2000,
+        readIdentity: () => id,
+        serviceInstall: async () => { setTimeout(() => { id = '200@t1'; }, 50); },
+        waitForDaemon: async () => true,
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.restarted, true);
+    assert.strictEqual(r.listening, true);
+});
+
+test('restart wait: an unchanged identity on :3101 is not reported as success', async () => {
+    const { dest, src } = aoFixture();
+    const r = await installAoBinary({
+        src, dest, stamp: 'R2', restartWaitMs: 100,
+        readIdentity: () => '100@t0',
+        serviceInstall: async () => {},
+        waitForDaemon: async () => true,
+    });
+    assert.strictEqual(r.listening, true);
+    assert.strictEqual(r.restarted, false, 'the old process still answers');
+    assert.strictEqual(fs.readFileSync(`${dest}.bak-R2`, 'utf8'), 'OLD-BINARY');
+});
+
+test('restart wait: without running.json only the port check decides', async () => {
+    const { dest, src } = aoFixture();
+    let waited = 0;
+    const r = await installAoBinary({
+        src, dest, stamp: 'R3', restartWaitMs: 5000,
+        readIdentity: () => null,
+        serviceInstall: async () => {},
+        waitForDaemon: async () => { waited++; return true; },
+    });
+    assert.deepStrictEqual([r.restarted, r.listening, waited], [true, true, 1]);
+});
+
+function selectFixture(overrides = {}) {
+    const calls = { download: [], build: [] };
+    const deps = {
+        checkoutDir: '/dev/ao', isLocalGitRepo: true, releaseDir: '/mods/ao', devOptIn: false, dryRun: false,
+        checkWorkspace: () => ({ ok: false, reason: 'it has uncommitted or untracked changes' }),
+        download: (dir) => { calls.download.push(dir); return true; },
+        build: (dir) => { calls.build.push(dir); return `${dir}/built-ao`; },
+        candidatesIn: (dir) => [`${dir}/backend/bin/ao-test`],
+        ...overrides,
+    };
+    return { deps, calls };
+}
+
+test('release fallback: a dirty or untagged checkout uses the published package, never the checkout', () => {
+    const real = fs.existsSync;
+    fs.existsSync = (p) => p === '/mods/ao/backend/bin/ao-test' || real(p);
+    try {
+        for (const reason of ['it has uncommitted or untracked changes', 'HEAD is not on a release tag']) {
+            const { deps, calls } = selectFixture({ checkWorkspace: () => ({ ok: false, reason }) });
+            assert.deepStrictEqual(selectAoCandidate(deps), { bin: '/mods/ao/backend/bin/ao-test', source: 'release' });
+            assert.deepStrictEqual(calls, { download: ['/mods/ao'], build: [] });
+        }
+    } finally { fs.existsSync = real; }
+});
+
+test('release fallback: nothing is downloaded under --dry-run', () => {
+    const { deps, calls } = selectFixture({ dryRun: true });
+    assert.strictEqual(selectAoCandidate(deps).bin, null);
+    assert.deepStrictEqual(calls, { download: [], build: [] });
+});
+
+test('release fallback: a failed download keeps the installed binary', () => {
+    const { deps } = selectFixture({ download: () => false });
+    assert.deepStrictEqual(selectAoCandidate(deps), { bin: null, source: 'download-failed' });
+});
+
+test('dev-build opt-in: AOS_AO_DEV_BUILD rebuilds from HEAD, never a stale backend/bin artifact', () => {
+    const on = selectFixture({ devOptIn: true });
+    assert.deepStrictEqual(selectAoCandidate(on.deps), { bin: '/dev/ao/built-ao', source: 'dev', allowDirty: true });
+    assert.deepStrictEqual(on.calls, { download: [], build: ['/dev/ao'] });
+
+    const off = selectFixture({ devOptIn: false, download: () => false });
+    assert.strictEqual(selectAoCandidate(off.deps).source, 'download-failed');
+    assert.deepStrictEqual(off.calls.build, []);
+});
+
+test('dev-build opt-in still refuses a downgrade by vcs.time; dirty is allowed only with the opt-in', () => {
+    const olderDirty = { ...OLD, modified: true };
+    const newerDirty = NEW_DIRTY;
+    assert.strictEqual(decideAoInstall({ installedExists: true, installed: NEW, candidate: olderDirty, allowDirty: true }).install, false);
+    assert.strictEqual(decideAoInstall({ installedExists: true, installed: NEW, candidate: newerDirty, allowDirty: true }).install, true);
+    assert.strictEqual(decideAoInstall({ installedExists: true, installed: NEW, candidate: newerDirty }).install, false);
+});
+
+test('a release candidate older than the installed build is refused', () => {
+    assert.strictEqual(decideAoInstall({ installedExists: true, installed: NEW, candidate: OLD, candidateIsRelease: true }).install, false);
+});
+
+test('unreadable installed binary: a clean release replaces it only when no daemon is running', () => {
+    const base = { installedExists: true, installed: null, candidate: NEW, candidateIsRelease: true };
+    assert.strictEqual(decideAoInstall({ ...base, daemonRunning: false }).install, true);
+    assert.strictEqual(decideAoInstall({ ...base, daemonRunning: true }).install, false);
+    assert.strictEqual(decideAoInstall({ ...base, candidateIsRelease: false, daemonRunning: false }).install, false);
+    assert.strictEqual(decideAoInstall({ ...base, candidate: NEW_DIRTY, daemonRunning: false, allowDirty: true }).install, false);
+});
+
+test('release fallback never downloads into a git checkout', () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, '.git'));
+    const { deps, calls } = selectFixture({ releaseDir: dir });
+    assert.strictEqual(selectAoCandidate(deps).bin, null);
+    assert.deepStrictEqual(calls.download, []);
 });
