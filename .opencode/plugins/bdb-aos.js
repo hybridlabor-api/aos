@@ -23,6 +23,8 @@ import path from 'node:path';
 // so a broken installed hook fails loudly instead of silently falling back.
 const HOOKS = existsSync(new URL('./aos-hooks/go-gate.mjs', import.meta.url)) ? './aos-hooks/' : '../../.claude/hooks/';
 const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
+// `opencode run "..."` is scriptable by an agent, so it never sets gogate modes or grants
+const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
 const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus, { applyGogate }] =
   await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs'].map(hook));
 const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog } = gate;
@@ -380,9 +382,9 @@ export default async function bdbAosPlugin(input) {
         if (!s.parentID) issueGoToken(fullText, { session_id: msgInput.sessionID, message_id: msgInput.messageID || msgOutput.message?.id });
       } catch {}
 
-      // /bdb-aos:gogate from the human in a root session: record it; the gate verifies it against opencode.db at use.
+      // plain `gogate ...` message from the human in a root session: record it; the gate verifies it against opencode.db at use.
       try {
-        const reply = s.parentID ? null : applyGogate(fullText, { key: ocKey(msgInput.sessionID), source: `opencode:${msgInput.sessionID}`, uuid: msgInput.messageID || msgOutput.message?.id || null, opencode: true });
+        const reply = s.parentID || OPENCODE_RUN ? null : applyGogate(fullText, { key: ocKey(msgInput.sessionID), source: `opencode:${msgInput.sessionID}`, uuid: msgInput.messageID || msgOutput.message?.id || null, opencode: true });
         if (reply) msgOutput.parts.unshift({ id: `gogate-${Date.now()}`, sessionID: msgInput.sessionID, messageID: msgInput.messageID || '', type: 'text', text: reply, synthetic: true });
       } catch {}
 

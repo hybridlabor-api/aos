@@ -86,7 +86,7 @@ function gateStoreTarget(filePath) {
 export function envFileReason(filePath) {
   if (typeof filePath !== "string" || !filePath.trim()) return null;
   if (gateStoreTarget(filePath)) {
-    return `Blocked by env-file-protection hook: ${filePath} is in the AOS go-gate store. Modes and grants are set only by the human typing /bdb-aos:gogate; agents may read the status, never write it.`;
+    return `Blocked by env-file-protection hook: ${filePath} is in the AOS go-gate store. Modes and grants are set only by the human typing a plain "gogate ..." message; agents may read the status, never write it.`;
   }
   // basename(), so a path like /srv/app/.env matches but /srv/app/env-notes.md does not.
   const name = basename(filePath);

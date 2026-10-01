@@ -181,12 +181,12 @@ describe('M3 protected branches', () => {
             assert.ok(!pushFeatureOnly(g.commandScopes(c)), c);
         }
     });
-    test('the remote HEAD replaces the fallback list when it resolves; failures fall back; env adds', () => {
+    test('the remote HEAD extends the fallback list when it resolves; failures fall back; env adds', () => {
         const calls = [];
         const okRun = (cmd, args) => { calls.push([cmd, ...args]); return { status: 0, stdout: 'origin/dev\n' }; };
         const r = g.makeBranchResolver(home, okRun);
         assert.ok(!pushFeatureOnly(g.commandScopes('git push origin feat:dev', r)));
-        assert.ok(pushFeatureOnly(g.commandScopes('git push origin feat:develop', r)));
+        assert.ok(!pushFeatureOnly(g.commandScopes('git push origin feat:develop', r)));
         assert.ok(!pushFeatureOnly(g.commandScopes('git push origin feat:main', r)));
         assert.deepEqual(calls[0], ['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
         const boom = g.makeBranchResolver(home, () => { throw new Error('no git'); });
@@ -250,4 +250,13 @@ describe('low findings', () => {
         add(human('x'));
         ok('gh pr merge 5');
     });
+});
+
+// round-4 regressions (third review)
+test('round4: read-only commands are not guarded, writes stay guarded', async () => {
+  const { classify } = await import('../.claude/hooks/go-gate.mjs');
+  for (const c of ['npm view @bdb/aos version', 'npm pkg get version', 'git config --get remote.origin.url', 'git config push.default', "node -e \"console.log('push')\"", 'git log --format="%s (push)"'])
+    assert.deepStrictEqual(classify(c), [], c);
+  assert.strictEqual(classify('git config push.default simple'), null);
+  assert.deepStrictEqual(classify('npm version patch'), ['publish']);
 });

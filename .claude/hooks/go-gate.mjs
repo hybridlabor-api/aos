@@ -99,6 +99,7 @@ export const GUARDED_PATTERNS = [
   // Residual risk: keystrokes into a resumed TUI (tmux send-keys, osascript) look exactly
   // like a human typing and cannot be told apart by any hook.
   re(String.raw`opencode\s+run\b${S}\s(?:-[a-zA-Z]*[sc]\S*|--session|--continue)(?=[\s=]|$)`, ""),
+  re(String.raw`claude\b${S}\s(?:-[a-zA-Z]*[cr]\S*|--resume|--continue)(?=[\s=]|$)`, ""),
   re(String.raw`opencode\s+attach\b`),
   /\/session\/[^\s/'"]+\/(?:message|prompt_async|command|shell)\b/i,
   /\/\/[^\s'"]*\/tui\/|\/tui\/(?:append|submit|clear|execute|open|show|publish|control)/i,
@@ -163,7 +164,7 @@ function stripPrefix(tok) {
 // Branches a push-feature grant never covers. Default: main/master plus the usual long-lived
 // names; at gate time the remote's HEAD (git symbolic-ref) replaces the long list when it
 // resolves. AOS_GATE_PROTECTED_BRANCHES adds a comma list. `release-*` style globs allowed.
-export const FALLBACK_PROTECTED = ["main", "master", "develop", "trunk", "production", "release", "release-*"];
+export const FALLBACK_PROTECTED = ["main", "master", "develop", "trunk", "production", "release", "release-*", "release/*"];
 const envProtected = () => String(process.env.AOS_GATE_PROTECTED_BRANCHES || "").split(",").map((s) => s.trim()).filter(Boolean);
 const isProtected = (branch, list) => list.some((p) => new RegExp(`^${p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`, "i").test(branch));
 
@@ -178,7 +179,7 @@ export function makeBranchResolver(cwd, run) {
       if (/^[A-Za-z0-9._-]+$/.test(remote) && run) {
         const r = run("git", ["symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`], { cwd, encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
         const head = r && r.status === 0 ? String(r.stdout).trim().replace(new RegExp(`^${remote}/`), "") : "";
-        if (/^[A-Za-z0-9._/-]+$/.test(head)) list = ["main", "master", head];
+        if (/^[A-Za-z0-9._/-]+$/.test(head)) list.push(head);
       }
     } catch { /* fall back */ }
     list.push(...envProtected());
@@ -269,7 +270,11 @@ export function classify(seg, protectedFor = staticResolver) {
       return del ? ["destructive"] : [];
     }
     if (sub === "worktree" && r[0] === "remove") return ["destructive"];
-    if (sub === "config" && r.some((t) => PUSHY_CONFIG.test(t))) return null;
+    if (sub === "config" && r.some((t) => PUSHY_CONFIG.test(t))) {
+      const args = r.filter((t) => !t.startsWith("-"));
+      const read = r.some((t) => /^(?:--get\S*|--list|-l)$/.test(t)) || (args.length === 1 && !r.some((t) => /^--(?:add|unset\S*|replace-all|edit|rename-section|remove-section)$|^-e$/.test(t)));
+      return read ? [] : null;
+    }
     return [];
   }
   if (PM.test(cmd) || cmd === "npx") {
@@ -278,7 +283,7 @@ export function classify(seg, protectedFor = staticResolver) {
     while (unq(tok[i] ?? "").startsWith("-")) i += NPM_VALUE_OPTS.test(unq(tok[i])) ? 2 : 1;
     const sub = unq(tok[i]), next = unq(tok[i + 1]);
     if (/^(?:publish|version)$/.test(sub) || (cmd === "yarn" && sub === "npm" && next === "publish")) return ["publish"];
-    return catchAll(tok, seg) ? null : [];
+    return /^(?:run|run-script|exec|x|dlx)$/.test(sub) && catchAll(tok, seg) ? null : [];
   }
   if (cmd === "rm") {
     const r = tok.slice(1).map(unq);
@@ -295,11 +300,12 @@ export function classify(seg, protectedFor = staticResolver) {
     if (a === "repo" && /^(?:create|edit|delete)$/.test(b)) return ["github-write"];
     if (a === "api") {
       const s = [b, ...rest].join(" ");
+      if (b === "graphql" && !/mutation/i.test(s) && !/(?:-X|--method)/i.test(s)) return [];
       if (/(?:^|\s)(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b/i.test(s) || /(?:^|\s)(?:-[fF]|--field|--raw-field|--input)/.test(s)) return ["github-write"];
     }
     return [];
   }
-  if (/^(?:push|publish)$/.test(cmd)) return null; // the program name was computed: `$(echo git) push`
+  if (/^(?:push|publish)$/.test(tok[0] ?? "")) return null; // the program name was computed: `$(echo git) push`
   return catchAll(tok, seg) ? null : [];
 }
 
@@ -662,7 +668,7 @@ export function claudeGogateCommands(transcriptPath) {
   const out = [];
   try {
     for (const line of fileLines(transcriptPath)) {
-      if (!line.includes("gogate") || !line.includes('"user"')) continue;
+      if (!/gogate/i.test(line) || !line.includes('"user"')) continue;
       const e = parseEntry(line);
       if (!e || e.type !== "user" || !isHumanEntry(e)) continue;
       const text = extractClaudeText(e.message?.content ?? e.content).trim();
