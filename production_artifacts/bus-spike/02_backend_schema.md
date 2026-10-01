@@ -50,3 +50,22 @@ Open
 - **[open]** A3: no teardown of the poll interval / exit listener (no dispose hook)
 
 Results: `npm test` exit 0 (`aos-bus.test.js` 12/12); smoke all PASS, no leaked daemon.
+
+## Repair round 2
+Blocking
+- **BUS-04 fixed:** each inbox file is claimed by `rename(<x>.json, <x>.inflight)` before `session.prompt`; a failed rename skips the message. Success unlinks the claim; busy renames it back to `.json`; other errors go to `.failed`; timeouts to `.timeout`. `readInbox` only lists `*.json`, so `.inflight` is ignored. Test: A has a 300 ms prompt, B takes the name mid-tick, 6 messages delivered exactly once (mutation-checked: fails without the claim)
+- **BUS-05 fixed:** `ensureBus` retries only when the error is not `invalid session name`. Test: `~/.aos/bus` is a plain file, registration fails, file removed, next idle registers; `.bad` logs once over 3 idles
+
+Advisories
+- **R2-A1 fixed:** timeout parks as `.timeout` (test); busy cap is measured from the first busy attempt (in-memory `Map` keyed by file) not mtime
+- **R2-A4 fixed:** smoke uses `grep $'^smoke\t'`
+- `docs/master-session-acp.md` "Delivery rules" describes claim, busy retry, timeout
+- **R2-A2, R2-A3 skipped:** liveness / sibling-instance edge cases, unchanged
+
+### Contract deltas (vs `00_execution_plan.md` `{#plugin-poll}`, not edited; for the dispatcher to ratify)
+1. Poll delivers only if the registry shows this pid and session as owner (round 1).
+2. Per-message atomic claim via `.inflight` rename before prompting; busy returns the file to `.json`.
+3. Busy retry up to 10 min from the first busy attempt (`AOS_BUS_BUSY_MAX_MS`), in-memory, lost on restart (then the clock restarts); then `.failed`. The plan said "no retry loop".
+4. Prompt timeout 10 min (`AOS_BUS_PROMPT_TIMEOUT_MS`); the prompt is not aborted. Result file `.timeout` (delivery unknown), distinct from `.failed` (not delivered).
+5. Registration failure is logged; invalid name is not retried, transient errors retry on the next idle / chat.message.
+6. Session names starting with `.` are rejected; `from` is sanitized (control chars and `]` stripped, 64 chars), non-finite `ts` dropped (round 1).
