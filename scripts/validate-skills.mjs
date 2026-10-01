@@ -350,7 +350,7 @@ function validate() {
       }
     }
 
-    if (byKey.has('kind')) for (const f of checkPlaybook(byKey, known)) findings.push({ ...f, file: rel });
+    for (const f of checkPlaybook(byKey, known)) findings.push({ ...f, file: rel });
 
     checkLeakedPaths(text, rel, findings);
     checkLocalRefs(text, dir, rel, findings);

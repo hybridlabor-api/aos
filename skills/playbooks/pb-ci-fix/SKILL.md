@@ -30,16 +30,16 @@ What you get: a green GitHub Actions run on a pushed commit, with the cause and 
 - failing_run_id (optional) — from the GitHub Actions page; otherwise the latest failed run
 
 ## Steps
-1. github — repo → `gh run list --limit 5` and `gh run view <id> --log-failed` excerpt in the run log — failing job and step named; no workflows exist → go to step 4 (setup path)
+1. github — repo → `gh run list --limit 5` (gh missing, not authenticated, or no GitHub remote → log it, give the `gh auth login` / remote hint, stop) and `gh run view <id> --log-failed` excerpt in the run log — failing job and step named; no workflows exist → go to step 4 (setup path; skips steps 2, 3 and 6, and step 7 runs the new workflow's commands locally)
 2. deja-memory — error text → `deja fix` result in the run log — prior fix found, or "none"
-3. systematic-debugging — failing step → root cause and a local repro command — repro fails locally, or the reason it cannot run locally
+3. systematic-debugging — failing step → root cause and a local repro command — repro fails locally, or the reason it cannot run locally (a config-only fault: the validator or step commands are the repro for step 7)
 4. ci-pipeline (no workflows) or github-actions-generator (patch) — root cause → `.github/workflows/*.yml` diff — diff touches only the cause
 5. github-actions-validator — workflows → validator report — zero errors after the mandatory rerun
 6. bdbresilience — only if step 3 classified the failure as transient → retry or timeout on that step only — no blanket retries
 7. verification-before-completion — repro command → fresh passing output pasted in the run log — output pasted, not claimed
-8. git commit `ci: <cause>` — diff → SHA in the run log — commit hook passes
-9. [GO] git push — SHA → remote branch — The run stops here until the human types GO. Each retry cycle that pushes again needs its own fresh GO here.
-10. github — SHA → `gh run watch <id> --exit-status` — `gh run list --commit <sha> --json conclusion -q '.[0].conclusion'` equals `success`; otherwise back to step 3, at most 2 cycles (each push behind a fresh GO at step 9), then stop and escalate
+8. git commit `ci: <cause>` — stage only the changed `.github/workflows/*` files (never the run log) → SHA in the run log — commit hook passes
+9. [GO] git push — SHA → remote branch (name the branch in the WAITING FOR GO line) — The run stops here until the human types GO. Each retry cycle that pushes again needs its own fresh GO here.
+10. github — SHA → `<id>` from `gh run list --commit <sha> --limit 1 --json databaseId` (wait until it exists), then `gh run watch <id> --exit-status` — `gh run list --commit <sha> --json conclusion -q '.[0].conclusion'` equals `success`; otherwise back to step 3, at most 2 cycles (each push behind a fresh GO at step 9), then stop and escalate
 
 Run log: `production_artifacts/pb-ci-fix-<date>.md`
 
