@@ -49,3 +49,18 @@ Double gate: opencode and claude workers also run their own AOS gate inside the 
 - OpenCode token path end to end needs the installed plugin updated; verified by unit test only.
 - Neither live adapter sent `session/request_permission` for a shell command in the smoke runs (the inner gate answered first); the mapping is covered by the fake-agent tests.
 - One `aos-acp` process per worker; no resume (`session/load`) and no concurrency cap yet.
+
+## Bus (spike): messaging a hand-started OpenCode session
+
+A master can drop a message into a running OpenCode session (no `--port`, no restart). OpenCode only.
+
+- **Paths:** registry `~/.aos/bus/sessions/<name>.json` (0600), inbox `~/.aos/bus/inbox/<name>/` (0700), one `<ms>-<rand>.json` per message. `<name>` is `slug(AOS_SESSION_NAME)`, else the OpenCode session id. The inbox path is always derived from the name, never from the registry file.
+- **CLI:** `aos-bus send <name> <text...> [--from x] [--wake]`, `aos-bus list`. Exit 2 with a reason on refusal (unregistered or dead pid, inbox not a private real dir owned by you, text over 8 KiB).
+- **Injection:** the plugin polls the inbox every 1 s and calls `client.session.prompt` with `noReply: true` (`false` with `--wake`) and one text part `[aos-bus from <from>] <text>`, `synthetic: true`, `metadata.aos_bus`. The API has no non-user message, so the stored row is `role: user`; exclusion from GO rests on the part flag.
+- **GO exclusion (3 layers):** `synthetic: true` (existing `!synthetic` filters in `chat.message`, the `session.messages` fallback and `opencodeLastUser`); the `[aos-bus from ...]` prefix, so the text can never be `GO` or `GO <name>`; the plugin clears its cached prompt before each injection and returns early from `chat.message` for all-synthetic messages.
+- **Fail-closed side effect:** a bus message becomes the newest user row, so the last human `GO` no longer opens that session's gate, and a pending OpenCode-issued `GO <worker>` token for it is invalidated. The human re-types GO.
+- **Delivery rules:** only the registered owner (pid + session) polls. Each file is claimed by renaming `<x>.json` to `<x>.inflight` before the prompt, so a message is delivered by at most one process; a failed claim means someone else has it. Success deletes the claim. A busy session gets the file renamed back to `.json` and retried every tick for up to 10 min counted from the first busy attempt (`AOS_BUS_BUSY_MAX_MS`), then `.failed`. A prompt not finished within 10 min (`AOS_BUS_PROMPT_TIMEOUT_MS`) is parked as `.timeout`: the prompt is not aborted, so delivery state is unknown and it must not be resent blindly. Any other error parks the file as `.failed` (not delivered).
+- **Smoke:** `tests/aos-bus-smoke.sh` (opt-in, isolated HOME/XDG, `opencode serve`).
+  - **[verified]** `synthetic: true`, prefix and `metadata.aos_bus` persist in `opencode.db`; no token file; `tokenGrantsGo` rejects a token pointing at the bus message.
+  - **[open]** TUI mode (toast, plugin client without `--port`), `--wake` (needs model credentials), real busy-session behaviour.
+- **Out of scope:** Claude Code receivers (native `SendMessage`), Codex/agy, AO daemon, slash commands, agenttrail roster, replies/acks/expiry, `fs.watch`, authenticating `from` beyond file-owner uid.

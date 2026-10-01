@@ -150,7 +150,8 @@ function opencodeLastUser(sessionId) {
     if (!msg) return null;
     const text = db.prepare("SELECT data FROM part WHERE message_id = ? ORDER BY id").all(msg.id)
       .map((r) => JSON.parse(r.data))
-      .filter((p) => p?.type === "text" && !p.synthetic && typeof p.text === "string")
+      // synthetic = model-only, ignored = display-only, aos_bus = bus delivery: none is a human turn.
+      .filter((p) => p?.type === "text" && !p.synthetic && !p.ignored && !p.metadata?.aos_bus && typeof p.text === "string")
       .map((p) => p.text)
       .join("\n")
       .trim();
