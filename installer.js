@@ -3774,6 +3774,16 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         }
     }
 
+    // The plugin imports its decision logic from ./aos-hooks/ next to itself.
+    const hooksSrc = path.join(srcDir, '.claude', 'hooks');
+    if (fs.existsSync(hooksSrc)) {
+        try {
+            copyDirRecursiveSync(hooksSrc, path.join(opencodeDir, 'plugins', 'aos-hooks'));
+        } catch (e) {
+            log.warn(`Could not install OpenCode plugin hooks: ${e.message}`);
+        }
+    }
+
     // Slash-command payloads. Without these the /startcycle-graph command has no
     // native resolution and only survives as a raw-text match in the plugin.
     const commandsSrc = path.join(srcDir, '.opencode', 'commands');

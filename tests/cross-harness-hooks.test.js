@@ -249,17 +249,16 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(fs.existsSync(agyCliHookFile), 'go-gate.mjs must be copied to ~/.gemini/antigravity-cli/hooks/');
         });
 
-        test('OpenCode plugin carries complete set of guarded patterns', () => {
+        test('OpenCode plugin sources the complete set of guarded patterns from go-gate', () => {
             const pluginPath = path.join(REPO_ROOT, '.opencode', 'plugins', 'bdb-aos.js');
             assert.ok(fs.existsSync(pluginPath), 'bdb-aos.js plugin must exist');
-            const content = fs.readFileSync(pluginPath, 'utf8');
+            const plugin = fs.readFileSync(pluginPath, 'utf8');
+            assert.ok(/GUARDED_PATTERNS/.test(plugin) && plugin.includes('go-gate.mjs'), 'plugin must import GUARDED_PATTERNS from go-gate.mjs');
 
-            assert.ok(content.includes('git\\s+push'), 'OpenCode plugin must guard git push');
-            assert.ok(content.includes('npm\\s+publish'), 'OpenCode plugin must guard npm publish');
-            assert.ok(content.includes('gh\\s+pr\\s+merge'), 'OpenCode plugin must guard gh pr merge');
-            assert.ok(content.includes('gh\\s+release\\s+create'), 'OpenCode plugin must guard gh release create');
-            assert.ok(content.includes('git\\s+reset\\s+--hard'), 'OpenCode plugin must guard git reset --hard');
-            assert.ok(content.includes('git\\s+clean'), 'OpenCode plugin must guard git clean');
+            const gate = fs.readFileSync(path.join(REPO_ROOT, '.claude', 'hooks', 'go-gate.mjs'), 'utf8');
+            for (const p of ['git\\s+push', 'npm\\s+publish', 'gh\\s+pr\\s+merge', 'gh\\s+release\\s+create', 'git\\s+reset\\s+--hard', 'git\\s+clean']) {
+                assert.ok(gate.includes(p), `go-gate.mjs must guard ${p}`);
+            }
         });
     });
 
@@ -307,6 +306,20 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 cfg.plugin.some(p => String(p).includes('bdb-aos')),
                 'bdb-aos.js must be registered in the plugin array'
             );
+        });
+
+        test('hooks are copied to plugins/aos-hooks and the plugin stays registered once', () => {
+            const cfgPath = path.join(tmpDir, '.config', 'opencode', 'opencode.jsonc');
+            run(CALL(cfgPath));
+            const dest = path.join(tmpDir, '.config', 'opencode', 'plugins', 'aos-hooks');
+            for (const f of ['go-gate', 'go-token', 'conventional-commits', 'env-file-protection', 'memb-inject']) {
+                const copy = path.join(dest, `${f}.mjs`);
+                assert.ok(fs.existsSync(copy), `${f}.mjs must land in aos-hooks`);
+                assert.deepStrictEqual(fs.readFileSync(copy), fs.readFileSync(path.join(REPO_ROOT, '.claude', 'hooks', `${f}.mjs`)));
+            }
+            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+            assert.strictEqual(cfg.plugin.filter(p => String(p).includes('bdb-aos')).length, 1);
+            assert.ok(!cfg.plugin.some(p => String(p).includes('aos-hooks')), 'aos-hooks must not be registered as a plugin');
         });
 
         test('is idempotent -- a second run does not duplicate the registration', () => {
@@ -444,11 +457,11 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
-        test('hook carries version stamp 6', () => {
+        test('hook carries version stamp 7', () => {
             const content = fs.readFileSync(MEMB_INJECT_SRC, 'utf8');
             const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
             assert.ok(m, 'memb-inject.mjs must contain aos-hook-version header');
-            assert.equal(m[1], '6', `Expected version 6, got ${m[1]}`);
+            assert.equal(m[1], '7', `Expected version 7, got ${m[1]}`);
         });
 
         test('parses Antigravity workspacePaths input and returns tri-format JSON', () => {
@@ -565,12 +578,12 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 'SKILL.md must not claim only Claude Code has hooks');
         });
 
-        test('aos-doctor.mjs expects hook version 6 for memb-inject.mjs', () => {
+        test('aos-doctor.mjs expects hook version 7 for memb-inject.mjs', () => {
             assert.ok(fs.existsSync(DOCTOR_SRC), 'aos-doctor.mjs must exist');
             const doc = fs.readFileSync(DOCTOR_SRC, 'utf8');
 
-            assert.ok(/'memb-inject\.mjs':\s*6\b/.test(doc),
-                'EXPECTED_VERSION in aos-doctor.mjs must specify 6 for memb-inject.mjs');
+            assert.ok(/'memb-inject\.mjs':\s*7\b/.test(doc),
+                'EXPECTED_VERSION in aos-doctor.mjs must specify 7 for memb-inject.mjs');
         });
 
         test('aos-doctor.mjs inspects hook wiring across detected harnesses', () => {
