@@ -133,6 +133,51 @@ describe('plugin delivery', () => {
         assert.equal(b.length, 4);
     });
 
+    test('ownership moving mid-tick delivers every message exactly once', async () => {
+        process.env.AOS_SESSION_NAME = 'hand';
+        const got = [];
+        const mk = () => ({ name: 'hand', prompt: async (x) => { await new Promise((r) => setTimeout(r, 300)); got.push(x.body.parts[0].text); return { data: {} }; } });
+        await boot(mk());
+        for (let i = 0; i < 6; i++) lib.sendMessage('hand', `m${i}`);
+        await new Promise((r) => setTimeout(r, 1300)); // A is mid-tick
+        await boot(mk());
+        await waitFor(() => got.length >= 6, 8000);
+        await new Promise((r) => setTimeout(r, 1500));
+        assert.deepEqual(got.map((t) => t.split('] ')[1]).sort(), ['m0', 'm1', 'm2', 'm3', 'm4', 'm5']);
+    });
+
+    test('a timed-out prompt is parked as .timeout, not .failed', async () => {
+        process.env.AOS_BUS_PROMPT_TIMEOUT_MS = '50';
+        const { id } = await boot({ prompt: () => new Promise(() => {}) });
+        delete process.env.AOS_BUS_PROMPT_TIMEOUT_MS;
+        const f = lib.sendMessage(id, 'slow');
+        await waitFor(() => fs.existsSync(`${f}.timeout`));
+        assert.ok(!fs.existsSync(`${f}.failed`));
+    });
+
+    test('registration retries after a transient error, but not after an invalid name', async () => {
+        const mkClient = () => ({ session: { get: async ({ path: p }) => ({ data: { id: p.id, parentID: null } }), prompt: async () => ({ data: {} }) } });
+        const idle = (hooks, id) => hooks.event({ event: { type: 'session.idle', properties: { sessionID: id } } });
+        const busDir = path.join(home, '.aos', 'bus');
+        fs.mkdirSync(path.dirname(busDir), { recursive: true });
+        fs.writeFileSync(busDir, 'x'); // ~/.aos/bus is a file: registration fails (transient)
+        const mod = await import(`file://${PLUGIN}?t=${Date.now()}${Math.random()}`);
+        const hooks = await mod.default({ directory: home, client: mkClient() });
+        const origErr = console.error; const errs = [];
+        console.error = (m) => errs.push(m);
+        try {
+            await idle(hooks, 'tr1');
+            await new Promise((r) => setTimeout(r, 100));
+            assert.equal(lib.listSessions().length, 0);
+            fs.rmSync(busDir);
+            await idle(hooks, 'tr1');
+            await waitFor(() => lib.listSessions().some((s) => s.name === 'tr1'));
+            process.env.AOS_SESSION_NAME = '.bad';
+            for (let i = 0; i < 3; i++) { await idle(hooks, 'bad1'); await new Promise((r) => setTimeout(r, 50)); }
+            assert.equal(errs.filter((e) => /invalid session name/.test(e)).length, 1);
+        } finally { console.error = origErr; }
+    });
+
     test('from is sanitized; a busy session parks the file after the cap', async () => {
         process.env.AOS_BUS_BUSY_MAX_MS = '1';
         const { id } = await boot({ prompt: async () => { throw new Error('Session is busy'); } });

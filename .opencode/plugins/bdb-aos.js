@@ -218,7 +218,7 @@ export default async function bdbAosPlugin(input) {
       busNames.set(name, id);
     } catch (e) {
       console.error(`[aos-bus] registration failed: ${e?.message}`);
-      s.bus = !/invalid session name/.test(e?.message);
+      s.bus = /invalid session name/.test(e?.message);
     }
   };
   const dropBus = (id) => {
@@ -226,6 +226,7 @@ export default async function bdbAosPlugin(input) {
   };
   process.on('exit', () => { for (const name of busNames.keys()) bus.unregisterSession(name); });
 
+  const busyFirst = new Map(); // inbox file -> time of its first busy attempt
   let polling = false;
   setInterval(async () => {
     if (polling || !busNames.size) return;
@@ -236,6 +237,9 @@ export default async function bdbAosPlugin(input) {
         let reg; try { reg = JSON.parse(readFileSync(bus.busPaths(name).reg, 'utf8')); } catch {}
         if (reg?.pid !== process.pid || reg?.sessionID !== sessionID) continue;
         for (const m of bus.readInbox(name)) {
+          // Claim atomically: with two live pollers (ownership handover) only one rename wins.
+          const claim = `${m.file.slice(0, -'.json'.length)}.inflight`;
+          try { renameSync(m.file, claim); } catch { continue; }
           // The gate checks this cache before any DB lookup; a stale human GO must not authorize a woken turn.
           sess(sessionID).prompt = '';
           try {
@@ -247,14 +251,20 @@ export default async function bdbAosPlugin(input) {
                 noReply: !m.wake,
                 parts: [{ type: 'text', text: `[aos-bus from ${m.from}] ${m.text}`, synthetic: true, metadata: { aos_bus: { from: m.from, uid: m.uid, ts: m.ts } } }],
               },
-            }), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('aos-bus prompt timeout')), BUS_PROMPT_TIMEOUT_MS); timer.unref?.(); })]).finally(() => clearTimeout(timer));
+            }), new Promise((_, rej) => { timer = setTimeout(() => rej(Object.assign(new Error('aos-bus prompt timeout'), { timedOut: true })), BUS_PROMPT_TIMEOUT_MS); timer.unref?.(); })]).finally(() => clearTimeout(timer));
             if (res?.error) throw res.error;
-            unlinkSync(m.file);
+            unlinkSync(claim);
+            busyFirst.delete(m.file);
             input.client.tui?.showToast?.({ body: { title: 'aos-bus', message: `from ${m.from}`, variant: 'info' } })?.catch?.(() => {});
           } catch (e) {
-            // Busy session: keep the file and retry next tick, for up to BUS_BUSY_MAX_MS. Anything else is parked.
-            if (/busy/i.test(`${e?.name} ${e?.message} ${e?.data?.message}`) && Date.now() - m.mtimeMs < BUS_BUSY_MAX_MS) break;
-            try { renameSync(m.file, `${m.file}.failed`); } catch {}
+            // Busy: hand the file back and retry next tick, up to BUS_BUSY_MAX_MS after the first busy attempt.
+            const isBusy = /busy/i.test(`${e?.name} ${e?.message} ${e?.data?.message}`);
+            const first = busyFirst.get(m.file) ?? Date.now();
+            if (isBusy) busyFirst.set(m.file, first);
+            if (isBusy && Date.now() - first < BUS_BUSY_MAX_MS) { try { renameSync(claim, m.file); } catch {} break; }
+            busyFirst.delete(m.file);
+            // A timed-out prompt may still complete: delivery state unknown, so not .failed.
+            try { renameSync(claim, `${m.file}${e?.timedOut ? '.timeout' : '.failed'}`); } catch {}
           }
         }
       }
