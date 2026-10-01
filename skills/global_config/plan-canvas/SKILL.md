@@ -290,8 +290,10 @@ aos-plan-canvas await <file> --reply "Reworked the risk table."
 |---|---|---|
 | `AOS_PLAN_CANVAS_PORT` | Loopback server port | `4519` |
 | `AOS_PLAN_CANVAS_STATE_DIR` | Session state directory | `~/.claude/aos-plan-canvas` |
-| `AOS_PLAN_CANVAS_IDLE_MS` | Idle shutdown timeout | 30 minutes |
+| `AOS_PLAN_CANVAS_IDLE_MS` | Idle shutdown timeout (`0` or `off` = never) | 30 minutes |
 | `AOS_PLAN_CANVAS_MERMAID_URL` | Mermaid ESM mirror | pinned jsDelivr CDN |
+
+The BDB Launchpad shows a Plan Canvas card with a start command; `aos --autostart-plan-canvas` registers an opt-in login server (idle exit off).
 
 `metadata.version` above and the `VERSION` literal in
 `scripts/plan-canvas.js` are one value in two places — bump them together when

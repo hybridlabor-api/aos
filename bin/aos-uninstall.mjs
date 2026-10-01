@@ -45,7 +45,7 @@ const DATA_PATHS = [
 
 const AGENTS = [
   'com.bdb.memb.webui', 'com.bdb.synapse', 'com.bdb.openwiki.daemon',
-  'com.bdb.ao.daemon', 'com.bdb.agent-workspace', 'com.hybridlabor.bdb-remote',
+  'com.bdb.ao.daemon', 'com.bdb.agent-workspace', 'com.hybridlabor.bdb-remote', 'com.bdb.plan-canvas',
 ];
 
 const MODULE_DIRS = ['memB', 'bdb-synapse', 'bdb-os-remote', 'bdb-dev-creator-extension',
