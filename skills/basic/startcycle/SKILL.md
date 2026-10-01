@@ -2,7 +2,6 @@
 name: startcycle
 description: Linear multi-agent build pipeline with file hand-offs in production_artifacts/, run after /bdbrainstorm or /grill-me. This is the linear variant — no state.json, no repair loop, no dispatcher graph — distinct from startcycle-graph, which adds durable state and automated escalation.
 category: bdb-core
-disable-model-invocation: true
 ---
 
 # `/startcycle` — Linear Build Pipeline

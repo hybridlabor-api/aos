@@ -19,7 +19,6 @@ outputs: ["inbox.md", "calendar.md", "week-plan.md", "run-log.md"]
 verify: "every line in week-plan.md points to a line in inbox.md"
 difficulty: beginner
 est_time: 10-20 min
-disable-model-invocation: true
 ---
 
 # Plan my week

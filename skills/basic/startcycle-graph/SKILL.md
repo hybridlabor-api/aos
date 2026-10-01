@@ -2,7 +2,6 @@
 name: startcycle-graph
 description: Use when running the autonomous multi-agent build pipeline after /bdbrainstorm or /grill-me. Routes to the startcycle-dispatch Dynamic Workflow, which reads production_artifacts/state.json and invokes Architect, TechLead, UI/UX, Engineering, Media/EventTech, Reviewer, and Shipping in turn per .agents/graph.md's edge table — the agents never invoke each other.
 category: bdb-core
-disable-model-invocation: true
 ---
 
 # 🚀 BDB Autonomous Development Cycle (`/startcycle-graph`)

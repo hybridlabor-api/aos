@@ -2,7 +2,6 @@
 name: grill-me
 description: A relentless interview to sharpen a plan or design. Use before committing to an approach, or on any 'grill me' trigger phrase.
 category: engineering-method
-disable-model-invocation: true
 ---
 
 <!-- Source: mattpocock/skills skills/productivity/grill-me — MIT, see THIRD_PARTY_NOTICES.md -->
