@@ -1,0 +1,1 @@
+{"id":"architecture","label":"Architecture","description":"A system design with diagram, data model, endpoints, trade-off decision and implementation map.","useWhen":"You are designing or reshaping a service or system and need the structure, interfaces and trade-offs agreed before building.","hasBoard":false}

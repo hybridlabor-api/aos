@@ -431,9 +431,9 @@ pre.mermaid.mermaid-unrendered::before {
 
 /* AgentTrail: static node graph */
 .trail-scroll { overflow: auto; max-width: 100%; }
-.trail-stage { position: relative; }
-.trail-edges { position: absolute; inset: 0; pointer-events: none; }
-.trail-edge { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: 0.8; }
+.trail-stage { position: relative; width: 100%; min-width: 520px; }
+.trail-edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.trail-edge { vector-effect: non-scaling-stroke; fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: 0.8; }
 .trail-node { position: absolute; background: var(--card-hi); border: 1px solid var(--line); border-radius: var(--radius-sm); font-family: var(--font); }
 .trail-node[open] { z-index: 2; border-color: var(--accent); }
 .trail-node summary { list-style: none; cursor: pointer; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-height: 78px; }

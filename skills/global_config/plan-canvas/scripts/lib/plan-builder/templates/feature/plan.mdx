@@ -1,0 +1,145 @@
+---
+title: Trailmark - Saved Routes
+status: draft
+needs-api: foundations
+needs-screens: api
+needs-sync: api
+needs-launch: screens, sync
+---
+
+# Trailmark: Saved Routes
+
+<Callout tone="note" title="How to use this template">
+
+Replace the Trailmark example with your feature: rewrite the Goal and success list, swap the Decision for your real fork in the road, edit the screens in canvas.mdx (keep ids in sync with the transitions), and replace the build map sections and file paths. Delete sections you do not need. All names here are invented.
+
+</Callout>
+
+## Goal
+
+Trailmark is a fictional hiking app. Saved Routes lets a hiker bookmark a route from the map, find it again offline and sync it across devices. The feature ships to the beta group in four weeks.
+
+- A hiker saves a route in two taps from the map.
+- Saved routes open without a network connection.
+- A route saved on the phone shows up on the tablet within a minute.
+
+## Storyboard
+
+Four screens in canvas.mdx cover the happy path: map, save sheet, saved list, route detail.
+
+## Decision
+
+<Decision title="Where do saved routes live?" question="Which store is the source of truth for a saved route?" options={[
+  { id: "local-first", label: "Local database with background sync", detail: "Works offline by design, needs a conflict rule.", recommended: true },
+  { id: "server", label: "Server only, cached reads", detail: "Simple model, but the list is empty offline until cached." },
+  { id: "file", label: "Exported GPX files", detail: "Portable, but no sync and no list ordering." },
+]}>
+
+Hikers lose signal on exactly the trails they want to follow. A local database makes offline the normal case, and last-edit-wins per route is enough for one person using two devices.
+
+</Decision>
+
+## Flow
+
+<Mermaid label="Save and sync" source={"sequenceDiagram\n  participant H as Hiker\n  participant A as App\n  participant L as Local DB\n  participant S as Sync API\n  H->>A: Tap Save on a route\n  A->>L: Insert route with revision 1\n  A-->>H: Show Saved toast\n  A->>S: Push pending changes\n  S-->>A: Accepted, server revision\n  A->>L: Mark route synced"} />
+
+## Acceptance {#acceptance}
+
+<Checklist title="Done when" items={[
+  { label: "Save from the map takes two taps or fewer" },
+  { label: "Saved list opens in airplane mode" },
+  { label: "Removing a route on one device removes it on the other" },
+  { label: "A list of 500 routes scrolls without dropped frames" },
+  { label: "Screen reader announces Saved and Removed" },
+]} />
+
+## Build map
+
+### Foundations {#foundations}
+
+Schema and feature flag.
+
+<Checklist title="Foundations tasks" items={[
+  { label: "Feature flag saved_routes, off by default", checked: true },
+  { label: "Local table saved_routes with revision and deleted_at" },
+]} />
+
+<ImplementationMap files={[
+  { path: "app/db/migrations/012_saved_routes.sql", change: "added", note: "Table with revision and tombstone column" },
+  { path: "app/flags.ts", change: "modified", note: "Add saved_routes flag" },
+]} />
+
+### Sync API {#api}
+
+Push and pull endpoints with a revision check.
+
+<Checklist title="API tasks" items={[
+  { label: "POST /v1/saved-routes/push with revision check" },
+  { label: "GET /v1/saved-routes/pull?since=cursor" },
+  { label: "Tombstones kept for 30 days" },
+]} />
+
+<ImplementationMap files={[
+  { path: "server/routes/saved-routes.ts", change: "added", note: "Push and pull handlers" },
+  { path: "server/jobs/purge-tombstones.ts", change: "added", note: "Nightly cleanup after 30 days" },
+]} />
+
+### Screens {#screens}
+
+Save sheet, saved list and route detail.
+
+<Checklist title="Screen tasks" items={[
+  { label: "Save button and bottom sheet on the map" },
+  { label: "Saved list with sort and empty state" },
+  { label: "Route detail with remove action" },
+]} />
+
+<ImplementationMap files={[
+  { path: "app/screens/SaveSheet.tsx", change: "added", note: "Name, folder and Save button" },
+  { path: "app/screens/SavedList.tsx", change: "added", note: "Virtualised list and empty state" },
+  { path: "app/screens/RouteDetail.tsx", change: "added", note: "Map preview, stats, remove" },
+]} />
+
+### Sync client {#sync}
+
+Background push and pull with retry.
+
+<Checklist title="Sync tasks" items={[
+  { label: "Push pending rows on connectivity change" },
+  { label: "Pull on app start and every five minutes" },
+  { label: "Last edit wins, ties broken by device id" },
+]} />
+
+<ImplementationMap files={[
+  { path: "app/sync/saved-routes-sync.ts", change: "added", note: "Push, pull and conflict rule" },
+]} />
+
+### Launch {#launch}
+
+Beta rollout.
+
+<Checklist title="Launch tasks" items={[
+  { label: "Enable flag for the beta group" },
+  { label: "Watch sync error rate for three days" },
+]} />
+
+<AgentTrail />
+
+## Risks
+
+<Table title="Risks" columns={["Risk", "Likelihood", "Impact", "Mitigation"]} rows={[
+  ["Two devices edit the same route offline", "Medium", "Low", "Last edit wins, keep the older copy in a recently-deleted list"],
+  ["Large saved lists slow the map", "Low", "Medium", "Load the list lazily, never on map start"],
+  ["Tombstones grow without bound", "Low", "Low", "Nightly purge after 30 days"],
+]} />
+
+## Open questions
+
+<QuestionForm title="Open Questions" questions={[
+  { title: "Can routes be grouped in folders?", mode: "single", options: [
+    { label: "Not in the beta", recommended: true }, { label: "One level of folders" } ] },
+  { title: "Default sort of the saved list?", mode: "single", options: [
+    { label: "Recently saved", recommended: true }, { label: "Distance from here" }, { label: "Alphabetical" } ] },
+  { title: "Which extras do we want in the beta?", mode: "multi", options: [
+    { label: "Share a route link" }, { label: "Export as GPX" }, { label: "Notes on a saved route" } ] },
+]} />

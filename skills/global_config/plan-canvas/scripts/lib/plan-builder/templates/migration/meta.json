@@ -1,0 +1,1 @@
+{"id":"migration","label":"Migration","description":"Data or system migration plan with phases, cutover checklist, rollback and a risk table.","useWhen":"You move data or a service from an old system to a new one and need a safe cutover and a way back.","hasBoard":false}

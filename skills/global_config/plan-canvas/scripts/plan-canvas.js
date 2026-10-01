@@ -38,7 +38,7 @@ const {
   resolvePort
 } = require('./lib/plan-canvas/server');
 
-const VERSION = '1.0.1';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
+const VERSION = '1.0.2';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
                            // Bump when the vendored JS changes, to force a stale detached server to restart.
 
 const SAFE_REQUEST_PATHS = new Set([
@@ -58,6 +58,8 @@ function usage() {
     'Usage:',
     '  aos-plan-canvas                  Show server status and sessions',
     '  aos-plan-canvas modes            List available planning modes as JSON',
+    '  aos-plan-canvas templates        List plan templates as JSON ({id,label,description,useWhen,hasBoard})',
+    '  aos-plan-canvas new <template-id> <target-dir>  Copy a plan template into a new folder',
     '  aos-plan-canvas open <file>      Open (or resume) a review session',
     '  aos-plan-canvas trail <plan-dir|plan.mdx>  Write an agenttrail plan file from a plan folder',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
@@ -73,6 +75,8 @@ function usage() {
     '                   plan.mdx and opens that file instead',
     '         --no-open      Do not launch a browser window',
     '         --reopen       Reopen a session the user ended from the browser',
+    '  new:   --mode <id>    bdb-plan-builder (default: plan.mdx, canvas.mdx) or standard (plan.md);',
+    '                   refuses a non-empty target (exit 2)',
     '  trail: --out <file>   Output inside the workspace (default production_artifacts/00_execution_plan.md)',
     '         --force        Overwrite an existing output file',
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
@@ -496,6 +500,51 @@ async function cmdServer(args, { stateDir, port }) {
   return new Promise(() => {}); // run until a signal or idle shutdown
 }
 
+const TEMPLATES_DIR = path.join(__dirname, 'lib', 'plan-builder', 'templates');
+
+function cmdTemplates() {
+  let ids = [];
+  try { ids = fs.readdirSync(TEMPLATES_DIR); } catch { /* no templates dir */ }
+  const list = [];
+  for (const id of ids.sort()) {
+    try {
+      const m = JSON.parse(fs.readFileSync(path.join(TEMPLATES_DIR, id, 'meta.json'), 'utf8'));
+      list.push({ id: m.id || id, label: m.label, description: m.description, useWhen: m.useWhen, hasBoard: Boolean(m.hasBoard) });
+    } catch { /* skip templates without readable meta.json */ }
+  }
+  return list;
+}
+
+function cmdNew(args) {
+  const fail = (error) => {
+    process.stderr.write(`${error}\n`);
+    output({ error });
+    return 2;
+  };
+  const mode = valueAfter(args, '--mode') || 'bdb-plan-builder';
+  const [id, target] = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--mode');
+  const ids = cmdTemplates().map(t => t.id);
+  if (!id || !ids.includes(id)) return fail(`Unknown template "${id || ''}". Valid ids: ${ids.join(', ') || '(none)'}`);
+  if (!target) return fail('Usage: aos-plan-canvas new <template-id> <target-dir> [--mode standard|bdb-plan-builder]');
+  if (mode !== 'standard' && mode !== 'bdb-plan-builder') return fail(`Unknown mode "${mode}". Valid modes: standard, bdb-plan-builder`);
+  const dir = path.resolve(target);
+  if (fs.existsSync(dir) && (!fs.statSync(dir).isDirectory() || fs.readdirSync(dir).length)) {
+    return fail(`Refusing to overwrite non-empty target: ${dir}`);
+  }
+  const src = path.join(TEMPLATES_DIR, id);
+  const files = mode === 'standard' ? [['standard.md', 'plan.md']] : [['plan.mdx', 'plan.mdx'], ['canvas.mdx', 'canvas.mdx']];
+  fs.mkdirSync(dir, { recursive: true });
+  const written = [];
+  for (const [from, to] of files) {
+    if (!fs.existsSync(path.join(src, from))) continue;
+    fs.copyFileSync(path.join(src, from), path.join(dir, to));
+    written.push(path.join(dir, to));
+  }
+  const entry = mode === 'standard' ? 'plan.md' : 'plan.mdx';
+  output({ template: id, mode, dir, files: written, next_step: `aos-plan-canvas open ${path.join(dir, entry)}${mode === 'standard' ? '' : ' --mode bdb-plan-builder'}` });
+  return 0;
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = argv.slice();
   if (args.includes('--help') || args.includes('-h')) {
@@ -510,6 +559,8 @@ async function main(argv = process.argv.slice(2)) {
   try {
     if (command === null) output(await cmdStatus(context));
     else if (command === 'modes') output(cmdModes());
+    else if (command === 'templates') output(cmdTemplates());
+    else if (command === 'new') return cmdNew(args);
     else if (command === 'open') {
       const result = await cmdOpen(args[0], args, context);
       if (result.error) {

@@ -47,6 +47,8 @@ function levels(components) {
   return memo;
 }
 
+const pct4 = (f) => Number((f * 100).toFixed(3));
+
 function note(message) {
   return `<div class="card trail-empty"><div class="label">AgentTrail</div><div>${esc(message)}</div></div>`;
 }
@@ -100,7 +102,7 @@ function renderAgentTrail(block, ctx) {
       ? `<ul class="trail-tasks">${c.tasks.map((t) => `<li class="${t.checked ? 'done' : ''}"><span class="mark" aria-hidden="true">${t.checked ? '&#10003;' : '&#9675;'}</span>${esc(t.label)}</li>`).join('')}</ul>`
       : '<div class="trail-tasks note">no tasks</div>';
     const p = pos.get(c.id);
-    return `<details class="trail-node" data-id="${esc(c.id)}" style="left:${p.x}px;top:${p.y}px;width:${COL_W}px;min-height:${ROW_H}px">` +
+    return `<details class="trail-node" data-id="${esc(c.id)}" style="left:${pct4(p.x / width)}%;top:${p.y}px;width:${pct4(COL_W / width)}%;min-height:${ROW_H}px">` +
       `<summary><span class="trail-id">${esc(c.id)}</span><span class="trail-title" title="${esc(c.title)}">${esc(c.title)}</span>` +
       `<span class="trail-count">${done} of ${total} tasks</span>` +
       `<span class="trail-bar"><span style="width:${pct}%"></span></span></summary>${tasks}</details>`;
@@ -120,8 +122,8 @@ function renderAgentTrail(block, ctx) {
   }
 
   return '<div class="card trail"><div class="label">agent trail</div>' +
-    `<div class="trail-scroll"><div class="trail-stage" style="width:${width}px;height:${height}px">` +
-    `<svg class="trail-edges" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">${edges.join('')}</svg>${cards}</div></div>${live}</div>`;
+    `<div class="trail-scroll"><div class="trail-stage" style="height:${height}px">` +
+    `<svg class="trail-edges" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">${edges.join('')}</svg>${cards}</div></div>${live}</div>`;
 }
 
 module.exports = { renderAgentTrail, localUrl };

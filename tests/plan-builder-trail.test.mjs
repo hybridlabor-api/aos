@@ -303,7 +303,7 @@ describe('AgentTrail block', () => {
     const d = mk(name, { 'plan.mdx': `${FM}${PLAN_MDX}\n\n${trail}\n`, ...extra });
     return renderPlanFolder(d);
   };
-  const nodes = (html) => [...html.matchAll(/<details class="trail-node" data-id="([^"]+)" style="left:(\d+)px/g)].map((m) => [m[1], Number(m[2])]);
+  const nodes = (html) => [...html.matchAll(/<details class="trail-node" data-id="([^"]+)" style="left:([\d.]+)%/g)].map((m) => [m[1], Number(m[2])]);
 
   before(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-agenttrail-')); });
   after(() => fs.rmSync(dir, { recursive: true, force: true }));

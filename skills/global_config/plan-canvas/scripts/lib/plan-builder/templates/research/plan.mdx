@@ -1,0 +1,91 @@
+---
+title: Queue choice for Lanternfish exports
+status: draft
+---
+
+# Queue choice for Lanternfish exports
+
+<Callout tone="note" title="How to use this template">
+
+Replace the Lanternfish example with your own question: rewrite the question and constraints, edit the options in Compare and Decision, replace the evidence rows with what you actually measured or read (keep a source per row), and state your own recommendation. Delete sections you do not need. All names and numbers here are invented.
+
+</Callout>
+
+## Question
+
+Lanternfish is a fictional reporting service. Exports of large reports currently run inside the web request and time out for about 4 percent of customers. Which mechanism should run exports in the background?
+
+**Constraints**
+
+- Ship within one quarter with a team of three.
+- No new managed service that needs an on-call rotation.
+- Failed exports must be retried and visible to the customer.
+
+## Options
+
+<Compare beforeLabel="Option A: database-backed queue" afterLabel="Option B: managed message broker">
+<Before>
+
+Jobs live in a table in the existing Postgres database; workers poll with row locks.
+
+- Zero new infrastructure.
+- Throughput tops out around a few hundred jobs per minute.
+- Retries and dead jobs are plain SQL.
+
+</Before>
+<After>
+
+Jobs are published to a hosted broker; workers subscribe.
+
+- Scales far beyond current need.
+- Adds a service, credentials and a monthly bill.
+- Retries and dead letters come from the broker.
+
+</After>
+</Compare>
+
+## Evidence
+
+<Table title="What we found" columns={["Claim", "Source", "Confidence", "Effect on the decision"]} rows={[
+  ["Peak load is 40 exports per minute", "Request log sample, last 30 days", "High", "Both options are fast enough"],
+  ["A table queue handled 300 jobs per minute in a spike test", "Local benchmark, 10 minute run", "Medium", "Option A has 7x headroom"],
+  ["Broker setup needs about 6 engineer days", "Team estimate", "Low", "Option B costs a sprint of the quarter"],
+  ["Managed broker costs about 90 EUR per month", "Vendor price page, invented", "Medium", "Small, but adds a vendor to review"],
+  ["Customers care about progress, not speed", "Five support tickets", "Low", "A status page matters more than the queue"],
+]} />
+
+## Recommendation
+
+<Decision title="Which queue" question="Which mechanism should run Lanternfish exports?" options={[
+  { id: "table", label: "Database-backed queue", detail: "Fits current load with 7x headroom and needs no new service.", recommended: true },
+  { id: "broker", label: "Managed message broker", detail: "Better long-term ceiling, but costs a sprint and a vendor today." },
+]}>
+
+Start with the table queue behind a small interface (`enqueue`, `claim`, `complete`, `fail`). If sustained load passes 150 jobs per minute, swap the implementation for a broker without touching callers.
+
+</Decision>
+
+<Callout tone="warn" title="Risks">
+
+Polling workers can hold row locks too long if a job hangs; set a claim timeout of 10 minutes. The benchmark ran on a laptop, so repeat it on staging before relying on the headroom figure.
+
+</Callout>
+
+## Open questions
+
+<QuestionForm title="Open questions" questions={[
+  { title: "Should failed exports email the customer or only show in the app?", mode: "single", options: [
+    { label: "Show in the app only", recommended: true },
+    { label: "Also send an email" },
+  ] },
+  { title: "How long are finished export files kept?", mode: "single", options: [
+    { label: "7 days", recommended: true },
+    { label: "30 days" },
+  ] },
+]} />
+
+<Checklist title="Before deciding">
+- [ ] Repeat the benchmark on staging
+- [ ] Confirm the 40 per minute peak with last month's logs
+- [ ] Agree the interface for enqueue, claim, complete and fail
+</Checklist>

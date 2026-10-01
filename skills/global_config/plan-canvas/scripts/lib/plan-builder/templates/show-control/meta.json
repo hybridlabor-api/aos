@@ -1,0 +1,1 @@
+{"id":"show-control","label":"Show control","description":"Live show technical plan with signal flow, cue list, patch and universe tables, failure plan and load-in checklist, plus a stage and rack layout board.","useWhen":"You plan the lighting, video, audio and network of a live show or event and need one reviewable technical document.","hasBoard":true}

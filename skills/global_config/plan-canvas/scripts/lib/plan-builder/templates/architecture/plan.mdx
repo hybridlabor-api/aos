@@ -1,0 +1,195 @@
+---
+title: Parcelly - Delivery Tracking Service
+status: draft
+needs-store: foundations
+needs-ingest: store
+needs-api: store
+needs-notify: ingest
+needs-launch: api, notify
+---
+
+# Parcelly: Delivery Tracking Service
+
+<Callout tone="note" title="How to use this template">
+
+Replace the Parcelly example with your system: rewrite the goals and constraints, redraw the diagram, edit the data model and endpoints, and record your real trade-off in the Decision. Keep the implementation map aligned with the build order. All names here are invented.
+
+</Callout>
+
+## Goal and constraints
+
+Parcelly is a fictional service that tracks parcels for small online shops. Carriers push scan events, shops and customers read the current status.
+
+- Show the latest status within 10 seconds of a carrier scan.
+- Handle 300 events per second at peak, 20 million parcels stored.
+- Keep a full event history for 12 months.
+
+<Table title="Constraints" columns={["Constraint", "Value"]} rows={[
+  ["Team", "Three engineers, no dedicated ops"],
+  ["Budget", "Managed services only, under 1,500 per month"],
+  ["Availability", "99.9 percent for reads, writes may queue"],
+  ["Compliance", "Customer addresses deleted 90 days after delivery"],
+]} />
+
+## System overview
+
+<Mermaid label="Components" source={"flowchart LR\n  C[Carrier webhooks] --> G[Ingest gateway]\n  G --> Q[(Event queue)]\n  Q --> W[Event worker]\n  W --> D[(Parcel database)]\n  W --> N[Notifier]\n  N --> E[Email and SMS provider]\n  D --> A[Read API]\n  A --> S[Shop dashboard]\n  A --> T[Customer tracking page]"} />
+
+## Data model
+
+<DataModel entities={[
+  { name: "parcel", fields: [
+    { name: "id", type: "uuid", note: "Primary key" },
+    { name: "shop_id", type: "uuid", note: "Owner shop" },
+    { name: "carrier_ref", type: "text", note: "Unique per carrier" },
+    { name: "status", type: "enum", note: "created, in_transit, out_for_delivery, delivered, failed" },
+    { name: "updated_at", type: "timestamptz" },
+  ] },
+  { name: "parcel_event", fields: [
+    { name: "id", type: "uuid" },
+    { name: "parcel_id", type: "uuid", note: "References parcel" },
+    { name: "kind", type: "text", note: "Carrier scan code" },
+    { name: "occurred_at", type: "timestamptz", note: "Carrier time, not receive time" },
+    { name: "payload", type: "jsonb", note: "Raw event, kept 12 months" },
+  ] },
+]} />
+
+## Endpoints
+
+<Endpoint method="POST" path="/v1/carriers/{carrier}/events" params={[
+  { name: "carrier", in: "path", type: "string", description: "Carrier slug" },
+  { name: "X-Signature", in: "header", type: "string", description: "HMAC of the body" },
+]} examples={[
+  { label: "202 Accepted", code: "{ \"accepted\": 3 }" },
+]}>
+
+Accepts a batch of scan events. Verifies the signature, writes to the queue and returns without waiting for processing.
+
+</Endpoint>
+
+<Endpoint method="GET" path="/v1/parcels/{id}" params={[
+  { name: "id", in: "path", type: "uuid", description: "Parcel id" },
+]} examples={[
+  { label: "200 OK", code: "{ \"id\": \"b1f0\", \"status\": \"out_for_delivery\", \"events\": [] }" },
+]}>
+
+Returns the current status and the event history, newest first.
+
+</Endpoint>
+
+## Decision
+
+<Decision title="How do events reach the database?" question="Which delivery path do we use between the gateway and the parcel database?" options={[
+  { id: "queue", label: "Managed queue and worker", detail: "Absorbs carrier bursts, retries on failure, one more moving part.", recommended: true },
+  { id: "direct", label: "Gateway writes to the database directly", detail: "Fewest parts, but bursts hit the database and carrier retries duplicate rows." },
+  { id: "stream", label: "Event streaming platform", detail: "Strong replay, too heavy for three engineers." },
+]}>
+
+Carriers retry aggressively when we answer slowly. A queue lets the gateway answer in milliseconds and the worker deduplicate by carrier reference and event time.
+
+</Decision>
+
+## Trade-offs
+
+<Table title="What we accept" columns={["Choice", "Gain", "Cost"]} rows={[
+  ["Queue between gateway and database", "Burst tolerance, retries", "Status can lag by a few seconds"],
+  ["Relational store with jsonb payload", "Simple queries, one system", "Payload size grows, needs the 12 month purge"],
+  ["Managed notification provider", "No deliverability work", "Per-message cost"],
+]} />
+
+## Build map
+
+### Foundations {#foundations}
+
+Accounts, environments and CI.
+
+<Checklist title="Foundations tasks" items={[
+  { label: "Staging and production environments", checked: true },
+  { label: "CI with migration check" },
+]} />
+
+<ImplementationMap files={[
+  { path: "infra/environments.tf", change: "added", note: "Staging and production" },
+  { path: ".github/workflows/ci.yml", change: "added", note: "Test and migration dry run" },
+]} />
+
+### Parcel store {#store}
+
+Schema, retention and purge.
+
+<Checklist title="Store tasks" items={[
+  { label: "Tables parcel and parcel_event with indexes" },
+  { label: "Nightly purge: payload after 12 months, addresses after 90 days" },
+]} />
+
+<ImplementationMap files={[
+  { path: "db/migrations/001_parcels.sql", change: "added", note: "parcel and parcel_event tables" },
+  { path: "jobs/purge.ts", change: "added", note: "Retention purge" },
+]} />
+
+### Ingest {#ingest}
+
+Gateway and worker.
+
+<Checklist title="Ingest tasks" items={[
+  { label: "Signature check per carrier" },
+  { label: "Worker with dedupe by carrier_ref and occurred_at" },
+  { label: "Dead letter queue and alert" },
+]} />
+
+<ImplementationMap files={[
+  { path: "services/gateway/events.ts", change: "added", note: "Verify, enqueue, answer 202" },
+  { path: "services/worker/process-event.ts", change: "added", note: "Dedupe, update status" },
+]} />
+
+### Read API {#api}
+
+Status and history reads.
+
+<Checklist title="API tasks" items={[
+  { label: "GET /v1/parcels/{id} with cache of 5 seconds" },
+  { label: "Shop-scoped listing with cursor paging" },
+]} />
+
+<ImplementationMap files={[
+  { path: "services/api/parcels.ts", change: "added", note: "Read handlers" },
+]} />
+
+### Notifications {#notify}
+
+Email and SMS on status change.
+
+<Checklist title="Notify tasks" items={[
+  { label: "Notify on out_for_delivery and delivered" },
+  { label: "Per-shop opt out" },
+]} />
+
+<ImplementationMap files={[
+  { path: "services/worker/notify.ts", change: "added", note: "Template and provider call" },
+]} />
+
+### Launch {#launch}
+
+<Checklist title="Launch tasks" items={[
+  { label: "Load test at 600 events per second" },
+  { label: "Onboard three pilot shops" },
+]} />
+
+<AgentTrail />
+
+## Risks
+
+<Table title="Risks" columns={["Risk", "Likelihood", "Mitigation"]} rows={[
+  ["Carrier sends events out of order", "High", "Order by occurred_at, never by receive time"],
+  ["Queue outage stops status updates", "Low", "Gateway buffers to disk for 10 minutes, alert on queue age"],
+  ["Provider rate limits notifications", "Medium", "Batch and back off, drop to email only"],
+]} />
+
+## Open questions
+
+<QuestionForm title="Open Questions" questions={[
+  { title: "Do we offer a public tracking page without login?", mode: "single", options: [
+    { label: "Yes, with an unguessable id", recommended: true }, { label: "No, login only" } ] },
+  { title: "Retention for event payloads?", mode: "single", options: [
+    { label: "12 months", recommended: true }, { label: "6 months" }, { label: "24 months" } ] },
+]} />

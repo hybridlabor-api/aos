@@ -3,7 +3,7 @@ name: plan-canvas
 description: Open plans and HTML artifacts in a local browser canvas where the human annotates elements, chats, and approves or requests changes without leaving the page. Use when presenting a plan for review, or when feedback like "move this, change that" is easier pointed at than typed.
 category: bdb-core
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
   origin: affaan-m/ECC
   license: MIT
 ---
@@ -68,6 +68,13 @@ aos-plan-canvas open production_artifacts/00_execution_plan.md
 #    queued feedback is never lost.
 aos-plan-canvas await production_artifacts/00_execution_plan.md
 ```
+
+When starting a new plan, offer the template choice first: `aos-plan-canvas templates`
+prints the available templates as JSON (`id`, `label`, `description`, `useWhen`,
+`hasBoard`), and `aos-plan-canvas new <template-id> <target-dir> [--mode standard|bdb-plan-builder]`
+copies one into an empty folder (builder mode: `plan.mdx` and `canvas.mdx` if present;
+standard mode: `plan.md`). A non-empty target or an unknown id exits 2. Then fill in
+the example content and `open` the result.
 
 ### Stay listening, or the human talks to an empty chair
 
