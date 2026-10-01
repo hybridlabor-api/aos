@@ -241,6 +241,45 @@ function checkSkillRefs(text, file, known, self, findings) {
   }
 }
 
+// Playbooks are skills with `kind: playbook`; skills without `kind` are untouched.
+const PB_REQUIRED = ['trigger', 'inputs', 'requires', 'go_points', 'outputs', 'verify', 'difficulty', 'est_time', 'disable-model-invocation'];
+const DIFFICULTY = new Set(['beginner', 'intermediate', 'advanced']);
+const EXTERNAL = ' (external)';
+
+export function checkPlaybook(byKey, known) {
+  const out = [];
+  if (!byKey.has('kind')) return out;
+  const add = (code, msg, key) => out.push({ level: 'error', code, line: byKey.get(key)?.line, msg });
+  const kind = unquote(byKey.get('kind').value);
+  if (kind !== 'playbook') {
+    add('E-PB01', `\`kind: ${kind}\` is unknown — the only defined kind is \`playbook\``, 'kind');
+    return out;
+  }
+  for (const k of PB_REQUIRED) if (!byKey.has(k)) add('E-PB03', `playbook is missing required key \`${k}\``, 'kind');
+
+  const req = byKey.get('requires');
+  if (req) {
+    const m = /(?:^|\s)skills:\s*\[([^\]]*)\]/.exec(req.value);
+    if (!m) add('E-PB05', '`requires.skills` must be a flow-style list, e.g. `skills: [github, ci-pipeline]`', 'requires');
+    else {
+      for (const raw of m[1].split(',').map((e) => unquote(e)).filter(Boolean)) {
+        if (!raw.endsWith(EXTERNAL) && !known.has(raw)) {
+          add('E-PB02', `requires skill \`${raw}\`, which is not a skill in this repo — fix the name or mark it \`${raw}${EXTERNAL}\``, 'requires');
+        }
+      }
+    }
+  }
+  const diff = byKey.get('difficulty');
+  if (diff && !DIFFICULTY.has(unquote(diff.value))) {
+    add('E-PB04', `\`difficulty: ${unquote(diff.value)}\` is not one of: ${[...DIFFICULTY].join(', ')}`, 'difficulty');
+  }
+  const dmi = byKey.get('disable-model-invocation');
+  if (dmi && unquote(dmi.value) !== 'true') {
+    add('E-PB06', 'playbooks are user-invoked only — set `disable-model-invocation: true`', 'disable-model-invocation');
+  }
+  return out;
+}
+
 function validate() {
   const { skills, strays } = collect();
   const known = new Set(skills.map((f) => basename(dirname(f))));
@@ -310,6 +349,8 @@ function validate() {
         });
       }
     }
+
+    for (const f of checkPlaybook(byKey, known)) findings.push({ ...f, file: rel });
 
     checkLeakedPaths(text, rel, findings);
     checkLocalRefs(text, dir, rel, findings);
@@ -460,6 +501,41 @@ function selftest() {
   }
   assert.ok(isValidSkillName('a'.repeat(NAME_MAX)), 'a 64-char name is at the limit and valid');
   assert.ok(!isValidSkillName('a'.repeat(NAME_MAX + 1)), 'a 65-char name is over the limit');
+
+  // Playbook frontmatter (kind: playbook).
+  const pb = (over = {}, drop = []) => {
+    const base = {
+      name: 'pb-x', description: 'd', category: 'bdb-core', kind: 'playbook',
+      trigger: '["a"]', inputs: '[repo]',
+      requires: '\n  skills: [github, gh (external)]\n  agents: []\n  mcps: []\n  store: []',
+      go_points: '[]', outputs: '["x"]', verify: '"x"', difficulty: 'beginner',
+      est_time: '5 min', 'disable-model-invocation': 'true', ...over,
+    };
+    const lines = Object.entries(base).filter(([k]) => !drop.includes(k)).map(([k, v]) => `${k}: ${v}`);
+    const fm = scanFrontmatter(['---', ...lines, '---'].join('\n'));
+    return new Map(fm.keys.map((k) => [k.key, k]));
+  };
+  const known = new Set(['github', 'ci-pipeline']);
+  assert.deepEqual(checkPlaybook(pb(), known), [], 'valid playbook is clean');
+  const miss = checkPlaybook(pb({}, ['go_points']), known);
+  assert.equal(miss.length, 1);
+  assert.equal(miss[0].code, 'E-PB03');
+  assert.match(miss[0].msg, /go_points/);
+  assert.equal(checkPlaybook(pb({ difficulty: 'expert' }), known)[0].code, 'E-PB04');
+  const unk = checkPlaybook(pb({ requires: '\n  skills: [github, nope-skill, gh (external)]' }), known);
+  assert.equal(unk.length, 1);
+  assert.equal(unk[0].code, 'E-PB02');
+  assert.match(unk[0].msg, /nope-skill/);
+  const kind = checkPlaybook(pb({ kind: 'recipe' }), known);
+  assert.equal(kind.length, 1);
+  assert.equal(kind[0].code, 'E-PB01');
+  assert.equal(checkPlaybook(pb({ requires: '\n  skills:\n    - github' }), known)[0].code, 'E-PB05');
+  assert.equal(checkPlaybook(pb({ 'disable-model-invocation': 'false' }), known)[0].code, 'E-PB06');
+  assert.deepEqual(checkPlaybook(pb({}, ['kind', 'trigger', 'inputs', 'requires', 'go_points', 'outputs', 'verify', 'difficulty', 'est_time', 'disable-model-invocation']), known).length, 0, 'no kind, no playbook rules');
+  assert.deepEqual(
+    checkPlaybook(pb({ requires: '\n  skills: ["gh (external)", github,]' }), known), [],
+    'quoted item and trailing comma survive',
+  );
 
   console.log('✓ selftest passed');
 }
