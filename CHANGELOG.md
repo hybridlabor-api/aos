@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.14.1](https://github.com/hybridlabor-api/aos/compare/v4.14.0...v4.14.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **installer:** write Windows-safe agy hook commands, self-check them and fail open ([#116](https://github.com/hybridlabor-api/aos/issues/116)) ([07f8f96](https://github.com/hybridlabor-api/aos/commit/07f8f969a6a71966f9cfbc14f65ba7068de0aa62))
+
 ## [4.14.0](https://github.com/hybridlabor-api/aos/compare/v4.13.2...v4.14.0) (2026-10-01)
 
 
