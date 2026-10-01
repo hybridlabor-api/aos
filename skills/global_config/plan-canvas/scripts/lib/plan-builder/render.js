@@ -747,17 +747,37 @@ function renderTag(block, ctx) {
   return handler(block, ctx);
 }
 
+// Source anchor: lets an annotation selector (`#src-plan.mdx-L42`) point back
+// at the MDX line. The file name comes from the renderer, never from document
+// content. An element that already has an id keeps it and only gets data-src.
+function srcAttr(block, ctx, withId = true) {
+  if (!ctx || !ctx.src || !Number.isInteger(block.line) || block.line < 1) return '';
+  const ref = `${ctx.src}:${block.line}`;
+  const id = `src-${ctx.src}-L${block.line}`;
+  ctx.srcIds = ctx.srcIds || new Set();
+  if (!withId || ctx.srcIds.has(id)) return ` data-src="${ref}"`;
+  ctx.srcIds.add(id);
+  return ` id="${id}" data-src="${ref}"`;
+}
+
+function withSrc(html, block, ctx) {
+  const m = /^(\s*<[a-zA-Z][a-zA-Z0-9]*)([^>]*)/.exec(String(html));
+  if (!m) return html;
+  const attr = srcAttr(block, ctx, !/\sid\s*=/.test(m[2]));
+  return attr ? m[1] + attr + String(html).slice(m[1].length) : html;
+}
+
 function renderBlocks(blocks, ctx) {
   const out = [];
   for (const block of blocks || []) {
     try {
-      if (block.type === 'heading') out.push({ html: renderHeading(block, ctx) });
+      if (block.type === 'heading') out.push({ html: withSrc(renderHeading(block, ctx), block, ctx) });
       else if (block.type === 'prose') {
         const html = renderMarkdown(block.text);
         collectProseHeadings(html, ctx);
-        out.push({ html: `<div class="prose">${html}</div>` });
+        out.push({ html: `<div class="prose"${srcAttr(block, ctx)}>${html}</div>` });
       }
-      else if (block.type === 'tag') out.push({ html: renderTag(block, ctx) });
+      else if (block.type === 'tag') out.push({ html: withSrc(renderTag(block, ctx), block, ctx) });
       else if (block.type === 'malformed') {
         ctx.warnings.push(block.message || 'malformed block');
         out.push({ html: errorCard(block.message || 'malformed block', block.raw || '') });
@@ -1083,12 +1103,12 @@ function renderBoard(blocks, ctx) {
   let row = null;
 
   const startRow = (title) => { row = { title, cards: [] }; rows.push(row); };
-  const addCard = (html, cls, keys) => {
+  const addCard = (html, cls, keys, block) => {
     if (!row) startRow('');
     cardCount += 1;
     const id = `bc-${index}-${cardCount}`;
     for (const key of keys) if (key) known.set(String(key), id);
-    row.cards.push(`<div class="bcard${cls ? ' ' + cls : ''}" id="${id}">${html}</div>`);
+    row.cards.push(`<div class="bcard${cls ? ' ' + cls : ''}" id="${id}"${block ? srcAttr(block, ctx, false) : ''}>${block ? withSrc(html, block, ctx) : html}</div>`);
   };
   const collect = (list) => {
     for (const raw of asArray(list)) {
@@ -1101,7 +1121,7 @@ function renderBoard(blocks, ctx) {
     for (const block of list || []) {
       try {
         if (block.type === 'heading') startRow(block.text);
-        else if (block.type === 'prose') addCard(card('', `<div class="prose">${renderMarkdown(block.text)}</div>`), 'w-wide', []);
+        else if (block.type === 'prose') addCard(card('', `<div class="prose">${renderMarkdown(block.text)}</div>`), 'w-wide', [], block);
         else if (block.type === 'tag') walkTag(block);
         else addCard(renderBlocks([block], ctx), '', []);
       } catch (error) {
@@ -1135,7 +1155,7 @@ function renderBoard(blocks, ctx) {
       return undefined;
     }
     const keys = [block.props.id, block.props.blockId, slugify(text(block.props.title || block.props.label))];
-    addCard(renderTag(block, ctx), widthClass(block), keys);
+    addCard(renderTag(block, ctx), widthClass(block), keys, block);
     return undefined;
   };
 

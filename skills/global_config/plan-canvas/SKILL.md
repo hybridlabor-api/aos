@@ -76,6 +76,8 @@ copies one into an empty folder (builder mode: `plan.mdx` and `canvas.mdx` if pr
 standard mode: `plan.md`). A non-empty target or an unknown id exits 2. Then fill in
 the example content and `open` the result. The server's `GET /` page is a read-only overview of open reviews, templates and visual skills.
 
+On Builder pages, blocks carry ids like `src-plan.mdx-L42`: an annotation `selector` starting with `#src-plan\.mdx-L42` (CSS-escaped) means "edit `plan.mdx` at line 42" (`canvas.mdx` likewise; headings keep their slug id and carry `data-src` only).
+
 ### Stay listening, or the human talks to an empty chair
 
 Feedback only reaches you while an `await` is actually parked on the session.
