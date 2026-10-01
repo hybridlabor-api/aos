@@ -201,6 +201,8 @@ export default async function bdbAosPlugin(input) {
   };
   // aos-bus: bus name -> sessionID of the root session that owns it.
   const busNames = new Map();
+  const BUS_PROMPT_TIMEOUT_MS = Number(process.env.AOS_BUS_PROMPT_TIMEOUT_MS) || 10 * 60 * 1000;
+  const BUS_BUSY_MAX_MS = Number(process.env.AOS_BUS_BUSY_MAX_MS) || 10 * 60 * 1000;
   const ensureBus = async (id, parentID) => {
     const s = sess(id);
     if (s.bus || !id) return;
@@ -214,7 +216,10 @@ export default async function bdbAosPlugin(input) {
       if (parentID) return;
       const name = bus.registerSession({ name: process.env.AOS_SESSION_NAME || id, sessionID: id, cwd: directory });
       busNames.set(name, id);
-    } catch { s.bus = false; }
+    } catch (e) {
+      console.error(`[aos-bus] registration failed: ${e?.message}`);
+      s.bus = !/invalid session name/.test(e?.message);
+    }
   };
   const dropBus = (id) => {
     for (const [name, sid] of busNames) if (sid === id) { bus.unregisterSession(name); busNames.delete(name); }
@@ -227,24 +232,28 @@ export default async function bdbAosPlugin(input) {
     polling = true;
     try {
       for (const [name, sessionID] of busNames) {
+        // Only the registered owner (this pid + this session) may consume the inbox.
+        let reg; try { reg = JSON.parse(readFileSync(bus.busPaths(name).reg, 'utf8')); } catch {}
+        if (reg?.pid !== process.pid || reg?.sessionID !== sessionID) continue;
         for (const m of bus.readInbox(name)) {
           // The gate checks this cache before any DB lookup; a stale human GO must not authorize a woken turn.
           sess(sessionID).prompt = '';
           try {
-            const res = await input.client.session.prompt({
+            let timer;
+            const res = await Promise.race([input.client.session.prompt({
               path: { id: sessionID },
               query: directory ? { directory } : undefined,
               body: {
                 noReply: !m.wake,
                 parts: [{ type: 'text', text: `[aos-bus from ${m.from}] ${m.text}`, synthetic: true, metadata: { aos_bus: { from: m.from, uid: m.uid, ts: m.ts } } }],
               },
-            });
+            }), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('aos-bus prompt timeout')), BUS_PROMPT_TIMEOUT_MS); timer.unref?.(); })]).finally(() => clearTimeout(timer));
             if (res?.error) throw res.error;
             unlinkSync(m.file);
             input.client.tui?.showToast?.({ body: { title: 'aos-bus', message: `from ${m.from}`, variant: 'info' } })?.catch?.(() => {});
           } catch (e) {
-            // Busy session: keep the file and retry next tick. Anything else is parked.
-            if (/busy/i.test(`${e?.name} ${e?.message} ${e?.data?.message}`)) break;
+            // Busy session: keep the file and retry next tick, for up to BUS_BUSY_MAX_MS. Anything else is parked.
+            if (/busy/i.test(`${e?.name} ${e?.message} ${e?.data?.message}`) && Date.now() - m.mtimeMs < BUS_BUSY_MAX_MS) break;
             try { renameSync(m.file, `${m.file}.failed`); } catch {}
           }
         }

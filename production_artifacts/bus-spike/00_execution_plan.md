@@ -86,7 +86,7 @@ files: .opencode/plugins/bdb-aos.js
   - **first** set `sess(sessionID).prompt = ''` (the go-gate checks this cache before any DB/messages lookup; do not rely on `chat.message` firing for plugin-initiated prompts, or a stale human `GO` would authorize the woken turn)
   - call `client.session.prompt({ path:{id: sessionID}, query:{directory}, body:{ noReply: !wake, parts:[{ type:'text', text:'[aos-bus from '+from+'] '+text, synthetic:true, metadata:{ aos_bus:{from, uid, ts} } }] } })`
   - on success: unlink the file and call `client.tui.showToast({ body:{ title:'aos-bus', message:'from '+from, variant:'info' } })` (best-effort)
-  - on error: rename the file to `.failed`. No retry loop
+  - on error: rename the file to `.failed`. A `busy` error keeps the file and retries each tick for up to 10 min (by file mtime), then parks it as `.failed`. The awaited prompt is capped at 10 min
   - a `busy` flag prevents overlapping ticks
   - `ponytail: 1 s poll; fs.watch if latency matters`
   {#plugin-poll}
