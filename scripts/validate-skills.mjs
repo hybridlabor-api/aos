@@ -242,7 +242,7 @@ function checkSkillRefs(text, file, known, self, findings) {
 }
 
 // Playbooks are skills with `kind: playbook`; skills without `kind` are untouched.
-const PB_REQUIRED = ['trigger', 'inputs', 'requires', 'go_points', 'outputs', 'verify', 'difficulty', 'est_time', 'disable-model-invocation'];
+const PB_REQUIRED = ['trigger', 'inputs', 'requires', 'go_points', 'outputs', 'verify', 'difficulty', 'est_time'];
 const DIFFICULTY = new Set(['beginner', 'intermediate', 'advanced']);
 const EXTERNAL = ' (external)';
 
@@ -274,10 +274,26 @@ export function checkPlaybook(byKey, known) {
     add('E-PB04', `\`difficulty: ${unquote(diff.value)}\` is not one of: ${[...DIFFICULTY].join(', ')}`, 'difficulty');
   }
   const dmi = byKey.get('disable-model-invocation');
-  if (dmi && unquote(dmi.value) !== 'true') {
-    add('E-PB06', 'playbooks are user-invoked only — set `disable-model-invocation: true`', 'disable-model-invocation');
+  if (dmi && unquote(dmi.value) === 'true') {
+    add('E-PB06', 'playbooks must stay invocable by agents — remove `disable-model-invocation: true` (side effects are guarded by go-gate)', 'disable-model-invocation');
   }
   return out;
+}
+
+// Pipeline and role skills must stay invocable through the Skill tool: the Master and
+// every orchestrator start them. Side effects are guarded by go-gate, not by hiding the
+// skill from the model. Anything not listed here may still set the flag.
+export const MODEL_INVOCABLE = new Set([
+  'startcycle', 'startcycle-graph', 'startcycle-graph-user', 'teamwork-preview',
+  'godmode-engineering', 'godmode-shipping', 'godmode-ui-ux', 'godmode-media-eventtech',
+  'master-session', 'ao-orchestrator', 'bdbrainstorm', 'bdbmediastorm',
+  'grill-me', 'grill-with-docs', 'ask-tim', 'memb-skill',
+]);
+
+export function checkInvocation(name, byKey) {
+  const dmi = byKey.get('disable-model-invocation');
+  if (!dmi || unquote(dmi.value) !== 'true' || !MODEL_INVOCABLE.has(name)) return [];
+  return [{ level: 'error', code: 'E-DMI01', line: dmi.line, msg: `\`${name}\` is a pipeline/role skill and must stay model-invocable — remove \`disable-model-invocation: true\` (go-gate guards its side effects)` }];
 }
 
 function validate() {
@@ -351,6 +367,7 @@ function validate() {
     }
 
     for (const f of checkPlaybook(byKey, known)) findings.push({ ...f, file: rel });
+    for (const f of checkInvocation(basename(dir), byKey)) findings.push({ ...f, file: rel });
 
     checkLeakedPaths(text, rel, findings);
     checkLocalRefs(text, dir, rel, findings);
@@ -509,7 +526,7 @@ function selftest() {
       trigger: '["a"]', inputs: '[repo]',
       requires: '\n  skills: [github, gh (external)]\n  agents: []\n  mcps: []\n  store: []',
       go_points: '[]', outputs: '["x"]', verify: '"x"', difficulty: 'beginner',
-      est_time: '5 min', 'disable-model-invocation': 'true', ...over,
+      est_time: '5 min', ...over,
     };
     const lines = Object.entries(base).filter(([k]) => !drop.includes(k)).map(([k, v]) => `${k}: ${v}`);
     const fm = scanFrontmatter(['---', ...lines, '---'].join('\n'));
@@ -530,8 +547,14 @@ function selftest() {
   assert.equal(kind.length, 1);
   assert.equal(kind[0].code, 'E-PB01');
   assert.equal(checkPlaybook(pb({ requires: '\n  skills:\n    - github' }), known)[0].code, 'E-PB05');
-  assert.equal(checkPlaybook(pb({ 'disable-model-invocation': 'false' }), known)[0].code, 'E-PB06');
-  assert.deepEqual(checkPlaybook(pb({}, ['kind', 'trigger', 'inputs', 'requires', 'go_points', 'outputs', 'verify', 'difficulty', 'est_time', 'disable-model-invocation']), known).length, 0, 'no kind, no playbook rules');
+  assert.equal(checkPlaybook(pb({ 'disable-model-invocation': 'true' }), known)[0].code, 'E-PB06');
+  assert.deepEqual(checkPlaybook(pb({ 'disable-model-invocation': 'false' }), known), [], 'explicit false is fine');
+  const dm = (v) => new Map([['disable-model-invocation', { key: 'disable-model-invocation', value: v, line: 3 }]]);
+  assert.equal(checkInvocation('startcycle-graph', dm('true'))[0].code, 'E-DMI01');
+  assert.deepEqual(checkInvocation('startcycle-graph', dm('false')), []);
+  assert.deepEqual(checkInvocation('bdb-updater', dm('true')), [], 'unlisted skills may keep the flag');
+  assert.deepEqual(checkInvocation('startcycle', new Map()), []);
+  assert.deepEqual(checkPlaybook(pb({}, ['kind', 'trigger', 'inputs', 'requires', 'go_points', 'outputs', 'verify', 'difficulty', 'est_time']), known).length, 0, 'no kind, no playbook rules');
   assert.deepEqual(
     checkPlaybook(pb({ requires: '\n  skills: ["gh (external)", github,]' }), known), [],
     'quoted item and trailing comma survive',

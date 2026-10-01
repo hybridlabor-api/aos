@@ -19,7 +19,6 @@ outputs: [".aos/project.json", "AGENTS.md", ".openwiki/", "production_artifacts/
 verify: "gh repo view <owner>/<name> --json visibility -q .visibility == PRIVATE"
 difficulty: intermediate
 est_time: 20-40 min
-disable-model-invocation: true
 ---
 
 # New private AOS project

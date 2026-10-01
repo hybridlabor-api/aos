@@ -19,7 +19,6 @@ outputs: [".github/workflows/*.yml", "production_artifacts/pb-ci-fix-<date>.md"]
 verify: "gh run list --commit <sha> --json conclusion -q '.[0].conclusion' == success"
 difficulty: intermediate
 est_time: 15-45 min
-disable-model-invocation: true
 ---
 
 # Fix red CI or set up GitHub Actions

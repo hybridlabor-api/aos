@@ -105,6 +105,8 @@ Additionally the parser at `installer.js:1857` uses `block.match(/([A-Za-z0-9_]+
 The same ruleset exists in `CLAUDE.md`, `GEMINI.md`, `agent.md`, `.codex-plugin/system.md`, `.cursor/rules/000_global_rules.mdc`, and (partially) `.roomodes`. `GEMINI.md` is missing two clauses that `CLAUDE.md` has ("Plans are not approval", "No inheritance, no silent retries"). `CODEX.md` contains no rules at all. There is no single source of truth; the installer regenerates *some* targets from `agent.md` but the root `CLAUDE.md`/`GEMINI.md` are separately maintained.
 
 ### F-07 — No `disable-model-invocation`, no argument contract *(P1)*
+
+> **Superseded (2026-10).** The flag was later set on pipeline and role skills and playbooks, which stopped the Master and every orchestrator from starting `/startcycle` through the Skill tool. It was removed again; go-gate guards the side effects and `validate-skills` (E-DMI01, E-PB06) keeps pipeline skills model-invocable. Kept only on `bdb-updater` and `triage`.
 B1: *"Use `disable-model-invocation: true` for workflows with side effects that you want to trigger manually."*
 
 `/startcycle`, `/ship`, `/build` and `bdbsaastraining` all have side effects (git commit, git push, npm publish, cloud calls). **0 of 134** skills set `disable-model-invocation`. Only 2 skills use `$ARGUMENTS`. Frontmatter census:

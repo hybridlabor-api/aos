@@ -19,7 +19,6 @@ outputs: ["brief.md", "tracker.csv", "summary.md", "vendor-requests-draft.md", "
 verify: "summary.md total recomputed from tracker.csv matches"
 difficulty: intermediate
 est_time: 20-40 min
-disable-model-invocation: true
 ---
 
 # Event tracker

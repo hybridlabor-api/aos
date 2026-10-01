@@ -132,6 +132,18 @@ category: one-of-the-categories-below
 ---
 ```
 
+**Pipeline and role skills stay model-invocable.** Never set
+`disable-model-invocation: true` on `startcycle`, `startcycle-graph(-user)`,
+`teamwork-preview`, the `godmode-*` roles, `master-session`, `ao-orchestrator`,
+`bdbrainstorm`, `bdbmediastorm`, `grill-me`, `grill-with-docs`, `ask-tim`,
+`memb-skill` or any playbook (`kind: playbook`). The Master and every orchestrator
+start them through the Skill tool, and hiding them forces a human to type each
+step, which breaks multi-harness coding. Side effects are guarded by go-gate, not
+by hiding the skill; `validate-skills` enforces this (E-DMI01, E-PB06). The flag
+is kept only where invocation by a model is harmful even with the gates:
+`bdb-updater` (rewrites installed configs and runs the installer) and `triage`
+(posts to GitHub issues, which go-gate does not guard yet).
+
 `category:` must be exactly one of: `design-ui-ux`, `engineering-method`,
 `media-eventtech`, `bdb-core`, `saas-ops`, `library`, `engineering-hardware`.
 

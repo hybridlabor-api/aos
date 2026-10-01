@@ -19,7 +19,6 @@ outputs: ["notes.md", "decisions.md", "actions.md", "followup-draft.md", "run-lo
 verify: "every decision and action in the files cites a transcript line"
 difficulty: beginner
 est_time: 10-20 min
-disable-model-invocation: true
 ---
 
 # Meeting notes and action list

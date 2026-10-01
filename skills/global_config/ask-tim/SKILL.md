@@ -2,7 +2,6 @@
 name: ask-tim
 description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the 185 available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
 category: bdb-core
-disable-model-invocation: true
 ---
 
 <!-- The flow map below is derived from mattpocock/skills' ask-matt (MIT, see
