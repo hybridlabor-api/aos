@@ -12,6 +12,7 @@
     "bdb-agent-skills-pro": "installer.js",
     "bdb-agent-skills": "installer.js",
     "aos-plan-canvas": "skills/global_config/plan-canvas/scripts/plan-canvas.js",
+    "aos-bus": ".claude/hooks/aos-bus.mjs",
     "aos-trail": "skills/global_config/agenttrail/bin/agenttrail.mjs",
     "aos-archify": "skills/global_config/archify/bin/archify.mjs",
     "aos-dashboard": "bin/aos-dashboard.mjs",

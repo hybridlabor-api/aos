@@ -49,31 +49,40 @@ Branch `feat/bus-spike` (base `feat/master-session-skill`, PR #111). Spike, mini
 needs:
 files: .claude/hooks/aos-bus.mjs, package.json
 
-- [ ] `busPaths(name)`, using `slug` imported from `go-gate.mjs` (no path traversal), and `ensurePrivateDir(dir)`: `mkdir -p` with mode 0700, then `chmod 0700` {#bus-paths}
-- [ ] `checkPrivateDir(dir)`: `lstat` must be a real directory (not a symlink), `uid === process.getuid()`, `(mode & 0o077) === 0`. Otherwise refuse with a reason {#bus-perm-check}
-- [ ] `registerSession({name, sessionID, cwd})` / `unregisterSession(name, pid)`: write the registry file 0600 and `ensurePrivateDir` the inbox; unregister only if `pid` matches. `sendMessage`/`readInbox` derive the inbox from `busPaths(name)`, never from the registry's `inbox` field {#bus-registry}
-- [ ] `listSessions()`: read the registry and drop entries whose pid is dead (`process.kill(pid, 0)`) {#bus-list}
-- [ ] `sendMessage(name, text, {from, wake})`:
+- [x] `busPaths(name)`, using `slug` imported from `go-gate.mjs` (no path traversal), and `ensurePrivateDir(dir)`: `mkdir -p` with mode 0700, then `chmod 0700` {#bus-paths}
+  by: engineering
+- [x] `checkPrivateDir(dir)`: `lstat` must be a real directory (not a symlink), `uid === process.getuid()`, `(mode & 0o077) === 0`. Otherwise refuse with a reason {#bus-perm-check}
+  by: engineering
+- [x] `registerSession({name, sessionID, cwd})` / `unregisterSession(name, pid)`: write the registry file 0600 and `ensurePrivateDir` the inbox; unregister only if `pid` matches. `sendMessage`/`readInbox` derive the inbox from `busPaths(name)`, never from the registry's `inbox` field {#bus-registry}
+  by: engineering
+- [x] `listSessions()`: read the registry and drop entries whose pid is dead (`process.kill(pid, 0)`) {#bus-list}
+  by: engineering
+- [x] `sendMessage(name, text, {from, wake})`:
   - target must be registered and alive, inbox must pass `checkPrivateDir`
   - `Buffer.byteLength(text) <= 8 KiB`, otherwise refuse
   - `from` = `--from` or `AOS_SESSION_NAME` or `${os.userInfo().username}:${process.ppid}`
   - atomic write: tmp file 0600 in the inbox (name ends `.tmp`, so `readInbox` never sees a partial `*.json`), then `rename`
   {#bus-send}
-- [ ] `readInbox(name)`:
+  by: engineering
+- [x] `readInbox(name)`:
   - `checkPrivateDir`, then for each `*.json` sorted: `lstat` is a regular file, uid matches, size ≤ 16 KiB, JSON valid, `text` is a string
   - invalid files are renamed to `.rejected`
   - returns `[{file, from, text, wake, uid}]`
   {#bus-read}
-- [ ] CLI: `aos-bus send <name> <text...> [--from x] [--wake]`, `aos-bus list`. Exit 2 with a reason on refusal. Add `"aos-bus": ".claude/hooks/aos-bus.mjs"` to package.json `bin` {#bus-cli}
+  by: engineering
+- [x] CLI: `aos-bus send <name> <text...> [--from x] [--wake]`, `aos-bus list`. Exit 2 with a reason on refusal. Add `"aos-bus": ".claude/hooks/aos-bus.mjs"` to package.json `bin` {#bus-cli}
+  by: engineering
 
 ## Plugin: registry + inbox poll + injection {#plugin-bus}
 
 needs: bus-lib
 files: .opencode/plugins/bdb-aos.js
 
-- [ ] Import `aos-bus.mjs` through the existing `hook()` loader {#plugin-import}
-- [ ] Register lazily: the first `event` seen for a root session (`session.created` with `parentID == null`, or a `chat.message` / `session.idle` for an unknown root session, which covers `opencode --continue`) calls `registerSession`. `session.deleted` calls `unregisterSession`. `process.on('exit')` runs a sync unregister of this pid's names {#plugin-register}
-- [ ] One `setInterval(1000).unref()` per plugin instance. For each registered name: `readInbox`, then for each message:
+- [~] Import `aos-bus.mjs` through the existing `hook()` loader {#plugin-import}
+  by: engineering
+- [~] Register lazily: the first `event` seen for a root session (`session.created` with `parentID == null`, or a `chat.message` / `session.idle` for an unknown root session, which covers `opencode --continue`) calls `registerSession`. `session.deleted` calls `unregisterSession`. `process.on('exit')` runs a sync unregister of this pid's names {#plugin-register}
+  by: engineering
+- [~] One `setInterval(1000).unref()` per plugin instance. For each registered name: `readInbox`, then for each message:
   - **first** set `sess(sessionID).prompt = ''` (the go-gate checks this cache before any DB/messages lookup; do not rely on `chat.message` firing for plugin-initiated prompts, or a stale human `GO` would authorize the woken turn)
   - call `client.session.prompt({ path:{id: sessionID}, query:{directory}, body:{ noReply: !wake, parts:[{ type:'text', text:'[aos-bus from '+from+'] '+text, synthetic:true, metadata:{ aos_bus:{from, uid, ts} } }] } })`
   - on success: unlink the file and call `client.tui.showToast({ body:{ title:'aos-bus', message:'from '+from, variant:'info' } })` (best-effort)
@@ -81,7 +90,9 @@ files: .opencode/plugins/bdb-aos.js
   - a `busy` flag prevents overlapping ticks
   - `ponytail: 1 s poll; fs.watch if latency matters`
   {#plugin-poll}
-- [ ] In `chat.message`, if `fullText` is empty (an all-synthetic message, i.e. bus or nudge), set `s.prompt = ''` and return before memB/pipeline/issueGoToken. This saves a memB lookup per bus message and keeps the gate closed {#plugin-chat-guard}
+  by: engineering
+- [~] In `chat.message`, if `fullText` is empty (an all-synthetic message, i.e. bus or nudge), set `s.prompt = ''` and return before memB/pipeline/issueGoToken. This saves a memB lookup per bus message and keeps the gate closed {#plugin-chat-guard}
+  by: engineering
 
 ## go-gate (verify, change only if needed) {#go-gate}
 
