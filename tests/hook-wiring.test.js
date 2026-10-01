@@ -30,6 +30,7 @@ describe('mergeBdbSettingsHooks', () => {
         assert.ok(commandsFor(s, 'PreToolUse').some((c) => c.includes('go-gate.mjs')));
         assert.ok(commandsFor(s, 'Stop').some((c) => c.includes('graph-gate.mjs')));
         assert.ok(commandsFor(s, 'UserPromptSubmit').some((c) => c.includes('memb-inject.mjs')));
+        assert.ok(commandsFor(s, 'UserPromptSubmit').some((c) => c.includes('go-token.mjs')));
     });
 
     test('preserves user-owned keys and foreign hook entries', () => {
@@ -112,7 +113,7 @@ describe('installGlobalHooks (Quick Update delivery path)', () => {
     test('delivers every hook script into a fresh $HOME and wires them', () => {
         run();
 
-        for (const f of ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
+        for (const f of ['go-gate.mjs', 'go-token.mjs', 'graph-gate.mjs', 'memb-inject.mjs']) {
             assert.ok(fs.existsSync(path.join(home, '.claude', 'hooks', f)), `${f} not delivered`);
         }
         const s = readSettings(path.join(home, '.claude', 'settings.json'));

@@ -3774,6 +3774,16 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         }
     }
 
+    // The plugin imports its decision logic from ./aos-hooks/ next to itself.
+    const hooksSrc = path.join(srcDir, '.claude', 'hooks');
+    if (fs.existsSync(hooksSrc)) {
+        try {
+            copyDirRecursiveSync(hooksSrc, path.join(opencodeDir, 'plugins', 'aos-hooks'));
+        } catch (e) {
+            log.error(`Could not install OpenCode plugin hooks (OpenCode gates inactive): ${e.message}`);
+        }
+    }
+
     const trailLibSrc = path.join(srcDir, '.opencode', 'plugins', 'lib');
     if (fs.existsSync(trailLibSrc)) {
         try { copyDirRecursiveSync(trailLibSrc, path.join(opencodeDir, 'plugins', 'lib')); } catch (e) { log.warn(`Could not install OpenCode plugin lib: ${e.message}`); }
@@ -3977,7 +3987,7 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by

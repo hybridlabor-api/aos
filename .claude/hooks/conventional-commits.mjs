@@ -19,7 +19,8 @@
 // failure here, because the consequence (history AOS does not recognise) is
 // recoverable with a rebase, and a wedged commit flow is not.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chore", "ci", "build", "revert"];
 
@@ -35,7 +36,7 @@ function readStdin() {
   }
 }
 
-function respond(isAgy, allowed, reason = "", message = "") {
+function respond(isAgy, allowed, reason = "") {
   if (isAgy) {
     if (allowed) {
       console.log(JSON.stringify({ decision: "allow" }));
@@ -87,6 +88,14 @@ function reasonFor(message) {
   ].join("\n");
 }
 
+export function checkConventionalCommit(command) {
+  if (typeof command !== "string" || !COMMIT.test(command)) return null;
+  const message = extractMessage(command);
+  return message === null || CONVENTIONAL.test(message) ? null : reasonFor(message);
+}
+
+const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+
 function main() {
   const rawInput = readStdin();
   let input = {};
@@ -108,18 +117,8 @@ function main() {
     input?.command ||
     "";
 
-  if (typeof command !== "string" || !COMMIT.test(command)) {
-    respond(isAgy, true);
-    return;
-  }
-
-  const message = extractMessage(command);
-  if (message === null || CONVENTIONAL.test(message)) {
-    respond(isAgy, true);
-    return;
-  }
-
-  respond(isAgy, false, reasonFor(message), message);
+  const reason = checkConventionalCommit(command);
+  respond(isAgy, !reason, reason || "");
 }
 
-main();
+if (isMain()) main();
