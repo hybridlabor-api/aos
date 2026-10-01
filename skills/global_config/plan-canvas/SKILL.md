@@ -127,8 +127,8 @@ One backstop exists, and it is not an excuse to skip the above:
 **After approve — start the live map (Trigger A).** When the approved artifact
 is a build plan (e.g. `production_artifacts/00_execution_plan.md`) and a
 multi-agent build follows, start the aos-trail live map:
-`aos-trail . --plan production_artifacts/00_execution_plan.md --no-open` — it
-prints a URL (default http://localhost:5330). Inside AO (env var
+`aos-trail --ensure` — it
+prints a URL (default http://localhost:5330). Put the live-map link in your reply (the autostart hook also adds it as context when active). Inside AO (env var
 `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. See the `agenttrail`
 skill. Not needed for reviews that are not followed by a build.
 

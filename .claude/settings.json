@@ -24,6 +24,16 @@
         ]
       },
       {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/trail-autostart.mjs\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
         "hooks": [
           {
             "type": "command",

@@ -27,6 +27,14 @@ aos-trail . --plan production_artifacts/00_execution_plan.md --no-open
 
 It prints the URL (default http://localhost:5330, next free port if taken). Open that URL for the user. If running inside AO (env var `AO_BROWSER_CAPABILITY` is set), run `ao preview <url>` so it shows in AO's Browser tab. Without a plan file, start it with just `aos-trail .` — it then shows file activity only.
 
+## Ensure (auto-start)
+
+```bash
+aos-trail --ensure [--cwd <dir>] [--plan <file>] [--session <id>] [--json]
+```
+
+Starts the map detached if none runs for this repo (matched via `/whoami` `repoPath` on 127.0.0.1:5330-5344), opens it at most once per session (state in `$TMPDIR/aos-trail-ensure/`), and always exits 0. Plan: `--plan`, else `production_artifacts/00_execution_plan.md`, else the single `production_artifacts/*/00_execution_plan.md`; it needs a `{#id}` marker. No open under `CI`, SSH, or headless Linux; with `AO_BROWSER_CAPABILITY` it runs `ao preview <url>`. `--json` prints `{url,started,opened,reason,plan,hint}`. Test overrides: `AOS_TRAIL_OPENER` (opener command), `AOS_TRAIL_PORTS=lo-hi` (probe range).
+
 ## Plan convention
 
 The plan file uses components and tasks:
