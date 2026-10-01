@@ -13,7 +13,7 @@
       "name": "bdb-aos",
       "source": "./plugins/bdb-aos",
       "description": "Full BDB Agent OS suite: 200+ curated skills, 13 subagents and the startcycle pipelines for Claude Code. Gate hooks and MCP servers are installed by the AOS installer.",
-      "version": "4.14.0"
+      "version": "4.14.1"
     }
   ]
 }
