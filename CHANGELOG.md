@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.15.0](https://github.com/hybridlabor-api/aos/compare/v4.14.1...v4.15.0) (2026-10-01)
+
+
+### Features
+
+* **bus:** aos-bus with visible OpenCode TUI delivery, heartbeat liveness and gate hardening ([#121](https://github.com/hybridlabor-api/aos/issues/121)) ([8719272](https://github.com/hybridlabor-api/aos/commit/8719272491e83ba8b8569379aeeb8a98168ce02a))
+
+
+### Bug Fixes
+
+* **skills:** keep pipeline, role and playbook skills model-invocable ([#120](https://github.com/hybridlabor-api/aos/issues/120)) ([c45e976](https://github.com/hybridlabor-api/aos/commit/c45e97620c971883999a134ad315ac554e7889dc))
+
 ## [4.14.1](https://github.com/hybridlabor-api/aos/compare/v4.14.0...v4.14.1) (2026-10-01)
 
 
