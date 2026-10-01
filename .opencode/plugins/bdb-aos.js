@@ -15,22 +15,16 @@
  * on unguarded destructive actions.
  */
 
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
-import os from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-const GUARDED_PATTERNS = [
-  /(?:^|[;&|]\s*)git\s+push\b/i,
-  /(?:^|[;&|]\s*)npm\s+publish\b/i,
-  /(?:^|[;&|]\s*)npm\s+version\b/i,
-  /(?:^|[;&|]\s*)gh\s+pr\s+merge\b/i,
-  /(?:^|[;&|]\s*)gh\s+release\s+create\b/i,
-  /(?:^|[;&|]\s*)git\s+reset\s+--hard\b/i,
-  /(?:^|[;&|]\s*)git\s+clean\s+-[a-zA-Z]*f\b/i,
-  /(?:^|[;&|]\s*)rm\s+(?:-\w*[rR]\w*|--recursive)\b/i,
-];
-
-let lastHumanPrompt = '';
+// Decision logic lives in the shared hooks: installed copy next to this file
+// (plugins/aos-hooks), else the repo's .claude/hooks. existsSync, not try/catch,
+// so a broken installed hook fails loudly instead of silently falling back.
+const HOOKS = existsSync(new URL('./aos-hooks/go-gate.mjs', import.meta.url)) ? './aos-hooks/' : '../../.claude/hooks/';
+const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
+const [{ GUARDED_PATTERNS, tokenGrantsGo }, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }] =
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs'].map(hook));
 
 // ---------------------------------------------------------------------------
 // Graph gate (W-5, W-6)
@@ -126,54 +120,6 @@ function matchPipelineCommand(text) {
     return PIPELINE_COMMANDS.find(c => c.name === m[1].toLowerCase()) || null;
 }
 
-function isGuardedCommand(cmd) {
-  if (typeof cmd !== 'string') return false;
-  return GUARDED_PATTERNS.some((re) => re.test(cmd));
-}
-
-function verifyGoAuthorized(lastPrompt) {
-  const trimmed = (lastPrompt || '').trim();
-  return trimmed.toUpperCase() === 'GO';
-}
-
-// GO-token path (master-session skill). Mirrors tokenGrantsGo in
-// .claude/hooks/go-gate.mjs: `GO <session>` typed in a Claude Code master
-// session becomes ~/.aos/go/<session>.token; accepted once, if younger than
-// 10 minutes, naming this session, and the master transcript still ends with
-// that very `GO <session>`. This file is installed standalone, so no import.
-const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-const TOKEN_TTL_MS = 10 * 60 * 1000;
-
-function lastMasterUserText(transcriptPath) {
-  let lines;
-  try { lines = readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean); } catch { return null; }
-  for (let i = lines.length - 1; i >= 0; i--) {
-    let e;
-    try { e = JSON.parse(lines[i]); } catch { continue; }
-    if ((e.type === 'user' || e.role === 'user') && e.isSidechain !== true) {
-      const c = e.message?.content ?? e.content;
-      const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b?.type === 'text').map((b) => b.text).join('\n') : '';
-      if (text.trim()) return text.trim();
-    }
-  }
-  return null;
-}
-
-export function tokenGrantsGo(own) {
-  if (typeof own !== 'string' || !slug(own)) return false;
-  const file = path.join(os.homedir(), '.aos', 'go', `${slug(own)}.token`);
-  let tok;
-  try { tok = JSON.parse(readFileSync(file, 'utf8')); } catch { return false; }
-  const age = Date.now() - Date.parse(tok?.issued_at);
-  if (!(age >= 0 && age < TOKEN_TTL_MS)) { try { unlinkSync(file); } catch {} return false; }
-  if (typeof tok.target !== 'string' || slug(tok.target) !== slug(own)) return false;
-  if (typeof tok.master_transcript !== 'string') return false;
-  const last = lastMasterUserText(tok.master_transcript);
-  if (!last || last.toLowerCase() !== `go ${own.trim().toLowerCase()}`) return false;
-  try { unlinkSync(file); } catch { return false; }
-  return true;
-}
-
 // This session's name for the token: env (set by aos-acp / the user), else the
 // OpenCode session title.
 async function ownSessionName(client, sessionID) {
@@ -228,83 +174,35 @@ function mapTrailToolInput(args, directory) {
   return mapped;
 }
 
-// Extract ambient memory from local memB database
-async function getMembContext(prompt, currentDir) {
-  const home = os.homedir();
-  const dbPath = path.join(home, '.MemBDB', 'memb.db');
-  if (!existsSync(dbPath)) return null;
-
-  try {
-    const { DatabaseSync } = await import('node:sqlite');
-    const db = new DatabaseSync(dbPath, { readOnly: true });
-    db.exec('PRAGMA busy_timeout = 3000;');
-
-    const contextItems = [];
-
-    // Standing persona facts
-    const personaFile = path.join(home, '.MemBDB', 'ambient-persona.txt');
-    if (existsSync(personaFile)) {
-      try {
-        for (const line of readFileSync(personaFile, 'utf8').split('\n')) {
-          const t = line.trim();
-          if (t && !t.startsWith('#')) contextItems.push(`- ${t}`);
-        }
-      } catch {}
-    }
-
-    // Resolve project ID candidate
-    let projectName = path.basename(currentDir);
-    const pkgPath = path.join(currentDir, 'package.json');
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-        if (pkg?.name) projectName = pkg.name;
-      } catch {}
-    }
-
-    // Query project memories
-    try {
-      const sql = `
-        SELECT payload FROM memb_vectors
-        WHERE collection = 'bdb_agent_memory'
-          AND (
-            json_extract(payload, '$.project_id') = ?
-            OR json_extract(payload, '$.metadata.project_id') = ?
-            OR json_extract(payload, '$.project') = ?
-            OR json_extract(payload, '$.metadata.project') = ?
-          )
-        ORDER BY rowid DESC
-        LIMIT 3
-      `;
-      const rows = db.prepare(sql).all(projectName, projectName, projectName, projectName);
-      for (const r of rows) {
-        try {
-          const p = JSON.parse(r.payload);
-          const text = (p.memory || p.data || '').trim().replace(/\s+/g, ' ');
-          if (text.length > 10) {
-            contextItems.push(`- Project [${projectName}]: ${text.slice(0, 180)}`);
-          }
-        } catch {}
-      }
-    } catch {}
-
-    db.close();
-
-    if (contextItems.length === 0) return null;
-    return `[AOS Ambient Memory - memB]\n${contextItems.join('\n')}`;
-  } catch {
-    return null;
-  }
-}
-
 export default async function bdbAosPlugin(input) {
   const directory = input.directory || process.cwd();
+
+  // ponytail: entries live for the process lifetime (a few bytes per session); add cleanup if sessions ever pile up.
+  const sessions = new Map();
+  const sess = (id) => {
+    if (!sessions.has(id)) sessions.set(id, { prompt: '', parentID: null, identitySent: false });
+    return sessions.get(id);
+  };
+  const trail = (hook_event_name, session_id, extra = {}) =>
+    void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
 
   return {
     // W-6 loop-keeper. Fires whenever a session goes idle. Reads the graph
     // state and, while work is still open, prompts the session to continue.
     // Never throws: a graph that cannot be read must not wedge the session.
     event: async ({ event }) => {
+      try {
+        const props = (event && event.properties) || {};
+        if (event?.type === 'session.created' && props.info?.id) {
+          sess(props.info.id).parentID = props.info.parentID ?? null;
+          trail('SessionStart', props.info.id);
+        } else if (event?.type === 'permission.updated') {
+          trail('Notification', props.sessionID, { message: props.title });
+        } else if (event?.type === 'session.idle' && props.sessionID) {
+          trail(sess(props.sessionID).parentID ? 'SubagentStop' : 'Stop', props.sessionID);
+        }
+      } catch {}
+
       try {
         if (!event || event.type !== 'session.idle') return;
         const sessionID = event.properties && event.properties.sessionID;
@@ -332,16 +230,19 @@ export default async function bdbAosPlugin(input) {
     },
 
     'chat.message': async (msgInput, msgOutput) => {
-      // Capture the user prompt text for GO-gate verification
-      const textParts = (msgOutput.parts || []).filter((p) => p && p.type === 'text' && typeof p.text === 'string');
+      const textParts = (msgOutput.parts || []).filter((p) => p && p.type === 'text' && typeof p.text === 'string' && !p.synthetic);
       const fullText = textParts.map((p) => p.text).join('\n').trim();
-      if (fullText) {
-        lastHumanPrompt = fullText;
-      }
+      const s = sess(msgInput.sessionID);
+      s.prompt = fullText;
 
-      // Inject memB ambient memory
       try {
-        const membContext = await getMembContext(fullText, directory);
+        issueGoToken(fullText, { session_id: msgInput.sessionID, message_id: msgInput.messageID || msgOutput.message?.id });
+      } catch {}
+
+      try {
+        const event = s.identitySent ? 'UserPromptSubmit' : 'SessionStart';
+        s.identitySent = true;
+        const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
         if (membContext) {
           msgOutput.parts.unshift({
             id: `memb-${Date.now()}`,
@@ -385,30 +286,23 @@ export default async function bdbAosPlugin(input) {
         const tool_name = mapTrailToolName(toolInput.tool);
         const tool_input = mapTrailToolInput(toolOutput?.args, directory);
         pendingArgs.set(toolInput.callID, tool_input);
-        postTrail({
-          hook_event_name: 'PreToolUse',
-          session_id: toolInput.sessionID,
-          cwd: directory,
-          agent: 'opencode',
-          tool_name,
-          tool_input,
-        });
+        trail('PreToolUse', toolInput.sessionID, { tool_name, tool_input });
       } catch {}
       const toolName = (toolInput.tool || '').toLowerCase();
       // Intercept bash, terminal, or command execution tools
       if (toolName === 'bash' || toolName === 'terminal' || toolName === 'shell' || toolName === 'exec' || toolName === 'run_command') {
         const cmd = toolOutput?.args?.command || toolOutput?.args?.cmd || toolOutput?.args?.script || '';
-        if (isGuardedCommand(cmd)) {
-          let authorized = verifyGoAuthorized(lastHumanPrompt);
+        if (typeof cmd === 'string' && GUARDED_PATTERNS.some((re) => re.test(cmd))) {
+          let authorized = sess(toolInput.sessionID).prompt.toUpperCase() === 'GO';
 
-          // If last cached prompt wasn't GO, query recent session messages via OpenCode client as fallback
+          // If this session's cached prompt wasn't GO, query recent session messages via OpenCode client as fallback
           if (!authorized && input.client && toolInput.sessionID) {
             try {
               const res = await input.client.session.messages({ path: { id: toolInput.sessionID } });
               const msgs = res?.data || [];
               for (let i = msgs.length - 1; i >= 0; i--) {
                 const m = msgs[i];
-                if (m.role === 'user') {
+                if ((m.info?.role ?? m.role) === 'user') {
                   const parts = m.parts || [];
                   const text = parts.filter((p) => p.type === 'text').map((p) => p.text).join('\n').trim();
                   if (text) {
@@ -421,7 +315,7 @@ export default async function bdbAosPlugin(input) {
           }
 
           if (!authorized) {
-            authorized = tokenGrantsGo(await ownSessionName(input.client, toolInput.sessionID));
+            authorized = tokenGrantsGo(await ownSessionName(input.client, toolInput.sessionID)).ok;
           }
 
           if (!authorized) {
@@ -430,6 +324,11 @@ export default async function bdbAosPlugin(input) {
             );
           }
         }
+        const reason = checkConventionalCommit(cmd);
+        if (reason) throw new Error(reason);
+      } else if (toolName === 'write' || toolName === 'edit' || toolName === 'patch') {
+        const reason = envFileReason(toolOutput?.args?.filePath ?? '');
+        if (reason) throw new Error(reason);
       }
     },
 
@@ -437,14 +336,7 @@ export default async function bdbAosPlugin(input) {
       try {
         const tool_input = pendingArgs.get(toolInput.callID);
         pendingArgs.delete(toolInput.callID);
-        postTrail({
-          hook_event_name: 'PostToolUse',
-          session_id: toolInput.sessionID,
-          cwd: directory,
-          agent: 'opencode',
-          tool_name: mapTrailToolName(toolInput.tool),
-          tool_input,
-        });
+        trail('PostToolUse', toolInput.sessionID, { tool_name: mapTrailToolName(toolInput.tool), tool_input });
       } catch {}
     },
   };
