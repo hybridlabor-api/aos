@@ -28,10 +28,25 @@ function mermaidLoaderScript(url) {
       securityLevel: 'strict',
       theme: 'dark',
       fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+      flowchart: { useMaxWidth: true },
+      sequence: { useMaxWidth: true, mirrorActors: false },
+      gantt: { useMaxWidth: true, barHeight: 24, barGap: 6, fontSize: 12, topPadding: 56, leftPadding: 96 },
       themeVariables: {
         primaryColor: '#161616', primaryBorderColor: '#9b30c4', primaryTextColor: '#ffffff',
         lineColor: '#7a7a7a', secondaryColor: '#1c1c1c', tertiaryColor: '#121212',
-        background: '#0a0a0a', mainBkg: '#161616', clusterBkg: '#121212'
+        background: '#0a0a0a', mainBkg: '#161616', clusterBkg: '#121212',
+        textColor: '#b8b8b8', edgeLabelBackground: '#161616', labelBackground: '#161616',
+        actorBkg: '#161616', actorBorder: '#9b30c4', actorTextColor: '#ffffff', actorLineColor: '#3a3a3a',
+        signalColor: '#7a7a7a', signalTextColor: '#b8b8b8', labelBoxBkgColor: '#161616',
+        labelBoxBorderColor: '#3a3a3a', labelTextColor: '#b8b8b8', loopTextColor: '#b8b8b8',
+        noteBkgColor: '#1c1c1c', noteBorderColor: '#3a3a3a', noteTextColor: '#ffffff',
+        activationBkgColor: '#1c1c1c', activationBorderColor: '#9b30c4', sequenceNumberColor: '#ffffff',
+        gridColor: '#1e1e1e', sectionBkgColor: '#121212', altSectionBkgColor: '#0e0e0e', sectionBkgColor2: '#121212',
+        taskBkgColor: '#3d1a4d', taskBorderColor: '#9b30c4', taskTextColor: '#ffffff',
+        taskTextLightColor: '#ffffff', taskTextDarkColor: '#ffffff', taskTextOutsideColor: '#b8b8b8',
+        taskTextClickableColor: '#c05ee6', activeTaskBkgColor: '#9b30c4', activeTaskBorderColor: '#c05ee6',
+        doneTaskBkgColor: '#2a2a2a', doneTaskBorderColor: '#4a4a4a',
+        critBkgColor: '#6a2285', critBorderColor: '#c05ee6', todayLineColor: '#c05ee6', excludeBkgColor: '#101010'
       }
     });
     await mermaid.run({ querySelector: '.mermaid' });
