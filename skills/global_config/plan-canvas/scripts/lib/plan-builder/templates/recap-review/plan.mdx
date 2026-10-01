@@ -1,0 +1,118 @@
+---
+title: Add --json output and exit codes to the stash CLI
+subtitle: "stashctl list and stashctl prune now print machine-readable JSON and return stable exit codes. Invented example."
+kind: recap
+pr: "#87"
+branch: feat/cli-json-output
+base: main
+commit: 9d2e7b1
+files: 6
+additions: 214
+deletions: 37
+author: sample-author
+date: 2026-04-22
+---
+
+<Callout tone="note" title="How to use this template">
+
+Use it for a PR or handover where a reviewer must decide. Replace the stashctl example with your change: fill the three summary bullets, mark the files you really touched, record each rejected alternative, and keep the Verified and Not verified columns honest. Delete sections you do not need. All names and numbers are invented.
+
+</Callout>
+
+## Summary
+
+- **What:** `stashctl list` and `stashctl prune` accept `--json` and return exit codes 0 (ok), 2 (usage) and 3 (nothing to do).
+- **Why:** CI scripts parsed the table output with `awk` and broke whenever a column changed.
+- **Scope:** output formatting only. Storage format and the default human output are unchanged.
+
+## Changed areas
+
+<FileTree title="Files" entries={[
+  { path: "src", depth: 0, change: "modified" },
+  { path: "src/cli/list.ts", depth: 1, change: "modified", note: "--json flag, exit codes" },
+  { path: "src/cli/prune.ts", depth: 1, change: "modified", note: "--json flag, exit 3 when nothing pruned" },
+  { path: "src/cli/output.ts", depth: 1, change: "added", note: "Shared table and JSON writer" },
+  { path: "src/cli/legacy-format.ts", depth: 1, change: "deleted", note: "Replaced by output.ts" },
+  { path: "tests", depth: 0, change: "modified" },
+  { path: "tests/cli-json.test.ts", depth: 1, change: "added", note: "Schema and exit code cases" },
+]} />
+
+<ImplementationMap title="What each file does now" files={[
+  { path: "src/cli/output.ts", change: "added", note: "One writer picks table or JSON, so commands stop formatting on their own" },
+  { path: "src/cli/list.ts", change: "modified", note: "Builds rows, hands them to the writer, maps results to exit codes" },
+  { path: "src/cli/prune.ts", change: "modified", note: "Same, plus a dry-run summary in JSON" },
+  { path: "src/cli/legacy-format.ts", change: "deleted", note: "No other caller was left" },
+  { path: "tests/cli-json.test.ts", change: "added", note: "Pins the JSON shape and the three exit codes" },
+]} />
+
+### Most important change: list output
+
+<Compare>
+<Before>
+
+```text
+$ stashctl list
+ID    AGE   SIZE
+a1f3  2d    4.1M
+b7c9  9d    0.8M
+$ echo $?
+0
+```
+
+</Before>
+<After>
+
+```text
+$ stashctl list --json
+[{"id":"a1f3","ageDays":2,"bytes":4300800},
+ {"id":"b7c9","ageDays":9,"bytes":838860}]
+$ echo $?
+0
+```
+
+</After>
+</Compare>
+
+## Decisions
+
+<Decision title="JSON shape" question="Which shape does --json print?" options={[
+  { id: "array", label: "One JSON array per command", detail: "Simple to read with jq, one document per run.", recommended: true },
+  { id: "ndjson", label: "One JSON object per line", detail: "Rejected: streams well, but every consumer we know reads the whole output anyway and would need a line splitter." },
+]}>
+
+An array keeps the output valid JSON for any parser. If lists grow beyond memory, add `--ndjson` later as a separate flag.
+
+</Decision>
+
+<Decision title="Exit code for an empty prune" question="What does prune return when nothing was removed?" options={[
+  { id: "three", label: "Exit 3", detail: "Scripts can tell a no-op from a real prune.", recommended: true },
+  { id: "zero", label: "Exit 0", detail: "Rejected: hides the no-op, and CI cannot branch on it without parsing output." },
+]}>
+
+Exit 3 is documented in `--help`. Anyone relying on 0 for an empty prune must update their script.
+
+</Decision>
+
+## Verification
+
+<Table title="Commands run" columns={["Command", "Exit code", "Result"]} rows={[
+  ["npm test", "0", "41 passed, 0 failed"],
+  ["npm run lint", "0", "No warnings"],
+  ["stashctl list --json | jq length", "0", "Printed 2 on the sample stash"],
+  ["stashctl prune --json (empty stash)", "3", "Exit 3 as designed"],
+  ["stashctl list --bogus", "2", "Usage error printed to stderr"],
+]} />
+
+<Columns columns={[
+  { label: "Verified", blocks: "- JSON shape and the three exit codes, in unit tests\n- Human table output is byte-identical to before\n- Linux x64, Node 20" },
+  { label: "Not verified", blocks: "- Windows and macOS terminals\n- Stashes with more than 10,000 entries\n- Any downstream script that parsed the old table" },
+]} />
+
+## Risks and follow-ups
+
+<Checklist title="Risks and follow-ups">
+- [ ] Exit 3 for an empty prune can break scripts that expect 0: announce it in the release notes
+- [ ] Run the large-stash case (10,000 entries) before the next release
+- [ ] Check Windows output encoding for non-ASCII ids
+- [ ] Add --ndjson only if a real consumer asks for it
+</Checklist>

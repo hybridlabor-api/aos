@@ -1,0 +1,1 @@
+{"id":"recap-review","label":"Recap for review","description":"One-page change recap for a PR or merge decision: summary, changed areas, decisions with rejected alternatives, verified vs not verified, risks.","useWhen":"A reviewer must decide on a merge or take over work and needs an honest, document-style account of what changed and what was actually checked.","hasBoard":false}
