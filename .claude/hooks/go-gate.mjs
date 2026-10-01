@@ -23,8 +23,18 @@
 // Own session name: latest agent-name/custom-title entry in this transcript
 // (what --name / ListAgents show), else env AOS_SESSION_NAME. If neither is
 // available the token path stays closed.
+//
+// A token is single-use per master message: the master's GO entry uuid (Claude)
+// or message id (OpenCode) goes into ~/.aos/go/.consumed, so a re-minted token
+// on an unchanged master cannot be replayed.
+//
+// OpenCode-issued tokens (issuer "opencode") are verified offline against
+// opencode.db, read-only. Limits: the schema is internal and undocumented, only
+// the default XDG / ~/.local/share data dir is read, and bun:sqlite is an
+// unverified fallback. Any miss fails closed; the human types a literal GO.
 
-import { readFileSync, existsSync, unlinkSync, realpathSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -112,6 +122,41 @@ function ownSessionName(transcriptPath) {
   return name || process.env.AOS_SESSION_NAME || "";
 }
 
+const CONSUMED_KEEP = 200;
+const consumedFile = () => join(homedir(), ".aos", "go", ".consumed");
+const readConsumed = () => {
+  try { return readFileSync(consumedFile(), "utf8").split("\n").filter(Boolean); } catch { return []; }
+};
+
+function opencodeLastUser(sessionId) {
+  let db;
+  try {
+    const dbPath = join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "opencode", "opencode.db");
+    if (typeof sessionId !== "string" || !existsSync(dbPath)) return null;
+    const require = createRequire(import.meta.url);
+    try {
+      db = new (require("node:sqlite").DatabaseSync)(dbPath, { readOnly: true });
+    } catch {
+      db = new (require("bun:sqlite").Database)(dbPath, { readonly: true });
+    }
+    const msg = db.prepare(
+      "SELECT id FROM message WHERE session_id = ? AND json_extract(data, '$.role') = 'user' ORDER BY time_created DESC, id DESC LIMIT 1"
+    ).get(sessionId);
+    if (!msg) return null;
+    const text = db.prepare("SELECT data FROM part WHERE message_id = ? ORDER BY id").all(msg.id)
+      .map((r) => JSON.parse(r.data))
+      .filter((p) => p?.type === "text" && !p.synthetic && typeof p.text === "string")
+      .map((p) => p.text)
+      .join("\n")
+      .trim();
+    return { id: msg.id, text };
+  } catch {
+    return null;
+  } finally {
+    try { db?.close(); } catch { /* already closed */ }
+  }
+}
+
 // Shared with bin/aos-acp.mjs (ACP permission requests). `consume: false`
 // verifies without deleting the token, for a caller whose inner gate owns it.
 export function tokenGrantsGo(own, { consume = true } = {}) {
@@ -132,13 +177,32 @@ export function tokenGrantsGo(own, { consume = true } = {}) {
   if (typeof tok.target !== "string" || slug(tok.target) !== slug(own)) {
     return { ok: false, reason: "GO token names another session" };
   }
-  if (typeof tok.master_transcript !== "string") return { ok: false, reason: "GO token has no master transcript" };
-  const last = lastUserText(tok.master_transcript);
-  if (!last.text || last.text.trim().toLowerCase() !== `go ${own.trim().toLowerCase()}`) {
-    return { ok: false, reason: "master transcript no longer ends with this GO" };
+  const want = `go ${own.trim().toLowerCase()}`;
+  let key;
+  if (tok.issuer === "opencode") {
+    const last = opencodeLastUser(tok.master_session_id);
+    if (!last || last.id !== tok.master_message_id || last.text.toLowerCase() !== want) {
+      return { ok: false, reason: "master session no longer ends with this GO" };
+    }
+    key = last.id;
+  } else if (typeof tok.master_transcript === "string") {
+    const last = lastUserText(tok.master_transcript);
+    if (!last.text || last.text.trim().toLowerCase() !== want) {
+      return { ok: false, reason: "master transcript no longer ends with this GO" };
+    }
+    if (!last.uuid) return { ok: false, reason: "master GO entry has no uuid" };
+    key = last.uuid;
+  } else {
+    return { ok: false, reason: "GO token has no master transcript" };
   }
+  const consumed = readConsumed();
+  if (consumed.includes(key)) return { ok: false, reason: "GO already used" };
   if (consume) {
-    try { unlinkSync(file); } catch { return { ok: false, reason: "could not consume GO token" }; }
+    try {
+      // ponytail: read-modify-write, concurrent consumers in the same ms can drop a key; switch to append+trim if that ever matters.
+      writeFileSync(consumedFile(), [...consumed, key].slice(-CONSUMED_KEEP).join("\n") + "\n");
+      unlinkSync(file);
+    } catch { return { ok: false, reason: "could not consume GO token" }; }
   }
   return { ok: true };
 }
@@ -180,7 +244,7 @@ export function lastUserText(transcriptPath) {
       const content = entry.message?.content ?? entry.content;
       const text = extractClaudeText(content).trim();
       if (!text) continue;
-      return { text };
+      return { text, uuid: entry.uuid ?? null };
     }
   }
 

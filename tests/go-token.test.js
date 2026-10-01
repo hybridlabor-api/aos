@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
+const { pathToFileURL } = require('url');
 
 const REPO = path.resolve(__dirname, '..');
 const GATE = path.join(REPO, '.claude', 'hooks', 'go-gate.mjs');
@@ -14,7 +15,7 @@ beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-go-token-')
 afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
 
 const jsonl = (...entries) => entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
-const human = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+const human = (text) => ({ type: 'user', uuid: `u-${text}`, message: { role: 'user', content: text } });
 const named = (name) => ({ type: 'agent-name', agentName: name });
 
 const writeTranscript = (name, entries) => {
@@ -30,11 +31,11 @@ const writeToken = (session, data) => {
 
 const runToken = (prompt, transcript, env = {}) => spawnSync(process.execPath, [TOKEN], {
     input: JSON.stringify({ prompt, transcript_path: transcript }),
-    env: { ...process.env, HOME: home, ...env }, encoding: 'utf8',
+    env: { ...process.env, HOME: home, XDG_DATA_HOME: '', ...env }, encoding: 'utf8',
 });
 const runGate = (transcript, env = {}) => spawnSync(process.execPath, [GATE], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push origin x' }, transcript_path: transcript }),
-    env: { ...process.env, HOME: home, ...env }, encoding: 'utf8',
+    env: { ...process.env, HOME: home, XDG_DATA_HOME: '', ...env }, encoding: 'utf8',
 });
 
 describe('go-token.mjs (UserPromptSubmit)', () => {
@@ -63,6 +64,45 @@ describe('go-token.mjs (UserPromptSubmit)', () => {
             assert.equal(fs.existsSync(path.join(home, '.aos')), false);
         });
     }
+});
+
+const hookUrl = (f) => pathToFileURL(path.join(REPO, '.claude', 'hooks', f)).href;
+const withHome = async (fn) => {
+    const saved = { HOME: process.env.HOME, X: process.env.XDG_DATA_HOME, A: process.env.AOS_ACP_CLIENT };
+    process.env.HOME = home; delete process.env.XDG_DATA_HOME; delete process.env.AOS_ACP_CLIENT;
+    try { return await fn(); } finally {
+        process.env.HOME = saved.HOME;
+        if (saved.X === undefined) delete process.env.XDG_DATA_HOME; else process.env.XDG_DATA_HOME = saved.X;
+        if (saved.A === undefined) delete process.env.AOS_ACP_CLIENT; else process.env.AOS_ACP_CLIENT = saved.A;
+    }
+};
+const consumedPath = () => path.join(home, '.aos', 'go', '.consumed');
+
+describe('issueGoToken (imported)', () => {
+    test('Claude shape, OpenCode shape, null without transcript or session', () => withHome(async () => {
+        const { issueGoToken } = await import(hookUrl('go-token.mjs'));
+        const t = writeTranscript('m.jsonl', [named('master'), human('GO worker-1')]);
+        assert.equal(issueGoToken('GO worker-1', { transcript_path: t }), tokenPath('worker-1'));
+        const claude = JSON.parse(fs.readFileSync(tokenPath('worker-1'), 'utf8'));
+        assert.equal(claude.master_transcript, t);
+        assert.equal(claude.issuer, undefined);
+        fs.rmSync(tokenPath('worker-1'));
+        assert.equal(issueGoToken('GO worker-1', { session_id: 'ses_1', message_id: 'msg_1' }), tokenPath('worker-1'));
+        const oc = JSON.parse(fs.readFileSync(tokenPath('worker-1'), 'utf8'));
+        assert.deepEqual([oc.issuer, oc.master_session_id, oc.master_message_id, oc.master_transcript], ['opencode', 'ses_1', 'msg_1', undefined]);
+        fs.rmSync(tokenPath('worker-1'));
+        assert.equal(issueGoToken('GO worker-1', {}), null);
+        assert.equal(issueGoToken('GO worker-1', { session_id: 'ses_1' }), null);
+        assert.equal(issueGoToken('GO', { transcript_path: t }), null);
+        assert.equal(fs.existsSync(tokenPath('worker-1')), false);
+    }));
+
+    test('AOS_ACP_CLIENT sessions never mint', () => withHome(async () => {
+        process.env.AOS_ACP_CLIENT = '1';
+        const { issueGoToken } = await import(hookUrl('go-token.mjs'));
+        assert.equal(issueGoToken('GO worker-1', { session_id: 'ses_1', message_id: 'msg_1' }), null);
+        assert.equal(fs.existsSync(path.join(home, '.aos')), false);
+    }));
 });
 
 describe('go-gate.mjs token path', () => {
@@ -158,5 +198,101 @@ describe('go-gate.mjs token path', () => {
 
     test('a sidechain-free relayed message never opens the gate without a token', () => {
         assert.equal(runGate(worker()).status, 2);
+    });
+
+    test('re-minted token on an unchanged master transcript is blocked', () => {
+        writeToken('worker-1', fresh());
+        const w = worker();
+        assert.equal(runGate(w).status, 0);
+        writeToken('worker-1', fresh());
+        assert.equal(runGate(w).status, 2);
+        assert.match(fs.readFileSync(consumedPath(), 'utf8'), /u-GO worker-1/);
+    });
+
+    test('a new GO entry in the master after consumption is accepted again', () => {
+        writeToken('worker-1', fresh());
+        const w = worker();
+        assert.equal(runGate(w).status, 0);
+        const m = writeTranscript('second.jsonl', [named('master'), human('GO worker-1'), { ...human('GO worker-1'), uuid: 'u-second' }]);
+        writeToken('worker-1', fresh({ master_transcript: m }));
+        assert.equal(runGate(w).status, 0);
+    });
+
+    test('master entry without uuid is blocked', () => {
+        const m = writeTranscript('nouuid.jsonl', [{ type: 'user', message: { role: 'user', content: 'GO worker-1' } }]);
+        writeToken('worker-1', fresh({ master_transcript: m }));
+        assert.equal(runGate(worker()).status, 2);
+    });
+
+    test('consumed list is bounded to 200 keys', () => {
+        fs.mkdirSync(path.dirname(consumedPath()), { recursive: true });
+        fs.writeFileSync(consumedPath(), Array.from({ length: 205 }, (_, i) => `old-${i}`).join('\n') + '\n');
+        writeToken('worker-1', fresh());
+        assert.equal(runGate(worker()).status, 0);
+        const keys = fs.readFileSync(consumedPath(), 'utf8').split('\n').filter(Boolean);
+        assert.equal(keys.length, 200);
+        assert.equal(keys.at(-1), 'u-GO worker-1');
+    });
+
+    test('tokenGrantsGo consume:false leaves token and consumed list untouched', () => withHome(async () => {
+        const { tokenGrantsGo } = await import(hookUrl('go-gate.mjs'));
+        writeToken('worker-1', fresh());
+        assert.equal(tokenGrantsGo('worker-1', { consume: false }).ok, true);
+        assert.ok(fs.existsSync(tokenPath('worker-1')));
+        assert.equal(fs.existsSync(consumedPath()), false);
+        assert.equal(tokenGrantsGo('worker-1').ok, true);
+        assert.equal(fs.existsSync(tokenPath('worker-1')), false);
+        writeToken('worker-1', fresh());
+        const r = tokenGrantsGo('worker-1', { consume: false });
+        assert.equal(r.ok, false);
+        assert.match(r.reason, /already used/);
+    }));
+});
+
+describe('go-gate.mjs OpenCode-issued token', () => {
+    const { DatabaseSync } = require('node:sqlite');
+    const dbPath = () => path.join(home, '.local', 'share', 'opencode', 'opencode.db');
+    const seed = (msgs) => {
+        fs.mkdirSync(path.dirname(dbPath()), { recursive: true });
+        const db = new DatabaseSync(dbPath());
+        db.exec('CREATE TABLE message(id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);' +
+            'CREATE TABLE part(id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, data TEXT);');
+        msgs.forEach(({ id, t, role = 'user', parts }, i) => {
+            db.prepare('INSERT INTO message VALUES (?,?,?,?)').run(id, 'ses_1', t, JSON.stringify({ role }));
+            parts.forEach((p, j) => db.prepare('INSERT INTO part VALUES (?,?,?,?)').run(`${id}_p${j}`, id, 'ses_1', JSON.stringify(p)));
+        });
+        db.close();
+    };
+    const goMsg = (id, t, extra = {}) => ({ id, t, parts: [{ type: 'text', text: 'GO worker-1', ...extra }] });
+    const ocToken = (over = {}) => writeToken('worker-1', {
+        target: 'worker-1', issued_at: new Date().toISOString(), issuer: 'opencode',
+        master_session_id: 'ses_1', master_message_id: 'msg_2', ...over,
+    });
+    const worker = () => writeTranscript('worker.jsonl', [named('worker-1'), human('x')]);
+
+    test('accepted once, replay blocked', () => {
+        seed([goMsg('msg_1', 1), goMsg('msg_2', 2)]);
+        ocToken();
+        const w = worker();
+        assert.equal(runGate(w).status, 0);
+        assert.equal(fs.existsSync(tokenPath('worker-1')), false);
+        ocToken();
+        assert.equal(runGate(w).status, 2);
+    });
+
+    test('blocked: newer user message, wrong message id, synthetic-only text, missing db', () => {
+        const w = worker();
+        seed([goMsg('msg_2', 2), { id: 'msg_3', t: 3, parts: [{ type: 'text', text: 'stop' }] }]);
+        ocToken();
+        assert.equal(runGate(w).status, 2);
+        ocToken({ master_message_id: 'msg_9' });
+        assert.equal(runGate(w).status, 2);
+        fs.rmSync(dbPath()); fs.rmSync(`${dbPath()}-wal`, { force: true });
+        seed([goMsg('msg_2', 2, { synthetic: true })]);
+        ocToken();
+        assert.equal(runGate(w).status, 2);
+        fs.rmSync(dbPath());
+        ocToken();
+        assert.equal(runGate(w).status, 2);
     });
 });

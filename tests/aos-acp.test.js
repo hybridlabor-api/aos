@@ -16,7 +16,7 @@ afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
 const jsonl = (...e) => e.map((x) => JSON.stringify(x)).join('\n') + '\n';
 const masterTranscript = (name) => {
     const p = path.join(home, 'master.jsonl');
-    fs.writeFileSync(p, jsonl({ type: 'agent-name', agentName: 'master' }, { type: 'user', message: { role: 'user', content: `GO ${name}` } }));
+    fs.writeFileSync(p, jsonl({ type: 'agent-name', agentName: 'master' }, { type: 'user', uuid: `u-${name}`, message: { role: 'user', content: `GO ${name}` } }));
     return p;
 };
 const tokenPath = (name) => path.join(home, '.aos', 'go', `${name}.token`);

@@ -23,7 +23,7 @@ afterEach(() => {
 const jsonl = (...e) => e.map((x) => JSON.stringify(x)).join('\n') + '\n';
 const master = (name, last = `GO ${name}`) => {
     const p = path.join(home, 'master.jsonl');
-    fs.writeFileSync(p, jsonl({ type: 'user', message: { role: 'user', content: last } }));
+    fs.writeFileSync(p, jsonl({ type: 'user', uuid: `u-${last}`, message: { role: 'user', content: last } }));
     return p;
 };
 const tokenPath = (name) => path.join(home, '.aos', 'go', `${name}.token`);

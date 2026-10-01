@@ -3,11 +3,11 @@
 // master session, record a single-use token that go-gate.mjs in <session-name>
 // accepts. Writes nothing else and never blocks the prompt.
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-
-const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+import { fileURLToPath } from "node:url";
+import { slug } from "./go-gate.mjs";
 
 function sessionName(transcriptPath) {
   let name = "";
@@ -24,19 +24,32 @@ function sessionName(transcriptPath) {
   return name || process.env.AOS_SESSION_NAME || "";
 }
 
-try {
-  const input = JSON.parse(readFileSync(0, "utf8"));
-  const m = /^GO\s+(\S(?:.*\S)?)$/i.exec(String(input.prompt ?? "").trim());
-  const target = m && slug(m[1]);
-  if (target && input.transcript_path) {
+// Returns the token path, or null. Never throws. An aos-acp worker is a worker
+// by definition and must not mint a token for itself.
+export function issueGoToken(prompt, { transcript_path, session_id, message_id } = {}) {
+  try {
+    const m = /^GO\s+(\S(?:.*\S)?)$/i.exec(String(prompt ?? "").trim());
+    if (!m || process.env.AOS_ACP_CLIENT) return null;
+    const target = slug(m[1]);
+    const base = { target: m[1].trim(), issued_at: new Date().toISOString() };
+    let tok;
+    if (transcript_path) tok = { ...base, master_transcript: transcript_path, master_session: sessionName(transcript_path) };
+    else if (session_id && message_id) tok = { ...base, issuer: "opencode", master_session_id: session_id, master_message_id: message_id };
+    if (!target || !tok) return null;
     const dir = join(homedir(), ".aos", "go");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, `${target}.token`), JSON.stringify({
-      target: m[1].trim(),
-      issued_at: new Date().toISOString(),
-      master_transcript: input.transcript_path,
-      master_session: sessionName(input.transcript_path),
-    }));
-  }
-} catch { /* a failing hook must never block the prompt */ }
-process.exit(0);
+    const file = join(dir, `${target}.token`);
+    writeFileSync(file, JSON.stringify(tok));
+    return file;
+  } catch { return null; }
+}
+
+const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+
+if (isMain()) {
+  try {
+    const input = JSON.parse(readFileSync(0, "utf8"));
+    issueGoToken(input.prompt, input);
+  } catch { /* a failing hook must never block the prompt */ }
+  process.exit(0);
+}
