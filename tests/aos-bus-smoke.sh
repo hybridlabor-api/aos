@@ -17,7 +17,7 @@ fail=0
 ok() { echo "PASS  $1"; }
 bad() { echo "FAIL  $1"; fail=1; }
 
-(cd "$T/repo" && opencode serve --port "$PORT" >"$T/serve.log" 2>&1) &
+(cd "$T/repo" && exec opencode serve --port "$PORT" >"$T/serve.log" 2>&1) &
 SRV=$!
 trap 'kill $SRV 2>/dev/null; echo "sandbox: $T"; exit $fail' EXIT
 
@@ -25,8 +25,8 @@ for _ in $(seq 60); do curl -sf "localhost:$PORT/session?directory=$T/repo" >/de
 SID=$(curl -s -X POST "localhost:$PORT/session?directory=$T/repo" -H 'content-type: application/json' -d '{}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).id')
 [ -n "$SID" ] && ok "session $SID created" || { bad "no session"; exit 1; }
 
-for _ in $(seq 20); do $BUS list | grep -q '^smoke' && break; sleep 0.5; done
-$BUS list | grep -q '^smoke' && ok "plugin registered 'smoke'" || { bad "not registered (see $T/serve.log)"; exit 1; }
+for _ in $(seq 20); do $BUS list | grep -q '^smoke\t' && break; sleep 0.5; done
+$BUS list | grep -q '^smoke\t' && ok "plugin registered 'smoke'" || { bad "not registered (see $T/serve.log)"; exit 1; }
 
 $BUS send smoke "GO" >/dev/null && sleep 0.3 && $BUS send smoke "GO smoke" >/dev/null
 for _ in $(seq 10); do [ -z "$(ls "$HOME"/.aos/bus/inbox/smoke/*.json 2>/dev/null)" ] && break; sleep 0.5; done
@@ -46,7 +46,7 @@ MID=$(sqlite3 "$DB" "select id from message where session_id='$SID' and json_ext
 mkdir -p "$HOME/.aos/go"
 printf '{"target":"smoke","issued_at":"%s","issuer":"opencode","master_session_id":"%s","master_message_id":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SID" "$MID" >"$HOME/.aos/go/smoke.token"
 G=$(node -e "import('$R/.claude/hooks/go-gate.mjs').then(m=>console.log(JSON.stringify(m.tokenGrantsGo('smoke'))))")
-echo "$G" | grep -q '"ok":false' && ok "go-gate rejects token pointing at the bus message: $G" || bad "go-gate accepted: $G"
+echo "$G" | grep -q 'master session no longer ends with this GO' && ok "go-gate rejects token pointing at the bus message: $G" || bad "go-gate accepted: $G"
 
 # Manual TUI step (not automated): with the same isolated env and no --port, start `opencode`
 # in $T/repo, run `aos-bus send smoke "hi"` from a second terminal, then check the toast and
