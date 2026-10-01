@@ -63,6 +63,7 @@
     "./skills/global_config/bash-script-validator",
     "./skills/global_config/bdb-adobe-suite-mcp",
     "./skills/global_config/bdb-after-effects-mcp",
+    "./skills/global_config/bdb-aos-gogate",
     "./skills/global_config/bdb-blender-mcp",
     "./skills/global_config/bdb-computer-use-mcp",
     "./skills/global_config/bdb-davinci-mcp",

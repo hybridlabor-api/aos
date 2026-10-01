@@ -23,8 +23,9 @@ import path from 'node:path';
 // so a broken installed hook fails loudly instead of silently falling back.
 const HOOKS = existsSync(new URL('./aos-hooks/go-gate.mjs', import.meta.url)) ? './aos-hooks/' : '../../.claude/hooks/';
 const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
-const [{ GUARDED_PATTERNS, tokenGrantsGo }, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus] =
-  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs'].map(hook));
+const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus, { applyGogate }] =
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs'].map(hook));
+const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog } = gate;
 
 // ---------------------------------------------------------------------------
 // Graph gate (W-5, W-6)
@@ -131,9 +132,26 @@ async function ownSessionName(client, sessionID) {
 }
 
 // Only plain text parts are human turns: synthetic = model-only, ignored = display-only,
-// aos_bus = bus delivery (both copies). Each excluded on its own, so safety never hangs on one flag.
-const isHumanText = (p) => p && p.type === 'text' && typeof p.text === 'string' && !p.synthetic && !p.ignored && !p.metadata?.aos_bus;
-const isNonHuman = (p) => p && (p.synthetic || p.ignored || p.metadata?.aos_bus);
+// aos_bus / aos_loop (any loop|aos_ metadata key) = plugin-injected. Each excluded on its own,
+// so safety never hangs on one flag.
+const isHumanText = isHumanPart;
+const isNonHuman = (p) => !!p && !!(p.synthetic || p.ignored || (p.metadata && typeof p.metadata === 'object' && Object.keys(p.metadata).some((k) => /loop|aos_/i.test(k))));
+const ocKey = (id) => sessionKey(`oc-${id}`);
+
+// Root of a session tree (grants live on the root, subagents may use them). null when unknown.
+async function rootSessionId(client, id, parentID) {
+  for (let i = 0; i < 10 && id; i++) {
+    if (parentID === null) return id;
+    try {
+      const res = await client?.session?.get?.({ path: { id } });
+      if (!res?.data) return null;
+      if (!res.data.parentID) return id;
+      id = res.data.parentID;
+      parentID = undefined;
+    } catch { return null; }
+  }
+  return null;
+}
 
 // A plugin reload (SIGUSR2) re-runs init on the cached module in the same process:
 // stop the previous instance's timers and keep its bus names alive. Keyed by directory.
@@ -336,9 +354,10 @@ export default async function bdbAosPlugin(input) {
         if (nudges >= MAX_NUDGES) return;
 
         nudgeState.set(sessionID, { signature: gate.signature, nudges: nudges + 1 });
+        // Synthetic + aos_loop: the nudge is plugin-written and must never count as a human turn (GO, gogate).
         await input.client.session.prompt({
           path: { id: sessionID },
-          body: { parts: [{ type: 'text', text: buildGraphNudge(gate) }] },
+          body: { parts: [{ type: 'text', text: buildGraphNudge(gate), synthetic: true, metadata: { aos_loop: { source: 'graph-gate', nudge: nudges + 1 } } }] },
           query: directory ? { directory } : undefined,
         });
       } catch {
@@ -359,6 +378,12 @@ export default async function bdbAosPlugin(input) {
 
       try {
         if (!s.parentID) issueGoToken(fullText, { session_id: msgInput.sessionID, message_id: msgInput.messageID || msgOutput.message?.id });
+      } catch {}
+
+      // /bdb-aos:gogate from the human in a root session: record it; the gate verifies it against opencode.db at use.
+      try {
+        const reply = s.parentID ? null : applyGogate(fullText, { key: ocKey(msgInput.sessionID), source: `opencode:${msgInput.sessionID}`, uuid: msgInput.messageID || msgOutput.message?.id || null });
+        if (reply) msgOutput.parts.unshift({ id: `gogate-${Date.now()}`, sessionID: msgInput.sessionID, messageID: msgInput.messageID || '', type: 'text', text: reply, synthetic: true });
       } catch {}
 
       try {
@@ -415,7 +440,9 @@ export default async function bdbAosPlugin(input) {
       // Intercept bash, terminal, or command execution tools
       if (toolName === 'bash' || toolName === 'terminal' || toolName === 'shell' || toolName === 'exec' || toolName === 'run_command') {
         const cmd = toolOutput?.args?.command || toolOutput?.args?.cmd || toolOutput?.args?.script || '';
-        if (typeof cmd === 'string' && GUARDED_PATTERNS.some((re) => re.test(cmd))) {
+        const storeReason = gateStoreReason(cmd);
+        if (storeReason) throw new Error(storeReason);
+        if (typeof cmd === 'string' && (GUARDED_PATTERNS.some((re) => re.test(cmd)) || isGuardedCommand(cmd))) {
           const s = sess(toolInput.sessionID);
           // An unanswered lookup is not proof of a root session: token-only for this call, not cached.
           let tokenOnly = !!s.parentID;
@@ -427,8 +454,9 @@ export default async function bdbAosPlugin(input) {
             } catch { tokenOnly = true; }
             tokenOnly = tokenOnly || !!s.parentID;
           }
-          // Subagent prompts are agent-written, so only a token can open their gate.
-          let authorized = !tokenOnly && s.prompt.toUpperCase() === 'GO';
+          // Subagent prompts are agent-written, so only a token or a grant can open their gate.
+          const goOk = (text) => goAllows(parseGoText(text), cmd);
+          let authorized = !tokenOnly && goOk(s.prompt);
 
           // If this session's cached prompt wasn't GO, query recent session messages via OpenCode client as fallback
           if (!authorized && !tokenOnly && input.client && toolInput.sessionID) {
@@ -440,11 +468,25 @@ export default async function bdbAosPlugin(input) {
                 if ((m.info?.role ?? m.role) === 'user') {
                   const parts = m.parts || [];
                   const text = parts.filter(isHumanText).map((p) => p.text).join('\n').trim();
-                  authorized = text.toUpperCase() === 'GO';
+                  authorized = goOk(text);
                   break;
                 }
               }
             } catch {}
+          }
+
+          // Modes and grants of the root session (verified against opencode.db); usable by its subagents.
+          if (!authorized) {
+            const root = await rootSessionId(input.client, toolInput.sessionID, tokenOnly ? undefined : s.parentID);
+            if (root) {
+              const key = ocKey(root);
+              const eff = effectiveGate(key, { source: `opencode:${root}`, cmds: opencodeGogateCommands(root) });
+              for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
+              if (eff.mode === 'off' || (eff.mode === 'soft' && grantsCover(cmd, eff.grants))) {
+                gateLog(key, `${eff.mode === 'off' ? 'off' : 'grant'}: allowed ${JSON.stringify(cmd.slice(0, 200))}`);
+                authorized = true;
+              }
+            }
           }
 
           if (!authorized) {
