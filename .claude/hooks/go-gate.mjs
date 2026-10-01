@@ -28,6 +28,9 @@
 // or message id (OpenCode) goes into ~/.aos/go/.consumed, so a re-minted token
 // on an unchanged master cannot be replayed.
 //
+// Threat model: this stops accidental or replayed GOs, not an agent that can
+// write arbitrary files; it can forge a master transcript. Nothing in-process fixes that.
+//
 // OpenCode-issued tokens (issuer "opencode") are verified offline against
 // opencode.db, read-only. Limits: the schema is internal and undocumented, only
 // the default XDG / ~/.local/share data dir is read, and bun:sqlite is an
@@ -125,7 +128,7 @@ function ownSessionName(transcriptPath) {
 const CONSUMED_KEEP = 200;
 const consumedFile = () => join(homedir(), ".aos", "go", ".consumed");
 const readConsumed = () => {
-  try { return readFileSync(consumedFile(), "utf8").split("\n").filter(Boolean); } catch { return []; }
+  try { return readFileSync(consumedFile(), "utf8").split("\n").filter(Boolean); } catch (e) { return e.code === "ENOENT" ? [] : null; }
 };
 
 function opencodeLastUser(sessionId) {
@@ -139,6 +142,8 @@ function opencodeLastUser(sessionId) {
     } catch {
       db = new (require("bun:sqlite").Database)(dbPath, { readonly: true });
     }
+    const ses = db.prepare("SELECT parent_id FROM session WHERE id = ?").get(sessionId);
+    if (!ses || ses.parent_id != null) return null; // subagent sessions are agent-written, never a human GO
     const msg = db.prepare(
       "SELECT id FROM message WHERE session_id = ? AND json_extract(data, '$.role') = 'user' ORDER BY time_created DESC, id DESC LIMIT 1"
     ).get(sessionId);
@@ -196,6 +201,7 @@ export function tokenGrantsGo(own, { consume = true } = {}) {
     return { ok: false, reason: "GO token has no master transcript" };
   }
   const consumed = readConsumed();
+  if (!consumed) return { ok: false, reason: "GO consumed list unreadable" };
   if (consumed.includes(key)) return { ok: false, reason: "GO already used" };
   if (consume) {
     try {

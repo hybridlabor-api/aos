@@ -252,11 +252,13 @@ describe('go-gate.mjs token path', () => {
 describe('go-gate.mjs OpenCode-issued token', () => {
     const { DatabaseSync } = require('node:sqlite');
     const dbPath = () => path.join(home, '.local', 'share', 'opencode', 'opencode.db');
-    const seed = (msgs) => {
+    const seed = (msgs, parent = null) => {
         fs.mkdirSync(path.dirname(dbPath()), { recursive: true });
         const db = new DatabaseSync(dbPath());
-        db.exec('CREATE TABLE message(id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);' +
+        db.exec('CREATE TABLE session(id TEXT PRIMARY KEY, parent_id TEXT);' +
+            'CREATE TABLE message(id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, data TEXT);' +
             'CREATE TABLE part(id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, data TEXT);');
+        db.prepare('INSERT INTO session VALUES (?,?)').run('ses_1', parent);
         msgs.forEach(({ id, t, role = 'user', parts }, i) => {
             db.prepare('INSERT INTO message VALUES (?,?,?,?)').run(id, 'ses_1', t, JSON.stringify({ role }));
             parts.forEach((p, j) => db.prepare('INSERT INTO part VALUES (?,?,?,?)').run(`${id}_p${j}`, id, 'ses_1', JSON.stringify(p)));
@@ -285,6 +287,8 @@ describe('go-gate.mjs OpenCode-issued token', () => {
         seed([goMsg('msg_2', 2), { id: 'msg_3', t: 3, parts: [{ type: 'text', text: 'stop' }] }]);
         ocToken();
         assert.equal(runGate(w).status, 2);
+        fs.rmSync(dbPath()); fs.rmSync(`${dbPath()}-wal`, { force: true });
+        seed([goMsg('msg_2', 2)]);
         ocToken({ master_message_id: 'msg_9' });
         assert.equal(runGate(w).status, 2);
         fs.rmSync(dbPath()); fs.rmSync(`${dbPath()}-wal`, { force: true });
@@ -294,5 +298,11 @@ describe('go-gate.mjs OpenCode-issued token', () => {
         fs.rmSync(dbPath());
         ocToken();
         assert.equal(runGate(w).status, 2);
+    });
+
+    test('a child (non-root) session never grants GO', () => {
+        seed([goMsg('msg_2', 2)], 'ses_parent');
+        ocToken();
+        assert.equal(runGate(worker()).status, 2);
     });
 });

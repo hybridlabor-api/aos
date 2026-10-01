@@ -36,7 +36,7 @@ function readStdin() {
   }
 }
 
-function respond(isAgy, allowed, reason = "", message = "") {
+function respond(isAgy, allowed, reason = "") {
   if (isAgy) {
     if (allowed) {
       console.log(JSON.stringify({ decision: "allow" }));
