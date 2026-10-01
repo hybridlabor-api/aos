@@ -208,7 +208,7 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 /* ---------- mermaid ---------- */
 
 pre.mermaid { font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; }
-pre.mermaid[data-processed] { background: transparent; border: 0; padding: 6px 0; text-align: center; }
+pre.mermaid[data-processed] { background: transparent; border: 0; padding: 6px 0; text-align: center; overflow-x: auto; }
 pre.mermaid[data-processed] svg { height: auto; }
 pre.mermaid[data-processed] svg .edgeLabel, pre.mermaid[data-processed] svg .edgeLabel p,
 pre.mermaid[data-processed] svg .labelBkg { background-color: var(--card) !important; color: var(--ink-2) !important; }

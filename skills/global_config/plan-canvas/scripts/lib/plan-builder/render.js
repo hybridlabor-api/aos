@@ -50,6 +50,10 @@ function mermaidLoaderScript(url) {
       }
     });
     await mermaid.run({ querySelector: '.mermaid' });
+    document.querySelectorAll('.mermaid svg').forEach(svg => {
+      const vb = svg.viewBox.baseVal;
+      if (vb && vb.width && svg.getBoundingClientRect().width / vb.width < 0.6) { svg.style.maxWidth = 'none'; svg.style.width = Math.round(vb.width * 0.6) + 'px'; }
+    });
   } catch (err) {
     document.querySelectorAll('.mermaid').forEach(el => el.classList.add('mermaid-unrendered'));
     console.warn('Mermaid render skipped:', err && err.message);
