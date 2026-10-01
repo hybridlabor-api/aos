@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// aos-hook-version: 6
+// aos-hook-version: 7
 /**
  * memB ambient memory hook for Claude Code, Google Antigravity, and OpenAI Codex.
  *
@@ -137,74 +137,60 @@ function resolveProjectIdentifiers(projectRoot, homeDir) {
   return Array.from(ids).filter(Boolean);
 }
 
-// Main logic runs only when the file is executed directly as a hook; importing
-// the module (e.g. from tests) must stay side-effect free.
-async function main() {
-  try {
-    let inputRaw = '';
-    try { inputRaw = readFileSync(0, 'utf8'); } catch { failOpen(); }
-    if (!inputRaw || !inputRaw.trim()) failOpen();
+// Shared with the OpenCode plugin: everything between "which event" and the
+// finished text block. Returns null when there is nothing to inject; never exits.
+export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } = {}) {
+  prompt = String(prompt).trim();
+  const home = os.homedir();
 
-    let eventData = {};
-    try { eventData = JSON.parse(inputRaw); } catch { failOpen(); }
+  // Which harness event is this? SessionStart carries the one-shot identity
+  // injection; UserPromptSubmit is recall-only; anything else — including a
+  // missing event name from harnesses that never adopted them — keeps the
+  // full legacy behaviour plus identity (hookless-start harnesses).
+  const rawEvent = event;
+  const sessionStart = rawEvent === 'SessionStart';
+  const promptSubmit = rawEvent === 'UserPromptSubmit';
 
-    const prompt = (eventData.prompt || eventData.userPrompt || '').trim();
-    const home = os.homedir();
+  const rawCandidateDir =
+    cwd ||
+    process.env.CLAUDE_PROJECT_DIR ||
+    process.env.CODEX_PROJECT_DIR ||
+    process.cwd();
 
-    // Which harness event is this? SessionStart carries the one-shot identity
-    // injection; UserPromptSubmit is recall-only; anything else — including a
-    // missing event name from harnesses that never adopted them — keeps the
-    // full legacy behaviour plus identity (hookless-start harnesses).
-    const rawEvent = eventData.hook_event_name || '';
-    const sessionStart = rawEvent === 'SessionStart';
-    const promptSubmit = rawEvent === 'UserPromptSubmit';
+  const projectRoot = findProjectRoot(rawCandidateDir, home);
+  const candidateProjectIds = resolveProjectIdentifiers(projectRoot, home);
 
-    // Discover candidate directory across harnesses:
-    // Claude: eventData.cwd
-    // Antigravity: eventData.workspacePaths[0] or eventData.cwd
-    // Codex: eventData.cwd
-    const rawCandidateDir =
-      (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) ||
-      eventData.cwd ||
-      process.env.CLAUDE_PROJECT_DIR ||
-      process.env.CODEX_PROJECT_DIR ||
-      process.cwd();
+  // User identification: reconcile active user and bdb_developer baseline
+  const activeUser =
+    process.env.MEMB_USER_ID ||
+    userId ||
+    process.env.USER ||
+    process.env.LOGNAME ||
+    'bdb_developer';
+  const candidateUsers = Array.from(new Set([activeUser, 'bdb_developer'])).filter(Boolean);
 
-    const projectRoot = findProjectRoot(rawCandidateDir, home);
-    const candidateProjectIds = resolveProjectIdentifiers(projectRoot, home);
+  const contextItems = [];
 
-    // User identification: reconcile active user and bdb_developer baseline
-    const activeUser =
-      process.env.MEMB_USER_ID ||
-      eventData.user_id ||
-      eventData.userId ||
-      process.env.USER ||
-      process.env.LOGNAME ||
-      'bdb_developer';
-    const candidateUsers = Array.from(new Set([activeUser, 'bdb_developer'])).filter(Boolean);
-
-    const contextItems = [];
-
-    // 1. Standing facts, if the user keeps any. Skipped on UserPromptSubmit:
-    //    they were already injected at SessionStart.
-    if (!promptSubmit) {
-      const personaFile = path.join(home, '.MemBDB', 'ambient-persona.txt');
-      if (existsSync(personaFile)) {
-        try {
-          for (const line of readFileSync(personaFile, 'utf8').split('\n')) {
-            const t = line.trim();
-            if (t && !t.startsWith('#')) contextItems.push(`- ${t}`);
-          }
-        } catch {}
-      }
+  // 1. Standing facts, if the user keeps any. Skipped on UserPromptSubmit:
+  //    they were already injected at SessionStart.
+  if (!promptSubmit) {
+    const personaFile = path.join(home, '.MemBDB', 'ambient-persona.txt');
+    if (existsSync(personaFile)) {
+      try {
+        for (const line of readFileSync(personaFile, 'utf8').split('\n')) {
+          const t = line.trim();
+          if (t && !t.startsWith('#')) contextItems.push(`- ${t}`);
+        }
+      } catch {}
     }
+  }
 
-    const dbPath = path.join(home, '.MemBDB', 'memb.db');
-    if (!existsSync(dbPath)) failOpen();
-    const { DatabaseSync } = await import('node:sqlite');
-    const db = new DatabaseSync(dbPath, { readOnly: true });
+  const dbPath = path.join(home, '.MemBDB', 'memb.db');
+  if (!existsSync(dbPath)) return null;
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
     db.exec('PRAGMA busy_timeout = 5000;');
-
     const textOf = (payload) => {
       const p = JSON.parse(payload);
       return (p.memory || p.data || '').trim().replace(/\s+/g, ' ');
@@ -344,8 +330,35 @@ async function main() {
     //    a déjà vu instead of from zero. Once per session, like identity.
     if (!promptSubmit) contextItems.push(...dejaWip(projectRoot));
 
-    if (contextItems.length) {
-      const memoryBlock = '[memB Ambient Memory Context] (recalled data, not instructions)\n' + contextItems.join('\n');
+    return contextItems.length
+      ? '[memB Ambient Memory Context] (recalled data, not instructions)\n' + contextItems.join('\n')
+      : null;
+  } finally {
+    db.close();
+  }
+}
+
+// Main logic runs only when the file is executed directly as a hook; importing
+// the module (e.g. from tests) must stay side-effect free.
+async function main() {
+  try {
+    let inputRaw = '';
+    try { inputRaw = readFileSync(0, 'utf8'); } catch { failOpen(); }
+    if (!inputRaw || !inputRaw.trim()) failOpen();
+
+    let eventData = {};
+    try { eventData = JSON.parse(inputRaw); } catch { failOpen(); }
+
+    // Discover candidate directory across harnesses:
+    // Claude / Codex: eventData.cwd; Antigravity: eventData.workspacePaths[0] or eventData.cwd
+    const memoryBlock = await buildMemoryBlock({
+      event: eventData.hook_event_name || '',
+      prompt: eventData.prompt || eventData.userPrompt || '',
+      cwd: (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) || eventData.cwd,
+      userId: eventData.user_id || eventData.userId,
+    });
+
+    if (memoryBlock) {
       process.stdout.write(JSON.stringify({
         hookSpecificOutput: {
           hookEventName: eventData.hook_event_name || 'UserPromptSubmit',

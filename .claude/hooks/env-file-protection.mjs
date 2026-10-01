@@ -18,7 +18,8 @@
 // every write in the session; missing a protection is recoverable, freezing
 // the agent is not.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { basename } from "node:path";
 
 // Templates are committed on purpose and hold no live secret. Blocking them
@@ -67,6 +68,15 @@ function reasonFor(filePath) {
   ].join("\n");
 }
 
+export function envFileReason(filePath) {
+  if (typeof filePath !== "string" || !filePath.trim()) return null;
+  // basename(), so a path like /srv/app/.env matches but /srv/app/env-notes.md does not.
+  const name = basename(filePath);
+  return !ENV_FILE.test(name) || TEMPLATE_FILE.test(name) ? null : reasonFor(filePath);
+}
+
+const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+
 function main() {
   const rawInput = readStdin();
   let input = {};
@@ -87,19 +97,8 @@ function main() {
     input?.file_path ||
     "";
 
-  if (typeof filePath !== "string" || !filePath.trim()) {
-    respond(isAgy, true);
-    return;
-  }
-
-  // basename(), so a path like /srv/app/.env matches but /srv/app/env-notes.md does not.
-  const name = basename(filePath);
-  if (!ENV_FILE.test(name) || TEMPLATE_FILE.test(name)) {
-    respond(isAgy, true);
-    return;
-  }
-
-  respond(isAgy, false, reasonFor(filePath));
+  const reason = envFileReason(filePath);
+  respond(isAgy, !reason, reason || "");
 }
 
-main();
+if (isMain()) main();
