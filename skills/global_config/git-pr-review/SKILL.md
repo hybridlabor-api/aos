@@ -152,6 +152,9 @@ Only if relevant:
 
 ---
 
+## Visual recap
+For a reviewer-friendly page next to the text description, run `/pr-recap` on the same range. It is informational and does not gate the PR. It never posts to GitHub; sharing it is the human's call.
+
 ## Limitations
 
 - Relies on commit message quality; vague commits may reduce accuracy
