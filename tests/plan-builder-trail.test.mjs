@@ -283,3 +283,87 @@ describe('Archify block', () => {
     assert.equal(warnings.length, 1);
   });
 });
+
+describe('AgentTrail block', () => {
+  let dir;
+  const PLAN_MDX = [
+    '## Base {#base}', '', '<Checklist items={[{"label":"a","checked":true},"b"]} />', '',
+    '## Api {#api}', '', '<Checklist items={["c"]} />', '',
+    '## Ui {#ui}', '', '<Checklist items={[{"label":"d","checked":true}]} />', '',
+    '## Solo {#solo}', ''
+  ].join('\n');
+  const FM = '---\nneeds-api: base\nneeds-ui: api, base\n---\n\n';
+  const mk = (name, files) => {
+    const d = path.join(dir, name);
+    fs.mkdirSync(d, { recursive: true });
+    for (const [f, c] of Object.entries(files)) fs.writeFileSync(path.join(d, f), c);
+    return d;
+  };
+  const render = (name, trail, extra = {}) => {
+    const d = mk(name, { 'plan.mdx': `${FM}${PLAN_MDX}\n\n${trail}\n`, ...extra });
+    return renderPlanFolder(d);
+  };
+  const nodes = (html) => [...html.matchAll(/<details class="trail-node" data-id="([^"]+)" style="left:(\d+)px/g)].map((m) => [m[1], Number(m[2])]);
+
+  before(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-agenttrail-')); });
+  after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  test('one card per component and one edge per stated need, none invented', () => {
+    const { html } = render('graph', '<AgentTrail />');
+    assert.deepEqual(nodes(html).map((n) => n[0]), ['base', 'api', 'ui', 'solo']);
+    const edges = [...html.matchAll(/data-from="([^"]+)" data-to="([^"]+)"/g)].map((m) => `${m[1]}>${m[2]}`).sort();
+    assert.deepEqual(edges, ['api>ui', 'base>api', 'base>ui']);
+  });
+
+  test('columns follow dependency depth', () => {
+    const { html } = render('depth', '<AgentTrail />');
+    const x = Object.fromEntries(nodes(html));
+    assert.ok(x.base === x.solo && x.base < x.api && x.api < x.ui, JSON.stringify(x));
+  });
+
+  test('progress counts come from checkbox state', () => {
+    const { html } = render('progress', '<AgentTrail />');
+    assert.match(html, /data-id="base"[\s\S]*?1 of 2 tasks[\s\S]*?width:50%/);
+    assert.match(html, /data-id="ui"[\s\S]*?1 of 1 tasks[\s\S]*?width:100%/);
+    assert.match(html, /data-id="solo"[\s\S]*?0 of 0 tasks/);
+  });
+
+  test('non-localhost live URL warns and renders no link or iframe', () => {
+    for (const live of ['https://evil.example/trail', 'javascript:alert(1)', 'http://localhost.evil.com:5330']) {
+      const { html, warnings } = render('badlive', `<AgentTrail live="${live}" embed />`);
+      assert.ok(warnings.some((w) => /AgentTrail/.test(w) && /localhost/.test(w)), live);
+      assert.ok(!html.includes('Open live agent trail') && !html.includes('class="trail-frame"'), live);
+    }
+  });
+
+  test('embed adds a sandboxed iframe only for localhost; live alone is link only', () => {
+    const linked = render('live', '<AgentTrail live="http://localhost:5331" />').html;
+    assert.match(linked, /<a href="http:\/\/localhost:5331\/" target="_blank" rel="noopener">Open live agent trail/);
+    assert.ok(!linked.includes('class="trail-frame"'));
+    const framed = render('embed', '<AgentTrail live="http://127.0.0.1:5331" embed />').html;
+    assert.match(framed, /<iframe class="trail-frame" sandbox="allow-scripts allow-same-origin" loading="lazy"[^>]*src="http:\/\/127\.0\.0\.1:5331\/"/);
+  });
+
+  test('plan-derived strings are escaped', () => {
+    const d = mk('xss', { 'plan.mdx': '## Evil <script>alert(1)</script> {#evil}\n\n<AgentTrail />\n' });
+    const { html } = renderPlanFolder(d);
+    assert.ok(!html.includes('<script>alert(1)</script>'));
+    assert.match(html, /Evil &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  });
+
+  test('no components gives a visible card and a warning', () => {
+    const d = mk('none', { 'plan.mdx': '# Nothing\n\n<AgentTrail />\n' });
+    const { html, warnings } = renderPlanFolder(d);
+    assert.match(html, /AgentTrail: no components found - add \{#id\} headings and needs: lines/);
+    assert.ok(warnings.some((w) => /AgentTrail.*no components/.test(w)));
+  });
+
+  test('renders inside a web Artboard', () => {
+    const canvas = '<DesignBoard title="B">\n<Artboard id="t" label="Trail" surface="web" x={0} y={0} width={900} height={400}>\n<AgentTrail />\n</Artboard>\n</DesignBoard>\n';
+    const d = mk('board', { 'plan.mdx': `${FM}${PLAN_MDX}\n`, 'canvas.mdx': canvas });
+    const { html, warnings } = renderPlanFolder(d);
+    assert.match(html, /class="ab-frame">[\s\S]*class="card trail"/);
+    assert.deepEqual(nodes(html).map((n) => n[0]), ['base', 'api', 'ui', 'solo']);
+    assert.ok(!warnings.some((w) => /AgentTrail|unsupported/.test(w)), warnings.join('|'));
+  });
+});

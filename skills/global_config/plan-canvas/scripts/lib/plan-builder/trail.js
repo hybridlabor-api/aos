@@ -151,7 +151,8 @@ function derive(dir, { workspaceRoot = process.cwd() } = {}) {
     text: lines.join('\n'),
     components: components.length,
     tasks: components.reduce((n, c) => n + c.tasks.length, 0),
-    warnings
+    warnings,
+    graph: components
   };
 }
 

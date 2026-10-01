@@ -66,6 +66,7 @@ The lowercase conceptual names are accepted as aliases.
 | `Columns` (`columns`) | `columns[].label` + nested blocks | two-column grid, stacked on phones |
 | `TabsBlock` (`tabs`, `Tabs`) | `tabs[].label` + nested blocks | stacked labelled groups (no click JS — the annotation layer owns clicks) |
 | `Archify` (`archify`) | `src` (relative `.html` inside the plan folder), `label`, `height` | delivered Archify diagram in `<iframe sandbox="allow-scripts">` (never `allow-same-origin`), caption and link row; see [Archify](#archify) |
+| `AgentTrail` (`agent-trail`) | `live` (http(s) URL on localhost/127.0.0.1), `embed` (flag, needs `live`) | static dependency graph of the plan's components (columns by `needs` depth, edges only for stated needs, task progress, expandable tasks) derived from the same folder's `{#id}` headings, `ImplementationMap` and `Checklist`; `live` adds an "Open live agent trail" link, `embed` a sandboxed iframe (`allow-scripts allow-same-origin`); works inside `<Artboard surface="web">`; no components gives a visible card and a warning |
 | `CustomHtml` (`custom-html`) | `html`, `css`, `label`, `height` | sandboxed frame, **no `allow-scripts`** |
 | `RichText` (`rich-text`) | `title`, markdown children | prose |
 | `Callout` | `tone`, `title`, markdown children | bordered card |
