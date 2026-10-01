@@ -10,7 +10,7 @@ kind: playbook
 trigger: ["release AOS", "cut an AOS release", "merge the release PR"]
 inputs: [repo?]
 requires:
-  skills: [github, pb-ship, git-pr-review, visual-recap, godmode-shipping, quick-recap, "bdb-ecosystem-health (external)", "gh (external)"]
+  skills: [github, pb-ship, bdb-shipping-skill, git-pr-review, visual-recap, godmode-shipping, quick-recap, "bdb-ecosystem-health (external)", "gh (external)"]
   agents: [reviewer]
   mcps: ["plan (optional)"]
   store: []
