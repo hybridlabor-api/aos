@@ -14,10 +14,15 @@ One session is the **master**: it keeps the overview, asks workers for status, a
 ## Modes
 
 - **Adopt** — supervise sessions the human already started by hand. `ListAgents` is the source of truth; message them with `SendMessage`.
-- **Spawn** — start the workers yourself.
-  - AO installed → defer to the `ao-orchestrator` skill.
-  - No AO → `claude --bg --name <name> --permission-mode auto "<prompt>"` for Claude workers.
-  - Codex / OpenCode workers without AO are a later phase over ACP adapters: see `docs/master-session-acp.md` (design only).
+- **Spawn** — start the workers yourself. AO is optional; without it:
+  - Claude: `claude --bg --name <name> --permission-mode auto "<prompt>"`, or over ACP as below.
+  - Codex / OpenCode / Claude over ACP: `aos-acp <codex|opencode|claude> --name <name> --cwd <worktree> --prompt "<task>" --go-wait 600 &` (one process per worker; run it in the background and read its log). Details: `docs/master-session-acp.md`.
+  - agy: no sanctioned ACP adapter (`antigravity-acp` breaches Google's Antigravity terms). Adopt agy sessions or delegate via the `mcsc` skill.
+  - If AO is installed, `ao-orchestrator` may run the same workers; it adds nothing the token protocol needs.
+
+### `aos-acp` in one paragraph
+
+`bin/aos-acp.mjs` is a zero-dependency ACP client: it spawns the adapter (`npx -y @agentclientprotocol/codex-acp`, `opencode acp`, `npx -y @agentclientprotocol/claude-agent-acp`), runs `initialize` → `session/new` → `session/prompt`, streams the worker's text to stdout and logs every event to `~/.aos/acp/<name>.jsonl`. A `session/request_permission` for a guarded command (the go-gate list) is answered `allow_once` only with a valid GO token for `<name>`; with `--go-wait <sec>` the request is parked (log event `permission_pending`, show it as `GO needed`) until the token appears or the wait ends. Everything else follows `--allow-default deny|allow` (deny by default). ACP workers are not in `ListAgents`: the roster lists them from the logs.
 
 ## Step 1 — Roster
 
@@ -71,7 +76,7 @@ The one sanctioned way for the human to release a gated action in a worker witho
 2. The `UserPromptSubmit` hook `go-token.mjs` writes `~/.aos/go/<session-name>.token` (JSON: `target`, `issued_at`, `master_transcript`, `master_session`). Nothing else happens.
 3. The worker retries the blocked command. `go-gate.mjs` opens only if the token names this session, is younger than 10 minutes, and the master transcript still ends with that very `GO <session-name>` as its last human message. The token is deleted on use: single use, no replay.
 
-Consequences: any further human message in the master before the worker retries cancels the token; a literal `GO` typed in the worker still works as before; a chat message that merely *says* "GO" never counts. The worker's own name comes from its transcript (`--name`); if absent, set env `AOS_SESSION_NAME`. Limit: the token proves the human typed it in the master transcript, not who wrote the token file — a hostile local process can forge both, so this is a guard against mistakes, not against local malware.
+Consequences: any further human message in the master before the worker retries cancels the token; a literal `GO` typed in the worker still works as before; a chat message that merely *says* "GO" never counts. The worker's own name comes from its transcript (`--name`); if absent, set env `AOS_SESSION_NAME` (`aos-acp` sets it for its worker). The same token is honoured by the OpenCode plugin's gate (`.opencode/plugins/bdb-aos.js`, name from `AOS_SESSION_NAME` or the session title) and by go-gate under agy (`AOS_SESSION_NAME` only). Who consumes it: the worker's own gate when it has one (Claude hook, OpenCode plugin — `aos-acp` then only verifies), `aos-acp` itself for codex, which has none. Limit: the token proves the human typed it in the master transcript, not who wrote the token file — a hostile local process can forge both, so this is a guard against mistakes, not against local malware.
 
 ## Starting workers: lessons
 

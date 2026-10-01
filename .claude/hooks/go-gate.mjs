@@ -24,11 +24,12 @@
 // (what --name / ListAgents show), else env AOS_SESSION_NAME. If neither is
 // available the token path stays closed.
 
-import { readFileSync, existsSync, unlinkSync } from "node:fs";
+import { readFileSync, existsSync, unlinkSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const GUARDED_PATTERNS = [
+export const GUARDED_PATTERNS = [
   /(?:^|[;&|]\s*)git\s+push\b/i,
   /(?:^|[;&|]\s*)npm\s+publish\b/i,
   /(?:^|[;&|]\s*)npm\s+version\b/i,
@@ -93,7 +94,7 @@ function extractAgyText(rawContent) {
   return text.trim();
 }
 
-const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+export const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 
 function ownSessionName(transcriptPath) {
@@ -111,9 +112,10 @@ function ownSessionName(transcriptPath) {
   return name || process.env.AOS_SESSION_NAME || "";
 }
 
-function tokenGrantsGo(transcriptPath) {
-  const own = ownSessionName(transcriptPath);
-  if (!slug(own)) return { ok: false, reason: "no session name derivable for token path" };
+// Shared with bin/aos-acp.mjs (ACP permission requests). `consume: false`
+// verifies without deleting the token, for a caller whose inner gate owns it.
+export function tokenGrantsGo(own, { consume = true } = {}) {
+  if (typeof own !== "string" || !slug(own)) return { ok: false, reason: "no session name derivable for token path" };
   const file = join(homedir(), ".aos", "go", `${slug(own)}.token`);
   if (!existsSync(file)) return { ok: false, reason: "no GO token for this session" };
   let tok;
@@ -135,7 +137,9 @@ function tokenGrantsGo(transcriptPath) {
   if (!last.text || last.text.trim().toLowerCase() !== `go ${own.trim().toLowerCase()}`) {
     return { ok: false, reason: "master transcript no longer ends with this GO" };
   }
-  try { unlinkSync(file); } catch { return { ok: false, reason: "could not consume GO token" }; }
+  if (consume) {
+    try { unlinkSync(file); } catch { return { ok: false, reason: "could not consume GO token" }; }
+  }
   return { ok: true };
 }
 
@@ -146,7 +150,7 @@ function lastUserMessageIsGo(transcriptPath) {
   return { ok: /^GO$/i.test(last.text.trim()), reason: `last user message was: ${JSON.stringify(last.text)}` };
 }
 
-function lastUserText(transcriptPath) {
+export function lastUserText(transcriptPath) {
   let raw;
   try {
     raw = readFileSync(transcriptPath, "utf8");
@@ -227,7 +231,7 @@ function main() {
 
   let result = lastUserMessageIsGo(transcriptPath);
   if (!result.ok) {
-    const token = tokenGrantsGo(transcriptPath);
+    const token = tokenGrantsGo(ownSessionName(transcriptPath));
     if (token.ok) result = token;
     else result.reason += `; ${token.reason}`;
   }
@@ -238,4 +242,6 @@ function main() {
   }
 }
 
-main();
+// Run as a hook (node go-gate.mjs); importing it (bin/aos-acp.mjs) must not.
+const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
+if (invokedAs === fileURLToPath(import.meta.url)) main();

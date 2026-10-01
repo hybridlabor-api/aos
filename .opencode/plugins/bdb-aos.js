@@ -4,7 +4,8 @@
  * Implements:
  * 1. tool.execute.before: Releases gatekeeper (go-gate). Guards outward-facing
  *    or hard-to-reverse actions (git push, npm publish, npm version, rm -rf)
- *    unless the user explicitly authorized it with the literal word "GO".
+ *    unless the user explicitly authorized it with the literal word "GO", or a
+ *    master session issued a GO token for this session (~/.aos/go/<name>.token).
  * 2. chat.message: Ambient memory injection (memB). Injects relevant project & user
  *    memories as ephemeral context from ~/.MemBDB/memb.db via node:sqlite.
  * 3. tool.execute.before/after: Best-effort live-map telemetry for the AOS
@@ -14,7 +15,7 @@
  * on unguarded destructive actions.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -133,6 +134,54 @@ function isGuardedCommand(cmd) {
 function verifyGoAuthorized(lastPrompt) {
   const trimmed = (lastPrompt || '').trim();
   return trimmed.toUpperCase() === 'GO';
+}
+
+// GO-token path (master-session skill). Mirrors tokenGrantsGo in
+// .claude/hooks/go-gate.mjs: `GO <session>` typed in a Claude Code master
+// session becomes ~/.aos/go/<session>.token; accepted once, if younger than
+// 10 minutes, naming this session, and the master transcript still ends with
+// that very `GO <session>`. This file is installed standalone, so no import.
+const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+const TOKEN_TTL_MS = 10 * 60 * 1000;
+
+function lastMasterUserText(transcriptPath) {
+  let lines;
+  try { lines = readFileSync(transcriptPath, 'utf8').split('\n').filter(Boolean); } catch { return null; }
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let e;
+    try { e = JSON.parse(lines[i]); } catch { continue; }
+    if ((e.type === 'user' || e.role === 'user') && e.isSidechain !== true) {
+      const c = e.message?.content ?? e.content;
+      const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b?.type === 'text').map((b) => b.text).join('\n') : '';
+      if (text.trim()) return text.trim();
+    }
+  }
+  return null;
+}
+
+export function tokenGrantsGo(own) {
+  if (typeof own !== 'string' || !slug(own)) return false;
+  const file = path.join(os.homedir(), '.aos', 'go', `${slug(own)}.token`);
+  let tok;
+  try { tok = JSON.parse(readFileSync(file, 'utf8')); } catch { return false; }
+  const age = Date.now() - Date.parse(tok?.issued_at);
+  if (!(age >= 0 && age < TOKEN_TTL_MS)) { try { unlinkSync(file); } catch {} return false; }
+  if (typeof tok.target !== 'string' || slug(tok.target) !== slug(own)) return false;
+  if (typeof tok.master_transcript !== 'string') return false;
+  const last = lastMasterUserText(tok.master_transcript);
+  if (!last || last.toLowerCase() !== `go ${own.trim().toLowerCase()}`) return false;
+  try { unlinkSync(file); } catch { return false; }
+  return true;
+}
+
+// This session's name for the token: env (set by aos-acp / the user), else the
+// OpenCode session title.
+async function ownSessionName(client, sessionID) {
+  if (process.env.AOS_SESSION_NAME) return process.env.AOS_SESSION_NAME;
+  try {
+    const res = await client?.session?.get?.({ path: { id: sessionID } });
+    return res?.data?.title || '';
+  } catch { return ''; }
 }
 
 // Best-effort fire-and-forget telemetry for the AOS live map (agenttrail daemon).
@@ -369,6 +418,10 @@ export default async function bdbAosPlugin(input) {
                 }
               }
             } catch {}
+          }
+
+          if (!authorized) {
+            authorized = tokenGrantsGo(await ownSessionName(input.client, toolInput.sessionID));
           }
 
           if (!authorized) {
