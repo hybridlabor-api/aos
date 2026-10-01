@@ -31,12 +31,21 @@ let agentArg = null
 // AOS patch: ask engine — `ask "<question>" [--timeout 10s|30m|2h|N]` blocks until the map answers
 let askWords = null
 let askTimeoutArg = null
+// AOS patch: `--ensure [--cwd <dir>] [--plan <file>] [--session <id>] [--json]` (see bin/ensure.mjs)
+let ensureMode = false
+let ensureCwd = null
+let ensureSession = null
+let jsonOut = false
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
   else if (a === 'hook') cmd = 'hook'
   // AOS patch: ask engine CLI — asks the human a question via the map
   else if (a === 'ask') cmd = 'ask'
+  else if (a === '--ensure') ensureMode = true
+  else if (a === '--cwd') ensureCwd = argv[++i]
+  else if (a === '--session') ensureSession = argv[++i]
+  else if (a === '--json') jsonOut = true
   else if (a === '--port') port = parseInt(argv[++i], 10)
   else if (a === '--open') openBrowser = true
   else if (a === '--no-open') { noOpen = true; openBrowser = false }
@@ -113,6 +122,11 @@ function copyToClipboard(text) {
     p.on('error', () => res(false)); p.on('close', () => res(true))
     p.stdin.end(text)
   })).catch(() => false)
+}
+if (ensureMode) {
+  try { await (await import('./ensure.mjs')).ensure({ cwd: ensureCwd, plan: planArg, session: ensureSession, json: jsonOut, script: fileURLToPath(import.meta.url) }) }
+  catch (e) { console.log(jsonOut ? JSON.stringify({ url: null, started: false, opened: false, reason: `error: ${String(e && e.message || e).slice(0, 80)}`, plan: null, hint: null }) : 'agenttrail: error') }
+  process.exit(0)
 }
 if (cmd === 'init') { hooksOnly ? installHooks() : await init(); process.exit(0) }
 if (cmd === 'up') { await upAll(); process.exit(0) }

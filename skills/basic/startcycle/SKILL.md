@@ -74,7 +74,7 @@ A straight-line run through the BDB agent roster. Whoever invokes this skill inv
 
 ### 3. Build (parallel, stream-selective)
 
-**Trigger B — start the live map:** `aos-trail . --plan production_artifacts/00_execution_plan.md --no-open` (safe to run twice: it reuses a map already running for this repo). Inside AO (env var `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. Tell each build agent to mark its tasks `[~]` before starting work, `[x]` when done, `[!]` when stuck, with an indented `by: <agent>` line, saving the plan file immediately after each change. See the `agenttrail` skill.
+**Trigger B — start the live map:** `aos-trail --ensure` (safe to run twice: it reuses a map already running for this repo). Put the live-map link in your reply (the autostart hook also adds it as context when active). Inside AO (env var `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. Tell each build agent to mark its tasks `[~]` before starting work, `[x]` when done, `[!]` when stuck, with an indented `by: <agent>` line, saving the plan file immediately after each change. See the `agenttrail` skill.
 
 Run only the streams the goal actually needs. A plain backend feature does not need step 3a or 3c; a pure copy change does not need 3b. Each stream's `skills:` frontmatter already lists what it should reach for — the invoker passes that list through rather than restating it here.
 

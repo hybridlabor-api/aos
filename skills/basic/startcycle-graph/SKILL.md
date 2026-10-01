@@ -111,9 +111,9 @@ Reviewer, and no quality gate ever running).
 When the build phase begins, the dispatcher starts the aos-trail live map
 (Trigger B) with the command below; it is safe to run twice, since
 `aos-trail` reuses a map already running for this repo:
-`aos-trail . --plan production_artifacts/00_execution_plan.md --no-open`
+`aos-trail --ensure`
 (it prints a URL, default http://localhost:5330; inside AO, where
-`AO_BROWSER_CAPABILITY` is set, also run `ao preview <url>`). Agents follow
+`AO_BROWSER_CAPABILITY` is set, also run `ao preview <url>`). Put the live-map link in your reply (the autostart hook also adds it as context when active). Agents follow
 the status-mark rules from the `agenttrail` skill: `[~]` before starting,
 `[x]` when done, `[!]` when stuck, with `by: <agent>`, saving the plan file
 immediately.
