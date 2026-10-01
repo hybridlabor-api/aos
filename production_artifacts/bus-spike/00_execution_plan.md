@@ -78,11 +78,11 @@ files: .claude/hooks/aos-bus.mjs, package.json
 needs: bus-lib
 files: .opencode/plugins/bdb-aos.js
 
-- [~] Import `aos-bus.mjs` through the existing `hook()` loader {#plugin-import}
+- [x] Import `aos-bus.mjs` through the existing `hook()` loader {#plugin-import}
   by: engineering
-- [~] Register lazily: the first `event` seen for a root session (`session.created` with `parentID == null`, or a `chat.message` / `session.idle` for an unknown root session, which covers `opencode --continue`) calls `registerSession`. `session.deleted` calls `unregisterSession`. `process.on('exit')` runs a sync unregister of this pid's names {#plugin-register}
+- [x] Register lazily: the first `event` seen for a root session (`session.created` with `parentID == null`, or a `chat.message` / `session.idle` for an unknown root session, which covers `opencode --continue`) calls `registerSession`. `session.deleted` calls `unregisterSession`. `process.on('exit')` runs a sync unregister of this pid's names {#plugin-register}
   by: engineering
-- [~] One `setInterval(1000).unref()` per plugin instance. For each registered name: `readInbox`, then for each message:
+- [x] One `setInterval(1000).unref()` per plugin instance. For each registered name: `readInbox`, then for each message:
   - **first** set `sess(sessionID).prompt = ''` (the go-gate checks this cache before any DB/messages lookup; do not rely on `chat.message` firing for plugin-initiated prompts, or a stale human `GO` would authorize the woken turn)
   - call `client.session.prompt({ path:{id: sessionID}, query:{directory}, body:{ noReply: !wake, parts:[{ type:'text', text:'[aos-bus from '+from+'] '+text, synthetic:true, metadata:{ aos_bus:{from, uid, ts} } }] } })`
   - on success: unlink the file and call `client.tui.showToast({ body:{ title:'aos-bus', message:'from '+from, variant:'info' } })` (best-effort)
@@ -91,7 +91,7 @@ files: .opencode/plugins/bdb-aos.js
   - `ponytail: 1 s poll; fs.watch if latency matters`
   {#plugin-poll}
   by: engineering
-- [~] In `chat.message`, if `fullText` is empty (an all-synthetic message, i.e. bus or nudge), set `s.prompt = ''` and return before memB/pipeline/issueGoToken. This saves a memB lookup per bus message and keeps the gate closed {#plugin-chat-guard}
+- [x] In `chat.message`, if `fullText` is empty (an all-synthetic message, i.e. bus or nudge), set `s.prompt = ''` and return before memB/pipeline/issueGoToken. This saves a memB lookup per bus message and keeps the gate closed {#plugin-chat-guard}
   by: engineering
 
 ## go-gate (verify, change only if needed) {#go-gate}

@@ -15,7 +15,7 @@
  * on unguarded destructive actions.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 
 // Decision logic lives in the shared hooks: installed copy next to this file
@@ -23,8 +23,8 @@ import path from 'node:path';
 // so a broken installed hook fails loudly instead of silently falling back.
 const HOOKS = existsSync(new URL('./aos-hooks/go-gate.mjs', import.meta.url)) ? './aos-hooks/' : '../../.claude/hooks/';
 const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
-const [{ GUARDED_PATTERNS, tokenGrantsGo }, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }] =
-  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs'].map(hook));
+const [{ GUARDED_PATTERNS, tokenGrantsGo }, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus] =
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs'].map(hook));
 
 // ---------------------------------------------------------------------------
 // Graph gate (W-5, W-6)
@@ -199,6 +199,59 @@ export default async function bdbAosPlugin(input) {
     if (!sessions.has(id)) sessions.set(id, { prompt: '', parentID: null, identitySent: false });
     return sessions.get(id);
   };
+  // aos-bus: bus name -> sessionID of the root session that owns it.
+  const busNames = new Map();
+  const ensureBus = async (id, parentID) => {
+    const s = sess(id);
+    if (s.bus || !id) return;
+    s.bus = true;
+    try {
+      if (parentID === undefined) {
+        const res = await input.client?.session?.get?.({ path: { id } });
+        if (!res?.data) { s.bus = false; return; }
+        parentID = res.data.parentID ?? null;
+      }
+      if (parentID) return;
+      const name = bus.registerSession({ name: process.env.AOS_SESSION_NAME || id, sessionID: id, cwd: directory });
+      busNames.set(name, id);
+    } catch { s.bus = false; }
+  };
+  const dropBus = (id) => {
+    for (const [name, sid] of busNames) if (sid === id) { bus.unregisterSession(name); busNames.delete(name); }
+  };
+  process.on('exit', () => { for (const name of busNames.keys()) bus.unregisterSession(name); });
+
+  let polling = false;
+  setInterval(async () => {
+    if (polling || !busNames.size) return;
+    polling = true;
+    try {
+      for (const [name, sessionID] of busNames) {
+        for (const m of bus.readInbox(name)) {
+          // The gate checks this cache before any DB lookup; a stale human GO must not authorize a woken turn.
+          sess(sessionID).prompt = '';
+          try {
+            const res = await input.client.session.prompt({
+              path: { id: sessionID },
+              query: directory ? { directory } : undefined,
+              body: {
+                noReply: !m.wake,
+                parts: [{ type: 'text', text: `[aos-bus from ${m.from}] ${m.text}`, synthetic: true, metadata: { aos_bus: { from: m.from, uid: m.uid, ts: m.ts } } }],
+              },
+            });
+            if (res?.error) throw res.error;
+            unlinkSync(m.file);
+            input.client.tui?.showToast?.({ body: { title: 'aos-bus', message: `from ${m.from}`, variant: 'info' } })?.catch?.(() => {});
+          } catch (e) {
+            // Busy session: keep the file and retry next tick. Anything else is parked.
+            if (/busy/i.test(`${e?.name} ${e?.message} ${e?.data?.message}`)) break;
+            try { renameSync(m.file, `${m.file}.failed`); } catch {}
+          }
+        }
+      }
+    } catch {} finally { polling = false; }
+  // ponytail: 1 s poll; fs.watch if latency matters. A wake turn is awaited, so it delays later messages until it ends.
+  }, 1000).unref();
   const trail = (hook_event_name, session_id, extra = {}) =>
     void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
 
@@ -212,10 +265,14 @@ export default async function bdbAosPlugin(input) {
         if (event?.type === 'session.created' && props.info?.id) {
           sess(props.info.id).parentID = props.info.parentID ?? null;
           trail('SessionStart', props.info.id);
+          void ensureBus(props.info.id, props.info.parentID ?? null);
+        } else if (event?.type === 'session.deleted' && props.info?.id) {
+          dropBus(props.info.id);
         } else if (event?.type === 'permission.updated') {
           trail('Notification', props.sessionID, { message: props.title });
         } else if (event?.type === 'session.idle' && props.sessionID) {
           trail(sess(props.sessionID).parentID ? 'SubagentStop' : 'Stop', props.sessionID);
+          void ensureBus(props.sessionID);
         }
       } catch {}
 
@@ -249,7 +306,11 @@ export default async function bdbAosPlugin(input) {
       const textParts = (msgOutput.parts || []).filter((p) => p && p.type === 'text' && typeof p.text === 'string' && !p.synthetic);
       const fullText = textParts.map((p) => p.text).join('\n').trim();
       const s = sess(msgInput.sessionID);
+      void ensureBus(msgInput.sessionID);
       s.prompt = fullText;
+      // All-synthetic message (aos-bus, nudges): never a human GO, skip memB/pipeline/token.
+      const parts = msgOutput.parts || [];
+      if (parts.length > 0 && parts.every((p) => p && p.synthetic)) { s.prompt = ''; return; }
 
       try {
         if (!s.parentID) issueGoToken(fullText, { session_id: msgInput.sessionID, message_id: msgInput.messageID || msgOutput.message?.id });
