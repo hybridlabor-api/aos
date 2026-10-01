@@ -82,13 +82,19 @@ files: .opencode/plugins/bdb-aos.js
   by: engineering
 - [x] Register lazily: the first `event` seen for a root session (`session.created` with `parentID == null`, or a `chat.message` / `session.idle` for an unknown root session, which covers `opencode --continue`) calls `registerSession`. `session.deleted` calls `unregisterSession`. `process.on('exit')` runs a sync unregister of this pid's names {#plugin-register}
   by: engineering
-- [x] One `setInterval(1000).unref()` per plugin instance. For each registered name: `readInbox`, then for each message:
+- [x] One `setInterval(1000).unref()` per plugin instance. For each registered name whose registry entry shows this pid and session as owner: `readInbox` (`*.json` only), then for each message:
+  - claim it by `rename(<x>.json, <x>.inflight)`; a failed rename skips the message (another instance has it)
   - **first** set `sess(sessionID).prompt = ''` (the go-gate checks this cache before any DB/messages lookup; do not rely on `chat.message` firing for plugin-initiated prompts, or a stale human `GO` would authorize the woken turn)
   - call `client.session.prompt({ path:{id: sessionID}, query:{directory}, body:{ noReply: !wake, parts:[{ type:'text', text:'[aos-bus from '+from+'] '+text, synthetic:true, metadata:{ aos_bus:{from, uid, ts} } }] } })`
-  - on success: unlink the file and call `client.tui.showToast({ body:{ title:'aos-bus', message:'from '+from, variant:'info' } })` (best-effort)
-  - on error: rename the file to `.failed`. A `busy` error keeps the file and retries each tick for up to 10 min (by file mtime), then parks it as `.failed`. The awaited prompt is capped at 10 min
+  - on success: unlink the claim and call `client.tui.showToast({ body:{ title:'aos-bus', message:'from '+from, variant:'info' } })` (best-effort)
+  - on `busy`: rename the claim back to `.json` and retry each tick for up to 10 min (`AOS_BUS_BUSY_MAX_MS`) from the first busy attempt (in-memory; a restart restarts the clock), then park as `.failed`
+  - on prompt timeout (10 min, `AOS_BUS_PROMPT_TIMEOUT_MS`, prompt not aborted): park as `.timeout` (delivery unknown)
+  - on any other error: park as `.failed` (not delivered)
   - a `busy` flag prevents overlapping ticks
   - `ponytail: 1 s poll; fs.watch if latency matters`
+  - ponytail: a crash mid-prompt leaves an orphan `.inflight` on disk (never deleted, never retried); add startup recovery if it shows up
+  - registration failure is logged; `invalid session name` is not retried, other errors retry on the next idle / `chat.message`. Names starting with `.` are rejected; `from` is sanitized (control chars and `]` stripped, max 64), non-finite `ts` dropped
+  - Contract deltas ratified by TechLead 2026-10-01 (see `02_backend_schema.md` Repair round 2)
   {#plugin-poll}
   by: engineering
 - [x] In `chat.message`, if `fullText` is empty (an all-synthetic message, i.e. bus or nudge), set `s.prompt = ''` and return before memB/pipeline/issueGoToken. This saves a memB lookup per bus message and keeps the gate closed {#plugin-chat-guard}
