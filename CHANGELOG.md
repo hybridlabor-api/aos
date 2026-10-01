@@ -1,5 +1,33 @@
 # Changelog
 
+## [4.14.0](https://github.com/hybridlabor-api/aos/compare/v4.13.2...v4.14.0) (2026-10-01)
+
+
+### Features
+
+* add skills.sh.json to group the 214 skills on the skills.sh repo page ([#95](https://github.com/hybridlabor-api/aos/issues/95)) ([665feb9](https://github.com/hybridlabor-api/aos/commit/665feb979f1c5c4db30df2844a51924f2384c846))
+* **agenttrail:** auto-start the live map and surface its link ([#115](https://github.com/hybridlabor-api/aos/issues/115)) ([7126f88](https://github.com/hybridlabor-api/aos/commit/7126f88973ebf825a2b3e070635c0de004f0b247))
+* **launchpad:** Plan Canvas card with start hint and opt-in autostart ([#109](https://github.com/hybridlabor-api/aos/issues/109)) ([69ea4fe](https://github.com/hybridlabor-api/aos/commit/69ea4fef1b63dc15edfc41327ff225f44bfee64a))
+* **master-session:** supervise sessions, GO token, aos-acp client and OpenCode adapter ([#111](https://github.com/hybridlabor-api/aos/issues/111)) ([1178ef5](https://github.com/hybridlabor-api/aos/commit/1178ef5eefc6a2438b463649901d0698a93096c8))
+* **plan-canvas:** always offer the planning mode (modes command, open --mode) ([#103](https://github.com/hybridlabor-api/aos/issues/103)) ([24ba4a2](https://github.com/hybridlabor-api/aos/commit/24ba4a260c276d5d0c4315e78c321af9589bea73))
+* **plan-canvas:** BDB Plan Builder - renderer for plan folders with a board view ([#107](https://github.com/hybridlabor-api/aos/issues/107)) ([fbce692](https://github.com/hybridlabor-api/aos/commit/fbce69224b9639d60ef4ba650bed9430e00a3dab))
+* **playbooks:** playbook format, validator support and five wave-1 playbooks ([#110](https://github.com/hybridlabor-api/aos/issues/110)) ([7b4f31c](https://github.com/hybridlabor-api/aos/commit/7b4f31ce4cfa7aa332deb346cb30eda06e447304))
+* **pr-recap:** visual PR recap skill built on the Plan Builder ([#113](https://github.com/hybridlabor-api/aos/issues/113)) ([455e242](https://github.com/hybridlabor-api/aos/commit/455e242f9bc0188473ff620f2d1589c2b1c3ea47))
+* **skills:** vendor agentic-harness-patterns from keli-wen (MIT) ([#112](https://github.com/hybridlabor-api/aos/issues/112)) ([d9ef6cd](https://github.com/hybridlabor-api/aos/commit/d9ef6cd9436208dcad7a8fa1c53f8b6d14e46b58))
+* **skills:** vendor plan-arbiter and Factory stage 1-2 from BuilderIO/skills ([#101](https://github.com/hybridlabor-api/aos/issues/101)) ([4338108](https://github.com/hybridlabor-api/aos/commit/43381082ba7e2c1c7e27b252843d451d37fcecfc))
+* **skills:** vendor stay-within-limits and quick-recap from BuilderIO/skills ([#99](https://github.com/hybridlabor-api/aos/issues/99)) ([5e49d8a](https://github.com/hybridlabor-api/aos/commit/5e49d8a63c485a280af63085d0b67e1533c8ed4c))
+* **skills:** vendor visual-plan, visual-recap and visual-edit from BuilderIO/skills (optional) ([#105](https://github.com/hybridlabor-api/aos/issues/105)) ([dc9f0a9](https://github.com/hybridlabor-api/aos/commit/dc9f0a9e5121e6c5f2fc65faa2a5018aee67ef46))
+* **swarm:** shared common skill set for every pipeline node and harness ([#100](https://github.com/hybridlabor-api/aos/issues/100)) ([5baf8b2](https://github.com/hybridlabor-api/aos/commit/5baf8b288e015a85b3c9c53e0dc769eb6102929f))
+* **visual-edit:** bdb-visual-edit skill with element sanitizer and Plan Builder source anchors ([#114](https://github.com/hybridlabor-api/aos/issues/114)) ([8675794](https://github.com/hybridlabor-api/aos/commit/8675794f69ff0aa90c683030d1700728defb44f9))
+
+
+### Bug Fixes
+
+* **installer:** atomic ao binary swap, --version/--help without install, mcsc start, command name ([#104](https://github.com/hybridlabor-api/aos/issues/104)) ([fc3173c](https://github.com/hybridlabor-api/aos/commit/fc3173c8038c757363c8876a6b7a45636c628ead))
+* **installer:** write an agy-valid hooks.json and migrate old AOS entries (go-gate under Antigravity) ([#106](https://github.com/hybridlabor-api/aos/issues/106)) ([a5023d6](https://github.com/hybridlabor-api/aos/commit/a5023d6a53894ef2e760f54ed10508f8f35acb6a))
+* **plan-builder:** visual polish and recap-review / recap-board templates ([#108](https://github.com/hybridlabor-api/aos/issues/108)) ([4453be9](https://github.com/hybridlabor-api/aos/commit/4453be95e2f50425821ef77bb9fc6775915f6470))
+* **plan-canvas:** pin the request Origin to the server port and refuse cross-site fetches ([#102](https://github.com/hybridlabor-api/aos/issues/102)) ([6bf54f9](https://github.com/hybridlabor-api/aos/commit/6bf54f98391c04f2a2a7018e9d03131349acff46))
+
 ## [4.13.2](https://github.com/hybridlabor-api/aos/compare/v4.13.1...v4.13.2) (2026-09-30)
 
 
