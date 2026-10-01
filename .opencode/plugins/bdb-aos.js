@@ -236,11 +236,11 @@ export default async function bdbAosPlugin(input) {
       s.prompt = fullText;
 
       try {
-        issueGoToken(fullText, { session_id: msgInput.sessionID, message_id: msgInput.messageID || msgOutput.message?.id });
+        if (!s.parentID) issueGoToken(fullText, { session_id: msgInput.sessionID, message_id: msgInput.messageID || msgOutput.message?.id });
       } catch {}
 
       try {
-        const event = s.identitySent ? 'UserPromptSubmit' : 'SessionStart';
+        const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
         s.identitySent = true;
         const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
         if (membContext) {
@@ -293,10 +293,18 @@ export default async function bdbAosPlugin(input) {
       if (toolName === 'bash' || toolName === 'terminal' || toolName === 'shell' || toolName === 'exec' || toolName === 'run_command') {
         const cmd = toolOutput?.args?.command || toolOutput?.args?.cmd || toolOutput?.args?.script || '';
         if (typeof cmd === 'string' && GUARDED_PATTERNS.some((re) => re.test(cmd))) {
-          let authorized = sess(toolInput.sessionID).prompt.toUpperCase() === 'GO';
+          const s = sess(toolInput.sessionID);
+          if (!s.parentID && input.client && toolInput.sessionID) {
+            try {
+              const res = await input.client.session.get({ path: { id: toolInput.sessionID } });
+              s.parentID = res?.data?.parentID ?? null;
+            } catch {}
+          }
+          // Subagent prompts are agent-written, so only a token can open their gate.
+          let authorized = !s.parentID && s.prompt.toUpperCase() === 'GO';
 
           // If this session's cached prompt wasn't GO, query recent session messages via OpenCode client as fallback
-          if (!authorized && input.client && toolInput.sessionID) {
+          if (!authorized && !s.parentID && input.client && toolInput.sessionID) {
             try {
               const res = await input.client.session.messages({ path: { id: toolInput.sessionID } });
               const msgs = res?.data || [];
@@ -304,11 +312,9 @@ export default async function bdbAosPlugin(input) {
                 const m = msgs[i];
                 if ((m.info?.role ?? m.role) === 'user') {
                   const parts = m.parts || [];
-                  const text = parts.filter((p) => p.type === 'text').map((p) => p.text).join('\n').trim();
-                  if (text) {
-                    authorized = (text.toUpperCase() === 'GO');
-                    break;
-                  }
+                  const text = parts.filter((p) => p.type === 'text' && !p.synthetic).map((p) => p.text).join('\n').trim();
+                  authorized = text.toUpperCase() === 'GO';
+                  break;
                 }
               }
             } catch {}
@@ -326,9 +332,14 @@ export default async function bdbAosPlugin(input) {
         }
         const reason = checkConventionalCommit(cmd);
         if (reason) throw new Error(reason);
-      } else if (toolName === 'write' || toolName === 'edit' || toolName === 'patch') {
-        const reason = envFileReason(toolOutput?.args?.filePath ?? '');
-        if (reason) throw new Error(reason);
+      } else if (['write', 'edit', 'multiedit', 'patch', 'apply_patch'].includes(toolName)) {
+        const args = toolOutput?.args || {};
+        const paths = [args.filePath ?? ''];
+        for (const m of String(args.patchText ?? '').matchAll(/^\*\*\* (?:Add|Update) File: (.+)$/gm)) paths.push(m[1].trim());
+        for (const f of paths) {
+          const reason = envFileReason(f);
+          if (reason) throw new Error(reason);
+        }
       }
     },
 

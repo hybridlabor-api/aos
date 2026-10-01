@@ -3780,7 +3780,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         try {
             copyDirRecursiveSync(hooksSrc, path.join(opencodeDir, 'plugins', 'aos-hooks'));
         } catch (e) {
-            log.warn(`Could not install OpenCode plugin hooks: ${e.message}`);
+            log.error(`Could not install OpenCode plugin hooks (OpenCode gates inactive): ${e.message}`);
         }
     }
 

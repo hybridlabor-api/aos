@@ -129,4 +129,39 @@ describe('OpenCode adapter', () => {
         await say(hooks, 's1', 'GO worker-1', 'msg_2');
         assert.equal(fs.existsSync(file), false);
     });
+
+    test('a session created with a parent never mints a token', async () => {
+        const { hooks } = await load();
+        await hooks.event({ event: { type: 'session.created', properties: { info: { id: 'kid', parentID: 'root' } } } });
+        await say(hooks, 'kid', 'GO worker-1');
+        assert.equal(fs.existsSync(path.join(home, '.aos', 'go', 'worker-1.token')), false);
+    });
+
+    test('subagent sessions ignore the literal-GO cache and fallback', async () => {
+        const { mod } = await load();
+        const get = async ({ path: p }) => ({ data: { title: '', parentID: p.id === 'lazy' ? 'root' : undefined } });
+        const msgs = async () => ({ data: [{ info: { role: 'user' }, parts: [{ type: 'text', text: 'GO' }] }] });
+        const hooks = await mod.default({ directory: home, client: { session: { get, messages: msgs } } });
+        await hooks.event({ event: { type: 'session.created', properties: { info: { id: 'kid', parentID: 'root' } } } });
+        await say(hooks, 'kid', 'GO');
+        await assert.rejects(bash(hooks, 'kid', 'git push origin main'), /Blocked by BDB go-gate/);
+        await assert.rejects(bash(hooks, 'lazy', 'git push origin main'), /Blocked by BDB go-gate/);
+        await bash(hooks, 'root', 'git push origin main');
+    });
+
+    test('fallback stops at an empty newest user message', async () => {
+        const { mod } = await load();
+        const user = (t) => ({ info: { role: 'user' }, parts: t ? [{ type: 'text', text: t }] : [{ type: 'file' }] });
+        const client = { session: { get: async () => ({ data: { title: '' } }), messages: async () => ({ data: [user('GO'), user('')] }) } };
+        const hooks = await mod.default({ directory: home, client });
+        await assert.rejects(bash(hooks, 's1', 'git push origin main'), /Blocked by BDB go-gate/);
+    });
+
+    test('multiedit and patch text are env-protected', async () => {
+        const { hooks } = await load();
+        await assert.rejects(edit(hooks, 'multiedit', '/srv/app/.env'), /env-file-protection/);
+        const patch = (patchText) => hooks['tool.execute.before']({ tool: 'patch', sessionID: 's1', callID: 'c' }, { args: { patchText } });
+        await assert.rejects(patch('*** Begin Patch\n*** Update File: /srv/app/.env\n*** End Patch'), /env-file-protection/);
+        await patch('*** Begin Patch\n*** Add File: /srv/app/a.js\n*** End Patch');
+    });
 });
