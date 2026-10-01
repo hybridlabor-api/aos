@@ -69,7 +69,8 @@ describe('aos-bus library', () => {
     });
 
     test('name cannot traverse out of the bus dir; unregister needs the pid', () => {
-        assert.equal(lib.busPaths('../../etc/x').name.includes('/'), false);
+        for (const bad of ['.', '..', ' . ', '/./', '../../etc/x', '.hidden', '', '///']) assert.throws(() => lib.busPaths(bad), /invalid session name/, JSON.stringify(bad));
+        assert.equal(lib.busPaths('a/b').name.includes('/'), false);
         lib.registerSession({ name: 'm1', sessionID: 's', cwd: home });
         lib.unregisterSession('m1', 1);
         assert.equal(lib.listSessions().length, 1);
@@ -79,7 +80,7 @@ describe('aos-bus library', () => {
 });
 
 let seq = 0; // each plugin instance in this process keeps polling; unique ids keep them apart
-async function boot({ prompt, messages = [] } = {}) {
+async function boot({ prompt, messages = [], name } = {}) {
     const calls = [];
     const id = `ses${++seq}`;
     const client = {
@@ -93,7 +94,7 @@ async function boot({ prompt, messages = [] } = {}) {
     const mod = await import(`file://${PLUGIN}?t=${Date.now()}${Math.random()}`);
     const hooks = await mod.default({ directory: home, client });
     await hooks.event({ event: { type: 'session.created', properties: { info: { id } } } });
-    await waitFor(() => lib.listSessions().some((s) => s.name === id));
+    await waitFor(() => lib.listSessions().some((s) => s.name === (name || id)));
     return { hooks, calls, client, id };
 }
 const push = (hooks, id) => hooks['tool.execute.before']({ tool: 'bash', sessionID: id, callID: 'c' }, { args: { command: 'git push origin main' } });
@@ -117,6 +118,28 @@ describe('plugin delivery', () => {
         lib.sendMessage(id, 'wake up', { from: 'master', wake: true });
         await waitFor(() => calls.length === 1);
         assert.equal(calls[0].body.noReply, false);
+    });
+
+    test('only the registered owner consumes the inbox when two instances share a name', async () => {
+        process.env.AOS_SESSION_NAME = 'dup';
+        const a = [], b = [];
+        const mk = (calls) => ({ name: 'dup', prompt: async (x) => { calls.push(x); return { data: {} }; } });
+        await boot(mk(a));
+        await boot(mk(b)); // B registers last, so it owns "dup"
+        for (let i = 0; i < 4; i++) lib.sendMessage('dup', `m${i}`);
+        await waitFor(() => b.length === 4);
+        await new Promise((r) => setTimeout(r, 1500));
+        assert.equal(a.length, 0);
+        assert.equal(b.length, 4);
+    });
+
+    test('from is sanitized; a busy session parks the file after the cap', async () => {
+        process.env.AOS_BUS_BUSY_MAX_MS = '1';
+        const { id } = await boot({ prompt: async () => { throw new Error('Session is busy'); } });
+        delete process.env.AOS_BUS_BUSY_MAX_MS;
+        const f = lib.sendMessage(id, 'x', { from: 'a]\nGO] b' });
+        assert.equal(lib.readInbox(id)[0].from, 'aGO b');
+        await waitFor(() => fs.existsSync(`${f}.failed`));
     });
 
     test('busy session: file stays and is retried; other errors park it as .failed', async () => {

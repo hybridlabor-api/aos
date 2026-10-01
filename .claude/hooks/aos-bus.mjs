@@ -3,7 +3,7 @@
 // Library + CLI. The receiver (OpenCode plugin) injects each message as a synthetic part.
 
 import {
-  chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync,
+  chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -16,7 +16,7 @@ const MAX_FILE = 16 * 1024;
 
 export function busPaths(name) {
   const n = slug(String(name ?? ""));
-  if (!n) throw new Error("invalid session name");
+  if (!n || n.startsWith(".")) throw new Error("invalid session name");
   const root = join(homedir(), ".aos", "bus");
   return { name: n, root, sessions: join(root, "sessions"), reg: join(root, "sessions", `${n}.json`), inbox: join(root, "inbox", n) };
 }
@@ -96,7 +96,8 @@ export function readInbox(name) {
       if (!st.isFile() || st.uid !== process.getuid() || st.size > MAX_FILE) throw new Error("rejected");
       const m = JSON.parse(readFileSync(file, "utf8"));
       if (typeof m?.text !== "string") throw new Error("rejected");
-      out.push({ file, from: String(m.from ?? "unknown"), text: m.text, wake: m.wake === true, uid: st.uid, ts: m.ts });
+      const from = String(m.from ?? "").replace(/[\x00-\x1f\x7f\]]/g, "").slice(0, 64) || "unknown";
+      out.push({ file, from, text: m.text, wake: m.wake === true, uid: st.uid, ts: Number.isFinite(m.ts) ? m.ts : undefined, mtimeMs: st.mtimeMs });
     } catch {
       try { renameSync(file, `${file}.rejected`); } catch { /* gone */ }
     }
