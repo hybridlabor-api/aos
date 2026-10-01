@@ -74,6 +74,7 @@
     "./skills/global_config/bdb-unreal-mcp",
     "./skills/global_config/bdb-updater",
     "./skills/global_config/bdb-vectorworks-mcp",
+    "./skills/global_config/bdb-visual-edit",
     "./skills/global_config/bdbdesignpro",
     "./skills/global_config/bdbresilience",
     "./skills/global_config/brag",

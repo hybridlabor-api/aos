@@ -297,18 +297,34 @@ function splitFrontmatter(text, warnings) {
  * Returns the block array (`.frontmatter` and `.warnings` hang off it), so
  * callers that only care about content can iterate it directly.
  */
-function parseMdx(text) {
+function parseMdx(text, opts = {}) {
   const warnings = [];
   const src = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
   const { frontmatter, body } = splitFrontmatter(src, warnings);
   const blocks = [];
   let prose = [];
+  let proseLine = 0;
   let fence = false;
+
+  // 1-based line in the original source file; every block records where it starts.
+  const base = (opts.firstLine || 1) + (src.length - body.length ? src.slice(0, src.length - body.length).split('\n').length - 1 : 0);
+  let cur = 0;
+  let curLine = base;
+  const lineOf = (idx) => {
+    if (idx < cur) { cur = 0; curLine = base; }
+    for (let k = body.indexOf('\n', cur); k >= 0 && k < idx; k = body.indexOf('\n', cur)) { curLine += 1; cur = k + 1; }
+    return curLine;
+  };
+  const pushProse = (line, at) => {
+    if (!proseLine && line.trim()) proseLine = lineOf(at);
+    prose.push(line);
+  };
 
   const flush = () => {
     const chunk = prose.join('\n').trim();
-    if (chunk) blocks.push({ type: 'prose', text: chunk });
+    if (chunk) blocks.push({ type: 'prose', text: chunk, line: proseLine });
     prose = [];
+    proseLine = 0;
   };
 
   let i = 0;
@@ -319,7 +335,7 @@ function parseMdx(text) {
 
     if (FENCE_RE.test(line)) {
       fence = !fence;
-      prose.push(line);
+      pushProse(line, i);
       i = next;
       continue;
     }
@@ -330,7 +346,8 @@ function parseMdx(text) {
         blocks.push({
           type: 'heading',
           level: heading[1].length,
-          text: heading[2].trim()
+          text: heading[2].trim(),
+          line: lineOf(i)
         });
         i = next;
         continue;
@@ -348,6 +365,7 @@ function parseMdx(text) {
               name: scanned.name,
               props: parseAttributes(scanned.attrsText, warnings, scanned.name),
               children: [],
+              line: lineOf(start),
               raw: body.slice(start, scanned.end)
             });
             i = scanned.end;
@@ -358,6 +376,7 @@ function parseMdx(text) {
             warnings.push(`unclosed <${scanned.name}>; the rest of the document was not parsed`);
             blocks.push({
               type: 'malformed',
+              line: lineOf(start),
               raw: body.slice(start),
               message: `unclosed <${scanned.name}>`
             });
@@ -369,7 +388,8 @@ function parseMdx(text) {
             type: 'tag',
             name: scanned.name,
             props: parseAttributes(scanned.attrsText, warnings, scanned.name),
-            children: parseMdx(body.slice(scanned.end, close)),
+            line: lineOf(start),
+            children: parseMdx(body.slice(scanned.end, close), { firstLine: lineOf(scanned.end) }),
             childrenRaw: body.slice(scanned.end, close),
             raw: body.slice(start, closeEnd)
           });
@@ -378,7 +398,7 @@ function parseMdx(text) {
         }
       }
     }
-    prose.push(line);
+    pushProse(line, i);
     i = next;
   }
   flush();

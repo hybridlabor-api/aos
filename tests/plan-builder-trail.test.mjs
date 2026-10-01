@@ -237,7 +237,7 @@ describe('Archify block', () => {
     for (const bad of ['allow-same-origin', 'allow-forms', 'allow-popups', 'allow-top-navigation']) assert.ok(!frame.includes(bad), bad);
     assert.match(frame, /style="height:500px"/);
     assert.ok(!r.html.includes('card archify'), 'the diagram is not wrapped in a card');
-    assert.match(r.html, /<figure class="archify-block">/);
+    assert.match(r.html, /<figure[^>]* class="archify-block">/);
     assert.match(r.html, /\.archify-frame \{[^}]*calc\(100vh/);
     assert.match(r.html, /DIAGRAM-MARK/);
         assert.match(r.html, /<a href="arch\.html" target="_blank" rel="noopener noreferrer">open standalone/);
