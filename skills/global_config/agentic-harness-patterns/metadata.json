@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "organization": "Community",
+  "date": "April 2026",
+  "abstract": "Production harness patterns for AI coding agents — memory, permissions, context engineering, multi-agent delegation, skill runtimes, hook lifecycles, bootstrap sequences. Distilled from systematic source-level analysis of Claude Code.",
+  "references": [
+    "https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents",
+    "https://github.com/anthropics/claude-code"
+  ]
+}
