@@ -1,0 +1,511 @@
+<DesignBoard title="Harbor Notes - storyboard" version={1} transitions={[
+  { from: "welcome", to: "create", label: "Continue with email" },
+  { from: "create", to: "verify", label: "submit form" },
+  { from: "verify", to: "workspace", label: "code accepted" },
+  { from: "workspace", to: "notes", label: "create workspace" },
+  { from: "notes", to: "editor", label: "open a note" },
+  { from: "editor", to: "notes", label: "close, autosaved" },
+  { from: "editor", to: "share", label: "Share" },
+  { from: "share", to: "editor", label: "copy link" },
+  { from: "notes", to: "settings", label: "Settings" },
+  { from: "settings", to: "notes", label: "Back to notes" },
+]}>
+<Section title="1 Create the account" subtitle="Three steps from first launch to a verified address. Low-fidelity sketches, not final UI.">
+<Artboard id="welcome" label="Welcome" surface="mobile" x={80} y={120} width={320} height={490} order={1}>
+<Screen surface="mobile" caption="First launch, signed out.">
+  <FrameScreen>
+    <StatusBar />
+    <Row>
+      <IconSquare active />
+      <Title text="Harbor Notes" />
+    </Row>
+    <Text value="Team notes that stay in sync." tone="muted" />
+    <Box>
+      <Text value="Write together, share with a link, export anytime." />
+      <Lines n={3} widths={[92,80,58]} />
+    </Box>
+    <Chips items={[{"label":"Notes","active":true},{"label":"Share"},{"label":"Export"}]} />
+    <Row>
+      <IconSquare active />
+      <Lines n={2} widths={[70,44]} />
+    </Row>
+    <Row>
+      <IconSquare />
+      <Lines n={2} widths={[58,36]} />
+    </Row>
+    <Row>
+      <IconSquare />
+      <Lines n={2} widths={[64,40]} />
+    </Row>
+    <Divider />
+    <Btn label="Continue with email" primary />
+    <Btn label="Continue with a team invite" />
+    <Text value="Already have an account? Sign in" tone="muted" />
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="create" label="Create account" surface="mobile" x={600} y={120} width={320} height={540} order={2}>
+<Screen surface="mobile">
+  <FrameScreen>
+    <StatusBar />
+    <Row>
+      <Text value="Step 1 of 3" tone="muted" />
+      <Chips items={[{"label":"Account","active":true},{"label":"Verify"},{"label":"Workspace"}]} />
+    </Row>
+    <Title text="Create account" />
+    <Box>
+      <Text value="Full name" tone="muted" />
+      <Lines n={1} widths={[46]} />
+    </Box>
+    <Box>
+      <Text value="Work email" tone="muted" />
+      <Lines n={1} widths={[62]} />
+    </Box>
+    <Box>
+      <Text value="Password" tone="muted" />
+      <Lines n={1} widths={[36]} />
+    </Box>
+    <Lines n={2} widths={[70,52]} />
+    <TaskRow title="I agree to the terms" done />
+    <TaskRow title="Send me product tips" note="optional" />
+    <Divider />
+    <Btn label="Create account" primary />
+    <Btn label="Use single sign-on" />
+    <Text value="Passwords need 10 characters" tone="muted" />
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="verify" label="Verify email" surface="mobile" x={1120} y={120} width={320} height={450} order={3}>
+<Screen surface="mobile">
+  <FrameScreen>
+    <StatusBar />
+    <Row>
+      <Text value="Step 2 of 3" tone="muted" />
+      <Chips items={[{"label":"Account"},{"label":"Verify","active":true},{"label":"Workspace"}]} />
+    </Row>
+    <Title text="Check your inbox" />
+    <Text value="We sent a six digit code to ana@example.com." tone="muted" />
+    <Row>
+      <IconSquare />
+      <IconSquare />
+      <IconSquare />
+      <IconSquare />
+      <IconSquare />
+      <IconSquare />
+    </Row>
+    <Box>
+      <Text value="Code expires in 10:00" />
+      <Lines n={2} widths={[84,52]} />
+    </Box>
+    <TaskRow title="Paste fills all six boxes" done />
+    <TaskRow title="Code is single use" done />
+    <Divider />
+    <Btn label="Open mail app" primary />
+    <Btn label="Resend code" />
+    <Text value="Wrong address? Change email" tone="muted" />
+  </FrameScreen>
+</Screen>
+</Artboard>
+</Section>
+<Section title="2 Workspace and notes list" subtitle="Name the workspace, then land in the notes list and the editor.">
+<Artboard id="workspace" label="Name your workspace" surface="mobile" x={80} y={720} width={320} height={550} order={4}>
+<Screen surface="mobile">
+  <FrameScreen>
+    <StatusBar />
+    <Row>
+      <Text value="Step 3 of 3" tone="muted" />
+      <Chips items={[{"label":"Account"},{"label":"Verify"},{"label":"Workspace","active":true}]} />
+    </Row>
+    <Title text="Name your workspace" />
+    <Box>
+      <Text value="Workspace name" tone="muted" />
+      <Lines n={1} widths={[44]} />
+    </Box>
+    <Box>
+      <Text value="Web address" tone="muted" />
+      <Lines n={1} widths={[38]} />
+    </Box>
+    <SectionLabel label="Use it for" />
+    <TaskRow title="Personal" done note="default" />
+    <TaskRow title="Team" />
+    <TaskRow title="School" />
+    <Divider />
+    <SectionLabel label="Invite teammates" />
+    <Row>
+      <IconSquare active />
+      <Lines n={2} widths={[70,44]} />
+    </Row>
+    <Row>
+      <IconSquare />
+      <Lines n={2} widths={[56,34]} />
+    </Row>
+    <Btn label="Create workspace" primary />
+    <Text value="Skip invites for now" tone="muted" />
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="notes" label="Notes list" surface="web" x={480} y={720} width={920} height={480} order={5}>
+<Screen surface="web">
+  <FrameScreen>
+    <Row>
+      <IconSquare active />
+      <Title text="Harbor Notes" />
+      <Lines n={1} widths={[60]} />
+      <Btn label="Search" />
+      <Btn label="New note" primary />
+    </Row>
+    <Row>
+      <Col>
+        <SectionLabel label="Workspace" />
+        <Row>
+          <IconSquare active />
+          <Text value="Studio Team" weight="bold" />
+        </Row>
+        <Row>
+          <IconSquare active />
+          <Text value="All notes" />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Text value="Shared with me" tone="muted" />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Text value="Archive" tone="muted" />
+        </Row>
+        <Divider />
+        <SectionLabel label="Tags" />
+        <Row>
+          <IconSquare />
+          <Text value="planning" tone="muted" />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Text value="research" tone="muted" />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Text value="meetings" tone="muted" />
+        </Row>
+        <Divider />
+        <Row>
+          <IconSquare />
+          <Text value="Settings" tone="muted" />
+        </Row>
+        <Text value="4 members online" tone="muted" />
+      </Col>
+      <Col>
+        <Row>
+          <Title text="All notes" />
+          <Chips items={[{"label":"Recent","active":true},{"label":"Title"},{"label":"Owner"}]} />
+        </Row>
+        <Chips items={[{"label":"Notes","active":true},{"label":"Shared","active":false},{"label":"Archive","active":false}]} />
+        <Row>
+          <IconSquare active />
+          <Lines n={2} widths={[78,52]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[66,44]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[72,36]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[58,48]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[70,40]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[62,54]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[74,30]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[54,42]} />
+        </Row>
+      </Col>
+      <Col>
+        <SectionLabel label="Preview" />
+        <Title text="Sprint planning" />
+        <Row>
+          <Text value="Edited 2 min ago by Ana" tone="muted" />
+          <Chips items={[{"label":"planning"},{"label":"shared","active":true}]} />
+        </Row>
+        <Lines n={5} widths={[96,88,92,70,54]} />
+        <Box>
+          <Text value="Open items" weight="bold" />
+          <TaskRow title="Confirm scope freeze" done />
+          <TaskRow title="Book load test" />
+          <TaskRow title="Review export format" />
+        </Box>
+        <Row>
+          <Btn label="Open" primary />
+          <Btn label="Share" />
+          <Btn label="Archive" />
+        </Row>
+      </Col>
+    </Row>
+    <Divider />
+    <Row>
+      <Text value="42 notes" tone="muted" />
+      <Text value="Synced just now" tone="muted" />
+      <Chips items={[{"label":"Online","active":true},{"label":"4 editors"}]} />
+    </Row>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="editor" label="Note editor" surface="web" x={80} y={1360} width={920} height={510} order={6}>
+<Screen surface="web">
+  <FrameScreen>
+    <Row>
+      <IconSquare active />
+      <Text value="Studio Team / Sprint planning" weight="bold" />
+      <Chips items={[{"label":"Saved","active":true},{"label":"Markdown"}]} />
+      <Btn label="Share" primary />
+      <Btn label="Export" />
+    </Row>
+    <Row>
+      <Col>
+        <SectionLabel label="Outline" />
+        <Row>
+          <IconSquare active />
+          <Text value="Goals" />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Text value="Scope" tone="muted" />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Text value="Risks" tone="muted" />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Text value="Next steps" tone="muted" />
+        </Row>
+        <Divider />
+        <SectionLabel label="Attachments" />
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[60,30]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[52,26]} />
+        </Row>
+        <Btn label="Attach file" />
+      </Col>
+      <Col>
+        <Title text="Sprint planning" />
+        <Row>
+          <Btn label="B" />
+          <Btn label="I" />
+          <Btn label="Link" />
+          <Btn label="List" />
+          <Btn label="Code" />
+        </Row>
+        <Divider />
+        <Lines n={4} widths={[96,90,78,60]} />
+        <Box>
+          <Text value="Scope for week three" weight="bold" />
+          <TaskRow title="Notes list with tag filter" done />
+          <TaskRow title="Attachment upload" note="10 MB" />
+          <TaskRow title="Share links" />
+        </Box>
+        <Lines n={4} widths={[92,84,70,44]} />
+        <Text value="Autosaves every two seconds" tone="muted" />
+      </Col>
+      <Col>
+        <SectionLabel label="Activity" />
+        <Row>
+          <IconSquare active />
+          <Lines n={2} widths={[72,42]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[60,36]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[68,30]} />
+        </Row>
+        <Divider />
+        <SectionLabel label="Editing now" />
+        <Row>
+          <IconSquare active />
+          <Text value="Ana" tone="muted" />
+          <Chips items={[{"label":"title locked"}]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Text value="Ben" tone="muted" />
+        </Row>
+        <Divider />
+        <Btn label="Copy link" />
+        <Btn label="Archive note" />
+      </Col>
+    </Row>
+    <Divider />
+    <Row>
+      <Text value="Revision 18" tone="muted" />
+      <Text value="412 words" tone="muted" />
+      <Chips items={[{"label":"Online","active":true}]} />
+    </Row>
+  </FrameScreen>
+</Screen>
+</Artboard>
+</Section>
+<Section title="3 Share and settings" subtitle="Read-only links and the workspace settings tabs.">
+<Artboard id="share" label="Share dialog" surface="web" x={1080} y={1360} width={520} height={570} order={7}>
+<Screen surface="web">
+  <FrameScreen>
+    <Row>
+      <Title text="Share \"Sprint planning\"" />
+      <Btn label="Close" />
+    </Row>
+    <Chips items={[{"label":"Link","active":true},{"label":"People"}]} />
+    <Box>
+      <Text value="Anyone with the link can view" tone="muted" />
+      <Lines n={1} widths={[70]} />
+    </Box>
+    <SectionLabel label="Link expires" />
+    <TaskRow title="In 7 days" done note="default" />
+    <TaskRow title="In 30 days" />
+    <TaskRow title="Never" />
+    <Divider />
+    <SectionLabel label="People with access" />
+    <Row>
+      <IconSquare active />
+      <Lines n={2} widths={[56,34]} />
+    </Row>
+    <Row>
+      <IconSquare />
+      <Lines n={2} widths={[62,30]} />
+    </Row>
+    <Row>
+      <IconSquare />
+      <Lines n={2} widths={[50,28]} />
+    </Row>
+    <Box>
+      <Text value="Viewers cannot edit, invite or download files." />
+      <Lines n={2} widths={[88,54]} />
+    </Box>
+    <Divider />
+    <Row>
+      <Btn label="Revoke link" />
+      <Btn label="Copy link" primary />
+    </Row>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="settings" label="Workspace settings" surface="web" x={80} y={2060} width={920} height={490} order={8}>
+<Screen surface="web">
+  <FrameScreen>
+    <Row>
+      <IconSquare active />
+      <Title text="Workspace settings" />
+      <Lines n={1} widths={[50]} />
+      <Btn label="Back to notes" />
+    </Row>
+    <Row>
+      <Chips items={[{"label":"General","active":true},{"label":"Members"},{"label":"Sharing"},{"label":"Billing"},{"label":"Danger zone"}]} />
+    </Row>
+    <Row>
+      <Col>
+        <SectionLabel label="General" />
+        <Box>
+          <Text value="Workspace name" tone="muted" />
+          <Lines n={1} widths={[44]} />
+        </Box>
+        <Box>
+          <Text value="Web address" tone="muted" />
+          <Lines n={1} widths={[38]} />
+        </Box>
+        <Box>
+          <Text value="Default role" tone="muted" />
+          <Lines n={1} widths={[30]} />
+        </Box>
+        <TaskRow title="Allow share links" done />
+        <TaskRow title="Require two-step sign-in" />
+        <Btn label="Save changes" primary />
+      </Col>
+      <Col>
+        <SectionLabel label="Members (4)" />
+        <Row>
+          <IconSquare active />
+          <Lines n={2} widths={[66,40]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[58,36]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[70,30]} />
+        </Row>
+        <Row>
+          <IconSquare />
+          <Lines n={2} widths={[52,44]} />
+        </Row>
+        <Btn label="Invite member" />
+      </Col>
+      <Col>
+        <SectionLabel label="Danger zone" />
+        <Box dashed>
+          <Text value="Export workspace" weight="bold" />
+          <Lines n={2} widths={[80,50]} />
+          <Btn label="Export as ZIP" />
+        </Box>
+        <Box dashed>
+          <Text value="Delete workspace" weight="bold" />
+          <Lines n={2} widths={[76,46]} />
+          <Btn label="Delete" />
+        </Box>
+      </Col>
+    </Row>
+    <Divider />
+    <Row>
+      <Text value="Plan: Beta" tone="muted" />
+      <Text value="4 of 10 seats" tone="muted" />
+      <Chips items={[{"label":"Saved","active":true}]} />
+    </Row>
+  </FrameScreen>
+</Screen>
+</Artboard>
+</Section>
+
+<Annotation id="note-code" title="Code entry" targetId="verify" placement="right">
+
+Paste fills all six boxes at once. The code expires after ten minutes and a resend invalidates the old one.
+
+</Annotation>
+
+<Annotation id="note-lock" title="Title lock" targetId="editor" placement="bottom">
+
+While one person edits the title, others see it locked. Body text merges by last write per note.
+
+</Annotation>
+
+<Annotation id="note-expiry" title="Safe default" targetId="share" placement="bottom">
+
+New links expire in seven days. Revoking takes effect within one minute.
+
+</Annotation>
+
+<Annotation id="note-danger" title="Destructive actions" targetId="settings" placement="bottom">
+
+Delete needs the workspace name typed again and is only visible to owners.
+
+</Annotation>
+
+<Screen surface="web" label="Semantic sample: shared note page" caption="The read-only page a link recipient sees, as semantic HTML." html={"<header style=\"display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #8884\"><strong>Harbor Notes</strong><span>Read-only</span></header><main style=\"padding:16px;max-width:560px\"><h1>Sprint planning</h1><p>Shared by Ana, expires in 7 days.</p><h2>Goals</h2><ul><li>Reach a working workspace in two minutes</li><li>No lost text on concurrent edits</li></ul><h2>Next steps</h2><ol><li>Confirm scope freeze</li><li>Book the load test</li></ol><button>Request edit access</button></main>"} />
+</DesignBoard>

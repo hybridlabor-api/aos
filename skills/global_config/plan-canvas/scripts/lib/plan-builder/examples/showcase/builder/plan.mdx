@@ -1,0 +1,204 @@
+---
+title: Harbor Notes - Team Notes MVP
+status: draft
+needs-auth: foundations
+needs-notes-api: foundations, auth
+needs-editor: notes-api
+needs-sharing: notes-api, auth
+needs-settings: auth, notes-api
+needs-export: notes-api, sharing
+needs-launch: editor, sharing, settings, export
+---
+
+# Harbor Notes: Team Notes MVP
+
+## Goal
+
+Harbor Notes is a team notes app. A small team signs up, creates a workspace, writes notes together and shares a read-only link with someone outside the team. The first private beta ships in six weeks. All names and data in this plan are invented.
+
+- A new user reaches a working workspace in under two minutes.
+- Two teammates edit the same note without losing text.
+- A shared link works without an account and can be revoked at any time.
+
+## Decision
+
+<Decision title="How do users verify their email?" question="Which proof do we ask for after the signup form?" options={[
+  { id: "code", label: "Six digit code", detail: "Survives a device switch, which is the common failure for links.", recommended: true },
+  { id: "link", label: "Magic link", detail: "One tap, but breaks when the link opens in a different browser." },
+  { id: "none", label: "No verification in the beta", detail: "Fastest, but invites cannot be trusted and bounces go unnoticed." },
+]}>
+
+A code works on the phone and the laptop alike, and costs one extra input box. We can add magic links later without changing the data model.
+
+</Decision>
+
+## Architecture
+
+<Archify src="00_architecture.html" label="Harbor Notes system" height={600} />
+
+<Callout tone="note" title="Why a queue and a worker">
+
+Exports and invitation emails can take seconds. Running them off the request path keeps the editor responsive and lets us retry a failed job without the user waiting.
+
+</Callout>
+
+## Acceptance {#acceptance}
+
+<Checklist title="Done when" items={[
+  { label: "Signup to an empty dashboard takes six screens or fewer", checked: true },
+  { label: "Back from any signup step keeps the typed values" },
+  { label: "Autosave survives a reload while typing" },
+  { label: "A revoked share link shows the Gone page within one minute" },
+  { label: "A viewer cannot edit, invite or delete" },
+  { label: "Notes list loads in under one second for 2,000 notes" },
+]} />
+
+## Build map
+
+### Foundations {#foundations}
+
+Repository, CI, design tokens and the database schema.
+
+<Checklist title="Foundations tasks" items={[
+  { label: "Repository, CI and deploy previews", checked: true },
+  { label: "Design tokens and base components", checked: true },
+  { label: "Schema for users, workspaces, notes and share links" },
+]} />
+
+<ImplementationMap files={[
+  { path: "db/schema.sql", change: "added", note: "Users, workspaces, notes, members, share_links" },
+  { path: "ui/tokens.css", change: "added", note: "Colour, spacing and type tokens" },
+  { path: ".github/workflows/ci.yml", change: "added", note: "Lint, test, preview deploy" },
+]} />
+
+### Auth and invites {#auth}
+
+Sessions, six digit codes and invite tokens.
+
+<Checklist title="Auth tasks" items={[
+  { label: "Create account and send the code" },
+  { label: "Verify the code, expire after ten minutes" },
+  { label: "Session cookies with rotation" },
+  { label: "Invite tokens with a role" },
+]} />
+
+<ImplementationMap files={[
+  { path: "api/auth/signup.ts", change: "added", note: "Create user and send code" },
+  { path: "api/auth/verify.ts", change: "added", note: "Check code, start session" },
+  { path: "api/auth/session.ts", change: "added", note: "Cookie rotation and logout" },
+  { path: "app/signup/verify.tsx", change: "added", note: "Six code boxes with paste handling" },
+]} />
+
+### Notes API {#notes-api}
+
+Create, read, update, archive and search notes.
+
+<Checklist title="Notes API tasks" items={[
+  { label: "CRUD endpoints with revision check" },
+  { label: "Search by title, body and tag" },
+  { label: "Attachment upload with a 10 MB limit" },
+]} />
+
+<ImplementationMap files={[
+  { path: "api/notes/index.ts", change: "added", note: "List, create and search" },
+  { path: "api/notes/item.ts", change: "added", note: "Read, update, archive with revision check" },
+  { path: "api/files/upload.ts", change: "added", note: "Signed upload to object storage" },
+]} />
+
+### Editor and notes list {#editor}
+
+The editor with autosave and the list with tag filter.
+
+<Checklist title="Editor tasks" items={[
+  { label: "Markdown editor with toolbar" },
+  { label: "Autosave every two seconds" },
+  { label: "Title lock while someone edits" },
+  { label: "Notes list with tags and sort" },
+]} />
+
+<ImplementationMap files={[
+  { path: "app/notes/list.tsx", change: "added", note: "List, filter and preview pane" },
+  { path: "app/notes/editor.tsx", change: "added", note: "Toolbar, autosave and presence" },
+  { path: "app/notes/use-autosave.ts", change: "added", note: "Debounced save with revision" },
+]} />
+
+### Sharing {#sharing}
+
+Read-only links with an expiry date, and member roles.
+
+<Checklist title="Sharing tasks" items={[
+  { label: "Create and revoke share links" },
+  { label: "Gone page for expired or revoked links" },
+  { label: "Roles: owner, editor, viewer" },
+]} />
+
+<ImplementationMap files={[
+  { path: "api/share/index.ts", change: "added", note: "Create, list and revoke links" },
+  { path: "app/s/shared-note.tsx", change: "added", note: "Public read-only page" },
+  { path: "app/notes/share-dialog.tsx", change: "added", note: "Expiry options and people list" },
+]} />
+
+### Workspace settings {#settings}
+
+General settings, members and the danger zone.
+
+<Checklist title="Settings tasks" items={[
+  { label: "General tab with name and defaults" },
+  { label: "Members tab with invites" },
+  { label: "Danger zone with typed confirmation" },
+]} />
+
+<ImplementationMap files={[
+  { path: "app/settings/index.tsx", change: "added", note: "Tabs and forms" },
+  { path: "app/settings/members.tsx", change: "added", note: "Member list and invite dialog" },
+]} />
+
+### Export {#export}
+
+A workspace as a ZIP of Markdown files, built by the worker.
+
+<Checklist title="Export tasks" items={[
+  { label: "Queue the export job" },
+  { label: "Worker writes the ZIP to storage" },
+  { label: "Email a download link that expires in a day" },
+]} />
+
+<ImplementationMap files={[
+  { path: "worker/jobs/export.ts", change: "added", note: "Collect notes and write the ZIP" },
+  { path: "worker/jobs/email.ts", change: "added", note: "Send the download link" },
+  { path: "api/export.ts", change: "added", note: "Enqueue and report status" },
+]} />
+
+### Launch {#launch}
+
+<Checklist title="Launch tasks" items={[
+  { label: "Load test with 2,000 notes and 20 editors" },
+  { label: "Accessibility pass: keyboard and contrast" },
+  { label: "Private beta with five invited teams" },
+]} />
+
+<ImplementationMap files={[
+  { path: "tests/load/notes.k6.js", change: "added", note: "Load script for the notes list and saves" },
+  { path: "docs/beta-checklist.md", change: "added", note: "Go or no-go list" },
+]} />
+
+## Risks
+
+<Table title="Risk register" columns={["Risk", "Likelihood", "Impact", "Mitigation"]} rows={[
+  ["Concurrent edits overwrite text", "Medium", "High", "Title lock, revision check, conflict banner"],
+  ["Share links leak in forwarded mail", "Medium", "Medium", "Expiry by default, one click revoke"],
+  ["Email deliverability is poor", "Medium", "High", "Dedicated sending domain, resend limit"],
+  ["Export jobs pile up", "Low", "Medium", "Queue depth alert, per workspace rate limit"],
+  ["Scope grows before the beta", "High", "Medium", "Freeze this list after week two"],
+]} />
+
+## Open questions
+
+<QuestionForm title="Open Questions" questions={[
+  { title: "Can viewers download attachments from a shared note?", mode: "single", options: [
+    { label: "No, view only", recommended: true }, { label: "Yes, if the owner allows it" } ] },
+  { title: "Default expiry for share links?", mode: "single", options: [
+    { label: "7 days", recommended: true }, { label: "30 days" }, { label: "Never" } ] },
+  { title: "Which beta extras do we want?", mode: "multi", options: [
+    { label: "Audit log of link opens" }, { label: "Dark mode" }, { label: "Keyboard shortcuts sheet" } ] },
+]} />

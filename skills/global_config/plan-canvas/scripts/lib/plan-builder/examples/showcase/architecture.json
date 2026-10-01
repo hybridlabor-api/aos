@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Harbor Notes architecture",
+    "quality_profile": "showcase",
+    "viewBox": [1120, 600]
+  },
+  "components": [
+    { "id": "web", "type": "frontend", "label": "Web app", "sublabel": "Editor and lists", "pos": [40, 120], "size": [150, 68] },
+    { "id": "api", "type": "backend", "label": "API", "sublabel": "Notes and sharing", "pos": [270, 120], "size": [150, 68] },
+    { "id": "auth", "type": "security", "label": "Auth", "sublabel": "Sessions and invites", "pos": [270, 300], "size": [150, 68] },
+    { "id": "db", "type": "database", "label": "Database", "sublabel": "Notes and members", "pos": [500, 120], "size": [150, 68] },
+    { "id": "queue", "type": "messagebus", "label": "Queue", "sublabel": "Export and email jobs", "pos": [730, 120], "size": [150, 68] },
+    { "id": "worker", "type": "backend", "label": "Worker", "sublabel": "Runs queued jobs", "pos": [730, 300], "size": [150, 68] },
+    { "id": "storage", "type": "cloud", "label": "Storage", "sublabel": "Attachments, exports", "pos": [960, 300], "size": [130, 68] }
+  ],
+  "connections": [
+    { "id": "web-api", "from": "web", "to": "api", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "api-db", "from": "api", "to": "db", "label": "SQL" },
+    { "id": "api-queue", "from": "db", "to": "queue", "label": "outbox", "variant": "dashed" },
+    { "id": "queue-worker", "from": "queue", "to": "worker", "label": "jobs", "labelAt": [805, 244], "fromSide": "bottom", "toSide": "top" },
+    { "id": "worker-storage", "from": "worker", "to": "storage", "label": "files" },
+    { "id": "api-auth", "from": "api", "to": "auth", "label": "verify", "labelAt": [345, 244], "variant": "security", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Request path", "items": ["Web talks only to the API", "Auth gates every call"] },
+    { "dot": "amber", "title": "Async path", "items": ["Exports and emails run off the queue", "Files land in storage"] }
+  ]
+}
