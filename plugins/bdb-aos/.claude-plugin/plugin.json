@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "bdb-aos",
-  "version": "4.13.2",
+  "version": "4.14.0",
   "description": "Full BDB Agent OS suite: 200+ curated skills, 13 subagents and the startcycle pipelines for Claude Code. Gate hooks and MCP servers are installed by the AOS installer.",
   "author": {
     "name": "Tim Rennings / Hybridlabor Global LLC",
