@@ -99,10 +99,11 @@ files: .opencode/plugins/bdb-aos.js
 needs: plugin-bus
 files: .claude/hooks/go-gate.mjs
 
-- [ ] No change expected (see Verified facts). If the live smoke shows `synthetic` is NOT persisted in `part.data`:
+- [x] No change expected (see Verified facts). If the live smoke shows `synthetic` is NOT persisted in `part.data`:
   - add a `metadata.aos_bus` / `[aos-bus ` prefix exclusion to `opencodeLastUser` and to the plugin's messages fallback
   - and record the finding in the doc
   {#go-gate-conditional}
+  by: engineering
 
 ## Unit tests {#tests-unit}
 
@@ -140,20 +141,24 @@ files: tests/aos-bus-smoke.sh
 
 The script is opt-in and not part of `npm test`, in the style of `~/dev/artifacts/bdb-dev/master-session-selftest.sh`.
 
-- [ ] Setup:
+- [x] Setup:
   - temp `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`
   - copy `bdb-aos.js` and `.claude/hooks/` → `$XDG_CONFIG_HOME/opencode/plugins/{bdb-aos.js,aos-hooks/}`
   - `AOS_SESSION_NAME=smoke opencode serve --port <free>` (headless harness only, the plugin does not use the port)
   - create a session via `POST /session`
   - no model or credentials are needed, because `noReply: true` triggers no LLM call
   {#smoke-setup}
-- [ ] Send and check the database:
+  by: engineering
+- [x] Send and check the database:
   - `aos-bus send smoke GO` and `aos-bus send smoke "GO smoke"`; wait ≤ 3 s for the inbox to empty
   - query `$XDG_DATA_HOME/opencode/opencode.db`: the newest `role=user` message's part has `synthetic: true`, the prefix, and `metadata.aos_bus.from`
   - `$HOME/.aos/go/smoke.token` is absent
   {#smoke-assert}
-- [ ] Gate check: craft an opencode-issuer token pointing at that bus message id. `node -e 'import(go-gate).tokenGrantsGo("smoke")'` must return `ok:false` {#smoke-gate}
-- [ ] Manual step, documented and not automated: the same isolated env with the `opencode` TUI (no `--port`). Run `aos-bus send` from a second terminal, then observe the toast and confirm the DB row. This proves the plugin client works in TUI mode {#smoke-tui}
+  by: engineering
+- [x] Gate check: craft an opencode-issuer token pointing at that bus message id. `node -e 'import(go-gate).tokenGrantsGo("smoke")'` must return `ok:false` {#smoke-gate}
+  by: engineering
+- [x] Manual step, documented and not automated: the same isolated env with the `opencode` TUI (no `--port`). Run `aos-bus send` from a second terminal, then observe the toast and confirm the DB row. This proves the plugin client works in TUI mode {#smoke-tui}
+  by: engineering
 
 ## Doc {#doc}
 
