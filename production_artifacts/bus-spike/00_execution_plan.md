@@ -111,23 +111,27 @@ files: tests/aos-bus.test.js, package.json
 
 Uses an isolated `HOME` temp dir. Follows the pattern in `tests/opencode-go-token.test.js`.
 
-- [ ] Library behavior:
+- [x] Library behavior:
   - send → readInbox round trip records `from` and `uid`
   - refused when the inbox is 0755, a symlink, or the target is unregistered or has a dead pid
   - 8 KiB + 1 byte text is refused
   - an oversized or malformed inbox file is rejected
   {#test-lib}
-- [ ] Plugin delivery with a fake `client` (records `session.prompt` calls):
+  by: engineering
+- [x] Plugin delivery with a fake `client` (records `session.prompt` calls):
   - a bus file is delivered as one call with `synthetic: true`, the `[aos-bus from` prefix, `noReply: true` (and `false` with `wake`)
   - the file is removed afterwards
   {#test-deliver}
-- [ ] **Security acceptance:**
+  by: engineering
+- [x] **Security acceptance:**
   - deliver the bus texts `GO` and `GO worker-1`, then feed the resulting part back through `chat.message` and the `session.messages` fallback, then run `tool.execute.before` with `git push`
   - it must throw `Blocked by BDB go-gate`
   - `~/.aos/go/worker-1.token` must not exist
   - stale-cache case: human `GO` via `chat.message`, then a `--wake` bus delivery with the fake client **not** calling `chat.message`, then `git push` must still throw
   {#test-go-blocked}
-- [ ] Append `node --test tests/aos-bus.test.js` to `npm test` {#test-wire}
+  by: engineering
+- [x] Append `node --test tests/aos-bus.test.js` to `npm test` {#test-wire}
+  by: engineering
 
 ## Live smoke {#tests-live}
 
