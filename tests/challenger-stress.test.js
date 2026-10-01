@@ -94,7 +94,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         const hooksPath = path.join(tmpDir, 'hooks.json');
         fs.writeFileSync(hooksPath, '');
 
-        installer.mergeAntigravityHooks(hooksPath);
+        installer.mergeAntigravityHooks(hooksPath, { selfCheck: () => ({ status: 0, stderr: '' }) });
 
         // On 0-byte file, readJsonFile fails, so it treats it as invalid JSON,
         // creates a .corrupt_*.bak backup, and writes .bdb-new.json sidecar without crashing
@@ -112,7 +112,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         const hooksPath = path.join(tmpDir, 'hooks.json');
         fs.writeFileSync(hooksPath, '   \n\t  \n');
 
-        installer.mergeAntigravityHooks(hooksPath);
+        installer.mergeAntigravityHooks(hooksPath, { selfCheck: () => ({ status: 0, stderr: '' }) });
 
         const hasSidecar = fs.existsSync(`${hooksPath}.bdb-new.json`);
         assert.ok(hasSidecar, 'Should produce safe sidecar for whitespace-only file without crashing');
@@ -122,7 +122,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         const hooksPath = path.join(tmpDir, 'hooks.json');
         fs.writeFileSync(hooksPath, '{"hooks": {"PreToolUse": [ { "matcher": "broken');
 
-        installer.mergeAntigravityHooks(hooksPath);
+        installer.mergeAntigravityHooks(hooksPath, { selfCheck: () => ({ status: 0, stderr: '' }) });
 
         const dirFiles = fs.readdirSync(tmpDir);
         assert.ok(dirFiles.some(f => f.startsWith('hooks.json.corrupt_')), 'Must create backup of corrupt file');
@@ -137,7 +137,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
 
             // Should not throw or crash
             assert.doesNotThrow(() => {
-                installer.mergeAntigravityHooks(hooksPath);
+                installer.mergeAntigravityHooks(hooksPath, { selfCheck: () => ({ status: 0, stderr: '' }) });
             });
         }
     });
@@ -172,7 +172,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         };
         fs.writeFileSync(hooksPath, JSON.stringify(initial, null, 2));
 
-        installer.mergeAntigravityHooks(hooksPath);
+        installer.mergeAntigravityHooks(hooksPath, { selfCheck: () => ({ status: 0, stderr: '' }) });
 
         const updated = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
         assert.strictEqual(updated.settings.deep.level1.level2.securityPolicy, 'strict');
@@ -187,10 +187,10 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         const hooksPath = path.join(tmpDir, 'hooks.json');
         fs.writeFileSync(hooksPath, JSON.stringify({ hooks: {} }));
 
-        installer.mergeAntigravityHooks(hooksPath);
+        installer.mergeAntigravityHooks(hooksPath, { selfCheck: () => ({ status: 0, stderr: '' }) });
         const once = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
         for (let i = 0; i < 4; i++) {
-            installer.mergeAntigravityHooks(hooksPath);
+            installer.mergeAntigravityHooks(hooksPath, { selfCheck: () => ({ status: 0, stderr: '' }) });
         }
 
         const final = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));

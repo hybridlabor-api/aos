@@ -8,6 +8,7 @@ let raw = '';
 try { for await (const c of process.stdin) raw += c; } catch {}
 let ev;
 try { ev = JSON.parse(raw); } catch { process.exit(0); }
+if (!ev || typeof ev !== 'object') process.exit(0);
 
 ev.agent = arg('--agent') || ev.agent || 'claude';
 ev.hook_event_name ||= arg('--event');

@@ -113,7 +113,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
 
       // Run 10 consecutive merges
       for (let i = 0; i < 10; i++) {
-        installer.mergeAntigravityHooks(hooksFile);
+        installer.mergeAntigravityHooks(hooksFile, { selfCheck: () => ({ status: 0, stderr: '' }) });
       }
 
       const parsed = JSON.parse(fs.readFileSync(hooksFile, 'utf8'));
@@ -137,7 +137,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
 
       // 11th run snapshot check
       const snapshotBefore = fs.readFileSync(hooksFile, 'utf8');
-      installer.mergeAntigravityHooks(hooksFile);
+      installer.mergeAntigravityHooks(hooksFile, { selfCheck: () => ({ status: 0, stderr: '' }) });
       const snapshotAfter = fs.readFileSync(hooksFile, 'utf8');
       assert.strictEqual(snapshotBefore, snapshotAfter, 'Byte-for-byte idempotent after initial convergence');
     });
@@ -433,7 +433,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
 
       // 2. Wire hooks.json via installer
       const hooksFile = path.join(agDir, 'hooks.json');
-      installer.mergeAntigravityHooks(hooksFile);
+      installer.mergeAntigravityHooks(hooksFile, { selfCheck: () => ({ status: 0, stderr: '' }) });
 
       res = runNode(DOCTOR_PATH, {
         args: ['--json'],

@@ -3,7 +3,11 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { mergeAntigravityHooks } = require('../installer.js');
+const installer = require('../installer.js');
+const { agyHookCommand } = installer;
+// The real self-check needs the scripts on disk; tests/windows-hooks.test.js covers that path.
+const okSpawn = () => ({ status: 0, stderr: '' });
+const mergeAntigravityHooks = (p, o = {}) => installer.mergeAntigravityHooks(p, { selfCheck: okSpawn, ...o });
 
 const GROUPED = ['PreToolUse', 'PostToolUse'];
 const FLAT = ['PreInvocation', 'PostInvocation', 'Stop'];
@@ -69,4 +73,25 @@ test('migrates the old broken shape, keeps foreign handlers, is idempotent', () 
     mergeAntigravityHooks(p);
     assert.strictEqual(fs.readFileSync(p, 'utf8'), first);
     assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp')), []);
+});
+
+const allCommands = (data) => JSON.stringify(data).match(/"command":"(?:[^"\\]|\\.)*"/g).map((c) => JSON.parse(`{${c}}`).command);
+
+test('agy commands are relative, unquoted, and observability hooks fail open', () => {
+    const p = path.join(tmp(), 'hooks.json');
+    mergeAntigravityHooks(p);
+    const cmds = allCommands(JSON.parse(fs.readFileSync(p, 'utf8')));
+    assert.ok(cmds.length >= 7);
+    for (const c of cmds) assert.ok(!c.includes('"') && !c.includes('\\'), c);
+    assert.ok(cmds.includes('node hooks/go-gate.mjs'));
+    assert.ok(cmds.includes('node hooks/trail-relay.mjs --agent agy --event PreToolUse || exit 0'));
+    assert.ok(cmds.includes('node hooks/memb-inject.mjs || exit 0'));
+    assert.ok(cmds.includes('node workflows/startcycle-dispatch.mjs'));
+    for (const c of cmds.filter((x) => /go-gate|graph-gate|conventional|env-file/.test(x))) assert.ok(!c.includes('||'), c);
+});
+
+test('agyHookCommand rejects scripts outside the hooks.json folder or with unsafe paths', () => {
+    assert.strictEqual(agyHookCommand('/a/b', '/a/b/hooks/x.mjs', ' --k v'), 'node hooks/x.mjs --k v');
+    assert.throws(() => agyHookCommand('/a/b', '/a/c/x.mjs'));
+    assert.throws(() => agyHookCommand('/a/b', '/a/b/my hooks/x.mjs'));
 });

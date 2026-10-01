@@ -6,11 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/go-gate.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs\""
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/conventional-commits.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/conventional-commits.mjs\""
           }
         ]
       },
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/env-file-protection.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/env-file-protection.mjs\""
           }
         ]
       },
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/graph-gate.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/graph-gate.mjs\""
           }
         ]
       },
@@ -119,7 +119,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/go-token.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-token.mjs\""
           }
         ]
       },

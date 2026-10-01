@@ -30,3 +30,23 @@ jobs:
         run: |
           # Use jq to validate all JSON files (exclude json with comments like tsconfig/vscode/tauri)
           find . -name "*.json" -not -path "*/node_modules/*" -not -path "*/vendor/*" -not -name "tsconfig*.json" -not -path "*/.vscode/*" -not -name "tauri.conf.json" -not -name "launchSettings.json" -not -name "paint_elements.json" -print0 | xargs -0 -I {} jq empty {}
+
+  windows:
+    name: Windows hooks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check JS Syntax
+        run: node --check installer.js
+
+      - name: Windows hook tests (cmd /c, dry-run smoke)
+        run: node --test tests/windows-hooks.test.js tests/antigravity-hooks.test.js
