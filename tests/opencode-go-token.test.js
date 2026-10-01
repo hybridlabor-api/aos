@@ -71,7 +71,7 @@ describe('OpenCode plugin GO-token path', () => {
 
     test('literal GO path unchanged', async () => {
         const mod = await import(`file://${PLUGIN}?t=${Date.now()}${Math.random()}`);
-        const hooks = await mod.default({ directory: home, client: { session: { messages: async () => ({ data: [] }) } } });
+        const hooks = await mod.default({ directory: home, client: { session: { messages: async () => ({ data: [] }), get: async () => ({ data: {} }) } } });
         await hooks['chat.message']({ sessionID: 's1' }, { parts: [{ type: 'text', text: 'GO' }] });
         await hooks['tool.execute.before']({ tool: 'bash', sessionID: 's1', callID: 'c1' }, { args: { command: 'git push' } });
     });

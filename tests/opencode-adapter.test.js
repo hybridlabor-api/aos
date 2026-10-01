@@ -164,4 +164,27 @@ describe('OpenCode adapter', () => {
         await assert.rejects(patch('*** Begin Patch\n*** Update File: /srv/app/.env\n*** End Patch'), /env-file-protection/);
         await patch('*** Begin Patch\n*** Add File: /srv/app/a.js\n*** End Patch');
     });
+
+    test('an unanswerable session.get makes the session token-only', async () => {
+        const { mod } = await load();
+        for (const get of [async () => { throw new Error('down'); }, async () => ({}), async () => ({ error: 'x' })]) {
+            const hooks = await mod.default({ directory: home, client: { session: { get, messages: async () => ({ data: [] }) } } });
+            await say(hooks, 's1', 'GO');
+            await assert.rejects(bash(hooks, 's1', 'git push origin main'), /Blocked by BDB go-gate/);
+        }
+        const hooks = await mod.default({ directory: home, client: { session: { get: async () => { throw new Error('down'); }, messages: async () => ({ data: [] }) } } });
+        process.env.AOS_SESSION_NAME = 'worker-1';
+        const tok = path.join(home, '.aos', 'go', 'worker-1.token');
+        fs.mkdirSync(path.dirname(tok), { recursive: true });
+        const m = path.join(home, 'm.jsonl');
+        fs.writeFileSync(m, JSON.stringify({ type: 'user', uuid: 'u1', message: { role: 'user', content: 'GO worker-1' } }) + '\n');
+        fs.writeFileSync(tok, JSON.stringify({ target: 'worker-1', issued_at: new Date().toISOString(), master_transcript: m }));
+        await bash(hooks, 's1', 'git push origin main');
+    });
+
+    test('patch Move to targets are env-protected', async () => {
+        const { hooks } = await load();
+        const patch = (patchText) => hooks['tool.execute.before']({ tool: 'apply_patch', sessionID: 's1', callID: 'c' }, { args: { patchText } });
+        await assert.rejects(patch('*** Update File: a.js\n*** Move to: /srv/app/.env'), /env-file-protection/);
+    });
 });

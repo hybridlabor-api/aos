@@ -294,17 +294,21 @@ export default async function bdbAosPlugin(input) {
         const cmd = toolOutput?.args?.command || toolOutput?.args?.cmd || toolOutput?.args?.script || '';
         if (typeof cmd === 'string' && GUARDED_PATTERNS.some((re) => re.test(cmd))) {
           const s = sess(toolInput.sessionID);
-          if (!s.parentID && input.client && toolInput.sessionID) {
+          // An unanswered lookup is not proof of a root session: token-only for this call, not cached.
+          let tokenOnly = !!s.parentID;
+          if (!tokenOnly && input.client && toolInput.sessionID) {
             try {
               const res = await input.client.session.get({ path: { id: toolInput.sessionID } });
-              s.parentID = res?.data?.parentID ?? null;
-            } catch {}
+              if (res?.data) s.parentID = res.data.parentID ?? null;
+              else tokenOnly = true;
+            } catch { tokenOnly = true; }
+            tokenOnly = tokenOnly || !!s.parentID;
           }
           // Subagent prompts are agent-written, so only a token can open their gate.
-          let authorized = !s.parentID && s.prompt.toUpperCase() === 'GO';
+          let authorized = !tokenOnly && s.prompt.toUpperCase() === 'GO';
 
           // If this session's cached prompt wasn't GO, query recent session messages via OpenCode client as fallback
-          if (!authorized && !s.parentID && input.client && toolInput.sessionID) {
+          if (!authorized && !tokenOnly && input.client && toolInput.sessionID) {
             try {
               const res = await input.client.session.messages({ path: { id: toolInput.sessionID } });
               const msgs = res?.data || [];
@@ -335,7 +339,7 @@ export default async function bdbAosPlugin(input) {
       } else if (['write', 'edit', 'multiedit', 'patch', 'apply_patch'].includes(toolName)) {
         const args = toolOutput?.args || {};
         const paths = [args.filePath ?? ''];
-        for (const m of String(args.patchText ?? '').matchAll(/^\*\*\* (?:Add|Update) File: (.+)$/gm)) paths.push(m[1].trim());
+        for (const m of String(args.patchText ?? '').matchAll(/^\*\*\* (?:(?:Add|Update) File|Move to): (.+)$/gm)) paths.push(m[1].trim());
         for (const f of paths) {
           const reason = envFileReason(f);
           if (reason) throw new Error(reason);
