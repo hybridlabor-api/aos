@@ -15,8 +15,18 @@
 //
 // Gate validity: open ONLY if the LAST human-typed user message in the transcript
 // is the literal word "GO" (case-insensitive, trimmed). Any other message closes it.
+//
+// Token path (master-session): a `GO <session>` typed by the human in a master
+// session is turned into ~/.aos/go/<session>.token by go-token.mjs. This gate
+// honours that token once, if it is <10 min old, names this session, and the
+// master transcript it points at still ends with that very `GO <session>`.
+// Own session name: latest agent-name/custom-title entry in this transcript
+// (what --name / ListAgents show), else env AOS_SESSION_NAME. If neither is
+// available the token path stays closed.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, unlinkSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const GUARDED_PATTERNS = [
   /(?:^|[;&|]\s*)git\s+push\b/i,
@@ -83,12 +93,65 @@ function extractAgyText(rawContent) {
   return text.trim();
 }
 
+const slug = (s) => s.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+const TOKEN_TTL_MS = 10 * 60 * 1000;
+
+function ownSessionName(transcriptPath) {
+  let name = "";
+  try {
+    for (const line of readFileSync(transcriptPath, "utf8").split("\n")) {
+      if (!line.includes('"agent-name"') && !line.includes('"custom-title"')) continue;
+      try {
+        const e = JSON.parse(line);
+        if (e.type === "agent-name" && e.agentName) name = e.agentName;
+        else if (e.type === "custom-title" && e.customTitle && !name) name = e.customTitle;
+      } catch { /* partial line */ }
+    }
+  } catch { /* unreadable */ }
+  return name || process.env.AOS_SESSION_NAME || "";
+}
+
+function tokenGrantsGo(transcriptPath) {
+  const own = ownSessionName(transcriptPath);
+  if (!slug(own)) return { ok: false, reason: "no session name derivable for token path" };
+  const file = join(homedir(), ".aos", "go", `${slug(own)}.token`);
+  if (!existsSync(file)) return { ok: false, reason: "no GO token for this session" };
+  let tok;
+  try {
+    tok = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return { ok: false, reason: "GO token unreadable" };
+  }
+  const age = Date.now() - Date.parse(tok?.issued_at);
+  if (!(age >= 0 && age < TOKEN_TTL_MS)) {
+    try { unlinkSync(file); } catch { /* already gone */ }
+    return { ok: false, reason: "GO token expired" };
+  }
+  if (typeof tok.target !== "string" || slug(tok.target) !== slug(own)) {
+    return { ok: false, reason: "GO token names another session" };
+  }
+  if (typeof tok.master_transcript !== "string") return { ok: false, reason: "GO token has no master transcript" };
+  const last = lastUserText(tok.master_transcript);
+  if (!last.text || last.text.trim().toLowerCase() !== `go ${own.trim().toLowerCase()}`) {
+    return { ok: false, reason: "master transcript no longer ends with this GO" };
+  }
+  try { unlinkSync(file); } catch { return { ok: false, reason: "could not consume GO token" }; }
+  return { ok: true };
+}
+
 function lastUserMessageIsGo(transcriptPath) {
+  const last = lastUserText(transcriptPath);
+  if (last.error) return { ok: false, reason: last.error };
+  if (last.text === null) return { ok: false, reason: "no user message found in transcript" };
+  return { ok: /^GO$/i.test(last.text.trim()), reason: `last user message was: ${JSON.stringify(last.text)}` };
+}
+
+function lastUserText(transcriptPath) {
   let raw;
   try {
     raw = readFileSync(transcriptPath, "utf8");
   } catch (e) {
-    return { ok: false, reason: `could not read transcript (${e.message})` };
+    return { text: null, error: `could not read transcript (${e.message})` };
   }
 
   const lines = raw.split("\n").filter(Boolean);
@@ -104,8 +167,7 @@ function lastUserMessageIsGo(transcriptPath) {
     if (entry.type === "USER_INPUT" || entry.source === "USER_EXPLICIT") {
       const text = extractAgyText(entry.content);
       if (!text) continue;
-      const isGo = /^GO$/i.test(text.trim());
-      return { ok: isGo, reason: `last user message was: ${JSON.stringify(text)}` };
+      return { text };
     }
 
     // 2. Claude Code transcript entry format
@@ -114,12 +176,11 @@ function lastUserMessageIsGo(transcriptPath) {
       const content = entry.message?.content ?? entry.content;
       const text = extractClaudeText(content).trim();
       if (!text) continue;
-      const isGo = /^GO$/i.test(text);
-      return { ok: isGo, reason: `last user message was: ${JSON.stringify(text)}` };
+      return { text };
     }
   }
 
-  return { ok: false, reason: "no user message found in transcript" };
+  return { text: null };
 }
 
 function main() {
@@ -164,7 +225,12 @@ function main() {
     return;
   }
 
-  const result = lastUserMessageIsGo(transcriptPath);
+  let result = lastUserMessageIsGo(transcriptPath);
+  if (!result.ok) {
+    const token = tokenGrantsGo(transcriptPath);
+    if (token.ok) result = token;
+    else result.reason += `; ${token.reason}`;
+  }
   if (result.ok) {
     respond(isAgy, true, "", command);
   } else {
