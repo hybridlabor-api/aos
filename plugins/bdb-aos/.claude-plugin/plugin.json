@@ -43,6 +43,7 @@
     "./skills/global_config/agent-orchestrator",
     "./skills/global_config/agent-pipeline",
     "./skills/global_config/agent-tool-builder",
+    "./skills/global_config/agentic-harness-patterns",
     "./skills/global_config/agenttrail",
     "./skills/global_config/ai-agent-development",
     "./skills/global_config/ai-product",
