@@ -43,6 +43,23 @@ describe('aos-acp with a fake ACP agent', () => {
         assert.deepEqual(sent[2].prompt, [{ type: 'text', text: 'hi' }]);
     });
 
+    test('--model is forwarded as session/set_config_option and logged; default is logged as adapter default', () => {
+        assert.equal(run(['--name', 'w1', '--prompt', 'hi', '--model', 'sonnet']).status, 0);
+        const log = readLog('w1');
+        const set = log.find((e) => e.event === 'send' && e.params.configId);
+        assert.deepEqual(set.params, { sessionId: 'sess-1', configId: 'model', value: 'sonnet' });
+        assert.equal(log.find((e) => e.event === 'start').model, 'sonnet');
+        assert.equal(run(['--name', 'w2', '--prompt', 'hi']).status, 0);
+        assert.equal(readLog('w2').find((e) => e.event === 'start').model, 'adapter default');
+        assert.ok(!readLog('w2').some((e) => e.params?.configId));
+    });
+
+    test('fable model ids are rejected before the agent starts', () => {
+        const r = run(['--name', 'w1', '--prompt', 'hi', '--model', 'claude-fable-5']);
+        assert.equal(r.status, 2);
+        assert.match(r.stderr, /opus, sonnet or haiku only/);
+    });
+
     test('guarded command denied without token', () => {
         const r = run(['--name', 'w1', '--prompt', 'push'], { FAKE_CMD: 'git push origin main' });
         assert.equal(r.status, 0, r.stderr);

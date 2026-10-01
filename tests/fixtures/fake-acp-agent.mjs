@@ -14,6 +14,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   const { id, method, params } = msg;
   if (method === "initialize") return send({ jsonrpc: "2.0", id, result: { protocolVersion: 1, agentCapabilities: {}, agentInfo: { name: "fake-acp", version: "0" } } });
   if (method === "session/new") return send({ jsonrpc: "2.0", id, result: { sessionId: "sess-1" } });
+  if (method === "session/set_config_option") return send({ jsonrpc: "2.0", id, result: { configOptions: [] } });
   if (method === "session/cancel") return send({ jsonrpc: "2.0", id: 1e9, result: null });
   if (method !== "session/prompt") return send({ jsonrpc: "2.0", id, error: { code: -32601, message: "nope" } });
 
