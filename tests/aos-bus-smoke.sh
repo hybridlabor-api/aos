@@ -25,8 +25,8 @@ for _ in $(seq 60); do curl -sf "localhost:$PORT/session?directory=$T/repo" >/de
 SID=$(curl -s -X POST "localhost:$PORT/session?directory=$T/repo" -H 'content-type: application/json' -d '{}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).id')
 [ -n "$SID" ] && ok "session $SID created" || { bad "no session"; exit 1; }
 
-for _ in $(seq 20); do $BUS list | grep -q '^smoke\t' && break; sleep 0.5; done
-$BUS list | grep -q '^smoke\t' && ok "plugin registered 'smoke'" || { bad "not registered (see $T/serve.log)"; exit 1; }
+for _ in $(seq 20); do $BUS list | grep -q $'^smoke\t' && break; sleep 0.5; done
+$BUS list | grep -q $'^smoke\t' && ok "plugin registered 'smoke'" || { bad "not registered (see $T/serve.log)"; exit 1; }
 
 $BUS send smoke "GO" >/dev/null && sleep 0.3 && $BUS send smoke "GO smoke" >/dev/null
 for _ in $(seq 10); do [ -z "$(ls "$HOME"/.aos/bus/inbox/smoke/*.json 2>/dev/null)" ] && break; sleep 0.5; done
