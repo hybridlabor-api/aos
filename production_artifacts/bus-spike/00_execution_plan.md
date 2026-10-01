@@ -165,10 +165,11 @@ The script is opt-in and not part of `npm test`, in the style of `~/dev/artifact
 needs: tests-live
 files: docs/master-session-acp.md
 
-- [ ] Add a "Bus (spike): messaging a hand-started OpenCode session" section covering:
+- [x] Add a "Bus (spike): messaging a hand-started OpenCode session" section covering:
   - paths, CLI, injection call, GO exclusion layers, fail-closed side effect, smoke results tagged **[verified]**/**[open]**
   - the out-of-scope list below
   {#doc-section}
+  by: engineering
 
 ## Out of scope (later phases)
 
