@@ -497,8 +497,8 @@ const CORE_MCP = 'memb-mcp';
 // compared against: (a) the SOURCE hash (unmodified) and (b) the MANIFEST
 // hash (last-installed value).  This gives us three cases:
 //   ours + unmodified  → source_hash == disk_hash          → overwrite + update manifest
-//   ours + user-edited → manifest_hash == source_hash,
-//                        but disk_hash != source_hash       → .bak + warn + write
+//   ours + user-edited → disk_hash != manifest_hash         → keep user file,
+//                                                             write <file>.new
 //   foreign            → no manifest record AND disk_hash
 //                        not in any known source hash       → skip + warn
 
@@ -560,8 +560,11 @@ function adoptFileIntoManifest(manifest, targetPath, sourceHash) {
     };
 }
 
+// User-edited files this run left untouched (shipped copy written as <file>.new).
+const keptUserEdits = [];
+
 // Manifest-aware file writer implementing the three-way conflict policy.
-// Returns 'wrote' | 'bak' | 'skipped'.
+// Returns 'wrote' | 'bak' | 'kept' | 'skipped'.
 // knownSourceHashes: Set of sha256 hashes of all source files in the current
 // payload (used to identify files we recognise even before manifest entry).
 function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes) {
@@ -627,15 +630,13 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     }
 
     // Case: ours + user-edited (manifest recorded our hash, but disk now differs).
+    // The user's file wins: the shipped version lands next to it as .new, and
+    // the manifest keeps the old hash so the next run still sees the edit.
     if (manifestEntry && diskHash !== manifestEntry.sha256) {
-        const bakPath = `${targetPath}.${timestamp}.bak`;
-        try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
-            log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
-        }
-        fs.copyFileSync(sourcePath, targetPath);
-        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
-        log.warn(`[manifest] User-edited file backed up to ${bakPath}, new version written.`);
-        return 'bak';
+        const newPath = `${targetPath}.new`;
+        fs.copyFileSync(sourcePath, newPath);
+        keptUserEdits.push(targetPath);
+        return 'kept';
     }
 
     // Default: manifest entry present, disk matches manifest (no change needed) – overwrite.
@@ -765,6 +766,17 @@ function pruneRemovedSkills(manifest) {
 
 function flushSessionManifest() {
     if (_sessionManifest) saveInstallManifest(_sessionManifest);
+    reportKeptUserEdits();
+}
+
+function reportKeptUserEdits() {
+    if (keptUserEdits.length === 0) return;
+    log.warn([
+        `${keptUserEdits.length} file(s) you edited were KEPT; the shipped version is next to each as <file>.new:`,
+        ...keptUserEdits.map((p) => `  ${p}`),
+        'Merge or delete the .new files when convenient.',
+    ].join('\n'));
+    keptUserEdits.length = 0;
 }
 
 // skills/global_legacy/ has not existed in the shipped payload for a long
@@ -2504,118 +2516,283 @@ function aoSupportedHere() {
     return ['darwin', 'linux', 'win32'].includes(process.platform);
 }
 
+const AO_PKG = '@hybridlabor-api/bdb-agent-orchestrator';
+// `ao service install` restarts the daemon; it can take well over 8s to bind.
+const AO_DAEMON_WAIT_MS = 30000;
+
+function aoBinTarget() {
+    return process.platform === 'win32'
+        ? path.join(process.env.LOCALAPPDATA || homeDir, 'Programs', 'ao', 'ao.exe')
+        : path.join(homeDir, '.local', 'bin', 'ao');
+}
+
+// Go links the `go version -m` text between these two 16-byte markers, so the
+// revision of a binary can be read from its bytes: no Go toolchain needed, and
+// the binary (possibly the live daemon) is never executed.
+const GO_BUILDINFO_START = Buffer.from('3077af0c9274080241e1c107e6d618e6', 'hex');
+const GO_BUILDINFO_END = Buffer.from('f932433186182072008242104116d8f2', 'hex');
+
+function readGoBuildInfo(binPath) {
+    let buf;
+    try { buf = fs.readFileSync(binPath); } catch { return null; }
+    const start = buf.indexOf(GO_BUILDINFO_START);
+    const end = start < 0 ? -1 : buf.indexOf(GO_BUILDINFO_END, start);
+    return end < 0 ? null : parseGoBuildInfo(buf.subarray(start + GO_BUILDINFO_START.length, end).toString('utf8'));
+}
+
+// Accepts the embedded text or `go version -m` output (same lines, tab-indented).
+function parseGoBuildInfo(text) {
+    const get = (key) => (String(text).match(new RegExp(`^\\s*build\\s+${key}=(\\S*)`, 'm')) || [])[1];
+    const revision = get('vcs\\.revision');
+    if (!revision) return null;
+    return { revision, time: get('vcs\\.time') || null, modified: get('vcs\\.modified') === 'true' };
+}
+
+// Never trade the installed ao for a build that is not provably newer and clean.
+// allowDirty: the AOS_AO_DEV_BUILD opt-in. daemonRunning/candidateIsRelease
+// only matter when the installed binary's revision is unreadable: a clean
+// published release may then replace it, but not while some daemon of unknown
+// build is running.
+function decideAoInstall({ installedExists, installed, candidate, allowDirty = false, candidateIsRelease = false, daemonRunning = true }) {
+    if (!installedExists) return { install: true, reason: 'no ao installed yet' };
+    if (!candidate) return { install: false, reason: 'the candidate build has no readable revision' };
+    if (candidate.modified && !allowDirty) return { install: false, reason: `the candidate ${candidate.revision.slice(0, 9)} is a dirty build (vcs.modified=true)` };
+    if (!installed) {
+        if (candidateIsRelease && !candidate.modified && daemonRunning === false) {
+            return { install: true, reason: `the installed binary's revision is unreadable and no daemon is running; installing the clean release ${candidate.revision.slice(0, 9)}` };
+        }
+        return { install: false, reason: 'the installed binary\'s revision is unreadable, so a downgrade cannot be ruled out' };
+    }
+    if (candidate.revision === installed.revision) return { install: false, reason: `already at ${installed.revision.slice(0, 9)}` };
+    const c = Date.parse(candidate.time || '');
+    const i = Date.parse(installed.time || '');
+    if (!(c > i)) return { install: false, reason: `the candidate ${candidate.revision.slice(0, 9)} (${candidate.time || 'no date'}) is not newer than the installed ${installed.revision.slice(0, 9)} (${installed.time || 'no date'})` };
+    return { install: true, reason: `${installed.revision.slice(0, 9)} -> ${candidate.revision.slice(0, 9)}` };
+}
+
+// A dev checkout is a release source only when clean and HEAD sits on a tag.
+function checkAoWorkspace(dir, git = (args) => execFileSync('git', ['--no-optional-locks', '-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()) {
+    try {
+        if (git(['status', '--porcelain'])) return { ok: false, reason: 'it has uncommitted or untracked changes' };
+        let tag;
+        try { tag = git(['describe', '--tags', '--exact-match', 'HEAD']); } catch { return { ok: false, reason: 'HEAD is not on a release tag' }; }
+        return { ok: true, tag, head: git(['rev-parse', 'HEAD']) };
+    } catch (e) {
+        return { ok: false, reason: `git could not read it (${String(e.message).split('\n')[0]})` };
+    }
+}
+
+// Builds into a temp dir: a build left in the checkout's gitignored backend/bin
+// outlives every later pull and gets picked up as if it were current.
+function buildAoFromSource(dir) {
+    if (!hasExecutable('go') || !fs.existsSync(path.join(dir, 'backend', 'cmd', 'ao'))) return null;
+    const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'aos-ao-build-')), process.platform === 'win32' ? 'ao.exe' : 'ao');
+    const s = spinner();
+    s.start('Compiling AO daemon binary from Go source...');
+    try {
+        execFileSync('go', ['build', '-ldflags=-s -w', '-o', out, './cmd/ao'], { cwd: path.join(dir, 'backend'), stdio: 'ignore' });
+        s.stop('Compiled AO daemon binary successfully.');
+        return out;
+    } catch (e) {
+        s.stop(`Failed to compile AO from source: ${e.message}`);
+        return null;
+    }
+}
+
+// Installed version = the release version the installer recorded for exactly
+// the revision on disk. Never the dev workspace's package.json.
+function trustedAoVersion(build, record) {
+    return build && !build.modified && record && record.version && record.revision === build.revision ? record.version : null;
+}
+
+function describeAoVersion({ exists, build, record, latest }) {
+    if (!exists) return { text: 'Not installed', updateAvailable: false };
+    if (!build) return { text: 'Installed (build revision unreadable, version unknown)', updateAvailable: false };
+    const rev = build.revision.slice(0, 9);
+    if (build.modified) return { text: `Dev build ${rev} with uncommitted changes (not a release, version not comparable)`, updateAvailable: false };
+    const version = trustedAoVersion(build, record);
+    if (!version) return { text: `Build ${rev} (release version unknown)`, updateAvailable: false };
+    if (latest && isNewerVersion(version, latest)) return { text: `Update available (v${version} ➔ v${latest})`, updateAvailable: true };
+    return { text: `v${version} (Up to date)`, updateAvailable: false };
+}
+
+// The daemon's running.json (AO backend/internal/runfile: pid, port, startedAt).
+// pid+startedAt tells a restarted daemon from the old one still on :3101.
+function readAoDaemonIdentity(file = process.env.AO_RUN_FILE || path.join(homeDir, '.ao', 'running.json')) {
+    const data = readJsonFile(file);
+    if (!data || data.pid == null) return null;
+    return data.startedAt ? `${data.pid}@${data.startedAt}` : String(data.pid);
+}
+
+async function waitUntil(check, timeoutMs, pollMs = 300) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        if (check()) return true;
+        if (Date.now() >= deadline) return false;
+        await new Promise((r) => setTimeout(r, pollMs));
+    }
+}
+
+// Back up, swap atomically, register the service, wait for a NEW daemon on
+// :3101. A failed swap or service install puts the previous binary back.
+async function installAoBinary({ src, dest, stamp = timestamp, serviceInstall, waitForDaemon, readIdentity = readAoDaemonIdentity, restartWaitMs = AO_DAEMON_WAIT_MS }) {
+    let backup = null;
+    if (src) {
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        if (fs.existsSync(dest)) {
+            backup = `${dest}.bak-${stamp}`;
+            fs.copyFileSync(dest, backup);
+        }
+        try {
+            installBinaryAtomically(src, dest);
+        } catch (e) {
+            if (backup) installBinaryAtomically(backup, dest);
+            log.warn(`Could not place the ao binary (${e.message})${backup ? '; the previous binary is back in place' : ''}.`);
+            return { ok: false, backup, restored: !!backup };
+        }
+        log.step(`Installed ao to ${dest}${backup ? ` (previous binary kept at ${backup})` : ''}`);
+    }
+    const before = readIdentity();
+    try {
+        await serviceInstall(dest);
+    } catch (e) {
+        if (backup) {
+            installBinaryAtomically(backup, dest);
+            try { await serviceInstall(dest); } catch (e2) { logDebug(e2, 'ao service install after restore'); }
+        }
+        log.warn(`AO service install failed: ${e.message}${backup ? `. Restored the previous ao from ${backup}` : ''}. Start it by hand with: ao service install`);
+        return { ok: false, backup, restored: !!backup };
+    }
+    // No identity before (file missing/unreadable): the port check is all we have.
+    const restarted = before ? await waitUntil(() => { const now = readIdentity(); return !!now && now !== before; }, restartWaitMs) : true;
+    const listening = await waitForDaemon();
+    const backupNote = backup ? ` The previous binary is at ${backup} (restore: mv "${backup}" "${dest}" && ao service install).` : '';
+    if (listening && restarted) {
+        log.success('AO Orchestrator running on http://localhost:3101');
+    } else if (listening) {
+        log.warn(`AO on :3101 is still the old process (${before}); it was not restarted, probably because it does not run under the AO service. Restart it: ao service install, then check ao service status (or stop it and start it the way it was started).${backupNote}`);
+    } else {
+        const hint = process.platform === 'win32'
+            ? 'Run `ao service install` again or log out and back in, then check `ao service status`.'
+            : 'Check `ao service status` and `ao service logs`.';
+        log.warn(`AO did not answer on :3101 within ${Math.round(AO_DAEMON_WAIT_MS / 1000)}s. ${hint}${backupNote}`);
+    }
+    return { ok: true, backup, listening, restarted };
+}
+
+function aoPlatformBinaries(dir) {
+    const b = (...p) => path.join(dir, 'backend', ...p);
+    if (process.platform === 'win32') return [b('bin', 'ao-windows-amd64.exe'), b('bin', 'ao.exe'), b('ao.exe')];
+    const plat = process.platform === 'darwin' ? 'darwin' : 'linux';
+    const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+    return [b('bin', `ao-${plat}-${arch}`), b('ao-daemon'), b('bin', 'ao'), b('ao')];
+}
+
+// Picks the binary this run may install. A local checkout counts only when it
+// is a release source (clean, HEAD on a tag) or AOS_AO_DEV_BUILD=1 opts in;
+// otherwise the published release package is used, never the dev checkout.
+function selectAoCandidate({
+    checkoutDir, isLocalGitRepo, releaseDir,
+    devOptIn = process.env.AOS_AO_DEV_BUILD === '1',
+    dryRun = DRY_RUN,
+    checkWorkspace = checkAoWorkspace,
+    download = (dir) => downloadOrUpdateModule(AO_PKG, dir, 'BDB Agent Orchestrator'),
+    build = buildAoFromSource,
+    candidatesIn = aoPlatformBinaries,
+}) {
+    if (isLocalGitRepo) {
+        const ws = checkWorkspace(checkoutDir);
+        if (ws.ok) {
+            if (dryRun) return { bin: null, source: 'dry-run' };
+            // A prebuilt binary counts only when it was built clean from this exact HEAD.
+            const prebuilt = candidatesIn(checkoutDir).find((p) => {
+                const info = readGoBuildInfo(p);
+                return info && !info.modified && info.revision === ws.head;
+            });
+            return { bin: prebuilt || build(checkoutDir), source: 'checkout' };
+        }
+        if (devOptIn) {
+            log.warn(`AOS_AO_DEV_BUILD=1: building ao from ${checkoutDir} HEAD although ${ws.reason}; a downgrade is still refused.`);
+            if (dryRun) return { bin: null, source: 'dry-run' };
+            return { bin: build(checkoutDir), source: 'dev', allowDirty: true };
+        }
+        log.warn(`The AO checkout ${checkoutDir} is not a release source (${ws.reason}; Go also counts untracked files as uncommitted), so the published release is used. To build from the checkout instead, rerun with AOS_AO_DEV_BUILD=1.`);
+    }
+    if (fs.existsSync(path.join(releaseDir, '.git'))) {
+        log.warn(`${releaseDir} is a git checkout; not downloading the release over it. Keeping the installed ao.`);
+        return { bin: null, source: 'release-dir-is-checkout' };
+    }
+    if (dryRun) {
+        log.step(`[dry-run] would download ${AO_PKG} to ${releaseDir}`);
+        return { bin: null, source: 'dry-run' };
+    }
+    if (!download(releaseDir)) {
+        log.warn(`Could not download ${AO_PKG}; keeping the installed ao.`);
+        return { bin: null, source: 'download-failed' };
+    }
+    return { bin: candidatesIn(releaseDir).find((p) => fs.existsSync(p)) || null, source: 'release' };
+}
+
 async function installOSAgentWorkspace() {
     if (!aoSupportedHere()) {
         log.warn(`AO is not supported on ${process.platform}/${process.arch}.`);
         return false;
     }
 
-    const isWin = process.platform === 'win32';
-    const isMac = process.platform === 'darwin';
-    const isLinux = process.platform === 'linux';
-
-    // Discover AO directory: check local development checkouts first, then moduleBasePath
-    const candidateDirs = [
+    const releaseDir = path.join(moduleBasePath(), 'bdb-agent-orchestrator');
+    const checkoutDir = [
         path.join(homeDir, 'dev', 'agents', 'bdb-agent-orchestrator'),
         path.join(homeDir, 'dev', 'bdb-dev', 'bdb-agent-orchestrator'),
-        path.join(moduleBasePath(), 'bdb-agent-orchestrator')
-    ];
-    const osAgentDir = candidateDirs.find(d => fs.existsSync(d)) || candidateDirs[candidateDirs.length - 1];
-    const isLocalGitRepo = fs.existsSync(path.join(osAgentDir, '.git'));
+    ].find((d) => fs.existsSync(path.join(d, '.git')));
+    if (checkoutDir) log.step(`Found a local AO checkout: ${checkoutDir}`);
 
-    if (isLocalGitRepo) {
-        log.step(`Using local development workspace for AO: ${osAgentDir}`);
-    } else {
-        if (!downloadOrUpdateModule('@hybridlabor-api/bdb-agent-orchestrator', osAgentDir, 'BDB Agent Orchestrator')) {
-            log.warn('Skipping AO setup: the module could not be downloaded.');
-            return false;
-        }
-    }
+    const pick = selectAoCandidate({ checkoutDir, isLocalGitRepo: !!checkoutDir, releaseDir });
     if (DRY_RUN) {
-        log.step('[dry-run] would link ao binary and run `ao service install`');
+        log.step('[dry-run] would install the ao binary and run `ao service install`');
         return;
     }
 
-    const localBinDir = isWin
-        ? path.join(process.env.LOCALAPPDATA || homeDir, 'Programs', 'ao')
-        : path.join(homeDir, '.local', 'bin');
-    const binTarget = path.join(localBinDir, isWin ? 'ao.exe' : 'ao');
-
-    // Platform-specific binary lookup
-    const candidateBinaries = [];
-    if (isWin) {
-        candidateBinaries.push(
-            path.join(osAgentDir, 'backend', 'bin', 'ao-windows-amd64.exe'),
-            path.join(osAgentDir, 'backend', 'bin', 'ao.exe'),
-            path.join(osAgentDir, 'backend', 'ao.exe')
-        );
-    } else if (isMac) {
-        if (process.arch === 'arm64') {
-            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-darwin-arm64'));
-        } else {
-            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-darwin-amd64'));
-        }
-        candidateBinaries.push(
-            path.join(osAgentDir, 'backend', 'ao-daemon'),
-            path.join(osAgentDir, 'backend', 'bin', 'ao'),
-            path.join(osAgentDir, 'backend', 'ao')
-        );
-    } else if (isLinux) {
-        if (process.arch === 'arm64') {
-            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-linux-arm64'));
-        } else {
-            candidateBinaries.push(path.join(osAgentDir, 'backend', 'bin', 'ao-linux-amd64'));
-        }
-        candidateBinaries.push(
-            path.join(osAgentDir, 'backend', 'ao-daemon'),
-            path.join(osAgentDir, 'backend', 'bin', 'ao'),
-            path.join(osAgentDir, 'backend', 'ao')
-        );
-    }
-    let daemonBin = candidateBinaries.find(p => fs.existsSync(p));
-
-    // Fallback: compile from Go source if Go is installed and binary is not pre-built
-    if (!daemonBin && hasExecutable('go') && fs.existsSync(path.join(osAgentDir, 'backend', 'cmd', 'ao'))) {
-        const s = spinner();
-        s.start('Compiling AO daemon binary from Go source...');
-        try {
-            const buildTarget = path.join(osAgentDir, 'backend', 'bin', isWin ? 'ao.exe' : 'ao');
-            fs.mkdirSync(path.dirname(buildTarget), { recursive: true });
-            execFileSync('go', ['build', '-ldflags=-s -w', '-o', buildTarget, './cmd/ao'], {
-                cwd: path.join(osAgentDir, 'backend'),
-                stdio: 'ignore'
-            });
-            daemonBin = buildTarget;
-            s.stop('Compiled AO daemon binary successfully.');
-        } catch (e) {
-            s.stop(`Failed to compile AO from source: ${e.message}`);
-        }
+    const binTarget = aoBinTarget();
+    const installedExists = fs.existsSync(binTarget);
+    let src = null;
+    let candidate = null;
+    if (pick.bin) {
+        candidate = readGoBuildInfo(pick.bin);
+        const installed = installedExists ? readGoBuildInfo(binTarget) : null;
+        const daemonRunning = installedExists && !installed
+            ? (readAoDaemonIdentity() !== null || await verifyDaemonListening(3101, 'AO Orchestrator', 1500))
+            : true;
+        const verdict = decideAoInstall({ installedExists, installed, candidate, allowDirty: !!pick.allowDirty, candidateIsRelease: pick.source === 'release', daemonRunning });
+        if (verdict.install) src = pick.bin;
+        else log.step(`Keeping ${binTarget}: ${verdict.reason}.`);
     }
 
-    // Fallback: if already installed and functional, keep it
-    if (!daemonBin && fs.existsSync(binTarget)) {
-        try {
-            execFileSync(binTarget, ['--version'], { stdio: 'ignore' });
-            log.step(`Keeping existing working AO binary at ${binTarget}`);
-            daemonBin = binTarget;
-        } catch (_) {}
-    }
-
-    if (!daemonBin) {
-        log.warn(`AO binary missing in ${osAgentDir} — package layout changed or Go build needed.`);
+    if (!src && !installedExists) {
+        log.warn(`No ao binary could be installed (${pick.source}).`);
         return false;
     }
-
-    if (daemonBin !== binTarget) {
-        installStep('place the ao binary', () => {
-            fs.mkdirSync(localBinDir, { recursive: true });
-            installBinaryAtomically(daemonBin, binTarget);
-            log.step(`Installed ao to ${binTarget}`);
-        }, 'AO cannot be started without its binary.');
+    // Unchanged binary and a live daemon: nothing to restart.
+    if (!src && await verifyDaemonListening(3101, 'AO Orchestrator', 1500)) {
+        log.success('AO Orchestrator running on http://localhost:3101');
+        return;
     }
 
+    const result = await installAoBinary({
+        src,
+        dest: binTarget,
+        serviceInstall: (bin) => aoServiceInstall(bin),
+        waitForDaemon: () => verifyDaemonListening(3101, 'AO Orchestrator', AO_DAEMON_WAIT_MS),
+    });
+    if (result.ok && src) {
+        const pkgJson = readJsonFile(path.join(pick.source === 'release' ? releaseDir : checkoutDir, 'package.json')) || {};
+        saveManifest({ ao: { version: pick.source === 'dev' ? null : (pkgJson.version || null), revision: candidate ? candidate.revision : null, modified: !!(candidate && candidate.modified), installedAt: new Date().toISOString() } });
+    }
+    return result.ok ? undefined : false;
+}
+
+function aoServiceInstall(binTarget) {
     // macOS only: code-sign ad-hoc to prevent AMFI SIGKILL
-    if (isMac) {
+    if (process.platform === 'darwin') {
         try {
             execFileSync('codesign', ['-v', binTarget], { stdio: 'ignore' });
         } catch {
@@ -2625,35 +2802,17 @@ async function installOSAgentWorkspace() {
                 log.step('Signed it ad-hoc.');
             } catch (e) { log.warn(`Could not sign it: ${e.message}`); }
         }
-    }
-
-    // AO installs its own service, and does it for macOS, Windows and Linux.
-    if (isMac) {
         const legacyPlist = path.join(homeDir, 'Library', 'LaunchAgents', 'com.bdb.agent-workspace.plist');
         if (fs.existsSync(legacyPlist)) {
             try { execFileSync('launchctl', ['unload', legacyPlist], { stdio: 'ignore' }); } catch (e) { logDebug(e, 'unload legacy ao agent'); }
             try { fs.unlinkSync(legacyPlist); log.step('Removed the old com.bdb.agent-workspace service.'); } catch (e) { logDebug(e, 'remove legacy plist'); }
         }
     }
-
-    const serviceStep = installStep('register the AO service', () => {
-        try {
-            execFileSync(binTarget, ['service', 'install'], { stdio: ['ignore', 'pipe', 'pipe'] });
-        } catch (e) {
-            throw new Error(describeExecError(e));
-        }
-    }, 'Start it by hand with: ao service install');
-    if (!serviceStep.ok) return false;
-
-    // Windows startup entries fire asynchronously — give the service more time
-    const aoTimeout = process.platform === 'win32' ? 20000 : 8000;
-    if (await verifyDaemonListening(3101, 'AO Orchestrator', aoTimeout)) {
-        log.success('AO Orchestrator running on http://localhost:3101');
-    } else {
-        const hint = process.platform === 'win32'
-            ? 'Run `ao service install` again or log out and back in, then check `ao service status`.'
-            : 'Check `ao service status` and `ao service logs`.';
-        log.warn(`AO did not answer on :3101 — ${hint}`);
+    // AO installs its own service, and does it for macOS, Windows and Linux.
+    try {
+        execFileSync(binTarget, ['service', 'install'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+        throw new Error(describeExecError(e));
     }
 }
 async function promptMemBIngestion(mcpCodeTarget) {
@@ -2715,6 +2874,18 @@ function verifyEcosystemInstallation() {
     ];
 
     for (const mod of modules) {
+        if (mod.pkg === AO_PKG) {
+            const bin = aoBinTarget();
+            const exists = fs.existsSync(bin);
+            const build = exists ? readGoBuildInfo(bin) : null;
+            const record = (readJsonFile(path.join(homeDir, '.agents', '.bdb-manifest.json')) || {}).ao || null;
+            const version = trustedAoVersion(build, record);
+            const latest = version ? (newestDistTag(AO_PKG, version) || {}).version : null;
+            const s = describeAoVersion({ exists, build, record, latest });
+            const mark = !exists ? `${colors.dim}⚪` : s.updateAvailable ? `${colors.yellow}⚠️ ` : build && !build.modified ? `${colors.green}✅` : `${colors.yellow}⚠️ `;
+            console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${mark} ${s.text}${colors.reset}`);
+            continue;
+        }
         let modulePkgPath = null;
         for (const p of mod.paths) {
             const candidate = path.join(p, 'package.json');
@@ -2727,29 +2898,9 @@ function verifyEcosystemInstallation() {
         if (modulePkgPath) {
             try {
                 const localVer = JSON.parse(fs.readFileSync(modulePkgPath, 'utf8')).version || '1.0.0';
-                let newerVersion = null;
-                let newerTag = null;
-                try {
-                    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-                    const distTagsJson = process.platform === 'win32'
-                        ? execSync(`"${npmCmd}" view ${mod.pkg} dist-tags --json`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim()
-                        : execFileSync(npmCmd, ['view', mod.pkg, 'dist-tags', '--json'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
-                    const distTags = JSON.parse(distTagsJson);
-                    for (const [tag, ver] of Object.entries(distTags)) {
-                        if (isNewerVersion(localVer, ver)) {
-                            if (!newerVersion || isNewerVersion(newerVersion, ver)) {
-                                newerVersion = ver;
-                                newerTag = tag;
-                            }
-                        }
-                    }
-                } catch (e) { logDebug(e, 'operation'); }
-
-                // `npm view <pkg> dist-tags --json` fetches all tags.
-                // We compare every tag's version against localVer with the fixed
-                // isNewerVersion(), and report an update if ANY tag is ahead.
-                if (newerVersion) {
-                    console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.yellow}⚠️  Update available (v${localVer} ➔ v${newerVersion} (${newerTag}))${colors.reset}`);
+                const newer = newestDistTag(mod.pkg, localVer);
+                if (newer) {
+                    console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.yellow}⚠️  Update available (v${localVer} ➔ v${newer.version} (${newer.tag}))${colors.reset}`);
                 } else {
                     console.log(`  • ${colors.bold}${mod.name.padEnd(35)}${colors.reset} ➔ ${colors.green}✅ v${localVer} (Up to date)${colors.reset}`);
                 }
@@ -3473,6 +3624,14 @@ function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
     }
 }
 
+// .claude/agents/<slug>.md is shipped and copied to ~/.claude/agents by the
+// manifest-tracked "copy harness directories" step. Compiling the same slug
+// there first made the two writers fight: the compiled bytes never matched the
+// manifest, so every update flagged all 13 personas as user-edited.
+function agentsNotShippedAsFiles(agents, shippedDir = path.join(srcDir, '.claude', 'agents')) {
+    return agents.filter((a) => !fs.existsSync(path.join(shippedDir, `${a.name.toLowerCase().replace(/_/g, '-')}.md`)));
+}
+
 // Generates .opencode/agents/<name>.md. Emits description, mode: subagent, and model.
 function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
@@ -3575,8 +3734,12 @@ function injectHarnessRules() {
         if (sources.ok) {
             const { globalRules, startcycleContent, agentsMdContent } = sources.value;
 
+            // Run from $HOME, these project files ARE the global files that the
+            // manifest-tracked harness copy below writes; a second writer would
+            // make every update see them as user-edited.
+            const cwdIsHome = path.resolve(currentDir) === path.resolve(homeDir);
             const cursorRulesDir = path.join(currentDir, '.cursor', 'rules');
-            installStep(`write the Cursor rules to ${cursorRulesDir}`, () => {
+            if (!cwdIsHome) installStep(`write the Cursor rules to ${cursorRulesDir}`, () => {
                 fs.mkdirSync(cursorRulesDir, { recursive: true });
                 fs.writeFileSync(path.join(cursorRulesDir, '000_global_rules.mdc'), `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
                 if (startcycleContent) {
@@ -3618,7 +3781,7 @@ function injectHarnessRules() {
             installStep('compile Claude Code subagents', () => {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
-                    const agents = parseAgentsMd(agentsMdContent);
+                    const agents = agentsNotShippedAsFiles(parseAgentsMd(agentsMdContent));
                     const claudeAgentsDir = path.join(homeDir, '.claude', 'agents');
                     compileClaudeAgents(agents, claudeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to Claude Code subagents in ${claudeAgentsDir}`);
@@ -4095,9 +4258,12 @@ function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
     const failures = [];
     for (const command of [...new Set(commands)]) {
         // AGENTTRAIL_PORT=1: the no-op payload must not show up on a live map.
-        const r = spawn(shell, [flag, command], { cwd: path.dirname(hooksPath), input: '{}', encoding: 'utf8', timeout: 5000, windowsHide: true, env: { ...process.env, AGENTTRAIL_PORT: '1' } });
+        const r = spawn(shell, [flag, command], { cwd: path.dirname(hooksPath), input: '{}', encoding: 'utf8', timeout: 20000, windowsHide: true, env: { ...process.env, AGENTTRAIL_PORT: '1' } });
         const stderr = String((r && r.stderr) || '');
         let reason = null;
+        // A slow machine (memb-inject reads the store) can exceed the limit without the hook being broken:
+        // the failures this check exists for (bad path, missing module, non-zero exit) are immediate.
+        if (r && r.error && r.error.code === 'ETIMEDOUT') { log.warn(`agy hook self-check timed out, not treated as a failure: ${command}`); continue; }
         if (!r || r.error) reason = `spawn failed: ${r && r.error ? r.error.message : 'no result'}`;
         else if (r.status !== 0) reason = `exit ${r.status}\n  ${stderr.trim().slice(0, 500)}`;
         else if (/MODULE_NOT_FOUND|Cannot find module/.test(stderr)) reason = `module not found\n  ${stderr.trim().slice(0, 500)}`;
@@ -5420,20 +5586,22 @@ async function runQuickUpdate(installState) {
 
 
 function buildAoAnnouncementBanner() {
+    const W = 78;
+    const row = (text, style = '') => `\x1b[36m│\x1b[0m${style}${text.padEnd(W)}\x1b[0m\x1b[36m│\x1b[0m`;
     return [
-        '\x1b[36m╭──────────────────────────────────────────────────────────────────────────────╮\x1b[0m',
-        '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m   \x1b[1m\x1b[35m🚀 BDB AGENT ORCHESTRATOR APP — FINALE BETA JETZT VERFÜGBAR!\x1b[0m              \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m   Die nächste Generation der Cross-Harness Multi-Agenten-Orchestrierung      \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m   ist jetzt als finale Beta für alle User freigeschaltet.                    \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m   • \x1b[1mDashboard & WebUI:\x1b[0m  http://localhost:3101                                \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m   • \x1b[1mService-Befehl:\x1b[0m     ao service install  (Hintergrunddienst aktivieren)   \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m   • \x1b[1mQuick Launch:\x1b[0m       ao open  oder  ao service status                     \x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m   • \x1b[1mFeatures:\x1b[0m           Session-Telemetrie, Live-AgentTrail & Multi-Workspaces\x1b[36m│\x1b[0m',
-        '\x1b[36m│\x1b[0m                                                                              \x1b[36m│\x1b[0m',
-        '\x1b[36m╰──────────────────────────────────────────────────────────────────────────────╯\x1b[0m\n'
+        `\x1b[36m╭${'─'.repeat(W)}╮\x1b[0m`,
+        row(''),
+        row('   BDB AGENT ORCHESTRATOR APP — FINAL BETA NOW AVAILABLE', '\x1b[1m\x1b[35m'),
+        row(''),
+        row('   The next generation of cross-harness multi-agent orchestration'),
+        row('   is now open to every user as a final beta.'),
+        row(''),
+        row('   • Dashboard & WebUI:  http://localhost:3101'),
+        row('   • Service command:    ao service install  (enables the background service)'),
+        row('   • Quick launch:       ao open  or  ao service status'),
+        row('   • Features:           session telemetry, live AgentTrail, multi-workspaces'),
+        row(''),
+        `\x1b[36m╰${'─'.repeat(W)}╯\x1b[0m\n`
     ].join('\n');
 }
 
@@ -5961,6 +6129,16 @@ if (require.main === module) {
 module.exports = {
     installBinaryAtomically,
     installOSAgentWorkspace,
+    readGoBuildInfo,
+    parseGoBuildInfo,
+    decideAoInstall,
+    checkAoWorkspace,
+    installAoBinary,
+    readAoDaemonIdentity,
+    selectAoCandidate,
+    describeAoVersion,
+    buildAoAnnouncementBanner,
+    agentsNotShippedAsFiles,
     downloadOrUpdateModule,
     detectPlatforms,
     markPlatformsExplicit,

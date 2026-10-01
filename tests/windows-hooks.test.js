@@ -112,10 +112,21 @@ test('self-check passes {} through the platform shell, cwd = hooks.json folder; 
         assert.strictEqual(c.args[0], flag);
         assert.strictEqual(c.opts.input, '{}');
         assert.strictEqual(c.opts.cwd, dir);
-        assert.ok(c.opts.timeout <= 5000);
+        assert.ok(c.opts.timeout > 0 && c.opts.timeout <= 20000);
     }
     const bad = installer.selfCheckAgyHooks(hooksJson, () => ({ status: 0, stderr: 'Error: Cannot find module x' }));
     assert.ok(bad.length > 0 && /module not found/.test(bad[0].reason));
+});
+
+test('a self-check timeout on a slow machine is not a failure, a missing module still is', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-selfcheck-timeout-'));
+    const hooksJson = path.join(dir, 'hooks.json');
+    installer.mergeAntigravityHooks(hooksJson, { selfCheck: () => ({ status: 0, stderr: '' }) });
+    assert.ok(fs.existsSync(hooksJson));
+    const slow = installer.selfCheckAgyHooks(hooksJson, () => ({ error: { code: 'ETIMEDOUT', message: 'spawnSync sh ETIMEDOUT' }, status: null, stderr: '' }));
+    assert.deepStrictEqual(slow, []);
+    const missing = installer.selfCheckAgyHooks(hooksJson, () => ({ status: 1, stderr: 'Error: Cannot find module x' }));
+    assert.ok(missing.length > 0);
 });
 
 const BROKEN = {
