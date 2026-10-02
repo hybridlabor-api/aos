@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
+const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
@@ -183,10 +184,11 @@ function checkHarnesses() {
     const exists = existsSync(hr.path);
     const count = dirCount(hr.path);
     const hasSentinel = existsSync(path.join(hr.path, SENTINEL, 'SKILL.md'));
-    const ok = exists && count > 0 && hasSentinel;
+    const viaPlugin = hr.name === 'Claude Code' && !hasSentinel && pm.pluginInstalled(HOME, [SENTINEL]);
+    const ok = viaPlugin || (exists && count > 0 && hasSentinel);
     add('harnesses', `${hr.name} Skills`, ok,
-      ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
-      `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, !exists);
+      viaPlugin ? 'delivered by the bdb-aos Claude Code plugin (installed_plugins.json / plugin cache)' : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
+      `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, !exists && !viaPlugin);
   }
 
   // OpenCode Plugin check

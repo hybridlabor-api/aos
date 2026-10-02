@@ -5,6 +5,9 @@
 //   aos-uninstall --purge      also the memory store, wikis and credentials
 //   aos-uninstall --dry-run    list everything, delete nothing
 //   aos-uninstall --yes        skip the confirmations (CI only)
+//   aos-uninstall --restore-plugin-backup
+//                              put back the loose skill copies the installer removed when it
+//                              registered the bdb-aos plugin (never overwrites an existing file)
 //
 // The file-level install manifest records every path AOS wrote together with
 // the sha256 it wrote. That is what makes a precise uninstall possible: a file
@@ -19,6 +22,9 @@ import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+
+const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -27,6 +33,7 @@ const tilde = (p) => p.replace(HOME, '~');
 const PURGE = process.argv.includes('--purge');
 const DRY = process.argv.includes('--dry-run');
 const YES = process.argv.includes('--yes');
+const RESTORE = process.argv.includes('--restore-plugin-backup');
 
 const MANIFEST = h('.agents', '.bdb-install-manifest.json');
 
@@ -238,13 +245,19 @@ function execute(p) {
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);
 
+  const reg = pm.readState(HOME).registered.claudecode;
+  if (reg) {
+    const r = pm.deregisterClaude({ home: HOME, record: reg });
+    if (r.changed) console.log(`  bdb-aos Plugin-Registrierung aus settings.json entfernt${reg.replaced ? ` (externer Marketplace ${reg.replaced.key} wiederhergestellt)` : ''}`);
+  }
+
   // Only the BDB hook entries leave settings.json; everything else in it is
   // the user's and must survive an uninstall exactly as it survives an install.
   const settings = h('.claude', 'settings.json');
   if (existsSync(settings)) {
     try {
       const s = JSON.parse(readFileSync(settings, 'utf8'));
-      const bdb = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+      const bdb = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
       let touched = false;
       for (const [event, entries] of Object.entries(s.hooks || {})) {
         const kept = entries.filter((e) => !(e.hooks || []).some((x) => bdb.some((n) => String(x.command).includes(n))));
@@ -266,6 +279,7 @@ function execute(p) {
   for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
     try { rmSync(f); } catch { /* already gone */ }
   }
+  pm.retireState(HOME);
 }
 
 // ---------------------------------------------------------------------- main
@@ -275,6 +289,16 @@ const ask = async (q) => {
   rl.close();
   return a;
 };
+
+if (RESTORE) {
+  const r = pm.restorePluginBackups({ home: HOME });
+  if (!r.dirs.length) { console.log('Keine Plugin-Migrations-Sicherung gefunden.'); process.exit(1); }
+  console.log(`  ${r.files.length} Dateien aus ${r.dirs.length} Sicherung(en) wiederhergestellt, im Install-Manifest erfasst`);
+  console.log('Vorhandene Dateien wurden nicht überschrieben.');
+  if (r.deregistered) console.log('  bdb-aos Plugin-Registrierung entfernt, damit die Skills nicht doppelt geladen werden. Setze AOS_PLUGIN_MIGRATION=off, damit der Installer sie nicht erneut entfernt.');
+  else if (r.files.length && r.stillEnabled) console.log('  WARNUNG: das bdb-aos Plugin ist weiterhin aktiv, die Skills erscheinen doppelt. Plugin in Claude Code deaktivieren und AOS_PLUGIN_MIGRATION=off setzen.');
+  process.exit(0);
+}
 
 const p = plan();
 console.log(PURGE ? '\x1b[31mAOS UNINSTALL — PURGE\x1b[0m' : 'AOS Uninstall');

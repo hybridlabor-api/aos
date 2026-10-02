@@ -23,6 +23,7 @@ const net = require('net');
 const readline = require('readline');
 const util = require('util');
 const crypto = require('crypto');
+const pluginMigration = require('./lib/plugin-migration');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -1277,9 +1278,94 @@ function reportFatal(stage, e) {
     process.exitCode = 1;
 }
 
+// AOS_PLUGIN_MIGRATION=off skips plugin registration and loose-copy removal; =check only reports.
+function pluginMigrationMode(argv = process.argv, env = process.env) {
+    const flag = argv.find((a) => a.startsWith('--plugin-migration='));
+    const raw = String(flag ? flag.slice('--plugin-migration='.length) : (env.AOS_PLUGIN_MIGRATION || '')).trim().toLowerCase();
+    if (raw === 'off' || raw === '0' || raw === 'false') return 'off';
+    return raw === 'check' || DRY_RUN ? 'check' : 'on';
+}
+
+// .agents/plugins holds the Codex marketplace file; it belongs to the repo checkout, not to ~/.agents or a project.
+const AGENTS_COPY_EXCLUDE = ['plugins'];
+
+let _pluginMigration = null;
+function runPluginMigration({ targetHome = homeDir, detected = null, mode = pluginMigrationMode(), registrars } = {}) {
+    if (_pluginMigration && targetHome === homeDir) return _pluginMigration;
+    const keys = detected || detectPlatforms().map((d) => d.key);
+    const ownsManifest = !_sessionManifest;
+    const manifest = _sessionManifest || loadInstallManifest();
+    let result;
+    try {
+        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, ...(registrars ? { registrars } : {}) });
+    } catch (e) {
+        log.warn(`Plugin migration skipped: ${e.message}`);
+        result = { covered: new Set(), lines: [] };
+    }
+    for (const line of result.lines) log.step(line);
+    if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
+    if (targetHome === homeDir) _pluginMigration = result;
+    return result;
+}
+
+// The plugin migration runs first: when it retires Claude's loose copies, ~/.claude/skills is not
+// written again, so a rerun neither recreates nor re-backs-up what the plugin now delivers.
+function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBase }) {
+    const detected = detectPlatforms().map((d) => d.key);
+    if (targets.some((t) => t.value === '2') && !detected.includes('claudecode')) detected.push('claudecode');
+    const pluginCovered = runPluginMigration({ detected }).covered;
+
+    for (const t of targets) {
+        const viaPlugin = t.value === '2' && pluginCovered.has('claudecode');
+        if (mode === 'replace') {
+            if (!viaPlugin) {
+                moveIfExists(t.targetSkillDir, path.join(backupDir, `config_skills_backup_${t.value}`), `global config skills (${t.value})`);
+                moveIfExists(t.targetLegacyDir, path.join(backupDir, `legacy_skills_backup_${t.value}`), `legacy skills (${t.value})`);
+            }
+            moveIfExists(t.targetWorkspaceDir, path.join(backupDir, `workspace_skills_backup_${t.value}`), `workspace skills (${t.value})`);
+        }
+
+        installStep(`create the skill target directories (${t.value})`, () => {
+            if (!viaPlugin) {
+                fs.mkdirSync(t.targetSkillDir, { recursive: true });
+                retireObsoleteLegacyDir(t.targetLegacyDir);
+            }
+            fs.mkdirSync(t.targetWorkspaceDir, { recursive: true });
+        }, 'The skill copies below will most likely be skipped as well.');
+
+        if (fs.existsSync(skillsBase)) {
+            installStep(`install the skills (${t.value})`, () => {
+                const rawDirs = fs.readdirSync(skillsBase);
+                const dirs = rawDirs.sort((a, b) => {
+                    const aIsLeaf = fs.existsSync(path.join(skillsBase, a, 'SKILL.md'));
+                    const bIsLeaf = fs.existsSync(path.join(skillsBase, b, 'SKILL.md'));
+                    if (aIsLeaf && !bIsLeaf) return 1;
+                    if (!aIsLeaf && bIsLeaf) return -1;
+                    return 0;
+                });
+                for (const dir of dirs) {
+                    const fullPath = path.join(skillsBase, dir);
+                    if (!fs.statSync(fullPath).isDirectory()) continue;
+
+                    if (viaPlugin && dir !== 'workspace_agents') continue;
+                if (dir === 'global_legacy') {
+                        copyDirRecursiveSync(fullPath, t.targetLegacyDir, excludeSkills);
+                    } else if (dir === 'workspace_agents') {
+                        copyDirRecursiveSync(fullPath, t.targetWorkspaceDir, excludeSkills);
+                    } else {
+                        syncSkillEntry(fullPath, dir, t.targetSkillDir, excludeSkills);
+                    }
+                }
+                log.step(`Installed all global config & core skills to ${t.targetSkillDir}`);
+            }, 'The skills are missing or incomplete; the rest of the installation continues.');
+        }
+    }
+}
+
 function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     const skillsBase = path.join(srcDir, 'skills');
     if (!fs.existsSync(skillsBase)) return;
+    const pluginCovered = runPluginMigration().covered;
 
     // Mirror only into harnesses that are actually present. This list used to
     // be unconditional, which both wrote skills nobody would read and planted
@@ -1300,7 +1386,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
         { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
-    ].filter((d) => d.key === null || detectedKeys.has(d.key));
+    ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 
     for (const { dir: dest } of extraSkillDestinations) {
         try {
@@ -1549,6 +1635,17 @@ async function promptCredentials(referenceMcpDir) {
 
 const DAEMON_LOGON_FALLBACK_EXIT_CODE = 10;
 
+// The daemon job points at these scripts for good, so they live in the installer-owned shared store
+// (~/.agents/skills), which the plugin migration never retires, not in ~/.claude/skills.
+function stableOpenWikiScripts() {
+    const dest = path.join(homeDir, '.agents', 'skills', 'openwiki-skill');
+    if (!fs.existsSync(path.join(dest, 'scripts', 'install_daemon.sh'))) {
+        const src = path.join(srcDir, 'skills', 'global_config', 'openwiki-skill');
+        if (fs.existsSync(src)) copyDirRecursiveSync(src, dest);
+    }
+    return path.join(dest, 'scripts');
+}
+
 async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     const prov = openwikiEnv.provider || "google";
     if (!apiKey && !["ollama", "lmstudio"].includes(prov)) {
@@ -1562,7 +1659,7 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     const s = spinner();
     s.start('Installing OpenWiki Daemon...');
 
-    const scriptBase = path.join(targetSkillDir, 'openwiki-skill', 'scripts');
+    const scriptBase = stableOpenWikiScripts();
 
     const daemonEnv = Object.assign({}, process.env, {
         OPENWIKI_PROVIDER:  prov,
@@ -3886,7 +3983,7 @@ function injectHarnessRules() {
                     const targetPath = path.join(homeDir, dir);
                     // settings.json is merged separately below: a wholesale
                     // copy would clobber user-owned keys like enabledPlugins.
-                    const exclude = dir === '.claude' ? ['settings.json'] : [];
+                    const exclude = dir === '.claude' ? ['settings.json'] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
@@ -3898,11 +3995,107 @@ function injectHarnessRules() {
             const globalAgentsDir = path.join(os.homedir(), '.agents');
             const agentsDirSrc = path.join(srcDir, '.agents');
             if (fs.existsSync(agentsDirSrc)) {
-                copyDirRecursiveSync(agentsDirSrc, globalAgentsDir);
+                copyDirRecursiveSync(agentsDirSrc, globalAgentsDir, AGENTS_COPY_EXCLUDE);
                 log.step(`Synced global .agents/ to ${globalAgentsDir}`);
             }
         }, 'agents.md and workflows/startcycle.md may be missing globally.');
     }
+}
+
+// Optional third-party OpenCode components. Off unless named in
+// AOS_OPENCODE_OPTIONAL=ponytail,loop,rtk or --opencode-optional=ponytail,loop,rtk.
+// Pinned entries only; the foreign installers (opencode-loop's npx installer, rtk init)
+// are never run because they rewrite the user's opencode config.
+const OPENCODE_OPTIONAL_PINS = {
+    ponytail: '@dietrichgebert/ponytail@4.10.0',
+    loop: '@bybrawe/opencode-loop@0.6.2',
+};
+const OPENCODE_RTK_HINT = 'rtk is not installed by AOS. Run yourself: brew install rtk && rtk init -g --opencode';
+const OPENCODE_LOOP_SHELL_WARNING = 'opencode-loop: /loop-shell style commands run shell commands as child processes. ' +
+    'tool.execute.before, and so the AOS go-gate, may never see them (unverified). ' +
+    'Do not schedule git push, publish or other gated commands through them.';
+
+function parseOpencodeOptional(argv = process.argv, env = process.env) {
+    const flag = argv.find((a) => a.startsWith('--opencode-optional='));
+    const raw = [env.AOS_OPENCODE_OPTIONAL, flag && flag.slice('--opencode-optional='.length)].filter(Boolean).join(',');
+    return new Set(raw.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
+}
+
+const pluginPackageName = (entry) => {
+    const str = typeof entry === 'string' ? entry : (Array.isArray(entry) ? String(entry[0]) : '');
+    return str.replace(/(?<=.)@[^@/]*$/, '');
+};
+
+// OpenCode auto-loads plugins/*.js and also loads plugin[] paths, then dedupes by file
+// URL (verified in the 1.18.30 binary strings, not by running it). Same path = one load;
+// a second differing spelling would load the gate and loop keeper twice.
+function warnOnDuplicateAosPlugin(plugins, canonical) {
+    const norm = (v) => String(Array.isArray(v) ? v[0] : v).replace(/\\/g, '/');
+    const others = plugins.filter((p) => /bdb-aos\.js$/.test(norm(p)) && norm(p) !== canonical);
+    if (others.length > 0) {
+        log.warn(`opencode.jsonc lists bdb-aos.js under another path (${others.map(norm).join(', ')}). ` +
+            `plugins/bdb-aos.js is auto-loaded too; remove the extra entry to avoid a double gate.`);
+    }
+}
+
+function appendOptionalOpencodePlugins(data, configPath, optional) {
+    const wanted = optional instanceof Set ? optional : new Set(optional || []);
+    for (const name of wanted) {
+        if (!(name in OPENCODE_OPTIONAL_PINS) && name !== 'rtk') log.warn(`Unknown OpenCode optional component "${name}" ignored.`);
+    }
+    if (wanted.has('rtk')) log.message(OPENCODE_RTK_HINT);
+    let backedUp = false;
+    for (const name of Object.keys(OPENCODE_OPTIONAL_PINS)) {
+        if (!wanted.has(name) || DRY_RUN) continue;
+        const pin = OPENCODE_OPTIONAL_PINS[name];
+        if (data.plugin.some((p) => pluginPackageName(p) === pluginPackageName(pin))) continue;
+        if (!backedUp && configPath && fs.existsSync(configPath)) {
+            const bak = `${configPath}.${timestamp}.bak`;
+            try { fs.copyFileSync(configPath, bak); backedUp = true; } catch (e) {
+                log.warn(`Could not back up ${configPath}, skipping optional ${name}: ${e.message}`);
+                continue;
+            }
+        }
+        data.plugin.push(pin);
+        log.step(`Added opt-in OpenCode plugin ${pin}`);
+    }
+    if (data.plugin.some((p) => pluginPackageName(p) === pluginPackageName(OPENCODE_OPTIONAL_PINS.loop))) {
+        log.warn(OPENCODE_LOOP_SHELL_WARNING);
+    }
+}
+
+// Idempotent and edit-safe: a file is overwritten only when it is absent, already
+// identical, or still byte-equal to what this installer last recorded. Anything else
+// (user edit, or an untracked file with the same name) is kept and the shipped copy
+// lands as <file>.new. Files the installer did not create are never removed.
+function installOpencodeCommands(srcDirPath, destDirPath) {
+    if (DRY_RUN) {
+        log.message(`[dry-run] install OpenCode commands: ${srcDirPath} -> ${destDirPath}`);
+        return;
+    }
+    const ownsManifest = !_sessionManifest;
+    const manifest = _sessionManifest || loadInstallManifest();
+    fs.mkdirSync(destDirPath, { recursive: true });
+    let wrote = 0;
+    for (const file of fs.readdirSync(srcDirPath)) {
+        const src = path.join(srcDirPath, file);
+        if (!fs.statSync(src).isFile()) continue;
+        const dest = path.join(destDirPath, file);
+        const srcHash = computeFileHash(src);
+        const diskHash = fs.existsSync(dest) ? computeFileHash(dest) : null;
+        if (diskHash === null || diskHash === srcHash || diskHash === manifest[dest]?.sha256) {
+            if (diskHash !== srcHash) { fs.copyFileSync(src, dest); wrote++; }
+            manifest[dest] = { path: dest, sha256: srcHash, version: pkg.version, installedAt: new Date().toISOString() };
+        } else {
+            fs.copyFileSync(src, `${dest}.new`);
+            keptUserEdits.push(dest);
+        }
+    }
+    if (ownsManifest) {
+        saveInstallManifest(manifest);
+        reportKeptUserEdits();
+    }
+    log.step(`OpenCode commands in ${destDirPath}: ${wrote} written`);
 }
 
 // Copy the OpenCode plugin + command payload and register both in
@@ -3915,7 +4108,7 @@ function injectHarnessRules() {
 // Sync merges MCP servers in the same pass and writes once). When `data` is
 // omitted the function loads and saves the config itself, which is what lets the
 // Quick Update path register the plugin as well as copy it.
-function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null } = {}) {
+function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null, optional = parseOpencodeOptional() } = {}) {
     const opencodeDir = configPath
         ? path.dirname(configPath)
         : (process.platform === 'win32'
@@ -3952,13 +4145,11 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         try { copyDirRecursiveSync(trailLibSrc, path.join(opencodeDir, 'plugins', 'lib')); } catch (e) { log.warn(`Could not install OpenCode plugin lib: ${e.message}`); }
     }
 
-    // Slash-command payloads. Without these the /startcycle-graph command has no
-    // native resolution and only survives as a raw-text match in the plugin.
+    // Slash-command payloads (/startcycle-graph and the generated /bdb-aos-<cmd> files).
     const commandsSrc = path.join(srcDir, '.opencode', 'commands');
     if (fs.existsSync(commandsSrc)) {
         try {
-            copyDirRecursiveSync(commandsSrc, path.join(opencodeDir, 'commands'));
-            log.step(`Installed OpenCode commands to ${path.join(opencodeDir, 'commands')}`);
+            installOpencodeCommands(commandsSrc, path.join(opencodeDir, 'commands'));
         } catch (e) {
             log.warn(`Could not install OpenCode commands: ${e.message}`);
         }
@@ -3985,6 +4176,8 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         return str.includes('bdb-aos');
     });
     if (!alreadyRegistered) data.plugin.push(pluginPathNormalized);
+    warnOnDuplicateAosPlugin(data.plugin, pluginPathNormalized);
+    appendOptionalOpencodePlugins(data, configPath, optional);
 
     // Skill paths. `.agents/skills` stays project-relative on purpose: it is the
     // per-project contract, and OpenCode resolves it against each project, so it
@@ -4150,7 +4343,7 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
@@ -4557,7 +4750,7 @@ function installProjectHarness() {
     installStep('copy .agents/ contract into project', () => {
         const agentsSrc = path.join(srcDir, '.agents');
         if (!fs.existsSync(agentsSrc)) throw new Error(`missing payload: ${agentsSrc}`);
-        copyDirRecursiveSync(agentsSrc, projectAgentsDir);
+        copyDirRecursiveSync(agentsSrc, projectAgentsDir, AGENTS_COPY_EXCLUDE);
         log.step(`Copied .agents/ contract to ${projectAgentsDir}`);
     }, 'graph.md / state.schema.json may be missing in the project.');
 
@@ -5669,6 +5862,15 @@ Commands:
 Options:
   -y, --yes        Non-interactive install (implied without a TTY)
   --dry-run        Show what would change
+  --opencode-optional=LIST
+                   Opt in to OpenCode extras (comma list: ponytail, loop, rtk), or set
+                   AOS_OPENCODE_OPTIONAL. Pinned plugin[] entries are appended after a
+                   config backup; rtk only prints a brew hint. Off by default. AOS never
+                   runs foreign installers and never touches OpenCode's mcp set.
+  --plugin-migration=off|check
+                   Skip (off) or only report (check) the bdb-aos plugin registration and
+                   removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.
+                   --dry-run implies check. Default: on.
   --verbose, -v    Verbose output
   -V, --version    Print the version and exit
   -h, --help       Print this help and exit`);
@@ -6036,45 +6238,7 @@ Options:
     const s = spinner();
     s.start(`Installing optimized skills${tier === '2' ? ' [Basic Tier]' : ''} to ${targets.length} target(s)...`);
 
-    for (const t of targets) {
-        if (mode === 'replace') {
-            moveIfExists(t.targetSkillDir, path.join(backupDir, `config_skills_backup_${t.value}`), `global config skills (${t.value})`);
-            moveIfExists(t.targetLegacyDir, path.join(backupDir, `legacy_skills_backup_${t.value}`), `legacy skills (${t.value})`);
-            moveIfExists(t.targetWorkspaceDir, path.join(backupDir, `workspace_skills_backup_${t.value}`), `workspace skills (${t.value})`);
-        }
-
-        installStep(`create the skill target directories (${t.value})`, () => {
-            fs.mkdirSync(t.targetSkillDir, { recursive: true });
-            retireObsoleteLegacyDir(t.targetLegacyDir);
-            fs.mkdirSync(t.targetWorkspaceDir, { recursive: true });
-        }, 'The skill copies below will most likely be skipped as well.');
-
-        if (fs.existsSync(skillsBase)) {
-            installStep(`install the skills (${t.value})`, () => {
-                const rawDirs = fs.readdirSync(skillsBase);
-                const dirs = rawDirs.sort((a, b) => {
-                    const aIsLeaf = fs.existsSync(path.join(skillsBase, a, 'SKILL.md'));
-                    const bIsLeaf = fs.existsSync(path.join(skillsBase, b, 'SKILL.md'));
-                    if (aIsLeaf && !bIsLeaf) return 1;
-                    if (!aIsLeaf && bIsLeaf) return -1;
-                    return 0;
-                });
-                for (const dir of dirs) {
-                    const fullPath = path.join(skillsBase, dir);
-                    if (!fs.statSync(fullPath).isDirectory()) continue;
-
-                    if (dir === 'global_legacy') {
-                        copyDirRecursiveSync(fullPath, t.targetLegacyDir, excludeSkills);
-                    } else if (dir === 'workspace_agents') {
-                        copyDirRecursiveSync(fullPath, t.targetWorkspaceDir, excludeSkills);
-                    } else {
-                        syncSkillEntry(fullPath, dir, t.targetSkillDir, excludeSkills);
-                    }
-                }
-                log.step(`Installed all global config & core skills to ${t.targetSkillDir}`);
-            }, 'The skills are missing or incomplete; the rest of the installation continues.');
-        }
-    }
+    installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBase });
 
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
@@ -6154,6 +6318,10 @@ module.exports = {
     mergeCodexTomlMcpServers,
     installGlobalHooks,
     installOpencodePlugin,
+    installOpencodeCommands,
+    parseOpencodeOptional,
+    pluginMigrationMode,
+    runPluginMigration,
     installProjectHarness,
     promptMcpSelection,
     mirrorMcpServersTo,
@@ -6166,6 +6334,9 @@ module.exports = {
     resolveFileConflict,
     buildKnownSourceHashes,
     initSessionManifest,
+    installTargetSkills,
+    stableOpenWikiScripts,
+    AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
     INSTALL_MANIFEST_PATH,

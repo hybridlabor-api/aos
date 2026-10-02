@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createStoreServer } from '../lib/store-ui/server.mjs';
@@ -87,4 +87,18 @@ test('no multi-file gating left in UI or server', () => {
     assert.doesNotMatch(readFileSync(join(root, f), 'utf8'), /multiFile|multi-file-skills|install incomplete/);
   }
   assert.ok(!existsSync(join(root, 'lib', 'store-ui', 'multi-file-skills.json')));
+});
+
+test('catalog feeds a Playbooks area with every pb-* skill and the UI renders it', async () => {
+  const d = await (await fetch(base + '/api/catalog')).json();
+  const dirs = readdirSync(join(root, 'skills', 'playbooks')).filter((n) => n.startsWith('pb-')).sort();
+  assert.deepEqual(d.playbooks.map((p) => p.name), dirs);
+  for (const p of d.playbooks) {
+    assert.ok(p.description && p.est_time && p.difficulty && Array.isArray(p.requires.skills), p.name);
+  }
+  const html = readFileSync(join(root, 'lib', 'store-ui', 'index.html'), 'utf8');
+  assert.match(html, /renderPlaybooks/);
+  assert.match(html, /chip\('tab','playbook'/);
+  const inline = html.match(/<script>([\s\S]*)<\/script>/)[1];
+  assert.doesNotThrow(() => new Function(inline));
 });

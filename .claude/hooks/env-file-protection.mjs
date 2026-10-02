@@ -20,7 +20,7 @@
 
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { basename } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 
 // Templates are committed on purpose and hold no live secret. Blocking them
 // would contradict this hook's own advice below ("write it to .env.example").
@@ -68,8 +68,26 @@ function reasonFor(filePath) {
   ].join("\n");
 }
 
+// The go-gate store (~/.aos/gate: modes and grants, ~/.aos/go: GO tokens) is
+// written only by the AOS hooks. Same honest limit as go-gate's Bash guard: a
+// same-uid agent running its own code can still write there; the store is
+// worthless without the matching human transcript entry the gate re-verifies.
+// /i: APFS and NTFS are case-insensitive, so ~/.AOS/Gate is the same directory.
+const GATE_STORE = /(?:^|[\\/])\.aos[\\/](?:gate|go)(?:[\\/]|$)/i;
+function gateStoreTarget(filePath) {
+  const abs = resolve(filePath.replace(/^~(?=\/|$)/, process.env.HOME || "~"));
+  let real = abs;
+  try { real = `${realpathSync(dirname(abs))}/${basename(abs)}`; } catch { /* parent missing: string check only */ }
+  let realFile = "";
+  try { realFile = realpathSync(abs); } catch { /* file does not exist yet */ } // a symlinked FILE pointing into the store
+  return GATE_STORE.test(abs) || GATE_STORE.test(real) || GATE_STORE.test(`${abs}/`) || (!!realFile && GATE_STORE.test(realFile));
+}
+
 export function envFileReason(filePath) {
   if (typeof filePath !== "string" || !filePath.trim()) return null;
+  if (gateStoreTarget(filePath)) {
+    return `Blocked by env-file-protection hook: ${filePath} is in the AOS go-gate store. Modes and grants are set only by the human typing a plain "gogate ..." message; agents may read the status, never write it.`;
+  }
   // basename(), so a path like /srv/app/.env matches but /srv/app/env-notes.md does not.
   const name = basename(filePath);
   return !ENV_FILE.test(name) || TEMPLATE_FILE.test(name) ? null : reasonFor(filePath);

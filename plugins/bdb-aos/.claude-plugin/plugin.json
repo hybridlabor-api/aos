@@ -121,6 +121,7 @@
     "./skills/global_config/github-workflow-automation",
     "./skills/global_config/go-concurrency-patterns",
     "./skills/global_config/go-playwright",
+    "./skills/global_config/gogate",
     "./skills/global_config/golang-pro",
     "./skills/global_config/grill-me",
     "./skills/global_config/grill-with-docs",
@@ -133,6 +134,7 @@
     "./skills/global_config/llm-prompt-optimizer",
     "./skills/global_config/llm-structured-output",
     "./skills/global_config/local-llm-expert",
+    "./skills/global_config/loop-templates",
     "./skills/global_config/makefile-generator",
     "./skills/global_config/makefile-validator",
     "./skills/global_config/mcp-manage",
@@ -281,5 +283,21 @@
     "./skills/workspace_agents/firecrawl-map",
     "./skills/workspace_agents/firecrawl-scrape",
     "./skills/workspace_agents/firecrawl-search"
+  ],
+  "commands": [
+    "./commands/brainstorm.md",
+    "./commands/doctor.md",
+    "./commands/graph.md",
+    "./commands/init.md",
+    "./commands/loop.md",
+    "./commands/mastersession.md",
+    "./commands/memb.md",
+    "./commands/orchestrator.md",
+    "./commands/plan.md",
+    "./commands/playbooks.md",
+    "./commands/setup.md",
+    "./commands/shipping.md",
+    "./commands/startproject.md",
+    "./commands/store.md"
   ]
 }

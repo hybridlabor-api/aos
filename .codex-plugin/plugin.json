@@ -1,8 +1,38 @@
 {
-  "name": "bdb-dev-optimized-agent-skills",
-  "version": "2.3.0",
-  "description": "BDB DEV Optimized Agent Skills and MCP pack for Codex CLI, Claude, Cursor and Antigravity",
-  "author": "hybridlabor-api",
-  "skills_dir": "./skills/global_config",
-  "mcp_config": "./.codex-plugin/.mcp.json"
+  "name": "bdb-aos",
+  "version": "4.15.0",
+  "description": "Full BDB Agent OS suite for Codex: command entry points ($bdb-aos:setup, $bdb-aos:init, ...) generated from plugin-commands.json.",
+  "author": {
+    "name": "Tim Rennings / Hybridlabor Global LLC",
+    "email": "hybridlabor@gmail.com"
+  },
+  "homepage": "https://github.com/hybridlabor-api/aos",
+  "repository": "https://github.com/hybridlabor-api/aos",
+  "license": "Apache-2.0",
+  "keywords": [
+    "skills",
+    "agent-os",
+    "cicd",
+    "multiagent",
+    "startcycle",
+    "bdb"
+  ],
+  "skills": "./plugins/bdb-aos-codex/skills/",
+  "interface": {
+    "displayName": "BDB Agent OS",
+    "shortDescription": "AOS commands for setup, planning and pipelines",
+    "longDescription": "Entry-point skills for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the startcycle pipelines.",
+    "developerName": "Hybridlabor Global LLC",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/hybridlabor-api/aos",
+    "defaultPrompt": [
+      "$bdb-aos:setup",
+      "$bdb-aos:doctor"
+    ]
+  }
 }

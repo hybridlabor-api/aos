@@ -1,0 +1,144 @@
+{
+  "commands": {
+    "setup": {
+      "description": "Bring this machine to a complete, verified AOS installation (skills, MCP servers, gate hooks, memB, OpenWiki, Synapse).",
+      "skills": [
+        "aos-setup"
+      ],
+      "bodies": {
+        "claude": "Run the `aos-setup` skill for this machine. Report what is installed, what was repaired and what is still missing. Arguments: $ARGUMENTS"
+      }
+    },
+    "init": {
+      "description": "Set up the current project folder for AOS: slug, wiki, memory, Synapse map, AGENTS.md.",
+      "skills": [
+        "aos-project-init"
+      ],
+      "bodies": {
+        "claude": "Run the `aos-project-init` skill for the current project folder. This is project setup, not machine setup (that is `/bdb-aos:setup`). Arguments: $ARGUMENTS"
+      }
+    },
+    "doctor": {
+      "description": "Check the machine and the current project, and print suggested permissions.allow entries without writing any settings.",
+      "skills": [
+        "aos-project-init"
+      ],
+      "bodies": {
+        "claude": "Run `aos-doctor` (machine check) and report the result. If the current folder is an AOS project, also run the project check `node <aos-project-init skill dir>/scripts/aos-project-doctor.mjs` (it covers `.aos/project.json`, AGENTS.md and the wiki). Print suggested `permissions.allow` entries as text for the human to copy. Never write to settings.json or settings.local.json. Arguments: $ARGUMENTS"
+      }
+    },
+    "store": {
+      "description": "Browse and preview AOS skills, agents and playbooks in the local store UI.",
+      "skills": [
+        "aos-store"
+      ],
+      "bodies": {
+        "claude": "Start the `aos-store` interface. Preview freely, but install nothing until the human says yes for that specific item. Arguments: $ARGUMENTS"
+      }
+    },
+    "mastersession": {
+      "description": "Supervise other Claude Code sessions on this machine: roster, status requests, GO board, idle notices.",
+      "skills": [
+        "master-session"
+      ],
+      "bodies": {
+        "claude": "Act as the master session with the `master-session` skill (ACP bridge: `bin/aos-acp.mjs`, see docs/master-session-acp.md). Keep the overview, relay the human's decisions, never decide for the human. Arguments: $ARGUMENTS"
+      }
+    },
+    "orchestrator": {
+      "description": "Coordinate parallel coding agents across repositories through the AO daemon.",
+      "skills": [
+        "ao-orchestrator"
+      ],
+      "bodies": {
+        "claude": "Use the `ao-orchestrator` skill. It needs the AO daemon; check that it is running first and stop with a clear message if not. Do not confuse it with `agent-orchestrator`. Arguments: $ARGUMENTS"
+      }
+    },
+    "plan": {
+      "description": "Plan end to end: draft, render in plan-canvas or Plan Builder, annotate, await approval, then hand off.",
+      "skills": [
+        "concise-planning",
+        "visual-plan",
+        "plan-canvas",
+        "writing-plans"
+      ],
+      "bodies": {
+        "claude": "Run the full planning pipeline: 1) draft the plan with `concise-planning`; 2) always offer the choice between plan-canvas and Plan Builder (`visual-plan`) for rendering; 3) collect annotations and wait for the human's approval; 4) only after approval continue with `writing-plans` or `/bdb-aos:graph`. Topic: $ARGUMENTS"
+      }
+    },
+    "brainstorm": {
+      "description": "Brainstorm a topic with the matching skill: bdbrainstorm, bdbmediastorm for event tech, grill-me for a stress test.",
+      "skills": [
+        "bdbrainstorm",
+        "bdbmediastorm",
+        "grill-me"
+      ],
+      "bodies": {
+        "claude": "Pick by topic: `bdbmediastorm` for live event technology and show control, `grill-me` when the human wants an existing idea stress-tested, `bdbrainstorm` otherwise. Say which one you chose. Topic: $ARGUMENTS"
+      }
+    },
+    "startproject": {
+      "description": "Start a new composition: project init, brainstorm, then ask whether graph or startcycle follows.",
+      "skills": [
+        "aos-project-init",
+        "bdbrainstorm",
+        "startcycle-graph",
+        "startcycle"
+      ],
+      "bodies": {
+        "claude": "Sequence: 1) `aos-project-init`; 2) `bdbrainstorm`; 3) stop and ask the human whether `/bdb-aos:graph` (startcycle-graph) or `startcycle` follows. Do not start a pipeline on your own. Idea: $ARGUMENTS"
+      }
+    },
+    "graph": {
+      "description": "Run the startcycle-graph pipeline: durable state, repair loop, quality gate, escalation.",
+      "skills": [
+        "startcycle-graph"
+      ],
+      "bodies": {
+        "claude": "Run the `startcycle-graph` skill; its contract defines the flow. Task: $ARGUMENTS"
+      }
+    },
+    "shipping": {
+      "description": "Pre-ship framing and the technical release gate, with approvals under the go-gate rules.",
+      "skills": [
+        "bdb-shipping-skill",
+        "godmode-shipping"
+      ],
+      "bodies": {
+        "claude": "Use `bdb-shipping-skill` for the pre-flight and `godmode-shipping` for the gate. The playbook `pb-ship` can drive the whole flow. Push, merge and publish need the human's GO under the go-gate rules; never request one on the human's behalf. Arguments: $ARGUMENTS"
+      }
+    },
+    "memb": {
+      "description": "Query or store long-term memory with memB.",
+      "skills": [
+        "memb-skill",
+        "memb-ingest"
+      ],
+      "bodies": {
+        "claude": "Use `memb-skill` to search or remember and `memb-ingest` to import material. Never store secrets, tokens or credentials. Arguments: $ARGUMENTS"
+      }
+    },
+    "playbooks": {
+      "description": "List all pb-* playbooks with duration, difficulty and requirements, and start one.",
+      "skills": [
+        "pb-*",
+        "bdb-aos"
+      ],
+      "bodies": {
+        "claude": "Run `node <bdb-aos skill dir>/scripts/list-playbooks.mjs` and show its output (name, est_time, difficulty, requires of every `pb-*` skill). If the human names a playbook in the arguments or picks one, start that `pb-*` skill; start nothing otherwise. Each playbook keeps its own go-gate points. Arguments: $ARGUMENTS"
+      }
+    },
+    "loop": {
+      "description": "Run a prompt repeatedly on an interval, using the harness built-in plus loop templates.",
+      "skills": [
+        "loop-templates"
+      ],
+      "bodies": {
+        "claude": "Use the built-in `/loop <interval> <prompt>` (omit the interval to self-pace). Offer a `loop-templates` template when the human has no prompt yet. Safety: a loop prompt never issues a GO, never types or runs `gogate`, never sets a mode or grant, and never merges, pushes or publishes unless a valid grant covers the action. Act on a guarded step only if the human's immediately preceding message is a literal GO or a valid grant covers it; a loop iteration never satisfies the first condition, so it must STOP and report instead of continuing a blocked guarded step. Templates (CI until green, follow a PR to merge, review rounds until no blockers, daily session summary) live in the `loop-templates` skill with run and duration limits and a stop condition each. Arguments: $ARGUMENTS",
+        "opencode": "OpenCode has no built-in loop. Use `opencode-loop`, the opt-in package (AOS_OPENCODE_OPTIONAL=loop, see docs/opencode-setup.md); without it, say so and stop. Do not schedule gated commands through its shell loop. Offer a `loop-templates` template when the human has no prompt yet. Safety: a loop prompt never issues a GO, never types or runs `gogate`, never sets a mode or grant, and never merges, pushes or publishes unless a valid grant covers the action. Act on a guarded step only if the human's immediately preceding message is a literal GO or a valid grant covers it; a loop iteration never satisfies the first condition, so it must STOP and report instead of continuing a blocked guarded step. Templates (CI until green, follow a PR to merge, review rounds until no blockers, daily session summary) live in the `loop-templates` skill with run and duration limits and a stop condition each. Arguments: $ARGUMENTS",
+        "codex": "Codex has no /loop. Use `/goal` with the filled `loop-templates` template as the goal, keeping its limits and stop condition. Codex /goal is unverified in AOS docs; confirm with `codex --help`. Safety: a loop prompt never issues a GO, never types or runs `gogate`, never sets a mode or grant, and never merges, pushes or publishes unless a valid grant covers the action. Act on a guarded step only if the human's immediately preceding message is a literal GO or a valid grant covers it; a loop iteration never satisfies the first condition, so it must STOP and report instead of continuing a blocked guarded step. Templates (CI until green, follow a PR to merge, review rounds until no blockers, daily session summary) live in the `loop-templates` skill with run and duration limits and a stop condition each. Arguments: whatever the user wrote after the command name",
+        "agy": "Unverified, no loop mechanism confirmed for agy. Manual repeat: fill a `loop-templates` template, re-send it yourself at each interval, and stop at its limits or stop condition. Safety: a loop prompt never issues a GO, never types or runs `gogate`, never sets a mode or grant, and never merges, pushes or publishes unless a valid grant covers the action. Act on a guarded step only if the human's immediately preceding message is a literal GO or a valid grant covers it; a loop iteration never satisfies the first condition, so it must STOP and report instead of continuing a blocked guarded step. Templates (CI until green, follow a PR to merge, review rounds until no blockers, daily session summary) live in the `loop-templates` skill with run and duration limits and a stop condition each. Arguments: whatever the user wrote after the command name"
+      }
+    }
+  }
+}

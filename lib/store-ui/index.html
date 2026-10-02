@@ -73,7 +73,7 @@ const uniq=f=>[...new Set(S.data.items.map(f))].sort();
 const count=(f,v)=>base().filter(i=>f(i)===v).length;
 const chip=(a,v,label,n)=>`<button class="chip" aria-pressed="${S[a]===v}" data-a="${a}" data-v="${esc(v)}">${esc(label)}<b>${n}</b></button>`;
 function strip(){const all=S.data.items;return `<div class="strip"><div><strong>${all.length}</strong><small>total</small></div>${uniq(i=>i.source).map(s=>`<div><strong>${all.filter(i=>i.source===s).length}</strong><small>${esc(s)}</small></div>`).join('')}</div>`}
-function tabs(){const n=base(),ic=n.filter(i=>i.installed).length,k=x=>S.data.items.filter(i=>i.kind===x).length;return `<div class="tabs">${chip('tab','skill','Skills',k('skill'))}${chip('tab','agent','Agents',k('agent'))}<span style="width:1rem"></span>${chip('sub','installed','Installed',ic)}${chip('sub','discover','Discover',n.length-ic)}</div>`}
+function tabs(){const n=base(),ic=n.filter(i=>i.installed).length,k=x=>S.data.items.filter(i=>i.kind===x).length;return `<div class="tabs">${chip('tab','skill','Skills',k('skill'))}${chip('tab','agent','Agents',k('agent'))}${chip('tab','playbook','Playbooks',S.data.playbooks.length)}${S.tab==='playbook'?'':`<span style="width:1rem"></span>${chip('sub','installed','Installed',ic)}${chip('sub','discover','Discover',n.length-ic)}`}</div>`}
 const scopeToggle=()=>`<div class="scope"><span class="kicker" style="margin:0">Scope</span>${chip('scope','global','Global','')}${chip('scope','project','Project','')}</div>`;
 function act(i){
   if(i.core) return '<span class="state">AOS Core</span>';
@@ -88,7 +88,15 @@ function row(i){
   if(open){const d=i.core?i.description:S.detail[k];h+=`<div class="detail">${d===undefined?'Loading...':esc(d)}</div>`}
   return h+'</div>';
 }
+function pbRow(p){return `<div class="rowwrap"><div class="row"><span class="dot g"></span><span class="n">${esc(p.name)}</span><span class="d" style="color:var(--muted)">${esc(p.description)}<br><small>Requires: ${esc(reqLabel(p.requires)||'nothing')}</small></span><span class="c cat">${esc(p.difficulty)}</span><span class="s src">${esc(p.est_time)}</span><span style="text-align:right"><span class="state">AOS Core</span></span></div></div>`}
+const reqLabel=r=>[...r.skills,...r.agents.map(a=>'agent:'+a),...r.mcps.map(m=>'mcp:'+m),...r.store.map(x=>'store:'+x)].join(', ');
+function renderPlaybooks(){
+  const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,q=S.q.toLowerCase(),l=S.data.playbooks.filter(p=>!q||(p.name+' '+p.description+' '+p.difficulty).toLowerCase().includes(q));
+  document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><input class="search" id="q" type="search" placeholder="Search playbooks" value="${esc(S.q)}" aria-label="Search">${tabs()}<p class="cmdnote">Playbooks ship with AOS Core. Start one with /bdb-aos:playbooks.</p></aside><section><p class="kicker">${l.length} of ${S.data.playbooks.length} playbooks</p><div class="row head"><span></span><span>name</span><span class="d">description</span><span class="c">difficulty</span><span class="s">est. time</span><span></span></div>${l.length?l.map(pbRow).join(''):'<div class="empty">No matches.</div>'}</section></div>`;
+  if(fq){const e=document.getElementById('q');e.focus();e.setSelectionRange(pos,pos)}
+}
 function render(){
+  if(S.tab==='playbook')return renderPlaybooks();
   const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,l=visible();
   document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><p class="kicker" style="margin:0">Active scope: ${S.scope==='global'?'Global (harness roots in ~)':'Project ('+esc(S.data.cwd)+')'}</p>${scopeToggle()}<input class="search" id="q" type="search" placeholder="Search ${S.tab}s" value="${esc(S.q)}" aria-label="Search">${tabs()}<div><p class="kicker">Category</p><div class="chips">${chip('cat','','all',base().length)}${uniq(i=>i.category).map(c=>chip('cat',c,c,count(i=>i.category,c))).join('')}</div></div><div><p class="kicker">Source</p><div class="chips">${chip('src','','all',base().length)}${uniq(i=>i.source).map(s=>chip('src',s,s,count(i=>i.source,s))).join('')}</div></div></aside><section><p class="kicker">${l.length} of ${base().length} ${S.tab}s</p>${strip()}<div class="row head"><span></span><span>name</span><span class="d">description</span><span class="c">category</span><span class="s">source</span><span style="text-align:right">state</span></div>${l.length?l.map(row).join(''):`<div class="empty">${S.sub==='installed'?'Nothing installed yet.':'No matches.'}</div>`}</section></div>`;
   if(fq){const q=document.getElementById('q');q.focus();q.setSelectionRange(pos,pos)}
