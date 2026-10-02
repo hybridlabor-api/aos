@@ -31,22 +31,23 @@ The `memb-mcp` server provides a standard Model Context Protocol (MCP) interface
 Saves a new fact, coding preference, or workaroud to the local SQLite database.
 *   **Parameters:**
     - `text` (string, required): The fact or guideline to store.
-    - `user_id` (string, optional, default: `"bdb_developer"`): Target user identifier.
-    - `category` (string, optional, default: `"godmode"`): Focus domain (options: `"godmode"`, `"media"`, `"web"`, `"software"`).
+    - `user_id` (string, optional): Owner of the row. Default: env `MEMB_USER_ID` (fallback `$USER`). Pass a group id from `MEMB_GROUP_IDS` only to write a shared group row on purpose.
+    - `category` (string, optional): Default `project_card` when `project_id` is set, else `task_learnings`. Options: `project_card`, `architecture_decisions`, `bug_fixes`, `coding_conventions`, `tooling_setup`, `anti_patterns`, `task_learnings`, `user_preferences`, `dependency_decisions`, `performance_findings`, `security_constraints`, `testing_patterns`, `data_model`, `api_contracts`, `deployment_runbook`, `team_norms`, `domain_glossary`, `godmode`.
     - `project_id` (string, optional): Active workspace folder to isolate search queries.
+    - `source`, `harness`, `session` (string, optional): Provenance, stored in the row metadata.
 
 ### 2. `search_memory`
 Queries both global `godmode` memory and the active `project_id` memories in parallel, returning semantic matches ranked by cosine similarity.
 *   **Parameters:**
     - `query` (string, required): Keyword or semantic question.
-    - `user_id` (string, optional, default: `"bdb_developer"`): Target user identifier.
+    - `user_id` (string, optional): Restrict to one owner id. Default: the user plus the group ids in `MEMB_GROUP_IDS` (default `bdb_developer`).
     - `limit` (integer, optional, default: `5`): Maximum matching memories to return.
     - `project_id` (string, optional): Active workspace folder.
 
 ### 3. `list_memories`
 Lists all memories currently registered in the database for the active user.
 *   **Parameters:**
-    - `user_id` (string, optional, default: `"bdb_developer"`): Target user.
+    - `user_id` (string, optional): Restrict to one owner id. Default: the user plus `MEMB_GROUP_IDS`.
     - `limit` (integer, optional, default: `50`): Maximum results.
 
 ### 4. `delete_memory`
