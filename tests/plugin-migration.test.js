@@ -13,7 +13,7 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 const tmps = [];
 after(() => { for (const d of tmps) fs.rmSync(d, { recursive: true, force: true }); });
 const home = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-c4-')); tmps.push(d); return d; };
-function seedInstalled(h, skills = ['a', 'b', 'x', 'startcycle']) {
+function seedInstalled(h, skills = ['a', 'b', 'x', 'startcycle', 'openwiki-skill']) {
   const installPath = path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '1.0.0');
   for (const s of skills) {
     fs.mkdirSync(path.join(installPath, 'skills', s), { recursive: true });
