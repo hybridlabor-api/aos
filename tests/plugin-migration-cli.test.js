@@ -53,6 +53,19 @@ function fake(h, { marketplaces = {}, plugins = {}, fail = {}, missing = false, 
   };
   return { runner, calls };
 }
+// Honest update log: the CLI exits 0 even when nothing newer exists.
+function staleUpdateRunner(h, { bumpTo }) {
+  const f = fake(h, { marketplaces: { 'bdb-marketplace': OWN }, plugins: { 'bdb-aos@bdb-marketplace': '1.0.0' } });
+  const inner = f.runner;
+  const state = { v: '1.0.0' };
+  const runner = (args, opts) => {
+    f.calls.push(`opts:${JSON.stringify(opts || null)}`);
+    if (args[1] === 'update') { state.v = bumpTo; return { ok: true }; }
+    if (args.join(' ') === 'plugin list') return { ok: true, stdout: PL_FIXTURE({ 'bdb-aos@bdb-marketplace': state.v }) };
+    return inner(args, opts);
+  };
+  return { runner, calls: f.calls };
+}
 const migrate = (h, manifest, extra) => pm.migrate({ home: h, manifest, detected: ['claudecode'], version: '9.9.9', ...extra });
 const mutating = (calls) => calls.filter((c) => /marketplace (add|remove)|plugin (install|update)/.test(c));
 
@@ -163,4 +176,44 @@ test('install reporting "already installed" with a non-zero exit is not a failur
 test('parseEntries ignores the claude.ai section', () => {
   const e = pm.parseEntries(MK_FIXTURE({ 'bdb-marketplace': OWN }));
   assert.deepEqual(e.map((x) => x.name), ['token-saver-marketplace', 'bdb-marketplace']);
+});
+
+test('update that changes nothing is logged as such, a real bump as updated (a -> b)', () => {
+  const h1 = home();
+  const same = staleUpdateRunner(h1, { bumpTo: '1.0.0' });
+  const r1 = migrate(h1, {}, { cli: same.runner });
+  assert.ok(r1.lines.some((l) => /stays at 1\.0\.0/.test(l)));
+  assert.ok(!r1.lines.some((l) => /updated \(/.test(l)));
+  const h2 = home();
+  const bump = staleUpdateRunner(h2, { bumpTo: '9.9.9' });
+  const r2 = migrate(h2, {}, { cli: bump.runner });
+  assert.ok(r2.lines.some((l) => /updated \(1\.0\.0 -> 9\.9\.9\)/.test(l)));
+});
+
+test('marketplace add gets the 300 s clone timeout and an announcement before it starts', () => {
+  const h = home();
+  const f = fake(h);
+  const seen = [];
+  const cli = (args, opts) => { seen.push([args.join(' '), opts && opts.timeout]); return f.runner(args, opts); };
+  const said = [];
+  migrate(h, seedLoose(h).manifest, { cli, announce: (m) => said.push(m) });
+  assert.equal(seen.find(([k]) => k.startsWith('plugin marketplace add'))[1], 300000);
+  assert.equal(seen.find(([k]) => k === 'plugin list')[1], undefined);
+  assert.match(said.join('\n'), /clones the repository, this can take a few minutes/);
+});
+
+test('CLAUDE_CONFIG_DIR is honoured for settings and plugin detection', () => {
+  const h = home(); const cfg = home();
+  process.env.CLAUDE_CONFIG_DIR = cfg;
+  try {
+    assert.equal(pm.claudeDir(h), cfg);
+    assert.equal(pm.registerClaude({ home: h }).ok, true);
+    assert.ok(fs.existsSync(path.join(cfg, 'settings.json')));
+    assert.ok(!fs.existsSync(path.join(h, '.claude', 'settings.json')));
+    assert.equal(pm.pluginInstalled(h), false);
+    const installPath = path.join(cfg, 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '1.0.0');
+    fs.mkdirSync(path.join(installPath, 'skills', 'a'), { recursive: true });
+    fs.writeFileSync(path.join(installPath, 'skills', 'a', 'SKILL.md'), 'a');
+    assert.equal(pm.pluginInstalled(h), true);
+  } finally { delete process.env.CLAUDE_CONFIG_DIR; }
 });

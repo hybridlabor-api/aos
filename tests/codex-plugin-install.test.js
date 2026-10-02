@@ -49,7 +49,38 @@ test('codex missing: skip with the exact commands', () => {
   const r = go(f, { hasCodex: () => false });
   assert.deepEqual(f.calls, []);
   assert.ok(r.ok);
-  assert.match(r.lines.join('\n'), /codex plugin marketplace add .*\n.*codex plugin add bdb-aos@bdb-aos/);
+  assert.equal(r.lines.length, 1);
+  assert.match(r.lines[0], /codex plugin marketplace add .* && codex plugin add bdb-aos@bdb-aos/);
+});
+
+test('a disabled plugin stays disabled: one line, no add', () => {
+  const f = fakeCodex({ marketplace: { sourceType: 'local', source: ROOT }, installed: '0.0.1' });
+  const run = (cmd, args) => {
+    const r = f.run(cmd, args);
+    if (args[1] === 'list') { const d = JSON.parse(r.stdout); d.installed.forEach((p) => { p.enabled = false; }); r.stdout = JSON.stringify(d); }
+    return r;
+  };
+  const res = go({ run, calls: f.calls });
+  assert.deepEqual(f.calls.filter((c) => !c.includes('list')), []);
+  assert.equal(res.lines.length, 1);
+  assert.match(res.lines[0], /disabled in Codex; leaving it disabled/);
+});
+
+test('an npx package root is never registered: GitHub source, vanishing local marketplace re-pointed', () => {
+  const npx = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-npx-'));
+  tmps.push(npx);
+  const pkg = path.join(npx, '_npx', 'abc123', 'node_modules', '@x', 'aos');
+  fs.mkdirSync(path.join(pkg, '.agents', 'plugins'), { recursive: true });
+  fs.writeFileSync(path.join(pkg, '.agents', 'plugins', 'marketplace.json'), '{}');
+  const f = fakeCodex({ marketplace: { sourceType: 'local', source: path.join(npx, '_npx', 'old', 'gone') }, installed: '0.0.1' });
+  const announced = [];
+  cp.installCodexPlugin({ home: home(), pkgRoot: pkg, version: V, run: f.run, hasCodex: () => true, announce: (m) => announced.push(m) });
+  const calls = f.calls.filter((c) => !c.includes('list'));
+  assert.deepEqual(calls, ['plugin marketplace remove bdb-aos', 'plugin marketplace add hybridlabor-api/aos', 'plugin add bdb-aos@bdb-aos']);
+  assert.ok(!calls.some((c) => c.includes('_npx')));
+  assert.match(announced.join('\n'), /fetching hybridlabor-api\/aos from GitHub.*few minutes/);
+  const miss = cp.installCodexPlugin({ home: home(), pkgRoot: pkg, version: V, run: f.run, hasCodex: () => false });
+  assert.ok(!miss.lines.join('').includes('_npx'));
 });
 
 test('fresh machine: marketplace add, plugin add, state recorded', () => {

@@ -82,10 +82,23 @@ test('no-op when current and enabled; no state written', () => {
     assert.ok(!stateOf(home));
 });
 
-test('enables a disabled plugin', () => {
-    const home = mk('h4'); const { runner, calls } = fakeRunner(home, { installedVersion: '1.0.0', enabled: false });
-    agy.run({ srcDir: fakePkg(), home, runner, log: logs().log });
-    assert.deepStrictEqual(calls, ['plugin list', 'plugin enable bdb-aos']);
+test('a disabled plugin stays disabled, even when the version differs', () => {
+    const home = mk('h4'); const { runner, calls } = fakeRunner(home, { installedVersion: '0.9.0', enabled: false }); const { l, log } = logs();
+    const r = agy.run({ srcDir: fakePkg(), home, runner, log });
+    assert.strictEqual(r.status, 'disabled');
+    assert.deepStrictEqual(calls, ['plugin list']);
+    assert.strictEqual(l.length, 1);
+    assert.match(l[0], /disabled in agy; leaving it disabled/);
+});
+
+test('npx package root: hints point at the GitHub repo, not the cache path', () => {
+    const home = mk('h4n'); const { runner } = fakeRunner(home, { missing: true }); const { l, log } = logs();
+    const src = path.join(mk('npxroot'), '_npx', 'abc', 'node_modules', 'aos');
+    fs.mkdirSync(src, { recursive: true });
+    fs.writeFileSync(path.join(src, 'plugin.json'), JSON.stringify({ name: 'bdb-aos', version: '1.0.0' }));
+    agy.run({ srcDir: src, home, runner, log });
+    assert.match(l[0], /git clone https:\/\/github\.com\/hybridlabor-api\/aos\.git/);
+    assert.ok(!l[0].includes('_npx'));
 });
 
 test('agy missing: skipped with the manual commands, no throw', () => {
