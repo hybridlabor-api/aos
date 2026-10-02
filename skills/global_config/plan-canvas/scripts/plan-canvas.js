@@ -50,6 +50,7 @@ const SAFE_REQUEST_PATHS = new Set([
   '/api/end'
 ]);
 const SESSION_REPLY_PATH = /^\/api\/session\/[a-f0-9]{12}\/(reply|typing)$/;
+const ANNOTATE_TOKEN_PATH = /^\/api\/annotate\/[a-f0-9]{12}\/token$/;
 
 function usage() {
   return [
@@ -62,6 +63,7 @@ function usage() {
     '  aos-plan-canvas new <template-id> <target-dir>  Copy a plan template into a new folder',
     '  aos-plan-canvas open <file>      Open (or resume) a review session',
     '  aos-plan-canvas trail <plan-dir|plan.mdx>  Write an agenttrail plan file from a plan folder',
+    '  aos-plan-canvas annotate <app-url>  Print the script tag that lets you annotate a running dev app',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
     '  aos-plan-canvas pending          Show feedback queued for no listener',
     '  aos-plan-canvas typing <file>    Show a thinking/typing indicator in chat',
@@ -79,6 +81,8 @@ function usage() {
     '                   refuses a non-empty target (exit 2)',
     '  trail: --out <file>   Output inside the workspace (default production_artifacts/00_execution_plan.md)',
     '         --force        Overwrite an existing output file',
+    '  annotate: --session <file>  Session file (default production_artifacts/canvas-annotations/<host>-<port>.md)',
+    '         --ttl-ms <n>   Token lifetime (default 8h, max 24h)',
     '  await: --reply <msg>  Show an agent reply in the canvas chat before waiting',
     '         --timeout-ms <n>  Return {status:"waiting"} after n ms (tests/debug only)',
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
@@ -121,7 +125,7 @@ function validateRequestPath(requestPath) {
   if (url.hostname !== DEFAULT_HOST) {
     throw new Error('plan-canvas request path must stay on the loopback server');
   }
-  if (!SAFE_REQUEST_PATHS.has(url.pathname) && !SESSION_REPLY_PATH.test(url.pathname)) {
+  if (!SAFE_REQUEST_PATHS.has(url.pathname) && !SESSION_REPLY_PATH.test(url.pathname) && !ANNOTATE_TOKEN_PATH.test(url.pathname)) {
     throw new Error(`unsupported plan-canvas request path: ${url.pathname}`);
   }
   return `${url.pathname}${url.search}`;
@@ -335,6 +339,49 @@ async function cmdOpen(file, args, { stateDir, port }) {
     next_step: built && built.warnings.length
       ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas await <dir>/plan.builder.html\` and leave it running.`
       : 'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
+  };
+}
+
+// Mint a token for a running dev app and print the snippet that loads the
+// annotation layer into it. The token is bound to the app's exact origin.
+async function cmdAnnotate(appUrl, args, context) {
+  const { normalizeOrigin } = require('./lib/plan-canvas/annotation-schema');
+  let origin = null;
+  try {
+    origin = normalizeOrigin(new URL(appUrl).origin);
+  } catch {
+    origin = null;
+  }
+  if (!origin) throw new Error('annotate requires a loopback app URL such as http://localhost:5173 (port 1024-65535)');
+  const ttlRaw = valueAfter(args, '--ttl-ms');
+  const ttlMs = ttlRaw === null ? undefined : Number(ttlRaw);
+  if (ttlMs !== undefined && !Number.isFinite(ttlMs)) throw new Error('--ttl-ms must be a number');
+
+  let file = valueAfter(args, '--session');
+  if (!file) {
+    const { hostname, port } = new URL(origin);
+    file = path.resolve('production_artifacts', 'canvas-annotations', `${hostname.replace(/[^\w.-]/g, '_')}-${port}.md`);
+    if (!fs.existsSync(file)) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `# Annotations for ${origin}\n`);
+    }
+  }
+  const opened = await cmdOpen(file, args, context);
+  if (opened.error || opened.status !== 'open') return opened;
+  const key = sessionKeyFor(canonicalizeArtifactPath(file));
+  const res = await request(context.port, 'POST', `/api/annotate/${key}/token`, {
+    origin,
+    ...(ttlMs === undefined ? {} : { ttlMs })
+  });
+  if (res.statusCode !== 200) throw new Error(res.body.error || `token request failed (HTTP ${res.statusCode})`);
+  return {
+    status: 'ready',
+    url: opened.url,
+    origin,
+    scriptTag: res.body.scriptTag,
+    bookmarklet: res.body.bookmarklet,
+    expiresAt: res.body.expiresAt,
+    next_step: `Add scriptTag to the dev app's index.html (or paste the bookmarklet), reload the app, press Alt+Shift+A to annotate, then run \`aos-plan-canvas await ${file}\`. The token only works from ${origin}; rerun annotate to rotate it.`
   };
 }
 
@@ -572,6 +619,11 @@ async function main(argv = process.argv.slice(2)) {
         output({ error: error.message });
         return 2;
       }
+    }
+    else if (command === 'annotate') {
+      const result = await cmdAnnotate(args[0], args, context);
+      output(result);
+      if (result.error) return 2;
     }
     else if (command === 'await') output(await cmdAwait(args[0], args, context));
     else if (command === 'pending') output(cmdPending(context));

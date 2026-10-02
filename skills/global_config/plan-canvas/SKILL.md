@@ -300,3 +300,16 @@ The BDB Launchpad shows a Plan Canvas card with a start command; `aos --autostar
 `metadata.version` above and the `VERSION` literal in
 `scripts/plan-canvas.js` are one value in two places — bump them together when
 the vendored JS changes, so a stale detached server restarts.
+
+## Annotate a running app
+
+Point at elements in your own dev app and send the notes to the agent, without leaving the app.
+
+```bash
+aos-plan-canvas annotate http://localhost:5173
+```
+
+- Prints `scriptTag` (add it to the app's `index.html`) and a `bookmarklet` (when you cannot edit the page). Press Alt+Shift+A in the app to annotate.
+- The token is bound to that exact origin, stored only as a SHA-256 hash, expires after 8 h (`--ttl-ms`, max 24 h) and dies with the session. Re-run `annotate` to rotate it.
+- The app endpoint accepts `annotation` items only; approval and chat can only come from the canvas page. App items arrive from `await` with `target.origin: "app"`.
+- Loopback origins only (`localhost`, `127.0.0.1`, `[::1]`, port 1024-65535). With a strict CSP the app must allow `script-src` and `connect-src` for the canvas origin.

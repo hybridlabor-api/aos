@@ -17,6 +17,7 @@ const http = require('http');
 const path = require('path');
 
 const { buildAllowedHostnames, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin } = require('../loopback-guard');
+const { createAnnotateHandler } = require('./annotate-server');
 const { renderMarkdown } = require('./markdown');
 const { artifactSdkJs } = require('./sdk');
 const {
@@ -165,11 +166,23 @@ function createPlanCanvasServer({
   typingExpiryMs = DEFAULT_TYPING_EXPIRY_MS,
   presenceSweepMs = DEFAULT_PRESENCE_SWEEP_MS,
   onIdleShutdown = null,
+  now = Date.now,
   log = () => {}
 } = {}) {
   if (!store) throw new Error('createPlanCanvasServer requires a session store');
 
   const allowedHostnames = buildAllowedHostnames(host);
+  const annotate = createAnnotateHandler({
+    store,
+    version,
+    now,
+    log,
+    onQueued: key => {
+      wake.emit(`wake:${key}`);
+      broadcast(key, 'chat-sync', { chat: store.get(key).chat });
+      broadcastPresence(key);
+    }
+  });
   const wake = new EventEmitter();
   wake.setMaxListeners(0);
   const sseClients = new Map(); // key -> Set<res>
@@ -584,11 +597,14 @@ function createPlanCanvasServer({
     if (!isAllowedHostHeader(req.headers.host, allowedHostnames)) {
       return sendJson(res, 403, { error: 'forbidden host header' });
     }
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const { pathname } = url;
+    // Annotate routes are called from a dev app on another loopback origin, so
+    // they do their own Origin/token checks instead of the same-origin gate.
+    if (annotate.handles(pathname)) return annotate.handle(req, res, url);
     if (!isAllowedOrigin(req.headers.origin, allowedHostnames, boundPort)) {
       return sendJson(res, 403, { error: 'forbidden origin' });
     }
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const { pathname } = url;
     // The artifact iframe is sandboxed without allow-same-origin, so its script
     // and asset loads arrive as Sec-Fetch-Site: cross-site. Only those read-only
     // static paths may skip the fetch-site check; everything else keeps it.
