@@ -3,6 +3,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import cp from 'node:child_process'
 
+// /whoami protocol: 2 = one map per repo (worktree lanes, /shutdown); daemons without it are older
+export const PROTOCOL = 2
+
 export const norm = p => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
 
 // AOS_TRAIL_PORTS="lo-hi" overrides the probed range (tests); default 5330-5344 like trail-relay.mjs

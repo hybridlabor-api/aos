@@ -50,7 +50,7 @@ function repoWithPlan(plan = PLAN) {
 }
 
 function fakeMap(port, repoPath) {
-  const s = http.createServer((req, res) => res.end(JSON.stringify({ project: 'x', port, repoPath })));
+  const s = http.createServer((req, res) => res.end(JSON.stringify({ protocol: 2, project: 'x', port, repoPath })));
   servers.push(s);
   return new Promise((resolve) => s.listen(port, '127.0.0.1', () => resolve(s)));
 }
