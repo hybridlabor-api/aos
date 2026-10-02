@@ -14,7 +14,7 @@ const readText = (f) => { if (!fs.statSync(path.join(root, f)).isFile()) return 
 // are design artifacts that describe the removal itself.
 const SKILL_NAME_EXCLUDED = new Set(['CHANGELOG.md', 'installer.js', 'lib/retired-skills.js', 'tests/no-builderio-visual.test.mjs', 'tests/retired-skills.test.mjs', 'tests/bdb-visual-edit.test.mjs',
   // the plan-canvas route id "visual-edit" is a live name, not the retired skill
-  'tests/bdb-visual-edit-locate.test.mjs', 'tests/plan-canvas-route.test.mjs', 'skills/global_config/bdb-visual-edit/SKILL.md',
+  'tests/bdb-visual-edit-locate.test.mjs', 'tests/plan-canvas-route.test.mjs', 'tests/plan-canvas-e2e-app.test.mjs', 'skills/global_config/bdb-visual-edit/SKILL.md',
   'skills/global_config/bdb-visual-edit/scripts/sanitize-element.mjs', 'skills/global_config/plan-canvas/SKILL.md',
   'skills/global_config/plan-canvas/scripts/plan-canvas.js', 'skills/global_config/plan-canvas/scripts/lib/plan-canvas/route.js']);
 const ARTIFACT_EXCLUDED = (f) => f.startsWith('production_artifacts/canvas-dispatcher/') || f.startsWith('production_artifacts/harness-audit/');

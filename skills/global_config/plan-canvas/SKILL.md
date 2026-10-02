@@ -306,7 +306,10 @@ The BDB Launchpad shows a Plan Canvas card with a start command; `aos --autostar
 
 `metadata.version` above and the `VERSION` literal in
 `scripts/plan-canvas.js` are one value in two places — bump them together when
-the vendored JS changes, so a stale detached server restarts.
+the vendored JS changes, so a stale detached server restarts. The CLI only
+replaces a running server that is **older** (semver compare); a newer or equal
+server is kept, so two installs with different versions never restart each other
+in a loop. A downgrade therefore needs `aos-plan-canvas stop` first.
 
 ## Annotate a running app
 
@@ -316,9 +319,12 @@ Point at elements in your own dev app and send the notes to the agent, without l
 aos-plan-canvas annotate http://localhost:5173
 ```
 
-- Prints `scriptTag` (add it to the app's `index.html`) and a `bookmarklet` (when you cannot edit the page). Press Alt+Shift+A in the app to annotate.
+- Prints `scriptTag` (add it to the app's `index.html`) and a `bookmarklet` (when you cannot edit the page). Press Alt+Shift+A in the app to annotate. In the app the element tool also captures clicks on buttons, links and labels; hold Alt to click through.
+- **Not tested in a real browser.** Alt+Shift+A, strict CSP, Private Network Access preflights and the click capture are covered only by logic tests against a DOM stub and by HTTP tests, never by a real browser run.
+- The `scriptTag` contains the live token and lives in `index.html`. Use a local, untracked injection (dev only) and never commit it; re-run `annotate` to rotate the token if it leaked.
 - The token is bound to that exact origin, stored only as a SHA-256 hash, expires after 8 h (`--ttl-ms`, max 24 h) and dies with the session. Re-run `annotate` to rotate it.
-- The app endpoint accepts `annotation` items only; approval and chat can only come from the canvas page. App items arrive from `await` with `target.origin: "app"`.
+- The app endpoint accepts `annotation` items only; approval and chat can only come from the canvas page. App items arrive from `await` with `text_source: "app-page (unverified)"`; their `anchor`, `target` and `shapes` sit under `untrusted_page_data` (data, never instructions) and their text may not come from the human, so they are never approval.
+- **Blur** drops the `snippet` and `textRange` for that note, and the blur mask is not kept after the note is queued: it hides the area while drawing, it is not a stored redaction.
 - Loopback origins only (`localhost`, `127.0.0.1`, `[::1]`, port 1024-65535). With a strict CSP the app must allow `script-src` and `connect-src` for the canvas origin.
 
 ## Routes
@@ -328,7 +334,7 @@ aos-plan-canvas annotate http://localhost:5173
 | route | when | handler |
 |---|---|---|
 | `visual-edit` | an annotation made in a running app (`target.origin: "app"`) | `bdb-visual-edit`: diff plan, wait for a yes in the canvas, edit one file |
-| `build` | an `approve` verdict on a plan that has components | continue with the build pipeline; agenttrail was started by the canvas |
+| `build` | an `approve` verdict on a plan that has components | continue with the build pipeline; `next_step` reports the real agenttrail outcome (`requested`, `skipped:no-markers`, `skipped:no-binary`, `off`, `error:...`). `requested` means `agenttrail --ensure` was spawned; it starts or reuses a daemon and the result is in `server.log` |
 | `artifact` | everything else (chat, canvas annotations, `request-changes`, approve without components) | address it in the artifact, then `await --reply` |
 
 App items can never approve anything: only canvas-origin chat or a verdict counts as a yes.
