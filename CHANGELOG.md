@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.17.0](https://github.com/hybridlabor-api/aos/compare/v4.16.0...v4.17.0) (2026-10-02)
+
+
+### Features
+
+* **plugin:** bdb-aos plugin for all harnesses, go-gate modes, playbooks and loop ([#126](https://github.com/hybridlabor-api/aos/issues/126)) ([78a30bb](https://github.com/hybridlabor-api/aos/commit/78a30bbeb3d97790242cdf8279942b60f84b45ae))
+
+
+### Bug Fixes
+
+* **installer:** aos version and aos help print and exit instead of installing ([#127](https://github.com/hybridlabor-api/aos/issues/127)) ([5f69ee3](https://github.com/hybridlabor-api/aos/commit/5f69ee37987909be7b263593e0a96ead52b2d9b1))
+
 ## [4.16.0](https://github.com/hybridlabor-api/aos/compare/v4.15.0...v4.16.0) (2026-10-01)
 
 
