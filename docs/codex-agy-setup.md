@@ -28,3 +28,13 @@ Measured with agy 1.2.14 in a sandbox HOME:
 - **Invoke:** `/bdb-aos:<cmd>`, for example `/bdb-aos:setup`.
 - **Bodies:** commands reuse `commands/<cmd>.md`. A command with `bodies.agy` is written to `agy-commands/<cmd>.md` and wired instead.
 - **Tests:** `node --test tests/agy-plugin-install.test.js` (fake runner); `AOS_E2E_CLI=1` adds a sandbox run against the real agy CLI.
+
+## agy hooks (`hooks.json`)
+
+agy's own hooks doc (embedded in the binary) defines the format: each **top-level key of `hooks.json` is a named hook** holding `PreToolUse`/`PostToolUse` (grouped: `matcher` + `hooks`) and `PreInvocation`/`PostInvocation`/`Stop` (flat handler lists). The installer writes six named hooks to `~/.gemini/config/hooks.json` (and `antigravity-cli/hooks.json` when present): `aos-go-gate` (pre-tool, blocking), `aos-conventional-commits`, `aos-env-protection`, `aos-trail-relay` (pre-tool + stop, fails open), `aos-graph-gate` (stop), `aos-context` (pre-invocation). Older AOS versions put everything under one name, `hooks`; the installer strips its handlers from it, keeps foreign ones, and removes it when empty.
+
+Measured with agy 1.2.14 (sandbox HOME, `agy -p x --log-file <f>` with no login, so no model call):
+- The log line `hooks_manager.go:53] loaded N named hooks from M hooks.json file(s)` counts top-level keys. The old lump gave `1 named hooks`, which is what Yola's Windows log showed; the new layout gives `6`. The `skipping component ... "command_assessor" is empty` lines belong to agy's own built-in assessor hook (`command_assessor_hook_external.go` in the binary), not to AOS.
+- On its first start agy migrates `antigravity-cli/hooks.json` over `config/hooks.json` and replaces the former with a symlink. The installer writes through such a link instead of replacing it.
+- Not measured: agy actually firing a hook and honouring `deny`, and the exact tool names agy matches for file edits (the `aos-env-protection` matcher lists the known names). Both need a model turn. The written `go-gate` command is exercised by the test suite the way agy runs it (`sh -c`, cwd = the hooks.json folder, camelCase payload on stdin) and answers `deny`/`allow` in agy's contract. cwd is taken from agy's doc, not measured.
+- Check on your machine: `agy -p x --log-file /tmp/agy.log` (login prompt appears, nothing is sent), then `grep hooks_manager /tmp/agy.log`.

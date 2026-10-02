@@ -4502,7 +4502,7 @@ function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
             Object.values(v).forEach(walk);
         }
     };
-    walk(data && data.hooks);
+    walk(data);
     const [shell, flag] = process.platform === 'win32' ? ['cmd', '/c'] : ['sh', '-c'];
     const failures = [];
     for (const command of [...new Set(commands)]) {
@@ -4537,58 +4537,65 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
     const cmd = (dir, script, args = '') => agyHookCommand(baseDir, path.join(dir, script), args);
     // Observability hooks must never block a tool call when they cannot start.
     const obs = (dir, script, args = '') => cmd(dir, script, `${args} || exit 0`);
+    // agy's hooks.json: each top-level key is a NAMED hook ({PreToolUse|PostToolUse: grouped with matcher,
+    // PreInvocation|PostInvocation|Stop: flat handler lists}). Measured on agy 1.2.14: `loaded N named hooks`
+    // counts these keys, so AOS gets one name per concern instead of one lump called "hooks".
+    const fileTools = 'file_change|code_action|propose_code|write_blob|write_to_file|replace_file_content|multi_replace_file_content|edit_notebook|write_file|edit_file|replace|Write|Edit|MultiEdit';
     const bdbHooks = {
-        PreToolUse: [
-            {
-                matcher: "run_command|Bash",
-                hooks: [
-                    { type: "command", command: cmd(hooksDir, 'go-gate.mjs'), timeout: 10 },
-                    { type: "command", command: cmd(hooksDir, 'conventional-commits.mjs'), timeout: 10 }
-                ]
-            },
-            {
-                matcher: "write_file|edit_file|replace|Write|Edit|MultiEdit",
-                hooks: [{ type: "command", command: cmd(hooksDir, 'env-file-protection.mjs'), timeout: 10 }]
-            },
-            {
-                matcher: "*",
-                hooks: [{ type: "command", command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 2 }]
-            }
-        ],
-        Stop: [
-            { type: "command", command: cmd(hooksDir, 'graph-gate.mjs'), timeout: 10 },
-            { type: "command", command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 2 }
-        ],
-        PreInvocation: [
-            { type: "command", command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
-            { type: "command", command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
-        ]
+        'aos-go-gate': {
+            PreToolUse: [{ matcher: 'run_command|Bash', hooks: [{ type: 'command', command: cmd(hooksDir, 'go-gate.mjs'), timeout: 10 }] }]
+        },
+        'aos-conventional-commits': {
+            PreToolUse: [{ matcher: 'run_command|Bash', hooks: [{ type: 'command', command: cmd(hooksDir, 'conventional-commits.mjs'), timeout: 10 }] }]
+        },
+        'aos-env-protection': {
+            PreToolUse: [{ matcher: fileTools, hooks: [{ type: 'command', command: cmd(hooksDir, 'env-file-protection.mjs'), timeout: 10 }] }]
+        },
+        'aos-trail-relay': {
+            PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 2 }] }],
+            Stop: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 2 }]
+        },
+        'aos-graph-gate': {
+            Stop: [{ type: 'command', command: cmd(hooksDir, 'graph-gate.mjs'), timeout: 10 }]
+        },
+        'aos-context': {
+            PreInvocation: [
+                { type: 'command', command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
+                { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
+            ]
+        }
     };
 
-    // Drops BDB handlers (old wrapped or current shape), keeps foreign ones, and
-    // rewraps flat events so previously written `{ hooks: [...] }` entries migrate.
-    const keepForeign = (event, entries) => {
-        const out = [];
-        for (const e of Array.isArray(entries) ? entries : []) {
-            const nested = e && Array.isArray(e.hooks);
-            if (bdbHooks[event][0].hooks) {
-                if (!nested) { if (!isBdbHandler(e)) out.push(e); continue; }
-                const kept = e.hooks.filter((h) => !isBdbHandler(h));
-                if (kept.length) out.push({ ...e, hooks: kept });
-            } else {
-                out.push(...(nested ? e.hooks : [e]).filter((h) => !isBdbHandler(h)));
+    // Earlier AOS versions wrote all handlers under one named hook called "hooks" (old wrapped shapes
+    // included). Strip the BDB handlers out of it, keep foreign ones, and drop it when nothing is left.
+    const flatEvents = ['PreInvocation', 'PostInvocation', 'Stop'];
+    const stripLegacy = (spec) => {
+        if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return spec;
+        const out = {};
+        for (const [event, entries] of Object.entries(spec)) {
+            if (!Array.isArray(entries)) { out[event] = entries; continue; }
+            const kept = [];
+            for (const e of entries) {
+                if (e && Array.isArray(e.hooks)) {
+                    const rest = e.hooks.filter((h) => !isBdbHandler(h));
+                    // Flat events hold handlers directly; the old wrapped form is unwrapped.
+                    if (rest.length) { if (flatEvents.includes(event)) kept.push(...rest); else kept.push({ ...e, hooks: rest }); }
+                } else if (!isBdbHandler(e)) kept.push(e);
             }
+            if (kept.length) out[event] = kept;
         }
         return out;
     };
 
     const buildMerged = (existing) => {
-        const merged = existing && typeof existing === 'object' ? existing : {};
-        merged.hooks = merged.hooks && typeof merged.hooks === 'object' ? merged.hooks : {};
-        for (const [event, entries] of Object.entries(bdbHooks)) {
-            merged.hooks[event] = [...keepForeign(event, merged.hooks[event]), ...entries];
+        const merged = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+        if ('hooks' in merged) {
+            const rest = stripLegacy(merged.hooks);
+            const hasEvents = rest && typeof rest === 'object' && Object.keys(rest).some((k) => Array.isArray(rest[k]));
+            if (hasEvents) merged.hooks = rest; else delete merged.hooks;
         }
-        return merged;
+        for (const name of Object.keys(bdbHooks)) delete merged[name];
+        return { ...merged, ...bdbHooks };
     };
 
     let existing = null;
@@ -4619,9 +4626,12 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
     try {
         fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
         const previousRaw = existing ? fs.readFileSync(hooksPath, 'utf8') : null;
-        const tmpPath = `${hooksPath}.${process.pid}.tmp`;
+        // agy links antigravity-cli/hooks.json to config/hooks.json on first start; write through the link.
+        let writeTarget = hooksPath;
+        try { writeTarget = fs.realpathSync(hooksPath); } catch { /* not there yet */ }
+        const tmpPath = `${writeTarget}.${process.pid}.tmp`;
         fs.writeFileSync(tmpPath, JSON.stringify(buildMerged(existing), null, 2) + '\n');
-        fs.renameSync(tmpPath, hooksPath);
+        fs.renameSync(tmpPath, writeTarget);
         if (!DRY_RUN) {
             const failures = selfCheckAgyHooks(hooksPath, selfCheck);
             if (failures.length) {

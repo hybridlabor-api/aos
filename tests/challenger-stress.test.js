@@ -104,7 +104,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         assert.ok(hasBackup || hasSidecar, 'Should handle 0-byte file via safe backup or sidecar');
         if (hasSidecar) {
             const sidecarContent = JSON.parse(fs.readFileSync(`${hooksPath}.bdb-new.json`, 'utf8'));
-            assert.ok(sidecarContent.hooks.PreToolUse, 'Sidecar must contain valid hooks');
+            assert.ok(sidecarContent['aos-go-gate'].PreToolUse, 'Sidecar must contain valid hooks');
         }
     });
 
@@ -180,7 +180,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         // PreToolUse should have user tool preserved and BDB go-gate added
         const preTools = updated.hooks.PreToolUse;
         assert.ok(preTools.some(h => h.matcher === 'custom_tool'), 'User custom_tool hook must be preserved');
-        assert.ok(preTools.some(h => h.matcher === 'run_command|Bash'), 'BDB go-gate must be wired');
+        assert.ok(updated['aos-go-gate'].PreToolUse.some(h => h.matcher === 'run_command|Bash'), 'BDB go-gate must be wired as a named hook');
     });
 
     test('mergeAntigravityHooks: idempotency across 5 repeated merge cycles', () => {
@@ -195,9 +195,8 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
 
         const final = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
         // PreToolUse and Stop each carry two AOS entries (gate + trail-relay); what must hold is that re-runs add none.
-        assert.strictEqual(final.hooks.PreToolUse.length, once.hooks.PreToolUse.length, 'PreToolUse must not duplicate on repeated runs');
-        assert.strictEqual(final.hooks.Stop.length, once.hooks.Stop.length, 'Stop must not duplicate on repeated runs');
-        assert.strictEqual(final.hooks.PreInvocation.length, 1, 'PreInvocation must not duplicate on repeated runs');
+        assert.deepStrictEqual(final, once, 'repeated runs must not change the file');
+        assert.strictEqual(final['aos-context'].PreInvocation.length, 2, 'PreInvocation must not duplicate on repeated runs');
     });
 
     // --- Codex config.toml tests ---
