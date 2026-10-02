@@ -264,7 +264,7 @@ test('an existing external_directory is kept and noted', () => {
   const r = install(h.home, { optional: null, env: permEnv });
   assert.equal(readCfg(h.cfg).permission.external_directory, 'allow');
   assert.match(r.out, /left untouched/);
-  assert.equal(h.baks().length, 0);
+  assert.equal(h.baks().length, 1, 'only the plugin-registration rewrite is backed up; the permission code adds none');
 });
 
 test('a string-shorthand permission is refused, not clobbered', () => {
@@ -283,5 +283,5 @@ test('JSONC input is parsed; unparseable config is refused', () => {
   const bad = permHome(null, '{ "model": ');
   const r = install(bad.home, { optional: null, env: permEnv });
   assert.match(r.out, /Could not parse/);
-  assert.equal(readCfg(bad.cfg).permission, undefined);
+  assert.equal(fs.readFileSync(bad.cfg, 'utf8'), '{ "model": ', 'an unparseable config is left byte-identical, never rewritten as {}');
 });

@@ -310,14 +310,85 @@ function describeJsonParseError(filePath) {
     }
 }
 
+// Comment and trailing-comma stripper that respects string literals and escapes, so
+// "file:///x.js" and "http://host" survive. Returns text JSON.parse can read (or reject).
+function stripJsonc(text) {
+    const src = String(text).replace(/^\uFEFF/, '');
+    let out = '';
+    for (let i = 0; i < src.length;) {
+        const c = src[i];
+        if (c === '"') {
+            let j = i + 1;
+            while (j < src.length && src[j] !== '"') j += src[j] === '\\' ? 2 : 1;
+            out += src.slice(i, j + 1);
+            i = j + 1;
+        } else if (c === '/' && src[i + 1] === '/') {
+            while (i < src.length && src[i] !== '\n' && src[i] !== '\r') i++;
+        } else if (c === '/' && src[i + 1] === '*') {
+            const end = src.indexOf('*/', i + 2);
+            i = end < 0 ? src.length : end + 2;
+            out += ' ';
+        } else { out += c; i++; }
+    }
+    let res = '';
+    for (let i = 0; i < out.length;) {
+        const c = out[i];
+        if (c === '"') {
+            let j = i + 1;
+            while (j < out.length && out[j] !== '"') j += out[j] === '\\' ? 2 : 1;
+            res += out.slice(i, j + 1);
+            i = j + 1;
+        } else if (c === ',') {
+            let k = i + 1;
+            while (k < out.length && /\s/.test(out[k])) k++;
+            if (out[k] !== '}' && out[k] !== ']') res += c;
+            i++;
+        } else { res += c; i++; }
+    }
+    return res;
+}
+
 function readJsoncFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
-    let raw = fs.readFileSync(filePath, 'utf8');
-    if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
-    raw = raw.replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/(^|[^:])\/\/.*$/gm, '$1')
-        .replace(/,\s*([}\]])/g, '$1');
-    try { return JSON.parse(raw); } catch (e) { return null; }
+    try { return JSON.parse(stripJsonc(readTextFile(filePath))); } catch (e) { return null; }
+}
+
+// For callers that WRITE the file back. state: 'missing' | 'empty' | 'ok' | 'invalid'. A parse failure
+// is never an empty object: data is only set for missing, empty and a valid JSON object.
+function loadJsonConfig(filePath) {
+    if (!fs.existsSync(filePath)) return { state: 'missing', data: {} };
+    let raw;
+    try { raw = readTextFile(filePath); } catch (e) { return { state: 'invalid', data: null, error: e.message }; }
+    if (!raw.trim()) return { state: 'empty', data: {} };
+    try {
+        const data = JSON.parse(stripJsonc(raw));
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return { state: 'invalid', data: null, error: 'not a JSON object' };
+        return { state: 'ok', data };
+    } catch (e) { return { state: 'invalid', data: null, error: e.message }; }
+}
+
+// The file is left untouched; one warning, never a failed install.
+function warnUnparseable(filePath, what, loaded) {
+    log.warn(`Could not parse ${filePath} (${loaded.error}); left untouched, ${what} skipped. Fix or remove the file and run the installer again.`);
+}
+
+// Writes `data` over an existing config only when it changed (`before` = JSON.stringify of the parsed original, null for none), after a backup.
+function writeConfigWithBackup(filePath, data, before) {
+    const serialized = JSON.stringify(data, null, 2);
+    if (before !== null && before === JSON.stringify(data)) {
+        try { fs.chmodSync(filePath, 0o600); } catch (e) { logDebug(e, 'chmod config'); }
+        return false;
+    }
+    if (fs.existsSync(filePath)) {
+        try { fs.copyFileSync(filePath, `${filePath}.${timestamp}.bak`); } catch (e) {
+            log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
+            return false;
+        }
+    }
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, serialized, { mode: 0o600 });
+    try { fs.chmodSync(filePath, 0o600); } catch (e) { logDebug(e, 'chmod config'); }
+    return true;
 }
 
 function readJsonFile(filePath) {
@@ -4109,7 +4180,8 @@ function applyOpencodePermission(data, configPath, wanted) {
         return;
     }
     if (configPath && fs.existsSync(configPath)) {
-        if (readJsoncFile(configPath) === null) {
+        const loaded = loadJsonConfig(configPath);
+        if (loaded.state === 'invalid') {
             log.warn(`Could not parse ${configPath}; permission.external_directory not set.`);
             return;
         }
@@ -4263,7 +4335,9 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     let beforeSerialized = null;
     if (ownsWrite) {
         if (!configPath) return data;
-        const existing = readJsoncFile(configPath) || {};
+        const loaded = loadJsonConfig(configPath);
+        if (loaded.state === 'invalid') { warnUnparseable(configPath, 'OpenCode plugin registration', loaded); return null; }
+        const existing = loaded.data;
         // Snapshot before mutating: `data` becomes the same object, so
         // comparing afterwards would always report "unchanged".
         beforeSerialized = JSON.stringify(existing, null, 2);
@@ -4307,6 +4381,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         const serialized = JSON.stringify(data, null, 2);
         if (beforeSerialized === serialized) return data;
         try {
+            if (fs.existsSync(configPath)) fs.copyFileSync(configPath, `${configPath}.${timestamp}.bak`);
             fs.mkdirSync(path.dirname(configPath), { recursive: true });
             fs.writeFileSync(configPath, serialized, { mode: 0o600 });
             try { fs.chmodSync(configPath, 0o600); } catch (e) { logDebug(e, 'chmod opencode config'); }
@@ -5676,100 +5751,101 @@ function generateAndOpenLaunchpad(installedModules = []) {
     return true;
 }
 
+function syncMcpConfigFile(targetPath, masterMcpData) {
+    try {
+        const loaded = loadJsonConfig(targetPath);
+        if (loaded.state === 'invalid') { warnUnparseable(targetPath, 'MCP sync', loaded); return; }
+        const before = loaded.state === 'ok' ? JSON.stringify(loaded.data) : null;
+        const data = loaded.data;
+        if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
+        if (masterMcpData.mcpServers) {
+            for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
+                data.mcpServers[key] = val;
+            }
+        }
+        writeConfigWithBackup(targetPath, data, before);
+    } catch (e) {
+        log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
+    }
+}
+
+function syncOpencodeConfigFile(targetPath, masterMcpData) {
+    try {
+        const loaded = loadJsonConfig(targetPath);
+        if (loaded.state === 'invalid') { warnUnparseable(targetPath, 'OpenCode MCP and plugin sync', loaded); return; }
+        const existing = loaded.state === 'ok' ? loaded.data : null;
+        const before = existing ? JSON.stringify(existing) : null;
+        const data = existing && existing.mcp ? existing : Object.assign({}, existing || {}, { mcp: {} });
+        if (masterMcpData.mcpServers) {
+            // OpenCode provider APIs (e.g. OpenAI-compatible, Console) enforce tool name length limits
+            // (e.g. max 64 chars) and context limits. Loading 20+ MCPs causes provider errors (e.g. 73-char tool names).
+            // OpenCode uses a slim profile: only core servers (memb_mcp, zavora_computer_use) are enabled by default.
+            const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use', 'deja']);
+            const existingMcp = existing && existing.mcp ? existing.mcp : {};
+            const hasExistingKeys = Object.keys(existingMcp).length > 0;
+
+            for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
+                const rawCmd = Array.isArray(val.command) ? val.command : [val.command];
+                const rawArgs = Array.isArray(val.args) ? val.args : [];
+                const fullCmd = [...rawCmd, ...rawArgs].map(c => {
+                    if (c === '__PYTHON_BIN__') {
+                        return process.platform === 'win32'
+                            ? path.join(homeDir, '.gemini', 'config', 'mcps', 'memb-mcp', '.venv', 'Scripts', 'python.exe')
+                            : path.join(homeDir, '.gemini', 'config', 'mcps', 'memb-mcp', '.venv', 'bin', 'python');
+                    }
+                    return c;
+                });
+
+                const existingEntry = existingMcp[key];
+
+                // If existing config is intentionally slimmed (has keys, but omitted this one), don't resurrect unless in slim set
+                if (hasExistingKeys && !existingEntry && !OPENCODE_DEFAULT_SLIM.has(key)) {
+                    continue;
+                }
+
+                // Preserve user's explicit enabled/disabled setting; otherwise default to true only for slim set
+                const isEnabled = existingEntry && typeof existingEntry.enabled === 'boolean'
+                    ? existingEntry.enabled
+                    : OPENCODE_DEFAULT_SLIM.has(key);
+
+                let envObj = val.environment || val.env;
+                if (envObj) {
+                    envObj = Object.assign({}, envObj);
+                    for (const [eKey, eVal] of Object.entries(envObj)) {
+                        if (eVal === '__GEMINI_API_KEY__') {
+                            envObj[eKey] = '${GEMINI_API_KEY}';
+                        }
+                    }
+                }
+
+                data.mcp[key] = {
+                    type: "local",
+                    command: fullCmd,
+                    enabled: isEnabled,
+                    ...(envObj ? { environment: envObj } : {})
+                };
+            }
+        }
+
+        // Wire BDB AOS Plugin for OpenCode. `data` is handed in because this
+        // function owns the write -- it merges MCP servers in the same pass.
+        // homeDir matches how the opencode harness entry builds its path.
+        installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
+
+        writeConfigWithBackup(targetPath, data, before);
+    } catch (e) {
+        log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
+    }
+}
+
 async function universalHarnessSync(primaryMcpConfigPath, installedModules = []) {
     log.info('Universal Agent Harness Sync...');
     const detections = detectPlatforms();
     let masterMcpData = {};
     try { masterMcpData = JSON.parse(fs.readFileSync(primaryMcpConfigPath, 'utf8')); } catch (e) { logDebug(e, 'operation'); }
 
-    const syncMcpConfig = (targetPath) => {
-        try {
-            let data = { mcpServers: {} };
-            const existing = readJsonFile(targetPath);
-            if (existing) {
-                data = existing;
-                if (!data.mcpServers) data.mcpServers = {};
-            }
-            if (masterMcpData.mcpServers) {
-                for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
-                    data.mcpServers[key] = val;
-                }
-            }
-            fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-            fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), { mode: 0o600 });
-            try { fs.chmodSync(targetPath, 0o600); } catch (e) { logDebug(e, 'chmod targetPath'); }
-        } catch (e) {
-            log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
-        }
-    };
-
-    const syncOpencodeConfig = (targetPath) => {
-        try {
-            const existing = readJsoncFile(targetPath);
-            const data = existing && existing.mcp ? existing : Object.assign({}, existing || {}, { mcp: {} });
-            if (masterMcpData.mcpServers) {
-                // OpenCode provider APIs (e.g. OpenAI-compatible, Console) enforce tool name length limits
-                // (e.g. max 64 chars) and context limits. Loading 20+ MCPs causes provider errors (e.g. 73-char tool names).
-                // OpenCode uses a slim profile: only core servers (memb_mcp, zavora_computer_use) are enabled by default.
-                const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use', 'deja']);
-                const existingMcp = existing && existing.mcp ? existing.mcp : {};
-                const hasExistingKeys = Object.keys(existingMcp).length > 0;
-
-                for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
-                    const rawCmd = Array.isArray(val.command) ? val.command : [val.command];
-                    const rawArgs = Array.isArray(val.args) ? val.args : [];
-                    const fullCmd = [...rawCmd, ...rawArgs].map(c => {
-                        if (c === '__PYTHON_BIN__') {
-                            return process.platform === 'win32'
-                                ? path.join(homeDir, '.gemini', 'config', 'mcps', 'memb-mcp', '.venv', 'Scripts', 'python.exe')
-                                : path.join(homeDir, '.gemini', 'config', 'mcps', 'memb-mcp', '.venv', 'bin', 'python');
-                        }
-                        return c;
-                    });
-
-                    const existingEntry = existingMcp[key];
-
-                    // If existing config is intentionally slimmed (has keys, but omitted this one), don't resurrect unless in slim set
-                    if (hasExistingKeys && !existingEntry && !OPENCODE_DEFAULT_SLIM.has(key)) {
-                        continue;
-                    }
-
-                    // Preserve user's explicit enabled/disabled setting; otherwise default to true only for slim set
-                    const isEnabled = existingEntry && typeof existingEntry.enabled === 'boolean'
-                        ? existingEntry.enabled
-                        : OPENCODE_DEFAULT_SLIM.has(key);
-
-                    let envObj = val.environment || val.env;
-                    if (envObj) {
-                        envObj = Object.assign({}, envObj);
-                        for (const [eKey, eVal] of Object.entries(envObj)) {
-                            if (eVal === '__GEMINI_API_KEY__') {
-                                envObj[eKey] = '${GEMINI_API_KEY}';
-                            }
-                        }
-                    }
-
-                    data.mcp[key] = {
-                        type: "local",
-                        command: fullCmd,
-                        enabled: isEnabled,
-                        ...(envObj ? { environment: envObj } : {})
-                    };
-                }
-            }
-
-            // Wire BDB AOS Plugin for OpenCode. `data` is handed in because this
-            // function owns the write -- it merges MCP servers in the same pass.
-            // homeDir matches how the opencode harness entry builds its path.
-            installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
-
-            fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-            fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), { mode: 0o600 });
-            try { fs.chmodSync(targetPath, 0o600); } catch (e) { logDebug(e, 'chmod targetPath'); }
-        } catch (e) {
-            log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
-        }
-    };
+    const syncMcpConfig = (targetPath) => syncMcpConfigFile(targetPath, masterMcpData);
+    const syncOpencodeConfig = (targetPath) => syncOpencodeConfigFile(targetPath, masterMcpData);
 
     for (const d of detections) {
         log.step(`Injecting MCP engines into ${d.name}...`);
@@ -6498,6 +6574,10 @@ module.exports = {
     codexGateSnippet,
     CODEX_GATE_NOTICE,
     installOpencodePlugin,
+    stripJsonc,
+    syncMcpConfigFile,
+    syncOpencodeConfigFile,
+    loadJsonConfig,
     installOpencodeCommands,
     parseOpencodeOptional,
     maybeInstallCodenotch,
