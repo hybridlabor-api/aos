@@ -1,6 +1,6 @@
 {
   "name": "bdb-aos",
-  "version": "4.17.0",
+  "version": "4.18.0",
   "description": "Full BDB Agent OS suite for Codex: command entry points ($bdb-aos:setup, $bdb-aos:init, ...) generated from plugin-commands.json.",
   "author": {
     "name": "Tim Rennings / Hybridlabor Global LLC",

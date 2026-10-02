@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.18.0](https://github.com/hybridlabor-api/aos/compare/v4.17.0...v4.18.0) (2026-10-02)
+
+
+### Features
+
+* **canvas:** plan-canvas as annotation dispatcher, agenttrail one map per repo ([#129](https://github.com/hybridlabor-api/aos/issues/129)) ([f7823dc](https://github.com/hybridlabor-api/aos/commit/f7823dccd21d4ddab93368b7c3762858b49e3d80))
+* **coordination:** depth limit, go-check for AO, routing docs ([#132](https://github.com/hybridlabor-api/aos/issues/132)) ([81c4404](https://github.com/hybridlabor-api/aos/commit/81c44045a461ab40f3207b0aee16cb221090f7e7))
+* **installer:** install BDB AO Codenotch on macOS and Windows by default (opt-out) ([#133](https://github.com/hybridlabor-api/aos/issues/133)) ([97f4fdb](https://github.com/hybridlabor-api/aos/commit/97f4fdbca82e5d585ebdd602ad9e42d5e8106626))
+* **installer:** opt-in OpenCode permission.external_directory for AOS paths ([#130](https://github.com/hybridlabor-api/aos/issues/130)) ([a41ccae](https://github.com/hybridlabor-api/aos/commit/a41ccaefe1ef1b72e25a8584a55d58bea9634dcd))
+* **memb:** ambient project memory in the inject hook ([#131](https://github.com/hybridlabor-api/aos/issues/131)) ([257ce53](https://github.com/hybridlabor-api/aos/commit/257ce5360be2fc14e7eb15779fd414644ac74cc8))
+
 ## [4.17.0](https://github.com/hybridlabor-api/aos/compare/v4.16.0...v4.17.0) (2026-10-02)
 
 
