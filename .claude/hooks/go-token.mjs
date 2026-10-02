@@ -3,11 +3,11 @@
 // master session, record a single-use token that go-gate.mjs in <session-name>
 // accepts. Writes nothing else and never blocks the prompt.
 
-import { readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, realpathSync, readdirSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { slug } from "./go-gate.mjs";
+import { slug, TOKEN_TTL_MS } from "./go-gate.mjs";
 
 function sessionName(transcriptPath) {
   let name = "";
@@ -24,6 +24,20 @@ function sessionName(transcriptPath) {
   return name || process.env.AOS_SESSION_NAME || "";
 }
 
+// Expired or unreadable tokens are never read again by anyone, so a write is the moment to drop them.
+export function pruneExpiredTokens(dir, now = Date.now()) {
+  let files = [];
+  try { files = readdirSync(dir).filter((f) => f.endsWith(".token")); } catch { return 0; }
+  let removed = 0;
+  for (const f of files) {
+    let age = NaN;
+    try { age = now - Date.parse(JSON.parse(readFileSync(join(dir, f), "utf8"))?.issued_at); } catch { /* unreadable: drop */ }
+    if (age >= 0 && age < TOKEN_TTL_MS) continue;
+    try { unlinkSync(join(dir, f)); removed++; } catch { /* already gone */ }
+  }
+  return removed;
+}
+
 // Returns the token path, or null. Never throws. An aos-acp worker is a worker
 // by definition and must not mint a token for itself.
 export function issueGoToken(prompt, { transcript_path, session_id, message_id } = {}) {
@@ -38,6 +52,7 @@ export function issueGoToken(prompt, { transcript_path, session_id, message_id }
     if (!target || !tok) return null;
     const dir = join(homedir(), ".aos", "go");
     mkdirSync(dir, { recursive: true });
+    pruneExpiredTokens(dir);
     const file = join(dir, `${target}.token`);
     writeFileSync(file, JSON.stringify(tok));
     return file;

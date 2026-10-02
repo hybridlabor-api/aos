@@ -68,17 +68,21 @@ export function touchSession(name, pid = process.pid) {
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
 
-export function listSessions() {
+// prune: also delete registrations that are dead, stale or corrupt (registration files only, never inboxes).
+export function listSessions({ prune = false } = {}) {
   const dir = join(homedir(), ".aos", "bus", "sessions");
   const out = [];
   let files = [];
   try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch { /* none */ }
   for (const f of files) {
+    const file = join(dir, f);
+    let live = false;
     try {
-      const file = join(dir, f);
       const r = JSON.parse(readFileSync(file, "utf8"));
-      if (Number.isInteger(r.pid) && alive(r.pid) && Date.now() - lstatSync(file).mtimeMs < STALE_MS) out.push(r);
+      live = Number.isInteger(r.pid) && alive(r.pid) && Date.now() - lstatSync(file).mtimeMs < STALE_MS;
+      if (live) out.push(r);
     } catch { /* corrupt entry */ }
+    if (prune && !live) { try { unlinkSync(file); } catch { /* already gone */ } }
   }
   return out;
 }
@@ -134,7 +138,7 @@ if (isMain()) {
     if (cmd === "send" && words.length >= 2) {
       console.log(sendMessage(words[0], words.slice(1).join(" "), opts));
     } else if (cmd === "list") {
-      for (const s of listSessions()) console.log(`${s.name}\tpid ${s.pid}\t${s.cwd}`);
+      for (const s of listSessions({ prune: true })) console.log(`${s.name}\tpid ${s.pid}\t${s.cwd}`);
     } else {
       console.error("usage: aos-bus send <name> <text...> [--from x] [--wake] | aos-bus list");
       process.exit(2);
