@@ -282,5 +282,22 @@
     "./skills/workspace_agents/firecrawl-map",
     "./skills/workspace_agents/firecrawl-scrape",
     "./skills/workspace_agents/firecrawl-search"
+  ],
+  "commands": [
+    "./commands/brainstorm.md",
+    "./commands/doctor.md",
+    "./commands/gogate.md",
+    "./commands/graph.md",
+    "./commands/init.md",
+    "./commands/loop.md",
+    "./commands/mastersession.md",
+    "./commands/memb.md",
+    "./commands/orchestrator.md",
+    "./commands/plan.md",
+    "./commands/playbooks.md",
+    "./commands/setup.md",
+    "./commands/shipping.md",
+    "./commands/startproject.md",
+    "./commands/store.md"
   ]
 }
