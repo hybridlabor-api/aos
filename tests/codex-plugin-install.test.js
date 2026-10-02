@@ -214,3 +214,37 @@ test('E2E with the real codex CLI in a temp HOME (AOS_E2E_CLI=1)', { skip: proce
   assert.ok(un.changed, un.lines.join('\n'));
   assert.equal(JSON.parse(real('codex', ['plugin', 'list', '--json']).stdout.replace(/^[^{]*/, '')).installed.length, 0);
 });
+
+test('M8: a plugin and marketplace the user had before AOS are never recorded as AOS-owned', () => {
+  const h = home();
+  const f = fakeCodex({ marketplace: { sourceType: 'local', source: ROOT }, installed: '0.0.1' });
+  const r = go(f, { home: h });
+  assert.ok(r.record);
+  assert.ok(!r.record.installedPlugin && !r.record.addedMarketplace);
+  f.calls.length = 0;
+  const u = cp.uninstallCodexPlugin({ home: h, run: f.run, hasCodex: () => true });
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(u.lines, []);
+});
+
+test('M8: marketplace the user added stays theirs when only the plugin is missing; AOS-added plugin is recorded', () => {
+  const h = home();
+  const f = fakeCodex({ marketplace: { sourceType: 'local', source: ROOT } });
+  const r = go(f, { home: h });
+  assert.equal(r.record.installedPlugin, true);
+  assert.ok(!r.record.addedMarketplace);
+  f.calls.length = 0;
+  cp.uninstallCodexPlugin({ home: h, run: f.run, hasCodex: () => true });
+  assert.deepEqual(f.calls, ['plugin remove bdb-aos@bdb-aos']);
+});
+
+test('M8: a later upgrade run keeps the ownership AOS recorded on the first run', () => {
+  const h = home();
+  const f = fakeCodex();
+  go(f, { home: h });
+  f.st.installed = '0.0.1';
+  go(f, { home: h });
+  const state = JSON.parse(fs.readFileSync(cp.statePath(h), 'utf8'));
+  assert.equal(state.installedPlugin, true);
+  assert.equal(state.addedMarketplace, true);
+});
