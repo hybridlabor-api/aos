@@ -1,6 +1,6 @@
 # Emit dev-only `data-aos-src` in a Vite + React project
 
-`bdb-visual-edit` maps a click to `path:line` through a `data-aos-src` attribute. It must exist in dev builds only. This is a recipe, not a package: copy the plugin into your project.
+`bdb-visual-edit` maps an annotated element to `path:line` through a `data-aos-src` attribute. It must exist in dev builds only. This is a recipe, not a package: copy the plugin into your project.
 
 ## Vite plugin (dev only)
 
@@ -39,7 +39,7 @@ export default { plugins: [aosSrc(), react()] };
 
 Notes and limits:
 
-- The line is where the opening tag starts. Regex-based, so a `<div` inside a string or a comment gets an attribute too; harmless in dev, wrong only if you click that exact text.
+- The line is where the opening tag starts. Regex-based, so a `<div` inside a string or a comment gets an attribute too; harmless in dev, wrong only if you annotate that exact text.
 - Components (`<Card />`) get no attribute; the host element inside the component does, which is the file you want to edit.
 - A Babel or SWC JSX-source plugin is the more precise alternative if the project already runs one. Verify its version first (React 19 removed `_debugSource`).
 - The path is project-relative with forward slashes. Never emit absolute paths: they leak the username and fail the sanitiser.

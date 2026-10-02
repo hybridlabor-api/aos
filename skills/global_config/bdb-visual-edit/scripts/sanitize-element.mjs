@@ -23,7 +23,7 @@ export const INSTRUCTIONS_FOR_AGENT =
 
 const own = (obj, key) => (obj !== null && typeof obj === 'object' && Object.hasOwn(obj, key) ? obj[key] : undefined);
 
-function cleanClasses(value) {
+export function cleanClasses(value) {
   if (!Array.isArray(value)) return [];
   const out = [];
   for (let i = 0; i < Math.min(value.length, MAX_SCAN) && out.length < MAX_CLASSES; i++) {
@@ -71,6 +71,26 @@ export function sanitizeElement(raw) {
   const bbox = cleanBbox(own(raw, 'bbox'));
   if (bbox) out.bbox = bbox;
   return out;
+}
+
+const SNIPPET_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/** Visible text hint from the page: control and bidi characters stripped, at most 200 chars. */
+export function cleanSnippet(value) {
+  return typeof value === 'string' ? value.replace(SNIPPET_RE, '').slice(0, 200) : '';
+}
+
+/** Maps a canvas annotation item (route visual-edit) to the sanitiser's input shape. */
+export function fromAnnotation(item) {
+  const anchor = own(item, 'anchor');
+  const page = own(item, 'page');
+  return sanitizeElement({
+    tag: own(anchor, 'tag'),
+    classes: own(anchor, 'classes'),
+    srcLoc: own(own(item, 'target'), 'srcLoc'),
+    selector: own(anchor, 'selector'),
+    bbox: page && { x: own(page, 'x'), y: own(page, 'y'), width: own(page, 'w'), height: own(page, 'h') },
+  });
 }
 
 /** Fixed envelope; the human's own words stay in a separate field. */
