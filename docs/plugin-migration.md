@@ -55,5 +55,7 @@ aos-uninstall                           # also removes the plugin registration i
 - The lock guards migrations only. An installer copy running at the same moment in another process is not serialized; a file removed under it is skipped, and the next run reconciles.
 - Until Claude Code shows the plugin as installed, both copies exist; skills may then appear twice after the plugin loads and before the next installer run retires the copies.
 - `aos-doctor` accepts the plugin evidence as Claude having the skills.
+- A deregister that reverses a marketplace rename keeps the content of `enabledPlugins` but may reorder its keys (cosmetic).
+- Restoring a backup after an uninstall creates a new install manifest and puts the legacy `~/.claude/skills/startcycle` marker back, so AOS is detected as installed again.
 
 Backups survive uninstall (the state keeps its backup index and `~/.agents/backups/plugin-migration-*` is scanned), so `--restore-plugin-backup` also works afterwards. Restored files are recorded in the install manifest, and the restore deregisters the plugin so skills are not loaded twice; the restore also sets `bdb-aos@bdb-marketplace` to `false` in `settings.json` (the opt-out), so the next installer run does not register the plugin or retire the restored files. Set it back to `true` to migrate again.
