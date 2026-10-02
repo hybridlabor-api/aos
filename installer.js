@@ -4765,25 +4765,38 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     };
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
     const blockRegex = /# AOS:MCP:START[\s\S]*?# AOS:MCP:END\n?/;
-    const outside = content.replace(blockRegex, '');
+    const PLACEHOLDER = '# AOS:MCP:PLACEHOLDER';
+    const hadBlock = blockRegex.test(content);
+    const rows = (name, cfg) => [`[mcp_servers.${tomlKey(name)}]`, ...Object.entries(cfg || {}).map(([k, v]) => `${tomlKey(k)} = ${tomlValue(v)}`)];
+    // Codex drops marker comments on rewrite: AOS tables left without markers are recognised by name plus
+    // the exact command AOS writes, replaced into the single block, and orphan markers are removed.
+    const owns = (name, sec) => {
+        const cfg = (servers || {})[name];
+        return !!cfg && sec.some((l) => l.trim() === `command = ${tomlValue((cfg || {}).command)}`);
+    };
+    const eol = content.includes('\r\n') ? '\r\n' : '\n';
+    const stripped = content.replace(blockRegex, `${PLACEHOLDER}\n`).split(/\r?\n/)
+        .filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
+    const outsideLines = uninstallRecords.dropMcpTables(stripped, owns);
+    const outside = outsideLines.join('\n');
     const tables = [];
     const skipped = [];
     Object.entries(servers || {}).forEach(([name, cfg]) => {
         const header = `[mcp_servers.${tomlKey(name)}]`;
         const headerRegex = new RegExp(`^${header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm');
         if (headerRegex.test(outside)) { skipped.push(name); return; }
-        const rows = [header];
-        Object.entries(cfg || {}).forEach(([k, v]) => rows.push(`${tomlKey(k)} = ${tomlValue(v)}`));
-        tables.push(rows.join('\n'));
+        tables.push(rows(name, cfg).join('\n'));
     });
     const block = ['# AOS:MCP:START', tables.join('\n\n'), '# AOS:MCP:END'].join('\n');
-    if (blockRegex.test(content)) {
-        content = content.replace(blockRegex, `${block}\n`);
-    } else if (content.length) {
-        content = `${content.trimEnd()}\n\n${block}\n`;
+    if (hadBlock) {
+        content = outsideLines.join('\n').replace(PLACEHOLDER, block);
+    } else if (outside.trim().length) {
+        content = `${outside.trimEnd()}\n\n${block}\n`;
     } else {
         content = `${block}\n`;
     }
+    content = content.replace(/\n{3,}/g, '\n\n');
+    if (eol === '\r\n') content = content.replace(/\n/g, '\r\n');
     fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
     try { fs.chmodSync(configTomlPath, 0o600); } catch (e) { logDebug(e, 'chmod configTomlPath'); }
     return skipped;
