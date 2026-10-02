@@ -12,13 +12,30 @@
 //           [--model <id>] [--timeout <sec>] [--cmd "<custom agent command>"]
 
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
-import { GUARDED_PATTERNS, slug, tokenGrantsGo } from "../.claude/hooks/go-gate.mjs";
-import { emitTrail } from "../mcps/mcsc/packages/core/src/trail.js";
+
+// Repo layout first, then the installed layout: the installer puts go-gate.mjs and
+// trail.mjs in ~/.aos/bin (bin/ is copied to ~/.agents/bin, where ../.claude does not exist).
+const here = dirname(fileURLToPath(import.meta.url));
+const loadFrom = async (candidates) => {
+  const f = candidates.find((c) => existsSync(c));
+  return f ? import(pathToFileURL(f).href) : null;
+};
+const gateMod = await loadFrom([
+  join(here, "..", ".claude", "hooks", "go-gate.mjs"),
+  join(homedir(), ".aos", "bin", "go-gate.mjs"),
+  join(homedir(), ".claude", "hooks", "go-gate.mjs"),
+]);
+if (!gateMod) throw new Error("go-gate.mjs not found (run the AOS installer): refusing to run without the GO gate");
+const { GUARDED_PATTERNS, slug, tokenGrantsGo } = gateMod;
+const emitTrail = (await loadFrom([
+  join(here, "..", "mcps", "mcsc", "packages", "core", "src", "trail.js"),
+  join(homedir(), ".aos", "bin", "trail.mjs"),
+]))?.emitTrail ?? (async () => {});
 
 export const ADAPTERS = {
   claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp"], consume: false },
@@ -229,13 +246,15 @@ export function parseArgs(argv) {
     else if (a === "--no-consume") o.consume = false;
     else throw new Error(`unknown argument ${a}`);
   }
-  if (!o.adapter || !o.name || !o.prompt) throw new Error("usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>]");
+  if (!o.adapter || !o.name || !o.prompt) throw new Error(USAGE);
   if (!["deny", "allow"].includes(o.allowDefault)) throw new Error("--allow-default must be deny or allow");
   return o;
 }
 
+const USAGE = "usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>]";
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
+  if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }
   Promise.resolve().then(() => run(parseArgs(process.argv.slice(2))))
     .then((code) => process.exit(code), (e) => { console.error(`aos-acp: ${e.message}`); process.exit(2); });
 }
