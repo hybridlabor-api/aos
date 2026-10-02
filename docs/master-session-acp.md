@@ -42,6 +42,8 @@ Double gate: opencode and claude workers also run their own AOS gate inside the 
 
 `~/.aos/acp/<name>.jsonl` (override `--log`): `start`, `send`, `initialized`, `session`, `text`, `tool_call`, `tool_call_update`, `permission_pending`, `permission`, `done`, `error`, `agent_stderr`. The master builds its roster and GO board for ACP workers from these files; `ListAgents` does not see them.
 
+The same run is also posted to agenttrail with mcsc's protocol (`mcps/mcsc/packages/core/src/trail.js`): `SessionStart` and `SessionEnd` (session id `aos-acp-<pid>-<ms>`, agent `<adapter>:<name>`), and `PreToolUse` / `PostToolUse` per ACP `tool_call` / `tool_call_update` (`tool_name` from the ACP `kind`, `tool_input.file_path` from `locations`, `tool_input.command` from `rawInput`). Best effort, 300 ms per port, `AGENTTRAIL_PORT` overrides the 5330 to 5344 scan.
+
 ## Open points
 
 - Codex live run not verified (auth). With `OPENAI_API_KEY` or a ChatGPT login it should pass the same smoke.

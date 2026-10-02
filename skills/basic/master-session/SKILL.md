@@ -20,6 +20,17 @@ One session is the **master**: it keeps the overview, asks workers for status, a
   - agy: no sanctioned ACP adapter (`antigravity-acp` breaches Google's Antigravity terms). Adopt agy sessions or delegate via the `mcsc` skill.
   - If AO is installed, `ao-orchestrator` may run the same workers; it adds nothing the token protocol needs.
 
+### Routing: which channel for which job
+
+| Job | Channel |
+|---|---|
+| One-shot task for another harness | `mcsc` (one level deep, `delegate_agy` is read-only) |
+| A worker that may need a GO | `aos-acp` |
+| A message to a running OpenCode session | `aos-bus` |
+| A durable fleet across repos | AO (optional; AOS must work without it) |
+
+Details and limits (`opencode run --auto` auto-approves tool calls, a GO is never inherited): `docs/delegation-routing.md`.
+
 ### `aos-acp` in one paragraph
 
 `bin/aos-acp.mjs` is a zero-dependency ACP client: it spawns the adapter (`npx -y @agentclientprotocol/codex-acp`, `opencode acp`, `npx -y @agentclientprotocol/claude-agent-acp`), runs `initialize` → `session/new` → `session/prompt`, streams the worker's text to stdout and logs every event to `~/.aos/acp/<name>.jsonl`. A `session/request_permission` for a guarded command (the go-gate list) is answered `allow_once` only with a valid GO token for `<name>`; with `--go-wait <sec>` the request is parked (log event `permission_pending`, show it as `GO needed`) until the token appears or the wait ends. Everything else follows `--allow-default deny|allow` (deny by default). `--model <id>` is sent as ACP `session/set_config_option` (`configId: "model"`, id is adapter-specific, e.g. `sonnet`, `provider/model`); `fable` ids are rejected (workers run opus, sonnet or haiku), default is the adapter default and is logged. ACP workers are not in `ListAgents`: the roster lists them from the logs.

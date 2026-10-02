@@ -90,7 +90,7 @@ feedback arrives and the harness hands you the JSON, which keeps the loop alive
 across turns instead of dying with the foreground call. A foreground `await`
 works too, but only until the harness time-limits it.
 
-> **OpenCode Limitations**: OpenCode currently lacks reactive background tasks (like AGY's `WaitMsBeforeAsync`) or background shells. If you are running in OpenCode, you must poll explicitly if needed (e.g., `aos-plan-canvas await <file> --timeout-ms 10000`), or launch the opencode-subagent to handle the waiting. 
+> **OpenCode Limitations**: OpenCode currently lacks reactive background tasks (like AGY's `WaitMsBeforeAsync`) or background shells. If you are running in OpenCode, you must poll explicitly if needed (e.g., `aos-plan-canvas await <file> --timeout-ms 10000`), or delegate the waiting through `aos-acp` / `mcsc` (see `docs/delegation-routing.md`; never `opencode run --auto`, which auto-approves tool calls). 
 > Furthermore, OpenCode's execution environment often fails to launch the default browser automatically. **Whenever you use `open` or `await`, ALWAYS print the direct Canvas URL to the user in chat (e.g., "🔗 Canvas geöffnet: http://127.0.0.1:4519/canvas/...")** so they can click it manually.
 
 One backstop exists, and it is not an excuse to skip the above:
