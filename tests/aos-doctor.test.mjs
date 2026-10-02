@@ -73,3 +73,42 @@ test('aos-doctor: executes registry check when --net is passed', () => {
   assert.doesNotMatch(npmNetCheck.detail, /Skipped \(offline mode/i);
   assert.match(npmNetCheck.detail, /local v[\d.]+\s*·\s*npm v[\d.]+/i);
 });
+
+import fs from 'node:fs';
+import os from 'node:os';
+
+function doctorWithOpencodeConfig(configText, name = 'opencode.jsonc') {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-doctor-oc-'));
+  try {
+    if (configText !== null) {
+      fs.mkdirSync(path.join(home, '.config', 'opencode'), { recursive: true });
+      fs.writeFileSync(path.join(home, '.config', 'opencode', name), configText);
+    }
+    let stdout;
+    try {
+      stdout = execFileSync(process.execPath, [doctorScript, '--json'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home } });
+    } catch (err) { stdout = err.stdout; }
+    return JSON.parse(stdout).results.find((r) => r.name === 'OpenCode MCP names');
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+}
+
+test('aos-doctor: warns about OpenCode MCP names over 64 characters (names only, JSONC ok)', () => {
+  const long = 'x'.repeat(65);
+  const r = doctorWithOpencodeConfig(`// comment\n{\n  /* block */ "mcp": { "memb": { "type": "local" }, "${long}": { "type": "local", "url": "http://a//b" }, },\n}\n`);
+  assert.equal(r.ok, false);
+  assert.equal(r.warningOnly, true);
+  assert.ok(r.detail.includes(long));
+  assert.ok(!r.detail.includes('memb'));
+});
+
+test('aos-doctor: OpenCode MCP names within 64 characters pass; no config means no check', () => {
+  const ok = doctorWithOpencodeConfig(JSON.stringify({ mcp: { memb: {}, ['y'.repeat(64)]: {} } }), 'opencode.json');
+  assert.equal(ok.ok, true);
+  assert.equal(doctorWithOpencodeConfig(null), undefined);
+});
+
+test('aos-doctor: an unreadable OpenCode config is a warning, not a crash', () => {
+  const r = doctorWithOpencodeConfig('{ "mcp": ');
+  assert.equal(r.ok, false);
+  assert.equal(r.warningOnly, true);
+});
