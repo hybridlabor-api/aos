@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { emitTrail } from '../trail.js';
+import { childEnv } from '../depth.js';
 
 const MAX_OUTPUT = 1024 * 1024 * 50; // 50MB, mirrors the old execFile maxBuffer
 
@@ -25,7 +26,7 @@ export async function delegate(req) {
   };
   emitTrail({ ...trailEvent, hook_event_name: 'SessionStart' });
 
-  const env = { ...process.env, MCSC_CALLER: 'opencode' };
+  const env = childEnv('opencode');
   const args = ['run', '--auto', '--format', 'json'];
   if (req.model) args.push('--model', req.model);
   if (req.variant) args.push('--variant', String(req.variant));

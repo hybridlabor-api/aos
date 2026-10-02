@@ -11,6 +11,7 @@ import { getCached, setCached } from "../core/src/detect/cache.js";
 import { delegate as agyDelegate } from "../core/src/adapters/agy.js";
 import { delegate as opencodeDelegate } from "../core/src/adapters/opencode.js";
 import { delegate as codexDelegate } from "../core/src/adapters/codex.js";
+import { depthExceeded } from "../core/src/depth.js";
 import { decide } from "../core/src/rulebook/resolve.js";
 import { loadRulebook } from "../core/src/rulebook/load.js";
 import { buildOfferTable } from "../core/src/capabilities/buildOfferTable.js";
@@ -92,13 +93,14 @@ const server = new Server(
 // --- Tool Registration ---
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const tools = [];
+  if (depthExceeded()) return { tools };
 
   // delegate_agy
   const agyHealth = inventory.get('agy');
   if (agyHealth && agyHealth.status === 'ready' && caller !== 'agy') {
     tools.push({
       name: "delegate_agy",
-      description: "Delegate a task to Antigravity CLI (Gemini 3.8 Flash or Claude 3.7 Sonnet). Provides full coding capabilities.",
+      description: "Delegate a READ-ONLY task to Antigravity CLI (Gemini 3.8 Flash or Claude 3.7 Sonnet). Write tasks are untested: do not rely on it for edits.",
       inputSchema: {
         type: "object",
         properties: {
@@ -110,6 +112,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             type: "string",
             description: "Optional model hint for the subagent (e.g., 'flash', 'pro'). Default varies by tool.",
             default: "flash"
+          },
+          write: {
+            type: "boolean",
+            description: "UNTESTED. Adds --mode accept-edits for a write task. Leave unset: delegate_agy is documented read-only."
           }
         },
         required: ["prompt"]
@@ -194,7 +200,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 // --- Tool Execution ---
 server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
-  const { name, arguments: args } = request.params;
+  const { name, arguments: args = {} } = request.params;
+  if (depthExceeded()) {
+    return {
+      content: [{ type: "text", text: "Delegation refused: MCSC_DEPTH limit reached (one level of delegation, like a fork). Do the task yourself." }],
+      isError: true,
+    };
+  }
   const signal = extra.signal;
 
   const req = {
@@ -202,6 +214,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     prompt: args.prompt,
     model: args.model,
     variant: args.variant,
+    write: args.write === true,
     signal
   };
 
