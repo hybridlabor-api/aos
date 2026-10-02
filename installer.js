@@ -781,9 +781,10 @@ function flushSessionManifest() {
 
 function reportKeptUserEdits() {
     if (keptUserEdits.length === 0) return;
+    const kept = [...new Set(keptUserEdits)];
     log.warn([
-        `${keptUserEdits.length} file(s) you edited were KEPT; the shipped version is next to each as <file>.new:`,
-        ...keptUserEdits.map((p) => `  ${p}`),
+        `${kept.length} file(s) you edited were KEPT; the shipped version is next to each as <file>.new:`,
+        ...kept.map((p) => `  ${p}`),
         'Merge or delete the .new files when convenient.',
     ].join('\n'));
     keptUserEdits.length = 0;
@@ -1145,6 +1146,7 @@ async function reloadDaemons(skipNames = []) {
 
 function moveIfExists(src, dest, label) {
     if (fs.existsSync(src)) {
+        fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
         fs.renameSync(src, dest);
         log.step(`Backed up ${label}`);
     }
@@ -3383,12 +3385,6 @@ async function installMcpsForTarget(paths, ctx) {
         }
     }
 
-    if (fs.existsSync(paths.mcpConfigPath)) {
-        installStep(`back up ${path.basename(paths.mcpConfigPath)}`, () => {
-            fs.copyFileSync(paths.mcpConfigPath, path.join(backupDir, 'mcp_config_backup.json'));
-        }, 'The installation continues without a backup copy of this file.');
-    }
-
     const mcpTemplatePath = path.join(srcDir, 'mcp_config.json');
     const mcpTemplate = installStep(
         `read the MCP template ${mcpTemplatePath}`,
@@ -3535,6 +3531,8 @@ async function installMcpsForTarget(paths, ctx) {
             log.warn(`BDB config: ${sideCarPath}`);
         } else {
             try {
+                const rawBefore = fs.readFileSync(paths.mcpConfigPath);
+                const beforeMerge = JSON.stringify(oldConfig);
                 if (oldConfig.mcpServers) {
                     unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
                 }
@@ -3550,12 +3548,21 @@ async function installMcpsForTarget(paths, ctx) {
                 });
                 keepExistingEnvValues(newServers, oldServers);
                 oldConfig.mcpServers = Object.assign({}, oldServers, newServers);
-                fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2), { mode: 0o600 });
-                try { fs.chmodSync(paths.mcpConfigPath, 0o600); } catch (e) { logDebug(e, 'chmod mcpConfigPath'); }
-                log.step(`Merged BDB MCPs into existing ${configName}`);
+                // The backup can hold credentials: only made (0600) when the merge really changes the content.
+                if (JSON.stringify(oldConfig) === beforeMerge) {
+                    log.step(`${configName} already has the BDB MCPs; nothing changed`);
+                } else {
+                    try {
+                        fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+                        fs.writeFileSync(path.join(backupDir, 'mcp_config_backup.json'), rawBefore, { mode: 0o600 });
+                    } catch (e) { log.warn(`Could not create the backup copy: ${e.message}`); }
+                    fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2), { mode: 0o600 });
+                    try { fs.chmodSync(paths.mcpConfigPath, 0o600); } catch (e) { logDebug(e, 'chmod mcpConfigPath'); }
+                    log.step(`Merged BDB MCPs into existing ${configName}`);
+                }
             } catch (e) {
                 log.warn(`Could not merge into ${configName}: ${e.message}`);
-                log.warn(`${configName} was left unchanged; the backup from this run is in ${backupDir}.`);
+                log.warn(`${configName} was left unchanged.`);
             }
         }
     } else {
@@ -5822,7 +5829,6 @@ async function runQuickUpdate(installState) {
     const excludeSkills = getTierExcludeSkills('1');
     const paths = resolveTargetPaths('1', null);
 
-    fs.mkdirSync(backupDir, { recursive: true });
     fs.mkdirSync(paths.targetSkillDir, { recursive: true });
     retireObsoleteLegacyDir(paths.targetLegacyDir);
     fs.mkdirSync(paths.targetWorkspaceDir, { recursive: true });
@@ -6377,11 +6383,7 @@ Options:
         return;
     }
 
-    installStep(`create the backup directory ${backupDir}`, () => {
-        // Backups can hold credential copies (mcp_config_backup.json) --
-        // 0700, not the umask default.
-        fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
-    }, 'The installation continues, but existing files are not backed up.');
+    // The backup directory is created on first use (moveIfExists, the MCP merge), never empty, 0700 because it can hold credential copies.
 
     // '10' is an action, not a directory target. AOS CLI reads
     // ~/.agents/skills, which syncSkillsToGlobalHarnesses() already writes --

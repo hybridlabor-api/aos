@@ -83,3 +83,26 @@ test('run: missing command, spawn result mapping, timeout flag', () => {
   const thrown = cs.run('t', [], { ...o, spawn: () => { throw new Error('boom'); } });
   assert.equal(thrown.status, null);
 });
+
+test('F3: CR/LF arguments are rejected with a clear error, never spawned', () => {
+  assert.throws(() => cs.buildInvocation('/b/codex', ['a\nb'], { platform: 'linux', env: {} }), /argument 1 contains a CR or LF/);
+  let spawned = false;
+  const r = cs.run('codex', ['ok', 'x\r\ny'], { platform: 'linux', env: { PATH: '/b' }, fs: fakeFs(new Set(['/b/codex'])), spawn: () => { spawned = true; return {}; } });
+  assert.equal(spawned, false);
+  assert.match(r.stderr, /CR or LF/);
+});
+
+test('F3: without ComSpec the shim runs through %SystemRoot%\\System32\\cmd.exe, never bare cmd.exe', () => {
+  const o = { platform: 'win32', env: { SYSTEMROOT: 'D:\\Win' } };
+  assert.equal(cs.buildInvocation('C:\\n\\x.cmd', ['a'], o).file, 'D:\\Win\\System32\\cmd.exe');
+  assert.equal(cs.buildInvocation('C:\\n\\x.cmd', ['a'], { platform: 'win32', env: {} }).file, 'C:\\Windows\\System32\\cmd.exe');
+});
+
+test('F3: carets are doubled only for a batch file that forwards %*', () => {
+  const fsOf = (text) => ({ readFileSync: () => text });
+  const o = (text) => ({ platform: 'win32', env: { ComSpec: 'cmd.exe' }, fs: fsOf(text) });
+  const line = (text) => cs.buildInvocation('C:\\n\\x.cmd', ['a&b'], o(text)).args[3];
+  assert.match(line('@echo off\r\nnode x.js %*\r\n'), /\^\^\^&/);
+  assert.doesNotMatch(line('@echo off\r\necho hi\r\n'), /\^\^\^&/);
+  assert.match(line('@echo off\r\necho hi\r\n'), /\^&/);
+});

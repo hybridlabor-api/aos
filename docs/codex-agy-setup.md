@@ -14,18 +14,17 @@ Both manifests are generated from `plugin-commands.json` by `node scripts/build-
 
 ### Which skill roots and manifests Codex reads (measured, codex 0.154.0, temp HOME, `codex debug prompt-input`)
 
-| Layout (plugin installed, 261 loose skills) | Entries | Descriptions | `bdb-aos:` prefixed |
+| Layout (plugin installed) | Entries | Descriptions | `bdb-aos:` prefixed |
 |---|---|---|---|
-| `~/.codex/skills` only | 280 | all present (cut to about 20 characters by Codex's budget) | 15 (14 wrappers + the `bdb-aos` skill) |
-| `~/.agents/skills` only | 280 | same as above | 15 |
-| both roots | 366 | 352 empty, list cut off | 16 |
-| both roots + `~/.codex-plugin/plugin.json` | 320 | n/a | all 320, every skill renamed, including OpenAI's |
-| `~/.agents/skills` + `~/.codex-plugin/plugin.json` | 280 | n/a | all 280 renamed |
+| `~/.agents/skills` only (what AOS writes) | 268 | all present | 14 wrappers |
+| both roots (AOS copies in `~/.codex/skills` too) | 375 | 374 without a description | 177 skills listed twice |
+| both roots + `~/.codex-plugin/plugin.json` | every skill renamed `bdb-aos:<name>`, including OpenAI's | n/a | all |
+| `~/.agents/skills` + `~/.codex-plugin/plugin.json` | every skill renamed | n/a | all |
 
 - Codex loads `~/.codex/skills` **and** `~/.agents/skills`, so a skill present in both is listed twice and the doubled list blows the prompt budget.
 - A `plugin.json` in `~/.codex-plugin/` (HOME) makes Codex treat the whole HOME as that plugin and prefix every skill with `bdb-aos:`. The installer used to copy the repo's `.codex-plugin/` there. The plugin source stays in the package (`.codex-plugin/`, `plugins/bdb-aos-codex/`), which Codex reads through the marketplace; it must not exist in HOME.
 - **What the installer does now:** writes AOS skills only to `~/.agents/skills` (the root other harnesses and the AOS CLI already share), never to `~/.codex/skills`, and no longer copies `.codex-plugin` into HOME. On upgrade it moves AOS-written copies in `~/.codex/skills` (manifest hash still matches; backup in `~/.agents/backups/plugin-migration-codex-skills-<stamp>`, all-or-nothing, an edited file stops the removal and is reported) and an AOS-written `~/.codex-plugin` (manifest or package-byte match; backup in `~/.agents/backups/codex-plugin-dir-<id>`) out of the way. `~/.codex/skills/.system` and files AOS did not write are never touched. Picking Codex explicitly in the installer targets `~/.agents/skills` too.
-- Check: `codex debug prompt-input hi` should list about 280 entries, all with descriptions, the 14 `bdb-aos:<cmd>` wrappers and no renamed foreign skill.
+- Check: `codex debug prompt-input hi` should list about 268 entries, all with descriptions, the 14 `bdb-aos:<cmd>` wrappers, no duplicates and no renamed foreign skill. `aos-doctor` checks `~/.agents/skills` for Codex and warns when AOS copies in `~/.codex/skills` double-list.
 
 ## Antigravity (agy)
 
