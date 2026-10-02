@@ -25,6 +25,7 @@ const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
 const codexPluginInstall = require('./lib/codex-plugin-install');
+const uninstallRecords = require('./lib/uninstall-records');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
@@ -1275,7 +1276,7 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     const manifest = _sessionManifest || loadInstallManifest();
     let result;
     try {
-        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, cli: pluginCli !== undefined ? pluginCli : realClaudeHome(targetHome) ? pluginMigration.defaultCliRunner : null, ...(registrars ? { registrars } : {}) });
+        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, cli: uninstallRecords.recordingCli(targetHome, pluginCli !== undefined ? pluginCli : realClaudeHome(targetHome) ? pluginMigration.defaultCliRunner : null), ...(registrars ? { registrars } : {}) });
     } catch (e) {
         log.warn(`Plugin migration skipped: ${e.message}`);
         result = { covered: new Set(), lines: [] };
@@ -2601,27 +2602,7 @@ function aoBinTarget() {
         : path.join(homeDir, '.local', 'bin', 'ao');
 }
 
-// Go links the `go version -m` text between these two 16-byte markers, so the
-// revision of a binary can be read from its bytes: no Go toolchain needed, and
-// the binary (possibly the live daemon) is never executed.
-const GO_BUILDINFO_START = Buffer.from('3077af0c9274080241e1c107e6d618e6', 'hex');
-const GO_BUILDINFO_END = Buffer.from('f932433186182072008242104116d8f2', 'hex');
-
-function readGoBuildInfo(binPath) {
-    let buf;
-    try { buf = fs.readFileSync(binPath); } catch { return null; }
-    const start = buf.indexOf(GO_BUILDINFO_START);
-    const end = start < 0 ? -1 : buf.indexOf(GO_BUILDINFO_END, start);
-    return end < 0 ? null : parseGoBuildInfo(buf.subarray(start + GO_BUILDINFO_START.length, end).toString('utf8'));
-}
-
-// Accepts the embedded text or `go version -m` output (same lines, tab-indented).
-function parseGoBuildInfo(text) {
-    const get = (key) => (String(text).match(new RegExp(`^\\s*build\\s+${key}=(\\S*)`, 'm')) || [])[1];
-    const revision = get('vcs\\.revision');
-    if (!revision) return null;
-    return { revision, time: get('vcs\\.time') || null, modified: get('vcs\\.modified') === 'true' };
-}
+const { readGoBuildInfo, parseGoBuildInfo } = require('./lib/go-buildinfo.js');
 
 // Never trade the installed ao for a build that is not provably newer and clean.
 // allowDirty: the AOS_AO_DEV_BUILD opt-in. daemonRunning/candidateIsRelease
@@ -4158,6 +4139,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
             fs.copyFileSync(pluginSrc, pluginDest);
             try { fs.chmodSync(pluginDest, 0o644); } catch (e) { logDebug(e, 'chmod opencode plugin'); }
             pluginInstalled = true;
+            uninstallRecords.recordOpencodePlugin(targetHome, pluginDest);
             log.step(`Installed OpenCode plugin to ${pluginDest}`);
         } catch (e) {
             log.warn(`Could not install OpenCode plugin: ${e.message}`);
@@ -4359,15 +4341,19 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp'];
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus'];
+    // aos-bus ships as a hook (it imports ./go-gate.mjs), so its launcher points into ~/.claude/hooks.
+    const binDirOf = (name) => (name === 'aos-bus' ? path.join(homeDir, '.claude', 'hooks') : globalAgentsBin);
+    const wired = [];
 
     for (const name of cliBins) {
-        const targetMjs = path.join(globalAgentsBin, `${name}.mjs`);
+        const targetMjs = path.join(binDirOf(name), `${name}.mjs`);
         if (!fs.existsSync(targetMjs)) continue;
 
         // Shell wrapper for Unix / Git Bash
         const shPath = path.join(localBinDir, name);
-        const shContent = `#!/bin/sh\nexec node "${targetMjs}" "$@"\n`;
+        wired.push(name);
+        const shContent = `#!/bin/sh\n# aos-launcher\nexec node "${targetMjs}" "$@"\n`;
         try {
             fs.writeFileSync(shPath, shContent, { mode: 0o755 });
             try { fs.chmodSync(shPath, 0o755); } catch (e) { logDebug(e, `chmod ${shPath}`); }
@@ -4384,7 +4370,7 @@ function installGlobalBinaries() {
             try { fs.writeFileSync(ps1Path, ps1Content); } catch (e) { logDebug(e, `write ${ps1Path}`); }
         }
     }
-    log.step(`Wired CLI launcher binaries (aos-config, aos-dashboard, aos-uninstall) in ${localBinDir}`);
+    log.step(`Wired CLI launcher binaries (${wired.join(', ') || 'none'}) in ${localBinDir}`);
 }
 
 // Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --
@@ -6424,6 +6410,7 @@ module.exports = {
     mergeCodexTomlMcpServers,
     installGlobalHooks,
     installGoCheck,
+    installGlobalBinaries,
     codexGateSnippet,
     CODEX_GATE_NOTICE,
     installOpencodePlugin,
