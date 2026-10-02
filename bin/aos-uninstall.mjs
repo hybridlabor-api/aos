@@ -5,6 +5,9 @@
 //   aos-uninstall --purge      also the memory store, wikis and credentials
 //   aos-uninstall --dry-run    list everything, delete nothing
 //   aos-uninstall --yes        skip the confirmations (CI only)
+//   aos-uninstall --restore-plugin-backup
+//                              put back the loose skill copies the installer removed when it
+//                              registered the bdb-aos plugin (never overwrites an existing file)
 //
 // The file-level install manifest records every path AOS wrote together with
 // the sha256 it wrote. That is what makes a precise uninstall possible: a file
@@ -19,6 +22,9 @@ import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+
+const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -27,6 +33,7 @@ const tilde = (p) => p.replace(HOME, '~');
 const PURGE = process.argv.includes('--purge');
 const DRY = process.argv.includes('--dry-run');
 const YES = process.argv.includes('--yes');
+const RESTORE = process.argv.includes('--restore-plugin-backup');
 
 const MANIFEST = h('.agents', '.bdb-install-manifest.json');
 
@@ -238,6 +245,12 @@ function execute(p) {
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);
 
+  const reg = pm.readState(HOME).registered.claudecode;
+  if (reg) {
+    const r = pm.deregisterClaude({ home: HOME, record: reg });
+    if (r.changed) console.log(`  bdb-aos Plugin-Registrierung aus settings.json entfernt${reg.replaced ? ` (externer Marketplace ${reg.replaced.key} wiederhergestellt)` : ''}`);
+  }
+
   // Only the BDB hook entries leave settings.json; everything else in it is
   // the user's and must survive an uninstall exactly as it survives an install.
   const settings = h('.claude', 'settings.json');
@@ -263,7 +276,7 @@ function execute(p) {
     catch (e) { console.log(`  konnte ${tilde(d.path)} nicht löschen: ${e.message}`); }
   }
 
-  for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
+  for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json'), pm.statePath(HOME)]) {
     try { rmSync(f); } catch { /* already gone */ }
   }
 }
@@ -275,6 +288,19 @@ const ask = async (q) => {
   rl.close();
   return a;
 };
+
+if (RESTORE) {
+  const dirs = pm.readState(HOME).backups.filter(existsSync).reverse();
+  if (!dirs.length) { console.log('Keine Plugin-Migrations-Sicherung gefunden.'); process.exit(1); }
+  let n = 0;
+  for (const d of dirs) {
+    const files = pm.restoreBackup({ home: HOME, backupDir: d });
+    n += files.length;
+    console.log(`  ${files.length} Dateien aus ${tilde(d)} wiederhergestellt`);
+  }
+  console.log(`Fertig: ${n} Dateien. Vorhandene Dateien wurden nicht überschrieben.`);
+  process.exit(0);
+}
 
 const p = plan();
 console.log(PURGE ? '\x1b[31mAOS UNINSTALL — PURGE\x1b[0m' : 'AOS Uninstall');

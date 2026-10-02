@@ -23,6 +23,7 @@ const net = require('net');
 const readline = require('readline');
 const util = require('util');
 const crypto = require('crypto');
+const pluginMigration = require('./lib/plugin-migration');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -1277,9 +1278,37 @@ function reportFatal(stage, e) {
     process.exitCode = 1;
 }
 
+// AOS_PLUGIN_MIGRATION=off skips plugin registration and loose-copy removal; =check only reports.
+function pluginMigrationMode(argv = process.argv, env = process.env) {
+    const flag = argv.find((a) => a.startsWith('--plugin-migration='));
+    const raw = String(flag ? flag.slice('--plugin-migration='.length) : (env.AOS_PLUGIN_MIGRATION || '')).trim().toLowerCase();
+    if (raw === 'off' || raw === '0' || raw === 'false') return 'off';
+    return raw === 'check' || DRY_RUN ? 'check' : 'on';
+}
+
+let _pluginMigration = null;
+function runPluginMigration({ targetHome = homeDir, detected = null, mode = pluginMigrationMode(), registrars } = {}) {
+    if (_pluginMigration && targetHome === homeDir) return _pluginMigration;
+    const keys = detected || detectPlatforms().map((d) => d.key);
+    const ownsManifest = !_sessionManifest;
+    const manifest = _sessionManifest || loadInstallManifest();
+    let result;
+    try {
+        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, ...(registrars ? { registrars } : {}) });
+    } catch (e) {
+        log.warn(`Plugin migration skipped: ${e.message}`);
+        result = { covered: new Set(), lines: [] };
+    }
+    for (const line of result.lines) log.step(line);
+    if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
+    if (targetHome === homeDir) _pluginMigration = result;
+    return result;
+}
+
 function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     const skillsBase = path.join(srcDir, 'skills');
     if (!fs.existsSync(skillsBase)) return;
+    const pluginCovered = runPluginMigration().covered;
 
     // Mirror only into harnesses that are actually present. This list used to
     // be unconditional, which both wrote skills nobody would read and planted
@@ -1300,7 +1329,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
         { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
-    ].filter((d) => d.key === null || detectedKeys.has(d.key));
+    ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 
     for (const { dir: dest } of extraSkillDestinations) {
         try {
@@ -5770,6 +5799,10 @@ Options:
                    AOS_OPENCODE_OPTIONAL. Pinned plugin[] entries are appended after a
                    config backup; rtk only prints a brew hint. Off by default. AOS never
                    runs foreign installers and never touches OpenCode's mcp set.
+  --plugin-migration=off|check
+                   Skip (off) or only report (check) the bdb-aos plugin registration and
+                   removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.
+                   --dry-run implies check. Default: on.
   --verbose, -v    Verbose output
   -V, --version    Print the version and exit
   -h, --help       Print this help and exit`);
@@ -6257,6 +6290,8 @@ module.exports = {
     installOpencodePlugin,
     installOpencodeCommands,
     parseOpencodeOptional,
+    pluginMigrationMode,
+    runPluginMigration,
     installProjectHarness,
     promptMcpSelection,
     mirrorMcpServersTo,
