@@ -379,6 +379,30 @@ function isNewerVersion(local, remote) {
     return false;
 }
 
+// Newest dist-tag of `pkg` that is ahead of `localVer`: {tag, version}, or null when none is
+// ahead or npm cannot be reached. `view` is injectable for tests.
+function newestDistTag(pkg, localVer, view = null) {
+    try {
+        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const opts = { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 };
+        const out = view
+            ? view(pkg)
+            : process.platform === 'win32'
+                ? execSync(`"${npmCmd}" view ${pkg} dist-tags --json`, opts)
+                : execFileSync(npmCmd, ['view', pkg, 'dist-tags', '--json'], opts);
+        const distTags = JSON.parse(String(out).trim());
+        let best = null;
+        for (const [tag, ver] of Object.entries(distTags || {})) {
+            if (typeof ver !== 'string' || !isNewerVersion(localVer, ver)) continue;
+            if (!best || isNewerVersion(best.version, ver)) best = { tag, version: ver };
+        }
+        return best;
+    } catch (e) {
+        logDebug(e, `npm view ${pkg}`);
+        return null;
+    }
+}
+
 function checkForUpdates() {
     return new Promise((resolve) => {
         const req = https.get(`https://registry.npmjs.org/${pkg.name}/latest`, { timeout: 1500 }, (res) => {
@@ -6346,6 +6370,8 @@ if (require.main === module) {
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    newestDistTag,
+    verifyEcosystemInstallation,
     installBinaryAtomically,
     installOSAgentWorkspace,
     readGoBuildInfo,
