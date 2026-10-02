@@ -26,7 +26,7 @@ const runLikeAgy = (command, cwd, home, input = '{}') => {
         env: { ...process.env, HOME: home, USERPROFILE: home, AGENTTRAIL_PORT: '1' },
     });
 };
-const commandsOf = (file) => [...JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')).hooks).matchAll(/"command":("(?:[^"\\]|\\.)*")/g)].map((m) => JSON.parse(m[1]));
+const commandsOf = (file) => [...JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8'))).matchAll(/"command":("(?:[^"\\]|\\.)*")/g)].map((m) => JSON.parse(m[1]));
 const withHome = (home, fn) => {
     const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
     process.env.HOME = process.env.USERPROFILE = home;

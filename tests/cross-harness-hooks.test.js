@@ -121,21 +121,19 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(fs.existsSync(hooksPath), 'hooks.json must be created');
             const data = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
 
-            assert.ok(data.hooks, 'hooks object must exist in hooks.json');
-            assert.ok(Array.isArray(data.hooks.PreToolUse), 'PreToolUse must be an array');
-            assert.ok(Array.isArray(data.hooks.Stop), 'Stop must be an array');
-            assert.ok(Array.isArray(data.hooks.PreInvocation), 'PreInvocation must be an array');
+            // agy hooks.json: every top-level key is a named hook
+            for (const n of ['aos-go-gate', 'aos-graph-gate', 'aos-context', 'aos-trail-relay']) assert.ok(data[n], `named hook ${n} must exist`);
+            assert.ok(!data.hooks, 'no generic "hooks" lump');
 
-            // Verify matcher and commands
-            const preTool = data.hooks.PreToolUse[0];
+            const preTool = data['aos-go-gate'].PreToolUse[0];
             assert.ok(preTool && /run_command|Bash/.test(preTool.matcher), 'PreToolUse matcher must match run_command|Bash');
             const preToolCmd = preTool.hooks?.[0]?.command || '';
             assert.ok(preToolCmd.includes('go-gate.mjs'), 'PreToolUse must run go-gate.mjs');
 
-            const stopCmd = data.hooks.Stop[0]?.hooks?.[0]?.command || data.hooks.Stop[0]?.command || '';
+            const stopCmd = data['aos-graph-gate'].Stop[0]?.command || '';
             assert.ok(stopCmd.includes('graph-gate.mjs'), 'Stop must run graph-gate.mjs');
 
-            const preInvocCmds = (data.hooks.PreInvocation || []).flatMap(e => (e.hooks ? e.hooks.map(h => h.command) : [e.command]));
+            const preInvocCmds = (data['aos-context'].PreInvocation || []).map(e => e.command);
             assert.ok(preInvocCmds.some(c => c && c.includes('memb-inject.mjs')), 'PreInvocation must run memb-inject.mjs');
             assert.ok(preInvocCmds.some(c => c && c.includes('startcycle-dispatch.mjs')), 'PreInvocation must run startcycle-dispatch.mjs');
         });
@@ -163,7 +161,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(Array.isArray(data.hooks.SessionStart), 'SessionStart must survive');
             assert.equal(data.hooks.SessionStart[0].hooks[0].command, 'node session-init.mjs');
             assert.ok(data.hooks.PreToolUse.some(e => e.matcher === 'custom_tool'), 'foreign PreToolUse must survive');
-            assert.ok(data.hooks.PreToolUse.some(e => /run_command|Bash/.test(e.matcher)), 'BDB PreToolUse must be added');
+            assert.ok(data['aos-go-gate'].PreToolUse.some(e => /run_command|Bash/.test(e.matcher)), 'BDB PreToolUse must be added');
         });
 
         test('installer provides mergeCodexTomlHooks to generate valid config.toml', () => {
@@ -752,7 +750,7 @@ describe('Tier 3: Cross-Feature Interactions & Idempotency', () => {
         const agPath = fs.existsSync(agHooks) ? agHooks : path.join(homeDir, '.agents', 'hooks.json');
         if (fs.existsSync(agPath)) {
             const data = JSON.parse(fs.readFileSync(agPath, 'utf8'));
-            const preToolBdb = (data.hooks.PreToolUse || []).filter(e => {
+            const preToolBdb = Object.values(data).flatMap(h => h.PreToolUse || []).filter(e => {
                 const cmd = e.hooks?.[0]?.command || '';
                 return cmd.includes('go-gate.mjs');
             });
