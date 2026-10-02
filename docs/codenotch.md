@@ -15,7 +15,7 @@ A failure at any step (no release yet, 404, offline, rate limit, checksum mismat
 
 ## Windows
 
-- Asset: `Codenotch-Setup-<version>.exe` plus `Codenotch-Setup-<version>.exe.sha256` from the same latest release. If the exact name is absent, the single `*Setup*.exe` that has a matching `.sha256` is used; anything ambiguous is refused.
+- Asset: `Codenotch-Setup-<version>.exe` plus `Codenotch-Setup-<version>.exe.sha256` from the same release. If the exact name is absent, the single `*Setup*.exe` that has a matching `.sha256` is used; anything ambiguous is refused.
 - The SHA-256 is verified before the installer runs; a mismatch only warns.
 - Runs the NSIS installer silently as `Setup.exe /S`, per-user, no admin, no elevation, with a 5 minute timeout, then checks the version in the per-user uninstall registry key (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`, key `Codenotch`, fallback scan for a subkey whose DisplayName is Codenotch).
 - Installed version same or newer: skipped. An older install AOS did not record is kept unless you confirm interactively.
@@ -26,7 +26,7 @@ A failure at any step (no release yet, 404, offline, rate limit, checksum mismat
 
 ## What it does (macOS)
 
-1. Reads `https://api.github.com/repos/hybridlabor-api/bdb-ao-codenotch-releases/releases/latest` (public repo, unauthenticated, created and maintained by Tim). A missing repo (404) or a GitHub rate limit prints a friendly note and the install continues; nothing fails.
+1. Reads the release list of the public repo `hybridlabor-api/bdb-ao-codenotch` (`https://api.github.com/repos/hybridlabor-api/bdb-ao-codenotch/releases`, unauthenticated) and picks the newest release that is neither draft nor prerelease and carries this platform's asset plus a `.sha256`; other releases are ignored. A missing repo (404), no matching release, or a GitHub rate limit prints a friendly note and the install continues; nothing fails.
 2. Downloads the `.dmg` and verifies its `.sha256` asset from the same release **before** mounting. A mismatch or a missing checksum refuses the install.
 3. Mounts with `hdiutil attach -nobrowse -readonly -mountpoint <temp dir>` and always detaches again, even on failure.
 4. Copies the single `.app` from the DMG to `/Applications`, or to `~/Applications` when `/Applications` is not writable. Never uses sudo.

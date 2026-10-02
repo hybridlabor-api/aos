@@ -107,7 +107,7 @@ test('checksum mismatch is refused before mounting', async () => {
 test('missing .sha256 asset is refused', async () => {
     const c = setup({ assets: [{ name: 'Codenotch.dmg', browser_download_url: 'https://dl/Codenotch.dmg' }] });
     const r = await cn.installCodenotch(c.opts);
-    assert.strictEqual(r.status, 'error');
+    assert.strictEqual(r.status, 'not-found');
     assert.strictEqual(c.calls.hdiutil.length, 0);
 });
 
@@ -385,10 +385,10 @@ test('win32: asset selection is exact first, then the single *Setup*.exe, else r
     const tolerant = winSetup({ assets: mk('Codenotch-Setup-x64.exe') });
     assert.strictEqual((await cn.installCodenotch(tolerant.opts)).status, 'installed');
     const two = winSetup({ assets: [...mk('A-Setup.exe'), ...mk('B-Setup.exe')] });
-    assert.strictEqual((await cn.installCodenotch(two.opts)).status, 'error');
+    assert.strictEqual((await cn.installCodenotch(two.opts)).status, 'not-found');
     const noSha = winSetup({ assets: [{ name: 'Codenotch-Setup-1.2.0.exe', browser_download_url: 'https://dl/x' }] });
     const r = await cn.installCodenotch(noSha.opts);
-    assert.strictEqual(r.status, 'error');
+    assert.strictEqual(r.status, 'not-found');
     assert.strictEqual(noSha.calls.run.length, 0);
 });
 
@@ -479,4 +479,37 @@ test('darwin is unchanged and linux stays a no-op through the step', async () =>
     assert.strictEqual((await cn.runCodenotchStep({ platform: 'darwin', argv: [], env: {}, interactive: false, install: fakeInstall(calls) })).status, 'installed');
     assert.strictEqual(await cn.runCodenotchStep({ platform: 'linux', argv: [], env: {}, interactive: false, install: fakeInstall(calls) }), null);
     assert.strictEqual(calls.length, 1);
+});
+
+test('release selection: newest non-draft, non-prerelease with platform asset and sha', () => {
+    const rel = (tag, names, extra = {}) => ({ tag_name: tag, assets: names.map((name) => ({ name, browser_download_url: `https://dl/${name}` })), ...extra });
+    const mac = ['C.dmg', 'C.dmg.sha256'];
+    const win = (v) => [`Codenotch-Setup-${v}.exe`, `Codenotch-Setup-${v}.exe.sha256`];
+    const list = [
+        rel('v3.0.0', mac, { draft: true }),
+        rel('v2.9.0', mac, { prerelease: true }),
+        rel('v2.8.0', ['C.dmg']),
+        rel('v2.7.0', win('2.7.0')),
+        rel('v2.6.0', mac),
+        rel('v2.5.0', mac),
+    ];
+    assert.strictEqual(cn.selectRelease(list, 'darwin').tag_name, 'v2.6.0');
+    assert.strictEqual(cn.selectRelease(list, 'win32').tag_name, 'v2.7.0');
+    assert.strictEqual(cn.selectRelease([list[0], list[1]], 'darwin'), null);
+    assert.match(cn.RELEASES_URL, /repos\/hybridlabor-api\/bdb-ao-codenotch\/releases/);
+});
+
+test('install uses the list: skips an asset-less newer release and treats none as not-found', async () => {
+    const c = setup();
+    const orig = c.opts.fetch;
+    const list = [
+        { tag_name: 'v9.0.0', draft: true, assets: [] },
+        { tag_name: 'v1.5.0', assets: [{ name: 'x.zip' }] },
+        { tag_name: 'v1.2.0', assets: [{ name: 'Codenotch.dmg', browser_download_url: 'https://dl/Codenotch.dmg' }, { name: 'Codenotch.dmg.sha256', browser_download_url: 'https://dl/Codenotch.dmg.sha256' }] },
+    ];
+    const r = await cn.installCodenotch({ ...c.opts, fetch: async (u, o) => (u.includes('api.github.com') ? { ok: true, status: 200, headers: { get: () => null }, json: async () => list } : orig(u, o)) });
+    assert.strictEqual(r.status, 'installed');
+    assert.strictEqual(r.version, '1.2.0');
+    const none = await cn.installCodenotch({ ...c.opts, fetch: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => [{ tag_name: 'v1', assets: [] }] }) });
+    assert.strictEqual(none.status, 'not-found');
 });

@@ -5874,7 +5874,7 @@ Options:
                    config backup; rtk only prints a brew hint. Off by default. AOS never
                    runs foreign installers and never touches OpenCode's mcp set.
   --no-codenotch   macOS and Windows only (never Linux): BDB AO Codenotch (desktop app,
-                   from hybridlabor-api/bdb-ao-codenotch-releases) installs by default;
+                   from hybridlabor-api/bdb-ao-codenotch) installs by default;
                    skip it with this flag or AOS_CODENOTCH=0. --codenotch or
                    AOS_CODENOTCH=1 forces it. Interactive prompt defaults to yes. Failures
                    only warn and never fail the install. SHA-256 verified; Windows runs
