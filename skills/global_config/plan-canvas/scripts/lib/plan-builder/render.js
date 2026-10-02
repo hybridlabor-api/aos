@@ -91,7 +91,7 @@ function codeBlock(source, cls = '') {
   return '<pre><code' + (cls ? ' class="language-' + esc(cls) + '"' : '') + '>' + esc(body) + '</code></pre>';
 }
 
-// The --wf-* tokens visual-plan wireframes are authored against, defined in the
+// The --wf-* tokens Plan Builder wireframes are authored against, defined in the
 // frame so plan-authored markup renders instead of showing undefined colors.
 const WF_TOKENS = `:root{
   --wf-paper:#0d0d0d; --wf-card:#161616; --wf-ink:#ffffff; --wf-muted:#7a7a7a;
@@ -644,7 +644,7 @@ function renderUnknown(block, ctx) {
     '<pre><code>' + esc(block.raw || '') + '</code></pre></div>';
 }
 
-// Canonical tag names from the visual-plan / visual-recap block reference.
+// Canonical tag names from the Plan Builder block registry.
 // Hyphenated conceptual names are accepted as aliases so a hand-written plan
 // using either spelling renders.
 const HANDLERS = {

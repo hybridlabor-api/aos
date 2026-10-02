@@ -5,52 +5,53 @@ import os from 'node:os'
 import path from 'node:path'
 import cp from 'node:child_process'
 import crypto from 'node:crypto'
+import { norm, probePorts, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-const norm = p => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
 const MARKER = /^##\s+.+?\s*\{#[a-z0-9][a-z0-9-]*\}\s*$/im
 
-// AOS_TRAIL_PORTS="lo-hi" overrides the probed range (tests); default 5330-5344 like trail-relay.mjs
-function portRange() {
-  const m = String(process.env.AOS_TRAIL_PORTS || '').match(/^(\d+)-(\d+)$/)
-  const [lo, hi] = m ? [+m[1], +m[2]] : [5330, 5344]
-  return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
+// every daemon in the range that serves this repo (identity = main checkout) or one of its worktrees
+async function scan(root, wts) {
+  const hits = await Promise.all(probePorts().map(port =>
+    fetch(`http://127.0.0.1:${port}/whoami`, { signal: AbortSignal.timeout(300) }).then(r => r.json())
+      .then(w => (w && typeof w.repoPath === 'string') ? { port, repo: norm(w.repoPath), protocol: Number(w.protocol) || 0 } : null).catch(() => null)))
+  const mine = hits.filter(d => d && (d.repo === root || wts.has(d.repo)))
+  const cur = mine.find(d => d.repo === root && d.protocol >= PROTOCOL)
+  return { port: cur ? cur.port : null, old: mine.filter(d => d.protocol < PROTOCOL) }
 }
 
-function repoRoot(cwd) {
-  const r = cp.spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8', timeout: 1000 })
-  return r.status === 0 && r.stdout.trim() ? norm(r.stdout.trim()) : norm(cwd)
-}
-
-function selectPlan(root, explicit) {
-  if (explicit) {
-    const f = path.resolve(root, explicit)
-    return fs.existsSync(f) ? { plan: f } : { reason: 'no-plan' }
+const lockFile = root => path.join(os.tmpdir(), 'aos-trail-ensure', `${crypto.createHash('sha1').update(root).digest('hex').slice(0, 16)}.lock`)
+const alive = pid => { try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' } }
+function takeLock(f) {
+  fs.mkdirSync(path.dirname(f), { recursive: true })
+  for (let i = 0; i < 2; i++) {
+    try { fs.writeFileSync(f, JSON.stringify({ pid: process.pid, at: Date.now() }), { flag: 'wx' }); return true } catch (e) { if (e.code !== 'EEXIST') return false }
+    let l = {}
+    try { l = JSON.parse(fs.readFileSync(f, 'utf8')) } catch {}
+    let at = l.at
+    if (!at) try { at = fs.statSync(f).mtimeMs } catch { continue } // being written right now: judge by age, not content
+    if (Date.now() - at < 15000 && (l.pid === undefined || alive(l.pid))) return false
+    try { fs.unlinkSync(f) } catch {}
   }
-  const pa = path.join(root, 'production_artifacts')
-  const top = path.join(pa, '00_execution_plan.md')
-  if (fs.existsSync(top)) return { plan: top }
-  let subs = []
-  try {
-    subs = fs.readdirSync(pa, { withFileTypes: true }).filter(d => d.isDirectory())
-      .map(d => path.join(pa, d.name, '00_execution_plan.md')).filter(f => fs.existsSync(f)).sort()
-  } catch {}
-  // .agents/graph.md defines no plan path beyond production_artifacts/00_execution_plan.md, so nothing extra is accepted
-  if (subs.length === 1) return { plan: subs[0] }
-  if (subs.length > 1) return { reason: 'several-plans', hint: `several plans, pass --plan: ${subs.map(f => path.relative(root, f)).join(', ')}` }
-  return { reason: 'no-plan' }
+  return false
 }
 
-async function findMap(root) {
-  const hits = await Promise.all(portRange().map(p =>
-    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(300) }).then(r => r.json())
-      .then(w => (w && typeof w.repoPath === 'string' && norm(w.repoPath) === root) ? p : null).catch(() => null)))
-  return hits.find(Boolean) || null
+// asks an older daemon to quit through its own API; false when it keeps running
+async function retire(d) {
+  try {
+    const r = await fetch(`http://127.0.0.1:${d.port}/shutdown`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repoPath: d.repo }), signal: AbortSignal.timeout(800) })
+    if (!r.ok) return false
+  } catch { return false }
+  for (let i = 0; i < 10; i++) {
+    await sleep(100)
+    if (!(await fetch(`http://127.0.0.1:${d.port}/whoami`, { signal: AbortSignal.timeout(200) }).then(() => true).catch(() => false))) return true
+  }
+  return false
 }
 
 function startMap(root, plan, script) {
   const args = [script, root, '--plan', plan, '--no-open']
-  if (process.env.AOS_TRAIL_PORTS) args.push('--port', String(portRange()[0]))
+  if (process.env.AOS_TRAIL_PORTS) args.push('--port', String(probePorts()[0]))
   const c = cp.spawn(process.execPath, args, { cwd: root, detached: true, stdio: 'ignore' })
   c.on('error', () => {})
   c.unref()
@@ -86,19 +87,38 @@ function stateFile(root, session) {
 export async function ensure({ cwd, plan: planArg, session, json, script }) {
   const out = { url: null, started: false, opened: false, reason: null, plan: null, hint: null }
   try {
-    const root = repoRoot(path.resolve(cwd || process.cwd()))
-    const sel = selectPlan(root, planArg)
+    const g = gitRoots(path.resolve(cwd || process.cwd()))
+    const top = norm(g.top)
+    const root = norm(g.main)
+    let sel = selectPlan(top, planArg)
+    if (sel.reason === 'no-plan' && top !== root) sel = selectPlan(root, planArg)
     if (sel.reason) { out.reason = sel.reason; out.hint = sel.hint || null }
     else {
       out.plan = sel.plan
       if (!MARKER.test(fs.readFileSync(sel.plan, 'utf8'))) out.reason = 'no-markers'
     }
     if (!out.reason) {
-      let port = await findMap(root)
+      const wts = new Set(listWorktrees(root, Infinity).map(w => w.path))
+      let { port, old } = await scan(root, wts)
       if (!port) {
-        startMap(root, out.plan, script)
-        out.started = true
-        for (let i = 0; i < 15 && !port; i++) { await sleep(100); port = await findMap(root) }
+        const lock = lockFile(root)
+        if (takeLock(lock)) {
+          try {
+            ;({ port, old } = await scan(root, wts))
+            if (!port) {
+              startMap(root, out.plan, script)
+              out.started = true
+              for (let i = 0; i < 15 && !port; i++) { await sleep(100); ;({ port, old } = await scan(root, wts)) }
+            }
+          } finally { try { fs.unlinkSync(lock) } catch {} }
+        } else {
+          for (let i = 0; i < 40 && !port; i++) { await sleep(100); ;({ port, old } = await scan(root, wts)) }
+        }
+      }
+      if (port && old.length) {
+        const stuck = []
+        for (const d of old) if (!(await retire(d))) stuck.push(`:${d.port} (${d.repo})`)
+        if (stuck.length) out.hint = `older agenttrail daemon still running on ${stuck.join(', ')}; the new map is on :${port}. Stop the old one yourself (its process listens on that port) — both keep running until then.`
       }
       if (!port) out.reason = 'error: map did not start in time'
       else {
@@ -114,5 +134,5 @@ export async function ensure({ cwd, plan: planArg, session, json, script }) {
   } catch (e) {
     out.reason = `error: ${String(e && e.message || e).slice(0, 80)}`
   }
-  console.log(json ? JSON.stringify(out) : `agenttrail: ${out.url || out.hint || out.reason}`)
+  console.log(json ? JSON.stringify(out) : `agenttrail: ${out.url || out.hint || out.reason}${out.url && out.hint ? `\n${out.hint}` : ''}`)
 }

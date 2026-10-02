@@ -24,6 +24,7 @@ const readline = require('readline');
 const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
+const { pruneRetiredSkills } = require('./lib/retired-skills');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -683,25 +684,6 @@ function initSessionManifest(existingManifest, sourceDirs) {
     _sessionHashes = buildKnownSourceHashes(sourceDirs);
 }
 
-// Skills that left the package in 4.4.2 (Plan 02: migrated to the private
-// aos-internal repo, per ~/dev/_plans/aos-2026-09-14/), by their flattened
-// directory name at a sync destination.
-//
-// This is deliberately a fixed list, not a diff against what the current
-// payload ships. A generic "anything on disk that is not in skills/ right
-// now" pass was tried first and swept up two unrelated things: skill folders
-// that MCP servers bundle inside their own package tree (e.g.
-// mcps/tdmcp/.agents/skills/...), which happen to share the literal path
-// segment "skills" but belong to a different install entirely; and skills
-// under skills/workspace_agents/, which syncSkillsToGlobalHarnesses already
-// deliberately excludes from the six global destinations, so a stray global
-// copy of one says nothing about whether it is safe to delete. Both are real
-// cleanup opportunities, but they are a separate investigation, not a side
-// effect of this migration's beta test.
-const SKILLS_REMOVED_IN_4_4_2 = new Set([
-    'bdbsaastraining', 'bdb-dev-os-skill', 'bdbsaashost', 'bdb-ecosystem-health', 'bdbsaas-ops',
-]);
-
 // The exact roots syncSkillsToGlobalHarnesses and the Gemini/Antigravity
 // config-skills path write into. Pruning only touches a manifest entry whose
 // path starts under one of these -- never one that merely contains a
@@ -718,51 +700,16 @@ function globalSkillDestRoots() {
     ];
 }
 
-// syncSkillsToGlobalHarnesses (and its sibling copy loops) only ever add or
-// update -- nothing in that path ever deletes a skill that the current
-// payload no longer ships. That is fine for new skills and updated ones, but
-// it means a skill removed from a release stays on every user's disk
-// forever, through every future update, because nothing after the removal
-// ever looks at what is on disk that no longer has a source. This walks the
-// install manifest -- which already has one entry per file this installer
-// has ever placed -- for the specific skills 4.4.2 removed, under the six
-// known global skill roots, and deletes them. A user-modified file is backed
-// up first, the same way resolveFileConflict backs up a user edit it is
-// about to overwrite, rather than silently deleting local changes.
+// Retires skills the package no longer ships (lib/retired-skills.js). Edited or foreign files are
+// copied to the backup dir before the skill folder is removed.
 function pruneRemovedSkills(manifest) {
-    if (!manifest) return;
-    const roots = globalSkillDestRoots();
-
-    const staleDirs = new Set();
-    let removedFiles = 0;
-    for (const targetPath of Object.keys(manifest)) {
-        const root = roots.find((r) => targetPath.startsWith(r + path.sep));
-        if (!root) continue;
-        const skillDirName = targetPath.slice(root.length + 1).split(path.sep)[0];
-        if (!SKILLS_REMOVED_IN_4_4_2.has(skillDirName)) continue;
-
-        if (fs.existsSync(targetPath)) {
-            const diskHash = computeFileHash(targetPath);
-            const manifestEntry = manifest[targetPath];
-            if (diskHash !== null && manifestEntry && diskHash !== manifestEntry.sha256) {
-                const bakPath = `${targetPath}.${timestamp}.bak`;
-                try { fs.copyFileSync(targetPath, bakPath); } catch (e) { logDebug(e, 'prune-removed-skill backup'); }
-                log.warn(`[manifest] Retired skill left a user-edited file, backed up to ${bakPath} instead of deleting it.`);
-            } else {
-                try { fs.unlinkSync(targetPath); removedFiles++; } catch (e) { logDebug(e, 'prune-removed-skill unlink'); }
-            }
-            staleDirs.add(path.join(root, skillDirName));
-        }
-        delete manifest[targetPath];
-    }
-
-    for (const dir of staleDirs) {
-        try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { logDebug(e, 'prune-removed-skill rmdir'); }
-    }
-
-    if (staleDirs.size > 0) {
-        log.step(`Removed ${removedFiles} file(s) from ${staleDirs.size} retired skill install(s) no longer shipped.`);
-    }
+    pruneRetiredSkills({
+        home: homeDir,
+        manifest,
+        roots: globalSkillDestRoots(),
+        backupDir: path.join(homeDir, '.agents', 'backups', `retired-skills-${timestamp}`),
+        log,
+    });
 }
 
 function flushSessionManifest() {
@@ -4021,6 +3968,48 @@ function parseOpencodeOptional(argv = process.argv, env = process.env) {
     return new Set(raw.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
 }
 
+// Opt-in OpenCode permission. Off unless AOS_OPENCODE_PERMISSION=external_directory or
+// --opencode-permission=external_directory. Only permission.external_directory is ever set,
+// as path patterns (object form verified in the OpenCode config schema; ~ expands per its docs).
+const OPENCODE_EXTERNAL_DIRECTORY_RULES = { '~/.agents/**': 'allow', '~/.config/opencode/**': 'allow' };
+
+function parseOpencodePermission(argv = process.argv, env = process.env) {
+    const flag = argv.find((a) => a.startsWith('--opencode-permission='));
+    const raw = [env.AOS_OPENCODE_PERMISSION, flag && flag.slice('--opencode-permission='.length)].filter(Boolean).join(',');
+    return new Set(raw.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
+}
+
+function applyOpencodePermission(data, configPath, wanted) {
+    for (const name of wanted) {
+        if (name !== 'external_directory') log.warn(`Unknown OpenCode permission "${name}" ignored.`);
+    }
+    if (!wanted.has('external_directory') || DRY_RUN) return;
+    const perm = data.permission;
+    if (perm !== undefined && (perm === null || typeof perm !== 'object' || Array.isArray(perm))) {
+        log.warn('opencode.jsonc "permission" is not an object (string shorthand?); external_directory not set, left untouched.');
+        return;
+    }
+    if (perm && 'external_directory' in perm) {
+        if (JSON.stringify(perm.external_directory) !== JSON.stringify(OPENCODE_EXTERNAL_DIRECTORY_RULES)) {
+            log.message('opencode.jsonc already has permission.external_directory; left untouched.');
+        }
+        return;
+    }
+    if (configPath && fs.existsSync(configPath)) {
+        if (readJsoncFile(configPath) === null) {
+            log.warn(`Could not parse ${configPath}; permission.external_directory not set.`);
+            return;
+        }
+        const bak = `${configPath}.${timestamp}.bak`;
+        try { fs.copyFileSync(configPath, bak); } catch (e) {
+            log.warn(`Could not back up ${configPath}, skipping permission.external_directory: ${e.message}`);
+            return;
+        }
+    }
+    data.permission = Object.assign(perm || {}, { external_directory: { ...OPENCODE_EXTERNAL_DIRECTORY_RULES } });
+    log.step('Added opt-in OpenCode permission.external_directory for AOS paths (comments in opencode.jsonc are not preserved on rewrite)');
+}
+
 const pluginPackageName = (entry) => {
     const str = typeof entry === 'string' ? entry : (Array.isArray(entry) ? String(entry[0]) : '');
     return str.replace(/(?<=.)@[^@/]*$/, '');
@@ -4108,7 +4097,7 @@ function installOpencodeCommands(srcDirPath, destDirPath) {
 // Sync merges MCP servers in the same pass and writes once). When `data` is
 // omitted the function loads and saves the config itself, which is what lets the
 // Quick Update path register the plugin as well as copy it.
-function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null, optional = parseOpencodeOptional() } = {}) {
+function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null, optional = parseOpencodeOptional(), permission = parseOpencodePermission() } = {}) {
     const opencodeDir = configPath
         ? path.dirname(configPath)
         : (process.platform === 'win32'
@@ -4194,6 +4183,8 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
             if (!data.skills.paths.includes(p)) data.skills.paths.push(p);
         }
     }
+
+    applyOpencodePermission(data, configPath, permission instanceof Set ? permission : new Set(permission || []));
 
     if (ownsWrite) {
         // Write only on a real change. readJsoncFile strips comments, so
@@ -5903,6 +5894,11 @@ Options:
                    AOS_OPENCODE_OPTIONAL. Pinned plugin[] entries are appended after a
                    config backup; rtk only prints a brew hint. Off by default. AOS never
                    runs foreign installers and never touches OpenCode's mcp set.
+  --opencode-permission=external_directory
+                   Opt in to OpenCode's permission.external_directory for ~/.agents and
+                   ~/.config/opencode only (path patterns, allow), or set
+                   AOS_OPENCODE_PERMISSION. Existing keys are never overwritten; a string
+                   "permission" is refused. Config backed up first. Off by default.
   --plugin-migration=off|check
                    Skip (off) or only report (check) the bdb-aos plugin registration and
                    removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.

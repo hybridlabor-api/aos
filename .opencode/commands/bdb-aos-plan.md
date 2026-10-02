@@ -2,4 +2,4 @@
 description: "Plan end to end: draft, render in plan-canvas or Plan Builder, annotate, await approval, then hand off."
 ---
 
-Run the full planning pipeline: 1) draft the plan with `concise-planning`; 2) always offer the choice between plan-canvas and Plan Builder (`visual-plan`) for rendering; 3) collect annotations and wait for the human's approval; 4) only after approval continue with `writing-plans` or `/bdb-aos-graph`. Topic: $ARGUMENTS
+Run the full planning pipeline: 1) draft the plan with `concise-planning`; 2) always offer the choice between plan-canvas and Plan Builder (`aos-plan-canvas open <dir> --mode bdb-plan-builder`) for rendering; 3) collect annotations and wait for the human's approval; 4) only after approval continue with `writing-plans` or `/bdb-aos-graph`. Topic: $ARGUMENTS

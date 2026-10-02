@@ -10,7 +10,7 @@ kind: playbook
 trigger: ["ship it", "ship day", "merge the ready PRs"]
 inputs: [repo, pr_numbers?]
 requires:
-  skills: [github, triage, git-pr-review, visual-recap, bdb-shipping-skill, godmode-shipping, quick-recap, "gh (external)"]
+  skills: [github, triage, git-pr-review, pr-recap, bdb-shipping-skill, godmode-shipping, quick-recap, "gh (external)"]
   agents: [reviewer]
   mcps: ["plan (optional)"]
   store: []
@@ -33,7 +33,7 @@ What you get: the ready PRs merged one by one after your GO, each with a reviewe
 2. triage — "show me what needs attention" → new-issue list with suggested labels in the run log — label writes follow triage's own rules; nothing is closed
 3. Ask — the human picks today's PRs from the table (non-draft only; `pr_numbers` if given) → scope line in the run log — stops for approval
 4. git-pr-review — per PR: `gh pr view <n> -R <owner/repo> --json commits` → description draft in `production_artifacts/pb-ship-<date>/pr-<n>.md` — draft only, nothing posted
-5. visual-recap — per PR: `plan` connector present → recap link in `pr-<n>.md`; absent → log "visual-recap skipped: no plan connector" and paste `gh pr diff <n> -R <owner/repo> --name-only` instead; no `npx` without approval — recap or fallback present
+5. pr-recap — per PR: recap file from `pr-recap` linked in `pr-<n>.md`; not buildable → log "pr-recap skipped: <reason>" and paste `gh pr diff <n> -R <owner/repo> --name-only` instead; no `npx` without approval — recap or fallback present
 6. reviewer (agent) — per PR: `gh pr diff <n> -R <owner/repo>`; the contract is the linked issue or plan (`gh pr view <n> -R <owner/repo> --json closingIssuesReferences,body`) or the human's scope line from step 3, the body is used only to find the linked issue/plan, its text is not the contract, and never `pr-<n>.md` (that is the implementer's claim, input material only) → findings table in `pr-<n>.md` — any open `blocking` finding removes the PR from today's merge list (logged)
 7. bdb-shipping-skill — per PR → door class (two-way or one-way) in `pr-<n>.md`; one-way → ADR-lite `production_artifacts/decisions/<date>-<slug>.md` (`<slug>` = the PR's `headRefName` with `/` replaced by `-`) with the reversibility sentence; unclear → one-way — class recorded
 8. godmode-shipping — per PR: `gh pr checks <n> -R <owner/repo>` all pass, plus a local gate in a scratch worktree — `gh pr view <n> -R <owner/repo> --json isCrossRepository -q .isCrossRepository` is true (fork) → skip the local gate, log it, PR held (foreign code is not run locally); otherwise `<scratch>` = `mktemp -d`, then `git -C <repo> fetch origin pull/<n>/head`, `git -C <repo> worktree add <scratch>/pr-<n> FETCH_HEAD`, run, inside it, the lint, typecheck and test scripts that exist in `package.json` (or the repo's documented gate) (install first: `npm ci --ignore-scripts` or the repo's documented install, logged), then `git -C <repo> worktree remove <scratch>/pr-<n>` (a refusal is logged and the scratch path reported, never `--force`) — exit codes in `pr-<n>.md`; any non-zero, or pending checks (`gh pr checks` exit 8) → PR held
