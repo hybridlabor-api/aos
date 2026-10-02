@@ -8,7 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import crypto from 'node:crypto'
-import { norm, probePorts, mainRoot, listWorktrees, selectPlan } from './repoid.mjs'
+import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -396,9 +396,21 @@ function watchLane(l) {
   }
 }
 // re-reads `git worktree list`; returns true when the set of lanes changed
+// main is always a lane; the other slots go to the most recently active worktrees, the rest share the 'other' lane
+const OTHER = 'other'
+const TTL = 30000
+const active = new Map() // worktree root -> last event ts
+const overCap = new Map() // worktree root without a lane -> cache expiry
+const activeAt = p => { const t = active.get(p); if (t) return t; try { return fs.statSync(p).mtimeMs } catch { return 0 } }
+const otherLane = root => ({ key: OTHER, root, label: 'other worktrees', branch: null, other: true })
+const hasOther = () => Object.values(runs).some(r => r.lane === OTHER)
 function refreshLanes() {
-  const wts = listWorktrees(repo, MAX_LANES)
-  const used = new Set([''])
+  const all = listWorktrees(repo, Infinity)
+  const recent = p => Date.now() - (active.get(p) || 0) < 10 * 60e3 && laneList().some(l => l.root === p) // busy lanes keep their slot, so lanes do not thrash
+  const rank = p => recent(p) ? Infinity : activeAt(p)
+  const keep = new Set([all[0].path, ...all.slice(1).sort((a, b) => rank(b.path) - rank(a.path) || activeAt(b.path) - activeAt(a.path)).slice(0, MAX_LANES - 1).map(w => w.path)])
+  const wts = all.filter(w => keep.has(w.path))
+  const used = new Set(['', OTHER])
   const next = new Map()
   let changed = false
   for (const w of wts) {
@@ -418,25 +430,34 @@ function refreshLanes() {
   lanes.clear()
   for (const [k, l] of next) lanes.set(k, l)
   for (const l of laneList()) if (!l.watcher) watchLane(l)
+  for (const w of keep) overCap.delete(w)
   if (changed) treeDirty = true
   return changed
 }
 const missedCwd = new Map() // cwd -> expiry; keeps unrelated repos' events from costing a git call each
-// the lane an event's cwd belongs to; a cwd in a worktree created since the last refresh triggers one
+// the lane an event's cwd belongs to; git runs at most once per unknown cwd per TTL, over-cap worktrees are cached
 function laneFor(cwd) {
   if (!cwd) return null
   const abs = path.resolve(cwd)
+  const now = Date.now()
   let l = laneAt(abs) || laneAt(norm(abs))
-  if (l) return l
+  if (l) { active.set(l.root, now); return l }
+  for (const [top, until] of overCap) if (until > now && isWithin(top, abs)) { active.set(top, now); return otherLane(top) }
   const until = missedCwd.get(abs)
-  if (until && until > Date.now()) return null
-  if (norm(mainRoot(abs)) === norm(repo)) {
+  if (until && until > now) return null
+  const g = gitRoots(abs)
+  if (norm(g.main) === norm(repo)) {
+    const top = norm(g.top)
+    active.set(top, now)
     if (refreshLanes()) { reloadPlans(); broadcast() }
-    l = laneAt(abs) || laneAt(norm(abs)) || mainLane()
+    l = laneAt(abs) || laneAt(norm(abs))
     if (l) return l
+    if (top === norm(repo)) return mainLane()
+    overCap.set(top, now + TTL)
+    return otherLane(top)
   }
   if (missedCwd.size > 200) missedCwd.clear()
-  missedCwd.set(abs, Date.now() + 30000)
+  missedCwd.set(abs, now + TTL)
   return null
 }
 
@@ -758,7 +779,7 @@ function model() {
     session, plan: planNodes, tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0, treeTruncated,
-    lanes: lanes.size > 1 ? laneList().map(l => ({ key: l.key, label: l.label, branch: l.branch, root: l.root, main: !l.key })) : undefined,
+    lanes: lanes.size > 1 || hasOther() ? [...laneList(), ...(hasOther() ? [otherLane(null)] : [])].map(l => ({ key: l.key, label: l.label, branch: l.branch, root: l.root, main: !l.key, other: l.other || undefined })) : undefined,
     activity, recentActivity, planMtime, handoffs, asks, hotFiles: hotFiles(), cycles, // AOS patch: asks ride along so the open map updates live
     planStale: planStaleness(), lints: lintPlan(), hooksInstalled: hooksInstalled(),
     planFile, aosPlan,
@@ -875,7 +896,7 @@ const server = http.createServer((req, res) => {
     const type = f.endsWith('.html') ? 'text/html' : f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.json') ? 'application/json' : 'text/plain'
     res.writeHead(200, { 'content-type': type + '; charset=utf-8' }).end(fs.readFileSync(f))
   } else if (u.pathname === '/whoami') {
-    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port, repoPath: repo, worktrees: laneList().map(l => ({ path: l.root, branch: l.branch, main: !l.key })) }))
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ protocol: PROTOCOL, project: session.project, port, repoPath: repo, worktrees: laneList().map(l => ({ path: l.root, branch: l.branch, main: !l.key })) }))
   } else if (u.pathname === '/board-lite') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(liteModel()))
   } else if (u.pathname === '/world') {
@@ -902,18 +923,38 @@ const server = http.createServer((req, res) => {
     } catch {}
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out.slice(0, 15)))
   } else if (u.pathname === '/setup' && req.method === 'POST') {
-    init().then(() => {
-      reloadPlans()
-      broadcast()
-      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, prompt: BACKFILL_PROMPT }))
-    }).catch(e => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: String(e) })))
+    readCapped(req, res, body => {
+      const reply = o => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(o))
+      let key = u.searchParams.get('lane')
+      try { const j = JSON.parse(body || '{}'); if (typeof j.lane === 'string') key = j.lane } catch {}
+      const lane = key === null ? (lanes.size > 1 ? null : mainLane()) : lanes.get(key)
+      if (!lane) { reply({ ok: false, error: key === null ? `this map has several lanes, so setup needs {"lane": "<key>"} (${laneList().map(l => l.key || '""=main').join(', ')}) to write into the right checkout` : 'unknown lane' }); return }
+      init(lane.root, lanePlan(lane) || path.join(lane.root, 'PLAN.md')).then(() => {
+        reloadPlans()
+        broadcast()
+        reply({ ok: true, prompt: BACKFILL_PROMPT })
+      }).catch(e => reply({ ok: false, error: String(e) }))
+    }, MAX_CONTROL_BODY_BYTES)
+  } else if (u.pathname === '/shutdown' && req.method === 'POST') {
+    // same CSRF guard as /answer, plus the caller must name this daemon's repo
+    const ct = req.headers['content-type']
+    const origin = req.headers['origin']
+    const ownOrigin = origin === `http://localhost:${port}` || origin === `http://127.0.0.1:${port}`
+    if (ct !== 'application/json' || (origin !== undefined && !ownOrigin)) { res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'forbidden' })); return }
+    readCapped(req, res, body => {
+      let named = null
+      try { named = JSON.parse(body || '{}').repoPath } catch {}
+      if (typeof named !== 'string' || norm(named) !== norm(repo)) { res.writeHead(409, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'repo mismatch' })); return }
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true }), () => { stateDirty = true; saveState(); process.exit(0) })
+    }, MAX_CONTROL_BODY_BYTES)
   } else if (u.pathname === '/setup-board' && req.method === 'POST') {
     readCapped(req, res, async body => {
       let out = { ok: false, error: 'no board there' }
       try {
-        const p = Number(JSON.parse(body || '{}').port)
+        const j = JSON.parse(body || '{}')
+        const p = Number(j.port)
         if (!Number.isInteger(p) || p < 1 || p > 65535) out = { ok: false, error: 'bad port' }
-        else out = await fetch(`http://127.0.0.1:${p}/setup`, { method: 'POST', signal: AbortSignal.timeout(5000) }).then(r => r.json())
+        else out = await fetch(`http://127.0.0.1:${p}/setup`, { method: 'POST', body: JSON.stringify(typeof j.lane === 'string' ? { lane: j.lane } : {}), signal: AbortSignal.timeout(5000) }).then(r => r.json())
       } catch {}
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out))
     }, MAX_CONTROL_BODY_BYTES)
@@ -1107,7 +1148,7 @@ function onListen() {
 async function bootDedup() {
   const probes = []
   for (const p of probePorts()) probes.push(
-    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => norm(w.repoPath) === norm(repo) ? p : null).catch(() => null))
+    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => norm(w.repoPath) === norm(repo) && w.protocol >= PROTOCOL ? p : null).catch(() => null))
   const hit = (await Promise.all(probes)).find(Boolean)
   if (hit) { console.log(`agenttrail is already running for this repo · http://localhost:${hit}`); process.exit(0) }
   listenWithFallback()
@@ -1115,10 +1156,10 @@ async function bootDedup() {
 bootDedup()
 
 // ---------- init ----------
-async function init() {
-  fs.mkdirSync(atDir, { recursive: true })
-  if (!fs.existsSync(planPath)) {
-    fs.writeFileSync(planPath, `# ${path.basename(repo)}
+async function init(root = repo, plan = planPath) {
+  fs.mkdirSync(path.join(root, '.agenttrail'), { recursive: true })
+  if (!fs.existsSync(plan)) {
+    fs.writeFileSync(plan, `# ${path.basename(root)}
 
 ## Set up the project {#setup}
 tech: scaffolding
@@ -1133,25 +1174,25 @@ tech: scaffolding
   // CLAUDE.md is read by Claude Code, AGENTS.md by Codex/Cursor and friends —
   // the convention block goes in both so any agent maintains the same plan.
   for (const name of ['CLAUDE.md', 'AGENTS.md']) {
-    const p = path.join(repo, name)
+    const p = path.join(root, name)
     if (!safeRead(p).includes(marker)) {
       fs.appendFileSync(p, snippet)
       console.log(`appended agenttrail convention block to ${name}`)
     }
   }
-  if (await askYesNo('wire Claude Code hooks into .claude/settings.local.json (gitignored, local only)? [Y/n] ')) installHooks()
-  const gi = path.join(repo, '.gitignore')
+  if (await askYesNo('wire Claude Code hooks into .claude/settings.local.json (gitignored, local only)? [Y/n] ')) installHooks(root)
+  const gi = path.join(root, '.gitignore')
   const giText = safeRead(gi)
   if (!giText.includes('.agenttrail')) fs.appendFileSync(gi, (giText.endsWith('\n') || !giText ? '' : '\n') + '.agenttrail/\n')
-  console.log('done — start the daemon with: agenttrail ' + repo)
+  console.log('done — start the daemon with: agenttrail ' + root)
   console.log('\nnext: have your agent draw the real map. Paste this to Claude Code or Codex in this repo:\n')
   console.log('  Read the "agenttrail plan convention" section in CLAUDE.md or AGENTS.md. Then study this repo in trust order — the code and directory layout first (what exists), git log for what is actually recent, decision logs and any in-progress build/handoff docs for what is in flight, and README/roadmap prose LAST and only for open intent (founding docs rot; cross-check their claims against git log) — and rewrite PLAN.md as the real map of this codebase: components with stable {#id}s, needs:/links: edges between them, files: globs for the paths each owns, and verb-led concrete titles with tech: sublines. Keep it to 5-9 components no matter how big the repo — a component is a part one agent could own for a session, with its own doneness and at least one edge; anything smaller is a task inside one. Verify every status against the CODE, not the docs — READMEs and roadmaps rot; mark [x] only after finding the implementing source or artifact, and cite that evidence on its tech: line (e.g. tech: TurnView.swift) so a human can audit every tick; if you cannot find evidence, leave it unchecked and say so in the decisions note. Statuses must be honest — [x] only for what verifiably exists, [~] only for what you are working on right now, everything else [ ]. Tag open tasks with an indented from: line naming provenance — from: agent when an in-progress build/handoff doc or your own declared intent claims it imminently, from: roadmap when sourced only from planning docs; omit when unsure. Record the backfill under ## decisions.')
 }
 
 // merge our hook relay into the repo's .claude/settings.json so Claude Code
 // sessions stream tool calls + todos to the board. Additive and idempotent.
-function installHooks() {
-  const dir = path.join(repo, '.claude')
+function installHooks(root = repo) {
+  const dir = path.join(root, '.claude')
   const sp = path.join(dir, 'settings.local.json')
   let cfg = {}
   try { cfg = JSON.parse(fs.readFileSync(sp, 'utf8')) } catch {}
