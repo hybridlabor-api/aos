@@ -15,6 +15,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+const { normalizeAnnotation } = require('./annotation-schema');
+
 const FEEDBACK_KINDS = new Set(['chat', 'annotation', 'verdict']);
 const VERDICTS = new Set(['approve', 'request-changes']);
 
@@ -51,10 +53,12 @@ function sanitizeText(value, maxLength = 4000) {
 // Normalize one browser-submitted feedback item into the shape delivered to
 // the agent. Returns null for unusable input rather than throwing so a
 // malformed item can never wedge the queue.
-function normalizeFeedbackItem(raw, counter) {
+function normalizeFeedbackItem(raw, counter, { origin = 'canvas', boundOrigin = null } = {}) {
   if (!raw || typeof raw !== 'object') return null;
   const kind = FEEDBACK_KINDS.has(raw.kind) ? raw.kind : null;
   if (!kind) return null;
+  // Only the canvas chrome can chat or approve; an app page may only annotate.
+  if (origin === 'app' && kind !== 'annotation') return null;
   const item = {
     id: `fb-${counter}`,
     kind,
@@ -66,19 +70,9 @@ function normalizeFeedbackItem(raw, counter) {
     item.verdict = raw.verdict;
   }
   if (kind === 'annotation') {
-    const anchor = raw.anchor && typeof raw.anchor === 'object' ? raw.anchor : null;
-    if (!anchor || typeof anchor.selector !== 'string') return null;
-    item.anchor = {
-      selector: sanitizeText(anchor.selector, 500),
-      tag: sanitizeText(anchor.tag, 60),
-      snippet: sanitizeText(anchor.snippet, 400)
-    };
-    if (anchor.textRange && typeof anchor.textRange === 'object') {
-      item.anchor.textRange = {
-        text: sanitizeText(anchor.textRange.text, 1000)
-      };
-    }
-    if (!item.text) return null;
+    const fields = normalizeAnnotation(raw, { origin, boundOrigin });
+    if (!fields) return null;
+    Object.assign(item, fields);
   }
   if (kind === 'chat' && !item.text) return null;
   return item;
@@ -138,6 +132,8 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
       pendingFeedback: [],
       createdAt: nowIso()
     };
+    // A token never outlives the session end: reopening needs a fresh one.
+    if (existing && existing.status === 'ended') delete session.annotate;
     session.status = 'open';
     delete session.endedBy;
     session.updatedAt = nowIso();
@@ -149,13 +145,14 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
   // Queue feedback from the browser. Chat-shaped items are mirrored into the
   // session transcript immediately so the conversation panel stays coherent
   // across reloads.
-  function queueFeedback(key, rawItems, { endSession = false } = {}) {
+  function queueFeedback(key, rawItems, { endSession = false, origin = 'canvas', boundOrigin = null } = {}) {
     const session = get(key);
     if (!session || session.status === 'ended') return null;
     const accepted = [];
-    for (const raw of Array.isArray(rawItems) ? rawItems : []) {
+    const submitted = Array.isArray(rawItems) ? rawItems : [];
+    for (const raw of submitted) {
       state.feedbackCounter += 1;
-      const item = normalizeFeedbackItem(raw, state.feedbackCounter);
+      const item = normalizeFeedbackItem(raw, state.feedbackCounter, { origin, boundOrigin });
       if (item) accepted.push(item);
     }
     session.pendingFeedback.push(...accepted);
@@ -170,7 +167,7 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
     }
     session.updatedAt = nowIso();
     persist();
-    return { accepted, pending: session.pendingFeedback.length, session };
+    return { accepted, rejected: submitted.length - accepted.length, pending: session.pendingFeedback.length, session };
   }
 
   // Deliver-and-drain: feedback is handed to exactly one await call, after
@@ -197,6 +194,20 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
       return { status: 'ended', endedBy: session.endedBy };
     }
     return { status: 'waiting' };
+  }
+
+  function setAnnotateToken(key, record) {
+    const session = get(key);
+    if (!session) return null;
+    session.annotate = record;
+    session.updatedAt = nowIso();
+    persist();
+    return record;
+  }
+
+  function getAnnotateToken(key) {
+    const session = get(key);
+    return (session && session.annotate) || null;
   }
 
   function addAgentReply(key, text) {
@@ -242,11 +253,21 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
     findByFile,
     queueFeedback,
     takeFeedback,
+    setAnnotateToken,
+    getAnnotateToken,
     addAgentReply,
     end,
     list,
     hasOpenSessions
   };
+}
+
+function appPathname(url) {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return '/';
+  }
 }
 
 // One-line rendering of a feedback item for the conversation transcript.
@@ -257,7 +278,9 @@ function chatLineFor(item) {
   }
   if (item.kind === 'annotation') {
     const where = item.anchor.snippet || item.anchor.selector;
-    return `[${where}] ${item.text}`;
+    const app = item.target && item.target.origin === 'app' ? `[app ${appPathname(item.target.url)}] ` : '';
+    const types = item.shapes ? [...new Set(item.shapes.map(shape => shape.type))] : [];
+    return `${app}[${where}] ${item.text}${types.length ? ` (${types.join(', ')})` : ''}`;
   }
   return item.text;
 }
