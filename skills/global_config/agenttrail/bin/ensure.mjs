@@ -55,7 +55,9 @@ function stateFile(root, session) {
 export async function ensure({ cwd, plan: planArg, session, json, script }) {
   const out = { url: null, started: false, opened: false, reason: null, plan: null, hint: null }
   try {
-    const { top, main: root } = gitRoots(path.resolve(cwd || process.cwd()))
+    const g = gitRoots(path.resolve(cwd || process.cwd()))
+    const top = norm(g.top)
+    const root = norm(g.main)
     let sel = selectPlan(top, planArg)
     if (sel.reason === 'no-plan' && top !== root) sel = selectPlan(root, planArg)
     if (sel.reason) { out.reason = sel.reason; out.hint = sel.hint || null }

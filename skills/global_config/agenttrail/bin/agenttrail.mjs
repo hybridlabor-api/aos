@@ -199,7 +199,7 @@ function parseTimeoutArg(v) {
 // repoPath — same discovery as bootDedup; AGENTTRAIL_PORT wins when set. Both sides are
 // symlink-normalized so a daemon started via /tmp matches a cwd of /private/tmp (macOS).
 async function findDaemon() {
-  const here = mainRoot(repo)
+  const here = norm(mainRoot(repo))
   const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : probePorts()
   const hits = await Promise.all(ports.map(p =>
     fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => (w && norm(w.repoPath) === here) ? p : null).catch(() => null)))
@@ -430,7 +430,7 @@ function laneFor(cwd) {
   if (l) return l
   const until = missedCwd.get(abs)
   if (until && until > Date.now()) return null
-  if (mainRoot(abs) === repo) {
+  if (norm(mainRoot(abs)) === norm(repo)) {
     if (refreshLanes()) { reloadPlans(); broadcast() }
     l = laneAt(abs) || laneAt(norm(abs)) || mainLane()
     if (l) return l
@@ -1107,7 +1107,7 @@ function onListen() {
 async function bootDedup() {
   const probes = []
   for (const p of probePorts()) probes.push(
-    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => norm(w.repoPath) === repo ? p : null).catch(() => null))
+    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => norm(w.repoPath) === norm(repo) ? p : null).catch(() => null))
   const hit = (await Promise.all(probes)).find(Boolean)
   if (hit) { console.log(`agenttrail is already running for this repo · http://localhost:${hit}`); process.exit(0) }
   listenWithFallback()

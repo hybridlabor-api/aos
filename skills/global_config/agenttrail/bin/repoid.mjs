@@ -18,7 +18,7 @@ export function gitRoots(dir) {
   const d = norm(dir)
   const r = cp.spawnSync('git', ['rev-parse', '--show-toplevel', '--git-common-dir'], { cwd: d, encoding: 'utf8', timeout: 1000 })
   const [top, common] = r.status === 0 ? r.stdout.trim().split('\n') : []
-  if (!top) return { top: d, main: d }
+  if (!top) return { top: path.resolve(dir), main: path.resolve(dir) } // non-git folders keep the path they were given
   const t = norm(top)
   const c = norm(path.resolve(d, common || ''))
   return { top: t, main: common && path.basename(c) === '.git' ? path.dirname(c) : t }
