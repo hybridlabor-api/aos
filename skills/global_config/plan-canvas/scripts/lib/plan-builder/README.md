@@ -49,7 +49,7 @@ it never throws.
 
 ## Supported tags
 
-Tag names are the block-registry MDX names from `visual-plan` / `visual-recap`.
+Tag names are the Plan Builder block registry MDX names.
 The lowercase conceptual names are accepted as aliases.
 
 | Tag (aliases) | Props read | Renders as |

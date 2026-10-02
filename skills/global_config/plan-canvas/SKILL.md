@@ -244,7 +244,7 @@ After the user chooses (or selects the preselected default), open with that mode
 aos-plan-canvas open <file> --mode <chosen-id>
 ```
 
-`bdb-plan-builder` (labeled "BDB Plan Builder") and `builder` (labeled "Builder.io Visual Plan") are listed only when they are detected — respectively when `lib/plan-builder/index.js` exists in this skill's scripts directory, or when a `visual-plan` skill with a SKILL.md file is found in any of the configured skill directories (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.config/opencode/skills`, `~/.gemini/config/skills`, or custom paths in `AOS_PLAN_CANVAS_SKILL_DIRS`). Until then, only `standard` is available.
+`bdb-plan-builder` (labeled "BDB Plan Builder") is listed as available only when `lib/plan-builder/index.js` exists in this skill's scripts directory. Until then, only `standard` is available.
 
 ### `bdb-plan-builder`
 

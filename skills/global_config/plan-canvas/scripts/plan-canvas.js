@@ -278,16 +278,6 @@ function resolveModes() {
     reason: fs.existsSync(planBuilderPath) ? null : 'bdb-plan-builder not installed'
   });
 
-  // Check for visual-plan skill
-  const visualPlanFound = Boolean(findSkillMd('visual-plan'));
-
-  modes.push({
-    id: 'builder',
-    label: 'Builder.io Visual Plan',
-    available: visualPlanFound,
-    reason: visualPlanFound ? null : 'visual-plan skill not found'
-  });
-
   return {
     default: 'standard',
     modes

@@ -332,8 +332,10 @@ describe('docs and skill shape', () => {
     }
   });
 
-  test('the vendored visual-edit skill is untouched and no plugin package was added', () => {
+  test('no plugin package was added and the BuilderIO visual skill dirs are gone', () => {
     assert.ok(!fs.existsSync(path.join(skillDir, 'package.json')));
-    assert.ok(fs.existsSync(path.join(root, 'skills/global_config/visual-edit/SKILL.md')));
+    for (const name of ['visual-edit', 'visual-plan', 'visual-recap']) {
+      assert.ok(!fs.existsSync(path.join(root, 'skills/global_config', name)));
+    }
   });
 });

@@ -624,7 +624,7 @@ ${hasMermaid ? mermaidLoaderScript(mermaidUrl()) : ''}
 </html>`;
 }
 
-const VISUAL_SKILLS = ['visual-plan', 'visual-recap', 'visual-review', 'visual-edit', 'prototype', 'archify', 'agenttrail'];
+const VISUAL_SKILLS = ['bdb-visual-edit', 'pr-recap', 'prototype', 'archify', 'agenttrail'];
 
 function artifactKind(file) {
   const base = path.basename(String(file));

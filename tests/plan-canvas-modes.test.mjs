@@ -75,43 +75,10 @@ describe('Plan Canvas modes', () => {
     assert.strictEqual(builder.reason, null);
   });
 
-  test('builder mode detection with AOS_PLAN_CANVAS_SKILL_DIRS', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
-    const visualPlanDir = path.join(tempDir, 'visual-plan');
-    fs.mkdirSync(visualPlanDir, { recursive: true });
-    fs.writeFileSync(path.join(visualPlanDir, 'SKILL.md'), '# Visual Plan');
-
-    try {
-      const result = await runCommand(['modes'], {
-        AOS_PLAN_CANVAS_SKILL_DIRS: tempDir
-      });
-      const output = JSON.parse(result.stdout);
-
-      const builder = output.modes.find(m => m.id === 'builder');
-      assert.ok(builder);
-      assert.strictEqual(builder.available, true);
-      assert.strictEqual(builder.reason, null);
-    } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  test('builder mode is unavailable when visual-plan/SKILL.md not found', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-test-'));
-
-    try {
-      const result = await runCommand(['modes'], {
-        AOS_PLAN_CANVAS_SKILL_DIRS: tempDir
-      });
-      const output = JSON.parse(result.stdout);
-
-      const builder = output.modes.find(m => m.id === 'builder');
-      assert.ok(builder);
-      assert.strictEqual(builder.available, false);
-      assert.ok(builder.reason);
-    } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
+  test('builder mode is no longer listed', async () => {
+    const result = await runCommand(['modes']);
+    const output = JSON.parse(result.stdout);
+    assert.ok(!output.modes.some(m => m.id === 'builder'));
   });
 
   test('open with unknown mode exits with code 2', async () => {
