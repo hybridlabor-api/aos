@@ -17,7 +17,7 @@
     "startcycle",
     "bdb"
   ],
-  "skills": "./plugins/bdb-aos-codex/skills/",
+  "skills": "./skills/",
   "interface": {
     "displayName": "BDB Agent OS",
     "shortDescription": "AOS commands for setup, planning and pipelines",
