@@ -4334,6 +4334,7 @@ function installGoCheck({ targetHome = homeDir } = {}) {
         [path.join(srcDir, 'bin', 'go-check.mjs'), 'go-check.mjs'],
         [path.join(srcDir, '.claude', 'hooks', 'go-gate.mjs'), 'go-gate.mjs'],
         [path.join(srcDir, 'bin', 'guarded-patterns.json'), 'guarded-patterns.json'],
+        [path.join(srcDir, 'mcps', 'mcsc', 'packages', 'core', 'src', 'trail.js'), 'trail.mjs'],
     ];
     if (!files.every(([src]) => fs.existsSync(src))) return false;
     fs.mkdirSync(dest, { recursive: true });
@@ -4348,6 +4349,8 @@ function installGlobalBinaries() {
     if (fs.existsSync(binSrc)) {
         copyDirRecursiveSync(binSrc, globalAgentsBin);
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
+        // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
+        copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(homeDir, '.agents', 'lib'));
     }
 
     const localBinDir = path.join(homeDir, '.local', 'bin');
@@ -4356,7 +4359,7 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor'];
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp'];
 
     for (const name of cliBins) {
         const targetMjs = path.join(globalAgentsBin, `${name}.mjs`);

@@ -225,14 +225,8 @@ function checkHarnesses() {
       `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, !exists && !viaPlugin);
   }
 
-  // OpenCode Plugin check
-  const opencodePlugin = firstExisting([
-    h('.opencode', 'plugins', 'bdb-aos.js'),
-    h('.config', 'opencode', 'plugins', 'bdb-aos.js')
-  ]);
-  add('harnesses', 'OpenCode Plugin', !!opencodePlugin,
-    opencodePlugin ? tilde(opencodePlugin) : 'bdb-aos.js not installed in OpenCode plugins',
-    'Run the AOS installer to wire OpenCode telemetry plugin.', true);
+  const ov = createRequire(import.meta.url)('../lib/opencode-verify.js');
+  results.push(...ov.checkOpencode({ home: HOME }), ...ov.checkAcpAndGoCheck({ home: HOME }));
   checkOpencodeMcpNames();
 }
 
