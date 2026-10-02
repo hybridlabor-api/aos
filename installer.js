@@ -5655,11 +5655,11 @@ function installBinaryAtomically(src, dest) {
 
 async function main() {
     const args = process.argv.slice(2);
-    if (args.includes('--version') || args.includes('-V')) {
+    if (args.includes('--version') || args.includes('-V') || args[0] === 'version') {
         console.log(pkg.version);
         return;
     }
-    if (args.includes('--help') || args.includes('-h')) {
+    if (args.includes('--help') || args.includes('-h') || args[0] === 'help') {
         console.log(`Usage: aos [command] [options]
 
 Commands:

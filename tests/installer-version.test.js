@@ -46,3 +46,14 @@ for (const flag of ['--help', '-h']) {
         assert.deepStrictEqual(left, []);
     });
 }
+
+test('the bare words version and help behave like the flags and touch nothing', () => {
+    const v = run('version');
+    assert.strictEqual(v.r.status, 0, v.r.stderr);
+    assert.strictEqual(v.r.stdout.trim(), version);
+    assert.deepStrictEqual(v.left, []);
+    const h = run('help');
+    assert.strictEqual(h.r.status, 0, h.r.stderr);
+    assert.match(h.r.stdout, /^Usage: aos/);
+    assert.deepStrictEqual(h.left, []);
+});
