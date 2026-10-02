@@ -434,6 +434,29 @@ function resolveArtifactArg(file) {
   return file;
 }
 
+function addRoutes(result, file) {
+  if (!Array.isArray(result.items)) return;
+  const { routeFor } = require('./lib/plan-canvas/route');
+  let planHasComponents = false;
+  if (result.items.some(item => item && item.kind === 'verdict' && item.verdict === 'approve')) {
+    try {
+      planHasComponents = require('./lib/plan-canvas/trail-on-approve').planComponents(file).length > 0;
+    } catch {
+      planHasComponents = false;
+    }
+  }
+  for (const item of result.items) {
+    if (item && typeof item === 'object') item.route = routeFor(item, { planHasComponents });
+  }
+  const routes = new Set(result.items.map(item => item && item.route));
+  if (routes.has('visual-edit')) {
+    result.next_step += ' Hand the visual-edit items to bdb-visual-edit (diff plan, wait for a yes in the canvas, then edit one file).';
+  }
+  if (routes.has('build')) {
+    result.next_step += ' The plan is approved: continue with the build pipeline; agenttrail was started by the canvas.';
+  }
+}
+
 async function cmdAwait(file, args, { stateDir, port }) {
   if (!file) throw new Error('await requires a file path');
   file = resolveArtifactArg(file);
@@ -453,6 +476,7 @@ async function cmdAwait(file, args, { stateDir, port }) {
     result.next_step = result.sessionEnded
       ? 'The user sent this feedback and ended the session. Address it and report in chat; do not reopen the canvas uninvited.'
       : 'Address the feedback, then run `aos-plan-canvas await <file> --reply "<what you changed>"` to answer in the canvas and keep listening.';
+    addRoutes(result, canonicalizeArtifactPath(file));
   } else if (result.status === 'ended') {
     result.next_step =
       result.endedBy === 'user'

@@ -320,3 +320,15 @@ aos-plan-canvas annotate http://localhost:5173
 - The token is bound to that exact origin, stored only as a SHA-256 hash, expires after 8 h (`--ttl-ms`, max 24 h) and dies with the session. Re-run `annotate` to rotate it.
 - The app endpoint accepts `annotation` items only; approval and chat can only come from the canvas page. App items arrive from `await` with `target.origin: "app"`.
 - Loopback origins only (`localhost`, `127.0.0.1`, `[::1]`, port 1024-65535). With a strict CSP the app must allow `script-src` and `connect-src` for the canvas origin.
+
+## Routes
+
+`aos-plan-canvas await` adds a `route` to every feedback item. Existing fields and `next_step` stay as they were; `next_step` only gains a sentence when a route needs a handler.
+
+| route | when | handler |
+|---|---|---|
+| `visual-edit` | an annotation made in a running app (`target.origin: "app"`) | `bdb-visual-edit`: diff plan, wait for a yes in the canvas, edit one file |
+| `build` | an `approve` verdict on a plan that has components | continue with the build pipeline; agenttrail was started by the canvas |
+| `artifact` | everything else (chat, canvas annotations, `request-changes`, approve without components) | address it in the artifact, then `await --reply` |
+
+App items can never approve anything: only canvas-origin chat or a verdict counts as a yes.
