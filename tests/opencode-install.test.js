@@ -221,3 +221,67 @@ test('a second spelling of the bdb-aos.js path is reported', () => {
   const clean = tmp();
   assert.ok(!/another path/.test(install(clean).out));
 });
+
+const PERM = { '~/.agents/**': 'allow', '~/.config/opencode/**': 'allow' };
+function permHome(cfgObj, raw) {
+  const home = tmp();
+  const cfgDir = path.join(home, '.config', 'opencode');
+  fs.mkdirSync(cfgDir, { recursive: true });
+  const cfg = path.join(cfgDir, 'opencode.jsonc');
+  fs.writeFileSync(cfg, raw ?? JSON.stringify(cfgObj));
+  return { home, cfg, cfgDir, baks: () => fs.readdirSync(cfgDir).filter((f) => f.includes('.bak')) };
+}
+const permEnv = { AOS_OPENCODE_PERMISSION: 'external_directory' };
+
+test('permission opt-in is off by default', () => {
+  const h = permHome({ model: 'x/y' });
+  install(h.home);
+  assert.equal(readCfg(h.cfg).permission, undefined);
+});
+
+test('permission opt-in adds only external_directory, leaves mcp, is idempotent', () => {
+  const mcp = { memb_mcp: { type: 'local', command: ['memb'], enabled: true } };
+  const h = permHome({ mcp, permission: { bash: 'allow' } });
+  install(h.home, { optional: null, env: permEnv });
+  const c = readCfg(h.cfg);
+  assert.deepEqual(c.permission, { bash: 'allow', external_directory: PERM });
+  assert.deepEqual(c.mcp, mcp);
+  assert.equal(h.baks().length, 1);
+  const before = fs.readFileSync(h.cfg, 'utf8');
+  install(h.home, { optional: null, env: permEnv });
+  assert.equal(fs.readFileSync(h.cfg, 'utf8'), before);
+  assert.equal(h.baks().length, 1);
+});
+
+test('permission opt-in via flag creates the permission block', () => {
+  const h = permHome({});
+  install(h.home, { optional: null, argv: ['--opencode-permission=external_directory'] });
+  assert.deepEqual(readCfg(h.cfg).permission, { external_directory: PERM });
+});
+
+test('an existing external_directory is kept and noted', () => {
+  const h = permHome({ permission: { external_directory: 'allow' } });
+  const r = install(h.home, { optional: null, env: permEnv });
+  assert.equal(readCfg(h.cfg).permission.external_directory, 'allow');
+  assert.match(r.out, /left untouched/);
+  assert.equal(h.baks().length, 0);
+});
+
+test('a string-shorthand permission is refused, not clobbered', () => {
+  const h = permHome({ permission: 'allow' });
+  const r = install(h.home, { optional: null, env: permEnv });
+  assert.equal(readCfg(h.cfg).permission, 'allow');
+  assert.match(r.out, /not an object/);
+});
+
+test('JSONC input is parsed; unparseable config is refused', () => {
+  const h = permHome(null, '{\n  // note\n  "model": "x/y", /* c */\n  "plugin": [],\n}\n');
+  install(h.home, { optional: null, env: permEnv });
+  const c = readCfg(h.cfg);
+  assert.equal(c.model, 'x/y');
+  assert.deepEqual(c.permission, { external_directory: PERM });
+  const bad = permHome(null, '{ "model": ');
+  const r = install(bad.home, { optional: null, env: permEnv });
+  assert.match(r.out, /Could not parse/);
+  assert.equal(readCfg(bad.cfg).permission, undefined);
+});
