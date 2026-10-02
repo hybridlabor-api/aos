@@ -84,6 +84,7 @@ function usage() {
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
     '  server: --port <n> --host <h>',
     '',
+    'Server: 127.0.0.1:4519 (documented port; override only with AOS_PLAN_CANVAS_PORT)',
     'Environment: AOS_PLAN_CANVAS_PORT, AOS_PLAN_CANVAS_STATE_DIR, AOS_PLAN_CANVAS_IDLE_MS, AOS_PLAN_CANVAS_SKILL_DIRS'
   ].join('\n');
 }
@@ -231,7 +232,7 @@ function output(payload) {
 async function cmdStatus({ stateDir, port }) {
   const health = await healthCheck(port);
   if (!health) {
-    return { server: 'not running', hint: 'open an artifact to start one', stateDir };
+    return { server: 'not running', port, hint: 'open an artifact to start one; the same file always gets the same URL', stateDir };
   }
   const sessions = await request(port, 'GET', '/api/sessions');
   return { server: `http://${DEFAULT_HOST}:${port}`, version: health.version, sessions: sessions.body.sessions };
@@ -335,11 +336,15 @@ async function cmdOpen(file, args, { stateDir, port }) {
   if (res.statusCode === 409) return res.body;
   if (res.statusCode !== 200) throw new Error(res.body.error || `open failed (HTTP ${res.statusCode})`);
   const url = `http://${DEFAULT_HOST}:${port}${res.body.url}`;
-  const launched = args.includes('--no-open') ? false : openBrowser(url);
+  const viewers = res.body.viewers || 0;
+  const attached = viewers > 0;
+  const launched = args.includes('--no-open') || attached ? false : openBrowser(url);
   return {
     status: 'open',
     url,
-    browser: launched ? 'opened' : 'not opened',
+    resumed: Boolean(res.body.resumed),
+    viewers,
+    browser: attached ? 'already open' : launched ? 'opened' : 'not opened',
     mode,
     ...(built ? { artifact: built.outFile, warnings: built.warnings } : {}),
     next_step: built && built.warnings.length

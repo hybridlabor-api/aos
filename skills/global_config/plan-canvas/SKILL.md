@@ -174,6 +174,13 @@ aos-trail . --plan production_artifacts/00_execution_plan.md --no-open
 
 **Archify block.** `<Archify src="00_architecture.html" label="..." height={560} />` embeds a diagram from the `archify` skill (copy its standalone HTML into the plan folder first) in a sandboxed iframe (`allow-scripts` only). `src` is relative to the plan folder and must stay inside it; `..`, absolute paths, symlink escapes, missing files and files over 5 MB show an error card plus a warning.
 
+## Stable links
+
+- The server listens on the fixed port **4519** (`AOS_PLAN_CANVAS_PORT` is the only override), and a session key is `sha256(realpath(file))[:12]`: the URL `http://127.0.0.1:4519/canvas/<key>` is the same after every restart.
+- `open <file>` is idempotent: it restarts a stopped server and resumes the session. Output carries `resumed` and `viewers`; with a browser tab attached (`viewers > 0`) no second tab is launched (`browser: "already open"`).
+- The home page (`http://127.0.0.1:4519/`) lists all sessions; ended ones have a Resume button (plain form, no script).
+- A session the user ended refuses a plain `open` (HTTP 409); pass `--reopen` only when they ask.
+
 ## Relationship to `/startcycle`
 
 An `approve` verdict on `production_artifacts/00_execution_plan.md` satisfies
