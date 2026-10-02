@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const req = createRequire(import.meta.url);
-const { pluginSkills } = req('../lib/plugin-evidence.js');
+const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
@@ -23,6 +23,7 @@ const IS_WIN = process.platform === 'win32';
 const IS_ARM64 = process.arch === 'arm64';
 
 const h = (...p) => path.join(HOME, ...p);
+const hc = (...p) => path.join(claudeConfigDir(HOME), ...p);
 const tilde = (p) => (p || '').replace(HOME, '~');
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 
@@ -30,7 +31,7 @@ const firstExisting = (candidates) => candidates.find((c) => existsSync(c)) || n
 
 const MODULE_BASES = [
   h('.agents'),
-  h('.claude'),
+  hc(),
   h('dev', 'bdb-dev'),
   ...(process.env.npm_config_prefix ? [path.join(process.env.npm_config_prefix, 'lib', 'node_modules')] : []),
   '/usr/local/lib/node_modules',
@@ -55,7 +56,7 @@ const add = (area, name, ok, detail, fix, warningOnly = false) => {
 const which = (bin) => {
   const probe = IS_WIN ? 'where.exe' : 'which';
   try {
-    return tilde(execFileSync(probe, [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0]);
+    return execFileSync(probe, [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
   } catch {
     return null;
   }
@@ -87,19 +88,19 @@ function checkPrereqs() {
     'Update Node.js to v20 or v22+ via nvm or nodejs.org.');
 
   const pyProbe = which('python3') || which('python') || (IS_WIN ? which('py') : null);
-  add('prereq', 'Python 3', !!pyProbe, pyProbe || 'missing — needed for memB venv & OpenWiki',
+  add('prereq', 'Python 3', !!pyProbe, tilde(pyProbe) || 'missing — needed for memB venv & OpenWiki',
     IS_WIN ? 'Install Python from python.org or winget install Python.Python.3.12' : 'brew install python3');
 
   const gitProbe = which('git');
-  add('prereq', 'Git CLI', !!gitProbe, gitProbe || 'missing — required for AOS workflows and worktrees',
+  add('prereq', 'Git CLI', !!gitProbe, tilde(gitProbe) || 'missing — required for AOS workflows and worktrees',
     IS_WIN ? 'Install Git via git-scm.com or winget install Git.Git' : 'brew install git / xcode-select --install');
 
   const uvProbe = which('uv');
-  add('prereq', 'uv package manager', !!uvProbe, uvProbe ? `${uvProbe} (fast venv seeding)` : 'optional — pip fallback will be used',
+  add('prereq', 'uv package manager', !!uvProbe, uvProbe ? `${tilde(uvProbe)} (fast venv seeding)` : 'optional — pip fallback will be used',
     'curl -LsSf https://astral.sh/uv/install.sh | sh (or pip install uv)', true);
 
   const ghProbe = which('gh');
-  add('prereq', 'GitHub CLI (gh)', !!ghProbe, ghProbe ? `${ghProbe}` : 'optional — needed for repo automation & release PRs',
+  add('prereq', 'GitHub CLI (gh)', !!ghProbe, ghProbe ? tilde(ghProbe) : 'optional — needed for repo automation & release PRs',
     'Install GitHub CLI: brew install gh / winget install GitHub.cli', true);
 }
 
@@ -213,9 +214,9 @@ function checkOpencodeMcpNames() {
 // ---------------------------------------------------------------- 3. Harness Placement & Skills Sync
 function checkHarnesses() {
   const harnesses = [
-    { name: 'Claude Code', path: h('.claude', 'skills') },
+    { name: 'Claude Code', path: hc('skills') },
     { name: 'Gemini / Antigravity', path: firstExisting([h('.gemini', 'config', 'skills'), h('.gemini', 'antigravity-cli', 'skills')]) || h('.gemini', 'config', 'skills') },
-    { name: 'Codex', path: h('.codex', 'skills') },
+    { name: 'Codex', path: h('.agents', 'skills') },
     { name: 'Cursor', path: h('.cursor', 'skills') },
     { name: 'Roo Code', path: h('.roo', 'skills') },
   ];
@@ -233,6 +234,15 @@ function checkHarnesses() {
       `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, !exists && !viaPlugin);
   }
 
+  // Codex reads ~/.codex/skills AND ~/.agents/skills; AOS writes only the latter, so same-named copies in the former double-list.
+  const codexRoot = h('.codex', 'skills');
+  const doubled = existsSync(codexRoot) ? readdirSync(codexRoot, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.') && existsSync(path.join(codexRoot, d.name, 'SKILL.md')) && existsSync(path.join(h('.agents', 'skills'), d.name, 'SKILL.md'))).length : 0;
+  if (doubled) {
+    add('harnesses', 'Codex duplicate skills', false, `${doubled} skill(s) exist in both ${tilde(codexRoot)} and ~/.agents/skills, so Codex lists them twice`,
+      `Run 'npx @hybridlabor-api/aos@latest' once (it retires AOS copies from ${tilde(codexRoot)} with a backup) or move your own copies out.`, true);
+  }
+
   const ov = req('../lib/opencode-verify.js');
   results.push(...ov.checkOpencode({ home: HOME }), ...ov.checkAcpAndGoCheck({ home: HOME }));
   checkOpencodeMcpNames();
@@ -240,7 +250,7 @@ function checkHarnesses() {
 
 // ---------------------------------------------------------------- 4. Hooks & Security Gates
 function checkHooks() {
-  const claudeHooksDir = h('.claude', 'hooks');
+  const claudeHooksDir = hc('hooks');
   const EXPECTED_VERSION = { 'memb-inject.mjs': 8 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
@@ -266,7 +276,7 @@ function checkHooks() {
   }
 
   // Claude settings.json wiring
-  const claudeSettings = readJson(h('.claude', 'settings.json'));
+  const claudeSettings = readJson(hc('settings.json'));
   const wired = JSON.stringify(claudeSettings?.hooks || {});
   const claudeWiredOk = wired.includes('go-gate.mjs') && wired.includes('memb-inject.mjs');
   add('hooks', 'Claude settings.json wired', claudeWiredOk,
@@ -342,12 +352,12 @@ async function checkDaemonsAndModules() {
     aoBin ? `${tilde(aoBin)} (${aoVer || 'installed'}) · Daemon :3101: ${aoListening ? 'ONLINE' : 'STOPPED'} (${aoServiceInfo})` : 'ao binary not found',
     IS_MAC && IS_ARM64
       ? 'Enable AO in the installer or run: ao service install'
-      : 'AO binary is arm64 macOS native; build from source on other platforms: github.com/hybridlabor-api/bdb-agent-orchestrator', false);
+      : 'AO binary is arm64 macOS native; build from source on other platforms: github.com/hybridlabor-api/bdb-agent-orchestrator', true);
 
   // Installed ao vs a local AO checkout's HEAD, read from the binary's embedded build info.
   const aoCheckout = firstExisting([h('dev', 'agents', 'bdb-agent-orchestrator'), h('dev', 'bdb-dev', 'bdb-agent-orchestrator')]);
   if (aoBin && aoCheckout && existsSync(path.join(aoCheckout, '.git'))) {
-    const build = readGoBuildInfo(aoBin.replace(/^~/, HOME));
+    const build = readGoBuildInfo(aoBin);
     let head = null;
     try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
     const same = !!(build && head && build.revision === head && !build.modified);

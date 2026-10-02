@@ -24,6 +24,7 @@ const readline = require('readline');
 const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
+const { claudeConfigDir } = require('./lib/plugin-evidence');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
@@ -789,7 +790,7 @@ function initSessionManifest(existingManifest, sourceDirs) {
 function globalSkillDestRoots() {
     return [
         path.join(homeDir, '.agents', 'skills'),
-        path.join(homeDir, '.claude', 'skills'),
+        path.join(claudeConfigDir(homeDir), 'skills'),
         path.join(homeDir, '.codex', 'skills'),
         path.join(homeDir, '.cursor', 'skills'),
         path.join(homeDir, '.roo', 'skills'),
@@ -947,7 +948,7 @@ function detectPlatforms() {
             evidence: () => hasExecutable('codex') || anyExists(appBundle('ChatGPT')),
         },
         {
-            key: 'claudecode', name: 'Claude Code CLI', path: path.join(homeDir, '.claude'),
+            key: 'claudecode', name: 'Claude Code CLI', path: claudeConfigDir(homeDir),
             evidence: () => hasExecutable('claude'),
         },
         {
@@ -1026,7 +1027,7 @@ function detectInstallState() {
         path.join(homeDir, '.agents', 'AGENTS.md'),
         path.join(geminiDir, 'config', 'skills', 'startcycle', 'SKILL.md'),
         path.join(homeDir, '.agents', 'skills', 'startcycle', 'SKILL.md'),
-        path.join(homeDir, '.claude', 'skills', 'startcycle', 'SKILL.md')
+        path.join(claudeConfigDir(homeDir), 'skills', 'startcycle', 'SKILL.md')
     ];
 
     if (!isInstalled && legacyMarkers.some(p => fs.existsSync(p))) {
@@ -1496,8 +1497,7 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     // updates instead of perpetuating a false positive.
     const extraSkillDestinations = [
         { dir: path.join(homeDir, '.agents', 'skills'), key: null },
-        { dir: path.join(homeDir, '.claude', 'skills'), key: 'claudecode' },
-        { dir: path.join(homeDir, '.codex', 'skills'), key: 'codex' },
+        { dir: path.join(claudeConfigDir(homeDir), 'skills'), key: 'claudecode' },
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
         { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
@@ -3149,8 +3149,8 @@ function resolveTargetPaths(platformValue, customPaths) {
     let extraMcpConfigPaths = [];
 
     if (platformValue === '2') {
-        targetSkillDir = path.join(homeDir, '.claude', 'skills');
-        targetLegacyDir = path.join(homeDir, '.claude', 'skills', 'legacy');
+        targetSkillDir = path.join(claudeConfigDir(homeDir), 'skills');
+        targetLegacyDir = path.join(claudeConfigDir(homeDir), 'skills', 'legacy');
         const claudeAppSupport = process.platform === 'win32'
             ? path.join(process.env.APPDATA || homeDir, 'Claude')
             : path.join(homeDir, 'Library', 'Application Support', 'Claude');
@@ -3911,11 +3911,11 @@ function injectHarnessRules() {
         // copies them into a *project*, which only helps a project that opted into
         // the local harness -- on a plain global install those paths did not exist
         // at all, so the skill pointed at a file that was never delivered.
-        installStep(`install dispatcher workflows to ${path.join(homeDir, '.claude', 'workflows')}`, () => {
+        installStep(`install dispatcher workflows to ${path.join(claudeConfigDir(homeDir), 'workflows')}`, () => {
             const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
             if (fs.existsSync(workflowsSrc)) {
-                copyDirRecursiveSync(workflowsSrc, path.join(homeDir, '.claude', 'workflows'));
-                log.step(`Installed dispatcher workflows to ${path.join(homeDir, '.claude', 'workflows')}`);
+                copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(homeDir), 'workflows'));
+                log.step(`Installed dispatcher workflows to ${path.join(claudeConfigDir(homeDir), 'workflows')}`);
             }
         }, '/startcycle-graph and /teamwork-preview fall back to their prose protocols.');
 
@@ -3977,7 +3977,7 @@ function injectHarnessRules() {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = agentsNotShippedAsFiles(parseAgentsMd(agentsMdContent));
-                    const claudeAgentsDir = path.join(homeDir, '.claude', 'agents');
+                    const claudeAgentsDir = path.join(claudeConfigDir(homeDir), 'agents');
                     compileClaudeAgents(agents, claudeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to Claude Code subagents in ${claudeAgentsDir}`);
                 }
@@ -4387,13 +4387,13 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
 
     // 1. Claude Code
     if (fs.existsSync(hooksSrc)) {
-        copyDirRecursiveSync(hooksSrc, path.join(targetHome, '.claude', 'hooks'));
-        log.step(`Installed hooks to ${path.join(targetHome, '.claude', 'hooks')}`);
+        copyDirRecursiveSync(hooksSrc, path.join(claudeConfigDir(targetHome), 'hooks'));
+        log.step(`Installed hooks to ${path.join(claudeConfigDir(targetHome), 'hooks')}`);
     }
     if (fs.existsSync(workflowsSrc)) {
-        copyDirRecursiveSync(workflowsSrc, path.join(targetHome, '.claude', 'workflows'));
+        copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(targetHome), 'workflows'));
     }
-    mergeBdbSettingsHooks(path.join(targetHome, '.claude', 'settings.json'));
+    mergeBdbSettingsHooks(path.join(claudeConfigDir(targetHome), 'settings.json'));
 
     // 2. Google Antigravity
     const agyHooksDir = path.join(targetGemini, 'config', 'hooks');
@@ -4486,7 +4486,7 @@ function installGlobalBinaries() {
     const isWin = process.platform === 'win32';
     const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus'];
     // aos-bus ships as a hook (it imports ./go-gate.mjs), so its launcher points into ~/.claude/hooks.
-    const binDirOf = (name) => (name === 'aos-bus' ? path.join(homeDir, '.claude', 'hooks') : globalAgentsBin);
+    const binDirOf = (name) => (name === 'aos-bus' ? path.join(claudeConfigDir(homeDir), 'hooks') : globalAgentsBin);
     const wired = [];
 
     for (const name of cliBins) {
@@ -4549,7 +4549,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     // $HOME/.claude/hooks; $CLAUDE_PROJECT_DIR would not exist in other projects.
     const localize = (cmd) => (projectLocal
         ? (machineGlobalHooks.some((n) => cmd.includes(n)) ? cmd : cmd.split('${HOME}').join('${CLAUDE_PROJECT_DIR}').replace(/\$CLAUDE_PROJECT_DIR\b/g, '${CLAUDE_PROJECT_DIR}'))
-        : cmd.replace(/\$\{?CLAUDE_PROJECT_DIR\}?\/\.claude\/hooks\//g, '$HOME/.claude/hooks/'));
+        : cmd.replace(/\$\{?CLAUDE_PROJECT_DIR\}?\/\.claude\/hooks\//g, '$HOME/.claude/hooks/').split('$HOME/.claude/hooks/').join(process.env.CLAUDE_CONFIG_DIR ? '${CLAUDE_CONFIG_DIR}/hooks/' : '$HOME/.claude/hooks/'));
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
             ...e,
@@ -6573,6 +6573,7 @@ module.exports = {
     runAgyPluginStep,
     runCodexPluginStep,
     retireCodexSkillCopies,
+    syncSkillsToGlobalHarnesses,
     retireStaleCodexPluginDir,
     realClaudeHome,
     runAgyPlugin: (opts) => require('./lib/agy-plugin-install').run(opts),
