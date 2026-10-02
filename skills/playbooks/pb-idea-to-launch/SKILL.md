@@ -10,7 +10,7 @@ kind: playbook
 trigger: ["idea to launch", "from idea to live prototype", "build and deploy this idea"]
 inputs: [idea, repo_or_new_project, comfy_workflow, deploy_target]
 requires:
-  skills: [bdbrainstorm, grill-me, visual-plan, prototype, startcycle, pb-ci-fix, bdb-deploy, github, "gh (external)"]
+  skills: [bdbrainstorm, grill-me, plan-canvas, prototype, startcycle, pb-ci-fix, bdb-deploy, github, "gh (external)"]
   agents: [architect, techlead, reviewer]
   mcps: [comfyui-mcp]
   store: []
@@ -33,7 +33,7 @@ What you get: an idea turned into a deployed prototype with green CI and one her
 ## Steps
 1. Preflight — one probe `check_comfyui_health` on `comfyui-mcp` (MCP tools may be deferred in the harness: try to load the tool once via the harness tool search before declaring it missing) → run log header — tool not loaded, call errors, or `status` is not `"online"` → log "Missing MCP: `comfyui-mcp` (`check_comfyui_health` unavailable). Start ComfyUI and check `mcpServers.comfyui-mcp` in your harness config." and mark step 5 to stop; steps 2 to 4 still run
 2. bdbrainstorm or grill-me — idea → `production_artifacts/pb-idea-to-launch-<date>/spec.md` — spec written, open questions listed
-3. visual-plan — the workflow and the planned prototype screens → `plan.md` in the same folder — stops for approval
+3. plan-canvas (Plan Builder mode) — the workflow and the planned prototype screens → `plan.md` in the same folder — stops for approval
 4. prototype, then startcycle (architect, techlead, reviewer) — spec and plan → prototype in the repo (a new project: a new local directory, no remote yet) — reviewer reports no open `blocking` finding
    - Commit: a new project gets `git init` first; the reviewed prototype files are staged by explicit path (never `git add -A`) and committed — SHA in the run log; the working tree has no uncommitted product files afterwards
 5. ComfyUI — the workflow file's text (prompt filled in) as the JSON string for `queue_prompt` → `get_history <prompt_id>` status success → `get_output_media_info` path copied to `hero.png` in the run folder — one image; `local_path` is only set when `COMFYUI_DIR` is set, so if `local_path` is empty or `exists_locally` is false, stop with a clear message and copy nothing; preflight failed in step 1 → stop with the "Missing MCP" message and write nothing except the run log

@@ -10,7 +10,7 @@ kind: playbook
 trigger: ["release AOS", "cut an AOS release", "merge the release PR"]
 inputs: [repo?]
 requires:
-  skills: [github, pb-ship, bdb-shipping-skill, git-pr-review, visual-recap, godmode-shipping, quick-recap, "bdb-ecosystem-health (external)", "gh (external)"]
+  skills: [github, pb-ship, bdb-shipping-skill, git-pr-review, pr-recap, godmode-shipping, quick-recap, "bdb-ecosystem-health (external)", "gh (external)"]
   agents: [reviewer]
   mcps: ["plan (optional)"]
   store: []
@@ -33,7 +33,7 @@ What you get: a new AOS version on npm through the release-please PR, never a ha
 3. github — `gh pr list -R <owner/repo> --state open --head release-please--branches--main --json number,title,headRefName` → the release PR number in the run log — none → stop with "no release PR"
 4. Review and gate on that PR, using these skills:
    - git-pr-review — `gh pr view <n> -R <owner/repo> --json commits` → description draft in the run log — draft only, nothing posted
-   - visual-recap — `plan` connector present → recap link; absent → log "visual-recap skipped: no plan connector" and paste `gh pr diff <n> -R <owner/repo> --name-only` instead; no `npx` without approval
+   - pr-recap — recap file written → link it; recap not buildable → log "pr-recap skipped: <reason>" and paste `gh pr diff <n> -R <owner/repo> --name-only` instead; no `npx` without approval
    - reviewer (agent) — `gh pr diff <n> -R <owner/repo>`; the contract is the commit list from step 2, never the PR body → findings table — any open `blocking` finding stops the run
    - bdb-shipping-skill — door class of the release PR (two-way or one-way; unclear counts as one-way) → class in the run log; one-way → ADR-lite `production_artifacts/decisions/<date>-<slug>.md` — class recorded
    - godmode-shipping — `gh pr checks <n> -R <owner/repo>` all pass (pending, `gh pr checks` exit 8, counts as not passed), plus the local gate exactly as pb-ship step 8 gives it (scratch worktree from `pull/<n>/head`, lint, typecheck and test scripts that exist, a fork PR skips the local gate and is held, worktree removed without `--force`) → exit codes in the run log

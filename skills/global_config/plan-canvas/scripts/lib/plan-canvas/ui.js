@@ -143,6 +143,8 @@ function canvasCss() {
   .msg.user{align-self:flex-end;background:var(--accent-glow);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);color:var(--text);border-bottom-right-radius:3px}
   .msg.agent{align-self:flex-start;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-bottom-left-radius:3px}
   .msg .meta{display:block;font-size:9.5px;color:var(--text3);margin-top:3px}
+  .msg.src-app{border-style:dashed;background:transparent;align-self:flex-start}
+  .msg.src-app .meta{font-weight:600}
   .msg.kind-annotation{border-left:2px solid var(--teal)}
   .msg.kind-verdict{border-left:2px solid var(--green)}
   .chat .empty{color:var(--text3);font-size:12px;text-align:center;margin-top:24px;line-height:1.6}
@@ -169,6 +171,7 @@ function canvasCss() {
   .pill.kind-chat{border-left-color:var(--accent)}
   .pill.kind-verdict{border-left-color:var(--green)}
   .pill .where{color:var(--teal);font-family:var(--mono);font-size:10px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pill .shapes{color:var(--accent)}
   .pill .body{flex:1;min-width:0;color:var(--text2)}
   .pill .txt{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
   .pill button{border:none;background:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:1px}
@@ -288,8 +291,9 @@ function canvasClientJs() {
   window.addEventListener('message', e => {
     if (e.source !== frame.contentWindow) return;
     const msg = e.data || {};
-    if (msg.type === 'pc:queue' && msg.item) addToQueue(msg.item);
-    else if (msg.type === 'pc:queue-and-send' && msg.item) { addToQueue(msg.item); send(); }
+    const validItem = msg.item && typeof msg.item === 'object' && msg.item.kind === 'annotation';
+    if (msg.type === 'pc:queue' && validItem) addToQueue(msg.item);
+    else if (msg.type === 'pc:queue-and-send' && validItem) { addToQueue(msg.item); send(); }
     else if (msg.type === 'pc:scroll') lastScroll = { x: msg.x || 0, y: msg.y || 0 };
     else if (msg.type === 'pc:toggle-mode') setAnnotate(!annotate);
     else if (msg.type === 'pc:ready') {
@@ -312,7 +316,14 @@ function canvasClientJs() {
       if (item.anchor) {
         const where = document.createElement('span');
         where.className = 'where';
-        where.textContent = item.anchor.snippet || item.anchor.selector;
+        const kinds = Array.isArray(item.shapes) ? item.shapes.map(sh => sh && sh.type).filter(t => typeof t === 'string').join(', ') : '';
+        if (kinds) {
+          const tags = document.createElement('span');
+          tags.className = 'shapes';
+          tags.textContent = '[' + kinds + '] ';
+          where.appendChild(tags);
+        }
+        where.appendChild(document.createTextNode(item.anchor.snippet || item.anchor.selector));
         body.appendChild(where);
       }
       const txt = document.createElement('span');
@@ -379,11 +390,11 @@ function canvasClientJs() {
     } else {
       for (const entry of entries) {
         const div = document.createElement('div');
-        div.className = 'msg ' + (entry.role === 'agent' ? 'agent' : 'user') + ' kind-' + (entry.kind || 'chat');
+        div.className = 'msg ' + (entry.role === 'agent' ? 'agent' : 'user') + ' kind-' + (entry.kind || 'chat') + (entry.source === 'app' ? ' src-app' : '');
         div.textContent = entry.text;
         const meta = document.createElement('span');
         meta.className = 'meta';
-        meta.textContent = (entry.role === 'agent' ? 'agent' : 'you') + ' \\u00B7 ' + new Date(entry.at).toLocaleTimeString();
+        meta.textContent = (entry.role === 'agent' ? 'agent' : entry.source === 'app' ? 'dev app' : 'you') + ' \\u00B7 ' + new Date(entry.at).toLocaleTimeString();
         div.appendChild(meta);
         chatLog.appendChild(div);
       }
@@ -624,7 +635,7 @@ ${hasMermaid ? mermaidLoaderScript(mermaidUrl()) : ''}
 </html>`;
 }
 
-const VISUAL_SKILLS = ['visual-plan', 'visual-recap', 'visual-review', 'visual-edit', 'prototype', 'archify', 'agenttrail'];
+const VISUAL_SKILLS = ['bdb-visual-edit', 'pr-recap', 'prototype', 'archify', 'agenttrail'];
 
 function artifactKind(file) {
   const base = path.basename(String(file));
@@ -660,6 +671,7 @@ const HOME_CSS = `
   code.cmd{display:block;background:#0f0f0f;border:1px solid var(--line);border-radius:6px;padding:6px 8px;user-select:all}
   .empty{color:var(--ink3);font-size:13px}
   .card.ended{opacity:.6}
+  .resume{align-self:flex-start;font:inherit;font-size:12px;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:6px;padding:4px 12px;cursor:pointer}
 `;
 
 function chip(text, cls = '', title = '') {
@@ -675,7 +687,7 @@ function sessionCard(s) {
   const pending = Number(s.pending) > 0 ? chip(`${s.pending} pending feedback`, 'accent') : '';
   return `<div class="card${ended ? ' ended' : ''}"><div class="t">${title}</div>
 <div class="row">${chip(artifactKind(s.file), 'accent')}${chip(status, ended ? '' : 'ok')}${pending}</div>
-<div class="mono">${escapeHtml(s.file)}</div></div>`;
+<div class="mono">${escapeHtml(s.file)}</div>${ended ? `<form method="post" action="/api/session/${escapeHtml(s.key)}/resume"><button class="resume" type="submit">Resume</button></form>` : ''}</div>`;
 }
 
 function templateCard(t) {
