@@ -21,7 +21,8 @@ A failure at any step (no release yet, 404, offline, rate limit, checksum mismat
 - Installed version same or newer: skipped. An older install AOS did not record is kept unless you confirm interactively.
 - The path of the uninstaller and the version are recorded in `~/.agents/.bdb-codenotch.json` (`%USERPROFILE%` on Windows).
 - `aos-uninstall` runs `<recorded uninstall.exe> /S` only if that file still exists and the registry version and uninstaller path still match the record; otherwise the install is left alone.
-- Not yet verified against a real NSIS build: the registry key name and the exact uninstall behavior.
+- Default install dir is `%LOCALAPPDATA%\Codenotch` (codenotch.exe, codenotch-hook.exe, uninstall.exe). The installer is unsigned, so Windows SmartScreen may warn.
+- **Unverified:** the registry key (`Codenotch`), `DisplayVersion`, `UninstallString`, and the silent `/S` install and uninstall come from Tauri's stock NSIS template, not from a real build. They must be checked on Windows with the first CI-built installer.
 
 ## What it does (macOS)
 
