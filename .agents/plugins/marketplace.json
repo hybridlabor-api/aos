@@ -1,0 +1,20 @@
+{
+  "name": "bdb-aos",
+  "interface": {
+    "displayName": "BDB Agent OS"
+  },
+  "plugins": [
+    {
+      "name": "bdb-aos",
+      "source": {
+        "source": "local",
+        "path": "./plugins/bdb-aos-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

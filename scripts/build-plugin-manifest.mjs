@@ -27,6 +27,13 @@
 // Windows file names; bodies.opencode is optional and falls back to the claude body with
 // /bdb-aos:<cmd> rewritten. AOS_PLUGIN_COMMANDS overrides the source path (tests only).
 //
+// Codex has no verified commands/ handling, so its entry points are generated wrapper
+// SKILLS (plugins/bdb-aos-codex/skills/<cmd>/SKILL.md, invoked as $bdb-aos:<cmd>) in a real
+// directory, because `codex plugin add` drops symlinks from the install copy. The plugin's
+// .codex-plugin/plugin.json and .agents/plugins/marketplace.json point there.
+// agy reads a plugin.json at the plugin root (/bdb-aos:<cmd>); bodies.codex / bodies.agy are
+// optional, agy overrides land in agy-commands/ and are only wired when present.
+//
 // Usage: node scripts/build-plugin-manifest.mjs [--check]
 
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -96,7 +103,9 @@ for (const [name, def] of Object.entries(commandDefs)) {
   if (skillNames.has(name)) commandErrors.push(`${name}: collides with a skill of the same name`);
   if (!def.description?.trim()) commandErrors.push(`${name}: empty description`);
   if (!def.bodies?.claude?.trim()) commandErrors.push(`${name}: no body for claude`);
-  if (def.bodies?.opencode !== undefined && !def.bodies.opencode.trim()) commandErrors.push(`${name}: empty body for opencode`);
+  for (const harness of ['opencode', 'codex', 'agy']) {
+    if (def.bodies?.[harness] !== undefined && !def.bodies[harness].trim()) commandErrors.push(`${name}: empty body for ${harness}`);
+  }
   for (const ref of def.skills ?? []) {
     const found = ref.endsWith('*')
       ? [...skillNames].some((n) => n.startsWith(ref.slice(0, -1)))
@@ -121,6 +130,22 @@ const opencodeFiles = Object.fromEntries(commandNames.map((name) => [
   `---\ndescription: ${JSON.stringify(commandDefs[name].description)}\n---\n\n${opencodeBody(commandDefs[name])}\n`,
 ]));
 
+// Codex has no per-user argument placeholder, so $ARGUMENTS becomes prose.
+const codexBody = (def) =>
+  (def.bodies.codex ?? def.bodies.claude
+    .replace(/\/bdb-aos:([a-z][a-z0-9-]*)/g, '$$bdb-aos:$1')
+    .replace(/\$ARGUMENTS/g, 'whatever the user wrote after the skill name')).trim();
+const codexFiles = Object.fromEntries(commandNames.map((name) => [
+  `${name}/SKILL.md`,
+  `---\nname: ${name}\ndescription: ${JSON.stringify(`${commandDefs[name].description} Generated from plugin-commands.json; invoke as $bdb-aos:${name}.`)}\n---\n\n${codexBody(commandDefs[name])}\n`,
+]));
+const agyOverrides = commandNames.filter((name) => commandDefs[name].bodies.agy !== undefined);
+const agyFiles = Object.fromEntries(agyOverrides.map((name) => [
+  `${name}.md`,
+  `---\ndescription: ${JSON.stringify(commandDefs[name].description)}\n---\n\n${commandDefs[name].bodies.agy.trim()}\n`,
+]));
+const agyCommands = commandNames.map((name) => `./${agyOverrides.includes(name) ? 'agy-commands' : 'commands'}/${name}.md`);
+
 const manifest = {
   $schema: 'https://anthropic.com/claude-code/plugin.schema.json',
   name: 'bdb-aos',
@@ -138,6 +163,88 @@ const manifest = {
 };
 
 const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
+const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
+const codexManifest = {
+  name: manifest.name,
+  version: pkg.version,
+  description: 'Full BDB Agent OS suite for Codex: command entry points ($bdb-aos:setup, $bdb-aos:init, ...) generated from plugin-commands.json.',
+  author: manifest.author,
+  homepage: repoUrl,
+  repository: repoUrl,
+  license: manifest.license,
+  keywords: manifest.keywords,
+  skills: './skills/',
+  interface: {
+    displayName: 'BDB Agent OS',
+    shortDescription: 'AOS commands for setup, planning and pipelines',
+    longDescription: 'Entry-point skills for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the startcycle pipelines.',
+    developerName: 'Hybridlabor Global LLC',
+    category: 'Developer Tools',
+    capabilities: ['Interactive', 'Read', 'Write'],
+    websiteURL: repoUrl,
+    defaultPrompt: ['$bdb-aos:setup', '$bdb-aos:doctor'],
+  },
+};
+const CODEX_ROOT = 'plugins/bdb-aos-codex';
+const codexMarket = {
+  name: 'bdb-aos',
+  interface: { displayName: 'BDB Agent OS' },
+  plugins: [{
+    name: manifest.name,
+    source: { source: 'local', path: `./${CODEX_ROOT}` },
+    policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+    category: 'Developer Tools',
+  }],
+};
+const { $schema: _schema, ...agyBase } = manifest;
+const agyManifest = { ...agyBase, commands: agyCommands };
+const generated = {
+  '.codex-plugin/plugin.json': json({ ...codexManifest, skills: `./${CODEX_ROOT}/skills/` }),
+  [`${CODEX_ROOT}/.codex-plugin/plugin.json`]: json(codexManifest),
+  '.agents/plugins/marketplace.json': json(codexMarket),
+  'plugin.json': json(agyManifest),
+  'plugins/bdb-aos/plugin.json': json(agyManifest),
+  ...Object.fromEntries(Object.entries(codexFiles).map(([f, c]) => [`${CODEX_ROOT}/skills/${f}`, c])),
+  ...Object.fromEntries(Object.entries(agyFiles).map(([f, c]) => [`agy-commands/${f}`, c])),
+};
+const ownedDirs = { [`${CODEX_ROOT}/skills`]: (e) => e.isDirectory(), 'agy-commands': (e) => e.isFile() };
+const genDrift = Object.entries(generated)
+  .filter(([file, want]) => !existsSync(join(ROOT, file)) || readFileSync(join(ROOT, file), 'utf8') !== want)
+  .map(([file]) => file);
+const genStale = Object.entries(ownedDirs).flatMap(([dir, owned]) =>
+  existsSync(join(ROOT, dir))
+    ? readdirSync(join(ROOT, dir), { withFileTypes: true }).filter(owned)
+      .map((e) => `${dir}/${e.name}`)
+      .filter((path) => !Object.keys(generated).some((file) => file === path || file.startsWith(`${path}/`)))
+    : []);
+const legacyCodexMarket = join(ROOT, '.codex-plugin', 'marketplace.json');
+
+// Release-gate validation: every generated manifest parses, versions track package.json,
+// Codex outputs never carry the field its validator rejects, referenced files exist.
+function validateGenerated() {
+  const problems = [];
+  for (const file of Object.keys(generated)) {
+    if (!file.endsWith('.json') || !existsSync(join(ROOT, file))) continue;
+    let doc;
+    try { doc = JSON.parse(readFileSync(join(ROOT, file), 'utf8')); } catch { problems.push(`${file}: does not parse`); continue; }
+    if (file.endsWith('plugin.json') && doc.version !== pkg.version) problems.push(`${file}: version ${doc.version} != package.json ${pkg.version}`);
+    const base = join(ROOT, dirname(file).replace(/\.codex-plugin$/, ''));
+    if (file.endsWith('plugin.json') && file !== '.agents/plugins/marketplace.json') {
+      for (const ref of [...(doc.commands ?? []), ...(Array.isArray(doc.skills) ? doc.skills : [])]) {
+        const target = join(base, ref, ref.endsWith('.md') ? '' : 'SKILL.md');
+        if (!existsSync(target)) problems.push(`${file}: missing ${ref}`);
+      }
+      if (typeof doc.skills === 'string' && !existsSync(join(base, doc.skills))) problems.push(`${file}: missing ${doc.skills}`);
+    }
+  }
+  for (const file of Object.keys(generated)) {
+    if (/^(plugins\/bdb-aos-codex\/|\.codex-plugin\/|\.agents\/plugins\/)/.test(file) &&
+      existsSync(join(ROOT, file)) && readFileSync(join(ROOT, file), 'utf8').includes('disable-model-invocation')) {
+      problems.push(`${file}: contains disable-model-invocation (rejected by Codex)`);
+    }
+  }
+  return problems;
+}
 const SUBDIR = join(ROOT, 'plugins', 'bdb-aos');
 // Both manifests come from the same data; the subfolder one resolves the same
 // ./skills/... paths through its symlinks.
@@ -146,7 +253,12 @@ const targets = [
   join(SUBDIR, '.claude-plugin', 'plugin.json'),
 ];
 const stale = targets.filter((t) => !existsSync(t) || readFileSync(t, 'utf8') !== serialized);
-const links = { skills: '../../skills', agents: '../../agents', commands: '../../commands' };
+const links = {
+  skills: '../../skills',
+  agents: '../../agents',
+  commands: '../../commands',
+  ...(agyOverrides.length > 0 ? { 'agy-commands': '../../agy-commands' } : {}),
+};
 const badLinks = Object.entries(links).filter(([name, to]) => {
   const path = join(SUBDIR, name);
   return !existsSync(path) || !lstatSync(path).isSymbolicLink() || readlinkSync(path) !== to;
@@ -197,6 +309,15 @@ if (CHECK) {
     console.error(`.opencode/commands/ is out of date (${[...ocDrift, ...ocStale].join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
+  if (genDrift.length > 0 || genStale.length > 0 || existsSync(legacyCodexMarket)) {
+    console.error(`Codex/agy manifests are out of date (${[...genDrift, ...genStale, ...(existsSync(legacyCodexMarket) ? ['.codex-plugin/marketplace.json (legacy)'] : [])].join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
+    process.exit(1);
+  }
+  const problems = validateGenerated();
+  if (problems.length > 0) {
+    console.error(`generated manifests invalid:\n  ${problems.join('\n  ')}`);
+    process.exit(1);
+  }
   if (drift.length > 0) {
     console.error(`agents/ is out of date (${drift.join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
@@ -213,6 +334,12 @@ if (CHECK) {
     mkdirSync(dirname(t), { recursive: true });
     writeFileSync(t, serialized);
   }
+  for (const [file, content] of Object.entries(generated)) {
+    mkdirSync(dirname(join(ROOT, file)), { recursive: true });
+    writeFileSync(join(ROOT, file), content);
+  }
+  for (const path of genStale) rmSync(join(ROOT, path), { recursive: true });
+  rmSync(legacyCodexMarket, { force: true });
   for (const [name, to] of badLinks) {
     rmSync(join(SUBDIR, name), { force: true });
     symlinkSync(to, join(SUBDIR, name));
