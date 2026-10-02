@@ -89,6 +89,9 @@ test('404 (repo not created yet) is a friendly non-fatal result', async () => {
     assert.strictEqual(r.status, 'not-found');
     assert.match(r.message, /try again later/);
     assert.strictEqual(c.calls.hdiutil.length, 0);
+    const warns = [];
+    await cn.installCodenotch({ ...c.opts, log: { warn: (m) => warns.push(m) } });
+    assert.deepStrictEqual(warns, [], 'not-found prints no warning, only the summary line');
 });
 
 test('rate limit is reported, not thrown', async () => {
@@ -290,7 +293,7 @@ test('summary line: installed, skipped, failed', () => {
     assert.match(inst, /installed 1\.2\.0 \(\/Applications\/Codenotch\.app\).*aos-uninstall/);
     const skip = cn.codenotchSummaryLine({ status: 'up-to-date', message: 'already installed (2.0.0) at /Applications/Codenotch.app' });
     assert.match(skip, /skipped.*aos-uninstall/);
-    assert.match(cn.codenotchSummaryLine({ status: 'not-found', message: 'no public release' }), /FAILED.*unaffected/);
+    assert.strictEqual(cn.codenotchSummaryLine({ status: 'not-found', message: 'no public release' }), 'Codenotch: no release available yet, skipped');
     assert.match(cn.codenotchSummaryLine({ status: 'checksum-mismatch', message: 'sha256 mismatch' }), /FAILED/);
 });
 
