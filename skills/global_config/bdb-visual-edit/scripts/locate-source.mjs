@@ -126,7 +126,9 @@ async function main() {
   try { item = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { console.error('invalid JSON'); process.exit(2); }
   const clean = fromAnnotation(item);
   if (!clean) { console.error('no valid element'); process.exit(1); }
-  const anchor = item.anchor && typeof item.anchor === 'object' ? item.anchor : {};
+  const shielded = item.untrusted_page_data && typeof item.untrusted_page_data === 'object' ? item.untrusted_page_data : {};
+  const rawAnchor = shielded.anchor ?? item.anchor;
+  const anchor = rawAnchor && typeof rawAnchor === 'object' ? rawAnchor : {};
   console.log(JSON.stringify(locateSource({ anchor: { tag: clean.tag, classes: clean.classes, snippet: anchor.snippet }, srcLoc: clean.srcLoc }, { root }), null, 2));
 }
 

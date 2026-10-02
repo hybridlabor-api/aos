@@ -88,12 +88,14 @@ export function cleanSnippet(value) {
 
 /** Maps a canvas annotation item (route visual-edit) to the sanitiser's input shape. */
 export function fromAnnotation(item) {
-  const anchor = own(item, 'anchor');
+  const shielded = own(item, 'untrusted_page_data');
+  const anchor = own(shielded, 'anchor') ?? own(item, 'anchor');
+  const target = own(shielded, 'target') ?? own(item, 'target');
   const page = own(item, 'page');
   return sanitizeElement({
     tag: own(anchor, 'tag'),
     classes: own(anchor, 'classes'),
-    srcLoc: own(own(item, 'target'), 'srcLoc'),
+    srcLoc: own(target, 'srcLoc'),
     selector: own(anchor, 'selector'),
     bbox: page && { x: own(page, 'x'), y: own(page, 'y'), width: own(page, 'w'), height: own(page, 'h') },
   });
