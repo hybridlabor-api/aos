@@ -12,6 +12,11 @@ const TAG_RE = /^[a-z][a-z0-9-]{0,30}$/;
 const CLASS_RE = /^[A-Za-z0-9_:/[\]%.-]{1,60}$/;
 const SRC_RE = /^[\w@.-]+(?:\/[\w@.-]+)*\.[A-Za-z0-9]{1,8}:\d{1,6}(?::\d{1,5})?$/;
 const SEGMENT_RE = /^[a-z][a-z0-9-]{0,30}:nth-of-type\([1-9]\d{0,3}\)$/;
+// Edit targets are app source only: no config, manifests, lockfiles, scripts or CI.
+// annotation-schema.js (plan-canvas) carries a copy; a test keeps the two in step.
+export const SRC_EXTS = new Set(['.jsx', '.tsx', '.js', '.ts', '.vue', '.svelte', '.astro', '.html', '.mdx']);
+export const SRC_SKIP_DIRS = new Set(['node_modules', 'dist', 'build']);
+const CONFIG_NAME_RE = /\.config\.[^/]*$/i;
 const MAX_CLASSES = 12;
 const MAX_SCAN = 200;
 const MAX_SEGMENTS = 12;
@@ -23,7 +28,7 @@ export const INSTRUCTIONS_FOR_AGENT =
 
 const own = (obj, key) => (obj !== null && typeof obj === 'object' && Object.hasOwn(obj, key) ? obj[key] : undefined);
 
-function cleanClasses(value) {
+export function cleanClasses(value) {
   if (!Array.isArray(value)) return [];
   const out = [];
   for (let i = 0; i < Math.min(value.length, MAX_SCAN) && out.length < MAX_CLASSES; i++) {
@@ -38,7 +43,8 @@ export function cleanSrcLoc(value) {
   const file = value.slice(0, value.search(/:\d/));
   const segments = file.split('/');
   // Dot-segments cover `..`, hidden files (.env, .ssh, .git); node_modules is never an edit target.
-  if (segments.some((s) => s.startsWith('.') || s === 'node_modules')) return null;
+  if (segments.some((s) => s.startsWith('.') || SRC_SKIP_DIRS.has(s))) return null;
+  if (!SRC_EXTS.has(path.extname(file)) || CONFIG_NAME_RE.test(file)) return null;
   return value;
 }
 
@@ -71,6 +77,28 @@ export function sanitizeElement(raw) {
   const bbox = cleanBbox(own(raw, 'bbox'));
   if (bbox) out.bbox = bbox;
   return out;
+}
+
+const SNIPPET_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/** Visible text hint from the page: control and bidi characters stripped, at most 200 chars. */
+export function cleanSnippet(value) {
+  return typeof value === 'string' ? value.replace(SNIPPET_RE, '').slice(0, 200) : '';
+}
+
+/** Maps a canvas annotation item (route visual-edit) to the sanitiser's input shape. */
+export function fromAnnotation(item) {
+  const shielded = own(item, 'untrusted_page_data');
+  const anchor = own(shielded, 'anchor') ?? own(item, 'anchor');
+  const target = own(shielded, 'target') ?? own(item, 'target');
+  const page = own(item, 'page');
+  return sanitizeElement({
+    tag: own(anchor, 'tag'),
+    classes: own(anchor, 'classes'),
+    srcLoc: own(target, 'srcLoc'),
+    selector: own(anchor, 'selector'),
+    bbox: page && { x: own(page, 'x'), y: own(page, 'y'), width: own(page, 'w'), height: own(page, 'h') },
+  });
 }
 
 /** Fixed envelope; the human's own words stay in a separate field. */

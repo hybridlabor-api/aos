@@ -26,7 +26,7 @@ decision.
 ## Collect Source Plans
 
 Accept plans as pasted text, local files, session IDs, transcript paths, PRs,
-comments, visual-plan links, or chat history. Resolve the original artifacts
+comments, plan-canvas links, or chat history. Resolve the original artifacts
 when possible so you can see prompt changes and assumptions that may be missing
 from a final summary.
 
