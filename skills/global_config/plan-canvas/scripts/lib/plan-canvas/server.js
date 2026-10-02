@@ -19,6 +19,7 @@ const path = require('path');
 const { buildAllowedHostnames, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin } = require('../loopback-guard');
 const { renderMarkdown } = require('./markdown');
 const { artifactSdkJs } = require('./sdk');
+const { ensureTrailOnApprove } = require('./trail-on-approve');
 const {
   canvasCss,
   canvasClientJs,
@@ -455,6 +456,7 @@ function createPlanCanvasServer({
         // reports `queued`. Either way the browser must be told, which the
         // original handler never did, leaving a stale pill on screen.
         broadcastPresence(key);
+        if (result.accepted.some(i => i.kind === 'verdict' && i.verdict === 'approve')) ensureTrailOnApprove({ file: session.file, key, log });
         return sendJson(res, 200, {
           status: 'queued',
           accepted: result.accepted.length,
