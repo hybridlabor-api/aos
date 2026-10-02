@@ -22,8 +22,10 @@
 // facts mean the plugin needs a generated layout, which is what this script is.
 //
 // Slash commands (/bdb-aos:<name>) come from plugin-commands.json: one commands/<name>.md
-// per entry plus a "commands" array in both manifests. AOS_PLUGIN_COMMANDS overrides
-// the source path (tests only).
+// per entry plus a "commands" array in both manifests. OpenCode gets flat hyphen names
+// (.opencode/commands/bdb-aos-<name>.md, /bdb-aos-<name>) because a colon is invalid in
+// Windows file names; bodies.opencode is optional and falls back to the claude body with
+// /bdb-aos:<cmd> rewritten. AOS_PLUGIN_COMMANDS overrides the source path (tests only).
 //
 // Usage: node scripts/build-plugin-manifest.mjs [--check]
 
@@ -94,6 +96,7 @@ for (const [name, def] of Object.entries(commandDefs)) {
   if (skillNames.has(name)) commandErrors.push(`${name}: collides with a skill of the same name`);
   if (!def.description?.trim()) commandErrors.push(`${name}: empty description`);
   if (!def.bodies?.claude?.trim()) commandErrors.push(`${name}: no body for claude`);
+  if (def.bodies?.opencode !== undefined && !def.bodies.opencode.trim()) commandErrors.push(`${name}: empty body for opencode`);
   for (const ref of def.skills ?? []) {
     const found = ref.endsWith('*')
       ? [...skillNames].some((n) => n.startsWith(ref.slice(0, -1)))
@@ -111,6 +114,12 @@ const commandFiles = Object.fromEntries(commandNames.map((name) => [
   `---\ndescription: ${JSON.stringify(commandDefs[name].description)}\n---\n\n${commandDefs[name].bodies.claude.trim()}\n`,
 ]));
 const commands = commandNames.map((name) => `./commands/${name}.md`);
+const opencodeBody = (def) =>
+  (def.bodies.opencode ?? def.bodies.claude.replace(/\/bdb-aos:([a-z][a-z0-9-]*)/g, '/bdb-aos-$1')).trim();
+const opencodeFiles = Object.fromEntries(commandNames.map((name) => [
+  `bdb-aos-${name}.md`,
+  `---\ndescription: ${JSON.stringify(commandDefs[name].description)}\n---\n\n${opencodeBody(commandDefs[name])}\n`,
+]));
 
 const manifest = {
   $schema: 'https://anthropic.com/claude-code/plugin.schema.json',
@@ -159,6 +168,12 @@ const commandDrift = Object.entries(commandFiles)
 const staleCommandFiles = existsSync(commandsDst)
   ? readdirSync(commandsDst).filter((file) => !(file in commandFiles))
   : [];
+const ocDst = join(ROOT, '.opencode', 'commands');
+const ocOwned = (file) => /^bdb-aos-.+\.md$/.test(file);
+const ocDrift = Object.entries(opencodeFiles)
+  .filter(([file, want]) => !existsSync(join(ocDst, file)) || readFileSync(join(ocDst, file), 'utf8') !== want)
+  .map(([file]) => file);
+const ocStale = existsSync(ocDst) ? readdirSync(ocDst).filter((file) => ocOwned(file) && !(file in opencodeFiles)) : [];
 const marketCurrent = readFileSync(marketPath, 'utf8');
 
 if (CHECK) {
@@ -178,15 +193,22 @@ if (CHECK) {
     console.error(`commands/ is out of date (${[...commandDrift, ...staleCommandFiles].join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
+  if (ocDrift.length > 0 || ocStale.length > 0) {
+    console.error(`.opencode/commands/ is out of date (${[...ocDrift, ...ocStale].join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
+    process.exit(1);
+  }
   if (drift.length > 0) {
     console.error(`agents/ is out of date (${drift.join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
-  console.log(`plugin manifests up to date: ${skills.length} skills, ${agentNames.length} agents, ${commandNames.length} commands`);
+  console.log(`plugin manifests up to date: ${skills.length} skills, ${agentNames.length} agents, ${commandNames.length} commands (+ ${commandNames.length} OpenCode)`);
 } else {
   mkdirSync(commandsDst, { recursive: true });
   for (const [file, content] of Object.entries(commandFiles)) writeFileSync(join(commandsDst, file), content);
   for (const file of staleCommandFiles) rmSync(join(commandsDst, file));
+  mkdirSync(ocDst, { recursive: true });
+  for (const [file, content] of Object.entries(opencodeFiles)) writeFileSync(join(ocDst, file), content);
+  for (const file of ocStale) rmSync(join(ocDst, file));
   for (const t of targets) {
     mkdirSync(dirname(t), { recursive: true });
     writeFileSync(t, serialized);
