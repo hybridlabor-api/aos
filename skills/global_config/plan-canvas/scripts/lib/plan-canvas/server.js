@@ -462,6 +462,9 @@ function createPlanCanvasServer({
 
       if (action === 'resume') {
         if (!fs.existsSync(session.file)) return sendJson(res, 404, { error: 'artifact file no longer exists' });
+        if (!confinedArtifactPath(session.file, workspaceRoot)) {
+          return sendJson(res, 403, { error: 'artifact path is outside the workspace' });
+        }
         store.open(session.file, { reopen: true });
         watchSession(session);
         broadcastPresence(key);
@@ -473,6 +476,10 @@ function createPlanCanvasServer({
         const body = await readJsonBody(req);
         const result = store.queueFeedback(key, body.items, { endSession: Boolean(body.endSession) });
         if (!result) return sendJson(res, 409, { error: 'session already ended' });
+        // Record the trail outcome before waking a parked await so it can report it.
+        if (result.accepted.some(i => i.kind === 'verdict' && i.verdict === 'approve')) {
+          ensureTrailOnApprove({ file: session.file, key, log, onOutcome: outcome => store.setTrailOutcome(key, outcome) });
+        }
         wake.emit(`wake:${key}`);
         broadcast(key, 'chat-sync', { chat: store.get(key).chat });
         if (body.endSession) broadcast(key, 'ended', { endedBy: 'user' });
@@ -481,7 +488,6 @@ function createPlanCanvasServer({
         // reports `queued`. Either way the browser must be told, which the
         // original handler never did, leaving a stale pill on screen.
         broadcastPresence(key);
-        if (result.accepted.some(i => i.kind === 'verdict' && i.verdict === 'approve')) ensureTrailOnApprove({ file: session.file, key, log });
         return sendJson(res, 200, {
           status: 'queued',
           accepted: result.accepted.length,
@@ -611,7 +617,12 @@ function createPlanCanvasServer({
     if (!isAllowedHostHeader(req.headers.host, allowedHostnames)) {
       return sendJson(res, 403, { error: 'forbidden host header' });
     }
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    let url;
+    try {
+      url = new URL(req.url, `http://${req.headers.host}`);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request target' });
+    }
     const { pathname } = url;
     // Annotate routes are called from a dev app on another loopback origin, so
     // they do their own Origin/token checks instead of the same-origin gate.

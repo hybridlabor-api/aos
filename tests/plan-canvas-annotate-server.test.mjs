@@ -282,8 +282,30 @@ describe('annotate server', () => {
       const res = await post(s.key, t.token);
       assert.equal(res.status, 401);
       assert.equal(res.json.code, 'token_expired');
+      assert.equal(res.headers['access-control-allow-origin'], APP, 'the bound origin can read token_expired');
       const pre = await call('OPTIONS', `/api/annotate/${s.key}`, { headers: { origin: APP } });
-      assert.equal(pre.status, 403);
+      assert.equal(pre.status, 204, 'expired preflight passes so the client can show the expired message');
+      assert.equal(pre.headers['access-control-allow-origin'], APP);
+      const foreign = await call('OPTIONS', `/api/annotate/${s.key}`, { headers: { origin: 'http://localhost:9999' } });
+      assert.equal(foreign.status, 403);
+      assert.equal(foreign.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('R1 401 token errors carry ACAO for the bound origin only', async () => {
+      const s = await newSession();
+      await mint(s.key);
+      for (const [token, code] of [[null, 'no_token'], ['wrong-token', 'token']]) {
+        const bound = await post(s.key, token);
+        assert.equal(bound.status, 401);
+        assert.equal(bound.json.code, code);
+        assert.equal(bound.headers['access-control-allow-origin'], APP, code);
+        const foreign = await post(s.key, token, { origin: 'http://localhost:9999' });
+        assert.equal(foreign.headers['access-control-allow-origin'], undefined, code);
+      }
+      const bare = await newSession();
+      const none = await post(bare.key, 'whatever');
+      assert.equal(none.status, 401);
+      assert.equal(none.headers['access-control-allow-origin'], undefined, 'no record, no bound origin');
     });
 
     test('rotated token: the old one is dead, the new one works', async () => {

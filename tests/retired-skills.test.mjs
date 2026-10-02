@@ -23,7 +23,7 @@ describe('pruneRetiredSkills', () => {
   };
 
   test('the three BuilderIO visual skills are retired', () => {
-    for (const n of ['visual-edit', 'visual-plan', 'visual-recap']) assert.ok(RETIRED_SKILLS[n]);
+    for (const n of ['visual-edit', 'visual-plan', 'visual-recap']) assert.equal(RETIRED_SKILLS[n], '4.17.0');
   });
 
   test('untouched copy removed, edited and foreign files backed up before the dir goes', () => {

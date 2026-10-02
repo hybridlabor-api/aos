@@ -78,6 +78,11 @@ function normalizeFeedbackItem(raw, counter, { origin = 'canvas', boundOrigin = 
   return item;
 }
 
+const MAX_CHAT = 500;
+const capChat = session => {
+  if (session.chat.length > MAX_CHAT) session.chat.splice(0, session.chat.length - MAX_CHAT);
+};
+
 function createSessionStore({ stateDir = resolveStateDir() } = {}) {
   const stateFile = path.join(stateDir, 'sessions.json');
   let state = { sessions: {}, feedbackCounter: 0 };
@@ -157,8 +162,9 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
     }
     session.pendingFeedback.push(...accepted);
     for (const item of accepted) {
-      session.chat.push({ role: 'user', kind: item.kind, text: chatLineFor(item), at: item.at });
+      session.chat.push({ role: 'user', kind: item.kind, text: chatLineFor(item), at: item.at, ...(origin === 'app' ? { source: 'app' } : {}) });
     }
+    capChat(session);
     if (endSession) {
       session.status = 'ended';
       session.endedBy = 'user';
@@ -180,6 +186,7 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
       const items = session.pendingFeedback;
       session.pendingFeedback = [];
       const result = { status: 'feedback', items };
+      if (session.trail && items.some(i => i.kind === 'verdict' && i.verdict === 'approve')) result.trail = session.trail.outcome;
       if (session.status === 'ended') {
         result.sessionEnded = true;
         result.endedBy = session.endedBy;
@@ -205,6 +212,13 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
     return record;
   }
 
+  function setTrailOutcome(key, outcome) {
+    const session = get(key);
+    if (!session) return;
+    session.trail = { outcome: String(outcome).slice(0, 60), at: nowIso() };
+    persist();
+  }
+
   function getAnnotateToken(key) {
     const session = get(key);
     return (session && session.annotate) || null;
@@ -215,6 +229,7 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
     if (!session) return null;
     const entry = { role: 'agent', kind: 'chat', text: sanitizeText(text), at: nowIso() };
     session.chat.push(entry);
+    capChat(session);
     session.updatedAt = nowIso();
     persist();
     return entry;
@@ -254,6 +269,7 @@ function createSessionStore({ stateDir = resolveStateDir() } = {}) {
     queueFeedback,
     takeFeedback,
     setAnnotateToken,
+    setTrailOutcome,
     getAnnotateToken,
     addAgentReply,
     end,

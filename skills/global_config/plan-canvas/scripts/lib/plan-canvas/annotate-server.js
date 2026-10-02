@@ -190,7 +190,8 @@ function createAnnotateHandler({ store, version = '0.0.0', onQueued = () => {}, 
   function handlePreflight(req, res, key) {
     const record = store.getAnnotateToken(key);
     const origin = req.headers.origin;
-    if (!record || typeof origin !== 'string' || origin !== record.origin || now() >= record.expiresAt) {
+    // An expired token still gets the preflight so the POST can answer 401 token_expired readably.
+    if (!record || typeof origin !== 'string' || origin !== record.origin) {
       res.writeHead(403, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(JSON.stringify({ error: 'forbidden', code: 'origin' }));
     }
@@ -203,19 +204,22 @@ function createAnnotateHandler({ store, version = '0.0.0', onQueued = () => {}, 
     const session = store.get(key);
     if (!session) throw new HttpError(404, 'unknown_session', 'unknown session');
     const record = store.getAnnotateToken(key);
-    const header = req.headers['x-aos-annotate-token'];
-    if (typeof header !== 'string' || header.length === 0) throw new HttpError(401, 'no_token', 'token required');
-    if (!record) throw new HttpError(401, 'token', 'invalid token');
-    if (now() >= record.expiresAt) throw new HttpError(401, 'token_expired', 'token expired');
-    if (req.headers.origin !== record.origin) throw new HttpError(403, 'origin', 'origin not allowed');
-    if (header.length > MAX_TOKEN_HEADER) throw new HttpError(401, 'token', 'invalid token');
-    const expected = Buffer.from(String(record.tokenSha256), 'hex');
-    const presented = sha256(header);
-    if (expected.length !== presented.length || !crypto.timingSafeEqual(expected, presented)) {
-      throw new HttpError(401, 'token', 'invalid token');
-    }
-    const cors = corsHeaders(record.origin);
+    // The bound origin may read every answer (including 401 token errors) so the
+    // page can show "link expired"; any other origin gets no CORS headers at all.
+    const cors = record && req.headers.origin === record.origin ? corsHeaders(record.origin) : {};
     try {
+      const header = req.headers['x-aos-annotate-token'];
+      if (typeof header !== 'string' || header.length === 0) throw new HttpError(401, 'no_token', 'token required');
+      // No record means no bound origin to compare, so this stays 401 rather than 403.
+      if (!record) throw new HttpError(401, 'token', 'invalid token');
+      if (now() >= record.expiresAt) throw new HttpError(401, 'token_expired', 'token expired');
+      if (req.headers.origin !== record.origin) throw new HttpError(403, 'origin', 'origin not allowed');
+      if (header.length > MAX_TOKEN_HEADER) throw new HttpError(401, 'token', 'invalid token');
+      const expected = Buffer.from(String(record.tokenSha256), 'hex');
+      const presented = sha256(header);
+      if (expected.length !== presented.length || !crypto.timingSafeEqual(expected, presented)) {
+        throw new HttpError(401, 'token', 'invalid token');
+      }
       const retryAfter = takeRate(key);
       if (retryAfter) throw new HttpError(429, 'rate', 'too many requests', { 'retry-after': String(retryAfter) });
       if (!isJsonContentType(req.headers['content-type'])) {

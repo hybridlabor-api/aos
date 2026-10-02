@@ -143,6 +143,8 @@ function canvasCss() {
   .msg.user{align-self:flex-end;background:var(--accent-glow);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);color:var(--text);border-bottom-right-radius:3px}
   .msg.agent{align-self:flex-start;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-bottom-left-radius:3px}
   .msg .meta{display:block;font-size:9.5px;color:var(--text3);margin-top:3px}
+  .msg.src-app{border-style:dashed;background:transparent;align-self:flex-start}
+  .msg.src-app .meta{font-weight:600}
   .msg.kind-annotation{border-left:2px solid var(--teal)}
   .msg.kind-verdict{border-left:2px solid var(--green)}
   .chat .empty{color:var(--text3);font-size:12px;text-align:center;margin-top:24px;line-height:1.6}
@@ -388,11 +390,11 @@ function canvasClientJs() {
     } else {
       for (const entry of entries) {
         const div = document.createElement('div');
-        div.className = 'msg ' + (entry.role === 'agent' ? 'agent' : 'user') + ' kind-' + (entry.kind || 'chat');
+        div.className = 'msg ' + (entry.role === 'agent' ? 'agent' : 'user') + ' kind-' + (entry.kind || 'chat') + (entry.source === 'app' ? ' src-app' : '');
         div.textContent = entry.text;
         const meta = document.createElement('span');
         meta.className = 'meta';
-        meta.textContent = (entry.role === 'agent' ? 'agent' : 'you') + ' \\u00B7 ' + new Date(entry.at).toLocaleTimeString();
+        meta.textContent = (entry.role === 'agent' ? 'agent' : entry.source === 'app' ? 'dev app' : 'you') + ' \\u00B7 ' + new Date(entry.at).toLocaleTimeString();
         div.appendChild(meta);
         chatLog.appendChild(div);
       }

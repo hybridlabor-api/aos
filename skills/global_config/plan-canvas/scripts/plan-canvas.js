@@ -188,12 +188,26 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Start (or reuse) the detached canvas server and return its port. A version
-// mismatch after this script is updated restarts the server so browser and CLI never
-// disagree about the protocol.
+function parseVersion(value) {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(value));
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+// Unparsable versions count as older so a broken server still gets replaced.
+function isOlderVersion(running, mine) {
+  const a = parseVersion(running);
+  const b = parseVersion(mine);
+  if (!a || !b) return String(running) !== String(mine);
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
+
+// Start (or reuse) the detached canvas server and return its port. Only a server
+// OLDER than this script is restarted; a newer or equal one is kept, so two installs
+// with different versions never restart each other in a loop.
 async function ensureServer({ stateDir, port }) {
   const health = await healthCheck(port);
-  if (health && health.version === VERSION) return port;
+  if (health && !isOlderVersion(health.version, VERSION)) return port;
   if (health) {
     await request(port, 'POST', '/shutdown').catch(() => {});
     for (let i = 0; i < 20 && (await healthCheck(port)); i++) await sleep(100);
@@ -434,7 +448,7 @@ function resolveArtifactArg(file) {
   return file;
 }
 
-function addRoutes(result, file) {
+function addRoutes(result, file, trail) {
   if (!Array.isArray(result.items)) return;
   const { routeFor } = require('./lib/plan-canvas/route');
   let planHasComponents = false;
@@ -466,7 +480,7 @@ function addRoutes(result, file) {
     result.next_step += ' Hand the visual-edit items to bdb-visual-edit (diff plan, wait for a yes in the canvas, then edit one file).';
   }
   if (routes.has('build')) {
-    result.next_step += ' The plan is approved: continue with the build pipeline; agenttrail was started by the canvas.';
+    result.next_step += ' The plan is approved: continue with the build pipeline; the canvas tried to start agenttrail; outcome: ' + (trail || 'unknown') + '.';
   }
 }
 
@@ -489,7 +503,7 @@ async function cmdAwait(file, args, { stateDir, port }) {
     result.next_step = result.sessionEnded
       ? 'The user sent this feedback and ended the session. Address it and report in chat; do not reopen the canvas uninvited.'
       : 'Address the feedback, then run `aos-plan-canvas await <file> --reply "<what you changed>"` to answer in the canvas and keep listening.';
-    addRoutes(result, canonicalizeArtifactPath(file));
+    addRoutes(result, canonicalizeArtifactPath(file), result.trail);
   } else if (result.status === 'ended') {
     result.next_step =
       result.endedBy === 'user'
@@ -690,4 +704,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, ensureServer, healthCheck, cmdTemplates, findSkillMd };
+module.exports = { main, ensureServer, healthCheck, isOlderVersion, cmdTemplates, findSkillMd };

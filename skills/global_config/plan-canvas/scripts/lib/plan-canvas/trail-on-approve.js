@@ -58,15 +58,19 @@ function builderPlan(dir, repo) {
   }
 }
 
-function ensureTrailOnApprove({ file, key, log = () => {}, spawnImpl = childProcess.spawn, env = process.env, spawnSyncImpl = childProcess.spawnSync } = {}) {
+// Reports what happened through onOutcome: off | skipped:no-markers | skipped:no-binary |
+// requested (agenttrail --ensure was spawned; it starts or reuses a daemon, result in server.log) |
+// error:<reason>. Never throws; approving must not depend on the trail.
+function ensureTrailOnApprove({ file, key, log = () => {}, spawnImpl = childProcess.spawn, env = process.env, spawnSyncImpl = childProcess.spawnSync, onOutcome = () => {} } = {}) {
+  const report = outcome => { try { onOutcome(outcome); } catch { /* reporting must not throw */ } };
   try {
-    if (env.AOS_PLAN_CANVAS_TRAIL === 'off') return;
-    if (!planComponents(file).length) return;
+    if (env.AOS_PLAN_CANVAS_TRAIL === 'off') return report('off');
+    if (!planComponents(file).length) return report('skipped:no-markers');
     const dir = path.dirname(file);
     const repo = repoRoot(dir, spawnSyncImpl);
     const plan = path.basename(file) === BUILDER_FILE ? builderPlan(dir, repo) : file;
     const bin = resolveBinary(env);
-    if (!bin) return log('[plan-canvas] trail: agenttrail not installed');
+    if (!bin) { log('[plan-canvas] trail: agenttrail not installed'); return report('skipped:no-binary'); }
 
     const args = [...bin.pre, '--ensure', '--cwd', repo, ...(plan ? ['--plan', plan] : []), '--session', `plan-canvas-${key}`, '--json'];
     const stateDir = env.AOS_PLAN_CANVAS_STATE_DIR || path.join(os.homedir(), '.claude', 'aos-plan-canvas');
@@ -78,14 +82,21 @@ function ensureTrailOnApprove({ file, key, log = () => {}, spawnImpl = childProc
     } finally {
       fs.closeSync(fd);
     }
-    if (!child) return;
-    if (typeof child.on === 'function') child.on('error', (e) => log(`[plan-canvas] trail: ${e.message}`));
+    if (!child) return report('error:no-process');
+    report('requested');
+    if (typeof child.on === 'function') child.on('error', (e) => { log(`[plan-canvas] trail: ${e.message}`); report('error:spawn'); });
     const timer = setTimeout(() => { try { child.kill(); } catch { /* already gone */ } }, KILL_AFTER_MS);
     if (timer.unref) timer.unref();
-    if (typeof child.once === 'function') child.once('exit', () => clearTimeout(timer));
+    if (typeof child.once === 'function') {
+      child.once('exit', (code) => {
+        clearTimeout(timer);
+        if (code) report(`error:exit-${code}`);
+      });
+    }
     if (typeof child.unref === 'function') child.unref();
   } catch (e) {
     try { log(`[plan-canvas] trail: ${e && e.message}`); } catch { /* logging must not throw */ }
+    report('error:exception');
   }
 }
 
