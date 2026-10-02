@@ -99,7 +99,7 @@ const commandDefs = JSON.parse(readFileSync(commandsSrc, 'utf8')).commands ?? {}
 const skillNames = new Set(skillDirs.map((dir) => dir.split(/[\\/]/).pop()));
 const commandErrors = [];
 for (const [name, def] of Object.entries(commandDefs)) {
-  if (!/^[a-z][a-z0-9-]*$/.test(name)) commandErrors.push(`${name}: invalid command name`);
+  if (!/^[a-z][a-z0-9-]*$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(name)) commandErrors.push(`${name}: invalid command name`);
   if (skillNames.has(name)) commandErrors.push(`${name}: collides with a skill of the same name`);
   if (!def.description?.trim()) commandErrors.push(`${name}: empty description`);
   if (!def.bodies?.claude?.trim()) commandErrors.push(`${name}: no body for claude`);
@@ -211,11 +211,15 @@ const ownedDirs = { [`${CODEX_ROOT}/skills`]: (e) => e.isDirectory(), 'agy-comma
 const genDrift = Object.entries(generated)
   .filter(([file, want]) => !existsSync(join(ROOT, file)) || readFileSync(join(ROOT, file), 'utf8') !== want)
   .map(([file]) => file);
+const filesUnder = (rel) => readdirSync(join(ROOT, rel), { withFileTypes: true })
+  .flatMap((e) => (e.isDirectory() ? filesUnder(`${rel}/${e.name}`) : [`${rel}/${e.name}`]));
 const genStale = Object.entries(ownedDirs).flatMap(([dir, owned]) =>
   existsSync(join(ROOT, dir))
-    ? readdirSync(join(ROOT, dir), { withFileTypes: true }).filter(owned)
-      .map((e) => `${dir}/${e.name}`)
-      .filter((path) => !Object.keys(generated).some((file) => file === path || file.startsWith(`${path}/`)))
+    ? readdirSync(join(ROOT, dir), { withFileTypes: true }).filter(owned).flatMap((e) => {
+      const path = `${dir}/${e.name}`;
+      if (!Object.keys(generated).some((file) => file === path || file.startsWith(`${path}/`))) return [path];
+      return e.isDirectory() ? filesUnder(path).filter((f) => !(f in generated)) : [];
+    })
     : []);
 const legacyCodexMarket = join(ROOT, '.codex-plugin', 'marketplace.json');
 

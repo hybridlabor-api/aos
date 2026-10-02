@@ -17,7 +17,9 @@ const check = (file) => execFileSync('node', [SCRIPT, '--check'], {
   cwd: ROOT, encoding: 'utf8', stdio: 'pipe',
   env: { ...process.env, ...(file ? { AOS_PLUGIN_COMMANDS: file } : {}) },
 });
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-oc-c3-'));
+const tmps = [];
+test.after(() => { for (const d of tmps) fs.rmSync(d, { recursive: true, force: true }); });
+const tmp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-oc-c3-')); tmps.push(d); return d; };
 
 test('every command has a flat hyphen OpenCode file with no colon names inside', () => {
   for (const name of names) {
