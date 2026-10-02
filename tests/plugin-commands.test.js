@@ -8,7 +8,7 @@ const { join } = require('node:path');
 const ROOT = join(__dirname, '..');
 const SCRIPT = join(ROOT, 'scripts', 'build-plugin-manifest.mjs');
 const EXPECTED = ['setup', 'init', 'doctor', 'store', 'mastersession', 'orchestrator', 'plan', 'brainstorm',
-  'startproject', 'graph', 'shipping', 'memb', 'gogate', 'playbooks', 'loop'];
+  'startproject', 'graph', 'shipping', 'memb', 'playbooks', 'loop'];
 const source = JSON.parse(readFileSync(join(ROOT, 'plugin-commands.json'), 'utf8'));
 
 const check = (file) => execFileSync('node', [SCRIPT, '--check'], {
@@ -39,9 +39,8 @@ test('both manifests list the generated command files', () => {
   }
 });
 
-test('doctor never writes settings and gogate only explains', () => {
+test('doctor never writes settings', () => {
   assert.match(source.commands.doctor.bodies.claude, /Never write to settings/);
-  assert.match(source.commands.gogate.bodies.claude, /never change a mode/);
 });
 
 test('--check passes on the committed output', () => {
