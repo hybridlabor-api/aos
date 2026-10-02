@@ -29,6 +29,24 @@ AOS_OPENCODE_OPTIONAL=ponytail,loop,rtk aos        # or: aos --opencode-optional
 
 Entries are appended only when no entry for that package exists, after a timestamped `opencode.jsonc.<ts>.bak` backup. AOS never runs foreign installers (the `opencode-loop` npx installer rewrites the config) and skips `orca-opencode-status.js` (the Orca app maintains it) and `dag.jsonc` / GraphAgent (AGPL engine, different program).
 
+## Optional permission (off by default)
+
+```bash
+AOS_OPENCODE_PERMISSION=external_directory aos     # or: aos --opencode-permission=external_directory
+```
+
+Without it OpenCode asks on every access outside the working directory, including `~/.agents` skills. The opt-in sets only `permission.external_directory`, scoped to AOS paths:
+
+```json
+"permission": { "external_directory": { "~/.agents/**": "allow", "~/.config/opencode/**": "allow" } }
+```
+
+- An existing `permission.external_directory` (any form) is left untouched and a note is printed. A string `permission` (for example `"allow"`) is refused, not replaced. Unparseable config is refused.
+- A timestamped `.bak` backup is made before the change; a second run changes nothing and makes no backup. Writing the config drops `//` comments, as with every other AOS config write.
+- Schema evidence: the OpenCode 1.18.30 binary accepts a string or a pattern record for `external_directory`, and the permissions docs show `~` and `$HOME` expansion in patterns. Whether the `**` globs match the AOS paths on your machine was not run against a live OpenCode.
+- Uninstall: AOS does not record this key, so it stays in place as your config. Remove it by hand.
+- Nothing else is touched: no other `permission` key and no `mcp` entry.
+
 ## Known limits
 
 - **`/loop-shell` and the go-gate (unverified).** `opencode-loop` can run shell commands as child processes. `tool.execute.before`, where the AOS go-gate sits, may never see them. Do not schedule `git push`, publish or other gated commands through them. The installer prints this warning whenever `opencode-loop` is in `plugin[]`.

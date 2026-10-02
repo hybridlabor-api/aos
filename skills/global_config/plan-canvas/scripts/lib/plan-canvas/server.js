@@ -17,8 +17,10 @@ const http = require('http');
 const path = require('path');
 
 const { buildAllowedHostnames, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin } = require('../loopback-guard');
+const { createAnnotateHandler } = require('./annotate-server');
 const { renderMarkdown } = require('./markdown');
 const { artifactSdkJs } = require('./sdk');
+const { ensureTrailOnApprove } = require('./trail-on-approve');
 const {
   canvasCss,
   canvasClientJs,
@@ -165,11 +167,23 @@ function createPlanCanvasServer({
   typingExpiryMs = DEFAULT_TYPING_EXPIRY_MS,
   presenceSweepMs = DEFAULT_PRESENCE_SWEEP_MS,
   onIdleShutdown = null,
+  now = Date.now,
   log = () => {}
 } = {}) {
   if (!store) throw new Error('createPlanCanvasServer requires a session store');
 
   const allowedHostnames = buildAllowedHostnames(host);
+  const annotate = createAnnotateHandler({
+    store,
+    version,
+    now,
+    log,
+    onQueued: key => {
+      wake.emit(`wake:${key}`);
+      broadcast(key, 'chat-sync', { chat: store.get(key).chat });
+      broadcastPresence(key);
+    }
+  });
   const wake = new EventEmitter();
   wake.setMaxListeners(0);
   const sseClients = new Map(); // key -> Set<res>
@@ -334,6 +348,7 @@ function createPlanCanvasServer({
       if (!artifactPath) {
         return sendJson(res, 403, { error: 'artifact path is outside the workspace' });
       }
+      const resumed = Boolean(store.findByFile(artifactPath));
       const { session, refused } = store.open(artifactPath, { reopen: Boolean(body.reopen) });
       if (refused) {
         return sendJson(res, 409, {
@@ -348,7 +363,9 @@ function createPlanCanvasServer({
         status: 'open',
         key: session.key,
         file: session.file,
-        url: `/canvas/${session.key}`
+        url: `/canvas/${session.key}`,
+        resumed,
+        viewers: sseClients.get(session.key)?.size || 0
       });
     }
 
@@ -437,16 +454,32 @@ function createPlanCanvasServer({
       return sendJson(res, 200, { status: 'ended', endedBy: 'agent' });
     }
 
-    const sessionMatch = pathname.match(/^\/api\/session\/([a-f0-9]{12})\/(feedback|end|reply|typing)$/);
+    const sessionMatch = pathname.match(/^\/api\/session\/([a-f0-9]{12})\/(feedback|end|reply|typing|resume)$/);
     if (sessionMatch && req.method === 'POST') {
       const [, key, action] = sessionMatch;
       const session = store.get(key);
       if (!session) return sendJson(res, 404, { error: 'unknown session' });
 
+      if (action === 'resume') {
+        if (!fs.existsSync(session.file)) return sendJson(res, 404, { error: 'artifact file no longer exists' });
+        if (!confinedArtifactPath(session.file, workspaceRoot)) {
+          return sendJson(res, 403, { error: 'artifact path is outside the workspace' });
+        }
+        store.open(session.file, { reopen: true });
+        watchSession(session);
+        broadcastPresence(key);
+        res.writeHead(303, { location: `/canvas/${key}` });
+        return res.end();
+      }
+
       if (action === 'feedback') {
         const body = await readJsonBody(req);
         const result = store.queueFeedback(key, body.items, { endSession: Boolean(body.endSession) });
         if (!result) return sendJson(res, 409, { error: 'session already ended' });
+        // Record the trail outcome before waking a parked await so it can report it.
+        if (result.accepted.some(i => i.kind === 'verdict' && i.verdict === 'approve')) {
+          ensureTrailOnApprove({ file: session.file, key, log, onOutcome: outcome => store.setTrailOutcome(key, outcome) });
+        }
         wake.emit(`wake:${key}`);
         broadcast(key, 'chat-sync', { chat: store.get(key).chat });
         if (body.endSession) broadcast(key, 'ended', { endedBy: 'user' });
@@ -584,11 +617,19 @@ function createPlanCanvasServer({
     if (!isAllowedHostHeader(req.headers.host, allowedHostnames)) {
       return sendJson(res, 403, { error: 'forbidden host header' });
     }
+    let url;
+    try {
+      url = new URL(req.url, `http://${req.headers.host}`);
+    } catch {
+      return sendJson(res, 400, { error: 'bad request target' });
+    }
+    const { pathname } = url;
+    // Annotate routes are called from a dev app on another loopback origin, so
+    // they do their own Origin/token checks instead of the same-origin gate.
+    if (annotate.handles(pathname)) return annotate.handle(req, res, url);
     if (!isAllowedOrigin(req.headers.origin, allowedHostnames, boundPort)) {
       return sendJson(res, 403, { error: 'forbidden origin' });
     }
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const { pathname } = url;
     // The artifact iframe is sandboxed without allow-same-origin, so its script
     // and asset loads arrive as Sec-Fetch-Site: cross-site. Only those read-only
     // static paths may skip the fetch-site check; everything else keeps it.

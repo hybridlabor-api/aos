@@ -65,7 +65,7 @@ describe('Plan Canvas home and shell', () => {
     assert.ok(!/<script/i.test(html), 'home page needs no scripts');
     assert.ok(!/https?:\/\/(?!127\.0\.0\.1)/.test(html), 'no external urls');
     assert.match(html, /archify<\/div>\s*<div class="row"><span class="chip ok">installed/);
-    assert.match(html, /visual-plan<\/div>\s*<div class="row"><span class="chip missing">missing/);
+    assert.match(html, /bdb-visual-edit<\/div>\s*<div class="row"><span class="chip missing">missing/);
     assert.ok(html.includes('Diagram &lt;b&gt;things&lt;/b&gt;'));
     assert.ok(html.includes('…'));
   });

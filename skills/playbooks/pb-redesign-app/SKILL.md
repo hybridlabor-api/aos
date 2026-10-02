@@ -11,7 +11,7 @@ kind: playbook
 trigger: ["redesign this app", "design overhaul", "audit and fix the UI"]
 inputs: [repo, app_url, scope]
 requires:
-  skills: [ux-audit, ui-review, ui-tokens, godmode-ui-ux, visual-plan, visual-edit, startcycle, wcag-audit-patterns, webapp-testing, github, "gh (external)"]
+  skills: [ux-audit, ui-review, ui-tokens, godmode-ui-ux, plan-canvas, bdb-visual-edit, startcycle, wcag-audit-patterns, webapp-testing, github, "gh (external)"]
   agents: [architect, techlead, reviewer]
   mcps: [chrome-devtools]
   store: []
@@ -33,9 +33,9 @@ What you get: one app's UI overhauled against a written audit, new design tokens
 ## Steps
 1. ux-audit and ui-review — `app_url` opened and screenshotted per screen in scope with chrome-devtools (`puppeteer_navigate`, `puppeteer_screenshot`) → `production_artifacts/pb-redesign-app-<date>/audit.md` with numbered findings — app_url unreachable or chrome-devtools unavailable → log it and stop; every finding has a screenshot or a file reference
 2. ui-tokens — current tokens read from the repo versus proposed DTCG tokens → `tokens-diff.md` in the same folder — diff written, nothing applied yet
-3. visual-plan — before/after per screen in scope → plan link or file in the run log — stops for approval
+3. plan-canvas (Plan Builder mode) — before/after per screen in scope → plan link or file in the run log — stops for approval
 4. startcycle (architect, techlead, reviewer) — the approved plan and audit → build on a new branch; godmode-ui-ux rules apply to the UI work — reviewer reports no open `blocking` finding
-5. visual-edit — point fixes the human picks in the running app, each after its diff plan is approved → edited files in the run log — only the picked files change
+5. bdb-visual-edit — point fixes the human annotates in the running app via `aos-plan-canvas annotate`, each after its diff plan is approved → edited files in the run log — only the picked files change
 6. wcag-audit-patterns and webapp-testing — accessibility pass plus a browser test of the changed screens, then the repo's lint and test scripts → results in the run log — all exit 0; each audit finding marked fixed or deferred
 7. [GO] git push -u origin <branch> and gh pr create — one combined GO; the WAITING FOR GO line names the branch, base branch, PR title and the head SHA. The run stops here until the human types GO. The hook guards `git push`; `gh pr create` is not hook-guarded, so this GO is its only guard. Afterwards `gh pr view <branch> --json state -q .state` equals `OPEN` and the PR URL is logged.
 

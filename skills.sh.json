@@ -94,7 +94,6 @@
         "triage",
         "using-git-worktrees",
         "verification-before-completion",
-        "visual-recap",
         "wcag-audit-patterns",
         "webapp-testing",
         "writing-plans",
@@ -123,9 +122,7 @@
         "ux-audit",
         "ux-feedback",
         "ux-flow",
-        "ux-persuasion-engineer",
-        "visual-edit",
-        "visual-plan"
+        "ux-persuasion-engineer"
       ]
     },
     {
