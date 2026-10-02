@@ -24,6 +24,7 @@ const readline = require('readline');
 const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
+const codexPluginInstall = require('./lib/codex-plugin-install');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
@@ -6324,6 +6325,9 @@ Options:
 
     injectHarnessRules();
 
+    // Codex plugin via the real `codex plugin` CLI (best effort, see lib/codex-plugin-install.js)
+    for (const line of codexPluginInstall.installCodexPlugin({ home: homeDir, pkgRoot: srcDir, version: require('./package.json').version, mode: pluginMigrationMode() }).lines) log.step(line);
+
     const primaryTarget = targets[0];
     for (const t of targets) {
         await installMcpsForTarget(t, { selectedMcps, mode, platformValue: t.value, creds });
@@ -6370,6 +6374,7 @@ if (require.main === module) {
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    codexPluginInstall,
     newestDistTag,
     verifyEcosystemInstallation,
     installBinaryAtomically,

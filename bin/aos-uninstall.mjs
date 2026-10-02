@@ -26,6 +26,7 @@ import { createRequire } from 'node:module';
 
 const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
 const cn = createRequire(import.meta.url)('../lib/codenotch.js');
+const cp = createRequire(import.meta.url)('../lib/codex-plugin-install.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -264,6 +265,9 @@ function execute(p) {
     const r = pm.deregisterClaude({ home: HOME, record: reg });
     if (r.changed) console.log(`  bdb-aos Plugin-Registrierung aus settings.json entfernt${reg.replaced ? ` (externer Marketplace ${reg.replaced.key} wiederhergestellt)` : ''}`);
   }
+
+  const cx = cp.uninstallCodexPlugin({ home: HOME });
+  for (const l of cx.lines) console.log(`  ${l}`);
 
   // Only the BDB hook entries leave settings.json; everything else in it is
   // the user's and must survive an uninstall exactly as it survives an install.
