@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.18.1](https://github.com/hybridlabor-api/aos/compare/v4.18.0...v4.18.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **installer:** define newestDistTag, Quick Update crashed with a ReferenceError ([#135](https://github.com/hybridlabor-api/aos/issues/135)) ([216bd6f](https://github.com/hybridlabor-api/aos/commit/216bd6f3bde9f01c7bc0707b95e3258ea6c34fa2))
+
 ## [4.18.0](https://github.com/hybridlabor-api/aos/compare/v4.17.0...v4.18.0) (2026-10-02)
 
 
