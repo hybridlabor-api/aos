@@ -1261,10 +1261,15 @@ function pluginMigrationMode(argv = process.argv, env = process.env) {
 // .agents/plugins holds the Codex marketplace file; it belongs to the repo checkout, not to ~/.agents or a project.
 const AGENTS_COPY_EXCLUDE = ['plugins'];
 
-// The claude CLI works on the account's real home only; a redirected HOME (tests, sandboxes) never runs it.
+// The claude CLI works on the account's real home only; a redirected HOME (tests, sandboxes) never
+// runs it. AOS_PLUGIN_CLI=on is the test switch that forces the CLI path on a redirected HOME.
 function realClaudeHome(h) {
     if (process.env.AOS_PLUGIN_CLI === 'off') return false;
-    try { return path.resolve(h) === path.resolve(os.userInfo().homedir); } catch { return false; }
+    if (process.env.AOS_PLUGIN_CLI === 'on') return true;
+    try {
+        const norm = (x) => (process.platform === 'win32' ? path.resolve(x).toLowerCase() : path.resolve(x));
+        return norm(h) === norm(os.userInfo().homedir);
+    } catch { return false; }
 }
 
 let _pluginMigration = null;
@@ -1275,7 +1280,11 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     const manifest = _sessionManifest || loadInstallManifest();
     let result;
     try {
-        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, cli: pluginCli !== undefined ? pluginCli : realClaudeHome(targetHome) ? pluginMigration.defaultCliRunner : null, ...(registrars ? { registrars } : {}) });
+        const useCli = pluginCli === undefined && realClaudeHome(targetHome);
+        if (pluginCli === undefined && !useCli && mode === 'on' && keys.includes('claudecode')) {
+            log.step(`claude plugin CLI steps skipped: HOME is not the account's real home (${process.env.AOS_PLUGIN_CLI === 'off' ? 'AOS_PLUGIN_CLI=off' : 'set AOS_PLUGIN_CLI=on to force them'}).`);
+        }
+        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, announce: (m) => log.step(m), cli: pluginCli !== undefined ? pluginCli : useCli ? pluginMigration.defaultCliRunner : null, ...(registrars ? { registrars } : {}) });
     } catch (e) {
         log.warn(`Plugin migration skipped: ${e.message}`);
         result = { covered: new Set(), lines: [] };
@@ -1284,6 +1293,62 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
     if (targetHome === homeDir) _pluginMigration = result;
     return result;
+}
+
+// Antigravity and Codex plugin steps, shared by the full install and Quick Update so the default
+// update path installs the same plugins. Order: Claude (runPluginMigration), agy, Codex.
+function runAgyPluginStep() {
+    try { require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log }); }
+    catch (e) { log.warn(`agy plugin skipped: ${e.message}`); }
+}
+function runCodexPluginStep() {
+    const r = codexPluginInstall.installCodexPlugin({ home: homeDir, pkgRoot: srcDir, version: require('./package.json').version, mode: pluginMigrationMode(), announce: (m) => log.step(m) });
+    for (const line of r.lines) log.step(line);
+}
+
+// Measured with codex 0.154.0: Codex loads BOTH ~/.agents/skills and ~/.codex/skills, so AOS copies
+// in both double the list (366 entries, descriptions squeezed out, cut off after pb-ship). AOS writes
+// only ~/.agents/skills; copies it wrote earlier into ~/.codex/skills (manifest hash still matches) are
+// backed up and removed, all-or-nothing (edited files stop the removal and are reported).
+function retireCodexSkillCopies(manifest) {
+    if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return;
+    const root = path.join(homeDir, '.codex', 'skills');
+    if (!fs.existsSync(root)) return;
+    const backup = path.join(homeDir, '.agents', 'backups', `plugin-migration-codex-skills-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
+    try {
+        const r = pluginMigration.removeLooseCopies({ home: homeDir, root, manifest, backupDir: backup });
+        if (r.refused) log.warn(`Codex skills: ${r.refused}; not touched, Codex will list those skills twice.`);
+        else if (r.leftover.length) log.warn(`Codex skills: ${r.leftover.length} edited or unsafe copies in ${root} (${r.leftover.slice(0, 5).join(', ')}) stay, so Codex lists skills twice (it also reads ~/.agents/skills). Move your edits out and re-run to retire them.`);
+        else if (r.removed.length) log.step(`Codex reads ~/.agents/skills, so ${r.removed.length} AOS copies were removed from ${root} (backup: ${backup}).`);
+    } catch (e) { log.warn(`Codex skill cleanup skipped: ${e.message}`); }
+}
+
+// ~/.codex-plugin/plugin.json in HOME made Codex rename every skill, even OpenAI's, to bdb-aos:<name>.
+// Older AOS versions copied it there. Only files the manifest (or a byte match with the package copy)
+// says AOS wrote are moved to a backup; anything else in the folder stays.
+function retireStaleCodexPluginDir(manifest) {
+    if (DRY_RUN || pluginMigrationMode() !== 'on') return;
+    const dir = path.join(homeDir, '.codex-plugin');
+    let names;
+    try { names = fs.readdirSync(dir); } catch { return; }
+    const backup = path.join(homeDir, '.agents', 'backups', `codex-plugin-dir-${Date.now()}`);
+    let moved = 0;
+    for (const n of names) {
+        const file = path.join(dir, n);
+        const hash = computeFileHash(file);
+        const src = computeFileHash(path.join(srcDir, '.codex-plugin', n));
+        const rec = manifest && manifest[file];
+        if (!hash || !((rec && rec.sha256 === hash) || (src && src === hash))) continue;
+        try {
+            fs.mkdirSync(backup, { recursive: true });
+            fs.copyFileSync(file, path.join(backup, n));
+            fs.unlinkSync(file);
+            if (manifest) delete manifest[file];
+            moved++;
+        } catch (e) { logDebug(e, 'operation'); }
+    }
+    try { fs.rmdirSync(dir); } catch { /* user files remain */ }
+    if (moved) log.step(`Removed the stale ~/.codex-plugin AOS copied earlier (it renamed every Codex skill to bdb-aos:<name>); backup: ${backup}`);
 }
 
 // The plugin migration runs first: when it retires Claude's loose copies, ~/.claude/skills is not
@@ -1366,6 +1431,8 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
         { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 
+    retireCodexSkillCopies(_sessionManifest);
+    retireStaleCodexPluginDir(_sessionManifest);
     for (const { dir: dest } of extraSkillDestinations) {
         try {
             fs.mkdirSync(dest, { recursive: true });
@@ -3053,8 +3120,9 @@ function resolveTargetPaths(platformValue, customPaths) {
         targetMcpDir = path.join(currentDir, '.cursor');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '5') {
-        targetSkillDir = path.join(homeDir, '.codex', 'skills');
-        targetLegacyDir = path.join(homeDir, '.codex', 'skills', 'legacy');
+        // Codex reads ~/.agents/skills too; a second copy under ~/.codex/skills would list every skill twice.
+        targetSkillDir = path.join(homeDir, '.agents', 'skills');
+        targetLegacyDir = path.join(homeDir, '.agents', 'skills', 'legacy');
         targetMcpDir = path.join(homeDir, '.codex');
         mcpConfigPath = path.join(targetMcpDir, 'config.toml');
     } else if (platformValue === '6') {
@@ -3954,7 +4022,7 @@ function injectHarnessRules() {
         }, 'Roo Code keeps its existing custom modes.');
 
         installStep('copy harness directories', () => {
-            const harnessDirs = ['.agents', '.cursor/rules', '.claude', '.github', '.codex-plugin'];
+            const harnessDirs = ['.agents', '.cursor/rules', '.claude', '.github'];
             harnessDirs.forEach(dir => {
                 const sourcePath = path.join(srcDir, dir);
                 if (fs.existsSync(sourcePath)) {
@@ -5793,6 +5861,8 @@ async function runQuickUpdate(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     s.stop('Skills refreshed');
+    runPluginMigration();
+    runAgyPluginStep();
 
     // Everything injectHarnessRules() delivers -- RULES.md, the dispatcher
     // workflows the skills point at, the compiled subagent definitions, the
@@ -5804,6 +5874,7 @@ async function runQuickUpdate(installState) {
     installStep('refresh harness rules, workflows, agents and hooks', () => {
         injectHarnessRules();
     }, 'Harness files keep whatever version this machine already had.');
+    runCodexPluginStep();
 
     // OpenWiki: if already configured, refresh the daemon silently (no prompt).
     // Only ask when there is no key yet — i.e. a first-time offer or a machine
@@ -6109,7 +6180,7 @@ Options:
         { value: '1', label: 'Google Antigravity', hint: '~/.gemini/config/skills' },
         { value: '2', label: 'Claude Desktop / Claude Code', hint: '~/.claude/skills' },
         { value: '3', label: 'Cursor / Generic IDE (project-local)', hint: '.cursor/' },
-        { value: '5', label: 'ChatGPT Codex CLI', hint: '~/.codex/skills' },
+        { value: '5', label: 'ChatGPT Codex CLI', hint: '~/.agents/skills' },
         { value: '6', label: 'Windsurf IDE', hint: '~/.windsurf' },
         { value: '7', label: 'Roo Code / Cline / VS Code', hint: '~/.roo' },
         { value: '8', label: 'Aider CLI', hint: '~/.aider' },
@@ -6341,12 +6412,12 @@ Options:
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     s.stop('Skills installed.');
-    require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log });
+    runAgyPluginStep();
 
     injectHarnessRules();
 
     // Codex plugin via the real `codex plugin` CLI (best effort, see lib/codex-plugin-install.js)
-    for (const line of codexPluginInstall.installCodexPlugin({ home: homeDir, pkgRoot: srcDir, version: require('./package.json').version, mode: pluginMigrationMode() }).lines) log.step(line);
+    runCodexPluginStep();
 
     const primaryTarget = targets[0];
     for (const t of targets) {
@@ -6432,6 +6503,11 @@ module.exports = {
     maybeInstallCodenotch,
     pluginMigrationMode,
     runPluginMigration,
+    runAgyPluginStep,
+    runCodexPluginStep,
+    retireCodexSkillCopies,
+    retireStaleCodexPluginDir,
+    realClaudeHome,
     runAgyPlugin: (opts) => require('./lib/agy-plugin-install').run(opts),
     installProjectHarness,
     promptMcpSelection,
