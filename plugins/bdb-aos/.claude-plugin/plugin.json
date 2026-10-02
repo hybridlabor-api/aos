@@ -134,6 +134,7 @@
     "./skills/global_config/llm-prompt-optimizer",
     "./skills/global_config/llm-structured-output",
     "./skills/global_config/local-llm-expert",
+    "./skills/global_config/loop-templates",
     "./skills/global_config/makefile-generator",
     "./skills/global_config/makefile-validator",
     "./skills/global_config/mcp-manage",
