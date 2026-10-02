@@ -276,9 +276,10 @@ function execute(p) {
     catch (e) { console.log(`  konnte ${tilde(d.path)} nicht löschen: ${e.message}`); }
   }
 
-  for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json'), pm.statePath(HOME)]) {
+  for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
     try { rmSync(f); } catch { /* already gone */ }
   }
+  pm.retireState(HOME);
 }
 
 // ---------------------------------------------------------------------- main
@@ -290,15 +291,12 @@ const ask = async (q) => {
 };
 
 if (RESTORE) {
-  const dirs = pm.readState(HOME).backups.filter(existsSync).reverse();
-  if (!dirs.length) { console.log('Keine Plugin-Migrations-Sicherung gefunden.'); process.exit(1); }
-  let n = 0;
-  for (const d of dirs) {
-    const files = pm.restoreBackup({ home: HOME, backupDir: d });
-    n += files.length;
-    console.log(`  ${files.length} Dateien aus ${tilde(d)} wiederhergestellt`);
-  }
-  console.log(`Fertig: ${n} Dateien. Vorhandene Dateien wurden nicht überschrieben.`);
+  const r = pm.restorePluginBackups({ home: HOME });
+  if (!r.dirs.length) { console.log('Keine Plugin-Migrations-Sicherung gefunden.'); process.exit(1); }
+  console.log(`  ${r.files.length} Dateien aus ${r.dirs.length} Sicherung(en) wiederhergestellt, im Install-Manifest erfasst`);
+  console.log('Vorhandene Dateien wurden nicht überschrieben.');
+  if (r.deregistered) console.log('  bdb-aos Plugin-Registrierung entfernt, damit die Skills nicht doppelt geladen werden. Setze AOS_PLUGIN_MIGRATION=off, damit der Installer sie nicht erneut entfernt.');
+  else if (r.files.length && r.stillEnabled) console.log('  WARNUNG: das bdb-aos Plugin ist weiterhin aktiv, die Skills erscheinen doppelt. Plugin in Claude Code deaktivieren und AOS_PLUGIN_MIGRATION=off setzen.');
   process.exit(0);
 }
 
