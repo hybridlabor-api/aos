@@ -126,6 +126,9 @@ function clientMain(CFG) {
     }
     return false;
   }
+  // App mode: buttons, links and labels must be annotatable, so the element tool
+  // swallows their clicks; holding Alt lets a click through to the app.
+  const grabs = (e, el) => FETCH && !e.altKey && isInteractive(el);
   function boxOf(el) {
     const r = el.getBoundingClientRect();
     return { left: r.left + window.scrollX, top: r.top + window.scrollY, width: r.width, height: r.height };
@@ -355,7 +358,7 @@ function clientMain(CFG) {
   document.addEventListener('mousemove', e => {
     if (!on || tool !== 'element' || pending) { hl.style.display = 'none'; return; }
     const el = e.target;
-    if (!el || isOurs(el) || el === document.body || el === document.documentElement || isInteractive(el)) {
+    if (!el || isOurs(el) || el === document.body || el === document.documentElement || (isInteractive(el) && !grabs(e, el))) {
       hl.style.display = 'none';
       return;
     }
@@ -371,8 +374,12 @@ function clientMain(CFG) {
     if (!on || tool !== 'element') return;
     const el = e.target;
     if (isOurs(el)) return;
-    if (pending) { if (!pending.fromShapes) cancelAll(); return; }
-    if (isInteractive(el)) return;
+    if (pending) {
+      if (grabs(e, el)) { e.preventDefault(); e.stopPropagation(); }
+      if (!pending.fromShapes) cancelAll();
+      return;
+    }
+    if (isInteractive(el) && !grabs(e, el)) return;
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) return;
     if (el === document.body || el === document.documentElement) return;
@@ -381,6 +388,15 @@ function clientMain(CFG) {
     hl.style.display = 'none';
     openElementCard('Annotate <' + el.tagName.toLowerCase() + '>', el, anchorFor(el), e.clientX, e.clientY);
   }, true);
+
+  ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'dblclick'].forEach(type => {
+    document.addEventListener(type, e => {
+      if (on && tool === 'element' && !isOurs(e.target) && grabs(e, e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+  });
 
   // --- text selection ------------------------------------------------------
   document.addEventListener('mouseup', e => {

@@ -349,6 +349,34 @@ describe('bundle smoke run against a generic DOM stub (logic only, not a browser
     assert.equal(listeners['win:message'], undefined);
   });
 
+  test('H1 app mode: element tool swallows clicks on buttons and links, Alt passes through; iframe keeps them live', () => {
+    const script = { getAttribute: k => ({ 'data-session': 'abcdef012345', 'data-token': 'tok' }[k]), src: 'http://127.0.0.1:4519/annotate.js?v=1' };
+    const fakeEl = tagName => ({ nodeType: 1, tagName, id: '', parentElement: null, previousElementSibling: null, isContentEditable: false, classList: [], matches: () => false, closest: () => null, getBoundingClientRect: () => ({ left: 1, top: 1, width: 10, height: 10 }) });
+    const click = (el, extra = {}) => {
+      const calls = [];
+      return { calls, ev: { target: el, clientX: 5, clientY: 5, preventDefault: () => calls.push('prevent'), stopPropagation: () => calls.push('stop'), ...extra } };
+    };
+    const app = runBundle('fetch', { code: annotateClientJs({ transport: 'fetch', version: '1.1.0' }), currentScript: script });
+    app.listeners['doc:keydown'][0]({ key: 'A', code: 'KeyA', altKey: true, shiftKey: true, composedPath: () => [app.win], preventDefault() {}, stopPropagation() {} });
+    const onClick = app.listeners['doc:click'][0];
+    for (const tag of ['BUTTON', 'A', 'LABEL']) {
+      const c = click(fakeEl(tag));
+      onClick(c.ev);
+      assert.deepEqual(c.calls, ['prevent', 'stop'], `${tag} click must be captured in app mode`);
+    }
+    const alt = click(fakeEl('BUTTON'), { altKey: true });
+    onClick(alt.ev);
+    assert.deepEqual(alt.calls, [], 'Alt+click passes through to the app');
+    const down = click(fakeEl('BUTTON'));
+    app.listeners['doc:mousedown'][0](down.ev);
+    assert.deepEqual(down.calls, ['prevent', 'stop']);
+
+    const frame = runBundle('postMessage', { code: annotateClientJs({ transport: 'postMessage', version: '1.1.0' }) });
+    const f = click(fakeEl('BUTTON'));
+    frame.listeners['doc:click'][0](f.ev);
+    assert.deepEqual(f.calls, [], 'canvas iframe behaviour is unchanged');
+  });
+
   test('a second injection is a no-op', () => {
     const code = annotateClientJs({ transport: 'postMessage' });
     const { win, posts } = runBundle('postMessage', { code });
