@@ -177,19 +177,7 @@ function checkAosCore() {
   }
 }
 
-// JSONC to JSON: drops comments (not inside strings) and trailing commas.
-function parseJsonc(text) {
-  let out = '';
-  for (let i = 0, str = false; i < text.length; i++) {
-    const c = text[i];
-    if (str) { out += c; if (c === '\\') out += text[++i] ?? ''; else if (c === '"') str = false; continue; }
-    if (c === '"') { str = true; out += c; continue; }
-    if (c === '/' && text[i + 1] === '/') { while (i < text.length && text[i] !== '\n') i++; out += '\n'; continue; }
-    if (c === '/' && text[i + 1] === '*') { i += 2; while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++; i++; continue; }
-    out += c;
-  }
-  try { return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; }
-}
+const { parseJsonc } = req('../lib/jsonc.js');
 
 // Zen gateway limit: a tool name (OpenCode builds it from the MCP server name) is at most 64 characters.
 // Names only, no network: the tool part of the name is not known here.

@@ -76,7 +76,7 @@ const LEGACY_MARKERS = [
   h('.agents', 'AGENTS.md'),
   h('.gemini', 'config', 'skills', 'startcycle', 'SKILL.md'),
   h('.agents', 'skills', 'startcycle', 'SKILL.md'),
-  h('.claude', 'skills', 'startcycle', 'SKILL.md'),
+  path.join(pm.claudeDir(HOME), 'skills', 'startcycle', 'SKILL.md'),
 ];
 
 const sha256 = (file) => {
@@ -294,7 +294,7 @@ function execute(p) {
 
   // Only the BDB hook entries leave settings.json; everything else in it is
   // the user's and must survive an uninstall exactly as it survives an install.
-  const settings = h('.claude', 'settings.json');
+  const settings = path.join(pm.claudeDir(HOME), 'settings.json');
   if (existsSync(settings)) {
     try {
       const s = JSON.parse(readFileSync(settings, 'utf8'));

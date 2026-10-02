@@ -312,43 +312,7 @@ function describeJsonParseError(filePath) {
     }
 }
 
-// Comment and trailing-comma stripper that respects string literals and escapes, so
-// "file:///x.js" and "http://host" survive. Returns text JSON.parse can read (or reject).
-function stripJsonc(text) {
-    const src = String(text).replace(/^\uFEFF/, '');
-    let out = '';
-    for (let i = 0; i < src.length;) {
-        const c = src[i];
-        if (c === '"') {
-            let j = i + 1;
-            while (j < src.length && src[j] !== '"') j += src[j] === '\\' ? 2 : 1;
-            out += src.slice(i, j + 1);
-            i = j + 1;
-        } else if (c === '/' && src[i + 1] === '/') {
-            while (i < src.length && src[i] !== '\n' && src[i] !== '\r') i++;
-        } else if (c === '/' && src[i + 1] === '*') {
-            const end = src.indexOf('*/', i + 2);
-            i = end < 0 ? src.length : end + 2;
-            out += ' ';
-        } else { out += c; i++; }
-    }
-    let res = '';
-    for (let i = 0; i < out.length;) {
-        const c = out[i];
-        if (c === '"') {
-            let j = i + 1;
-            while (j < out.length && out[j] !== '"') j += out[j] === '\\' ? 2 : 1;
-            res += out.slice(i, j + 1);
-            i = j + 1;
-        } else if (c === ',') {
-            let k = i + 1;
-            while (k < out.length && /\s/.test(out[k])) k++;
-            if (out[k] !== '}' && out[k] !== ']') res += c;
-            i++;
-        } else { res += c; i++; }
-    }
-    return res;
-}
+const { stripJsonc } = require('./lib/jsonc');
 
 function readJsoncFile(filePath) {
     if (!fs.existsSync(filePath)) return null;
@@ -4897,34 +4861,10 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     }
 
     // Drop every AOS hook entry (marker block or not, duplicates included), then append one fresh block.
-    const bdbCodexScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'startcycle-dispatch.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     const isAosMarker = (l) => /^\s*# AOS:HOOKS:(START|END)\s*$/.test(l);
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
-    const lines = content.split(/\r?\n/).filter((l) => !isAosMarker(l));
-    const sections = [];
-    for (const l of lines) {
-        if (/^\s*\[/.test(l) || !sections.length) sections.push([l]);
-        else sections[sections.length - 1].push(l);
-    }
-    const isHookHeader = (sec) => /^\s*\[\[hooks\.\w+\]\]\s*$/.test(sec[0]);
-    const isHookInner = (sec) => /^\s*\[\[hooks\.\w+\.hooks\]\]\s*$/.test(sec[0]);
-    const kept = [];
-    for (let i = 0; i < sections.length; i++) {
-        if (!isHookHeader(sections[i])) { kept.push(sections[i]); continue; }
-        let j = i + 1;
-        while (j < sections.length && isHookInner(sections[j])) j++;
-        const group = sections.slice(i, j);
-        const ours = group.some((sec) => sec.some((l) => /^\s*command\s*=/.test(l) && bdbCodexScripts.some((n) => l.includes(n))));
-        if (ours) {
-            // keep trailing blanks/comments (they may belong to another tool's marker)
-            const tail = group.flat();
-            let end = tail.length;
-            while (end > 0 && /^\s*(#.*)?$/.test(tail[end - 1])) end--;
-            if (end < tail.length) kept.push(tail.slice(end));
-        } else kept.push(...group);
-        i = j - 1;
-    }
-    content = `${kept.flat().join(eol).trimEnd()}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
+    const kept = (uninstallRecords.dropAosHookGroups(content.split(/\r?\n/).filter((l) => !isAosMarker(l))));
+    content = `${kept.join(eol).trimEnd()}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
 
     try {
         fs.mkdirSync(path.dirname(configTomlPath), { recursive: true });
