@@ -660,6 +660,7 @@ const HOME_CSS = `
   code.cmd{display:block;background:#0f0f0f;border:1px solid var(--line);border-radius:6px;padding:6px 8px;user-select:all}
   .empty{color:var(--ink3);font-size:13px}
   .card.ended{opacity:.6}
+  .resume{align-self:flex-start;font:inherit;font-size:12px;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:6px;padding:4px 12px;cursor:pointer}
 `;
 
 function chip(text, cls = '', title = '') {
@@ -675,7 +676,7 @@ function sessionCard(s) {
   const pending = Number(s.pending) > 0 ? chip(`${s.pending} pending feedback`, 'accent') : '';
   return `<div class="card${ended ? ' ended' : ''}"><div class="t">${title}</div>
 <div class="row">${chip(artifactKind(s.file), 'accent')}${chip(status, ended ? '' : 'ok')}${pending}</div>
-<div class="mono">${escapeHtml(s.file)}</div></div>`;
+<div class="mono">${escapeHtml(s.file)}</div>${ended ? `<form method="post" action="/api/session/${escapeHtml(s.key)}/resume"><button class="resume" type="submit">Resume</button></form>` : ''}</div>`;
 }
 
 function templateCard(t) {
