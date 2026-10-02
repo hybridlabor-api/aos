@@ -74,4 +74,55 @@ try {
 }
 run('--check');
 
+
+// Codex and agy manifests: checked in, version-locked, covered by --check.
+const CODEX_ROOT = 'plugins/bdb-aos-codex';
+const generatedFiles = [
+  '.codex-plugin/plugin.json',
+  `${CODEX_ROOT}/.codex-plugin/plugin.json`,
+  '.agents/plugins/marketplace.json',
+  'plugin.json',
+  'plugins/bdb-aos/plugin.json',
+];
+for (const file of generatedFiles.filter((f) => f.endsWith('plugin.json'))) {
+  assert.equal(JSON.parse(readFileSync(join(ROOT, file), 'utf8')).version, pkg.version, `${file} must track package.json`);
+}
+const releaseCfg = JSON.parse(readFileSync(join(ROOT, 'release-please-config.json'), 'utf8'));
+const bumped = releaseCfg.packages['.']['extra-files'].map((f) => f.path);
+for (const file of generatedFiles.filter((f) => f.endsWith('plugin.json'))) {
+  assert.ok(bumped.includes(file), `release-please must bump ${file}`);
+}
+const cmds = JSON.parse(readFileSync(join(ROOT, 'plugin-commands.json'), 'utf8')).commands;
+for (const name of Object.keys(cmds)) {
+  const body = readFileSync(join(ROOT, CODEX_ROOT, 'skills', name, 'SKILL.md'), 'utf8');
+  assert.ok(!body.includes('disable-model-invocation'), `${name}: codex wrapper must not set disable-model-invocation`);
+  assert.ok(!/\/bdb-aos:/.test(body), `${name}: codex wrapper must use $bdb-aos:<cmd>, not /bdb-aos:`);
+  assert.ok(body.startsWith(`---\nname: ${name}\n`), `${name}: wrapper skill name`);
+}
+assert.ok(JSON.parse(readFileSync(join(ROOT, 'plugin.json'), 'utf8')).commands.length === Object.keys(cmds).length, 'agy plugin.json wires every command');
+
+for (const file of ['.codex-plugin/plugin.json', 'plugin.json', '.agents/plugins/marketplace.json', `${CODEX_ROOT}/skills/setup/SKILL.md`]) {
+  const path = join(ROOT, file);
+  const keep = readFileSync(path, 'utf8');
+  try {
+    writeFileSync(path, keep.replace(/"?(version|name|description)\b/, '$&X'));
+    assert.throws(() => run('--check'), /out of date/, `--check must fail on a stale ${file}`);
+    rmSync(path);
+    assert.throws(() => run('--check'), /out of date/, `--check must fail on a missing ${file}`);
+  } finally {
+    writeFileSync(path, keep);
+  }
+}
+{
+  const path = join(ROOT, '.codex-plugin', 'plugin.json');
+  const keep = readFileSync(path, 'utf8');
+  try {
+    writeFileSync(path, `${keep.trimEnd().slice(0, -1)}, "disable-model-invocation": true}\n`);
+    assert.throws(() => run('--check'), /out of date/, 'drifted codex output is rejected');
+  } finally {
+    writeFileSync(path, keep);
+  }
+}
+run('--check');
+
 console.log(`build-plugin-manifest: ${manifest.skills.length} skills, --check catches drift`);
