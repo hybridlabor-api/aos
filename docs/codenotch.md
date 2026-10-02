@@ -11,7 +11,7 @@ The AOS installer installs the BDB AO Codenotch desktop app by default on **macO
 | Opt out | `AOS_CODENOTCH=0` or `--no-codenotch` (wins over everything) |
 | Force on | `AOS_CODENOTCH=1` or `--codenotch` (skips the question) |
 
-A failure at any step (no release yet, 404, offline, rate limit, checksum mismatch, mount error) prints a warning and the AOS install continues; the exit code is never affected. The installer ends with one line saying whether Codenotch was installed, skipped or failed, and how to remove it.
+A failure at any step (no release yet, 404, offline, rate limit, checksum mismatch, mount error) prints a warning and the AOS install continues; the exit code is never affected. The installer ends with one line saying whether Codenotch was installed, skipped or failed, and how to remove it. After a successful install (and when the installed version is already current) the line also says how to start the app, because AOS never launches it and never registers autostart (that is the app's own choice): macOS `open -a "Codenotch"` (the name of the installed bundle), Windows `Start menu > Codenotch` or `%LOCALAPPDATA%\Codenotch\codenotch.exe`. Failed and no-release lines carry no hint.
 
 ## Windows
 
