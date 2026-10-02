@@ -6328,6 +6328,7 @@ Options:
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     s.stop('Skills installed.');
+    require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log });
 
     injectHarnessRules();
 
@@ -6418,6 +6419,7 @@ module.exports = {
     maybeInstallCodenotch,
     pluginMigrationMode,
     runPluginMigration,
+    runAgyPlugin: (opts) => require('./lib/agy-plugin-install').run(opts),
     installProjectHarness,
     promptMcpSelection,
     mirrorMcpServersTo,

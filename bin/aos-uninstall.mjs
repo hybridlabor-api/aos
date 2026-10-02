@@ -27,6 +27,7 @@ import { createRequire } from 'node:module';
 const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
 const cn = createRequire(import.meta.url)('../lib/codenotch.js');
 const cp = createRequire(import.meta.url)('../lib/codex-plugin-install.js');
+const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -256,6 +257,8 @@ function execute(p) {
     const r = cn.uninstallCodenotch(codenotch, { stateFile: cn.stateFilePath(HOME) });
     console.log(`  Codenotch: ${r === 'remove' ? 'removed' : r === 'keep' ? 'kept, not the recorded build' : r === 'error' ? 'uninstaller failed, left in place' : 'already gone'}`);
   }
+
+  agyPlugin.uninstall({ home: HOME, dryRun: DRY });
 
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);
