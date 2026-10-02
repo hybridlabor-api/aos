@@ -3962,6 +3962,20 @@ const OPENCODE_LOOP_SHELL_WARNING = 'opencode-loop: /loop-shell style commands r
     'tool.execute.before, and so the AOS go-gate, may never see them (unverified). ' +
     'Do not schedule git push, publish or other gated commands through them.';
 
+let codenotchResult = null;
+async function maybeInstallCodenotch() {
+    if (process.platform !== 'darwin' && process.platform !== 'win32') return;
+    const codenotch = require('./lib/codenotch.js');
+    codenotchResult = await codenotch.runCodenotchStep({
+        interactive: !isAutoYes,
+        dryRun: DRY_RUN,
+        ask: async (message, initialValue = true) => { const a = await askConfirm({ message, initialValue }); return !isCancel(a) && !!a; },
+        log: { info: (m) => log.info(m), warn: (m) => log.warn(m), success: (m) => log.success(m) },
+    });
+    const line = codenotch.codenotchSummaryLine(codenotchResult);
+    if (line) (codenotchResult.status === 'error' || /FAILED/.test(line) ? log.warn : log.info)(line);
+}
+
 function parseOpencodeOptional(argv = process.argv, env = process.env) {
     const flag = argv.find((a) => a.startsWith('--opencode-optional='));
     const raw = [env.AOS_OPENCODE_OPTIONAL, flag && flag.slice('--opencode-optional='.length)].filter(Boolean).join(',');
@@ -5791,6 +5805,7 @@ async function runQuickUpdate(installState) {
 
     console.log('');
     verifyEcosystemInstallation();
+    await maybeInstallCodenotch();
     // Fresh installs open this via universalHarnessSync(); Quick Update never
     // did, so a dev-workflow machine only ever saw it once, on day one --
     // every subsequent run is a Quick Update, which is what almost every
@@ -5894,6 +5909,13 @@ Options:
                    AOS_OPENCODE_OPTIONAL. Pinned plugin[] entries are appended after a
                    config backup; rtk only prints a brew hint. Off by default. AOS never
                    runs foreign installers and never touches OpenCode's mcp set.
+  --no-codenotch   macOS and Windows only (never Linux): BDB AO Codenotch (desktop app,
+                   from hybridlabor-api/bdb-ao-codenotch) installs by default;
+                   skip it with this flag or AOS_CODENOTCH=0. --codenotch or
+                   AOS_CODENOTCH=1 forces it. Interactive prompt defaults to yes. Failures
+                   only warn and never fail the install. SHA-256 verified; Windows runs
+                   the per-user installer silently (/S, no admin). Never overwrites an app
+                   AOS did not install. See docs/codenotch.md.
   --opencode-permission=external_directory
                    Opt in to OpenCode's permission.external_directory for ~/.agents and
                    ~/.config/opencode only (path patterns, allow), or set
@@ -6313,6 +6335,7 @@ Options:
 
     console.log('');
     verifyEcosystemInstallation();
+    await maybeInstallCodenotch();
 
     outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
 }
@@ -6355,6 +6378,7 @@ module.exports = {
     installOpencodePlugin,
     installOpencodeCommands,
     parseOpencodeOptional,
+    maybeInstallCodenotch,
     pluginMigrationMode,
     runPluginMigration,
     installProjectHarness,

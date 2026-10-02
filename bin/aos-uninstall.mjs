@@ -25,6 +25,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
+const cn = createRequire(import.meta.url)('../lib/codenotch.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -103,7 +104,9 @@ function plan() {
   const legacy = LEGACY_MARKERS.filter(existsSync);
   const data = PURGE ? DATA_PATHS.filter((d) => existsSync(d.path)) : [];
 
-  return { manifest, ours, edited, gone, agents, modules, legacy, data };
+  const codenotch = cn.planCodenotchUninstall({ stateFile: cn.stateFilePath(HOME) });
+
+  return { manifest, ours, edited, gone, agents, modules, legacy, data, codenotch };
 }
 
 function describe(p) {
@@ -140,6 +143,12 @@ function describe(p) {
     for (const l of legacy) console.log(`    ${tilde(l)}`);
   }
 
+  if (p.codenotch) {
+    const c = p.codenotch;
+    const note = { remove: 'is removed (still the recorded build)', keep: 'is kept (replaced or modified since AOS installed it)', gone: 'is already gone' }[c.action];
+    console.log(`\nBDB AO Codenotch ${tilde(c.state.path || c.state.uninstallPath)} ${note}`);
+  }
+
   console.log('\nBleibt erhalten:');
   if (!PURGE) for (const d of DATA_PATHS.filter((d) => existsSync(d.path))) console.log(`    ${tilde(d.path).padEnd(18)} ${d.what}`);
   console.log('    jede Datei ohne Manifest-Eintrag — eigene Skills, fremde Hooks, alles Selbstgeschriebene');
@@ -169,7 +178,7 @@ function dirSize(p) {
 
 // ------------------------------------------------------------------ execute
 function execute(p) {
-  const { ours, edited, agents, modules, legacy, data } = p;
+  const { ours, edited, agents, modules, legacy, data, codenotch } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
   let removed = 0, backed = 0;
 
@@ -240,6 +249,11 @@ function execute(p) {
         console.log(`  deja-Tabelle aus ${tilde(codexToml)} entfernt`);
       }
     } catch { console.log(`  ${tilde(codexToml)} nicht lesbar — von Hand prüfen`); }
+  }
+
+  if (codenotch) {
+    const r = cn.uninstallCodenotch(codenotch, { stateFile: cn.stateFilePath(HOME) });
+    console.log(`  Codenotch: ${r === 'remove' ? 'removed' : r === 'keep' ? 'kept, not the recorded build' : r === 'error' ? 'uninstaller failed, left in place' : 'already gone'}`);
   }
 
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }

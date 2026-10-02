@@ -118,6 +118,7 @@ What the installer writes for each target. Paths are the defaults; the installer
 | Roo Code / Cline | `~/.roo/skills` | — | — | `.roomodes` (project) |
 | Aider | `~/.aider/bdb-skills` | — | — | — |
 | AOS CLI (`pi`) | reads `~/.agents/skills` | `~/.agents/AGENTS.md` as system prompt | — | no MCP; separate install, Node >= 22.19 — see [packages/aos-cli](packages/aos-cli/README.md) |
+| BDB AO Codenotch (macOS app, Windows installer) | macOS `/Applications` or `~/Applications`; Windows per-user NSIS install (`/S`, no admin) | — | — | installed by default on macOS and Windows (never Linux); opt out with `--no-codenotch` or `AOS_CODENOTCH=0`; failures only warn; DMG from the public releases repo created by Tim, SHA-256 verified, ad-hoc signed with quarantine removed, see [docs/codenotch.md](docs/codenotch.md) |
 
 Every install also writes the universal copy to `~/.agents/skills`, which is what the AOS CLI and the `skills` CLI read.
 
