@@ -1260,15 +1260,21 @@ function pluginMigrationMode(argv = process.argv, env = process.env) {
 // .agents/plugins holds the Codex marketplace file; it belongs to the repo checkout, not to ~/.agents or a project.
 const AGENTS_COPY_EXCLUDE = ['plugins'];
 
+// The claude CLI works on the account's real home only; a redirected HOME (tests, sandboxes) never runs it.
+function realClaudeHome(h) {
+    if (process.env.AOS_PLUGIN_CLI === 'off') return false;
+    try { return path.resolve(h) === path.resolve(os.userInfo().homedir); } catch { return false; }
+}
+
 let _pluginMigration = null;
-function runPluginMigration({ targetHome = homeDir, detected = null, mode = pluginMigrationMode(), registrars } = {}) {
+function runPluginMigration({ targetHome = homeDir, detected = null, mode = pluginMigrationMode(), registrars, cli: pluginCli } = {}) {
     if (_pluginMigration && targetHome === homeDir) return _pluginMigration;
     const keys = detected || detectPlatforms().map((d) => d.key);
     const ownsManifest = !_sessionManifest;
     const manifest = _sessionManifest || loadInstallManifest();
     let result;
     try {
-        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, ...(registrars ? { registrars } : {}) });
+        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, cli: pluginCli !== undefined ? pluginCli : realClaudeHome(targetHome) ? pluginMigration.defaultCliRunner : null, ...(registrars ? { registrars } : {}) });
     } catch (e) {
         log.warn(`Plugin migration skipped: ${e.message}`);
         result = { covered: new Set(), lines: [] };
