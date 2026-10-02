@@ -3968,6 +3968,48 @@ function parseOpencodeOptional(argv = process.argv, env = process.env) {
     return new Set(raw.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
 }
 
+// Opt-in OpenCode permission. Off unless AOS_OPENCODE_PERMISSION=external_directory or
+// --opencode-permission=external_directory. Only permission.external_directory is ever set,
+// as path patterns (object form verified in the OpenCode config schema; ~ expands per its docs).
+const OPENCODE_EXTERNAL_DIRECTORY_RULES = { '~/.agents/**': 'allow', '~/.config/opencode/**': 'allow' };
+
+function parseOpencodePermission(argv = process.argv, env = process.env) {
+    const flag = argv.find((a) => a.startsWith('--opencode-permission='));
+    const raw = [env.AOS_OPENCODE_PERMISSION, flag && flag.slice('--opencode-permission='.length)].filter(Boolean).join(',');
+    return new Set(raw.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
+}
+
+function applyOpencodePermission(data, configPath, wanted) {
+    for (const name of wanted) {
+        if (name !== 'external_directory') log.warn(`Unknown OpenCode permission "${name}" ignored.`);
+    }
+    if (!wanted.has('external_directory') || DRY_RUN) return;
+    const perm = data.permission;
+    if (perm !== undefined && (perm === null || typeof perm !== 'object' || Array.isArray(perm))) {
+        log.warn('opencode.jsonc "permission" is not an object (string shorthand?); external_directory not set, left untouched.');
+        return;
+    }
+    if (perm && 'external_directory' in perm) {
+        if (JSON.stringify(perm.external_directory) !== JSON.stringify(OPENCODE_EXTERNAL_DIRECTORY_RULES)) {
+            log.message('opencode.jsonc already has permission.external_directory; left untouched.');
+        }
+        return;
+    }
+    if (configPath && fs.existsSync(configPath)) {
+        if (readJsoncFile(configPath) === null) {
+            log.warn(`Could not parse ${configPath}; permission.external_directory not set.`);
+            return;
+        }
+        const bak = `${configPath}.${timestamp}.bak`;
+        try { fs.copyFileSync(configPath, bak); } catch (e) {
+            log.warn(`Could not back up ${configPath}, skipping permission.external_directory: ${e.message}`);
+            return;
+        }
+    }
+    data.permission = Object.assign(perm || {}, { external_directory: { ...OPENCODE_EXTERNAL_DIRECTORY_RULES } });
+    log.step('Added opt-in OpenCode permission.external_directory for AOS paths (comments in opencode.jsonc are not preserved on rewrite)');
+}
+
 const pluginPackageName = (entry) => {
     const str = typeof entry === 'string' ? entry : (Array.isArray(entry) ? String(entry[0]) : '');
     return str.replace(/(?<=.)@[^@/]*$/, '');
@@ -4055,7 +4097,7 @@ function installOpencodeCommands(srcDirPath, destDirPath) {
 // Sync merges MCP servers in the same pass and writes once). When `data` is
 // omitted the function loads and saves the config itself, which is what lets the
 // Quick Update path register the plugin as well as copy it.
-function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null, optional = parseOpencodeOptional() } = {}) {
+function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null, optional = parseOpencodeOptional(), permission = parseOpencodePermission() } = {}) {
     const opencodeDir = configPath
         ? path.dirname(configPath)
         : (process.platform === 'win32'
@@ -4141,6 +4183,8 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
             if (!data.skills.paths.includes(p)) data.skills.paths.push(p);
         }
     }
+
+    applyOpencodePermission(data, configPath, permission instanceof Set ? permission : new Set(permission || []));
 
     if (ownsWrite) {
         // Write only on a real change. readJsoncFile strips comments, so
@@ -5814,6 +5858,11 @@ Options:
                    AOS_OPENCODE_OPTIONAL. Pinned plugin[] entries are appended after a
                    config backup; rtk only prints a brew hint. Off by default. AOS never
                    runs foreign installers and never touches OpenCode's mcp set.
+  --opencode-permission=external_directory
+                   Opt in to OpenCode's permission.external_directory for ~/.agents and
+                   ~/.config/opencode only (path patterns, allow), or set
+                   AOS_OPENCODE_PERMISSION. Existing keys are never overwritten; a string
+                   "permission" is refused. Config backed up first. Off by default.
   --plugin-migration=off|check
                    Skip (off) or only report (check) the bdb-aos plugin registration and
                    removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.
