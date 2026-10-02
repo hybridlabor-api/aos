@@ -28,6 +28,7 @@ const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
 const cn = createRequire(import.meta.url)('../lib/codenotch.js');
 const cp = createRequire(import.meta.url)('../lib/codex-plugin-install.js');
 const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js');
+const ur = createRequire(import.meta.url)('../lib/uninstall-records.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -98,6 +99,9 @@ function plan() {
     (sha256(p) === entry.sha256 ? ours : edited).push(p);
   }
 
+  const keptCommands = ur.editedOpencodeCommands(manifest, HOME);
+  for (const f of keptCommands) edited.splice(edited.indexOf(f), 1);
+
   const agents = AGENTS
     .map((label) => ({ label, plist: h('Library', 'LaunchAgents', `${label}.plist`) }))
     .filter((a) => existsSync(a.plist));
@@ -108,7 +112,7 @@ function plan() {
 
   const codenotch = cn.planCodenotchUninstall({ stateFile: cn.stateFilePath(HOME) });
 
-  return { manifest, ours, edited, gone, agents, modules, legacy, data, codenotch };
+  return { manifest, ours, edited, gone, agents, modules, legacy, data, codenotch, keptCommands };
 }
 
 function describe(p) {
@@ -132,6 +136,11 @@ function describe(p) {
     if (edited.length > 8) console.log(`    … und ${edited.length - 8} weitere`);
   }
 
+  if (p.keptCommands.length) {
+    console.log(`\nOpenCode-Commands, die nach der Installation bearbeitet wurden, bleiben (${p.keptCommands.length}):`);
+    for (const f of p.keptCommands) console.log(`    ${tilde(f)}`);
+  }
+
   if (agents.length) {
     console.log(`\nHintergrunddienste (${agents.length}): ${agents.map((a) => a.label).join(', ')}`);
   }
@@ -149,6 +158,15 @@ function describe(p) {
     const c = p.codenotch;
     const note = { remove: 'is removed (still the recorded build)', keep: 'is kept (replaced or modified since AOS installed it)', gone: 'is already gone' }[c.action];
     console.log(`\nBDB AO Codenotch ${tilde(c.state.path || c.state.uninstallPath)} ${note}`);
+  }
+
+  const regLines = ur.reverseRegistrations({ home: HOME, dryRun: true, runner: pm.defaultCliRunner });
+  const cxLines = cp.uninstallCodexPlugin({ home: HOME, dryRun: true }).lines;
+  const agyLines = [];
+  agyPlugin.uninstall({ home: HOME, dryRun: true, log: { step: (m) => agyLines.push(m), warn: (m) => agyLines.push(m) } });
+  if (regLines.length || cxLines.length || agyLines.length) {
+    console.log('\nRegistrierungen, die auf AOS-Skripte zeigen:');
+    for (const l of [...regLines, ...cxLines, ...agyLines]) console.log(`    ${l}`);
   }
 
   console.log('\nBleibt erhalten:');
@@ -263,6 +281,8 @@ function execute(p) {
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);
 
+  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner })) console.log(`  ${l}`);
+
   const reg = pm.readState(HOME).registered.claudecode;
   if (reg) {
     const r = pm.deregisterClaude({ home: HOME, record: reg });
@@ -301,6 +321,7 @@ function execute(p) {
     try { rmSync(f); } catch { /* already gone */ }
   }
   pm.retireState(HOME);
+  ur.retireRecords(HOME);
 }
 
 // ---------------------------------------------------------------------- main
