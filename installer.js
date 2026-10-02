@@ -1635,6 +1635,17 @@ async function promptCredentials(referenceMcpDir) {
 
 const DAEMON_LOGON_FALLBACK_EXIT_CODE = 10;
 
+// The daemon job points at these scripts for good, so they live in the installer-owned shared store
+// (~/.agents/skills), which the plugin migration never retires, not in ~/.claude/skills.
+function stableOpenWikiScripts() {
+    const dest = path.join(homeDir, '.agents', 'skills', 'openwiki-skill');
+    if (!fs.existsSync(path.join(dest, 'scripts', 'install_daemon.sh'))) {
+        const src = path.join(srcDir, 'skills', 'global_config', 'openwiki-skill');
+        if (fs.existsSync(src)) copyDirRecursiveSync(src, dest);
+    }
+    return path.join(dest, 'scripts');
+}
+
 async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     const prov = openwikiEnv.provider || "google";
     if (!apiKey && !["ollama", "lmstudio"].includes(prov)) {
@@ -1648,7 +1659,7 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     const s = spinner();
     s.start('Installing OpenWiki Daemon...');
 
-    const scriptBase = path.join(targetSkillDir, 'openwiki-skill', 'scripts');
+    const scriptBase = stableOpenWikiScripts();
 
     const daemonEnv = Object.assign({}, process.env, {
         OPENWIKI_PROVIDER:  prov,
@@ -6324,6 +6335,7 @@ module.exports = {
     buildKnownSourceHashes,
     initSessionManifest,
     installTargetSkills,
+    stableOpenWikiScripts,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
