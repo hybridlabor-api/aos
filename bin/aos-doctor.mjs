@@ -239,7 +239,7 @@ function checkHarnesses() {
 // ---------------------------------------------------------------- 4. Hooks & Security Gates
 function checkHooks() {
   const claudeHooksDir = h('.claude', 'hooks');
-  const EXPECTED_VERSION = { 'memb-inject.mjs': 7 };
+  const EXPECTED_VERSION = { 'memb-inject.mjs': 8 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
     return m ? Number(m[1]) : null;

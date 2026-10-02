@@ -1,32 +1,41 @@
 #!/usr/bin/env node
-// aos-hook-version: 7
+// aos-hook-version: 8
 /**
  * memB ambient memory hook for Claude Code, Google Antigravity, and OpenAI Codex.
  *
  * Stamped with aos-hook-version for /aos-setup doctor validation.
  * Reads ~/.MemBDB/memb.db directly through node:sqlite and injects relevant
- * project & user memories as ephemeral context in tri-format JSON:
- * - hookSpecificOutput (Claude Code UserPromptSubmit)
+ * project & user memories as ephemeral context, emitting only the key the
+ * calling harness reads:
+ * - hookSpecificOutput.additionalContext (Claude Code, OpenAI Codex)
  * - injectSteps (Google Antigravity PreInvocation)
- * - systemMessage (OpenAI Codex UserPromptSubmit)
+ *
+ * Reads rows of the configured user (MEMB_USER_ID, fallback $USER) plus the
+ * group ids in MEMB_GROUP_IDS (comma list, default bdb_developer). Rows bound
+ * to the current project are injected whatever their category (max 5, 180
+ * chars each); global rows still need category `godmode`.
  *
  * Event-aware: SessionStart injects the persona file, the global godmode
  * identity rows, and the current project's cards once per session; every
  * other prompt (UserPromptSubmit) recalls only FTS keyword hits so 40
  * identity facts are not re-sent on every message. Harnesses without a
  * session hook (e.g. Antigravity PreInvocation) get the full block plus
- * identity on each invocation.
+ * identity on the first invocation of a conversation (cached per
+ * conversationId); later invocations recall FTS hits only.
  *
  * Fails open: any error exits 0 silently.
  */
 
-import { readFileSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, realpathSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const COLLECTION = 'bdb_agent_memory';
+const DEFAULT_GROUP_IDS = 'bdb_developer';
+const PROJECT_ROW_CAP = 5;
+const ROW_CHARS = 180;
 const failOpen = () => process.exit(0);
 
 // `deja wip --json` run in the project root, rendered as context lines.
@@ -49,6 +58,14 @@ export function dejaWip(cwd, run = execFileSync) {
   } catch {
     return [];
   }
+}
+
+// Rows are read for the user plus the configured group ids; nothing is
+// hard-coded beyond the documented default group.
+export function resolveReaderIds({ userId, env = process.env } = {}) {
+  const user = env.MEMB_USER_ID || userId || env.USER || env.LOGNAME || '';
+  const groups = String(env.MEMB_GROUP_IDS ?? DEFAULT_GROUP_IDS).split(',').map((g) => g.trim());
+  return Array.from(new Set([user, ...groups].filter(Boolean)));
 }
 
 // Filler words (German + English) that must never become FTS query terms —
@@ -160,14 +177,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
   const projectRoot = findProjectRoot(rawCandidateDir, home);
   const candidateProjectIds = resolveProjectIdentifiers(projectRoot, home);
 
-  // User identification: reconcile active user and bdb_developer baseline
-  const activeUser =
-    process.env.MEMB_USER_ID ||
-    userId ||
-    process.env.USER ||
-    process.env.LOGNAME ||
-    'bdb_developer';
-  const candidateUsers = Array.from(new Set([activeUser, 'bdb_developer'])).filter(Boolean);
+  const candidateUsers = resolveReaderIds({ userId });
 
   const contextItems = [];
 
@@ -259,12 +269,10 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
               OR json_extract(payload, '$.user_id') IN (${uPlaceholders})
               OR json_extract(payload, '$.metadata.user_id') IN (${uPlaceholders})
             )
-            AND (
-              json_extract(payload, '$.category') IN ('project_card','godmode')
-              OR json_extract(payload, '$.metadata.category') IN ('project_card','godmode')
-            )
-          ORDER BY rowid DESC
-          LIMIT 5
+          ORDER BY (COALESCE(json_extract(payload, '$.category'),
+                             json_extract(payload, '$.metadata.category')) = 'project_card') DESC,
+                   rowid DESC
+          LIMIT ${PROJECT_ROW_CAP * 4}
         `;
         const params = [
           COLLECTION,
@@ -276,11 +284,14 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
           ...candidateUsers,
         ];
         const rows = db.prepare(sql).all(...params);
+        let taken = 0;
         for (const r of rows) {
+          if (taken >= PROJECT_ROW_CAP) break;
           const text = textOf(r.payload);
-          if (text.length > 10) {
-            contextItems.push(`- Project [${candidateProjectIds[0]}]: ${text.slice(0, 180)}`);
-          }
+          if (text.length <= 10 || /^\[[^\]|]+\|[^\]|]+\|/.test(text)) continue; // too short / imported file chunk
+          if (contextItems.some((e) => e.includes(text.slice(0, 50)))) continue;
+          contextItems.push(`- Project [${candidateProjectIds[0]}]: ${text.slice(0, ROW_CHARS)}`);
+          taken++;
         }
       } catch { /* project query is best-effort */ }
     }
@@ -316,7 +327,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
             const hitProject = projectOf(r.payload);
             if (hitProject && !candidateProjectIds.includes(hitProject)) continue;
             const cat = categoryOf(r.payload);
-            if (cat !== 'project_card' && cat !== 'godmode') continue;
+            if (!hitProject && cat !== 'project_card' && cat !== 'godmode') continue;
             if (!contextItems.some((e) => e.includes(text.slice(0, 50)))) {
               contextItems.push(`- Domain memory: ${text.slice(0, 180)}`);
             }
@@ -338,6 +349,19 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
   }
 }
 
+// Antigravity has no session hook: remember per conversation that identity and
+// project rows were already sent, so later invocations do only the FTS recall
+// and skip `deja wip`. Stamps under ~/.aos/cache are disposable.
+export function agyIdentitySent(conversationId, base = path.join(os.homedir(), '.aos', 'cache')) {
+  const id = String(conversationId || '').replace(/[^\w.-]/g, '_').slice(0, 80);
+  if (!id) return false;
+  const dir = path.join(base, 'memb-agy');
+  const stamp = path.join(dir, id);
+  if (existsSync(stamp)) return true;
+  try { mkdirSync(dir, { recursive: true }); writeFileSync(stamp, ''); } catch {}
+  return false;
+}
+
 // Main logic runs only when the file is executed directly as a hook; importing
 // the module (e.g. from tests) must stay side-effect free.
 async function main() {
@@ -351,26 +375,26 @@ async function main() {
 
     // Discover candidate directory across harnesses:
     // Claude / Codex: eventData.cwd; Antigravity: eventData.workspacePaths[0] or eventData.cwd
+    const isAgy = !eventData.hook_event_name && (Array.isArray(eventData.workspacePaths) || !!eventData.conversationId);
+    const event = isAgy && agyIdentitySent(eventData.conversationId)
+      ? 'UserPromptSubmit'
+      : (eventData.hook_event_name || '');
     const memoryBlock = await buildMemoryBlock({
-      event: eventData.hook_event_name || '',
+      event,
       prompt: eventData.prompt || eventData.userPrompt || '',
       cwd: (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) || eventData.cwd,
       userId: eventData.user_id || eventData.userId,
     });
 
     if (memoryBlock) {
-      process.stdout.write(JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: eventData.hook_event_name || 'UserPromptSubmit',
-          additionalContext: memoryBlock,
-        },
-        injectSteps: [
-          {
-            ephemeralMessage: memoryBlock,
-          }
-        ],
-        systemMessage: memoryBlock,
-      }) + '\n');
+      process.stdout.write(JSON.stringify(isAgy
+        ? { injectSteps: [{ ephemeralMessage: memoryBlock }] }
+        : {
+          hookSpecificOutput: {
+            hookEventName: eventData.hook_event_name || 'UserPromptSubmit',
+            additionalContext: memoryBlock,
+          },
+        }) + '\n');
     }
     process.exit(0);
   } catch {
