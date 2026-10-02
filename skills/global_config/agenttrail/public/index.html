@@ -322,6 +322,13 @@ function isSkeletonPlan(){return M.plan.filter(n=>n.level==='task').length<=1&&!
 function hasSyntheticPlan(b){return(b.plan||[]).some(n=>n.synthetic)}
 function boardLayout(b){
   const phases=b.plan.filter(n=>n.level==='component')
+  const groups=[...new Set(phases.map(p=>p.laneLabel||''))]
+  if(groups.length<2)return laneLayout(phases)
+  const byId=Object.fromEntries(phases.map(p=>[p.id,p])),pos={},lanes=[];let y=0,width=560
+  for(const g of groups){const sub=laneLayout(phases.filter(p=>(p.laneLabel||'')===g));lanes.push({label:g,y});for(const[id,q]of Object.entries(sub.pos))pos[id]={...q,y:q.y+y+44,nodeY:q.nodeY+y+44};y+=sub.height+44;width=Math.max(width,sub.width)}
+  return{phases,byId,pos,width,height:y,lanes}
+}
+function laneLayout(phases){
   const byId=Object.fromEntries(phases.map(p=>[p.id,p])),depth={},visiting=new Set()
   function getDepth(p){if(depth[p.id]!=null)return depth[p.id];if(visiting.has(p.id))return 0;visiting.add(p.id);const preds=p.needs.filter(id=>byId[id]);depth[p.id]=preds.length?1+Math.max(...preds.map(id=>getDepth(byId[id]))):0;visiting.delete(p.id);return depth[p.id]}
   phases.forEach(getDepth);const cols={};phases.forEach(p=>(cols[depth[p.id]]??=[]).push(p));const gx=120,gy=48,pad=64,pos={},metrics=Object.fromEntries(phases.map(p=>[p.id,graphNodeMetrics(p)])),columnWidths={}
@@ -351,7 +358,8 @@ function boardInnerHtml(b,L){
   }).join('')
   const edges=trails+phases.flatMap(p=>p.needs.map(need=>graphEdge(byId[need],p,pos,traveled[need+'|'+p.id]))).join('')+linkPairs.map(([a,b2])=>graphLinkEdge(a,b2,pos,traveled[a.id+'|'+b2.id]||traveled[b2.id+'|'+a.id])).join('')
   const nodes=phases.map((p,i)=>graphNode(p,i,pos[p.id])).join('')
-  return edges+nodes
+  const laneTags=(L.lanes||[]).map(l=>`<text x="64" y="${l.y+36}" fill="var(--faint)" font-size="15" font-weight="600" font-family="var(--mono)" letter-spacing=".04em">${esc(l.label)}</text>`).join('')
+  return laneTags+edges+nodes
 }
 function regionCardHtml(b,L){
   const w=L.width,h=L.height

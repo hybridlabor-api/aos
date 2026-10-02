@@ -8,6 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import crypto from 'node:crypto'
+import { norm, probePorts, mainRoot, listWorktrees, selectPlan } from './repoid.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -15,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const argv = process.argv.slice(2)
 let cmd = null
 let repo = process.cwd()
-let port = 5330
+let port = probePorts()[0]
 const spawningPaths = new Set()
 let openBrowser = process.stdout.isTTY ? true : false
 let noOpen = false
@@ -64,8 +65,10 @@ for (let i = 0; i < argv.length; i++) {
   else if (cmd === 'ask') (askWords = askWords || []).push(a)
   else repo = path.resolve(a)
 }
+// one map per git repo: any worktree resolves to the main checkout (init keeps the folder it was given)
+if (!ensureMode && (cmd === null || cmd === 'autostart')) repo = mainRoot(repo)
 // AOS patch: --plan <path> overrides the default PLAN.md location
-const planPath = planArg ? path.resolve(repo, planArg) : path.join(repo, 'PLAN.md')
+const planPath = planArg ? (p => fs.existsSync(p) ? norm(p) : p)(path.resolve(repo, planArg)) : path.join(repo, 'PLAN.md')
 const atDir = path.join(repo, '.agenttrail')
 
 function realDirectory(value) {
@@ -160,7 +163,7 @@ async function relayHook() {
       body = JSON.stringify(ev)
     } catch {}
   }
-  const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : Array.from({ length: 15 }, (_, i) => 5330 + i)
+  const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : probePorts()
   await Promise.allSettled(ports.map(p => fetch(`http://127.0.0.1:${p}/hook`, {
     method: 'POST', body, signal: AbortSignal.timeout(400),
   }).catch(() => {})))
@@ -196,9 +199,8 @@ function parseTimeoutArg(v) {
 // repoPath — same discovery as bootDedup; AGENTTRAIL_PORT wins when set. Both sides are
 // symlink-normalized so a daemon started via /tmp matches a cwd of /private/tmp (macOS).
 async function findDaemon() {
-  const norm = p => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
-  const here = norm(repo)
-  const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : Array.from({ length: 15 }, (_, i) => 5330 + i)
+  const here = mainRoot(repo)
+  const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : probePorts()
   const hits = await Promise.all(ports.map(p =>
     fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => (w && norm(w.repoPath) === here) ? p : null).catch(() => null)))
   return hits.find(Boolean) || null
@@ -294,12 +296,149 @@ function parsePlan(text) {
 
 // ---------- live state ----------
 const session = { id: Math.random().toString(36).slice(2, 10), project: path.basename(repo), startedAt: new Date().toISOString() }
-let planText = safeRead(planPath)
-let parsed = parsePlan(planText)
+let planText = ''
+let parsed = { nodes: [], decisions: [], title: '' }
 let activity = null // { file, at } — most recent non-plan repo write
 let recentActivity = [] // last N writes, newest first — feeds the live-view drill-down
-let planMtime = statMtime(planPath)
+let planMtime = null
 const clients = new Set()
+
+// ---------- lanes: the main checkout plus every linked worktree of the repo, one group each on the map ----------
+const MAX_LANES = 12
+const lanes = new Map() // key ('' = main checkout) -> { key, root, branch, label, watcher }
+const laneList = () => [...lanes.values()]
+const mainLane = () => lanes.get('')
+const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'wt'
+function laneAt(abs) {
+  let best = null
+  for (const l of lanes.values()) if (isWithin(l.root, abs) && (!best || l.root.length > best.root.length)) best = l
+  return best
+}
+// plan file of a lane: the CLI path, mapped to the same repo-relative path in every worktree, else that worktree's own plan
+function planRel() {
+  if (!planArg) return 'PLAN.md'
+  if (!path.isAbsolute(planArg)) return planArg
+  const l = laneAt(norm(planArg))
+  return l ? path.relative(l.root, norm(planArg)) : null
+}
+function lanePlan(l) {
+  const rel = planRel()
+  if (!l.key && !(planArg && path.isAbsolute(planArg) && rel !== null)) return planPath
+  if (rel === null) return selectPlan(l.root).plan || null
+  const f = path.join(l.root, rel)
+  return fs.existsSync(f) || !planArg ? f : selectPlan(l.root).plan || null
+}
+// rebuilds the merged plan: linked-worktree ids get a `<lane>--` prefix so one repo's plan can sit in many lanes
+function reloadPlans() {
+  const nodes = []
+  const matchers = []
+  const texts = []
+  let title = ''
+  let decisions = []
+  let mtime = null
+  const multi = lanes.size > 1
+  for (const l of laneList()) {
+    const file = lanePlan(l)
+    const text = file ? safeRead(file) : ''
+    texts.push(text)
+    const p = parsePlan(text)
+    const pre = l.key ? l.key + '--' : ''
+    for (const n of p.nodes) {
+      if (pre) { n.id = pre + n.id; n.parent = n.parent && pre + n.parent; n.needs = n.needs.map(x => pre + x); n.links = n.links.map(x => pre + x) }
+      if (multi) { n.lane = l.key; n.laneLabel = l.label }
+      nodes.push(n)
+      if (n.level === 'component' && n.files.length) matchers.push({ id: n.id, lane: l.key, res: n.files.map(globToRe) })
+    }
+    if (!l.key) { title = p.title; decisions = p.decisions }
+    const m = file ? statMtime(file) : null
+    if (m && (!mtime || m > mtime)) mtime = m
+  }
+  planText = texts.filter(Boolean).join('\n')
+  parsed = { nodes, decisions, title }
+  compMatchers = matchers
+  planMtime = mtime
+}
+function watchLane(l) {
+  const onPlan = () => {
+    clearTimeout(planDebounce)
+    planDebounce = setTimeout(() => { reloadPlans(); broadcast() }, 150)
+  }
+  try {
+    l.watcher = fs.watch(l.root, { recursive: true }, (_ev, filename) => {
+      if (!filename) return
+      const f = filename.toString().split(path.sep).join('/')
+      if (IGNORE.test(f) || TMP_FILE.test(f)) return
+      const abs = path.resolve(l.root, f)
+      if (abs === lanePlan(l)) { onPlan(); return }
+      if (laneAt(abs) !== l) return // a nested worktree reports its own churn
+      const shown = l.key ? `${l.key}:${f}` : f
+      if (!l.key) treeDirty = true
+      stateDirty = true
+      activity = { file: shown, at: Date.now() }
+      heatFile(shown, activity.at)
+      touchComponents(f, activity.at, l.key)
+      if (!recentActivity.length || recentActivity[0].file !== shown) recentActivity.unshift(activity)
+      else recentActivity[0] = activity
+      recentActivity = recentActivity.slice(0, 12)
+      throttleBroadcast()
+    })
+  } catch (e) {
+    // recursive watch is unsupported on some platforms (older linux) — degrade:
+    // plan updates and top-level changes still tracked, deep activity limited.
+    try {
+      l.watcher = fs.watch(l.root, (_ev, filename) => {
+        if (filename && path.resolve(l.root, filename.toString()) === lanePlan(l)) onPlan()
+      })
+      if (!l.key) console.error('note: recursive file watching unavailable here — plan updates still live, deep file activity limited')
+    } catch (e2) {
+      console.error('watcher failed:', e2.message)
+    }
+  }
+}
+// re-reads `git worktree list`; returns true when the set of lanes changed
+function refreshLanes() {
+  const wts = listWorktrees(repo, MAX_LANES)
+  const used = new Set([''])
+  const next = new Map()
+  let changed = false
+  for (const w of wts) {
+    const old = laneList().find(l => l.root === w.path)
+    const main = w.path === repo
+    let key = main ? '' : old ? old.key : ''
+    if (!main && !old) { const base = slug(path.basename(w.path)); key = base; for (let i = 2; used.has(key) || (lanes.has(key) && lanes.get(key).root !== w.path); i++) key = `${base}-${i}` }
+    used.add(key)
+    const label = `${w.branch || 'no branch'} · ${path.basename(w.path)}`
+    const l = old || { key, root: w.path, watcher: null }
+    if (!old || l.branch !== w.branch) changed = true
+    l.branch = w.branch
+    l.label = label
+    next.set(key, l)
+  }
+  for (const [k, l] of lanes) if (!next.has(k)) { changed = true; try { l.watcher && l.watcher.close() } catch {} }
+  lanes.clear()
+  for (const [k, l] of next) lanes.set(k, l)
+  for (const l of laneList()) if (!l.watcher) watchLane(l)
+  if (changed) treeDirty = true
+  return changed
+}
+const missedCwd = new Map() // cwd -> expiry; keeps unrelated repos' events from costing a git call each
+// the lane an event's cwd belongs to; a cwd in a worktree created since the last refresh triggers one
+function laneFor(cwd) {
+  if (!cwd) return null
+  const abs = path.resolve(cwd)
+  let l = laneAt(abs) || laneAt(norm(abs))
+  if (l) return l
+  const until = missedCwd.get(abs)
+  if (until && until > Date.now()) return null
+  if (mainRoot(abs) === repo) {
+    if (refreshLanes()) { reloadPlans(); broadcast() }
+    l = laneAt(abs) || laneAt(norm(abs)) || mainLane()
+    if (l) return l
+  }
+  if (missedCwd.size > 200) missedCwd.clear()
+  missedCwd.set(abs, Date.now() + 30000)
+  return null
+}
 
 // ---------- observed activity per component (files: globs) ----------
 // Declared status ([~]/[x]) says what the agent claims; this says what the
@@ -319,12 +458,8 @@ function globToRe(g) {
   return new RegExp('^' + esc + '$')
 }
 let compMatchers = []
-function rebuildMatchers() {
-  compMatchers = parsed.nodes.filter(n => n.level === 'component' && n.files.length)
-    .map(c => ({ id: c.id, res: c.files.map(globToRe) }))
-}
-function touchComponents(file, at) {
-  for (const m of compMatchers) if (m.res.some(re => re.test(file))) {
+function touchComponents(file, at, laneKey = '') {
+  for (const m of compMatchers) if (m.lane === laneKey && m.res.some(re => re.test(file))) {
     compTouched[m.id] = at
     const arr = compRecent[m.id] || (compRecent[m.id] = [])
     if (arr[0] && arr[0].file === file) arr[0] = { file, at, n: (arr[0].n || 1) + 1 }
@@ -342,15 +477,15 @@ const handoffs = [] // {c, from, to, at} — one session picks up where another 
 function runFor(id, cwd) {
   return runs[id] || (runs[id] = { id, agent: 'claude', cwd, startedAt: Date.now(), lastEventAt: Date.now(), todos: [], currentTool: null, recentTools: [], componentId: null, ended: false, done: false, waiting: null })
 }
-function toolDetail(input = {}) {
+function toolDetail(input = {}, root = repo) {
   const p = input.file_path || input.notebook_path
-  const d = input.command || (p ? (relToRepo(p) ?? p) : '') || input.description || input.pattern || input.url || input.query || input.prompt || ''
+  const d = input.command || (p ? (relToRepo(p, root) ?? p) : '') || input.description || input.pattern || input.url || input.query || input.prompt || ''
   return String(d).replace(/\s+/g, ' ').slice(0, 90)
 }
-function relToRepo(p) {
+function relToRepo(p, root = repo) {
   if (!p) return null
   const r = path.resolve(String(p))
-  return r === repo ? '' : r.startsWith(repo + path.sep) ? r.slice(repo.length + 1) : null
+  return r === root ? '' : r.startsWith(root + path.sep) ? r.slice(root.length + 1) : null
 }
 // AOS patch: native plan/todo tools across harnesses, normalized to the
 // {content, status} shape the frontend's run-todo rendering already expects.
@@ -376,8 +511,10 @@ function normalizeTodos(toolName, input) {
 }
 function handleHookEvent(ev) {
   const cwd = ev.cwd || ''
-  if (!(cwd === repo || cwd.startsWith(repo + path.sep))) return false
+  const lane = laneFor(cwd)
+  if (!lane) return false
   const run = runFor(ev.session_id || 'session', cwd)
+  run.lane = lane.key
   if (ev.agent) run.agent = String(ev.agent).slice(0, 24).toLowerCase()
   run.lastEventAt = Date.now()
   stateDirty = true
@@ -393,7 +530,7 @@ function handleHookEvent(ev) {
     run.ended = false
     run.done = false // AOS patch: an ended run that resumes is no longer done
     run.waiting = null // AOS patch: a resumed run is no longer waiting on the human
-    run.currentTool = { name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now() }
+    run.currentTool = { name: ev.tool_name, detail: toolDetail(ev.tool_input, lane.root), at: Date.now() }
     if (ev.tool_name === 'Task' && ev.tool_input) {
       const name = String(ev.tool_input.description || ev.tool_input.subagent_type || 'sub-agent').slice(0, 60)
       ;(run.subagents = run.subagents || []).push({ name, startedAt: Date.now(), ended: false })
@@ -407,17 +544,18 @@ function handleHookEvent(ev) {
     run.done = false // AOS patch: keep done in sync when a run resumes
     run.waiting = null // AOS patch: a resumed run is no longer waiting on the human
     const started = run.currentTool && run.currentTool.name === ev.tool_name ? run.currentTool.at : Date.now()
-    run.recentTools.unshift({ name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now(), ms: Date.now() - started })
+    run.recentTools.unshift({ name: ev.tool_name, detail: toolDetail(ev.tool_input, lane.root), at: Date.now(), ms: Date.now() - started })
     if (run.recentTools.length > 8) run.recentTools.length = 8
     run.currentTool = null
     const todos = normalizeTodos(ev.tool_name, ev.tool_input)
     if (todos) run.todos = todos
-    const rel = relToRepo(ev.tool_input && (ev.tool_input.file_path || ev.tool_input.notebook_path))
+    const rel = relToRepo(ev.tool_input && (ev.tool_input.file_path || ev.tool_input.notebook_path), lane.root)
     if (rel) {
-      heatFile(rel, Date.now())
-      touchComponents(rel, Date.now())
-      activity = { file: rel, at: Date.now() }
-      for (const m of compMatchers) if (m.res.some(re => re.test(rel))) {
+      const shown = lane.key ? `${lane.key}:${rel}` : rel
+      heatFile(shown, Date.now())
+      touchComponents(rel, Date.now(), lane.key)
+      activity = { file: shown, at: Date.now() }
+      for (const m of compMatchers) if (m.lane === lane.key && m.res.some(re => re.test(rel))) {
         if (run.componentId !== m.id) {
           (run.path = run.path || []).push({ c: m.id, at: Date.now() })
           const prev = Object.values(runs).find(r2 => r2.id !== run.id && r2.ended && r2.componentId === m.id && Date.now() - r2.lastEventAt < 10 * 60e3)
@@ -520,6 +658,7 @@ function buildTree(rootDir, budgetN = 4000, perDir = 250) {
     for (const e of entries) {
       const r = rel ? rel + '/' + e.name : e.name
       if (IGNORE.test(r) || TMP_FILE.test(r)) continue
+      if (e.isDirectory() && laneList().some(l => l.key && l.root === path.join(dir, e.name))) continue
       if (taken >= perDir || budget <= 0) { treeTruncated = true; break }
       taken++; budget--
       if (e.isDirectory()) {
@@ -536,14 +675,13 @@ let treeTruncated = false
 let tree = buildTree(repo)
 let treeDirty = false
 let lastTreeSent = Date.now()
-rebuildMatchers()
 
 function safeRead(p) { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
 function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return null } }
 
 function compFilesFor(id) {
   const m = compMatchers.find(x => x.id === id)
-  if (!m) return []
+  if (!m || m.lane) return [] // only the main checkout has a file tree
   const out = []
   const walk = t => { for (const n of t) { if (n.dir) walk(n.children || []); else if (m.res.some(re => re.test(n.path))) out.push(n.path) } }
   walk(tree)
@@ -610,7 +748,7 @@ function syntheticPlanNodes() {
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   // AOS patch: include planFile (relative path) and aosPlan (boolean) for AOS UI customization
-  const planFile = planArg ? path.relative(repo, planPath).split(path.sep).join('/') : undefined
+  const planFile = planArg ? path.relative(repo, lanePlan(mainLane()) || planPath).split(path.sep).join('/') : undefined
   const aosPlan = Boolean(planArg)
   const realPlanNodes = parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [], filesList: compFilesFor(n.id) } : n)
   const planNodes = realPlanNodes.length ? realPlanNodes : syntheticPlanNodes()
@@ -620,6 +758,7 @@ function model() {
     session, plan: planNodes, tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0, treeTruncated,
+    lanes: lanes.size > 1 ? laneList().map(l => ({ key: l.key, label: l.label, branch: l.branch, root: l.root, main: !l.key })) : undefined,
     activity, recentActivity, planMtime, handoffs, asks, hotFiles: hotFiles(), cycles, // AOS patch: asks ride along so the open map updates live
     planStale: planStaleness(), lints: lintPlan(), hooksInstalled: hooksInstalled(),
     planFile, aosPlan,
@@ -639,56 +778,9 @@ function broadcastTick() {
 
 // ---------- watcher ----------
 let planDebounce = null
-try {
-  fs.watch(repo, { recursive: true }, (_ev, filename) => {
-    if (!filename) return
-    const f = filename.toString().split(path.sep).join('/')
-    if (IGNORE.test(f) || TMP_FILE.test(f)) return
-    if (path.resolve(repo, f) === planPath) {
-      clearTimeout(planDebounce)
-      planDebounce = setTimeout(() => {
-        planText = safeRead(planPath)
-        parsed = parsePlan(planText)
-        rebuildMatchers()
-        planMtime = statMtime(planPath)
-        broadcast()
-      }, 150)
-      return
-    }
-    // plain repo churn → liveness signal
-    treeDirty = true
-    stateDirty = true
-    activity = { file: f, at: Date.now() }
-    heatFile(f, activity.at)
-    touchComponents(f, activity.at)
-    if (!recentActivity.length || recentActivity[0].file !== f) recentActivity.unshift(activity)
-    else recentActivity[0] = activity
-    recentActivity = recentActivity.slice(0, 12)
-    throttleBroadcast()
-  })
-} catch (e) {
-  // recursive watch is unsupported on some platforms (older linux) — degrade:
-  // PLAN.md and top-level changes still tracked, deep activity limited.
-  try {
-    fs.watch(repo, (_ev, filename) => {
-      if (!filename) return
-      const f = filename.toString()
-      if (path.resolve(repo, f) === planPath) {
-        clearTimeout(planDebounce)
-        planDebounce = setTimeout(() => {
-          planText = safeRead(planPath)
-          parsed = parsePlan(planText)
-          rebuildMatchers()
-          planMtime = statMtime(planPath)
-          broadcast()
-        }, 150)
-      }
-    })
-    console.error('note: recursive file watching unavailable here — plan updates still live, deep file activity limited')
-  } catch (e2) {
-    console.error('watcher failed:', e2.message)
-  }
-}
+refreshLanes()
+reloadPlans()
+setInterval(() => { if (refreshLanes()) { reloadPlans(); broadcast() } }, 30000).unref()
 let lastActivityPush = 0
 function throttleBroadcast() {
   const now = Date.now()
@@ -702,7 +794,7 @@ function throttleBroadcast() {
 let boards = [{ port, project: path.basename(repo), self: true, repoPath: repo }]
 async function discoverBoards() {
   const found = [{ port, project: session.project, self: true, repoPath: repo }]
-  await Promise.allSettled(Array.from({ length: 15 }, (_, i) => 5330 + i).filter(p => p !== port).map(async p => {
+  await Promise.allSettled(probePorts().filter(p => p !== port).map(async p => {
     try {
       const r = await fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(300) })
       const j = await r.json()
@@ -770,20 +862,20 @@ const server = http.createServer((req, res) => {
     // AOS patch: serve pipeline artifacts so a card's relative `url:` (e.g. an archify diagram) opens
     let root
     let f
-    try {
-      root = fs.realpathSync(path.join(repo, 'production_artifacts'))
-      f = fs.realpathSync(path.resolve(repo, '.' + decodeURIComponent(u.pathname)))
-    } catch {
-      res.writeHead(404).end()
-      return
-    }
     let isFile = false
-    try { isFile = fs.statSync(f).isFile() } catch {}
-    if (!isWithin(root, f) || !isFile) { res.writeHead(404).end(); return }
+    for (const l of laneList()) {
+      try {
+        root = fs.realpathSync(path.join(l.root, 'production_artifacts'))
+        f = fs.realpathSync(path.resolve(l.root, '.' + decodeURIComponent(u.pathname)))
+        isFile = fs.statSync(f).isFile() && isWithin(root, f)
+      } catch { isFile = false }
+      if (isFile) break
+    }
+    if (!isFile) { res.writeHead(404).end(); return }
     const type = f.endsWith('.html') ? 'text/html' : f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.json') ? 'application/json' : 'text/plain'
     res.writeHead(200, { 'content-type': type + '; charset=utf-8' }).end(fs.readFileSync(f))
   } else if (u.pathname === '/whoami') {
-    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port, repoPath: repo }))
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port, repoPath: repo, worktrees: laneList().map(l => ({ path: l.root, branch: l.branch, main: !l.key })) }))
   } else if (u.pathname === '/board-lite') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(liteModel()))
   } else if (u.pathname === '/world') {
@@ -811,7 +903,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out.slice(0, 15)))
   } else if (u.pathname === '/setup' && req.method === 'POST') {
     init().then(() => {
-      planText = safeRead(planPath); parsed = parsePlan(planText); rebuildMatchers(); planMtime = statMtime(planPath)
+      reloadPlans()
       broadcast()
       res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, prompt: BACKFILL_PROMPT }))
     }).catch(e => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: String(e) })))
@@ -833,16 +925,17 @@ const server = http.createServer((req, res) => {
         if (!p) out = { ok: false, error: 'spawn target is outside the allowed workspace' }
         else {
           let already = null
+          const target = mainRoot(p)
           for (const b of boards) {
             try {
               const w = await fetch(`http://127.0.0.1:${b.port}/whoami`, { signal: AbortSignal.timeout(300) }).then(r => r.json())
-              if (w.repoPath && realDirectory(w.repoPath) === p) { already = b.port; break }
+              if (w.repoPath && realDirectory(w.repoPath) === target) { already = b.port; break }
             } catch {}
           }
           if (already) out = { ok: true, already }
-          else if (spawningPaths.has(p)) out = { ok: true }
+          else if (spawningPaths.has(target)) out = { ok: true }
           else {
-            spawningPaths.add(p); setTimeout(() => spawningPaths.delete(p), 30000)
+            spawningPaths.add(target); setTimeout(() => spawningPaths.delete(target), 30000)
             const cp = await import('node:child_process')
             const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), p, '--no-open'], { detached: true, stdio: 'ignore', shell: false })
             child.unref()
@@ -858,8 +951,7 @@ const server = http.createServer((req, res) => {
     const cwd = u.searchParams.get('cwd') || ''
     const st = planStaleness()
     const candidate = realDirectory(cwd)
-    const root = realDirectory(repo)
-    const mine = !!(candidate && root && isWithin(root, candidate))
+    const mine = !!(candidate && laneAt(candidate))
     res.writeHead(200, { 'content-type': 'text/plain' }).end(mine && st.stale
       ? `Note from agenttrail: PLAN.md in this repo is ${st.minutes} minutes behind the code. Re-verify task statuses against what you and other sessions actually changed, mark your current task [~], and keep files: globs current.`
       : '')
@@ -987,7 +1079,7 @@ async function firstRunFlow() {
   console.log('\nno PLAN.md here yet — the live layer works now; the map needs a plan.')
   if (await askYesNo('set up the plan convention (PLAN.md skeleton + agent instructions + local hooks)? [Y/n] ')) {
     await init()
-    planText = safeRead(planPath); parsed = parsePlan(planText); rebuildMatchers(); planMtime = statMtime(planPath)
+    reloadPlans()
     const copied = await copyToClipboard(BACKFILL_PROMPT)
     console.log(copied
       ? 'backfill prompt is on your clipboard — paste it to your agent in this repo and the map draws itself.'
@@ -1014,8 +1106,8 @@ function onListen() {
 }
 async function bootDedup() {
   const probes = []
-  for (let p = 5330; p < 5345; p++) probes.push(
-    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => w.repoPath === repo ? p : null).catch(() => null))
+  for (const p of probePorts()) probes.push(
+    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => norm(w.repoPath) === repo ? p : null).catch(() => null))
   const hit = (await Promise.all(probes)).find(Boolean)
   if (hit) { console.log(`agenttrail is already running for this repo · http://localhost:${hit}`); process.exit(0) }
   listenWithFallback()
@@ -1084,10 +1176,15 @@ async function upAll() {
   let entries = []
   try { entries = fs.readdirSync(dir).filter(f => f.endsWith('.json')) } catch {}
   const known = []
+  const seen = new Set()
   for (const f of entries) {
     try {
       const st = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))
-      if (st.repoPath && fs.existsSync(st.repoPath)) known.push({ repo: st.repoPath, port: st.port || 5330 })
+      if (!st.repoPath || !fs.existsSync(st.repoPath)) continue
+      const main = mainRoot(st.repoPath) // state files of old per-worktree maps collapse into their repo's one map
+      if (seen.has(main)) continue
+      seen.add(main)
+      known.push({ repo: main, port: st.port || 5330 })
     } catch {}
   }
   if (!known.length) { console.log('no known repos yet — run agenttrail in a repo first'); return }
