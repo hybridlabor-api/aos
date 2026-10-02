@@ -58,7 +58,7 @@
     "plugin-commands.json",
     "commands/",
     "agy-commands/",
-    "plugins/",
+    "plugins/bdb-aos-codex/",
     ".opencode/",
     "docs/",
     "!docs/handover/**",
