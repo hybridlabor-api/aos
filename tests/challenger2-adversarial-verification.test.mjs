@@ -256,7 +256,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       ]);
     });
 
-    test('memb-inject: Antigravity simulation with workspacePaths array emits tri-format JSON matching project', () => {
+    test('memb-inject: Antigravity simulation with workspacePaths array emits injectSteps matching project', () => {
       const agPayload = JSON.stringify({
         prompt: 'How do I structure the code?',
         workspacePaths: [path.join(mockProjectDir, 'src')],
@@ -276,10 +276,8 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert(res.stdout, 'produces stdout');
       const out = JSON.parse(res.stdout);
 
-      // Tri-format verification:
-      assert(out.hookSpecificOutput, 'has hookSpecificOutput for Claude');
+      assert.deepStrictEqual(Object.keys(out), ['injectSteps'], 'agy gets only injectSteps');
       assert(Array.isArray(out.injectSteps), 'has injectSteps array for Antigravity');
-      assert(typeof out.systemMessage === 'string', 'has systemMessage for Codex');
 
       const text = out.injectSteps[0].ephemeralMessage;
       assert(text.includes('hexagonal architecture'), 'contains active user project memory');
@@ -287,7 +285,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert(!text.includes('Other service memory'), 'does not leak foreign project memory');
     });
 
-    test('memb-inject: Codex simulation with cwd and userPrompt emits tri-format JSON', () => {
+    test('memb-inject: Codex simulation with cwd and userPrompt emits additionalContext', () => {
       const cdxPayload = JSON.stringify({
         userPrompt: 'What is the build command?',
         cwd: mockProjectDir,
@@ -307,10 +305,11 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert(res.stdout);
       const out = JSON.parse(res.stdout);
 
-      assert(out.systemMessage, 'systemMessage present');
-      assert(out.systemMessage.includes('Standard build command'));
-      assert(out.systemMessage.includes('hexagonal architecture'));
-      assert(!out.systemMessage.includes('Other service memory'));
+      assert.strictEqual(out.systemMessage, undefined, 'systemMessage not emitted');
+      const cdxText = out.hookSpecificOutput.additionalContext;
+      assert(cdxText.includes('Standard build command'));
+      assert(cdxText.includes('hexagonal architecture'));
+      assert(!cdxText.includes('Other service memory'));
     });
 
     test('memb-inject: Claude Code SessionStart simulation with cwd', () => {
@@ -471,7 +470,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual(cdxCheck.ok, true, 'reports wired config.toml after merge');
     });
 
-    test('aos-doctor: verifies memb-inject.mjs version 7 requirement', () => {
+    test('aos-doctor: verifies memb-inject.mjs version 8 requirement', () => {
       const hooksDir = path.join(mockHome, '.claude', 'hooks');
       fs.mkdirSync(hooksDir, { recursive: true });
 
@@ -483,17 +482,17 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       let doc = JSON.parse(res.stdout);
       let membCheck = doc.results.find(r => r.area === 'hooks' && r.name === 'memb-inject.mjs');
       assert.strictEqual(membCheck.ok, false, 'flags v5 hook as failing');
-      assert(membCheck.detail.includes('v5, this release ships v7'));
+      assert(membCheck.detail.includes('v5, this release ships v8'));
 
-      fs.writeFileSync(path.join(hooksDir, 'memb-inject.mjs'), '// aos-hook-version: 7\n');
+      fs.writeFileSync(path.join(hooksDir, 'memb-inject.mjs'), '// aos-hook-version: 8\n');
       res = runNode(DOCTOR_PATH, {
         args: ['--json'],
         env: { HOME: mockHome, ...DOCTOR_ENV }
       });
       doc = JSON.parse(res.stdout);
       membCheck = doc.results.find(r => r.area === 'hooks' && r.name === 'memb-inject.mjs');
-      assert.strictEqual(membCheck.ok, true, 'approves v7 hook');
-      assert(membCheck.detail.includes('(v7)'));
+      assert.strictEqual(membCheck.ok, true, 'approves v8 hook');
+      assert(membCheck.detail.includes('(v8)'));
     });
   });
 

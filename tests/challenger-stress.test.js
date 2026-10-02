@@ -427,7 +427,7 @@ describe('Challenger Suite 2: memB Injection Hook Robustness', () => {
         // 1. Invocation with active user 'alice' -> should match alice AND bdb_developer, NOT charlie
         const resAlice = runNodeScript(MEMB_INJECT_SRC, {
             input: JSON.stringify({
-                workspacePaths: [projDir],
+                cwd: projDir,
                 prompt: 'user preferences check'
             }),
             env: {
@@ -462,7 +462,7 @@ describe('Challenger Suite 2: memB Injection Hook Robustness', () => {
         assert.ok(!contextCharlie.includes('Alice specific preference'), 'Must NOT match alice');
     });
 
-    test('tri-format JSON output structure compliance', () => {
+    test('per-harness JSON output: agy injectSteps only, Claude/Codex additionalContext only', () => {
         createMockMembDb(mockDbPath, [{
             project_id: 'tri_format_proj',
             category: 'project_card',
@@ -471,25 +471,18 @@ describe('Challenger Suite 2: memB Injection Hook Robustness', () => {
 
         const projDir = path.join(tmpHome, 'dev', 'tri_format_proj');
         fs.mkdirSync(projDir, { recursive: true });
-
-        const res = runNodeScript(MEMB_INJECT_SRC, {
-            input: JSON.stringify({
-                workspacePaths: [projDir],
-                prompt: 'design system'
-            }),
+        const run = (input) => JSON.parse(runNodeScript(MEMB_INJECT_SRC, {
+            input: JSON.stringify(input),
             env: { HOME: tmpHome }
-        });
-        assert.strictEqual(res.status, 0);
-        const out = JSON.parse(res.stdout.trim());
+        }).stdout.trim());
 
-        // Tri-format verification:
-        // 1. Claude: hookSpecificOutput
-        assert.ok(out.hookSpecificOutput && out.hookSpecificOutput.additionalContext, 'Missing Claude hookSpecificOutput');
-        // 2. Antigravity: injectSteps
-        assert.ok(Array.isArray(out.injectSteps) && out.injectSteps.length > 0, 'Missing Antigravity injectSteps');
-        assert.ok(out.injectSteps[0].ephemeralMessage, 'Missing ephemeralMessage in injectSteps');
-        // 3. Codex: systemMessage
-        assert.ok(typeof out.systemMessage === 'string' && out.systemMessage.length > 0, 'Missing Codex systemMessage');
+        const agy = run({ workspacePaths: [projDir], prompt: 'design system' });
+        assert.deepStrictEqual(Object.keys(agy), ['injectSteps']);
+        assert.ok(agy.injectSteps[0].ephemeralMessage, 'Missing ephemeralMessage in injectSteps');
+
+        const claude = run({ hook_event_name: 'SessionStart', cwd: projDir, prompt: '' });
+        assert.deepStrictEqual(Object.keys(claude), ['hookSpecificOutput']);
+        assert.ok(claude.hookSpecificOutput.additionalContext, 'Missing additionalContext');
     });
 });
 

@@ -457,14 +457,14 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         });
 
-        test('hook carries version stamp 7', () => {
+        test('hook carries version stamp 8', () => {
             const content = fs.readFileSync(MEMB_INJECT_SRC, 'utf8');
             const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(content);
             assert.ok(m, 'memb-inject.mjs must contain aos-hook-version header');
-            assert.equal(m[1], '7', `Expected version 7, got ${m[1]}`);
+            assert.equal(m[1], '8', `Expected version 8, got ${m[1]}`);
         });
 
-        test('parses Antigravity workspacePaths input and returns tri-format JSON', () => {
+        test('parses Antigravity workspacePaths input and returns injectSteps only', () => {
             const projDir = path.join(tmpDir, 'projects', 'my-web-app');
             fs.mkdirSync(path.join(projDir, '.git'), { recursive: true });
 
@@ -483,15 +483,9 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             assert.ok(res.stdout && res.stdout.trim().length > 0, 'Must output JSON context');
 
             const out = JSON.parse(res.stdout);
-            // Verify Tri-Format Output
-            assert.ok(out.hookSpecificOutput, 'Must provide hookSpecificOutput for Claude Code');
-            assert.equal(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
-            assert.ok(out.hookSpecificOutput.additionalContext.includes('my-web-app'), 'Context must mention project');
-
             assert.ok(Array.isArray(out.injectSteps), 'Must provide injectSteps array for Antigravity');
-            assert.ok(out.injectSteps[0].ephemeralMessage, 'injectSteps must contain ephemeralMessage');
-
-            assert.ok(typeof out.systemMessage === 'string', 'Must provide systemMessage for Codex');
+            assert.ok(out.injectSteps[0].ephemeralMessage.includes('my-web-app'), 'Context must mention project');
+            assert.deepEqual(Object.keys(out), ['injectSteps'], 'agy gets only the key it reads');
         });
 
         test('resolves project root from deep subfolder avoiding $HOME false positive', () => {
@@ -578,12 +572,12 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 'SKILL.md must not claim only Claude Code has hooks');
         });
 
-        test('aos-doctor.mjs expects hook version 7 for memb-inject.mjs', () => {
+        test('aos-doctor.mjs expects hook version 8 for memb-inject.mjs', () => {
             assert.ok(fs.existsSync(DOCTOR_SRC), 'aos-doctor.mjs must exist');
             const doc = fs.readFileSync(DOCTOR_SRC, 'utf8');
 
-            assert.ok(/'memb-inject\.mjs':\s*7\b/.test(doc),
-                'EXPECTED_VERSION in aos-doctor.mjs must specify 7 for memb-inject.mjs');
+            assert.ok(/'memb-inject\.mjs':\s*8\b/.test(doc),
+                'EXPECTED_VERSION in aos-doctor.mjs must specify 8 for memb-inject.mjs');
         });
 
         test('aos-doctor.mjs inspects hook wiring across detected harnesses', () => {
@@ -877,10 +871,11 @@ describe('Tier 4: Real-World Multi-Harness Simulations', () => {
         // Codex contract validation. Since hook v5 a UserPromptSubmit injects
         // FTS recall hits only -- identity and project cards came in at
         // SessionStart and are not repeated on every prompt.
-        assert.ok(typeof parsed.systemMessage === 'string', 'systemMessage must be a string');
-        assert.ok(parsed.systemMessage.includes('Stripe API v2024'), 'systemMessage must contain the recalled FTS hit');
-        assert.ok(!parsed.systemMessage.includes('- Project ['), 'UserPromptSubmit must not repeat project cards');
-        assert.ok(!parsed.systemMessage.includes('Alice prefers mock payment mode'), 'Unmatched memories must not leak in');
+        const ctx = parsed.hookSpecificOutput.additionalContext;
+        assert.equal(parsed.systemMessage, undefined, 'systemMessage must not be emitted');
+        assert.ok(ctx.includes('Stripe API v2024'), 'additionalContext must contain the recalled FTS hit');
+        assert.ok(!ctx.includes('- Project ['), 'UserPromptSubmit must not repeat project cards');
+        assert.ok(!ctx.includes('Alice prefers mock payment mode'), 'Unmatched memories must not leak in');
     });
 
     test('Scenario 3: Claude Code UserPromptSubmit hook simulation', () => {
