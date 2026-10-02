@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -11,8 +12,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const binary = path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'agenttrail.mjs');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PLAN = '# Plan\n\n## Thing {#thing}\n\n- [ ] Do it {#do-it}\n';
-const LO = 5360;
-const HI = 5364;
+let LO;
+let HI;
 let tmp;
 let n = 0;
 const servers = [];
@@ -23,6 +24,24 @@ const mk = (...parts) => {
   return d;
 };
 const write = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+
+function canBind(port) {
+  return new Promise((resolve) => {
+    const s = net.createServer();
+    s.once('error', () => resolve(false));
+    s.listen(port, '127.0.0.1', () => s.close(() => resolve(true)));
+  });
+}
+
+async function freeRange(n) {
+  for (let tries = 0; tries < 50; tries += 1) {
+    const base = 20000 + Math.floor(Math.random() * 30000);
+    let ok = true;
+    for (let i = 0; i < n && ok; i += 1) ok = await canBind(base + i);
+    if (ok) return base;
+  }
+  throw new Error('no free port range');
+}
 
 function repoWithPlan(plan = PLAN) {
   const dir = mk(`repo${n += 1}`);
@@ -57,7 +76,7 @@ function exec(args, env) {
 }
 
 function baseEnv(extra = {}) {
-  const e = { ...process.env, TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0' };
+  const e = { ...process.env, HOME: path.join(tmp, 'home'), TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0' };
   for (const k of ['CI', 'SSH_CONNECTION', 'SSH_TTY', 'AO_BROWSER_CAPABILITY', 'AOS_TRAIL_OPENER', 'CLAUDE_SESSION_ID', 'CODEX_SESSION_ID']) delete e[k];
   return { ...e, ...extra };
 }
@@ -68,7 +87,12 @@ async function run(args, env = {}) {
   return JSON.parse(r.stdout);
 }
 
-before(() => { tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'trail-ensure-'))); });
+before(async () => {
+  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'trail-ensure-')));
+  fs.mkdirSync(path.join(tmp, 'home'));
+  LO = await freeRange(5);
+  HI = LO + 4;
+});
 after(async () => {
   for (const s of servers) await new Promise((r) => s.close(r));
   for (let p = LO; p <= HI; p += 1) {
@@ -76,6 +100,7 @@ after(async () => {
     for (const pid of (r.stdout || '').split('\n').filter(Boolean)) { try { process.kill(Number(pid)); } catch {} }
   }
   await sleep(100);
+  fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 describe('aos-trail --ensure', () => {

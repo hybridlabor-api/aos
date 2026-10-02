@@ -33,7 +33,7 @@ It prints the URL (default http://localhost:5330, next free port if taken). Open
 aos-trail --ensure [--cwd <dir>] [--plan <file>] [--session <id>] [--json]
 ```
 
-Starts the map detached if none runs for this repo (matched via `/whoami` `repoPath` on 127.0.0.1:5330-5344), opens it at most once per session (state in `$TMPDIR/aos-trail-ensure/`), and always exits 0. Plan: `--plan`, else `production_artifacts/00_execution_plan.md`, else the single `production_artifacts/*/00_execution_plan.md`; it needs a `{#id}` marker. No open under `CI`, SSH, or headless Linux; with `AO_BROWSER_CAPABILITY` it runs `ao preview <url>`. `--json` prints `{url,started,opened,reason,plan,hint}`. Test overrides: `AOS_TRAIL_OPENER` (opener command), `AOS_TRAIL_PORTS=lo-hi` (probe range).
+Starts the map detached if none runs for this repo (matched via `/whoami` `repoPath` on 127.0.0.1:5330-5344). `repoPath` is the repo's main checkout, so every git worktree of a repo finds the same map; the map shows each worktree as its own lane (branch and folder) and files hook events by their `cwd`. `/whoami` also lists `worktrees`, opens it at most once per session (state in `$TMPDIR/aos-trail-ensure/`), and always exits 0. Plan: `--plan`, else `production_artifacts/00_execution_plan.md`, else the single `production_artifacts/*/00_execution_plan.md`; it needs a `{#id}` marker. No open under `CI`, SSH, or headless Linux; with `AO_BROWSER_CAPABILITY` it runs `ao preview <url>`. `--json` prints `{url,started,opened,reason,plan,hint}`. Test overrides: `AOS_TRAIL_OPENER` (opener command), `AOS_TRAIL_PORTS=lo-hi` (probe range).
 
 ## Plan convention
 
