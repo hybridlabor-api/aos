@@ -169,6 +169,40 @@ function checkAosCore() {
   }
 }
 
+// JSONC to JSON: drops comments (not inside strings) and trailing commas.
+function parseJsonc(text) {
+  let out = '';
+  for (let i = 0, str = false; i < text.length; i++) {
+    const c = text[i];
+    if (str) { out += c; if (c === '\\') out += text[++i] ?? ''; else if (c === '"') str = false; continue; }
+    if (c === '"') { str = true; out += c; continue; }
+    if (c === '/' && text[i + 1] === '/') { while (i < text.length && text[i] !== '\n') i++; out += '\n'; continue; }
+    if (c === '/' && text[i + 1] === '*') { i += 2; while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++; i++; continue; }
+    out += c;
+  }
+  try { return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; }
+}
+
+// Zen gateway limit: a tool name (OpenCode builds it from the MCP server name) is at most 64 characters.
+// Names only, no network: the tool part of the name is not known here.
+const ZEN_TOOL_NAME_MAX = 64;
+
+function checkOpencodeMcpNames() {
+  const dirs = [process.platform === 'win32' ? path.join(process.env.APPDATA || HOME, 'opencode') : h('.config', 'opencode')];
+  const file = firstExisting(dirs.flatMap((d) => ['opencode.jsonc', 'opencode.json'].map((f) => path.join(d, f))));
+  if (!file) return;
+  const conf = parseJsonc(readFileSync(file, 'utf8'));
+  if (!conf) {
+    add('harnesses', 'OpenCode MCP names', false, `${tilde(file)} is not valid JSON(C); names not checked`, 'Fix the OpenCode config syntax.', true);
+    return;
+  }
+  const names = Object.keys(conf.mcp && typeof conf.mcp === 'object' ? conf.mcp : {});
+  const tooLong = names.filter((n) => n.length > ZEN_TOOL_NAME_MAX);
+  add('harnesses', 'OpenCode MCP names', tooLong.length === 0,
+    tooLong.length ? `${tooLong.length} MCP name(s) over ${ZEN_TOOL_NAME_MAX} characters (Zen gateway limit): ${tooLong.join(', ')}` : `${names.length} MCP name(s) in ${tilde(file)}, none over ${ZEN_TOOL_NAME_MAX} characters`,
+    `Rename the MCP server(s) in ${tilde(file)} to a shorter name; tool names are built from them and a name over ${ZEN_TOOL_NAME_MAX} characters is rejected by the Zen gateway. Keeping the MCP set lean also helps.`, true);
+}
+
 // ---------------------------------------------------------------- 3. Harness Placement & Skills Sync
 function checkHarnesses() {
   const harnesses = [
@@ -199,6 +233,7 @@ function checkHarnesses() {
   add('harnesses', 'OpenCode Plugin', !!opencodePlugin,
     opencodePlugin ? tilde(opencodePlugin) : 'bdb-aos.js not installed in OpenCode plugins',
     'Run the AOS installer to wire OpenCode telemetry plugin.', true);
+  checkOpencodeMcpNames();
 }
 
 // ---------------------------------------------------------------- 4. Hooks & Security Gates

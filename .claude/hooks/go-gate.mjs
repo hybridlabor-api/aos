@@ -751,7 +751,7 @@ export function statusText(key, eff, now = Date.now()) {
 export const listStateKeys = () => {
   try { return readdirSync(gateDir()).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)); } catch { return []; }
 };
-const TOKEN_TTL_MS = 10 * 60 * 1000;
+export const TOKEN_TTL_MS = 10 * 60 * 1000;
 
 function ownSessionName(transcriptPath) {
   let name = "";

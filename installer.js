@@ -4289,6 +4289,26 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
 
     // 5. Global CLI launcher binaries (aos-config, aos-dashboard, aos-uninstall)
     installGlobalBinaries();
+
+    // 6. Fixed-path GO check for AO and other non-hook callers
+    installGoCheck({ targetHome });
+}
+
+// go-check.mjs is the fixed-path GO check for callers that are not a harness hook (AO).
+// It imports go-gate.mjs from its own directory, so both land in ~/.aos/bin, together with
+// the guarded patterns as JSON. Same conflict/backup rules as every other installed file.
+function installGoCheck({ targetHome = homeDir } = {}) {
+    const dest = path.join(targetHome, '.aos', 'bin');
+    const files = [
+        [path.join(srcDir, 'bin', 'go-check.mjs'), 'go-check.mjs'],
+        [path.join(srcDir, '.claude', 'hooks', 'go-gate.mjs'), 'go-gate.mjs'],
+        [path.join(srcDir, 'bin', 'guarded-patterns.json'), 'guarded-patterns.json'],
+    ];
+    if (!files.every(([src]) => fs.existsSync(src))) return false;
+    fs.mkdirSync(dest, { recursive: true });
+    for (const [src, name] of files) copyDirRecursiveSync(src, path.join(dest, name));
+    log.step(`Installed go-check to ${dest}`);
+    return true;
 }
 
 function installGlobalBinaries() {
@@ -4625,6 +4645,21 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     return skipped;
 }
 
+// The go-gate PreToolUse stanza for Codex's config.toml. Whether it fires under `codex exec`
+// or under aos-acp is UNVERIFIED (docs/codex-gate-smoke.md).
+function codexGateSnippet(hooksDir) {
+    return [
+        '[[hooks.PreToolUse]]',
+        'matcher = "^(Bash|run_command)$"',
+        '[[hooks.PreToolUse.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(hooksDir, 'go-gate.mjs')}"`)}`,
+        'timeout = 30',
+    ].join('\n');
+}
+
+const CODEX_GATE_NOTICE = 'Codex asks you to trust new or changed hooks before it runs them; approve the go-gate hook in Codex, or it stays inactive. Firing under `codex exec` and under aos-acp is UNVERIFIED: run the smoke test in docs/codex-gate-smoke.md.';
+
 // Merge the BDB hooks into ChatGPT Codex CLI's config.toml (~/.codex/config.toml or
 // .codex/config.toml), ensuring [features] hooks = true and preserving existing
 // non-BDB settings, comments, and MCP servers.
@@ -4636,12 +4671,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
 
     const tomlSnippet = [
         '# AOS:HOOKS:START',
-        '[[hooks.PreToolUse]]',
-        'matcher = "^(Bash|run_command)$"',
-        '[[hooks.PreToolUse.hooks]]',
-        'type = "command"',
-        `command = ${JSON.stringify(`node "${path.join(hooksDir, 'go-gate.mjs')}"`)}`,
-        'timeout = 30',
+        codexGateSnippet(hooksDir),
         '',
         '[[hooks.Stop]]',
         '[[hooks.Stop.hooks]]',
@@ -5858,6 +5888,10 @@ async function main() {
         console.log(pkg.version);
         return;
     }
+    if (args.includes('--codex-gate')) {
+        console.log(`${codexGateSnippet(path.join(homeDir, '.codex', 'hooks'))}\n\n${CODEX_GATE_NOTICE}`);
+        return;
+    }
     if (args.includes('--help') || args.includes('-h') || args[0] === 'help') {
         console.log(`Usage: aos [command] [options]
 
@@ -5866,6 +5900,8 @@ Commands:
   doctor|checkup   Check the installation
 
 Options:
+  --codex-gate     Print the go-gate [[hooks.PreToolUse]] stanza for ~/.codex/config.toml
+                   and the Codex hook-trust note, then exit (writes nothing)
   -y, --yes        Non-interactive install (implied without a TTY)
   --dry-run        Show what would change
   --opencode-optional=LIST
@@ -6336,6 +6372,9 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
     installGlobalHooks,
+    installGoCheck,
+    codexGateSnippet,
+    CODEX_GATE_NOTICE,
     installOpencodePlugin,
     installOpencodeCommands,
     parseOpencodeOptional,
