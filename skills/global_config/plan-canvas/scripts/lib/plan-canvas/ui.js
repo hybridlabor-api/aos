@@ -169,6 +169,7 @@ function canvasCss() {
   .pill.kind-chat{border-left-color:var(--accent)}
   .pill.kind-verdict{border-left-color:var(--green)}
   .pill .where{color:var(--teal);font-family:var(--mono);font-size:10px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pill .shapes{color:var(--accent)}
   .pill .body{flex:1;min-width:0;color:var(--text2)}
   .pill .txt{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
   .pill button{border:none;background:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:1px}
@@ -288,8 +289,9 @@ function canvasClientJs() {
   window.addEventListener('message', e => {
     if (e.source !== frame.contentWindow) return;
     const msg = e.data || {};
-    if (msg.type === 'pc:queue' && msg.item) addToQueue(msg.item);
-    else if (msg.type === 'pc:queue-and-send' && msg.item) { addToQueue(msg.item); send(); }
+    const validItem = msg.item && typeof msg.item === 'object' && msg.item.kind === 'annotation';
+    if (msg.type === 'pc:queue' && validItem) addToQueue(msg.item);
+    else if (msg.type === 'pc:queue-and-send' && validItem) { addToQueue(msg.item); send(); }
     else if (msg.type === 'pc:scroll') lastScroll = { x: msg.x || 0, y: msg.y || 0 };
     else if (msg.type === 'pc:toggle-mode') setAnnotate(!annotate);
     else if (msg.type === 'pc:ready') {
@@ -312,7 +314,14 @@ function canvasClientJs() {
       if (item.anchor) {
         const where = document.createElement('span');
         where.className = 'where';
-        where.textContent = item.anchor.snippet || item.anchor.selector;
+        const kinds = Array.isArray(item.shapes) ? item.shapes.map(sh => sh && sh.type).filter(t => typeof t === 'string').join(', ') : '';
+        if (kinds) {
+          const tags = document.createElement('span');
+          tags.className = 'shapes';
+          tags.textContent = '[' + kinds + '] ';
+          where.appendChild(tags);
+        }
+        where.appendChild(document.createTextNode(item.anchor.snippet || item.anchor.selector));
         body.appendChild(where);
       }
       const txt = document.createElement('span');
