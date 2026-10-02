@@ -12,7 +12,9 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
-const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
+const req = createRequire(import.meta.url);
+const { pluginSkills } = req('../lib/plugin-evidence.js');
+const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
@@ -147,18 +149,23 @@ function checkAosCore() {
     storeIndexPath ? `${tilde(storeIndexPath)} (${storeSkillsCount} catalog skills indexed)` : 'Store index missing',
     'Run scripts/build-ecc-store-index.mjs or re-run the AOS installer.');
 
-  // Check MCSC registration
-  const mcpConfigCandidates = [
-    path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp_config.json'),
-    h('.agents', 'mcp_config.json'),
-    h('dev', 'bdb-dev', 'bdb-dev-optimized-agent-skills', 'mcp_config.json')
+  // mcsc is registered by the installer in each harness's own MCP config (never ~/.agents/mcp_config.json).
+  const mcscIn = [];
+  const hasKey = (file, pick) => { const c = readJson(file); return !!(c && pick(c)?.mcsc); };
+  const cfgs = [
+    [h('.gemini', 'config', 'mcp_config.json'), (c) => c.mcpServers],
+    [h('.claude.json'), (c) => c.mcpServers],
+    [h('.cursor', 'mcp.json'), (c) => c.mcpServers],
+    [h('.windsurf', 'mcp.json'), (c) => c.mcpServers],
+    [h('.config', 'opencode', 'opencode.json'), (c) => c.mcp],
   ];
-  const mcpConfigPath = firstExisting(mcpConfigCandidates);
-  const mcpConfig = mcpConfigPath ? readJson(mcpConfigPath) : null;
-  const hasMcsc = !!mcpConfig?.mcpServers?.mcsc;
-  add('aos-core', 'MCSC Telemetry Registration', hasMcsc,
-    hasMcsc ? `Registered in ${tilde(mcpConfigPath)}` : 'mcsc missing from mcp_config.json',
-    'Re-run installer to register mcsc cross-harness adapter.');
+  for (const [file, pick] of cfgs) if (hasKey(file, pick)) mcscIn.push(file);
+  const ocJsonc = h('.config', 'opencode', 'opencode.jsonc');
+  if (existsSync(ocJsonc) && parseJsonc(readFileSync(ocJsonc, 'utf8'))?.mcp?.mcsc) mcscIn.push(ocJsonc);
+  try { if (/^\[mcp_servers\.mcsc\]/m.test(readFileSync(h('.codex', 'config.toml'), 'utf8'))) mcscIn.push(h('.codex', 'config.toml')); } catch { /* no codex config */ }
+  add('aos-core', 'MCSC Telemetry Registration', mcscIn.length > 0,
+    mcscIn.length ? `mcsc registered in ${mcscIn.map(tilde).join(', ')}` : 'mcsc not found in any harness MCP config (optional MCP, only present when selected at install)',
+    'Re-run the installer and select the mcsc MCP to register the cross-harness adapter.', true);
 
   // Retired module check (CDC bug prevention)
   const retired = findModule('bdb-os-agent-workspace');
@@ -218,14 +225,15 @@ function checkHarnesses() {
     const exists = existsSync(hr.path);
     const count = dirCount(hr.path);
     const hasSentinel = existsSync(path.join(hr.path, SENTINEL, 'SKILL.md'));
-    const viaPlugin = hr.name === 'Claude Code' && !hasSentinel && pm.pluginInstalled(HOME, [SENTINEL]);
+    const plug = hr.name === 'Claude Code' && !hasSentinel ? pluginSkills(HOME, [SENTINEL]) : null;
+    const viaPlugin = !!plug;
     const ok = viaPlugin || (exists && count > 0 && hasSentinel);
     add('harnesses', `${hr.name} Skills`, ok,
-      viaPlugin ? 'delivered by the bdb-aos Claude Code plugin (installed_plugins.json / plugin cache)' : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
+      viaPlugin ? `provided by the bdb-aos plugin (${plug.skills.size} skills)` : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
       `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, !exists && !viaPlugin);
   }
 
-  const ov = createRequire(import.meta.url)('../lib/opencode-verify.js');
+  const ov = req('../lib/opencode-verify.js');
   results.push(...ov.checkOpencode({ home: HOME }), ...ov.checkAcpAndGoCheck({ home: HOME }));
   checkOpencodeMcpNames();
 }
@@ -272,9 +280,13 @@ function checkHooks() {
     h('.agents', 'hooks.json')
   ]);
   const agHooks = agHooksFile ? readJson(agHooksFile) : null;
-  const agWired = JSON.stringify(agHooks?.hooks || {});
-  add('hooks', 'Antigravity hooks', agWired.includes('memb-inject.mjs'),
-    agHooksFile ? `${tilde(agHooksFile)} (${agWired.includes('memb-inject.mjs') ? 'memb-inject wired' : 'unwired'})` : 'hooks.json not found',
+  // New format: one named hook per concern at the top level; legacy: all handlers under "hooks".
+  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
+  const namedWired = AG_NAMED.filter((n) => agHooks && agHooks[n]);
+  const legacyWired = JSON.stringify(agHooks?.hooks || {}).includes('memb-inject.mjs');
+  const agOk = namedWired.includes('aos-context') || legacyWired;
+  add('hooks', 'Antigravity hooks', agOk,
+    agHooksFile ? `${tilde(agHooksFile)} (${namedWired.length ? `${namedWired.length}/${AG_NAMED.length} named aos-* hooks` : legacyWired ? 'legacy "hooks" lump, memb-inject wired' : 'unwired'})` : 'hooks.json not found',
     'Run the AOS installer to configure Antigravity hooks.', true);
 
   // Codex hooks
@@ -335,7 +347,6 @@ async function checkDaemonsAndModules() {
   // Installed ao vs a local AO checkout's HEAD, read from the binary's embedded build info.
   const aoCheckout = firstExisting([h('dev', 'agents', 'bdb-agent-orchestrator'), h('dev', 'bdb-dev', 'bdb-agent-orchestrator')]);
   if (aoBin && aoCheckout && existsSync(path.join(aoCheckout, '.git'))) {
-    const { readGoBuildInfo } = createRequire(import.meta.url)('../installer.js');
     const build = readGoBuildInfo(aoBin.replace(/^~/, HOME));
     let head = null;
     try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
