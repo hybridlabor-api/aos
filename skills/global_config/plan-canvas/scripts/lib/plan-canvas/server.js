@@ -348,6 +348,7 @@ function createPlanCanvasServer({
       if (!artifactPath) {
         return sendJson(res, 403, { error: 'artifact path is outside the workspace' });
       }
+      const resumed = Boolean(store.findByFile(artifactPath));
       const { session, refused } = store.open(artifactPath, { reopen: Boolean(body.reopen) });
       if (refused) {
         return sendJson(res, 409, {
@@ -362,7 +363,9 @@ function createPlanCanvasServer({
         status: 'open',
         key: session.key,
         file: session.file,
-        url: `/canvas/${session.key}`
+        url: `/canvas/${session.key}`,
+        resumed,
+        viewers: sseClients.get(session.key)?.size || 0
       });
     }
 
@@ -451,11 +454,20 @@ function createPlanCanvasServer({
       return sendJson(res, 200, { status: 'ended', endedBy: 'agent' });
     }
 
-    const sessionMatch = pathname.match(/^\/api\/session\/([a-f0-9]{12})\/(feedback|end|reply|typing)$/);
+    const sessionMatch = pathname.match(/^\/api\/session\/([a-f0-9]{12})\/(feedback|end|reply|typing|resume)$/);
     if (sessionMatch && req.method === 'POST') {
       const [, key, action] = sessionMatch;
       const session = store.get(key);
       if (!session) return sendJson(res, 404, { error: 'unknown session' });
+
+      if (action === 'resume') {
+        if (!fs.existsSync(session.file)) return sendJson(res, 404, { error: 'artifact file no longer exists' });
+        store.open(session.file, { reopen: true });
+        watchSession(session);
+        broadcastPresence(key);
+        res.writeHead(303, { location: `/canvas/${key}` });
+        return res.end();
+      }
 
       if (action === 'feedback') {
         const body = await readJsonBody(req);
