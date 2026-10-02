@@ -22,6 +22,14 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   const chunk = (text) => send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } } });
   chunk("hello ");
   chunk("world");
+  if (process.env.FAKE_TOOL) {
+    const upd = (u) => send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: u } });
+    upd({ sessionUpdate: "tool_call", toolCallId: "tc-9", title: "Edit a.txt", kind: "edit", status: "pending", locations: [{ path: "a.txt" }] });
+    upd({ sessionUpdate: "tool_call_update", toolCallId: "tc-9", status: "in_progress" });
+    upd({ sessionUpdate: "tool_call_update", toolCallId: "tc-9", status: "completed" });
+    upd({ sessionUpdate: "tool_call", toolCallId: "tc-10", title: "Run ls", kind: "execute", status: "pending", rawInput: { command: "ls" } });
+    upd({ sessionUpdate: "tool_call_update", toolCallId: "tc-10", status: "failed" });
+  }
   if (process.env.FAKE_CMD) {
     const rid = reqId++;
     const reply = await new Promise((res) => { waiting.set(rid, res); send({ jsonrpc: "2.0", id: rid, method: "session/request_permission", params: {

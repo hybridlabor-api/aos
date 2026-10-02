@@ -27,7 +27,7 @@ const writeToken = (name, over = {}) => {
 const readLog = (name) => fs.readFileSync(path.join(home, '.aos', 'acp', `${name}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 
 const run = (args, env = {}) => spawnSync(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, ...args], {
-    env: { ...process.env, HOME: home, ...env }, encoding: 'utf8', timeout: 20000,
+    env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', ...env }, encoding: 'utf8', timeout: 20000,
 });
 
 describe('aos-acp with a fake ACP agent', () => {
@@ -105,7 +105,7 @@ describe('aos-acp with a fake ACP agent', () => {
     test('--go-wait parks the request until the token appears', async () => {
         const { spawn } = require('child_process');
         const child = spawn(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, '--name', 'w1', '--prompt', 'push', '--go-wait', '10'],
-            { env: { ...process.env, HOME: home, FAKE_CMD: 'git push' } });
+            { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', FAKE_CMD: 'git push' } });
         let out = '';
         child.stdout.on('data', (d) => { out += d; });
         await new Promise((r) => setTimeout(r, 1500));
@@ -117,10 +117,36 @@ describe('aos-acp with a fake ACP agent', () => {
     });
 
     test('agy adapter is refused with a pointer to mcsc; unknown adapter errors', () => {
-        const r = spawnSync(process.execPath, [BIN, 'agy', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home }, encoding: 'utf8' });
+        const r = spawnSync(process.execPath, [BIN, 'agy', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' });
         assert.equal(r.status, 2);
         assert.match(r.stderr, /mcsc/);
-        assert.equal(spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home }, encoding: 'utf8' }).status, 2);
+        assert.equal(spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' }).status, 2);
+    });
+
+    test('workers emit mcsc-protocol events to agenttrail (fake receiver)', async () => {
+        const http = require('http');
+        const { spawn } = require('child_process');
+        const events = [];
+        const srv = http.createServer((req, res) => {
+            let b = '';
+            req.on('data', (d) => { b += d; });
+            req.on('end', () => { if (req.url === '/hook') events.push(JSON.parse(b)); res.end('ok'); });
+        });
+        await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+        try {
+            const child = spawn(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, '--name', 'w1', '--prompt', 'hi'],
+                { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: String(srv.address().port), FAKE_TOOL: '1' } });
+            child.stdout.resume();
+            assert.equal(await new Promise((r) => child.on('exit', r)), 0);
+            const names = events.map((e) => e.hook_event_name + (e.tool_name ? `:${e.tool_name}` : ''));
+            assert.deepEqual(names, ['SessionStart', 'PreToolUse:Edit', 'PostToolUse:Edit', 'PreToolUse:Execute', 'PostToolUse:Execute', 'SessionEnd']);
+            assert.equal(new Set(events.map((e) => e.session_id)).size, 1);
+            assert.match(events[0].session_id, /^aos-acp-/);
+            assert.equal(events[0].agent, 'codex:w1');
+            assert.equal(events[0].cwd, home);
+            assert.equal(events[1].tool_input.file_path, path.join(home, 'a.txt'));
+            assert.equal(events[3].tool_input.command, 'ls');
+        } finally { srv.close(); }
     });
 
     test('guard list is the go-gate list', async () => {
