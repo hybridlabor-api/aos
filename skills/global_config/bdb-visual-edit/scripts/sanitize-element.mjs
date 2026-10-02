@@ -12,6 +12,11 @@ const TAG_RE = /^[a-z][a-z0-9-]{0,30}$/;
 const CLASS_RE = /^[A-Za-z0-9_:/[\]%.-]{1,60}$/;
 const SRC_RE = /^[\w@.-]+(?:\/[\w@.-]+)*\.[A-Za-z0-9]{1,8}:\d{1,6}(?::\d{1,5})?$/;
 const SEGMENT_RE = /^[a-z][a-z0-9-]{0,30}:nth-of-type\([1-9]\d{0,3}\)$/;
+// Edit targets are app source only: no config, manifests, lockfiles, scripts or CI.
+// annotation-schema.js (plan-canvas) carries a copy; a test keeps the two in step.
+export const SRC_EXTS = new Set(['.jsx', '.tsx', '.js', '.ts', '.vue', '.svelte', '.astro', '.html', '.mdx']);
+export const SRC_SKIP_DIRS = new Set(['node_modules', 'dist', 'build']);
+const CONFIG_NAME_RE = /\.config\.[^/]*$/i;
 const MAX_CLASSES = 12;
 const MAX_SCAN = 200;
 const MAX_SEGMENTS = 12;
@@ -38,7 +43,8 @@ export function cleanSrcLoc(value) {
   const file = value.slice(0, value.search(/:\d/));
   const segments = file.split('/');
   // Dot-segments cover `..`, hidden files (.env, .ssh, .git); node_modules is never an edit target.
-  if (segments.some((s) => s.startsWith('.') || s === 'node_modules')) return null;
+  if (segments.some((s) => s.startsWith('.') || SRC_SKIP_DIRS.has(s))) return null;
+  if (!SRC_EXTS.has(path.extname(file)) || CONFIG_NAME_RE.test(file)) return null;
   return value;
 }
 

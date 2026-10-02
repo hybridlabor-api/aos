@@ -6,6 +6,8 @@
  * is copied through, unknown keys are dropped, types are never coerced.
  */
 
+const path = require('path');
+
 const MAX_TEXT = 4000;
 const MAX_SHAPES = 16;
 const MAX_POINTS_TOTAL = 2048;
@@ -26,7 +28,14 @@ const SHAPE_POINTS = {
   comment: [1, 1]
 };
 const COLORS = new Set(['red', 'yellow', 'blue', 'green']);
-const TAG_RE = /^[a-z][a-z0-9-]{0,59}$/;
+const TAG_RE = /^[A-Za-z][A-Za-z0-9-]*$/;
+const TAG_MAX = 60;
+const SEGMENT_RE = /^(?:[a-z][a-z0-9-]{0,30}:nth-of-type\([1-9]\d{0,3}\)|html|body|#[A-Za-z0-9_-]{1,64})$/;
+const MAX_SEGMENTS = 12;
+// Copy of bdb-visual-edit's sanitize-element.mjs allowlist; tests keep them in step.
+const SRC_EXTS = new Set(['.jsx', '.tsx', '.js', '.ts', '.vue', '.svelte', '.astro', '.html', '.mdx']);
+const SRC_SKIP_DIRS = new Set(['node_modules', 'dist', 'build']);
+const CONFIG_NAME_RE = /\.config\.[^/]*$/i;
 const CLASS_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const SRC_RE = /^[\w@.-]+(?:\/[\w@.-]+)*\.[A-Za-z0-9]{1,8}:\d{1,6}(?::\d{1,5})?$/;
 const ORIGIN_RE = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):(\d{1,5})$/i;
@@ -59,7 +68,8 @@ function normalizeOrigin(value) {
 function cleanSrcLoc(value) {
   if (typeof value !== 'string' || value.length > 240 || !SRC_RE.test(value)) return null;
   const file = value.slice(0, value.search(/:\d/));
-  if (file.split('/').some(s => s.startsWith('.') || s === 'node_modules')) return null;
+  if (file.split('/').some(s => s.startsWith('.') || SRC_SKIP_DIRS.has(s))) return null;
+  if (!SRC_EXTS.has(path.extname(file)) || CONFIG_NAME_RE.test(file)) return null;
   return value;
 }
 
@@ -95,13 +105,20 @@ function cleanClasses(value) {
   return out;
 }
 
+// Only the tag:nth-of-type grammar the client generates passes; free text is blanked.
+function cleanSelector(value) {
+  if (typeof value !== 'string' || value.length > 600) return '';
+  const parts = value.split(' > ');
+  return parts.length <= MAX_SEGMENTS && parts.every(p => SEGMENT_RE.test(p)) ? value : '';
+}
+
 function cleanAnchor(raw) {
   const selector = own(raw, 'selector');
   if (typeof selector !== 'string') return null;
   const tag = own(raw, 'tag');
   const anchor = {
-    selector: cleanText(selector, 500),
-    tag: typeof tag === 'string' && (TAG_RE.test(tag) || tag === 'text') ? tag : '',
+    selector: cleanSelector(selector),
+    tag: typeof tag === 'string' && TAG_RE.test(tag) ? tag.slice(0, TAG_MAX) : '',
     snippet: cleanText(own(raw, 'snippet'), 400)
   };
   const classes = cleanClasses(own(raw, 'classes'));

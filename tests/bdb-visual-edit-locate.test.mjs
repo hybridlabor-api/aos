@@ -36,6 +36,9 @@ describe('locateSource', () => {
     write('src/untracked.jsx', '<button className="btn btn-primary">Only untracked</button>\n');
     write('src/ignored.jsx', '<button className="btn btn-primary">Only ignored</button>\n');
     write('.gitignore', 'src/ignored.jsx\n');
+    write('package.json', '{\n  "name": "x",\n  "private": true\n}\n');
+    write('vite.config.js', 'export default {};\n');
+    write('src/Words.jsx', '<button className="submitBtn" id="w">Word boundary hit</button>\n');
     fs.writeFileSync(path.join(repo, 'src/binary.jsx'), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from('<button className="btn btn-primary">Binary hit</button>')]));
     write('node_modules/pkg/index.js', '<button className="btn btn-primary">Vendored hit</button>\n');
     write('dist/app.js', '<button className="btn btn-primary">Dist hit</button>\n');
@@ -43,7 +46,7 @@ describe('locateSource', () => {
     write('src/notes.txt', '<button className="btn btn-primary">Text hit</button>\n');
     fs.symlinkSync(outside, path.join(repo, 'src/link.jsx'));
     git('add', '-f', 'src/Signup.jsx', 'src/Dup1.jsx', 'src/Dup2.jsx', 'src/Plain.jsx', 'src/Tagged.jsx', 'src/binary.jsx',
-      'node_modules/pkg/index.js', 'dist/app.js', 'src/big.jsx', 'src/notes.txt', 'src/link.jsx', '.gitignore');
+      'node_modules/pkg/index.js', 'dist/app.js', 'package.json', 'vite.config.js', 'src/Words.jsx', 'src/big.jsx', 'src/notes.txt', 'src/link.jsx', '.gitignore');
   });
   after(() => fs.rmSync(base, { recursive: true, force: true }));
 
@@ -107,6 +110,21 @@ describe('locateSource', () => {
       const r = locateSource({ ...btn('Outside secret', ['qq']), srcLoc }, { root: repo });
       assert.equal(r.confidence, 'none', srcLoc);
     }
+  });
+
+  test('M1 forged srcLoc to config, manifest or script files is never exact', () => {
+    for (const srcLoc of ['package.json:3', 'vite.config.js:1', 'src/Words.jsx.json:1', 'deploy.sh:1', 'pnpm-lock.yaml:1', '.github/workflows/ci.yml:1', 'dist/app.js:1']) {
+      const r = locateSource({ ...btn('Nothing like this', ['zzz']), srcLoc }, { root: repo });
+      assert.notEqual(r.confidence, 'exact', srcLoc);
+    }
+    assert.equal(locateSource({ ...btn('x', ['zzz']), srcLoc: 'src/Tagged.jsx:1' }, { root: repo }).confidence, 'exact');
+  });
+
+  test('word boundary: <b does not match <button, Btn does not match submitBtn', () => {
+    const r = locateSource({ anchor: { tag: 'b', classes: ['Btn'], snippet: 'Word boundary hit' } }, { root: repo });
+    assert.equal(r.candidates[0].why, 'snippet', 'neither the tag nor the class may add to the score');
+    const ok = locateSource({ anchor: { tag: 'button', classes: ['submitBtn'], snippet: 'Word boundary hit' } }, { root: repo });
+    assert.equal(ok.confidence, 'likely');
   });
 
   test('hostile anchor data is sanitised before use', () => {

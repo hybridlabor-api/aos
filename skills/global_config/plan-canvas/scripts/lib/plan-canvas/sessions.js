@@ -277,7 +277,7 @@ function chatLineFor(item) {
     return item.text ? `${label}: ${item.text}` : label;
   }
   if (item.kind === 'annotation') {
-    const where = item.anchor.snippet || item.anchor.selector;
+    const where = item.anchor.snippet || item.anchor.selector || item.anchor.tag;
     const app = item.target && item.target.origin === 'app' ? `[app ${appPathname(item.target.url)}] ` : '';
     const types = item.shapes ? [...new Set(item.shapes.map(shape => shape.type))] : [];
     return `${app}[${where}] ${item.text}${types.length ? ` (${types.join(', ')})` : ''}`;

@@ -6,10 +6,8 @@ import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { cleanClasses, cleanSnippet, fromAnnotation, resolveSrcLoc, sanitizeElement } from './sanitize-element.mjs';
+import { SRC_EXTS as EXTS, SRC_SKIP_DIRS as SKIP_DIRS, cleanClasses, cleanSnippet, fromAnnotation, resolveSrcLoc, sanitizeElement } from './sanitize-element.mjs';
 
-const EXTS = new Set(['.jsx', '.tsx', '.js', '.ts', '.vue', '.svelte', '.astro', '.html', '.mdx']);
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'build']);
 const MAX_FILE_BYTES = 512 * 1024;
 const MAX_FILES = 5000;
 const MAX_LINE = 2000;
@@ -20,6 +18,20 @@ const TOP = 3;
 function trackedFiles(realRoot) {
   const out = execFileSync('git', ['-C', realRoot, 'ls-files', '-z'], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
   return out.toString('utf8').split('\0').filter(Boolean);
+}
+
+const CLASS_CHAR = /[\w-]/;
+const TAG_CHAR = /[\w:.-]/;
+
+// Literal match that does not continue into a longer name (`<b` vs `<button`, `btn` vs `submitBtn`).
+function hasWord(line, needle, wordChar) {
+  const startIsWord = wordChar.test(needle[0]);
+  for (let at = line.indexOf(needle); at !== -1; at = line.indexOf(needle, at + 1)) {
+    const before = line[at - 1];
+    const after = line[at + needle.length];
+    if ((!startIsWord || before === undefined || !wordChar.test(before)) && (after === undefined || !wordChar.test(after))) return true;
+  }
+  return false;
 }
 
 function scanFile(realRoot, rel, q, hits) {
@@ -39,8 +51,8 @@ function scanFile(realRoot, rel, q, hits) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].slice(0, MAX_LINE);
     const snippet = q.snippet.length >= MIN_SNIPPET && line.includes(q.snippet);
-    const classes = q.classes.filter((c) => line.includes(c)).length;
-    const tag = q.tag && line.includes(`<${q.tag}`);
+    const classes = q.classes.filter((c) => hasWord(line, c, CLASS_CHAR)).length;
+    const tag = q.tag && hasWord(line, `<${q.tag}`, TAG_CHAR);
     const score = (snippet ? 3 : 0) + classes + (tag ? 1 : 0);
     if (score >= MIN_SCORE) {
       const why = [snippet && 'snippet', classes && `${classes} class`, tag && 'tag'].filter(Boolean).join('+');
