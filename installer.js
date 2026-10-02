@@ -1286,6 +1286,9 @@ function pluginMigrationMode(argv = process.argv, env = process.env) {
     return raw === 'check' || DRY_RUN ? 'check' : 'on';
 }
 
+// .agents/plugins holds the Codex marketplace file; it belongs to the repo checkout, not to ~/.agents or a project.
+const AGENTS_COPY_EXCLUDE = ['plugins'];
+
 let _pluginMigration = null;
 function runPluginMigration({ targetHome = homeDir, detected = null, mode = pluginMigrationMode(), registrars } = {}) {
     if (_pluginMigration && targetHome === homeDir) return _pluginMigration;
@@ -1303,6 +1306,60 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
     if (targetHome === homeDir) _pluginMigration = result;
     return result;
+}
+
+// The plugin migration runs first: when it retires Claude's loose copies, ~/.claude/skills is not
+// written again, so a rerun neither recreates nor re-backs-up what the plugin now delivers.
+function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBase }) {
+    const detected = detectPlatforms().map((d) => d.key);
+    if (targets.some((t) => t.value === '2') && !detected.includes('claudecode')) detected.push('claudecode');
+    const pluginCovered = runPluginMigration({ detected }).covered;
+
+    for (const t of targets) {
+        const viaPlugin = t.value === '2' && pluginCovered.has('claudecode');
+        if (mode === 'replace') {
+            if (!viaPlugin) {
+                moveIfExists(t.targetSkillDir, path.join(backupDir, `config_skills_backup_${t.value}`), `global config skills (${t.value})`);
+                moveIfExists(t.targetLegacyDir, path.join(backupDir, `legacy_skills_backup_${t.value}`), `legacy skills (${t.value})`);
+            }
+            moveIfExists(t.targetWorkspaceDir, path.join(backupDir, `workspace_skills_backup_${t.value}`), `workspace skills (${t.value})`);
+        }
+
+        installStep(`create the skill target directories (${t.value})`, () => {
+            if (!viaPlugin) {
+                fs.mkdirSync(t.targetSkillDir, { recursive: true });
+                retireObsoleteLegacyDir(t.targetLegacyDir);
+            }
+            fs.mkdirSync(t.targetWorkspaceDir, { recursive: true });
+        }, 'The skill copies below will most likely be skipped as well.');
+
+        if (fs.existsSync(skillsBase)) {
+            installStep(`install the skills (${t.value})`, () => {
+                const rawDirs = fs.readdirSync(skillsBase);
+                const dirs = rawDirs.sort((a, b) => {
+                    const aIsLeaf = fs.existsSync(path.join(skillsBase, a, 'SKILL.md'));
+                    const bIsLeaf = fs.existsSync(path.join(skillsBase, b, 'SKILL.md'));
+                    if (aIsLeaf && !bIsLeaf) return 1;
+                    if (!aIsLeaf && bIsLeaf) return -1;
+                    return 0;
+                });
+                for (const dir of dirs) {
+                    const fullPath = path.join(skillsBase, dir);
+                    if (!fs.statSync(fullPath).isDirectory()) continue;
+
+                    if (viaPlugin && dir !== 'workspace_agents') continue;
+                if (dir === 'global_legacy') {
+                        copyDirRecursiveSync(fullPath, t.targetLegacyDir, excludeSkills);
+                    } else if (dir === 'workspace_agents') {
+                        copyDirRecursiveSync(fullPath, t.targetWorkspaceDir, excludeSkills);
+                    } else {
+                        syncSkillEntry(fullPath, dir, t.targetSkillDir, excludeSkills);
+                    }
+                }
+                log.step(`Installed all global config & core skills to ${t.targetSkillDir}`);
+            }, 'The skills are missing or incomplete; the rest of the installation continues.');
+        }
+    }
 }
 
 function syncSkillsToGlobalHarnesses(excludeSkills = []) {
@@ -3915,7 +3972,7 @@ function injectHarnessRules() {
                     const targetPath = path.join(homeDir, dir);
                     // settings.json is merged separately below: a wholesale
                     // copy would clobber user-owned keys like enabledPlugins.
-                    const exclude = dir === '.claude' ? ['settings.json'] : [];
+                    const exclude = dir === '.claude' ? ['settings.json'] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
@@ -3927,7 +3984,7 @@ function injectHarnessRules() {
             const globalAgentsDir = path.join(os.homedir(), '.agents');
             const agentsDirSrc = path.join(srcDir, '.agents');
             if (fs.existsSync(agentsDirSrc)) {
-                copyDirRecursiveSync(agentsDirSrc, globalAgentsDir);
+                copyDirRecursiveSync(agentsDirSrc, globalAgentsDir, AGENTS_COPY_EXCLUDE);
                 log.step(`Synced global .agents/ to ${globalAgentsDir}`);
             }
         }, 'agents.md and workflows/startcycle.md may be missing globally.');
@@ -4682,7 +4739,7 @@ function installProjectHarness() {
     installStep('copy .agents/ contract into project', () => {
         const agentsSrc = path.join(srcDir, '.agents');
         if (!fs.existsSync(agentsSrc)) throw new Error(`missing payload: ${agentsSrc}`);
-        copyDirRecursiveSync(agentsSrc, projectAgentsDir);
+        copyDirRecursiveSync(agentsSrc, projectAgentsDir, AGENTS_COPY_EXCLUDE);
         log.step(`Copied .agents/ contract to ${projectAgentsDir}`);
     }, 'graph.md / state.schema.json may be missing in the project.');
 
@@ -6170,45 +6227,7 @@ Options:
     const s = spinner();
     s.start(`Installing optimized skills${tier === '2' ? ' [Basic Tier]' : ''} to ${targets.length} target(s)...`);
 
-    for (const t of targets) {
-        if (mode === 'replace') {
-            moveIfExists(t.targetSkillDir, path.join(backupDir, `config_skills_backup_${t.value}`), `global config skills (${t.value})`);
-            moveIfExists(t.targetLegacyDir, path.join(backupDir, `legacy_skills_backup_${t.value}`), `legacy skills (${t.value})`);
-            moveIfExists(t.targetWorkspaceDir, path.join(backupDir, `workspace_skills_backup_${t.value}`), `workspace skills (${t.value})`);
-        }
-
-        installStep(`create the skill target directories (${t.value})`, () => {
-            fs.mkdirSync(t.targetSkillDir, { recursive: true });
-            retireObsoleteLegacyDir(t.targetLegacyDir);
-            fs.mkdirSync(t.targetWorkspaceDir, { recursive: true });
-        }, 'The skill copies below will most likely be skipped as well.');
-
-        if (fs.existsSync(skillsBase)) {
-            installStep(`install the skills (${t.value})`, () => {
-                const rawDirs = fs.readdirSync(skillsBase);
-                const dirs = rawDirs.sort((a, b) => {
-                    const aIsLeaf = fs.existsSync(path.join(skillsBase, a, 'SKILL.md'));
-                    const bIsLeaf = fs.existsSync(path.join(skillsBase, b, 'SKILL.md'));
-                    if (aIsLeaf && !bIsLeaf) return 1;
-                    if (!aIsLeaf && bIsLeaf) return -1;
-                    return 0;
-                });
-                for (const dir of dirs) {
-                    const fullPath = path.join(skillsBase, dir);
-                    if (!fs.statSync(fullPath).isDirectory()) continue;
-
-                    if (dir === 'global_legacy') {
-                        copyDirRecursiveSync(fullPath, t.targetLegacyDir, excludeSkills);
-                    } else if (dir === 'workspace_agents') {
-                        copyDirRecursiveSync(fullPath, t.targetWorkspaceDir, excludeSkills);
-                    } else {
-                        syncSkillEntry(fullPath, dir, t.targetSkillDir, excludeSkills);
-                    }
-                }
-                log.step(`Installed all global config & core skills to ${t.targetSkillDir}`);
-            }, 'The skills are missing or incomplete; the rest of the installation continues.');
-        }
-    }
+    installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBase });
 
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
@@ -6304,6 +6323,8 @@ module.exports = {
     resolveFileConflict,
     buildKnownSourceHashes,
     initSessionManifest,
+    installTargetSkills,
+    AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
     INSTALL_MANIFEST_PATH,
