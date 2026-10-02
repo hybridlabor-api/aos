@@ -38,7 +38,7 @@ installed CLI, only exposed when that CLI is detected as `ready` in the local
 inventory, and never offered back to a caller that's already running as that
 same CLI (`MCSC_CALLER` env var, avoids self-delegation loops):
 
-- `delegate_agy` — `{ prompt, model? }` → Antigravity / Gemini
+- `delegate_agy` — `{ prompt, model? }` → Antigravity / Gemini. **READ-ONLY until tested:** use it for research, review and analysis, never for edits. The adapter can pass `--mode accept-edits` (`write: true`), but that path is untested and not part of the contract.
 - `delegate_opencode` — `{ prompt, model?, variant? }` → OpenCode
 - `delegate_codex` — `{ prompt, model? }` → Codex
 - `delegate_smart` — `{ task_type, prompt }` → reads `rulebook.yaml` (or the
@@ -49,6 +49,14 @@ self-contained `prompt` — the adapter underneath handles the CLI's actual
 flags, streams tool-call telemetry to agenttrail as it runs, and returns the
 final output. `variant` (OpenCode only) maps to `--variant` (reasoning
 effort).
+
+## Depth limit: one level, like a fork
+
+Every adapter sets `MCSC_DEPTH` to the caller's depth plus one in the child's
+environment. An mcsc server that starts with `MCSC_DEPTH >= 1` lists no tools and
+refuses every call. A delegated agent therefore cannot delegate again, so
+agy -> codex -> agy chains are impossible. `MCSC_CALLER` alone only excluded the
+caller's own CLI and was overwritten by each adapter.
 
 ## What it is not
 

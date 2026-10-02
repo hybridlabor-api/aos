@@ -69,3 +69,9 @@ node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --sync
 ## 3. Integration with `aos-project-init` & AO Orchestrator
 - **AO Orchestrator (Port 3101)**: The Pipeline Wizard (Schritt 3 von 4: Agenten & Rollen) directly reads and writes `.aos/pipeline.json`.
 - **`aos-project-init`**: Offers subagent configuration during project interview, defaulting to the canonical tier matrix.
+
+---
+
+## 4. Running an installed copy
+
+The script imports the AOS `installer.js` module. In a repo checkout it finds it by relative path. An installed copy (`~/.agents/skills/subagent-setup/scripts/`) has no repo around it: set `AOS_HOME` to the AOS package folder (the one that contains `installer.js`), or install `@hybridlabor-api/aos` globally. Without either it exits with code 2 and lists the paths it tried.

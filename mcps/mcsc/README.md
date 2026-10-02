@@ -7,7 +7,7 @@ native Claude Code subagents) are installed and authenticated on a machine, and
 routes delegated subtasks to the right one via a capability-tier YAML rulebook
 — never a pinned model ID, since free-tier model IDs churn within days.
 
-Status: Core package implemented and tested. Includes an **MCP Server** (`packages/mcp/server.js`) that allows any MCP-compatible client to securely delegate tasks to local agent CLIs. The architecture includes rigorous recursion protection (via `MCSC_CALLER` environment variables) to prevent autonomous agents from calling themselves in infinite loops.
+Status: Core package implemented and tested. Includes an **MCP Server** (`packages/mcp/server.js`) that allows any MCP-compatible client to securely delegate tasks to local agent CLIs. The architecture includes rigorous recursion protection (via `MCSC_CALLER` environment variables) to prevent autonomous agents from calling themselves in infinite loops. `MCSC_DEPTH` (raised by one in every adapter's child env) limits delegation to one level: a server that starts at depth 1 or more refuses all calls. `delegate_agy` is documented read-only; its `write` flag (`--mode accept-edits`) is untested.
 
 See [.openwiki/architecture.md](.openwiki/architecture.md) for the validated design.
 

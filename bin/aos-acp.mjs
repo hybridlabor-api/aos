@@ -14,10 +14,11 @@
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { GUARDED_PATTERNS, slug, tokenGrantsGo } from "../.claude/hooks/go-gate.mjs";
+import { emitTrail } from "../mcps/mcsc/packages/core/src/trail.js";
 
 export const ADAPTERS = {
   claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp"], consume: false },
@@ -113,6 +114,25 @@ export class AcpClient {
   notify(method, params) { this.write({ jsonrpc: "2.0", method, params }); }
 }
 
+// Same agenttrail protocol as mcsc's adapters (SessionStart/SessionEnd, PreToolUse/PostToolUse),
+// so the GO board reads ACP workers and mcsc runs from one source.
+const cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Tool");
+
+export function trailToolEvent(u, seen, cwd) {
+  const prev = seen.get(u.toolCallId) || {};
+  const info = { title: u.title ?? prev.title, kind: u.kind ?? prev.kind };
+  seen.set(u.toolCallId, info);
+  const done = u.status === "completed" || u.status === "failed";
+  if (u.sessionUpdate === "tool_call_update" && !done) return null;
+  const tool_input = {};
+  const file = u.locations?.[0]?.path ?? prev.file;
+  if (typeof file === "string" && file) tool_input.file_path = isAbsolute(file) ? file : resolve(cwd, file);
+  info.file = tool_input.file_path;
+  const command = commandOf(u);
+  if (command) tool_input.command = command;
+  return { hook_event_name: done ? "PostToolUse" : "PreToolUse", tool_name: cap(info.kind || info.title), tool_input };
+}
+
 function textOf(block) {
   return block && block.type === "text" ? block.text : "";
 }
@@ -134,6 +154,9 @@ export async function run(opts) {
   const consume = opts.consume ?? adapter?.consume ?? true;
   log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, model: opts.model || "adapter default" });
 
+  const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `${opts.adapter}:${opts.name}` };
+  const seenTools = new Map();
+  emitTrail({ ...trail, hook_event_name: "SessionStart" });
   let sessionId;
   const out = opts.stdout || process.stdout;
   const client = new AcpClient(cmd, {
@@ -148,6 +171,8 @@ export async function run(opts) {
         if (t) { out.write(t); log("text", { text: t }); }
       } else if (u.sessionUpdate === "tool_call" || u.sessionUpdate === "tool_call_update") {
         log(u.sessionUpdate, { id: u.toolCallId, title: u.title, kind: u.kind, status: u.status, command: commandOf(u) || undefined });
+        const ev = trailToolEvent(u, seenTools, opts.cwd);
+        if (ev) emitTrail({ ...trail, ...ev });
       } else log("update", { kind: u.sessionUpdate });
     },
     onRequest: (method, p) => {
@@ -182,6 +207,7 @@ export async function run(opts) {
   } finally {
     if (timer) clearTimeout(timer);
     client.child.kill();
+    await emitTrail({ ...trail, hook_event_name: "SessionEnd" });
   }
 }
 

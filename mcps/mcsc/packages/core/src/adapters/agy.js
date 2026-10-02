@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { emitTrail } from '../trail.js';
+import { childEnv } from '../depth.js';
 const execFileAsync = promisify(execFile);
 
 /**
@@ -22,6 +23,7 @@ export async function delegate(req) {
   try {
     const args = [];
     if (req.model) args.push('--model', req.model);
+    if (req.write === true) args.push('--mode', 'accept-edits');
     args.push(
       '--print-timeout',
       '15m',
@@ -33,7 +35,7 @@ export async function delegate(req) {
       req.prompt
     );
     
-    const env = { ...process.env, MCSC_CALLER: 'agy' };
+    const env = childEnv('agy');
 
     const run = execFileAsync(
       'agy',
