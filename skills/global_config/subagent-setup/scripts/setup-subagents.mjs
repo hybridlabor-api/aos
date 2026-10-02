@@ -19,7 +19,26 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const installer = require('../../../../installer.js');
+
+// Installed copies live under ~/.agents/skills, nowhere near installer.js: look it up by
+// AOS_HOME (the folder holding installer.js), the repo checkout, then the global npm package.
+function loadInstaller() {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+        process.env.AOS_HOME && path.join(process.env.AOS_HOME, 'installer.js'),
+        path.resolve(here, '../../../../installer.js'),
+        path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', '@hybridlabor-api', 'aos', 'installer.js'),
+    ].filter(Boolean);
+    try { candidates.push(require.resolve('@hybridlabor-api/aos/installer.js')); } catch { /* not resolvable from here */ }
+    const found = candidates.find((c) => fs.existsSync(c));
+    if (!found) {
+        console.error(`setup-subagents: cannot find the AOS installer module (installer.js).\nSet AOS_HOME to the AOS package folder (the one containing installer.js), or install @hybridlabor-api/aos.\nTried:\n${candidates.map((c) => `  ${c}`).join('\n')}`);
+        process.exit(2);
+    }
+    return require(found);
+}
+
+const installer = loadInstaller();
 
 const {
     CANONICAL_TIERS,
