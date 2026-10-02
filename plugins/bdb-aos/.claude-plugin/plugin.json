@@ -286,7 +286,6 @@
   "commands": [
     "./commands/brainstorm.md",
     "./commands/doctor.md",
-    "./commands/gogate.md",
     "./commands/graph.md",
     "./commands/init.md",
     "./commands/loop.md",

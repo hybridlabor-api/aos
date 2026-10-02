@@ -91,7 +91,7 @@ const skillNames = new Set(skillDirs.map((dir) => dir.split(/[\\/]/).pop()));
 const commandErrors = [];
 for (const [name, def] of Object.entries(commandDefs)) {
   if (!/^[a-z][a-z0-9-]*$/.test(name)) commandErrors.push(`${name}: invalid command name`);
-  if (skillNames.has(name) && !def.skills?.includes(name)) commandErrors.push(`${name}: collides with a skill of the same name`);
+  if (skillNames.has(name)) commandErrors.push(`${name}: collides with a skill of the same name`);
   if (!def.description?.trim()) commandErrors.push(`${name}: empty description`);
   if (!def.bodies?.claude?.trim()) commandErrors.push(`${name}: no body for claude`);
   for (const ref of def.skills ?? []) {

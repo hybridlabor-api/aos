@@ -2,14 +2,18 @@
   "commands": {
     "setup": {
       "description": "Bring this machine to a complete, verified AOS installation (skills, MCP servers, gate hooks, memB, OpenWiki, Synapse).",
-      "skills": ["aos-setup"],
+      "skills": [
+        "aos-setup"
+      ],
       "bodies": {
         "claude": "Run the `aos-setup` skill for this machine. Report what is installed, what was repaired and what is still missing. Arguments: $ARGUMENTS"
       }
     },
     "init": {
       "description": "Set up the current project folder for AOS: slug, wiki, memory, Synapse map, AGENTS.md.",
-      "skills": ["aos-project-init"],
+      "skills": [
+        "aos-project-init"
+      ],
       "bodies": {
         "claude": "Run the `aos-project-init` skill for the current project folder. This is project setup, not machine setup (that is `/bdb-aos:setup`). Arguments: $ARGUMENTS"
       }
@@ -23,77 +27,100 @@
     },
     "store": {
       "description": "Browse and preview AOS skills, agents and playbooks in the local store UI.",
-      "skills": ["aos-store"],
+      "skills": [
+        "aos-store"
+      ],
       "bodies": {
         "claude": "Start the `aos-store` interface. Preview freely, but install nothing until the human says yes for that specific item. Arguments: $ARGUMENTS"
       }
     },
     "mastersession": {
       "description": "Supervise other Claude Code sessions on this machine: roster, status requests, GO board, idle notices.",
-      "skills": ["master-session"],
+      "skills": [
+        "master-session"
+      ],
       "bodies": {
         "claude": "Act as the master session with the `master-session` skill (ACP bridge: `bin/aos-acp.mjs`, see docs/master-session-acp.md). Keep the overview, relay the human's decisions, never decide for the human. Arguments: $ARGUMENTS"
       }
     },
     "orchestrator": {
       "description": "Coordinate parallel coding agents across repositories through the AO daemon.",
-      "skills": ["ao-orchestrator"],
+      "skills": [
+        "ao-orchestrator"
+      ],
       "bodies": {
         "claude": "Use the `ao-orchestrator` skill. It needs the AO daemon; check that it is running first and stop with a clear message if not. Do not confuse it with `agent-orchestrator`. Arguments: $ARGUMENTS"
       }
     },
     "plan": {
       "description": "Plan end to end: draft, render in plan-canvas or Plan Builder, annotate, await approval, then hand off.",
-      "skills": ["concise-planning", "visual-plan", "plan-canvas", "writing-plans"],
+      "skills": [
+        "concise-planning",
+        "visual-plan",
+        "plan-canvas",
+        "writing-plans"
+      ],
       "bodies": {
         "claude": "Run the full planning pipeline: 1) draft the plan with `concise-planning`; 2) always offer the choice between plan-canvas and Plan Builder (`visual-plan`) for rendering; 3) collect annotations and wait for the human's approval; 4) only after approval continue with `writing-plans` or `/bdb-aos:graph`. Topic: $ARGUMENTS"
       }
     },
     "brainstorm": {
       "description": "Brainstorm a topic with the matching skill: bdbrainstorm, bdbmediastorm for event tech, grill-me for a stress test.",
-      "skills": ["bdbrainstorm", "bdbmediastorm", "grill-me"],
+      "skills": [
+        "bdbrainstorm",
+        "bdbmediastorm",
+        "grill-me"
+      ],
       "bodies": {
         "claude": "Pick by topic: `bdbmediastorm` for live event technology and show control, `grill-me` when the human wants an existing idea stress-tested, `bdbrainstorm` otherwise. Say which one you chose. Topic: $ARGUMENTS"
       }
     },
     "startproject": {
       "description": "Start a new composition: project init, brainstorm, then ask whether graph or startcycle follows.",
-      "skills": ["aos-project-init", "bdbrainstorm", "startcycle-graph", "startcycle"],
+      "skills": [
+        "aos-project-init",
+        "bdbrainstorm",
+        "startcycle-graph",
+        "startcycle"
+      ],
       "bodies": {
         "claude": "Sequence: 1) `aos-project-init`; 2) `bdbrainstorm`; 3) stop and ask the human whether `/bdb-aos:graph` (startcycle-graph) or `startcycle` follows. Do not start a pipeline on your own. Idea: $ARGUMENTS"
       }
     },
     "graph": {
       "description": "Run the startcycle-graph pipeline: durable state, repair loop, quality gate, escalation.",
-      "skills": ["startcycle-graph"],
+      "skills": [
+        "startcycle-graph"
+      ],
       "bodies": {
         "claude": "Run the `startcycle-graph` skill; its contract defines the flow. Task: $ARGUMENTS"
       }
     },
     "shipping": {
       "description": "Pre-ship framing and the technical release gate, with approvals under the go-gate rules.",
-      "skills": ["bdb-shipping-skill", "godmode-shipping"],
+      "skills": [
+        "bdb-shipping-skill",
+        "godmode-shipping"
+      ],
       "bodies": {
         "claude": "Use `bdb-shipping-skill` for the pre-flight and `godmode-shipping` for the gate. The playbook `pb-ship` can drive the whole flow. Push, merge and publish need the human's GO under the go-gate rules; never request one on the human's behalf. Arguments: $ARGUMENTS"
       }
     },
     "memb": {
       "description": "Query or store long-term memory with memB.",
-      "skills": ["memb-skill", "memb-ingest"],
+      "skills": [
+        "memb-skill",
+        "memb-ingest"
+      ],
       "bodies": {
         "claude": "Use `memb-skill` to search or remember and `memb-ingest` to import material. Never store secrets, tokens or credentials. Arguments: $ARGUMENTS"
       }
     },
-    "gogate": {
-      "description": "Show or explain the go-gate mode and active grants. Modes are typed as plain text, not set here.",
-      "skills": ["gogate"],
-      "bodies": {
-        "claude": "Use the `gogate` skill to show the status and explain it. You never change a mode or grant. If arguments follow, tell the human to type the plain message `gogate <mode>` themselves, because slash commands cannot set modes. Arguments: $ARGUMENTS"
-      }
-    },
     "playbooks": {
       "description": "List all pb-* playbooks with duration, difficulty and requirements, and start one.",
-      "skills": ["pb-*"],
+      "skills": [
+        "pb-*"
+      ],
       "pending": "C6",
       "bodies": {
         "claude": "List every `pb-*` skill with `est_time`, `difficulty` and `requires` from its frontmatter, then start the one the human picks. Arguments: $ARGUMENTS"
