@@ -1,14 +1,17 @@
-# BDB AO Codenotch (macOS, opt-in)
+# BDB AO Codenotch (macOS, default on)
 
-The AOS installer can install the BDB AO Codenotch desktop app. It is **macOS only**: on Windows and Linux the step is never offered and no code of it runs.
+The AOS installer installs the BDB AO Codenotch desktop app by default. It is **macOS only**: on Windows and Linux the step is never offered and no code of it runs.
 
-## Enabling
+## Controlling it
 
-| Mode | How |
+| Mode | Behavior |
 |---|---|
-| Interactive | Answer the "Install BDB AO Codenotch?" prompt (default: no) |
-| Non-interactive | `AOS_CODENOTCH=1 aos -y` or `aos -y --codenotch` |
-| Both | `--codenotch` / `AOS_CODENOTCH=1` skips the question |
+| Interactive | Prompt "Install BDB AO Codenotch?", default **yes** |
+| Non-interactive (`-y`, no TTY) | Installs unless opted out |
+| Opt out | `AOS_CODENOTCH=0` or `--no-codenotch` (wins over everything) |
+| Force on | `AOS_CODENOTCH=1` or `--codenotch` (skips the question) |
+
+A failure at any step (no release yet, 404, offline, rate limit, checksum mismatch, mount error) prints a warning and the AOS install continues; the exit code is never affected. The installer ends with one line saying whether Codenotch was installed, skipped or failed, and how to remove it.
 
 ## What it does
 

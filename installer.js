@@ -4015,21 +4015,18 @@ const OPENCODE_LOOP_SHELL_WARNING = 'opencode-loop: /loop-shell style commands r
     'tool.execute.before, and so the AOS go-gate, may never see them (unverified). ' +
     'Do not schedule git push, publish or other gated commands through them.';
 
+let codenotchResult = null;
 async function maybeInstallCodenotch() {
     if (process.platform !== 'darwin') return;
     const codenotch = require('./lib/codenotch.js');
-    const interactive = !isAutoYes;
-    if (!codenotch.codenotchRequested()) {
-        if (!interactive) return;
-        const a = await askConfirm({ message: 'Install BDB AO Codenotch? (macOS app from the public releases repo, ad-hoc signed)', initialValue: false });
-        if (isCancel(a) || !a) return;
-    }
-    if (DRY_RUN) { log.step('[dry-run] would install BDB AO Codenotch'); return; }
-    await codenotch.installCodenotch({
-        interactive,
-        confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
+    codenotchResult = await codenotch.runCodenotchStep({
+        interactive: !isAutoYes,
+        dryRun: DRY_RUN,
+        ask: async (message, initialValue = true) => { const a = await askConfirm({ message, initialValue }); return !isCancel(a) && !!a; },
         log: { info: (m) => log.info(m), warn: (m) => log.warn(m), success: (m) => log.success(m) },
     });
+    const line = codenotch.codenotchSummaryLine(codenotchResult);
+    if (line) (codenotchResult.status === 'error' || /FAILED/.test(line) ? log.warn : log.info)(line);
 }
 
 function parseOpencodeOptional(argv = process.argv, env = process.env) {
@@ -5885,11 +5882,12 @@ Options:
                    AOS_OPENCODE_OPTIONAL. Pinned plugin[] entries are appended after a
                    config backup; rtk only prints a brew hint. Off by default. AOS never
                    runs foreign installers and never touches OpenCode's mcp set.
-  --codenotch      macOS only: install BDB AO Codenotch (desktop app) from the public
-                   releases repo hybridlabor-api/bdb-ao-codenotch-releases, or set
-                   AOS_CODENOTCH=1. Asked in interactive installs (default no). SHA-256
-                   verified, ad-hoc signed, quarantine removed; never overwrites an app
-                   AOS did not install. See docs/codenotch.md.
+  --no-codenotch   macOS only, never runs on Windows or Linux: BDB AO Codenotch (desktop
+                   app, from hybridlabor-api/bdb-ao-codenotch-releases) installs by
+                   default; skip it with this flag or AOS_CODENOTCH=0. --codenotch or
+                   AOS_CODENOTCH=1 forces it. Interactive prompt defaults to yes. Failures
+                   only warn and never fail the install. SHA-256 verified, ad-hoc signed,
+                   never overwrites an app AOS did not install. See docs/codenotch.md.
   --plugin-migration=off|check
                    Skip (off) or only report (check) the bdb-aos plugin registration and
                    removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.

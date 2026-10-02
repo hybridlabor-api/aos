@@ -216,14 +216,87 @@ test('compareVersions is semver-ish', () => {
     assert.strictEqual(cn.compareVersions('v0.9.0', '1.0.0'), -1);
 });
 
-test('--codenotch and AOS_CODENOTCH=1 opt in; nothing else does', () => {
-    assert.strictEqual(cn.codenotchRequested(['--codenotch'], {}), true);
-    assert.strictEqual(cn.codenotchRequested([], { AOS_CODENOTCH: '1' }), true);
-    assert.strictEqual(cn.codenotchRequested(['-y'], { AOS_CODENOTCH: '0' }), false);
+test('mode: default on, AOS_CODENOTCH=0 and --no-codenotch off, force flags on', () => {
+    assert.strictEqual(cn.codenotchMode([], {}), 'default');
+    assert.strictEqual(cn.codenotchMode(['-y'], {}), 'default');
+    assert.strictEqual(cn.codenotchMode([], { AOS_CODENOTCH: '0' }), 'off');
+    assert.strictEqual(cn.codenotchMode(['--no-codenotch'], {}), 'off');
+    assert.strictEqual(cn.codenotchMode(['--codenotch', '--no-codenotch'], {}), 'off');
+    assert.strictEqual(cn.codenotchMode(['--codenotch'], {}), 'force');
+    assert.strictEqual(cn.codenotchMode([], { AOS_CODENOTCH: '1' }), 'force');
+});
+
+const fakeInstall = (calls, result = { status: 'installed', version: '1.2.0', path: '/Applications/Codenotch.app' }) => async (o) => { calls.push(o); return result; };
+
+test('step: non-interactive runs by default, without any env', async () => {
+    const calls = [];
+    const r = await cn.runCodenotchStep({ platform: 'darwin', argv: ['-y'], env: {}, interactive: false, install: fakeInstall(calls) });
+    assert.strictEqual(r.status, 'installed');
+    assert.strictEqual(calls.length, 1);
+});
+
+test('step: AOS_CODENOTCH=0 and --no-codenotch skip without installing', async () => {
+    for (const [argv, env] of [[[], { AOS_CODENOTCH: '0' }], [['--no-codenotch'], {}]]) {
+        const calls = [];
+        const r = await cn.runCodenotchStep({ platform: 'darwin', argv, env, interactive: false, install: fakeInstall(calls) });
+        assert.strictEqual(r.status, 'opted-out');
+        assert.strictEqual(calls.length, 0);
+    }
+});
+
+test('step: interactive prompt is asked (default yes is the caller initialValue), no skips, yes installs', async () => {
+    const asked = [];
+    const calls = [];
+    const no = await cn.runCodenotchStep({ platform: 'darwin', argv: [], env: {}, interactive: true, ask: async (m) => { asked.push(m); return false; }, install: fakeInstall(calls) });
+    assert.strictEqual(no.status, 'declined');
+    assert.strictEqual(asked.length, 1);
+    assert.match(asked[0], /Install BDB AO Codenotch/);
+    const yes = await cn.runCodenotchStep({ platform: 'darwin', argv: [], env: {}, interactive: true, ask: async () => true, install: fakeInstall(calls) });
+    assert.strictEqual(yes.status, 'installed');
+    const forced = [];
+    await cn.runCodenotchStep({ platform: 'darwin', argv: ['--codenotch'], env: {}, interactive: true, ask: async (m) => { forced.push(m); return true; }, install: fakeInstall(calls) });
+    assert.strictEqual(forced.length, 0);
+});
+
+test('step: a throwing install is contained as a warning result', async () => {
+    const warns = [];
+    const r = await cn.runCodenotchStep({ platform: 'darwin', argv: [], env: {}, interactive: false, log: { warn: (m) => warns.push(m) }, install: async () => { throw new Error('boom'); } });
+    assert.strictEqual(r.status, 'error');
+    assert.match(warns[0], /boom/);
+});
+
+test('step: real install failures (404, offline, checksum) resolve and never throw', async () => {
+    const c404 = setup({ status: 404 });
+    assert.strictEqual((await cn.runCodenotchStep({ ...c404.opts, argv: [], env: {}, interactive: false })).status, 'not-found');
+    const off = setup();
+    const r = await cn.runCodenotchStep({ ...off.opts, fetch: async () => { throw new Error('offline'); }, argv: [], env: {}, interactive: false });
+    assert.strictEqual(r.status, 'error');
+    const bad = setup({ sha: 'b'.repeat(64) });
+    assert.strictEqual((await cn.runCodenotchStep({ ...bad.opts, argv: [], env: {}, interactive: false })).status, 'checksum-mismatch');
+});
+
+test('step: non-darwin returns null and never installs or prompts', async () => {
+    for (const platform of ['win32', 'linux']) {
+        const calls = [];
+        const r = await cn.runCodenotchStep({ platform, argv: [], env: {}, interactive: true, ask: async () => { throw new Error('asked'); }, install: fakeInstall(calls) });
+        assert.strictEqual(r, null);
+        assert.strictEqual(calls.length, 0);
+        assert.strictEqual(cn.codenotchSummaryLine(r), null);
+    }
+});
+
+test('summary line: installed, skipped, failed', () => {
+    const inst = cn.codenotchSummaryLine({ status: 'installed', version: '1.2.0', path: '/Applications/Codenotch.app' });
+    assert.match(inst, /installed 1\.2\.0 at \/Applications\/Codenotch\.app.*aos-uninstall/);
+    const skip = cn.codenotchSummaryLine({ status: 'up-to-date', message: 'already installed (2.0.0) at /Applications/Codenotch.app' });
+    assert.match(skip, /skipped.*aos-uninstall/);
+    assert.match(cn.codenotchSummaryLine({ status: 'not-found', message: 'no public release' }), /FAILED.*unaffected/);
+    assert.match(cn.codenotchSummaryLine({ status: 'checksum-mismatch', message: 'sha256 mismatch' }), /FAILED/);
 });
 
 test('installer --help lists the option', () => {
     const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'installer.js'), '--help'], { encoding: 'utf8', env: { ...process.env, HOME: root } });
     assert.match(r.stdout, /--codenotch/);
-    assert.match(r.stdout, /AOS_CODENOTCH=1/);
+    assert.match(r.stdout, /--no-codenotch/);
+    assert.match(r.stdout, /AOS_CODENOTCH=0/);
 });
