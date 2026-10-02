@@ -4017,7 +4017,7 @@ const OPENCODE_LOOP_SHELL_WARNING = 'opencode-loop: /loop-shell style commands r
 
 let codenotchResult = null;
 async function maybeInstallCodenotch() {
-    if (process.platform !== 'darwin') return;
+    if (process.platform !== 'darwin' && process.platform !== 'win32') return;
     const codenotch = require('./lib/codenotch.js');
     codenotchResult = await codenotch.runCodenotchStep({
         interactive: !isAutoYes,
@@ -5882,12 +5882,13 @@ Options:
                    AOS_OPENCODE_OPTIONAL. Pinned plugin[] entries are appended after a
                    config backup; rtk only prints a brew hint. Off by default. AOS never
                    runs foreign installers and never touches OpenCode's mcp set.
-  --no-codenotch   macOS only, never runs on Windows or Linux: BDB AO Codenotch (desktop
-                   app, from hybridlabor-api/bdb-ao-codenotch-releases) installs by
-                   default; skip it with this flag or AOS_CODENOTCH=0. --codenotch or
+  --no-codenotch   macOS and Windows only (never Linux): BDB AO Codenotch (desktop app,
+                   from hybridlabor-api/bdb-ao-codenotch-releases) installs by default;
+                   skip it with this flag or AOS_CODENOTCH=0. --codenotch or
                    AOS_CODENOTCH=1 forces it. Interactive prompt defaults to yes. Failures
-                   only warn and never fail the install. SHA-256 verified, ad-hoc signed,
-                   never overwrites an app AOS did not install. See docs/codenotch.md.
+                   only warn and never fail the install. SHA-256 verified; Windows runs
+                   the per-user installer silently (/S, no admin). Never overwrites an app
+                   AOS did not install. See docs/codenotch.md.
   --plugin-migration=off|check
                    Skip (off) or only report (check) the bdb-aos plugin registration and
                    removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.

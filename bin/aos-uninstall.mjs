@@ -146,7 +146,7 @@ function describe(p) {
   if (p.codenotch) {
     const c = p.codenotch;
     const note = { remove: 'is removed (still the recorded build)', keep: 'is kept (replaced or modified since AOS installed it)', gone: 'is already gone' }[c.action];
-    console.log(`\nBDB AO Codenotch ${tilde(c.state.path)} ${note}`);
+    console.log(`\nBDB AO Codenotch ${tilde(c.state.path || c.state.uninstallPath)} ${note}`);
   }
 
   console.log('\nBleibt erhalten:');
@@ -253,7 +253,7 @@ function execute(p) {
 
   if (codenotch) {
     const r = cn.uninstallCodenotch(codenotch, { stateFile: cn.stateFilePath(HOME) });
-    console.log(`  Codenotch: ${r === 'remove' ? 'removed' : r === 'keep' ? 'kept, not the recorded build' : 'already gone'}`);
+    console.log(`  Codenotch: ${r === 'remove' ? 'removed' : r === 'keep' ? 'kept, not the recorded build' : r === 'error' ? 'uninstaller failed, left in place' : 'already gone'}`);
   }
 
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }

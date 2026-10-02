@@ -1,6 +1,6 @@
-# BDB AO Codenotch (macOS, default on)
+# BDB AO Codenotch (macOS and Windows, default on)
 
-The AOS installer installs the BDB AO Codenotch desktop app by default. It is **macOS only**: on Windows and Linux the step is never offered and no code of it runs.
+The AOS installer installs the BDB AO Codenotch desktop app by default on **macOS and Windows**. On Linux the step is never offered and no code of it runs.
 
 ## Controlling it
 
@@ -13,7 +13,17 @@ The AOS installer installs the BDB AO Codenotch desktop app by default. It is **
 
 A failure at any step (no release yet, 404, offline, rate limit, checksum mismatch, mount error) prints a warning and the AOS install continues; the exit code is never affected. The installer ends with one line saying whether Codenotch was installed, skipped or failed, and how to remove it.
 
-## What it does
+## Windows
+
+- Asset: `Codenotch-Setup-<version>.exe` plus `Codenotch-Setup-<version>.exe.sha256` from the same latest release. If the exact name is absent, the single `*Setup*.exe` that has a matching `.sha256` is used; anything ambiguous is refused.
+- The SHA-256 is verified before the installer runs; a mismatch only warns.
+- Runs the NSIS installer silently as `Setup.exe /S`, per-user, no admin, no elevation, with a 5 minute timeout, then checks the version in the per-user uninstall registry key (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`, key `Codenotch`, fallback scan for a subkey whose DisplayName is Codenotch).
+- Installed version same or newer: skipped. An older install AOS did not record is kept unless you confirm interactively.
+- The path of the uninstaller and the version are recorded in `~/.agents/.bdb-codenotch.json` (`%USERPROFILE%` on Windows).
+- `aos-uninstall` runs `<recorded uninstall.exe> /S` only if that file still exists and the registry version and uninstaller path still match the record; otherwise the install is left alone.
+- Not yet verified against a real NSIS build: the registry key name and the exact uninstall behavior.
+
+## What it does (macOS)
 
 1. Reads `https://api.github.com/repos/hybridlabor-api/bdb-ao-codenotch-releases/releases/latest` (public repo, unauthenticated, created and maintained by Tim). A missing repo (404) or a GitHub rate limit prints a friendly note and the install continues; nothing fails.
 2. Downloads the `.dmg` and verifies its `.sha256` asset from the same release **before** mounting. A mismatch or a missing checksum refuses the install.

@@ -75,7 +75,7 @@ function setup({ tag = 'v1.2.0', sha = SHA, status = 200, headers = {}, assets, 
 const readState = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 
 test('non-macOS is a no-op: no fetch, nothing touched', async () => {
-    for (const platform of ['win32', 'linux']) {
+    for (const platform of ['linux', 'freebsd']) {
         const c = setup();
         const r = await cn.installCodenotch({ ...c.opts, platform });
         assert.strictEqual(r.status, 'skipped-platform');
@@ -275,8 +275,8 @@ test('step: real install failures (404, offline, checksum) resolve and never thr
     assert.strictEqual((await cn.runCodenotchStep({ ...bad.opts, argv: [], env: {}, interactive: false })).status, 'checksum-mismatch');
 });
 
-test('step: non-darwin returns null and never installs or prompts', async () => {
-    for (const platform of ['win32', 'linux']) {
+test('step: linux returns null and never installs or prompts', async () => {
+    for (const platform of ['linux']) {
         const calls = [];
         const r = await cn.runCodenotchStep({ platform, argv: [], env: {}, interactive: true, ask: async () => { throw new Error('asked'); }, install: fakeInstall(calls) });
         assert.strictEqual(r, null);
@@ -287,7 +287,7 @@ test('step: non-darwin returns null and never installs or prompts', async () => 
 
 test('summary line: installed, skipped, failed', () => {
     const inst = cn.codenotchSummaryLine({ status: 'installed', version: '1.2.0', path: '/Applications/Codenotch.app' });
-    assert.match(inst, /installed 1\.2\.0 at \/Applications\/Codenotch\.app.*aos-uninstall/);
+    assert.match(inst, /installed 1\.2\.0 \(\/Applications\/Codenotch\.app\).*aos-uninstall/);
     const skip = cn.codenotchSummaryLine({ status: 'up-to-date', message: 'already installed (2.0.0) at /Applications/Codenotch.app' });
     assert.match(skip, /skipped.*aos-uninstall/);
     assert.match(cn.codenotchSummaryLine({ status: 'not-found', message: 'no public release' }), /FAILED.*unaffected/);
@@ -299,4 +299,184 @@ test('installer --help lists the option', () => {
     assert.match(r.stdout, /--codenotch/);
     assert.match(r.stdout, /--no-codenotch/);
     assert.match(r.stdout, /AOS_CODENOTCH=0/);
+});
+
+// ---- Windows (all fakes; nothing real is downloaded or executed)
+const WIN_KEY = 'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Codenotch';
+const LOCAL = 'C:\\Users\\Jo Doe\\AppData\\Local';
+const UNINST = `${LOCAL}\\Programs\\Codenotch\\Uninstall Codenotch.exe`;
+const regOut = (v, extra = {}) => ['', WIN_KEY, `    DisplayName    REG_SZ    Codenotch`, `    DisplayVersion    REG_SZ    ${v}`,
+    `    UninstallString    REG_SZ    "${UNINST}" /currentuser`, ...Object.entries(extra).map(([k, x]) => `    ${k}    REG_SZ    ${x}`), ''].join('\r\n');
+
+function winSetup({ tag = 'v1.2.0', sha = null, regVersion = null, assets, runFails = null, regAfter = '1.2.0', state, regScan = false } = {}) {
+    const dir = fs.mkdtempSync(path.join(root, 'win-'));
+    const stateFile = path.join(dir, 'home', '.agents', '.bdb-codenotch.json');
+    if (state) { fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.writeFileSync(stateFile, JSON.stringify(state)); }
+    const exeName = `Codenotch-Setup-${tag.replace(/^v/, '')}.exe`;
+    const calls = { fetch: [], run: [], reg: [] };
+    let installerRan = false;
+    const body = { tag_name: tag, assets: assets || [
+        { name: exeName, browser_download_url: `https://dl/${exeName}` },
+        { name: `${exeName}.sha256`, browser_download_url: `https://dl/${exeName}.sha256` }] };
+    const ab = (b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.length);
+    const res = (ok, st, data, buf) => ({ ok, status: st, headers: { get: () => null }, json: async () => data, arrayBuffer: async () => buf });
+    const opts = {
+        platform: 'win32', home: path.join(dir, 'home'), roots: { tmp: dir }, stateFile, interactive: false,
+        fetch: async (url) => {
+            calls.fetch.push(url);
+            if (url.includes('api.github.com')) return res(true, 200, body);
+            if (url.endsWith('.sha256')) return res(true, 200, null, ab(Buffer.from(`${sha || SHA}  ${exeName}\n`)));
+            return res(true, 200, null, ab(DMG));
+        },
+        reg: (args) => {
+            calls.reg.push(args);
+            const v = installerRan ? regAfter : regVersion;
+            if (v === null) throw new Error('ERROR: The system was unable to find the specified registry key or value.');
+            const key = args[1];
+            if (regScan) {
+                if (key.endsWith('\\Uninstall')) return `\r\n${WIN_KEY.replace('\\Codenotch', '')}\\{GUID-1}\r\n${WIN_KEY.replace('\\Codenotch', '')}\\Other\r\n`;
+                if (key.endsWith('{GUID-1}')) return regOut(v);
+                throw new Error('not found');
+            }
+            return key.endsWith('\\Codenotch') ? regOut(v) : (() => { throw new Error('not found'); })();
+        },
+        runInstaller: (exe, args, timeoutMs) => {
+            calls.run.push({ exe, args, timeoutMs });
+            if (runFails) throw runFails;
+            installerRan = true;
+        },
+        confirm: async () => true,
+    };
+    return { dir, stateFile, calls, opts };
+}
+
+test('win32: default-on success runs the installer with /S only, verifies registry, records state', async () => {
+    const c = winSetup();
+    const r = await cn.runCodenotchStep({ ...c.opts, argv: [], env: {}, interactive: false });
+    assert.strictEqual(r.status, 'installed');
+    assert.strictEqual(c.calls.run.length, 1);
+    assert.deepStrictEqual(c.calls.run[0].args, ['/S']);
+    assert.match(path.basename(c.calls.run[0].exe), /^Codenotch-Setup-1\.2\.0\.exe$/);
+    assert.deepStrictEqual({ ...readState(c.stateFile), installedAt: undefined }, { platform: 'win32', uninstallPath: UNINST, version: '1.2.0', installedAt: undefined });
+    assert.strictEqual(r.path, UNINST);
+    assert.match(cn.codenotchSummaryLine(r), /installed.*Jo Doe.*aos-uninstall/);
+    assert.deepStrictEqual(fs.readdirSync(c.dir).filter((n) => n.startsWith('aos-codenotch-')), []);
+});
+
+test('win32: opt-outs skip without any network or process', async () => {
+    for (const [argv, env] of [[[], { AOS_CODENOTCH: '0' }], [['--no-codenotch'], {}]]) {
+        const c = winSetup();
+        const r = await cn.runCodenotchStep({ ...c.opts, argv, env, interactive: false });
+        assert.strictEqual(r.status, 'opted-out');
+        assert.strictEqual(c.calls.fetch.length, 0);
+        assert.strictEqual(c.calls.run.length, 0);
+    }
+});
+
+test('win32: checksum mismatch is refused and nothing runs', async () => {
+    const c = winSetup({ sha: 'c'.repeat(64) });
+    const r = await cn.runCodenotchStep({ ...c.opts, argv: [], env: {}, interactive: false });
+    assert.strictEqual(r.status, 'checksum-mismatch');
+    assert.strictEqual(c.calls.run.length, 0);
+});
+
+test('win32: asset selection is exact first, then the single *Setup*.exe, else refused', async () => {
+    const mk = (n) => [{ name: n, browser_download_url: `https://dl/${n}` }, { name: `${n}.sha256`, browser_download_url: `https://dl/${n}.sha256` }];
+    const tolerant = winSetup({ assets: mk('Codenotch-Setup-x64.exe') });
+    assert.strictEqual((await cn.installCodenotch(tolerant.opts)).status, 'installed');
+    const two = winSetup({ assets: [...mk('A-Setup.exe'), ...mk('B-Setup.exe')] });
+    assert.strictEqual((await cn.installCodenotch(two.opts)).status, 'error');
+    const noSha = winSetup({ assets: [{ name: 'Codenotch-Setup-1.2.0.exe', browser_download_url: 'https://dl/x' }] });
+    const r = await cn.installCodenotch(noSha.opts);
+    assert.strictEqual(r.status, 'error');
+    assert.strictEqual(noSha.calls.run.length, 0);
+});
+
+test('win32: equal or newer installed version is skipped', async () => {
+    for (const v of ['1.2.0', '2.0.0']) {
+        const c = winSetup({ regVersion: v });
+        const r = await cn.installCodenotch(c.opts);
+        assert.strictEqual(r.status, 'up-to-date');
+        assert.strictEqual(c.calls.run.length, 0);
+        assert.match(cn.codenotchSummaryLine(r), /skipped/);
+    }
+});
+
+test('win32: older foreign install is kept non-interactively, recorded one is updated', async () => {
+    const foreign = winSetup({ regVersion: '1.0.0' });
+    assert.strictEqual((await cn.installCodenotch(foreign.opts)).status, 'kept-foreign');
+    assert.strictEqual(foreign.calls.run.length, 0);
+    const ours = winSetup({ regVersion: '1.0.0', state: { platform: 'win32', uninstallPath: UNINST, version: '1.0.0' } });
+    assert.strictEqual((await cn.installCodenotch(ours.opts)).status, 'updated');
+});
+
+test('win32: registry missing before install proceeds; missing after install is a failure, not recorded', async () => {
+    const c = winSetup({ regVersion: null, regAfter: null });
+    const r = await cn.installCodenotch(c.opts);
+    assert.strictEqual(r.status, 'error');
+    assert.strictEqual(c.calls.run.length, 1);
+    assert.ok(!fs.existsSync(c.stateFile));
+});
+
+test('win32: registry fallback finds the install by DisplayName', async () => {
+    const c = winSetup({ regVersion: '2.0.0', regScan: true });
+    assert.strictEqual((await cn.installCodenotch(c.opts)).status, 'up-to-date');
+});
+
+test('win32: silent installer failure and timeout are warnings, never throws', async () => {
+    const e = new Error('timed out after 300s');
+    const t = winSetup({ runFails: e });
+    const r = await cn.runCodenotchStep({ ...t.opts, argv: [], env: {}, interactive: false });
+    assert.strictEqual(r.status, 'error');
+    assert.match(r.message, /silent installer failed.*timed out/);
+    assert.match(cn.codenotchSummaryLine(r), /FAILED/);
+});
+
+test('win32: default runner maps ETIMEDOUT and non-zero exit, passes timeout and /S', () => {
+    let seen;
+    assert.throws(() => cn.runWinProgram((exe, args, o) => { seen = { exe, args, o }; return { error: { code: 'ETIMEDOUT' } }; }, 'C:\\a b\\x.exe', ['/S'], 1500), /timed out after 2s/);
+    assert.deepStrictEqual(seen.args, ['/S']);
+    assert.strictEqual(seen.o.timeout, 1500);
+    assert.throws(() => cn.runWinProgram(() => ({ status: 3 }), 'x', ['/S'], 1), /code 3/);
+    assert.doesNotThrow(() => cn.runWinProgram(() => ({ status: 0 }), 'x', ['/S'], 1));
+});
+
+test('win32: uninstall string parsing handles quotes, spaces and backslashes', () => {
+    assert.strictEqual(cn.uninstallExeFrom({ UninstallString: `"${UNINST}" /currentuser` }), UNINST);
+    assert.strictEqual(cn.uninstallExeFrom({ UninstallString: 'C:\\Program Files\\Codenotch\\uninstall.exe /S' }), 'C:\\Program Files\\Codenotch\\uninstall.exe');
+    assert.strictEqual(cn.uninstallExeFrom({ InstallLocation: `${LOCAL}\\Programs\\Codenotch` }), `${LOCAL}\\Programs\\Codenotch\\uninstall.exe`);
+});
+
+test('win32 uninstall: runs the recorded uninstaller with /S only while path and version match', () => {
+    const state = { platform: 'win32', uninstallPath: UNINST, version: '1.2.0' };
+    const mk = (reg, exists = () => true) => {
+        const dir = fs.mkdtempSync(path.join(root, 'wu-'));
+        const stateFile = path.join(dir, 's.json');
+        fs.writeFileSync(stateFile, JSON.stringify(state));
+        return { stateFile, plan: cn.planCodenotchUninstall({ stateFile, reg, exists }) };
+    };
+    const ran = [];
+    const ok = mk((a) => regOut('1.2.0'));
+    assert.strictEqual(ok.plan.action, 'remove');
+    assert.strictEqual(cn.uninstallCodenotch(ok.plan, { stateFile: ok.stateFile, runUninstaller: (e, a) => ran.push([e, a]) }), 'remove');
+    assert.deepStrictEqual(ran, [[UNINST, ['/S']]]);
+    assert.ok(!fs.existsSync(ok.stateFile));
+
+    for (const [label, m] of [['version changed', mk(() => regOut('1.3.0'))], ['registry missing', mk(() => { throw new Error('nf'); })], ['path changed', mk(() => regOut('1.2.0').replace(UNINST, 'C:\\other\\u.exe'))]]) {
+        assert.strictEqual(m.plan.action, 'keep', label);
+        assert.strictEqual(cn.uninstallCodenotch(m.plan, { stateFile: m.stateFile, runUninstaller: () => assert.fail('must not run') }), 'keep');
+        assert.ok(fs.existsSync(m.stateFile));
+    }
+    const gone = mk(() => regOut('1.2.0'), () => false);
+    assert.strictEqual(gone.plan.action, 'gone');
+    const failing = mk(() => regOut('1.2.0'));
+    assert.strictEqual(cn.uninstallCodenotch(failing.plan, { stateFile: failing.stateFile, runUninstaller: () => { throw new Error('x'); } }), 'error');
+    assert.ok(fs.existsSync(failing.stateFile));
+});
+
+test('darwin is unchanged and linux stays a no-op through the step', async () => {
+    const calls = [];
+    assert.strictEqual((await cn.runCodenotchStep({ platform: 'darwin', argv: [], env: {}, interactive: false, install: fakeInstall(calls) })).status, 'installed');
+    assert.strictEqual(await cn.runCodenotchStep({ platform: 'linux', argv: [], env: {}, interactive: false, install: fakeInstall(calls) }), null);
+    assert.strictEqual(calls.length, 1);
 });
