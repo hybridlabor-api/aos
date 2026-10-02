@@ -49,7 +49,9 @@ test('every loop template has limits, a stop condition and the safety rules', ()
     assert.match(text, /## Stop condition\n\S/, t);
     assert.match(text, /NEVER issues a GO/, t);
     assert.match(text, /NEVER types or runs `gogate`/, t);
-    assert.match(text, /existing valid grant[^\n]*or after the human typed GO/, t);
+    assert.match(text, /immediately preceding message is a literal GO or a valid grant/, t);
+    assert.match(text, /loop iteration never satisfies the first condition: STOP and report/, t);
+    assert.ok(!/after the human typed GO/.test(text), t);
     assert.match(text, /[Nn]ever issue a GO, never run or type gogate/, t);
   }
   const skill = readFileSync(join(tdir, 'SKILL.md'), 'utf8');
@@ -69,7 +71,12 @@ test('loop command has per-harness bodies, is no longer pending, and carries the
   for (const [h, body] of Object.entries(c.bodies)) {
     assert.match(body, /never issues a GO/, h);
     assert.match(body, /never types or runs `gogate`/, h);
+    assert.match(body, /immediately preceding message is a literal GO or a valid grant covers it/, h);
+    assert.match(body, /never satisfies the first condition[^.]*STOP and report/, h);
+    assert.ok(!/or the human's GO/.test(body), h);
   }
+  assert.match(c.bodies.codex, /Codex \/goal is unverified in AOS docs; confirm with `codex --help`/);
+  assert.match(readFileSync(join(tdir, 'SKILL.md'), 'utf8'), /Codex \/goal is unverified in AOS docs; confirm with `codex --help`/);
 });
 
 test('skills.sh.json has one Playbooks group with every pb-* skill and no skill listed twice', () => {

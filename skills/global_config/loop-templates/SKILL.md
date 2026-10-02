@@ -18,10 +18,10 @@ Reference prompts for `/bdb-aos:loop`. Pick a template, fill the placeholders, h
 ## Per-harness invocation
 - **Claude Code:** built-in `/loop <interval> <prompt>`; omit the interval to let the model self-pace.
 - **OpenCode:** `opencode-loop`, an opt-in package (`AOS_OPENCODE_OPTIONAL=loop`, see `docs/opencode-setup.md`). Do not schedule gated commands through its shell loop.
-- **Codex:** `/goal` with the filled template as the goal. Codex has no `/loop`.
+- **Codex:** `/goal` with the filled template as the goal. Codex has no `/loop`. Codex /goal is unverified in AOS docs; confirm with `codex --help`.
 - **agy:** unverified, no loop mechanism confirmed. Manual repeat: re-send the filled template yourself at each interval and stop at the limits.
 
 ## Rules for every loop
 - A loop prompt never issues a GO, never types or runs `gogate`, never sets a mode or grant.
-- Merge, push and publish only under an existing valid grant (scope and time fit) or after the human's GO in the session.
+- Act on a guarded step (merge, push, publish) only if the human's immediately preceding message is a literal GO or a valid grant (scope and time fit) covers the action. A loop iteration never satisfies the first condition, so it must STOP and report instead of continuing a blocked guarded step.
 - Every template carries explicit limits and a stop condition; never remove them.
