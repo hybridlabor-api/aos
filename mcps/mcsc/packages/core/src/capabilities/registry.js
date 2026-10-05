@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 export async function resolveOffer(cliId, tier, now) {
   if (cliId === 'agy') {
     try {
-      const { stdout } = await execFileAsync('agy', ['models']);
+      const { stdout } = await execFileAsync('agy', ['models'], { timeout: 15000 });
       // Expected output format: 
       // Fetching available models...
       // gemini-3.8-flash-high   Gemini 3.8 Flash (High)
@@ -58,7 +58,7 @@ export async function resolveOffer(cliId, tier, now) {
 
   if (cliId === 'opencode') {
     try {
-      const { stdout } = await execFileAsync('opencode', ['models']);
+      const { stdout } = await execFileAsync('opencode', ['models'], { timeout: 15000 });
       const lines = stdout.split('\n').map(l => l.trim());
       const opencodeFreeModels = lines.filter(l => l.startsWith('opencode/') && l.toLowerCase().includes('free'));
       

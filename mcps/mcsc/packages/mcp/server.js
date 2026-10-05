@@ -51,7 +51,7 @@ function acquireProbeLock() {
   }
 }
 
-async function getInventory() {
+async function getInventory(mayProbe) {
   const cliHealthMap = new Map();
   const missingCliIds = [];
 
@@ -64,10 +64,7 @@ async function getInventory() {
     }
   }
 
-  // The agy probe starts agy, which starts its MCP servers, mcsc included. Without these two guards
-  // that child probes again: agy -> mcsc -> agy without bound (machine froze 2026-10-06).
-  // MCSC_PROBE marks the child; the lock covers harnesses that do not pass env to MCP children.
-  if (missingCliIds.length > 0 && !process.env.MCSC_PROBE && acquireProbeLock()) {
+  if (missingCliIds.length > 0 && mayProbe) {
     try {
       const newHealthMap = await runInventory({ cliIds: missingCliIds, maxAgeMs: TTL_MS });
       for (const [cliId, health] of newHealthMap.entries()) {
@@ -76,8 +73,6 @@ async function getInventory() {
       }
     } catch (e) {
       console.error(`[mcsc-mcp] Warning: inventory run failed: ${e.message}`);
-    } finally {
-      try { fs.unlinkSync(PROBE_LOCK); } catch {}
     }
   }
 
@@ -86,7 +81,22 @@ async function getInventory() {
 
 // --- Initialization ---
 async function init() {
-  inventory = await getInventory();
+  // Every CLI started here (agy, opencode, codex) loads its own MCP servers, mcsc included, and that
+  // mcsc would repeat these startup calls: agy -> mcsc -> agy without bound (machine froze 2026-10-06).
+  // MCSC_PROBE marks those children through inherited env; the lock covers harnesses that drop env.
+  // ponytail: a session that starts while another holds the lock gets no live probe or offer table.
+  const mayProbe = !process.env.MCSC_PROBE && acquireProbeLock();
+  process.env.MCSC_PROBE = '1';
+  try {
+    await initState(mayProbe);
+  } finally {
+    delete process.env.MCSC_PROBE;
+    if (mayProbe) { try { fs.unlinkSync(PROBE_LOCK); } catch {} }
+  }
+}
+
+async function initState(mayProbe) {
+  inventory = await getInventory(mayProbe);
 
   const customRulebook = path.resolve(process.cwd(), 'rulebook.yaml');
   const defaultRulebook = path.resolve(__dirname, '../core/rulebook.default.yaml');
@@ -96,7 +106,7 @@ async function init() {
       defaultsPath: defaultRulebook,
       overridePath: fs.existsSync(customRulebook) ? customRulebook : undefined,
     });
-    offerTable = await buildOfferTable(rules, inventory, Date.now());
+    if (mayProbe) offerTable = await buildOfferTable(rules, inventory, Date.now());
   } catch (e) {
     console.error(`[mcsc-mcp] Warning: could not load rulebook from ${defaultRulebook}: ${e.message}`);
   }
@@ -330,6 +340,8 @@ async function main() {
   await init();
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  // Without this an mcsc whose harness died lives on as an orphan.
+  process.stdin.on('close', () => process.exit(0));
   console.error("MCSC MCP Server running on stdio");
 }
 
