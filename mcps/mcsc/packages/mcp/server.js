@@ -17,6 +17,7 @@ import { loadRulebook } from "../core/src/rulebook/load.js";
 import { buildOfferTable } from "../core/src/capabilities/buildOfferTable.js";
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,6 +32,25 @@ const caller = process.env.MCSC_CALLER || 'none';
 const CLI_IDS = ['agy', 'opencode', 'codex'];
 const TTL_MS = 24 * 60 * 60 * 1000;
 
+const PROBE_LOCK = path.join(homedir(), '.config', 'mcsc', 'probe.lock');
+const PROBE_LOCK_STALE_MS = 2 * 60 * 1000;
+
+function acquireProbeLock() {
+  fs.mkdirSync(path.dirname(PROBE_LOCK), { recursive: true });
+  try {
+    fs.writeFileSync(PROBE_LOCK, String(process.pid), { flag: 'wx' });
+    return true;
+  } catch {
+    try {
+      if (Date.now() - fs.statSync(PROBE_LOCK).mtimeMs < PROBE_LOCK_STALE_MS) return false;
+      fs.writeFileSync(PROBE_LOCK, String(process.pid));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 async function getInventory() {
   const cliHealthMap = new Map();
   const missingCliIds = [];
@@ -44,7 +64,10 @@ async function getInventory() {
     }
   }
 
-  if (missingCliIds.length > 0) {
+  // The agy probe starts agy, which starts its MCP servers, mcsc included. Without these two guards
+  // that child probes again: agy -> mcsc -> agy without bound (machine froze 2026-10-06).
+  // MCSC_PROBE marks the child; the lock covers harnesses that do not pass env to MCP children.
+  if (missingCliIds.length > 0 && !process.env.MCSC_PROBE && acquireProbeLock()) {
     try {
       const newHealthMap = await runInventory({ cliIds: missingCliIds, maxAgeMs: TTL_MS });
       for (const [cliId, health] of newHealthMap.entries()) {
@@ -53,6 +76,8 @@ async function getInventory() {
       }
     } catch (e) {
       console.error(`[mcsc-mcp] Warning: inventory run failed: ${e.message}`);
+    } finally {
+      try { fs.unlinkSync(PROBE_LOCK); } catch {}
     }
   }
 

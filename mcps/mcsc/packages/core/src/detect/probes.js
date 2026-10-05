@@ -102,7 +102,8 @@ const opencodeFsOwnership = async (sh) => {
 const agyMcpHeadlessLatency = async (sh) => {
   const start = Date.now();
   try {
-    await runExecFile('agy', ['--print-timeout', '20s', '-p', 'OK'], {});
+    // agy loads its MCP servers, mcsc included; MCSC_PROBE stops that child mcsc from probing agy again.
+    await runExecFile('agy', ['--print-timeout', '20s', '-p', 'OK'], { env: { ...process.env, MCSC_PROBE: '1' } });
     const duration = Date.now() - start;
     if (duration > 20000) {
       return { pass: false, evidence: `latency ${duration}ms exceeds 20s budget`, reason: 'degrade' };
