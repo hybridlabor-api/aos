@@ -95,3 +95,15 @@ test("nodeCommand: a non-node host binary (OpenCode) falls back to `node`", asyn
   assert.equal(nodeCommand("C:\\Program Files\\nodejs\\node.exe"), "C:\\Program Files\\nodejs\\node.exe");
   assert.equal(nodeCommand("/Users/x/.opencode/bin/opencode"), "node");
 });
+
+test("codex mode: sidecar started with --mode codex --thread <session id>; missing thread or unknown mode is refused", () => {
+  const calls = [];
+  const spawnImpl = (cmd, args, opts) => { calls.push({ cmd, args, opts }); return { pid: 9, unref: () => {} }; };
+  const r = ensureSidecar({ harness: "codex", sessionId: "01a11275-5405-78a1", parentPid: 77, mode: "codex", thread: "01a11275-5405-78a1", env: {}, spawnImpl, binPath: "/b/aos-a2a.mjs" });
+  assert.equal(r.started, true);
+  assert.equal(r.name, "codex-01a11275");
+  assert.deepEqual(calls[0].args, ["/b/aos-a2a.mjs", "serve", "--name", "codex-01a11275", "--harness", "codex", "--mode", "codex", "--parent-pid", "77", "--thread", "01a11275-5405-78a1"]);
+  assert.equal(ensureSidecar({ harness: "codex", sessionId: "x1", parentPid: 1, mode: "codex", env: {}, spawnImpl }).skipped, "error");
+  assert.equal(ensureSidecar({ harness: "claude", sessionId: "x2", parentPid: 1, mode: "bogus", env: {}, spawnImpl }).skipped, "error");
+  assert.equal(calls.length, 1, "no spawn for the refused calls");
+});
