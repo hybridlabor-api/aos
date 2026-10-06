@@ -20,7 +20,8 @@
     "aos-store": "bin/aos-store.mjs",
     "aos-doctor": "bin/aos-doctor.mjs",
     "aos-uninstall": "bin/aos-uninstall.mjs",
-    "aos-acp": "bin/aos-acp.mjs"
+    "aos-acp": "bin/aos-acp.mjs",
+    "aos-gateway": "bin/aos-gateway.mjs"
   },
   "scripts": {
     "validate": "node scripts/validate-skills.mjs",
