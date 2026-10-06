@@ -79,3 +79,15 @@ test("settings.json registers both hooks and the two allow rules", () => {
   assert.ok(s.permissions.allow.includes("Bash(aos-a2a reply:*)"));
   assert.ok(s.permissions.allow.includes("Bash(aos-a2a send:*)"));
 });
+
+test("stop with stop_hook_active=true and a pending message exits 0, claims nothing, then blocks once", () => {
+  const { env, bus } = setup();
+  send(env, "task3");
+  const second = run("stop", env, { stop_hook_active: true });
+  assert.equal(second.status, 0);
+  assert.equal(second.stderr, "");
+  const files = readdirSync(join(bus, "a2a", "sess-a"));
+  assert.ok(files.some((f) => f.endsWith(".json")), "message must stay pending (not claimed)");
+  assert.ok(!files.some((f) => f.endsWith(".delivered")), "nothing delivered under stop_hook_active");
+  assert.equal(run("stop", env).status, 2, "the next normal stop hands it over once");
+});
