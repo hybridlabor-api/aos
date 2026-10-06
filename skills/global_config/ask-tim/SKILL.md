@@ -36,7 +36,7 @@ For a bigger or fuzzier idea, `/bdbrainstorm` runs the same interview inside a m
 
 **4. Build, then review adversarially.** The pipelines invoke their own build and review nodes — you do not call these by hand. Reviewer's pass is a correctness check against the plan's contract; `godmode-shipping`'s gate is mechanical (lint, typecheck, tests). Two different checks, deliberately not merged.
 
-Reach for `test-driven-development` or `tdd-workflow` on their own when you want one behaviour built test-first without a whole pipeline, and `git-pr-review` when reviewing a branch or PR against a fixed point.
+Reach for `test-driven-development` on their own when you want one behaviour built test-first without a whole pipeline, and `git-pr-review` when reviewing a branch or PR against a fixed point.
 
 **Forcing a specific skill into a run:** `--skill=<name>` on any startcycle variant makes it a hard requirement — for a private skill of your own no node would otherwise reach for. Validated before the run starts; a name that does not resolve halts rather than proceeding without it.
 
@@ -261,7 +261,7 @@ Use these for raw problem solving and code hygiene.
 
 * **Debugging**: `debugger` (general errors), `systematic-debugging` (structured triage before fixing).
 * **Hygiene**: `simplify-code` (diff review for clarity).
-* **TDD**: `tdd-workflow`.
+* **TDD**: `test-driven-development`.
 
 ### Overlap: Language Expertise
 * **`typescript-pro`**: Advanced types, generics, strict type safety, enterprise patterns.
