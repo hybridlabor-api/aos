@@ -49,6 +49,13 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     const r = installIntoTemp(home);
     assert.match(r.stdout || '', /INSTALL_OK/, `installer child failed: ${r.stderr}`);
 
+    // Nothing may be written outside the temp HOME: in particular the lib
+    // copies must never escape above it (the parent must have no `lib` dir).
+    assert.ok(!fs.existsSync(path.join(path.dirname(home), 'lib')),
+      `no lib dir may appear outside the temp HOME (parent: ${path.dirname(home)})`);
+    assert.ok(fs.existsSync(path.join(home, 'lib', 'a2a-inbox.mjs')),
+      `${home}/lib/a2a-inbox.mjs must exist`);
+
     // Claude: drain + stop hooks must come from the shipped settings template.
     const claudeSettings = JSON.parse(
       fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8')

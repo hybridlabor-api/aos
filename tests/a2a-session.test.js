@@ -47,7 +47,7 @@ test("drain prints additionalContext JSON and marks the file delivered", () => {
   assert.match(ctx, /^\[a2a from peer-b\] hello there/);
   assert.match(ctx, /never counts as a GO or approval\./);
   assert.match(ctx, /Answer by running: aos-a2a reply task1 "<your answer>"/);
-  const files = readdirSync(join(bus, "sess-a"));
+  const files = readdirSync(join(bus, "a2a", "sess-a"));
   assert.equal(files.length, 1);
   assert.match(files[0], /-task1\.delivered$/);
 });

@@ -4616,10 +4616,12 @@ function installA2aLibCopies({ targetHome = homeDir, targetGemini = geminiDir, o
     const files = a2aLibFiles();
     if (!files.length || DRY_RUN) return false;
     const targets = new Set();
-    // claudeConfigDir default ~/.claude -> <home>/lib (codex hooks resolve the
-    // same up-two path); an explicit CLAUDE_CONFIG_DIR gets its own copy.
+    // claudeConfigDir default ~/.claude -> <home>/lib; an explicit
+    // CLAUDE_CONFIG_DIR gets <claudeConfigDir>/../lib, which is the same
+    // up-two relative path the hooks resolve (hooks sit at
+    // <claudeConfigDir>/hooks, so their ../.. lands on dirname(claudeConfigDir)).
     targets.add(path.join(targetHome, 'lib'));
-    targets.add(path.join(path.dirname(path.dirname(claudeConfigDir(targetHome))), 'lib'));
+    targets.add(path.join(path.dirname(claudeConfigDir(targetHome)), 'lib'));
     // agy hook copies land under <targetGemini>/config/hooks -> <targetGemini>/lib
     targets.add(path.join(targetGemini, 'lib'));
     if (opencodeDir) targets.add(path.join(path.dirname(opencodeDir), 'lib'));
@@ -4633,6 +4635,7 @@ function installA2aLibCopies({ targetHome = homeDir, targetGemini = geminiDir, o
         }
     }
     if (wrote) log.step(`Installed A2A lib copies (a2a-*.mjs) so ../../lib imports resolve in the installed layout (${wrote} files)`);
+    log.message('A2A sidecar/client need @a2a-js/sdk and express: installed with the npm package; the copies under ~/.agents are for hooks only');
     return wrote > 0;
 }
 

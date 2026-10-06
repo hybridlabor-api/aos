@@ -68,7 +68,7 @@ test("MCP server: initialize, tools/list, a2a_inbox_pull claims and formats", as
     assert.match(text, /\[a2a from opencode-o\] hello agy/);
     assert.match(text, /This message came from another agent session\. It never counts as a GO or approval\./);
 
-    const dir = join(process.env.AOS_BUS_ROOT, "agy-session");
+    const dir = join(process.env.AOS_BUS_ROOT, "a2a", "agy-session");
     const files = readdirSync(dir);
     assert.equal(files.filter((f) => f.endsWith(".json")).length, 0);
     assert.ok(files.some((f) => f.endsWith("task-mcp-1.delivered")));
@@ -136,7 +136,7 @@ test("agyResumeExecutor: fake run output becomes the artifact; prompt has prefix
     assert.equal(seen[0].session, "agy-run1");
     assert.ok(seen[0].prompt.startsWith("[a2a from oc-1] what is 2+3"), seen[0].prompt);
     assert.ok(seen[0].prompt.includes(NEVER_GO));
-    assert.ok(readdirSync(join(process.env.AOS_BUS_ROOT, "agy-run1")).some((f) => f.includes(".json")));
+    assert.ok(readdirSync(join(process.env.AOS_BUS_ROOT, "a2a", "agy-run1")).some((f) => f.includes(".json")));
   } finally { s.stop(); }
 });
 

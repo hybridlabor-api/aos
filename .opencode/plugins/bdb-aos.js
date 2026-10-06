@@ -19,7 +19,7 @@ import { existsSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { deliverA2a } from '../../lib/a2a-oc.mjs';
-import { ensureSidecar } from '../../lib/a2a-session.mjs';
+import { ensureSidecar, sessionName } from '../../lib/a2a-session.mjs';
 // Decision logic lives in the shared hooks: installed copy next to this file
 // (plugins/aos-hooks), else the repo's .claude/hooks. existsSync, not try/catch,
 // so a broken installed hook fails loudly instead of silently falling back.
@@ -227,7 +227,7 @@ export default async function bdbAosPlugin(input) {
   // ponytail: entries live for the process lifetime (a few bytes per session); add cleanup if sessions ever pile up.
   const sessions = new Map();
   const sess = (id) => {
-    if (!sessions.has(id)) sessions.set(id, { prompt: '', parentID: null, identitySent: false });
+    if (!sessions.has(id)) sessions.set(id, { prompt: '', parentID: null, identitySent: false, a2aName: null });
     return sessions.get(id);
   };
   // aos-bus: bus name -> sessionID of the root session that owns it.
@@ -251,8 +251,12 @@ export default async function bdbAosPlugin(input) {
       }
       if (parentID) return;
       const name = bus.registerSession({ name: process.env.AOS_SESSION_NAME || id, sessionID: id, cwd: directory });
-      // WP-HOOK: root sessions get one detached A2A sidecar; nothing here is fatal.
-      try { ensureSidecar({ harness: 'opencode', sessionId: id, parentPid: process.pid }); } catch {}
+      // L3: the A2A sidecar and deliverA2a must use the SAME name (sessionName of lib/a2a-session.mjs),
+      // not the aos-bus name — otherwise messages written for the sidecar name never reach OpenCode.
+      try {
+        s.a2aName = sessionName({ harness: 'opencode', sessionId: id, env: process.env });
+        ensureSidecar({ harness: 'opencode', sessionId: id, parentPid: process.pid, env: process.env });
+      } catch {}
       busNames.set(name, id);
     } catch (e) {
       console.error(`[aos-bus] registration failed: ${e?.message}`);
@@ -317,7 +321,8 @@ export default async function bdbAosPlugin(input) {
           }
         }
         sess(sessionID).prompt = '';
-        try { await deliverA2a(input.client, sessionID, name, directory); } catch {}
+        const a2aName = sess(sessionID).a2aName;
+        if (a2aName) { try { await deliverA2a(input.client, sessionID, a2aName, directory); } catch {} }
       }
     } catch {} finally { polling = false; }
   // ponytail: 1 s poll; fs.watch if latency matters. A wake turn is awaited, so it delays later messages until it ends.
