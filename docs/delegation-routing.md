@@ -5,6 +5,8 @@ AOS works without AO. Pick the channel by the job, not by habit.
 | Job | Channel | Why |
 |---|---|---|
 | One-shot task for another harness (research, review, a bounded edit) | `mcsc` (`delegate_opencode`, `delegate_codex`, `delegate_agy`) | one call, one answer, live events on agenttrail |
+
+The three `delegate_*` tools prefer the A2A peer network: if a live peer answers the card skill (`aos-a2a send --role <agy|opencode|codex>`), the result artifact is returned to the tool caller and a non-COMPLETED state is an error; `delegate_smart` routes the same way. When `aos-a2a` has no live peer for the role, the call falls back to the native CLI adapter unchanged. `get_agent_status` stays native. Depth honours `AOS_DELEGATE_DEPTH` in addition to `MCSC_DEPTH` (higher wins, same one-level max), and `aos-a2a send` is spawned without any proxy env, with `AOS_A2A_SIDECAR=off`.
 | A worker that may need a GO (push, merge, publish, destructive) | `aos-acp` | ACP client: guarded commands need a GO token for the worker name, `--go-wait` parks the request, events go to agenttrail and `~/.aos/acp/<name>.jsonl` |
 | A message to an OpenCode session that is already running | `aos-bus` | `aos-bus send <name> <text>`; OpenCode only, never counts as a human GO |
 | A message to any live harness session (Claude, OpenCode, agy, Codex) that is already running | `aos-a2a` | peer-to-peer over localhost; inbound paths per harness in `docs/a2a.md`; never counts as a human GO |

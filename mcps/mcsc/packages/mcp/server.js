@@ -11,10 +11,11 @@ import { getCached, setCached } from "../core/src/detect/cache.js";
 import { delegate as agyDelegate } from "../core/src/adapters/agy.js";
 import { delegate as opencodeDelegate } from "../core/src/adapters/opencode.js";
 import { delegate as codexDelegate } from "../core/src/adapters/codex.js";
-import { depthExceeded } from "../core/src/depth.js";
+import { MAX_DEPTH, depthExceeded } from "../core/src/depth.js";
 import { decide } from "../core/src/rulebook/resolve.js";
 import { loadRulebook } from "../core/src/rulebook/load.js";
 import { buildOfferTable } from "../core/src/capabilities/buildOfferTable.js";
+import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { homedir } from 'node:os';
@@ -31,6 +32,97 @@ let offerTable = {};
 const caller = process.env.MCSC_CALLER || 'none';
 const CLI_IDS = ['agy', 'opencode', 'codex'];
 const TTL_MS = 24 * 60 * 60 * 1000;
+
+// --- A2A routing (WP-MCSC): delegate_* prefer a live aos-a2a peer for the role,
+// falling back to the native CLI adapter when aos-a2a reports no live peer.
+const A2A_TIMEOUT_MS = 600 * 1000;
+const A2A_NO_PEER = /no live registry entry|no token for|A2A SDK missing|usage: aos-a2a send/;
+const PROXY_KEYS = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy'];
+
+function stripProxyEnv(base) {
+  const env = { ...base };
+  for (const k of PROXY_KEYS) delete env[k];
+  env.NO_PROXY = '127.0.0.1,localhost,::1';
+  env.no_proxy = env.NO_PROXY;
+  // Fork-bomb regression: a worker we spawn never starts an A2A sidecar.
+  env.AOS_A2A_SIDECAR = 'off';
+  return env;
+}
+
+// AOS_DELEGATE_DEPTH is the new depth knob (read by the A2A client too); MCSC_DEPTH
+// is still honoured. Higher wins, same one-level max as before.
+function aosDepthExceeded() {
+  const n = Number.parseInt(process.env.AOS_DELEGATE_DEPTH ?? '', 10);
+  return (Number.isInteger(n) && n > 0 ? n : 0) >= MAX_DEPTH;
+}
+
+function a2aBytes(text) {
+  const parts = (Array.isArray(text.artifacts) ? text.artifacts : [])
+    .map((a) => (a && typeof a.text === 'string' ? a.text : ''))
+    .filter((t) => t.length > 0);
+  return parts.join('\n\n') || (typeof text.statusMessage === 'string' ? text.statusMessage : '');
+}
+
+/**
+ * Send the prompt to a live A2A peer holding the role skill.
+ * Returns { exit, output } like the native adapters, or null when
+ * aos-a2a has no live peer for the role (caller falls back to native).
+ */
+async function a2aDelegate(role, req) {
+  const prompt = req.prompt || '';
+  return new Promise((resolve, reject) => {
+    let child;
+    const settled = (value) => {
+      if (req.signal && req.signal.aborted) return;
+      resolve(value);
+    };
+    child = execFile('aos-a2a',
+      ['send', '--role', role, '--from', `mcsc-${process.pid}`, '--timeout', String(Math.floor(A2A_TIMEOUT_MS / 1000)), prompt],
+      { env: stripProxyEnv(process.env), timeout: A2A_TIMEOUT_MS, maxBuffer: 50 * 1024 * 1024 },
+      (err, stdout, stderrOut) => {
+        const stderr = String(stderrOut || '');
+        if (req.signal && req.signal.aborted) {
+          const e = new Error();
+          e.name = 'AbortError';
+          reject(e);
+          return;
+        }
+        if (err && (err.code === 'ENOENT' || A2A_NO_PEER.test(stderr))) {
+          settled(null);
+          return;
+        }
+        if (err && !stdout) {
+          settled({ exit: 1, output: (stderr || err.message).trim() });
+          return;
+        }
+        let sent;
+        try {
+          sent = JSON.parse(String(stdout));
+        } catch {
+          settled({ exit: 1, output: (stderr || 'aos-a2a returned unparseable output').trim() });
+          return;
+        }
+        const text = a2aBytes(sent);
+        if (sent.state !== 'TASK_STATE_COMPLETED') {
+          settled({ exit: 1, output: `A2A task ended in state ${sent.state}: ${text}` });
+          return;
+        }
+        settled({ exit: 0, output: text });
+      });
+    if (req.signal) {
+      const onAbort = () => { if (child) child.kill('SIGKILL'); };
+      if (req.signal.aborted) onAbort();
+      else req.signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}
+
+async function delegateRouted(role, req, nativeDelegate) {
+  const viaA2a = await a2aDelegate(role, req);
+  if (viaA2a) return viaA2a;
+  return nativeDelegate(req);
+}
+
 
 const PROBE_LOCK = path.join(homedir(), '.config', 'mcsc', 'probe.lock');
 const PROBE_LOCK_STALE_MS = 2 * 60 * 1000;
@@ -236,7 +328,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 // --- Tool Execution ---
 server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   const { name, arguments: args = {} } = request.params;
-  if (depthExceeded()) {
+  if (depthExceeded() || aosDepthExceeded()) {
     return {
       content: [{ type: "text", text: "Delegation refused: MCSC_DEPTH limit reached (one level of delegation, like a fork). Do the task yourself." }],
       isError: true,
@@ -258,15 +350,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
 
     switch (name) {
       case "delegate_agy":
-        result = await agyDelegate(req);
+        result = await delegateRouted('agy', req, agyDelegate);
         break;
 
       case "delegate_opencode":
-        result = await opencodeDelegate(req);
+        result = await delegateRouted('opencode', req, opencodeDelegate);
         break;
 
       case "delegate_codex":
-        result = await codexDelegate(req);
+        result = await delegateRouted('codex', req, codexDelegate);
         break;
 
       case "delegate_smart": {
@@ -287,13 +379,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
 
         switch (decision.cliId) {
           case 'agy':
-            result = await agyDelegate(req);
+            result = await delegateRouted('agy', req, agyDelegate);
             break;
           case 'opencode':
-            result = await opencodeDelegate(req);
+            result = await delegateRouted('opencode', req, opencodeDelegate);
             break;
           case 'codex':
-            result = await codexDelegate(req);
+            result = await delegateRouted('codex', req, codexDelegate);
             break;
           case 'native':
             throw new Error("Task requires native handling by the current orchestrator. Do not use delegate tools for this.");
