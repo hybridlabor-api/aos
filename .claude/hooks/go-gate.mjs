@@ -411,6 +411,56 @@ function pushScopes(args, unsafe, protectedFor, repo = null) {
   return out.length ? out : ["push-feature"];
 }
 
+// A `gh api` write. Ones that move or write a protected branch are push-main: a ref update or
+// create (`git/refs/heads/<b>`, `git/refs` with ref=), branch protection and rename
+// (`branches/<b>/...`), `merges` (base), and `contents/<path>` PUT/DELETE (branch, default branch
+// otherwise). The branch must be PROVEN non-protected (a literal in the path or in a -f/-F field);
+// a placeholder, variable, missing field or --input body is push-main. Other writes: github-write.
+const GH_WRITE = new Set(["POST", "PATCH", "PUT", "DELETE"]);
+function ghApiScopes(args, protectedFor) {
+  let method = "", input = false, endpoint = "";
+  const fields = new Map();
+  const addField = (kv = "") => { const i = kv.indexOf("="); if (i > 0) fields.set(kv.slice(0, i), kv.slice(i + 1)); };
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === "-X" || t === "-x" || t === "--method") method = (args[++i] ?? "").toUpperCase();
+    else if (/^-[Xx]./.test(t)) method = t.slice(2).toUpperCase();
+    else if (/^--method=/.test(t)) method = t.slice(9).toUpperCase();
+    else if (/^(?:-f|-F|--field|--raw-field)$/.test(t)) addField(args[++i]);
+    else if (/^-[fF]./.test(t)) addField(t.slice(2));
+    else if (/^--(?:field|raw-field)=/.test(t)) addField(t.slice(t.indexOf("=") + 1));
+    else if (t === "--input") { input = true; i++; }
+    else if (/^--input=/.test(t)) input = true;
+    else if (/^(?:-H|--header|-q|--jq|-t|--template|--hostname|--cache|-p|--preview)$/.test(t)) i++;
+    else if (t.startsWith("-")) continue;
+    else if (!endpoint) endpoint = t;
+  }
+  const write = GH_WRITE.has(method) || (method === "" && (fields.size > 0 || input));
+  if (!write) return [];
+  const m = /^repos\/[^/]+\/[^/]+\/(.+)$/.exec(endpoint.replace(/^https?:\/\/[^/]+\//, "").replace(/^\/+/, "").replace(/[?#].*$/, ""));
+  if (!m) return ["github-write"];
+  const p = m[1], prot = protectedFor("");
+  const bad = (name) => {
+    if (!name) return true;
+    let n = name;
+    try { n = decodeURIComponent(n); } catch { return true; }
+    return /[$`{}*\\\u0004\u0005]/.test(n) || n.startsWith("-") || n.startsWith(".") || /^head$/i.test(n) || isProtected(n.replace(/^refs\/heads\//, ""), prot);
+  };
+  let q;
+  if ((q = /^git\/refs\/heads\/(.+)$/.exec(p))) return bad(q[1]) ? ["push-main"] : ["github-write"];
+  if (/^git\/refs\/(?:tags\/.+)$/.test(p)) return ["github-write"];
+  if (/^git\/refs\/?$/.test(p)) {
+    const ref = fields.get("ref");
+    if (ref === undefined || /^@/.test(ref)) return ["push-main"];
+    if (/^refs\/tags\//.test(ref)) return ["github-write"];
+    return /^refs\/heads\/./.test(ref) && !bad(ref) ? ["github-write"] : ["push-main"];
+  }
+  if ((q = /^branches\/([^/]+)(?:\/|$)/.exec(p))) return bad(q[1]) ? ["push-main"] : ["github-write"];
+  if (p === "merges") return bad(fields.get("base")) ? ["push-main"] : ["github-write"];
+  if (/^contents\/./.test(p) && (method === "PUT" || method === "DELETE")) return bad(fields.get("branch")) ? ["push-main"] : ["github-write"];
+  return ["github-write"];
+}
+
 function ghParts(tok) {
   let i = 1;
   for (;;) {
@@ -508,10 +558,11 @@ export function classify(seg, protectedFor = staticResolver) {
     if (a === "release" && /^(?:edit|delete)$/.test(b)) return ["github-write"];
     if (a === "issue" && /^(?:create|comment)$/.test(b)) return ["github-write"];
     if (a === "repo" && /^(?:create|edit|delete)$/.test(b)) return ["github-write"];
+    if (a === "repo" && b === "sync") return ["push-main"]; // updates a branch (the default one unless -b is given)
     if (a === "api") {
       const s = [b, ...rest].join(" ");
       if (b === "graphql" && !/mutation/i.test(s) && !/(?:-X|--method)/i.test(s)) return [];
-      if (/(?:^|\s)(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b/i.test(s) || /(?:^|\s)(?:-[fF]|--field|--raw-field|--input)/.test(s)) return ["github-write"];
+      if (/(?:^|\s)(?:-[Xx]\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b/i.test(s) || /(?:^|\s)(?:-[fF]|--field|--raw-field|--input)/.test(s)) return ghApiScopes([b, ...rest], protectedFor);
     }
     return [];
   }
@@ -533,7 +584,7 @@ function catchAll(tok, seg, opaque = false) {
     // `npm view|info|show|v <pkg> version` only reads: its subcommand is not publish/version.
     const sub = w.slice(i + 1).find((x) => !x.startsWith("-"));
     if ((PM.test(w[i]) || w[i] === "npx") && !/^(?:view|info|show|v)$/.test(sub ?? "") && after(i, /^(?:publish|version)$/)) return true;
-    if (w[i] === "gh" && after(i, /^(?:merge|create|delete|edit|comment|close|review|api)$/)) return true;
+    if (w[i] === "gh" && after(i, /^(?:merge|create|delete|edit|comment|close|review|api|sync)$/)) return true;
     if (/^(?:np|release-it|semantic-release)$/.test(w[i]) || (w[i] === "changeset" && after(i, /^publish$/))) return true;
     if (w[i] === "rm" && w.slice(i + 1).some((x) => /^-[a-zA-Z]*[rR]/.test(x) || x === "--recursive")) return true;
   }
@@ -708,6 +759,7 @@ const osHome = () => {
 };
 const pathSegs = (s) => String(s ?? "").split("/").filter((x) => x && x !== ".");
 const GLOB = /[*?{}[\]]/;
+const WILD_TAIL = /^(?:[.*?]*[*?][.*?]*|\.\[[^\]]*\]\*)$/;
 
 // What a path is relative to the home directory, in every spelling (shell variables, ~, ~user,
 // /Users|/home|/root, C:\Users, the real home from the OS user database):
@@ -723,29 +775,32 @@ export function homeKind(p) {
   if (s === "/" || s === "/*") return { kind: "root" };
   if (/(?:^|\/)\.aos\/(?:gate|go)(?:\/|$)/.test(s)) return { kind: "state" };
   const child = (name, real) => (GLOB.test(name) ? { kind: "glob" } : { kind: "child", name, real });
+  // `<top-level>/*`, `<top-level>/.*`, `.[!.]*`: a wildcard-only tail empties a top-level directory of
+  // home. `*.log`, `{a,b}` and anything deeper (`~/Documents/sub/*`) are ordinary paths.
+  const emptied = (r, i) => (r.length === i + 2 && !GLOB.test(r[i]) && WILD_TAIL.test(r[i + 1]) ? { kind: "emptied" } : null);
   let m = HOME_PATH.exec(s);
   if (m) {
     const r = pathSegs(m[1]);
     if (r.includes("..") || r.length === 0) return { kind: "home" };
-    return r.length === 1 ? child(r[0], join(gateCtx.home || homedir(), r[0])) : null;
+    return r.length === 1 ? child(r[0], join(gateCtx.home || homedir(), r[0])) : emptied(r, 0);
   }
   m = /^(?:[A-Za-z]:)?\/(?:Users|home)(?:\/(.*))?$/i.exec(s);
   if (m) {
     const r = pathSegs(m[1]);
     if (r.includes("..") || r.length <= 1) return { kind: "home" };
-    return r.length === 2 ? child(r[1], /^\//.test(s) ? s : "") : null;
+    return r.length === 2 ? child(r[1], /^\//.test(s) ? s : "") : emptied(r, 1);
   }
   m = /^\/root(?:\/(.*))?$/.exec(s);
   if (m) {
     const r = pathSegs(m[1]);
     if (r.includes("..") || r.length === 0) return { kind: "home" };
-    return r.length === 1 ? child(r[0], s) : null;
+    return r.length === 1 ? child(r[0], s) : emptied(r, 0);
   }
   const rh = gateCtx.realHome ?? osHome();
   if (rh && (s === rh || s.startsWith(rh + "/"))) {
     const r = pathSegs(s.slice(rh.length));
     if (r.includes("..") || r.length === 0) return { kind: "home" };
-    return r.length === 1 ? child(r[0], s) : null;
+    return r.length === 1 ? child(r[0], s) : emptied(r, 0);
   }
   return null;
 }
@@ -768,7 +823,7 @@ function homeVerdict(p, op = {}) {
   if (!k) return null;
   if (k.kind === "root" || k.kind === "home" || k.kind === "state") return "hard";
   const strong = op.recursive || op.move;
-  if (k.kind === "glob") return strong ? "hard" : "go";
+  if (k.kind === "glob" || k.kind === "emptied") return strong ? "hard" : "go";
   return k.real && entryType(k.real) === "file" ? "go" : strong ? "hard" : "go";
 }
 
@@ -1184,7 +1239,8 @@ function scopesOf(orig, protectedFor) {
   // under .git/) or the command assigns HOME/XDG_CONFIG_HOME/GIT_* anywhere. A tainted bare or
   // plain-name push is push-main; an explicit src:dst is still read on its own.
   const view = commandView(orig).text;
-  const marked = view.replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " "));
+  // gh's {owner}/{repo}/{branch} placeholders must not be cut at the braces (a placeholder is an unknown name)
+  const marked = view.replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " ")).replace(/(?<!\$)\{([a-z_]+)\}/g, "\u0004$1\u0005");
   const st = { cwd: gateCtx.cwd || process.cwd(), taint: ENV_CHANGE.test(view) };
   const stack = [];
   const outerCwd = segCwd, outerTaint = segTaint;
