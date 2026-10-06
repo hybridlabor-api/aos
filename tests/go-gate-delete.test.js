@@ -105,7 +105,7 @@ const GUARDED = [
     `perl -MFile::Path -e "remove_tree('out')"`,
     'Remove-Item -Recurse -Force .\\dist', 'rm -r dist',
     'cmd /c "rd /s /q dist"', 'rd /s /q dist', 'rmdir /s dist',
-    'rm -rf ~/dev/x/build', 'rm -rf $HOME/dev/x/build', 'rm -rf /Users/timrennings/dev/x/build',
+    'rm -rf ~/dev/x/build', 'rm -rf $HOME/dev/x/build', 'rm -rf /Users/alice/dev/x/build',
     "bash -c 'rm -rf build'", 'sh -c "rm -rf build"', 'find . -name x | xargs rm -rf',
     'git clean -fdx',
     // S1: a bare * is only hard when the working directory is home-level or /
@@ -121,7 +121,7 @@ const HARD = [
     `node -e 'require("fs").rmSync(process.env.HOME,{recursive:true,force:true})'`,
     `python3 -c "import shutil, pathlib; shutil.rmtree(pathlib.Path.home())"`,
     'rm -rf ~', 'rm -rf ~/', 'rm -rf $HOME', 'rm -rf "$HOME"', 'rm -rf "${HOME}"', 'rm -rf ${HOME}', 'rm -rf ~/.config', 'rm -rf $HOME/.claude',
-    'rm -rf /Users/timrennings', 'rm -rf /Users/timrennings/Library', 'rm -rf /home/tim', 'rm -rf /home/tim/.ssh',
+    'rm -rf /Users/alice', 'rm -rf /Users/alice/Library', 'rm -rf /home/alice', 'rm -rf /home/alice/.ssh',
     'find ~ -delete', 'find $HOME -maxdepth 1 -delete', 'rm -rf /', 'rm -rf /*',
     // relative targets resolve against the tracked cwd
     'cd ~ && rm -rf .', 'cd ~ && rm -rf ./*', 'cd $HOME; rm -rf ./', 'cd ~ && find . -delete', 'cd ~; rm -rf *', 'cd /; rm -rf *',
@@ -130,7 +130,7 @@ const HARD = [
     'H=$HOME; rm -rf $H', 'x=~; rm -rf "$x"', 'export D=$HOME/.config; rm -rf $D', 'a=$HOME; b=$a; rm -rf "${b}"',
     'rm -rf $(echo ~)', 'rm -rf "$(echo $HOME)"', 'cd ~ && rm -rf $(pwd)', 'cd ~ && rm -rf "$PWD"', 'rm -rf `echo ~`', 'echo "$(rm -rf ~)"',
     // ~user and parameter-expansion forms of HOME
-    'rm -rf ~timrennings', 'rm -rf ~root', 'rm -rf ~timrennings/.config', 'rm -rf ${HOME:-x}', 'rm -rf ${HOME:?}', 'rm -rf ${HOME%/}', 'rm -rf "${HOME:-/nonexistent}/.ssh"',
+    'rm -rf ~alice', 'rm -rf ~root', 'rm -rf ~alice/.config', 'rm -rf ${HOME:-x}', 'rm -rf ${HOME:?}', 'rm -rf ${HOME%/}', 'rm -rf "${HOME:-/nonexistent}/.ssh"',
     // moving away or syncing over a home-level path
     'mv ~ /tmp/x', 'mv ~/.ssh /tmp/x', 'mv ~/* /tmp', 'rsync -a --delete /tmp/empty/ ~/', 'rsync -a --delete-after /tmp/empty/ $HOME/.config',
     'chmod -R 000 ~', 'chmod -R 777 $HOME/.ssh', 'chown -R nobody ~', 'rimraf ~', 'npx rimraf ~/.config', 'npx rimraf $HOME',
@@ -138,7 +138,7 @@ const HARD = [
     'rm ~/.aos/gate/s1.block', 'rm -rf ~/.aos/go', `python3 -c "import os; os.remove(os.path.expanduser('~/.aos/gate/s1.block'))"`,
     `node -e "require('fs').unlinkSync(require('os').homedir()+'/.aos/gate/s1.block')"`,
     'bash -c "rm -rf ~"', "sh -c 'rm -rf $HOME/.ssh'", 'sudo rm -rf ~', '(rm -rf ~)', 'true && rm -rf ~',
-    'Remove-Item -Recurse $env:USERPROFILE', 'Remove-Item -Recurse -Force $env:HOME', 'rd /s /q C:\\Users\\tim', 'rd /s /q C:\\Users\\tim\\AppData',
+    'Remove-Item -Recurse $env:USERPROFILE', 'Remove-Item -Recurse -Force $env:HOME', 'rd /s /q C:\\Users\\alice', 'rd /s /q C:\\Users\\alice\\AppData',
     'rm -rf %USERPROFILE%',
     `node -e "require('fs').rmSync(require('os').homedir(),{recursive:true})"`,
     `node -e "require('fs').rmSync(require('path').join(require('os').homedir(),'.config'),{recursive:true})"`,
@@ -151,7 +151,7 @@ const HARD = [
     `perl -MFile::Path -e "rmtree(\\$ENV{HOME})"`,
     `node -e "require('child_process').execSync('rm -rf ~')"`,
     `python3 -c "import os; os.system('rm -rf ~')"`,
-    `python3 -c "import subprocess; subprocess.run(['rm','-rf','/Users/timrennings'])"`,
+    `python3 -c "import subprocess; subprocess.run(['rm','-rf','/Users/alice'])"`,
     'python3 - <<E\nimport shutil,pathlib; shutil.rmtree(pathlib.Path.home())\nE',
     "node - <<'E'\nrequire('fs').rmSync(process.env.HOME,{recursive:true})\nE",
     'bash <<E\nrm -rf ~\nE',
