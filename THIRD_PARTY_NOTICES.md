@@ -308,6 +308,9 @@ dependency.
 ## BuilderIO/skills
 
 <https://github.com/BuilderIO/skills> — MIT. Copyright (c) 2026 Builder.io.
+Ported from upstream `main` at commit `530d9eee0453be9672960ef7b0a265c949cd8b08`
+(2026-10-03). Adapted: AOS safety rules / GO gate added, frontmatter
+category+source.
 
 Eight skills are adapted under `skills/global_config/`: `read-the-damn-docs`, `stay-within-limits`, `quick-recap`, `plan-arbiter`, `factory-human-digest`, `factory-collect`, `factory-lookback`, and `factory-review-prs`. The four Factory skills and `plan-arbiter` have `installer-group` dropped and `category`/`source` added; in `factory-collect`, `factory-lookback` and `factory-review-prs` reply, close, approve, merge and publish actions are reduced to drafts or readiness reports that need the user's GO, and all of them carry an "AOS safety rules" section. `plan-arbiter` drops `agents/openai.yaml` and adds an AOS section on double plans. `stay-within-limits` and `quick-recap` are carried over with `category:` and `source:` added; `stay-within-limits` pins `ccusage` to 20.0.26 instead of `@latest`, and `quick-recap` no longer asks the installer to inject a managed `AGENTS.md` / `CLAUDE.md` block. `read-the-damn-docs` is described below:
 the docs-first trigger list, the source hierarchy, the required workflow, the
@@ -325,6 +328,16 @@ are build artefacts synced from a different upstream by
 not to treat them as standalone. Its `.mcp.json` and plugin manifests register
 external HTTP MCP servers without a prompt, so the plugin surface must never be
 installed.
+
+Five additional Factory skills are adapted under `skills/global_config/`
+(ports completed 2026-10-06 from upstream `main` at commit
+`530d9eee0453be9672960ef7b0a265c949cd8b08`): `factory` (base),
+`factory-babysit-pr`, `factory-ship`, `factory-watchdog`, and
+`factory-recover`. Adapted: AOS safety rules / GO gate added, frontmatter
+category+source (upstream `installer-group` dropped), upstream's relative
+Factory guide links point to the AOS `docs/factory.md` summary instead of
+`docs/factory/README.md`, and the upstream configuration-reference URLs are
+kept as upstream web links. Upstream behaviour text is carried over unchanged.
 ## obra/superpowers
 
 <https://github.com/obra/superpowers> — MIT. Copyright (c) 2025 Jesse Vincent.
