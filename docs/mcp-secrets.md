@@ -30,7 +30,11 @@ AOS replaces an MCP entry only when it owns it: the name is in the shipped `mcp_
 
 On update (full install and Quick Update), every AOS-owned entry that still carries an inline secret is migrated: the config is backed up first (`<file>.<timestamp>.bak`, mode `0600`), the value moves into the secrets file only if that variable is not stored yet (a stored value is never overwritten; a differing inline value is dropped with a warning that prints neither), and the entry is rewritten in the launcher form. A second run changes nothing. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honoured.
 
-Credentials typed in the installer prompts are stored the same way.
+Entries written by older AOS releases (unpinned `npx` packages and earlier argument shapes) count as AOS-owned too. A Codex table with content the installer cannot parse completely (for example a nested inline table in `env`) is never rewritten; it stays as it is with a warning. Backups hold the old plaintext secrets, so one line names them after a migration; delete them when you no longer need them.
+
+Besides the known harness locations, migration, `aos-doctor` and `aos-uninstall` also look at `<cwd>/.cursor/mcp.json` and at every custom or project-local MCP config path the installer recorded in `~/.agents/.bdb-uninstall-records.json` (`mcpConfigs`). If the launcher or its lib cannot be installed, nothing is rewritten and inline values stay where they are.
+
+Credentials typed in the installer prompts are stored the same way. The secrets file stores values as `KEY="value"` (`\\` and `\"` escaped) and reads them back unchanged.
 
 ## Checks and uninstall
 

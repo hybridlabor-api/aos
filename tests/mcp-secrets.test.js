@@ -342,4 +342,117 @@ describe('uninstall', () => {
         assert.ok(lines.some((l) => l.includes('secrets.env') && /bleibt erhalten/.test(l)));
         assert.equal(baks(f).length, 1);
     });
+
+    test('a launcher-form entry with a shipped name but a foreign command stays (JSON and TOML)', () => {
+        const h = fresh();
+        const launcher = path.join(h, '.agents', 'bin', 'aos-mcp-env.mjs');
+        const f = json(path.join(h, '.claude.json'), { mcpServers: { github: { command: 'node', args: [launcher, '--vars', 'X', '--', 'my-own-github'] } } });
+        const toml = write(path.join(h, '.codex', 'config.toml'), `[mcp_servers.github]\ncommand = "node"\nargs = ${JSON.stringify([launcher, '--vars', 'X', '--', 'my-own-github'])}\n`);
+        records.reverseRegistrations({ home: h });
+        assert.ok(JSON.parse(read(f)).mcpServers.github);
+        assert.ok(read(toml).includes('my-own-github'));
+    });
+});
+
+describe('review round', () => {
+    const tomlWith = (envLine) => [`[mcp_servers.github]`, 'command = "npx"', `args = ${JSON.stringify(GH_ARGS)}`, envLine, ''].join('\n');
+
+    test('B1: single-quoted TOML env values are read and moved, with a backup', () => {
+        reset();
+        const f = write(path.join(fresh(), 'config.toml'), tomlWith(`env = { GITHUB_PERSONAL_ACCESS_TOKEN = '${T.gh}' }`));
+        const out = quiet(() => installer.mergeCodexTomlMcpServers(f, { github: { command: 'npx', args: GH_ARGS } }));
+        noToken(out, 'log');
+        noToken(read(f), 'config.toml');
+        assert.equal(sec.parseEnvText(read(SECRETS)).GITHUB_PERSONAL_ACCESS_TOKEN, T.gh);
+        assert.equal(baks(f).length, 1);
+    });
+
+    test('B1: an env table the reader cannot fully account for is kept untouched', () => {
+        reset();
+        const f = write(path.join(fresh(), 'config.toml'), tomlWith(`env = { GITHUB_PERSONAL_ACCESS_TOKEN = "${T.gh}", NESTED = { a = 1 } }`));
+        const before = read(f);
+        let skipped;
+        const out = quiet(() => { skipped = installer.mergeCodexTomlMcpServers(f, { github: { command: 'npx', args: GH_ARGS } }); });
+        assert.deepEqual(skipped, ['github']);
+        assert.match(out, /cannot rewrite safely/);
+        assert.ok(read(f).includes(T.gh), 'the only copy of the token is still there');
+        assert.ok(read(f).startsWith(before.trimEnd().split('\n')[0]));
+        assert.equal(read(SECRETS), '');
+    });
+
+    test('B1: every config.toml rewrite is backed up, secrets or not', () => {
+        const f = write(path.join(fresh(), 'config.toml'), '[features]\nhooks = true\n');
+        quiet(() => installer.mergeCodexTomlMcpServers(f, { deja: { command: 'deja', args: ['mcp'] } }));
+        assert.equal(baks(f).length, 1);
+    });
+
+    test('B2: a legacy unpinned github entry counts as AOS-owned and migrates', () => {
+        reset();
+        const f = json(path.join(HOME, '.claude.json'), { mcpServers: { github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: T.gh } } } });
+        quiet(() => installer.migrateMcpSecrets());
+        noToken(read(f), 'config');
+        assert.equal(sec.parseEnvText(read(SECRETS)).GITHUB_PERSONAL_ACCESS_TOKEN, T.gh);
+        const shipped = sec.shippedServers(ROOT);
+        for (const [name, args] of [['chrome-devtools', ['-y', '@modelcontextprotocol/server-puppeteer']], ['open_design_mcp', ['-y', 'open-design-mcp', '/x/mcps/open-design']]]) {
+            assert.ok(sec.isAosOwned(name, { command: 'npx', args }, null, shipped), name);
+        }
+        assert.ok(!sec.isAosOwned('github', { command: 'npx', args: ['-y', 'evil'] }, null, shipped));
+    });
+
+    test('S1: the launcher starts the server without secrets when its lib is missing', () => {
+        const d = fresh();
+        const copy = path.join(d, 'bin', 'aos-mcp-env.mjs');
+        write(copy, read(LAUNCHER));
+        const r = spawnSync(process.execPath, [copy, '--vars', 'A_TOK', '--', process.execPath, '-e', 'console.log("up")'], { env: { HOME: d, PATH: process.env.PATH }, encoding: 'utf8' });
+        assert.equal(r.status, 0);
+        assert.match(r.stdout, /up/);
+        assert.match(r.stderr, /not found next to this launcher/);
+    });
+
+    test('S2: backups are 0600 and one notice names them as plaintext', () => {
+        reset();
+        const f = json(path.join(HOME, '.claude.json'), { mcpServers: { github: { command: 'npx', args: GH_ARGS, env: { GITHUB_PERSONAL_ACCESS_TOKEN: T.gh } } } });
+        const out = quiet(() => installer.migrateMcpSecrets());
+        noToken(out, 'log');
+        const named = baks(f).sort().pop();
+        assert.match(out, /plaintext secrets/);
+        assert.ok(out.includes(named));
+        assert.equal(mode(path.join(HOME, named)), 0o600);
+    });
+
+    test('S5: a project .cursor/mcp.json and a recorded custom path are migrated', () => {
+        reset();
+        const proj = fresh();
+        const cursor = json(path.join(proj, '.cursor', 'mcp.json'), { mcpServers: { github: { command: 'npx', args: GH_ARGS, env: { GITHUB_PERSONAL_ACCESS_TOKEN: T.gh } } } });
+        const custom = json(path.join(fresh(), 'custom', 'my_mcp.json'), { mcpServers: { memb_mcp: { command: '/h/.gemini/config/mcps/memb-mcp/.venv/bin/python', args: ['/h/.gemini/config/mcps/memb-mcp/run.py'], env: { GEMINI_API_KEY: T.gem } } } });
+        write(path.join(HOME, '.agents', '.bdb-uninstall-records.json'), JSON.stringify({ mcpConfigs: [custom] }));
+        const cwd = process.cwd();
+        process.chdir(proj);
+        try { quiet(() => installer.migrateMcpSecrets()); } finally { process.chdir(cwd); }
+        noToken(read(cursor), 'project cursor config');
+        noToken(read(custom), 'custom config');
+        const stored = sec.parseEnvText(read(SECRETS));
+        assert.equal(stored.GITHUB_PERSONAL_ACCESS_TOKEN, T.gh);
+        assert.equal(stored.GEMINI_API_KEY, T.gem);
+    });
+
+    test('NIT: storeSecrets values round-trip byte for byte (quotes, backslashes, hash, spaces)', () => {
+        const f = path.join(fresh(), 'secrets.env');
+        const vals = { A_ONE: 'a"b\\c #x ', A_TWO: "'quoted'", A_THREE: '  lead' };
+        sec.storeSecrets(f, vals);
+        assert.deepEqual(sec.parseEnvText(read(f)), vals);
+        assert.equal(mode(f), 0o600);
+        assert.deepEqual(sec.storeSecrets(f, { A_ONE: 'other' }).kept, ['A_ONE']);
+    });
+
+    test('NIT: addClaudeDeny backs up settings.json first and keeps its mode', () => {
+        const h = fresh();
+        const s = write(path.join(h, 'settings.json'), JSON.stringify({ permissions: { deny: ['Bash(a)'] } }), 0o600);
+        const added = records.addClaudeDeny({ home: h, settingsPath: s, rules: ['Bash(b)'] });
+        assert.deepEqual(added, ['Bash(b)']);
+        assert.equal(mode(s), 0o600);
+        const b = baks(s);
+        assert.equal(b.length, 1);
+        assert.deepEqual(JSON.parse(read(path.join(h, b[0]))).permissions.deny, ['Bash(a)']);
+    });
 });

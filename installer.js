@@ -367,12 +367,13 @@ function warnUnparseable(filePath, what, loaded) {
 }
 
 // Timestamped copy next to the config; it can hold credentials, so 0600. True when none was needed or it was made.
+const configBackups = [];
 function backupConfigFile(filePath) {
     if (!fs.existsSync(filePath)) return true;
-    const bak = `${filePath}.${timestamp}.bak`;
+    if (DRY_RUN) { log.message(`[dry-run] backup: ${filePath}`); return true; }
     try {
-        fs.copyFileSync(filePath, bak);
-        try { fs.chmodSync(bak, 0o600); } catch (e) { logDebug(e, 'chmod backup'); }
+        // created `wx` with 0600 at open time: no world-readable window
+        configBackups.push(mcpSecrets.safeBackup(filePath, `${filePath}.${timestamp}.bak`));
         return true;
     } catch (e) {
         log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
@@ -1536,8 +1537,7 @@ function loadExistingEnv(targetMcpDir) {
     const envPaths = [
         targetMcpDir ? path.join(targetMcpDir, '.env') : null,
         path.join(geminiDir, 'config', '.env'),
-        path.join(homeDir, '.agents', '.env'),
-        mcpSecrets.secretsPath(homeDir)
+        path.join(homeDir, '.agents', '.env')
     ].filter(Boolean);
 
     const envData = {};
@@ -1559,6 +1559,10 @@ function loadExistingEnv(targetMcpDir) {
             } catch (e) { logDebug(e, 'operation'); }
         }
     }
+
+    // The secrets file has its own quoting rules, so it is read with its own parser (private files only).
+    const stored = mcpSecrets.readSecretsFile(mcpSecrets.secretsPath(homeDir));
+    for (const [k, v] of Object.entries(stored.vars)) if (v && !envData[k]) envData[k] = v;
 
     for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GITHUB_PERSONAL_ACCESS_TOKEN', 'GROQ_API_KEY', 'XAI_API_KEY', 'NVIDIA_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY']) {
         if (process.env[k] && !envData[k]) {
@@ -3297,7 +3301,16 @@ function getTierExcludeSkills(tier) {
 // Secrets never go into a harness config: every server that needs one is written in launcher form
 // (lib/mcp-secrets.js, bin/aos-mcp-env.mjs) and the values live in ~/.aos/secrets.env (0600).
 const mcpShipped = () => mcpSecrets.shippedServers(srcDir);
-const mcpLauncher = () => mcpSecrets.launcherPath(homeDir);
+// null once the launcher or its lib could not be installed: nothing is then wrapped and no inline value is moved.
+let mcpLauncherFailed = false;
+const mcpLauncher = () => (mcpLauncherFailed ? null : mcpSecrets.launcherPath(homeDir));
+const secretBackups = new Set();
+// One line per run naming the backups of configs whose inline secrets were moved; they hold plaintext secrets.
+function noticeSecretBackups() {
+    if (!secretBackups.size) return;
+    log.warn(`Backups of the configs changed above contain the old plaintext secrets: ${[...secretBackups].join(', ')}. Delete them once you no longer need them.`);
+    secretBackups.clear();
+}
 const warnedUserMcp = new Set();
 const warnUserMcpEntry = (file) => (name) => {
     if (warnedUserMcp.has(`${file}\0${name}`)) return;
@@ -3309,7 +3322,10 @@ const warnUserMcpEntry = (file) => (name) => {
 // stored value). False means: do not rewrite `file`, its inline values are the only copy.
 function stashInlineSecrets(collector, file) {
     if (!collector || !collector.size()) return true;
+    if (DRY_RUN) return true;
+    const before = configBackups.length;
     if (!backupConfigFile(file)) return false;
+    configBackups.slice(before).forEach((b) => secretBackups.add(b));
     try {
         const res = mcpSecrets.storeSecrets(mcpSecrets.secretsPath(homeDir), collector.values);
         if (res.added.length) log.step(`Moved ${res.added.join(', ')} from ${file} into ${mcpSecrets.secretsPath(homeDir)}`);
@@ -3324,15 +3340,26 @@ function stashInlineSecrets(collector, file) {
 
 // The launcher and the two lib files it needs; entries point at them, so they go in before any entry.
 function installMcpLauncher() {
-    if (DRY_RUN) return;
+    if (DRY_RUN) return true;
     const pairs = [
-        [path.join(srcDir, 'bin', mcpSecrets.LAUNCHER_FILE), mcpLauncher()],
+        [path.join(srcDir, 'bin', mcpSecrets.LAUNCHER_FILE), mcpSecrets.launcherPath(homeDir)],
         [path.join(srcDir, 'lib', 'mcp-secrets.js'), path.join(homeDir, '.agents', 'lib', 'mcp-secrets.js')],
         [path.join(srcDir, 'lib', 'jsonc.js'), path.join(homeDir, '.agents', 'lib', 'jsonc.js')],
     ];
+    let ok = true;
     for (const [src, dest] of pairs) {
         try { copyDirRecursiveSync(src, dest); } catch (e) { log.warn(`Could not install ${path.basename(dest)}: ${e.message}`); }
+        if (!fs.existsSync(dest)) ok = false;
     }
+    mcpLauncherFailed = !ok;
+    if (!ok) log.warn('The MCP secrets launcher could not be installed: MCP entries are not rewritten and inline secrets stay where they are. Fix the error above and re-run the installer.');
+    return ok;
+}
+
+// Custom and project-local MCP configs are recorded so migration, doctor and uninstall can find them later.
+function recordMcpConfigPath(file) {
+    if (DRY_RUN || !file || !fs.existsSync(file)) return;
+    try { uninstallRecords.recordMcpConfig(homeDir, path.resolve(file)); } catch (e) { logDebug(e, 'record MCP config path'); }
 }
 
 function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
@@ -3706,7 +3733,9 @@ async function installMcpsForTarget(paths, ctx) {
                 } else {
                     try {
                         fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
-                        fs.writeFileSync(path.join(backupDir, 'mcp_config_backup.json'), rawBefore, { mode: 0o600 });
+                        const mcpBackup = path.join(backupDir, 'mcp_config_backup.json');
+                        fs.writeFileSync(mcpBackup, rawBefore, { mode: 0o600, flag: 'wx' });
+                        if (collector.size()) secretBackups.add(mcpBackup);
                     } catch (e) { log.warn(`Could not create the backup copy: ${e.message}`); }
                     if (!stashInlineSecrets(collector, paths.mcpConfigPath)) throw new Error('inline secrets could not be moved');
                     fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2), { mode: 0o600 });
@@ -3738,6 +3767,8 @@ async function installMcpsForTarget(paths, ctx) {
 
     removeAosMcscFromAgyConfigs();
     mirrorMcpServersTo(paths.extraMcpConfigPaths, mcpConfigStr);
+    for (const p of [paths.mcpConfigPath, ...(paths.extraMcpConfigPaths || [])]) recordMcpConfigPath(p);
+    noticeSecretBackups();
 
     if (creds.gemini || creds.github || creds.keyEnvName) {
         const envPath = path.join(paths.targetMcpDir, '.env');
@@ -4977,9 +5008,15 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     // A table is AOS's when its name is shipped and command/args are what AOS writes (launcher form or
     // not); a table whose args this reader cannot parse is judged by its command line alone, as before.
     const ownedNames = new Set();
+    // A table with anything this reader does not fully understand (or inline secrets while there is no
+    // launcher to take them) is never rewritten: it stays exactly as it is and the AOS entry of that name is skipped.
+    const priorTables = mcpSecrets.parseCodexTables(content);
+    const refused = new Set(Object.entries(priorTables)
+        .filter(([, t]) => t.unparsed.length || (!mcpLauncher() && mcpSecrets.inlineSecrets(t.env).length))
+        .map(([n]) => n));
     const owns = (name, sec) => {
         const cfg = (servers || {})[name];
-        if (!cfg) return false;
+        if (!cfg || refused.has(name)) return false;
         const t = mcpSecrets.parseCodexTables(sec.join('\n'))[name];
         const command = t && t.fields.command;
         if (typeof command !== 'string') return false;
@@ -4998,8 +5035,8 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     if (hadBlock) {
         const aosNames = new Set([...uninstallRecords.aosMcpNames(), ...Object.keys(servers || {})]);
         const inner = content.match(blockRegex)[0].split(/\r?\n/).filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
-        foreign = uninstallRecords.dropMcpTables(inner, (n) => aosNames.has(n)).join('\n').trim();
-        Object.keys(mcpSecrets.parseCodexTables(inner.join('\n'))).filter((n) => aosNames.has(n)).forEach((n) => ownedNames.add(n));
+        foreign = uninstallRecords.dropMcpTables(inner, (n) => aosNames.has(n) && !refused.has(n)).join('\n').trim();
+        Object.keys(mcpSecrets.parseCodexTables(inner.join('\n'))).filter((n) => aosNames.has(n) && !refused.has(n)).forEach((n) => ownedNames.add(n));
     }
     const stripped = content.replace(blockRegex, `${PLACEHOLDER}\n`).split(/\r?\n/)
         .filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
@@ -5007,7 +5044,6 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     const outside = outsideLines.join('\n');
     // Inline secrets of the tables AOS replaces: collected for the secrets file, their names stay declared.
     const collector = mcpSecrets.createCollector();
-    const priorTables = mcpSecrets.parseCodexTables(original);
     for (const n of ownedNames) {
         const env = priorTables[n] && priorTables[n].env;
         for (const [k, v] of mcpSecrets.inlineSecrets(env)) collector.add(k, v);
@@ -5018,6 +5054,11 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     Object.entries(servers || {}).forEach(([name, cfg]) => {
         const header = `[mcp_servers.${tomlKey(name)}]`;
         const headerRegex = new RegExp(`^${header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm');
+        if (refused.has(name)) {
+            skipped.push(name);
+            log.warn(`${configTomlPath}: table "${name}" has content this installer cannot rewrite safely; kept as it is.`);
+            return;
+        }
         if (headerRegex.test(outside)) { skipped.push(name); return; }
         tables.push(rows(name, cfg).join('\n'));
     });
@@ -5032,6 +5073,7 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     content = content.replace(/\n{3,}/g, '\n\n');
     if (eol === '\r\n') content = content.replace(/\n/g, '\r\n');
     if (content === original) return skipped;
+    if (!backupConfigFile(configTomlPath)) throw new Error('config.toml could not be backed up');
     if (!stashInlineSecrets(collector, configTomlPath)) throw new Error('inline secrets could not be moved');
     fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
     try { fs.chmodSync(configTomlPath, 0o600); } catch (e) { logDebug(e, 'chmod configTomlPath'); }
@@ -5970,7 +6012,7 @@ function syncMcpConfigFile(targetPath, masterMcpData) {
         mcpSecrets.mergeServers(data.mcpServers, masterMcpData.mcpServers, { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(targetPath) });
         if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
         if (!stashInlineSecrets(collector, targetPath)) return;
-        writeConfigWithBackup(targetPath, data, before);
+        if (writeConfigWithBackup(targetPath, data, before)) recordMcpConfigPath(targetPath);
     } catch (e) {
         log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
     }
@@ -6053,9 +6095,10 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
 // the secrets file unless it already holds that variable, user entries stay untouched. Idempotent.
 function migrateMcpSecrets() {
     const shipped = mcpShipped();
-    const launcher = mcpLauncher();
     const moved = [];
     installMcpLauncher();
+    const launcher = mcpLauncher();
+    if (!launcher) return moved;
     for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir)) {
         if (!fs.existsSync(file)) continue;
         try {
@@ -6099,11 +6142,13 @@ function migrateMcpSecrets() {
         }
     }
     if (moved.length) log.step(`MCP entries now use the secrets launcher in: ${moved.join(', ')}`);
+    noticeSecretBackups();
     return moved;
 }
 
 async function universalHarnessSync(primaryMcpConfigPath, installedModules = []) {
     log.info('Universal Agent Harness Sync...');
+    installMcpLauncher();
     const detections = detectPlatforms();
     let masterMcpData = {};
     try { masterMcpData = JSON.parse(fs.readFileSync(primaryMcpConfigPath, 'utf8')); } catch (e) { logDebug(e, 'operation'); }
@@ -6150,6 +6195,7 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
             }
         }
     }
+    noticeSecretBackups();
     log.success('Universal Sync Complete!');
     generateAndOpenLaunchpad(installedModules);
     installPlanCanvasAutostart();

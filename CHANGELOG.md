@@ -22,6 +22,7 @@
 * The installer overwrites an MCP entry only when AOS owns it (shipped name and AOS command); a same-named user entry is kept with one warning. Before, every writer replaced entries by key.
 * Update migrates AOS-owned entries with inline secrets: timestamped 0600 backup, values moved into the secrets file without overwriting a stored one, entry rewritten, idempotent. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honoured. Backups of configs are now 0600.
 * `aos-doctor` warns about inline secrets in harness MCP configs (file, server, variable; never the value) and about a secrets file that is not 0600. `aos-uninstall` removes the launcher entries AOS owns and leaves the secrets file, with a note.
+* MCP secrets review round: Codex single-quoted `env` values are migrated and tables the installer cannot parse completely are never rewritten (config.toml is backed up before every rewrite); legacy AOS entries (unpinned `npx`, older args) are recognised as owned; the launcher survives a missing lib and nothing is wrapped when it cannot be installed; backups are created 0600 at open time and named in one notice; uninstall removes only launcher entries that match the shipped template; project `.cursor/mcp.json` and recorded custom paths are covered; `settings.json` edits keep the file mode and are backed up.
 * Pinned the `@agentclientprotocol/claude-agent-acp` (0.86.0) and `codex-acp` (2.1.1) adapters launched by `aos-acp` instead of fetching the latest via `npx`.
 ## [4.18.1](https://github.com/hybridlabor-api/aos/compare/v4.18.0...v4.18.1) (2026-10-02)
 

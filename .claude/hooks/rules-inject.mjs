@@ -13,7 +13,9 @@ import { fileURLToPath } from 'node:url';
 
 export function rulesText() {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  for (const p of [path.join(here, '..', '..', 'lib', 'destructive-rules.js'), path.join(os.homedir(), '.agents', 'lib', 'destructive-rules.js')]) {
+  // here/../../lib is only trusted inside an AOS checkout (package.json names it), never from ~/.claude/hooks.
+  const inCheckout = (() => { try { return JSON.parse(readFileSync(path.join(here, '..', '..', 'package.json'), 'utf8')).name === '@hybridlabor-api/aos'; } catch { return false; } })();
+  for (const p of [...(inCheckout ? [path.join(here, '..', '..', 'lib', 'destructive-rules.js')] : []), path.join(os.homedir(), '.agents', 'lib', 'destructive-rules.js')]) {
     if (!existsSync(p)) continue;
     try {
       const { BLOCK, START, END } = createRequire(import.meta.url)(p);

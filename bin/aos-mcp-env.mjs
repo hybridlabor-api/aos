@@ -7,7 +7,9 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 
-const { readSecretsFile, secretsPath } = createRequire(import.meta.url)('../lib/mcp-secrets.js');
+// A missing lib (e.g. ~/.agents/lib removed) must not keep the server from starting.
+let lib = null;
+try { lib = createRequire(import.meta.url)('../lib/mcp-secrets.js'); } catch { /* hint below */ }
 
 const argv = process.argv.slice(2);
 const sep = argv.indexOf('--');
@@ -21,7 +23,10 @@ const [command, ...args] = argv.slice(sep + 1);
 
 const env = { ...process.env };
 const missing = wanted.filter((v) => !env[v]);
-if (missing.length) {
+if (missing.length && !lib) {
+    console.error(`aos-mcp-env: ../lib/mcp-secrets.js not found next to this launcher; starting without ${missing.join(', ')}. Re-run the AOS installer.`);
+} else if (missing.length) {
+    const { readSecretsFile, secretsPath } = lib;
     const file = secretsPath(os.homedir());
     const s = readSecretsFile(file);
     if (s.state === 'ok') { for (const v of missing) if (s.vars[v]) env[v] = s.vars[v]; }
