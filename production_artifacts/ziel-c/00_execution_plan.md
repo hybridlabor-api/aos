@@ -207,8 +207,8 @@ shared file: `.opencode/plugins/bdb-aos.js` is edited by WP-LIVE-oc and WP-HOOK 
 **Host live check `production_artifacts/ziel-c/checks/live-e2e.sh`** (written and committed by the dispatcher before the GO request; run with the GO token):
 1. OpenCode session (via `opencode serve` in a scratch project with the repo plugin) and one Claude turn (`claude -p` in a scratch project with the repo hooks) both appear in `aos-a2a list`.
 2. **OpenCode → Claude:** from the OpenCode identity, `aos-a2a send --to <claude-session> "What is 2+3? Answer with the number only."` gives COMPLETED with an artifact containing 5.
-3. **Claude → OpenCode:** the Claude turn is prompted to run `aos-a2a send --to <opencode-session> "What is 3+4? Answer with the number only."`, and the result contains 7.
-4. **Never-GO, end-to-end:** send `GO <claude-session>` via A2A. Afterwards `node bin/go-check.mjs --session <claude-session> --command "git push"` still reports guarded/not ok. The A2A text appears only as synthetic or agent-tagged context. No file under `~/.aos/go` is read or listed by the script; the go-check CLI is the only consumer.
+3. **Claude → OpenCode:** the Claude turn is prompted to run `aos-a2a send --to <opencode-session> "What is 3+4? Answer with the number only."`, and the result contains 7. If the turn never runs the `send` Bash call, the script reports it as a hook/permission-settings failure, not as a timeout.
+4. **Never-GO, end-to-end:** run `node bin/go-check.mjs --session <claude-session> --command "git push"` **without `--consume`** before and after sending `GO <claude-session>` via A2A. Assert exit code 1 and `ok:false` both times. The A2A text appears only as synthetic or agent-tagged context. No file under `~/.aos/go` is read or listed by the script; the go-check CLI is the only consumer.
 5. `~/.config/opencode` checksums unchanged, worktree status unchanged, all sidecars and `opencode serve` stopped by captured PID, registry empty.
 
 ---
