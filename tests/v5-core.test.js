@@ -312,6 +312,74 @@ test('B11: step() disables prompts and restores the previous value', async () =>
     assert.deepStrictEqual(calls, ['confirm'], 'prompts work again outside step');
 });
 
+test('A3: memB WebUI LaunchAgent exit status is parsed from real `launchctl list <label>` text', () => {
+    const m = machine();
+    const memb = pk.registry.find((p) => p.id === 'memb');
+    const sample = (status) => `{\n\t"LimitLoadToSessionType" = "Aqua";\n\t"Label" = "com.bdb.memb.webui";\n\t"OnDemand" = false;\n\t"LastExitStatus" = ${status};\n\t"PID" = 4242;\n\t"Program" = "/usr/bin/python3";\n};\n`;
+    const bad = memb.verify({ host: m.host, home: m.home, launchctl: () => ({ status: 0, stdout: sample(256) }) });
+    assert.strictEqual(bad.ok, false);
+    assert.match(bad.detail, /WebUI LaunchAgent last exit status: 256/);
+    assert.strictEqual(memb.verify({ host: m.host, home: m.home, launchctl: () => ({ status: 0, stdout: sample(0) }) }).ok, true);
+    assert.strictEqual(memb.verify({ host: m.host, home: m.home, launchctl: () => ({ status: 113, stdout: '' }) }).ok, true, 'agent not loaded is not a failure here');
+});
+
+test('A4: memB repair reinstalls requirements when a runnable venv fails `import mcp`', async () => {
+    const m = machine();
+    const flag = path.join(m.home, 'mcp-installed');
+    script(path.join(m.memb, '.venv', 'bin', 'python'), `[ "$2" = "import mcp" ] && [ ! -f "${flag}" ] && exit 1\nexit 0`);
+    const memb = pk.registry.find((p) => p.id === 'memb');
+    const c = { host: m.host, home: m.home };
+    assert.match(memb.verify(c).detail, /import mcp fails/);
+    const installed = [];
+    const venv = { create: () => assert.fail('venv is runnable, must not be recreated'), install: (cc, dir) => { installed.push(dir); fs.writeFileSync(flag, ''); } };
+    assert.strictEqual(await menu.repair(m.host, m.opts({ venv })), 0);
+    assert.deepStrictEqual(installed, [m.memb]);
+    assert.strictEqual(fs.readdirSync(m.memb).filter((f) => f.startsWith('.venv.broken-')).length, 0);
+});
+
+test('A5: a package without repair gets one retry via update() when verify fails', async () => {
+    const m = machine();
+    let fixed = false;
+    let updates = 0;
+    const fake = pk.register({
+        id: 'fake-a5', name: 'FakeA5', npm: null,
+        detect: () => ({ installed: true, version: '1.0.0' }),
+        update: async () => { updates++; fixed = true; },
+        verify: () => (fixed ? { ok: true, detail: '' } : { ok: false, detail: 'broken' }),
+    });
+    try {
+        assert.strictEqual(await menu.repair(m.host, m.opts()), 0);
+        assert.strictEqual(updates, 1);
+        fixed = false;
+        updates = 0;
+        assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current })), 0);
+        assert.strictEqual(updates, 1);
+        fake.update = async () => { updates++; };
+        fixed = false;
+        assert.strictEqual(await menu.repair(m.host, m.opts()), 1, 'still broken after the retry');
+    } finally { pk.registry.splice(pk.registry.indexOf(fake), 1); }
+});
+
+test('A6: token-saver detect finds the CLI on PATH, ~/.token-saver, or the enabled plugin', () => {
+    const ts = pk.registry.find((p) => p.id === 'token-saver');
+    const empty = path.join(mkHome(), 'empty');
+    fs.mkdirSync(empty);
+    assert.strictEqual(ts.detect({ home: mkHome(), env: { PATH: empty } }).installed, false);
+
+    const onPath = mkHome();
+    script(path.join(onPath, 'bin', 'token-saver'));
+    assert.strictEqual(ts.detect({ home: mkHome(), env: { PATH: path.join(onPath, 'bin') } }).installed, true);
+
+    const withCli = mkHome();
+    script(path.join(withCli, '.token-saver', 'src', 'cli.py'));
+    assert.strictEqual(ts.detect({ home: withCli, env: { PATH: empty } }).installed, process.platform === 'win32' ? false : true);
+
+    const withPlugin = mkHome();
+    fs.mkdirSync(path.join(withPlugin, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(withPlugin, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'token-saver@token-saver-marketplace': true } }));
+    assert.strictEqual(ts.detect({ home: withPlugin, env: { PATH: empty } }).installed, true);
+});
+
 test('vlatest fixed: the ready line names the version from the installed package.json', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
     const body = src.slice(src.indexOf('function downloadOrUpdateModule'), src.indexOf('function downloadOrUpdateModule') + 9000);
