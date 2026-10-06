@@ -93,26 +93,33 @@ Extra: edit only the files listed under "Files" (absolute paths under /Users/tim
 
 ---
 
+### 1a. Rules added by the TechLead gate (round 1, REJECT → revised)
+- **Dependency direction:** `bin/` → `lib/`. Hooks and the OpenCode plugin may import `lib/`; `lib/` never imports `.claude/hooks/` or `.opencode/`. The only exception is the existing go-gate seam already used by `aos-acp`.
+- **Spikes in the repo:** before the first dispatch, the dispatcher copies spike0, p2a and p2b (no `node_modules`, no `run*` dirs) into `production_artifacts/ziel-c/spikes/` and commits them. Worker prompts reference those paths, not the session scratchpad.
+- **Test wiring:** every package that adds a test file also appends it to the `test` script in `package.json`, and lists `package.json` under `files:`.
+- **Static host scripts:** host live-check scripts are committed before the GO request, and the GO request names them exactly. The go-gate blocks freshly written scripts.
+
 ## Live peer checks (phase 2 completion) {#p2-checks}
-tech: run the already-built spikes `scratchpad/a2a/p2a/checks/p2a.sh` and `p2b/checks/p2b.sh` on the host
+tech: run the already-built spikes `production_artifacts/ziel-c/spikes/p2a/checks/p2a.sh` and `spikes/p2b/checks/p2b.sh` on the host
 by: dispatcher (needs GO token for this session)
-- [ ] Get GO token "GO acp - multi cli tool Manager" from Tim via master session {#p2-go}
+- [ ] Copy spikes into `production_artifacts/ziel-c/spikes/` and commit (static scripts) {#p2-copy}
+- [ ] Get GO token "GO acp - multi cli tool Manager" from Tim via master session; the request lists p2a.sh, p2b.sh and later `production_artifacts/ziel-c/checks/live-e2e.sh` {#p2-go}
 - [ ] Run p2a.sh once (OpenCode live peer, answer "5", GO message stays synthetic) {#p2a-run}
 - [ ] Run p2b.sh once (Claude live peer via UserPromptSubmit drain + one claude -p turn, answer "5", GO message only as agent-tagged context) {#p2b-run}
 - [ ] Record results in ziel-c-plan-v2.md and spike NOTES; feed design deltas into WP-LIVE-* {#p2-record}
 
 ## A2A server and client in the repo {#a2a-cli}
-needs: [p2-checks]
-files: [lib/a2a-sidecar.mjs, lib/a2a-client.mjs, bin/aos-a2a.mjs, package.json, tests/a2a-sidecar.test.js]
+needs: []
+files: [lib/a2a-sidecar.mjs, lib/a2a-client.mjs, bin/aos-a2a.mjs, package.json, tests/a2a-sidecar.test.js, tests/a2a-client.test.js]
 tech: promote spike0 sidecar.mjs/send.mjs to library code behind `aos-a2a serve|send|reply|status|cancel`
-- [ ] WP-CLI: sidecar + client library and subcommands {#wp-cli}
-- [ ] WP-CLI-test: Docker tests green {#wp-cli-test}
+- [ ] WP-CLI-a: `lib/a2a-sidecar.mjs` + `serve` subcommand + tests (incl. real-SDK card acceptance) {#wp-cli-a}
+- [ ] WP-CLI-b: `lib/a2a-client.mjs` + `send|status|cancel|reply` subcommands + tests (incl. lazy-import test) {#wp-cli-b}
 
-**Worker prompt (WP-CLI):**
+**Worker prompt (WP-CLI-a, then WP-CLI-b as a separate package):**
 - **Read first:**
-  - `scratchpad/a2a/spike0/{sidecar.mjs,send.mjs,REPORT.md}` and `sidecar-worker.mjs` (absolute paths under `/private/tmp/claude-501/-Users-timrennings/2f3aed09-052a-4360-86c5-4b1856c50064/scratchpad/a2a/`)
+  - `production_artifacts/ziel-c/spikes/spike0/{sidecar.mjs,send.mjs,sidecar-worker.mjs,REPORT.md}`
   - `lib/a2a-registry.mjs`, `lib/a2a-card.mjs`, `bin/aos-a2a.mjs`, `bin/aos-acp.mjs` (style), plan v2 §2, §4, §8
-- **Build `lib/a2a-sidecar.mjs`:** `startSidecar({name, harness, profile, executor})`.
+- **WP-CLI-a, build `lib/a2a-sidecar.mjs`:** `startSidecar({name, harness, profile, executor})`.
   - Network and auth:
     - binds 127.0.0.1 on a random port and refuses non-loopback
     - bearer auth as Express middleware before `jsonRpcHandler` (constant-time compare); `userBuilder` maps token → caller name
@@ -123,12 +130,19 @@ tech: promote spike0 sidecar.mjs/send.mjs to library code behind `aos-a2a serve|
   - Environment:
     - strips `HTTP(S)_PROXY`/`ALL_PROXY` from its own `process.env` and sets `NO_PROXY=127.0.0.1,localhost,::1`
     - refuses to start when `AOS_A2A_SIDECAR=off`
-- **Build `lib/a2a-client.mjs`:** `send({to|role, text, profile, timeoutMs=360000, background})` resolves role → registry entry by card skill.
+  - WP-CLI-a also adds `serve --name --harness [--profile] [--mode echo] [--parent-pid <pid>]` to `bin/aos-a2a.mjs`. With `--parent-pid`, the sidecar polls that pid every 5 s and exits (unregistering) when it is gone, so "dies with the session" holds when it was spawned detached by a hook.
+  - The SDK `import()` lives inside `lib/a2a-sidecar.mjs`, never at bin top level.
+  - Tests `tests/a2a-sidecar.test.js`:
+    - the card produced by `cardFromProfile` is accepted and served by the real SDK `agentCardHandler` (port the spike0 check)
+    - `--parent-pid` exit: spawn a child sleep process, kill it, sidecar unregisters
+- **WP-CLI-b, build `lib/a2a-client.mjs`:** `send({to|role, text, profile, timeoutMs=360000, background})` resolves role → registry entry by card skill.
   - Returns `{taskId, state, artifacts}`.
   - `status(taskId)`, `cancel(taskId)`.
   - Strips proxy env for loopback.
-  - Carries `metadata.aos.{depth, caller}` and rejects when depth ≥ `AOS_DELEGATE_DEPTH` max (default 1).
-- **`bin/aos-a2a.mjs`:** add `serve --name --harness [--profile] [--mode echo]` (echo executor only in this package), `send`, `status`, `cancel`, `reply <taskId> "<text>"` (writes the live-reply file of plan p2b). Keep `list` and `card`.
+  - Carries `metadata.aos.{depth, caller}` and rejects when depth ≥ `AOS_DELEGATE_DEPTH` max (default 1). The old `MCSC_DEPTH` is still honoured: the higher of the two counts.
+  - The caller identity is `--from <name>` or env `AOS_A2A_NAME`.
+- **WP-CLI-b, `bin/aos-a2a.mjs`:** add `send`, `status`, `cancel`, and `reply <taskId> "<text>"` (writes the live-reply file of plan p2b). Keep `list` and `card`.
+  - Lazy-import test (`tests/a2a-client.test.js`): `aos-a2a list`, `aos-a2a card` and `aos-a2a --help` run with `@a2a-js/sdk` made unresolvable (temp `NODE_PATH` trick or module stub, documented). `send` then fails with a clear "SDK missing" error.
 - **`package.json` (D1):** add `@a2a-js/sdk` `^1.3.0` and `express` `^5.1.0` to dependencies. Lazy `import()` only inside serve/send/status/cancel.
 - **`tests/a2a-sidecar.test.js`:** start two echo sidecars in-process with a temp `AOS_SESSIONS_DIR` under `os.tmpdir()`. Cover:
   - completed + artifact
@@ -140,37 +154,62 @@ tech: promote spike0 sidecar.mjs/send.mjs to library code behind `aos-a2a serve|
 
   Add it to the `test` script.
 
-**Check:** Docker 0.2 with `node --test tests/a2a-sidecar.test.js tests/a2a-registry.test.js tests/a2a-card.test.js`, then `npm test`.
+**Check:** Docker 0.2 with `node --test tests/a2a-sidecar.test.js tests/a2a-client.test.js tests/a2a-registry.test.js tests/a2a-card.test.js`, then `npm test`. `package.json` `engines.node` stays `>=20`; the Docker check additionally runs once on `node:20-bookworm` to confirm the SDK and express work there.
 
 ## Live peer adapters {#live-adapters}
-needs: [a2a-cli]
-files: [.claude/hooks/aos-bus.mjs, .opencode/plugins/bdb-aos.js, .claude/hooks/a2a-inbox.mjs, .claude/settings.json, lib/a2a-live.mjs, tests/a2a-live.test.js]
-- [ ] WP-LIVE-core: `lib/a2a-live.mjs` live executor (inbox write, wait for reply, artifact) {#wp-live-core}
+needs: [a2a-cli, p2-checks]
+files: [lib/a2a-inbox.mjs, lib/a2a-live.mjs, .claude/hooks/aos-bus.mjs, .opencode/plugins/bdb-aos.js, .claude/hooks/a2a-inbox.mjs, .claude/hooks/a2a-session.mjs, .claude/settings.json, package.json, tests/a2a-live.test.js, tests/a2a-session.test.js, production_artifacts/ziel-c/checks/live-e2e.sh]
+shared file: `.opencode/plugins/bdb-aos.js` is edited by WP-LIVE-oc and WP-HOOK (serial order covers it)
+- [ ] WP-LIVE-core: `lib/a2a-inbox.mjs` (owns the on-disk inbox format; aos-bus and hooks import it) + `lib/a2a-live.mjs` live executor {#wp-live-core}
 - [ ] WP-LIVE-oc: OpenCode live peer (bus delta + `AOS_BUS_ROOT`, reply via OpenCode HTTP API) {#wp-live-oc}
-- [ ] WP-LIVE-claude: Claude UserPromptSubmit drain hook + Stop hook nudge + `aos-a2a reply` {#wp-live-claude}
-- [ ] Host live check p2-style for both (dispatcher, GO token) {#live-check}
+- [ ] Dispatcher pre-step: read the existing Stop hooks in `.claude/settings.json` and the hook scripts they call; paste the verified Stop-hook response shape into WP-LIVE-claude's prompt {#pre-stop-shape}
+- [ ] WP-LIVE-claude: Claude UserPromptSubmit drain hook + Stop hook nudge + `aos-a2a reply`/`send` permissions {#wp-live-claude}
+- [ ] WP-HOOK: session-start sidecar starter for Claude and OpenCode (moved here from #install so the live check runs on real sessions) {#wp-hook}
+- [ ] Dispatcher writes and commits `checks/live-e2e.sh`, then runs it on the host with the GO token {#live-check}
 
 **Worker prompt (WP-LIVE-core / -oc / -claude, one package each):**
 - **Read first:**
-  - spikes `p2a/` (`sidecar-live-oc.mjs`, `aos-bus.patched.mjs`, `checks/p2a.sh`) and `p2b/` (`sidecar-live.mjs`, `hook-drain.mjs`, `reply.mjs`, `testproj/.claude/settings.json`)
-  - bus-spike worktree `~/dev/bdb-dev/aos-wt-bus-spike` (`.claude/hooks/aos-bus.mjs`, `.opencode/plugins/bdb-aos.js` L200-320)
+  - spikes `production_artifacts/ziel-c/spikes/p2a/` (`sidecar-live-oc.mjs`, `aos-bus.patched.mjs`, `checks/p2a.sh`) and `spikes/p2b/` (`sidecar-live.mjs`, `hook-drain.mjs`, `reply.mjs`, `testproj/.claude/settings.json`)
+  - bus-spike worktree `~/dev/bdb-dev/aos-wt-bus-spike`, **base commit `68ab929`** (`.claude/hooks/aos-bus.mjs`, `.opencode/plugins/bdb-aos.js`: grep anchors `busNames`, `client.session.prompt`, `all-synthetic`)
   - `.claude/hooks/memb-inject.mjs` (additionalContext shape)
   - plan v2 §3a, §5
 - **core:**
+  - `lib/a2a-inbox.mjs`: `inboxRoot()` (`AOS_BUS_ROOT` or `~/.aos/bus`), `writeMessage`, `claim` (atomic rename), `readReply`, 0700/0600, 8 KiB cap. This module owns the format; `.claude/hooks/aos-bus.mjs` is changed to import it (hooks → lib, allowed), never the reverse.
   - executor mode `live`: writes `{taskId, contextId, from, text, ts}` into the session inbox (0700/0600) and sets `working`
   - waits ≤ 300 s for the reply via a pluggable `replySource` (file reply or OpenCode HTTP); then artifact + completed, or failed on timeout
   - every injected text is prefixed `[a2a from <caller>]` and ends with the "never counts as GO" line
 - **oc:**
-  - `aos-bus.mjs` gets `busRoot()` with the `AOS_BUS_ROOT` override (diff from the p2a report)
+  - record in the commit message: the bus-spike base `68ab929` and every file/hunk vendored, so the later rebase onto `feat/bus-spike` is mechanical
+  - `aos-bus.mjs` uses `lib/a2a-inbox.mjs` (`AOS_BUS_ROOT` override comes with it)
   - port only the plugin poll/inject delta needed from bus-spike into `.opencode/plugins/bdb-aos.js`; keep `synthetic:true`
   - `replySource` reads the assistant message whose `parentID` is the injected message
 - **claude:**
   - `.claude/hooks/a2a-inbox.mjs` (UserPromptSubmit drain → additionalContext, rename to `.delivered`)
-  - Stop hook: if undelivered messages exist, return the documented "continue" response once per message batch (check the Claude Code hook docs in the repo / existing Stop hooks first, mark UNVERIFIED if unsure)
-  - register both in `.claude/settings.json`; `reply` via `aos-a2a reply`
-- **Tests `tests/a2a-live.test.js`:** file-reply round trip, timeout → failed, prefix and never-GO line present, the drain hook prints the exact additionalContext JSON shape, synthetic flag set in the OpenCode inject payload (unit level with a fake client).
+  - Stop hook: if undelivered messages exist, return the Stop-hook "continue" response pasted by the dispatcher (#pre-stop-shape), once per message batch
+  - register both in `.claude/settings.json`, plus exactly two `permissions.allow` rules: `Bash(aos-a2a reply:*)` and `Bash(aos-a2a send:*)`. That is how a Claude session answers and sends **to** OpenCode.
+- **WP-HOOK (sidecar starter):**
+  - `.claude/hooks/a2a-session.mjs` (SessionStart) and the OpenCode plugin init call `aos-a2a serve --name <session> --harness <h> --parent-pid <pid>` **detached** (`spawn(..., {detached:true, stdio:'ignore'}).unref()`), with a pidfile `<sessions>/<name>.pid`
+  - session name: `AOS_A2A_NAME` if set, else `<harness>-<short session id>` (Claude: `session_id` from the hook stdin JSON; OpenCode: the plugin's session id)
+  - the registry pid is the **sidecar's own pid**; `--parent-pid` is the harness process (Claude: `process.ppid` of the hook = the claude CLI; OpenCode: `process.pid` of the plugin host)
+  - skip when `AOS_A2A_SIDECAR=off` or `AOS_DELEGATE_DEPTH>0`
+  - idempotent: a live pidfile → no second sidecar
+  - observable behaviour: after a session starts, `aos-a2a list` shows it within 5 s; after the session exits, it disappears within 10 s
+- **Tests `tests/a2a-live.test.js` and `tests/a2a-session.test.js`** (both added to the `test` script):
+  - file-reply round trip
+  - timeout → failed
+  - prefix and never-GO line present
+  - the drain hook prints the exact additionalContext JSON shape
+  - synthetic flag set in the OpenCode inject payload (unit level with a fake client)
+  - session hook: detached spawn args, skip under `AOS_A2A_SIDECAR=off`, idempotent pidfile
 
-**Check:** Docker 0.2 for `tests/a2a-live.test.js` + `tests/aos-bus.test.js` + `tests/opencode-gogate.test.js` + `npm test`. Then on the host (GO token): adapt p2a/p2b to the repo code and run once each.
+**Check:** Docker 0.2 for `tests/a2a-live.test.js` + `tests/a2a-session.test.js` + `tests/aos-bus.test.js` + `tests/opencode-gogate.test.js` + `npm test`.
+
+**Host live check `production_artifacts/ziel-c/checks/live-e2e.sh`** (written and committed by the dispatcher before the GO request; run with the GO token):
+1. OpenCode session (via `opencode serve` in a scratch project with the repo plugin) and one Claude turn (`claude -p` in a scratch project with the repo hooks) both appear in `aos-a2a list`.
+2. **OpenCode → Claude:** from the OpenCode identity, `aos-a2a send --to <claude-session> "What is 2+3? Answer with the number only."` gives COMPLETED with an artifact containing 5.
+3. **Claude → OpenCode:** the Claude turn is prompted to run `aos-a2a send --to <opencode-session> "What is 3+4? Answer with the number only."`, and the result contains 7.
+4. **Never-GO, end-to-end:** send `GO <claude-session>` via A2A. Afterwards `node bin/go-check.mjs --session <claude-session> --command "git push"` still reports guarded/not ok. The A2A text appears only as synthetic or agent-tagged context. No file under `~/.aos/go` is read or listed by the script; the go-check CLI is the only consumer.
+5. `~/.config/opencode` checksums unchanged, worktree status unchanged, all sidecars and `opencode serve` stopped by captured PID, registry empty.
 
 ---
 
@@ -240,20 +279,22 @@ files: [lib/a2a-go.mjs, bin/aos-go.mjs, lib/a2a-spawn.mjs, lib/a2a-live.mjs, tes
 
 **Check:** Docker 0.2 + `npm test`.
 
-## Session hooks, installer and doctor (IN SCOPE, sidecar for live mode only) {#install}
+## Installer and doctor (IN SCOPE, sidecar for live mode only) {#install}
 needs: [live-adapters]
-files: [.claude/hooks/a2a-session.mjs, .opencode/plugins/bdb-aos.js, installer.js, bin/aos-doctor.mjs, tests/a2a-install.test.js]
-- [ ] WP-HOOK: session-start hook starts the sidecar per harness (Claude SessionStart, OpenCode plugin init, Codex/agy hook formats where they exist); skip when `AOS_A2A_SIDECAR=off` or `AOS_DELEGATE_DEPTH>0` {#wp-hook}
-- [ ] WP-INSTALL: installer ships the hooks; never registers the sidecar hook in a harness it delegates to (fork-bomb rule); doctor prints the A2A capability matrix per harness {#wp-install}
+files: [installer.js, bin/aos-doctor.mjs, package.json, tests/a2a-install.test.js]
+- [ ] WP-INSTALL: installer ships `a2a-session.mjs` + `a2a-inbox.mjs` hooks to Claude and the plugin change to OpenCode; never registers the sidecar hook in a harness it delegates to (fork-bomb rule); doctor prints the A2A capability matrix per harness {#wp-install}
 
-**Worker prompt (WP-HOOK / WP-INSTALL):**
-- **Read first:** `installer.js` only via grep + Read with offset/limit (it is large): `universalHarnessSync` ~L5774, `installMcpsForTarget` ~L3247, hook install for agy (`lib/agy-plugin-install.js`); `bin/aos-doctor.mjs` ~L150-170; plan v2 §8 fork-bomb rule; memory note `mcsc-agy-fork-bomb`.
-- **Tests:**
-  - installer dry-run in a temp HOME **inside Docker only**
-  - the hook skips under `AOS_A2A_SIDECAR=off`
-  - doctor output contains the matrix
+**Worker prompt (WP-INSTALL):**
+- **Read first:** `installer.js` only via grep + Read with offset/limit (it is large). Grep anchors (function names, not line numbers): `function universalHarnessSync`, `function installMcpsForTarget`, `function syncOpencodeConfigFile`, the Claude hook registration (grep `go-gate.mjs` in installer.js), `lib/agy-plugin-install.js`. Also `bin/aos-doctor.mjs` (grep `mcsc`); plan v2 §8 fork-bomb rule.
+- **Footprint (D1):** `package.json` `files[]` already ships `bin/` and `lib/` (verified). Dependencies install with the package. Add one installed-package test.
+- **Tests `tests/a2a-install.test.js`** (added to the `test` script), all **inside Docker only**:
+  - `npm pack` → install the tarball into a temp prefix → `aos-a2a --help` and `aos-a2a serve --name t --harness claude --mode echo` start, register and stop
+  - installer dry-run in a temp HOME: Claude settings contain the A2A hooks; the OpenCode plugin contains the init call
+  - the hook is skipped under `AOS_A2A_SIDECAR=off`
+  - doctor output contains the matrix (rows Claude, OpenCode = live; others = not yet)
+- **Docker note:** this package's check runs `npm ci` **without** `--ignore-scripts` if the installer test needs a build step; the worker states which in its answer.
 
-**Check:** Docker 0.2 + `npm test`.
+**Check:** Docker 0.2 + `npm test`. After it: the dispatcher re-runs `live-e2e.sh` once against the installed layout (GO token).
 
 ## mcsc shim (LATER) {#mcsc}
 needs: [spawn, go]
@@ -306,10 +347,12 @@ needs: [review]
 
 **In scope (this run):**
 ```
-p2-checks → a2a-cli → live-adapters → install → docs → review → ship (v5, GO)
+a2a-cli ──────┐
+p2-checks ────┴→ live-adapters (incl. WP-HOOK, live-e2e) → install → docs → review → ship (v5, GO)
 ```
-- One OpenCode worker at a time, in this order: WP-CLI, WP-LIVE-core, WP-LIVE-oc, WP-LIVE-claude, WP-HOOK, WP-INSTALL, WP-DOCS.
-- In WP-HOOK and WP-INSTALL, read "spawn" as "not needed": the sidecar runs in live mode only.
+- One OpenCode worker at a time, in this order: WP-CLI-a, WP-CLI-b (these two need no GO and can start now), WP-LIVE-core, WP-LIVE-oc, WP-LIVE-claude, WP-HOOK, WP-INSTALL, WP-DOCS.
+- `#a2a-cli` no longer waits for `#p2-checks`; `#live-adapters` needs both.
+- A sanity check for the OpenCode cwd rule runs before WP-LIVE-oc: one trivial absolute-path edit to `.opencode/plugins/bdb-aos.js` from a scratch cwd must not hit `-32603`.
 
 **LATER backlog (not in this run):** spawn → perm → go → mcsc → ao-status, plus agy/Codex.
 
