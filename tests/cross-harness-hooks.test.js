@@ -26,6 +26,10 @@ const path = require('path');
 const os = require('os');
 const { spawnSync, execFileSync } = require('child_process');
 
+// The installer and doctor honour CLAUDE_CONFIG_DIR; an ambient value would redirect the Claude
+// settings away from the mock HOME (and write into the real config dir).
+delete process.env.CLAUDE_CONFIG_DIR;
+
 const REPO_ROOT = path.resolve(__dirname, '..');
 const INSTALLER_PATH = path.join(REPO_ROOT, 'installer.js');
 const MEMB_INJECT_SRC = path.join(REPO_ROOT, '.claude', 'hooks', 'memb-inject.mjs');
