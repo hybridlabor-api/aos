@@ -207,9 +207,8 @@ test('user-owned aos entry blocks that file only', () => {
     const before = fs.readFileSync(fx.f.claude, 'utf8');
     const rep = adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped });
     assert.equal(fs.readFileSync(fx.f.claude, 'utf8'), before);
-    assert.ok(rep.files.find((r) => r.file === fx.f.claude).conflict, 'reported');
+    assert.ok(rep.skipped.some((k) => k.name === 'mine' && /user-owned "aos"/.test(k.reason)), 'reported as skipped');
     assert.ok(rj(fx.f.cursor).mcpServers.aos, 'other files proceed');
-    // 'mine' was adopted (recorded) but the claude file kept the entry
     assert.ok(rj(fx.f.claude).mcpServers.mine, 'entry stays where the file was blocked');
 });
 
@@ -284,4 +283,28 @@ test('disable restores the originals and removes them from adopted.json', () => 
     assert.ok(!rep.some((r) => r.error), JSON.stringify(rep));
     assert.ok(rj(fx.f.claude).mcpServers.mine);
     assert.equal(rj(adopt.adoptedPath(fx.home)).servers.mine, undefined);
+});
+
+test('AD-1: a name with one unrewritable source is not adopted at all (no half state)', () => {
+    const fx = fixture({ claude: { dup: { command: 'node', args: ['d.js'] } }, cursor: { dup: { command: 'node', args: ['d.js'] }, aos: { command: 'keep' } } });
+    const before = fs.readFileSync(fx.f.claude, 'utf8');
+    const rep = adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped });
+    assert.ok(!rep.adopted.includes('dup'));
+    assert.ok(rep.skipped.some((k) => k.name === 'dup' && /cannot be rewritten/.test(k.reason)));
+    assert.ok(rj(fx.f.claude).mcpServers.dup, 'the claude entry is untouched');
+    const a = fs.existsSync(adopt.adoptedPath(fx.home)) ? rj(adopt.adoptedPath(fx.home)).servers : {};
+    assert.equal(a.dup, undefined);
+    assert.ok(before.includes('"dup"'));
+});
+
+test('AD-4: positional arguments that look like tokens are skipped', () => {
+    const fx = fixture({ claude: {
+        ghtok: { command: 'node', args: ['s.js', 'ghp_abcdefghijklmnopqrstuvwxyz0123456789'] },
+        longtok: { command: 'node', args: ['s.js', 'aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dE3fG5'] },
+        pathy: { command: 'node', args: ['/usr/local/lib/node_modules/some-server/build/index.js', '--port', '8080'] },
+    } });
+    const s = adopt.scanAdoptable({ files: fx.files, shipped });
+    assert.ok(s.skipped.some((k) => k.name === 'ghtok' && /inline-secret/.test(k.reason)));
+    assert.ok(s.skipped.some((k) => k.name === 'longtok' && /inline-secret/.test(k.reason)));
+    assert.ok(s.adoptable.some((a) => a.name === 'pathy'), 'a plain path argument is still adoptable');
 });

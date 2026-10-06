@@ -173,6 +173,8 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
 
 async function serve() {
     let handle;
+    const major = Number(process.versions.node.split('.')[0]);
+    if (major < 24) console.error(`aos-gateway: warning: bdb_after_effects_mcp (mcp-aftereffects) needs Node >= 24, this gateway runs on ${process.version}; the AE upstream will not start`);
     try { handle = await startServe({ dir: gatewayDir(os.homedir()) }); } catch (e) {
         console.error(`aos-gateway: ${e.message}`);
         process.exit(1);

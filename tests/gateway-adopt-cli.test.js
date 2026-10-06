@@ -100,7 +100,7 @@ describe('aos-gateway adopt CLI', () => {
         fs.writeFileSync(fx.claude, JSON.stringify({ mcpServers: { mine: { command: 'node', args: ['mine.js'] }, aos: { command: 'keep' } } }, null, 2) + '\n');
         const r = run(fx.home, ['adopt']);
         assert.equal(r.status, 0, 'conflict is a skip, not an error');
-        assert.match(r.stdout, /conflict .*aos/);
+        assert.match(r.stdout, /skip mine: .*user-owned "aos"/);
     });
 
     test('doctor: adoptable check is a warning before, ok after adopt', () => {

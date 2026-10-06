@@ -47,10 +47,6 @@
       "command": "npx",
       "args": ["-y", "@kumoproductions/mcp-aftereffects@0.3.1"]
     },
-    "bdb_after_effects_mcp_legacy": {
-      "command": "node",
-      "args": ["__MCPS_DIR__/after-effects-mcp/build/index.js"]
-    },
     "bdb_after_effects_mcp_fallback": {
       "command": "go",
       "args": ["-C", "__MCPS_DIR__/ae-mcp", "run", "./cmd/ae-mcp"]
