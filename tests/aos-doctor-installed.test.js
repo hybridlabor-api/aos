@@ -31,7 +31,7 @@ test('installed doctor with an AO checkout, a nested plugin cache and named agy 
         assert.ok(by('AO revision vs checkout'), 'checkout path ran without requiring ../installer.js');
         const claude = by('Claude Code Skills');
         assert.ok(claude.ok && /provided by the bdb-aos plugin \(1 skills\)/.test(claude.detail), claude.detail);
-        assert.ok(by('Antigravity hooks').ok && /2\/6 named/.test(by('Antigravity hooks').detail), by('Antigravity hooks').detail);
+        assert.ok(!by('Antigravity hooks').ok && /missing aos-conventional-commits/.test(by('Antigravity hooks').detail), by('Antigravity hooks').detail);
         const mcsc = by('MCSC Telemetry Registration');
         assert.ok(mcsc.ok && mcsc.detail.includes('mcp_config.json'), mcsc.detail);
     } finally { fs.rmSync(home, { recursive: true, force: true }); }

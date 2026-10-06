@@ -65,6 +65,16 @@ test('fresh output is valid per agy hook format: one named, non-empty hook per c
     assert.ok(data['aos-context'].PreInvocation.length === 2);
 });
 
+test('named format has no top-level "hooks" key and wires every AOS hook script', () => {
+    const p = path.join(tmp(), 'hooks.json');
+    mergeAntigravityHooks(p);
+    const raw = fs.readFileSync(p, 'utf8');
+    assert.ok(!('hooks' in JSON.parse(raw)));
+    for (const s of ['go-gate', 'graph-gate', 'memb-inject', 'trail-relay', 'startcycle-dispatch', 'conventional-commits', 'env-file-protection']) {
+        assert.ok(raw.includes(`${s}.mjs`), `${s}.mjs missing from agy hooks.json`);
+    }
+});
+
 test('migrates the legacy "hooks" lump, keeps foreign handlers and other names, is idempotent', () => {
     const dir = tmp();
     const p = path.join(dir, 'hooks.json');

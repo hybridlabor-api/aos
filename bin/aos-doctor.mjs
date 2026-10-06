@@ -282,10 +282,12 @@ function checkHooks() {
   const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
   const namedWired = AG_NAMED.filter((n) => agHooks && agHooks[n]);
   const legacyWired = JSON.stringify(agHooks?.hooks || {}).includes('memb-inject.mjs');
-  const agOk = namedWired.includes('aos-context') || legacyWired;
-  add('hooks', 'Antigravity hooks', agOk,
-    agHooksFile ? `${tilde(agHooksFile)} (${namedWired.length ? `${namedWired.length}/${AG_NAMED.length} named aos-* hooks` : legacyWired ? 'legacy "hooks" lump, memb-inject wired' : 'unwired'})` : 'hooks.json not found',
-    'Run the AOS installer to configure Antigravity hooks.', true);
+  const missingNamed = AG_NAMED.filter((n) => !(agHooks && agHooks[n]));
+  const agOk = !!agHooks && !legacyWired && missingNamed.length === 0;
+  const agDetail = !agHooksFile ? 'hooks.json not found'
+    : `${tilde(agHooksFile)} (${legacyWired ? 'old format: AOS handlers sit under one "hooks" key, agy loads only 1 hook' : missingNamed.length ? `missing ${missingNamed.join(', ')}` : `${AG_NAMED.length}/${AG_NAMED.length} named aos-* hooks`}; manual check: agy logs "loaded N named hooks" at start, N should count every aos-* hook plus your own)`;
+  add('hooks', 'Antigravity hooks', agOk, agDetail,
+    'Run the AOS installer to rewrite the Antigravity hooks.json in the named format.', true);
 
   // Codex hooks
   const codexConf = h('.codex', 'config.toml');
@@ -443,8 +445,37 @@ function report() {
 // ---------------------------------------------------------------- Run
 checkPrereqs();
 checkAosCore();
+// ---------------------------------------------------------------- 4b. bdb-aos plugin registration per harness
+function checkPlugins() {
+  const PLUGIN_ID = 'bdb-aos@bdb-marketplace';
+  const optOut = 'Opted out ("false" in settings.json); nothing to do.';
+  const settings = readJson(hc('settings.json'));
+  if (existsSync(claudeConfigDir(HOME))) {
+    const flag = settings?.enabledPlugins?.[PLUGIN_ID];
+    const marketplace = !!settings?.extraKnownMarketplaces?.['bdb-marketplace'];
+    const installed = !!pluginSkills(HOME);
+    const ok = flag === true && marketplace && installed;
+    add('plugins', 'Claude Code bdb-aos plugin', flag === false || ok,
+      flag === false ? 'disabled by the user' : `settings.json ${flag === true ? 'enables' : 'does not enable'} ${PLUGIN_ID}, marketplace ${marketplace ? 'known' : 'missing'}, plugin cache ${installed ? 'present' : 'missing'}`,
+      flag === false ? optOut : 'Run the AOS installer (registers settings.json), then: claude plugin marketplace add hybridlabor-api/aos && claude plugin install bdb-aos@bdb-marketplace', true);
+  }
+  if (existsSync(h('.codex'))) {
+    const dir = h('.codex', 'plugins', 'cache', 'bdb-aos', 'bdb-aos');
+    const ok = existsSync(dir);
+    add('plugins', 'Codex bdb-aos plugin', ok, ok ? tilde(dir) : `${tilde(dir)} missing`,
+      'Run the AOS installer, or: codex plugin marketplace add hybridlabor-api/aos && codex plugin add bdb-aos@bdb-aos', true);
+  }
+  if (existsSync(h('.gemini'))) {
+    const dir = h('.gemini', 'config', 'plugins', 'bdb-aos');
+    const ok = existsSync(dir);
+    add('plugins', 'Antigravity bdb-aos plugin', ok, ok ? tilde(dir) : `${tilde(dir)} missing`,
+      'Run the AOS installer (needs agy on PATH), or: agy plugin install <plugin dir>', true);
+  }
+}
+
 checkHarnesses();
 checkHooks();
+checkPlugins();
 checkAgyMcsc();
 await checkDaemonsAndModules();
 report();
