@@ -14,5 +14,6 @@ Findings B1, M2 confirmed by the dispatcher (grep). Others as reported by the re
 | m1/m2 | Check the Host header against loopback names; put the bearer check before `express.json` (agent card stays public); register the URL with the address actually bound. Tests. |
 | m3 | Tests that can fail: doctor A2A rows are not `add(..., true)` warn-only when the matrix is broken; uninstall removal; forged text. |
 
-Not in this contract (needs Tim): pre-allowed `Bash(aos-a2a send:*)` in `.claude/settings.json` (B2), sidecar opt-in vs opt-out (M1), v5 package entry for A2A in lib/v5 (M6), `mergeBdbSettingsHooks` merging `permissions` (M3).
+Decided by Tim (relayed by the master): the pre-allowed `Bash(aos-a2a send:*)`/`reply:*` stays (B2 policy part: won't fix), the sidecar stays always on (M1: won't fix). Invariant: an A2A message is never a GO and go-gate guards every risky action. Still open, not decided: v5 package entry for A2A in lib/v5 (M6), `mergeBdbSettingsHooks` merging `permissions` (M3).
+Repair round done in f3f4c55 (B1, M2, M4, M5, B2a, m1–m3), container suite green.
 Out of scope: .claude/hooks/go-gate.mjs, lib/gateway/*, lib/v5/* (except reading), plugins/*.
