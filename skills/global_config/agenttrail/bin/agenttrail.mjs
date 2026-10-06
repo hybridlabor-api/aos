@@ -10,6 +10,7 @@ import os from 'node:os'
 import crypto from 'node:crypto'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
 import { parsePlan, lintPlan } from '../lib/plan.mjs'
+import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -38,15 +39,35 @@ let ensureMode = false
 let ensureCwd = null
 let ensureSession = null
 let jsonOut = false
+// AOS v2: `emit <kind> ...` — the harness-agnostic event contract (see docs/trail-events.md)
+let emitKind = null
+let emitSession = null
+let emitName = null
+let emitDetail = null
+let emitTask = null
+let emitStatus = null
+let emitFile = null
+let emitMessage = null
+let emitStdin = false
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
   else if (a === 'hook') cmd = 'hook'
   // AOS patch: ask engine CLI — asks the human a question via the map
   else if (a === 'ask') cmd = 'ask'
+  else if (a === 'emit') cmd = 'emit'
   else if (a === '--ensure') ensureMode = true
   else if (a === '--cwd') ensureCwd = argv[++i]
-  else if (a === '--session') ensureSession = argv[++i]
+  else if (a === '--session') { ensureSession = argv[++i]; if (cmd === 'emit') emitSession = ensureSession }
+  // AOS v2: emit flags. `--json -` reads one event from stdin.
+  else if (a === '--name') emitName = argv[++i]
+  else if (a === '--detail') emitDetail = argv[++i]
+  else if (a === '--task') emitTask = argv[++i]
+  else if (a === '--status') emitStatus = argv[++i]
+  else if (a === '--file') emitFile = argv[++i]
+  else if (a === '--message') emitMessage = argv[++i]
+  else if (cmd === 'emit' && a === '--json') emitStdin = true
+  else if (cmd === 'emit' && emitKind === null && !a.startsWith('-')) emitKind = a
   else if (a === '--json') jsonOut = true
   else if (a === '--port') port = parseInt(argv[++i], 10)
   else if (a === '--open') openBrowser = true
@@ -136,8 +157,35 @@ if (cmd === 'init') { hooksOnly ? installHooks() : await init(); process.exit(0)
 if (cmd === 'up') { await upAll(); process.exit(0) }
 if (cmd === 'autostart') { autostart(); process.exit(0) }
 if (cmd === 'hook') { await relayHook(); process.exit(0) }
+// AOS v2: report one event to the hub. Always exits 0 — a reporting hook never fails a tool call.
+if (cmd === 'emit') { await emitFlow(); process.exit(0) }
 // AOS patch: ask engine CLI — blocks until the map answers; exit 0 = go, 1 = deny/timeout
 if (cmd === 'ask') { process.exit(await askFlow()) }
+
+// AOS v2: build one event and hand it to the hub. Errors are swallowed on purpose:
+// a hook that cannot reach the board must not disturb the agent that called it.
+async function emitFlow() {
+  let event
+  if (emitStdin) {
+    try { event = JSON.parse(fs.readFileSync(0, 'utf8')) } catch { return }
+  } else {
+    event = buildEvent({
+      kind: emitKind,
+      agent: agentArg,
+      session: emitSession,
+      name: emitName,
+      cwd: ensureCwd ? path.resolve(ensureCwd) : process.cwd(),
+      tool: null,
+      detail: emitDetail,
+      task: emitTask,
+      status: emitStatus,
+      plan: planArg,
+      file: emitFile,
+      message: emitMessage,
+    }, { cwd: ensureCwd ? path.resolve(ensureCwd) : process.cwd(), env: process.env })
+  }
+  await emitEvent(event, { port: Number(process.env.AGENTTRAIL_PORT) || 5350, timeoutMs: 300 })
+}
 
 // reads a claude code hook payload on stdin and fans it out to local daemons;
 // each daemon keeps only events whose cwd lives inside its repo. Never blocks
