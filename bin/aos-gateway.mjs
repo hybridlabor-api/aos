@@ -16,13 +16,19 @@ const { createForwarder } = req('../lib/gateway/forwarder.js');
 export const LABEL = 'com.bdb.aos.gateway';
 export const WIN_TASK = 'AOS MCP Gateway';
 
-const get = (port, urlPath) => new Promise((resolve) => {
-    const r = http.get({ host: '127.0.0.1', port, path: urlPath, timeout: 2000 }, (res) => {
+// Always resolves: response, error, abnormal close or the overall timeout, whichever comes first.
+const get = (port, urlPath, timeoutMs = 2000) => new Promise((resolve) => {
+    let done = false;
+    let timer = null;
+    const finish = (v) => { if (done) return; done = true; clearTimeout(timer); resolve(v); };
+    const r = http.get({ host: '127.0.0.1', port, path: urlPath }, (res) => {
         res.resume();
-        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers }));
+        res.on('end', () => finish({ status: res.statusCode, headers: res.headers }));
+        res.on('error', (e) => finish({ error: e.code || e.message }));
+        res.on('close', () => finish({ error: 'ECONNRESET' }));
     });
-    r.on('timeout', () => r.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })));
-    r.on('error', (e) => resolve({ error: e.code || e.message }));
+    timer = setTimeout(() => { r.destroy(); finish({ error: 'ETIMEDOUT' }); }, timeoutMs);
+    r.on('error', (e) => finish({ error: e.code || e.message }));
 });
 
 function readPid(dir) {
@@ -50,66 +56,116 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         if (inner.status === 200) return { name, ok: true };
         return { name, ok: false, error: inner.error ? `1mcp not reachable on ${upstreamPort} (${inner.error})` : `1mcp health returned ${inner.status}` };
     });
-    return { running, pid: running ? readPid(dir) : null, port, upstreams, ...(inUse ? { error: problem } : {}) };
+    // Upstream values are the state of 1mcp as a whole, not per-server health.
+    return { running, pid: running ? readPid(dir) : null, port, upstreamsScope: 'global', upstreams, ...(inUse ? { error: problem } : {}) };
 }
 
-async function serve() {
-    const dir = gatewayDir(os.homedir());
-    let token = '';
-    try { token = fs.readFileSync(path.join(dir, 'token'), 'utf8').trim(); } catch { /* reported below */ }
-    if (!token) { console.error(`aos-gateway: no token in ${path.join(dir, 'token')}; run the gateway installer first`); process.exit(1); }
+const TOKEN_RE = /^[0-9a-f]{64}$/;
 
-    const forwarder = createForwarder({ port: GATEWAY_PORT, upstreamPort: UPSTREAM_PORT, token });
+function readToken(dir) {
+    const file = path.join(dir, 'token');
+    let token;
+    try {
+        const st = fs.statSync(file);
+        if (process.platform !== 'win32' && (st.mode & 0o077)) throw new Error(`${file} must not be accessible by group/others (chmod 600)`);
+        token = fs.readFileSync(file, 'utf8').trim();
+    } catch (e) {
+        if (e.code === 'ENOENT') throw new Error(`no token in ${file}; run the gateway installer first`);
+        if (e.code) throw new Error(`cannot read ${file} (${e.code})`);
+        throw e;
+    }
+    if (!TOKEN_RE.test(token)) throw new Error(`token in ${file} is empty or invalid; re-run the gateway installer`);
+    return token;
+}
+
+// Runs 1mcp via node and its JS entry (no .cmd shim, no shell) so kill() reaches 1mcp itself on every platform.
+function oneMcpEntry(dir) {
+    const pkgDir = path.join(dir, 'node_modules', '@1mcp', 'agent');
+    let bin;
+    try { bin = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8')).bin; } catch { /* reported below */ }
+    const rel = typeof bin === 'string' ? bin : bin && (bin['1mcp'] || Object.values(bin)[0]);
+    if (typeof rel !== 'string') throw new Error(`cannot find the 1mcp entry in ${pkgDir}/package.json; re-run the gateway installer`);
+    return path.join(pkgDir, rel);
+}
+
+// Core of `serve`, testable: no process-wide handlers, no process.exit. Rejects when it must refuse to start.
+export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPSTREAM_PORT, spawnFn = spawn, log = (m) => console.error(m), backoffMs = 1000, entry } = {}) {
+    const token = readToken(dir);
+    const probe = await get(upstreamPort, '/health');
+    if (probe.error !== 'ECONNREFUSED') throw new Error(`port ${upstreamPort} is already in use (not by this gateway's 1mcp); refusing to forward to a foreign process`);
+    const script = entry || oneMcpEntry(dir);
+
+    const forwarder = createForwarder({ port, upstreamPort, token });
     try { await forwarder.listen(); } catch (e) {
-        console.error(e.code === 'EADDRINUSE' ? `aos-gateway: port ${GATEWAY_PORT} in use by another process` : `aos-gateway: cannot listen: ${e.message}`);
-        process.exit(1);
+        throw new Error(e.code === 'EADDRINUSE' ? `port ${port} in use by another process` : `cannot listen: ${e.message}`);
     }
     const pidFile = path.join(dir, 'gateway.pid');
     fs.writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
 
-    const win = process.platform === 'win32';
-    // Windows: the .cmd shim needs a shell. UNVERIFIED (not tested on Windows).
-    const bin = path.join(dir, 'node_modules', '.bin', win ? '1mcp.cmd' : '1mcp');
-    const args = ['serve', '-c', path.join(dir, 'mcp.json'), '--config-dir', dir, '--host', '127.0.0.1', '--port', String(UPSTREAM_PORT),
+    const args = [script, 'serve', '-c', path.join(dir, 'mcp.json'), '--config-dir', dir, '--host', '127.0.0.1', '--port', String(upstreamPort),
         '--no-enable-session-persistence', '--enable-enhanced-security', '--log-level', 'warn'];
-
     let child = null;
     let stopping = false;
     let timer = null;
-    let delay = 1000;
+    let delay = backoffMs;
     let startedAt = 0;
+    const alive = () => !!child && child.exitCode === null && child.signalCode === null;
     const schedule = () => {
         if (stopping || timer) return;
-        if (Date.now() - startedAt > 60000) delay = 1000;
-        console.error(`aos-gateway: 1mcp stopped, restarting in ${delay / 1000}s`);
+        if (Date.now() - startedAt > 60000) delay = backoffMs;
+        log(`aos-gateway: 1mcp stopped, restarting in ${delay / 1000}s`);
         timer = setTimeout(() => { timer = null; start(); }, delay);
         delay = Math.min(delay * 2, 30000);
     };
     const start = () => {
+        if (stopping) return;
         startedAt = Date.now();
-        child = spawn(bin, args, { stdio: ['ignore', 'inherit', 'inherit'], shell: win });
-        child.on('error', (e) => { console.error(`aos-gateway: cannot start 1mcp: ${e.code || e.message}`); schedule(); });
+        try { child = spawnFn(process.execPath, args, { stdio: ['ignore', 'inherit', 'inherit'], shell: false }); } catch (e) {
+            log(`aos-gateway: cannot start 1mcp: ${e.code || e.message}`);
+            return schedule();
+        }
+        child.on('error', (e) => { log(`aos-gateway: cannot start 1mcp: ${e.code || e.message}`); schedule(); });
         child.on('exit', schedule);
     };
     start();
 
-    const shutdown = async () => {
-        if (stopping) return;
-        stopping = true;
-        clearTimeout(timer);
-        await forwarder.close();
-        if (child && child.exitCode === null && child.signalCode === null) {
-            await new Promise((resolve) => {
-                const kill = setTimeout(() => child.kill('SIGKILL'), 5000);
-                child.once('exit', () => { clearTimeout(kill); resolve(); });
-                child.kill('SIGTERM');
-            });
-        }
-        try { fs.unlinkSync(pidFile); } catch { /* already gone */ }
-        process.exit(0);
+    return {
+        port: forwarder.server.address().port,
+        killNow() { if (alive()) { try { child.kill('SIGKILL'); } catch { /* already gone */ } } },
+        async stop() {
+            if (stopping) return;
+            stopping = true;
+            clearTimeout(timer);
+            await forwarder.close();
+            if (alive()) {
+                await new Promise((resolve) => {
+                    const kill = setTimeout(() => child.kill('SIGKILL'), 5000);
+                    child.once('exit', () => { clearTimeout(kill); resolve(); });
+                    child.kill('SIGTERM');
+                });
+            }
+            try { fs.unlinkSync(pidFile); } catch { /* already gone */ }
+        },
     };
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+}
+
+async function serve() {
+    let handle;
+    try { handle = await startServe({ dir: gatewayDir(os.homedir()) }); } catch (e) {
+        console.error(`aos-gateway: ${e.message}`);
+        process.exit(1);
+    }
+    let down = false;
+    const shutdown = async (code = 0) => {
+        if (down) return;
+        down = true;
+        try { await handle.stop(); } catch { /* exiting anyway */ }
+        process.exit(code);
+    };
+    process.on('exit', () => handle.killNow());
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => shutdown(0));
+    process.on('uncaughtException', (e) => { console.error(`aos-gateway: ${e && e.stack || e}`); shutdown(1); });
+    process.on('unhandledRejection', (e) => { console.error(`aos-gateway: unhandled rejection: ${e && e.stack || e}`); shutdown(1); });
 }
 
 function service(cmd) {
@@ -125,7 +181,8 @@ function service(cmd) {
         const target = `gui/${uid}/${LABEL}`;
         if (cmd === 'start') return run('launchctl', ['bootstrap', `gui/${uid}`, plist]);
         if (cmd === 'stop') return run('launchctl', ['bootout', target]);
-        return run('launchctl', ['kickstart', '-k', target]);
+        const kicked = run('launchctl', ['kickstart', '-k', target]);
+        return kicked === 0 ? 0 : run('launchctl', ['bootstrap', `gui/${uid}`, plist]);
     }
     if (process.platform === 'win32') {
         // UNVERIFIED: schtasks task "AOS MCP Gateway" is not created by the installer yet and not tested on Windows.

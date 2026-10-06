@@ -38,23 +38,38 @@ describe('config generator', () => {
     const shipped = {
         github: { command: 'npx', args: ['-y', 'pkg@1.0.0'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: SECRET } },
         bdb_resolume_mcp: { command: 'uv', args: ['run', '__MCPS_DIR__/resolume_mcp.py'] },
-        withcwd: { command: 'node', args: ['{{HOME}}/x.js'], cwd: '/work/dir', env: { FOO: 'bar' } },
+        bdb_blender_mcp: { command: 'node', args: ['{{HOME}}/x.js'], cwd: '/work/dir', env: { FOO: 'bar' } },
         deja: { command: 'deja', args: ['mcp'] },
         memb_mcp: { command: '__PYTHON_BIN__', args: ['run.py'] },
-        private_one: { command: 'node', args: ['p.js'], shared: false },
+        unknown_new_server: { command: 'node', args: ['n.js'] },
+        open_design_mcp: { command: 'node', args: ['p.js'], shared: false },
     };
 
-    test('splitServers sends direct and shared:false servers to direct', () => {
+    test('splitServers: only allow-listed servers go to the gateway; shared:false forces direct', () => {
         const { gateway, direct } = cfg.splitServers(shipped);
-        assert.deepEqual(Object.keys(gateway).sort(), ['bdb_resolume_mcp', 'github', 'withcwd']);
-        assert.deepEqual(Object.keys(direct).sort(), ['deja', 'memb_mcp', 'private_one']);
-        for (const n of cfg.DIRECT_SERVERS) assert.ok(!(n in gateway));
+        assert.deepEqual(Object.keys(gateway).sort(), ['bdb_blender_mcp', 'bdb_resolume_mcp', 'github']);
+        assert.deepEqual(Object.keys(direct).sort(), ['deja', 'memb_mcp', 'open_design_mcp', 'unknown_new_server']);
+        for (const n of cfg.DIRECT_SERVERS) assert.ok(!cfg.GATEWAY_SERVERS.includes(n), n);
     });
 
     const up = cfg.buildUpstreams({ shipped, home, launcher, pathEnv: '/usr/bin:/bin' });
 
+    test('passEnv is merged under template env, PATH and HOME', () => {
+        const o = cfg.buildUpstreams({ shipped, home, launcher, pathEnv: 'P', passEnv: { HTTPS_PROXY: 'http://p:1', FOO: 'x', HOME: '/evil' }, uvPath: '/opt/uv' });
+        assert.equal(o.bdb_blender_mcp.env.HTTPS_PROXY, 'http://p:1');
+        assert.equal(o.bdb_blender_mcp.env.FOO, 'bar');
+        assert.equal(o.bdb_blender_mcp.env.HOME, home);
+        assert.equal(o.bdb_blender_mcp.env.PATH, 'P');
+        assert.equal(o.bdb_resolume_mcp.command, '/opt/uv');
+    });
+
+    test('defaultPathEnv includes go directories', () => {
+        assert.ok(cfg.defaultPathEnv({ home, nodePath: '/n/bin/node', platform: 'darwin' }).split(':').includes(path.join(home, 'go', 'bin')));
+        assert.ok(cfg.defaultPathEnv({ home, nodePath: '/n/bin/node', platform: 'darwin' }).split(':').includes('/usr/local/go/bin'));
+    });
+
     test('entries are explicit stdio with isolated env and no direct servers', () => {
-        assert.deepEqual(Object.keys(up).sort(), ['bdb_resolume_mcp', 'github', 'withcwd']);
+        assert.deepEqual(Object.keys(up).sort(), ['bdb_blender_mcp', 'bdb_resolume_mcp', 'github']);
         for (const e of Object.values(up)) {
             assert.equal(e.type, 'stdio');
             assert.equal(e.inheritParentEnv, false);
@@ -72,18 +87,20 @@ describe('config generator', () => {
     });
 
     test('cwd, env and placeholders are carried over', () => {
-        assert.equal(up.withcwd.cwd, '/work/dir');
-        assert.equal(up.withcwd.env.FOO, 'bar');
-        assert.deepEqual(up.withcwd.args, [`${home}/x.js`]);
+        assert.equal(up.bdb_blender_mcp.cwd, '/work/dir');
+        assert.equal(up.bdb_blender_mcp.env.FOO, 'bar');
+        assert.deepEqual(up.bdb_blender_mcp.args, [`${home}/x.js`]);
         assert.deepEqual(up.bdb_resolume_mcp.args, ['run', path.join(home, '.gemini', 'config', 'mcps', 'resolume_mcp.py')]);
         assert.equal(shipped.bdb_resolume_mcp.args[1], '__MCPS_DIR__/resolume_mcp.py');
     });
 
-    test('the shipped template yields no direct server and no secret value', () => {
+    test('the shipped template yields exactly the allow-listed gateway servers and no secret value', () => {
         const real = require('../lib/mcp-secrets.js').shippedServers(ROOT);
         const out = cfg.buildUpstreams({ shipped: real, home, launcher, pathEnv: 'p' });
+        assert.deepEqual(Object.keys(out).sort(), ['bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'github', 'open_design_mcp']);
+        assert.ok(!('bdb_remoteos_mcp' in out));
+        assert.ok(cfg.splitServers(real).direct.bdb_remoteos_mcp);
         for (const n of cfg.DIRECT_SERVERS) assert.ok(!(n in out), n);
-        assert.ok(out.github && out.open_design_mcp);
         assert.ok(!/__MCPS_DIR__|__GEMINI_API_KEY__/.test(JSON.stringify(out)));
     });
 
@@ -164,6 +181,75 @@ describe('forwarder', () => {
         assert.throws(() => createForwarder({ port: 0, upstreamPort: 1, token: '' }), /token/);
     });
 
+    test('Origin: null gives 403', async () => {
+        assert.equal((await request(port, { headers: { origin: 'null', 'x-aos-token': TOKEN } })).status, 403);
+    });
+
+    test('IPv6 and trailing-dot Host give 403', async () => {
+        for (const h of [`[::1]:${port}`, `127.0.0.1.:${port}`, `localhost.:${port}`]) {
+            assert.equal((await request(port, { headers: { host: h, 'x-aos-token': TOKEN } })).status, 403, h);
+        }
+    });
+
+    test('duplicate x-aos-token gives 401', async () => {
+        assert.equal((await request(port, { headers: { 'x-aos-token': [TOKEN, TOKEN] } })).status, 401);
+    });
+
+    test('hop-by-hop headers are not forwarded', async () => {
+        seen = null;
+        const r = await request(port, { headers: { 'x-aos-token': TOKEN, connection: 'x-custom, keep-alive', 'x-custom': '1', 'keep-alive': 'timeout=5', 'proxy-authorization': 'Basic eA==', te: 'trailers', 'x-keep': 'yes' } });
+        assert.equal(r.status, 200);
+        for (const h of ['x-custom', 'keep-alive', 'proxy-authorization', 'te', 'trailer', 'upgrade']) assert.equal(seen.headers[h], undefined, h);
+        assert.equal(seen.headers['x-keep'], 'yes');
+    });
+
+    test('SSE stream is relayed chunk by chunk and closes cleanly', async () => {
+        const sse = http.createServer((req, res) => {
+            res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+            let i = 0;
+            const t = setInterval(() => { res.write(`data: ${i}\n\n`); if (++i === 4) { clearInterval(t); res.end(); } }, 40);
+        });
+        const f = createForwarder({ port: 0, upstreamPort: await listen(sse), token: TOKEN });
+        await f.listen();
+        const chunks = [];
+        const closed = await new Promise((resolve, reject) => {
+            const r = http.get({ host: '127.0.0.1', port: f.server.address().port, path: '/sse', headers: { 'x-aos-token': TOKEN } }, (res) => {
+                assert.match(res.headers['content-type'], /text\/event-stream/);
+                res.setEncoding('utf8');
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => resolve(res.complete));
+                res.on('error', reject);
+            });
+            r.on('error', reject);
+        });
+        assert.equal(closed, true);
+        assert.equal(chunks.join(''), 'data: 0\n\ndata: 1\n\ndata: 2\n\ndata: 3\n\n');
+        assert.ok(chunks.length > 1, 'chunks are not buffered into one');
+        await f.close();
+        await closeServer(sse);
+    });
+
+    test('client abort mid-stream destroys the upstream request', async () => {
+        let upstreamClosed;
+        const gone = new Promise((resolve) => { upstreamClosed = resolve; });
+        const sse = http.createServer((req, res) => {
+            res.on('close', upstreamClosed);
+            res.writeHead(200, { 'content-type': 'text/event-stream' });
+            res.write('data: first\n\n');
+        });
+        const f = createForwarder({ port: 0, upstreamPort: await listen(sse), token: TOKEN });
+        await f.listen();
+        await new Promise((resolve) => {
+            const r = http.get({ host: '127.0.0.1', port: f.server.address().port, path: '/sse', headers: { 'x-aos-token': TOKEN } }, (res) => {
+                res.once('data', () => { r.destroy(); resolve(); });
+            });
+            r.on('error', () => {});
+        });
+        await Promise.race([gone, new Promise((_, rej) => setTimeout(() => rej(new Error('upstream not closed')), 3000))]);
+        await f.close();
+        await closeServer(sse);
+    });
+
     test('teardown', async () => {
         await fw.close();
         await closeServer(upstream);
@@ -207,7 +293,86 @@ describe('pkg-gateway', () => {
         assert.ok(plist.includes('<key>HOME</key>') && plist.includes('<key>PATH</key>'));
 
         assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
-        assert.deepEqual(calls[1], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
+        assert.deepEqual(calls[1], ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
+        assert.deepEqual(calls[2], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
+        const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
+        assert.deepEqual(Object.keys(g).sort(), ['bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'github', 'open_design_mcp']);
+    });
+
+    const launchctlFails = (how) => async (cmd) => {
+        if (cmd !== 'launchctl') return { status: 0, stdout: '' };
+        if (how === 'reject') throw new Error('spawn launchctl ENOENT');
+        return { status: how };
+    };
+
+    for (const how of ['reject', 5, 113]) {
+        test(`install survives launchctl failing (${how})`, async () => {
+            const home = tmp();
+            const say = [];
+            const { ctx } = mkCtx(home, { run: launchctlFails(how), log: (m) => say.push(m) });
+            const r = await pkg.install(ctx);
+            assert.equal(r.ok, true);
+            assert.ok(say.some((m) => /launchctl/.test(m)));
+        });
+
+        test(`update falls back to bootout + bootstrap when kickstart fails (${how})`, async () => {
+            const home = tmp();
+            const calls = [];
+            const run = async (cmd, args) => { calls.push([cmd, ...args]); return launchctlFails(how)(cmd); };
+            const { ctx } = mkCtx(home, { run });
+            await pkg.update(ctx);
+            const lc = calls.filter((c) => c[0] === 'launchctl').map((c) => c[1]);
+            assert.deepEqual(lc, ['kickstart', 'bootout', 'bootstrap']);
+        });
+
+        test(`uninstall still unlinks and renames when bootout fails (${how})`, async () => {
+            const home = tmp();
+            await pkg.install(mkCtx(home).ctx);
+            const dir = cfg.gatewayDir(home);
+            fs.mkdirSync(path.join(dir, 'node_modules'), { recursive: true });
+            const { ctx } = mkCtx(home, { run: launchctlFails(how), now: 1700000000001 });
+            const res = await pkg.uninstall(ctx);
+            assert.ok(!fs.existsSync(path.join(dir, 'token')));
+            assert.ok(!fs.existsSync(path.join(dir, 'mcp.json')));
+            assert.ok(!fs.existsSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')));
+            assert.equal(res.retired, path.join(dir, 'node_modules.removed-1700000000001'));
+        });
+    }
+
+    test('install regenerates an empty or invalid token and keeps a valid one', async () => {
+        const home = tmp();
+        await pkg.install(mkCtx(home).ctx);
+        const file = path.join(cfg.gatewayDir(home), 'token');
+        const good = fs.readFileSync(file, 'utf8');
+        await pkg.install(mkCtx(home).ctx);
+        assert.equal(fs.readFileSync(file, 'utf8'), good);
+        for (const bad of ['', '\n', 'short', 'G'.repeat(64)]) {
+            fs.writeFileSync(file, bad);
+            await pkg.install(mkCtx(home).ctx);
+            assert.match(fs.readFileSync(file, 'utf8'), /^[0-9a-f]{64}$/);
+            if (posix) assert.equal(mode(file), 0o600);
+        }
+    });
+
+    test('install warns about a missing launcher and missing server scripts', async () => {
+        const home = tmp();
+        const say = [];
+        await pkg.install(mkCtx(home, { log: (m) => say.push(m) }).ctx);
+        assert.ok(say.some((m) => m.includes('launcher missing')));
+        assert.ok(say.some((m) => /gateway server bdb_resolume_mcp: .*resolume_mcp\.py does not exist/.test(m)));
+    });
+
+    test('install passes only allow-listed ctx.env keys and uvPath to the upstreams', async () => {
+        const home = tmp();
+        const env = { HTTPS_PROXY: 'http://proxy:3128', LANG: 'de_DE.UTF-8', GITHUB_TOKEN: 'ghp_SHOULDNOTLEAK', SystemRoot: 'C:\\Windows' };
+        await pkg.install(mkCtx(home, { env, uvPath: '/opt/uv/uv' }).ctx);
+        const text = fs.readFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), 'utf8');
+        const s = JSON.parse(text).mcpServers;
+        assert.equal(s.github.env.HTTPS_PROXY, 'http://proxy:3128');
+        assert.equal(s.github.env.LANG, 'de_DE.UTF-8');
+        assert.equal(s.github.env.SystemRoot, undefined, 'win32-only key on darwin');
+        assert.ok(!text.includes('SHOULDNOTLEAK'));
+        assert.equal(s.bdb_resolume_mcp.command, '/opt/uv/uv');
     });
 
     test('update keeps the token and gateway.json, and kickstarts', async () => {
@@ -282,18 +447,47 @@ describe('pkg-gateway', () => {
         assert.equal(pkg.retireNodeModules(cfg.gatewayDir(home), home), null, 'missing node_modules is a no-op');
     });
 
-    test('pkg-gateway source contains no recursive delete', () => {
-        const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'v5', 'pkg-gateway.js'), 'utf8');
-        assert.ok(!/rmSync|rimraf|recursive:\s*true\s*,\s*force/.test(src.replace(/mkdirSync\([^)]*\)/g, '')));
+    test('gateway sources contain no delete-tree primitive at all', () => {
+        const files = [
+            ...fs.readdirSync(path.join(ROOT, 'lib', 'gateway')).map((f) => path.join(ROOT, 'lib', 'gateway', f)),
+            path.join(ROOT, 'lib', 'v5', 'pkg-gateway.js'),
+            path.join(ROOT, 'bin', 'aos-gateway.mjs'),
+        ];
+        assert.ok(files.length >= 4);
+        for (const f of files) {
+            const src = fs.readFileSync(f, 'utf8');
+            assert.ok(!/\b(rmSync|rmdirSync|rimraf|rmtree)\b|\bfs\.rm\(|promises\.rm\(/.test(src), f);
+        }
     });
 
-    test('verify is ok only for a running gateway on 7790', async () => {
+    test('verify retries until the gateway answers, then gives up after 10 tries', async () => {
         const home = tmp();
-        const withOut = (o) => mkCtx(home, { run: async () => ({ status: 0, stdout: JSON.stringify(o) }) }).ctx;
-        assert.equal((await pkg.verify(withOut({ running: true, port: 7790, upstreams: [] }))).ok, true);
-        assert.equal((await pkg.verify(withOut({ running: false, port: 7790, upstreams: [] }))).ok, false);
-        assert.equal((await pkg.verify(withOut({ running: true, port: 9999, upstreams: [] }))).ok, false);
-        assert.equal((await pkg.verify(mkCtx(home, { run: async () => ({ stdout: 'not json' }) }).ctx)).ok, false);
+        let n = 0;
+        const sleeps = [];
+        const statusFn = async () => ({ running: ++n >= 3, port: 7790, upstreams: [] });
+        const ok = await pkg.verify(mkCtx(home, { statusFn, sleep: async (ms) => { sleeps.push(ms); } }).ctx);
+        assert.equal(ok.ok, true);
+        assert.deepEqual(sleeps, [500, 500]);
+        let m = 0;
+        const never = await pkg.verify(mkCtx(home, { statusFn: async () => { m++; return { running: false, port: 7790 }; }, sleep: async () => {} }).ctx);
+        assert.equal(never.ok, false);
+        assert.equal(m, 10);
+    });
+
+    test('verify is ok only for a running gateway on 7790 and never spawns', async () => {
+        const home = tmp();
+        const noRun = async () => { throw new Error('verify must not spawn'); };
+        const withStatus = (o) => mkCtx(home, { run: noRun, statusFn: async () => o, sleep: async () => {} }).ctx;
+        assert.equal((await pkg.verify(withStatus({ running: true, port: 7790, upstreams: [] }))).ok, true);
+        assert.equal((await pkg.verify(withStatus({ running: false, port: 7790, upstreams: [] }))).ok, false);
+        assert.equal((await pkg.verify(withStatus({ running: true, port: 9999, upstreams: [] }))).ok, false);
+        assert.equal((await pkg.verify(mkCtx(home, { run: noRun, statusFn: async () => { throw new Error('boom'); }, sleep: async () => {} }).ctx)).ok, false);
+    });
+
+    test('default verify reads gatewayStatus in-process (nothing listening → not running)', async () => {
+        const home = tmp();
+        const r = await pkg.verify(mkCtx(home, { run: async () => { throw new Error('verify must not spawn'); }, sleep: async () => {} }).ctx);
+        assert.equal(r.ok, false);
     });
 });
 
@@ -314,7 +508,7 @@ describe('status JSON', () => {
         await fw.listen();
         const port = fw.server.address().port;
         const s = await status({ dir, port, upstreamPort: inner });
-        assert.deepEqual(s, { running: true, pid: process.pid, port, upstreams: [{ name: 'a', ok: true }, { name: 'b', ok: true }] });
+        assert.deepEqual(s, { running: true, pid: process.pid, port, upstreamsScope: 'global', upstreams: [{ name: 'a', ok: true }, { name: 'b', ok: true }] });
         await fw.close();
     });
 
@@ -347,5 +541,95 @@ describe('status JSON', () => {
 
     test('teardown', async () => {
         for (const s of servers) await closeServer(s);
+    });
+});
+
+describe('startServe', () => {
+    const { spawn } = require('child_process');
+    const posix = process.platform !== 'win32';
+    const TOKEN = 'c'.repeat(64);
+    const wait = async (cond, ms = 5000) => {
+        const end = Date.now() + ms;
+        while (Date.now() < end) { if (await cond()) return true; await new Promise((r) => setTimeout(r, 25)); }
+        return false;
+    };
+    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    let startServe;
+    const handles = [];
+
+    const mkDir = (token = TOKEN, fileMode = 0o600) => {
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'token'), token, { mode: fileMode });
+        fs.chmodSync(path.join(dir, 'token'), fileMode);
+        return dir;
+    };
+    // Fake 1mcp: listens on the upstream port; with exitOnce it exits on its first run (marker file) to force a restart.
+    const fakeChild = (dir, upstreamPort, exitOnce) => {
+        const script = path.join(dir, 'fake1mcp.js');
+        fs.writeFileSync(script, `const fs=require('fs'),http=require('http');const [port,marker,once]=process.argv.slice(2);
+if(once==='1'&&!fs.existsSync(marker)){fs.writeFileSync(marker,'x');process.exit(0);}
+http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(Number(port),'127.0.0.1');`);
+        const spawned = [];
+        const spawnFn = (cmd, args, opts) => {
+            assert.equal(cmd, process.execPath);
+            assert.equal(opts.shell, false);
+            const c = spawn(process.execPath, [script, String(upstreamPort), path.join(dir, 'marker'), exitOnce ? '1' : '0'], { stdio: 'ignore' });
+            spawned.push(c);
+            return c;
+        };
+        return { spawnFn, spawned };
+    };
+
+    test('setup', async () => {
+        ({ startServe } = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href));
+    });
+
+    test('refuses an empty, invalid or group-readable token', async () => {
+        const quiet = { log: () => {}, entry: 'x', port: 0 };
+        for (const bad of ['', '  \n', 'nothex']) {
+            await assert.rejects(startServe({ dir: mkDir(bad), upstreamPort: await freePort(), ...quiet }), /empty or invalid/);
+        }
+        await assert.rejects(startServe({ dir: tmp(), upstreamPort: await freePort(), ...quiet }), /no token/);
+        if (posix) await assert.rejects(startServe({ dir: mkDir(TOKEN, 0o644), upstreamPort: await freePort(), ...quiet }), /group\/others/);
+    });
+
+    test('refuses when the upstream port already answers', async () => {
+        const foreign = http.createServer((q, s) => { s.writeHead(200); s.end('hi'); });
+        const taken = await listen(foreign);
+        const { spawnFn, spawned } = fakeChild(tmp(), taken, false);
+        await assert.rejects(startServe({ dir: mkDir(), upstreamPort: taken, spawnFn, entry: 'x', port: 0, log: () => {} }), /already in use/);
+        assert.equal(spawned.length, 0, 'nothing was spawned');
+        await closeServer(foreign);
+    });
+
+    test('restarts 1mcp with backoff after it exits, and stop() kills the child', async () => {
+        const dir = mkDir();
+        const upstreamPort = await freePort();
+        const { spawnFn, spawned } = fakeChild(dir, upstreamPort, true);
+        const logs = [];
+        const h = await startServe({ dir, upstreamPort, spawnFn, entry: 'x', port: 0, backoffMs: 50, log: (m) => logs.push(m) });
+        handles.push(h);
+        assert.ok(await wait(() => spawned.length >= 2), 'second spawn after the first exit');
+        assert.ok(logs.some((m) => /restarting in/.test(m)));
+        assert.ok(await wait(async () => (await request(upstreamPort, { pathname: '/health' }).catch(() => ({}))).status === 200), 'restarted child answers');
+        assert.ok(fs.existsSync(path.join(dir, 'gateway.pid')));
+        const child = spawned[spawned.length - 1];
+        await h.stop();
+        assert.ok(await wait(() => !alive(child.pid)), 'child is dead after stop()');
+        assert.ok(!fs.existsSync(path.join(dir, 'gateway.pid')));
+        const count = spawned.length;
+        await new Promise((r) => setTimeout(r, 200));
+        assert.equal(spawned.length, count, 'no restart after stop()');
+    });
+
+    test('killNow() SIGKILLs a live child', async () => {
+        const dir = mkDir();
+        const upstreamPort = await freePort();
+        const { spawnFn, spawned } = fakeChild(dir, upstreamPort, false);
+        const h = await startServe({ dir, upstreamPort, spawnFn, entry: 'x', port: 0, log: () => {} });
+        assert.ok(await wait(() => alive(spawned[0].pid)));
+        h.killNow();
+        assert.ok(await wait(() => !alive(spawned[0].pid)));
+        await h.stop();
     });
 });
