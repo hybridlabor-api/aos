@@ -88,3 +88,10 @@ test("never throws: spawnImpl failure → {skipped:'error'}", () => {
   assert.equal(r.skipped, "error");
   assert.match(r.error, /nope/);
 });
+
+test("nodeCommand: a non-node host binary (OpenCode) falls back to `node`", async () => {
+  const { nodeCommand } = await import("../lib/a2a-session.mjs");
+  assert.equal(nodeCommand("/usr/local/bin/node"), "/usr/local/bin/node");
+  assert.equal(nodeCommand("C:\\Program Files\\nodejs\\node.exe"), "C:\\Program Files\\nodejs\\node.exe");
+  assert.equal(nodeCommand("/Users/x/.opencode/bin/opencode"), "node");
+});
