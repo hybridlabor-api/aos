@@ -10,6 +10,8 @@ const secrets = require('../lib/mcp-secrets');
 const cfg = require('../lib/gateway/config');
 
 const cfgJson = JSON.parse(require('fs').readFileSync(path.join(ROOT, 'mcp_config.json'), 'utf8'));
+const picksJson = JSON.parse(require('fs').readFileSync(path.join(ROOT, 'mcp_picks.json'), 'utf8'));
+const entryOf = (name) => picksJson.groups.flatMap((g) => g.candidates).find((c) => c.name === name).entry;
 
 describe('versionGte', () => {
     test('equal and shorter vs longer', () => {
@@ -84,7 +86,7 @@ describe('applyPicks with fake detect', () => {
         bdb_resolume_mcp: { command: 'uv', args: ['run', '__MCPS_DIR__/resolume_mcp.py'] },
         github: { command: 'npx', args: ['-y', 'pkg'] },
     };
-    const picks = cfgJson.mcpPicks;
+    const picks = picksJson.groups;
 
     test('blender 5.1: official kept, ours retired', () => {
         const detect = (app) => (app === 'blender' ? { version: '5.1' } : null);
@@ -131,18 +133,35 @@ describe('applyPicks with fake detect', () => {
 });
 
 describe('shipped template contract', () => {
-    test('every candidate name exists in mcpServers', () => {
-        for (const g of cfgJson.mcpPicks) {
-            for (const c of g.candidates) assert.ok(cfgJson.mcpServers[c.name], c.name);
+    test('every candidate is an mcpServers entry or carries its own entry', () => {
+        for (const g of picksJson.groups) {
+            for (const c of g.candidates) assert.ok(c.entry || cfgJson.mcpServers[c.name], c.name);
         }
     });
+    test('mcp_config.json itself never lists the official candidates or the picks (installers read it verbatim)', () => {
+        assert.equal(cfgJson.mcpPicks, undefined);
+        assert.equal(cfgJson.mcpServers.bdb_blender_official_mcp, undefined);
+        assert.equal(cfgJson.mcpServers.bdb_resolume_official_mcp, undefined);
+    });
+    test('the blender pin is a full 40-char commit', () => {
+        assert.match(entryOf('bdb_blender_official_mcp').args.join(' '), /@[0-9a-f]{40}#/);
+    });
+    test('shippedAll holds both candidates of each group for ownership checks', () => {
+        const all = secrets.shippedAll(ROOT);
+        for (const n of ['bdb_blender_mcp', 'bdb_blender_official_mcp', 'bdb_resolume_mcp', 'bdb_resolume_official_mcp']) assert.ok(all[n], n);
+    });
+    test('a satisfied candidate without any definition never wins', () => {
+        const r = applyPicks({ ours: { command: 'x', args: [] } }, [{ group: 'g', candidates: [{ name: 'ghost', requires: { app: 'blender' } }, { name: 'ours' }] }], () => ({ version: '9.0' }));
+        assert.ok(r.servers.ours);
+        assert.deepEqual(r.retired, []);
+    });
     test('blender official git ref pinned to a commit', () => {
-        const args = cfgJson.mcpServers.bdb_blender_official_mcp.args;
+        const args = entryOf('bdb_blender_official_mcp').args;
         assert.ok(args.join(' ').match(/@[0-9a-f]{7,40}#/));
         assert.ok(!args.join(' ').match(/@latest|@[^0-9a-f]/));
     });
     test('resolume official uses placeholder', () => {
-        assert.equal(cfgJson.mcpServers.bdb_resolume_official_mcp.command, '__RESOLUME_MCP__');
+        assert.equal(entryOf('bdb_resolume_official_mcp').command, '__RESOLUME_MCP__');
     });
     test('real shippedServers default: ours stay, official dropped', () => {
         const s = secrets.shippedServers(ROOT);
@@ -162,7 +181,7 @@ describe('shipped template contract', () => {
         const detect = (app) => (app === 'blender' ? { version: '5.1' } : null);
         const r = secrets.shippedPicks(ROOT, { detect });
         assert.ok(r.retired.includes('bdb_blender_mcp'));
-        assert.deepEqual(r.servers.bdb_blender_official_mcp, cfgJson.mcpServers.bdb_blender_official_mcp);
+        assert.deepEqual(r.servers.bdb_blender_official_mcp, entryOf('bdb_blender_official_mcp'));
     });
     test('gateway routing: official entries direct, not gateway', () => {
         assert.ok(cfg.DIRECT_SERVERS.includes('bdb_blender_official_mcp'));

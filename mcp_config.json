@@ -1,20 +1,4 @@
 {
-  "mcpPicks": [
-    {
-      "group": "blender",
-      "candidates": [
-        { "name": "bdb_blender_official_mcp", "requires": { "app": "blender", "minVersion": "5.1" } },
-        { "name": "bdb_blender_mcp" }
-      ]
-    },
-    {
-      "group": "resolume",
-      "candidates": [
-        { "name": "bdb_resolume_official_mcp", "requires": { "app": "resolume" } },
-        { "name": "bdb_resolume_mcp" }
-      ]
-    }
-  ],
   "mcpServers": {
     "github": {
       "command": "npx",
@@ -54,14 +38,6 @@
     "adobe_uxp_mcp": {
       "command": "node",
       "args": ["__MCPS_DIR__/adobe_uxp_mcp/index.js"]
-    },
-    "bdb_blender_official_mcp": {
-      "command": "uvx",
-      "args": ["--from", "git+https://projects.blender.org/lab/blender_mcp.git@ff54e4d#subdirectory=mcp", "blender-mcp"]
-    },
-    "bdb_resolume_official_mcp": {
-      "command": "__RESOLUME_MCP__",
-      "args": []
     },
     "bdb_blender_mcp": {
       "command": "uv",

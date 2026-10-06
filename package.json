@@ -50,6 +50,7 @@
     "bin/",
     "lib/",
     "mcp_config.json",
+    "mcp_picks.json",
     "RULES.md",
     "CODEX.md",
     "CLAUDE.md",
