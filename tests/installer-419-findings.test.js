@@ -44,3 +44,30 @@ test('finding 2: the wizard carries no stale per-provider model lists', () => {
     const wizard = src.slice(start, src.indexOf('const DAEMON_LOGON_FALLBACK_EXIT_CODE', start));
     assert.ok(!/claude-3\.5-sonnet|gpt-4o/.test(wizard));
 });
+
+const { spawnSync } = require('child_process');
+const ROOT = path.join(__dirname, '..');
+const runInstaller = (h, code) => {
+    const r = spawnSync(process.execPath, ['-e', `const i = require(${JSON.stringify(path.join(ROOT, 'installer.js'))}); (async () => { ${code} })();`], {
+        encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h },
+    });
+    assert.strictEqual(r.status, 0, r.stderr);
+    return r.stdout + r.stderr;
+};
+const fresh = (n) => fs.mkdtempSync(path.join(home, `${n}-`));
+
+test('finding 3: OpenCode plugin payload is installed when missing and left alone, silently, when identical', () => {
+    const h = fresh('oc');
+    const code = `i.installOpencodePlugin({ targetHome: ${JSON.stringify(h)}, configPath: ${JSON.stringify(path.join(h, '.config', 'opencode', 'opencode.jsonc'))} });`;
+    const first = runInstaller(h, code);
+    const plugin = path.join(h, '.config', 'opencode', 'plugins', 'bdb-aos.js');
+    assert.match(first, /Installed OpenCode plugin/);
+    assert.ok(fs.existsSync(plugin));
+    const old = new Date(Date.now() - 3600_000);
+    fs.utimesSync(plugin, old, old);
+    const second = runInstaller(h, code);
+    assert.doesNotMatch(second, /Installed OpenCode plugin|commands in .*written/);
+    assert.strictEqual(fs.statSync(plugin).mtimeMs, old.getTime());
+    fs.appendFileSync(plugin, '\n// local change\n');
+    assert.match(runInstaller(h, code), /Installed OpenCode plugin/);
+});

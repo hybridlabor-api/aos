@@ -4441,7 +4441,7 @@ function installOpencodeCommands(srcDirPath, destDirPath) {
         saveInstallManifest(manifest);
         reportKeptUserEdits();
     }
-    log.step(`OpenCode commands in ${destDirPath}: ${wrote} written`);
+    if (wrote) log.step(`OpenCode commands in ${destDirPath}: ${wrote} written`);
 }
 
 // Copy the OpenCode plugin + command payload and register both in
@@ -4466,12 +4466,16 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     if (fs.existsSync(pluginSrc)) {
         const pluginDest = path.join(opencodeDir, 'plugins', 'bdb-aos.js');
         try {
-            fs.mkdirSync(path.dirname(pluginDest), { recursive: true });
-            fs.copyFileSync(pluginSrc, pluginDest);
-            try { fs.chmodSync(pluginDest, 0o644); } catch (e) { logDebug(e, 'chmod opencode plugin'); }
+            // Only when the plugin is missing or differs from the shipped one; an identical copy is left alone, silently.
+            const upToDate = fs.existsSync(pluginDest) && computeFileHash(pluginDest) === computeFileHash(pluginSrc);
+            if (!upToDate) {
+                fs.mkdirSync(path.dirname(pluginDest), { recursive: true });
+                fs.copyFileSync(pluginSrc, pluginDest);
+                try { fs.chmodSync(pluginDest, 0o644); } catch (e) { logDebug(e, 'chmod opencode plugin'); }
+                log.step(`Installed OpenCode plugin to ${pluginDest}`);
+            }
             pluginInstalled = true;
             uninstallRecords.recordOpencodePlugin(targetHome, pluginDest);
-            log.step(`Installed OpenCode plugin to ${pluginDest}`);
         } catch (e) {
             log.warn(`Could not install OpenCode plugin: ${e.message}`);
         }
