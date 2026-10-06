@@ -52,12 +52,15 @@ const {
 const ROLES = [
     { key: 'architect', label: 'Architect', defaultHarness: 'claude' },
     { key: 'techlead', label: 'TechLead', defaultHarness: 'antigravity' },
-    { key: 'ui_ux', label: 'Godmode_UI_UX', defaultHarness: 'claude' },
-    { key: 'engineering', label: 'Godmode_Engineering', defaultHarness: 'claude' },
-    { key: 'media_eventtech', label: 'Godmode_Media_EventTech', defaultHarness: 'antigravity', defaultEnabled: false },
+    { key: 'godmode_ui_ux', label: 'Godmode_UI_UX', defaultHarness: 'claude' },
+    { key: 'godmode_engineering', label: 'Godmode_Engineering', defaultHarness: 'claude' },
+    { key: 'godmode_media_eventtech', label: 'Godmode_Media_EventTech', defaultHarness: 'antigravity', defaultEnabled: false },
     { key: 'reviewer', label: 'Reviewer', defaultHarness: 'codex' },
-    { key: 'shipping', label: 'Godmode_Shipping', defaultHarness: 'opencode' }
+    { key: 'godmode_shipping', label: 'Godmode_Shipping', defaultHarness: 'opencode' }
 ];
+
+// Short keys older docs and pipelines used; accepted on input, the real agent slug is written.
+const ROLE_ALIASES = { ui_ux: 'godmode_ui_ux', engineering: 'godmode_engineering', media_eventtech: 'godmode_media_eventtech', shipping: 'godmode_shipping' };
 
 function printPipeline(pipeline) {
     console.log('\n=== AOS Multi-Harness Subagent Pipeline ===\n');
@@ -155,7 +158,9 @@ async function main() {
 
     const setRoleIdx = args.indexOf('--set-role');
     if (setRoleIdx !== -1 && args[setRoleIdx + 1]) {
-        const role = args[setRoleIdx + 1].toLowerCase().replace(/-/g, '_');
+        const given = args[setRoleIdx + 1].toLowerCase().replace(/-/g, '_');
+        const role = ROLE_ALIASES[given] || given;
+        if (pipeline[given] && role !== given && !pipeline[role]) { pipeline[role] = pipeline[given]; delete pipeline[given]; }
         const harnessIdx = args.indexOf('--harness');
         const modelIdx = args.indexOf('--model');
         const disableFlag = args.includes('--disable');

@@ -12,7 +12,6 @@ Senior Fullstack & Backend Engineer. Enforces Domain-Driven Design (DDD), Clean 
 
 ⚙️ Godmode_Engineering
 - **Role**: Senior Fullstack & Backend Engineer. Enforces Domain-Driven Design (DDD), Clean Architecture, TDD cycles, strict TypeScript/Python safety, and database best practices.
-- **Model**: opus
 - **Primary Skills**:
   - `godmode-engineering`
   - `software-architecture`

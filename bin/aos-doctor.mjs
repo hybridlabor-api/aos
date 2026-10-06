@@ -15,6 +15,7 @@ import path from 'node:path';
 const req = createRequire(import.meta.url);
 const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
+const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
@@ -476,13 +477,11 @@ function checkPlugins() {
 // ---------------------------------------------------------------- 4c. agent model overrides (docs/agent-models.md)
 // Format check only: no network, no provider lists. The installer passes these strings through verbatim.
 function checkAgentModels() {
-  const harnesses = {
-    claude: (m) => !/\s/.test(m),
-    codex: (m) => !/\s/.test(m),
-    antigravity: (m) => !/\s/.test(m),
-    opencode: (m) => /^[^\s/]+\/[^\s]+$/.test(m),
-  };
-  const expects = { opencode: 'provider/model without whitespace' };
+  const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const agentsMd = firstExisting([path.join(path.dirname(new URL(import.meta.url).pathname), '..', '.agents', 'AGENTS.md'), h('.agents', 'AGENTS.md')]);
+  const slugs = agentsMd ? new Set([...readFileSync(agentsMd, 'utf8').split(/\n## /).slice(1)]
+    .filter((b) => /-\s*\*\*Role\*\*:/.test(b))
+    .map((b) => b.split('\n')[0].replace(/^[^\w]+/, '').trim().split(/\s+/)[0].toLowerCase().replace(/-/g, '_'))) : null;
   const files = [
     path.join(process.cwd(), '.aos', 'pipeline.json'),
     path.join(process.cwd(), '.aos', 'project.json'),
@@ -495,17 +494,26 @@ function checkAgentModels() {
       continue;
     }
     for (const [role, cfg] of Object.entries(data.pipeline || {})) {
-      if (!cfg || typeof cfg !== 'object') continue;
+      if (!isObject(cfg)) continue;
+      if (slugs && !slugs.has(role.toLowerCase().replace(/-/g, '_'))) {
+        add('agents', `Agent role ${role}`, false, `${tilde(file)}: role "${role}" matches no agent in AGENTS.md; its overrides are inert`,
+          `Use a real agent slug with "-" as "_" (${[...slugs].join(', ')}).`, true);
+      }
+      if (cfg.tier !== undefined) {
+        add('agents', `Agent tier ${role}`, false, `${tilde(file)}: role "${role}" has "tier" = ${JSON.stringify(cfg.tier)}; tiers are legacy and ignored`,
+          `Remove "tier" from role "${role}"; a model is set only through models.<harness> (docs/agent-models.md).`, true);
+      }
       const entries = [];
-      for (const [harness, value] of Object.entries(cfg.models || {})) entries.push([harness, value, `models.${harness}`]);
+      if (cfg.models !== undefined && !isObject(cfg.models)) {
+        add('agents', `Agent models ${role}`, false, `${tilde(file)}: role "${role}", models must be an object of harness to model`, `Fix or remove "models" for role "${role}" in ${tilde(file)}.`);
+      } else {
+        for (const [harness, value] of Object.entries(cfg.models || {})) entries.push([harness, value, `models.${harness}`]);
+      }
       if (cfg.model !== undefined) {
-        for (const harness of cfg.harness ? [cfg.harness] : Object.keys(harnesses)) entries.push([harness, cfg.model, 'model']);
+        for (const harness of cfg.harness ? [cfg.harness] : HARNESSES) entries.push([harness, cfg.model, 'model']);
       }
       for (const [harness, value, field] of entries) {
-        let problem = null;
-        if (!harnesses[harness]) problem = `unknown harness (use ${Object.keys(harnesses).join(', ')})`;
-        else if (typeof value !== 'string' || value === '') problem = 'must be a non-empty string';
-        else if (!harnesses[harness](value)) problem = `must be ${expects[harness] || 'a string without whitespace'}`;
+        const problem = modelProblem(harness, value, { strictAgy: true });
         if (problem) add('agents', `Agent model ${role}/${harness}`, false,
           `${tilde(file)}: role "${role}", harness "${harness}", ${field} = ${JSON.stringify(value)}: ${problem}`,
           `Correct or remove ${field} for role "${role}" in ${tilde(file)}; AOS never substitutes another model.`);

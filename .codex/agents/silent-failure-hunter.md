@@ -10,7 +10,6 @@ Reviews code for silent failures, swallowed errors, bad fallbacks, and missing e
 
 🕳️ silent-failure-hunter
 - **Role**: Reviews code for silent failures, swallowed errors, bad fallbacks, and missing error propagation. Finds the bugs that never raise.
-- **Model**: sonnet
 - **Primary Skills**:
   - `systematic-debugging`
   - `debugger`

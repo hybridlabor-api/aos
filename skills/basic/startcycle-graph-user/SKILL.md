@@ -1,6 +1,6 @@
 ---
 name: startcycle-graph-user
-description: Use when a task needs a small, throwaway multi-agent fan-out (a couple of parallel workers plus a review pass) in ANY project, without the full /startcycle-graph contract — no .agents/graph.md bootstrap, no state.json schema, no persistent files. Model-tiered by role (opus plan, sonnet review, haiku or an external CLI for workers) and portable across machines that may not have Antigravity/OpenCode/Codex installed.
+description: Use when a task needs a small, throwaway multi-agent fan-out (a couple of parallel workers plus a review pass) in ANY project, without the full /startcycle-graph contract — no .agents/graph.md bootstrap, no state.json schema, no persistent files. Roles run on the session model unless `.aos/pipeline.json` overrides one (an external CLI can take the worker step) and portable across machines that may not have Antigravity/OpenCode/Codex installed.
 category: bdb-core
 ---
 
@@ -114,18 +114,22 @@ tool for the worker step, that already means you're on the haiku fallback
 path (case 4) — cases 1-3 are driven directly from your own Bash calls, no
 `Workflow` tool involved.
 
-## 3. Model tiers — fixed by role, not by whatever the session happens to be set to
+## 3. Model choice — the session model unless overridden
 
-| Role | Model | Why |
+AOS pins no model. Nodes inherit the session model; an override comes from
+`.aos/pipeline.json` (`docs/agent-models.md`) or the user's explicit request.
+The table is a suggestion for when you do choose a model per role, not a default.
+
+| Role | Suggested model | Why |
 |---|---|---|
 | Plan | `opus` | Mistakes here propagate to every worker; the one place worth paying for. |
 | Workers | `haiku` (fallback path) or external CLI (agy/opencode/codex) | Mechanical execution once the plan is concrete. Never sonnet/opus for this. |
 | Review | `sonnet` | Needs real judgment to be adversarial, not full Opus reasoning. |
 
-Force these explicitly on every `Agent`/`agent()` call (`model: "opus"` /
-`"haiku"` / `"sonnet"`) — do not let a node inherit the main session's current
-model. If the user has the session set to Opus for everything, a worker node
-that silently inherits that is the exact waste this tiering exists to avoid.
+Pass `model` on an `Agent`/`agent()` call only when an override exists or the
+user asked for one; otherwise omit it and the node inherits the session model.
+For a long fan-out on an expensive session model, say so once and offer to set
+worker overrides in `.aos/pipeline.json`.
 
 ## 4. Run it, once
 

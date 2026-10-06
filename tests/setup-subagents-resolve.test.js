@@ -28,6 +28,23 @@ test('an installed copy outside the repo resolves installer.js via AOS_HOME, or 
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('--set-role writes the real agent slug, accepts the old short keys, and pins nothing by default', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'subagent-setup-'));
+    try {
+        const env = { PATH: process.env.PATH, HOME: dir, USERPROFILE: dir };
+        for (const key of ['ui_ux', 'godmode-ui-ux']) {
+            const r = spawnSync(process.execPath, [SRC, '--set-role', key, '--harness', 'claude', '--model', 'fable'], { cwd: dir, env, encoding: 'utf8' });
+            assert.equal(r.status, 0, r.stderr);
+        }
+        const { pipeline } = JSON.parse(fs.readFileSync(path.join(dir, '.aos', 'pipeline.json'), 'utf8'));
+        assert.deepEqual(pipeline.godmode_ui_ux.models, { claude: 'fable' });
+        assert.ok(!pipeline.ui_ux);
+        const init = spawnSync(process.execPath, [SRC, '--init-default'], { cwd: fs.mkdtempSync(path.join(dir, 'init-')), env, encoding: 'utf8' });
+        assert.equal(init.status, 0, init.stderr);
+        assert.doesNotMatch(init.stdout, /gemini|o3-mini|opus|tier/i);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the repo copy still resolves without AOS_HOME', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'subagent-setup-'));
     try {

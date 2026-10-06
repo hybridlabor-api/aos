@@ -5,6 +5,8 @@
 ### Changed
 
 * The installer pins no model on any harness. Claude Code, OpenCode, Codex and Antigravity agent files carry no `model` and inherit the session model; the tier table (`CANONICAL_TIERS`) is gone. A model is written only when `.aos/pipeline.json` sets one for that role and harness (`models: { "<harness>": "<model>" }`, free-form string, verbatim). `aos-doctor` checks the format of those overrides and names file, role, harness and value. Unedited installed agent files that carried `model: opus|sonnet` are rewritten on update; edited ones are kept. See `docs/agent-models.md`.
+* Override semantics: a legacy `model` without `harness` applies to every harness; `models.<harness>` wins and never falls through to it; a malformed value (empty, whitespace, non-string, OpenCode without `provider/`) is skipped with a warning, never replaced. Config precedence is first file wins, no merge (`.aos/pipeline.json`, `.aos/project.json`, `~/.aos/pipeline.json`); an unparseable file is skipped and `aos-doctor` reports it. The doctor also warns on legacy `tier` and on role keys matching no agent, and errors on antigravity values other than `inherit|flash|pro`.
+* The installer applies a `claude` override from `pipeline.json` to the shipped agents in `~/.claude/agents` after the manifest copy and records the hash, so updates do not treat it as a user edit. `setup-subagents` role keys are the real agent slugs (old short keys still accepted). `- **Model**:` lines are gone from `.agents/AGENTS.md` and its copies and ignored by the parser.
 * `aos-acp --model` no longer rejects Fable ids; the string is passed through to the adapter.
 
 ### Removed

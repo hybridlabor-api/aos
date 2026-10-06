@@ -24,8 +24,14 @@ AOS pins no model. Every harness gets agent files without a `model` and the agen
 ```
 
 - `models.<harness>`: preferred. Harness keys: `claude`, `opencode`, `codex`, `antigravity`.
-- `model` (legacy): applies to `harness` if set, otherwise to every harness.
-- `tier` is ignored.
+- `model` (legacy): applies to `harness` if set, otherwise **to every harness** (a bare `"model": "opus"` is then also checked, and written, for OpenCode, Codex and Antigravity). An explicitly present `models.<harness>` wins and never falls through to `model`.
+- `tier` is ignored (the doctor warns). Old `--init-default` files with `{harness, tier, model}` keep pinning their `model`; remove those lines.
+- A value that is empty, contains whitespace or a newline, is not a string, or (OpenCode) is not `provider/model` is skipped with a warning when agent files are compiled: no model is written and no other model is substituted.
+- Role keys must be agent slugs with `-` as `_`; a key matching no agent in `.agents/AGENTS.md` is inert and the doctor warns. `setup-subagents --set-role` still accepts the old short keys (`ui_ux`, `engineering`, `media_eventtech`, `shipping`) and writes the real slug.
+
+### Which file wins
+
+First file wins, no merge: `.aos/pipeline.json` in the project, then `.aos/project.json`, then `~/.aos/pipeline.json`. The first one that parses and has a `pipeline` object is used whole. An unparseable file is skipped (the installer moves on to the next); `aos-doctor` reports it.
 
 | Harness | Written to | Example value | `aos-doctor` format check |
 |---|---|---|---|
@@ -36,7 +42,9 @@ AOS pins no model. Every harness gets agent files without a `model` and the agen
 
 `aos-doctor` reads the project and home `pipeline.json` (offline, no provider lists) and fails with file, role, harness and value for an unusable entry. AOS never replaces a bad override with another model.
 
-Scope: overrides are applied when AOS compiles agent files (project install, `setup-subagents --sync`, agents the global install compiles itself). The 13 personas that ship as files in `~/.claude/agents` are copied unchanged, so a global override does not reach them; use a project `.claude/agents` file or `CLAUDE_CODE_SUBAGENT_MODEL`.
+Scope: overrides are applied when AOS compiles agent files (project install, `setup-subagents --sync`). The 13 personas that ship as files are copied to `~/.claude/agents` by the manifest copy; right after it the installer inserts the `claude` override from `pipeline.json` and records the new hash in the install manifest, so the next update sees an unedited file, restores the shipped bytes and applies the override again. A file you edited, or one that already has a `model:` line, is left alone.
+
+The doctor treats an antigravity value outside `inherit|flash|pro` as an error, because those are the only values the agy docs list and others silently fail to register. The compilers still pass an antigravity string through (agy may add ids).
 
 ## Findings (verified 2026-10-06)
 

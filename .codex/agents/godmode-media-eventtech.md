@@ -12,7 +12,6 @@ Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, To
 
 🎬 Godmode_Media_EventTech
 - **Role**: Creative-Tech & Show-Control Specialist. Governs 3D modeling, spatial design, TouchDesigner networks, Unreal Engine scenes, DaVinci Resolve color/edit, DMX/grandMA3 lighting, and Resolume media servers.
-- **Model**: opus
 - **Primary Skills**:
   - `godmode-eventtech`
   - `godmode-media-creation`

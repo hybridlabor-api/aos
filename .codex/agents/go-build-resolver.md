@@ -10,7 +10,6 @@ Resolves Go build, vet, and compilation errors with minimal changes. Use when Go
 
 🔧 go-build-resolver
 - **Role**: Resolves Go build, vet, and compilation errors with minimal changes. Use when Go builds fail — relevant to `bdb-synapse`, which ships a Go binary.
-- **Model**: sonnet
 - **Primary Skills**:
   - `golang-pro`
   - `go-concurrency-patterns`

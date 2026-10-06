@@ -90,7 +90,7 @@ your head. Ask; do not default it on.
 holds content, merge it into `AGENTS.md` first and only then replace it with a
 symlink. Never silently overwrite it.
 
-**Subagents & Multi-Harness Pipeline.** Offer to initialize `.aos/pipeline.json` using canonical tiers (or custom roles via `/subagent-setup`). Ensures subagents are automatically compiled across Claude Code, Antigravity, OpenCode, and Codex CLI.
+**Subagents & Multi-Harness Pipeline.** Offer to initialize `.aos/pipeline.json` (or set per-role, per-harness model overrides via `/subagent-setup`; without an override agents use the session model, see `docs/agent-models.md`). Ensures subagents are automatically compiled across Claude Code, Antigravity, OpenCode, and Codex CLI.
 
 **With a GitHub remote, two more.** Skip both entirely without a remote — a
 local-only repo has nowhere to put them, and a skipped question is clearer than

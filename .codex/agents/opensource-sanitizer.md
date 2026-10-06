@@ -10,7 +10,6 @@ Verifies an open-source fork is fully sanitized before release. Scans for leaked
 
 🧼 opensource-sanitizer
 - **Role**: Verifies an open-source fork is fully sanitized before release. Scans for leaked secrets, PII, internal references, and dangerous files; emits PASS/FAIL/PASS-WITH-WARNINGS. Run after `opensource-forker`, before any public release.
-- **Model**: sonnet
 - **Primary Skills**:
   - `github-repo`
   - `bash-linux`

@@ -30,7 +30,7 @@ describe('agent model resolution', () => {
         const pipeline = {
             architect: { models: { claude: 'fable', opencode: 'myprov/My-Model.1', codex: 'o3-mini', antigravity: 'pro' } },
             reviewer: { harness: 'claude', model: 'Claude-Opus-5-5' },
-            godmode_shipping: { model: 'anything' },
+            godmode_shipping: { model: 'prov/anything' },
         };
         assert.strictEqual(resolveAgentConfig('architect', 'claude', pipeline).model, 'fable');
         assert.strictEqual(resolveAgentConfig('architect', 'opencode', pipeline).model, 'myprov/My-Model.1');
@@ -38,7 +38,24 @@ describe('agent model resolution', () => {
         assert.strictEqual(resolveAgentConfig('architect', 'antigravity', pipeline).model, 'pro');
         assert.strictEqual(resolveAgentConfig('reviewer', 'claude', pipeline).model, 'Claude-Opus-5-5');
         assert.strictEqual(resolveAgentConfig('reviewer', 'codex', pipeline).model, null, 'legacy model is bound to its harness');
-        assert.strictEqual(resolveAgentConfig('godmode-shipping', 'opencode', pipeline).model, 'anything', 'no harness = every harness');
+        assert.strictEqual(resolveAgentConfig('godmode-shipping', 'opencode', pipeline).model, 'prov/anything', 'no harness = every harness');
+    });
+
+    test('malformed overrides are dropped, never written, never replaced; empty models[h] does not fall through', () => {
+        for (const bad of ['', 'a b', 'a\nb', 5, null]) {
+            const p = { architect: { harness: 'claude', model: 'legacy-ok', models: { claude: bad } } };
+            assert.strictEqual(resolveAgentConfig('architect', 'claude', p).model, null, JSON.stringify(bad));
+        }
+        assert.strictEqual(resolveAgentConfig('architect', 'opencode', { architect: { models: { opencode: 'fable' } } }).model, null);
+        assert.strictEqual(resolveAgentConfig('architect', 'claude', { architect: { models: 'x' } }).model, null);
+        const d = tmp();
+        const pipeline = { architect: { models: { claude: 'a b', opencode: 'nope', codex: '' } } };
+        compileClaudeAgents(agents, path.join(d, 'c'), pipeline);
+        compileOpenCodeAgents(agents, path.join(d, 'o'), pipeline);
+        compileCodexAgents(agents, path.join(d, 'x'), pipeline);
+        assert.strictEqual(modelOf(path.join(d, 'c', 'architect.md')), undefined);
+        assert.strictEqual(modelOf(path.join(d, 'o', 'architect.md')), undefined);
+        assert.strictEqual(modelOf(path.join(d, 'x', 'architect.toml')), undefined);
     });
 
     test('a tier is not a model', () => {
@@ -99,6 +116,64 @@ test('no tier table or tier model ids remain in installer.js or lib/', () => {
         }
     }
     assert.strictEqual(inst.CANONICAL_TIERS, undefined);
+});
+
+describe('Model lines in agent definitions', () => {
+    test('no committed agent definition or copy carries a "- **Model**:" line', () => {
+        const files = [path.join(root, '.agents', 'AGENTS.md'), path.join(root, '.cursor', 'rules', 'bdb_agents.mdc'),
+            ...fs.readdirSync(path.join(root, '.codex', 'agents')).filter((f) => f.endsWith('.md')).map((f) => path.join(root, '.codex', 'agents', f))];
+        for (const f of files) assert.ok(!/\*\*Model\*\*/.test(fs.readFileSync(f, 'utf8')), f);
+    });
+
+    test('parseAgentsMd ignores and strips a legacy Model line', () => {
+        const [a] = parseAgentsMd('# T\n\n## Foo\n- **Role**: does foo\n- **Model**: opus\n- **Primary Skills**:\n  - x\n', []);
+        assert.strictEqual(a.model, undefined);
+        assert.ok(!/Model/.test(a.systemPrompt));
+        assert.deepStrictEqual(a.skills, ['x']);
+    });
+});
+
+describe('global Claude override after the manifest copy', () => {
+    const { computeFileHash } = inst;
+    const setupGlobal = () => {
+        const d = tmp();
+        const src = path.join(d, 'src');
+        const dst = path.join(d, 'home', '.claude', 'agents');
+        fs.mkdirSync(src, { recursive: true });
+        const body = fs.readFileSync(path.join(root, '.claude', 'agents', 'architect.md'), 'utf8');
+        fs.writeFileSync(path.join(src, 'architect.md'), body);
+        const manifest = {};
+        const copy = () => resolveFileConflict(path.join(src, 'architect.md'), path.join(dst, 'architect.md'), manifest, buildKnownSourceHashes([src]));
+        copy();
+        return { file: path.join(dst, 'architect.md'), dst, manifest, copy, body, src };
+    };
+    const pipeline = { architect: { models: { claude: 'fable' } } };
+    const list = [{ name: 'Architect' }];
+
+    test('writes the model, records the hash, and a later update restores and re-applies without a .new', () => {
+        const { file, dst, manifest, copy, body } = setupGlobal();
+        assert.deepStrictEqual(inst.applyClaudeModelOverrides(list, dst, pipeline, manifest), [file]);
+        assert.strictEqual(modelOf(file), 'fable');
+        assert.strictEqual(manifest[file].sha256, computeFileHash(file));
+        assert.strictEqual(copy(), 'wrote');
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), body);
+        assert.ok(!fs.existsSync(`${file}.new`));
+        inst.applyClaudeModelOverrides(list, dst, pipeline, manifest);
+        assert.strictEqual(modelOf(file), 'fable');
+        inst.applyClaudeModelOverrides(list, dst, {}, manifest);
+        assert.strictEqual(copy(), 'wrote');
+        assert.strictEqual(modelOf(file), undefined, 'removing the override restores the shipped file');
+    });
+
+    test('a user-edited file and a malformed override are left alone', () => {
+        const { file, dst, manifest } = setupGlobal();
+        fs.appendFileSync(file, '\nmine\n');
+        assert.deepStrictEqual(inst.applyClaudeModelOverrides(list, dst, pipeline, manifest), []);
+        assert.strictEqual(modelOf(file), undefined);
+        const g = setupGlobal();
+        assert.deepStrictEqual(inst.applyClaudeModelOverrides(list, g.dst, { architect: { models: { claude: 'a b' } } }, g.manifest), []);
+        assert.strictEqual(modelOf(g.file), undefined);
+    });
 });
 
 describe('existing installs', () => {

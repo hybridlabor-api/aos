@@ -25,6 +25,7 @@ const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
 const { claudeConfigDir } = require('./lib/plugin-evidence');
+const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
@@ -3768,7 +3769,7 @@ function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
         const roleMatch = raw.match(/-\s*\*\*Role\*\*:\s*(.+)/);
         if (!roleMatch) continue; // not an agent block
 
-        const modelMatch = raw.match(/-\s*\*\*Model\*\*:\s*(.+)/);
+        // A legacy "- **Model**: x" line is ignored: AOS pins no model (docs/agent-models.md).
         const outputMatch = raw.match(/-\s*\*\*Output Artifacts?\*\*:\s*(.+)/);
 
         const extractListAfter = (label) => {
@@ -3786,11 +3787,10 @@ function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
         agents.push({
             name,
             role: roleMatch[1].trim(),
-            model: modelMatch ? modelMatch[1].trim() : null,
             skills: [...new Set([...extractListAfter('Primary Skills'), ...commonSkills])],
             mcpServers: extractListAfter('MCP Servers'),
             output: outputMatch ? outputMatch[1].trim() : null,
-            systemPrompt: raw.trim(),
+            systemPrompt: raw.replace(/^[ \t]*-\s*\*\*Model\*\*:.*\n?/gm, '').trim(),
         });
     }
     return agents;
@@ -3830,14 +3830,22 @@ function loadPipelineConfig(projectDir = currentDir) {
 // Resolves the pinned model (or null) and enabled status for an agent role and harness.
 // Shape: pipeline[role] = { models: { <harness>: "<model>" }, model, harness, enabled }.
 // `models[harness]` wins; the legacy `model` applies when `harness` is absent or equal. Strings are verbatim.
+// An override that fails the format check (empty, whitespace, non-string, bad OpenCode form) is
+// warned about and dropped: never written, never replaced by another model.
 function resolveAgentConfig(agentSlug, harness, pipelineConfig = null) {
     const normSlug = agentSlug.toLowerCase().replace(/-/g, '_');
     const roleCfg = pipelineConfig ? (pipelineConfig[normSlug] || pipelineConfig[agentSlug]) : null;
     let model = null;
-    if (roleCfg) {
-        const perHarness = roleCfg.models && roleCfg.models[harness];
-        const legacy = (!roleCfg.harness || roleCfg.harness === harness) ? roleCfg.model : null;
-        model = [perHarness, legacy].find((m) => typeof m === 'string' && m !== '') || null;
+    if (roleCfg && typeof roleCfg === 'object') {
+        const models = roleCfg.models && typeof roleCfg.models === 'object' ? roleCfg.models : {};
+        const field = Object.prototype.hasOwnProperty.call(models, harness) ? `models.${harness}`
+            : (roleCfg.model !== undefined && (!roleCfg.harness || roleCfg.harness === harness)) ? 'model' : null;
+        if (field) {
+            const value = field === 'model' ? roleCfg.model : models[harness];
+            const problem = modelProblem(harness, value);
+            if (problem) log.warn(`Ignoring ${field} = ${JSON.stringify(value)} for ${agentSlug} on ${harness}: ${problem}. The agent inherits the session model.`);
+            else model = value;
+        }
     }
     return { model, enabled: !roleCfg || roleCfg.enabled !== false, harness };
 }
@@ -3877,6 +3885,29 @@ function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
 // manifest, so every update flagged all 13 personas as user-edited.
 function agentsNotShippedAsFiles(agents, shippedDir = path.join(srcDir, '.claude', 'agents')) {
     return agents.filter((a) => !fs.existsSync(path.join(shippedDir, `${a.name.toLowerCase().replace(/_/g, '-')}.md`)));
+}
+
+// The shipped personas reach ~/.claude/agents through the manifest copy, so a claude override is
+// applied afterwards: insert `model:` and record the new hash. The next update then sees an
+// unedited file (disk == manifest), overwrites it with the shipped bytes and applies it again.
+// A file the user edited (disk != manifest) or that already has a model line is left alone.
+function applyClaudeModelOverrides(agents, targetDir, pipelineConfig, manifest) {
+    const applied = [];
+    if (!pipelineConfig || !manifest) return applied;
+    for (const a of agents) {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        const { model } = resolveAgentConfig(slug, 'claude', pipelineConfig);
+        const file = path.join(targetDir, `${slug}.md`);
+        const entry = manifest[file];
+        if (!model || !entry || !fs.existsSync(file) || computeFileHash(file) !== entry.sha256) continue;
+        const text = fs.readFileSync(file, 'utf8');
+        const m = text.match(/^---\n([\s\S]*?)\n---\n/);
+        if (!m || /^model:/m.test(m[1])) continue;
+        fs.writeFileSync(file, text.replace(m[0], `---\n${m[1]}\nmodel: ${model}\n---\n`));
+        entry.sha256 = computeFileHash(file);
+        applied.push(file);
+    }
+    return applied;
 }
 
 // Generates .opencode/agents/<name>.md. Emits description, mode: subagent, and model.
@@ -4162,6 +4193,12 @@ function injectHarnessRules() {
             });
             installGlobalHooks();
         }, '');
+
+        installStep('apply Claude model overrides to the shipped agents', () => {
+            if (DRY_RUN || !_sessionManifest) return;
+            const applied = applyClaudeModelOverrides(parseAgentsMd(fs.readFileSync(agentsMdSrc, 'utf8')), path.join(claudeConfigDir(homeDir), 'agents'), loadPipelineConfig(), _sessionManifest);
+            if (applied.length) log.step(`Applied pipeline.json model overrides to ${applied.length} Claude agent file(s)`);
+        }, 'Shipped Claude agents keep inheriting the session model.');
 
         installStep('sync global .agents/', () => {
             const globalAgentsDir = path.join(os.homedir(), '.agents');
@@ -6703,6 +6740,7 @@ module.exports = {
     compileClaudeAgents,
     compileOpenCodeAgents,
     compileCodexAgents,
+    applyClaudeModelOverrides,
     loadPipelineConfig,
     resolveAgentConfig,
     // Launchpad lifecycle (exported for regression tests)

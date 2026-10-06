@@ -10,7 +10,6 @@ Security vulnerability detection and remediation. Use after writing code that ha
 
 🛡️ security-reviewer
 - **Role**: Security vulnerability detection and remediation. Use after writing code that handles user input, authentication, API endpoints, or sensitive data. Flags secrets, SSRF, injection, unsafe crypto, and OWASP Top 10.
-- **Model**: sonnet
 - **Primary Skills**:
   - `systematic-debugging`
   - `clean-code`

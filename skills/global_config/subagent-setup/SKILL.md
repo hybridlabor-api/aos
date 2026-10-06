@@ -45,10 +45,11 @@ node skills/global_config/subagent-setup/scripts/setup-subagents.mjs \
 
 # Example: Set Shipping to OpenCode with Free Tier
 node skills/global_config/subagent-setup/scripts/setup-subagents.mjs \
-  --set-role shipping --harness opencode --model opencode/muse-spark-1.3-contributor-free
+  --set-role godmode_shipping --harness opencode --model opencode/muse-spark-1.3-contributor-free
 
 # Example: Enable or Disable a Role
-node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --set-role media_eventtech --enable
+node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --set-role godmode_media_eventtech --enable
+# Role keys are the agent slugs with "-" as "_"; the old short keys (shipping, ui_ux, ...) are still accepted and rewritten.
 ```
 
 ### Synchronize to All Harnesses

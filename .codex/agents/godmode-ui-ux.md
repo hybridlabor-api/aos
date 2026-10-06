@@ -12,7 +12,6 @@ Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design
 
 🎨 Godmode_UI_UX
 - **Role**: Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics.
-- **Model**: opus
 - **Primary Skills**:
   - `godmode-ui-ux`
   - `senior-frontend`

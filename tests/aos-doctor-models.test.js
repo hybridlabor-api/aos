@@ -39,18 +39,51 @@ test('OpenCode without provider/ is an error naming file, role, harness and valu
 
 test('whitespace, empty, non-string and unknown harness are errors', () => {
     const res = run({
-        a: { models: { claude: 'opus 4' } },
-        b: { models: { codex: '' } },
-        c: { models: { antigravity: 5 } },
-        d: { models: { cursor: 'x' } },
+        architect: { models: { claude: 'opus 4' } },
+        reviewer: { models: { codex: '', claude: 'a\nb' } },
+        techlead: { models: { antigravity: 5 } },
+        godmode_shipping: { models: { cursor: 'x' } },
     });
-    assert.deepStrictEqual(res.map((r) => r.name).sort(), ['Agent model a/claude', 'Agent model b/codex', 'Agent model c/antigravity', 'Agent model d/cursor']);
+    assert.deepStrictEqual(res.map((r) => r.name).sort(), ['Agent model architect/claude', 'Agent model godmode_shipping/cursor', 'Agent model reviewer/claude', 'Agent model reviewer/codex', 'Agent model techlead/antigravity']);
     assert.ok(res.every((r) => !r.ok && !r.warningOnly));
 });
 
-test('legacy model without harness is checked against OpenCode too', () => {
+test('legacy model without harness is checked against every harness', () => {
     const res = run({ reviewer: { model: 'opus' } });
-    assert.deepStrictEqual(res.map((r) => r.name), ['Agent model reviewer/opencode']);
+    assert.deepStrictEqual(res.map((r) => r.name).sort(), ['Agent model reviewer/antigravity', 'Agent model reviewer/opencode']);
+});
+
+test('antigravity accepts only inherit|flash|pro and the error cites docs/agent-models.md', () => {
+    assert.deepStrictEqual(run({ architect: { models: { antigravity: 'flash' } } }), []);
+    const [e] = run({ architect: { harness: 'antigravity', model: 'gemini-3.8-flash-high' } });
+    assert.strictEqual(e.ok, false);
+    assert.notStrictEqual(e.warningOnly, true);
+    assert.match(e.detail, /inherit\|flash\|pro/);
+    assert.match(e.detail, /docs\/agent-models\.md/);
+});
+
+test('an old --init-default file: tier warns, its gemini model errors, claude/codex models pass', () => {
+    const res = run({
+        architect: { enabled: true, harness: 'claude', tier: 'reasoning_max', model: 'opus' },
+        techlead: { enabled: true, harness: 'antigravity', tier: 'standard_fast', model: 'gemini-3.8-flash-high' },
+        reviewer: { enabled: true, harness: 'codex', tier: 'reasoning_max', model: 'o3-mini' },
+    });
+    const tiers = res.filter((r) => r.name.startsWith('Agent tier'));
+    assert.strictEqual(tiers.length, 3);
+    assert.ok(tiers.every((r) => !r.ok && r.warningOnly === true && /Remove "tier"/.test(r.fix)));
+    assert.deepStrictEqual(res.filter((r) => !r.ok && !r.warningOnly).map((r) => r.name), ['Agent model techlead/antigravity']);
+});
+
+test('a role key matching no agent warns (inert override); aliases such as ui_ux do too', () => {
+    const res = run({ ui_ux: { models: { claude: 'fable' } }, godmode_ui_ux: { models: { claude: 'fable' } } });
+    assert.deepStrictEqual(res.map((r) => r.name), ['Agent role ui_ux']);
+    assert.strictEqual(res[0].warningOnly, true);
+});
+
+test('models that is not an object is an error, not "unknown harness 0"', () => {
+    const res = run({ architect: { models: ['claude'] } });
+    assert.deepStrictEqual(res.map((r) => r.name), ['Agent models architect']);
+    assert.match(res[0].detail, /must be an object/);
 });
 
 test('a broken pipeline.json is reported, not silently ignored', () => {

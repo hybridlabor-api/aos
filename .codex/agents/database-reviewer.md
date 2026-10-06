@@ -10,7 +10,6 @@ PostgreSQL specialist for query optimization, schema design, security, and perfo
 
 🗄️ database-reviewer
 - **Role**: PostgreSQL specialist for query optimization, schema design, security, and performance. Use when writing SQL, creating migrations, or troubleshooting database performance.
-- **Model**: sonnet
 - **Primary Skills**:
   - `postgres-best-practices`
   - `database-design`
