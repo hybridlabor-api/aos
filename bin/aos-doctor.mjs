@@ -300,7 +300,66 @@ function checkHooks() {
     'Run the AOS installer to wire Codex hooks.', true);
 }
 
-// ---------------------------------------------------------------- 5. Daemons & Ecosystem Modules (Including AO)
+// ---------------------------------------------------------------- 5b. A2A capability matrix (WP-INSTALL)
+// All A2A rows are warnings only: a missing piece degrades cross-agent
+// messaging, it never fails the doctor (same philosophy as the mcsc row).
+// Codex and agy are delegation targets, so they never carry a sidecar
+// SessionStart hook (fork-bomb rule); their row checks the pull/CLI pieces.
+function checkA2aMatrix() {
+  const area = 'a2a';
+  const pkgBin = path.join(path.resolve(new URL(import.meta.url).pathname, '..'), 'a2a-inbox-mcp.mjs');
+
+  // Claude Code: drain + stop hooks wired in settings.json.
+  const claudeSettings = readJson(hc('settings.json'));
+  const claudeWired = JSON.stringify(claudeSettings?.hooks || {}).includes('a2a-inbox.mjs');
+  const sidecarShipped = existsSync(hc('hooks', 'a2a-session.mjs'));
+  add(area, 'A2A Claude Code', claudeWired,
+    claudeWired ? `a2a-inbox.mjs drain + stop wired in ${tilde(hc('settings.json'))}`
+      : 'a2a-inbox.mjs not wired in ~/.claude/settings.json',
+    'Run the AOS installer to wire the A2A inbox hooks.', true);
+
+  // OpenCode: the plugin carries the sidecar init call and the inbox import.
+  const ocDirs = [process.platform === 'win32' && process.env.APPDATA ? path.join(process.env.APPDATA, 'opencode') : h('.config', 'opencode')];
+  const ocPlugin = firstExisting(ocDirs.map((d) => path.join(d, 'plugins', 'bdb-aos.js')));
+  let ocOk = false, ocDetail = `${tilde(h('.config', 'opencode', 'plugins', 'bdb-aos.js'))} missing`;
+  if (ocPlugin) {
+    let src = '';
+    try { src = readFileSync(ocPlugin, 'utf8'); } catch {}
+    ocOk = src.includes('a2a-inbox.mjs') && src.includes('ensureSidecar');
+    ocDetail = ocOk ? `${tilde(ocPlugin)} delivers A2A injections + sidecar init`
+      : `${tilde(ocPlugin)} lacks the A2A sidecar init call`;
+  }
+  add(area, 'A2A OpenCode', ocOk, ocDetail, 'Run the AOS installer to install the OpenCode plugin.', true);
+
+  // agy: pull-side MCP payload present (registration is a manual `agy mcp add`).
+  const agyMcp = firstExisting([h('.agents', 'bin', 'a2a-inbox-mcp.mjs'), existsSync(pkgBin) ? pkgBin : null]);
+  add(area, 'A2A agy (Antigravity)', !!agyMcp,
+    agyMcp ? `${tilde(agyMcp)} shipped · optional: agy mcp add aos-a2a-inbox node "${agyMcp}"` : 'a2a-inbox-mcp.mjs missing (install AOS)',
+    'Run the AOS installer; register with: agy mcp add aos-a2a-inbox node <path to a2a-inbox-mcp.mjs>', true);
+
+  // Codex: live through the shared CLI/lib (no sidecar hook — delegation target).
+  const codexLib = firstExisting([h('.agents', 'lib', 'a2a-codex.mjs')]);
+  add(area, 'A2A Codex', !!codexLib,
+    codexLib ? `${tilde(codexLib)} + a2a-inbox.mjs shipped (live via aos-a2a; no sidecar hook — delegation target)` : `~/.agents/lib/a2a-codex.mjs missing (install AOS)`,
+    'Run the AOS installer to ship the A2A Codex lib.', true);
+
+  // Sidecar: who starts `aos-a2a serve`, and the off switch that keeps it a no-op
+  // when a session is itself a delegated worker.
+  add(area, 'A2A sidecar guard', true,
+    sidecarShipped ? 'a2a-session.mjs hook shipped; skipped under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0'
+      : 'SessionStart hook not shipped in this package; sidecar starts only from the OpenCode plugin init (also skipped under AOS_A2A_SIDECAR=off)',
+    '', true);
+
+  // Dependency the sidecar itself needs.
+  let sdkOk = false;
+  for (const id of ['@a2a-js/sdk/package.json', '@a2a-js/sdk']) {
+    try { req.resolve(id); sdkOk = true; break; } catch { /* try next */ }
+  }
+  add(area, 'A2A SDK dependency', sdkOk,
+    sdkOk ? '@a2a-js/sdk resolvable next to this doctor' : '@a2a-js/sdk not resolvable: `aos-a2a serve/send` will fail with a clear SDK-missing error',
+    'Reinstall the package: npx @hybridlabor-api/aos@latest (SDK ships as a dependency).', true);
+}
+
 // mcsc delegates to agy; agy loading mcsc from its own config recurses into a fork bomb.
 function checkAgyMcsc() {
   for (const f of [h('.gemini', 'config', 'mcp_config.json'), h('.gemini', 'antigravity-cli', 'mcp_config.json')]) {
@@ -477,6 +536,7 @@ checkHarnesses();
 checkHooks();
 checkPlugins();
 checkAgyMcsc();
+checkA2aMatrix();
 await checkDaemonsAndModules();
 report();
 
