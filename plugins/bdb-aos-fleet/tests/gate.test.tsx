@@ -42,12 +42,46 @@ test('the release button fills an empty prompt once, never a non-empty one', asy
 
   await pane.press({ key: 'release 2h' } as never)
   expect(fills).toEqual([RELEASE])
-  expect(JSON.stringify(await pane.drawn())).toContain('press Enter in the prompt to record it')
+  expect(JSON.stringify(await pane.drawn())).toContain('press Enter to record')
 
   box = 'half typed'
   await pane.press({ key: 'release 2h' } as never)
   expect(fills).toHaveLength(1)
   expect(JSON.stringify(await pane.drawn())).toContain('Prompt is not empty')
+})
+
+test('the gate pane is a card: mode badge, grant rows, one fill per press', async ($, on) => {
+  const fills: string[] = []
+  const iso = new Date(Date.now() + 102 * 60000).toISOString()
+  const status = { ...STATUS, stdout: `AOS go-gate, session sid: mode soft\n  grant push-feature until ${iso} (102 min left)` }
+  on('env.get', () => ({ value: '/home' }))
+  on('session.id', () => ({ value: 'sid' }))
+  on('process.run', () => ({ value: status }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('prompt.fill', (_$, e) => {
+    fills.push(e.text)
+    return { isFilled: true }
+  })
+  await $.command.run({ command: 'gogate-panel', args: '' } as never)
+  const pane = await $.ui.mount({
+    plugin: 'bdb-aos-fleet',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'gogate-panel',
+    props: { bodyColumns: 60 } as never,
+  })
+
+  const drawn = JSON.stringify(await pane.drawn())
+  expect(drawn).toContain('SOFT')
+  expect(drawn).toContain('push-feature')
+  expect(drawn).toContain('1h42')
+  expect(drawn).toContain('left')
+  expect(drawn).not.toContain('session sid')
+
+  await pane.press({ key: 'feature 2h' } as never)
+  expect(fills).toEqual(['gogate grant push-feature,github-write 2h'])
+  expect(JSON.stringify(await pane.drawn())).toContain('▸ in your prompt: gogate grant push-feature,github-write 2h')
 })
 
 test('session.start, turn.complete and tool.call never fill the prompt', async ($, on) => {

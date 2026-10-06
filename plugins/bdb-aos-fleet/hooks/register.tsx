@@ -88,13 +88,44 @@ const DOT: Record<FleetActivity, { glyph: string; color: string }> = {
 }
 
 const PRESETS = [
-  { label: 'release 2h', text: 'gogate grant push-feature,github-write,merge,publish 2h' },
-  { label: 'feature 2h', text: 'gogate grant push-feature,github-write 2h' },
-  { label: 'soft', text: 'gogate soft' },
-  { label: 'hard', text: 'gogate hard' },
-  { label: 'status', text: 'gogate status' },
+  { label: 'release 2h', text: 'gogate grant push-feature,github-write,merge,publish 2h', frees: 'push-feature · github-write · merge · publish' },
+  { label: 'feature 2h', text: 'gogate grant push-feature,github-write 2h', frees: 'push-feature · github-write' },
+  { label: 'soft', text: 'gogate soft', frees: '' },
+  { label: 'hard', text: 'gogate hard', frees: '' },
+  { label: 'status', text: 'gogate status', frees: '' },
 ]
 const MODE_COLOR: Record<string, string> = { hard: 'red', soft: 'yellow', off: 'gray' }
+const GRANT_BAR = 10
+const GRANT_DEFAULT_MIN = 120
+const LIST_STALE_MIN = 15
+const MORE_W = 10
+
+export const grantBar = (minutesLeft: number) => {
+  const total = Math.max(GRANT_DEFAULT_MIN, minutesLeft)
+  const on = Math.max(0, Math.min(GRANT_BAR, Math.ceil((minutesLeft / total) * GRANT_BAR)))
+  return { on, off: GRANT_BAR - on }
+}
+
+// How many chips (own width each, 2-cell gaps) fit; leaves room for "+k more" when any are dropped.
+export function chipsThatFit(widths: readonly number[], budget: number) {
+  const take = (room: number) => {
+    let used = 0
+    let n = 0
+    for (const w of widths) {
+      if (used + (n ? 2 : 0) + w > room) break
+      used += (n ? 2 : 0) + w
+      n++
+    }
+    return n
+  }
+  const n = take(budget)
+  return n < widths.length ? take(budget - MORE_W) : n
+}
+
+export const listAge = (updated: string | undefined, now: number) => {
+  const t = updated ? new Date(updated).getTime() : NaN
+  return Number.isNaN(t) ? 0 : Math.floor((now - t) / 60_000)
+}
 
 export function parseGateStatus(text: string): GateState {
   const mode = /: mode (\w+)/.exec(text)?.[1] ?? 'soft'
@@ -117,7 +148,7 @@ async function readGate($: EngineInterface) {
 async function fillPreset($: EngineInterface, text: string) {
   if ((await $.prompt.read()).text) return update($, gateMsg, () => 'Prompt is not empty – clear it first')
   await $.prompt.fill({ text })
-  return update($, gateMsg, () => `You're about to approve: ${text} — press Enter in the prompt to record it.`)
+  return update($, gateMsg, () => `▸ in your prompt: ${text}`)
 }
 
 let dir = ''
@@ -179,10 +210,16 @@ async function takeReading($: EngineInterface) {
 export const weather = (percent: number) => WEATHER.find(w => percent < w.upTo) ?? WEATHER[WEATHER.length - 1]!
 export const filled = (p: FleetProgress) => (p.total ? Math.round((p.done / p.total) * BAR) : 0)
 
-type Extras = { progress: Map<string, FleetProgress>; waits: Map<string, string>; boards?: { project: string; p: FleetProgress }[] }
+type Extras = {
+  progress: Map<string, FleetProgress>
+  waits: Map<string, string>
+  boards?: { project: string; p: FleetProgress }[]
+  updated?: string
+}
 let extras: Extras = { progress: new Map(), waits: new Map() }
 
 type TaskState = {
+  updated?: string
   sessions?: Record<string, { map_url?: unknown }>
   tasks?: { owner?: string; status?: string }[]
 }
@@ -209,7 +246,7 @@ export function tasksExtras(state: TaskState): Extras & { ports: Map<string, num
     const found = [...JSON.stringify(info.map_url ?? '').matchAll(/:(\d{4,5})/g)].map(m => Number(m[1]))
     if (found.length) ports.set(name.toLowerCase(), found)
   }
-  return { progress, waits, ports }
+  return { progress, waits, ports, updated: state.updated }
 }
 
 export function boardProgress(boards: readonly BoardSummary[]): FleetProgress | undefined {
@@ -236,7 +273,7 @@ async function loadExtras($: EngineInterface) {
     const p = boardProgress([b])
     return p && b.project ? [{ project: b.project, p }] : []
   })
-  extras = { progress: next.progress, waits: next.waits, boards: shown }
+  extras = { progress: next.progress, waits: next.waits, boards: shown, updated: next.updated }
 }
 
 async function listAgents($: EngineInterface) {
@@ -499,17 +536,90 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: GATE_PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
-    const { raw } = await read($, gate)
+    const { mode, grants, raw } = await read($, gate)
     const msg = await read($, gateMsg)
+    const width = e.props.bodyColumns
+    const color = MODE_COLOR[mode] ?? 'yellow'
+    const scopeW = Math.max(...grants.map(x => x.scope.length), 0)
+    const button = (p: (typeof PRESETS)[number], i: number) => (
+      <Button key={p.label} label={p.label} hotkey={String(i + 1)} onPress={() => void fillPreset($, p.text)} />
+    )
     return (
       <Box flexDirection="column">
-        <Text>{raw || 'No status yet.'}</Text>
-        <Box flexDirection="row" marginTop={1}>
-          {PRESETS.map(p => (
-            <Button key={p.label} label={p.label} onPress={() => void fillPreset($, p.text)} />
+        <Box flexDirection="row" justifyContent="space-between">
+          <Text bold wrap="truncate-end">
+            go-gate
+          </Text>
+          <Text bold color={color} wrap="truncate-end">
+            {mode.toUpperCase()} ●
+          </Text>
+        </Box>
+        <Text dimColor wrap="truncate-end">
+          {'─'.repeat(width)}
+        </Text>
+        {raw && !/: mode \w+/.test(raw) && (
+          <Text dimColor wrap="truncate-end">
+            {raw}
+          </Text>
+        )}
+        <Text dimColor wrap="truncate-end">
+          GRANTS
+        </Text>
+        {grants.length === 0 && (
+          <Text dimColor wrap="truncate-end">
+            none — soft mode blocks guarded commands until you grant or type GO
+          </Text>
+        )}
+        {grants.map(x => (
+          <Text key={x.scope} wrap="truncate-end">
+            {x.scope.padEnd(scopeW)}
+            {'  '}
+            <Text color="green">{'■'.repeat(grantBar(x.minutesLeft).on)}</Text>
+            <Text dimColor>{'□'.repeat(grantBar(x.minutesLeft).off)}</Text>
+            {'  '}
+            {timeLeft(x.minutesLeft)} left
+          </Text>
+        ))}
+        <Box marginTop={1} flexDirection="row" justifyContent="space-between">
+          <Text dimColor wrap="truncate-end">
+            PRESETS
+          </Text>
+          <Text dimColor wrap="truncate-end">
+            frees
+          </Text>
+        </Box>
+        {PRESETS.slice(0, 2).map((p, i) => (
+          <Box key={p.label} flexDirection="row">
+            {button(p, i)}
+            <Text dimColor wrap="truncate-end">
+              {'  '}
+              {p.frees}
+            </Text>
+          </Box>
+        ))}
+        <Box flexDirection="row">
+          {PRESETS.slice(2).map((p, i) => (
+            <Box key={p.label} marginRight={1}>
+              {button(p, i + 2)}
+            </Box>
           ))}
         </Box>
-        {msg && <Text color="yellow">{msg}</Text>}
+        {msg.startsWith('▸') ? (
+          <Box marginTop={1} flexDirection="column">
+            <Text color="yellow" wrap="truncate-end">
+              {msg}
+            </Text>
+            <Text dimColor wrap="truncate-end">
+              press Enter to record · clear the prompt to cancel
+            </Text>
+          </Box>
+        ) : (
+          msg && (
+            <Text color="yellow" wrap="truncate-end">
+              {msg}
+            </Text>
+          )
+        )}
       </Box>
     )
   })
@@ -525,51 +635,112 @@ export const register: Register = on => {
     const idle = others.filter(s => s.activity === 'idle')
     const busy = others.filter(s => s.activity !== 'idle')
 
-    const weatherLine = reading && (
+    const frame = await read($, frame_)
+    const age = listAge(extras.updated, await $.clock.now())
+
+    const weatherLine = (reading || g.raw) && (
       <Box flexDirection="row" paddingX={1}>
-        <Text color={weather(reading.percent).color} bold>
-          {weather(reading.percent).icon}  {weather(reading.percent).word}
+        <Text wrap="truncate-end">
+          {reading && (
+            <Text color={weather(reading.percent).color} bold wrap="truncate-end">
+              {weather(reading.percent).icon}  {weather(reading.percent).word}
+            </Text>
+          )}
+          {reading && <Text wrap="truncate-end">  {Math.round(reading.percent)}% of context</Text>}
+          {reading && (
+            <Text dimColor wrap="truncate-end">
+              {'  '}
+              {short(reading.tokens)} / {short(reading.window)}
+            </Text>
+          )}
+          {reading && wide && history.length > 1 && <Text dimColor wrap="truncate-end">   last turns </Text>}
+          {reading && wide && history.length > 1 && (
+            <Text color={weather(reading.percent).color} wrap="truncate-end">
+              {sparkline(history)}
+            </Text>
+          )}
+          {reading && reading.percent >= 75 && (
+            <Text color={weather(reading.percent).color} wrap="truncate-end">
+              {'   '}
+              {weather(reading.percent).advice}
+            </Text>
+          )}
+          {g.raw && (
+            <Text color={MODE_COLOR[g.mode] ?? 'yellow'} wrap="truncate-end">
+              {'   '}gate {g.mode}
+            </Text>
+          )}
+          {g.grants.map(x => (
+            <Text key={x.scope} dimColor wrap="truncate-end">
+              {' · '}
+              {x.scope} {timeLeft(x.minutesLeft)}
+            </Text>
+          ))}
         </Text>
-        <Text>  {Math.round(reading.percent)}% of context</Text>
-        <Text dimColor>  {short(reading.tokens)} / {short(reading.window)}</Text>
-        {wide && history.length > 1 && <Text dimColor>   last turns </Text>}
-        {wide && history.length > 1 && <Text color={weather(reading.percent).color}>{sparkline(history)}</Text>}
-        {reading.percent >= 75 && <Text color={weather(reading.percent).color}>   {weather(reading.percent).advice}</Text>}
       </Box>
     )
 
-    const gateSeg = g.raw && (
-      <Text>
-        {'   '}
-        <Text color={MODE_COLOR[g.mode] ?? 'yellow'}>gate {g.mode}</Text>
-        {g.grants.map(x => (
-          <Text key={x.scope} dimColor>
-            {' · '}
-            {x.scope} {timeLeft(x.minutesLeft)}
-          </Text>
-        ))}
-      </Text>
-    )
+    const room = Math.max(1, e.props.bodyColumns - 2)
+    const reasonMax = Math.min(24, Math.max(8, Math.floor(room / 3)))
+    const chips = busy.map(s => ({
+      key: s.id,
+      color: hex(roleColor(s)),
+      glyph: s.activity === 'working' && frame % 2 ? '▄▀▀▄' : '█▀▀█',
+      name: fit(s.name, 18),
+      tail: s.reason ? fit(s.reason, reasonMax) : s.progress ? `${s.progress.done}/${s.progress.total}` : '',
+      attention: s.activity === 'attention',
+    }))
+    const idleText = idle.length > 0 ? `○ ${idle.length} idle` : ''
+    const staleText = age > LIST_STALE_MIN ? `· list ${timeLeft(age)} old` : ''
+    const widths = [
+      ...chips.map(c => c.glyph.length + 1 + c.name.length + (c.tail ? 1 + c.tail.length : 0)),
+      ...(idleText ? [idleText.length] : []),
+      ...(staleText ? [staleText.length] : []),
+    ]
+    const n =chipsThatFit(widths, room)
+    const shownChips = chips.slice(0, n)
+    const more = chips.length - shownChips.length
+    const idleShown = idleText && n > chips.length
+    const staleShown = staleText && n > chips.length + (idleText ? 1 : 0)
 
     const fleetLine = others.length > 0 && (
       <Box flexDirection="row" paddingX={1}>
-        <Text dimColor>fleet </Text>
-        {busy.map(s => (
-          <Text key={s.id}>
-            {'  '}
-            <Text color={DOT[s.activity].color}>{DOT[s.activity].glyph}</Text>{' '}
-            <Text color={hex(roleColor(s))}>{fit(s.name, 18)}</Text>
-            {s.reason && <Text color="yellow"> {s.reason}</Text>}
-            {wide && s.progress && !s.reason && <Text dimColor> {s.progress.done}/{s.progress.total}</Text>}
-          </Text>
-        ))}
-        {idle.length > 0 && <Text dimColor>{'  '}○ {idle.length} idle</Text>}
-        {gateSeg}
-      </Box>
-    )
-    const gateLine = others.length === 0 && gateSeg && (
-      <Box flexDirection="row" paddingX={1}>
-        {gateSeg}
+        <Text wrap="truncate-end">
+          {shownChips.map((c, i) => (
+            <Text key={c.key} wrap="truncate-end">
+              {i > 0 && '  '}
+              <Text color={c.color} wrap="truncate-end">
+                {c.glyph}
+              </Text>{' '}
+              <Text color={c.color} wrap="truncate-end">
+                {c.name}
+              </Text>
+              {c.tail && (
+                <Text color={c.attention ? 'yellow' : undefined} dimColor={!c.attention} wrap="truncate-end">
+                  {' '}
+                  {c.tail}
+                </Text>
+              )}
+            </Text>
+          ))}
+          {more > 0 && (
+            <Text dimColor wrap="truncate-end">
+              {'  '}+{more} more
+            </Text>
+          )}
+          {idleShown && (
+            <Text dimColor wrap="truncate-end">
+              {'  '}
+              {idleText}
+            </Text>
+          )}
+          {staleShown && (
+            <Text dimColor wrap="truncate-end">
+              {'  '}
+              {staleText}
+            </Text>
+          )}
+        </Text>
       </Box>
     )
 
@@ -577,7 +748,6 @@ export const register: Register = on => {
       <Box flexDirection="column">
         {weatherLine}
         {fleetLine}
-        {gateLine}
       </Box>
     )
   })
