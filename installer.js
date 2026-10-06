@@ -4739,7 +4739,7 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus'];
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus', 'aos-gateway'];
     // aos-bus ships as a hook (it imports ./go-gate.mjs), so its launcher points into ~/.claude/hooks.
     const binDirOf = (name) => (name === 'aos-bus' ? path.join(claudeConfigDir(homeDir), 'hooks') : globalAgentsBin);
     const wired = [];
