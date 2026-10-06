@@ -35,6 +35,7 @@ try {
     else for (const s of sessions) console.log(`${s.name}\t${s.harness}\tpid ${s.pid}\t${s.url ?? "-"}\t${s.cwd ?? ""}`);
   } else if (cmd === "book") {
     console.log(JSON.stringify(book(), null, 2));
+    process.exit(0);
   } else if (cmd === "card") {
     if (!o.name || !o.harness) throw new Error("card needs --name and --harness");
     console.log(JSON.stringify(cardFromProfile(loadProfile({ profile: o.profile }), { name: o.name, harness: o.harness, model: o.model, url: o.url }), null, 2));
