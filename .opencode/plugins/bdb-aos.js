@@ -19,7 +19,7 @@ import { existsSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { claim as a2aClaim, formatInjection, pending as a2aPending, replyDir } from '../../lib/a2a-inbox.mjs';
-
+import { ensureSidecar } from '../../lib/a2a-session.mjs';
 // A2A live peer. The plugin injects the message, then writes <replyDir>/<taskId>.reply (0600) once the
 // assistant turn completed, so liveExecutor's default file replySource works unchanged.
 const a2aInjected = new Map(); // taskId -> { id: injected user message id, name: bus name }
@@ -301,6 +301,8 @@ export default async function bdbAosPlugin(input) {
       }
       if (parentID) return;
       const name = bus.registerSession({ name: process.env.AOS_SESSION_NAME || id, sessionID: id, cwd: directory });
+      // WP-HOOK: root sessions get one detached A2A sidecar; nothing here is fatal.
+      try { ensureSidecar({ harness: 'opencode', sessionId: id, parentPid: process.pid }); } catch {}
       busNames.set(name, id);
     } catch (e) {
       console.error(`[aos-bus] registration failed: ${e?.message}`);
