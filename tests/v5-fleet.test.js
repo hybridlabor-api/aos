@@ -234,7 +234,8 @@ describe('fleet package step', () => {
     test('detect reports version and key state', async () => {
         const home = mkHome();
         let d = await pkg.detect(ctxOf(home));
-        assert.deepEqual([d.installed, d.version, d.enabled], [false, '2.1.300', null]);
+        const own = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugins', 'bdb-aos-fleet', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+        assert.deepEqual([d.installed, d.version, d.claudeVersion, d.enabled], [false, own, '2.1.300', null]);
         await pkg.install(ctxOf(home));
         d = await pkg.detect(ctxOf(home));
         assert.deepEqual([d.installed, d.enabled], [true, true]);

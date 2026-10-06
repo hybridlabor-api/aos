@@ -1407,6 +1407,8 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
         result = { covered: new Set(), lines: [], error: e.message };
     }
     for (const line of result.lines) log.step(line);
+    const regFailed = result.lines.filter((l) => /plugin registration failed/.test(l));
+    if (regFailed.length && !result.error) result.error = regFailed.join('; ');
     if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
     if (targetHome === homeDir) _pluginMigration = result;
     return result;
@@ -1421,6 +1423,7 @@ function runAgyPluginStep() {
 function runCodexPluginStep() {
     const r = codexPluginInstall.installCodexPlugin({ home: homeDir, pkgRoot: srcDir, version: require('./package.json').version, mode: pluginMigrationMode(), announce: (m) => log.step(m) });
     for (const line of r.lines) log.step(line);
+    if (r.ok === false) throw new Error(r.lines.filter((l) => /FAILED/.test(l)).join('; ') || 'Codex plugin install failed');
 }
 
 // Measured with codex 0.154.0: Codex loads BOTH ~/.agents/skills and ~/.codex/skills, so AOS copies
@@ -2039,7 +2042,7 @@ async function runTopologyAnimation(backgroundTask, label) {
 
 async function installTokenSaver(platformTarget) {
     const tokenSaverDir = path.join(srcDir, 'vendor', 'token-saver');
-    if (!fs.existsSync(tokenSaverDir)) return;
+    if (!fs.existsSync(tokenSaverDir)) return false;
     if (DRY_RUN) {
         log.step('[dry-run] would run Heimdall Token Saver setup (--target all)');
         return;
@@ -6485,6 +6488,7 @@ function v5Options(interactive) {
     const ui = interactive ? {
         select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
+        confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
     return { home: homeDir, write: (s) => process.stdout.write(s), ui };
 }
@@ -6857,7 +6861,7 @@ Options:
     injectHarnessRules();
 
     // Codex plugin via the real `codex plugin` CLI (best effort, see lib/codex-plugin-install.js)
-    runCodexPluginStep();
+    try { runCodexPluginStep(); } catch (e) { log.warn(`Codex plugin: ${e.message}`); }
 
     const primaryTarget = targets[0];
     for (const t of targets) {
@@ -6951,6 +6955,7 @@ module.exports = {
     parseOpencodeOptional,
     maybeInstallCodenotch,
     pluginMigrationMode,
+    prompts: { text, password, select, multiselect, confirm: askConfirm },
     runPluginMigration,
     runAgyPluginStep,
     runCodexPluginStep,

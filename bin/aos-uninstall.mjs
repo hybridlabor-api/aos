@@ -29,6 +29,7 @@ const cn = createRequire(import.meta.url)('../lib/codenotch.js');
 const cp = createRequire(import.meta.url)('../lib/codex-plugin-install.js');
 const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js');
 const ur = createRequire(import.meta.url)('../lib/uninstall-records.js');
+const pk = createRequire(import.meta.url)('../lib/v5/packages.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -197,7 +198,7 @@ function dirSize(p) {
 }
 
 // ------------------------------------------------------------------ execute
-function execute(p) {
+async function execute(p) {
   const { ours, edited, agents, modules, legacy, data, codenotch } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
   let removed = 0, backed = 0;
@@ -275,6 +276,18 @@ function execute(p) {
   }
 
   agyPlugin.uninstall({ home: HOME, dryRun: DRY });
+
+  // Fleet mod and MCP gateway are opt-in packages with their own registrations; the gateway only when Settings installed it.
+  for (const id of ['fleet', 'gateway']) {
+    const pkg = pk.registry.find((x) => x.id === id);
+    try {
+      const c = { home: HOME, dryRun: DRY };
+      if (id === 'gateway' && !(await pkg.detect(c)).installed) continue;
+      const r = await pkg.uninstall(c);
+      if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
+      else if (r && (r.changed || id === 'gateway')) console.log(`  ${pkg.name} entfernt`);
+    } catch (e) { console.log(`  ${pkg.name}: ${e.message} — von Hand prüfen`); }
+  }
 
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);
@@ -364,5 +377,5 @@ if (!YES) {
 }
 
 console.log('');
-execute(p);
+await execute(p);
 console.log('\nFertig. Neu einrichten mit: npx -y @hybridlabor-api/aos@latest');

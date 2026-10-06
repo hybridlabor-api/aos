@@ -479,3 +479,112 @@ test('C17: an Ollama OpenWiki provider is never asked for an API key', async () 
     try { await menu.update(m.host, m.opts({ npmView: current, ui: { ask: async (k) => { asked.push(k); return 'x'; } } })); } finally { process.env.PATH = prev; }
     assert.deepStrictEqual(asked, [PAT]);
 });
+
+// ---- re-review round 2 ----
+const KEY = 'bdb-aos-fleet@bdb-marketplace';
+const withPathAsync = async (dir, fn) => { const prev = process.env.PATH; process.env.PATH = dir; try { return await fn(); } finally { process.env.PATH = prev; } };
+const fakeClaude = () => { const bin = path.join(mkHome(), 'bin'); script(path.join(bin, 'claude'), 'echo "2.1.300 (Claude Code)"'); return `${bin}${path.delimiter}${process.env.PATH}`; };
+const noClaude = () => { const d = path.join(mkHome(), 'empty'); fs.mkdirSync(d); return d; };
+const putClaudeSettings = (home, text) => { fs.mkdirSync(path.join(home, '.claude'), { recursive: true }); fs.writeFileSync(path.join(home, '.claude', 'settings.json'), typeof text === 'string' ? text : JSON.stringify(text)); };
+const withPackage = async (entry, fn) => { pk.register(entry); try { return await fn(); } finally { pk.registry.splice(pk.registry.findIndex((e) => e.id === entry.id), 1); } };
+
+test('R5: a JSONC settings.json is a warning on a green Harnesses step; harness failures stay ✖', async () => {
+    const m = machine();
+    putClaudeSettings(m.home, '{ // mine\n "model": "x" }');
+    await withPathAsync(fakeClaude(), async () => {
+        assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current })), 0);
+        assert.match(m.out.join(''), /✔ Harnesses .*fleet: settings\.json has comments; enable bdb-aos-fleet by hand/);
+        assert.doesNotMatch(m.out.join(''), /✖/);
+        const f = machine();
+        putClaudeSettings(f.home, '{ // mine\n "model": "x" }');
+        f.host.quickUpdateHarnesses = () => ['install the Codex plugin: boom'];
+        assert.strictEqual(await menu.update(f.host, f.opts({ npmView: current })), 1);
+        assert.match(f.out.join(''), /✖ Harnesses/);
+    });
+});
+
+test('R7: aos-uninstall removes the fleet registration', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
+    const home = mkHome();
+    putClaudeSettings(home, { model: 'x', enabledPlugins: { [KEY]: true } });
+    const stray = path.join(home, '.agents', 'x.txt');
+    fs.mkdirSync(path.dirname(stray), { recursive: true });
+    fs.writeFileSync(stray, 'x');
+    fs.writeFileSync(path.join(home, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [stray]: { sha256: require('crypto').createHash('sha256').update('x').digest('hex') } }));
+    const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'bin', 'aos-uninstall.mjs'), '--yes'], { cwd: home, encoding: 'utf8', env: { PATH: noClaude(), HOME: home, USERPROFILE: home, AOS_PLUGIN_CLI: 'off' } });
+    assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+    const s = JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8'));
+    assert.strictEqual(s.model, 'x');
+    assert.strictEqual(s.enabledPlugins[KEY], undefined);
+});
+
+test('R8: Settings -> Install fleet is ✖ when opted out or Claude Code is missing; a confirmed opt-out is cleared', async () => {
+    const ui = (confirm) => ({ select: async () => 'pkg:fleet', ...(confirm ? { confirm } : {}) });
+    const off = machine();
+    putClaudeSettings(off.home, { enabledPlugins: { [KEY]: false } });
+    await withPathAsync(fakeClaude(), async () => {
+        assert.strictEqual(await menu.settings(off.host, off.opts({ ui: ui() })), 1);
+        assert.match(off.out.join(''), /✖ Fleet mod/);
+        const asked = [];
+        assert.strictEqual(await menu.settings(off.host, off.opts({ ui: ui(async (q) => { asked.push(q); return true; }) })), 0);
+        assert.strictEqual(asked.length, 1);
+        assert.strictEqual(JSON.parse(fs.readFileSync(path.join(off.home, '.claude', 'settings.json'), 'utf8')).enabledPlugins[KEY], true);
+    });
+    const gone = machine();
+    await withPathAsync(noClaude(), async () => {
+        assert.strictEqual(await menu.settings(gone.host, gone.opts({ ui: ui() })), 1);
+        assert.match(gone.out.join(''), /✖ Fleet mod/);
+    });
+    assert.strictEqual(fs.existsSync(path.join(gone.home, '.claude', 'settings.json')), false);
+});
+
+test('R9: a throwing detect is shown in Status as "detect failed", not as not installed', async () => {
+    const m = machine();
+    await withPackage({ id: 'boomer', name: 'Boomer', detect: () => { throw new Error('kaput'); } }, async () => {
+        assert.strictEqual(await menu.status(m.host, m.opts({ npmView: current })), 1);
+    });
+    assert.match(m.out.join(''), /✖ Boomer\s+detect failed: kaput/);
+});
+
+test('R10: Update and Repair respect the Settings disabled list', async () => {
+    const m = machine();
+    fs.mkdirSync(path.join(m.home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(m.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['fleet', 'fixable'] }));
+    let repaired = 0;
+    await withPackage({ id: 'fixable', name: 'Fixable', detect: () => ({ installed: true }), verify: () => ({ ok: false, detail: 'bad' }), repair: () => { repaired++; } }, async () => {
+        await withPathAsync(fakeClaude(), async () => {
+            await menu.update(m.host, m.opts({ npmView: current }));
+            await menu.repair(m.host, m.opts());
+        });
+    });
+    assert.strictEqual(repaired, 0);
+    assert.strictEqual(fs.existsSync(path.join(m.home, '.claude', 'settings.json')), false);
+});
+
+test('R11: the real installer prompt helpers return their defaults without clack while AOS_NONINTERACTIVE=1', async () => {
+    const { prompts } = require('../installer.js');
+    process.env.AOS_NONINTERACTIVE = '1';
+    try {
+        assert.strictEqual(await prompts.confirm({ message: 'm' }), true);
+        assert.strictEqual(await prompts.confirm({ message: 'm', initialValue: false }), false);
+        assert.strictEqual(await prompts.select({ message: 's', options: [{ value: 'a' }, { value: 'b' }] }), 'a');
+        assert.strictEqual(await prompts.password({ message: 'k' }), '');
+    } finally { delete process.env.AOS_NONINTERACTIVE; }
+});
+
+test('R14: a failed Codex plugin install and a failed plugin registration are failures', () => {
+    const host = require('../installer.js');
+    const codex = require('../lib/codex-plugin-install');
+    const real = codex.installCodexPlugin;
+    codex.installCodexPlugin = () => ({ ok: false, lines: ['Codex plugin: plugin install FAILED (boom)'] });
+    try { assert.throws(() => host.runCodexPluginStep(), /FAILED \(boom\)/); } finally { codex.installCodexPlugin = real; }
+    const r = host.runPluginMigration({ targetHome: mkHome(), detected: ['claudecode'], mode: 'on', cli: null, registrars: { claudecode: () => ({ ok: false, error: 'nope' }) } });
+    assert.match(r.error, /claudecode: plugin registration failed \(nope\)/);
+});
+
+test('R13: token-saver detect honours CLAUDE_CONFIG_DIR', () => {
+    const ts = pk.registry.find((p) => p.id === 'token-saver');
+    const cfg = path.join(mkHome(), 'cfg');
+    fs.mkdirSync(cfg);
+    fs.writeFileSync(path.join(cfg, 'settings.json'), JSON.stringify({ enabledPlugins: { 'token-saver@token-saver-marketplace': true } }));
+    assert.strictEqual(ts.detect({ home: mkHome(), env: { PATH: noClaude(), CLAUDE_CONFIG_DIR: cfg } }).installed, true);
+});

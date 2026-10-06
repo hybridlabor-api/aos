@@ -48,7 +48,7 @@ test('codex step reaches a Codex that is only an npm .cmd-style shim on PATH (no
   const old = process.env.PATH;
   process.env.PATH = `${bin}:/usr/bin:/bin`;
   try {
-    inst.runCodexPluginStep();
+    try { inst.runCodexPluginStep(); } catch { /* the shim never lists the plugin as installed, so the step now reports FAILED */ }
     const got = fs.readFileSync(calls, 'utf8');
     assert.match(got, /plugin list --json/);
     assert.match(got, /plugin marketplace add .*/);
