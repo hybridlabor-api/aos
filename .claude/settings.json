@@ -56,6 +56,14 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs\" stop"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
             "timeout": 2
           }
@@ -138,7 +146,21 @@
             "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs\" drain"
+          }
+        ]
       }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(aos-a2a reply:*)",
+      "Bash(aos-a2a send:*)"
     ]
   }
 }
