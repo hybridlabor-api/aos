@@ -47,6 +47,7 @@
     "./skills/global_config/agenttrail",
     "./skills/global_config/ai-agent-development",
     "./skills/global_config/ai-product",
+    "./skills/global_config/aos-a2a",
     "./skills/global_config/aos-project-init",
     "./skills/global_config/aos-setup",
     "./skills/global_config/aos-store",

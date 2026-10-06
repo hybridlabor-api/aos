@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-labelledby="t d">
+  <title id="t">The AOS tool landscape: universal harness, AO workspace, agenttrail, A2A, MCP gateway, memB, design and godmode skills, Creator Extension and Synapse, Codenotch</title>
+  <desc id="d">One wide card for the universal harness install on top; below it eight cards for the tools and modules that sit on it, each with its command or package name and what it does.</desc>
+  <defs>
+    <style>
+      .bg { fill: #F7F4EC; }
+      .sans { font-family: Inter, "Helvetica Neue", Arial, sans-serif; }
+      .mono { font-family: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+      .ink { fill: #15171A; }
+      .muted { fill: #5B6168; }
+      .green { fill: #1A7F3C; }
+      .chip { fill: #FFFFFF; stroke: #15171A; stroke-width: 2; }
+      .chipText { font-size: 16px; font-weight: 600; }
+      .panel { fill: #FFFFFF; stroke: #15171A; stroke-width: 2.5; }
+      .card { fill: #FFFFFF; stroke: #B9B5AA; stroke-width: 2; }
+      .label { font-size: 13px; font-weight: 700; letter-spacing: 2px; }
+      .h2 { font-size: 22px; font-weight: 800; }
+      .big { font-size: 46px; font-weight: 800; }
+      .li { font-size: 15px; }
+      .line { stroke: #B9B5AA; stroke-width: 2; fill: none; }
+      .lineGreen { stroke: #1A7F3C; stroke-width: 2.5; fill: none; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="900" rx="24"/>
+
+  <text class="label green sans" x="60" y="56">WHAT SITS ON THE KERNEL</text>
+  <text class="big ink sans" x="60" y="108">The AOS tool landscape</text>
+  <text class="mono muted" x="1540" y="56" text-anchor="end" font-size="18">aos doctor verifies all of it</text>
+
+  <!-- Universal harness (wide) -->
+  <rect class="panel" x="60" y="140" width="1480" height="150" rx="18"/>
+  <text class="label green sans" x="88" y="172">UNIVERSAL HARNESS</text>
+  <text class="h2 ink sans" x="88" y="204">One install for every coding-agent harness on the machine</text>
+  <text class="mono ink" x="88" y="232" font-size="15">npx -y @hybridlabor-api/aos@latest</text>
+  <text class="sans muted li" x="88" y="262">223 skills · 13 subagents · gate hooks · 21 MCP servers, written to the native paths of each harness</text>
+  <g class="sans chipText ink">
+    <rect class="chip" x="884"  y="214" width="130" height="36" rx="18"/><text x="949"  y="238" text-anchor="middle">Claude Code</text>
+    <rect class="chip" x="1024" y="214" width="120" height="36" rx="18"/><text x="1084" y="238" text-anchor="middle">Antigravity</text>
+    <rect class="chip" x="1154" y="214" width="110" height="36" rx="18"/><text x="1209" y="238" text-anchor="middle">Codex CLI</text>
+    <rect class="chip" x="1274" y="214" width="110" height="36" rx="18"/><text x="1329" y="238" text-anchor="middle">OpenCode</text>
+    <rect class="chip" x="1394" y="214" width="118" height="36" rx="18"/><text x="1453" y="238" text-anchor="middle">+ 5 more</text>
+  </g>
+
+  <!-- connectors -->
+  <path class="lineGreen" d="M800,290 L800,318"/>
+  <path class="line" d="M245,318 L1355,318"/>
+  <path class="line" d="M245,318 L245,340 M615,318 L615,340 M985,318 L985,340 M1355,318 L1355,340"/>
+  <path class="line" d="M245,590 L245,612 M615,590 L615,612 M985,590 L985,612 M1355,590 L1355,612"/>
+
+  <g class="sans">
+    <!-- Row 1 -->
+    <rect class="card" x="60" y="340" width="350" height="232" rx="14"/>
+    <text class="label green" x="84" y="370">AO WORKSPACE</text>
+    <text class="h2 ink" x="84" y="400">Agent Orchestrator</text>
+    <text class="mono ink" x="84" y="428" font-size="13">bdb-agent-orchestrator</text>
+    <text class="li ink" x="84" y="456">Parallel agents in git worktrees</text>
+    <text class="li ink" x="84" y="478">AOS Pipeline monitor: plan, gate,</text>
+    <text class="li ink" x="84" y="500">build, review, ship</text>
+    <text class="li ink" x="84" y="522">Role and model routing per node</text>
+    <text class="li muted" x="84" y="552">optional module · skill ao-orchestrator</text>
+
+    <rect class="card" x="430" y="340" width="350" height="232" rx="14"/>
+    <text class="label green" x="454" y="370">AGENTTRAIL</text>
+    <text class="h2 ink" x="454" y="400">Live build map</text>
+    <text class="mono ink" x="454" y="428" font-size="13">aos-trail · 127.0.0.1:5330</text>
+    <text class="li ink" x="454" y="456">One map per repo, started automatically</text>
+    <text class="li ink" x="454" y="478">Which component, which agent or harness,</text>
+    <text class="li ink" x="454" y="500">what is done, what is stuck</text>
+    <text class="li ink" x="454" y="522">Fed by trail-relay hooks, mcsc, aos-acp</text>
+    <text class="li muted" x="454" y="552">v2 control room in progress</text>
+
+    <rect class="card" x="800" y="340" width="350" height="232" rx="14"/>
+    <text class="label green" x="824" y="370">A2A</text>
+    <text class="h2 ink" x="824" y="400">Sessions that talk</text>
+    <text class="mono ink" x="824" y="428" font-size="13">aos-a2a list · send · reply</text>
+    <text class="li ink" x="824" y="456">Claude Code, OpenCode, agy, Codex</text>
+    <text class="li ink" x="824" y="478">Sidecar on 127.0.0.1, random port,</text>
+    <text class="li ink" x="824" y="500">per-session bearer token, no server</text>
+    <text class="li ink" x="824" y="522">An inbound message is never a GO</text>
+    <text class="li muted" x="824" y="552">intercom and a2abook in progress</text>
+
+    <rect class="card" x="1170" y="340" width="370" height="232" rx="14"/>
+    <text class="label green" x="1194" y="370">MCP GATEWAY</text>
+    <text class="h2 ink" x="1194" y="400">One endpoint, one MCP per app</text>
+    <text class="mono ink" x="1194" y="428" font-size="13">aos-gateway enable · direct · adopt</text>
+    <text class="li ink" x="1194" y="456">Token-checking forwarder on :7790</text>
+    <text class="li ink" x="1194" y="478">in front of @1mcp/agent, opt-in</text>
+    <text class="li ink" x="1194" y="500">Picks: Blender, Resolume, After Effects</text>
+    <text class="li ink" x="1194" y="522">adopt moves your own stdio servers</text>
+    <text class="li muted" x="1194" y="552">memb_mcp, deja and mcsc stay direct</text>
+
+    <!-- Row 2 -->
+    <rect class="card" x="60" y="612" width="350" height="232" rx="14"/>
+    <text class="label green" x="84" y="642">MEMB</text>
+    <text class="h2 ink" x="84" y="672">Local brain</text>
+    <text class="mono ink" x="84" y="700" font-size="13">@hybridlabor-api/memb · :8088</text>
+    <text class="li ink" x="84" y="728">Offline vector memory with an MCP</text>
+    <text class="li ink" x="84" y="750">Ambient hook injects relevant memories</text>
+    <text class="li ink" x="84" y="772">deja: transcript search, secrets redacted</text>
+    <text class="li ink" x="84" y="794">OpenWiki: grounded wiki per codebase</text>
+    <text class="li muted" x="84" y="824">optional modules · aos-project-init binds them</text>
+
+    <rect class="card" x="430" y="612" width="350" height="232" rx="14"/>
+    <text class="label green" x="454" y="642">DESIGN AND GODMODE SKILLS</text>
+    <text class="h2 ink" x="454" y="672">Personas per node</text>
+    <text class="mono ink" x="454" y="700" font-size="13">godmode-ui-ux · -engineering · -shipping</text>
+    <text class="li ink" x="454" y="728">godmode-eventtech, -3d-creation,</text>
+    <text class="li ink" x="454" y="750">-media-creation, -hardware-pcb</text>
+    <text class="li ink" x="454" y="772">20 design-ui-ux skills: tokens, motion,</text>
+    <text class="li ink" x="454" y="794">anti-slop, WCAG, shadcn, Tailwind</text>
+    <text class="li muted" x="454" y="824">mapped to the dispatcher graph nodes</text>
+
+    <rect class="card" x="800" y="612" width="350" height="232" rx="14"/>
+    <text class="label green" x="824" y="642">CREATOR EXTENSION + SYNAPSE</text>
+    <text class="h2 ink" x="824" y="672">Media, 3D and the code city</text>
+    <text class="mono ink" x="824" y="700" font-size="13">bdb-dev-creator-extension · bdb-synapse</text>
+    <text class="li ink" x="824" y="728">ComfyUI (FLUX, SDXL), TripoSR, TRELLIS</text>
+    <text class="li ink" x="824" y="750">OpenMontage and Remotion video</text>
+    <text class="li ink" x="824" y="772">Synapse: a repo as a 3D code city,</text>
+    <text class="li ink" x="824" y="794">agent sessions replayed through it</text>
+    <text class="li muted" x="824" y="824">optional modules</text>
+
+    <rect class="card" x="1170" y="612" width="370" height="232" rx="14"/>
+    <text class="label green" x="1194" y="642">CODENOTCH</text>
+    <text class="h2 ink" x="1194" y="672">Agents in the notch</text>
+    <text class="mono ink" x="1194" y="700" font-size="13">macOS app · Windows per-user install</text>
+    <text class="li ink" x="1194" y="728">Running and busy agents per harness:</text>
+    <text class="li ink" x="1194" y="750">Claude Code, agy, OpenCode, Codex</text>
+    <text class="li ink" x="1194" y="772">AOS and AO versions, update state</text>
+    <text class="li ink" x="1194" y="794">Installed by default, opt out with</text>
+    <text class="li muted mono" x="1194" y="824" font-size="13">--no-codenotch · AOS_CODENOTCH=0</text>
+  </g>
+</svg>
