@@ -286,6 +286,18 @@ describe('read-only chains after a peer message (v5 V10)', () => {
             `docker run --rm -v $(pwd):/src:ro node:24 node /src/evil.mjs`,
             `docker run --rm -v "${work}:/src:ro" node:24 node "$(cat x)"`,
             `docker build -t x .`,
+            // review 23: broad read-only sources still expose secrets or the docker socket
+            `docker run --rm -v /:/h:ro node:24 node /h/x.mjs`,
+            `docker run --rm -v /var/run:/r:ro node:24 node /r/x.mjs`,
+            `docker run --rm -v /run:/r:ro node:24 node /r/x.mjs`,
+            `docker run --rm -v ${home}:/h:ro node:24 node /h/x.mjs`,
+            `docker run --rm -v ${path.dirname(home)}:/u:ro node:24 node /u/x.mjs`,
+            `docker run --rm -v ${home}/.ssh:/s:ro node:24 node /s/x.mjs`,
+            `docker run --rm -v ${work}/../..:/u:ro node:24 node /u/x.mjs`,
+            // review 24: an expansion before the image can become any flags
+            `docker run --rm $FLAGS node:24 node /src/evil.mjs`,
+            `docker run --rm -e $X -v ${work}:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm -v "${work}:/src:ro" "$IMG" node /src/evil.mjs`,
         ];
         for (const c of ok) assert.equal(g.isReadOnlyDockerRun(c), true, `ro: ${c}`);
         for (const c of no) assert.equal(g.isReadOnlyDockerRun(c), false, `not ro: ${c}`);
@@ -310,5 +322,14 @@ describe('read-only chains after a peer message (v5 V10)', () => {
         assert.equal(run('git status; gh pr merge 12', { cwd: work }).status, 2);
         const log = fs.readFileSync(path.join(home, '.aos', 'gate', `${g.sessionKey('s1')}.log`), 'utf8');
         assert.match(log, /deny guarded=true scopes=\[[^\]]*\] "git status; gh pr merge 12" :: \S/);
+    });
+
+    test('the deny log masks inline credentials (review 26)', () => {
+        inSoftAfterPeer();
+        run('GH_TOKEN=ghp_abcdefghijklmnop1234 gh pr merge 12; git push https://bot:s3cretpassw0rd@example.com/x.git', { cwd: work });
+        const log = fs.readFileSync(path.join(home, '.aos', 'gate', `${g.sessionKey('s1')}.log`), 'utf8');
+        assert.match(log, /GH_TOKEN=\*\*\*/);
+        assert.match(log, /:\/\/bot:\*\*\*@example\.com/);
+        assert.doesNotMatch(log, /ghp_abcdefghijklmnop1234|s3cretpassw0rd/);
     });
 });

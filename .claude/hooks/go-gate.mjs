@@ -653,7 +653,19 @@ function words(s) {
 const DOCKER_FLAG = /^(?:--rm|-i|-t|-it|-ti|--interactive|--tty|--init|-q|--quiet|--read-only)$/;
 const DOCKER_VALUE = /^(?:-e|--env|-w|--workdir|--name|--entrypoint|--platform|--memory|--cpus|--network|--net|-u|--user|--pull|-l|--label)$/;
 const DOCKER_READER = /^(?:tail|head|grep|wc|sort|uniq|cut)$/;
-const roMount = (v) => { const p = unqQ(v).split(":"); return p.length >= 3 && p[0].startsWith("/") && !/docker\.sock/.test(p[0]) && p.slice(2).join(":").split(",").includes("ro"); };
+// :ro does not stop a container from reading secrets or connect()ing to a socket, so broad
+// sources are refused: `/`, the docker socket and its parent dirs, home, its ancestors and its dotdirs.
+const SOCKET_DIRS = new Set(["/var", "/var/run", "/run", "/private", "/private/var", "/private/var/run"]);
+const roMount = (v) => {
+  const p = unqQ(v).split(":");
+  if (p.length < 3 || !p[0].startsWith("/") || p[0].includes("..") || !p.slice(2).join(":").split(",").includes("ro")) return false;
+  const src = p[0].replace(/\/+$/, "") || "/";
+  if (src === "/" || /docker\.sock/.test(src) || SOCKET_DIRS.has(src) || /^\/(?:Users|home|root)$/.test(src)) return false;
+  const home = osHome();
+  if (home && (home === src || home.startsWith(`${src}/`))) return false;
+  if (home && src.startsWith(`${home}/`) && src.slice(home.length + 1).startsWith(".")) return false;
+  return true;
+};
 export function isReadOnlyDockerRun(command) {
   if (typeof command !== "string" || commandTooLong(command)) return false;
   const parts = [];
@@ -675,7 +687,10 @@ export function isReadOnlyDockerRun(command) {
   const tok = words(parts[0].trim());
   if (unqQ(tok[0]) !== "docker" || unqQ(tok[1]) !== "run") return false;
   let image = false;
+  // A shell expansion before the image can turn into any flags (`$FLAGS` → --privileged -v /:/h).
+  const expands = (w) => /\$/.test(w ?? "") && !/^'[^']*'$/.test(w);
   for (let i = 2; i < tok.length && !image; i++) {
+    if (expands(tok[i]) || (!tok[i].includes("=") && tok[i].startsWith("-") && expands(tok[i + 1]))) return false;
     const t = unqQ(tok[i]);
     const eq = /^(--?[\w-]+)=(.*)$/.exec(t);
     const flag = eq ? eq[1] : t, val = eq ? eq[2] : unqQ(tok[i + 1] ?? "");
@@ -1445,7 +1460,9 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
   if (!allowed && blockKey) {
     let why = "";
     try { why = `guarded=${isGuardedCommand(command)} scopes=${JSON.stringify(commandScopes(command))}`; } catch { why = "classify failed"; }
-    gateLog(blockKey, `deny${hard ? " hard" : ""} ${why} ${JSON.stringify(command.slice(0, 200))} :: ${reason.slice(0, 120)}`);
+    // Denied commands are the likeliest to carry inline credentials; mask assignments and URL userinfo.
+    const shown = command.slice(0, 200).replace(/(\b[A-Za-z_]\w*=)(["']?)[^\s"']{12,}\2/g, "$1***").replace(/(:\/\/[^\s/:@]+:)[^\s/@]+@/g, "$1***@");
+    gateLog(blockKey, `deny${hard ? " hard" : ""} ${why} ${JSON.stringify(shown)} :: ${reason.slice(0, 120)}`);
   }
   if (hard) {
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
