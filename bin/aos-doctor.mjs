@@ -12,7 +12,9 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
-const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
+const req = createRequire(import.meta.url);
+const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
+const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
@@ -21,6 +23,7 @@ const IS_WIN = process.platform === 'win32';
 const IS_ARM64 = process.arch === 'arm64';
 
 const h = (...p) => path.join(HOME, ...p);
+const hc = (...p) => path.join(claudeConfigDir(HOME), ...p);
 const tilde = (p) => (p || '').replace(HOME, '~');
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 
@@ -28,7 +31,7 @@ const firstExisting = (candidates) => candidates.find((c) => existsSync(c)) || n
 
 const MODULE_BASES = [
   h('.agents'),
-  h('.claude'),
+  hc(),
   h('dev', 'bdb-dev'),
   ...(process.env.npm_config_prefix ? [path.join(process.env.npm_config_prefix, 'lib', 'node_modules')] : []),
   '/usr/local/lib/node_modules',
@@ -53,7 +56,7 @@ const add = (area, name, ok, detail, fix, warningOnly = false) => {
 const which = (bin) => {
   const probe = IS_WIN ? 'where.exe' : 'which';
   try {
-    return tilde(execFileSync(probe, [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0]);
+    return execFileSync(probe, [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
   } catch {
     return null;
   }
@@ -85,19 +88,19 @@ function checkPrereqs() {
     'Update Node.js to v20 or v22+ via nvm or nodejs.org.');
 
   const pyProbe = which('python3') || which('python') || (IS_WIN ? which('py') : null);
-  add('prereq', 'Python 3', !!pyProbe, pyProbe || 'missing — needed for memB venv & OpenWiki',
+  add('prereq', 'Python 3', !!pyProbe, tilde(pyProbe) || 'missing — needed for memB venv & OpenWiki',
     IS_WIN ? 'Install Python from python.org or winget install Python.Python.3.12' : 'brew install python3');
 
   const gitProbe = which('git');
-  add('prereq', 'Git CLI', !!gitProbe, gitProbe || 'missing — required for AOS workflows and worktrees',
+  add('prereq', 'Git CLI', !!gitProbe, tilde(gitProbe) || 'missing — required for AOS workflows and worktrees',
     IS_WIN ? 'Install Git via git-scm.com or winget install Git.Git' : 'brew install git / xcode-select --install');
 
   const uvProbe = which('uv');
-  add('prereq', 'uv package manager', !!uvProbe, uvProbe ? `${uvProbe} (fast venv seeding)` : 'optional — pip fallback will be used',
+  add('prereq', 'uv package manager', !!uvProbe, uvProbe ? `${tilde(uvProbe)} (fast venv seeding)` : 'optional — pip fallback will be used',
     'curl -LsSf https://astral.sh/uv/install.sh | sh (or pip install uv)', true);
 
   const ghProbe = which('gh');
-  add('prereq', 'GitHub CLI (gh)', !!ghProbe, ghProbe ? `${ghProbe}` : 'optional — needed for repo automation & release PRs',
+  add('prereq', 'GitHub CLI (gh)', !!ghProbe, ghProbe ? tilde(ghProbe) : 'optional — needed for repo automation & release PRs',
     'Install GitHub CLI: brew install gh / winget install GitHub.cli', true);
 }
 
@@ -147,18 +150,23 @@ function checkAosCore() {
     storeIndexPath ? `${tilde(storeIndexPath)} (${storeSkillsCount} catalog skills indexed)` : 'Store index missing',
     'Run scripts/build-ecc-store-index.mjs or re-run the AOS installer.');
 
-  // Check MCSC registration
-  const mcpConfigCandidates = [
-    path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'mcp_config.json'),
-    h('.agents', 'mcp_config.json'),
-    h('dev', 'bdb-dev', 'bdb-dev-optimized-agent-skills', 'mcp_config.json')
+  // mcsc is registered by the installer in each harness's own MCP config (never ~/.agents/mcp_config.json).
+  const mcscIn = [];
+  const hasKey = (file, pick) => { const c = readJson(file); return !!(c && pick(c)?.mcsc); };
+  const cfgs = [
+    [h('.gemini', 'config', 'mcp_config.json'), (c) => c.mcpServers],
+    [h('.claude.json'), (c) => c.mcpServers],
+    [h('.cursor', 'mcp.json'), (c) => c.mcpServers],
+    [h('.windsurf', 'mcp.json'), (c) => c.mcpServers],
+    [h('.config', 'opencode', 'opencode.json'), (c) => c.mcp],
   ];
-  const mcpConfigPath = firstExisting(mcpConfigCandidates);
-  const mcpConfig = mcpConfigPath ? readJson(mcpConfigPath) : null;
-  const hasMcsc = !!mcpConfig?.mcpServers?.mcsc;
-  add('aos-core', 'MCSC Telemetry Registration', hasMcsc,
-    hasMcsc ? `Registered in ${tilde(mcpConfigPath)}` : 'mcsc missing from mcp_config.json',
-    'Re-run installer to register mcsc cross-harness adapter.');
+  for (const [file, pick] of cfgs) if (hasKey(file, pick)) mcscIn.push(file);
+  const ocJsonc = h('.config', 'opencode', 'opencode.jsonc');
+  if (existsSync(ocJsonc) && parseJsonc(readFileSync(ocJsonc, 'utf8'))?.mcp?.mcsc) mcscIn.push(ocJsonc);
+  try { if (/^\[mcp_servers\.mcsc\]/m.test(readFileSync(h('.codex', 'config.toml'), 'utf8'))) mcscIn.push(h('.codex', 'config.toml')); } catch { /* no codex config */ }
+  add('aos-core', 'MCSC Telemetry Registration', mcscIn.length > 0,
+    mcscIn.length ? `mcsc registered in ${mcscIn.map(tilde).join(', ')}` : 'mcsc not found in any harness MCP config (optional MCP, only present when selected at install)',
+    'Re-run the installer and select the mcsc MCP to register the cross-harness adapter.', true);
 
   // Retired module check (CDC bug prevention)
   const retired = findModule('bdb-os-agent-workspace');
@@ -169,19 +177,7 @@ function checkAosCore() {
   }
 }
 
-// JSONC to JSON: drops comments (not inside strings) and trailing commas.
-function parseJsonc(text) {
-  let out = '';
-  for (let i = 0, str = false; i < text.length; i++) {
-    const c = text[i];
-    if (str) { out += c; if (c === '\\') out += text[++i] ?? ''; else if (c === '"') str = false; continue; }
-    if (c === '"') { str = true; out += c; continue; }
-    if (c === '/' && text[i + 1] === '/') { while (i < text.length && text[i] !== '\n') i++; out += '\n'; continue; }
-    if (c === '/' && text[i + 1] === '*') { i += 2; while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++; i++; continue; }
-    out += c;
-  }
-  try { return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; }
-}
+const { parseJsonc } = req('../lib/jsonc.js');
 
 // Zen gateway limit: a tool name (OpenCode builds it from the MCP server name) is at most 64 characters.
 // Names only, no network: the tool part of the name is not known here.
@@ -206,9 +202,9 @@ function checkOpencodeMcpNames() {
 // ---------------------------------------------------------------- 3. Harness Placement & Skills Sync
 function checkHarnesses() {
   const harnesses = [
-    { name: 'Claude Code', path: h('.claude', 'skills') },
+    { name: 'Claude Code', path: hc('skills') },
     { name: 'Gemini / Antigravity', path: firstExisting([h('.gemini', 'config', 'skills'), h('.gemini', 'antigravity-cli', 'skills')]) || h('.gemini', 'config', 'skills') },
-    { name: 'Codex', path: h('.codex', 'skills') },
+    { name: 'Codex', path: h('.agents', 'skills') },
     { name: 'Cursor', path: h('.cursor', 'skills') },
     { name: 'Roo Code', path: h('.roo', 'skills') },
   ];
@@ -218,27 +214,31 @@ function checkHarnesses() {
     const exists = existsSync(hr.path);
     const count = dirCount(hr.path);
     const hasSentinel = existsSync(path.join(hr.path, SENTINEL, 'SKILL.md'));
-    const viaPlugin = hr.name === 'Claude Code' && !hasSentinel && pm.pluginInstalled(HOME, [SENTINEL]);
+    const plug = hr.name === 'Claude Code' && !hasSentinel ? pluginSkills(HOME, [SENTINEL]) : null;
+    const viaPlugin = !!plug;
     const ok = viaPlugin || (exists && count > 0 && hasSentinel);
     add('harnesses', `${hr.name} Skills`, ok,
-      viaPlugin ? 'delivered by the bdb-aos Claude Code plugin (installed_plugins.json / plugin cache)' : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
+      viaPlugin ? `provided by the bdb-aos plugin (${plug.skills.size} skills)` : ok ? `${tilde(hr.path)} (${count} skills, sentinel verified)` : (exists ? `${tilde(hr.path)} (${count} skills, sentinel missing)` : `${tilde(hr.path)} not synced`),
       `Run 'npx @hybridlabor-api/aos@latest' and select ${hr.name} to sync skills.`, !exists && !viaPlugin);
   }
 
-  // OpenCode Plugin check
-  const opencodePlugin = firstExisting([
-    h('.opencode', 'plugins', 'bdb-aos.js'),
-    h('.config', 'opencode', 'plugins', 'bdb-aos.js')
-  ]);
-  add('harnesses', 'OpenCode Plugin', !!opencodePlugin,
-    opencodePlugin ? tilde(opencodePlugin) : 'bdb-aos.js not installed in OpenCode plugins',
-    'Run the AOS installer to wire OpenCode telemetry plugin.', true);
+  // Codex reads ~/.codex/skills AND ~/.agents/skills; AOS writes only the latter, so same-named copies in the former double-list.
+  const codexRoot = h('.codex', 'skills');
+  const doubled = existsSync(codexRoot) ? readdirSync(codexRoot, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.') && existsSync(path.join(codexRoot, d.name, 'SKILL.md')) && existsSync(path.join(h('.agents', 'skills'), d.name, 'SKILL.md'))).length : 0;
+  if (doubled) {
+    add('harnesses', 'Codex duplicate skills', false, `${doubled} skill(s) exist in both ${tilde(codexRoot)} and ~/.agents/skills, so Codex lists them twice`,
+      `Run 'npx @hybridlabor-api/aos@latest' once (it retires AOS copies from ${tilde(codexRoot)} with a backup) or move your own copies out.`, true);
+  }
+
+  const ov = req('../lib/opencode-verify.js');
+  results.push(...ov.checkOpencode({ home: HOME }), ...ov.checkAcpAndGoCheck({ home: HOME }));
   checkOpencodeMcpNames();
 }
 
 // ---------------------------------------------------------------- 4. Hooks & Security Gates
 function checkHooks() {
-  const claudeHooksDir = h('.claude', 'hooks');
+  const claudeHooksDir = hc('hooks');
   const EXPECTED_VERSION = { 'memb-inject.mjs': 8 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
@@ -264,7 +264,7 @@ function checkHooks() {
   }
 
   // Claude settings.json wiring
-  const claudeSettings = readJson(h('.claude', 'settings.json'));
+  const claudeSettings = readJson(hc('settings.json'));
   const wired = JSON.stringify(claudeSettings?.hooks || {});
   const claudeWiredOk = wired.includes('go-gate.mjs') && wired.includes('memb-inject.mjs');
   add('hooks', 'Claude settings.json wired', claudeWiredOk,
@@ -278,21 +278,38 @@ function checkHooks() {
     h('.agents', 'hooks.json')
   ]);
   const agHooks = agHooksFile ? readJson(agHooksFile) : null;
-  const agWired = JSON.stringify(agHooks?.hooks || {});
-  add('hooks', 'Antigravity hooks', agWired.includes('memb-inject.mjs'),
-    agHooksFile ? `${tilde(agHooksFile)} (${agWired.includes('memb-inject.mjs') ? 'memb-inject wired' : 'unwired'})` : 'hooks.json not found',
-    'Run the AOS installer to configure Antigravity hooks.', true);
+  // New format: one named hook per concern at the top level; legacy: all handlers under "hooks".
+  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
+  const namedWired = AG_NAMED.filter((n) => agHooks && agHooks[n]);
+  const legacyWired = JSON.stringify(agHooks?.hooks || {}).includes('memb-inject.mjs');
+  const missingNamed = AG_NAMED.filter((n) => !(agHooks && agHooks[n]));
+  const agOk = !!agHooks && !legacyWired && missingNamed.length === 0;
+  const agDetail = !agHooksFile ? 'hooks.json not found'
+    : `${tilde(agHooksFile)} (${legacyWired ? 'old format: AOS handlers sit under one "hooks" key, agy loads only 1 hook' : missingNamed.length ? `missing ${missingNamed.join(', ')}` : `${AG_NAMED.length}/${AG_NAMED.length} named aos-* hooks`}; manual check: agy logs "loaded N named hooks" at start, N should count every aos-* hook plus your own)`;
+  add('hooks', 'Antigravity hooks', agOk, agDetail,
+    'Run the AOS installer to rewrite the Antigravity hooks.json in the named format.', true);
 
   // Codex hooks
   const codexConf = h('.codex', 'config.toml');
   let codexToml = '';
   try { codexToml = readFileSync(codexConf, 'utf8'); } catch {}
-  add('hooks', 'Codex config.toml hooks', codexToml.includes('AOS:HOOKS'),
-    existsSync(codexConf) ? `${tilde(codexConf)} (${codexToml.includes('AOS:HOOKS') ? 'AOS:HOOKS block wired' : 'no AOS:HOOKS'})` : `${tilde(codexConf)} missing`,
+  // The Codex CLI drops comments when it rewrites config.toml, so the hook command itself is the evidence.
+  const codexWired = /^\s*command\s*=.*(?:go-gate|graph-gate|memb-inject|trail-relay)\.mjs/m.test(codexToml);
+  add('hooks', 'Codex config.toml hooks', codexWired,
+    existsSync(codexConf) ? `${tilde(codexConf)} (${codexWired ? 'AOS hook commands wired' : 'no AOS hook commands'})` : `${tilde(codexConf)} missing`,
     'Run the AOS installer to wire Codex hooks.', true);
 }
 
 // ---------------------------------------------------------------- 5. Daemons & Ecosystem Modules (Including AO)
+// mcsc delegates to agy; agy loading mcsc from its own config recurses into a fork bomb.
+function checkAgyMcsc() {
+  for (const f of [h('.gemini', 'config', 'mcp_config.json'), h('.gemini', 'antigravity-cli', 'mcp_config.json')]) {
+    if (!existsSync(f) || !readJson(f)?.mcpServers?.mcsc) continue;
+    add('agy', 'mcsc not in agy config', false, `mcsc is registered in ${tilde(f)} and can recurse (agy -> mcsc -> agy ...)`,
+      `Remove the "mcsc" entry from ${tilde(f)}, or re-run the AOS installer (it removes its own entry).`, true);
+  }
+}
+
 async function checkDaemonsAndModules() {
   // memB
   const membDir = findModule('memB');
@@ -336,13 +353,12 @@ async function checkDaemonsAndModules() {
     aoBin ? `${tilde(aoBin)} (${aoVer || 'installed'}) · Daemon :3101: ${aoListening ? 'ONLINE' : 'STOPPED'} (${aoServiceInfo})` : 'ao binary not found',
     IS_MAC && IS_ARM64
       ? 'Enable AO in the installer or run: ao service install'
-      : 'AO binary is arm64 macOS native; build from source on other platforms: github.com/hybridlabor-api/bdb-agent-orchestrator', false);
+      : 'AO binary is arm64 macOS native; build from source on other platforms: github.com/hybridlabor-api/bdb-agent-orchestrator', true);
 
   // Installed ao vs a local AO checkout's HEAD, read from the binary's embedded build info.
   const aoCheckout = firstExisting([h('dev', 'agents', 'bdb-agent-orchestrator'), h('dev', 'bdb-dev', 'bdb-agent-orchestrator')]);
   if (aoBin && aoCheckout && existsSync(path.join(aoCheckout, '.git'))) {
-    const { readGoBuildInfo } = createRequire(import.meta.url)('../installer.js');
-    const build = readGoBuildInfo(aoBin.replace(/^~/, HOME));
+    const build = readGoBuildInfo(aoBin);
     let head = null;
     try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
     const same = !!(build && head && build.revision === head && !build.modified);
@@ -429,8 +445,38 @@ function report() {
 // ---------------------------------------------------------------- Run
 checkPrereqs();
 checkAosCore();
+// ---------------------------------------------------------------- 4b. bdb-aos plugin registration per harness
+function checkPlugins() {
+  const PLUGIN_ID = 'bdb-aos@bdb-marketplace';
+  const optOut = 'Opted out ("false" in settings.json); nothing to do.';
+  const settings = readJson(hc('settings.json'));
+  if (existsSync(claudeConfigDir(HOME))) {
+    const flag = settings?.enabledPlugins?.[PLUGIN_ID];
+    const marketplace = !!settings?.extraKnownMarketplaces?.['bdb-marketplace'];
+    const installed = !!pluginSkills(HOME);
+    const ok = flag === true && marketplace && installed;
+    add('plugins', 'Claude Code bdb-aos plugin', flag === false || ok,
+      flag === false ? 'disabled by the user' : `settings.json ${flag === true ? 'enables' : 'does not enable'} ${PLUGIN_ID}, marketplace ${marketplace ? 'known' : 'missing'}, plugin cache ${installed ? 'present' : 'missing'}`,
+      flag === false ? optOut : 'Run the AOS installer (registers settings.json), then: claude plugin marketplace add hybridlabor-api/aos && claude plugin install bdb-aos@bdb-marketplace', true);
+  }
+  if (existsSync(h('.codex'))) {
+    const dir = h('.codex', 'plugins', 'cache', 'bdb-aos', 'bdb-aos');
+    const ok = existsSync(dir);
+    add('plugins', 'Codex bdb-aos plugin', ok, ok ? tilde(dir) : `${tilde(dir)} missing`,
+      'Run the AOS installer, or: codex plugin marketplace add hybridlabor-api/aos && codex plugin add bdb-aos@bdb-aos', true);
+  }
+  if (existsSync(h('.gemini'))) {
+    const dir = h('.gemini', 'config', 'plugins', 'bdb-aos');
+    const ok = existsSync(dir);
+    add('plugins', 'Antigravity bdb-aos plugin', ok, ok ? tilde(dir) : `${tilde(dir)} missing`,
+      'Run the AOS installer (needs agy on PATH), or: agy plugin install <plugin dir>', true);
+  }
+}
+
 checkHarnesses();
 checkHooks();
+checkPlugins();
+checkAgyMcsc();
 await checkDaemonsAndModules();
 report();
 

@@ -89,6 +89,9 @@ test('404 (repo not created yet) is a friendly non-fatal result', async () => {
     assert.strictEqual(r.status, 'not-found');
     assert.match(r.message, /try again later/);
     assert.strictEqual(c.calls.hdiutil.length, 0);
+    const warns = [];
+    await cn.installCodenotch({ ...c.opts, log: { warn: (m) => warns.push(m) } });
+    assert.deepStrictEqual(warns, [], 'not-found prints no warning, only the summary line');
 });
 
 test('rate limit is reported, not thrown', async () => {
@@ -115,6 +118,7 @@ test('success: mounts read-only, copies, strips quarantine, records state, detac
     const c = setup();
     const r = await cn.installCodenotch(c.opts);
     assert.strictEqual(r.status, 'installed');
+    assert.match(cn.codenotchSummaryLine(r), /not started automatically, start it with: open -a "Codenotch"$/);
     const dest = path.join(c.roots.applications, 'Codenotch.app');
     assert.ok(fs.existsSync(path.join(dest, 'Contents', 'Info.plist')));
     const attach = c.calls.hdiutil[0];
@@ -290,7 +294,9 @@ test('summary line: installed, skipped, failed', () => {
     assert.match(inst, /installed 1\.2\.0 \(\/Applications\/Codenotch\.app\).*aos-uninstall/);
     const skip = cn.codenotchSummaryLine({ status: 'up-to-date', message: 'already installed (2.0.0) at /Applications/Codenotch.app' });
     assert.match(skip, /skipped.*aos-uninstall/);
-    assert.match(cn.codenotchSummaryLine({ status: 'not-found', message: 'no public release' }), /FAILED.*unaffected/);
+    assert.doesNotMatch(cn.codenotchSummaryLine({ status: 'checksum-mismatch', message: 'x' }), /start it with/);
+    assert.doesNotMatch(cn.codenotchSummaryLine({ status: 'not-found', message: 'x' }), /start it with/);
+    assert.strictEqual(cn.codenotchSummaryLine({ status: 'not-found', message: 'no public release' }), 'Codenotch: no release available yet, skipped');
     assert.match(cn.codenotchSummaryLine({ status: 'checksum-mismatch', message: 'sha256 mismatch' }), /FAILED/);
 });
 
@@ -354,6 +360,7 @@ test('win32: default-on success runs the installer with /S only, verifies regist
     const c = winSetup();
     const r = await cn.runCodenotchStep({ ...c.opts, argv: [], env: {}, interactive: false });
     assert.strictEqual(r.status, 'installed');
+    assert.match(cn.codenotchSummaryLine(r), /start it with: Start menu > Codenotch/);
     assert.strictEqual(c.calls.run.length, 1);
     assert.deepStrictEqual(c.calls.run[0].args, ['/S']);
     assert.match(path.basename(c.calls.run[0].exe), /^Codenotch-Setup-1\.2\.0\.exe$/);
@@ -399,6 +406,7 @@ test('win32: equal or newer installed version is skipped', async () => {
         assert.strictEqual(r.status, 'up-to-date');
         assert.strictEqual(c.calls.run.length, 0);
         assert.match(cn.codenotchSummaryLine(r), /skipped/);
+        assert.match(cn.codenotchSummaryLine(r), /start it with: Start menu > Codenotch \(or %LOCALAPPDATA%\\Codenotch\\codenotch\.exe\)/);
     }
 });
 

@@ -12,17 +12,34 @@
 //           [--model <id>] [--timeout <sec>] [--cmd "<custom agent command>"]
 
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
-import { GUARDED_PATTERNS, slug, tokenGrantsGo } from "../.claude/hooks/go-gate.mjs";
-import { emitTrail } from "../mcps/mcsc/packages/core/src/trail.js";
+
+// Repo layout first, then the installed layout: the installer puts go-gate.mjs and
+// trail.mjs in ~/.aos/bin (bin/ is copied to ~/.agents/bin, where ../.claude does not exist).
+const here = dirname(fileURLToPath(import.meta.url));
+const loadFrom = async (candidates) => {
+  const f = candidates.find((c) => existsSync(c));
+  return f ? import(pathToFileURL(f).href) : null;
+};
+const gateMod = await loadFrom([
+  join(here, "..", ".claude", "hooks", "go-gate.mjs"),
+  join(homedir(), ".aos", "bin", "go-gate.mjs"),
+  join(homedir(), ".claude", "hooks", "go-gate.mjs"),
+]);
+if (!gateMod) throw new Error("go-gate.mjs not found (run the AOS installer): refusing to run without the GO gate");
+const { isGuardedCommand, hardBlockReason, slug, tokenGrantsGo, setGateContext, readBlockTs, markBlock, nameKey, commandTooLong, TOO_LONG_MESSAGE } = gateMod;
+const emitTrail = (await loadFrom([
+  join(here, "..", "mcps", "mcsc", "packages", "core", "src", "trail.js"),
+  join(homedir(), ".aos", "bin", "trail.mjs"),
+]))?.emitTrail ?? (async () => {});
 
 export const ADAPTERS = {
-  claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp"], consume: false },
-  codex: { cmd: ["npx", "-y", "@agentclientprotocol/codex-acp"], consume: true },
+  claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.86.0"], consume: false },
+  codex: { cmd: ["npx", "-y", "@agentclientprotocol/codex-acp@2.1.1"], consume: true },
   opencode: { cmd: ["opencode", "acp"], consume: false, cwdFlag: "--cwd" },
   // antigravity-acp (MIT) is third-party; its README states that driving agy
   // through it breaches Google's Antigravity terms. Not shipped: use mcsc.
@@ -36,7 +53,7 @@ export function commandOf(toolCall = {}) {
 }
 
 export function isGuarded(cmd) {
-  return GUARDED_PATTERNS.some((re) => re.test(cmd));
+  return isGuardedCommand(cmd);
 }
 
 function pickOption(options, kinds) {
@@ -51,10 +68,20 @@ function pickOption(options, kinds) {
 export async function decidePermission(params, opts, log = () => {}) {
   const options = params.options || [];
   const cmd = commandOf(params.toolCall);
+  // Same block cooldown as the hook, keyed by the worker name (the ACP session id is per run).
+  const key = opts.name && nameKey ? nameKey(opts.name) : "";
+  setGateContext?.({ cwd: opts.cwd || "", blockTs: key ? readBlockTs(key) : 0 });
   const guarded = !!cmd && isGuarded(cmd);
-  let allow = opts.allowDefault === "allow";
+  const hard = cmd ? hardBlockReason(cmd) : null;
+  // A command the gate cannot read as text (an object, a number) is refused outright.
+  const rawIn = params.toolCall?.rawInput || {};
+  const odd = [rawIn.command, rawIn.cmd, rawIn.script, rawIn.CommandLine].some((v) => v != null && v !== "" && typeof v !== "string" && !Array.isArray(v));
+  let allow = opts.allowDefault === "allow" && !hard && !odd;
   let reason = `default ${opts.allowDefault}`;
-  if (guarded) {
+  if (hard || odd) {
+    allow = false;
+    reason = hard || "command in the permission request is not a string; the gate cannot read it";
+  } else if (guarded) {
     const deadline = Date.now() + (opts.goWait || 0) * 1000;
     let r = tokenGrantsGo(opts.name, { consume: opts.consume });
     if (!r.ok && opts.goWait) log("permission_pending", { command: cmd, waiting_s: opts.goWait });
@@ -63,8 +90,9 @@ export async function decidePermission(params, opts, log = () => {}) {
       r = tokenGrantsGo(opts.name, { consume: opts.consume });
     }
     allow = r.ok;
-    reason = r.ok ? "GO token" : r.reason;
+    reason = r.ok ? "GO token" : `${commandTooLong?.(cmd) ? `${TOO_LONG_MESSAGE}; ` : ""}${r.reason}`;
   }
+  if (!allow && (hard || odd || guarded)) markBlock?.(key);
   const optionId = allow
     ? pickOption(options, ["allow_once", "allow_always"])
     : pickOption(options, ["reject_once", "reject_always"]);
@@ -229,13 +257,15 @@ export function parseArgs(argv) {
     else if (a === "--no-consume") o.consume = false;
     else throw new Error(`unknown argument ${a}`);
   }
-  if (!o.adapter || !o.name || !o.prompt) throw new Error("usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>]");
+  if (!o.adapter || !o.name || !o.prompt) throw new Error(USAGE);
   if (!["deny", "allow"].includes(o.allowDefault)) throw new Error("--allow-default must be deny or allow");
   return o;
 }
 
+const USAGE = "usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>]";
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
+  if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }
   Promise.resolve().then(() => run(parseArgs(process.argv.slice(2))))
     .then((code) => process.exit(code), (e) => { console.error(`aos-acp: ${e.message}`); process.exit(2); });
 }

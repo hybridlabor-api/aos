@@ -116,7 +116,7 @@ function checkWiki() {
   const dir = p('.openwiki');
   const pages = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
   add('openwiki', 'wiki initialised', pages.length > 0, pages.length ? `${pages.length} pages: ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? ' …' : ''}` : 'no .openwiki pages',
-    'openwiki --init   (run inside the project; needs `openwiki auth <provider>` first)');
+    'openwiki --init   (run inside the project; needs provider credentials in ~/.openwiki/.env first)');
 
   // Without this file OpenWiki loads zero rules and indexes .venv, node_modules
   // and its own output — measured at 23% junk on one small repo.

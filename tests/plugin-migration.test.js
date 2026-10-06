@@ -13,7 +13,7 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 const tmps = [];
 after(() => { for (const d of tmps) fs.rmSync(d, { recursive: true, force: true }); });
 const home = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-c4-')); tmps.push(d); return d; };
-function seedInstalled(h, skills = ['a', 'b', 'x', 'startcycle']) {
+function seedInstalled(h, skills = ['a', 'b', 'x', 'startcycle', 'openwiki-skill']) {
   const installPath = path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '1.0.0');
   for (const s of skills) {
     fs.mkdirSync(path.join(installPath, 'skills', s), { recursive: true });
@@ -270,7 +270,8 @@ test('H-1: registered but not verifiably installed keeps the copies and says how
   assert.ok(fs.existsSync(skill));
   assert.equal(r.covered.size, 0);
   assert.equal(readSettings(h).enabledPlugins['bdb-aos@bdb-marketplace'], true, 'still registered');
-  assert.ok(r.lines.some((l) => /restart Claude Code, then run the installer again to retire the loose copies/.test(l)));
+  assert.ok(r.lines.some((l) => /claude plugin marketplace add hybridlabor-api\/aos ; claude plugin install bdb-aos@bdb-marketplace/.test(l)));
+  assert.ok(!r.lines.some((l) => /restart Claude Code/.test(l)));
   assert.equal(pm.readState(h).backups.length, 0);
   seedInstalled(h);
   const later = run(h, manifest, { installed: false });

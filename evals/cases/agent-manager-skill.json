@@ -18,7 +18,7 @@
     "negative": [
       {
         "prompt": "Orchestrate the overall pipeline and assign tasks.",
-        "owner": "agent-orchestrator"
+        "owner": "ao-orchestrator"
       },
       {
         "prompt": "Another plausible near-miss request.",

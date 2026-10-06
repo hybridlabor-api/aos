@@ -21,12 +21,12 @@ describe('agent model resolution', () => {
         assert.strictEqual(resolveAgentConfig('reviewer', 'codex', pipeline).model, 'o3-mini');
         assert.strictEqual(resolveAgentConfig('reviewer', 'claude', pipeline).model, CANONICAL_TIERS.reasoning_max.claude);
         assert.strictEqual(resolveAgentConfig('techlead', 'claude', pipeline).model, CANONICAL_TIERS.standard_fast.claude);
-        assert.strictEqual(resolveAgentConfig('techlead', 'opencode', pipeline).model, CANONICAL_TIERS.standard_fast.opencode);
-        assert.strictEqual(resolveAgentConfig('architect', 'opencode', pipeline).model, CANONICAL_TIERS.reasoning_max.opencode);
+        assert.strictEqual(resolveAgentConfig('techlead', 'opencode', pipeline).model, 'inherit');
+        assert.strictEqual(resolveAgentConfig('architect', 'opencode', pipeline).model, 'inherit');
     });
 
     test('compilers never write foreign models', () => {
-        const agents = parseAgentsMd(fs.readFileSync(path.join(root, '.agents', 'agents.md'), 'utf8'));
+        const agents = parseAgentsMd(fs.readFileSync(path.join(root, '.agents', 'AGENTS.md'), 'utf8'));
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-models-'));
         compileClaudeAgents(agents, path.join(tmp, 'claude'), pipeline);
         compileOpenCodeAgents(agents, path.join(tmp, 'oc'), pipeline);
@@ -34,7 +34,7 @@ describe('agent model resolution', () => {
             assert.match(modelOf(path.join(tmp, 'claude', f)), CLAUDE_OK, f);
         }
         for (const f of fs.readdirSync(path.join(tmp, 'oc'))) {
-            assert.ok(modelOf(path.join(tmp, 'oc', f)).includes('/'), f);
+            assert.strictEqual(modelOf(path.join(tmp, 'oc', f)), undefined, `${f}: OpenCode subagents inherit the session model`);
         }
         fs.rmSync(tmp, { recursive: true, force: true });
     });

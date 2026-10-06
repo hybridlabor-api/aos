@@ -24,7 +24,7 @@ detect_os() {
 
 echo "========================================================="
 echo " Installing OpenWiki Background Daemon"
-echo " Using Gemma 4 Direct API (no agy spawning)"
+echo " Direct API mode, model from OPENWIKI_MODEL (no agy spawning)"
 echo "========================================================="
 
 OS="$(detect_os)"

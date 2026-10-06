@@ -123,7 +123,6 @@ Don't guess which pipeline to use. Follow these rules (source of truth: `CLAUDE.
 
 ### Overlap: Multi-Agent Session &amp; Tool Management
 * **`agent-manager-skill`**: Managing multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling.
-* **`agent-orchestrator`**: Meta-skill that scans available skills, matches them to task capabilities, and coordinates multi-skill workflows — one level above picking a single skill by hand.
 * **`agent-tool-builder`**: You're building a *new* tool for an agent to use (not picking an existing skill) — schema design through error handling.
 * **`agent-memory-mcp`**: A hybrid persistent/searchable memory system for agents (architecture, patterns, decisions) — distinct from `memb-skill`/`memb-ingest`, which are BDB's own memB engine specifically.
 * **`triage`**: Moving issues/external PRs through a categorize → verify → brief state machine, not general planning.

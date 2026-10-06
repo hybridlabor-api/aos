@@ -17,15 +17,30 @@ const ENVP = path.join(HOOKS, 'env-file-protection.mjs');
 let g; // go-gate.mjs exports
 before(async () => { g = await import(pathToFileURL(GATE).href); });
 
-let home, t, n;
+let home, t, n, repo;
 beforeEach(() => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-gogate-'));
     t = path.join(home, 'session.jsonl');
     fs.writeFileSync(t, '');
     n = 0;
+    process.env.AOS_GATE_TEST_REALHOME = home;
+    process.env.XDG_CONFIG_HOME = path.join(home, '.config');
+    // The pushes below read their repository state (branch, push config) from the hook's cwd,
+    // so every test gets a temp repo on a feature branch with an empty config.
+    repo = path.join(home, 'repo');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    setRepo('ref: refs/heads/feat/work\n', '');
 });
 afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
+const setRepo = (head, config) => {
+    fs.writeFileSync(path.join(repo, '.git', 'HEAD'), head);
+    fs.writeFileSync(path.join(repo, '.git', 'config'), config);
+};
 
+// git config is read from the temp home only: no machine ~/.gitconfig, /etc/gitconfig or GIT_* variables.
+process.env.AOS_TEST_SANDBOX = '1';
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
 const env = (extra = {}) => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', ...extra });
 const ts = (agoMs = 0) => new Date(Date.now() - agoMs).toISOString();
 const add = (e) => fs.appendFileSync(t, JSON.stringify(e) + '\n');
@@ -49,7 +64,7 @@ const NONHUMAN = {
 };
 
 const runGate = (command, { session = 's1', transcript = t } = {}) => spawnSync(process.execPath, [GATE], {
-    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, transcript_path: transcript, session_id: session }),
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, transcript_path: transcript, session_id: session, cwd: repo }),
     env: env(), encoding: 'utf8',
 });
 const runGrant = (prompt, { session = 's1', transcript = t, extra = {} } = {}) => spawnSync(process.execPath, [GRANT], {
@@ -221,15 +236,16 @@ describe('grant parsing', () => {
 
 describe('scopes', () => {
     const cases = {
-        'push-feature': { yes: ['git push origin feat/x:feat/x', 'git push -u origin feat/x:feat/x', 'git push origin HEAD:feat/x', 'git push origin feat:feat 2>&1'], no: ['git push origin feat/x', 'git push -u origin feat/x', 'git push origin main', 'git push --force origin feat/x', 'git push --force-with-lease origin feat/x', 'git push origin +feat/x', 'git push', 'git push origin feat:master', 'gh pr merge 5'] },
-        'push-main': { yes: ['git push origin main', 'git push --force origin feat/x', 'git push'], no: ['gh pr merge 5', 'npm publish'] },
+        'push-feature': { yes: ['git push origin feat/x:feat/x', 'git push -u origin feat/x:feat/x', 'git push origin HEAD:feat/x', 'git push origin feat:feat 2>&1', 'git push origin feat/x', 'git push -u origin feat/x', 'git push', 'git push -u origin'], no: ['git push origin main', 'git push origin HEAD', 'git push origin @', 'git push --force origin feat/x', 'git push --force-with-lease origin feat/x', 'git push origin +feat/x', 'git push origin feat:master', 'gh pr merge 5'] },
+        'push-main': { yes: ['git push origin main', 'git push --force origin feat/x', 'git push'], no: ['gh pr merge 5', 'npm publish'], head: 'ref: refs/heads/main\n' },
         merge: { yes: ['gh pr merge 5', 'gh pr merge 5 --squash --delete-branch'], no: ['gh pr close 5', 'gh pr create --title x', 'git push origin feat/x'] },
         publish: { yes: ['npm publish', 'npm version patch', 'gh release create v1.0.0', 'git push origin v1.2.3', 'git push origin refs/tags/v1'], no: ['git push origin feat/x', 'gh release edit v1'] },
         destructive: { yes: ['git reset --hard HEAD~1', 'git clean -f', 'git clean -fd', 'git clean -fdx', 'git clean -xfd', 'rm -rf build', 'rm -r build', 'rm -R build', 'rm --recursive build', 'git branch -D old', 'git branch --delete --force old', 'git worktree remove ../wt'], no: ['git push origin feat/x', 'npm publish'] },
         'github-write': { yes: ['gh pr create --title x', 'gh pr comment 5 -b hi', 'gh pr edit 5', 'gh pr review 5 --approve', 'gh pr close 5', 'gh issue create -t x', 'gh issue comment 3 -b x', 'gh release edit v1', 'gh release delete v1', 'gh repo create x', 'gh repo edit x', 'gh repo delete x', 'gh api repos/o/r/issues -X POST', 'gh api repos/o/r -f a=b', 'gh api --method PATCH repos/o/r'], no: ['gh pr merge 5', 'git push origin feat/x'] },
     };
-    for (const [scope, { yes, no }] of Object.entries(cases)) {
+    for (const [scope, { yes, no, head }] of Object.entries(cases)) {
         test(`grant ${scope}: matching commands pass, others stay blocked`, () => {
+            if (head) setRepo(head, ''); // a bare push on main is push-main
             typed(`gogate grant ${scope} 1h`);
             add(human('carry on'));
             for (const c of yes) { assert.ok(g.isGuardedCommand(c), `guarded: ${c}`); ok(c); }
@@ -243,7 +259,23 @@ describe('scopes', () => {
         blocked('git push origin feat/x:feat/x && npm publish');
         typed('gogate grant publish 1h');
         ok('git push origin feat/x:feat/x && npm publish');
-        blocked('git push --tags'); // publish + push-main
+        ok('git push --tags'); // on a feature branch this is publish only, and publish is granted
+        setRepo('ref: refs/heads/main\n', '');
+        blocked('git push --tags'); // on main: publish + push-main
+    });
+
+    test('a push-feature grant covers plain names and bare pushes only where the repo proves a feature branch', () => {
+        typed('gogate grant push-feature 1h');
+        add(human('carry on'));
+        ok('git push -u origin feat/x');
+        ok('git push');
+        setRepo('ref: refs/heads/feat/work\n', '[remote "origin"]\n\tpush = refs/heads/feat/work:refs/heads/main\n');
+        blocked('git push origin feat/x');
+        blocked('git push');
+        ok('git push origin feat/x:feat/x');
+        setRepo('ref: refs/heads/main\n', '');
+        blocked('git push');
+        blocked('git push -u origin feat/x:main');
     });
 
     test('unguarded commands stay unguarded, new patterns are guarded in hard mode', () => {

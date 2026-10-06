@@ -13,7 +13,7 @@ This skill file instructs AI agents on how to control macOS, Windows, or Linux d
 The **OS Control MCP Servers** act as the ultimate fallback when structured application APIs do not exist. Agents use them to configure system settings, install dependencies, bypass modal dialogs, crop regions, perform OCR, and automate graphical interfaces.
 
 ### Dual-Engine Architecture
-- **macOS & Linux (`zavora_computer_use`):** Powered by a Rust NAPI module executing native OS calls inside Node.js (CoreGraphics/AppKit/X11).
+- **macOS & Linux (`zavora_computer_use`):** `@zavora-ai/computer-use-mcp@7.4.0`, started via `npx -y` (pinned, nothing bundled). A TypeScript server plus a Rust native module for OS calls; also supports Windows. Requires Node.js 20+.
 - **Windows (`bdb_windows_computer_use`):** Powered by a Python/PyWin32 automation bridge using `pywinauto`, `pyautogui`, `comtypes`, and local `pytesseract` OCR for deep Windows Desktop UI discovery.
 
 ---
@@ -21,7 +21,7 @@ The **OS Control MCP Servers** act as the ultimate fallback when structured appl
 ## 2. System Instructions
 
 ### Workflow Priorities
-1. **Discovery first:** Always call `get_tool_guide` (macOS) or query window titles/automation trees (Windows) to evaluate if target apps support scripts/PowerShell or accessibility trees.
+1. **Discovery first:** Call `get_tool_guide` if the server offers it (macOS; unverified for 7.4.0) or query window titles/automation trees (Windows) to evaluate if target apps support scripts/PowerShell or accessibility trees.
 2. **Accessibility over Coordinates:** Use native Win32 Automation IDs / macOS Accessibility labels (`AXButton`, `AXTextField`, etc.) instead of mapping pixel coordinates from a screenshot. It survives window resizes, DPI changes, and layout changes.
 3. **Window Focus Strategies:** 
    - Verify focus before writing key streams.
@@ -33,7 +33,7 @@ The **OS Control MCP Servers** act as the ultimate fallback when structured appl
 ## 3. Available Tools and API Parameters
 
 ### macOS & Linux Engine (`zavora_computer_use`)
-Exposes 58 native tools. Key tools include:
+Default profile exposes 70 tools (`COMPUTER_USE_PROFILE=core|ax|scripting|windows-admin|full` changes the set). Ask the agent to run `doctor` to check capabilities and `discover_applications` to find apps. The tool names below are from the 6.2 era; the 7.4.0 npm README does not list tool names, so they are UNVERIFIED for 7.4.0. Check the server's `tools/list` before relying on them. Key tools (6.2):
 - **`run_script(language, script)`**: Runs AppleScript, JXA, or Shell commands.
 - **`get_ui_tree(target_app, target_window_id)`**: Returns a JSON structure of active UI roles and labels.
 - **`click_element(role, label)`**: Performs a semantic click on a button or menu.

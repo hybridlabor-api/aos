@@ -51,20 +51,20 @@
 // Origin: only human-typed entries count, as GO and as gogate commands
 // (isHumanEntry). Loops, peers, task notifications, SDK and system prompts never.
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync } from "node:fs";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { homedir, userInfo } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Command start: line/separator/subshell start, then optional wrappers (sudo/env/command/
 // builtin/exec/nohup/time/xargs/eval with options, `bash -c`, VAR=x), an optional opening
 // quote (bash -c 'git push') and an optional directory (/usr/bin/git). The regexes are the
 // fast first line; the token classifier below (classify + the catch-all) is the authority.
-const WRAP = String.raw`(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\s+-{1,2}[\w-]+(?:=\S*)?(?:\s+(?![-'"])(?!(?:\S*/)?(?:git|gh|npm|rm|opencode|curl|wget)\b)[^\s;&|'"]+)?)*\s+|(?:bash|sh|zsh|dash|ksh)(?:\s+-\w+)*\s+-c\s+|\w+=\S*\s+)*`;
-const A = String.raw`(?:^|[;&|\n({\x60])\s*${WRAP}['"]?(?:[^\s;&|()'"]*/)?`;
+const WRAP = String.raw`(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\s+-{1,2}[\w-]+(?:=\S*)?(?:\s+(?![-'"])(?!(?:\S*/)?(?:git|gh|npm|rm|opencode|curl|wget)\b)[^\s;&|'"]+)?)*\s+|(?:bash|sh|zsh|dash|ksh)(?:\s+-\w+)*\s+-c\s+|\w+=\S*\s+)*`;
+const A = String.raw`(?:^|[;&|\n({\x60])\s*${WRAP}['"]?(?:[^\s;&|()'"]{0,128}/)?`;
 // git / gh with global options before the subcommand (plain `git <sub>` is spelled out too).
 const G = String.raw`git(?:\s+(?:-[cC]\s*(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+(?:=(?:"[^"]*"|'[^']*'|\S+))?))+\s+`;
 const GH = String.raw`gh(?:\s+(?:-R|--repo)(?:\s+|=)\S+)+\s+`;
@@ -105,6 +105,9 @@ export const GUARDED_PATTERNS = [
   /\/\/[^\s'"]*\/tui\/|\/tui\/(?:append|submit|clear|execute|open|show|publish|control)/i,
 ];
 
+// The two OpenCode HTTP-API patterns also apply to interpreter code (fetch() inside node).
+export const HTTP_PATTERNS = GUARDED_PATTERNS.slice(-2);
+
 // ---------------------------------------------------------------------------
 // Scopes: each guarded command segment maps to the grant scope(s) it needs.
 // ---------------------------------------------------------------------------
@@ -114,7 +117,7 @@ export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destruc
 // `&` in `2>&1` is not a separator and `git push origin a:a 2>&1` reads as a plain push.
 // Process substitutions `>(`/`<(` are kept (the `(` splits them into their own segment).
 const REDIR = /\d*>&\d+|&>>?\s*[^\s(;&|]+|\d*>>?\s*[^\s(;&|]+/g;
-const segments = (cmd) => String(cmd).replace(REDIR, " ").split(/&&|\|\||\$\(|[;&|\n(){}\x60]/).map((s) => s.trim()).filter(Boolean);
+const segments = (cmd) => commandView(cmd).text.replace(REDIR, " ").split(/&&|\|\||\$\(|[;&|\n(){}\x60]/).map((s) => s.trim()).filter(Boolean);
 // Tokens keep quoted parts glued to their word; unq() gives the shell value (quotes and
 // backslashes removed: `g\it`, `'git'`, `"push"` are git and push to the shell too).
 const tokens = (s) => s.match(/(?:"[^"]*"|'[^']*'|[^\s"']+)+/g) || [];
@@ -126,7 +129,8 @@ const base = (t) => unq(t).replace(/^.*\//, "");
 const WRAPPERS = {
   sudo: { v: /^-[ugCDhpRrTUt]$/ }, doas: { v: /^-[uC]$/ }, env: { v: /^-[uCS]$/ }, command: {}, builtin: {}, exec: { v: /^-a$/ },
   nohup: {}, time: {}, nice: { v: /^-n$/ }, timeout: { v: /^-[sk]$/, pos: 1 }, caffeinate: { v: /^-[tw]$/ }, stdbuf: { v: /^-[ioe]$/ },
-  xargs: { v: /^-[IPndLsEa]$/ }, script: { v: /^-[Ft]$/, pos: 1 }, then: {}, do: {}, else: {},
+  // Loop and condition keywords run the command after them (aos-22: `until npm view ...; do ...; done`).
+  xargs: { v: /^-[IPndLsEa]$/ }, script: { v: /^-[Ft]$/, pos: 1 }, then: {}, do: {}, else: {}, until: {}, while: {}, if: {}, elif: {},
 };
 const SHELLS = /^(?:bash|sh|zsh|dash|ksh|eval|watch|parallel)$/;
 
@@ -137,7 +141,7 @@ function stripPrefix(tok) {
   for (;;) {
     const t = unq(tok[i] ?? "");
     if (t === "!") { i++; continue; }
-    if (/^\w+=/.test(t)) { gitEnv ||= /^GIT_/.test(t); i++; continue; }
+    if (/^\w+=/.test(t)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=)/.test(t); i++; continue; }
     const w = WRAPPERS[base(tok[i] ?? "")];
     if (!w) break;
     const name = base(tok[i]);
@@ -145,7 +149,7 @@ function stripPrefix(tok) {
     let pos = w.pos || 0;
     while (i < tok.length) {
       const o = unq(tok[i]);
-      if (name === "env" && /^\w+=/.test(o)) { gitEnv ||= /^GIT_/.test(o); i++; continue; }
+      if (name === "env" && /^\w+=/.test(o)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=)/.test(o); i++; continue; }
       if (o.startsWith("-") && o !== "-") {
         if ((name === "env" && /^-S/.test(o)) || (name === "script" && o === "-c")) opaque = true;
         i += w.v?.test(o) ? 2 : 1;
@@ -196,7 +200,165 @@ const SAFE_PUSH_OPT = /^(?:-u|--set-upstream|-q|--quiet|-v|--verbose|--no-verify
 // explicit destination is never remapped by remote.<name>.push or push.default), the
 // destination not protected. Anything it cannot read (quotes, $, globs, @, +, refs/ outside
 // heads/tags, config overrides, stdin-fed xargs, no `:dst`) needs push-main.
-function pushScopes(args, unsafe, protectedFor) {
+// Current branch of the repository containing `dir`, read from HEAD without spawning git.
+// Handles a .git directory and a linked worktree (.git file -> gitdir). null = unknown or a
+// detached HEAD, which callers treat as the protected case.
+// Per-segment state handed to classify by scopesOf: the working directory (null = unknown) and
+// whether an earlier segment of the same command may have changed the repository state.
+let segCwd = "", segTaint = false;
+// Git lookups are memoised for one hook invocation (setGateContext clears them), and every
+// analysis runs under a wall-clock budget: past it the command is unscoped (guarded, GO needed).
+let memo = new Map();
+const BUDGET = Symbol("budget");
+let deadline = 0;
+const tick = () => { if (deadline && Date.now() > deadline) throw BUDGET; };
+function withBudget(fn, onExceed) {
+  const outer = deadline;
+  if (!outer) deadline = Date.now() + (gateCtx.budgetMs ?? 150);
+  try { return fn(); } catch (e) { if (e === BUDGET) return onExceed; throw e; } finally { deadline = outer; }
+}
+const GIT_BUILTINS = /^(?:add|am|apply|archive|bisect|blame|branch|bundle|cat-file|check-ref-format|checkout|cherry|cherry-pick|clean|clone|commit|commit-tree|config|count-objects|credential|describe|diff|diff-files|diff-index|diff-tree|difftool|fast-export|fast-import|fetch|filter-branch|for-each-ref|format-patch|fsck|gc|grep|hash-object|help|init|log|ls-files|ls-remote|ls-tree|maintenance|merge|merge-base|mergetool|mv|name-rev|notes|pack-refs|prune|pull|push|range-diff|rebase|reflog|remote|repack|request-pull|reset|restore|rev-list|rev-parse|revert|rm|send-email|shortlog|show|show-ref|sparse-checkout|stash|status|stripspace|submodule|subtree|switch|symbolic-ref|tag|unpack-file|update-ref|var|version|whatchanged|worktree|write-tree)$/;
+// A directory named by `cd` / `git -C`: null when it cannot be resolved (variable, backtick, ~user,
+// `-`, or it does not exist), which callers treat as an unknown repository.
+function resolveDir(base, raw) {
+  const t = expandHome(unq(raw));
+  if (base === null || /[$`\u0001\u0002]|^~[^/]|^-$/.test(t)) return null;
+  const p = resolve(expandHome(base), t === "" ? "." : t);
+  try { return statSync(p).isDirectory() ? p : null; } catch { return null; }
+}
+// { gitdir, common } of the repository containing `dir` (a .git directory, or a linked
+// worktree's .git file -> gitdir -> commondir), found without spawning git. null = none.
+function locateGit(dir) {
+  const k = `loc\0${dir}`;
+  if (!memo.has(k)) memo.set(k, locateGit0(dir));
+  return memo.get(k);
+}
+function locateGit0(dir) {
+  try {
+    let d = resolve(dir);
+    for (let k = 0; k < 64; k++) {
+      let gitdir = null;
+      try {
+        const g = join(d, ".git"), st = statSync(g);
+        if (st.isDirectory()) gitdir = g;
+        else if (st.isFile() && st.size < 4096) {
+          const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(g, "utf8"));
+          if (m) gitdir = resolve(d, m[1].trim());
+        }
+      } catch { /* no .git here */ }
+      if (gitdir) {
+        let common = gitdir;
+        try { common = resolve(gitdir, readFileSync(join(gitdir, "commondir"), "utf8").trim()); } catch { /* not a linked worktree */ }
+        return { gitdir, common };
+      }
+      const up = resolve(d, "..");
+      if (up === d) return null;
+      d = up;
+    }
+  } catch { /* unreadable: unknown */ }
+  return null;
+}
+
+// Current branch, read from HEAD. null = unknown or a detached HEAD (callers treat both as protected).
+export function currentBranch(dir) {
+  const loc = locateGit(dir);
+  if (!loc) return null;
+  try {
+    const f = join(loc.gitdir, "HEAD");
+    const head = statSync(f).size < 4096 ? readFileSync(f, "utf8").trim() : "";
+    const b = /^ref:\s*refs\/heads\/(\S+)$/.exec(head)?.[1];
+    return b && SAFE_NAME.test(b) ? b : null;
+  } catch { return null; }
+}
+
+// Minimal git config reader: system, XDG, ~/.gitconfig (the OS user's real home, injectable via
+// setGateContext({realHome})), the repo's config (the common dir for a linked worktree) and
+// config.worktree when extensions.worktreeConfig is on. Any include/includeIf, unreadable or
+// oversized file, or a GIT_* variable that redirects git makes it null: callers then fail closed.
+const GIT_REDIRECT = /^(?:GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_CONFIG(?!_NOSYSTEM$)\w*|GIT_INDEX_FILE|GIT_NAMESPACE)$/;
+// A value ends at the first unquoted # or ; (linear scan; no regex over user-sized text).
+function configValue(v) {
+  let q = false, end = v.length;
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i];
+    if (c === "\\") { i++; continue; }
+    if (c === '"') q = !q;
+    else if (!q && (c === "#" || c === ";")) { end = i; break; }
+  }
+  const s = v.slice(0, end).trim();
+  return s.length > 1 && s[0] === '"' && s.at(-1) === '"' ? s.slice(1, -1) : s;
+}
+function parseGitConfig(text, out) {
+  let section = "", sub = null;
+  for (let line of text.split("\n")) {
+    tick();
+    line = line.trim();
+    if (!line || line[0] === "#" || line[0] === ";") continue;
+    const h = /^\[\s*([A-Za-z0-9.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\](.*)$/.exec(line);
+    if (h) {
+      section = h[1].toLowerCase();
+      sub = h[2] ?? null;
+      if (/^include(?:if)?(?:\.|$)/.test(section)) return false;
+      if (sub === null && section.includes(".")) { const i = section.indexOf("."); sub = h[1].slice(i + 1); section = section.slice(0, i); }
+      line = h[3].trim();
+      if (!line || /^[#;]/.test(line)) continue;
+    }
+    const eq = line.indexOf("=");
+    const key = (eq === -1 ? line : line.slice(0, eq)).trim();
+    if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(key)) continue;
+    out.push({ s: section, sub, k: key.toLowerCase(), v: eq === -1 ? "true" : configValue(line.slice(eq + 1)) });
+  }
+  return true;
+}
+export function gitConfig(repoDir) {
+  const k = `cfg\0${repoDir}`;
+  if (!memo.has(k)) memo.set(k, gitConfig0(repoDir));
+  return memo.get(k);
+}
+// Only a regular file is read, bounded to 256 KB: a FIFO, device or directory is unreadable and
+// fails closed; a missing file is fine.
+function readConfigFile(f) {
+  let st;
+  try { st = statSync(f); } catch (e) { return e?.code === "ENOENT" || e?.code === "ENOTDIR" ? "" : null; }
+  if (!st.isFile() || st.size > 256 * 1024) return null;
+  try {
+    const fd = openSync(f, "r");
+    try {
+      const buf = Buffer.alloc(st.size + 1);
+      let n = 0;
+      for (let k; n < buf.length && (k = readSync(fd, buf, n, buf.length - n, n)) > 0;) n += k;
+      return n > 256 * 1024 ? null : buf.toString("utf8", 0, n);
+    } finally { closeSync(fd); }
+  } catch { return null; }
+}
+function gitConfig0(repoDir) {
+  if (Object.keys(process.env).some((k) => GIT_REDIRECT.test(k))) return null;
+  const loc = locateGit(repoDir);
+  if (!loc) return null;
+  const rh = gateCtx.realHome ?? osHome();
+  const out = [];
+  const readOne = (f) => {
+    const text = readConfigFile(f);
+    return text === null ? false : parseGitConfig(text, out);
+  };
+  const system = process.env.GIT_CONFIG_NOSYSTEM ? [] : ["/etc/gitconfig"];
+  for (const f of [...system, join(process.env.XDG_CONFIG_HOME || join(rh, ".config"), "git", "config"), join(rh, ".gitconfig"), join(loc.common, "config")]) if (!readOne(f)) return null;
+  const last = (s, sub, k) => out.filter((e) => e.s === s && e.sub === sub && e.k === k).at(-1)?.v;
+  if (/^(?:true|yes|on|1)$/i.test(last("extensions", null, "worktreeconfig") ?? "") && !readOne(join(loc.gitdir, "config.worktree"))) return null;
+  return {
+    get: (s, sub, k) => last(s, sub ?? null, k),
+    all: (s, sub, k) => out.filter((e) => e.s === s && e.sub === (sub ?? null) && e.k === k).map((e) => e.v),
+  };
+}
+const isTrue = (v) => /^(?:true|yes|on|1)$/i.test(v ?? "");
+
+// A plain branch name (`git push origin fix/x`) and a bare push (`git push [-u] [remote]`) are
+// push-feature only when the config files PROVE the destination is an unprotected branch:
+// no remote.<name>.push refmap (or mirror) for any remote involved, and for a bare push the
+// current branch plus push.default (simple/current: the branch's own name, and for simple a
+// branch.<cur>.merge that is unset or equal; upstream/tracking: branch.<cur>.merge). Everything
+// else (matching, nothing, includes, -c, GIT_*, detached HEAD, unknown branch) is push-main.
+function pushScopes(args, unsafe, protectedFor, repo = null) {
   let main = unsafe, publish = false;
   const pos = [];
   for (let i = 0; i < args.length; i++) {
@@ -208,9 +370,34 @@ function pushScopes(args, unsafe, protectedFor) {
     else pos.push(t);
   }
   const [remote, ...refs] = pos;
-  if (!remote || !SAFE_NAME.test(remote) || !refs.length) main = true; // bare push: current branch and refmap unknown
+  if (remote && !SAFE_NAME.test(remote)) main = true;
   const prot = protectedFor(remote || "");
-  for (const r of refs) {
+  const cfg = repo?.cfg ?? null, branch = repo?.branch ?? null;
+  const refmap = (name) => !!cfg && !!name && (cfg.all("remote", name, "push").length > 0 || isTrue(cfg.get("remote", name, "mirror")));
+  const badBranch = (b) => !b || b.startsWith("-") || b.startsWith(".") || /^head$/i.test(b) || isProtected(b, prot);
+  if (cfg && isTrue(cfg.get("push", null, "followtags"))) publish = true;
+  if (!refs.length) {
+    // bare push: the remote and the destination both come from the config
+    if (!cfg || !branch) main = true;
+    else {
+      const named = [remote, cfg.get("branch", branch, "pushremote"), cfg.get("remote", null, "pushdefault"), cfg.get("branch", branch, "remote")].filter(Boolean);
+      if ([...named, named[0] ?? "origin"].some(refmap)) main = true; // no remote named anywhere: git pushes to origin
+      if (named[0] && /^\./.test(named[0])) main = true;
+      const mode = (cfg.get("push", null, "default") ?? "simple").toLowerCase();
+      const merge = cfg.get("branch", branch, "merge");
+      let dst = null;
+      if (mode === "current") dst = branch;
+      else if (mode === "simple") dst = merge === undefined || merge === `refs/heads/${branch}` ? branch : null;
+      else if (mode === "upstream" || mode === "tracking") dst = /^refs\/heads\//.test(merge ?? "") ? merge.slice(11) : null;
+      if (badBranch(dst)) main = true;
+    }
+  }
+  for (const r0 of refs) {
+    // `fix/x` on the command line means `fix/x:fix/x` unless a push refmap exists for the remote;
+    // HEAD, @ and refs/... stay unreadable.
+    const plain = !r0.includes(":") && /^[A-Za-z0-9._/-]+$/.test(r0) && !/^refs\//.test(r0);
+    if (plain && (!cfg || !remote || refmap(remote))) { main = true; continue; }
+    const r = plain ? `${r0}:${r0}` : r0;
     const m = /^([A-Za-z0-9._/-]+):([A-Za-z0-9._/-]+)$/.exec(r);
     if (/^(?:refs\/tags\/|v?\d+(?:\.\d+)+)/.test(r.split(":").pop())) { publish = true; continue; }
     if (!m) { main = true; continue; } // no explicit destination
@@ -246,13 +433,29 @@ const NPM_VALUE_OPTS = /^(?:--prefix|-w|--workspace|-C|--dir|--registry|--userco
 export function classify(seg, protectedFor = staticResolver) {
   const { rest: tok, opaque, gitEnv } = stripPrefix(tokens(seg));
   const cmd = base(tok[0] ?? "");
-  if (opaque) return catchAll(tok, seg, true) ? null : [];
+  if (opaque) {
+    if (!catchAll(tok, seg, true)) return [];
+    // `bash -c 'rm -rf build'` is understood: a destructive-only inner command is grantable.
+    const inner = commandScopes(innerText(tok), protectedFor);
+    return inner?.length && inner.every((x) => x === "destructive") ? ["destructive"] : null;
+  }
   if (cmd === "git" || cmd === "hub") {
-    let i = 1, config = false;
+    // repoDir: null = unknown (an unresolvable cd/-C target, --git-dir): bare and plain pushes are push-main.
+    let i = 1, config = false, repoDir = segCwd === null ? null : segCwd || gateCtx.cwd || process.cwd();
     for (;;) {
       const t = unq(tok[i] ?? "");
-      if (GIT_VALUE_OPTS.test(t)) { config ||= /^(?:-c|--config-env)$/.test(t); i += 2; }
-      else if (/^(?:-[cC].|--[\w-]+=)/.test(t)) { config ||= /^(?:-c.|--config-env=)/.test(t); i++; }
+      if (GIT_VALUE_OPTS.test(t)) {
+        config ||= /^(?:-c|--config-env)$/.test(t);
+        if (t === "-C") repoDir = resolveDir(repoDir, tok[i + 1] ?? "");
+        else if (/^--(?:git-dir|work-tree)$/.test(t)) repoDir = null;
+        i += 2;
+      }
+      else if (/^(?:-[cC].|--[\w-]+=)/.test(t)) {
+        config ||= /^(?:-c.|--config-env=)/.test(t);
+        if (/^-C./.test(t)) repoDir = resolveDir(repoDir, tok[i].slice(2));
+        else if (/^--(?:git-dir|work-tree)=/.test(t)) repoDir = null;
+        i++;
+      }
       else if (GIT_FLAG_OPTS.test(t)) i++;
       else if (t.startsWith("-")) return catchAll(tok, seg) ? null : []; // unknown global option
       else break;
@@ -260,7 +463,8 @@ export function classify(seg, protectedFor = staticResolver) {
     const sub = unq(tok[i]), r = tok.slice(i + 1).map(unq);
     if (sub === "push") {
       const unsafe = config || gitEnv || /[<'"$\x60\\*?{}[\]~^]/.test(tok.slice(i).join(" "));
-      return pushScopes(r, unsafe, protectedFor);
+      // An earlier segment of the same command may have changed the repo state (segTaint).
+      return pushScopes(r, unsafe, protectedFor, repoDir && !segTaint ? { branch: currentBranch(repoDir), cfg: gitConfig(repoDir) } : null);
     }
     if (sub === "reset" && r.includes("--hard")) return ["destructive"];
     if (sub === "clean" && r.some((t) => /^-[a-zA-Z]*f/.test(t) || t === "--force")) return ["destructive"];
@@ -274,6 +478,12 @@ export function classify(seg, protectedFor = staticResolver) {
       const args = r.filter((t) => !t.startsWith("-"));
       const read = r.some((t) => /^(?:--get\S*|--list|-l)$/.test(t)) || (args.length === 1 && !r.some((t) => /^--(?:add|unset\S*|replace-all|edit|rename-section|remove-section)$|^-e$/.test(t)));
       return read ? [] : null;
+    }
+    // An unknown subcommand may be an alias (`[alias] p = push origin HEAD:main`, `q = !git push`):
+    // guarded when the config defines it, or cannot be read.
+    if (sub && !GIT_BUILTINS.test(sub)) {
+      const cfg = repoDir ? gitConfig(repoDir) : null;
+      if (!cfg || cfg.get("alias", null, sub.toLowerCase()) !== undefined) return null;
     }
     return [];
   }
@@ -320,12 +530,615 @@ function catchAll(tok, seg, opaque = false) {
   const after = (i, set) => w.slice(i + 1).some((x) => set.test(x));
   for (let i = 0; i < w.length; i++) {
     if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
-    if ((PM.test(w[i]) || w[i] === "npx") && after(i, /^(?:publish|version)$/)) return true;
+    // `npm view|info|show|v <pkg> version` only reads: its subcommand is not publish/version.
+    const sub = w.slice(i + 1).find((x) => !x.startsWith("-"));
+    if ((PM.test(w[i]) || w[i] === "npx") && !/^(?:view|info|show|v)$/.test(sub ?? "") && after(i, /^(?:publish|version)$/)) return true;
     if (w[i] === "gh" && after(i, /^(?:merge|create|delete|edit|comment|close|review|api)$/)) return true;
     if (/^(?:np|release-it|semantic-release)$/.test(w[i]) || (w[i] === "changeset" && after(i, /^publish$/))) return true;
     if (w[i] === "rm" && w.slice(i + 1).some((x) => /^-[a-zA-Z]*[rR]/.test(x) || x === "--recursive")) return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Delete analysis. One pass over a command yields { destructive, hard }:
+// - destructive: a recursive delete in any language (rm -r, find -delete, rmSync/rmtree/
+//   rm_rf/remove_tree/Remove-Item -Recurse/rd /s ...). Guarded, grantable scope `destructive`.
+// - hard: the first delete target that is `/`, a bare `*`, the home directory or a direct
+//   child of it. Never liftable (see hardBlockReason); recursive or not.
+// Text that is data is removed first (commandView): heredoc bodies and the quoted arguments
+// of grep/echo/jq/...; code that is executed (bash -c, node -e, python -c, eval, xargs,
+// interpreter heredocs) is analysed recursively. Known gaps: paths built in variables
+// (`H=$HOME; rm -rf $H`), code read from files, interpreters not listed in INTERP.
+// ---------------------------------------------------------------------------
+const SHELLISH = /(?:^|[\s;&|(])(?:sudo\s+)?(?:bash|sh|zsh|dash|ksh|fish|source|node|nodejs|bun|deno|python[\d.]*|ruby|perl|php|pwsh|powershell|lua|osascript|xargs|eval|ssh)(?=\s|$)/;
+const INTERP = /^(?:node(?:js)?|bun|deno|python[\d.]*|ruby|perl|php|pwsh|powershell|cmd(?:\.exe)?|lua|osascript)$/i;
+const DATA_HEAD = /^(?:echo|printf|grep|egrep|fgrep|rg|ag|jq|awk|gawk|sed)$/;
+const unqQ = (t) => String(t ?? "").replace(/["']/g, "");
+
+// A command longer than this is not analysed at all: it is guarded without a scope (a GO
+// lifts it, a grant or mode does not), so no parser input can make the hook slow.
+export const MAX_COMMAND = 16 * 1024;
+export const TOO_LONG_MESSAGE = "command too long for the gate; split it or ask for GO";
+export const commandTooLong = (c) => typeof c === "string" && c.length > MAX_COMMAND;
+
+// Like tokens(), but $(...) and `...` stay inside one word, so a delete target such as
+// $(echo ~) is seen whole.
+function words(s) {
+  const out = [];
+  let cur = "", q = "", sub = 0, bt = false;
+  for (let i = 0; i < s.length; i++) {
+    if ((i & 1023) === 0) tick();
+    const c = s[i];
+    if (q) { cur += c; if (c === "\\" && q === '"') cur += s[++i] ?? ""; else if (c === q) q = ""; continue; }
+    if (c === "\\") { cur += c + (s[++i] ?? ""); continue; }
+    if (c === "'" || c === '"') { q = c; cur += c; continue; }
+    if (c === "`") { bt = !bt; cur += c; continue; }
+    if (c === "$" && s[i + 1] === "(") { sub++; cur += "$("; i++; continue; }
+    if (sub && c === ")") { sub--; cur += c; continue; }
+    if (/\s/.test(c) && !sub && !bt) { if (cur) out.push(cur); cur = ""; continue; }
+    cur += c;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+// Splits on unquoted ; & | newline ( ) and brace-group braces; quotes, ${...}, $(...) and `...` stay whole.
+function scanSplit(cmd) {
+  const s = String(cmd), out = [];
+  let cur = "", q = "", depth = 0, sub = 0, bt = false;
+  for (let i = 0; i < s.length; i++) {
+    if ((i & 1023) === 0) tick();
+    const c = s[i];
+    if (q) { cur += c; if (c === "\\" && q === '"') cur += s[++i] ?? ""; else if (c === q) q = ""; continue; }
+    if (c === "\\") { cur += c + (s[++i] ?? ""); continue; }
+    if (c === "'" || c === '"') { q = c; cur += c; continue; }
+    if (c === "`") { bt = !bt; cur += c; continue; }
+    if (bt) { cur += c; continue; }
+    if (c === "$" && s[i + 1] === "{") { depth++; cur += "${"; i++; continue; }
+    if (depth && c === "}") { depth--; cur += c; continue; }
+    if (sub) { if (c === "(") sub++; else if (c === ")") sub--; cur += c; continue; }
+    if (c === "$" && s[i + 1] === "(") { sub++; cur += "$("; i++; continue; }
+    if (";&|\n()".includes(c) || (c === "{" && /\s/.test(s[i + 1] ?? " ")) || (c === "}" && /[\s;]/.test(s[i - 1] ?? ";"))) { out.push({ t: cur, sep: c }); cur = ""; continue; }
+    cur += c;
+  }
+  out.push({ t: cur, sep: "" });
+  return out;
+}
+const topSegments = (cmd) => scanSplit(cmd).map((p) => p.t.trim()).filter(Boolean);
+
+// Heredoc bodies are data, unless the line feeds an interpreter (kept, and returned in `code`).
+// Unquoted heredocs still expand $(...) and backticks, so those stay visible.
+// Fed to a shell the body is commands (kept in the text); fed to an interpreter it is code,
+// returned in `code` with its language and inspected only at execution points (codeInto).
+const HEREDOC_LANG = /(?:^|[\s;&|(])(?:sudo\s+)?(node|nodejs|bun|deno|python[\d.]*|ruby|perl|php|lua|osascript)(?=\s|$)/;
+function stripHeredocs(cmd) {
+  const out = [], code = [];
+  let end = null, keep = false, expand = false, buf = [], lang = "";
+  const close = () => {
+    if (keep && lang) code.push({ body: buf.join("\n"), lang });
+    else if (keep) out.push(...buf);
+    else if (expand) for (const m of buf.join("\n").matchAll(/\$\([^)]*\)|(?<!\\)`[^`]*`/g)) out.push(m[0]);
+    end = null; buf = [];
+  };
+  for (const line of String(cmd).split("\n")) {
+    tick();
+    if (end !== null) { if (line.trim() === end) close(); else buf.push(line); continue; }
+    out.push(line);
+    const m = /(?<!<)<<(?!<)-?[ \t]*(?:'([^']+)'|"([^"]+)"|(\\?)([A-Za-z_]\w*))/.exec(line);
+    if (m) { end = m[1] ?? m[2] ?? m[4]; keep = SHELLISH.test(line); lang = HEREDOC_LANG.exec(line)?.[1] ?? ""; expand = m[1] === undefined && m[2] === undefined && !m[3]; }
+  }
+  if (end !== null) close();
+  return { text: out.join("\n"), code };
+}
+
+function blankQuotes(s) {
+  return s.replace(/"((?:[^"\\]|\\.)*)"|'[^']*'/g, (q, dq) =>
+    '""' + (dq ? [...dq.matchAll(/\$\(([^)]*)\)|`([^`]*)`/g)].map((m) => ` ; ${m[1] ?? m[2]}`).join("") : ""));
+}
+const FEEDS = /^(?:bash|sh|zsh|dash|ksh|fish|xargs|eval|source|\.|parallel|node|nodejs|bun|deno|python[\d.]*|ruby|perl|pwsh|powershell)$/;
+// awk and sed programs can run commands (system(), getline, `| "cmd"`, sed's `e` command and
+// `s///e`); such a program is never blanked as data.
+const AWK_EXEC = /system\s*\(|getline|close\s*\(|\|\s*["'$]|\bprint[^;}]{0,200}\|\s*\S/;
+const SED_EXEC = /(?<![A-Za-z_\\])e(?![A-Za-z_])|\/[gimIM0-9]*e[gimIM0-9]*\s*(?:["';}]|$)/;
+// feeds[k]: does any LATER stage of the pipeline that piece k starts run a shell or interpreter?
+// One backwards pass: chain[j] = the pipeline continues after piece j and a later stage feeds a shell.
+function pipeFeedsAll(pieces, heads) {
+  const chain = new Array(pieces.length).fill(false);
+  for (let j = pieces.length - 2; j >= 0; j--) chain[j] = "|(){".includes(pieces[j].sep || "x") && (FEEDS.test(heads[j + 1]) || chain[j + 1]);
+  return pieces.map((p, k) => p.sep === "|" && k + 1 < pieces.length && (FEEDS.test(heads[k + 1]) || chain[k + 1]));
+}
+// Inline interpreter code (node -e, python -c ...) is blanked too unless keepCode: it is
+// not shell text, so execution points are read from it by analyzeDeletes instead.
+function blankData(text, keepCode = false) {
+  const pieces = scanSplit(text);
+  const parsed = pieces.map((p) => { tick(); return stripPrefix(tokens(p.t)); });
+  const feeds = pipeFeedsAll(pieces, parsed.map((s) => base(s.rest[0] ?? "")));
+  return pieces.map((p, k) => {
+    tick();
+    const { rest, opaque } = parsed[k];
+    const h = base(rest[0] ?? "");
+    if (!keepCode && !opaque && INTERP.test(h) && !/^(?:pwsh|powershell|cmd)/i.test(h) && scriptFile(h, rest.slice(1).map(unqQ)).inline) return blankQuotes(p.t) + p.sep;
+    const sub = h === "git" ? rest.slice(1).map(unq).find((t, i, a) => !t.startsWith("-") && !/^-[cC]$/.test(a[i - 1] ?? "")) : "";
+    const prog = rest.slice(1).filter((t) => !t.startsWith("-")).map(unqQ).join(" ");
+    const executes = (/^g?awk$/.test(h) && AWK_EXEC.test(prog)) || (h === "sed" && SED_EXEC.test(prog));
+    return ((DATA_HEAD.test(h) || sub === "grep") && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
+  }).join("");
+}
+
+// Quote-aware pre-pass. An unquoted `#` at a word start comments out the rest of the line.
+// Backticks and `$(` inside single quotes, or backslash-escaped, are inert: they become the
+// placeholders \u0001 / $\u0002, which unprep() turns back where the text really is executed
+// (bash -c '...', node -e '...').
+function prepText(s) {
+  let out = "", q = "";
+  for (let i = 0; i < s.length; i++) {
+    if ((i & 1023) === 0) tick();
+    const c = s[i];
+    if (q === "'") {
+      if (c === "'") { q = ""; out += c; }
+      else if (c === "`") out += "\u0001";
+      else if (c === "$" && s[i + 1] === "(") { out += "$\u0002"; i++; }
+      else out += c;
+      continue;
+    }
+    if (c === "\\") { const n = s[++i] ?? ""; out += n === "`" ? "\u0001" : c + n; continue; }
+    if (q === '"') { if (c === '"') q = ""; out += c; continue; }
+    if (c === "'" || c === '"') { q = c; out += c; continue; }
+    if (c === "#" && (i === 0 || /[\s;&|(]/.test(s[i - 1]))) { while (i < s.length && s[i] !== "\n") i++; i--; continue; }
+    out += c;
+  }
+  return out;
+}
+const unprep = (s) => String(s).replace(/\u0001/g, "`").replace(/\$\u0002/g, "$(");
+
+export function commandView(command, keepCode = false) {
+  const { text, code } = stripHeredocs(command);
+  return { text: blankData(prepText(text), keepCode), code };
+}
+
+const HOME_VAR = String.raw`(?:~[\w.+-]*|\$HOME|\$USERPROFILE|%USERPROFILE%|%HOMEPATH%|\$env:(?:USERPROFILE|HOME)|\$\{env:(?:USERPROFILE|HOME)\})`;
+const HOME_PATH = new RegExp(`^${HOME_VAR}(?:/(.*))?$`, "i");
+// The OS user's real home. A test override (AOS_GATE_TEST_REALHOME) is honoured ONLY inside a
+// test run (AOS_TEST_SANDBOX or NODE_TEST_CONTEXT set), so production always uses the OS value.
+const osHome = () => {
+  const o = process.env.AOS_GATE_TEST_REALHOME;
+  if (o && (process.env.AOS_TEST_SANDBOX || process.env.NODE_TEST_CONTEXT)) return o.replace(/\/+$/, "");
+  try { return userInfo().homedir.replace(/\/+$/, ""); } catch { return ""; }
+};
+const pathSegs = (s) => String(s ?? "").split("/").filter((x) => x && x !== ".");
+const GLOB = /[*?{}[\]]/;
+
+// What a path is relative to the home directory, in every spelling (shell variables, ~, ~user,
+// /Users|/home|/root, C:\Users, the real home from the OS user database):
+//   root   `/` or `/*`           state  the gate's own ~/.aos/gate and ~/.aos/go
+//   home   the home directory (or something above it, or a `..` that may reach it)
+//   child  one direct child of home; `real` is its filesystem path when known
+//   glob   a glob or brace pattern at home level
+// null = anywhere else. `${HOME:-x}` and `${HOME%/}` count as $HOME. A bare `*` is resolved
+// against the working directory by the caller.
+export function homeKind(p) {
+  let s = String(p).replace(/["'`]/g, "").replace(/\$\{(HOME|USERPROFILE)(?:[:#%/^,@-][^}]*)?\}/gi, "$$HOME").replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+  if (s.length > 1) s = s.replace(/\/+$/, "");
+  if (s === "/" || s === "/*") return { kind: "root" };
+  if (/(?:^|\/)\.aos\/(?:gate|go)(?:\/|$)/.test(s)) return { kind: "state" };
+  const child = (name, real) => (GLOB.test(name) ? { kind: "glob" } : { kind: "child", name, real });
+  let m = HOME_PATH.exec(s);
+  if (m) {
+    const r = pathSegs(m[1]);
+    if (r.includes("..") || r.length === 0) return { kind: "home" };
+    return r.length === 1 ? child(r[0], join(gateCtx.home || homedir(), r[0])) : null;
+  }
+  m = /^(?:[A-Za-z]:)?\/(?:Users|home)(?:\/(.*))?$/i.exec(s);
+  if (m) {
+    const r = pathSegs(m[1]);
+    if (r.includes("..") || r.length <= 1) return { kind: "home" };
+    return r.length === 2 ? child(r[1], /^\//.test(s) ? s : "") : null;
+  }
+  m = /^\/root(?:\/(.*))?$/.exec(s);
+  if (m) {
+    const r = pathSegs(m[1]);
+    if (r.includes("..") || r.length === 0) return { kind: "home" };
+    return r.length === 1 ? child(r[0], s) : null;
+  }
+  const rh = gateCtx.realHome ?? osHome();
+  if (rh && (s === rh || s.startsWith(rh + "/"))) {
+    const r = pathSegs(s.slice(rh.length));
+    if (r.includes("..") || r.length === 0) return { kind: "home" };
+    return r.length === 1 ? child(r[0], s) : null;
+  }
+  return null;
+}
+export const isHomeLevel = (p) => homeKind(p) !== null;
+
+const entryType = (real) => {
+  try { const st = lstatSync(real); return st.isDirectory() ? "dir" : "file"; } catch { return "missing"; }
+};
+
+// Policy for a delete, move or overwrite aimed at `p`:
+//   "hard"  the home directory, `/`, the gate state, or (recursive delete, move, chmod/chown -R,
+//           rsync --delete) a top-level directory of home, one that is missing or unknown, or a
+//           home-level glob. Never liftable.
+//   "go"    one file or symlink directly in home (checked with lstat), or a non-recursive delete
+//           of a glob/directory there: needs a GO and is not grantable.
+//   null    anything else.
+// `op.recursive` covers the recursive family; `op.move` is mv.
+function homeVerdict(p, op = {}) {
+  const k = homeKind(p);
+  if (!k) return null;
+  if (k.kind === "root" || k.kind === "home" || k.kind === "state") return "hard";
+  const strong = op.recursive || op.move;
+  if (k.kind === "glob") return strong ? "hard" : "go";
+  return k.real && entryType(k.real) === "file" ? "go" : strong ? "hard" : "go";
+}
+
+// A dotfile directly in home that a command overwrites (`> ~/.x`, tee, dd of=, cp, ln -f, truncate).
+const isHomeDotfile = (p) => { const k = homeKind(p); return !!k && k.kind === "child" && k.name.startsWith("."); };
+
+const DEL_CMD = /^(?:rm|rmdir|unlink|shred|remove-item|ri|del|erase|rd|trash)$/i;
+const PS_REC = /^-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?$/i;
+const rmRecursive = (tok) => {
+  const r = tok.slice(1).map(unq), end = r.indexOf("--");
+  return r.slice(0, end === -1 ? undefined : end).some((t) => /^-[a-zA-Z]*[rR]/.test(t) || t === "--recursive");
+};
+
+// Delete targets of one simple command (after prefix stripping) and whether it is recursive.
+function shellDelete(tok) {
+  const cmd = base(tok[0] ?? "").toLowerCase();
+  const a = tok.slice(1).map(unqQ).filter((t) => !/^\d*>/.test(t));
+  if (DEL_CMD.test(cmd)) {
+    const dd = a.indexOf("--");
+    const targets = a.filter((t, i) => i !== dd && (dd !== -1 && i > dd || !(t.startsWith("-") || /^\/[a-z]$/i.test(t))));
+    const ps = /^(?:remove-item|ri|rm|rmdir|rd|del|erase)$/.test(cmd) && a.some((t) => PS_REC.test(t) || /^\/s$/i.test(t));
+    return { targets, recursive: ps || (cmd === "rm" && rmRecursive(tok)) };
+  }
+  if (cmd === "find") {
+    const j = a.join(" ");
+    if (!/(?:^|\s)-delete\b|-exec(?:dir)?\s+(?:\S*\/)?(?:rm|rmdir|unlink)\b/.test(j)) return { targets: [], recursive: false };
+    let i = 0;
+    while (/^(?:-[HLP]|-D|-O\d)$/.test(a[i] ?? "")) i += a[i] === "-D" ? 2 : 1;
+    const targets = [];
+    for (; i < a.length && !/^[-(!]/.test(a[i]); i++) targets.push(a[i]);
+    return { targets: targets.length ? targets : ["."], recursive: true };
+  }
+  const pos = a.filter((t) => !t.startsWith("-"));
+  // Moving a home-level path away destroys it as surely as deleting it.
+  if (cmd === "mv") return { targets: pos.length > 1 ? pos.slice(0, -1) : [], recursive: false, move: true, writes: pos.length > 1 ? pos.slice(-1) : [] };
+  if (cmd === "rsync" && a.some((t) => /^--(?:del|delete\S*|remove-source-files)$/.test(t))) return { targets: pos.slice(-1), recursive: true };
+  if (/^(?:chmod|chown|chgrp)$/.test(cmd) && a.some((t) => /^-[a-zA-Z]*R|^--recursive$/.test(t))) return { targets: pos.slice(1), recursive: false, strong: true };
+  // Overwrites of a dotfile directly in home need a GO (the `writes` list is checked separately).
+  if (cmd === "truncate") return { targets: [], recursive: false, writes: pos };
+  if (cmd === "tee" && !a.some((t) => /^-[a-zA-Z]*a|^--append$/.test(t))) return { targets: [], recursive: false, writes: pos };
+  if (cmd === "dd") return { targets: [], recursive: false, writes: a.filter((t) => t.startsWith("of=")).map((t) => t.slice(3)) };
+  if (cmd === "cp" || cmd === "install") return { targets: [], recursive: false, writes: pos.slice(-1) };
+  if (cmd === "ln" && a.some((t) => /^-[a-zA-Z]*f|^--force$/.test(t))) return { targets: [], recursive: false, writes: pos.slice(-1) };
+  if (cmd === "rimraf" || (/^(?:npx|pnpm|yarn|bunx|npm|bun|dlx)$/.test(cmd) && tok.slice(0, 5).some((t) => base(t) === "rimraf"))) {
+    const i = tok.findIndex((t) => base(t) === "rimraf");
+    return { targets: tok.slice(i + 1).map(unqQ).filter((t) => !t.startsWith("-")), recursive: true };
+  }
+  return { targets: [], recursive: false };
+}
+
+// Interpreter code is never matched as shell text. Only execution points count: delete APIs,
+// process-spawning calls (their command text is analysed like a shell command) and the
+// markers of code that hides what it runs (UNSCOPED_CODE).
+const RECURSIVE_CALL = /^(?:rmtree|remove_tree|rm_rf|rm_r|remove_entry(?:_secure)?|remove_dir|removedirs|rimraf(?:Sync)?)$/;
+const OPTION_CALL = /^(?:rmSync|rmdirSync|(?:fs|fsp|fsPromises|promises)\.(?:rm|rmdir)|Deno\.remove(?:Sync)?)$/;
+const UNSCOPED_CODE = /(?<![.\w])(?:eval|exec)\s*(?:\(|["'])|(?<![.\w])compile\s*\(|\bnew\s+Function\b|(?<![.\w])Function\s*\(|__import__\s*\(|b64decode|\batob\b|base64\s*\.\s*\w*decode|codecs\.decode|\bvm\.run\w*/;
+const EXEC_CALL = /(?<![\w])(?:subprocess\.(?:run|call|check_call|check_output|Popen|getoutput|getstatusoutput)|os\.(?:system|popen|exec\w*|spawn\w*)|pty\.spawn|(?:child_process|cp)\.(?:exec|execSync|spawn|spawnSync|execFile|execFileSync)|execSync|spawnSync|execFileSync|execFile|spawn|execa(?:Sync)?|Deno\.Command|Kernel\.system|(?<![.\w])system|popen)\s*\(?\s*/g;
+const DEL_CALL = /\b(?:rmSync|rmdirSync|unlinkSync|rimraf(?:Sync)?|rmtree|remove_tree|rm_rf|rm_r|rm_f|remove_entry(?:_secure)?|remove_dir|removedirs|(?:fs|fsp|fsPromises|promises)\.(?:rm|rmdir|unlink)|os\.(?:remove|unlink|rmdir)|Deno\.remove(?:Sync)?|File\.delete|Dir\.(?:rmdir|delete|unlink))(?!\w)\s*\(?\s*/g;
+const HOME_EXPR = /^(?:process\.env(?:\.(?:HOME|USERPROFILE)|\[\s*['"](?:HOME|USERPROFILE)['"]\s*\])|Deno\.env\.get\(\s*['"]HOME['"]\s*\)|(?:(?:require\(\s*['"](?:node:)?os['"]\s*\)|\w+)\.)?homedir\(\s*\)|(?:require\(\s*['"](?:node:)?os['"]\s*\)|\w+)\.userInfo\(\s*\)\.homedir|(?:pathlib\.)?Path\.home\(\s*\)|os\.environ(?:\[\s*['"]HOME['"]\s*\]|\.get\(\s*['"]HOME['"][^)]*\))|os\.getenv\(\s*['"]HOME['"][^)]*\)|ENV\[\s*['"]HOME['"]\s*\]|Dir\.home|\$ENV\{HOME\}|\$env:(?:HOME|USERPROFILE))/i;
+const WRAP_CALL = /^(?:(?:(?:require\(\s*['"](?:node:)?path['"]\s*\)|path(?:\.posix|\.win32)?)\.)?(?:join|resolve)|(?:pathlib\.)?Path|os\.path\.(?:join|expanduser)|File\.(?:join|expand_path)|Pathname\.new)\(\s*/;
+const LIT = /^[frbuFRBU]{0,2}(["'`])((?:\\.|(?!\1)[^\\])*)\1/;
+const MORE = /^\s*\)?\s*[,+/]\s*[frbuFRBU]{0,2}(["'`])((?:\\.|(?!\1)[^\\])*)\1/;
+
+// The path a delete call's first argument spells, as shell-like text: home expressions
+// become `~`, literal tails are appended, an unreadable tail counts as one more segment.
+function codeArgToPath(src) {
+  let a = src;
+  for (let m; (m = WRAP_CALL.exec(a));) a = a.slice(m[0].length);
+  let p, rest;
+  const he = HOME_EXPR.exec(a), lit = he ? null : LIT.exec(a);
+  if (he) { p = "~"; rest = a.slice(he[0].length); }
+  else if (lit) { p = lit[2].replace(/\$?\{[^}]*(?:home|USERPROFILE)[^}]*\}/gi, "~"); rest = a.slice(lit[0].length); }
+  else return "";
+  for (let m; (m = MORE.exec(rest));) { p += "/" + m[2]; rest = rest.slice(m[0].length); }
+  if (/^\s*\)?\s*[+/]\s*[^\s'"`]/.test(rest)) p += "/*";
+  return p;
+}
+
+// Same text with string-literal contents blanked (length kept), so matches align with `text`.
+// Single-line quotes only: an apostrophe in a comment must not swallow the code after it.
+const maskStrings = (s) => s.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''|`(?:\\.|[^`\\])*`|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g,
+  (m) => m[0] + m.slice(1, -1).replace(/[^\n]/g, " ") + m[m.length - 1]);
+
+// The command text of a spawn call's arguments: a literal, or a list of literals (a
+// non-literal element becomes $X). "" = the first argument is not a literal.
+function execCommand(src, name) {
+  const s = src.trimStart();
+  const list = (t) => {
+    const out = [];
+    t = t.slice(1);
+    for (;;) {
+      t = t.replace(/^\s*,?\s*/, "");
+      const m = LIT.exec(t);
+      if (m) { out.push(m[2]); t = t.slice(m[0].length); continue; }
+      if (!t || t[0] === "]") break;
+      out.push("$X");
+      t = t.replace(/^[^,\]]*/, "");
+    }
+    return { out, rest: t.slice(1) };
+  };
+  if (s[0] === "[") return list(s).out.join(" ");
+  const lit = LIT.exec(s);
+  if (!lit) return "";
+  const parts = [lit[2]], rest = s.slice(lit[0].length);
+  if (/^\s*[+%]/.test(rest)) parts.push("$X");
+  const second = /^\s*,\s*(\[)/.exec(rest);
+  if (second) {
+    const l = list(rest.slice(second[0].length - 1)).out;
+    if (/^os\.(?:exec|spawn)/.test(name)) return l.join(" ");
+    parts.push(...l);
+  }
+  return parts.join(" ");
+}
+
+// Code of an interpreter, inspected at execution points only. Sets r.hard / r.destructive /
+// r.unscoped and pushes spawned command texts to r.cmds (the caller classifies those).
+function codeInto(r, text, lang = "") {
+  text = unprep(text);
+  if (lang === "osascript" && /\bdelete\b|\bmove\b[^\n;]*\bto\b[^\n;]*\btrash|\bdo shell script\b/i.test(text)) r.unscoped = true;
+  const masked = maskStrings(text);
+  if (UNSCOPED_CODE.test(masked) || HTTP_PATTERNS.some((re) => re.test(text))) r.unscoped = true;
+  for (const m of masked.matchAll(DEL_CALL)) {
+    const name = m[0].replace(/\s*\(?\s*$/, "");
+    const after = text.slice(m.index + m[0].length);
+    const rec = RECURSIVE_CALL.test(name.replace(/^.*\./, "")) || (OPTION_CALL.test(name) && /recursive/.test(after.slice(0, 300)));
+    if (rec) r.destructive = true;
+    const p = codeArgToPath(after);
+    const v = p ? homeVerdict(p, { recursive: rec }) : null;
+    if (v === "hard") r.hard ||= p;
+    else if (v === "go") r.unscoped = true;
+  }
+  for (const m of masked.matchAll(EXEC_CALL)) {
+    const c = execCommand(text.slice(m.index + m[0].length), m[0].replace(/\s*\(?\s*$/, ""));
+    if (c) r.cmds.push(c);
+  }
+  if (/^(?:ruby|perl)$/.test(lang)) {
+    for (const m of text.matchAll(/`([^`\n]*)`|%x[({[]([^)}\]]*)|\bqx[({[]([^)}\]]*)/g)) r.cmds.push(m[1] ?? m[2] ?? m[3]);
+  }
+}
+
+// Script files run by an interpreter. cwd follows `cd X &&` inside the command; the hook's
+// own cwd (setGateContext) is the start. Block cooldown: see markBlock.
+let gateCtx = { cwd: "", blockTs: 0 };
+export const setGateContext = (c) => { gateCtx = { cwd: "", blockTs: 0, ...c }; memo = new Map(); };
+export const COOLDOWN_MS = 10 * 60 * 1000;
+export const COOLDOWN_MESSAGE = "go-gate: blocked recently; a freshly written script after a block needs a GO; stop and report.";
+const FILE_HEAD = /^(?:python[\d.]*|node(?:js)?|bun|deno|ruby|perl|php|bash|sh|zsh|dash|ksh|pwsh|powershell|osascript)$/i;
+const INLINE_FLAG = /^(?:-[a-zA-Z]*[ce]|--eval|-p|--print|-command|-c)$/i;
+const VALUE_FLAG = /^(?:-r|--require|--import|--loader|--experimental-loader|--env-file|--input-type|-C|--conditions|-W|-X|-Q|-I)$/;
+const SCRIPT_MAX = 256 * 1024;
+const expandHome = (p) => p.replace(/^(?:~|\$HOME|\$\{HOME\})(?=\/|$)/, homedir());
+
+function scriptFile(h, a) {
+  const lc = h.toLowerCase();
+  const args = a.filter((t) => !/^\d*>/.test(t));
+  let i = 0;
+  if (/^(?:deno|bun)$/.test(lc) && /^(?:run|eval)$/.test(args[0] ?? "")) { if (args[0] === "eval") return { inline: true }; i = 1; }
+  for (; i < args.length; i++) {
+    const t = args[i];
+    if (t === "-m") return { module: args[i + 1] ?? "" };
+    if (t === "-") return {};
+    if (INLINE_FLAG.test(t) && !/^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
+    if (/^(?:-c|-[a-zA-Z]*c)$/.test(t) && /^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
+    if (VALUE_FLAG.test(t)) { i++; continue; }
+    if (t.startsWith("-")) continue;
+    return { file: t };
+  }
+  return {};
+}
+
+function scriptInto(r, h, file, cwd) {
+  const path = resolve(expandHome(cwd), expandHome(file));
+  let st, mtime;
+  try { st = statSync(path); mtime = Math.max(st.mtimeMs, lstatSync(path).mtimeMs); } catch { r.unscoped = true; return; }
+  // Only a regular file is ever opened: a device (/dev/zero), FIFO, socket or directory is
+  // unscoped and never read (a read could hang the hook). statSync follows a symlink.
+  if (!st.isFile()) { r.unscoped = true; return; }
+  // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
+  // written before the block, or remove the marker through a path built at run time; the
+  // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
+  if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && mtime > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
+  if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
+  let body;
+  try {
+    const fd = openSync(path, "r");
+    try {
+      const buf = Buffer.alloc(SCRIPT_MAX + 1);
+      let n = 0;
+      for (let k; n < buf.length && (k = readSync(fd, buf, n, buf.length - n, n)) > 0;) n += k;
+      if (n > SCRIPT_MAX) { r.unscoped = true; return; }
+      body = buf.toString("utf8", 0, n);
+    } finally { closeSync(fd); }
+  } catch { r.unscoped = true; return; }
+  if (/^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i.test(h)) r.cmds.push(body);
+  else codeInto(r, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
+}
+
+// Text a shell/eval/xargs/cmd/pwsh runs, from its tokens (after prefix stripping).
+function innerText(tok) {
+  const h = base(tok[0] ?? ""), un = (t) => unprep(String(t).replace(/^(["'])([\s\S]*)\1$/, "$2"));
+  if (/^(?:bash|sh|zsh|dash|ksh)$/.test(h)) {
+    const i = tok.findIndex((t, k) => k && /^-[a-zA-Z]*c[a-zA-Z]*$/.test(unqQ(t)));
+    return i > 0 ? tok.slice(i + 1).map(un).join(" ") : "";
+  }
+  if (/^(?:cmd(?:\.exe)?|pwsh|powershell)$/i.test(h)) {
+    const i = tok.findIndex((t, k) => k && /^(?:\/[ck]|-c|-command)$/i.test(unqQ(t)));
+    return i > 0 ? tok.slice(i + 1).map(un).join(" ") : "";
+  }
+  return tok.slice(SHELLS.test(h) ? 1 : 0).map(un).join(" ");
+}
+
+// Shell state followed through one command: the working directory (cd, pushd, subshells) and
+// plain VAR=value assignments. A relative delete target is resolved against it; a target that
+// still holds a variable or substitution after expansion cannot be judged and is unscoped.
+const ABS_LIKE = /^(?:\/|~|\$HOME|\$USERPROFILE|%|\$env:|[A-Za-z]:[\\/])/i;
+const OWN_VAR = /^(?:HOME|USERPROFILE)$/i;
+function normPath(p) {
+  const out = [];
+  for (const x of p.replace(/\\/g, "/").split("/")) {
+    if (!x || x === ".") continue;
+    if (x === ".." && !out.length && p.startsWith("/")) continue; // the parent of / is /
+    if (x === ".." && out.length && out.at(-1) !== ".." && !/^(?:~[\w.+-]*|\$HOME|\$USERPROFILE|%\w+%|\$env:\w+)$/i.test(out.at(-1))) { out.pop(); continue; }
+    out.push(x);
+  }
+  return (p.startsWith("/") ? "/" : "") + out.join("/");
+}
+function expandVars(s, st) {
+  s = s.replace(/\$\{(HOME|USERPROFILE)(?:[:#%/^,@-][^}]*)?\}/gi, "$$HOME");
+  for (let k = 0; k < 6 && /[$`]/.test(s); k++) {
+    s = s.replace(/\$\(\s*pwd\s*\)|`\s*pwd\s*`|\$\{PWD\}|\$PWD(?!\w)/g, () => st.cwd)
+      .replace(/\$\(\s*echo\s+((?:[^()$`]|\$HOME(?!\w))*?)\s*\)|`\s*echo\s+((?:[^`$()]|\$HOME(?!\w))*?)\s*`/g, (_, a, b) => a ?? b)
+      .replace(/\$\{(\w+)(?::?[-=+?][^}]*)?\}|\$(\w+)/g, (m, a, b) => {
+        const n = a ?? b;
+        return OWN_VAR.test(n) ? "$HOME" : typeof st.vars[n] === "string" ? st.vars[n] : m;
+      });
+  }
+  const left = s.replace(/\$HOME(?!\w)|\$env:\w+/gi, "");
+  return /[$`\u0001\u0002]/.test(left) ? null : s;
+}
+const resolveTarget = (t, st) => {
+  const e = expandVars(unprep(t), st);
+  if (e === null) return null;
+  return normPath(ABS_LIKE.test(e) ? e : `${st.cwd}/${e}`);
+};
+const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
+const assignments = (raw, st) => {
+  let i = 0;
+  while (/^(?:export|declare|typeset|local|readonly)$/.test(unq(raw[i] ?? "")) || (i > 0 && /^-\w+$/.test(raw[i] ?? ""))) i++;
+  for (; i < raw.length; i++) {
+    const m = ASSIGN.exec(raw[i]);
+    if (!m) return;
+    const v = expandVars(unqQ(m[2]), st);
+    st.vars[m[1]] = v === null ? null : v;
+  }
+};
+const cdTarget = (tok, st) => {
+  const t = tok.slice(1).map(unqQ).find((x) => !/^-[LPe@]+$/.test(x));
+  const home = gateCtx.cwd || process.cwd();
+  if (t === undefined) return "~";
+  const e = expandVars(unprep(t), st);
+  if (e === null || e === "-") return home;
+  return ABS_LIKE.test(e) ? normPath(e) : normPath(`${st.cwd}/${e}`);
+};
+
+// The texts of $(...) and `...` in one linear pass (an unmatched opener is ignored).
+function substitutions(text) {
+  const out = [], stack = [];
+  for (let i = 0; i < text.length; i++) {
+    if ((i & 1023) === 0) tick();
+    const c = text[i];
+    if (c === "$" && text[i + 1] === "(") { stack.push(i + 2); i++; }
+    else if (c === ")" && stack.length) out.push(text.slice(stack.pop(), i));
+    else if (c === "`") {
+      const j = text.indexOf("`", i + 1);
+      if (j === -1) break;
+      out.push(text.slice(i + 1, j));
+      i = j;
+    }
+    if (out.length > 64) break;
+  }
+  return out;
+}
+
+export function analyzeDeletes(command, depth = 0, init = null) {
+  const r = { destructive: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] };
+  if (depth > 3 || typeof command !== "string") return r;
+  if (command.length > MAX_COMMAND) { r.unscoped = true; return r; }
+  const st = init ? { cwd: init.cwd, vars: { ...init.vars } } : { cwd: gateCtx.cwd || process.cwd(), vars: Object.create(null) };
+  const snap = () => ({ cwd: st.cwd, vars: st.vars });
+  const merge = (o) => { r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.cmds.push(...o.cmds); r.files.push(...o.files); };
+  const { text, code } = commandView(command, true);
+  const un = (t) => String(t).replace(/^"([\s\S]*)"$/, (_, x) => x.replace(/\\(["\\$`])/g, "$1")).replace(/^'([\s\S]*)'$/, "$1");
+  const stack = [];
+  const segment = (seg) => {
+    tick();
+    assignments(words(seg), st);
+    const { rest: tok, opaque } = stripPrefix(words(seg));
+    const d = shellDelete(tok);
+    if (d.recursive) r.destructive = true;
+    for (const t of d.targets) {
+      const p = resolveTarget(t, st);
+      if (p === null) { r.unscoped = true; continue; }
+      const v = homeVerdict(p, { recursive: d.recursive || d.strong, move: d.move });
+      if (v === "hard") r.hard ||= t;
+      else if (v === "go") r.unscoped = true;
+    }
+    // Overwriting a dotfile directly in home (commands with a write target, and `>` redirects).
+    const writes = [...(d.writes ?? [])];
+    const w = words(seg);
+    for (let i = 0; i < w.length; i++) {
+      const m = /^\d*>(?!>)\|?(.*)$/.exec(unqQ(w[i]));
+      if (m && !/^&/.test(m[1])) writes.push(m[1] || unqQ(w[i + 1] ?? ""));
+    }
+    for (const t of writes) {
+      const p = resolveTarget(t, st);
+      if (p !== null && isHomeDotfile(p)) r.unscoped = true;
+    }
+    const h = base(tok[0] ?? "");
+    // A sed/awk program that executes (`1e cmd`, system()) is read like an opaque command text.
+    if (h === "sed" || /^g?awk$/.test(h)) {
+      const prog = tok.slice(1).filter((t) => !t.startsWith("-")).map(unqQ).join(" ");
+      if ((h === "sed" ? SED_EXEC : AWK_EXEC).test(prog) && catchAll([prog], "", true)) r.unscoped = true;
+    }
+    if (/^(?:cd|pushd)$/.test(h)) st.cwd = cdTarget(tok, st);
+    if (opaque || /^(?:cmd(?:\.exe)?|pwsh|powershell)$/i.test(h)) merge(analyzeDeletes(innerText(tok), depth + 1, snap()));
+    if (FILE_HEAD.test(h) && (!opaque || /^(?:bash|sh|zsh|dash|ksh)$/.test(h))) {
+      const f = scriptFile(h, tok.slice(1).map(unqQ));
+      if (f.module && /rm|remov|delet|rimraf|trash|clean|purge|wipe/i.test(f.module)) r.unscoped = true;
+      if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""));
+      else if (f.file) r.files.push({ h, file: f.file, cwd: st.cwd });
+    }
+  };
+  for (const p of scanSplit(text)) {
+    if (p.t.trim()) segment(p.t.trim());
+    if (p.sep === "(") stack.push(st.cwd);
+    else if (p.sep === ")" && stack.length) st.cwd = stack.pop();
+  }
+  for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
+  const subs = substitutions(text);
+  if (subs.length > 64) r.unscoped = true; // too many to read within the budget
+  for (const s of subs.slice(0, 64)) merge(analyzeDeletes(unprep(s), depth + 1, snap()));
+  // Spawned command texts are analysed too (their own cmds are classified by commandScopes).
+  let seen = 0;
+  const drain = () => {
+    for (; seen < r.cmds.length; seen++) {
+      if (depth >= 3) continue;
+      const o = analyzeDeletes(r.cmds[seen], depth + 1, snap());
+      r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.files.push(...o.files);
+    }
+  };
+  drain();
+  // Script files are read last, and only when the shell text itself already holds no hard
+  // block: nothing is opened for a command that is refused anyway.
+  if (depth === 0) {
+    for (let n = 0; r.files.length && !r.hard; n++) {
+      if (n >= 16) { r.unscoped = true; break; }
+      const f = r.files.shift();
+      scriptInto(r, f.h, f.file, f.cwd);
+      drain();
+    }
+    r.files.length = 0;
+  }
+  return r;
+}
+
+export function hardBlockReason(command) {
+  // No time budget here: the hard pass is linear and runs first, so slow input can never skip it.
+  // Only the classification (commandScopes) falls back to unscoped when it runs out of time.
+  const hard = analyzeDeletes(command).hard;
+  return hard ? `Blocked by go-gate: HARD BLOCK, unconditional. This command deletes or moves away the home directory, the filesystem root or a top-level directory of home (target: ${hard}). No GO, grant, mode or token lifts this block. Stop now and report this command to the user; do not rephrase it or try another tool, language or route to the same effect.` : null;
 }
 
 const segGuarded = (seg) => { const c = classify(seg); return c === null || c.length > 0 || GUARDED_PATTERNS.some((r) => r.test(seg)); };
@@ -347,23 +1160,79 @@ function feedsShell(segs) {
   });
 }
 
+let nest = 0;
+const SEG_SPLIT = /(&&|\|\||\$\(|[;&|\n(){}\x60])/;
+const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|GIT_[A-Za-z0-9_]+)=|\bset\s+-[a-z]*a/;
+const TAINT_SUBS = /^(?:checkout|switch|branch|reset|symbolic-ref|update-ref|worktree|remote|config|stash|rebase|merge|pull|fetch|restore|clone|init|am|cherry-pick|revert)$/;
+const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|stat|file|test|\[|diff|cmp|realpath|dirname|basename|echo|printf)$/;
 export function commandScopes(command, protectedFor = staticResolver) {
+  if (nest > 3) return null;
+  nest++;
+  try { return withBudget(() => scopesOf(command, protectedFor), null); } finally { nest--; }
+}
+
+function scopesOf(orig, protectedFor) {
+  if (commandTooLong(orig)) return null;
   const out = new Set();
-  const segs = segments(command);
-  if (feedsShell(segs) && catchAll(tokens(String(command)), "", true)) return null;
-  for (const seg of segs) {
-    const s = classify(seg, protectedFor);
+  const segs = segments(orig);
+  const command = commandView(orig).text;
+  // Raw text on purpose: data that a later pipe stage turns into commands must stay visible.
+  if (feedsShell(segs) && catchAll(tokens(String(orig)), "", true)) return null;
+  // Repository state followed through the command, so a push is judged on what it will find:
+  // the cwd (cd/pushd; null = unresolvable; restored at `)`), and a taint once an earlier segment
+  // may have changed HEAD, the config or the branch (git checkout/branch/config/..., a write
+  // under .git/) or the command assigns HOME/XDG_CONFIG_HOME/GIT_* anywhere. A tainted bare or
+  // plain-name push is push-main; an explicit src:dst is still read on its own.
+  const view = commandView(orig).text;
+  const marked = view.replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " "));
+  const st = { cwd: gateCtx.cwd || process.cwd(), taint: ENV_CHANGE.test(view) };
+  const stack = [];
+  const outerCwd = segCwd, outerTaint = segTaint;
+  try {
+    const parts = marked.split(SEG_SPLIT);
+    for (let pi = 0; pi < parts.length; pi++) {
+      tick();
+      if (pi % 2 === 1) {
+        if (parts[pi] === "(" || parts[pi] === "$(") stack.push(st.cwd);
+        else if (parts[pi] === ")" && stack.length) st.cwd = stack.pop();
+        continue;
+      }
+      const seg = parts[pi].trim();
+      if (!seg) continue;
+      segCwd = st.cwd; segTaint = st.taint;
+      const s = classify(seg, protectedFor);
+      const tk = stripPrefix(tokens(seg)).rest, h = base(tk[0] ?? "");
+      if (seg.includes("\u0003")) st.taint = true;
+      if (h === "git" || h === "hub") {
+        let i = 1;
+        while ((tk[i] ?? "").startsWith("-")) i += GIT_VALUE_OPTS.test(unq(tk[i])) ? 2 : 1;
+        const sub = unq(tk[i] ?? "");
+        if (sub && (TAINT_SUBS.test(sub) || !GIT_BUILTINS.test(sub))) st.taint = true;
+      } else if (/^(?:cd|pushd)$/.test(h)) {
+        const arg = tk.slice(1).find((x) => !/^-[LPe@]+$/.test(unq(x)));
+        st.cwd = arg === undefined ? (gateCtx.home || homedir()) : resolveDir(st.cwd, arg);
+        if (st.cwd === null || /(?:^|\/)\.git(?:\/|$)/.test(st.cwd)) st.taint = true;
+      } else if (!READONLY_HEADS.test(h) && tk.some((x) => /(?:^|\/)\.git(?:\/|$)/.test(unqQ(x)))) st.taint = true;
+      if (s === null) return null;
+      if (!s.length && GUARDED_PATTERNS.some((r) => r.test(seg))) return null;
+      s.forEach((x) => out.add(x));
+    }
+  } finally { segCwd = outerCwd; segTaint = outerTaint; }
+  const a = analyzeDeletes(orig);
+  if (a.unscoped) return null;
+  if (a.destructive) out.add("destructive");
+  for (const c of a.cmds) {
+    const s = commandScopes(c, protectedFor);
     if (s === null) return null;
-    if (!s.length && GUARDED_PATTERNS.some((r) => r.test(seg))) return null;
     s.forEach((x) => out.add(x));
   }
-  if (!out.size && GUARDED_PATTERNS.some((r) => r.test(String(command)))) return null;
-  if (out.size && UNSAFE_COMPOUND.test(String(command))) return null;
+  if (!out.size && GUARDED_PATTERNS.some((r) => r.test(command))) return null;
+  if (out.size && UNSAFE_COMPOUND.test(command)) return null;
   return [...out];
 }
 
 export const isGuardedCommand = (command) =>
-  typeof command === "string" && (GUARDED_PATTERNS.some((r) => r.test(command)) || (commandScopes(command) ?? [1]).length > 0);
+  typeof command === "string" && (commandTooLong(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
 
 // ---------------------------------------------------------------------------
 // Grant store protection (Bash side; Write/Edit side is env-file-protection).
@@ -379,10 +1248,12 @@ const STORE_REF = /\.aos[/,\s+]+(?:\.[/]+)*(?:gate|go)(?![\w.-])|\.aos\/+[^\s/]*
 export function gateStoreReason(command) {
   if (typeof command !== "string") return null;
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
-  if (!STORE_REF.test(norm)) return null;
+  // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
+  const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
+  if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
   // `>` covers redirects and `>(`; `<(` and `$(`/backticks run commands of their own.
   const readOnly = !/[>\x60]|\$\(|<\(/.test(norm) &&
-    norm.split(/&&|\|\||[;|&\n]/).every((s) => /^\s*(?:cat|ls|grep|head|tail)\b/.test(s));
+    norm.split(/&&|\|\||[;|&\n]/).every((s) => /^\s*(?:cat|ls|grep|head|tail|cd)\b/.test(s));
   return readOnly ? null : "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail is allowed.";
 }
 
@@ -391,7 +1262,41 @@ function readStdin() {
   return readFileSync(0, "utf8");
 }
 
-function respond(isAgy, allowed, reason = "", command = "") {
+// Block cooldown: the first block of a session writes <gate dir>/<session key>.block. For 10
+// minutes after it, a script file written later than the block needs a GO whatever it holds
+// (an agent that was just stopped must not write a new script and run it). The marker is
+// not renewed inside its window, so repeated blocks cannot age a script past it.
+let blockKey = "";
+const blockFile = (key) => join(gateDir(), `${key}.block`);
+export function readBlockTs(key) {
+  // A marker from the future (a forged or skewed ts) counts as written now, never as later.
+  try { return Math.min(Number(JSON.parse(readFileSync(blockFile(key), "utf8")).ts) || 0, Date.now()); } catch { return 0; }
+}
+export function markBlock(key, now = Date.now()) {
+  if (!key || now - readBlockTs(key) < COOLDOWN_MS) return;
+  try {
+    mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
+    writeFileSync(blockFile(key), JSON.stringify({ ts: now }), { mode: 0o600 });
+  } catch { /* the cooldown is best effort; the block itself already holds */ }
+}
+
+// Cooldown key: the session id; without one (Antigravity, other hosts) a conversation id, else
+// the transcript path, else the cwd, each prefixed so it never collides with a real session id.
+// A host that sends none of these has no cooldown.
+export const nameKey = (name) => sessionKey(`name-${slug(String(name ?? ""))}`);
+function hookBlockKey(input, isAgy) {
+  const pick = [!isAgy && input.session_id, input.conversationId, input.transcript_path, input.transcriptPath, input.cwd].find((v) => typeof v === "string" && v);
+  if (!pick) return "";
+  return pick === input.session_id && !isAgy ? sessionKey(pick) : sessionKey(`x-${pick}`);
+}
+
+function respond(isAgy, allowed, reason = "", command = "", hard = false) {
+  if (!allowed) markBlock(blockKey);
+  if (hard) {
+    console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
+    process.stderr.write(`${reason}\n`);
+    process.exit(isAgy ? 0 : 2);
+  }
   if (isAgy) {
     if (allowed) {
       console.log(JSON.stringify({ decision: "allow" }));
@@ -526,6 +1431,7 @@ const ghPrTarget = (seg) => {
 export function goAllows(go, command) {
   if (!go?.ok) return false;
   if (!go.prs) return true;
+  if (commandTooLong(command)) return false;
   if (commandScopes(command) === null) return false; // something in it cannot be classified
   let guardedSeen = false;
   for (const seg of segments(command)) {
@@ -961,27 +1867,52 @@ function main() {
   // Detect harness
   const isAgy = !!(input?.toolCall || input?.conversationId || input?.artifactDirectoryPath || input?.workspacePaths);
 
-  const command =
+  // File-writing tools carry content, never a command.
+  if (/^(?:write|edit|multiedit|notebookedit|apply_patch|patch|create|str_replace\w*)$/i.test(String(input?.tool_name ?? ""))) {
+    respond(isAgy, true);
+    return;
+  }
+
+  const raw =
     input?.toolCall?.args?.CommandLine ||
     input?.toolCall?.args?.command ||
     input?.tool_input?.command ||
     input?.command ||
     "";
-
-  if (typeof command !== "string" || !command.trim()) {
+  // An argv array is joined like aos-acp does; any other non-string value is refused.
+  const command = Array.isArray(raw) ? raw.join(" ") : raw;
+  if (typeof command !== "string") {
+    respond(isAgy, false, "command in hook input is not a string; the gate cannot read it (ask for GO)", "");
+    return;
+  }
+  if (!command.trim()) {
     respond(isAgy, true);
     return;
   }
 
-  const storeReason = gateStoreReason(command);
-  if (storeReason) {
-    respond(isAgy, false, storeReason, command);
-    return;
-  }
+  blockKey = hookBlockKey(input, isAgy);
+  setGateContext({ cwd: typeof input.cwd === "string" ? input.cwd : "", blockTs: blockKey ? readBlockTs(blockKey) : 0 });
 
-  if (!isGuardedCommand(command)) {
-    respond(isAgy, true);
-    return;
+  // Over the length cap nothing is parsed: it is guarded, only a GO lifts it, and it is not a hard block.
+  const tooLong = commandTooLong(command);
+  if (!tooLong) {
+    // Unconditional: before any GO, grant, mode or token is looked at.
+    const hardReason = hardBlockReason(command);
+    if (hardReason) {
+      respond(isAgy, false, hardReason, command, true);
+      return;
+    }
+
+    const storeReason = gateStoreReason(command);
+    if (storeReason) {
+      respond(isAgy, false, storeReason, command);
+      return;
+    }
+
+    if (!isGuardedCommand(command)) {
+      respond(isAgy, true);
+      return;
+    }
   }
 
   const transcriptPath = input?.transcriptPath || input?.transcript_path;
@@ -997,10 +1928,13 @@ function main() {
   const go = lastUserMessageIsGo(transcriptPath);
   if (goAllows(go, command)) return respond(isAgy, true, "", command);
   const reasons = [go.ok ? "a GO with PR numbers covers only gh pr merge/edit/close/review/comment for those PRs; type a plain GO" : go.reason];
+  const cooling = analyzeDeletes(command).cooldown;
+  if (cooling) reasons.unshift(COOLDOWN_MESSAGE);
+  if (tooLong) reasons.unshift(TOO_LONG_MESSAGE);
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).
   const key = !isAgy && input.session_id ? sessionKey(input.session_id) : "";
-  if (key) {
+  if (key && !cooling && !tooLong) {
     const eff = effectiveGate(key, { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
     for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
     if (eff.mode === "off") {

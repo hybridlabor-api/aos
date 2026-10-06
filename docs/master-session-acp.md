@@ -2,6 +2,10 @@
 
 Status: `bin/aos-acp.mjs` ships. Facts below are tagged **[verified]** (checked against the ACP v1 schema, the adapter repos, or a live run on 2026-10-01) or **[open]**.
 
+## Install and PATH
+
+`aos-acp` is in `package.json` `bin`, and the installer writes a launcher to `~/.local/bin/aos-acp` (plus `.cmd` and `.ps1` on Windows) that runs `~/.agents/bin/aos-acp.mjs`. `bin/` is copied to `~/.agents/bin`, so the script cannot import `../.claude/hooks`: it loads `go-gate.mjs` and `trail.mjs` from the repo layout first, then from `~/.aos/bin` (installed by the same step as `go-check`), and refuses to run if the gate cannot be found. `aos-acp --help` prints usage and exits 0. `aos-doctor` checks the launcher on PATH and `~/.aos/bin`. Before this was fixed the installer wired no launcher and the installed copy failed on its imports. aos-acp is an ACP client, not a harness plugin: nothing registers it with an agent or editor.
+
 ## Goal
 
 Let a master session (`skills/basic/master-session/SKILL.md`) start and steer Codex, OpenCode and Claude workers **without the AO daemon**, by acting as an ACP client itself. The AO daemon stays optional.
@@ -49,6 +53,7 @@ The same run is also posted to agenttrail with mcsc's protocol (`mcps/mcsc/packa
 - Codex live run not verified (auth). With `OPENAI_API_KEY` or a ChatGPT login it should pass the same smoke.
 - The Claude token path end to end needs the installed `~/.claude/hooks/go-gate.mjs` to be the version with `tokenGrantsGo` (installer copies it); the copy on the test machine predates it, so the live chain was only verified up to "the hook fires inside the SDK session".
 - OpenCode token path end to end needs the installed plugin updated; verified by unit test only.
+- ACP client registries (Zed and similar) list ACP agents, which an editor drives as a client. `aos-acp` is itself a client and exposes no agent, so there is nothing to register there. Not checked against any registry's current rules.
 - Neither live adapter sent `session/request_permission` for a shell command in the smoke runs (the inner gate answered first); the mapping is covered by the fake-agent tests.
 - One `aos-acp` process per worker; no resume (`session/load`) and no concurrency cap yet.
 

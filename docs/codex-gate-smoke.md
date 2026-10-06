@@ -36,6 +36,21 @@ The `CODEX_HOME` variable and the `-C` flag of `codex exec` are assumed from gen
 
 ## Results
 
+## Delete hard block and block cooldown (same classifier everywhere)
+
+- Deleting, moving away or `rsync --delete`-ing `/`, the home directory or a direct child of it is blocked unconditionally by `hardBlockReason` in `go-gate.mjs`; no GO, grant, mode or token lifts it. The Claude hook, the OpenCode plugin, `aos-acp` (Codex over ACP) and `go-check` all call it.
+- After a block, a script file written later than the block needs a fresh GO for 10 minutes. The marker is `~/.aos/gate/<key>.block`. Keys: Claude hook = session id (else conversation id, transcript path or cwd, prefixed `x-`); OpenCode = the OpenCode session id; `aos-acp` and `go-check` = the worker name (`--name` / `--session`). A host that sends no stable key (a hook input without session id, transcript path and cwd) has no cooldown.
+- Limits: an agent can backdate a script (`touch -t`), run a script written before the block, or remove the marker through a path built at run time (literal paths into `~/.aos/gate` are hard-blocked).
+
+## Known limits of the gate
+
+- The pattern gate is a tripwire, not a security boundary. It stops accidents and obvious routes, not an agent that is trying to get around it.
+- Indirections are not covered: `eval`, `awk system()`, `source`, commands piped into a shell's stdin from a file, `npm run`, `make`, and code that builds a command at run time. Code that decodes or evals a built string is classified as unscoped (needs a GO), nothing more.
+- A GO can be forged by an agent that writes its own transcript or the `~/.aos` token and grant files. The hook cannot tell a forged entry from a real one.
+- Push scopes read the git config files directly (system, XDG, `~/.gitconfig` of the OS user, repo, `config.worktree`; no `include`). Tests point that lookup at a temp home with `AOS_GATE_TEST_REALHOME`, which the gate honours only when `AOS_TEST_SANDBOX` or `NODE_TEST_CONTEXT` is set; production always uses the OS user's home.
+- Analysis runs under a 150 ms budget: past it a command is unscoped (guarded, GO needed). The hard-block pass has no budget and runs first.
+- Real protection needs a separate OS user or a sandbox. Policy summary: recursive delete or move of home, `/` or a top-level directory of home is a hard block; one file directly in home and overwriting a dotfile there need a GO (not grantable); a command over 16 KB needs a GO.
+
 | Step | Date | Codex version | Result |
 |---|---|---|---|
 | exec-fires | | | UNVERIFIED |
