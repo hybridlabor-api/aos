@@ -25,6 +25,11 @@
 #   A2A_E2E_ROOT       repo root. Default: three levels up from this script.
 #   A2A_E2E_TIMEOUT    deadline in seconds for every wait. Default: 60.
 #                      Raise it for live harness turns (claude/agy/codex).
+#   A2A_E2E_CLAUDE_BUSY_SECONDS  busy window (seconds, default 45) of every
+#                      busy claude turn. Before the agy-orchestrator turn,
+#                      ensure_claude_busy uses max(that, 240) so the busy
+#                      window survives the whole slow agy turn if a fresh
+#                      turn must be started.
 #   A2A_E2E_AGY=1      enable the agy legs (#live-ring + #agy-orch-check) and
 #                      launch the agy sidecar itself before the ring:
 #                      `aos-a2a serve --name e2e-agy --mode agy` with cwd
@@ -92,7 +97,7 @@ CODEX_ENABLED="${A2A_E2E_CODEX:-0}" # 1 = codex legs on
 AGY_TIMEOUT="${A2A_E2E_AGY_TIMEOUT:-900}"
 CODEX_TIMEOUT="${A2A_E2E_CODEX_TIMEOUT:-300}"
 
-show_usage() { sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; }
+show_usage() { sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'; }
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -124,10 +129,12 @@ if [ "$DRY_RUN" = 0 ]; then
   CL_WORK_DIR="$TMP_DIR/claude-project"
   AGY_WORK_DIR="$TMP_DIR/agy-worker"
 fi
-# Claude turns are kept busy (`sleep 45`, see check_item1) so an inbound probe
-# can be delivered inside the turn window; their deadline is max(TIMEOUT, 90).
+# Claude turns are kept busy (`sleep $A2A_E2E_CLAUDE_BUSY_SECONDS`, default 45,
+# see start_busy_claude_turn) so an inbound probe can be delivered inside the
+# turn window; their deadline is max(TIMEOUT, 90).
 CL_TURN_TIMEOUT="$A2A_E2E_TIMEOUT"
 if [ "$CL_TURN_TIMEOUT" -lt 90 ]; then CL_TURN_TIMEOUT=90; fi
+CL_BUSY_SECONDS="${A2A_E2E_CLAUDE_BUSY_SECONDS:-45}"
 # Per-turn deadline override read by wait_logged (claude turns only).
 TURN_TIMEOUT_CURRENT=""
 
@@ -194,10 +201,18 @@ send_check() { # send_check <check-name> <from> <to> <expect> <text>
     "$CODEX_SESSION") to_timeout="$CODEX_TIMEOUT" ;;
     *) to_timeout="$TIMEOUT" ;;
   esac
-  # Run-10 evidence: the busy claude turn can end before a send targets
-  # e2e-claude ("no live registry entry" / "fetch failed"), so make sure the
-  # sidecar is up AND answering before every claude-targeted send.
-  if [ "$to" = "$CL_SESSION" ]; then ensure_claude_busy || true; fi
+  # Run-11 evidence: the registry entry for e2e-claude can OUTLIVE the busy
+  # claude turn by a few seconds (the sidecar exits via --parent-pid polling
+  # while its HTTP server is already unreachable; the send then dies with
+  # "aos-a2a: fetch failed"), so before every claude-targeted send verify the
+  # sidecar is up AND answering (ensure_claude_busy; it reports FAIL
+  # claude-window itself, so skip the leg instead of failing twice).
+  if [ "$to" = "$CL_SESSION" ]; then
+    if ! ensure_claude_busy; then
+      skip "$name" "e2e-claude sidecar not reachable before the send (see FAIL claude-window above)"
+      return 0
+    fi
+  fi
   # Run-10 evidence: a timeout on a codex-targeted send is usually NOT the
   # script or sidecar but the Codex session itself (queue is only answered
   # while the session is open and resumed); say so in every failure for it.
@@ -367,13 +382,14 @@ start_codex_sidecar() { # requires $A2A_E2E_CODEX_THREAD; FAILs if never registe
 # at startup; the opencode.json `plugin` array is for npm packages.
 oc_log_tail() { tail -n 20 "$1" 2>/dev/null | tr '\n' ' '; }
 
-# start_busy_claude_turn <logfile>: launches ONE busy claude turn exactly
-# like check_item1's (same launch env, same 45 s sleep window, captured PID)
-# and waits until $CL_SESSION is registered. Returns wait_for's status; the
+# start_busy_claude_turn <logfile> [busy-seconds]: launches ONE busy claude
+# turn exactly like check_item1's (same launch env, sleep <busy-seconds> window,
+# default $CL_BUSY_SECONDS = A2A_E2E_CLAUDE_BUSY_SECONDS, captured PID) and
+# waits until $CL_SESSION is registered. Returns wait_for's status; the
 # caller reports pass/fail with its own name.
-start_busy_claude_turn() { # start_busy_claude_turn <logfile>
-  local log="$1"
-  local busy_prompt='Keep this turn busy: first run sleep 45 via the Bash tool, then say done. If sleep is not permitted, instead write a 1000-word essay on bash quoting, then say done.'
+start_busy_claude_turn() { # start_busy_claude_turn <logfile> [busy-seconds]
+  local log="$1" busy="${2:-$CL_BUSY_SECONDS}"
+  local busy_prompt="Keep this turn busy: first run sleep ${busy} via the Bash tool, then say done. If sleep is not permitted, instead write a 1000-word essay on bash quoting, then say done."
   run_claude "$busy_prompt" "$log"
   wait_for "$CL_SESSION"
 }
@@ -383,32 +399,78 @@ start_busy_claude_turn() { # start_busy_claude_turn <logfile>
 CLAUDE_MISSING=0
 need claude || CLAUDE_MISSING=1
 
-# ensure_claude_busy: run-8/run-10 evidence — a busy claude turn from an
-# earlier item may have already ended by the time a send targets e2e-claude,
-# so the sidecar is not registered ("no live registry entry"). Call this
-# immediately before EVERY send that targets $CL_SESSION. It starts a fresh
-# busy turn (same launch and sleep window as item 1, captured PID) when no
-# registry entry exists, then verifies the sidecar actually ANSWERS: the
-# agent card URL is taken from the registry line and curled directly (no
-# proxy). If it does not answer within TIMEOUT, the busy turn is restarted
-# ONCE. Callable from ring_checks AND ring_agy_turn.
-ensure_claude_busy() {
-  if [ "$CLAUDE_MISSING" = 1 ]; then return 0; fi
-  [ -z "$(reg_line_for "$CL_SESSION")" ] &&
-    start_busy_claude_turn "$TMP_DIR/claude-busy-restart.log" || true
-  if ! wait_for "$CL_SESSION"; then return 1; fi
-  local url t0
-  url="$(reg_line_for "$CL_SESSION" | grep -oE 'https?://[^[:space:]]+' | head -n 1)"
+# claude_card_url: cardUrl of the $CL_SESSION registry entry, taken from
+# `aos-a2a list --json` and parsed with node -e (no jq dependency). Prints
+# nothing when the entry or its cardUrl cannot be found.
+claude_card_url() {
+  node "$A2A_BIN" list --json 2>/dev/null | node -e '
+    const sess = process.argv[1];
+    let raw = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", d => { raw += d; });
+    process.stdin.on("end", () => {
+      let json;
+      try { json = JSON.parse(raw); } catch (e) { return; }
+      let entry = null;
+      (function scan(x) {
+        if (Array.isArray(x)) { x.forEach(scan); return; }
+        if (x && typeof x === "object") {
+          if ((x.name === sess || x.session === sess) && !entry) entry = x;
+          Object.values(x).forEach(scan);
+        }
+      })(json);
+      if (!entry) return;
+      const url = entry.cardUrl || entry.cardURL || entry.card_url || entry.agentCardUrl || entry.url;
+      if (typeof url === "string" && url) console.log(url);
+    });
+  ' "$CL_SESSION"
+}
+
+# claude_ready: success (0) iff the registry line for $CL_SESSION exists AND
+# an HTTP GET of that entry's cardUrl returns 200. Catches the run-11 race
+# where a registry line lingers a few seconds after the busy `claude -p` turn
+# ended (sidecar exits via --parent-pid polling) while the HTTP server is
+# already unreachable (connection refused / "fetch failed").
+claude_ready() {
+  [ -n "$(reg_line_for "$CL_SESSION")" ] || return 1
+  local url code
+  url="$(claude_card_url)"
   [ -n "$url" ] || return 1
+  code="$(curl -s --noproxy '*' --max-time 3 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)" || return 1
+  [ "$code" = 200 ]
+}
+
+CLAUDE_WINDOW_FAILED=0
+# ensure_claude_busy [busy-seconds]: run-8/run-10/run-11 evidence — a busy
+# claude turn from an earlier item may have just ended by the time a send
+# targets $CL_SESSION, and (run-11) its registry entry can linger a few
+# seconds while the HTTP server is already gone ("fetch failed"), so registry
+# presence alone is NOT enough. Steps:
+#   1. claude_ready -> return 0 (sidecar registered AND answering HTTP 200).
+#   2. else start a fresh busy turn (start_busy_claude_turn, captured PID,
+#      busy window = the argument, default A2A_E2E_CLAUDE_BUSY_SECONDS,
+#      before the agy-orchestrator turn max(that, 240)), wait_for the entry,
+#      then loop up to 15 s until claude_ready.
+#   3. still not ready: print "FAIL claude-window: e2e-claude sidecar not
+#      reachable" once (flagged via CLAUDE_WINDOW_FAILED, so repeated calls
+#      do not print it again) and return non-zero.
+# Callable from ring_checks AND ring_agy_turn (top level, never a subshell).
+ensure_claude_busy() { # ensure_claude_busy [busy-seconds]
+  if [ "$CLAUDE_MISSING" = 1 ]; then return 0; fi
+  if [ "$CLAUDE_WINDOW_FAILED" = 1 ]; then return 1; fi
+  if claude_ready; then return 0; fi
+  start_busy_claude_turn "$TMP_DIR/claude-busy-restart.log" "${1:-$CL_BUSY_SECONDS}" || true
+  wait_for "$CL_SESSION" || true
+  local t0
   t0=$(date +%s)
   while :; do
-    if curl -sf --noproxy '*' --max-time 5 -o /dev/null "$url" 2>/dev/null; then return 0; fi
-    if [ "$(( $(date +%s) - t0 ))" -ge "$TIMEOUT" ]; then break; fi
+    if claude_ready; then return 0; fi
+    if [ "$(( $(date +%s) - t0 ))" -ge 15 ]; then break; fi
     sleep 2
   done
-  # Registered but not answering: restart the busy turn once, then re-check.
-  start_busy_claude_turn "$TMP_DIR/claude-busy-restart-2.log" || true
-  curl -sf --noproxy '*' --max-time 5 -o /dev/null "$url" 2>/dev/null
+  CLAUDE_WINDOW_FAILED=1
+  fail "claude-window" "e2e-claude sidecar not reachable"
+  return 1
 }
 
 check_item1() {
@@ -646,10 +708,14 @@ ring_agy_turn() {
     worker_proxy_env="HTTPS_PROXY=$A2A_E2E_PROXY HTTP_PROXY=$A2A_E2E_PROXY ALL_PROXY=$A2A_E2E_PROXY "
   fi
   mkdir -p "$AGY_WORK_DIR/agy-worker"
-  # The prompt-level sends target the OpenCode and Claude sessions; before the
-  # turn starts, make sure the e2e-claude sidecar is up and answering so the
-  # claude leg is not delivered into an ended turn (run-10 evidence).
-  ensure_claude_busy || true
+  # Run-11 evidence: the agy turn runs for minutes, so before it starts make
+  # sure the e2e-claude sidecar is up AND answering — with a busy window long
+  # enough for the whole agy turn when a fresh busy turn must be started:
+  # max(A2A_E2E_CLAUDE_BUSY_SECONDS, 240). A failure is reported by
+  # ensure_claude_busy itself (FAIL claude-window) and printed only once.
+  local agy_cl_busy="$CL_BUSY_SECONDS"
+  if [ "$agy_cl_busy" -lt 240 ]; then agy_cl_busy=240; fi
+  ensure_claude_busy "$agy_cl_busy" || true
   idx_prompt="Do these three shell steps in order. After each step print its output followed by the marker in parentheses:
 1) aos-a2a send --to $OC_SESSION \"agy orchestrator probe.\" --timeout $TIMEOUT (marker ZC-AGY-OC-OK)
 2) aos-a2a send --to $CL_SESSION \"agy orchestrator probe.\" --timeout $TIMEOUT (marker ZC-AGY-CL-OK)
@@ -761,15 +827,15 @@ dry_run_plan() {
   echo "     parse http://127.0.0.1:<port> from the serve log, then create the session over the HTTP API (https://opencode.ai/docs/server):"
   echo "       curl -sf --noproxy '*' -X POST http://127.0.0.1:<port>/session -H 'content-type: application/json' -d '{\"title\":\"$OC_SESSION\"}'"
   echo "     then wait until $OC_SESSION appears in 'aos-a2a list'; on failure FAIL with the last 20 serve-log lines."
-  echo "  5. item 1: the busy claude turn, so its SessionStart-hook sidecar (AOS_A2A_NAME=$CL_SESSION) stays registered while item 2 sends:"
-  echo "       cd $ROOT_PLACEHOLDER && env AOS_A2A_NAME=$CL_SESSION CLAUDE_PROJECT_DIR=$ROOT_PLACEHOLDER claude -p 'Keep this turn busy: first run sleep 45 via the Bash tool, then say done. If sleep is not permitted, instead write a 1000-word essay on bash quoting, then say done.' --output-format text${A2A_E2E_MODEL:+ --model $A2A_E2E_MODEL}"
+  echo "  5. item 1: the busy claude turn, so its SessionStart-hook sidecar (AOS_A2A_NAME=$CL_SESSION) stays registered while item 2 sends; busy window = A2A_E2E_CLAUDE_BUSY_SECONDS (default 45):"
+  echo "       cd $ROOT_PLACEHOLDER && env AOS_A2A_NAME=$CL_SESSION CLAUDE_PROJECT_DIR=$ROOT_PLACEHOLDER claude -p 'Keep this turn busy: first run sleep ${A2A_E2E_CLAUDE_BUSY_SECONDS:-45} via the Bash tool, then say done. If sleep is not permitted, instead write a 1000-word essay on bash quoting, then say done.' --output-format text${A2A_E2E_MODEL:+ --model $A2A_E2E_MODEL}"
   echo "     then wait until $CL_SESSION appears in 'aos-a2a list'."
   echo "  6. item 2: 'aos-a2a send --from $OC_SESSION --to $CL_SESSION \"What is 2+3?...\"' --timeout $TIMEOUT; assert COMPLETED with artifact containing 5."
   echo "  7. item 3: a claude turn is prompted to run the Bash call 'aos-a2a send --to $OC_SESSION \"What is 3+4?...\"'; assert the log contains TASK_STATE_COMPLETED and the expected probe answer text (e.g. N1Z-OK); the trailing marker line is advisory only; if the send call never ran, report as a hook/permission-settings failure, not a timeout. Exact claude turn launch:"
   echo "       cd $ROOT_PLACEHOLDER && env AOS_A2A_NAME=$CL_SESSION CLAUDE_PROJECT_DIR=$ROOT_PLACEHOLDER claude -p '<nonce probe text> ... aos-a2a send --to $OC_SESSION \"<probe>\"' --output-format text --allowedTools 'Bash(aos-a2a send:*)'"
   echo "  8. item 4: 'node bin/go-check.mjs --session $CL_SESSION --command \"git push\"' WITHOUT --consume; capture exit code and output separately; assert exit 1 and ok:false; then send the A2A message 'GO $CL_SESSION' to that session and assert exit 1 and ok:false again."
-  echo "  9. #live-ring (agy legs need A2A_E2E_AGY=1, codex legs A2A_E2E_CODEX=1; A2A_E2E_AGY_TIMEOUT defaults to 900 s, A2A_E2E_CODEX_TIMEOUT to 300 s): a claude turn sends claude->agy (What is 4+4?, --timeout ${AGY_TIMEOUT}s) and claude->codex (What is 5+5?, --timeout ${CODEX_TIMEOUT}s); turn deadline = max(CL_TURN_TIMEOUT, A2A_E2E_AGY_TIMEOUT + A2A_E2E_CODEX_TIMEOUT = $(( AGY_TIMEOUT + CODEX_TIMEOUT ))s); before every ring send that targets e2e-claude, ensure_claude_busy runs (fresh busy turn if not registered, then a registry-agent-card curl with no proxy; one restart if it does not answer); aos-a2a sends for opencode->claude (5), claude->opencode (7), and when agy/codex enabled: agy<->opencode (6/6, timeout ${AGY_TIMEOUT}s toward agy), agy->claude (7+7=14), codex->claude (9), claude->codex (10, --timeout ${CODEX_TIMEOUT}s; its failure message notes: codex session must be open and resumed, not only listed in the resume picker; thread=\$A2A_E2E_CODEX_THREAD); every ordered pair at least once."
-  echo " 10. #agy-orch-check (A2A_E2E_AGY=1 and agy present, else SKIP; ${A2A_E2E_AGY_YOLO:+--dangerously-skip-permissions [A2A_E2E_AGY_YOLO=1]}${A2A_E2E_AGY_YOLO:-no skip-permissions flag}): one agy turn, invoked as 'agy --print \"<prompt>\"' with cwd=<TMP>/agy-worker (prompts are read only from -p/--print or stdin; a bare positional prompt is ignored), turn deadline A2A_E2E_AGY_TIMEOUT=${AGY_TIMEOUT}s: one agy turn sends to the OpenCode session and the Claude session (third send preceded in setup by ensure_claude_busy), then starts one OpenCode worker via 'aos-acp opencode --name e2e-agy-worker --cwd <tmp>/agy-worker --prompt \"Reply with the number 3 only.\" --allow-default allow --go-wait 600 --timeout 1800'."
+  echo "  9. #live-ring (agy legs need A2A_E2E_AGY=1, codex legs A2A_E2E_CODEX=1; A2A_E2E_AGY_TIMEOUT defaults to 900 s, A2A_E2E_CODEX_TIMEOUT to 300 s): a claude turn sends claude->agy (What is 4+4?, --timeout ${AGY_TIMEOUT}s) and claude->codex (What is 5+5?, --timeout ${CODEX_TIMEOUT}s); turn deadline = max(CL_TURN_TIMEOUT, A2A_E2E_AGY_TIMEOUT + A2A_E2E_CODEX_TIMEOUT = $(( AGY_TIMEOUT + CODEX_TIMEOUT ))s); before every send that targets e2e-claude, ensure_claude_busy runs claude_ready (registry entry present AND HTTP 200 on its cardUrl taken from 'aos-a2a list --json', parsed with node -e); not ready -> fresh busy turn (window A2A_E2E_CLAUDE_BUSY_SECONDS, default 45), then poll claude_ready for up to 15 s; still not ready -> 'FAIL claude-window: e2e-claude sidecar not reachable' once and the leg SKIPs (run-11 evidence: the registry entry can outlive the ended busy turn while its HTTP server is already unreachable); aos-a2a sends for opencode->claude (6), claude->opencode (7), and when agy/codex enabled: agy->opencode (6), agy->claude (7+7=14, preceded by ensure_claude_busy), codex->claude (9, preceded by ensure_claude_busy), claude->codex (10, --timeout ${CODEX_TIMEOUT}s; its failure message notes: codex session must be open and resumed, not only listed in the resume picker; thread=\$A2A_E2E_CODEX_THREAD); every ordered pair at least once."
+  echo " 10. #agy-orch-check (A2A_E2E_AGY=1 and agy present, else SKIP; ${A2A_E2E_AGY_YOLO:+--dangerously-skip-permissions [A2A_E2E_AGY_YOLO=1]}${A2A_E2E_AGY_YOLO:-no skip-permissions flag}): one agy turn, invoked as 'agy --print \"<prompt>\"' with cwd=<TMP>/agy-worker (prompts are read only from -p/--print or stdin; a bare positional prompt is ignored), turn deadline A2A_E2E_AGY_TIMEOUT=${AGY_TIMEOUT}s: one agy turn sends to the OpenCode session and the Claude session (third send, and the turn launch itself, preceded by ensure_claude_busy; when a fresh busy turn is needed its window is max(A2A_E2E_CLAUDE_BUSY_SECONDS, 240) = $(( ${A2A_E2E_CLAUDE_BUSY_SECONDS:-45} < 240 ? 240 : ${A2A_E2E_CLAUDE_BUSY_SECONDS:-45} ))s so it survives the whole slow agy turn), then starts one OpenCode worker via 'aos-acp opencode --name e2e-agy-worker --cwd <tmp>/agy-worker --prompt \"Reply with the number 3 only.\" --allow-default allow --go-wait 600 --timeout 1800'."
   echo " 11. cleanup: trap on EXIT/INT/TERM kills ONLY the PIDs this script captured (never pkill/killall); poll 'aos-a2a list --prune' up to 20 s (sleep 1) until empty before asserting (the opencode sidecar exits via --parent-pid polling within ~5-10 s); compare a shasum over the sorted file list of ~/.config/opencode against the snapshot taken at start (read-only; SKIP if that dir does not exist). No rm anywhere; temp files are left in place and their path is printed."
   echo " 12. print PASS/FAIL/SKIP line per check and a summary with counts; exit non-zero if any FAIL."
   echo " 13. ring-leg sidecars, started BEFORE item 1:"
