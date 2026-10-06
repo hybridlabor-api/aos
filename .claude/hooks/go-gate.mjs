@@ -56,7 +56,7 @@ import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir, userInfo } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Command start: line/separator/subshell start, then optional wrappers (sudo/env/command/
@@ -437,16 +437,26 @@ function ghApiScopes(args, protectedFor) {
   }
   const write = GH_WRITE.has(method) || (method === "" && (fields.size > 0 || input));
   if (!write) return [];
-  const m = /^repos\/[^/]+\/[^/]+\/(.+)$/.exec(endpoint.replace(/^https?:\/\/[^/]+\//, "").replace(/^\/+/, "").replace(/[?#].*$/, ""));
-  if (!m) return ["github-write"];
-  const p = m[1], prot = protectedFor("");
+  const ep = endpoint.replace(/^https?:\/\/[^/]+\//, "").replace(/^\/+/, "").replace(/[?#].*$/, "");
+  // GraphQL: a mutation that moves or merges a ref, or one whose text is not readable here.
+  if (/^graphql$/i.test(ep)) {
+    const unreadable = input || [...fields.values()].some((v) => /^@/.test(v));
+    return unreadable || /\b(?:updateRef|createRef|deleteRef|createCommitOnBranch|mergePullRequest|mergeBranch|updateBranchProtectionRule)\b/.test(args.join(" ")) ? ["push-main"] : ["github-write"];
+  }
+  const m = /^(?:repos\/([^/]+)\/([^/]+)|repositories\/(\d+))\/(.+)$/.exec(ep);
+  // An endpoint that is not a literal repos/<o>/<r>/... path but holds a variable or substitution
+  // (or is missing) can name any repository path, so a write to it is push-main.
+  if (!m) return !ep || /[$`\u0001\u0002]/.test(ep) ? ["push-main"] : ["github-write"];
+  if (/[$`\u0001\u0002]/.test((m[1] ?? "") + (m[2] ?? ""))) return ["push-main"];
+  const p = m[4], prot = protectedFor("");
   const bad = (name) => {
     if (!name) return true;
     let n = name;
     try { n = decodeURIComponent(n); } catch { return true; }
-    return /[$`{}*\\\u0004\u0005]/.test(n) || n.startsWith("-") || n.startsWith(".") || /^head$/i.test(n) || isProtected(n.replace(/^refs\/heads\//, ""), prot);
+    return /[$`{}*\\\u0004\u0005]/.test(n) || /^@/.test(n) || n.startsWith("-") || n.startsWith(".") || /^head$/i.test(n) || isProtected(n.replace(/^refs\/heads\//, ""), prot);
   };
   let q;
+  if (method === "PUT" && /^pulls\/[^/]+\/merge$/.test(p)) return ["merge"];
   if ((q = /^git\/refs\/heads\/(.+)$/.exec(p))) return bad(q[1]) ? ["push-main"] : ["github-write"];
   if (/^git\/refs\/(?:tags\/.+)$/.test(p)) return ["github-write"];
   if (/^git\/refs\/?$/.test(p)) {
@@ -759,7 +769,8 @@ const osHome = () => {
 };
 const pathSegs = (s) => String(s ?? "").split("/").filter((x) => x && x !== ".");
 const GLOB = /[*?{}[\]]/;
-const WILD_TAIL = /^(?:[.*?]*[*?][.*?]*|\.\[[^\]]*\]\*)$/;
+// A segment made only of glob syntax (`*`, `.*`, `??*`, `.[!.]*`, `[^.]*`, `[a-z]*`, `{*,.*}`).
+const WILD_TAIL = { test: (s) => /^[.*?]*[*?][.*?]*$/.test(String(s).replace(/\[[^\]]*\]|\{[*?.,]*\}/g, "*")) };
 
 // What a path is relative to the home directory, in every spelling (shell variables, ~, ~user,
 // /Users|/home|/root, C:\Users, the real home from the OS user database):
@@ -994,6 +1005,31 @@ function scriptFile(h, a) {
   return {};
 }
 
+// Installed tool locations. A script there is a tool someone installed, not code the agent just
+// wrote: only the home-level hard check applies to it, so a tool CLI with a delete subcommand
+// somewhere in its source (`token-saver uninstall`) is not "destructive" for every call.
+// Integrity guard: a file counts as installed only if it is older than the session's first block
+// or older than the cooldown, and its real path stays inside the trusted dir (no symlink out).
+// Limit: an agent can still backdate a file (touch -t) it was able to write into such a dir.
+function trustedDirs() {
+  const home = gateCtx.home || homedir();
+  const claude = gateCtx.claudeDir || process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+  return [
+    join(claude, "plugins", "cache"), join(home, ".agents"), join(home, ".gemini", "config"), join(home, ".local", "share"), join(home, ".local", "pipx"),
+    join(dirname(dirname(process.execPath)), "lib", "node_modules"), "/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules", "/opt/homebrew/Cellar", "/usr/local/Cellar",
+  ];
+}
+function installedScript(path, mtime) {
+  if (!(gateCtx.blockTs ? mtime < gateCtx.blockTs : false) && Date.now() - mtime <= COOLDOWN_MS) return false;
+  let real;
+  try { real = realpathSync(path); } catch { return false; }
+  return trustedDirs().some((d) => {
+    let rd;
+    try { rd = realpathSync(d); } catch { return false; }
+    return (path === d || path.startsWith(d + sep) || path.startsWith(rd + sep)) && real.startsWith(rd + sep);
+  });
+}
+
 function scriptInto(r, h, file, cwd) {
   const path = resolve(expandHome(cwd), expandHome(file));
   let st, mtime;
@@ -1017,8 +1053,13 @@ function scriptInto(r, h, file, cwd) {
       body = buf.toString("utf8", 0, n);
     } finally { closeSync(fd); }
   } catch { r.unscoped = true; return; }
-  if (/^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i.test(h)) r.cmds.push(body);
-  else codeInto(r, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
+  const t = installedScript(path, mtime) ? { destructive: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] } : r;
+  if (/^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i.test(h)) t.cmds.push(body);
+  else codeInto(t, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
+  if (t !== r) {
+    r.hard ||= t.hard;
+    for (const c of t.cmds) r.hard ||= analyzeDeletes(c, 1).hard;
+  }
 }
 
 // Text a shell/eval/xargs/cmd/pwsh runs, from its tokens (after prefix stripping).
@@ -1274,6 +1315,8 @@ function scopesOf(orig, protectedFor) {
       s.forEach((x) => out.add(x));
     }
   } finally { segCwd = outerCwd; segTaint = outerTaint; }
+  // The view blanks quoted text, so a GraphQL mutation that moves or merges a ref is read on the raw command.
+  if (/\bgh\b[\s\S]*?\bapi\b[\s\S]*?\bgraphql\b/.test(orig) && /\b(?:updateRef|createRef|deleteRef|createCommitOnBranch|mergePullRequest|mergeBranch|updateBranchProtectionRule)\b/.test(orig)) { out.delete("github-write"); out.add("push-main"); }
   const a = analyzeDeletes(orig);
   if (a.unscoped) return null;
   if (a.destructive) out.add("destructive");
@@ -1346,8 +1389,11 @@ function hookBlockKey(input, isAgy) {
   return pick === input.session_id && !isAgy ? sessionKey(pick) : sessionKey(`x-${pick}`);
 }
 
+const TEST_RUN = /\bnode(?:js)?\s+(?:-\S+\s+)*--test\b|\bnpm\s+(?:run\s+)?test\b|\bnpx\s+(?:-\S+\s+)*(?:vitest|jest|mocha)\b|\bpytest\b/i;
+export const TEST_HINT = "Test runs: use the Docker container (AOS_TEST_SANDBOX=container), see docs/codex-gate-smoke.md";
 function respond(isAgy, allowed, reason = "", command = "", hard = false) {
   if (!allowed) markBlock(blockKey);
+  if (!allowed && !hard && TEST_RUN.test(command)) reason = `${reason} ${TEST_HINT}`.trim();
   if (hard) {
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
     process.stderr.write(`${reason}\n`);
