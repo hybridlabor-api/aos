@@ -28,6 +28,7 @@ const { claudeConfigDir } = require('./lib/plugin-evidence');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
+const { START: DESTRUCTIVE_START, upsertDestructiveBlock } = require('./lib/destructive-rules');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -3985,14 +3986,17 @@ function injectHarnessRules() {
                 // would silently undo that diet. Leave it alone.
                 const isManagedShortForm = claudeContent.includes('BDB Agent Skills — Global Instructions');
                 if (isManagedShortForm) {
-                    log.step('CLAUDE.md already uses the short managed form -- leaving it untouched.');
+                    const withBlock = upsertDestructiveBlock(claudeContent);
+                    if (withBlock !== claudeContent) fs.writeFileSync(claudeMdPath, withBlock);
+                    log.step('CLAUDE.md already uses the short managed form -- only the destructive-actions block is managed.');
                 } else {
-                    if (!claudeContent.includes("Global Agent Instructions")) {
+                    if (!claudeContent.includes("Global Agent Instructions") && !claudeContent.includes(DESTRUCTIVE_START)) {
                         claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
                     }
                     if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
                         claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
                     }
+                    claudeContent = upsertDestructiveBlock(claudeContent);
                     fs.writeFileSync(claudeMdPath, claudeContent);
                     log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
                 }
@@ -4002,8 +4006,13 @@ function injectHarnessRules() {
             if (fs.existsSync(path.dirname(copilotPath))) {
                 installStep(`inject the global rules into ${copilotPath}`, () => {
                     const copilotContent = fs.existsSync(copilotPath) ? fs.readFileSync(copilotPath, 'utf8') : '';
-                    if (!copilotContent.includes("Global Agent Instructions")) {
-                        fs.appendFileSync(copilotPath, `\n\n${globalRules}`);
+                    let next = copilotContent;
+                    if (!next.includes("Global Agent Instructions") && !next.includes(DESTRUCTIVE_START)) {
+                        next = `${next}\n\n${globalRules}`;
+                    }
+                    next = upsertDestructiveBlock(next);
+                    if (next !== copilotContent) {
+                        fs.writeFileSync(copilotPath, next);
                         log.step(`Injected Global Rules to ${copilotPath}`);
                     }
                 }, 'copilot-instructions.md is unchanged.');
@@ -4014,12 +4023,13 @@ function injectHarnessRules() {
                 fs.mkdirSync(codexDirLocal, { recursive: true });
                 const codexPath = path.join(codexDirLocal, 'system.md');
                 let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
-                if (!codexContent.includes("Global Agent Instructions")) {
+                if (!codexContent.includes("Global Agent Instructions") && !codexContent.includes(DESTRUCTIVE_START)) {
                     codexContent = `${codexContent}\n\n${globalRules}`.trim();
                 }
                 if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
                     codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
                 }
+                codexContent = upsertDestructiveBlock(codexContent);
                 fs.writeFileSync(codexPath, codexContent);
                 log.step('Synced .codex-plugin/system.md with Global Rules and /startcycle workflow');
             }, '.codex-plugin/system.md is unchanged.');

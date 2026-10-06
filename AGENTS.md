@@ -21,6 +21,15 @@ these four files stopped agreeing with each other in the first place.
 5. **GitHub repositories are Private by default.** Verify rather than assume. AOS itself is the one deliberate public exception — and that exception is permanent, not provisional: `hybridlabor-api/aos` stays public. BDB-internal material (the internal skills/scripts that must never sit in that public history) does not move back in to compensate; it ships as a **separate private npm package**, installable only through the AOS installer or another BDB tool installer — never visible via a public git clone.
 6. **Ask before destructive actions.** Mass deletion, history rewriting, and anything that discards uncommitted work needs explicit confirmation.
 
+<!-- aos:destructive-actions:start -->
+## Destructive Actions (non-negotiable)
+- Never delete recursively outside your own worktree or task directory.
+- Never build a delete path from HOME, USERPROFILE, TMPDIR or any other environment variable, and never from `~`. Delete only literal absolute paths you created in the same command, after checking they start with the intended prefix.
+- Run installer, uninstaller and integration tests only inside a container, VM or a dedicated test user, never against the real home. Set a test HOME inline in the same command, never via export in an earlier call.
+- A blocked command means stop and report. Never retry it in another form, another tool, another language or a script file.
+- Subagents and workers delete nothing; cleanup is the dispatcher's job after the user's GO.
+<!-- aos:destructive-actions:end -->
+
 ---
 
 ## Release gate
