@@ -730,12 +730,19 @@ describe('harness enable/disable', () => {
         if (posix) assert.equal(mode(harness.migrationPath(fx.home)), 0o600);
     });
 
-    test('enable keeps the file mode and leaves no temp file', () => {
+    test('enable strips group/other bits (token inside) and leaves no temp file', () => {
         const fx = fixture();
-        if (posix) fs.chmodSync(fx.f.claude, 0o640);
+        if (posix) fs.chmodSync(fx.f.claude, 0o644);
         run(fx);
-        if (posix) assert.equal(mode(fx.f.claude), 0o640);
+        if (posix) assert.equal(mode(fx.f.claude), 0o600);
         assert.ok(!fs.readdirSync(path.dirname(fx.f.claude)).some((n) => n.endsWith('.tmp')));
+    });
+
+    test('re-enable after a user edit replaces the stale record; unrestored originals stay recorded', () => {
+        const fx = fixture();
+        run(fx);
+        const rec = JSON.parse(fs.readFileSync(harness.migrationPath(fx.home), 'utf8')).records;
+        assert.equal(new Set(rec.map((r) => `${r.file}|${r.key}`)).size, rec.length);
     });
 
     test('enable twice is idempotent', () => {
