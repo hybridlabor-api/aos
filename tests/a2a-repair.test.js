@@ -149,3 +149,35 @@ test("L8: A2A inboxes live under <inboxRoot()>/a2a/<session>; 'sessions'/'inbox'
   assert.equal(pending("sessions").length, 1);
   assert.equal(pending("inbox").length, 1);
 });
+
+test("serve without any profile file starts with the built-in live profile (hooks start it that way)", async () => {
+  const { spawn } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const bin = fileURLToPath(new URL("../bin/aos-a2a.mjs", import.meta.url));
+  const home = mkdtempSync(join(tmpdir(), "a2a-nohome-"));
+  const child = spawn(process.execPath, [bin, "serve", "--name", "dp1", "--harness", "opencode", "--mode", "live", "--parent-pid", String(process.pid)], {
+    cwd: home, env: { ...process.env, HOME: home, AOS_SESSIONS_DIR: join(tmp, "sessions-dp"), AOS_A2A_SIDECAR: "" }, stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    const out = await new Promise((resolve, reject) => {
+      let buf = "", err = "";
+      const t = setTimeout(() => reject(new Error(`serve did not start: ${err}`)), 15000);
+      child.stdout.on("data", (d) => { buf += d; if (buf.includes("\n")) { clearTimeout(t); resolve(buf); } });
+      child.stderr.on("data", (d) => { err += d; });
+      child.on("exit", (c) => { clearTimeout(t); reject(new Error(`serve exited ${c}: ${err}`)); });
+    });
+    assert.equal(JSON.parse(out.split("\n")[0]).name, "dp1");
+  } finally { child.kill("SIGTERM"); }
+});
+
+test("replyCommand: short form when aos-a2a is on PATH, absolute node form otherwise", async () => {
+  const { replyCommand } = await import("../lib/a2a-inbox.mjs");
+  const { writeFileSync, chmodSync } = await import("node:fs");
+  const bin = mkdtempSync(join(tmpdir(), "a2a-path-"));
+  writeFileSync(join(bin, "aos-a2a"), "#!/bin/sh\n");
+  chmodSync(join(bin, "aos-a2a"), 0o755);
+  assert.equal(replyCommand("t1", "x", bin), 'aos-a2a reply t1 "x"');
+  const empty = mkdtempSync(join(tmpdir(), "a2a-nopath-"));
+  const abs = replyCommand("t1", "x", empty);
+  assert.match(abs, /^node "\/.*\/bin\/aos-a2a\.mjs" reply t1 "x"$/);
+});

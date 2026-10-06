@@ -4963,7 +4963,8 @@ function installGlobalBinaries() {
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     const bdbHookScripts = v5Profile.CLAUDE_MERGE_HOOKS;
-    // installClaudeA2aSessionHook owns the a2a-session.mjs entry (not in the template), so it is not listed here.
+    // The template wires a2a-session.mjs (SessionStart) too, so it is in CLAUDE_MERGE_HOOKS: replaced, not cloned, on every run;
+    // installClaudeA2aSessionHook then only copies the script (it skips the settings write when already wired).
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by

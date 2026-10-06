@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // aos-a2a — A2A peer-mesh CLI (phase 1a: registry listing and Agent Card generation).
 import { parseArgs } from "node:util";
-import { list } from "../lib/a2a-registry.mjs";
+import { list, book } from "../lib/a2a-registry.mjs";
 import { cardFromProfile, loadProfile } from "../lib/a2a-card.mjs";
 
 const USAGE = `usage:
   aos-a2a list [--json] [--prune]
+  aos-a2a book
   aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
-  aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live] [--parent-pid <pid>]
+  aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|codex] [--parent-pid <pid>]
+                [--thread <codex thread name or uuid>] [--codex-transport queue|resume]
   aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
   aos-a2a status --to <name> <taskId>
   aos-a2a cancel --to <name> <taskId>
@@ -19,6 +21,7 @@ const { values: o, positionals } = parseArgs({
     help: { type: "boolean", short: "h" }, json: { type: "boolean" }, prune: { type: "boolean" },
     profile: { type: "string" }, name: { type: "string" }, harness: { type: "string" }, model: { type: "string" }, url: { type: "string" },
     mode: { type: "string" }, "parent-pid": { type: "string" },
+    thread: { type: "string" }, "codex-transport": { type: "string" },
     to: { type: "string" }, role: { type: "string" }, from: { type: "string" },
     timeout: { type: "string" }, background: { type: "boolean" },
   },
@@ -32,19 +35,41 @@ try {
     const sessions = list({ prune: o.prune });
     if (o.json) console.log(JSON.stringify(sessions, null, 2));
     else for (const s of sessions) console.log(`${s.name}\t${s.harness}\tpid ${s.pid}\t${s.url ?? "-"}\t${s.cwd ?? ""}`);
+  } else if (cmd === "book") {
+    console.log(JSON.stringify(book(), null, 2));
+    process.exit(0);
   } else if (cmd === "card") {
     if (!o.name || !o.harness) throw new Error("card needs --name and --harness");
     console.log(JSON.stringify(cardFromProfile(loadProfile({ profile: o.profile }), { name: o.name, harness: o.harness, model: o.model, url: o.url }), null, 2));
   } else if (cmd === "serve") {
     if (!o.name || !o.harness) throw new Error("serve needs --name and --harness");
-    if (o.mode && o.mode !== "echo" && o.mode !== "live") throw new Error(`unknown --mode ${o.mode} (echo or live)`);
+    const modes = ["echo", "live", "agy", "codex"];
+    if (o.mode && !modes.includes(o.mode)) throw new Error(`unknown --mode ${o.mode} (echo, live, agy or codex)`);
+    if (o["codex-transport"] && o["codex-transport"] !== "queue" && o["codex-transport"] !== "resume") {
+      throw new Error(`invalid --codex-transport ${o["codex-transport"]} (queue or resume)`);
+    }
     const { startSidecar, echoExecutor } = await import("../lib/a2a-sidecar.mjs");
-    const { loadProfile } = await import("../lib/a2a-card.mjs");
+    const { loadProfile, defaultProfile } = await import("../lib/a2a-card.mjs");
     const parentPid = o["parent-pid"] ? Number(o["parent-pid"]) : undefined;
-    const profile = loadProfile({ profile: o.profile });
-    const executor = o.mode === "live"
-      ? (await import("../lib/a2a-live.mjs")).liveExecutor({ session: o.name })
-      : echoExecutor({ name: o.name, harness: o.harness });
+    // an explicit --profile must load; otherwise fall back to the built-in live profile (hooks start serve without one)
+    let profile;
+    try { profile = loadProfile({ profile: o.profile }); } catch (e) {
+      if (o.profile || !/^no profile found/.test(e.message)) throw e;
+      profile = defaultProfile(o.harness);
+    }
+    let executor;
+    if (o.mode === "agy") {
+      executor = (await import("../lib/a2a-agy.mjs")).agyResumeExecutor({ session: o.name });
+    } else if (o.mode === "codex") {
+      if (!o.thread) throw new Error("--mode codex needs --thread <name or uuid of an already open Codex session>");
+      executor = (await import("../lib/a2a-codex.mjs")).codexLiveExecutor({
+        session: o.name, thread: o.thread, mode: o["codex-transport"] ?? "queue",
+      });
+    } else if (o.mode === "live") {
+      executor = (await import("../lib/a2a-live.mjs")).liveExecutor({ session: o.name });
+    } else {
+      executor = echoExecutor({ name: o.name, harness: o.harness });
+    }
     const s = await startSidecar({ name: o.name, harness: o.harness, profile, parentPid, asCli: true, executor });
     console.log(JSON.stringify({ name: o.name, url: s.url, cardUrl: s.cardUrl, pid: process.pid }));
   } else if (cmd === "send") {

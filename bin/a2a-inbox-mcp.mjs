@@ -4,9 +4,9 @@
 // Hand-written JSON-RPC 2.0 (newline-delimited) over stdio; no new dependency.
 import { createInterface } from "node:readline";
 import { reply } from "../lib/a2a-client.mjs";
-import { claim, formatInjection, pending } from "../lib/a2a-inbox.mjs";
+import { claim, formatInjection, pending, replyCommand } from "../lib/a2a-inbox.mjs";
 
-const REPLY_HINT = (taskId) => `Answer by running: aos-a2a reply ${taskId} "<answer>"`;
+const REPLY_HINT = (taskId) => `Answer with the a2a_reply tool (taskId ${taskId}), or run: ${replyCommand(taskId, "<answer>")}`;
 
 const sessionName = () => {
   const name = process.env.AOS_A2A_NAME;

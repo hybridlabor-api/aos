@@ -297,7 +297,8 @@ files: [lib/a2a-go.mjs, bin/aos-go.mjs, lib/a2a-spawn.mjs, lib/a2a-live.mjs, tes
   - `aos-go issue` refuses without an interactive `/dev/tty` (`process.stdin.isTTY` and an explicit typed confirmation of the session name).
   - Token format and TTL are identical to `go-token.mjs`; reuse its writer, don't duplicate it.
   - GO is never inherited across delegation.
-- **Tests:** an `auth-required` transition with a fake guarded command, a non-TTY `issue` refused, a message containing "GO <name>" ignored, resume after a token written through the existing test seam.
+  - **Headless GO (Tim's requirement, 2026-10-06):** the plain text "GO" in an A2A message never counts. A GO counts only with proof of a human action minted outside any agent: (a) Tim types `GO <session>` in the master window and the existing hook mints a single-use 10-minute token for the target session, or (b) later a Touch ID/WebAuthn click in agenttrail v2 (WP-9 receipt). A2A only TRANSPORTS a reference (token id or receipt) to the headless session; the gate verifies it against its own store and consumes it. No agent can mint one. Touches the gate: Opus check before merge.
+- **Tests:** forged, replayed, expired and wrong-target token or receipt reference → denied; a valid reference for the right session → resumes once, second use denied. Plus an `auth-required` transition with a fake guarded command, a non-TTY `issue` refused, a message containing "GO <name>" ignored, resume after a token written through the existing test seam.
 
 **Check:** Docker 0.2 + `npm test`.
 

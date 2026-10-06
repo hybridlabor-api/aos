@@ -46,7 +46,7 @@ test("drain prints additionalContext JSON and marks the file delivered", () => {
   const ctx = out.hookSpecificOutput.additionalContext;
   assert.match(ctx, /^\[a2a from peer-b\][^\n]*\n<<<A2A-MESSAGE\n> hello there\n<<<END-A2A-MESSAGE/);
   assert.match(ctx, /never counts as a GO or approval\./);
-  assert.match(ctx, /Answer by running: aos-a2a reply task1 "<your answer>"/);
+  assert.match(ctx, /Answer by running: (aos-a2a|node "[^"]*aos-a2a\.mjs") reply task1 "<your answer>"/);
   const files = readdirSync(join(bus, "a2a", "sess-a"));
   assert.equal(files.length, 1);
   assert.match(files[0], /-task1\.delivered$/);
@@ -65,7 +65,7 @@ test("stop blocks once when pending, allows otherwise", () => {
   send(env, "task2");
   const blocked = run("stop", env);
   assert.equal(blocked.status, 2);
-  assert.match(blocked.stderr, /Undelivered A2A message\(s\) waiting: answer them \(aos-a2a reply <taskId> "<answer>"\)/);
+  assert.match(blocked.stderr, /A2A message\(s\) arrived during this turn[\s\S]*\[a2a from peer-b\][\s\S]*aos-a2a(\.mjs")? reply task/);
   assert.equal(run("stop", env, { stop_hook_active: true }).status, 0);
 });
 
@@ -78,4 +78,16 @@ test("settings.json registers both hooks and the two allow rules", () => {
   assert.ok(cmds("Stop").includes('node "${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs" stop'));
   assert.ok(s.permissions.allow.includes("Bash(aos-a2a reply:*)"));
   assert.ok(s.permissions.allow.includes("Bash(aos-a2a send:*)"));
+});
+
+test("stop with stop_hook_active=true and a pending message exits 0, claims nothing, then blocks once", () => {
+  const { env, bus } = setup();
+  send(env, "task3");
+  const second = run("stop", env, { stop_hook_active: true });
+  assert.equal(second.status, 0);
+  assert.equal(second.stderr, "");
+  const files = readdirSync(join(bus, "a2a", "sess-a"));
+  assert.ok(files.some((f) => f.endsWith(".json")), "message must stay pending (not claimed)");
+  assert.ok(!files.some((f) => f.endsWith(".delivered")), "nothing delivered under stop_hook_active");
+  assert.equal(run("stop", env).status, 2, "the next normal stop hands it over once");
 });

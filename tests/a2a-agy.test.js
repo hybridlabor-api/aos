@@ -152,6 +152,27 @@ test("agyResumeExecutor: throwing run fails the task", async () => {
 });
 
 test("buildAgyArgs is args-based (never a shell string) and matches the contract", () => {
-  assert.deepEqual(buildAgyArgs("some prompt"), ["--continue", "--print", "some prompt"]);
+  assert.deepEqual(buildAgyArgs("some prompt"), ["--print", "some prompt"]);
+  assert.deepEqual(buildAgyArgs("p", "conv-1"), ["--conversation", "conv-1", "--print", "p"]);
+  // never --continue: it would resume (and hijack) the user's most recent interactive conversation
+  for (const a of [buildAgyArgs("x"), buildAgyArgs("x", "c"), buildAgyArgs("x", "")]) assert.ok(!a.includes("--continue") && !a.includes("-c"));
   assert.deepEqual(agyMcpAddArgs("a2a-inbox", join(tmp, "mcp.mjs")), ["mcp", "add", "a2a-inbox", "node", join(tmp, "mcp.mjs")]);
+});
+
+test("parseAgyJson reads response and conversation_id; a non-SUCCESS status throws", async () => {
+  const { parseAgyJson } = await import("../lib/a2a-agy.mjs");
+  assert.deepEqual(parseAgyJson('{"conversation_id":"c-9","status":"SUCCESS","response":"ready\\n"}'), { text: "ready\n", conversationId: "c-9" });
+  assert.deepEqual(parseAgyJson("plain text"), { text: "plain text", conversationId: undefined });
+  assert.throws(() => parseAgyJson('{"status":"ERROR","response":""}'), /agy status ERROR/);
+});
+
+test("agy executor keeps one own conversation per A2A contextId and never reuses another thread's", async () => {
+  const seen = [];
+  const ex = agyResumeExecutor({ session: "agy-conv", run: async (a) => { seen.push(a.conversationId); return { text: "ok", conversationId: `conv-${a.conversationId ?? "new"}` }; } });
+  const bus = { publish() {}, finished() {} };
+  const ctx = (taskId, contextId) => ({ taskId, contextId, userMessage: { parts: [{ content: { $case: "text", value: "hi" } }], metadata: { aos: { caller: "t" } } } });
+  await ex.execute(ctx("t1", "thread-a"), bus);
+  await ex.execute(ctx("t2", "thread-a"), bus);
+  await ex.execute(ctx("t3", "thread-b"), bus);
+  assert.deepEqual(seen, [undefined, "conv-new", undefined]);
 });

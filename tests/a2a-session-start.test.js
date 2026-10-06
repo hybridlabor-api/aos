@@ -45,7 +45,8 @@ test("spawn args: detached, stdio ignore, exact args, proxy vars stripped, unref
   assert.equal(c.cmd, process.execPath);
   assert.deepEqual(c.args, ["/repo/bin/aos-a2a.mjs", "serve", "--name", "opencode-abcd1234", "--harness", "opencode", "--mode", "live", "--parent-pid", "123"]);
   assert.equal(c.opts.detached, true);
-  assert.deepEqual(c.opts.stdio, "ignore");
+  assert.equal(c.opts.stdio[0], "ignore"); // stdout/stderr go to <name>.log (a fd), never to the harness
+  assert.equal(c.opts.stdio[1], c.opts.stdio[2]);
   assert.equal(c.opts.env.HTTP_PROXY, undefined);
   assert.equal(c.opts.env.https_proxy, undefined);
   assert.equal(c.opts.env.ALL_PROXY, undefined);
@@ -86,4 +87,11 @@ test("never throws: spawnImpl failure → {skipped:'error'}", () => {
   const r = ensureSidecar({ harness, sessionId: "boom-session", env: {}, spawnImpl: () => { throw new Error("nope"); }, binPath: "/b" });
   assert.equal(r.skipped, "error");
   assert.match(r.error, /nope/);
+});
+
+test("nodeCommand: a non-node host binary (OpenCode) falls back to `node`", async () => {
+  const { nodeCommand } = await import("../lib/a2a-session.mjs");
+  assert.equal(nodeCommand("/usr/local/bin/node"), "/usr/local/bin/node");
+  assert.equal(nodeCommand("C:\\Program Files\\nodejs\\node.exe"), "C:\\Program Files\\nodejs\\node.exe");
+  assert.equal(nodeCommand("/Users/x/.opencode/bin/opencode"), "node");
 });

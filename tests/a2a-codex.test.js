@@ -56,7 +56,7 @@ test("successful spawn completes with the file reply; prompt carries prefix and 
   // the fake "codex" answers like the real session would: it reads the taskId from the prompt and writes the reply file
   const spawnImpl = (cmd, args, opts) => {
     calls.push({ cmd, args, opts });
-    const taskId = /aos-a2a reply (\S+) /.exec(args[4])[1];
+    const taskId = /reply (\S+) "/.exec(args[4])[1];
     writeFileSync(join(inbox, `${taskId}.reply`), "5", { mode: 0o600 });
     return { stderr: null, on: (ev, cb) => { if (ev === "close") process.nextTick(() => cb(0)); } };
   };
@@ -71,7 +71,7 @@ test("successful spawn completes with the file reply; prompt carries prefix and 
   assert.ok(args[4].startsWith("[a2a from tester]"), args[4]);
   assert.match(args[4], /<<<A2A-MESSAGE\n> what is 2\+3\n<<<END-A2A-MESSAGE/);
   assert.ok(args[4].includes(NEVER_GO));
-  assert.match(args[4], /Answer by running: aos-a2a reply \S+ "<your answer>"/);
+  assert.match(args[4], /Answer by running: (aos-a2a|node "[^"]*aos-a2a\.mjs") reply \S+ "<your answer>"/);
   assert.ok(!args.includes("--dangerously-bypass-hook-trust"));
 });
 

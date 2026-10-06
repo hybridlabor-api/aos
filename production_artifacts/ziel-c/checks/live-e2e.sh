@@ -25,10 +25,34 @@
 #   A2A_E2E_ROOT       repo root. Default: three levels up from this script.
 #   A2A_E2E_TIMEOUT    deadline in seconds for every wait. Default: 60.
 #                      Raise it for live harness turns (claude/agy/codex).
-#   A2A_E2E_AGY=1      enable the agy legs (#live-ring + #agy-orch-check);
-#                      otherwise they SKIP, naming this flag.
-#   A2A_E2E_CODEX=1    enable the Codex ring legs; otherwise they SKIP,
+#   A2A_E2E_AGY=1      enable the agy legs (#live-ring + #agy-orch-check) and
+#                      launch the agy sidecar itself before the ring:
+#                      `aos-a2a serve --name e2e-agy --mode agy` with cwd
+#                      $A2A_E2E_AGY_DIR (default $AGY_WORK_DIR under the temp
+#                      root). NOTE: `agy --continue` continues the most recent
+#                      conversation of that project directory, so
+#                      A2A_E2E_AGY_DIR should be a directory where you already
+#                      HAVE an agy conversation; an empty temp dir means agy
+#                      starts fresh conversations. Otherwise the legs SKIP,
 #                      naming this flag.
+#   A2A_E2E_AGY_DIR    working directory for the agy sidecar (see above).
+#   A2A_E2E_AGY_TIMEOUT  per-send timeout (seconds, default 900) used for every
+#                      send that targets the agy sidecar ($AGY_SESSION) and for
+#                      the agy-orchestrator turn deadline: a headless
+#                      `agy --continue --print` turn can take >120 s on this
+#                      machine, so the default A2A_E2E_TIMEOUT=60 is too low.
+#   A2A_E2E_CODEX=1    enable the Codex ring legs; requires
+#                      A2A_E2E_CODEX_THREAD to be set to the session UUID or
+#                      exact name of an ALREADY OPEN Codex session of yours
+#                      (this script never creates one). The codex sidecar is
+#                      launched as `aos-a2a serve --name e2e-codex --mode codex
+#                      --thread $A2A_E2E_CODEX_THREAD`. If the thread variable
+#                      is missing, the codex legs SKIP naming it.
+#   A2A_E2E_CODEX_TIMEOUT  per-send timeout (seconds, default 300) used for
+#                      every send that targets the codex sidecar
+#                      ($CODEX_SESSION) and, combined with
+#                      A2A_E2E_AGY_TIMEOUT, to size the ring-claude-send turn
+#                      deadline (see below).
 #   A2A_E2E_AGY_YOLO=1 pass `--dangerously-skip-permissions` to agy. A human
 #                      must be present; the flag is never passed otherwise.
 #
@@ -60,8 +84,15 @@ A2A_E2E_TIMEOUT="${A2A_E2E_TIMEOUT:-60}"
 TIMEOUT="$A2A_E2E_TIMEOUT"
 AGY_ENABLED="${A2A_E2E_AGY:-0}"  # 1 = agy legs on
 CODEX_ENABLED="${A2A_E2E_CODEX:-0}" # 1 = codex legs on
+# Harness-turn timeouts: agy turns are slow (>120 s for one headless turn on
+# this machine), so sends that target the agy sidecar and the agy-orch turn
+# deadline use A2A_E2E_AGY_TIMEOUT (default 900); the same for the codex
+# sidecar. The ring-claude-send turn (which sends to agy AND codex inside one
+# claude turn) gets max(CL_TURN_TIMEOUT, AGY_TIMEOUT + CODEX_TIMEOUT).
+AGY_TIMEOUT="${A2A_E2E_AGY_TIMEOUT:-900}"
+CODEX_TIMEOUT="${A2A_E2E_CODEX_TIMEOUT:-300}"
 
-show_usage() { sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//'; }
+show_usage() { sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; }
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -93,6 +124,13 @@ if [ "$DRY_RUN" = 0 ]; then
   CL_WORK_DIR="$TMP_DIR/claude-project"
   AGY_WORK_DIR="$TMP_DIR/agy-worker"
 fi
+# Claude turns are kept busy (`sleep 45`, see check_item1) so an inbound probe
+# can be delivered inside the turn window; their deadline is max(TIMEOUT, 90).
+CL_TURN_TIMEOUT="$A2A_E2E_TIMEOUT"
+if [ "$CL_TURN_TIMEOUT" -lt 90 ]; then CL_TURN_TIMEOUT=90; fi
+# Per-turn deadline override read by wait_logged (claude turns only).
+TURN_TIMEOUT_CURRENT=""
+
 PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
@@ -147,19 +185,38 @@ gen_probe() { # gen_probe: sets PROBE_TEXT and PROBE_OK for the next send
 # ---- generic A2A leg: send and assert completed + expected substring -------------
 
 send_check() { # send_check <check-name> <from> <to> <expect> <text>
-  local name="$1" from="$2" to="$3" expect="$4" text="$5" out
-  if ! out="$(node "$A2A_BIN" send --to "$to" --from "$from" --timeout "$TIMEOUT" "$text" 2>&1)"; then
-    fail "$name" "a2a send exited non-zero: $(trunc "$out")"
+  local name="$1" from="$2" to="$3" expect="$4" text="$5" out to_timeout
+  # Per-target timeout: sends that target the agy or codex sidecar get the
+  # slower harness timeouts (A2A_E2E_AGY_TIMEOUT / A2A_E2E_CODEX_TIMEOUT,
+  # default 300 each); everything else keeps $TIMEOUT.
+  case "$to" in
+    "$AGY_SESSION") to_timeout="$AGY_TIMEOUT" ;;
+    "$CODEX_SESSION") to_timeout="$CODEX_TIMEOUT" ;;
+    *) to_timeout="$TIMEOUT" ;;
+  esac
+  # Run-10 evidence: the busy claude turn can end before a send targets
+  # e2e-claude ("no live registry entry" / "fetch failed"), so make sure the
+  # sidecar is up AND answering before every claude-targeted send.
+  if [ "$to" = "$CL_SESSION" ]; then ensure_claude_busy || true; fi
+  # Run-10 evidence: a timeout on a codex-targeted send is usually NOT the
+  # script or sidecar but the Codex session itself (queue is only answered
+  # while the session is open and resumed); say so in every failure for it.
+  local codex_note=""
+  if [ "$to" = "$CODEX_SESSION" ]; then
+    codex_note=" [codex session must be open and resumed (not only listed in the resume picker); thread=${A2A_E2E_CODEX_THREAD:-<unset>}]"
+  fi
+  if ! out="$(node "$A2A_BIN" send --to "$to" --from "$from" --timeout "$to_timeout" "$text" 2>&1)"; then
+    fail "$name" "a2a send exited non-zero (timeout was ${to_timeout}s): $(trunc "$out")$codex_note"
     return 0
   fi
   case "$out" in
     *TASK_STATE_COMPLETED*)
       case "$out" in
         *"$expect"*) pass "$name" ;;
-        *) fail "$name" "completed but artifact missing '$expect': $(trunc "$out")" ;;
+        *) fail "$name" "completed but artifact missing '$expect': $(trunc "$out")$codex_note" ;;
       esac
       ;;
-    *) fail "$name" "task did not reach COMPLETED: $(trunc "$out")" ;;
+    *) fail "$name" "task did not reach COMPLETED: $(trunc "$out")$codex_note" ;;
   esac
 }
 
@@ -184,7 +241,7 @@ run_claude() {
   local args=(-p "$prompt" --output-format text)
   if [ -n "${A2A_E2E_MODEL:-}" ]; then args+=(--model "${A2A_E2E_MODEL}"); fi
   if [ "$#" -gt 0 ]; then args+=("$@"); fi
-  ( exec env AOS_A2A_NAME="$CL_SESSION" CLAUDE_PROJECT_DIR="$ROOT" claude "${args[@]}" ) >"$log" 2>&1 &
+  ( cd "$ROOT" && exec env AOS_A2A_NAME="$CL_SESSION" CLAUDE_PROJECT_DIR="$ROOT" claude "${args[@]}" ) >"$log" 2>&1 &
   capture_pid "$!"
 }
 
@@ -193,13 +250,14 @@ run_claude() {
 # expected send outputs it printed. Used by the prompt-driven Turns that run
 # `aos-a2a send` inside a real harness session (items 3, ring claude, agy orch).
 wait_logged() { # wait_logged <name> <pid> <log> <marker> [misses-marker...]
-  local name="$1" pid="$2" log="$3" marker="$4"
+  # Deadline: TURN_TIMEOUT_CURRENT (busy claude turns, max(TIMEOUT,90)) or TIMEOUT.
+  local name="$1" pid="$2" log="$3" marker="$4" deadline="${TURN_TIMEOUT_CURRENT:-$TIMEOUT}"
   local t0
   t0=$(date +%s)
   while kill -0 "$pid" 2>/dev/null; do
-    if [ "$(( $(date +%s) - t0 ))" -ge "$TIMEOUT" ]; then
+    if [ "$(( $(date +%s) - t0 ))" -ge "$deadline" ]; then
       kill "$pid" 2>/dev/null
-      fail "$name" "turn exceeded ${TIMEOUT}s (hook/permission-settings failure is likelier than a timeout; tail: $(trunc "$(tail -c 200 "$log")"))"
+      fail "$name" "turn exceeded ${deadline}s (hook/permission-settings failure is likelier than a timeout; tail: $(trunc "$(tail -c 200 "$log")"))"
       return 0
     fi
     sleep 2
@@ -211,8 +269,38 @@ wait_logged() { # wait_logged <name> <pid> <log> <marker> [misses-marker...]
   done
   if [ -z "$misses" ]; then
     pass "$name"
+  elif ! grep -q 'aos-a2a' "$log"; then
+    fail "$name" "turn never ran a send (hook/permission failure likely; missed:$misses; tail: $(trunc "$(tail -c 200 "$log")"))"
   else
-    fail "$name" "turn missed markers:$misses (hook/permission failure likely; tail: $(trunc "$(tail -c 200 "$log")"))"
+    fail "$name" "turn ran but missed markers:$misses (tail: $(trunc "$(tail -c 200 "$log")"))"
+  fi
+}
+
+# wait_logged_send <name> <pid> <log> <expect>:
+# like wait_logged, but for a turn whose success is defined by ONE
+# `aos-a2a send` JSON result: COMPLETED works if the log contains
+# TASK_STATE_COMPLETED AND the expected artifact text. The trailing marker
+# line is advisory only (run-8 evidence: marker was missing although the
+# send completed with the expected answer). The hook/permission diagnosis
+# is kept for the case where the log contains no send result at all.
+wait_logged_send() { # wait_logged_send <name> <pid> <log> <expect>
+  local name="$1" pid="$2" log="$3" expect="$4" deadline="${TURN_TIMEOUT_CURRENT:-$TIMEOUT}"
+  local t0
+  t0=$(date +%s)
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$(( $(date +%s) - t0 ))" -ge "$deadline" ]; then
+      kill "$pid" 2>/dev/null
+      fail "$name" "turn exceeded ${deadline}s (hook/permission-settings failure is likelier than a timeout; tail: $(trunc "$(tail -c 200 "$log")"))"
+      return 0
+    fi
+    sleep 2
+  done
+  if grep -q 'TASK_STATE_COMPLETED' "$log" && grep -q "$expect" "$log"; then
+    pass "$name"
+  elif ! grep -q 'aos-a2a' "$log"; then
+    fail "$name" "turn never ran a send (hook/permission failure likely; expected '$expect'; tail: $(trunc "$(tail -c 200 "$log")"))"
+  else
+    fail "$name" "send did not reach COMPLETED with '$expect' (marker line advisory only; tail: $(trunc "$(tail -c 200 "$log")"))"
   fi
 }
 
@@ -221,24 +309,161 @@ wait_logged() { # wait_logged <name> <pid> <log> <marker> [misses-marker...]
 # hook registers a known name instead of `opencode-<8 chars>`. E5: no echo
 # fallback exists; a leg that never comes up live is reported as FAIL.
 
+# ---- sidecar bring-up for the agy / codex ring legs (#live-ring) -------------------
+# A2A_E2E_AGY=1 starts an agy sidecar (`--mode agy`) so agy is reachable as an
+# INBOUND target: the executor spawns `agy --continue --print <injected prompt>`
+# in the sidecar's cwd and answers with its stdout. $A2A_E2E_AGY_DIR (default:
+# the temp AGY_WORK_DIR) should hold an existing agy conversation, because
+# `agy --continue` resumes the most recent conversation of that project
+# directory.
+# A2A_E2E_CODEX=1 with $A2A_E2E_CODEX_THREAD set starts a codex sidecar against
+# an ALREADY OPEN Codex session (UUID or exact name); the script never creates
+# the Codex session, and without the thread variable the legs SKIP.
+
+start_agy_sidecar() { # FAILs if the sidecar never registers
+  local log="$TMP_DIR/agy-sidecar.log" dir
+  dir="${A2A_E2E_AGY_DIR:-$AGY_WORK_DIR}"
+  mkdir -p "$dir"
+  ( cd "$dir" && exec env AOS_A2A_NAME="$AGY_SESSION" \
+      AOS_SESSIONS_DIR="$AOS_SESSIONS_DIR" AOS_BUS_ROOT="$AOS_BUS_ROOT" \
+      AOS_A2A_INBOX="$AOS_A2A_INBOX" node "$A2A_BIN" serve \
+      --name "$AGY_SESSION" --harness agy --mode agy --parent-pid "$$" ) \
+    >"$log" 2>&1 &
+  capture_pid "$!"
+  if ! wait_for "$AGY_SESSION"; then
+    fail "sidecar-agy-bringup" "$AGY_SESSION not registered within ${TIMEOUT}s (log tail: $(trunc "$(tail -c 300 "$log")"))"
+    return 1
+  fi
+  pass "sidecar-agy-bringup"
+  return 0
+}
+
+start_codex_sidecar() { # requires $A2A_E2E_CODEX_THREAD; FAILs if never registered
+  if [ -z "${A2A_E2E_CODEX_THREAD:-}" ]; then
+    return 1 # caller SKIPs naming the missing variable
+  fi
+  local log="$TMP_DIR/codex-sidecar.log"
+  ( cd "$ROOT" && exec env AOS_A2A_NAME="$CODEX_SESSION" \
+      AOS_SESSIONS_DIR="$AOS_SESSIONS_DIR" AOS_BUS_ROOT="$AOS_BUS_ROOT" \
+      AOS_A2A_INBOX="$AOS_A2A_INBOX" node "$A2A_BIN" serve \
+      --name "$CODEX_SESSION" --harness codex --mode codex \
+      --thread "$A2A_E2E_CODEX_THREAD" --parent-pid "$$" ) \
+    >"$log" 2>&1 &
+  capture_pid "$!"
+  if ! wait_for "$CODEX_SESSION"; then
+    fail "sidecar-codex-bringup" "$CODEX_SESSION not registered within ${TIMEOUT}s (log tail: $(trunc "$(tail -c 300 "$log")"))"
+    return 1
+  fi
+  pass "sidecar-codex-bringup"
+  return 0
+}
+
+# ---- OpenCode bring-up -----------------------------------------------------------
+# Verified in the docs (2026-10): https://opencode.ai/docs/server — headless HTTP
+# server: `opencode serve [--port <number>] [--hostname <string>]` (the bare
+# `opencode` command is the TUI and must NOT be used here); POST /session with
+# body `{ parentID?, title? }` creates a session. https://opencode.ai/docs/plugins —
+# local project plugins live in `.opencode/plugins/` and are loaded automatically
+# at startup; the opencode.json `plugin` array is for npm packages.
+oc_log_tail() { tail -n 20 "$1" 2>/dev/null | tr '\n' ' '; }
+
+# start_busy_claude_turn <logfile>: launches ONE busy claude turn exactly
+# like check_item1's (same launch env, same 45 s sleep window, captured PID)
+# and waits until $CL_SESSION is registered. Returns wait_for's status; the
+# caller reports pass/fail with its own name.
+start_busy_claude_turn() { # start_busy_claude_turn <logfile>
+  local log="$1"
+  local busy_prompt='Keep this turn busy: first run sleep 45 via the Bash tool, then say done. If sleep is not permitted, instead write a 1000-word essay on bash quoting, then say done.'
+  run_claude "$busy_prompt" "$log"
+  wait_for "$CL_SESSION"
+}
+
+# CLAUDE_MISSING=1 when the claude binary is absent; ensure_claude_busy is then
+# a no-op and every claude leg reports its own SKIP instead.
+CLAUDE_MISSING=0
+need claude || CLAUDE_MISSING=1
+
+# ensure_claude_busy: run-8/run-10 evidence — a busy claude turn from an
+# earlier item may have already ended by the time a send targets e2e-claude,
+# so the sidecar is not registered ("no live registry entry"). Call this
+# immediately before EVERY send that targets $CL_SESSION. It starts a fresh
+# busy turn (same launch and sleep window as item 1, captured PID) when no
+# registry entry exists, then verifies the sidecar actually ANSWERS: the
+# agent card URL is taken from the registry line and curled directly (no
+# proxy). If it does not answer within TIMEOUT, the busy turn is restarted
+# ONCE. Callable from ring_checks AND ring_agy_turn.
+ensure_claude_busy() {
+  if [ "$CLAUDE_MISSING" = 1 ]; then return 0; fi
+  [ -z "$(reg_line_for "$CL_SESSION")" ] &&
+    start_busy_claude_turn "$TMP_DIR/claude-busy-restart.log" || true
+  if ! wait_for "$CL_SESSION"; then return 1; fi
+  local url t0
+  url="$(reg_line_for "$CL_SESSION" | grep -oE 'https?://[^[:space:]]+' | head -n 1)"
+  [ -n "$url" ] || return 1
+  t0=$(date +%s)
+  while :; do
+    if curl -sf --noproxy '*' --max-time 5 -o /dev/null "$url" 2>/dev/null; then return 0; fi
+    if [ "$(( $(date +%s) - t0 ))" -ge "$TIMEOUT" ]; then break; fi
+    sleep 2
+  done
+  # Registered but not answering: restart the busy turn once, then re-check.
+  start_busy_claude_turn "$TMP_DIR/claude-busy-restart-2.log" || true
+  curl -sf --noproxy '*' --max-time 5 -o /dev/null "$url" 2>/dev/null
+}
+
 check_item1() {
-  local op_pid
+  local log
   mkdir -p "$OC_WORK_DIR"
   if need opencode; then
     local oc_env=()
     if [ -n "${A2A_E2E_PROXY:-}" ]; then
       oc_env+=(HTTP_PROXY="$A2A_E2E_PROXY" HTTPS_PROXY="$A2A_E2E_PROXY")
     fi
-    # Real repo flags: `opencode ... --port 0 --hostname 127.0.0.1`; the repo
-    # plugin's session-start hook is expected to register the sidecar.
-    ( exec env ${oc_env[@]+"${oc_env[@]}"} AOS_A2A_NAME="$OC_SESSION" opencode --port 0 --hostname 127.0.0.1 ) \
-      >"$TMP_DIR/opencode-serve.log" 2>&1 &
-    op_pid=$!
+    log="$TMP_DIR/opencode-serve.log"
+    # `opencode serve --port 0 --hostname 127.0.0.1` (docs-verified), cwd = the
+    # scratch project dir whose .opencode/plugins/bdb-aos.js re-exports the repo
+    # plugin. The plugin only starts the sidecar when a session exists
+    # (session.created -> ensureBus -> ensureSidecar), so after the URL is
+    # parsed a session is created over the HTTP API, then the registry is polled.
+    ( cd "$OC_WORK_DIR" && exec env ${oc_env[@]+"${oc_env[@]}"} \
+        AOS_A2A_NAME="$OC_SESSION" AOS_SESSIONS_DIR="$AOS_SESSIONS_DIR" \
+        AOS_BUS_ROOT="$AOS_BUS_ROOT" AOS_A2A_INBOX="$AOS_A2A_INBOX" \
+        NO_PROXY="127.0.0.1,localhost,::1" no_proxy="127.0.0.1,localhost,::1" \
+        opencode serve --port 0 --hostname 127.0.0.1 ) \
+      >"$log" 2>&1 &
+    local op_pid=$!
     capture_pid "$op_pid"
-    if wait_for "$OC_SESSION"; then
-      pass "item1-opencode-registered"
+    local oc_url="" t0
+    t0=$(date +%s)
+    while :; do
+      # UNVERIFIED exact log line: the docs give no "listening" line format for
+      # serve, so parse any http://127.0.0.1:<port> the log prints.
+      oc_url="$(grep -oE 'http://127\.0\.0\.1:[0-9]+' "$log" 2>/dev/null | tail -n 1)"
+      [ -n "$oc_url" ] && break
+      if ! kill -0 "$op_pid" 2>/dev/null; then break; fi
+      if [ "$(( $(date +%s) - t0 ))" -ge "$TIMEOUT" ]; then break; fi
+      sleep 1
+    done
+    # The server may log its URL slightly before it accepts requests: retry a few times and keep
+    # the HTTP status and body of the last attempt for the failure message.
+    local post_ok=0 post_try post_code=""
+    if [ -n "$oc_url" ]; then
+      for post_try in 1 2 3 4 5; do
+        post_code="$(curl -s --noproxy '*' --max-time 10 -o "$TMP_DIR/oc-session.body" -w '%{http_code}' \
+          -X POST "$oc_url/session" -H 'content-type: application/json' \
+          -d "{\"title\":\"$OC_SESSION\"}" 2>"$TMP_DIR/oc-session.err")" || post_code="curl-failed"
+        case "$post_code" in 2??) post_ok=1; break ;; esac
+        sleep 2
+      done
+    fi
+    if [ "$post_ok" = 1 ]; then
+      if wait_for "$OC_SESSION"; then
+        pass "item1-opencode-registered"
+      else
+        fail "item1-opencode" "$OC_SESSION not registered (serve log tail: $(oc_log_tail "$log"))"
+      fi
     else
-      fail "item1-opencode" "$OC_SESSION did not come up live"
+      fail "item1-opencode" "serve URL not parsed or POST $oc_url/session failed (status: ${post_code:-none}; body: $(head -c 300 "$TMP_DIR/oc-session.body" 2>/dev/null | tr '\n' ' '); curl: $(head -c 200 "$TMP_DIR/oc-session.err" 2>/dev/null | tr '\n' ' '); log tail: $(oc_log_tail "$log"))"
     fi
   else
     (node "$A2A_BIN" serve --name "$OC_SESSION" --harness opencode --mode echo --parent-pid "$$") \
@@ -249,13 +474,17 @@ check_item1() {
 
   mkdir -p "$CL_WORK_DIR"
   if need claude; then
-    # Item 1 second half: one real claude turn; the repo hooks (via
-    # CLAUDE_PROJECT_DIR) should register e2e-claude.
-    run_claude "Reply with the number 1." "$TMP_DIR/claude-turn-1.log"
+    # `claude -p` is ONE turn: the SessionStart hook (.claude/hooks/a2a-session.mjs,
+    # sidecar name = AOS_A2A_NAME) registers the sidecar only while the turn
+    # runs, so the turn is kept BUSY while item 2 sends its probe; inbound A2A
+    # is delivered at the UserPromptSubmit drain or the Stop hook
+    # (.claude/hooks/a2a-inbox.mjs, exit 2 on first Stop), which forces the
+    # reply via `aos-a2a reply`. cwd = ROOT so the repo hooks and permissions load.
+    start_busy_claude_turn "$TMP_DIR/claude-turn-1.log" || true
     if wait_for "$CL_SESSION"; then
       pass "item1-claude-registered"
     else
-      fail "item1-claude" "$CL_SESSION did not come up live"
+      fail "item1-claude" "$CL_SESSION did not come up live (turn log tail: $(trunc "$(tail -c 200 "$TMP_DIR/claude-turn-1.log")"))"
     fi
   else
     (node "$A2A_BIN" serve --name "$CL_SESSION" --harness claude --mode echo --parent-pid "$$") \
@@ -279,7 +508,9 @@ claude_send_turn() { # claude_send_turn <check-name> <target> <marker>
   log="$TMP_DIR/$name.log"
   prompt="Run this exact Bash command unchanged, then print its full JSON output followed by the line $marker: aos-a2a send --to $target \"$PROBE_TEXT\""
   run_claude "$prompt" "$log" "--allowedTools" "Bash(aos-a2a send:*)"
-  wait_logged "$name" "$(tail -n 1 "$PIDS")" "$log" "$marker"
+  TURN_TIMEOUT_CURRENT="$CL_TURN_TIMEOUT"
+  wait_logged_send "$name" "$(tail -n 1 "$PIDS")" "$log" "$PROBE_OK"
+  TURN_TIMEOUT_CURRENT=""
 }
 
 check_item3() {
@@ -317,45 +548,57 @@ ring_claude_turn() { # claude-source sends (claude->agy, claude->codex)
   local probe_agy_text="$PROBE_TEXT" probe_agy_ok="$PROBE_OK"
   gen_probe
   local probe_codex_text="$PROBE_TEXT" probe_codex_ok="$PROBE_OK"
+  # Each leg's own send timeout matches its sidecar's harness timeout, so the
+  # slow agy/codex turns are not cut off after the (shorter) $TIMEOUT.
   local prompt="Run each of the following Bash commands in order. After each one print its full JSON output followed by the marker in parentheses:
-1) aos-a2a send --to $AGY_SESSION \"$probe_agy_text\" (marker ZC-CL-AGY-OK)
-2) aos-a2a send --to $CODEX_SESSION \"$probe_codex_text\" (marker ZC-CL-CODEX-OK)
+1) aos-a2a send --to $AGY_SESSION \"$probe_agy_text\" --timeout $AGY_TIMEOUT (marker ZC-CL-AGY-OK)
+2) aos-a2a send --to $CODEX_SESSION \"$probe_codex_text\" --timeout $CODEX_TIMEOUT (marker ZC-CL-CODEX-OK)
 Print all output blocks and then the line ZC-RING-CLAUDE-DONE."
   local log="$TMP_DIR/ring-claude.log"
   run_claude "$prompt" "$log" "--allowedTools" "Bash(aos-a2a send:*)"
+  # Run-10 evidence: this turn waits for BOTH slow legs while AGY and CODEX are
+  # enabled, so CL_TURN_TIMEOUT alone can run out even when both sends would
+  # still complete. Deadline: max(CL_TURN_TIMEOUT, AGY_TIMEOUT + CODEX_TIMEOUT).
+  local ring_deadline="$CL_TURN_TIMEOUT"
+  if [ "$(( AGY_TIMEOUT + CODEX_TIMEOUT ))" -gt "$ring_deadline" ]; then
+    ring_deadline=$(( AGY_TIMEOUT + CODEX_TIMEOUT ))
+  fi
+  TURN_TIMEOUT_CURRENT="$ring_deadline"
   wait_logged "ring-claude-send" "$(tail -n 1 "$PIDS")" "$log" "ZC-RING-CLAUDE-DONE" "ZC-CL-AGY-OK" "ZC-CL-CODEX-OK"
+  TURN_TIMEOUT_CURRENT=""
 }
 
 ring_checks() {
   # E8: each claude-sourced leg reports its own reason when dropped because
-  # claude is missing.
-  local claude_missing=0
-  need claude || claude_missing=1
-  if [ "$AGY_ENABLED" = 1 ] && [ "$CODEX_ENABLED" = 1 ] && [ "$claude_missing" = 0 ]; then
+  # claude is missing. ensure_claude_busy is hoisted to the top level (see
+  # its definition above) so ring_agy_turn can call it too.
+  if [ "$AGY_ENABLED" = 1 ] && [ "$CODEX_ENABLED" = 1 ] && [ "$CLAUDE_MISSING" = 0 ]; then
     ring_claude_turn
   else
-    if [ "$AGY_ENABLED" = 1 ] && [ "$claude_missing" = 1 ]; then
+    if [ "$AGY_ENABLED" = 1 ] && [ "$CLAUDE_MISSING" = 1 ]; then
       skip "ring-claude-send-agy" "claude binary not in PATH"
     else
       [ "$AGY_ENABLED" = 1 ] || skip "ring-claude-send-agy" "requires A2A_E2E_AGY=1"
     fi
-    if [ "$CODEX_ENABLED" = 1 ] && [ "$claude_missing" = 1 ]; then
+    if [ "$CODEX_ENABLED" = 1 ] && [ "$CLAUDE_MISSING" = 1 ]; then
       skip "ring-claude-send-codex" "claude binary not in PATH"
     else
       [ "$CODEX_ENABLED" = 1 ] || skip "ring-claude-send-codex" "requires A2A_E2E_CODEX=1"
     fi
   fi
+  ensure_claude_busy
   send_probe "ring-pair-opencode-claude" "$OC_SESSION" "$CL_SESSION"
   send_probe "ring-pair-claude-opencode" "$CL_SESSION" "$OC_SESSION"
   if [ "$AGY_ENABLED" = 1 ]; then
     if [ -n "$(reg_line_for "$AGY_SESSION")" ]; then
       send_probe "ring-pair-agy-opencode" "$AGY_SESSION" "$OC_SESSION"
+      ensure_claude_busy
       send_probe "ring-pair-agy-claude" "$AGY_SESSION" "$CL_SESSION"
       send_probe "ring-pair-opencode-agy" "$OC_SESSION" "$AGY_SESSION"
     else
-      skip "ring-pair-agy-opencode" "$AGY_SESSION not registered"
-      skip "ring-pair-agy-claude" "$AGY_SESSION not registered"
-      skip "ring-pair-opencode-agy" "$AGY_SESSION not registered"
+      skip "ring-pair-agy-opencode" "$AGY_SESSION not registered (agy sidecar did not come up; see sidecar-agy-bringup)"
+      skip "ring-pair-agy-claude" "$AGY_SESSION not registered (agy sidecar did not come up; see sidecar-agy-bringup)"
+      skip "ring-pair-opencode-agy" "$AGY_SESSION not registered (agy sidecar did not come up; see sidecar-agy-bringup)"
     fi
   else
     skip "ring-pair-agy-opencode" "requires A2A_E2E_AGY=1"
@@ -364,11 +607,12 @@ ring_checks() {
   fi
   if [ "$CODEX_ENABLED" = 1 ]; then
     if [ -n "$(reg_line_for "$CODEX_SESSION")" ]; then
+      ensure_claude_busy
       send_probe "ring-pair-codex-claude" "$CODEX_SESSION" "$CL_SESSION"
       send_probe "ring-pair-claude-codex" "$CL_SESSION" "$CODEX_SESSION"
     else
-      skip "ring-pair-codex-claude" "$CODEX_SESSION not registered"
-      skip "ring-pair-claude-codex" "$CODEX_SESSION not registered"
+      skip "ring-pair-codex-claude" "$CODEX_SESSION not registered (codex sidecar did not come up; needs A2A_E2E_CODEX_THREAD)"
+      skip "ring-pair-claude-codex" "$CODEX_SESSION not registered (codex sidecar did not come up; needs A2A_E2E_CODEX_THREAD)"
     fi
   else
     skip "ring-pair-codex-claude" "requires A2A_E2E_CODEX=1"
@@ -402,23 +646,34 @@ ring_agy_turn() {
     worker_proxy_env="HTTPS_PROXY=$A2A_E2E_PROXY HTTP_PROXY=$A2A_E2E_PROXY ALL_PROXY=$A2A_E2E_PROXY "
   fi
   mkdir -p "$AGY_WORK_DIR/agy-worker"
+  # The prompt-level sends target the OpenCode and Claude sessions; before the
+  # turn starts, make sure the e2e-claude sidecar is up and answering so the
+  # claude leg is not delivered into an ended turn (run-10 evidence).
+  ensure_claude_busy || true
   idx_prompt="Do these three shell steps in order. After each step print its output followed by the marker in parentheses:
 1) aos-a2a send --to $OC_SESSION \"agy orchestrator probe.\" --timeout $TIMEOUT (marker ZC-AGY-OC-OK)
 2) aos-a2a send --to $CL_SESSION \"agy orchestrator probe.\" --timeout $TIMEOUT (marker ZC-AGY-CL-OK)
 3) env ${worker_proxy_env}NO_PROXY=127.0.0.1,localhost,::1 aos-acp opencode --name e2e-agy-worker --cwd $AGY_WORK_DIR/agy-worker --prompt \"Reply with the number 3 only.\" $worker_flags$( [ -n "${A2A_E2E_MODEL:-}" ] && printf ' --model %s' "$A2A_E2E_MODEL" ) (marker ZC-AGY-WORKER-OK)
 Print all three outputs and then the line ZC-AGY-ORCH-DONE."
   local log="$TMP_DIR/agy-orch.log" pid
-  local agy_args=("$idx_prompt")
-  # Real agy flags used: <prompt> then --dangerously-skip-permissions ONLY when
-  # A2A_E2E_AGY_YOLO=1 (never otherwise). If agy's actual invocation differs
-  # (e.g. --print), verify with `agy --help` before running, not here.
+  local agy_args=(--print "$idx_prompt")
+  # Verified agy CLI: `agy -p/--print "<prompt>"` runs ONE non-interactive
+  # turn and prints the answer (prompts are read only from -p/--print or
+  # stdin; a bare positional prompt would be ignored — run-10 evidence).
+  # --dangerously-skip-permissions is passed ONLY when A2A_E2E_AGY_YOLO=1.
   if [ "${A2A_E2E_AGY_YOLO:-}" = 1 ]; then
     agy_args+=(--dangerously-skip-permissions)
   fi
-  ( exec env AOS_A2A_NAME="$AGY_SESSION" agy "${agy_args[@]}" ) >"$log" 2>&1 &
+  # cwd = $AGY_WORK_DIR: the shell commands inside the turn (aos-a2a send,
+  # aos-acp) resolve through the existing PATH shim prepared in main().
+  ( cd "$AGY_WORK_DIR" && exec env AOS_A2A_NAME="$AGY_SESSION" agy "${agy_args[@]}" ) >"$log" 2>&1 &
   pid=$!
   capture_pid "$pid"
+  # Deadline: A2A_E2E_AGY_TIMEOUT (default 900) — one headless agy turn takes
+  # >120 s on this machine, so the plain $TIMEOUT is not enough (run-10).
+  TURN_TIMEOUT_CURRENT="$AGY_TIMEOUT"
   wait_logged "agy-orch-check" "$pid" "$log" "ZC-AGY-ORCH-DONE" "ZC-AGY-OC-OK" "ZC-AGY-CL-OK" "ZC-AGY-WORKER-OK"
+  TURN_TIMEOUT_CURRENT=""
   # The two orchestrator send legs are asserted here against the nonce probes.
   send_probe "agy-orch-send-opencode" "$AGY_SESSION" "$OC_SESSION"
   send_probe "agy-orch-send-claude" "$AGY_SESSION" "$CL_SESSION"
@@ -443,8 +698,16 @@ cleanup() {
 }
 
 assert_registry_empty() {
-  local entries
+  # The OpenCode sidecar is a detached child that exits via --parent-pid
+  # polling within ~5-10 s after `opencode serve` was killed; poll up to 20 s
+  # (sleep 1) before reporting FAIL (run-8 evidence).
+  local entries t0
+  t0=$(date +%s)
   entries="$(node "$A2A_BIN" list --prune 2>/dev/null | grep -v '^[[:space:]]*$' || true)"
+  while [ -n "$entries" ] && [ "$(( $(date +%s) - t0 ))" -lt 20 ]; do
+    sleep 1
+    entries="$(node "$A2A_BIN" list --prune 2>/dev/null | grep -v '^[[:space:]]*$' || true)"
+  done
   if [ -n "$entries" ]; then
     fail "cleanup-registry-empty" "registry still holds sessions after cleanup: $(trunc "$entries")"
   else
@@ -488,19 +751,30 @@ trap 'exit 130' TERM
 # ---- dry-run plan (before ANY side effect: no mktemp, no mkdir, no traps here) -----
 
 dry_run_plan() {
+  local ROOT_PLACEHOLDER="<ROOT>"
   echo "dry-run plan (nothing will be started, sent or created):"
   echo "  1. prereqs: locate node, opencode, claude, agy (only with A2A_E2E_AGY=1), codex (only with A2A_E2E_CODEX=1), node bin/aos-a2a.mjs and bin/go-check.mjs; resolve ROOT from this script's location (three levels up)."
   echo "  2. setup: one 'mktemp -d' TMP_DIR holding the isolated A2A registry (AOS_SESSIONS_DIR), bus inbox (AOS_BUS_ROOT, AOS_A2A_INBOX) and scratch projects; unset proxy env and export NO_PROXY=127.0.0.1,localhost,::1; proxy (${A2A_E2E_PROXY:+A2A_E2E_PROXY only} in OpenCode launches, never elsewhere)."
   echo "  3. snapshot the ~/.config/opencode shasum read-only (read-only; SKIP the end-of-run check if that dir is absent)."
-  echo "  4. item 1: start 'opencode --port 0 --hostname 127.0.0.1' in a scratch project; wait until $OC_SESSION appears in 'aos-a2a list'."
-  echo "  5. item 1: one 'claude -p \"Reply with the number 1.\"' ${A2A_E2E_MODEL:+--model $A2A_E2E_MODEL }in a scratch project (CLAUDE_PROJECT_DIR); wait until $CL_SESSION appears in 'aos-a2a list'."
+  echo "  4. item 1: in the scratch project <TMP>/oc-project (holding .opencode/plugins/bdb-aos.js, which re-exports <ROOT>/.opencode/plugins/bdb-aos.js) start:"
+  echo "       env AOS_A2A_NAME=$OC_SESSION AOS_SESSIONS_DIR=<TMP>/sessions AOS_BUS_ROOT=<TMP>/bus AOS_A2A_INBOX=<TMP>/inbox${A2A_E2E_PROXY:+ HTTP_PROXY=$A2A_E2E_PROXY HTTPS_PROXY=$A2A_E2E_PROXY} NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 opencode serve --port 0 --hostname 127.0.0.1   # cwd: <TMP>/oc-project"
+  echo "     parse http://127.0.0.1:<port> from the serve log, then create the session over the HTTP API (https://opencode.ai/docs/server):"
+  echo "       curl -sf --noproxy '*' -X POST http://127.0.0.1:<port>/session -H 'content-type: application/json' -d '{\"title\":\"$OC_SESSION\"}'"
+  echo "     then wait until $OC_SESSION appears in 'aos-a2a list'; on failure FAIL with the last 20 serve-log lines."
+  echo "  5. item 1: the busy claude turn, so its SessionStart-hook sidecar (AOS_A2A_NAME=$CL_SESSION) stays registered while item 2 sends:"
+  echo "       cd $ROOT_PLACEHOLDER && env AOS_A2A_NAME=$CL_SESSION CLAUDE_PROJECT_DIR=$ROOT_PLACEHOLDER claude -p 'Keep this turn busy: first run sleep 45 via the Bash tool, then say done. If sleep is not permitted, instead write a 1000-word essay on bash quoting, then say done.' --output-format text${A2A_E2E_MODEL:+ --model $A2A_E2E_MODEL}"
+  echo "     then wait until $CL_SESSION appears in 'aos-a2a list'."
   echo "  6. item 2: 'aos-a2a send --from $OC_SESSION --to $CL_SESSION \"What is 2+3?...\"' --timeout $TIMEOUT; assert COMPLETED with artifact containing 5."
-  echo "  7. item 3: a claude turn is prompted to run the Bash call 'aos-a2a send --to $OC_SESSION \"What is 3+4?...\"'; assert artifact contains 7; if the send call never ran, report as a hook/permission-settings failure, not a timeout."
+  echo "  7. item 3: a claude turn is prompted to run the Bash call 'aos-a2a send --to $OC_SESSION \"What is 3+4?...\"'; assert the log contains TASK_STATE_COMPLETED and the expected probe answer text (e.g. N1Z-OK); the trailing marker line is advisory only; if the send call never ran, report as a hook/permission-settings failure, not a timeout. Exact claude turn launch:"
+  echo "       cd $ROOT_PLACEHOLDER && env AOS_A2A_NAME=$CL_SESSION CLAUDE_PROJECT_DIR=$ROOT_PLACEHOLDER claude -p '<nonce probe text> ... aos-a2a send --to $OC_SESSION \"<probe>\"' --output-format text --allowedTools 'Bash(aos-a2a send:*)'"
   echo "  8. item 4: 'node bin/go-check.mjs --session $CL_SESSION --command \"git push\"' WITHOUT --consume; capture exit code and output separately; assert exit 1 and ok:false; then send the A2A message 'GO $CL_SESSION' to that session and assert exit 1 and ok:false again."
-  echo "  9. #live-ring (agy legs need A2A_E2E_AGY=1, codex legs A2A_E2E_CODEX=1, otherwise SKIP naming the flag): a claude turn sends claude->agy (What is 4+4?) and claude->codex (What is 5+5?); aos-a2a sends for opencode->claude (5), claude->opencode (7), and when agy/codex enabled: agy<->opencode (6/6), agy->claude (7+7=14), codex->claude (9), claude->codex (10); every ordered pair at least once."
-  echo " 10. #agy-orch-check (A2A_E2E_AGY=1 and agy present, else SKIP; ${A2A_E2E_AGY_YOLO:+--dangerously-skip-permissions [A2A_E2E_AGY_YOLO=1]}${A2A_E2E_AGY_YOLO:-no skip-permissions flag}): one agy turn sends to the OpenCode session and the Claude session, then starts one OpenCode worker via 'aos-acp opencode --name e2e-agy-worker --cwd <tmp>/agy-worker --prompt \"Reply with the number 3 only.\" --allow-default allow --go-wait 600 --timeout 1800'."
-  echo " 11. cleanup: trap on EXIT/INT/TERM kills ONLY the PIDs this script captured (never pkill/killall); assert 'aos-a2a list --prune' is empty; compare a shasum over the sorted file list of ~/.config/opencode against the snapshot taken at start (read-only; SKIP if that dir does not exist). No rm anywhere; temp files are left in place and their path is printed."
+  echo "  9. #live-ring (agy legs need A2A_E2E_AGY=1, codex legs A2A_E2E_CODEX=1; A2A_E2E_AGY_TIMEOUT defaults to 900 s, A2A_E2E_CODEX_TIMEOUT to 300 s): a claude turn sends claude->agy (What is 4+4?, --timeout ${AGY_TIMEOUT}s) and claude->codex (What is 5+5?, --timeout ${CODEX_TIMEOUT}s); turn deadline = max(CL_TURN_TIMEOUT, A2A_E2E_AGY_TIMEOUT + A2A_E2E_CODEX_TIMEOUT = $(( AGY_TIMEOUT + CODEX_TIMEOUT ))s); before every ring send that targets e2e-claude, ensure_claude_busy runs (fresh busy turn if not registered, then a registry-agent-card curl with no proxy; one restart if it does not answer); aos-a2a sends for opencode->claude (5), claude->opencode (7), and when agy/codex enabled: agy<->opencode (6/6, timeout ${AGY_TIMEOUT}s toward agy), agy->claude (7+7=14), codex->claude (9), claude->codex (10, --timeout ${CODEX_TIMEOUT}s; its failure message notes: codex session must be open and resumed, not only listed in the resume picker; thread=\$A2A_E2E_CODEX_THREAD); every ordered pair at least once."
+  echo " 10. #agy-orch-check (A2A_E2E_AGY=1 and agy present, else SKIP; ${A2A_E2E_AGY_YOLO:+--dangerously-skip-permissions [A2A_E2E_AGY_YOLO=1]}${A2A_E2E_AGY_YOLO:-no skip-permissions flag}): one agy turn, invoked as 'agy --print \"<prompt>\"' with cwd=<TMP>/agy-worker (prompts are read only from -p/--print or stdin; a bare positional prompt is ignored), turn deadline A2A_E2E_AGY_TIMEOUT=${AGY_TIMEOUT}s: one agy turn sends to the OpenCode session and the Claude session (third send preceded in setup by ensure_claude_busy), then starts one OpenCode worker via 'aos-acp opencode --name e2e-agy-worker --cwd <tmp>/agy-worker --prompt \"Reply with the number 3 only.\" --allow-default allow --go-wait 600 --timeout 1800'."
+  echo " 11. cleanup: trap on EXIT/INT/TERM kills ONLY the PIDs this script captured (never pkill/killall); poll 'aos-a2a list --prune' up to 20 s (sleep 1) until empty before asserting (the opencode sidecar exits via --parent-pid polling within ~5-10 s); compare a shasum over the sorted file list of ~/.config/opencode against the snapshot taken at start (read-only; SKIP if that dir does not exist). No rm anywhere; temp files are left in place and their path is printed."
   echo " 12. print PASS/FAIL/SKIP line per check and a summary with counts; exit non-zero if any FAIL."
+  echo " 13. ring-leg sidecars, started BEFORE item 1:"
+  echo "     with A2A_E2E_AGY=1, the agy sidecar (PASS/FAIL 'sidecar-agy-bringup'): ( cd ${A2A_E2E_AGY_DIR:+$A2A_E2E_AGY_DIR}${A2A_E2E_AGY_DIR:-<TMP>/agy-worker [set A2A_E2E_AGY_DIR to a dir with an existing agy conversation; agy --continue resumes the most recent conversation of the project dir]} && exec env AOS_A2A_NAME=$AGY_SESSION node $ROOT_PLACEHOLDER/bin/aos-a2a.mjs serve --name $AGY_SESSION --harness agy --mode agy --parent-pid \$\$ ) & ; wait via 'aos-a2a list' (wait_for), FAIL with the log tail if never registered."
+  echo "     with A2A_E2E_CODEX=1 AND ${A2A_E2E_CODEX_THREAD:+A2A_E2E_CODEX_THREAD=$A2A_E2E_CODEX_THREAD}${A2A_E2E_CODEX_THREAD:-the A2A_E2E_CODEX_THREAD variable set to an already open Codex session UUID/name (never created by this script)}, the codex sidecar (PASS/FAIL 'sidecar-codex-bringup'): ( cd $ROOT_PLACEHOLDER && exec env AOS_A2A_NAME=$CODEX_SESSION node $ROOT_PLACEHOLDER/bin/aos-a2a.mjs serve --name $CODEX_SESSION --harness codex --mode codex --thread <A2A_E2E_CODEX_THREAD> --parent-pid \$\$ ) & ; same wait_for; without the thread variable the codex legs SKIP naming it."
   exit 0
 }
 
@@ -530,10 +804,37 @@ main() {
   # scratch dirs under $TMP_DIR so no worktree state is touched.
   mkdir -p "$AOS_SESSIONS_DIR" "$AOS_BUS_ROOT" "$AOS_A2A_INBOX" \
     "$OC_WORK_DIR" "$CL_WORK_DIR" "$AGY_WORK_DIR/agy-worker"
+  # Scratch project plugin shim: `opencode serve` runs with cwd =
+  # $OC_WORK_DIR, so project-local plugins are discovered there
+  # (https://opencode.ai/docs/plugins). The shim re-exports the repo plugin by
+  # absolute path instead of copying directories (the repo plugin's relative
+  # imports resolve from its own import.meta.url inside the repo).
+  mkdir -p "$OC_WORK_DIR/.opencode/plugins"
+  {
+    printf "import BdbAos from '%s';\n" "$ROOT/.opencode/plugins/bdb-aos.js"
+    printf 'export default BdbAos;\n'
+  } >"$OC_WORK_DIR/.opencode/plugins/bdb-aos.js"
   : >"$PIDS"
   snapshot_opencode_config
 
   say "live-e2e: ROOT=$ROOT TMP_DIR=$TMP_DIR TIMEOUT=${TIMEOUT}s AGY=$AGY_ENABLED CODEX=$CODEX_ENABLED"
+
+  # sidecar bring-up for the agy / codex ring legs, BEFORE the ring runs
+  # (independent of whether the real agy/codex binaries are in PATH: --mode gy
+  # --mode agy spawns agy itself, --mode codex talks to the open Codex session
+  # given via A2A_E2E_CODEX_THREAD through codex queue/exec resume).
+  if [ "$AGY_ENABLED" = 1 ]; then
+    say "starting agy sidecar (--mode agy)"
+    start_agy_sidecar || true
+  fi
+  if [ "$CODEX_ENABLED" = 1 ]; then
+    if [ -n "${A2A_E2E_CODEX_THREAD:-}" ]; then
+      say "starting codex sidecar (--mode codex --thread $A2A_E2E_CODEX_THREAD)"
+      start_codex_sidecar || true
+    else
+      skip "sidecar-codex-bringup" "A2A_E2E_CODEX=1 but A2A_E2E_CODEX_THREAD is not set (codex legs need an already open Codex session UUID/exact name; never created by this script)"
+    fi
+  fi
 
   say "checking item 1 sessions live"
   check_item1
