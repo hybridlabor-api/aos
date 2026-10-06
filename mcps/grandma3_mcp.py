@@ -9,6 +9,20 @@ import argparse
 from typing import Optional
 from mcp.server.fastmcp import FastMCP
 
+from grandma3_cmds import (
+    cmd_clear,
+    cmd_executor_back,
+    cmd_executor_go,
+    cmd_executor_off,
+    cmd_executor_pause,
+    cmd_goto_cue,
+    cmd_label,
+    cmd_macro,
+    cmd_patch_fixture,
+    cmd_select,
+    cmd_store_cue,
+)
+
 mcp = FastMCP("BDB grandMA3 MCP")
 
 parser = argparse.ArgumentParser()
@@ -52,19 +66,65 @@ def grandma3_ping() -> str:
 
 @mcp.tool()
 def execute_command(command: str) -> str:
-    """Execute an arbitrary grandMA3 command via OSC. Requires grandMA3 to be listening for OSC /cmd on port 8000."""
+    """UNVALIDATED raw console command: it can run anything on the console and bypasses every check of the ma3_* tools. Prefer the ma3_* tools. Needs grandMA3 listening for OSC /cmd."""
     return send_osc_message("/cmd", command)
 
 @mcp.tool()
 def execute_macro(macro_number: int) -> str:
     """Execute a specific macro in grandMA3."""
-    return send_osc_message("/cmd", f"Go Macro {macro_number}")
+    return send_osc_message("/cmd", cmd_macro(macro_number))
 
 @mcp.tool()
 def patch_fixture(fixture_id: int, name: str, fixture_type: str, address: str) -> str:
-    """Patch a fixture via grandMA3 command line."""
-    cmd = f'Assign Fixture {fixture_id} Name "{name}" /Type="{fixture_type}" /Patch="{address}"'
-    return send_osc_message("/cmd", cmd)
+    """Label and patch fixture <fixture_id> at <universe>.<address> (e.g. 1.101). fixture_type is not settable from the command line and is ignored."""
+    patch_cmd = cmd_patch_fixture(fixture_id, address)
+    label_cmd = cmd_label("Fixture", fixture_id, name)
+    return f"{send_osc_message('/cmd', patch_cmd)}\n{send_osc_message('/cmd', label_cmd)}"
+
+@mcp.tool()
+def ma3_select(kind: str, number: int) -> str:
+    """Select a Page/Sequence/Executor/World by number."""
+    return send_osc_message("/cmd", cmd_select(kind, number))
+
+@mcp.tool()
+def ma3_executor_go(executor: int) -> str:
+    """Fire the next cue on an executor (Go+)."""
+    return send_osc_message("/cmd", cmd_executor_go(executor))
+
+@mcp.tool()
+def ma3_executor_back(executor: int) -> str:
+    """Fire the previous cue on an executor (Go-)."""
+    return send_osc_message("/cmd", cmd_executor_back(executor))
+
+@mcp.tool()
+def ma3_executor_pause(executor: int) -> str:
+    """Toggle pause on an executor."""
+    return send_osc_message("/cmd", cmd_executor_pause(executor))
+
+@mcp.tool()
+def ma3_executor_off(executor: int) -> str:
+    """Stop (Off) an executor."""
+    return send_osc_message("/cmd", cmd_executor_off(executor))
+
+@mcp.tool()
+def ma3_goto_cue(cue: int, executor: int = None) -> str:
+    """Goto a cue number, optionally on an executor."""
+    return send_osc_message("/cmd", cmd_goto_cue(cue, executor))
+
+@mcp.tool()
+def ma3_store_cue(cue: int, sequence: int = None, executor: int = None) -> str:
+    """Store a cue, optionally into a sequence or executor's sequence."""
+    return send_osc_message("/cmd", cmd_store_cue(cue, sequence, executor))
+
+@mcp.tool()
+def ma3_set_label(kind: str, number: int, name: str) -> str:
+    """Label an object (e.g. Sequence/Cue/Executor) with a new name."""
+    return send_osc_message("/cmd", cmd_label(kind, number, name))
+
+@mcp.tool()
+def ma3_clear() -> str:
+    """Clear the programmer (successively selection/values/all)."""
+    return send_osc_message("/cmd", cmd_clear())
 
 if __name__ == "__main__":
     mcp.run()
