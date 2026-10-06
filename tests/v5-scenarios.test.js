@@ -155,7 +155,48 @@ test('S4 dangling memB venv: repair renames .venv, recreates it via uv, keeps th
     });
 });
 
-test.todo('S4b memB repair/verify checks `import memb_mcp`: production only checks sys, mcp and run imports');
+// Copy venv python for the memb-mcp copy: records its args, optionally fails on `from memb import`.
+function copyPython(m, failOnMemb) {
+    const log = path.join(m.home, 'copy-python.log');
+    const py = path.join(m.mcp, 'mcps', 'memb-mcp', '.venv', 'bin', 'python');
+    script(py, [`echo "$*" >> "${log}"`, failOnMemb ? 'case "$*" in *"from memb import"*) exit 1;; esac' : ':', 'exit 0'].join('\n'));
+    return log;
+}
+const membPkg = () => pk.registry.find((p) => p.id === 'memb');
+
+test('S4b verify runs `from memb import Memory` with the memb-mcp copy venv python', { skip: !CONTAINER }, async () => {
+    await withIsolatedPath(async () => {
+        const m = machine();
+        const log = copyPython(m, false);
+        const r = membPkg().verify({ host: m.host, home: m.home });
+        assert.strictEqual(r.ok, true, r.detail);
+        assert.match(fs.readFileSync(log, 'utf8'), /^-c from memb import Memory$/m);
+    });
+});
+
+test('S4c verify fails when `from memb import Memory` fails in the copy venv', { skip: !CONTAINER }, async () => {
+    await withIsolatedPath(async () => {
+        const m = machine();
+        copyPython(m, true);
+        const r = membPkg().verify({ host: m.host, home: m.home });
+        assert.strictEqual(r.ok, false);
+        assert.strictEqual(r.detail, 'memb-mcp: `from memb import Memory` fails (entry run.py)');
+    });
+});
+
+test('S4d verify reports an opencode.jsonc pointing at a missing memb-mcp venv python', { skip: !CONTAINER }, async () => {
+    await withIsolatedPath(async () => {
+        const m = machine();
+        copyPython(m, false);
+        const missing = path.join(m.home, 'gone', 'memb-mcp', '.venv', 'bin', 'python');
+        const cfg = path.join(m.home, '.config', 'opencode', 'opencode.jsonc');
+        fs.mkdirSync(path.dirname(cfg), { recursive: true });
+        fs.writeFileSync(cfg, `// c\n{ "mcp": { "memb_mcp": { "command": ["${missing}", "${path.join(m.home, 'x', 'run.py')}"] } } }\n`);
+        const r = membPkg().verify({ host: m.host, home: m.home });
+        assert.strictEqual(r.ok, false);
+        assert.strictEqual(r.detail, `memb_mcp config points at a missing venv python: ${cfg} -> ${missing}`);
+    });
+});
 
 test('S5 blank PAT: stored as skipped, second Update does not ask, only Settings re-asks', async () => {
     await withIsolatedPath(async () => {
