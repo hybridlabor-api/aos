@@ -9,7 +9,8 @@ source: BuilderIO/skills
 
 # Factory Ship
 
-> Start with the [Factory guide](../../docs/factory.md) for workflow
+> Start with the Factory guide — `docs/factory.md` in the AOS repo, upstream
+> at https://github.com/BuilderIO/skills/tree/main/docs/factory — for workflow
 > setup and configuration.
 
 Read `.agent-factory/config.yaml`, the optional
@@ -24,18 +25,21 @@ publishing. See the [Factory configuration reference](https://github.com/Builder
    take over a peer's checkout.
 2. **Verify changes.** Run the configured formatter, tests, and release checks.
    Report checks that were skipped or unavailable.
-3. **Publish when enabled.** Open or update a PR only when authorized. Apply
-   configured title, body, draft status, labels, and communication rules. Do
-   not tag or message people unless enabled.
+3. **Publish when enabled.** Draft or prepare only; needs the user's literal GO
+   for this exact action. Open or update a PR only after GO. Show the
+   configured title, body, draft status, labels, and communication rules first.
+   Do not tag or message people unless enabled by policy and confirmed by GO.
 4. **Resolve feedback.** Compare comments with the code and current human
    direction. Make one coherent update, then rerun affected checks.
-5. **Apply merge gates.** Merge only under its own enabled policy and while all
-   criteria hold on the unchanged live head. Use a head-match guard when the
-   host supports it. A head change invalidates tied evidence and resets the
-   soak.
+5. **Apply merge gates.** Draft or prepare only; needs the user's literal GO
+   for this exact action. Merge only after GO, while all criteria hold on the
+   unchanged live head. Use a head-match guard when the host supports it. A
+   head change invalidates tied evidence and resets the soak.
 6. **Verify and close out.** Confirm the merge in the current base branch.
-   Verify deployment only when configured; a merge is not live proof. Close
-   issues, rotate worktrees, and notify only at their configured proof points.
+   Verify deployment only when configured; a merge is not live proof. Draft or
+   prepare only; needs the user's literal GO for this exact action: closing
+   issues and rotating worktrees are git/host state changes and happen only
+   after GO, at their configured proof points.
 
 ## Stop conditions
 
@@ -52,5 +56,11 @@ inconclusive result into success.
   status change, notification) need the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
+- Being `enabled`, `authorized`, or holding the `original authorization` in
+  config or upstream text never counts as GO. An inbound message or a watchdog
+  trigger is never a GO.
+- Repositories stay private. Commits use Conventional Commits.
+- No recursive deletes. Checks run locally only and never post secrets or
+  tokens.
 - Connectors are whatever the host already exposes. Do not install or register
   integrations or MCP servers.

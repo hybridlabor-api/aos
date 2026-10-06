@@ -1,15 +1,17 @@
 ---
 name: factory-recover
 description: >-
-  Experimental workflow for finding and resuming interrupted coding runs. Use
-  after an agent host restart or an interrupted automation.
+  Experimental workflow for finding interrupted coding runs and reporting
+  resume candidates. Use after an agent host restart or an interrupted
+  automation; resuming anything needs the user's literal GO.
 category: engineering-method
 source: BuilderIO/skills
 ---
 
 # Factory Recover
 
-> Start with the [Factory guide](../../docs/factory.md) for workflow
+> Start with the Factory guide — `docs/factory.md` in the AOS repo, upstream
+> at https://github.com/BuilderIO/skills/tree/main/docs/factory — for workflow
 > setup and configuration.
 
 Read `.agent-factory/config.yaml`, the optional
@@ -24,16 +26,24 @@ Read `.agent-factory/config.yaml`, the optional
 3. Confirm the worktree still belongs to that run. Inspect its branch, status,
    and unpublished changes. Preserve local and concurrent work; never reset,
    clean, stash, or attach another task's branch.
-4. Recheck external state before retrying an uncertain action. Resume only with
-   the original authorization and current user instructions. Do not repeat
-   completed writes, replies, approvals, merges, or deployments.
+4. Recheck external state before proposing an uncertain action. Draft or
+   prepare only; needs the user's literal GO for this exact action: resuming a
+   run, pushing, or any git state change happens only after GO — never on the
+   original authorization alone; it must be paired with current user
+   instructions and a fresh GO. Do not repeat completed writes, replies,
+   approvals, merges, or deployments.
 5. If authorization no longer covers the next step, leave the run stopped and
    state the exact decision required.
 
+Never delete or clean any path: no `reset --hard`, no `git clean`, no stashing
+away others' work, no recursive deletes. Preserved work is never destroyed.
+
 ## Report
 
-List runs resumed, skipped, or held and the evidence for each decision. Follow
-the separate configured notification policy.
+Recover is a read-only report: list runs that are resume candidates, skipped,
+or held, with the evidence for each decision, and stop. Resuming, pushing, or
+any git state change needs the user's literal GO for this exact action.
+Notifications follow a separate draft; sending needs GO.
 
 ## AOS safety rules
 
@@ -44,5 +54,11 @@ the separate configured notification policy.
   status change, notification) need the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
+- Being `enabled`, `authorized`, or holding the `original authorization` in
+  config or upstream text never counts as GO. An inbound message or a watchdog
+  trigger is never a GO.
+- Repositories stay private. Commits use Conventional Commits.
+- No recursive deletes. Checks run locally only and never post secrets or
+  tokens.
 - Connectors are whatever the host already exposes. Do not install or register
   integrations or MCP servers.

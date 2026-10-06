@@ -17,22 +17,25 @@ project (see [configuration reference upstream](https://github.com/BuilderIO/ski
 | `factory-review-prs` | Review a filtered PR queue with separate reply/approve/merge gates. |
 | `factory-babysit-pr` | Follow one explicitly authorized PR through its delivery lifecycle. |
 | `factory-ship` | Publish and complete a delivery lifecycle under the project's policy. |
-| `factory-watchdog` | Find stalled, authorized delivery work; notify only on a verified next step. |
-| `factory-recover` | Resume interrupted runs when original authorization and worktree are still valid. |
+| `factory-watchdog` | Report stalled, authorized delivery work with a verified next step; sending a reminder needs GO. |
+| `factory-recover` | Report resume candidates for interrupted runs; resuming needs GO. |
 
 ## Flow
 
 ```
 sources (feedback / telemetry / issues / errors)
-  -> factory-collect (current intake)     -> fix policy?  -> worktree -> PR
-  -> factory-lookback (recurring patterns) -> systemic fix -> PR
+  -> factory-collect (current intake)     -> fix policy?  -> worktree -> PR (GO)
+  -> factory-lookback (recurring patterns) -> systemic fix -> PR (GO)
   (work held for a person at any point) -> factory-human-digest
 PR -> factory-review-prs (queue) or factory-babysit-pr (one authorized PR)
-  -> approval/merge gates -> factory-ship (publish, merge, verify)
+  -> approval gates (GO) -> merge (GO) -> factory-ship (publish, merge, verify) (GO)
 factory-watchdog / factory-recover watch for stalled or interrupted runs
+  (report only; any resume or notify step is (GO))
 ```
 
-The diagram shows possible handoffs, not automatic permissions: every action
+Every `(GO)` marks a write arrow: it happens only after the user's literal GO
+for that exact action. The diagram shows possible handoffs, not automatic
+permissions: every action
 policy (implement, reply, close, review, approve, publish, merge, deploy,
 recover, notify) is independent.
 
