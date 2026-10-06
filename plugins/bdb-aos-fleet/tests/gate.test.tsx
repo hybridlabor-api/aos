@@ -62,19 +62,19 @@ test('session.start, turn.complete and tool.call never fill the prompt', async (
   const registered: string[] = []
   on('command.register', (_$, e) => {
     registered.push(e.name)
-    return { value: undefined }
+    return { value: undefined } as never
   })
   on('session.start', () => ({ cwd: '/x' }))
   on('turn.complete', () => ({ text: '' }))
   on('session.id', () => ({ value: 'sid' }))
   on('session.cwd', () => ({ value: '/x' }))
   on('session.repo', () => ({ value: null }))
-  on('session.usage', () => ({ value: { context: { window: 0 } } }))
+  on('session.usage', () => ({ value: { context: { window: 0 } } as never }))
   on('fs.read', () => ({ value: '{}' }))
   on('fs.write', () => ({ value: undefined }))
   on('fs.exists', () => ({ value: false }))
   on('clock.now', () => ({ value: 0 }))
-  on('clock.every', () => ({ value: { cancel: () => undefined } }))
+  on('clock.every', () => ({ value: { cancel: () => undefined } } as never))
   on('ui.status', () => ({ value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true } as never)
