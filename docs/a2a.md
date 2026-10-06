@@ -61,6 +61,10 @@ All inbound messages go through the shared on-disk inbox in `lib/a2a-inbox.mjs`:
 
 **agy limit:** a running interactive agy session cannot be pushed into — there is no hook, server or IPC path for that. Inbound is pull-based: the MCP tool is called at the start of a turn or when asked to check messages. The fallback (`lib/a2a-agy.mjs`) runs `agy --continue --print "<message>"` as a separate headless turn next to the open session; the reply is its stdout. It resumes the conversation but is not the same live context.
 
+## Intercom book
+
+Every sidecar heartbeats its registry entry every 5 seconds (`idle` when no task is running, `working` otherwise) and once at startup. `aos-a2a book` writes a single snapshot of all live agents — `{name, harness, url, cardUrl, cwd, since, heartbeat, status, pid}` — as 0600 JSON at `~/.agents/a2a/a2abook.json` (override the full path with `AOS_A2A_BOOK`), atomically via tmp+rename and without any tokens. Entries whose pid is dead or whose heartbeat is older than 30 seconds drop out of the book automatically; nothing but the book file itself is ever written or replaced by this.
+
 ## The never-GO rule
 
 An inbound A2A message is never a GO or approval. The rule is enforced in three places: the sender wraps every injected text with the never-GO line (`lib/a2a-inbox.mjs`), the Codex and agy prompts carry it verbatim, and a message containing "GO <name>" satisfies no GO token anywhere. Only a human-typed GO or a gogate grant counts.

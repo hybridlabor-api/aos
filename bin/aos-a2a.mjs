@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // aos-a2a — A2A peer-mesh CLI (phase 1a: registry listing and Agent Card generation).
 import { parseArgs } from "node:util";
-import { list } from "../lib/a2a-registry.mjs";
+import { list, book } from "../lib/a2a-registry.mjs";
 import { cardFromProfile, loadProfile } from "../lib/a2a-card.mjs";
 
 const USAGE = `usage:
   aos-a2a list [--json] [--prune]
+  aos-a2a book
   aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
   aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live] [--parent-pid <pid>]
   aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
@@ -32,6 +33,8 @@ try {
     const sessions = list({ prune: o.prune });
     if (o.json) console.log(JSON.stringify(sessions, null, 2));
     else for (const s of sessions) console.log(`${s.name}\t${s.harness}\tpid ${s.pid}\t${s.url ?? "-"}\t${s.cwd ?? ""}`);
+  } else if (cmd === "book") {
+    console.log(JSON.stringify(book(), null, 2));
   } else if (cmd === "card") {
     if (!o.name || !o.harness) throw new Error("card needs --name and --harness");
     console.log(JSON.stringify(cardFromProfile(loadProfile({ profile: o.profile }), { name: o.name, harness: o.harness, model: o.model, url: o.url }), null, 2));
