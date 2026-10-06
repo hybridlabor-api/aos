@@ -30,7 +30,10 @@ beforeEach(() => {
 });
 afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
 
-const env = (extra = {}) => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', ...extra });
+process.env.AOS_TEST_SANDBOX = '1';
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
+const env = (extra = {}) => ({ ...process.env, AOS_GATE_TEST_REALHOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', ...extra });
 const add = (e, file = t) => fs.appendFileSync(file, JSON.stringify(e) + '\n');
 const user = (text, extra = {}) => ({ type: 'user', uuid: `u${++n}`, timestamp: new Date().toISOString(), message: { role: 'user', content: text }, ...extra });
 const human = (text, extra = {}) => user(text, { origin: { kind: 'human' }, promptSource: 'typed', turnOrigin: 'human', ...extra });

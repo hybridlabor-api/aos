@@ -203,10 +203,37 @@ const SAFE_PUSH_OPT = /^(?:-u|--set-upstream|-q|--quiet|-v|--verbose|--no-verify
 // Current branch of the repository containing `dir`, read from HEAD without spawning git.
 // Handles a .git directory and a linked worktree (.git file -> gitdir). null = unknown or a
 // detached HEAD, which callers treat as the protected case.
-let segCwd = "";
+// Per-segment state handed to classify by scopesOf: the working directory (null = unknown) and
+// whether an earlier segment of the same command may have changed the repository state.
+let segCwd = "", segTaint = false;
+// Git lookups are memoised for one hook invocation (setGateContext clears them), and every
+// analysis runs under a wall-clock budget: past it the command is unscoped (guarded, GO needed).
+let memo = new Map();
+const BUDGET = Symbol("budget");
+let deadline = 0;
+const tick = () => { if (deadline && Date.now() > deadline) throw BUDGET; };
+function withBudget(fn, onExceed) {
+  const outer = deadline;
+  if (!outer) deadline = Date.now() + (gateCtx.budgetMs ?? 150);
+  try { return fn(); } catch (e) { if (e === BUDGET) return onExceed; throw e; } finally { deadline = outer; }
+}
+const GIT_BUILTINS = /^(?:add|am|apply|archive|bisect|blame|branch|bundle|cat-file|check-ref-format|checkout|cherry|cherry-pick|clean|clone|commit|commit-tree|config|count-objects|credential|describe|diff|diff-files|diff-index|diff-tree|difftool|fast-export|fast-import|fetch|filter-branch|for-each-ref|format-patch|fsck|gc|grep|hash-object|help|init|log|ls-files|ls-remote|ls-tree|maintenance|merge|merge-base|mergetool|mv|name-rev|notes|pack-refs|prune|pull|push|range-diff|rebase|reflog|remote|repack|request-pull|reset|restore|rev-list|rev-parse|revert|rm|send-email|shortlog|show|show-ref|sparse-checkout|stash|status|stripspace|submodule|subtree|switch|symbolic-ref|tag|unpack-file|update-ref|var|version|whatchanged|worktree|write-tree)$/;
+// A directory named by `cd` / `git -C`: null when it cannot be resolved (variable, backtick, ~user,
+// `-`, or it does not exist), which callers treat as an unknown repository.
+function resolveDir(base, raw) {
+  const t = expandHome(unq(raw));
+  if (base === null || /[$`\u0001\u0002]|^~[^/]|^-$/.test(t)) return null;
+  const p = resolve(expandHome(base), t === "" ? "." : t);
+  try { return statSync(p).isDirectory() ? p : null; } catch { return null; }
+}
 // { gitdir, common } of the repository containing `dir` (a .git directory, or a linked
 // worktree's .git file -> gitdir -> commondir), found without spawning git. null = none.
 function locateGit(dir) {
+  const k = `loc\0${dir}`;
+  if (!memo.has(k)) memo.set(k, locateGit0(dir));
+  return memo.get(k);
+}
+function locateGit0(dir) {
   try {
     let d = resolve(dir);
     for (let k = 0; k < 64; k++) {
@@ -248,10 +275,23 @@ export function currentBranch(dir) {
 // setGateContext({realHome})), the repo's config (the common dir for a linked worktree) and
 // config.worktree when extensions.worktreeConfig is on. Any include/includeIf, unreadable or
 // oversized file, or a GIT_* variable that redirects git makes it null: callers then fail closed.
-const GIT_REDIRECT = /^(?:GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_CONFIG\w*|GIT_INDEX_FILE|GIT_NAMESPACE)$/;
+const GIT_REDIRECT = /^(?:GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_CONFIG(?!_NOSYSTEM$)\w*|GIT_INDEX_FILE|GIT_NAMESPACE)$/;
+// A value ends at the first unquoted # or ; (linear scan; no regex over user-sized text).
+function configValue(v) {
+  let q = false, end = v.length;
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i];
+    if (c === "\\") { i++; continue; }
+    if (c === '"') q = !q;
+    else if (!q && (c === "#" || c === ";")) { end = i; break; }
+  }
+  const s = v.slice(0, end).trim();
+  return s.length > 1 && s[0] === '"' && s.at(-1) === '"' ? s.slice(1, -1) : s;
+}
 function parseGitConfig(text, out) {
   let section = "", sub = null;
-  for (let line of text.split(/\r?\n/)) {
+  for (let line of text.split("\n")) {
+    tick();
     line = line.trim();
     if (!line || line[0] === "#" || line[0] === ";") continue;
     const h = /^\[\s*([A-Za-z0-9.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\](.*)$/.exec(line);
@@ -263,28 +303,46 @@ function parseGitConfig(text, out) {
       line = h[3].trim();
       if (!line || /^[#;]/.test(line)) continue;
     }
-    const m = /^([A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(.*))?$/.exec(line);
-    if (!m) continue;
-    const v = m[2] === undefined ? "true" : m[2].replace(/\s+[#;].*$/, "").trim().replace(/^"(.*)"$/, "$1");
-    out.push({ s: section, sub, k: m[1].toLowerCase(), v });
+    const eq = line.indexOf("=");
+    const key = (eq === -1 ? line : line.slice(0, eq)).trim();
+    if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(key)) continue;
+    out.push({ s: section, sub, k: key.toLowerCase(), v: eq === -1 ? "true" : configValue(line.slice(eq + 1)) });
   }
   return true;
 }
 export function gitConfig(repoDir) {
+  const k = `cfg\0${repoDir}`;
+  if (!memo.has(k)) memo.set(k, gitConfig0(repoDir));
+  return memo.get(k);
+}
+// Only a regular file is read, bounded to 256 KB: a FIFO, device or directory is unreadable and
+// fails closed; a missing file is fine.
+function readConfigFile(f) {
+  let st;
+  try { st = statSync(f); } catch (e) { return e?.code === "ENOENT" || e?.code === "ENOTDIR" ? "" : null; }
+  if (!st.isFile() || st.size > 256 * 1024) return null;
+  try {
+    const fd = openSync(f, "r");
+    try {
+      const buf = Buffer.alloc(st.size + 1);
+      let n = 0;
+      for (let k; n < buf.length && (k = readSync(fd, buf, n, buf.length - n, n)) > 0;) n += k;
+      return n > 256 * 1024 ? null : buf.toString("utf8", 0, n);
+    } finally { closeSync(fd); }
+  } catch { return null; }
+}
+function gitConfig0(repoDir) {
   if (Object.keys(process.env).some((k) => GIT_REDIRECT.test(k))) return null;
   const loc = locateGit(repoDir);
   if (!loc) return null;
   const rh = gateCtx.realHome ?? osHome();
   const out = [];
   const readOne = (f) => {
-    let text;
-    try {
-      if (statSync(f).size > 256 * 1024) return false;
-      text = readFileSync(f, "utf8");
-    } catch (e) { return e?.code === "ENOENT" || e?.code === "ENOTDIR"; }
-    return parseGitConfig(text, out);
+    const text = readConfigFile(f);
+    return text === null ? false : parseGitConfig(text, out);
   };
-  for (const f of ["/etc/gitconfig", join(process.env.XDG_CONFIG_HOME || join(rh, ".config"), "git", "config"), join(rh, ".gitconfig"), join(loc.common, "config")]) if (!readOne(f)) return null;
+  const system = process.env.GIT_CONFIG_NOSYSTEM ? [] : ["/etc/gitconfig"];
+  for (const f of [...system, join(process.env.XDG_CONFIG_HOME || join(rh, ".config"), "git", "config"), join(rh, ".gitconfig"), join(loc.common, "config")]) if (!readOne(f)) return null;
   const last = (s, sub, k) => out.filter((e) => e.s === s && e.sub === sub && e.k === k).at(-1)?.v;
   if (/^(?:true|yes|on|1)$/i.test(last("extensions", null, "worktreeconfig") ?? "") && !readOne(join(loc.gitdir, "config.worktree"))) return null;
   return {
@@ -382,18 +440,19 @@ export function classify(seg, protectedFor = staticResolver) {
     return inner?.length && inner.every((x) => x === "destructive") ? ["destructive"] : null;
   }
   if (cmd === "git" || cmd === "hub") {
-    let i = 1, config = false, repoDir = segCwd || gateCtx.cwd || process.cwd();
+    // repoDir: null = unknown (an unresolvable cd/-C target, --git-dir): bare and plain pushes are push-main.
+    let i = 1, config = false, repoDir = segCwd === null ? null : segCwd || gateCtx.cwd || process.cwd();
     for (;;) {
       const t = unq(tok[i] ?? "");
       if (GIT_VALUE_OPTS.test(t)) {
         config ||= /^(?:-c|--config-env)$/.test(t);
-        if (t === "-C") repoDir = resolve(expandHome(repoDir), expandHome(unq(tok[i + 1] ?? "")));
+        if (t === "-C") repoDir = resolveDir(repoDir, tok[i + 1] ?? "");
         else if (/^--(?:git-dir|work-tree)$/.test(t)) repoDir = null;
         i += 2;
       }
       else if (/^(?:-[cC].|--[\w-]+=)/.test(t)) {
         config ||= /^(?:-c.|--config-env=)/.test(t);
-        if (/^-C./.test(t)) repoDir = resolve(expandHome(repoDir), expandHome(t.slice(2)));
+        if (/^-C./.test(t)) repoDir = resolveDir(repoDir, tok[i].slice(2));
         else if (/^--(?:git-dir|work-tree)=/.test(t)) repoDir = null;
         i++;
       }
@@ -404,7 +463,8 @@ export function classify(seg, protectedFor = staticResolver) {
     const sub = unq(tok[i]), r = tok.slice(i + 1).map(unq);
     if (sub === "push") {
       const unsafe = config || gitEnv || /[<'"$\x60\\*?{}[\]~^]/.test(tok.slice(i).join(" "));
-      return pushScopes(r, unsafe, protectedFor, repoDir ? { branch: currentBranch(repoDir), cfg: gitConfig(repoDir) } : null);
+      // An earlier segment of the same command may have changed the repo state (segTaint).
+      return pushScopes(r, unsafe, protectedFor, repoDir && !segTaint ? { branch: currentBranch(repoDir), cfg: gitConfig(repoDir) } : null);
     }
     if (sub === "reset" && r.includes("--hard")) return ["destructive"];
     if (sub === "clean" && r.some((t) => /^-[a-zA-Z]*f/.test(t) || t === "--force")) return ["destructive"];
@@ -418,6 +478,12 @@ export function classify(seg, protectedFor = staticResolver) {
       const args = r.filter((t) => !t.startsWith("-"));
       const read = r.some((t) => /^(?:--get\S*|--list|-l)$/.test(t)) || (args.length === 1 && !r.some((t) => /^--(?:add|unset\S*|replace-all|edit|rename-section|remove-section)$|^-e$/.test(t)));
       return read ? [] : null;
+    }
+    // An unknown subcommand may be an alias (`[alias] p = push origin HEAD:main`, `q = !git push`):
+    // guarded when the config defines it, or cannot be read.
+    if (sub && !GIT_BUILTINS.test(sub)) {
+      const cfg = repoDir ? gitConfig(repoDir) : null;
+      if (!cfg || cfg.get("alias", null, sub.toLowerCase()) !== undefined) return null;
     }
     return [];
   }
@@ -502,6 +568,7 @@ function words(s) {
   const out = [];
   let cur = "", q = "", sub = 0, bt = false;
   for (let i = 0; i < s.length; i++) {
+    if ((i & 1023) === 0) tick();
     const c = s[i];
     if (q) { cur += c; if (c === "\\" && q === '"') cur += s[++i] ?? ""; else if (c === q) q = ""; continue; }
     if (c === "\\") { cur += c + (s[++i] ?? ""); continue; }
@@ -521,6 +588,7 @@ function scanSplit(cmd) {
   const s = String(cmd), out = [];
   let cur = "", q = "", depth = 0, sub = 0, bt = false;
   for (let i = 0; i < s.length; i++) {
+    if ((i & 1023) === 0) tick();
     const c = s[i];
     if (q) { cur += c; if (c === "\\" && q === '"') cur += s[++i] ?? ""; else if (c === q) q = ""; continue; }
     if (c === "\\") { cur += c + (s[++i] ?? ""); continue; }
@@ -554,6 +622,7 @@ function stripHeredocs(cmd) {
     end = null; buf = [];
   };
   for (const line of String(cmd).split("\n")) {
+    tick();
     if (end !== null) { if (line.trim() === end) close(); else buf.push(line); continue; }
     out.push(line);
     const m = /(?<!<)<<(?!<)-?[ \t]*(?:'([^']+)'|"([^"]+)"|(\\?)([A-Za-z_]\w*))/.exec(line);
@@ -570,28 +639,30 @@ function blankQuotes(s) {
 const FEEDS = /^(?:bash|sh|zsh|dash|ksh|fish|xargs|eval|source|\.|parallel|node|nodejs|bun|deno|python[\d.]*|ruby|perl|pwsh|powershell)$/;
 // awk and sed programs can run commands (system(), getline, `| "cmd"`, sed's `e` command and
 // `s///e`); such a program is never blanked as data.
-const AWK_EXEC = /system\s*\(|getline|close\s*\(|\|\s*["'$]|\bprint[^;}]*\|\s*\S/;
+const AWK_EXEC = /system\s*\(|getline|close\s*\(|\|\s*["'$]|\bprint[^;}]{0,200}\|\s*\S/;
 const SED_EXEC = /(?<![A-Za-z_\\])e(?![A-Za-z_])|\/[gimIM0-9]*e[gimIM0-9]*\s*(?:["';}]|$)/;
-// Does any LATER stage of the pipeline starting at piece k run a shell or interpreter?
-function pipeFeeds(pieces, k) {
-  if (pieces[k].sep !== "|") return false;
-  for (let j = k; j < pieces.length - 1 && "|(){".includes(pieces[j].sep || "x"); j++) {
-    if (FEEDS.test(base(stripPrefix(tokens(pieces[j + 1].t)).rest[0] ?? ""))) return true;
-  }
-  return false;
+// feeds[k]: does any LATER stage of the pipeline that piece k starts run a shell or interpreter?
+// One backwards pass: chain[j] = the pipeline continues after piece j and a later stage feeds a shell.
+function pipeFeedsAll(pieces, heads) {
+  const chain = new Array(pieces.length).fill(false);
+  for (let j = pieces.length - 2; j >= 0; j--) chain[j] = "|(){".includes(pieces[j].sep || "x") && (FEEDS.test(heads[j + 1]) || chain[j + 1]);
+  return pieces.map((p, k) => p.sep === "|" && k + 1 < pieces.length && (FEEDS.test(heads[k + 1]) || chain[k + 1]));
 }
 // Inline interpreter code (node -e, python -c ...) is blanked too unless keepCode: it is
 // not shell text, so execution points are read from it by analyzeDeletes instead.
 function blankData(text, keepCode = false) {
   const pieces = scanSplit(text);
+  const parsed = pieces.map((p) => { tick(); return stripPrefix(tokens(p.t)); });
+  const feeds = pipeFeedsAll(pieces, parsed.map((s) => base(s.rest[0] ?? "")));
   return pieces.map((p, k) => {
-    const { rest, opaque } = stripPrefix(tokens(p.t));
+    tick();
+    const { rest, opaque } = parsed[k];
     const h = base(rest[0] ?? "");
     if (!keepCode && !opaque && INTERP.test(h) && !/^(?:pwsh|powershell|cmd)/i.test(h) && scriptFile(h, rest.slice(1).map(unqQ)).inline) return blankQuotes(p.t) + p.sep;
     const sub = h === "git" ? rest.slice(1).map(unq).find((t, i, a) => !t.startsWith("-") && !/^-[cC]$/.test(a[i - 1] ?? "")) : "";
     const prog = rest.slice(1).filter((t) => !t.startsWith("-")).map(unqQ).join(" ");
     const executes = (/^g?awk$/.test(h) && AWK_EXEC.test(prog)) || (h === "sed" && SED_EXEC.test(prog));
-    return ((DATA_HEAD.test(h) || sub === "grep") && !opaque && !executes && !pipeFeeds(pieces, k) ? blankQuotes(p.t) : p.t) + p.sep;
+    return ((DATA_HEAD.test(h) || sub === "grep") && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
   }).join("");
 }
 
@@ -602,6 +673,7 @@ function blankData(text, keepCode = false) {
 function prepText(s) {
   let out = "", q = "";
   for (let i = 0; i < s.length; i++) {
+    if ((i & 1023) === 0) tick();
     const c = s[i];
     if (q === "'") {
       if (c === "'") { q = ""; out += c; }
@@ -627,7 +699,13 @@ export function commandView(command, keepCode = false) {
 
 const HOME_VAR = String.raw`(?:~[\w.+-]*|\$HOME|\$USERPROFILE|%USERPROFILE%|%HOMEPATH%|\$env:(?:USERPROFILE|HOME)|\$\{env:(?:USERPROFILE|HOME)\})`;
 const HOME_PATH = new RegExp(`^${HOME_VAR}(?:/(.*))?$`, "i");
-const osHome = () => { try { return userInfo().homedir.replace(/\/+$/, ""); } catch { return ""; } };
+// The OS user's real home. A test override (AOS_GATE_TEST_REALHOME) is honoured ONLY inside a
+// test run (AOS_TEST_SANDBOX or NODE_TEST_CONTEXT set), so production always uses the OS value.
+const osHome = () => {
+  const o = process.env.AOS_GATE_TEST_REALHOME;
+  if (o && (process.env.AOS_TEST_SANDBOX || process.env.NODE_TEST_CONTEXT)) return o.replace(/\/+$/, "");
+  try { return userInfo().homedir.replace(/\/+$/, ""); } catch { return ""; }
+};
 const pathSegs = (s) => String(s ?? "").split("/").filter((x) => x && x !== ".");
 const GLOB = /[*?{}[\]]/;
 
@@ -834,7 +912,7 @@ function codeInto(r, text, lang = "") {
 // Script files run by an interpreter. cwd follows `cd X &&` inside the command; the hook's
 // own cwd (setGateContext) is the start. Block cooldown: see markBlock.
 let gateCtx = { cwd: "", blockTs: 0 };
-export const setGateContext = (c) => { gateCtx = { cwd: "", blockTs: 0, ...c }; };
+export const setGateContext = (c) => { gateCtx = { cwd: "", blockTs: 0, ...c }; memo = new Map(); };
 export const COOLDOWN_MS = 10 * 60 * 1000;
 export const COOLDOWN_MESSAGE = "go-gate: blocked recently; a freshly written script after a block needs a GO; stop and report.";
 const FILE_HEAD = /^(?:python[\d.]*|node(?:js)?|bun|deno|ruby|perl|php|bash|sh|zsh|dash|ksh|pwsh|powershell|osascript)$/i;
@@ -911,6 +989,7 @@ function normPath(p) {
   const out = [];
   for (const x of p.replace(/\\/g, "/").split("/")) {
     if (!x || x === ".") continue;
+    if (x === ".." && !out.length && p.startsWith("/")) continue; // the parent of / is /
     if (x === ".." && out.length && out.at(-1) !== ".." && !/^(?:~[\w.+-]*|\$HOME|\$USERPROFILE|%\w+%|\$env:\w+)$/i.test(out.at(-1))) { out.pop(); continue; }
     out.push(x);
   }
@@ -932,7 +1011,7 @@ function expandVars(s, st) {
 const resolveTarget = (t, st) => {
   const e = expandVars(unprep(t), st);
   if (e === null) return null;
-  return ABS_LIKE.test(e) ? e : normPath(`${st.cwd}/${e}`);
+  return normPath(ABS_LIKE.test(e) ? e : `${st.cwd}/${e}`);
 };
 const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
 const assignments = (raw, st) => {
@@ -954,6 +1033,25 @@ const cdTarget = (tok, st) => {
   return ABS_LIKE.test(e) ? normPath(e) : normPath(`${st.cwd}/${e}`);
 };
 
+// The texts of $(...) and `...` in one linear pass (an unmatched opener is ignored).
+function substitutions(text) {
+  const out = [], stack = [];
+  for (let i = 0; i < text.length; i++) {
+    if ((i & 1023) === 0) tick();
+    const c = text[i];
+    if (c === "$" && text[i + 1] === "(") { stack.push(i + 2); i++; }
+    else if (c === ")" && stack.length) out.push(text.slice(stack.pop(), i));
+    else if (c === "`") {
+      const j = text.indexOf("`", i + 1);
+      if (j === -1) break;
+      out.push(text.slice(i + 1, j));
+      i = j;
+    }
+    if (out.length > 64) break;
+  }
+  return out;
+}
+
 export function analyzeDeletes(command, depth = 0, init = null) {
   const r = { destructive: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] };
   if (depth > 3 || typeof command !== "string") return r;
@@ -965,6 +1063,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
   const un = (t) => String(t).replace(/^"([\s\S]*)"$/, (_, x) => x.replace(/\\(["\\$`])/g, "$1")).replace(/^'([\s\S]*)'$/, "$1");
   const stack = [];
   const segment = (seg) => {
+    tick();
     assignments(words(seg), st);
     const { rest: tok, opaque } = stripPrefix(words(seg));
     const d = shellDelete(tok);
@@ -1008,7 +1107,9 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     else if (p.sep === ")" && stack.length) st.cwd = stack.pop();
   }
   for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
-  for (const m of text.matchAll(/\$\(([^)]*)\)|`([^`]*)`/g)) merge(analyzeDeletes(unprep(m[1] ?? m[2]), depth + 1, snap()));
+  const subs = substitutions(text);
+  if (subs.length > 64) r.unscoped = true; // too many to read within the budget
+  for (const s of subs.slice(0, 64)) merge(analyzeDeletes(unprep(s), depth + 1, snap()));
   // Spawned command texts are analysed too (their own cmds are classified by commandScopes).
   let seen = 0;
   const drain = () => {
@@ -1034,7 +1135,9 @@ export function analyzeDeletes(command, depth = 0, init = null) {
 }
 
 export function hardBlockReason(command) {
-  const { hard } = analyzeDeletes(command);
+  // No time budget here: the hard pass is linear and runs first, so slow input can never skip it.
+  // Only the classification (commandScopes) falls back to unscoped when it runs out of time.
+  const hard = analyzeDeletes(command).hard;
   return hard ? `Blocked by go-gate: HARD BLOCK, unconditional. This command deletes or moves away the home directory, the filesystem root or a top-level directory of home (target: ${hard}). No GO, grant, mode or token lifts this block. Stop now and report this command to the user; do not rephrase it or try another tool, language or route to the same effect.` : null;
 }
 
@@ -1058,10 +1161,14 @@ function feedsShell(segs) {
 }
 
 let nest = 0;
+const SEG_SPLIT = /(&&|\|\||\$\(|[;&|\n(){}\x60])/;
+const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|GIT_[A-Za-z0-9_]+)=|\bset\s+-[a-z]*a/;
+const TAINT_SUBS = /^(?:checkout|switch|branch|reset|symbolic-ref|update-ref|worktree|remote|config|stash|rebase|merge|pull|fetch|restore|clone|init|am|cherry-pick|revert)$/;
+const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|stat|file|test|\[|diff|cmp|realpath|dirname|basename|echo|printf)$/;
 export function commandScopes(command, protectedFor = staticResolver) {
   if (nest > 3) return null;
   nest++;
-  try { return scopesOf(command, protectedFor); } finally { nest--; }
+  try { return withBudget(() => scopesOf(command, protectedFor), null); } finally { nest--; }
 }
 
 function scopesOf(orig, protectedFor) {
@@ -1071,19 +1178,46 @@ function scopesOf(orig, protectedFor) {
   const command = commandView(orig).text;
   // Raw text on purpose: data that a later pipe stage turns into commands must stay visible.
   if (feedsShell(segs) && catchAll(tokens(String(orig)), "", true)) return null;
-  // The working directory follows `cd X &&` so a bare push reads the right repository.
-  let cwd = gateCtx.cwd || process.cwd();
-  const outerCwd = segCwd;
-  for (const seg of segs) {
-    segCwd = cwd;
-    let s;
-    try { s = classify(seg, protectedFor); } finally { segCwd = outerCwd; }
-    const cdTok = stripPrefix(tokens(seg)).rest;
-    if (/^(?:cd|pushd)$/.test(base(cdTok[0] ?? "")) && cdTok[1]) cwd = resolve(expandHome(cwd), expandHome(unqQ(cdTok[1])));
-    if (s === null) return null;
-    if (!s.length && GUARDED_PATTERNS.some((r) => r.test(seg))) return null;
-    s.forEach((x) => out.add(x));
-  }
+  // Repository state followed through the command, so a push is judged on what it will find:
+  // the cwd (cd/pushd; null = unresolvable; restored at `)`), and a taint once an earlier segment
+  // may have changed HEAD, the config or the branch (git checkout/branch/config/..., a write
+  // under .git/) or the command assigns HOME/XDG_CONFIG_HOME/GIT_* anywhere. A tainted bare or
+  // plain-name push is push-main; an explicit src:dst is still read on its own.
+  const view = commandView(orig).text;
+  const marked = view.replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " "));
+  const st = { cwd: gateCtx.cwd || process.cwd(), taint: ENV_CHANGE.test(view) };
+  const stack = [];
+  const outerCwd = segCwd, outerTaint = segTaint;
+  try {
+    const parts = marked.split(SEG_SPLIT);
+    for (let pi = 0; pi < parts.length; pi++) {
+      tick();
+      if (pi % 2 === 1) {
+        if (parts[pi] === "(" || parts[pi] === "$(") stack.push(st.cwd);
+        else if (parts[pi] === ")" && stack.length) st.cwd = stack.pop();
+        continue;
+      }
+      const seg = parts[pi].trim();
+      if (!seg) continue;
+      segCwd = st.cwd; segTaint = st.taint;
+      const s = classify(seg, protectedFor);
+      const tk = stripPrefix(tokens(seg)).rest, h = base(tk[0] ?? "");
+      if (seg.includes("\u0003")) st.taint = true;
+      if (h === "git" || h === "hub") {
+        let i = 1;
+        while ((tk[i] ?? "").startsWith("-")) i += GIT_VALUE_OPTS.test(unq(tk[i])) ? 2 : 1;
+        const sub = unq(tk[i] ?? "");
+        if (sub && (TAINT_SUBS.test(sub) || !GIT_BUILTINS.test(sub))) st.taint = true;
+      } else if (/^(?:cd|pushd)$/.test(h)) {
+        const arg = tk.slice(1).find((x) => !/^-[LPe@]+$/.test(unq(x)));
+        st.cwd = arg === undefined ? (gateCtx.home || homedir()) : resolveDir(st.cwd, arg);
+        if (st.cwd === null || /(?:^|\/)\.git(?:\/|$)/.test(st.cwd)) st.taint = true;
+      } else if (!READONLY_HEADS.test(h) && tk.some((x) => /(?:^|\/)\.git(?:\/|$)/.test(unqQ(x)))) st.taint = true;
+      if (s === null) return null;
+      if (!s.length && GUARDED_PATTERNS.some((r) => r.test(seg))) return null;
+      s.forEach((x) => out.add(x));
+    }
+  } finally { segCwd = outerCwd; segTaint = outerTaint; }
   const a = analyzeDeletes(orig);
   if (a.unscoped) return null;
   if (a.destructive) out.add("destructive");

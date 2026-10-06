@@ -27,9 +27,15 @@ beforeEach(() => {
     t = path.join(home, 'session.jsonl');
     fs.writeFileSync(t, '');
     n = 0;
+    process.env.AOS_GATE_TEST_REALHOME = home;
+    process.env.XDG_CONFIG_HOME = path.join(home, '.config');
 });
 afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
 
+// git config is read from the temp home only: no machine ~/.gitconfig, /etc/gitconfig or GIT_* variables.
+process.env.AOS_TEST_SANDBOX = '1';
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
 const env = (extra = {}) => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '', ...extra });
 const add = (e, file = t) => fs.appendFileSync(file, JSON.stringify(e) + '\n');
 const ts = (agoMs = 0) => new Date(Date.now() - agoMs).toISOString();
@@ -71,8 +77,9 @@ describe('H1 push refmap escape', () => {
 });
 
 describe('H1b push destinations proven by the git config files (aos-22b)', () => {
-    let repo;
-    const sc = (c) => g.commandScopes(c);
+    let repo, cur;
+    // setGateContext also clears the per-invocation git memo, so each call sees the files as they are now
+    const sc = (c) => { g.setGateContext(cur); return g.commandScopes(c); };
     const feature = (c) => assert.deepEqual(sc(c), ['push-feature'], c);
     const main = (c) => assert.deepEqual(sc(c), ['push-main'], c);
     const mk = (head, config, dir = repo) => {
@@ -84,7 +91,7 @@ describe('H1b push destinations proven by the git config files (aos-22b)', () =>
     beforeEach(() => {
         repo = path.join(home, 'repo');
         mk(FEAT, '');
-        g.setGateContext({ cwd: repo, realHome: home });
+        cur = { cwd: repo, realHome: home };
     });
     afterEach(() => g.setGateContext({}));
     const gitconfig = (text) => fs.writeFileSync(path.join(home, '.gitconfig'), text);
@@ -167,7 +174,7 @@ describe('H1b push destinations proven by the git config files (aos-22b)', () =>
         const wt = path.join(home, 'wt');
         fs.mkdirSync(wt);
         fs.writeFileSync(path.join(wt, '.git'), `gitdir: ${gd}\n`);
-        g.setGateContext({ cwd: wt, realHome: home });
+        cur = { cwd: wt, realHome: home };
         main('git push'); main('git push origin feat');
         fs.writeFileSync(path.join(common, '.git', 'config'), '');
         feature('git push'); feature('git push origin feat');

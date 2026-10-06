@@ -23,6 +23,8 @@ beforeEach(() => {
     t = path.join(home, 'session.jsonl');
     fs.writeFileSync(t, '');
     n = 0;
+    process.env.AOS_GATE_TEST_REALHOME = home;
+    process.env.XDG_CONFIG_HOME = path.join(home, '.config');
     // The pushes below read their repository state (branch, push config) from the hook's cwd,
     // so every test gets a temp repo on a feature branch with an empty config.
     repo = path.join(home, 'repo');
@@ -35,6 +37,10 @@ const setRepo = (head, config) => {
     fs.writeFileSync(path.join(repo, '.git', 'config'), config);
 };
 
+// git config is read from the temp home only: no machine ~/.gitconfig, /etc/gitconfig or GIT_* variables.
+process.env.AOS_TEST_SANDBOX = '1';
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
 const env = (extra = {}) => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', ...extra });
 const ts = (agoMs = 0) => new Date(Date.now() - agoMs).toISOString();
 const add = (e) => fs.appendFileSync(t, JSON.stringify(e) + '\n');

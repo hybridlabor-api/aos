@@ -19,14 +19,21 @@ before(async () => { g = await import(pathToFileURL(GATE).href); });
 let home, t, n, work;
 beforeEach(() => {
     home = fs.mkdtempSync(path.join(BASE, 'aos-gd-'));
-    work = path.join(home, 'work');
-    fs.mkdirSync(work);
+    work = path.join(home, 'projects', 'work'); // two levels below home: not a top-level directory of home
+    fs.mkdirSync(work, { recursive: true });
     t = path.join(home, 'session.jsonl');
     fs.writeFileSync(t, '');
     n = 0;
-    g.setGateContext({ cwd: work, blockTs: 0, home });
+    process.env.AOS_GATE_TEST_REALHOME = home;
+    process.env.XDG_CONFIG_HOME = path.join(home, '.config');
+    g.setGateContext({ cwd: work, blockTs: 0, home, realHome: home });
 });
 
+// Test hygiene: git config is read from the temp home only (AOS_GATE_TEST_REALHOME is honoured by
+// the gate only because AOS_TEST_SANDBOX is set), never from the machine's ~/.gitconfig or /etc.
+process.env.AOS_TEST_SANDBOX = '1';
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
 const env = () => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '' });
 const add = (e, file = t) => fs.appendFileSync(file, JSON.stringify(e) + '\n');
 const user = (text, extra = {}) => ({ type: 'user', uuid: `u${++n}`, timestamp: new Date().toISOString(), message: { role: 'user', content: text }, ...extra });
@@ -694,6 +701,152 @@ describe('aos-22b push scopes: feature branches and bare pushes', () => {
         assert.equal(run('git push -u origin fix/x', { cwd: feat }).status, 0);
         assert.equal(run('git push origin main', { cwd: feat }).status, 2);
         assert.equal(run('git push -u origin', { cwd: path.join(home, 'repo-nope') }).status, 2);
+    });
+});
+
+describe('review round 3: repo state changes, env, paths, perf, aliases, config files', () => {
+    let feat, mainRepo, cur;
+    const mkr = (name, head, config = '') => {
+        const d = path.join(home, name);
+        fs.mkdirSync(path.join(d, '.git'), { recursive: true });
+        fs.writeFileSync(path.join(d, '.git', 'HEAD'), head);
+        fs.writeFileSync(path.join(d, '.git', 'config'), config);
+        return d;
+    };
+    const sc = (c) => { g.setGateContext(cur); return g.commandScopes(c); };
+    const featureOnly = (c) => assert.deepEqual(sc(c), ['push-feature'], c);
+    const notFeature = (c) => { const s = sc(c); assert.ok(!(Array.isArray(s) && s.length === 1 && s[0] === 'push-feature'), `${c} -> ${JSON.stringify(s)}`); };
+    beforeEach(() => {
+        feat = mkr('repo-feat', 'ref: refs/heads/feat/work\n');
+        mainRepo = mkr('repo-main', 'ref: refs/heads/main\n');
+        cur = { cwd: feat, blockTs: 0, home, realHome: home };
+    });
+
+    test('B1 an earlier segment that changes repo state makes later bare and plain pushes push-main', () => {
+        for (const c of ['git checkout main && git push', 'git switch main; git push -u origin', 'git branch -u origin/main && git push', 'git branch --set-upstream-to=origin/main && git push',
+            'git symbolic-ref HEAD refs/heads/main && git push', 'git reset --soft main && git push', 'git update-ref refs/heads/feat/work abc ; git push',
+            'git config branch.feat/work.merge refs/heads/main && git push', "echo 'x' >> .git/config; git push origin feat", 'sed -i s/a/b/ .git/config; git push',
+            'tee .git/config < x; git push origin feat', 'cp x .git/HEAD; git push', 'printf x > .git/HEAD; git push', 'git fetch && git push', 'git pull && git push origin feat',
+            'git worktree add ../w main && git push', 'git remote set-url origin x && git push', 'git stash && git push', 'git rebase main && git push', 'git merge main && git push',
+            'git co main && git push', 'cd .git && echo x > HEAD; cd .. && git push']) { notFeature(c); }
+        assert.deepEqual(sc('git checkout main && git push'), ['push-main']);
+        featureOnly('git checkout main && git push origin feat:feat');
+        for (const c of ['git status && git push', 'cat .git/config; git push origin feat', 'ls && git push', 'git log -1 && git push -u origin feat', 'echo hi && git push origin feat']) featureOnly(c);
+    });
+    test('B2 assigning HOME, XDG_CONFIG_HOME or GIT_* anywhere in the command makes plain pushes push-main', () => {
+        for (const c of ['export HOME=/x && git push origin feat', 'HOME=/tmp/h; git push origin feat', 'export XDG_CONFIG_HOME=/x; git push', 'declare -x GIT_DIR=x; git push', 'set -a; git push',
+            'env HOME=/x git push origin feat', 'export GIT_CONFIG_GLOBAL=/x && git push', 'git push origin feat; HOME=/tmp/h true']) notFeature(c);
+        featureOnly('FOO=1 git push origin feat');
+    });
+    test('B3 absolute targets are normalised before the home/root verdict', () => {
+        for (const c of ['rm -rf /tmp/../', 'rm -rf /tmp/..', 'rm -rf /./', 'rm -rf /usr/..', 'rm -rf /tmp/../Users/someone', 'rm -rf /tmp/x/../../', 'rm -rf /..', 'rm -rf /tmp/../*', 'rm -rf $HOME/x/..']) assert.ok(hard(c), c);
+        for (const c of ['rm -rf /tmp/x/..', 'rm -rf /tmp/a/../b']) assert.ok(!hard(c), c);
+    });
+    test('S1 unresolvable -C and cd targets make the repository unknown: push-main', () => {
+        for (const c of ['X=../r; git -C $X push', 'git -C "$X" push', 'cd - && git push', 'cd && git push', 'cd ~root && git push', 'git -C /nonexistent push', 'cd /nonexistent && git push',
+            'git -C ~bob push', 'cd `pwd`/x && git push', 'mkdir sub && cd sub && git push']) assert.deepEqual(sc(c), ['push-main'], c);
+        featureOnly(`cd ${feat} && git push`);
+        featureOnly(`git -C ${feat} push`);
+        cur = { cwd: home, blockTs: 0, home, realHome: home };
+        featureOnly(`cd repo-feat && git push`);
+        featureOnly('git -C repo-feat push -u origin');
+    });
+    test('S2 a subshell restores the cwd at ), a brace group keeps the cd', () => {
+        cur = { cwd: mainRepo, blockTs: 0, home, realHome: home };
+        assert.deepEqual(sc(`(cd ${feat}); git push`), ['push-main']);
+        assert.deepEqual(sc(`(cd ${feat} && git push)`), ['push-feature']);
+        assert.deepEqual(sc(`{ cd ${feat}; }; git push`), ['push-feature']);
+        assert.deepEqual(sc(`cd ${feat}; git push`), ['push-feature']);
+        assert.deepEqual(sc(`echo $(cd ${feat}); git push`), ['push-main']);
+    });
+    test('S3 a git alias (or an unreadable config) is guarded', () => {
+        const aliased = mkr('repo-alias', 'ref: refs/heads/feat/work\n', '[alias]\n\tp = push origin HEAD:main\n\tq = !git push origin main\n');
+        cur = { cwd: aliased, blockTs: 0, home, realHome: home };
+        assert.equal(sc('git p'), null);
+        assert.equal(sc('git q'), null);
+        assert.equal(sc('git P'), null);
+        assert.equal(sc('git -C . p'), null);
+        assert.deepEqual(sc('git status'), []);
+        assert.deepEqual(sc('git lfs ls-files'), [], 'an unknown, not aliased subcommand in a readable repo');
+        cur = { cwd: work, blockTs: 0, home, realHome: home };
+        assert.equal(sc('git nosuchthing'), null, 'outside a repository the config cannot be read');
+        assert.deepEqual(sc('git status'), []);
+    });
+    test('S4 a config that is not a regular file fails closed', () => {
+        const d = mkr('repo-fifo', 'ref: refs/heads/feat/work\n');
+        fs.rmSync(path.join(d, '.git', 'config'));
+        if (spawnSync('mkfifo', [path.join(d, '.git', 'config')]).status !== 0) return;
+        cur = { cwd: d, blockTs: 0, home, realHome: home };
+        const t0 = Date.now();
+        assert.deepEqual(sc('git push origin feat'), ['push-main']);
+        assert.ok(Date.now() - t0 < 500);
+        const d2 = mkr('repo-dircfg', 'ref: refs/heads/feat/work\n');
+        fs.rmSync(path.join(d2, '.git', 'config'));
+        fs.mkdirSync(path.join(d2, '.git', 'config'));
+        cur = { cwd: d2, blockTs: 0, home, realHome: home };
+        assert.deepEqual(sc('git push origin feat'), ['push-main']);
+    });
+    test('B4 pathological input is decided within the time budget', () => {
+        const lines = [];
+        const cases = {
+            'sed pipeline': `${"sed -n '1p' f | ".repeat(1000)}cat`,
+            'echo pipeline': `${'echo x | '.repeat(1000)}cat`,
+            'cd + push': 'cd a && git push;'.repeat(900),
+            '${': '${'.repeat(8000),
+            '$(': '$('.repeat(8000),
+            backticks: '`'.repeat(8000),
+            'many words': 'a '.repeat(8000),
+        };
+        for (const [name, c] of Object.entries(cases)) {
+            assert.ok(c.length <= 16 * 1024, name);
+            const t0 = Date.now();
+            g.setGateContext(cur);
+            g.hardBlockReason(c); g.isGuardedCommand(c); g.gateStoreReason(c);
+            const ms = Date.now() - t0;
+            lines.push(`${name}: ${ms} ms`);
+            assert.ok(ms < 500, `${name} took ${ms} ms`);
+        }
+        const d = mkr('repo-bigcfg', 'ref: refs/heads/feat/work\n', `[remote "origin"]\n\turl = x${' '.repeat(80000)}y\n`);
+        cur = { cwd: d, blockTs: 0, home, realHome: home };
+        const t1 = Date.now();
+        sc('git push origin feat');
+        assert.ok(Date.now() - t1 < 500, `big config line took ${Date.now() - t1} ms`);
+        console.log(lines.join('; '), `; big config: ${Date.now() - t1} ms`);
+    });
+    test('B4 over the budget the classification is unscoped (guarded) while the hard pass still runs', () => {
+        g.setGateContext({ ...cur, budgetMs: -1 });
+        assert.equal(g.commandScopes('echo hi'), null);
+        assert.ok(g.isGuardedCommand('echo hi'));
+        assert.match(g.hardBlockReason('rm -rf ~'), /unconditional/);
+        g.setGateContext(cur);
+        assert.deepEqual(g.commandScopes('echo hi'), []);
+    });
+    test('B4 git lookups are memoised until the context is reset', () => {
+        const d = mkr('repo-memo', 'ref: refs/heads/feat/work\n');
+        cur = { cwd: d, blockTs: 0, home, realHome: home };
+        g.setGateContext(cur);
+        assert.deepEqual(g.commandScopes('git push origin feat'), ['push-feature']);
+        fs.writeFileSync(path.join(d, '.git', 'config'), '[remote "origin"]\n\tpush = a:refs/heads/main\n');
+        assert.deepEqual(g.commandScopes('git push origin feat'), ['push-feature'], 'same invocation: memoised');
+        g.setGateContext(cur);
+        assert.deepEqual(g.commandScopes('git push origin feat'), ['push-main']);
+    });
+    test('S6 the real-home override is honoured only inside a test run', () => {
+        const saved = { s: process.env.AOS_TEST_SANDBOX, c: process.env.NODE_TEST_CONTEXT };
+        delete process.env.AOS_TEST_SANDBOX; delete process.env.NODE_TEST_CONTEXT;
+        try {
+            const d = mkr('repo-glob', 'ref: refs/heads/feat/work\n');
+            fs.writeFileSync(path.join(home, '.gitconfig'), '[push]\n\tdefault = upstream\n');
+            g.setGateContext({ cwd: d, blockTs: 0, home }); // no injected realHome, no sandbox: the OS home is read, not the temp one
+            assert.deepEqual(g.commandScopes('git push'), ['push-feature'], 'the temp ~/.gitconfig is NOT consulted without the sandbox');
+            process.env.AOS_TEST_SANDBOX = '1';
+            g.setGateContext({ cwd: d, blockTs: 0, home });
+            assert.deepEqual(g.commandScopes('git push'), ['push-main'], 'with the sandbox the override applies');
+        } finally {
+            if (saved.s !== undefined) process.env.AOS_TEST_SANDBOX = saved.s; else delete process.env.AOS_TEST_SANDBOX;
+            if (saved.c !== undefined) process.env.NODE_TEST_CONTEXT = saved.c;
+            g.setGateContext(cur);
+        }
     });
 });
 
