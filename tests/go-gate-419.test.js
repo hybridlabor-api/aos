@@ -202,3 +202,66 @@ describe('slash commands typed by the human', () => {
         }
     });
 });
+
+describe('read-only chains after a peer message (v5 V10)', () => {
+    const peer = () => user('peer note', { origin: { kind: 'peer', from: 'x' }, promptSource: 'system', isMeta: true, turnOrigin: 'peer' });
+    const inSoftAfterPeer = () => {
+        fs.writeFileSync(t, '');
+        add(human('hello'));
+        add(peer());
+    };
+
+    // No allowlist: these pass because nothing in them is guarded. Scripts are still read
+    // and analysed, so a harmless check script passes and a deleting one does not.
+    test('pure read/check chains with harmless scripts need no GO', () => {
+        put(path.join(work, 'plugins', 'x', 'tests'), 'source-guard.mjs', 'import { readFileSync } from "node:fs";\nif (/eval\\(/.test(readFileSync(process.argv[2] || "x", "utf8"))) process.exit(1);\n');
+        put(path.join(work, 'tests'), 'a.test.js', 'const test = require("node:test");\ntest("ok", () => {});\n');
+        const allowed = [
+            'claude plugin validate plugins/x; claude plugin test plugins/x; node plugins/x/tests/source-guard.mjs; npm exec tsc -- --noEmit; git diff --stat',
+            'git diff --stat',
+            'git log --oneline -5 && git status',
+            'node --test tests/a.test.js',
+            'npm test',
+            'npx tsc --noEmit',
+            'npm exec tsc -- --noEmit && git diff',
+            'claude plugin validate plugins/x && claude plugin test plugins/x',
+            'node plugins/x/tests/source-guard.mjs',
+            'grep -n foo bar.txt | head -5',
+            'rg foo | wc -l',
+            'git rev-parse HEAD || git branch --list feat/*',
+            "cd plans && ls -lt | awk 'NR>1{print $6,$7}' | head",
+        ];
+        for (const c of allowed) {
+            inSoftAfterPeer();
+            assert.equal(run(c, { cwd: work }).status, 0, `allowed: ${c}`);
+        }
+    });
+
+    test('mutating or exfiltrating chains keep today behaviour', () => {
+        // The gate guards publish/push/destructive actions only; plain writes (>, tee),
+        // commits and curl were never its scope and stay unguarded.
+        const blocked = [
+            'git status; git push origin main',
+            'git diff --stat && rm -rf build',
+            'gh api -X POST /repos/x/y',
+            'ls | head; gh pr merge 12',
+            'node tmp-script-rm.mjs',
+            'npm exec tsc -- --noEmit && npm publish',
+            'git log -1 || git reset --hard HEAD~1',
+            'grep -n x f; git branch -D old',
+        ];
+        for (const c of blocked) {
+            inSoftAfterPeer();
+            assert.equal(run(c, { cwd: work }).status, 2, `blocked: ${c}`);
+        }
+    });
+
+    test('a test file or check script that deletes is still analysed and blocked', () => {
+        put(path.join(work, 'tests'), 'evil.test.js', 'const { rmSync } = require("node:fs");\nrmSync("build", { recursive: true, force: true });\n');
+        const f = put(work, 'evil.mjs', 'import { rmSync } from "node:fs"; rmSync("build", { recursive: true });\n');
+        for (const c of ['node --test tests/evil.test.js', `node ${f}`, 'git diff --stat; node evil.mjs']) {
+            inSoftAfterPeer();
+            assert.equal(run(c, { cwd: work }).status, 2, `blocked: ${c}`);
+        }
+    });
+});
