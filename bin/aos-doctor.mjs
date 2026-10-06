@@ -376,6 +376,21 @@ function installerBakFiles() {
   return found.sort();
 }
 
+// MCP gateway (opt-in): every check is a warning until the gateway is installed.
+async function checkGateway() {
+  try {
+    const home = os.homedir();
+    const { gatewayChecks } = req('../lib/gateway/doctor.js');
+    const { gatewayDir } = req('../lib/gateway/config.js');
+    const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
+    let status;
+    try { status = await (await import('./aos-gateway.mjs')).gatewayStatus({ dir: gatewayDir(home) }); } catch { /* reported as not running */ }
+    for (const c of gatewayChecks({ home, files: harnessMcpFiles(home, process.env, process.platform, home), status, shipped: shippedServers() })) add(c.area, c.name, c.ok, c.detail, c.fix, c.warningOnly);
+  } catch (e) {
+    add('gateway', 'gateway checks', false, `could not run: ${e.message}`, '', true);
+  }
+}
+
 function checkInstallerBaks() {
   const list = installerBakFiles();
   if (process.argv.includes('--list-baks')) { console.log(list.join('\n')); process.exit(0); }
@@ -624,6 +639,7 @@ checkAgyMcsc();
 checkMcpSecrets();
 checkInstallerBaks();
 await checkDaemonsAndModules();
+await checkGateway();
 report();
 
 const hasCriticalFails = results.some(r => !r.ok && !r.warningOnly);
