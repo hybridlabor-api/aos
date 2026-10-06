@@ -9,7 +9,7 @@
 - spikes p0 and p1b: green, in the scratch dir
 - spikes p2a and p2b: built, not run (blocked on the go-gate, see §0)
 - spikes copied into `production_artifacts/ziel-c/spikes/` (`e62b466`, proxy and model replaced by env vars)
-- WP-CLI-a: built and repaired once; the Docker check is **blocked by the go-gate cooldown** (Tim deciding); not committed yet
+- WP-CLI-a (ad8b268) and WP-CLI-b are built, Docker-checked (a2a tests 24/24) and committed
 
 **Scope (freeze, rule 15, `~/.aos/briefs/00_focus.md` block 4; updated 2026-10-06 by Tim).** **Claude, OpenCode, agy and Codex are live peers that reach each other via A2A in both directions, shipped in AOS v5.** AO is **out**: it has its own system, and the AO status replacement is dropped. Tim's words: "es sollen Claude, OpenCode, agy, Codex muss funktionieren damit communizieren können AO hat dafür doch sowieso sein eigenes system".
 
@@ -134,9 +134,9 @@ by: read-only research worker (OpenCode, or haiku when the OpenCode slot is busy
 needs: []
 files: [lib/a2a-sidecar.mjs, lib/a2a-client.mjs, bin/aos-a2a.mjs, package.json, tests/a2a-sidecar.test.js, tests/a2a-client.test.js]
 tech: promote spike0 sidecar.mjs/send.mjs to library code behind `aos-a2a serve|send|reply|status|cancel`
-- [~] WP-CLI-a: `lib/a2a-sidecar.mjs` + `serve` subcommand + tests (incl. real-SDK card acceptance) {#wp-cli-a}
+- [x] WP-CLI-a: `lib/a2a-sidecar.mjs` + `serve` subcommand + tests (incl. real-SDK card acceptance) {#wp-cli-a}
   by: OpenCode worker (built + 1 repair); check blocked by go-gate
-- [ ] WP-CLI-b: `lib/a2a-client.mjs` + `send|status|cancel|reply` subcommands + tests (incl. lazy-import test) {#wp-cli-b}
+- [x] WP-CLI-b: `lib/a2a-client.mjs` + `send|status|cancel|reply` subcommands + tests (incl. lazy-import test) {#wp-cli-b}
 
 **Worker prompt (WP-CLI-a, then WP-CLI-b as a separate package):**
 - **Read first:**
