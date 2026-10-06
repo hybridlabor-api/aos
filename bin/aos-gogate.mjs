@@ -31,7 +31,12 @@ function status(argv) {
     return 2;
   }
   const i = argv.indexOf('--session');
-  const session = i !== -1 && argv[i + 1] ? ['--session', argv[i + 1]] : [];
+  const id = i === -1 ? null : argv[i + 1];
+  if (i !== -1 && (!id || id.startsWith('-'))) {
+    console.error('aos-gogate: --session needs a session id');
+    return 1;
+  }
+  const session = id ? ['--session', id] : [];
   const r = spawnSync(process.execPath, [grant, '--status', ...session], { stdio: 'inherit' });
   if (r.error) console.error(`aos-gogate: ${r.error.message}`);
   return r.status ?? 1;

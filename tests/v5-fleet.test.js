@@ -87,17 +87,65 @@ describe('fleet package step', () => {
         assert.equal(fs.existsSync(settingsOf(home)), false);
     });
 
-    test('JSONC settings are read; other keys and marketplaces preserved', async () => {
+    test('other keys are preserved', async () => {
         const home = mkHome();
-        put(home, '{\n // my comment\n "model": "opus", /* x */\n "enabledPlugins": { "other@x": true, },\n "extraKnownMarketplaces": { "bdb-marketplace": { "source": { "source": "github", "repo": "someone/else" } } },\n}\n');
+        put(home, { model: 'opus', enabledPlugins: { 'other@x': true }, extraKnownMarketplaces: { mine: { source: { source: 'github', repo: 'me/mine' } } } });
         const r = await pkg.install(ctxOf(home));
         assert.equal(r.changed, true);
         const s = read(home);
         assert.equal(s.model, 'opus');
         assert.equal(s.enabledPlugins['other@x'], true);
         assert.equal(s.enabledPlugins[KEY], true);
-        assert.equal(s.extraKnownMarketplaces['bdb-marketplace'].source.repo, 'someone/else');
+        assert.equal(s.extraKnownMarketplaces.mine.source.repo, 'me/mine');
         assert.equal(baks(home).length, 1);
+    });
+
+    test('settings with comments are read but never rewritten', async () => {
+        const home = mkHome();
+        const text = '{\n // my comment\n "model": "opus", /* x */\n "enabledPlugins": { "other@x": true, },\n}\n';
+        put(home, text);
+        const r = await pkg.install(ctxOf(home));
+        assert.equal(r.ok, false);
+        assert.match(r.error, /comments/);
+        assert.equal(fs.readFileSync(settingsOf(home), 'utf8'), text);
+        assert.equal(baks(home).length, 0);
+        assert.equal((await pkg.verify(ctxOf(home))).ok, false);
+    });
+
+    test('a bdb-marketplace entry pointing elsewhere is left alone and the step skips', async () => {
+        const home = mkHome();
+        const settings = { extraKnownMarketplaces: { 'bdb-marketplace': { source: { source: 'github', repo: 'someone/else' } } } };
+        put(home, settings);
+        const r = await pkg.install(ctxOf(home));
+        assert.equal(r.skipped, true);
+        assert.match(r.reason, /someone\/else/);
+        assert.deepEqual(read(home), settings);
+        assert.equal((await pkg.verify(ctxOf(home))).skipped, true);
+    });
+
+    test('AOS_NO_FLEET wins even over a broken settings file', async () => {
+        const home = mkHome();
+        put(home, '{ not json');
+        const ctx = ctxOf(home, { env: { AOS_NO_FLEET: '1' } });
+        assert.equal((await pkg.install(ctx)).optedOut, true);
+        assert.equal((await pkg.verify(ctx)).optedOut, true);
+    });
+
+    test('unreadable or invalid settings return an error instead of throwing', async () => {
+        const home = mkHome();
+        put(home, '{ not json');
+        assert.equal((await pkg.install(ctxOf(home))).ok, false);
+        const dirHome = mkHome();
+        fs.mkdirSync(settingsOf(dirHome), { recursive: true });
+        for (const f of ['install', 'verify', 'uninstall', 'detect']) await assert.doesNotReject(pkg[f](ctxOf(dirHome)));
+        assert.equal((await pkg.install(ctxOf(dirHome))).ok, false);
+    });
+
+    test('version comes from the line that starts with it', async () => {
+        for (const [out, ok] of [['2.10.0 (Claude Code)', true], ['2.2.0', true], ['2.1.287-beta.1', true], ['Node 20.11.0 warning\n2.1.200 (Claude Code)', false], ['warning only', false]]) {
+            const r = await pkg.install(ctxOf(mkHome(), { run: async () => ({ status: 0, stdout: out }) }));
+            assert.equal(!r.skipped, ok, out);
+        }
     });
 
     test('non-object enabledPlugins and broken symlink are errors, nothing written', async () => {

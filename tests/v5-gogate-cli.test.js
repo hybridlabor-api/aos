@@ -58,6 +58,13 @@ test('status runs go-grant.mjs --status, forwards only --session, writes nothing
   assert.deepEqual(tree(home), before);
 });
 
+test('--session needs a real id', () => {
+  const home = tmp();
+  fakeGrant(path.join(home, '.claude'));
+  assert.equal(cli(['status', '--session'], { HOME: home }).status, 1);
+  assert.equal(cli(['status', '--session', '--status'], { HOME: home }).status, 1);
+});
+
 test('CLAUDE_CONFIG_DIR wins over HOME', () => {
   const home = tmp();
   const config = tmp();
