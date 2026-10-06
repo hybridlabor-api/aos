@@ -655,16 +655,23 @@ const DOCKER_VALUE = /^(?:-e|--env|-w|--workdir|--name|--entrypoint|--platform|-
 const DOCKER_READER = /^(?:tail|head|grep|wc|sort|uniq|cut)$/;
 // :ro does not stop a container from reading secrets or connect()ing to a socket, so broad
 // sources are refused: `/`, the docker socket and its parent dirs, home, its ancestors and its dotdirs.
-const SOCKET_DIRS = new Set(["/var", "/var/run", "/run", "/private", "/private/var", "/private/var/run"]);
+// A deny-list of broad paths was bypassable (`/.`, `/var/run/.`, `//Users/x`, case, symlinks), so
+// this is an allow-list: an existing project directory at least two levels inside home, resolved
+// through symlinks (realpath), with plain characters only, no dot segment and not under ~/Library.
+// `/`, /etc, the docker socket dirs, /Volumes, other users and dotdirs are ordinary commands again.
+// Known limit: the container may still read files inside that project (e.g. a .env) and use the network.
 const roMount = (v) => {
   const p = unqQ(v).split(":");
-  if (p.length < 3 || !p[0].startsWith("/") || p[0].includes("..") || !p.slice(2).join(":").split(",").includes("ro")) return false;
-  const src = p[0].replace(/\/+$/, "") || "/";
-  if (src === "/" || /docker\.sock/.test(src) || SOCKET_DIRS.has(src) || /^\/(?:Users|home|root)$/.test(src)) return false;
+  if (p.length < 3 || !p.slice(2).join(":").split(",").includes("ro")) return false;
+  const src = p[0];
+  if (!/^\/[A-Za-z0-9._ /-]+$/.test(src) || /\/\/|(?:^|\/)\.{1,2}(?:\/|$)/.test(src)) return false;
   const home = osHome();
-  if (home && (home === src || home.startsWith(`${src}/`))) return false;
-  if (home && src.startsWith(`${home}/`) && src.slice(home.length + 1).startsWith(".")) return false;
-  return true;
+  if (!home) return false;
+  let real, realHome;
+  try { real = realpathSync.native(src); realHome = realpathSync.native(home); } catch { return false; }
+  if (!real.startsWith(`${realHome}/`)) return false;
+  const rel = real.slice(realHome.length + 1).split("/");
+  return rel.length >= 2 && !rel.some((s) => s.startsWith(".")) && rel[0] !== "Library";
 };
 export function isReadOnlyDockerRun(command) {
   if (typeof command !== "string" || commandTooLong(command)) return false;
@@ -1453,6 +1460,19 @@ function hookBlockKey(input, isAgy) {
 
 const TEST_RUN = /\bnode(?:js)?\s+(?:-\S+\s+)*--test\b|\bnpm\s+(?:run\s+)?test\b|\bnpx\s+(?:-\S+\s+)*(?:vitest|jest|mocha)\b|\bpytest\b/i;
 export const TEST_HINT = "Test runs: use the Docker container (AOS_TEST_SANDBOX=container), see docs/codex-gate-smoke.md";
+// Denied commands are the likeliest to carry inline credentials. Masked before truncation so a
+// secret cut at the boundary cannot survive. ponytail: pattern list, not a parser; extend on leaks.
+const SECRET_NAME = /(?:TOKEN|SECRET|PASS(?:WORD|WD)?|PWD|API_?KEY|AUTH|CREDENTIALS?|PRIVATE_?KEY)/i;
+export function maskSecrets(text) {
+  return String(text ?? "")
+    .replace(/(\b[A-Za-z_]\w*=)("[^"]*"|'[^']*'|\S+)/g, (m, k, v) => (SECRET_NAME.test(k) || v.replace(/^["']|["']$/g, "").length >= 12 ? `${k}***` : m))
+    .replace(/\b(Bearer|token|Basic)\s+[^\s"']+/gi, "$1 ***")
+    .replace(/(--?(?:token|password|passwd|secret|api-?key|auth)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi, "$1***")
+    .replace(/(\s-u\s+)[^\s:]+:\S+/g, "$1***")
+    .replace(/\b(?:gh[pousr]_|github_pat_|sk-|xox[abprs]-|glpat-|AKIA)[A-Za-z0-9_-]{6,}/g, "***")
+    .replace(/(:\/\/)[^\s/]*@/g, "$1***@");
+}
+
 function respond(isAgy, allowed, reason = "", command = "", hard = false) {
   if (!allowed) markBlock(blockKey);
   if (!allowed && !hard && TEST_RUN.test(command)) reason = `${reason} ${TEST_HINT}`.trim();
@@ -1460,9 +1480,7 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
   if (!allowed && blockKey) {
     let why = "";
     try { why = `guarded=${isGuardedCommand(command)} scopes=${JSON.stringify(commandScopes(command))}`; } catch { why = "classify failed"; }
-    // Denied commands are the likeliest to carry inline credentials; mask assignments and URL userinfo.
-    const shown = command.slice(0, 200).replace(/(\b[A-Za-z_]\w*=)(["']?)[^\s"']{12,}\2/g, "$1***").replace(/(:\/\/[^\s/:@]+:)[^\s/@]+@/g, "$1***@");
-    gateLog(blockKey, `deny${hard ? " hard" : ""} ${why} ${JSON.stringify(shown)} :: ${reason.slice(0, 120)}`);
+    gateLog(blockKey, `deny${hard ? " hard" : ""} ${why} ${JSON.stringify(maskSecrets(command).slice(0, 200))} :: ${maskSecrets(reason).slice(0, 120)}`);
   }
   if (hard) {
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));

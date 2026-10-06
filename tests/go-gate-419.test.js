@@ -294,12 +294,26 @@ describe('read-only chains after a peer message (v5 V10)', () => {
             `docker run --rm -v ${path.dirname(home)}:/u:ro node:24 node /u/x.mjs`,
             `docker run --rm -v ${home}/.ssh:/s:ro node:24 node /s/x.mjs`,
             `docker run --rm -v ${work}/../..:/u:ro node:24 node /u/x.mjs`,
+            // re-review 1/2: unnormalized spellings, system dirs, other users, Library
+            `docker run --rm -v /.:/h:ro node:24 node /h/x.mjs`,
+            `docker run --rm -v /var/run/.:/r:ro node:24 node /r/x.mjs`,
+            `docker run --rm -v /${work}:/h:ro node:24 node /h/x.mjs`,
+            `docker run --rm -v ${work}/./:/h:ro node:24 node /h/x.mjs`,
+            `docker run --rm -v ${work.toUpperCase()}x:/h:ro node:24 node /h/x.mjs`,
+            `docker run --rm -v /etc:/e:ro node:24 node /e/x.mjs`,
+            `docker run --rm -v /tmp:/t:ro node:24 node /t/x.mjs`,
+            `docker run --rm -v ${home}/projects:/p:ro node:24 node /p/x.mjs`,
+            `docker run --rm -v ${home}/Library/Keychains:/k:ro node:24 node /k/x.mjs`,
+            `docker run --rm -v ${work}/lnk:/s:ro node:24 node /s/x.mjs`,
+            `docker run --rm -v ${work}/does-not-exist:/s:ro node:24 node /s/x.mjs`,
             // review 24: an expansion before the image can become any flags
             `docker run --rm $FLAGS node:24 node /src/evil.mjs`,
             `docker run --rm -e $X -v ${work}:/src:ro node:24 node /src/evil.mjs`,
             `docker run --rm -v "${work}:/src:ro" "$IMG" node /src/evil.mjs`,
         ];
         for (const c of ok) assert.equal(g.isReadOnlyDockerRun(c), true, `ro: ${c}`);
+        fs.mkdirSync(path.join(home, '.secret'), { recursive: true });
+        fs.symlinkSync(path.join(home, '.secret'), path.join(work, 'lnk'));
         for (const c of no) assert.equal(g.isReadOnlyDockerRun(c), false, `not ro: ${c}`);
 
         // A fresh deleting test file after a block: the :ro container run passes, the host run and a rw mount do not.
@@ -324,12 +338,29 @@ describe('read-only chains after a peer message (v5 V10)', () => {
         assert.match(log, /deny guarded=true scopes=\[[^\]]*\] "git status; gh pr merge 12" :: \S/);
     });
 
+    test('maskSecrets covers the common token shapes (re-review 4)', () => {
+        const cases = [
+            ['curl -H "Authorization: Bearer abc.def.ghi" x', 'abc.def.ghi'],
+            ['curl -H "Authorization: token ghp_aaaaaaaaaaaaaaaaaaaa" x', 'ghp_aaaa'],
+            ['tool --token s3cr3t-value x', 's3cr3t-value'],
+            ['tool --password=hunter2 x', 'hunter2'],
+            ['PASSWORD=hunter2 run', 'hunter2'],
+            ['API_KEY="a b c d" run', 'a b c d'],
+            ['git clone https://ghtoken123@github.com/x/y', 'ghtoken123'],
+            ['git clone https://u:p@ss@host/x', 'p@ss'],
+            ['curl -u admin:pw123 x', 'pw123'],
+            ['echo sk-abcdefghijklmnop', 'sk-abcdefghij'],
+        ];
+        for (const [input, secret] of cases) assert.ok(!g.maskSecrets(input).includes(secret), `masked: ${input} -> ${g.maskSecrets(input)}`);
+        assert.equal(g.maskSecrets('git status; ls -la'), 'git status; ls -la');
+    });
+
     test('the deny log masks inline credentials (review 26)', () => {
         inSoftAfterPeer();
         run('GH_TOKEN=ghp_abcdefghijklmnop1234 gh pr merge 12; git push https://bot:s3cretpassw0rd@example.com/x.git', { cwd: work });
         const log = fs.readFileSync(path.join(home, '.aos', 'gate', `${g.sessionKey('s1')}.log`), 'utf8');
         assert.match(log, /GH_TOKEN=\*\*\*/);
-        assert.match(log, /:\/\/bot:\*\*\*@example\.com/);
+        assert.match(log, /:\/\/\*\*\*@example\.com/);
         assert.doesNotMatch(log, /ghp_abcdefghijklmnop1234|s3cretpassw0rd/);
     });
 });
