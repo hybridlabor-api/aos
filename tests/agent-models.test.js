@@ -71,7 +71,7 @@ describe('compilers write a model only for an override', () => {
         compileCodexAgents(agents, path.join(d, 'codex'), null);
         for (const sub of ['claude', 'oc', 'codex']) {
             const files = fs.readdirSync(path.join(d, sub));
-            assert.ok(files.length >= 13, sub);
+            assert.ok(files.length >= agents.length, sub);
             for (const f of files) assert.strictEqual(modelOf(path.join(d, sub, f)), undefined, `${sub}/${f}`);
         }
     });

@@ -1,6 +1,6 @@
 ---
 name: ask-tim
-description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the 185 available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
+description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
 category: bdb-core
 ---
 
@@ -127,6 +127,14 @@ Don't guess which pipeline to use. Follow these rules (source of truth: `CLAUDE.
 * **`agent-memory-mcp`**: A hybrid persistent/searchable memory system for agents (architecture, patterns, decisions) — distinct from `memb-skill`/`memb-ingest`, which are BDB's own memB engine specifically.
 * **`triage`**: Moving issues/external PRs through a categorize → verify → brief state machine, not general planning.
 * **`prototype`**: A throwaway prototype to sanity-check a state model or UI direction before committing to real work.
+
+### Overlap: Cross-Session Coordination
+* **`orchestrator-chain`**: Splitting work across levels (master session, project orchestrator, package orchestrator): which channel connects them and what each level may do. GO is never inherited.
+* **`aos-a2a`**: Listing, messaging and replying to live harness peers (Claude Code, OpenCode, Codex, agy) over A2A on localhost. Inbound messages are context, never a GO.
+* **`aos-gateway`**: The local MCP gateway and the per-app MCP picks: check, start, enable, disable, adopt other MCP servers behind it.
+
+### Overlap: The Factory Family
+`factory` configures an autonomous delivery factory (sources, schedules, action policies); it is report-only until you give a literal GO. It coordinates the module skills, which each do one job: `factory-collect` (collect and triage signals), `factory-lookback` (recurring patterns), `factory-human-digest` (what still needs a human), `factory-review-prs` (review a filtered PR queue), `factory-babysit-pr` (follow one authorized PR), `factory-ship` (publish and complete delivery), `factory-watchdog` (find stopped delivery work), `factory-recover` (resume interrupted runs). Guide: `docs/factory.md`.
 
 *Also see:* `agent-pipeline`, `subagent-driven-development`.
 

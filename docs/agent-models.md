@@ -52,7 +52,7 @@ First file wins, no merge: `.aos/pipeline.json` in the project, then `.aos/proje
 
 `aos-doctor` reads the project and home `pipeline.json` (offline, no provider lists) and fails with file, role, harness and value for an unusable entry. AOS never replaces a bad override with another model.
 
-Scope: overrides are applied when AOS compiles agent files (project install, `setup-subagents --sync`). The 13 personas that ship as files are copied to `~/.claude/agents` by the manifest copy; right after it the installer inserts the `claude` override from `pipeline.json` and records the new hash in the install manifest, so the next update sees an unedited file, restores the shipped bytes and applies the override again. A file you edited, or one that already has a `model:` line, is left alone.
+Scope: overrides are applied when AOS compiles agent files (project install, `setup-subagents --sync`). The personas that ship as files (the 7 pipeline agents plus the auxiliary agents in `.agents/AGENTS.md`) are copied to `~/.claude/agents` by the manifest copy; right after it the installer inserts the `claude` override from `pipeline.json` and records the new hash in the install manifest, so the next update sees an unedited file, restores the shipped bytes and applies the override again. A file you edited, or one that already has a `model:` line, is left alone.
 
 The doctor treats an antigravity value outside `inherit|flash|pro` as an error, because those are the only values the agy docs list and others silently fail to register. The compilers still pass an antigravity string through (agy may add ids).
 

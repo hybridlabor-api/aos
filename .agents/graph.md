@@ -221,6 +221,15 @@ turn without one.
 
 The dispatcher is one level of a chain: a master session supervises sessions, a project-level orchestrator may run this graph, and workers do the slices. Channels and limits per hop (GO never inherited, A2A depth, `AOS_A2A_SIDECAR=off` for workers): `docs/orchestrator-chain.md`, `docs/a2a.md`, `docs/delegation-routing.md`.
 
+## Auxiliary agents are not nodes
+
+`.agents/AGENTS.md` also defines auxiliary specialists (for example
+`pcb-design-assistant`, `devils-advocate`, `reviewer-1`, `reviewer-2`). They are
+never in `.agents/nodes.json`, have no edges above, and the dispatcher reads none
+of them. The dispatcher or the user may call one directly, outside this graph;
+`reviewer-1`/`reviewer-2` are independent second opinions, not replacements for
+the Reviewer node.
+
 ## What this does not change
 
 - The five build-and-ship agent *identities* (`Godmode_UI_UX`,
