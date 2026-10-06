@@ -271,17 +271,26 @@ check_item1() {
       if [ "$(( $(date +%s) - t0 ))" -ge "$TIMEOUT" ]; then break; fi
       sleep 1
     done
-    if [ -n "$oc_url" ] && \
-       curl -sf --noproxy '*' --max-time 10 -X POST "$oc_url/session" \
-         -H 'content-type: application/json' -d "{\"title\":\"$OC_SESSION\"}" \
-         >/dev/null 2>&1; then
+    # The server may log its URL slightly before it accepts requests: retry a few times and keep
+    # the HTTP status and body of the last attempt for the failure message.
+    local post_ok=0 post_try post_code=""
+    if [ -n "$oc_url" ]; then
+      for post_try in 1 2 3 4 5; do
+        post_code="$(curl -s --noproxy '*' --max-time 10 -o "$TMP_DIR/oc-session.body" -w '%{http_code}' \
+          -X POST "$oc_url/session" -H 'content-type: application/json' \
+          -d "{\"title\":\"$OC_SESSION\"}" 2>"$TMP_DIR/oc-session.err")" || post_code="curl-failed"
+        case "$post_code" in 2??) post_ok=1; break ;; esac
+        sleep 2
+      done
+    fi
+    if [ "$post_ok" = 1 ]; then
       if wait_for "$OC_SESSION"; then
         pass "item1-opencode-registered"
       else
         fail "item1-opencode" "$OC_SESSION not registered (serve log tail: $(oc_log_tail "$log"))"
       fi
     else
-      fail "item1-opencode" "serve URL not parsed or POST $oc_url/session failed (endpoint verified in https://opencode.ai/docs/server; log tail: $(oc_log_tail "$log"))"
+      fail "item1-opencode" "serve URL not parsed or POST $oc_url/session failed (status: ${post_code:-none}; body: $(head -c 300 "$TMP_DIR/oc-session.body" 2>/dev/null | tr '\n' ' '); curl: $(head -c 200 "$TMP_DIR/oc-session.err" 2>/dev/null | tr '\n' ' '); log tail: $(oc_log_tail "$log"))"
     fi
   else
     (node "$A2A_BIN" serve --name "$OC_SESSION" --harness opencode --mode echo --parent-pid "$$") \
