@@ -145,6 +145,11 @@ async function readGate($: EngineInterface) {
 }
 
 // The only place that writes the prompt box, and only from a Button press.
+async function openGatePane($: EngineInterface) {
+  await readGate($).catch(() => undefined)
+  await $.ui.open({ id: GATE_PANE, title: 'go-gate' })
+}
+
 async function fillPreset($: EngineInterface, text: string) {
   if ((await $.prompt.read()).text) return update($, gateMsg, () => 'Prompt is not empty – clear it first')
   await $.prompt.fill({ text })
@@ -463,8 +468,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'gogate-panel' }, async $ => {
-    await readGate($).catch(() => undefined)
-    await $.ui.open({ id: GATE_PANE, title: 'go-gate' })
+    await openGatePane($)
     return { text: 'go-gate pane opened.' }
   })
 
@@ -629,7 +633,7 @@ export const register: Register = on => {
     const list = await read($, fleet)
     const g = await read($, gate)
     if (e.props.hasSurvey || (list.length === 0 && !reading && !g.raw)) return next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
     const wide = e.props.bodyColumns >= 70
     const others = list.filter(s => s.id !== id)
     const idle = others.filter(s => s.activity === 'idle')
@@ -665,17 +669,18 @@ export const register: Register = on => {
               {weather(reading.percent).advice}
             </Text>
           )}
-          {g.raw && (
-            <Text color={MODE_COLOR[g.mode] ?? 'yellow'} wrap="truncate-end">
-              {'   '}gate {g.mode}
-            </Text>
-          )}
-          {g.grants.map(x => (
-            <Text key={x.scope} dimColor wrap="truncate-end">
-              {' · '}
-              {x.scope} {timeLeft(x.minutesLeft)}
-            </Text>
-          ))}
+        </Text>
+      </Box>
+    )
+
+    // The gate sits first so the weather text, not the button, is what truncates.
+    const gateLine = g.raw && (
+      <Box flexDirection="row" paddingX={1}>
+        <Text color={MODE_COLOR[g.mode] ?? 'yellow'}>● </Text>
+        <Button key="gate" plain label={`gate ${g.mode}`} onPress={() => void openGatePane($)} />
+        <Text dimColor wrap="truncate-end">
+          {g.grants.map(x => ` · ${x.scope} ${timeLeft(x.minutesLeft)}`).join('')}
+          {'   '}
         </Text>
       </Box>
     )
@@ -746,7 +751,10 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        {weatherLine}
+        <Box flexDirection="row">
+          {gateLine}
+          {weatherLine}
+        </Box>
         {fleetLine}
       </Box>
     )
