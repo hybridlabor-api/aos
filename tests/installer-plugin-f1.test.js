@@ -28,11 +28,14 @@ function shim(name, body) {
 
 test('Quick Update runs the same three plugin steps, in the full-install order', () => {
   const src = fs.readFileSync(path.join(ROOT, 'installer.js'), 'utf8');
-  const body = (name) => { const i = src.indexOf(`async function ${name}(`); return src.slice(i, src.indexOf('\n}\n', i)); };
-  for (const fn of ['runQuickUpdate']) {
-    const b = body(fn);
+  const body = (name) => { const i = src.indexOf(`function ${name}(`); return src.slice(i, src.indexOf('\n}\n', i)); };
+  // v5 split Quick Update into kernel + harnesses steps; runQuickUpdate runs them in that order.
+  const quick = body('runQuickUpdate');
+  assert.ok(quick.indexOf('quickUpdateKernel(') >= 0 && quick.indexOf('quickUpdateKernel(') < quick.indexOf('quickUpdateHarnesses('));
+  {
+    const b = `${body('quickUpdateKernel')}\n${body('quickUpdateHarnesses')}`;
     const order = ['runPluginMigration()', 'runAgyPluginStep()', 'injectHarnessRules()', 'runCodexPluginStep()'].map((k) => b.indexOf(k));
-    assert.ok(order.every((x) => x >= 0), `${fn} misses a plugin step: ${order}`);
+    assert.ok(order.every((x) => x >= 0), `Quick Update misses a plugin step: ${order}`);
     assert.deepEqual([...order].sort((a, b2) => a - b2), order);
   }
   const full = body('main');

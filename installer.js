@@ -29,6 +29,7 @@ const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const mcpSecrets = require('./lib/mcp-secrets');
+const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 
@@ -1684,11 +1685,21 @@ async function promptCredentials(referenceMcpDir) {
         if (existingGithub) log.message(`GITHUB_PERSONAL_ACCESS_TOKEN: ${maskApiKey(existingGithub)}`);
         log.message('To change a stored key or the provider, use `aos-config`.');
     }
+    // Asked once per key ever: a blank answer is remembered (AOS_SKIPPED_KEYS), a value is stored at once.
+    const askSecret = async (key, message) => {
+        let backed = false;
+        const r = await v5Secrets.need([key], {
+            home: homeDir, legacy: existingEnv,
+            ask: async () => { const v = await passwordWithBack({ message }); if (v === BACK) { backed = true; return null; } return String(v || ''); },
+        });
+        return backed ? BACK : r[key];
+    };
+    const ghMessage = 'GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP (leave blank to skip) (< = back):';
     if (haveOpenWiki && existingGithub) return stored;
     if (haveOpenWiki) {
-        const gh = await passwordWithBack({ message: 'GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP (leave blank to skip) (< = back):' });
+        const gh = await askSecret('GITHUB_PERSONAL_ACCESS_TOKEN', ghMessage);
         if (gh === BACK) return BACK;
-        return { ...stored, github: ((gh || '') + '').trim() };
+        return { ...stored, github: gh };
     }
 
     // Model names change faster than this installer: no per-provider model lists, the model is free text.
@@ -1766,11 +1777,9 @@ async function promptCredentials(referenceMcpDir) {
         if (sub === 2) {
             if (d.provider !== "ollama") {
                 const existingKey = existingEnv[d.keyEnvName] || existingEnv['GEMINI_API_KEY'] || '';
-                const entered = await passwordWithBack({
-                    message: `${d.keyEnvName} for OpenWiki${existingKey ? ` (existing detected: ${maskApiKey(existingKey)}, leave blank to keep)` : ' (leave blank to skip)'} (< = back):`
-                });
+                const entered = await askSecret(d.keyEnvName, `${d.keyEnvName} for OpenWiki${existingKey ? ` (existing detected: ${maskApiKey(existingKey)}, leave blank to keep)` : ' (leave blank to skip)'} (< = back):`);
                 if (entered === BACK) { sub = 1; continue; }
-                apiKey = ((entered || '') + '').trim() || existingKey;
+                apiKey = entered || existingKey;
             } else {
                 apiKey = '';
             }
@@ -1780,11 +1789,9 @@ async function promptCredentials(referenceMcpDir) {
 
         const ghExisting = existingEnv['GITHUB_PERSONAL_ACCESS_TOKEN'] || existingEnv['GITHUB_TOKEN'] || '';
         if (ghExisting) { github = ghExisting; break; }
-        const enteredGithub = await passwordWithBack({
-            message: `GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP${ghExisting ? ` (existing detected: ${maskApiKey(ghExisting)}, leave blank to keep)` : ' (leave blank to skip)'} (< = back):`
-        });
+        const enteredGithub = await askSecret('GITHUB_PERSONAL_ACCESS_TOKEN', ghMessage);
         if (enteredGithub === BACK) { sub = 2; continue; }
-        github = ((enteredGithub || '') + '').trim() || ghExisting;
+        github = enteredGithub || ghExisting;
         break;
     }
 
@@ -6244,7 +6251,8 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
     installPlanCanvasAutostart();
 }
 
-async function runQuickUpdate(installState) {
+// Kernel = skills, plugin migration; Harnesses = rules/hooks/MCP secrets. v5 runs them as separate steps.
+function quickUpdateKernel(installState) {
     const s = spinner();
     s.start('Quick Update: refreshing skills & syncing installed submodules...');
 
@@ -6293,7 +6301,9 @@ async function runQuickUpdate(installState) {
     s.stop('Skills refreshed');
     runPluginMigration();
     runAgyPluginStep();
+}
 
+function quickUpdateHarnesses() {
     // Everything injectHarnessRules() delivers -- RULES.md, the dispatcher
     // workflows the skills point at, the compiled subagent definitions, the
     // harness rule files and the gate + memory hooks -- used to be
@@ -6307,6 +6317,25 @@ async function runQuickUpdate(installState) {
     installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.');
     installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`);
     runCodexPluginStep();
+}
+
+// No prompt: only refreshes when a key (or ollama) is already configured. Returns false when there is nothing to refresh.
+async function refreshOpenWikiSilently() {
+    const paths = resolveTargetPaths('1', null);
+    const env = loadExistingEnv(paths.targetMcpDir);
+    const provider = env['OPENWIKI_PROVIDER'] || 'google';
+    const keyName = PROVIDER_KEY_ENV_NAMES[provider] || 'GEMINI_API_KEY';
+    const key = env[keyName] || env['GEMINI_API_KEY'] || env['GOOGLE_API_KEY'] || env['OPENWIKI_API_KEY'] || '';
+    if (!key && provider !== 'ollama') return false;
+    await installOpenWikiDaemon(key, paths.targetSkillDir, { provider, model: env['OPENWIKI_MODEL_ID'] || env['OPENWIKI_MODEL'] || '', baseUrl: env['OPENWIKI_BASE_URL'] || '' });
+    await installOpenWikiVisualizer();
+    return true;
+}
+
+async function runQuickUpdate(installState) {
+    quickUpdateKernel(installState);
+    quickUpdateHarnesses();
+    const paths = resolveTargetPaths('1', null);
 
     // OpenWiki: if already configured, refresh the daemon silently (no prompt).
     // Only ask when there is no key yet — i.e. a first-time offer or a machine
@@ -6429,8 +6458,32 @@ function installBinaryAtomically(src, dest) {
     }
 }
 
+// aos-uninstall.mjs is ESM and drives its own confirmation prompt, so it runs as a child process.
+function runUninstaller() {
+    const uninstallScript = path.join(srcDir, 'bin', 'aos-uninstall.mjs');
+    if (!fs.existsSync(uninstallScript)) {
+        log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: npx @hybridlabor-api/aos-uninstall`);
+        return 1;
+    }
+    const r = spawnSync(process.execPath, [uninstallScript], { stdio: 'inherit' });
+    return r.status == null ? 1 : r.status;
+}
+
+// Prompts exist only in a TTY; `aos update` without one passes ui = {} and nothing is ever asked.
+function v5Options(interactive) {
+    const ui = interactive ? {
+        select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
+        ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
+    } : {};
+    return { home: homeDir, write: (s) => process.stdout.write(s), ui };
+}
+
 async function main() {
     const args = process.argv.slice(2);
+    if (['status', 'update', 'repair'].includes(args[0])) {
+        process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
+        return;
+    }
     if (args.includes('--version') || args.includes('-V') || args[0] === 'version') {
         console.log(pkg.version);
         return;
@@ -6550,63 +6603,8 @@ Options:
     }
 
     if (installState.isInstalled && !isAutoYes) {
-        const options = installState.updateAvailable
-            ? [
-                { value: 'quick', label: `⚡ Quick Update (v${installState.localVersion} ➔ v${installState.currentVersion})`, hint: 'refresh skills, templates & daemons' },
-                { value: 'doctor', label: '🩺 Run System Checkup / Doctor', hint: 'verify environment, placement, daemons & AO' },
-                { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
-                { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'change targets, tier or options' },
-                { value: 'uninstall', label: '🗑️ Uninstall AOS', hint: 'remove what this installer placed; your data stays' },
-                { value: 'cancel', label: '❌ Exit' }
-              ]
-            : [
-                { value: 'doctor', label: '🩺 Run System Checkup / Doctor', hint: 'verify environment, placement, daemons & AO' },
-                { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
-                { value: 'quick', label: '🔄 Verify & Refresh All Skills', hint: 're-sync and health check' },
-                { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'switch tier or targets' },
-                { value: 'uninstall', label: '🗑️ Uninstall AOS', hint: 'remove what this installer placed; your data stays' },
-                { value: 'cancel', label: '❌ Exit' }
-              ];
-
-        const action = pick(await select({
-            message: 'Select an operation:',
-            options,
-            initialValue: options[0].value
-        }));
-
-        if (action === 'cancel') {
-            outro('Cancelled.');
-            return;
-        }
-        if (action === 'doctor') {
-            const doctorScript = path.join(srcDir, 'bin', 'aos-doctor.mjs');
-            spawnSync(process.execPath, [doctorScript], { stdio: 'inherit' });
-            outro('System Checkup complete.');
-            return;
-        }
-        if (action === 'project') {
-            installProjectHarness();
-            outro('Project harness installation complete.');
-            return;
-        }
-        if (action === 'quick') {
-            await runQuickUpdate(installState);
-            outro('Quick Update complete.');
-            return;
-        }
-        if (action === 'uninstall') {
-            // aos-uninstall.mjs is its own script, not a function of this file --
-            // it is ESM (installer.js is CommonJS) and drives its own readline
-            // confirmation prompt, so it runs as a real child process with
-            // inherited stdio rather than being imported in-process.
-            const uninstallScript = path.join(srcDir, 'bin', 'aos-uninstall.mjs');
-            if (!fs.existsSync(uninstallScript)) {
-                log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: npx @hybridlabor-api/aos-uninstall`);
-                return;
-            }
-            spawnSync('node', [uninstallScript], { stdio: 'inherit' });
-            return;
-        }
+        process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true));
+        return;
     }
 
     const detectedNames = detections.map(d => d.name).join(', ');
@@ -6891,10 +6889,6 @@ Options:
     outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
 }
 
-if (require.main === module) {
-    main().catch(e => reportFatal('the beta installer run', e));
-}
-
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
     codexPluginInstall,
@@ -6974,6 +6968,9 @@ module.exports = {
     describeMissingSynapseBinary,
     isValidOpenWikiModelId,
     loadExistingEnv,
+    // installer v5 host surface (lib/v5/*)
+    runQuickUpdate, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
+    saveManifest, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, runUninstaller, PROVIDER_KEY_ENV_NAMES,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
@@ -7000,3 +6997,8 @@ module.exports = {
     LAUNCHPAD_WEB_MODULES,
     LAUNCHPAD_OPEN_FLAGS,
 };
+
+// After module.exports: the v5 menu receives it as its host and main() runs before the first await.
+if (require.main === module) {
+    main().catch(e => reportFatal('the beta installer run', e));
+}
