@@ -653,3 +653,264 @@ http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(Number(port),'1
         await h.stop();
     });
 });
+
+describe('harness enable/disable', () => {
+    const harness = require('../lib/gateway/harness.js');
+    const { gatewayChecks } = require('../lib/gateway/doctor.js');
+    const sec = require('../lib/mcp-secrets.js');
+    const posix = process.platform !== 'win32';
+    const TOKEN = 'd'.repeat(64);
+    const shipped = sec.shippedServers(ROOT);
+
+    const launcher = (home) => sec.launcherPath(home);
+    const owned = (home, name) => sec.wrapServer(name, shipped[name], launcher(home));
+    const ownedOc = (home, name) => sec.toOpencode({ type: 'local' }, owned(home, name));
+    const edited = { command: 'node', args: ['/my/github.js'] };
+    const wj = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o, null, 2) + '\n'); };
+    const rj = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+
+    function fixture(extra = {}) {
+        const home = tmp();
+        const f = {
+            claude: path.join(home, '.claude.json'),
+            cursor: path.join(home, '.cursor', 'mcp.json'),
+            oc: path.join(home, '.config', 'opencode', 'opencode.json'),
+            codex: path.join(home, '.codex', 'config.toml'),
+            agy: path.join(home, '.gemini', 'config', 'mcp_config.json'),
+        };
+        const common = (h) => ({ deja: shipped.deja, memb_mcp: shipped.memb_mcp, mine: { command: 'node', args: ['mine.js'] }, ...h });
+        wj(f.claude, { numStartups: 3, mcpServers: common({ github: owned(home, 'github'), open_design_mcp: owned(home, 'open_design_mcp') }), projects: { '/x': { mcpServers: { github: edited } } } });
+        wj(f.cursor, { mcpServers: common({ github: edited, bdb_resolume_mcp: owned(home, 'bdb_resolume_mcp') }) });
+        wj(f.oc, { $schema: 'x', mcp: { github: ownedOc(home, 'github'), mine: { type: 'local', command: ['node', 'm.js'] } }, ...extra });
+        fs.mkdirSync(path.dirname(f.codex), { recursive: true });
+        fs.writeFileSync(f.codex, '[mcp_servers.github]\ncommand = "npx"\nargs = ["-y", "x"]\n');
+        wj(f.agy, { mcpServers: { github: owned(home, 'github') } });
+        const files = [{ file: f.claude, kind: 'json' }, { file: f.cursor, kind: 'json' }, { file: f.oc, kind: 'opencode' }, { file: f.codex, kind: 'toml' }, { file: f.agy, kind: 'json' }];
+        return { home, f, files };
+    }
+    const snap = (f) => Object.fromEntries(Object.entries(f).map(([k, p]) => [k, fs.readFileSync(p, 'utf8')]));
+    const run = (fx, o = {}) => harness.enable({ home: fx.home, token: TOKEN, shipped, files: fx.files, now: 1000, ...o });
+
+    test('fixtures really are AOS-owned / user-edited', () => {
+        const { home } = fixture();
+        assert.ok(sec.isAosOwned('github', owned(home, 'github'), shipped.github, shipped));
+        assert.ok(sec.isLauncherEntry(owned(home, 'github')));
+        assert.ok(!sec.isAosOwned('github', edited, shipped.github, shipped));
+    });
+
+    test('enable removes only AOS-owned gateway servers and adds aos with the token header', () => {
+        const fx = fixture();
+        const before = snap(fx.f);
+        const rep = run(fx);
+        const claude = rj(fx.f.claude);
+        assert.deepEqual(Object.keys(claude.mcpServers).sort(), ['aos', 'deja', 'memb_mcp', 'mine']);
+        assert.deepEqual(claude.mcpServers.aos, { type: 'http', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } });
+        assert.equal(claude.numStartups, 3);
+        assert.deepEqual(claude.projects['/x'].mcpServers.github, edited, 'per-project servers untouched');
+        const cursor = rj(fx.f.cursor);
+        assert.deepEqual(cursor.mcpServers.github, edited, 'user-edited entry stays');
+        assert.equal(cursor.mcpServers.bdb_resolume_mcp, undefined);
+        assert.deepEqual(cursor.mcpServers.aos, { url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } });
+        assert.deepEqual(cursor.mcpServers.deja, shipped.deja);
+        const oc = rj(fx.f.oc);
+        assert.equal(oc.mcp.github, undefined);
+        assert.ok(oc.mcp.mine);
+        assert.deepEqual(oc.mcp.aos, { type: 'remote', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN }, enabled: true });
+        assert.equal(oc.$schema, 'x');
+        assert.deepEqual(rep.find((r) => r.file === fx.f.cursor).kept, [{ name: 'github', reason: 'user-owned' }]);
+        for (const k of ['codex', 'agy']) assert.equal(fs.readFileSync(fx.f[k], 'utf8'), before[k], `${k} byte-identical`);
+        assert.deepEqual(rep.filter((r) => r.skipped).map((r) => r.skipped), ['shape unverified', 'shape unverified']);
+        // backups hold the pre-change bytes; migration.json holds originals and the aos marker, no token
+        assert.equal(fs.readFileSync(rep.find((r) => r.file === fx.f.claude).backup, 'utf8'), before.claude);
+        const mig = fs.readFileSync(harness.migrationPath(fx.home), 'utf8');
+        assert.ok(!mig.includes(TOKEN));
+        const recs = JSON.parse(mig).records;
+        assert.equal(recs.filter((r) => r.added).length, 3);
+        assert.deepEqual(recs.find((r) => r.key === 'github' && r.kind === 'claude').original, owned(fx.home, 'github'));
+        if (posix) assert.equal(mode(harness.migrationPath(fx.home)), 0o600);
+    });
+
+    test('enable strips group/other bits (token inside) and leaves no temp file', () => {
+        const fx = fixture();
+        if (posix) fs.chmodSync(fx.f.claude, 0o644);
+        run(fx);
+        if (posix) assert.equal(mode(fx.f.claude), 0o600);
+        assert.ok(!fs.readdirSync(path.dirname(fx.f.claude)).some((n) => n.endsWith('.tmp')));
+    });
+
+    test('re-enable after a user edit replaces the stale record; unrestored originals stay recorded', () => {
+        const fx = fixture();
+        run(fx);
+        const rec = JSON.parse(fs.readFileSync(harness.migrationPath(fx.home), 'utf8')).records;
+        assert.equal(new Set(rec.map((r) => `${r.file}|${r.key}`)).size, rec.length);
+    });
+
+    test('enable twice is idempotent', () => {
+        const fx = fixture();
+        run(fx);
+        const after = snap(fx.f);
+        const mig = fs.readFileSync(harness.migrationPath(fx.home), 'utf8');
+        const rep = run(fx, { now: 2000 });
+        assert.deepEqual(snap(fx.f), after);
+        assert.equal(fs.readFileSync(harness.migrationPath(fx.home), 'utf8'), mig);
+        assert.ok(rep.filter((r) => !r.skipped).every((r) => !r.changed));
+    });
+
+    test('a user-owned aos entry is never overwritten and nothing else changes in that file', () => {
+        const fx = fixture();
+        const mine = { command: 'node', args: ['my-aos.js'] };
+        const d = rj(fx.f.claude);
+        d.mcpServers.aos = mine;
+        wj(fx.f.claude, d);
+        const before = fs.readFileSync(fx.f.claude, 'utf8');
+        const rep = run(fx);
+        assert.equal(fs.readFileSync(fx.f.claude, 'utf8'), before);
+        assert.match(rep.find((r) => r.file === fx.f.claude).conflict, /aos/);
+        assert.ok(rj(fx.f.cursor).mcpServers.aos.url, 'other files proceed');
+    });
+
+    test('an owned entry with an inline secret stays direct', () => {
+        const fx = fixture();
+        const d = rj(fx.f.cursor);
+        d.mcpServers.bdb_resolume_mcp = { ...shipped.bdb_resolume_mcp, env: { SOME_API_KEY: 'sk-realvalue' } };
+        wj(fx.f.cursor, d);
+        const rep = run(fx);
+        assert.ok(rj(fx.f.cursor).mcpServers.bdb_resolume_mcp);
+        assert.ok(rep.find((r) => r.file === fx.f.cursor).kept.some((k) => k.reason === 'inline-secret'));
+        assert.ok(!fs.readFileSync(harness.migrationPath(fx.home), 'utf8').includes('sk-realvalue'));
+    });
+
+    test('opencode jsonc with comments is not rewritten', () => {
+        const fx = fixture();
+        fs.writeFileSync(fx.f.oc, '{\n  // keep me\n  "mcp": {}\n}\n');
+        const rep = run(fx);
+        assert.equal(fs.readFileSync(fx.f.oc, 'utf8'), '{\n  // keep me\n  "mcp": {}\n}\n');
+        assert.match(rep.find((r) => r.file === fx.f.oc).skipped, /not plain JSON/);
+    });
+
+    test('invalid token is refused before anything is written', () => {
+        const fx = fixture();
+        const before = snap(fx.f);
+        assert.throws(() => run(fx, { token: 'short' }), /token/);
+        assert.deepEqual(snap(fx.f), before);
+    });
+
+    test('dryRun writes nothing', () => {
+        const fx = fixture();
+        const before = snap(fx.f);
+        const rep = run(fx, { dryRun: true });
+        assert.deepEqual(snap(fx.f), before);
+        assert.ok(rep.some((r) => r.changed));
+        assert.ok(!fs.existsSync(harness.migrationPath(fx.home)));
+    });
+
+    test('disable restores originals exactly, removes aos, renames migration.json, and is idempotent', () => {
+        const fx = fixture();
+        const before = snap(fx.f);
+        run(fx);
+        const rep = harness.disable({ home: fx.home, files: fx.files, now: 3000 });
+        for (const k of ['claude', 'cursor', 'oc']) {
+            assert.deepEqual(rj(fx.f[k]), JSON.parse(before[k]), k);
+        }
+        for (const k of ['codex', 'agy']) assert.equal(fs.readFileSync(fx.f[k], 'utf8'), before[k]);
+        assert.ok(!fs.existsSync(harness.migrationPath(fx.home)));
+        assert.ok(fs.existsSync(`${harness.migrationPath(fx.home)}.restored-3000`));
+        assert.ok(rep.some((r) => r.removedAos));
+        const again = snap(fx.f);
+        const rep2 = harness.disable({ home: fx.home, files: fx.files, now: 4000 });
+        assert.deepEqual(snap(fx.f), again);
+        assert.ok(rep2.every((r) => !r.changed));
+    });
+
+    test('disable keeps a user-owned aos entry and a same-named entry that now exists', () => {
+        const fx = fixture();
+        run(fx);
+        const c = rj(fx.f.claude);
+        c.mcpServers.github = edited;
+        wj(fx.f.claude, c);
+        const o = rj(fx.f.cursor);
+        o.mcpServers.aos = { command: 'node', args: ['x'] };
+        wj(fx.f.cursor, o);
+        const rep = harness.disable({ home: fx.home, files: fx.files, now: 5000 });
+        assert.deepEqual(rj(fx.f.claude).mcpServers.github, edited);
+        assert.ok(rep.find((r) => r.file === fx.f.claude).conflicts.some((m) => /^github/.test(m)));
+        assert.deepEqual(rj(fx.f.cursor).mcpServers.aos, { command: 'node', args: ['x'] });
+    });
+
+    test('doctor: healthy, duplicate, missing entry, missing migration record, leftover dir', () => {
+        const fx = fixture();
+        const dir = cfg.gatewayDir(fx.home);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'token'), TOKEN, { mode: 0o600 });
+        const plist = path.join(fx.home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist');
+        fs.mkdirSync(path.dirname(plist), { recursive: true });
+        fs.writeFileSync(plist, '');
+        const check = (o = {}) => gatewayChecks({ home: fx.home, files: fx.files, shipped, platform: 'darwin', status: { running: true, port: 7790 }, ...o });
+        const bad = (cs) => cs.filter((c) => !c.ok);
+
+        let cs = check();
+        assert.ok(bad(cs).some((c) => /gateway entry in .*claude/.test(c.name)), 'not enabled yet');
+        assert.ok(cs.every((c) => c.area === 'gateway' && typeof c.name === 'string' && 'detail' in c && 'fix' in c && 'warningOnly' in c));
+
+        run(fx);
+        cs = check();
+        assert.deepEqual(bad(cs), []);
+
+        const c = rj(fx.f.claude);
+        c.mcpServers.github = owned(fx.home, 'github');
+        wj(fx.f.claude, c);
+        assert.ok(bad(check()).some((x) => /duplicates in .*claude/.test(x.name)));
+        delete c.mcpServers.github;
+        wj(fx.f.claude, c);
+
+        fs.renameSync(harness.migrationPath(fx.home), path.join(dir, 'moved.json'));
+        assert.ok(bad(check()).some((x) => x.name === 'gateway migration record'));
+        fs.renameSync(path.join(dir, 'moved.json'), harness.migrationPath(fx.home));
+
+        assert.ok(bad(check({ status: { running: false, port: 7790 } })).some((x) => x.name === 'gateway running'));
+        if (posix) {
+            fs.chmodSync(path.join(dir, 'token'), 0o644);
+            assert.ok(bad(check()).some((x) => x.name === 'gateway token'));
+            fs.chmodSync(path.join(dir, 'token'), 0o600);
+        }
+
+        fs.mkdirSync(path.join(dir, 'node_modules.removed-1'));
+        const left = bad(check()).find((x) => /leftover node_modules\.removed-1/.test(x.name));
+        assert.equal(left.warningOnly, true);
+        assert.ok(left.fix.includes(path.join(dir, 'node_modules.removed-1')));
+    });
+
+    test('doctor: everything is warningOnly when the gateway is not installed', () => {
+        const home = tmp();
+        const cs = gatewayChecks({ home, files: [], platform: 'darwin' });
+        assert.ok(cs.length > 0 && cs.every((c) => c.warningOnly));
+    });
+
+    test('install enables harnesses by default, skips with harnesses:false; uninstall disables first, then unlinks the token', async () => {
+        const mk = (home, extra) => {
+            const run = async () => ({ status: 0, stdout: '' });
+            return { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/n/node', aosRoot: ROOT, uid: 501, env: {}, ...extra };
+        };
+        const fx = fixture();
+        const before = snap(fx.f);
+        await pkg.install(mk(fx.home, { harnesses: false }));
+        assert.deepEqual(snap(fx.f), before);
+
+        const dry = await pkg.install(mk(fx.home, { dryRun: true }));
+        assert.ok(dry.actions.some((a) => a.startsWith('harness ')));
+        assert.deepEqual(snap(fx.f), before);
+
+        await pkg.install(mk(fx.home));
+        assert.ok(rj(fx.f.claude).mcpServers.aos);
+        assert.equal(rj(fx.f.claude).mcpServers.github, undefined);
+
+        const real = harness.disable;
+        const order = [];
+        const tokenFile = path.join(cfg.gatewayDir(fx.home), 'token');
+        harness.disable = (o) => { order.push(fs.existsSync(tokenFile) ? 'disable(token present)' : 'disable(token gone)'); return real(o); };
+        try { await pkg.uninstall(mk(fx.home, { now: 1700000000002 })); } finally { harness.disable = real; }
+        assert.deepEqual(order, ['disable(token present)']);
+        assert.ok(!fs.existsSync(tokenFile));
+        assert.deepEqual(rj(fx.f.claude), JSON.parse(before.claude));
+    });
+});

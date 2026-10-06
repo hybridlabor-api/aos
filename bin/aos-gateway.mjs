@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Local MCP gateway: token-checking forwarder on 127.0.0.1:7790 in front of @1mcp/agent on 127.0.0.1:7791.
-// Usage: aos-gateway serve | start | stop | restart | status [--json] | direct
+// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,8 @@ import path from 'node:path';
 const req = createRequire(import.meta.url);
 const { gatewayDir, GATEWAY_PORT, UPSTREAM_PORT } = req('../lib/gateway/config.js');
 const { createForwarder } = req('../lib/gateway/forwarder.js');
+const { enable, disable } = req('../lib/gateway/harness.js');
+const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
 
 export const LABEL = 'com.bdb.aos.gateway';
 export const WIN_TASK = 'AOS MCP Gateway';
@@ -208,11 +210,26 @@ async function main() {
         }
         process.exit(s.running ? 0 : 1);
     }
-    if (cmd === 'direct') {
-        console.error('aos-gateway direct: not implemented yet (planned for stage 2: restores the direct stdio entries in the harness configs).');
-        process.exit(2);
+    if (cmd === 'direct' || cmd === 'enable') {
+        const home = os.homedir();
+        const files = harnessMcpFiles(home, process.env, process.platform, home);
+        let report;
+        try {
+            report = cmd === 'direct'
+                ? disable({ home, files })
+                : enable({ home, files, token: readToken(gatewayDir(home)), shipped: shippedServers(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')) });
+        } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
+        for (const r of report) {
+            const bits = r.error ? [`ERROR ${r.error}`] : r.skipped ? [`skipped: ${r.skipped}`] : [
+                ...(r.removed || []).map((n) => `removed ${n}`), ...(r.restored || []).map((n) => `restored ${n}`),
+                ...(r.added ? ['added aos'] : []), ...(r.updated ? ['updated aos'] : []), ...(r.removedAos ? ['removed aos'] : []),
+                ...(r.kept || []).map((k) => `kept ${k.name} (${k.reason})`), ...(r.conflicts || []), ...(r.conflict ? [`CONFLICT ${r.conflict}`] : []),
+            ];
+            console.log(`${r.file} [${r.kind}]: ${bits.join('; ') || 'no change'}`);
+        }
+        process.exit(report.some((r) => r.error) ? 1 : 0);
     }
-    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | direct');
+    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct');
     process.exit(2);
 }
 
