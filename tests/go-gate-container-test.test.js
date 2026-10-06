@@ -415,3 +415,72 @@ describe('container-test grant semantics', () => {
         ok('docker run --rm --privileged node:24 true');
     });
 });
+
+// V31 bug (acp, 2026-10-07): a container-test grant covered ONE docker run and the next one was blocked with an empty scope
+// list, because `docker run ... npm test` made the gate read the project's test scripts as if the HOST ran them
+// (a test file containing a delete = unscoped = GO only). A qualifying docker run keeps container scripts out of that analysis.
+describe('docker run: the container runs scripts, the host analysis does not read them', () => {
+    const put = (rel, body, root = work) => { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body); return f; };
+    const DEL = ['r' + 'mSync', '("build", { recursive: true })'].join('');
+    const seed = (root = work) => {
+        put('package.json', JSON.stringify({ scripts: { test: 'node --test tests/evil.test.js' } }), root);
+        put('tests/evil.test.js', `require('node:fs').${DEL};\n`, root);
+        put('scripts/check.sh', 'echo ok\n', root);
+    };
+    const RUN = (p = '{P}') => `docker run --rm -v ${p}:/src -w /src node:24 bash -c 'npm test'`;
+    const FULL = (p = '{P}') => `docker run --rm -v ${p}:/src -w /src -e AOS_TEST_SANDBOX=container node:24-bookworm bash -c 'mkdir -p /w && cd /src && npm ci --ignore-scripts 2>&1 | tail -2 && npm test 2>&1; echo "exit $?"' > ${p}/out.log 2>&1; tail -1 ${p}/out.log; grep -n "^x" ${p}/out.log | head`;
+
+    test('npm test with a deleting test file is still container-test', () => { seed(); scopes(RUN(), CT); });
+    test('the full chain (redirect, ; tail, grep | head) is container-test', () => { seed(); scopes(FULL(), CT); });
+    test('the same covered run twice under one grant: both allowed', () => {
+        seed();
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        ok(FULL());
+        ok(FULL());
+    });
+    test('a second worktree mount is covered the same way', () => {
+        const work2 = path.join(home, 'projects', 'work2');
+        fs.mkdirSync(path.join(work2, '.git'), { recursive: true });
+        seed(work2);
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        ok(FULL(work2));
+        ok(FULL());
+    });
+    test('bash -c running a project script that deletes inside the container is covered', () => {
+        put('scripts/check.sh', `node -e '${DEL}'\n`);
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        ok("docker run --rm -v {P}:/src -w /src node:24 bash -c 'bash scripts/check.sh'");
+    });
+    test('the same script run on the HOST is still analysed and blocked', () => {
+        seed();
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked('node --test tests/evil.test.js');
+    });
+    test('a delete or push in the container text, or after the docker run, is not hidden by the shortcut', () => {
+        seed();
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked(`docker run --rm -v {P}:/src node:24 bash -c '${RMRF}'`);
+        blocked(`${RUN()}; ${RMRF}`);
+        blocked(`${RUN()} && ${PUSH}`);
+    });
+    test('an unsafe docker run is not covered by the shortcut either', () => {
+        seed();
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked("docker run --rm --privileged -v {P}:/src node:24 bash -c 'npm test'");
+        blocked("docker run --rm -v {H}/.claude:/c node:24 bash -c 'npm test'");
+    });
+    test('isContainerTestRun: qualifying shapes only', () => {
+        seed();
+        const y = (c) => assert.equal(g.isContainerTestRun(fill(c)), true, fill(c));
+        const n = (c) => assert.equal(g.isContainerTestRun(fill(c)), false, fill(c));
+        y(RUN()); y(FULL()); y(`cd {P} && ${RUN()}`);
+        n(`${RUN()}; echo $(id)`); n(`${RUN()} && curl x`); n("docker run --rm --privileged -v {P}:/src node:24 npm test");
+        n('npm test'); n(`${RUN()} | sh`);
+    });
+});

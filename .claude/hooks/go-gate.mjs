@@ -728,6 +728,42 @@ export function isReadOnlyDockerRun(command) {
   return parts.slice(1).every((s) => DOCKER_READER.test(base(words(s.trim())[0] ?? "")));
 }
 
+// A host command whose only real action is a container-test docker run (dockerScopes: allow-listed flags, project
+// mounts, nothing dangerous in the text after the image), optionally with leading `cd`, redirects and plain readers
+// (tail, grep, ...) after it, separated by ; && | or newlines. Like rule 16 it keeps script files and inline code that
+// the container runs out of analyzeDeletes: they run in the container, where the project mount is all they can touch.
+// Without this, `docker run ... npm test` was read as the host running every test script (rmSync in a test file =
+// unscoped) and a container-test grant covered nothing. Every other check on the command text still runs.
+export function isContainerTestRun(command) {
+  if (typeof command !== "string" || commandTooLong(command)) return false;
+  const parts = [];
+  let cur = "", q = "";
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i], n = command[i + 1] ?? "", p = command[i - 1] ?? "";
+    if (q === "'") { cur += c; if (c === "'") q = ""; continue; }
+    if (c === "`" || (c === "$" && n === "(")) return false;
+    if (q === '"') { cur += c; if (c === "\\") cur += command[++i] ?? ""; else if (c === '"') q = ""; continue; }
+    if (c === "'" || c === '"') { q = c; cur += c; continue; }
+    if (c === "\\") { cur += c + n; i++; continue; }
+    if (/[<(){}]/.test(c)) return false;
+    if (c === "&") {
+      if (n === "&") { parts.push(cur); cur = ""; i++; continue; }
+      if (p !== ">" && n !== ">") return false; // only 2>&1 / &> redirects
+    }
+    if (c === ";" || c === "\n") { parts.push(cur); cur = ""; continue; }
+    if (c === "|") { if (n === "|" || n === "&") return false; parts.push(cur); cur = ""; continue; }
+    cur += c;
+  }
+  if (q) return false;
+  parts.push(cur);
+  const segs = parts.map((s) => s.trim()).filter(Boolean);
+  let k = 0;
+  while (k < segs.length && base(words(segs[k])[0] ?? "") === "cd") { if (/[$\x60]/.test(segs[k])) return false; k++; }
+  if (k >= segs.length || unqQ(words(segs[k])[0] ?? "") !== "docker") return false;
+  if (dockerScopes(stripPrefix(tokens(segs[k])).rest, segs[k]) === null) return false;
+  return segs.slice(k + 1).every((s) => DOCKER_READER.test(base(words(s)[0] ?? "")));
+}
+
 // Scope `container-test` (Tim, 2026-10-06): a `docker run --rm` test run whose flags are all on the rule 16
 // allow-list, whose mounts are project directories (mountSource: at least two levels inside home, no dotdir,
 // symlinks resolved; read-only or writable), with no --privileged/--pid/--network host/docker.sock and no shell
@@ -1277,7 +1313,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
   if (depth > 3 || typeof command !== "string") return r;
   if (command.length > MAX_COMMAND) { r.unscoped = true; return r; }
   const st = init ? { cwd: init.cwd, vars: { ...init.vars } } : { cwd: gateCtx.cwd || process.cwd(), vars: Object.create(null) };
-  const ro = init ? !!init.ro : isReadOnlyDockerRun(command);
+  const ro = init ? !!init.ro : (isReadOnlyDockerRun(command) || isContainerTestRun(command));
   const snap = () => ({ cwd: st.cwd, vars: st.vars, ro });
   const merge = (o) => { r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.cmds.push(...o.cmds); r.files.push(...o.files); };
   const { text, code } = commandView(command, true);
