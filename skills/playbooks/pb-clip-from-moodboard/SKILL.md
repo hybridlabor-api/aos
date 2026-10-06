@@ -24,6 +24,7 @@ est_time: 1-3 h
 
 # Moodboard to social clip
 What you get: a 9:16 and a 16:9 clip built from your look brief and references, checked with ffprobe, handed off for publishing after your GO.
+Availability: needs the comfyui-mcp server configured in the harness (no config is shipped). Missing → stop at preflight with that message.
 
 ## Inputs
 - brief — the look brief, asked in step 2
@@ -34,7 +35,7 @@ What you get: a 9:16 and a 16:9 clip built from your look brief and references, 
 - formats (optional) — default 9:16 and 16:9
 
 ## Steps
-1. Preflight — ask cut_tool first; then one probe per server, before any file is written: `get_td_info` on `bdb_td_minddesigner`; `check_comfyui_health` on `comfyui-mcp`; `get_resolve_status` on `bdb_davinci_mcp` (only if cut_tool = davinci); `command -v ffprobe`. MCP tools may be deferred in the harness: try to load the tool once via the harness tool search before declaring it missing. Tool not loaded, call errors, or the payload fails its pass condition (TD `get_td_info`: `connected: true`; ComfyUI `check_comfyui_health`: `status` is `"online"`; Resolve `get_resolve_status`: no `error` key) → stop with "Missing MCP: `<server>` (`<tool>` unavailable). Start <TouchDesigner|ComfyUI|DaVinci Resolve> and check `mcpServers.<server>` in your harness config." and write nothing except the run log; davinci missing while cut_tool = remotion → continue, logged — all probes answered
+1. Preflight — ask cut_tool first; then one probe per server, before any file is written: `get_td_info` on `bdb_td_minddesigner`; `check_comfyui_health` on `comfyui-mcp`; `get_resolve_status` on `bdb_davinci_mcp` (only if cut_tool = davinci); `command -v ffprobe`. MCP tools may be deferred in the harness: try to load the tool once via the harness MCP list before declaring it missing. Tool not loaded, call errors, or the payload fails its pass condition (TD `get_td_info`: `connected: true`; ComfyUI `check_comfyui_health`: `status` is `"online"`; Resolve `get_resolve_status`: no `error` key) → stop with "Missing MCP: `<server>` (`<tool>` unavailable). Start <TouchDesigner|ComfyUI|DaVinci Resolve> and check `mcpServers.<server>` in your harness config." (comfyui-mcp: use the Availability message above) and write nothing except the run log; davinci missing while cut_tool = remotion → continue, logged — all probes answered
 2. Ask — brief, reference image folder, project slug, ComfyUI workflow JSON path, cut_tool, formats (default 9:16 and 16:9), length → run log and `renders/<project>/` — all answered, workflow path exists
 3. bdbmediastorm — brief → `renders/<project>/concept.md` (look, palette intent, shot list, length) — stops for approval
 4. bdb-touchdesigner-mcp — references → `moodboard_to_system` / `extract_palette` → network and palette; `get_td_node_errors` empty, `get_preview` shown (stops for approval), then `export_look_tox` → `renders/<project>/look.tox` — errors empty
@@ -52,4 +53,5 @@ Run log: `production_artifacts/pb-clip-from-moodboard-<date>.md` in the start di
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

@@ -40,7 +40,7 @@ What you get: an inventory of your worktrees with a class for each, and the merg
    - `local-only`: everything else; commits exist only here
    - check: every row has exactly one class plus the output of its evidence command
 5. pr-recap — per non-merged worktree: recap file from `pr-recap`; if it cannot be built log `git -C <wt> log --oneline origin/<default>..HEAD` and `git -C <wt> diff --stat origin/<default>...HEAD` instead — one recap or fallback per row
-6. [GO] removal list = rows classified `merged` and not `keep`, shown in full with these exact commands per row: `git -C <repo> worktree remove <path>` (label the row `merged (empty)` when `git -C <repo> rev-parse <branch>` equals `git -C <repo> rev-parse origin/<default>`; never `--force`; git refuses dirty trees), then `git -C <repo> branch -d <branch>` (`-d` refuses squash-merged branches → log "branch kept, needs -D, human decides"; never `-D`). The run stops here until the human types GO. GO covers exactly that list, once. The hook does not guard these commands, so GO is by contract. Never remove dirty, remote-only, local-only or `keep` rows, and never use `rm -r`.
+6. [GO] removal list = rows classified `merged` and not `keep`, shown in full with these exact commands per row: `git -C <repo> worktree remove <path>` (label the row `merged (empty)` when `git -C <repo> rev-parse <branch>` equals `git -C <repo> rev-parse origin/<default>`; never `--force`; git refuses dirty trees), then `git -C <repo> branch -d <branch>` (`-d` refuses squash-merged branches → log "branch kept, needs -D, human decides"; never `-D`). The run stops here until the human types GO. GO covers exactly that list, once. The hook does not cover these commands, so this GO is their only guard. Never remove dirty, remote-only, local-only or `keep` rows, and never use `rm -r`.
 7. Verify — `git -C <repo> worktree list` → removed paths are gone, kept rows unchanged
 8. Hand-off — remote-only and local-only rows → next action per row in the run log ("land via /pb-ship", or "push needs GO in that worktree") — nothing runs
 
@@ -48,5 +48,6 @@ Run log: `production_artifacts/pb-worktrees-land-<date>.md` in the start directo
 
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

@@ -23,6 +23,7 @@ est_time: 30-90 min
 
 # Launch video of a shipped app
 What you get: a short launch video per format, checked with ffprobe, handed off for publishing after your GO.
+Availability: hyperframes is optional (not shipped); without it the render falls back to the remotion skill.
 
 ## Inputs
 - url — the live URL of the shipped app or landing page (for example from pb-landing-page)
@@ -32,7 +33,7 @@ What you get: a short launch video per format, checked with ffprobe, handed off 
 - render_tool — `hyperframes` or `remotion` (remotion needs an existing Remotion project)
 
 ## Steps
-1. Preflight — ask render_tool first; then `command -v ffprobe` and, for hyperframes, `test -f ~/.claude/skills/hyperframes/SKILL.md`. ffprobe missing → stop with "Missing tool: ffprobe. Install ffmpeg and rerun." Hyperframes missing → stop with "Missing skill: hyperframes (installed locally only, not shipped by AOS). Install it, or rerun with render_tool = remotion and the path of an existing Remotion project." Remotion chosen without an existing project → stop and ask for its path. Write nothing except the run log on a stop — all probes answered
+1. Preflight — ask render_tool first; then `command -v ffprobe` and, for hyperframes, hyperframes listed in the harness skill list or its SKILL.md under the harness skills dir (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.config/opencode/skills`). ffprobe missing → stop with "Missing tool: ffprobe. Install ffmpeg and rerun." Hyperframes missing → log "hyperframes not installed: remotion fallback" and use render_tool = remotion with the remotion skill, asking for the path of an existing Remotion project. Remotion chosen without an existing project → stop and ask for its path. Write nothing except the run log on a stop — all probes answered
 2. Ask — url, project slug, length, formats, render_tool → run log and `renders/<project>/` — all answered; `curl -sI <url>` returns 200
 3. brag — url → composition brief in `renders/<project>/brief.md` (scenes, copy lines, length, formats; brag's brief stage only, the render choice stays with render_tool) — stops for approval
 4. Render — either way one file per format:
@@ -46,4 +47,5 @@ Run log: `production_artifacts/pb-launch-video-<date>.md` in the start directory
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

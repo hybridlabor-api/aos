@@ -23,6 +23,7 @@ est_time: 30-90 min
 
 # Image to 3D asset
 What you get: a cleaned, scaled `.glb` from one reference image, with a preview you approved.
+Availability: needs the comfyui-mcp server configured in the harness (no config is shipped). Missing → stop at preflight with that message.
 
 ## Inputs
 - image — the reference image path
@@ -31,7 +32,7 @@ What you get: a cleaned, scaled `.glb` from one reference image, with a preview 
 - project — a slug for `renders/<project>/`
 
 ## Steps
-1. Preflight — one probe per server, before any file is written: `check_comfyui_health` on `comfyui-mcp`; `get_scene_info` on `bdb_blender_mcp`. MCP tools may be deferred in the harness: try to load the tool once via the harness tool search before declaring it missing. Tool not loaded, call errors, or ComfyUI `status` is not `"online"` → stop with "Missing MCP: `<server>` (`<tool>` unavailable). Start <ComfyUI|Blender and click Connect to Claude in the BlenderMCP sidebar tab> and check `mcpServers.<server>` in your harness config." and write nothing except the run log — both probes answered
+1. Preflight — one probe per server, before any file is written: `check_comfyui_health` on `comfyui-mcp`; `get_scene_info` on `bdb_blender_mcp`. MCP tools may be deferred in the harness: try to load the tool once via the harness MCP list before declaring it missing. Tool not loaded, call errors, or ComfyUI `status` is not `"online"` → stop with "Missing MCP: `<server>` (`<tool>` unavailable). Start <ComfyUI|Blender and click Connect to Claude in the BlenderMCP sidebar tab> and check `mcpServers.<server>` in your harness config." (comfyui-mcp: use the Availability message above) and write nothing except the run log — both probes answered
 2. Ask — image, comfy_workflow path, poly_budget, project slug, target size in metres → run log and `renders/<project>/` — all answered, image and workflow files exist
 3. ComfyUI — the workflow file's text with the image filled in as the JSON string for `queue_prompt` → `get_history <prompt_id>` status success → `get_output_media_info` path of the mesh file — a mesh file exists; `local_path` is only set when `COMFYUI_DIR` is set, so if `local_path` is empty or `exists_locally` is false, stop with a clear message and import nothing
 4. Blender (bdb-blender-mcp, godmode-3d-creation) — mesh file → via `execute_blender_code`: import, Decimate modifier down to poly_budget, scale to the target size, origin to base centre, one material, and report face count and dimensions; `get_scene_info` as the cross-check — face count <= poly_budget and non-zero dimensions; save the Blender project first, since scripted code can crash the session

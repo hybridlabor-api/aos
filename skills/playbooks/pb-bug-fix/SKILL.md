@@ -35,14 +35,15 @@ What you get: a branch with a failing-then-passing test and the fix, reviewed ag
 3. systematic-debugging — contract → root cause and a local repro command in the run log — repro fails locally on the base SHA (base SHA logged), or the reason it cannot run locally
 4. test-driven-development — root cause → failing test first (run, red, output pasted), then the minimal fix on a new branch `fix/<n>-<slug>` — the new test fails on the base SHA and passes after the fix; no unrelated edits
 5. verification-before-completion — repro command and the repo's test, lint and typecheck scripts that exist → fresh passing output pasted in the run log — output pasted, not claimed
-6. reviewer (agent) — `git diff <base>...HEAD`; the contract is the issue from step 1, never the run log and never the implementer's claim (input material only) → findings table in the run log — any open `blocking` finding sends the run back to step 4, at most 2 cycles, then stop and escalate
+6. reviewer (agent) — `git diff <base>...HEAD`; the contract is the issue from step 1, never the run log and never the implementer's claim (input material only) → findings table in the run log — any open `blocking` finding sends the run back to step 4, at most 2 cycles, then stop and escalate. No subagent support in this harness → the main session reads agents/reviewer.md and runs the review inline, same contract, findings table in the run log, using only the diff and the contract, never the session's reasoning
 7. git-pr-review — `git log <base>..HEAD` → PR body draft in the run log, ending in `Fixes #<n>` — draft only, nothing posted
-8. [GO] git push + gh pr create — `git push -u origin <branch>` then `gh pr create -R <owner/repo> --base <base> --head <branch> --title "<title>" --body-file <draft>` — the WAITING FOR GO line names branch, base, title and issue number. The run stops here until the human types GO. One GO covers the push and the PR creation, one time. (The hook guards the push only; `gh pr create` is not hook-guarded, so this GO is its only guard.)
+8. [GO] git push + gh pr create — `git push -u origin <branch>` then `gh pr create -R <owner/repo> --base <base> --head <branch> --title "<title>" --body-file <draft>` — the WAITING FOR GO line names branch, base, title and issue number. The run stops here until the human types GO. One GO covers the push and the PR creation, one time. (Where the hook runs, it covers the push only; `gh pr create` is not hooked, so this GO is its only guard.)
 9. github — `gh pr view <branch> -R <owner/repo> --json url,closingIssuesReferences` → PR URL in the run log — `closingIssuesReferences` contains `<n>`
 
 Run log: `production_artifacts/pb-bug-fix-<date>.md` in the start directory, never committed
 
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - A failed check stops the run: write the failure into the run log and report. No silent retries beyond what a step names.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

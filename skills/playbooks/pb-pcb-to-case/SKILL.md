@@ -23,6 +23,7 @@ est_time: 1-3 h
 
 # PCB to enclosure
 What you get: a DRC-clean board and a parametric enclosure that fits it, with Gerbers ready for a fab order that you place after your GO.
+Availability: MCP-only (kicad, openscad MCP servers) plus 3 skills from the bdb-hardware-pcb repo (not shipped). Without them the run stops at preflight.
 
 ## Inputs
 - kicad_project — path to the KiCad project (`.kicad_pro`, `.kicad_pcb`, `.kicad_sch`)
@@ -30,7 +31,7 @@ What you get: a DRC-clean board and a parametric enclosure that fits it, with Ge
 - mounting_style — for example standoffs, rails or snap-fit
 
 ## Steps
-1. Preflight — `get_pcb_statistics` on `kicad`; `get_capabilities` on `openscad`; `test -f ~/.claude/skills/<name>/SKILL.md` for `pcb-validation-dfm-signoff`, `pcb-constraint-definition` and `code-first-hardware-design`. MCP tools may be deferred in the harness: try to load the tool once via the harness tool search before declaring it missing. MCP tool not loaded or call errors → stop with "Missing MCP: `<server>` (`<tool>` unavailable). Check `mcpServers.<server>` in your harness config." A skill file absent → stop with "Missing skill: <name> (installed locally only, not shipped by AOS). Install it and rerun." Write nothing except the run log on a stop — all probes answered
+1. Preflight — `get_pcb_statistics` on `kicad`; `get_capabilities` on `openscad`; for `pcb-validation-dfm-signoff`, `pcb-constraint-definition` and `code-first-hardware-design`, the skill is listed in the harness skill list, or a SKILL.md for it exists under the harness skills dir — `~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.config/opencode/skills`. MCP tools may be deferred in the harness: try to load the tool once via the harness MCP list before declaring it missing. MCP tool not loaded or call errors → stop with "Missing MCP: `<server>` (`<tool>` unavailable). Check `mcpServers.<server>` in your harness config." A skill file absent → stop with "Missing skill: <name> (bdb-hardware-pcb repo, not shipped by AOS). Install it and rerun." Write nothing except the run log on a stop — all probes answered
 2. Ask — kicad_project, clearance_mm, mounting_style, project slug → run log and `hw/<project>/` — all answered, project files exist
 3. pcb-validation-dfm-signoff + godmode-hardware-pcb — `run_erc` and `run_drc` (details via `get_erc_violations` and `get_drc_violations`) → violation list in the run log — zero errors; any error stops the run, the board is not edited by this playbook
 4. pcb-constraint-definition — board outline, mounting holes and connector positions (`get_pcb_statistics`, `list_pcb_footprints`) → `hw/<project>/dims.json` (length, width, thickness, holes, connector edges, all in mm) — all values present; a missing value is asked of the human, never guessed
@@ -43,4 +44,5 @@ Run log: `production_artifacts/pb-pcb-to-case-<date>.md` in the start directory,
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

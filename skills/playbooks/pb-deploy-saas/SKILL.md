@@ -22,6 +22,7 @@ est_time: 30-90 min
 
 # Deploy a SaaS app to the fleet
 What you get: the app deployed to the chosen fleet instance after your GO, with a health check logged.
+Availability: internal. Needs the bdbsaashost skill (not shipped; lives in aos-internal-staging).
 
 ## Inputs
 - repo — the current directory, or the one the user names
@@ -30,10 +31,10 @@ What you get: the app deployed to the chosen fleet instance after your GO, with 
 - version_source (optional) — where the app exposes its commit SHA: a `/version`-style URL or a response header name of the health URL, taken from the deploy plan; none given means the app exposes none
 
 ## Steps
-1. Preflight — `test -f ~/.claude/skills/bdbsaashost/SKILL.md`; `test -f ~/.claude/skills/deploy-incus/SKILL.md` (needed only for path = incus-ci) → run log header — a skill absent → stop with "Missing skill: <name> (installed locally only, not shipped by AOS). Install it under `~/.claude/skills/` or run this playbook on the machine that has it."; write nothing except the run log — all probes answered
+1. Preflight — bdbsaashost is listed in the harness skill list, or its SKILL.md exists under the harness skills dir (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.config/opencode/skills`); same check for deploy-incus (needed only for path = incus-ci) → run log header — bdbsaashost absent → stop with "Missing skill: bdbsaashost (internal, not shipped; lives in aos-internal-staging) — stop"; deploy-incus absent with path = incus-ci → stop with "Missing skill: deploy-incus (installed locally only, not shipped by AOS)."; write nothing except the run log — all probes answered
 2. bdbsaashost (external) — repo, target_instance → deploy plan with target, guardrails and the health URL in the run log — stops for approval (the human confirms target, path and health URL)
 3. pb-ci-fix — only if `gh run list --commit <HEAD sha> --limit 1 --json conclusion` for the repo is not `success` (a repo with no GitHub CI is logged and skipped) → one pb-ci-fix run, with its own GO for the push — latest run is green, else stop
-4. [GO] deploy — path = incus-ci: deploy-incus pushes the repo to the Forgejo remote, the push command is hook-guarded; path = direct: bdb-deploy runs `rsync` over SSH to the target, which is not hook-guarded (the same goes for `incus` commands), so this GO is the only guard there — RemoteOS approval does not cover a Forgejo push or an rsync, only actions run through its own tools (for example container manage), which this step does not use. The WAITING FOR GO line names the path, target_instance, the exact command, and the commit SHA. The run stops here until the human types GO. One GO = one deploy.
+4. [GO] deploy — path = incus-ci: deploy-incus pushes the repo to the Forgejo remote, the go-gate hook covers the push where it runs (Claude Code, OpenCode, agy); path = direct: bdb-deploy runs `rsync` over SSH to the target, which the hook does not cover (the same goes for `incus` commands), so this GO is the only guard there — RemoteOS approval does not cover a Forgejo push or an rsync, only actions run through its own tools (for example container manage), which this step does not use. The WAITING FOR GO line names the path, target_instance, the exact command, and the commit SHA. The run stops here until the human types GO. One GO = one deploy.
 5. Health check — `curl -sI <health_url>` for the status line; then the marker from `version_source` (`curl -s <version_url>` for a URL, or the named header in the `curl -sI` output) → status line and marker in the run log — status 200 and the marker equals the SHA from the step 4 GO line; if `version_source` is empty or returns no marker, log "marker absent: unverified" and accept the 200 alone; a marker that differs from the SHA, or any other status, stops the run and reports, no automatic rollback
 
 Run log: `production_artifacts/pb-deploy-saas-<date>.md` in the start directory, never committed
@@ -42,3 +43,4 @@ Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
