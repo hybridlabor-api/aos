@@ -62,6 +62,11 @@ function discoverDefaultBranch(repo, run) {
   return 'main'
 }
 
+export function defaultBranchOf(repo, opts = {}) {
+  const run = opts.runGit || runGit
+  return discoverDefaultBranch(repo, run)
+}
+
 export function branchState(repo, branch, opts = {}) {
   const run = opts.runGit || runGit
   if (!branch) return 'deleted'
