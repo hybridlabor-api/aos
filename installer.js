@@ -2803,7 +2803,10 @@ async function installCreatorExtension() {
     if (fs.existsSync(installerScript)) {
         const setupResult = DRY_RUN
             ? { status: 0 }
-            : spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: creatorDir });
+            : spawnSync('node', [installerScript, '--auto'], { stdio: 'pipe', cwd: creatorDir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+        // Piped, then written through process.stdout/stderr: the v5 update step redirects those into its log file.
+        if (setupResult.stdout) process.stdout.write(setupResult.stdout);
+        if (setupResult.stderr) process.stderr.write(setupResult.stderr);
         if (setupResult.status !== 0) {
             log.warn(`Creator Extension setup note: exit code ${setupResult.status}`);
             return false;
