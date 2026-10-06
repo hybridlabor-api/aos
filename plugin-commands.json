@@ -51,7 +51,7 @@
         "ao-orchestrator"
       ],
       "bodies": {
-        "claude": "Use the `ao-orchestrator` skill. It needs the AO daemon; check that it is running first and stop with a clear message if not. Do not confuse it with `agent-orchestrator`. Arguments: $ARGUMENTS"
+        "claude": "Use the `ao-orchestrator` skill. It needs the AO daemon; check that it is running first and stop with a clear message if not. Arguments: $ARGUMENTS"
       }
     },
     "plan": {

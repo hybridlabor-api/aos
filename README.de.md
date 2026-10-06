@@ -11,7 +11,7 @@
 [![CI](https://github.com/hybridlabor-api/aos/actions/workflows/ci.yml/badge.svg)](https://github.com/hybridlabor-api/aos/actions)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue.svg)](package.json)
-[![skills](https://img.shields.io/badge/skills-224%20curated-brightgreen.svg)](#skills)
+[![skills](https://img.shields.io/badge/skills-223%20curated-brightgreen.svg)](#skills)
 [![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#mcp-server)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#unterstützte-harnesses)
 [![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
@@ -27,7 +27,7 @@ Entwickelt für Nutzer, die bereits **Claude Code, Google Antigravity, Codex CLI
 
 Nach der Installation hast du:
 
-- **<!-- count:skills -->224<!-- /count --> Skills** in sechs Kategorien, von jedem Harness als `<name>/SKILL.md` auffindbar.
+- **<!-- count:skills -->223<!-- /count --> Skills** in sechs Kategorien, von jedem Harness als `<name>/SKILL.md` auffindbar.
 - **<!-- count:agents -->13<!-- /count --> Subagents** (Architect, TechLead, Reviewer, die Godmodes, Security- und Silent-Failure-Reviewer) als natives Agenten-Format jedes Harness kompiliert.
 - **<!-- count:mcps -->21<!-- /count --> MCP-Server** für Creative Software, Betriebssystemsteuerung, Memory und Harness-übergreifende Delegation.
 - **Drei Pipelines** — `/startcycle`, `/startcycle-graph`, `/startcycle-graph-user` — und ein **GO-Gate**, das `git push`, `npm publish`, `npm version` und rekursive `rm` mechanisch blockiert.
@@ -208,7 +208,7 @@ Installiere es durch den AOS Installer mit dem AOS CLI Target: `npx -y @hybridla
 npx skills add hybridlabor-api/aos
 ```
 
-Dies entdeckt alle <!-- count:skills -->224<!-- /count --> kuratierten Skills und installiert sie in das universelle `~/.agents/skills` Verzeichnis (verwendet von allen Harnesses und dem AOS CLI).
+Dies entdeckt alle <!-- count:skills -->223<!-- /count --> kuratierten Skills und installiert sie in das universelle `~/.agents/skills` Verzeichnis (verwendet von allen Harnesses und dem AOS CLI).
 
 ---
 
@@ -249,22 +249,22 @@ Der Dispatcher-Graph kompiliert diese Agents, verfügbar als Claude Code Subagen
 
 ### Skills nach Kategorie
 
-<!-- count:skills -->224<!-- /count --> kuratierte Skills, von jedem Harness auffindbar:
+<!-- count:skills -->223<!-- /count --> kuratierte Skills, von jedem Harness auffindbar:
 
-- **bdb-core** (31 Skills): Core AOS Infrastruktur, Pipelines, Tools und Utilities — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agent-orchestrator`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill` und mehr.
+- **bdb-core** (30 Skills): Core AOS Infrastruktur, Pipelines, Tools und Utilities — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill` und mehr.
 - **design-ui-ux** (19 Skills): Frontend, UI Design, Barrierefreiheit, Tokens, Motion, Anti-Slop — `senior-frontend`, `ui-component`, `ui-review`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` und mehr.
 - **engineering-method** (46 Skills): Architektur, Testing, Debugging, CI/CD, Code-Qualität — `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `dockerfile-validator` und mehr.
 - **library** (98 Skills): Language/Framework-Spezifika — TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go und mehr.
 - **media-eventtech** (19 Skills): 3D, Video, Show Control, Spatial Design — `godmode-eventtech`, `synapse-integration-skill`, `threejs-skills`, `blender-expert` und mehr.
 - **engineering-hardware** (1 Skill): PCB und Electrical Design — `godmode-hardware-pcb`.
 
-Der vollständige Katalog mit detaillierten Beschreibungen: [docs/skills_table.md](docs/skills_table.md) — Hinweis: Diese Datei ist veraltet und listet 164 von 214 Skills auf.
+Der vollständige Katalog mit detaillierten Beschreibungen: [docs/skills_table.md](docs/skills_table.md) — Hinweis: Diese Datei ist veraltet und listet 163 von 213 Skills auf.
 
 ---
 
 ## Skills
 
-<!-- count:skills -->224<!-- /count --> Skills, kuratiert aus Open-Source- und proprietären Sammlungen, die die gesamte Software-Entwicklung und Creative-Pipeline abdecken. Jeder Skill ist ein Verzeichnis mit einem `SKILL.md` Frontmatter, das `name`, `description` und eine `category` erklärt: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
+<!-- count:skills -->223<!-- /count --> Skills, kuratiert aus Open-Source- und proprietären Sammlungen, die die gesamte Software-Entwicklung und Creative-Pipeline abdecken. Jeder Skill ist ein Verzeichnis mit einem `SKILL.md` Frontmatter, das `name`, `description` und eine `category` erklärt: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
 
 **Persona Layer:** Die **Godmode** Skills sind spezialisierte Personas, die direkt den Build- und Shipping-Knoten des Dispatcher-Graphs zugeordnet sind:
 
@@ -287,7 +287,7 @@ Der vollständige Katalog mit detaillierten Beschreibungen: [docs/skills_table.m
 - **Code Qualität** — `bdb-security-audit`, `systematic-debugging`, `silent-failure-hunter`, `bdbresilience`
 - **Framework Spezialisten** — Vollständige Abdeckung von TypeScript, React, Next.js, Drizzle ORM, Prisma, Python, Go und mehr
 
-Der vollständige Katalog mit Beschreibungen und Details: [docs/skills_table.md](docs/skills_table.md) (Hinweis: listet derzeit 164 von 214).
+Der vollständige Katalog mit Beschreibungen und Details: [docs/skills_table.md](docs/skills_table.md) (Hinweis: listet derzeit 163 von 213).
 
 Die Bibliothek ist auch durch die `skills` CLI lesbar:
 
@@ -356,7 +356,7 @@ flowchart LR
 
 ### AO — Agent-Orchestrator
 
-`@hybridlabor-api/bdb-agent-orchestrator`: parallele Agents in Git Worktrees mit Live Terminal Steuerung und automatisierten CI/CD Feedback Loops. Skill: `agent-orchestrator`.
+`@hybridlabor-api/bdb-agent-orchestrator`: parallele Agents in Git Worktrees mit Live Terminal Steuerung und automatisierten CI/CD Feedback Loops. Skill: `ao-orchestrator`.
 
 ```mermaid
 flowchart TD

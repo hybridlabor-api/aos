@@ -26,6 +26,12 @@ describe('pruneRetiredSkills', () => {
     for (const n of ['visual-edit', 'visual-plan', 'visual-recap']) assert.equal(RETIRED_SKILLS[n], '4.17.0');
   });
 
+  test('the foreign agent-orchestrator skill is retired, the AO product dir is not', () => {
+    assert.equal(RETIRED_SKILLS['agent-orchestrator'], '4.18.2');
+    assert.equal(Object.hasOwn(RETIRED_SKILLS, 'bdb-agent-orchestrator'), false);
+    assert.equal(Object.hasOwn(RETIRED_SKILLS, 'ao-orchestrator'), false);
+  });
+
   test('untouched copy removed, edited and foreign files backed up before the dir goes', () => {
     const clean = put('.claude/skills/visual-plan/SKILL.md', 'shipped');
     const edited = put('.claude/skills/visual-plan/notes.md', 'user edit');
