@@ -4,10 +4,13 @@
 // agent's text to stdout and a JSONL run log, and maps session/request_permission
 // onto the AOS GO gate: guarded commands (same list as go-gate.mjs) are approved
 // only with a valid GO token (~/.aos/go/<name>.token), everything else follows
-// --allow-default (deny unless told otherwise). No AO daemon, no dependencies.
+// --allow-default (deny unless told otherwise). With --allow-default scoped,
+// deny turns into path-scoped decisions from lib/a2a-permissions.mjs: writes
+// must target the job worktree, unguarded shell commands must run in it, and
+// everything else is refused (guarded commands still take the GO path). No AO daemon, no dependencies.
 //
 //   aos-acp <claude|codex|opencode|agy> --name <worker> [--cwd <dir>]
-//           (--prompt "<text>" | --prompt-file <f>) [--allow-default deny|allow]
+//           (--prompt "<text>" | --prompt-file <f>) [--allow-default deny|allow|scoped]
 //           [--go-wait <sec>] [--consume|--no-consume] [--log <file>]
 //           [--model <id>] [--timeout <sec>] [--cmd "<custom agent command>"]
 
@@ -32,6 +35,11 @@ const gateMod = await loadFrom([
 ]);
 if (!gateMod) throw new Error("go-gate.mjs not found (run the AOS installer): refusing to run without the GO gate");
 const { isGuardedCommand, hardBlockReason, slug, tokenGrantsGo, setGateContext, readBlockTs, markBlock, nameKey, commandTooLong, TOO_LONG_MESSAGE } = gateMod;
+const permMod = await loadFrom([
+  join(here, "..", "lib", "a2a-permissions.mjs"),
+  join(homedir(), ".aos", "bin", "a2a-permissions.mjs"),
+]);
+const scopedDecide = permMod?.decide ?? (() => ({ allow: false, reason: "a2a-permissions.mjs not found; refusing to allow anything" }));
 const emitTrail = (await loadFrom([
   join(here, "..", "mcps", "mcsc", "packages", "core", "src", "trail.js"),
   join(homedir(), ".aos", "bin", "trail.mjs"),
@@ -91,6 +99,10 @@ export async function decidePermission(params, opts, log = () => {}) {
     }
     allow = r.ok;
     reason = r.ok ? "GO token" : `${commandTooLong?.(cmd) ? `${TOO_LONG_MESSAGE}; ` : ""}${r.reason}`;
+  } else if (opts.allowDefault === "scoped") {
+    const d = scopedDecide(params.toolCall, { cwd: opts.cwd });
+    allow = !!d.allow;
+    reason = d.reason;
   }
   if (!allow && (hard || odd || guarded)) markBlock?.(key);
   const optionId = allow
@@ -258,11 +270,11 @@ export function parseArgs(argv) {
     else throw new Error(`unknown argument ${a}`);
   }
   if (!o.adapter || !o.name || !o.prompt) throw new Error(USAGE);
-  if (!["deny", "allow"].includes(o.allowDefault)) throw new Error("--allow-default must be deny or allow");
+  if (!["deny", "allow", "scoped"].includes(o.allowDefault)) throw new Error("--allow-default must be deny, allow or scoped");
   return o;
 }
 
-const USAGE = "usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>]";
+const USAGE = "usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>]";
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
   if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }
