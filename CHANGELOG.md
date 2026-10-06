@@ -5,6 +5,10 @@
 ### Removed
 
 * Removed the foreign `agent-orchestrator` skill (not the AO product `bdb-agent-orchestrator`, nor `ao-orchestrator`). Installed copies are retired on update; edited or foreign files are backed up first.
+
+### Security
+
+* Pinned the `@agentclientprotocol/claude-agent-acp` (0.86.0) and `codex-acp` (2.1.1) adapters launched by `aos-acp` instead of fetching the latest via `npx`.
 ## [4.18.1](https://github.com/hybridlabor-api/aos/compare/v4.18.0...v4.18.1) (2026-10-02)
 
 

@@ -38,8 +38,8 @@ const emitTrail = (await loadFrom([
 ]))?.emitTrail ?? (async () => {});
 
 export const ADAPTERS = {
-  claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp"], consume: false },
-  codex: { cmd: ["npx", "-y", "@agentclientprotocol/codex-acp"], consume: true },
+  claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.86.0"], consume: false },
+  codex: { cmd: ["npx", "-y", "@agentclientprotocol/codex-acp@2.1.1"], consume: true },
   opencode: { cmd: ["opencode", "acp"], consume: false, cwdFlag: "--cwd" },
   // antigravity-acp (MIT) is third-party; its README states that driving agy
   // through it breaches Google's Antigravity terms. Not shipped: use mcsc.
