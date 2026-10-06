@@ -30,6 +30,7 @@ const cp = createRequire(import.meta.url)('../lib/codex-plugin-install.js');
 const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js');
 const ur = createRequire(import.meta.url)('../lib/uninstall-records.js');
 const pk = createRequire(import.meta.url)('../lib/v5/packages.js');
+const profile = createRequire(import.meta.url)('../lib/v5/profile.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -309,7 +310,7 @@ async function execute(p) {
   if (existsSync(settings)) {
     try {
       const s = JSON.parse(readFileSync(settings, 'utf8'));
-      const bdb = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'a2a-inbox.mjs', 'a2a-session.mjs'];
+      const bdb = profile.HOOK_SCRIPTS;
       let touched = false;
       for (const [event, entries] of Object.entries(s.hooks || {})) {
         const kept = entries.filter((e) => !(e.hooks || []).some((x) => bdb.some((n) => String(x.command).includes(n))));

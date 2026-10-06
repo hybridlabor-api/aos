@@ -487,7 +487,8 @@ describe('registration', () => {
         assert.equal(cmds.filter((c) => c.includes('go-grant.mjs')).length, 1);
         assert.equal(cmds.filter((c) => c.includes('go-token.mjs')).length, 1);
         const uninstall = fs.readFileSync(path.join(REPO, 'bin', 'aos-uninstall.mjs'), 'utf8');
-        const list = /const bdb = \[([^\]]*)\]/.exec(uninstall)[1];
-        for (const f of ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs']) assert.ok(list.includes(`'${f}'`), f);
+        assert.match(uninstall, /const bdb = profile\.HOOK_SCRIPTS;/);
+        const { HOOK_SCRIPTS } = require('../lib/v5/profile.js');
+        for (const f of ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs']) assert.ok(HOOK_SCRIPTS.includes(f), f);
     });
 });

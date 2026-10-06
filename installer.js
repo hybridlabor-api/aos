@@ -4962,7 +4962,7 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'a2a-inbox.mjs'];
+    const bdbHookScripts = v5Profile.CLAUDE_MERGE_HOOKS;
     // installClaudeA2aSessionHook owns the a2a-session.mjs entry (not in the template), so it is not listed here.
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
@@ -4970,7 +4970,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
     // prompt in any project the harness was never installed into. trail-relay
     // talks to machine-global live-map daemons, so it is anchored the same way.
-    const machineGlobalHooks = ['memb-inject.mjs', 'rules-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs'];
+    const machineGlobalHooks = v5Profile.CONTEXT_HOOKS;
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
             .map((h) => (h && typeof h.command === 'string' ? h.command : ''))
@@ -5058,7 +5058,7 @@ function agyHookCommand(hooksJsonDir, scriptPath, args = '') {
 // Runs every AOS command of a hooks.json once with `{}` on stdin, the way agy does.
 // Returns [{ command, reason }] for each failure; `spawn` is injectable for tests.
 function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
-    const bdbScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'a2a-inbox.mjs', 'a2a-session.mjs'];
+    const bdbScripts = v5Profile.HOOK_SCRIPTS;
     const data = readJsonFile(hooksPath);
     const commands = [];
     const walk = (v) => {
@@ -5090,7 +5090,7 @@ function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = spawnSync } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'a2a-inbox.mjs', 'a2a-session.mjs'];
+    const bdbHookScripts = v5Profile.HOOK_SCRIPTS;
     const isBdbHandler = (h) => typeof h?.command === 'string' && bdbHookScripts.some((name) => h.command.includes(name));
 
     const baseDir = path.dirname(hooksPath);
@@ -6687,25 +6687,54 @@ function v5Options(interactive) {
     return { home: homeDir, write: (s) => process.stdout.write(s), ui };
 }
 
-// Flags/env win over the persisted v5 settings; a flag that was given is persisted so `aos update` keeps it.
+// Flags/env win over the persisted v5 settings for this run. Writes nothing: see persistInstallOptions.
 function applyInstallOptions(home = homeDir) {
-    const st = v5Profile.readSettings(home);
-    const r = v5Profile.resolve(INSTALL_OPTS, st);
+    const r = v5Profile.resolve(INSTALL_OPTS, v5Profile.readSettings(home));
     contextHooksOn = r.contextHooks;
     activeProfile = r.profile;
     installExcluded = r.excluded;
-    if (!DRY_RUN && (INSTALL_OPTS.profileGiven || INSTALL_OPTS.noHooks || INSTALL_OPTS.without.length)) {
-        try {
-            v5Profile.writeSettings(home, { ...st, profile: r.profile, noHooks: r.noHooks, disabled: [...new Set([...(st.disabled || []), ...INSTALL_OPTS.without])] });
-        } catch (e) { log.warn(`Could not save the install profile: ${e.message}`); }
-    }
     return r;
+}
+
+// Saved so `aos update` keeps it. Called only where a real install or update starts (never for help, version,
+// --dry-run, status or uninstall). A flag on the command line is saved; AOS_PROFILE is not.
+function persistInstallOptions(home = homeDir) {
+    const o = INSTALL_OPTS;
+    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length)) return false;
+    try {
+        const st = v5Profile.readSettings(home);
+        const next = { ...st, disabled: [...new Set([...st.disabled, ...o.without])] };
+        if (o.profileFromFlag) { next.profile = o.profile; next.noHooks = o.noHooks; } else if (o.noHooks) next.noHooks = true;
+        v5Profile.writeSettings(home, next);
+        return true;
+    } catch (e) {
+        log.warn(`Could not save the install profile: ${e.message}`);
+        return false;
+    }
+}
+
+// The file-manifest session of a full install; --hooks-only needs the same one so its copies are tracked alike.
+function initFullSession(installState) {
+    initSessionManifest(installState.installManifest, [
+        path.join(srcDir, 'skills'),
+        path.join(srcDir, 'mcps'),
+        path.join(srcDir, '.agents'),
+        path.join(srcDir, '.claude'),
+        path.join(srcDir, '.cursor'),
+        path.join(srcDir, '.github'),
+        path.join(srcDir, '.codex-plugin'),
+        path.join(srcDir, 'RULES.md'),
+        path.join(srcDir, 'AGENTS.md'),
+        path.join(srcDir, 'CLAUDE.md'),
+        path.join(srcDir, 'CODEX.md'),
+    ]);
 }
 
 async function main() {
     const args = process.argv.slice(2);
     applyInstallOptions();
     if (['status', 'update', 'repair'].includes(args[0])) {
+        if (args[0] !== 'status') persistInstallOptions();
         process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
         return;
     }
@@ -6754,21 +6783,32 @@ Options:
                    removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.
                    --dry-run implies check. Default: on.
   --profile=minimal|standard|full
-                   Or AOS_PROFILE. standard (default) = today's install. minimal = skills,
-                   agents and harness rules only: no context-injection hooks, no OpenWiki,
-                   Token Saver, Codenotch, optional modules, gateway or fleet. full = standard
-                   plus all optional modules with -y. Saved, so \`aos update\` keeps it.
+                   (also --profile minimal) Or AOS_PROFILE. standard (default) = today's
+                   install. minimal = skills, agents and harness rules only: no
+                   context-injection hooks, no OpenWiki, Token Saver, Codenotch, optional
+                   modules, gateway or fleet. full = standard plus all optional modules with
+                   -y. A --profile flag is saved, so \`aos update\` keeps it; AOS_PROFILE is
+                   not saved. Uninstall resets the saved profile.
   --no-hooks       Skip only the context-injection hooks (memb-inject, rules-inject, trail
-                   relay/autostart). The go-gate, graph-gate and safety hooks are ALWAYS
-                   installed; no profile or flag removes them.
+                   relay/autostart) in the Claude, Antigravity and Codex configs. The go-gate,
+                   graph-gate and safety hooks are ALWAYS installed; no profile or flag
+                   removes them. Takes no value. It also rewrites hook entries of yours whose
+                   command only names a bdb script. The OpenCode plugin bdb-aos.js still
+                   injects memB and rules and autostarts the trail under --no-hooks and minimal.
   --hooks-only     Install or refresh only the hooks and their settings entries, then exit.
-  --without=ID,ID  Exclude packages by id (memb, synapse, openwiki, remote, ao, creator,
-                   hardware, installer, deja, token-saver, codenotch, gateway, fleet);
-                   saved to the v5 disabled list. An unknown id is an error; kernel cannot
-                   be excluded.
+                   Combine with --no-hooks only: not with --profile or --without, and not with
+                   status, update or repair.
+  --without=ID,ID  (also --without ID,ID) Exclude packages by id (memb, synapse, openwiki,
+                   remote, ao, creator, hardware, installer, deja, token-saver, codenotch,
+                   gateway, fleet); saved to the v5 disabled list. An unknown id is an error;
+                   kernel cannot be excluded. A fresh install only honours the ids it would
+                   install (memb, synapse, openwiki, remote, ao, creator, hardware, installer,
+                   token-saver, codenotch): gateway and fleet are never installed by it and
+                   deja comes with memb, so for those the list only affects update and repair.
   AOS_DISABLED_MCPS=a,b
-                   Shipped MCP server names that are not written to any harness config;
-                   unknown names are ignored with one warning.
+                   Shipped MCP server names that are not written to the harness MCP configs
+                   the installer writes (not the memB sync, OpenWiki or the gateway); not
+                   saved; unknown names are ignored with one warning.
   --verbose, -v    Verbose output
   -V, --version    Print the version and exit
   -h, --help       Print this help and exit`);
@@ -6785,6 +6825,16 @@ Options:
         const doctorArgs = process.argv.slice(process.argv[2] === 'doctor' || process.argv[2] === 'checkup' ? 3 : 2).filter(a => a !== '--doctor');
         const result = spawnSync(process.execPath, [doctorScript, ...doctorArgs], { stdio: 'inherit' });
         process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
+    // Before the intro, the telemetry card and the update check: refreshing hooks needs none of them.
+    if (INSTALL_OPTS.hooksOnly && !PROJECT_HARNESS_ARG) {
+        if (DRY_RUN) log.warn('DRY-RUN MODE active - nothing AOS owns is written.');
+        initFullSession(detectInstallState());
+        persistInstallOptions();
+        installGlobalHooks();
+        flushSessionManifest();
+        console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
         return;
     }
     const skipIntro = isAutoYes || process.argv.includes('--no-intro') || process.argv.includes('--no-animation');
@@ -6823,19 +6873,7 @@ Options:
 
     // Initialize session manifest – all copyDirRecursiveSync calls from here
     // forward will use manifest-aware writes automatically.
-    initSessionManifest(installState.installManifest, [
-        path.join(srcDir, 'skills'),
-        path.join(srcDir, 'mcps'),
-        path.join(srcDir, '.agents'),
-        path.join(srcDir, '.claude'),
-        path.join(srcDir, '.cursor'),
-        path.join(srcDir, '.github'),
-        path.join(srcDir, '.codex-plugin'),
-        path.join(srcDir, 'RULES.md'),
-        path.join(srcDir, 'AGENTS.md'),
-        path.join(srcDir, 'CLAUDE.md'),
-        path.join(srcDir, 'CODEX.md'),
-    ]);
+    initFullSession(installState);
 
     if (PROJECT_HARNESS_ARG) {
         installProjectHarness();
@@ -6843,14 +6881,8 @@ Options:
         return;
     }
 
-    if (INSTALL_OPTS.hooksOnly) {
-        installGlobalHooks();
-        flushSessionManifest();
-        outro(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
-        return;
-    }
-
     if (installState.isInstalled && !isAutoYes) {
+        persistInstallOptions();
         process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true));
         return;
     }
@@ -7055,6 +7087,7 @@ Options:
         outro('Project harness installation complete.');
         return;
     }
+    persistInstallOptions();
 
     // The backup directory is created on first use (moveIfExists, the MCP merge), never empty, 0700 because it can hold credential copies.
 
