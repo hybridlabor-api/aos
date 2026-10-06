@@ -322,6 +322,27 @@ function checkAgyMcsc() {
   }
 }
 
+// Secrets belong in ~/.aos/secrets.env (0600), never inline in a harness MCP config. Names only, never values.
+function checkMcpSecrets() {
+  const { findInlineSecrets, secretsPath } = req('../lib/mcp-secrets.js');
+  const byEntry = new Map();
+  for (const f of findInlineSecrets(HOME, process.env)) {
+    const k = `${f.file}\0${f.server}`;
+    byEntry.set(k, { ...f, variables: [...(byEntry.get(k)?.variables || []), f.variable] });
+  }
+  for (const f of byEntry.values()) {
+    add('mcp-secrets', 'MCP inline secret', false, `${tilde(f.file)} · server "${f.server}" · ${f.variables.join(', ')}`,
+      `Run the AOS installer or Quick Update (moves the value into ${tilde(secretsPath(HOME))} and rewrites the entry), or move it there by hand.`, true);
+  }
+  const file = secretsPath(HOME);
+  let st;
+  try { st = statSync(file); } catch { return; }
+  const loose = !IS_WIN && (st.mode & 0o077) !== 0;
+  add('mcp-secrets', 'MCP secrets file', st.isFile() && !loose,
+    !st.isFile() ? `${tilde(file)} is not a regular file` : loose ? `${tilde(file)} has mode ${(st.mode & 0o777).toString(8)}, must be 600` : `${tilde(file)} (mode 600)`,
+    `chmod 600 ${tilde(file)}`, true);
+}
+
 async function checkDaemonsAndModules() {
   // memB
   const membDir = findModule('memB');
@@ -538,6 +559,7 @@ checkAgentModels();
 checkHooks();
 checkPlugins();
 checkAgyMcsc();
+checkMcpSecrets();
 await checkDaemonsAndModules();
 report();
 

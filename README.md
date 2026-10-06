@@ -302,6 +302,8 @@ npx skills add hybridlabor-api/aos
 
 [`mcp_config.json`](mcp_config.json) defines <!-- count:mcps -->21<!-- /count --> servers, built or warmed by the installer from `mcps/` and merged into each harness's MCP configuration. Each server exposes tools for a specific domain; every harness sees the same set, avoiding per-tool incompatibilities.
 
+API keys and tokens for these servers are kept in `~/.aos/secrets.env` (mode 0600), never inline in a harness config: see [docs/mcp-secrets.md](docs/mcp-secrets.md).
+
 **Creative software integrations** (primary and fallback pairs for redundancy):
 - **Unreal Engine** — `bdb_unreal_mcp` (Web Remote Control API on port 30010), skill: `bdb-unreal-mcp`
 - **Rhino 3D & Grasshopper** — `bdb_rhino_mcp` (McNeel's Yak router) + `bdb_rhino_mcp_fallback` (GOLEM 3D, 105 tools), skill: `bdb-rhino-mcp`

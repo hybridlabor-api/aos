@@ -28,6 +28,7 @@ const { claudeConfigDir } = require('./lib/plugin-evidence');
 const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
+const mcpSecrets = require('./lib/mcp-secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock } = require('./lib/destructive-rules');
 
@@ -365,6 +366,20 @@ function warnUnparseable(filePath, what, loaded) {
     log.warn(`Could not parse ${filePath} (${loaded.error}); left untouched, ${what} skipped. Fix or remove the file and run the installer again.`);
 }
 
+// Timestamped copy next to the config; it can hold credentials, so 0600. True when none was needed or it was made.
+function backupConfigFile(filePath) {
+    if (!fs.existsSync(filePath)) return true;
+    const bak = `${filePath}.${timestamp}.bak`;
+    try {
+        fs.copyFileSync(filePath, bak);
+        try { fs.chmodSync(bak, 0o600); } catch (e) { logDebug(e, 'chmod backup'); }
+        return true;
+    } catch (e) {
+        log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
+        return false;
+    }
+}
+
 // Writes `data` over an existing config only when it changed (`before` = JSON.stringify of the parsed original, null for none), after a backup.
 function writeConfigWithBackup(filePath, data, before) {
     const serialized = JSON.stringify(data, null, 2);
@@ -372,12 +387,7 @@ function writeConfigWithBackup(filePath, data, before) {
         try { fs.chmodSync(filePath, 0o600); } catch (e) { logDebug(e, 'chmod config'); }
         return false;
     }
-    if (fs.existsSync(filePath)) {
-        try { fs.copyFileSync(filePath, `${filePath}.${timestamp}.bak`); } catch (e) {
-            log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
-            return false;
-        }
-    }
+    if (!backupConfigFile(filePath)) return false;
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, serialized, { mode: 0o600 });
     try { fs.chmodSync(filePath, 0o600); } catch (e) { logDebug(e, 'chmod config'); }
@@ -1526,7 +1536,8 @@ function loadExistingEnv(targetMcpDir) {
     const envPaths = [
         targetMcpDir ? path.join(targetMcpDir, '.env') : null,
         path.join(geminiDir, 'config', '.env'),
-        path.join(homeDir, '.agents', '.env')
+        path.join(homeDir, '.agents', '.env'),
+        mcpSecrets.secretsPath(homeDir)
     ].filter(Boolean);
 
     const envData = {};
@@ -3282,15 +3293,45 @@ function getTierExcludeSkills(tier) {
 // primary write above owns its file wholesale, but a secondary store belongs
 // to another product and is very likely to already hold the user's own
 // servers -- so this merges per server key and never replaces the file.
-// An unattended run has no credentials of its own (empty strings); those must never
-// replace a value the user already has in a server's env block.
-function keepExistingEnvValues(incomingServers, previousServers) {
-    for (const [key, incoming] of Object.entries(incomingServers || {})) {
-        const prevEnv = previousServers && previousServers[key] && previousServers[key].env;
-        if (!incoming || typeof incoming !== 'object' || !incoming.env || !prevEnv || typeof prevEnv !== 'object') continue;
-        for (const [k, v] of Object.entries(incoming.env)) {
-            if (v === '' && typeof prevEnv[k] === 'string' && prevEnv[k] !== '') incoming.env[k] = prevEnv[k];
-        }
+//
+// Secrets never go into a harness config: every server that needs one is written in launcher form
+// (lib/mcp-secrets.js, bin/aos-mcp-env.mjs) and the values live in ~/.aos/secrets.env (0600).
+const mcpShipped = () => mcpSecrets.shippedServers(srcDir);
+const mcpLauncher = () => mcpSecrets.launcherPath(homeDir);
+const warnedUserMcp = new Set();
+const warnUserMcpEntry = (file) => (name) => {
+    if (warnedUserMcp.has(`${file}\0${name}`)) return;
+    warnedUserMcp.add(`${file}\0${name}`);
+    log.warn(`${file}: your own "${name}" MCP entry differs from the AOS one and was left untouched.`);
+};
+
+// Backup of `file` first, then the collected inline values into the secrets file (never replacing a
+// stored value). False means: do not rewrite `file`, its inline values are the only copy.
+function stashInlineSecrets(collector, file) {
+    if (!collector || !collector.size()) return true;
+    if (!backupConfigFile(file)) return false;
+    try {
+        const res = mcpSecrets.storeSecrets(mcpSecrets.secretsPath(homeDir), collector.values);
+        if (res.added.length) log.step(`Moved ${res.added.join(', ')} from ${file} into ${mcpSecrets.secretsPath(homeDir)}`);
+        const differs = [...new Set([...res.kept, ...collector.conflicts])];
+        if (differs.length) log.warn(`${file} held a different inline value for ${differs.join(', ')} than the secrets file; kept the stored value (neither is printed).`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not write ${mcpSecrets.secretsPath(homeDir)} (${e.message}); ${file} left unchanged.`);
+        return false;
+    }
+}
+
+// The launcher and the two lib files it needs; entries point at them, so they go in before any entry.
+function installMcpLauncher() {
+    if (DRY_RUN) return;
+    const pairs = [
+        [path.join(srcDir, 'bin', mcpSecrets.LAUNCHER_FILE), mcpLauncher()],
+        [path.join(srcDir, 'lib', 'mcp-secrets.js'), path.join(homeDir, '.agents', 'lib', 'mcp-secrets.js')],
+        [path.join(srcDir, 'lib', 'jsonc.js'), path.join(homeDir, '.agents', 'lib', 'jsonc.js')],
+    ];
+    for (const [src, dest] of pairs) {
+        try { copyDirRecursiveSync(src, dest); } catch (e) { log.warn(`Could not install ${path.basename(dest)}: ${e.message}`); }
     }
 }
 
@@ -3317,13 +3358,15 @@ function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
             }
             const data = existing || {};
             data.mcpServers = data.mcpServers && typeof data.mcpServers === 'object' ? data.mcpServers : {};
-            const mirrored = JSON.parse(JSON.stringify(servers));
-            keepExistingEnvValues(mirrored, data.mcpServers);
-            for (const [key, val] of Object.entries(mirrored)) data.mcpServers[key] = val;
+            const before = JSON.stringify(data);
+            const collector = mcpSecrets.createCollector();
+            mcpSecrets.mergeServers(data.mcpServers, JSON.parse(JSON.stringify(servers)), { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(target) });
+            if (existing && JSON.stringify(data) === before) continue;
+            if (!stashInlineSecrets(collector, target)) continue;
             fs.mkdirSync(path.dirname(target), { recursive: true });
-            // Carries injected API keys, same as the primary config. The `mode`
-            // option only applies when writeFileSync CREATES the file -- an
+            // The `mode` option only applies when writeFileSync CREATES the file -- an
             // existing 0644 file keeps its old mode -- so chmod explicitly.
+            if (existing && !backupConfigFile(target)) continue;
             fs.writeFileSync(target, JSON.stringify(data, null, 2), { mode: 0o600 });
             try { fs.chmodSync(target, 0o600); } catch (e) { logDebug(e, 'chmod mirrored mcp config'); }
             log.step(`Mirrored MCP servers into ${target}`);
@@ -3569,27 +3612,28 @@ async function installMcpsForTarget(paths, ctx) {
             ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')
             : path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'bin', 'python');
         const pythonBinValue = pythonBinPath.split('\\').join('/');
-        const geminiKeyValue = (creds.keyEnvName === 'GEMINI_API_KEY' ? creds.gemini : '') || process.env.GEMINI_API_KEY || '';
         mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, () => JSON.stringify(pythonBinValue).slice(1, -1));
-        mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, () => JSON.stringify(geminiKeyValue).slice(1, -1));
     }
 
-    const githubToken = (creds.github || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || '').trim();
-    if (githubToken) {
+    // Credentials from the prompts go to the secrets file; the entries only name the variables.
+    const geminiKeyValue = (creds.keyEnvName === 'GEMINI_API_KEY' ? creds.gemini : '') || '';
+    const githubToken = (creds.github || '').trim();
+    const promptSecrets = Object.fromEntries(Object.entries({ GEMINI_API_KEY: geminiKeyValue, GITHUB_PERSONAL_ACCESS_TOKEN: githubToken }).filter(([, v]) => v && !/[\r\n]/.test(v)));
+    if (Object.keys(promptSecrets).length && !DRY_RUN) {
         try {
-            const tokenizedConfig = JSON.parse(mcpConfigStr);
-            if (tokenizedConfig.mcpServers && tokenizedConfig.mcpServers.github) {
-                tokenizedConfig.mcpServers.github.env = Object.assign(
-                    {},
-                    tokenizedConfig.mcpServers.github.env,
-                    { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken }
-                );
-                mcpConfigStr = JSON.stringify(tokenizedConfig, null, 2);
-            }
+            const res = mcpSecrets.storeSecrets(mcpSecrets.secretsPath(homeDir), promptSecrets);
+            if (res.added.length) log.step(`Saved ${res.added.join(', ')} to ${mcpSecrets.secretsPath(homeDir)}`);
+            if (res.kept.length) log.warn(`${mcpSecrets.secretsPath(homeDir)} already holds ${res.kept.join(', ')} with another value; kept it. Edit the file to change it.`);
         } catch (e) {
-            log.warn(`Could not attach GitHub token to the github MCP entry: ${e.message}`);
+            log.warn(`Could not write ${mcpSecrets.secretsPath(homeDir)}: ${e.message}. Add the credentials there yourself (KEY=value, chmod 600).`);
         }
     }
+    installMcpLauncher();
+    try {
+        const parsed = JSON.parse(mcpConfigStr);
+        parsed.mcpServers = mcpSecrets.wrapServers(parsed.mcpServers, mcpLauncher());
+        mcpConfigStr = JSON.stringify(parsed, null, 2);
+    } catch (e) { logDebug(e, 'wrap MCP servers in the secrets launcher'); }
 
     try { lastGeneratedMcpServers = JSON.parse(mcpConfigStr).mcpServers || null; } catch (e) { lastGeneratedMcpServers = null; }
     if (isAgyMcpConfig(paths.mcpConfigPath)) {
@@ -3651,17 +3695,11 @@ async function installMcpsForTarget(paths, ctx) {
                     unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
                 }
                 const newConfig = JSON.parse(mcpConfigStr);
-                const oldServers = oldConfig.mcpServers || {};
+                const oldServers = oldConfig.mcpServers && typeof oldConfig.mcpServers === 'object' ? oldConfig.mcpServers : {};
                 const newServers = newConfig.mcpServers || {};
-                Object.keys(newServers).forEach(key => {
-                    const previous = oldServers[key];
-                    const incoming = newServers[key];
-                    if (!previous || typeof previous !== 'object') return;
-                    if (!incoming || typeof incoming !== 'object') return;
-                    if (!incoming.env && previous.env) incoming.env = previous.env;
-                });
-                keepExistingEnvValues(newServers, oldServers);
-                oldConfig.mcpServers = Object.assign({}, oldServers, newServers);
+                const collector = mcpSecrets.createCollector();
+                mcpSecrets.mergeServers(oldServers, newServers, { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(paths.mcpConfigPath) });
+                oldConfig.mcpServers = oldServers;
                 // The backup can hold credentials: only made (0600) when the merge really changes the content.
                 if (JSON.stringify(oldConfig) === beforeMerge) {
                     log.step(`${configName} already has the BDB MCPs; nothing changed`);
@@ -3670,6 +3708,7 @@ async function installMcpsForTarget(paths, ctx) {
                         fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
                         fs.writeFileSync(path.join(backupDir, 'mcp_config_backup.json'), rawBefore, { mode: 0o600 });
                     } catch (e) { log.warn(`Could not create the backup copy: ${e.message}`); }
+                    if (!stashInlineSecrets(collector, paths.mcpConfigPath)) throw new Error('inline secrets could not be moved');
                     fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2), { mode: 0o600 });
                     try { fs.chmodSync(paths.mcpConfigPath, 0o600); } catch (e) { logDebug(e, 'chmod mcpConfigPath'); }
                     log.step(`Merged BDB MCPs into existing ${configName}`);
@@ -4893,6 +4932,8 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
 // replacing the block on re-runs. A server the user already declared outside the
 // block is skipped: a second [mcp_servers.<name>] table would make the file invalid TOML.
 function mergeCodexTomlMcpServers(configTomlPath, servers) {
+    servers = mcpSecrets.wrapServers(servers, mcpLauncher());
+    const shipped = mcpShipped();
     const tomlKey = (k) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k));
     const tomlValue = (v) => {
         if (Array.isArray(v)) return `[${v.map(tomlValue).join(', ')}]`;
@@ -4910,23 +4951,45 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     const rows = (name, cfg) => [`[mcp_servers.${tomlKey(name)}]`, ...Object.entries(cfg || {}).map(([k, v]) => `${tomlKey(k)} = ${tomlValue(v)}`)];
     // Codex drops marker comments on rewrite: AOS tables left without markers are recognised by name plus
     // the exact command AOS writes, replaced into the single block, and orphan markers are removed.
+    // A table is AOS's when its name is shipped and command/args are what AOS writes (launcher form or
+    // not); a table whose args this reader cannot parse is judged by its command line alone, as before.
+    const ownedNames = new Set();
     const owns = (name, sec) => {
         const cfg = (servers || {})[name];
-        return !!cfg && sec.some((l) => l.trim() === `command = ${tomlValue((cfg || {}).command)}`);
+        if (!cfg) return false;
+        const t = mcpSecrets.parseCodexTables(sec.join('\n'))[name];
+        const command = t && t.fields.command;
+        if (typeof command !== 'string') return false;
+        const inc = mcpSecrets.unwrap(cfg);
+        const ok = Array.isArray(t.fields.args)
+            ? mcpSecrets.isAosOwned(name, { command, args: t.fields.args }, cfg, shipped)
+            : [cfg.command, inc.command].includes(command);
+        if (ok) ownedNames.add(name);
+        return ok;
     };
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
     // Codex may insert a user's own [mcp_servers.x] table between the markers. Regenerating the
     // block replaces its content, so tables AOS does not ship are moved behind the block, not lost.
     let foreign = '';
+    const original = content;
     if (hadBlock) {
         const aosNames = new Set([...uninstallRecords.aosMcpNames(), ...Object.keys(servers || {})]);
         const inner = content.match(blockRegex)[0].split(/\r?\n/).filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
         foreign = uninstallRecords.dropMcpTables(inner, (n) => aosNames.has(n)).join('\n').trim();
+        Object.keys(mcpSecrets.parseCodexTables(inner.join('\n'))).filter((n) => aosNames.has(n)).forEach((n) => ownedNames.add(n));
     }
     const stripped = content.replace(blockRegex, `${PLACEHOLDER}\n`).split(/\r?\n/)
         .filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
     const outsideLines = uninstallRecords.dropMcpTables(stripped, owns);
     const outside = outsideLines.join('\n');
+    // Inline secrets of the tables AOS replaces: collected for the secrets file, their names stay declared.
+    const collector = mcpSecrets.createCollector();
+    const priorTables = mcpSecrets.parseCodexTables(original);
+    for (const n of ownedNames) {
+        const env = priorTables[n] && priorTables[n].env;
+        for (const [k, v] of mcpSecrets.inlineSecrets(env)) collector.add(k, v);
+        if (servers[n]) servers[n] = mcpSecrets.wrapServer(n, servers[n], mcpLauncher(), Object.keys(env || {}).filter((k) => mcpSecrets.secretKV(k, env[k])));
+    }
     const tables = [];
     const skipped = [];
     Object.entries(servers || {}).forEach(([name, cfg]) => {
@@ -4945,6 +5008,8 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     }
     content = content.replace(/\n{3,}/g, '\n\n');
     if (eol === '\r\n') content = content.replace(/\n/g, '\r\n');
+    if (content === original) return skipped;
+    if (!stashInlineSecrets(collector, configTomlPath)) throw new Error('inline secrets could not be moved');
     fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
     try { fs.chmodSync(configTomlPath, 0o600); } catch (e) { logDebug(e, 'chmod configTomlPath'); }
     return skipped;
@@ -5872,11 +5937,10 @@ function syncMcpConfigFile(targetPath, masterMcpData) {
         const before = loaded.state === 'ok' ? JSON.stringify(loaded.data) : null;
         const data = loaded.data;
         if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
-        if (masterMcpData.mcpServers) {
-            for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
-                data.mcpServers[key] = val;
-            }
-        }
+        const collector = mcpSecrets.createCollector();
+        mcpSecrets.mergeServers(data.mcpServers, masterMcpData.mcpServers, { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(targetPath) });
+        if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
+        if (!stashInlineSecrets(collector, targetPath)) return;
         writeConfigWithBackup(targetPath, data, before);
     } catch (e) {
         log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
@@ -5890,6 +5954,7 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
         const existing = loaded.state === 'ok' ? loaded.data : null;
         const before = existing ? JSON.stringify(existing) : null;
         const data = existing && existing.mcp ? existing : Object.assign({}, existing || {}, { mcp: {} });
+        const collector = mcpSecrets.createCollector();
         if (masterMcpData.mcpServers) {
             // OpenCode provider APIs (e.g. OpenAI-compatible, Console) enforce tool name length limits
             // (e.g. max 64 chars) and context limits. Loading 20+ MCPs causes provider errors (e.g. 73-char tool names).
@@ -5898,7 +5963,10 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
             const existingMcp = existing && existing.mcp ? existing.mcp : {};
             const hasExistingKeys = Object.keys(existingMcp).length > 0;
 
-            for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
+            for (const [key, rawVal] of Object.entries(masterMcpData.mcpServers)) {
+                const existingEntry = existingMcp[key];
+                const prevEnv = (existingEntry && existingEntry.environment) || {};
+                const val = mcpSecrets.wrapServer(key, rawVal, mcpLauncher(), Object.keys(prevEnv).filter((k) => mcpSecrets.secretKV(k, prevEnv[k])));
                 const rawCmd = Array.isArray(val.command) ? val.command : [val.command];
                 const rawArgs = Array.isArray(val.args) ? val.args : [];
                 const fullCmd = [...rawCmd, ...rawArgs].map(c => {
@@ -5910,7 +5978,11 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
                     return c;
                 });
 
-                const existingEntry = existingMcp[key];
+                // A same-named entry the user wrote with another command is not ours to replace.
+                if (existingEntry && !mcpSecrets.isAosOwned(key, mcpSecrets.fromOpencode(existingEntry), { command: val.command, args: val.args }, mcpShipped())) {
+                    warnUserMcpEntry(targetPath)(key);
+                    continue;
+                }
 
                 // If existing config is intentionally slimmed (has keys, but omitted this one), don't resurrect unless in slim set
                 if (hasExistingKeys && !existingEntry && !OPENCODE_DEFAULT_SLIM.has(key)) {
@@ -5922,21 +5994,14 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
                     ? existingEntry.enabled
                     : OPENCODE_DEFAULT_SLIM.has(key);
 
-                let envObj = val.environment || val.env;
-                if (envObj) {
-                    envObj = Object.assign({}, envObj);
-                    for (const [eKey, eVal] of Object.entries(envObj)) {
-                        if (eVal === '__GEMINI_API_KEY__') {
-                            envObj[eKey] = '${GEMINI_API_KEY}';
-                        }
-                    }
-                }
+                for (const [k, v] of mcpSecrets.inlineSecrets(prevEnv)) collector.add(k, v);
+                const envObj = val.environment || val.env;
 
                 data.mcp[key] = {
                     type: "local",
                     command: fullCmd,
                     enabled: isEnabled,
-                    ...(envObj ? { environment: envObj } : {})
+                    ...(envObj && Object.keys(envObj).length ? { environment: envObj } : {})
                 };
             }
         }
@@ -5946,10 +6011,66 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
         // homeDir matches how the opencode harness entry builds its path.
         installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
 
+        if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
+        if (!stashInlineSecrets(collector, targetPath)) return;
         writeConfigWithBackup(targetPath, data, before);
     } catch (e) {
         log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
     }
+}
+
+// Update-time migration: AOS-owned entries in every known harness config (CLAUDE_CONFIG_DIR and CODEX_HOME
+// honoured) that still carry inline secrets are rewritten to the launcher form. Backup first, values go into
+// the secrets file unless it already holds that variable, user entries stay untouched. Idempotent.
+function migrateMcpSecrets() {
+    const shipped = mcpShipped();
+    const launcher = mcpLauncher();
+    const moved = [];
+    installMcpLauncher();
+    for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir)) {
+        if (!fs.existsSync(file)) continue;
+        try {
+            if (kind === 'toml') {
+                const tables = mcpSecrets.parseCodexTables(readTextFile(file));
+                const owned = {};
+                let blocked = null;
+                for (const [name, t] of Object.entries(tables)) {
+                    if (!shipped[name]) continue;
+                    const entry = mcpSecrets.codexEntry(t);
+                    if (typeof entry.command !== 'string' || !mcpSecrets.isAosOwned(name, entry, null, shipped)) continue;
+                    if (t.unparsed.length) blocked = name;
+                    owned[name] = entry;
+                }
+                if (blocked) { log.warn(`${file}: table "${blocked}" has fields this installer cannot rewrite safely; its inline secrets (if any) were left in place.`); continue; }
+                if (!Object.keys(owned).length || JSON.stringify(mcpSecrets.wrapServers(owned, launcher)) === JSON.stringify(owned)) continue;
+                mergeCodexTomlMcpServers(file, owned);
+                moved.push(file);
+                continue;
+            }
+            const loaded = loadJsonConfig(file);
+            if (loaded.state === 'invalid') { warnUnparseable(file, 'secret migration', loaded); continue; }
+            if (loaded.state !== 'ok') continue;
+            const map = loaded.data[kind === 'opencode' ? 'mcp' : 'mcpServers'];
+            if (!map || typeof map !== 'object') continue;
+            const before = JSON.stringify(loaded.data);
+            const collector = mcpSecrets.createCollector();
+            for (const [name, entry] of Object.entries(map)) {
+                const canon = kind === 'opencode' ? mcpSecrets.fromOpencode(entry) : entry;
+                if (!canon || !mcpSecrets.isAosOwned(name, canon, null, shipped)) continue;
+                const env = (canon.env && typeof canon.env === 'object') ? canon.env : {};
+                for (const [k, v] of mcpSecrets.inlineSecrets(env)) collector.add(k, v);
+                const wrapped = mcpSecrets.wrapServer(name, canon, launcher);
+                map[name] = kind === 'opencode' ? mcpSecrets.toOpencode(entry, wrapped) : wrapped;
+            }
+            if (JSON.stringify(loaded.data) === before) continue;
+            if (!stashInlineSecrets(collector, file)) continue;
+            if (writeConfigWithBackup(file, loaded.data, before)) moved.push(file);
+        } catch (e) {
+            log.warn(`Could not migrate MCP secrets in ${file}: ${e.message}`);
+        }
+    }
+    if (moved.length) log.step(`MCP entries now use the secrets launcher in: ${moved.join(', ')}`);
+    return moved;
 }
 
 async function universalHarnessSync(primaryMcpConfigPath, installedModules = []) {
@@ -6066,6 +6187,7 @@ async function runQuickUpdate(installState) {
         injectHarnessRules();
     }, 'Harness files keep whatever version this machine already had.');
     installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.');
+    installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`);
     runCodexPluginStep();
 
     // OpenWiki: if already configured, refresh the daemon silently (no prompt).
@@ -6614,6 +6736,7 @@ Options:
     for (const t of targets) {
         await installMcpsForTarget(t, { selectedMcps, mode, platformValue: t.value, creds });
     }
+    migrateMcpSecrets();
 
     await installOpenWikiDaemon(creds.gemini, primaryTarget.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
     await installOpenWikiVisualizer();
@@ -6676,7 +6799,8 @@ module.exports = {
     markPlatformsExplicit,
     runModuleInstalls,
     describeExecError,
-    keepExistingEnvValues,
+    migrateMcpSecrets,
+    installMcpLauncher,
     mergeBdbSettingsHooks,
     mergeAntigravityHooks,
     agyHookCommand,

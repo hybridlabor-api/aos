@@ -15,6 +15,10 @@
 
 ### Security
 
+* MCP secrets no longer sit inline in harness configs. `GITHUB_PERSONAL_ACCESS_TOKEN`, `GEMINI_API_KEY`, `REMOTEOS_API_KEY` and any other secret `env` value live in one `~/.aos/secrets.env` (mode 0600). Servers that need them are registered in every harness (Claude, Codex, agy, OpenCode, Cursor, Windsurf, Roo/Cline, Aider) as `node aos-mcp-env.mjs --vars NAME -- <command>`; the launcher reads the file (refuses anything but a private regular file), passes only the declared variables and forwards exit code and signals. See `docs/mcp-secrets.md`.
+* The installer overwrites an MCP entry only when AOS owns it (shipped name and AOS command); a same-named user entry is kept with one warning. Before, every writer replaced entries by key.
+* Update migrates AOS-owned entries with inline secrets: timestamped 0600 backup, values moved into the secrets file without overwriting a stored one, entry rewritten, idempotent. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honoured. Backups of configs are now 0600.
+* `aos-doctor` warns about inline secrets in harness MCP configs (file, server, variable; never the value) and about a secrets file that is not 0600. `aos-uninstall` removes the launcher entries AOS owns and leaves the secrets file, with a note.
 * Pinned the `@agentclientprotocol/claude-agent-acp` (0.86.0) and `codex-acp` (2.1.1) adapters launched by `aos-acp` instead of fetching the latest via `npx`.
 ## [4.18.1](https://github.com/hybridlabor-api/aos/compare/v4.18.0...v4.18.1) (2026-10-02)
 
