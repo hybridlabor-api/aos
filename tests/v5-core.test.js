@@ -269,6 +269,49 @@ test('token-saver verify checks CLI and hook registration', () => {
     }
 });
 
+test('A1: a failing harness or kernel step is shown as ✖ and update exits non-zero', async () => {
+    const m = machine();
+    m.host.quickUpdateHarnesses = () => ['install the Codex plugin: boom'];
+    assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current })), 1);
+    assert.match(m.out.join(''), /✖ Harnesses/);
+
+    const k = machine();
+    k.host.quickUpdateKernel = () => ['plugin migration: boom'];
+    assert.strictEqual(await menu.update(k.host, k.opts({ npmView: current })), 1);
+    assert.match(k.out.join(''), /✖ Kernel/);
+});
+
+test('A2: an installer that returns false makes Settings -> Install fail with ✖', async () => {
+    const m = machine();
+    m.host.installOSRemoteGateway = async () => false;
+    const ui = { select: async () => 'pkg:remote' };
+    assert.strictEqual(await menu.settings(m.host, m.opts({ ui })), 1);
+    assert.match(m.out.join(''), /✖ BDB OS Remote/);
+    for (const id of ['remote', 'ao', 'creator', 'hardware', 'installer', 'deja', 'token-saver', 'codenotch']) {
+        const host = { installOSRemoteGateway: async () => false, installOSAgentWorkspace: async () => false, installCreatorExtension: async () => false, installHardwarePcb: async () => false, installDevToolInstaller: async () => false, installDeja: async () => false, installTokenSaver: async () => false, maybeInstallCodenotch: async () => false };
+        const p = pk.registry.find((x) => x.id === id);
+        await assert.rejects(() => p.install({ host, home: m.home }), /reported a failure/, `${id} install`);
+        await assert.rejects(() => p.update({ host, home: m.home }), /reported a failure/, `${id} update`);
+    }
+});
+
+test('B11: step() disables prompts and restores the previous value', async () => {
+    const { step } = require('../lib/v5/run');
+    const calls = [];
+    const clack = { text: async () => calls.push('text'), password: async () => calls.push('password'), select: async () => calls.push('select'), multiselect: async () => calls.push('multi'), confirm: async () => calls.push('confirm') };
+    const p = require('../lib/v5/noprompt')(clack);
+    delete process.env.AOS_NONINTERACTIVE;
+    let seen;
+    await step('x', async () => {
+        seen = [await p.confirm({ message: 'm' }), await p.confirm({ message: 'm', initialValue: false }), await p.password({ message: 'k' }), await p.select({ message: 's', options: [{ value: 'a' }] })];
+    }, { logFile: path.join(mkHome(), 'l.log'), out: () => {} });
+    assert.deepStrictEqual(seen, [true, false, '', 'a']);
+    assert.deepStrictEqual(calls, [], 'no prompt reached inside step');
+    assert.strictEqual(process.env.AOS_NONINTERACTIVE, undefined);
+    await p.confirm({ message: 'outside' });
+    assert.deepStrictEqual(calls, ['confirm'], 'prompts work again outside step');
+});
+
 test('vlatest fixed: the ready line names the version from the installed package.json', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
     const body = src.slice(src.indexOf('function downloadOrUpdateModule'), src.indexOf('function downloadOrUpdateModule') + 9000);

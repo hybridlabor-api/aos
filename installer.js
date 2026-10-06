@@ -57,16 +57,12 @@ const {
     intro,
     outro,
     note,
-    text,
-    password,
-    select,
-    multiselect,
-    confirm: askConfirm,
     spinner,
     isCancel,
     cancel,
     log
 } = clack;
+const { text, password, select, multiselect, confirm: askConfirm } = require('./lib/v5/noprompt')(clack);
 
 // Defensive alias: @clack/prompts provides log.success, not log.ok.
 // Ensure any legacy or third-party call to log.ok safely routes to log.success.
@@ -1408,7 +1404,7 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
         result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, announce: (m) => log.step(m), cli: uninstallRecords.recordingCli(targetHome, pluginCli !== undefined ? pluginCli : useCli ? pluginMigration.defaultCliRunner : null), ...(registrars ? { registrars } : {}) });
     } catch (e) {
         log.warn(`Plugin migration skipped: ${e.message}`);
-        result = { covered: new Set(), lines: [] };
+        result = { covered: new Set(), lines: [], error: e.message };
     }
     for (const line of result.lines) log.step(line);
     if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
@@ -1419,8 +1415,8 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
 // Antigravity and Codex plugin steps, shared by the full install and Quick Update so the default
 // update path installs the same plugins. Order: Claude (runPluginMigration), agy, Codex.
 function runAgyPluginStep() {
-    try { require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log }); }
-    catch (e) { log.warn(`agy plugin skipped: ${e.message}`); }
+    try { require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log }); return null; }
+    catch (e) { log.warn(`agy plugin skipped: ${e.message}`); return e.message; }
 }
 function runCodexPluginStep() {
     const r = codexPluginInstall.installCodexPlugin({ home: homeDir, pkgRoot: srcDir, version: require('./package.json').version, mode: pluginMigrationMode(), announce: (m) => log.step(m) });
@@ -2065,6 +2061,7 @@ async function installTokenSaver(platformTarget) {
     } catch (err) {
         log.warn(`Heimdall Token Saver skipped/failed: ${err.message}`);
         logDebug(err, 'Token Saver install');
+        return false;
     }
 }
 
@@ -2263,7 +2260,8 @@ async function installDeja() {
     } catch (e) {
         log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
     }
-    if (!hasExecutable('deja')) {
+    const dejaOnPath = hasExecutable('deja');
+    if (!dejaOnPath) {
         log.warn('deja is not on PATH. Install it with: npm install -g @vshulcz/deja-vu@0.21.1');
     }
     const base = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
@@ -2275,6 +2273,7 @@ async function installDeja() {
     } catch (e) {
         log.warn(`Could not update the deja exclude list at ${excludePath}: ${e.message}. Add the line 'secret' to it by hand.`);
     }
+    return dejaOnPath ? undefined : false;
 }
 
 async function installMemB(interactive) {
@@ -4369,7 +4368,9 @@ async function maybeInstallCodenotch() {
         log: { info: (m) => log.info(m), warn: (m) => log.warn(m), success: (m) => log.success(m) },
     });
     const line = codenotch.codenotchSummaryLine(codenotchResult);
-    if (line) (codenotchResult.status === 'error' || /FAILED/.test(line) ? log.warn : log.info)(line);
+    const failed = codenotchResult.status === 'error' || /FAILED/.test(line || '');
+    if (line) (failed ? log.warn : log.info)(line);
+    return failed ? false : undefined;
 }
 
 function parseOpencodeOptional(argv = process.argv, env = process.env) {
@@ -6301,10 +6302,15 @@ function quickUpdateKernel(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     s.stop('Skills refreshed');
-    runPluginMigration();
-    runAgyPluginStep();
+    const failures = [];
+    const migration = runPluginMigration();
+    if (migration.error) failures.push(`plugin migration: ${migration.error}`);
+    const agy = runAgyPluginStep();
+    if (agy) failures.push(`agy plugin: ${agy}`);
+    return failures;
 }
 
+// Returns the list of failed steps (empty = all ok); v5 turns a non-empty list into a failed step.
 function quickUpdateHarnesses() {
     // Everything injectHarnessRules() delivers -- RULES.md, the dispatcher
     // workflows the skills point at, the compiled subagent definitions, the
@@ -6313,12 +6319,15 @@ function quickUpdateHarnesses() {
     // Update; the rest stayed behind, so a machine that only ever quick-updates
     // kept running first-install agent definitions and dispatcher scripts
     // forever. Same defect as the hook, one layer up. Run the whole thing.
-    installStep('refresh harness rules, workflows, agents and hooks', () => {
-        injectHarnessRules();
-    }, 'Harness files keep whatever version this machine already had.');
-    installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.');
-    installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`);
-    runCodexPluginStep();
+    const steps = [
+        ['refresh harness rules, workflows, agents and hooks', installStep('refresh harness rules, workflows, agents and hooks', () => {
+            injectHarnessRules();
+        }, 'Harness files keep whatever version this machine already had.')],
+        ['remove the AOS mcsc entry from agy configs', installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.')],
+        ['move inline MCP secrets into the secrets file', installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`)],
+        ['install the Codex plugin', installStep('install the Codex plugin', () => { runCodexPluginStep(); })],
+    ];
+    return steps.filter(([, r]) => !r.ok).map(([what, r]) => `${what}: ${r.error.message}`);
 }
 
 // No prompt: only refreshes when a key (or ollama) is already configured. Returns false when there is nothing to refresh.
