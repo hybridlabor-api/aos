@@ -88,10 +88,15 @@ describe('compilers write a model only for an override', () => {
         assert.strictEqual(modelOf(path.join(d, 'claude', 'reviewer.md')), undefined);
     });
 
-    test('Antigravity JSON carries no model and no tier unless overridden', () => {
+    test('Antigravity agent.md carries no model and no tier (the format has no model field)', () => {
         const src = fs.readFileSync(path.join(root, 'installer.js'), 'utf8');
         assert.ok(!/model_tier/.test(src));
-        assert.match(src, /\.\.\.\(resolved\.model \? \{ model: resolved\.model \} : \{\}\)/);
+        const d = tmp();
+        const { compileAgyAgents } = require('../installer.js');
+        compileAgyAgents(agents, path.join(d, 'agy'));
+        for (const slug of fs.readdirSync(path.join(d, 'agy'))) {
+            assert.doesNotMatch(fs.readFileSync(path.join(d, 'agy', slug, 'agent.md'), 'utf8'), /^model/m, slug);
+        }
     });
 });
 

@@ -4070,6 +4070,23 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     }
 }
 
+// Antigravity loads <dir>/agents/<slug>/agent.md (Markdown, YAML frontmatter, H1 + system prompt); the
+// old <name>.json form is no longer written and existing .json files are left alone.
+function compileAgyAgents(agents, targetDir) {
+    const items = agents.map((a) => {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        if (!/^[a-z0-9][a-z0-9._-]*$/.test(slug) || slug.includes('..')) throw new Error(`unsafe agent name: ${JSON.stringify(a.name)}`);
+        return { a, slug };
+    });
+    for (const { a, slug } of items) {
+        const file = path.join(targetDir, slug, 'agent.md');
+        const text = ['---', 'subagent: true', 'inheritMcp: true', '---', '', `# ${a.name}`, '', a.systemPrompt, ''].join('\n');
+        if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) continue;
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, text);
+    }
+}
+
 // Generates ~/.codex/agents/<name>.toml. Format per the Codex subagents docs
 // (learn.chatgpt.com/docs/agent-configuration/subagents): required name, description,
 // developer_instructions; optional model, sandbox_mode. No model is written (the agent inherits the
@@ -4178,25 +4195,7 @@ function injectHarnessRules() {
             installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
-                    if (!fs.existsSync(agyAgentsDir)) fs.mkdirSync(agyAgentsDir, { recursive: true });
-
-                    const pipelineConfig = loadPipelineConfig();
-                    const agents = parseAgentsMd(agentsMdContent);
-                    for (const a of agents) {
-                        const slug = a.name.toLowerCase().replace(/_/g, '-');
-                        const resolved = resolveAgentConfig(slug, 'antigravity', pipelineConfig);
-                        const agentConfig = {
-                            name: a.name,
-                            description: a.role,
-                            ...(resolved.model ? { model: resolved.model } : {}),
-                            enable_write_tools: true,
-                            enable_subagent_tools: true,
-                            enable_mcp_tools: true,
-                            system_prompt: a.systemPrompt,
-                            _comment: "Auto-compiled from AGENTS.md by installer.js"
-                        };
-                        fs.writeFileSync(path.join(agyAgentsDir, `${a.name}.json`), JSON.stringify(agentConfig, null, 2));
-                    }
+                    compileAgyAgents(parseAgentsMd(agentsMdContent), agyAgentsDir);
                     log.step(`Compiled AGENTS.md to native Antigravity subagents in ${agyAgentsDir}`);
                 }
             }, 'Antigravity agents unchanged');
@@ -4215,7 +4214,7 @@ function injectHarnessRules() {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
-                    const opencodeAgentsDir = path.join(homeDir, '.opencode', 'agents');
+                    const opencodeAgentsDir = path.join(homeDir, '.config', 'opencode', 'agents');
                     compileOpenCodeAgents(agents, opencodeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to OpenCode subagents in ${opencodeAgentsDir}`);
                 }
@@ -7003,6 +7002,7 @@ module.exports = {
     compileClaudeAgents,
     compileOpenCodeAgents,
     compileCodexAgents,
+    compileAgyAgents,
     applyClaudeModelOverrides,
     loadPipelineConfig,
     resolveAgentConfig,
