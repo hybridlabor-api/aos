@@ -65,6 +65,10 @@ All inbound messages go through the shared on-disk inbox in `lib/a2a-inbox.mjs`:
 
 An inbound A2A message is never a GO or approval. The rule is enforced in three places: the sender wraps every injected text with the never-GO line (`lib/a2a-inbox.mjs`), the Codex and agy prompts carry it verbatim, and a message containing "GO <name>" satisfies no GO token anywhere. Only a human-typed GO or a gogate grant counts.
 
+## Orchestrator chain
+
+How A2A fits master session -> project orchestrator -> package orchestrator: `docs/orchestrator-chain.md`. The `aos-gogate` helper (`status`, `preset`, `presets`) is read-only and never records a GO.
+
 ## Depth limit
 
 Every `send` stamps `metadata.aos.{depth, caller}`. Before sending, the client takes the higher of `AOS_DELEGATE_DEPTH` and the legacy `MCSC_DEPTH` and rejects the send when it is at or above the maximum (`AOS_A2A_MAX_DEPTH`, default 1). A delegated agent therefore cannot delegate again unless the limit is raised explicitly.

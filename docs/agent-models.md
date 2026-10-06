@@ -48,7 +48,7 @@ First file wins, no merge: `.aos/pipeline.json` in the project, then `.aos/proje
 | Claude Code | `model:` in `.claude/agents/<slug>.md` | `fable`, `opus`, `claude-opus-5-5` | non-empty, no whitespace |
 | OpenCode | `model:` in `.opencode/agents/<slug>.md` | `provider/model`, custom providers included | `provider/model`, no whitespace |
 | Codex | `model = "..."` in `~/.codex/agents/<slug>.toml` | `gpt-5.5` | non-empty, no whitespace |
-| Antigravity | `"model"` in `~/.gemini/config/agents/<Name>.json` | see findings | non-empty, no whitespace |
+| Antigravity | `model:` in the frontmatter of `~/.gemini/config/agents/<slug>/agent.md` | `inherit`, `flash`, `pro` (documented tiers) | non-empty, no whitespace |
 
 `aos-doctor` reads the project and home `pipeline.json` (offline, no provider lists) and fails with file, role, harness and value for an unusable entry. AOS never replaces a bad override with another model.
 
@@ -66,7 +66,7 @@ The doctor treats an antigravity value outside `inherit|flash|pro` as an error, 
 **Antigravity** (https://antigravity.google/docs/subagents/, https://github.com/google-antigravity/antigravity-cli/issues/1150)
 - Custom subagent field `model`: not required; "Model tier used when invoked (inherit, flash, or pro)"; default `inherit` (parent's model). So the field is optional and omitting it inherits.
 - Issue #1150: concrete ids "cause the subagent to silently fail to register (`subagent not found or not allowed to be invoked`)". Free-form antigravity overrides are passed through as asked, but only `inherit`, `flash`, `pro` are documented as accepted today.
-- Unverified: the documented format is Markdown with YAML frontmatter (`~/.gemini/config/agents/<name>.md`), while the installer writes `<Name>.json`. Whether agy loads that JSON is not verified; the format was left unchanged. The previous tier table wrote `gemini-3.1-pro-high` etc. into it, which the docs say is not an accepted value.
+- The compiler writes `~/.gemini/config/agents/<slug>/agent.md` (Markdown with YAML frontmatter `subagent: true` / `inheritMcp: true`, an `# <Name>` H1 and the system prompt) and a `model:` line only for an explicit `models.antigravity` override in pipeline.json; without one the agent inherits the session model. `aos-doctor` validates the value (`inherit`, `flash`, `pro` are the documented tiers). The agy changelog lists `mainAgent`, `subagent`, `hidden`, `inheritMcp` and `commandExecutionPolicy` as frontmatter fields, the subagent docs add `model`.
 
 **Codex, OpenCode**: no model is written without an override (commit e2522a4; `compileCodexAgents`, `compileOpenCodeAgents`, tests in `tests/agent-models.test.js`).
 

@@ -12,6 +12,8 @@ AOS works without AO. Pick the channel by the job, not by habit.
 
 Both `mcsc` and `aos-acp` write the same event protocol to agenttrail (`SessionStart`, `PreToolUse`, `PostToolUse`, `SessionEnd`), so the GO board reads one source.
 
+How the master session, a project orchestrator and a package orchestrator use these channels: `docs/orchestrator-chain.md`.
+
 ## Limits that apply to every row
 
 - **mcsc is one level deep.** Every adapter sets `MCSC_DEPTH` to the caller's depth plus one; a server that starts at depth 1 or more refuses all delegation. A delegated agent cannot delegate again.

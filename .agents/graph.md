@@ -217,6 +217,10 @@ under Claude Code's own 8-consecutive-Stop-hook-block override
 message reaches the user before that platform ceiling would silently end the
 turn without one.
 
+## Where the graph sits in a larger setup
+
+The dispatcher is one level of a chain: a master session supervises sessions, a project-level orchestrator may run this graph, and workers do the slices. Channels and limits per hop (GO never inherited, A2A depth, `AOS_A2A_SIDECAR=off` for workers): `docs/orchestrator-chain.md`, `docs/a2a.md`, `docs/delegation-routing.md`.
+
 ## What this does not change
 
 - The five build-and-ship agent *identities* (`Godmode_UI_UX`,
