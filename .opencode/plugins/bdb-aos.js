@@ -18,8 +18,15 @@
 import { existsSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { deliverA2a } from '../../lib/a2a-oc.mjs';
-import { ensureSidecar, sessionName } from '../../lib/a2a-session.mjs';
+import { homedir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+// A2A libs: checkout layout (../../lib), else ~/.agents/lib. Missing libs make A2A a no-op, never a load failure.
+const a2aLib = async (f) => {
+  const local = new URL(`../../lib/${f}`, import.meta.url);
+  try { return await import((existsSync(local) ? local : pathToFileURL(path.join(homedir(), '.agents', 'lib', f))).href); } catch { return {}; }
+};
+const { deliverA2a = async () => {} } = await a2aLib('a2a-oc.mjs');
+const { ensureSidecar = () => ({ skipped: 'lib' }), sessionName = () => null } = await a2aLib('a2a-session.mjs');
 // Decision logic lives in the shared hooks: installed copy next to this file
 // (plugins/aos-hooks), else the repo's .claude/hooks. existsSync, not try/catch,
 // so a broken installed hook fails loudly instead of silently falling back.

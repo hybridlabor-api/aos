@@ -4761,35 +4761,32 @@ function a2aLibFiles() {
     const libDir = path.join(srcDir, 'lib');
     if (!fs.existsSync(libDir)) return [];
     let names = [];
-    try { names = fs.readdirSync(libDir).filter((f) => /^a2a-.+\.mjs$/.test(f)); } catch (e) { logDebug(e, 'list a2a lib'); }
+    // The sidecar and client import @a2a-js/sdk / express, which do not resolve from ~/.agents/lib: hooks never need them.
+    try { names = fs.readdirSync(libDir).filter((f) => /^a2a-.+\.mjs$/.test(f) && !/^a2a-(sidecar|client)\.mjs$/.test(f)); } catch (e) { logDebug(e, 'list a2a lib'); }
     return names.map((f) => path.join(libDir, f));
 }
 
-function installA2aLibCopies({ targetHome = homeDir, targetGemini = geminiDir, opencodeDir = null } = {}) {
+// The hooks and the OpenCode plugin fall back to ~/.agents/lib when ../../lib is absent, so the
+// copies live under that one AOS-owned dir, never in the bare $HOME/lib or $HOME/.gemini/lib.
+// Each copy is in the install manifest (copyDirRecursiveSync) and in the uninstall records.
+function installA2aLibCopies({ targetHome = homeDir } = {}) {
     const files = a2aLibFiles();
     if (!files.length || DRY_RUN) return false;
-    const targets = new Set();
-    // claudeConfigDir default ~/.claude -> <home>/lib; an explicit
-    // CLAUDE_CONFIG_DIR gets <claudeConfigDir>/../lib, which is the same
-    // up-two relative path the hooks resolve (hooks sit at
-    // <claudeConfigDir>/hooks, so their ../.. lands on dirname(claudeConfigDir)).
-    targets.add(path.join(targetHome, 'lib'));
-    targets.add(path.join(path.dirname(claudeConfigDir(targetHome)), 'lib'));
-    // agy hook copies land under <targetGemini>/config/hooks -> <targetGemini>/lib
-    targets.add(path.join(targetGemini, 'lib'));
-    if (opencodeDir) targets.add(path.join(path.dirname(opencodeDir), 'lib'));
-    let wrote = 0;
-    for (const dir of targets) {
-        try {
-            fs.mkdirSync(dir, { recursive: true });
-            for (const src of files) { copyDirRecursiveSync(src, path.join(dir, path.basename(src))); wrote++; }
-        } catch (e) {
-            log.warn(`Could not install A2A lib copies to ${dir}: ${e.message}`);
+    const dir = path.join(targetHome, '.agents', 'lib');
+    const copied = [];
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        for (const src of files) {
+            const dest = path.join(dir, path.basename(src));
+            copyDirRecursiveSync(src, dest);
+            copied.push(dest);
         }
+    } catch (e) {
+        log.warn(`Could not install A2A lib copies to ${dir}: ${e.message}`);
     }
-    if (wrote) log.step(`Installed A2A lib copies (a2a-*.mjs) so ../../lib imports resolve in the installed layout (${wrote} files)`);
-    log.message('A2A sidecar/client need @a2a-js/sdk and express: installed with the npm package; the copies under ~/.agents are for hooks only');
-    return wrote > 0;
+    uninstallRecords.recordA2aLibCopies(targetHome, copied);
+    if (copied.length) log.step(`Installed A2A lib copies (a2a-*.mjs) to ${dir} (${copied.length} files)`);
+    return copied.length > 0;
 }
 
 // The sidecar SessionStart hook is registered for Claude Code ONLY, and only
@@ -4855,7 +4852,7 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus', 'aos-gateway'];
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus', 'aos-gateway', 'aos-a2a'];
     // aos-bus ships as a hook (it imports ./go-gate.mjs), so its launcher points into ~/.claude/hooks.
     const binDirOf = (name) => (name === 'aos-bus' ? path.join(claudeConfigDir(homeDir), 'hooks') : globalAgentsBin);
     const wired = [];
@@ -4902,7 +4899,8 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'a2a-inbox.mjs'];
+    // installClaudeA2aSessionHook owns the a2a-session.mjs entry (not in the template), so it is not listed here.
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
@@ -4995,7 +4993,7 @@ function agyHookCommand(hooksJsonDir, scriptPath, args = '') {
 // Runs every AOS command of a hooks.json once with `{}` on stdin, the way agy does.
 // Returns [{ command, reason }] for each failure; `spawn` is injectable for tests.
 function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
-    const bdbScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'a2a-inbox.mjs', 'a2a-session.mjs'];
     const data = readJsonFile(hooksPath);
     const commands = [];
     const walk = (v) => {
@@ -5027,7 +5025,7 @@ function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = spawnSync } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'a2a-inbox.mjs', 'a2a-session.mjs'];
     const isBdbHandler = (h) => typeof h?.command === 'string' && bdbHookScripts.some((name) => h.command.includes(name));
 
     const baseDir = path.dirname(hooksPath);

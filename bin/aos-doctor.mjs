@@ -329,22 +329,26 @@ function checkHooks() {
 }
 
 // ---------------------------------------------------------------- 5b. A2A capability matrix (WP-INSTALL)
-// All A2A rows are warnings only: a missing piece degrades cross-agent
-// messaging, it never fails the doctor (same philosophy as the mcsc row).
+// A harness that is installed but whose A2A wiring is broken fails the doctor; a harness that is
+// not installed, and the optional agy/Codex/sidecar/SDK pieces, stay warnings (same philosophy as the mcsc row).
 // Codex and agy are delegation targets, so they never carry a sidecar
 // SessionStart hook (fork-bomb rule); their row checks the pull/CLI pieces.
 function checkA2aMatrix() {
   const area = 'a2a';
   const pkgBin = path.join(path.resolve(new URL(import.meta.url).pathname, '..'), 'a2a-inbox-mcp.mjs');
+  // Where the hook and the OpenCode plugin find lib/a2a-inbox.mjs: ../../lib, else ~/.agents/lib.
+  const inboxLib = firstExisting([h('.agents', 'lib', 'a2a-inbox.mjs'), path.join(hc('hooks'), '..', '..', 'lib', 'a2a-inbox.mjs')]);
 
-  // Claude Code: drain + stop hooks wired in settings.json.
+  // Claude Code: drain + stop hooks wired in settings.json, and the lib they import resolvable.
   const claudeSettings = readJson(hc('settings.json'));
   const claudeWired = JSON.stringify(claudeSettings?.hooks || {}).includes('a2a-inbox.mjs');
+  const claudeOk = claudeWired && !!inboxLib;
   const sidecarShipped = existsSync(hc('hooks', 'a2a-session.mjs'));
-  add(area, 'A2A Claude Code', claudeWired,
-    claudeWired ? `a2a-inbox.mjs drain + stop wired in ${tilde(hc('settings.json'))}`
-      : 'a2a-inbox.mjs not wired in ~/.claude/settings.json',
-    'Run the AOS installer to wire the A2A inbox hooks.', true);
+  add(area, 'A2A Claude Code', claudeOk,
+    !claudeWired ? 'a2a-inbox.mjs not wired in ~/.claude/settings.json'
+      : !inboxLib ? 'a2a-inbox.mjs wired, but lib/a2a-inbox.mjs is not under ~/.agents/lib (the hook would be a no-op)'
+        : `a2a-inbox.mjs drain + stop wired in ${tilde(hc('settings.json'))}`,
+    'Run the AOS installer to wire the A2A inbox hooks and ship the lib.', !existsSync(claudeConfigDir(HOME)));
 
   // OpenCode: the plugin carries the sidecar init call and the inbox import.
   const ocDirs = [process.platform === 'win32' && process.env.APPDATA ? path.join(process.env.APPDATA, 'opencode') : h('.config', 'opencode')];
@@ -353,11 +357,11 @@ function checkA2aMatrix() {
   if (ocPlugin) {
     let src = '';
     try { src = readFileSync(ocPlugin, 'utf8'); } catch {}
-    ocOk = src.includes('a2a-inbox.mjs') && src.includes('ensureSidecar');
+    ocOk = src.includes('a2a-oc.mjs') && src.includes('ensureSidecar') && !!inboxLib;
     ocDetail = ocOk ? `${tilde(ocPlugin)} delivers A2A injections + sidecar init`
-      : `${tilde(ocPlugin)} lacks the A2A sidecar init call`;
+      : `${tilde(ocPlugin)} lacks the A2A sidecar init call or lib/a2a-inbox.mjs is missing under ~/.agents/lib`;
   }
-  add(area, 'A2A OpenCode', ocOk, ocDetail, 'Run the AOS installer to install the OpenCode plugin.', true);
+  add(area, 'A2A OpenCode', ocOk, ocDetail, 'Run the AOS installer to install the OpenCode plugin.', !ocPlugin);
 
   // agy: pull-side MCP payload present (registration is a manual `agy mcp add`).
   const agyMcp = firstExisting([h('.agents', 'bin', 'a2a-inbox-mcp.mjs'), existsSync(pkgBin) ? pkgBin : null]);

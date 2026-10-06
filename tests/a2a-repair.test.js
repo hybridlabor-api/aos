@@ -100,7 +100,7 @@ test("L2: inbound depth within the max completes; the depth lands in the message
     assert.ok(seen, "message written for the in-limit depth");
     assert.equal(seen.depth, 1);
     const inj = formatInjection(seen);
-    assert.ok(inj.startsWith("[a2a from tester] hi"), inj);
+    assert.ok(inj.startsWith("[a2a from tester]") && inj.includes("\n> hi\n"), inj);
     assert.ok(inj.includes("Depth: 1 (send onward only with AOS_DELEGATE_DEPTH=1)"), inj);
     assert.ok(inj.endsWith(GO_LINE), inj);
   } finally { s.stop(); }
@@ -108,7 +108,7 @@ test("L2: inbound depth within the max completes; the depth lands in the message
 
 test("L2: messages without depth metadata keep the injection format unchanged", () => {
   const out = formatInjection({ from: "oc-x", text: "do it" });
-  assert.equal(out, `[a2a from oc-x] do it\n${GO_LINE}`);
+  assert.equal(out, `[a2a from oc-x] untrusted quoted message follows\n<<<A2A-MESSAGE\n> do it\n<<<END-A2A-MESSAGE\n${GO_LINE}`);
   assert.equal(inboundDepth({ parts: [] }), 0);
 });
 
@@ -127,7 +127,7 @@ test("L3: deliverA2a picks up messages written for the sessionName() of a sessio
   };
   await deliverA2a(client, sid, a2aName, tmp);
   assert.equal(prompts.length, 1, "the message written for the sidecar name is injected");
-  assert.ok(prompts[0].body.parts[0].text.startsWith("[a2a from alice] hello oc"));
+  assert.ok(prompts[0].body.parts[0].text.startsWith("[a2a from alice]") && prompts[0].body.parts[0].text.includes("> hello oc"));
 });
 
 test("L7: ensureSidecar skips on MCSC_DEPTH>0", () => {

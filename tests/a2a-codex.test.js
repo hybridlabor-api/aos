@@ -68,7 +68,8 @@ test("successful spawn completes with the file reply; prompt carries prefix and 
   assert.ok(Array.isArray(calls[0].args));
   const args = calls[0].args;
   assert.deepEqual(args.slice(0, 3), ["queue", "--thread", "cx-thread"]);
-  assert.ok(args[4].startsWith("[a2a from tester] what is 2+3"), args[4]);
+  assert.ok(args[4].startsWith("[a2a from tester]"), args[4]);
+  assert.match(args[4], /<<<A2A-MESSAGE\n> what is 2\+3\n<<<END-A2A-MESSAGE/);
   assert.ok(args[4].includes(NEVER_GO));
   assert.match(args[4], /Answer by running: aos-a2a reply \S+ "<your answer>"/);
   assert.ok(!args.includes("--dangerously-bypass-hook-trust"));

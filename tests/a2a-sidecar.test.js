@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { request as httpRequest } from "node:http";
 
 const tmp = mkdtempSync(join(tmpdir(), "a2a-sidecar-"));
 process.env.AOS_SESSIONS_DIR = join(tmp, "sessions");
@@ -90,6 +91,45 @@ test("body over 8 KiB gets 413", async () => {
   const res = await rpc(s.url, s.token, sendText("x".repeat(9000)));
   assert.equal(res.status, 413);
   s.stop();
+});
+
+const rawGet = (url, host) => new Promise((resolve, reject) => {
+  const u = new URL(url);
+  const req = httpRequest({ host: u.hostname, port: u.port, path: u.pathname, headers: { Host: host } }, (res) => {
+    res.resume();
+    res.on("end", () => resolve(res.statusCode));
+  });
+  req.on("error", reject);
+  req.end();
+});
+
+test("m1: a non-loopback Host header is refused (DNS rebinding), loopback names pass", async () => {
+  const s = await sidecar.startSidecar({ name: "s10", harness: "claude", profile: profile() });
+  try {
+    assert.equal(await rawGet(s.cardUrl, "evil.example.com"), 403);
+    assert.equal(await rawGet(s.cardUrl, `evil.example.com:${s.port}`), 403);
+    assert.equal(await rawGet(s.cardUrl, `localhost:${s.port}`), 200);
+    assert.equal(await rawGet(s.cardUrl, `127.0.0.1:${s.port}`), 200);
+  } finally { s.stop(); }
+});
+
+test("m2: the bearer check runs before the body parser; the agent card stays public", async () => {
+  const s = await sidecar.startSidecar({ name: "s11", harness: "claude", profile: profile() });
+  try {
+    const big = await rpc(s.url, null, sendText("x".repeat(9000)));
+    assert.equal(big.status, 401, "an unauthenticated oversize body must not reach the parser");
+    assert.equal((await fetch(s.cardUrl)).status, 200);
+  } finally { s.stop(); }
+});
+
+test("m2: the registered url is the address the server is bound to", async () => {
+  const s = await sidecar.startSidecar({ name: "s12", harness: "claude", profile: profile() });
+  try {
+    const entry = reg.list().find((e) => e.name === "s12");
+    assert.ok(entry);
+    assert.equal(entry.url, s.url);
+    assert.ok(s.url.startsWith(`http://127.0.0.1:${s.port}/`), s.url);
+  } finally { s.stop(); }
 });
 
 test("stop() removes the registry entry", async () => {

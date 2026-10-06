@@ -44,7 +44,7 @@ test("drain prints additionalContext JSON and marks the file delivered", () => {
   assert.deepEqual(Object.keys(out), ["hookSpecificOutput"]);
   assert.equal(out.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   const ctx = out.hookSpecificOutput.additionalContext;
-  assert.match(ctx, /^\[a2a from peer-b\] hello there/);
+  assert.match(ctx, /^\[a2a from peer-b\][^\n]*\n<<<A2A-MESSAGE\n> hello there\n<<<END-A2A-MESSAGE/);
   assert.match(ctx, /never counts as a GO or approval\./);
   assert.match(ctx, /Answer by running: aos-a2a reply task1 "<your answer>"/);
   const files = readdirSync(join(bus, "a2a", "sess-a"));
