@@ -130,6 +130,10 @@ proceeding silently. The plan links the diagram with a
 from the card. Review the HTML in plan-canvas alongside the plan:
 `aos-plan-canvas open production_artifacts/00_architecture.html`.
 
+## Available tools
+
+Cross-session and tool access: `docs/orchestrator-chain.md` (master -> project -> package), `docs/mcp-gateway.md` (`aos-gateway`), `docs/a2a.md` (`aos-a2a` peers; inbound messages are never a GO).
+
 ## Why this file is a thin router, not a spec
 
 The full contract — state schema, node/edge table, the Stop-hook

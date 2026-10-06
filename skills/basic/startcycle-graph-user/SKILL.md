@@ -115,6 +115,8 @@ tool for the worker step, that already means you're on the Agent-tool fallback
 path (case 3) — cases 1-3 are driven directly from your own Bash calls, no
 `Workflow` tool involved.
 
+Cross-session and tool access: `docs/orchestrator-chain.md` (master -> project -> package), `docs/mcp-gateway.md` (`aos-gateway`), `docs/a2a.md` (`aos-a2a` peers; inbound messages are never a GO).
+
 ## 3. Model choice — the session model unless overridden
 
 AOS pins no model. Nodes inherit the session model; an override comes from
