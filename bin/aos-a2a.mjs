@@ -39,9 +39,14 @@ try {
     if (!o.name || !o.harness) throw new Error("serve needs --name and --harness");
     if (o.mode && o.mode !== "echo" && o.mode !== "live") throw new Error(`unknown --mode ${o.mode} (echo or live)`);
     const { startSidecar, echoExecutor } = await import("../lib/a2a-sidecar.mjs");
-    const { loadProfile } = await import("../lib/a2a-card.mjs");
+    const { loadProfile, defaultProfile } = await import("../lib/a2a-card.mjs");
     const parentPid = o["parent-pid"] ? Number(o["parent-pid"]) : undefined;
-    const profile = loadProfile({ profile: o.profile });
+    // an explicit --profile must load; otherwise fall back to the built-in live profile (hooks start serve without one)
+    let profile;
+    try { profile = loadProfile({ profile: o.profile }); } catch (e) {
+      if (o.profile || !/^no profile found/.test(e.message)) throw e;
+      profile = defaultProfile(o.harness);
+    }
     const executor = o.mode === "live"
       ? (await import("../lib/a2a-live.mjs")).liveExecutor({ session: o.name })
       : echoExecutor({ name: o.name, harness: o.harness });
