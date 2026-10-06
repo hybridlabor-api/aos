@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agenttrail hub</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+<meta name="csrf-token" content="__TRAIL_CSRF__">
+</head>
+<body>
+<header class="bar">
+  <h1>agenttrail <span class="dim">hub</span></h1>
+  <div class="bar-right">
+    <span id="port" class="chip">port —</span>
+    <span id="gate" class="chip">gate —</span>
+    <span id="clock" class="dim"></span>
+  </div>
+</header>
+
+<main>
+  <section id="waiting" class="panel">
+    <h2>Waiting for you <span id="waiting-count" class="count"></span></h2>
+    <p class="note" id="waiting-note">
+      A GO request can only be answered by you, by typing it. Nothing on this page
+      can approve anything.
+    </p>
+    <ul id="waiting-list" class="list"></ul>
+  </section>
+
+  <section id="sessions" class="panel">
+    <h2>Sessions <span id="sessions-count" class="count"></span></h2>
+    <table class="table">
+      <thead>
+        <tr><th>Harness</th><th>Name</th><th>Repo</th><th>State</th><th>Doing</th><th>Age</th></tr>
+      </thead>
+      <tbody id="sessions-body"></tbody>
+    </table>
+  </section>
+
+  <section id="plans" class="panel">
+    <h2>Plans</h2>
+    <div id="plans-list" class="cards"></div>
+  </section>
+
+  <section id="gate" class="panel">
+    <h2>Go-gate <span id="gate-mode" class="chip"></span></h2>
+    <div id="gate-body"></div>
+  </section>
+
+  <section id="archive" class="panel">
+    <h2><button id="archive-toggle" type="button" aria-expanded="false">Archive (<span id="archive-count">0</span>)</button></h2>
+    <div id="archive-list" class="cards" hidden></div>
+  </section>
+</main>
+
+<footer class="foot dim">
+  read-only board · the hub never edits a plan, the gate store or a repo
+</footer>
+</body>
+</html>

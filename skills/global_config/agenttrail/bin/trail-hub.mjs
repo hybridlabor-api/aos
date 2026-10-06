@@ -14,7 +14,7 @@ import { buildModel } from '../lib/hub-model.mjs'
 import { panel as gatePanel, loadGate } from '../lib/gatepanel.mjs'
 import { csrfToken } from '../lib/httpguard.mjs'
 import { loadConfig } from '../lib/stale.mjs'
-import { STATE_DIR, loadRepos, registerRepo, loadState } from '../lib/hub-state.mjs'
+import { STATE_DIR, loadRepos, registerRepo, loadState, setPinned } from '../lib/hub-state.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PUBLIC = path.join(__dirname, '..', 'public', 'hub')
@@ -231,6 +231,18 @@ const server = http.createServer(async (req, res) => {
       const root = body.value && body.value.root
       if (!root || typeof root !== 'string' || !root.startsWith('/')) { res.writeHead(400).end(); return }
       try { registerRepo(root, { planHint: body.value.planHint || null }); res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true })) } catch { res.writeHead(400).end() }
+      return
+    }
+
+    if (req.method === 'POST' && urlPath === '/v1/pin') {
+      if (req.headers['x-trail-csrf'] !== CSRF) { res.writeHead(403).end(); return }
+      const body = await readJson(req, res)
+      if (!body.ok) return
+      const key = body.value && body.value.planKey
+      if (!key || typeof key !== 'string') { res.writeHead(400).end(); return }
+      const state = setPinned(key, body.value.pinned !== false)
+      modelCache = null
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, pinned: state.pinned }))
       return
     }
 

@@ -1,0 +1,293 @@
+// The hub board. Vanilla JS, no external requests, no inline script or style.
+// Every value that came off the wire goes into the DOM as a text node — never as
+// markup — so a session name or a command preview cannot become a tag.
+// There is deliberately no Approve button: a GO is answered by typing it.
+
+const CSRF = (() => {
+  const meta = document.querySelector('meta[name="csrf-token"]')
+  return meta ? meta.getAttribute('content') : ''
+})()
+
+function el(tag, props, children) {
+  const node = document.createElement(tag)
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === 'class') node.className = v
+    else if (k === 'text') node.textContent = v == null ? '' : String(v)
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v)
+    else if (v !== null && v !== undefined && v !== false) node.setAttribute(k, v === true ? '' : String(v))
+  }
+  for (const c of [].concat(children || [])) if (c !== null && c !== undefined) node.appendChild(c)
+  return node
+}
+
+const clear = (node) => { while (node && node.firstChild) node.removeChild(node.firstChild) }
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
+
+// The exact text Tim has to type. Copy only — the hub cannot act on it.
+function goText(item) {
+  if (item.kind === 'go') return item.sessionKey ? `GO ${item.sessionKey}` : 'GO'
+  if (item.kind === 'ask') return `gogate answer ${item.id}`
+  return ''
+}
+
+function copyRow(text, label) {
+  const btn = el('button', { type: 'button', text: label || 'copy' })
+  const out = el('span', { class: 'dim', text: '' })
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      out.textContent = 'copied'
+    } catch { out.textContent = 'copy it by hand' }
+    setTimeout(() => { out.textContent = '' }, 2000)
+  })
+  return el('div', { class: 'copy-row' }, [el('code', { class: 'cmd', text }), btn, out])
+}
+
+function ageText(ms) {
+  const s = Math.max(0, Math.round((ms || 0) / 1000))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.round(s / 60)}m`
+  if (s < 86400) return `${Math.round(s / 3600)}h`
+  return `${Math.round(s / 86400)}d`
+}
+
+const doingText = (s) => {
+  if (s.currentTool) return `${s.currentTool.name}${s.currentTool.detail ? ' ' + s.currentTool.detail : ''}`
+  if (s.currentTask) return `task ${s.currentTask.id} (${s.currentTask.status})`
+  if (s.waiting) return s.waiting
+  if (s.lastFile) return s.lastFile
+  return ''
+}
+
+function renderWaiting(model) {
+  const list = document.getElementById('waiting-list')
+  clear(list)
+  const items = model.waiting || []
+  document.getElementById('waiting-count').textContent = items.length ? `(${items.length})` : ''
+  if (!items.length) {
+    list.appendChild(el('li', { class: 'dim', text: 'nothing is waiting on you' }))
+    return
+  }
+  for (const item of items) {
+    const tags = []
+    if (item.kind === 'go') tags.push(el('span', { class: 'tag go', text: item.decision ? 'GO request' : 'GO request (hard)' }))
+    else if (item.kind === 'claim') tags.push(el('span', { class: 'tag', text: 'untrusted' }))
+    else if (item.kind === 'waiting' || item.kind === 'idle-session') tags.push(el('span', { class: 'tag wait', text: item.kind }))
+    else if (item.kind === 'ask') tags.push(el('span', { class: 'tag wait', text: 'question' }))
+    else if (item.kind === 'task') tags.push(el('span', { class: 'tag blocked', text: item.stalled ? 'stalled' : 'stuck' }))
+
+    const what = el('div', { class: 'what' }, [el('div', {}, tags)])
+    if (item.command) what.appendChild(el('div', {}, [el('code', { class: 'cmd', text: item.command })]))
+    else if (item.question) what.appendChild(el('div', { text: item.question }))
+    else if (item.title) what.appendChild(el('div', { text: item.title }))
+    else if (item.message) what.appendChild(el('div', { text: item.message }))
+    else if (item.sessionId) what.appendChild(el('div', { class: 'dim', text: item.sessionId }))
+
+    if (item.decision) what.appendChild(copyRow(goText(item), 'copy GO text'))
+    if (item.kind === 'claim') what.appendChild(el('div', { class: 'meta', text: 'this is an agent’s own claim — no gate request backs it' }))
+
+    const meta = el('div', { class: 'meta', text: ageText(item.age) })
+    list.appendChild(el('li', { class: 'row' }, [what, meta]))
+  }
+}
+
+function renderSessions(model) {
+  const body = document.getElementById('sessions-body')
+  clear(body)
+  const sessions = model.sessions || []
+  document.getElementById('sessions-count').textContent = sessions.length ? `(${sessions.length})` : ''
+  if (!sessions.length) {
+    body.appendChild(el('tr', {}, [el('td', { colspan: '6', class: 'dim', text: 'no session is reporting' })]))
+    return
+  }
+  const stateTag = { working: 'ok', 'waiting-for-you': 'wait', idle: '', ended: '', 'waiting-for-you ': 'wait' }
+  for (const s of sessions) {
+    body.appendChild(el('tr', {}, [
+      el('td', { text: (s.harnesses || [s.harness]).join(' ') }),
+      el('td', { text: s.name || '—' }),
+      el('td', { class: 'trunc', text: s.cwd || '—' }),
+      el('td', {}, [el('span', { class: `tag ${stateTag[s.state] || ''}`.trim(), text: s.state })]),
+      el('td', { class: 'trunc', text: doingText(s) || '—' }),
+      el('td', { text: ageText(s.age) }),
+    ]))
+  }
+}
+
+function planCard(repo, plan, opts) {
+  const card = el('article', { class: `card lifecycle-${plan.lifecycle}` })
+  card.appendChild(el('h3', { text: plan.name || plan.path || 'plan' }))
+  card.appendChild(el('div', { class: 'sub', text: `${repo} · ${plan.owner?.branch || 'no branch'} · ${plan.lifecycle}` }))
+
+  const { done = 0, total = 0, stalled = 0 } = plan.progress || {}
+  card.appendChild(el('progress', { value: String(done), max: String(total || 1), 'aria-label': 'tasks done' }))
+  card.appendChild(el('div', { class: 'sub', text: `${done}/${total} tasks${stalled ? ` · ${stalled} stalled` : ''}` }))
+
+  const comps = el('div', { class: 'sub' })
+  for (const c of plan.components || []) {
+    comps.appendChild(el('div', { class: `comp ${c.status}` }, [
+      el('span', { class: 'id', text: `#${c.id}` }),
+      el('span', { text: c.title || '' }),
+    ]))
+  }
+  if ((plan.components || []).length) card.appendChild(comps)
+
+  if ((plan.mirrors || []).length) {
+    card.appendChild(el('div', { class: 'sub', text: `also checked out in: ${plan.mirrors.map((m) => m.branch || m.path).join(', ')}` }))
+  }
+  for (const d of plan.divergent || []) {
+    card.appendChild(el('div', { class: 'sub' }, [
+      el('span', { class: 'tag blocked', text: `divergent: ${d.tasks} task${d.tasks === 1 ? '' : 's'}` }),
+      el('span', { class: 'dim', text: ` ${d.branch || d.path}` }),
+    ]))
+  }
+  if (opts && opts.keepVisible) card.appendChild(keepVisible(plan))
+  return card
+}
+
+function keepVisible(plan) {
+  const btn = el('button', { type: 'button', text: plan.pinned ? 'keep visible (on)' : 'keep visible' })
+  btn.addEventListener('click', () => {
+    fetch('/v1/pin', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-trail-csrf': CSRF },
+      body: JSON.stringify({ planKey: plan.planKey, pinned: !plan.pinned }),
+    }).then(() => refresh(true)).catch(() => {})
+  })
+  return btn
+}
+
+function renderPlans(model) {
+  const host = document.getElementById('plans-list')
+  clear(host)
+  const plans = (model.repos || []).flatMap((r) => (r.plans || []).map((p) => ({ repo: r.root, plan: p })))
+  if (!plans.length) {
+    host.appendChild(el('div', { class: 'dim', text: 'no plan on the main view' }))
+    return
+  }
+  for (const { repo, plan } of plans) host.appendChild(planCard(repo, plan, { keepVisible: true }))
+}
+
+function renderArchive(model) {
+  const host = document.getElementById('archive-list')
+  const items = model.archive || []
+  document.getElementById('archive-count').textContent = String(items.length)
+  clear(host)
+  if (!items.length) {
+    host.appendChild(el('div', { class: 'dim', text: 'nothing archived' }))
+    return
+  }
+  for (const plan of items) host.appendChild(planCard(plan.repoRoot, plan, { keepVisible: true }))
+}
+
+function renderGate(model) {
+  const host = document.getElementById('gate-body')
+  clear(host)
+  const gate = model.gate || {}
+  const chip = document.getElementById('gate-mode')
+  if (!gate.available) {
+    chip.textContent = 'not readable'
+    host.appendChild(el('div', { class: 'dim', text: 'gate module not found — nothing is shown rather than guessed' }))
+    return
+  }
+  const modes = (gate.modes || []).map((m) => `${m.sessionKey}: ${m.mode}`).join(' · ')
+  chip.textContent = modes || 'no session'
+
+  const grants = gate.grants || []
+  if (grants.length) {
+    const ul = el('ul', { class: 'list' })
+    for (const g of grants) {
+      ul.appendChild(el('li', { class: 'row' }, [
+        el('div', { class: 'what' }, [
+          el('div', { text: `${g.scope} · ${g.sessionKey}` }),
+          el('div', { class: 'meta', text: `until ${g.until} · ${g.minutesLeft} min left${g.session ? ' · session grant' : ''}` }),
+        ]),
+      ]))
+    }
+    host.appendChild(el('div', {}, [el('h3', { text: 'grants with time left' }), ul]))
+  }
+
+  const requests = gate.requests || []
+  if (requests.length) {
+    const ul = el('ul', { class: 'list' })
+    for (const r of requests) {
+      const what = el('div', { class: 'what' }, [
+        el('div', {}, [el('span', { class: 'tag go', text: r.click ? 'open' : 'hard, no click possible' })]),
+        el('div', {}, [el('code', { class: 'cmd', text: r.command || r.id })]),
+      ])
+      if (r.click) what.appendChild(copyRow(`GO ${r.sessionKey}`, 'copy GO text'))
+      ul.appendChild(el('li', { class: 'row' }, [what, el('div', { class: 'meta', text: ageText(now0() - r.ts) })]))
+    }
+    host.appendChild(el('div', {}, [el('h3', { text: 'open requests' }), ul]))
+  }
+
+  const blocks = gate.blocks || []
+  if (blocks.length) {
+    const ul = el('ul', { class: 'list' })
+    for (const b of blocks.slice(0, 10)) {
+      ul.appendChild(el('li', { class: 'row' }, [
+        el('div', { class: 'what' }, [
+          el('div', {}, [el('span', { class: b.hard ? 'tag blocked' : 'tag', text: b.hard ? 'hard block' : 'blocked' })]),
+          el('div', {}, [el('code', { class: 'cmd', text: b.command || b.why || '' })]),
+        ]),
+        el('div', { class: 'meta', text: ageText(now0() - b.ts) }),
+      ]))
+    }
+    host.appendChild(el('div', {}, [el('h3', { text: 'blocks' }), ul]))
+  }
+
+  for (const r of (gate.rejected || []).slice(0, 5)) host.appendChild(el('div', { class: 'meta', text: `ignored: ${r}` }))
+}
+
+const now0 = () => (modelNow || Date.now())
+let modelNow = Date.now()
+
+function renderBar(model) {
+  modelNow = Date.parse(model.now) || Date.now()
+  document.getElementById('port').textContent = `port ${model.port ?? '—'}`
+  const g = model.gate || {}
+  document.getElementById('gate').textContent = g.available ? `gate readable · ${(g.requests || []).length} open` : 'gate not readable'
+  document.getElementById('clock').textContent = new Date(modelNow).toLocaleTimeString()
+}
+
+function render(model) {
+  renderBar(model)
+  renderWaiting(model)
+  renderSessions(model)
+  renderPlans(model)
+  renderGate(model)
+  renderArchive(model)
+}
+
+function refresh(fresh) {
+  fetch(`/v1/model${fresh ? '?fresh=1' : ''}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((m) => { if (m) render(m) })
+    .catch(() => {})
+}
+
+function connect() {
+  if (typeof EventSource === 'undefined') { refresh(); return }
+  const es = new EventSource('/v1/stream')
+  es.onmessage = (ev) => {
+    try { render(JSON.parse(ev.data)) } catch { /* a partial frame must not kill the board */ }
+  }
+  es.onerror = () => { /* the browser retries; the tick keeps the board fresh anyway */ }
+}
+
+function start() {
+  if (!document.getElementById('waiting-list')) return false
+  document.getElementById('archive-toggle').addEventListener('click', () => {
+    const list = document.getElementById('archive-list')
+    const open = list.hasAttribute('hidden')
+    if (open) list.removeAttribute('hidden')
+    else list.setAttribute('hidden', '')
+    document.getElementById('archive-toggle').setAttribute('aria-expanded', String(open))
+  })
+  refresh(true)
+  connect()
+  setInterval(() => refresh(), 10000)
+  return true
+}
+
+if (start()) globalThis.__trailStarted = true
+globalThis.__trail = { render, renderWaiting, renderSessions, renderPlans, renderGate, renderArchive, ageText, goText, doingText, el, clear, start }
