@@ -96,6 +96,67 @@ test('finding 4: doctor lists installer .bak files, ignores *.notes.bak, deletes
     assert.ok(fs.existsSync(bak) && fs.existsSync(notes), 'doctor must delete nothing');
 });
 
+test('finding 5: the replace prompt for a foreign Codenotch.app names its installed version', async () => {
+    const { installCodenotch } = require('../lib/codenotch.js');
+    const h = fresh('cn');
+    const apps = path.join(h, 'Applications');
+    const dest = path.join(apps, 'BDB AO Codenotch.app');
+    fs.mkdirSync(path.join(dest, 'Contents'), { recursive: true });
+    fs.writeFileSync(path.join(dest, 'Contents', 'Info.plist'), '<plist/>');
+    const crypto = require('crypto');
+    const dmgBuf = Buffer.from('fake-dmg');
+    const dmgSha = crypto.createHash('sha256').update(dmgBuf).digest('hex');
+    const release = { tag_name: 'v9.9.9', draft: false, prerelease: false, assets: [{ name: 'Codenotch.dmg', browser_download_url: 'x' }, { name: 'Codenotch.dmg.sha256', browser_download_url: 'y' }] };
+    const plutil = () => { throw new Error('no version'); };
+    const hdiutil = (args) => {
+        const mp = args[args.indexOf('-mountpoint') + 1];
+        fs.mkdirSync(path.join(mp, 'Codenotch.app'), { recursive: true });
+    };
+    let prompt = null;
+    const destDir0 = path.join(apps, 'Codenotch.app');
+    fs.mkdirSync(destDir0, { recursive: true });
+    await installCodenotch({
+        platform: 'darwin', home: h, interactive: true,
+        roots: { applications: apps, userApplications: path.join(h, 'UserApplications'), tmp: path.join(h, 'tmp') },
+        stateFile: path.join(h, 'state.json'),
+        fetch: async (url) => url.includes('releases')
+            ? { ok: true, json: async () => [release] }
+            : { ok: true, arrayBuffer: async () => url === 'y' ? Buffer.from(dmgSha) : dmgBuf },
+        confirm: async (m) => { prompt = m; return false; },
+        plutil, hdiutil,
+        log: { info() {}, warn() {}, success() {} },
+    });
+    assert.ok(prompt && /unknown version/.test(prompt), prompt);
+});
+
+test('finding 5: prompt uses CFBundleShortVersionString when present', async () => {
+    const { installCodenotch } = require('../lib/codenotch.js');
+    const h = fresh('cn2');
+    const apps = path.join(h, 'Applications');
+    fs.mkdirSync(path.join(h, 'tmp'), { recursive: true });
+    const dest = path.join(apps, 'Codenotch.app');
+    fs.mkdirSync(path.join(dest, 'Contents'), { recursive: true });
+    fs.writeFileSync(path.join(dest, 'Contents', 'Info.plist'), '<plist/>');
+    const crypto = require('crypto');
+    const dmgBuf = Buffer.from('fake-dmg');
+    const dmgSha = crypto.createHash('sha256').update(dmgBuf).digest('hex');
+    const release = { tag_name: 'v9.9.9', draft: false, prerelease: false, assets: [{ name: 'Codenotch.dmg', browser_download_url: 'x' }, { name: 'Codenotch.dmg.sha256', browser_download_url: 'y' }] };
+    let prompt = null;
+    await installCodenotch({
+        platform: 'darwin', home: h, interactive: true,
+        roots: { applications: apps, userApplications: path.join(h, 'UserApplications'), tmp: path.join(h, 'tmp') },
+        stateFile: path.join(h, 'state.json'),
+        fetch: async (url) => url.includes('releases')
+            ? { ok: true, json: async () => [release] }
+            : { ok: true, arrayBuffer: async () => url === 'y' ? Buffer.from(dmgSha) : dmgBuf },
+        confirm: async (m) => { prompt = m; return false; },
+        plutil: (args) => args.includes('CFBundleShortVersionString') ? '1.2.3\n' : 'com.bdb.codenotch\n',
+        hdiutil: (args) => { const mp = args[args.indexOf('-mountpoint') + 1]; fs.mkdirSync(path.join(mp, 'Codenotch.app'), { recursive: true }); },
+        log: { info() {}, warn() {}, success() {} },
+    });
+    assert.ok(prompt && prompt.includes('1.2.3'), prompt);
+});
+
 test('finding 3: OpenCode plugin payload is installed when missing and left alone, silently, when identical', () => {
     const h = fresh('oc');
     const code = `i.installOpencodePlugin({ targetHome: ${JSON.stringify(h)}, configPath: ${JSON.stringify(path.join(h, '.config', 'opencode', 'opencode.jsonc'))} });`;
