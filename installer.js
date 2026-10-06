@@ -5400,6 +5400,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !v5Profile.isContextCommand(b)).join('\n\n')}\n# AOS:HOOKS:END`;
 
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
+    const original = content;
 
     // Ensure [features] hooks = true
     // Only the [features] table counts: `hooks = true` in another table does not enable hooks, and
@@ -5419,11 +5420,16 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     const isAosMarker = (l) => /^\s*# AOS:HOOKS:(START|END)\s*$/.test(l);
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
     const kept = (uninstallRecords.dropAosHookGroups(content.split(/\r?\n/).filter((l) => !isAosMarker(l))));
-    content = `${kept.join(eol).trimEnd()}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
+    // Blank lines left where AOS groups sat are collapsed, so a block that is not last in the file does not grow on every run.
+    const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, eol + eol).trimEnd();
+    content = `${body}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
 
     try {
         fs.mkdirSync(path.dirname(configTomlPath), { recursive: true });
-        fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
+        // Codex trusts a hook by its hash: an unchanged file is not rewritten.
+        if (content !== original) fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
+        // Hooks live in config.toml only; Codex warns when hooks.json holds them too.
+        for (const line of uninstallRecords.migrateCodexHooksJson({ file: path.join(baseDir, 'hooks.json'), dryRun: DRY_RUN })) log.step(line);
     } catch (e) {
         log.warn(`Could not write ${configTomlPath}: ${e.message}`);
     }

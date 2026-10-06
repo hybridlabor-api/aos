@@ -16,6 +16,7 @@ const req = createRequire(import.meta.url);
 const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
+const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
@@ -326,6 +327,17 @@ function checkHooks() {
   add('hooks', 'Codex config.toml hooks', codexWired,
     existsSync(codexConf) ? `${tilde(codexConf)} (${codexWired ? 'AOS hook commands wired' : 'no AOS hook commands'})` : `${tilde(codexConf)} missing`,
     'Run the AOS installer to wire Codex hooks.', true);
+
+  if (codexWired) {
+    add('hooks', 'Codex hook review', false, 'Codex skips new or changed AOS hooks until you trust them once: open Codex and run /hooks',
+      'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.', true);
+  }
+  let codexJson = '';
+  try { codexJson = readFileSync(h('.codex', 'hooks.json'), 'utf8'); } catch {}
+  if (codexWired && HOOK_SCRIPTS.some((n) => codexJson.includes(n))) {
+    add('hooks', 'Codex hooks in two files', false, `hooks in both hooks.json and config.toml (${tilde(h('.codex', 'hooks.json'))} and ${tilde(codexConf)}); Codex merges them and warns at startup`,
+      'Run the AOS installer: it moves its hooks out of hooks.json (original kept as hooks.json.aos-bak-<time>).', true);
+  }
 }
 
 // ---------------------------------------------------------------- 5b. A2A capability matrix (WP-INSTALL)
