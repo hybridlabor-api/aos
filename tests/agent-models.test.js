@@ -26,7 +26,7 @@ describe('agent model resolution', () => {
     });
 
     test('compilers never write foreign models', () => {
-        const agents = parseAgentsMd(fs.readFileSync(path.join(root, '.agents', 'agents.md'), 'utf8'));
+        const agents = parseAgentsMd(fs.readFileSync(path.join(root, '.agents', 'AGENTS.md'), 'utf8'));
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-models-'));
         compileClaudeAgents(agents, path.join(tmp, 'claude'), pipeline);
         compileOpenCodeAgents(agents, path.join(tmp, 'oc'), pipeline);

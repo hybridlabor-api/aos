@@ -194,7 +194,7 @@ test('an unmodified agent file is updated in place with no .new and no .bak', ()
 
 test('the global agent compile skips every persona .claude/agents already ships', () => {
     const root = path.join(__dirname, '..');
-    const agents = parseAgentsMd(fs.readFileSync(path.join(root, '.agents', 'agents.md'), 'utf8'));
+    const agents = parseAgentsMd(fs.readFileSync(path.join(root, '.agents', 'AGENTS.md'), 'utf8'));
     assert.ok(agents.length >= 13);
     assert.deepStrictEqual(agentsNotShippedAsFiles(agents, path.join(root, '.claude', 'agents')).map((a) => a.name), []);
 

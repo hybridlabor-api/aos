@@ -3738,7 +3738,7 @@ async function installMcpsForTarget(paths, ctx) {
     }
 }
 
-// Single source of truth for parsing .agents/agents.md into structured agent
+// Single source of truth for parsing .agents/AGENTS.md into structured agent
 // records. Used by every compiler (Claude Code, OpenCode, Antigravity) so a
 // format change only needs a fix in one place. Requires a "- **Role**:" field
 // to treat a "## " block as an agent -- this is what excludes trailing
@@ -3988,7 +3988,7 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
 
 function injectHarnessRules() {
     const rulesMdSrc = path.join(srcDir, 'RULES.md');
-    const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
+    const agentsMdSrc = path.join(srcDir, '.agents', 'AGENTS.md');
 
     if (fs.existsSync(rulesMdSrc)) {
         installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
@@ -5089,7 +5089,7 @@ function installProjectHarness() {
     }, 'go-gate / graph-gate enforcement stays inactive in this project.');
 
     installStep('copy agent definitions into project', () => {
-        const agentsMdSrc = path.join(srcDir, '.agents', 'agents.md');
+        const agentsMdSrc = path.join(srcDir, '.agents', 'AGENTS.md');
         const pipelineConfig = loadPipelineConfig(currentDir);
         if (fs.existsSync(agentsMdSrc)) {
             const agents = parseAgentsMd(fs.readFileSync(agentsMdSrc, 'utf8'));
