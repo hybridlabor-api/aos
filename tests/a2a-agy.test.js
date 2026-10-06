@@ -151,6 +151,9 @@ test("agyResumeExecutor: throwing run fails the task", async () => {
 });
 
 test("buildAgyArgs is args-based (never a shell string) and matches the contract", () => {
-  assert.deepEqual(buildAgyArgs("some prompt"), ["--continue", "--print", "some prompt"]);
+  assert.deepEqual(buildAgyArgs("some prompt"), ["--print", "some prompt"]);
+  assert.deepEqual(buildAgyArgs("p", "conv-1"), ["--conversation", "conv-1", "--print", "p"]);
+  // never --continue: it would resume (and hijack) the user's most recent interactive conversation
+  for (const a of [buildAgyArgs("x"), buildAgyArgs("x", "c"), buildAgyArgs("x", "")]) assert.ok(!a.includes("--continue") && !a.includes("-c"));
   assert.deepEqual(agyMcpAddArgs("a2a-inbox", join(tmp, "mcp.mjs")), ["mcp", "add", "a2a-inbox", "node", join(tmp, "mcp.mjs")]);
 });
