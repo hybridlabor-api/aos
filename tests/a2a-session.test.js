@@ -65,7 +65,7 @@ test("stop blocks once when pending, allows otherwise", () => {
   send(env, "task2");
   const blocked = run("stop", env);
   assert.equal(blocked.status, 2);
-  assert.match(blocked.stderr, /Undelivered A2A message\(s\) waiting: answer them \(aos-a2a reply <taskId> "<answer>"\)/);
+  assert.match(blocked.stderr, /A2A message\(s\) arrived during this turn[\s\S]*\[a2a from peer-b\][\s\S]*aos-a2a reply task/);
   assert.equal(run("stop", env, { stop_hook_active: true }).status, 0);
 });
 

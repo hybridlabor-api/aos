@@ -45,7 +45,8 @@ test("spawn args: detached, stdio ignore, exact args, proxy vars stripped, unref
   assert.equal(c.cmd, process.execPath);
   assert.deepEqual(c.args, ["/repo/bin/aos-a2a.mjs", "serve", "--name", "opencode-abcd1234", "--harness", "opencode", "--mode", "live", "--parent-pid", "123"]);
   assert.equal(c.opts.detached, true);
-  assert.deepEqual(c.opts.stdio, "ignore");
+  assert.equal(c.opts.stdio[0], "ignore"); // stdout/stderr go to <name>.log (a fd), never to the harness
+  assert.equal(c.opts.stdio[1], c.opts.stdio[2]);
   assert.equal(c.opts.env.HTTP_PROXY, undefined);
   assert.equal(c.opts.env.https_proxy, undefined);
   assert.equal(c.opts.env.ALL_PROXY, undefined);
