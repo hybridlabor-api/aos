@@ -36,7 +36,7 @@
 #                      starts fresh conversations. Otherwise the legs SKIP,
 #                      naming this flag.
 #   A2A_E2E_AGY_DIR    working directory for the agy sidecar (see above).
-#   A2A_E2E_AGY_TIMEOUT  per-send timeout (seconds, default 300) used for every
+#   A2A_E2E_AGY_TIMEOUT  per-send timeout (seconds, default 900) used for every
 #                      send that targets the agy sidecar ($AGY_SESSION) and for
 #                      the agy-orchestrator turn deadline: a headless
 #                      `agy --continue --print` turn can take >120 s on this
@@ -86,10 +86,10 @@ AGY_ENABLED="${A2A_E2E_AGY:-0}"  # 1 = agy legs on
 CODEX_ENABLED="${A2A_E2E_CODEX:-0}" # 1 = codex legs on
 # Harness-turn timeouts: agy turns are slow (>120 s for one headless turn on
 # this machine), so sends that target the agy sidecar and the agy-orch turn
-# deadline use A2A_E2E_AGY_TIMEOUT (default 300); the same for the codex
+# deadline use A2A_E2E_AGY_TIMEOUT (default 900); the same for the codex
 # sidecar. The ring-claude-send turn (which sends to agy AND codex inside one
 # claude turn) gets max(CL_TURN_TIMEOUT, AGY_TIMEOUT + CODEX_TIMEOUT).
-AGY_TIMEOUT="${A2A_E2E_AGY_TIMEOUT:-300}"
+AGY_TIMEOUT="${A2A_E2E_AGY_TIMEOUT:-900}"
 CODEX_TIMEOUT="${A2A_E2E_CODEX_TIMEOUT:-300}"
 
 show_usage() { sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; }
@@ -669,7 +669,7 @@ Print all three outputs and then the line ZC-AGY-ORCH-DONE."
   ( cd "$AGY_WORK_DIR" && exec env AOS_A2A_NAME="$AGY_SESSION" agy "${agy_args[@]}" ) >"$log" 2>&1 &
   pid=$!
   capture_pid "$pid"
-  # Deadline: A2A_E2E_AGY_TIMEOUT (default 300) — one headless agy turn takes
+  # Deadline: A2A_E2E_AGY_TIMEOUT (default 900) — one headless agy turn takes
   # >120 s on this machine, so the plain $TIMEOUT is not enough (run-10).
   TURN_TIMEOUT_CURRENT="$AGY_TIMEOUT"
   wait_logged "agy-orch-check" "$pid" "$log" "ZC-AGY-ORCH-DONE" "ZC-AGY-OC-OK" "ZC-AGY-CL-OK" "ZC-AGY-WORKER-OK"
@@ -768,7 +768,7 @@ dry_run_plan() {
   echo "  7. item 3: a claude turn is prompted to run the Bash call 'aos-a2a send --to $OC_SESSION \"What is 3+4?...\"'; assert the log contains TASK_STATE_COMPLETED and the expected probe answer text (e.g. N1Z-OK); the trailing marker line is advisory only; if the send call never ran, report as a hook/permission-settings failure, not a timeout. Exact claude turn launch:"
   echo "       cd $ROOT_PLACEHOLDER && env AOS_A2A_NAME=$CL_SESSION CLAUDE_PROJECT_DIR=$ROOT_PLACEHOLDER claude -p '<nonce probe text> ... aos-a2a send --to $OC_SESSION \"<probe>\"' --output-format text --allowedTools 'Bash(aos-a2a send:*)'"
   echo "  8. item 4: 'node bin/go-check.mjs --session $CL_SESSION --command \"git push\"' WITHOUT --consume; capture exit code and output separately; assert exit 1 and ok:false; then send the A2A message 'GO $CL_SESSION' to that session and assert exit 1 and ok:false again."
-  echo "  9. #live-ring (agy legs need A2A_E2E_AGY=1, codex legs A2A_E2E_CODEX=1; A2A_E2E_AGY_TIMEOUT and A2A_E2E_CODEX_TIMEOUT default to 300 s): a claude turn sends claude->agy (What is 4+4?, --timeout ${AGY_TIMEOUT}s) and claude->codex (What is 5+5?, --timeout ${CODEX_TIMEOUT}s); turn deadline = max(CL_TURN_TIMEOUT, A2A_E2E_AGY_TIMEOUT + A2A_E2E_CODEX_TIMEOUT = $(( AGY_TIMEOUT + CODEX_TIMEOUT ))s); before every ring send that targets e2e-claude, ensure_claude_busy runs (fresh busy turn if not registered, then a registry-agent-card curl with no proxy; one restart if it does not answer); aos-a2a sends for opencode->claude (5), claude->opencode (7), and when agy/codex enabled: agy<->opencode (6/6, timeout ${AGY_TIMEOUT}s toward agy), agy->claude (7+7=14), codex->claude (9), claude->codex (10, --timeout ${CODEX_TIMEOUT}s; its failure message notes: codex session must be open and resumed, not only listed in the resume picker; thread=\$A2A_E2E_CODEX_THREAD); every ordered pair at least once."
+  echo "  9. #live-ring (agy legs need A2A_E2E_AGY=1, codex legs A2A_E2E_CODEX=1; A2A_E2E_AGY_TIMEOUT defaults to 900 s, A2A_E2E_CODEX_TIMEOUT to 300 s): a claude turn sends claude->agy (What is 4+4?, --timeout ${AGY_TIMEOUT}s) and claude->codex (What is 5+5?, --timeout ${CODEX_TIMEOUT}s); turn deadline = max(CL_TURN_TIMEOUT, A2A_E2E_AGY_TIMEOUT + A2A_E2E_CODEX_TIMEOUT = $(( AGY_TIMEOUT + CODEX_TIMEOUT ))s); before every ring send that targets e2e-claude, ensure_claude_busy runs (fresh busy turn if not registered, then a registry-agent-card curl with no proxy; one restart if it does not answer); aos-a2a sends for opencode->claude (5), claude->opencode (7), and when agy/codex enabled: agy<->opencode (6/6, timeout ${AGY_TIMEOUT}s toward agy), agy->claude (7+7=14), codex->claude (9), claude->codex (10, --timeout ${CODEX_TIMEOUT}s; its failure message notes: codex session must be open and resumed, not only listed in the resume picker; thread=\$A2A_E2E_CODEX_THREAD); every ordered pair at least once."
   echo " 10. #agy-orch-check (A2A_E2E_AGY=1 and agy present, else SKIP; ${A2A_E2E_AGY_YOLO:+--dangerously-skip-permissions [A2A_E2E_AGY_YOLO=1]}${A2A_E2E_AGY_YOLO:-no skip-permissions flag}): one agy turn, invoked as 'agy --print \"<prompt>\"' with cwd=<TMP>/agy-worker (prompts are read only from -p/--print or stdin; a bare positional prompt is ignored), turn deadline A2A_E2E_AGY_TIMEOUT=${AGY_TIMEOUT}s: one agy turn sends to the OpenCode session and the Claude session (third send preceded in setup by ensure_claude_busy), then starts one OpenCode worker via 'aos-acp opencode --name e2e-agy-worker --cwd <tmp>/agy-worker --prompt \"Reply with the number 3 only.\" --allow-default allow --go-wait 600 --timeout 1800'."
   echo " 11. cleanup: trap on EXIT/INT/TERM kills ONLY the PIDs this script captured (never pkill/killall); poll 'aos-a2a list --prune' up to 20 s (sleep 1) until empty before asserting (the opencode sidecar exits via --parent-pid polling within ~5-10 s); compare a shasum over the sorted file list of ~/.config/opencode against the snapshot taken at start (read-only; SKIP if that dir does not exist). No rm anywhere; temp files are left in place and their path is printed."
   echo " 12. print PASS/FAIL/SKIP line per check and a summary with counts; exit non-zero if any FAIL."
