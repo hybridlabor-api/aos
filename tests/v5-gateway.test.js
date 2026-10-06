@@ -604,6 +604,16 @@ http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(Number(port),'1
         ({ startServe } = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href));
     });
 
+    test('reapOrphan never signals a pid whose command line is not our 1mcp', async () => {
+        const { reapOrphan } = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+        const dir = tmp();
+        assert.equal(await reapOrphan(dir, '/x/1mcp.js', 1, async () => {}), false);
+        fs.writeFileSync(path.join(dir, 'upstream.pid'), String(process.pid));
+        assert.equal(await reapOrphan(dir, '/x/1mcp.js', 1, async () => {}), false);
+        fs.writeFileSync(path.join(dir, 'upstream.pid'), '1');
+        assert.equal(await reapOrphan(dir, '/x/1mcp.js', 1, async () => {}), false);
+    });
+
     test('refuses an empty, invalid or group-readable token', async () => {
         const quiet = { log: () => {}, entry: 'x', port: 0 };
         for (const bad of ['', '  \n', 'nothex']) {
