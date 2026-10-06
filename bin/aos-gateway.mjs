@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Local MCP gateway: token-checking forwarder on 127.0.0.1:7790 in front of @1mcp/agent on 127.0.0.1:7791.
-// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct
+// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json]
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ const { gatewayDir, GATEWAY_PORT, UPSTREAM_PORT } = req('../lib/gateway/config.j
 const { createForwarder } = req('../lib/gateway/forwarder.js');
 const { enable, disable } = req('../lib/gateway/harness.js');
 const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
+const adoptApi = req('../lib/gateway/adopt.js');
 
 export const LABEL = 'com.bdb.aos.gateway';
 export const WIN_TASK = 'AOS MCP Gateway';
@@ -248,7 +249,45 @@ async function main() {
         }
         process.exit(report.some((r) => r.error) ? 1 : 0);
     }
-    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct');
+    if (cmd === 'adopt') {
+        const home = os.homedir();
+        const dryRun = rest.includes('--dry-run');
+        const json = rest.includes('--json');
+        const files = harnessMcpFiles(home, process.env, process.platform, home);
+        const shipped = shippedServers(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
+        let report;
+        try {
+            if (dryRun) {
+                report = adoptApi.applyAdopt({ home, files, shipped, dryRun: true });
+            } else {
+                const dir = gatewayDir(home);
+                try { fs.statSync(path.join(dir, 'token')); } catch {
+                    console.error('aos-gateway adopt: gateway is not installed (run the gateway install first)');
+                    process.exit(1);
+                }
+                report = adoptApi.applyAdopt({ home, files, token: readToken(dir), shipped });
+            }
+        } catch (e) { console.error(`aos-gateway adopt: ${e.message}`); process.exit(1); }
+        if (json) {
+            console.log(JSON.stringify(report));
+        } else {
+            const adoptedLines = dryRun
+                ? report.adoptable.map((a) => `adopt ${a.name} (${a.sources.map((s) => s.file).join(', ')})`)
+                : report.adopted.map((n) => `adopt ${n} (${report.files.filter((f) => (f.removed || []).includes(n)).map((f) => f.file).join(', ')})`);
+            for (const line of adoptedLines) console.log(line);
+            for (const s of report.skipped || []) {
+                if (s.name === null && !s.error) continue;
+                console.log(`skip ${s.name}: ${s.reason}`);
+            }
+            for (const f of report.files || []) {
+                if (f.conflict) console.log(`conflict ${f.file}: ${f.conflict}`);
+                if (f.error) console.log(`error ${f.file}: ${f.error}`);
+            }
+            if (!dryRun && report.adopted.length) console.log('restart the gateway to load the adopted servers: aos-gateway restart');
+        }
+        process.exit((report.files || []).some((f) => f.error) ? 1 : 0);
+    }
+    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json]');
     process.exit(2);
 }
 

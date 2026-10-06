@@ -233,3 +233,55 @@ test('scan ignores absent files but reports unreadable/bad ones as skipped', () 
     assert.ok(s.skipped.some((k) => k.file === bad && /not plain JSON/.test(k.reason)));
     assert.ok(s.skipped.some((k) => k.file === path.join(home, 'gone', 'x.json') && /shape/.test(k.reason)));
 });
+
+test('secrets in arguments or secret-named env are never adopted', () => {
+    const fx = fixture({ claude: {
+        argkey: { command: 'node', args: ['s.js', '--api-key=abc123'] },
+        urlcred: { command: 'node', args: ['s.js', 'https://u:pw@example.com/x'] },
+        awsy: { command: 'node', args: ['s.js'], env: { AWS_SECRET_ACCESS_KEY: 'xyz' } },
+        refy: { command: 'node', args: ['s.js'], env: { API_KEY: '${API_KEY}' } },
+    } });
+    const s = adopt.scanAdoptable({ files: fx.files, shipped });
+    for (const n of ['argkey', 'urlcred', 'awsy', 'refy']) {
+        assert.ok(s.skipped.some((k) => k.name === n && /inline-secret/.test(k.reason)), n);
+        assert.ok(!s.adoptable.some((a) => a.name === n), n);
+    }
+});
+
+test('reserved prototype names are not adopted', () => {
+    const fx = fixture();
+    fs.writeFileSync(fx.f.cursor, '{"mcpServers":{"__proto__":{"command":"node","args":["x"]},"constructor":{"command":"node","args":["y"]}}}');
+    const s = adopt.scanAdoptable({ files: fx.files, shipped });
+    assert.ok(!s.adoptable.some((a) => a.name === '__proto__' || a.name === 'constructor'));
+});
+
+test('a corrupt adopted.json aborts before anything is changed', () => {
+    const fx = fixture();
+    const dir = gatewayDir(fx.home);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'adopted.json'), '{not json');
+    const before = fs.readFileSync(fx.f.claude, 'utf8');
+    assert.throws(() => adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped }), /not valid JSON/);
+    assert.equal(fs.readFileSync(fx.f.claude, 'utf8'), before);
+    assert.equal(fs.readFileSync(path.join(dir, 'adopted.json'), 'utf8'), '{not json');
+});
+
+test('a user-owned aos entry blocks the file and the name is not left in adopted.json', () => {
+    const fx = fixture();
+    wj(fx.f.claude, { mcpServers: { mine: { command: 'node', args: ['mine.js'] }, aos: { command: 'keep' } } });
+    const rep = adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped });
+    assert.ok(!rep.adopted.includes('mine'));
+    assert.ok(rj(fx.f.claude).mcpServers.mine);
+    const a = fs.existsSync(adopt.adoptedPath(fx.home)) ? rj(adopt.adoptedPath(fx.home)).servers : {};
+    assert.equal(a.mine, undefined);
+});
+
+test('disable restores the originals and removes them from adopted.json', () => {
+    const fx = fixture();
+    adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped, now: 1000 });
+    assert.ok(rj(adopt.adoptedPath(fx.home)).servers.mine);
+    const rep = harness.disable({ home: fx.home, files: fx.files, now: 2000 });
+    assert.ok(!rep.some((r) => r.error), JSON.stringify(rep));
+    assert.ok(rj(fx.f.claude).mcpServers.mine);
+    assert.equal(rj(adopt.adoptedPath(fx.home)).servers.mine, undefined);
+});
