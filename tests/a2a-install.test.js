@@ -78,25 +78,22 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
 
   test('Claude SessionStart sidecar hook: registered only when the hook file ships, never fails when absent; skipped under AOS_A2A_SIDECAR=off', async () => {
     const home = makeTempHome();
-    // a2a-session.mjs is not shipped in this checkout: the installer must skip
-    // it and still not throw, and settings.json must gain no a2a-session entry.
+    // The hook ships in this checkout: it is copied, wired into settings.json once, and re-running is idempotent.
     const script = `
       const i = require(${JSON.stringify(INSTALLER)});
       const home = process.env.HOME;
       const ok = i.installClaudeA2aSessionHook({ targetHome: home });
       console.log('REGISTERED=' + ok);
     `;
-    const r = spawnSync(process.execPath, ['-e', script], { env: childEnv(home), encoding: 'utf8', timeout: 60000 });
-    assert.match(r.stdout || '', /REGISTERED=false/);
-    assert.ok(!fs.existsSync(path.join(home, '.claude', 'hooks', 'a2a-session.mjs')));
-
-    // If settings.json exists, no a2a-session entry may appear.
     fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(home, '.claude', 'settings.json'), JSON.stringify({ hooks: {} }));
+    const r = spawnSync(process.execPath, ['-e', script], { env: childEnv(home), encoding: 'utf8', timeout: 60000 });
+    assert.match(r.stdout || '', /REGISTERED=true/);
+    assert.ok(fs.existsSync(path.join(home, '.claude', 'hooks', 'a2a-session.mjs')));
     const r2 = spawnSync(process.execPath, ['-e', script], { env: childEnv(home), encoding: 'utf8', timeout: 60000 });
-    assert.match(r2.stdout || '', /REGISTERED=false/);
+    assert.match(r2.stdout || '', /REGISTERED=true/);
     const s = JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8'));
-    assert.ok(!JSON.stringify(s).includes('a2a-session.mjs'));
+    assert.equal((JSON.stringify(s).match(/a2a-session\.mjs/g) || []).length, 1, 'wired exactly once');
 
     // The off switch lives in lib/a2a-session.mjs (ensureSidecar): the hook and
     // the plugin both funnel through it, and it must skip on AOS_A2A_SIDECAR=off
