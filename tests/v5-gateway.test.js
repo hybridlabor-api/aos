@@ -305,11 +305,28 @@ describe('pkg-gateway', () => {
         return { status: how };
     };
 
+    test('install retries bootstrap once after a delay when launchd has not unloaded yet', async () => {
+        const home = tmp();
+        const calls = [];
+        const sleeps = [];
+        let bootstraps = 0;
+        const run = async (cmd, args) => {
+            calls.push([cmd, ...args]);
+            if (cmd === 'launchctl' && args[0] === 'bootstrap' && ++bootstraps === 1) return { status: 5 };
+            return { status: 0, stdout: '' };
+        };
+        const say = [];
+        await pkg.install(mkCtx(home, { run, sleep: async (ms) => { sleeps.push(ms); }, log: (m) => say.push(m) }).ctx);
+        assert.deepEqual(calls.filter((c) => c[0] === 'launchctl').map((c) => c[1]), ['bootout', 'bootstrap', 'bootstrap']);
+        assert.deepEqual(sleeps, [500]);
+        assert.ok(!say.some((m) => /reported an error/.test(m)), 'second bootstrap succeeded, no error reported');
+    });
+
     for (const how of ['reject', 5, 113]) {
         test(`install survives launchctl failing (${how})`, async () => {
             const home = tmp();
             const say = [];
-            const { ctx } = mkCtx(home, { run: launchctlFails(how), log: (m) => say.push(m) });
+            const { ctx } = mkCtx(home, { run: launchctlFails(how), log: (m) => say.push(m), sleep: async () => {} });
             const r = await pkg.install(ctx);
             assert.equal(r.ok, true);
             assert.ok(say.some((m) => /launchctl/.test(m)));
@@ -319,10 +336,10 @@ describe('pkg-gateway', () => {
             const home = tmp();
             const calls = [];
             const run = async (cmd, args) => { calls.push([cmd, ...args]); return launchctlFails(how)(cmd); };
-            const { ctx } = mkCtx(home, { run });
+            const { ctx } = mkCtx(home, { run, sleep: async () => {} });
             await pkg.update(ctx);
             const lc = calls.filter((c) => c[0] === 'launchctl').map((c) => c[1]);
-            assert.deepEqual(lc, ['kickstart', 'bootout', 'bootstrap']);
+            assert.deepEqual(lc, ['kickstart', 'bootout', 'bootstrap', 'bootstrap']);
         });
 
         test(`uninstall still unlinks and renames when bootout fails (${how})`, async () => {
@@ -486,8 +503,11 @@ describe('pkg-gateway', () => {
 
     test('default verify reads gatewayStatus in-process (nothing listening → not running)', async () => {
         const home = tmp();
-        const r = await pkg.verify(mkCtx(home, { run: async () => { throw new Error('verify must not spawn'); }, sleep: async () => {} }).ctx);
+        const port = await freePort();
+        const upstreamPort = await freePort();
+        const r = await pkg.verify(mkCtx(home, { run: async () => { throw new Error('verify must not spawn'); }, sleep: async () => {}, statusPorts: { port, upstreamPort } }).ctx);
         assert.equal(r.ok, false);
+        assert.equal(r.status.running, false);
     });
 });
 
