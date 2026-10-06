@@ -359,6 +359,31 @@ function checkMcpSecrets() {
     `chmod 600 ${tilde(file)}`, true);
 }
 
+// .bak files the installer left next to files it manages (<file>.<YYYYMMDD_HHMMSS>.bak, <file> in its manifest).
+// Listed only; deleting is the user's call.
+function installerBakFiles() {
+  const manifest = readJson(h('.agents', '.bdb-install-manifest.json')) || {};
+  const managed = new Set(Object.keys(manifest));
+  const found = [];
+  for (const dir of new Set([...managed].map((f) => path.dirname(f)))) {
+    let names;
+    try { names = readdirSync(dir); } catch { continue; }
+    for (const n of names) {
+      const m = /^(.+)\.\d{8}_\d{6}\.bak$/.exec(n);
+      if (m && managed.has(path.join(dir, m[1]))) found.push(path.join(dir, n));
+    }
+  }
+  return found.sort();
+}
+
+function checkInstallerBaks() {
+  const list = installerBakFiles();
+  if (process.argv.includes('--list-baks')) { console.log(list.join('\n')); process.exit(0); }
+  if (!list.length) return;
+  add('installer', 'Old installer .bak files', false, `${list.length} backup file${list.length > 1 ? 's' : ''} from earlier installer runs, e.g. ${tilde(list[0])}`,
+    'Review: node bin/aos-doctor.mjs --list-baks. Remove (your call, nothing is deleted automatically): node bin/aos-doctor.mjs --list-baks | while IFS= read -r f; do rm -- "$f"; done', true);
+}
+
 async function checkDaemonsAndModules() {
   // memB
   const membDir = findModule('memB');
@@ -578,6 +603,7 @@ checkHooks();
 checkPlugins();
 checkAgyMcsc();
 checkMcpSecrets();
+checkInstallerBaks();
 await checkDaemonsAndModules();
 report();
 

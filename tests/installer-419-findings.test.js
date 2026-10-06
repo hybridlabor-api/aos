@@ -56,6 +56,46 @@ const runInstaller = (h, code) => {
 };
 const fresh = (n) => fs.mkdtempSync(path.join(home, `${n}-`));
 
+test('finding 4: resolveFileConflict backs up once, then reuses an identical .bak after the manifest is lost', () => {
+    const dir = fresh('bak');
+    const target = path.join(dir, 'SKILL.md');
+    const source = path.join(dir, 'src', 'SKILL.md');
+    fs.mkdirSync(path.dirname(source), { recursive: true });
+    fs.writeFileSync(target, 'foreign v1\n');
+    fs.writeFileSync(source, 'shipped v2\n');
+    let manifest = {};
+    const r1 = installer.resolveFileConflict(source, target, manifest, new Set());
+    assert.strictEqual(r1, 'bak');
+    const baks1 = fs.readdirSync(dir).filter((f) => f.endsWith('.bak'));
+    assert.strictEqual(baks1.length, 1);
+    assert.match(baks1[0], /^SKILL\.md\.\d{8}_\d{6}\.bak$/);
+    assert.strictEqual(fs.readFileSync(path.join(dir, baks1[0]), 'utf8'), 'foreign v1\n');
+    assert.strictEqual(manifest[target].backup, path.join(dir, baks1[0]));
+    // Simulate a lost manifest and the same foreign content back on disk: the identical prior .bak is reused, no second backup.
+    fs.writeFileSync(target, 'foreign v1\n');
+    manifest = {};
+    const r2 = installer.resolveFileConflict(source, target, manifest, new Set());
+    assert.strictEqual(r2, 'bak');
+    const baks2 = fs.readdirSync(dir).filter((f) => f.endsWith('.bak'));
+    assert.strictEqual(baks2.length, 1);
+    assert.strictEqual(manifest[target].backup, path.join(dir, baks1[0]));
+});
+
+test('finding 4: doctor lists installer .bak files, ignores *.notes.bak, deletes nothing', () => {
+    const h = fresh('bakdoc');
+    const dir = path.join(h, '.agents', 'skills', 'demo');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(h, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [path.join(dir, 'SKILL.md')]: { sha256: 'x' } }));
+    const bak = path.join(dir, 'SKILL.md.20260101_120000.bak');
+    const notes = path.join(dir, 'notes.notes.bak');
+    fs.writeFileSync(bak, 'old\n');
+    fs.writeFileSync(notes, 'keep\n');
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--list-baks'], { env: { HOME: h, USERPROFILE: h, PATH: process.env.PATH }, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.stdout.trim(), bak);
+    assert.ok(fs.existsSync(bak) && fs.existsSync(notes), 'doctor must delete nothing');
+});
+
 test('finding 3: OpenCode plugin payload is installed when missing and left alone, silently, when identical', () => {
     const h = fresh('oc');
     const code = `i.installOpencodePlugin({ targetHome: ${JSON.stringify(h)}, configPath: ${JSON.stringify(path.join(h, '.config', 'opencode', 'opencode.jsonc'))} });`;

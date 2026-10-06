@@ -708,13 +708,19 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     // not in refusing to write. A genuine local edit is recoverable from .bak
     // rather than silently outvoting the shipped version forever.
     if (!manifestEntry && !knownSourceHashes.has(diskHash)) {
-        const bakPath = `${targetPath}.${timestamp}.bak`;
-        try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
-            log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
+        // A backup of exactly this content already exists (an earlier run whose manifest was lost): reuse it.
+        const dir = path.dirname(targetPath);
+        const base = path.basename(targetPath);
+        const prior = fs.readdirSync(dir).find((f) => f.startsWith(`${base}.`) && f.endsWith('.bak') && computeFileHash(path.join(dir, f)) === diskHash);
+        const bakPath = prior ? path.join(dir, prior) : `${targetPath}.${timestamp}.bak`;
+        if (!prior) {
+            try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
+                log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
+            }
         }
         fs.copyFileSync(sourcePath, targetPath);
-        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
-        log.warn(`[manifest] Unrecognised ${path.basename(targetPath)} backed up to ${bakPath}, shipped version written.`);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString(), backup: bakPath };
+        if (!prior) log.warn(`[manifest] Unrecognised ${path.basename(targetPath)} backed up to ${bakPath}, shipped version written.`);
         return 'bak';
     }
 
