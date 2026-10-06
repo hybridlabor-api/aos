@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { cardFromProfile, loadProfile, validateProfile } from "../lib/a2a-card.mjs";
 
@@ -44,7 +45,7 @@ test("invalid profiles give clear errors", () => {
 });
 
 test("loadProfile: explicit path, project file, missing", () => {
-  const dir = mkdtempSync("/private/tmp/claude-501/a2a-card-");
+  const dir = mkdtempSync(join(tmpdir(), "a2a-card-"));
   const f = join(dir, "p.json");
   writeFileSync(f, JSON.stringify(profile()));
   assert.equal(loadProfile({ profile: f }).orchestrator.harness, "claude");
@@ -58,7 +59,7 @@ test("loadProfile: explicit path, project file, missing", () => {
 test("CLI: --help exits 0, card prints JSON", () => {
   const bin = new URL("../bin/aos-a2a.mjs", import.meta.url).pathname;
   assert.equal(spawnSync(process.execPath, [bin, "--help"]).status, 0);
-  const dir = mkdtempSync("/private/tmp/claude-501/a2a-cli-");
+  const dir = mkdtempSync(join(tmpdir(), "a2a-cli-"));
   const f = join(dir, "p.json");
   writeFileSync(f, JSON.stringify(profile()));
   const r = spawnSync(process.execPath, [bin, "card", "--profile", f, "--name", "n", "--harness", "agy"], { encoding: "utf8" });

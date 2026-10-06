@@ -1,6 +1,6 @@
 # Ziel C: A2A delegation layer, /startcycle run with OpenCode workers
 
-**Goal.** Every harness session (Claude Code, OpenCode, agy, Codex, Cursor, Kimi, AO) can reach the others over A2A on localhost. Any harness can act as orchestrator or as worker. Roles are set per run through a profile. Delegation goes through one CLI, `aos-a2a`. mcsc becomes a shim and is removed later.
+**Goal.** Every harness session (Claude Code, OpenCode, agy, Codex; later Cursor and Kimi; AO is out, it has its own system) can reach the others over A2A on localhost. Any harness can act as orchestrator or as worker. Roles are set per run through a profile. Delegation goes through one CLI, `aos-a2a`. mcsc becomes a shim and is removed later.
 
 **Source of truth.** The design lives in `~/.aos/recovery-plan/archive/2026-10-06/ziel-c-plan-v2.md`, sections 2–9 and decisions §11. This file is the build plan that executes it.
 
@@ -8,17 +8,26 @@
 - `22887ff`: registry, card, `aos-a2a list/card`
 - spikes p0 and p1b: green, in the scratch dir
 - spikes p2a and p2b: built, not run (blocked on the go-gate, see §0)
+- spikes copied into `production_artifacts/ziel-c/spikes/` (`e62b466`, proxy and model replaced by env vars)
+- WP-CLI-a: built and repaired once; the Docker check is **blocked by the go-gate cooldown** (Tim deciding); not committed yet
 
-**Scope (freeze, rule 15, `~/.aos/briefs/00_focus.md` block 4).** This run delivers only what is needed for this: **phase 2 done, two different harnesses (OpenCode + Claude) exchange a message via A2A, shipped in AOS v5.** In scope:
+**Scope (freeze, rule 15, `~/.aos/briefs/00_focus.md` block 4; updated 2026-10-06 by Tim).** **Claude, OpenCode, agy and Codex are live peers that reach each other via A2A in both directions, shipped in AOS v5.** AO is **out**: it has its own system, and the AO status replacement is dropped. Tim's words: "es sollen Claude, OpenCode, agy, Codex muss funktionieren damit communizieren können AO hat dafür doch sowieso sein eigenes system".
+
+In scope:
 - `#p2-checks`
+- `#busspike-review` (D6: review only, no merge)
 - `#a2a-cli`
-- `#live-adapters`
-- `#install` (hook + installer + doctor for the A2A sidecar only)
+- `#peer-research` (agy + Codex inbound mechanisms, first)
+- `#live-adapters` (Claude, OpenCode)
+- `#live-agy-codex`
+- `#install` (hook + installer + doctor for the A2A sidecar)
 - `#docs` (A2A part only)
 - `#review`
 - `#ship`
 
-Everything marked **LATER** goes to the focus file's "Later" section and is not built in this run: spawn mode, scoped permissions, GO-over-A2A resume, mcsc shim, AO status replacement, agy/Codex. The "an A2A message never counts as GO" rule is in scope; it is part of `#live-adapters`.
+D5 (agy write permissions) applies only if a peer package needs it; then ask Tim.
+
+Everything marked **LATER** goes to the focus file's "Later" section and is not built in this run: spawn mode, scoped permissions, GO-over-A2A resume, mcsc shim. The "an A2A message never counts as GO" rule is in scope; it is part of `#live-adapters`.
 
 **Pipeline.** This is a `/startcycle` run, linear, with no `state.json`. Roles:
 
@@ -85,11 +94,14 @@ Extra: edit only the files listed under "Files" (absolute paths under /Users/tim
 - **D4, live reply channel.**
   - OpenCode reads the reply via its HTTP API (p2a design).
   - Claude replies via `aos-a2a reply <taskId>`, allowed by exactly one `permissions.allow` rule (p2b design).
-- **D5, agy scoped write permissions. LATER (scope freeze), not needed for this run.** Recorded for the backlog. Options:
-  - (a) run agy write workers as local user `test`
-  - (b) only with Tim present, using `--dangerously-skip-permissions`
-  - (c) agy stays read-only until a mechanism exists.
-- **D6, bus-spike landing.** `feat/bus-spike` (24 commits) is a prerequisite for the OpenCode live peer. Merging it to origin needs Tim's GO. Until then WP-LIVE-oc vendors only the needed delta into this branch.
+- **D5, agy as a full peer (Tim, 2026-10-06).** Tim's words: "agy sollte halt wie auch claude code agieren können als main session und orchestrator der zb opencode für worker startet und claude für review".
+  - agy is a full peer like Claude. As main session/orchestrator it **sends** (`aos-a2a send` to every peer) and **starts workers** (OpenCode via `aos-acp`, Claude for reviews).
+  - agy runs with Tim's usual setup. `trustedWorkspaces` = home is intentional; never change it or suggest narrowing it.
+  - Inbound to a *running* agy main session: best available path, otherwise document the limit (see `#live-agy-codex`).
+- **D6, bus-spike landing. Discarded (Tim, 2026-10-06).**
+  - origin/main 4.19.0 is a superset: the diff main → `feat/bus-spike` on `aos-bus.mjs` + `bdb-aos.js` only removes lines. The other spike diffs are old base state.
+  - No merge and no delta. WP-LIVE-oc builds on main. The branch is kept; deleting it needs a separate GO.
+  - On main, `busPaths` still uses `join(homedir(), …)`. That is a read/write path only, never a delete path.
 
 ---
 
@@ -102,17 +114,28 @@ Extra: edit only the files listed under "Files" (absolute paths under /Users/tim
 ## Live peer checks (phase 2 completion) {#p2-checks}
 tech: run the already-built spikes `production_artifacts/ziel-c/spikes/p2a/checks/p2a.sh` and `spikes/p2b/checks/p2b.sh` on the host
 by: dispatcher (needs GO token for this session)
-- [ ] Copy spikes into `production_artifacts/ziel-c/spikes/` and commit (static scripts) {#p2-copy}
+- [x] Copy spikes into `production_artifacts/ziel-c/spikes/` and commit (static scripts) {#p2-copy}
 - [ ] Get GO token "GO acp - multi cli tool Manager" from Tim via master session; the request lists p2a.sh, p2b.sh and later `production_artifacts/ziel-c/checks/live-e2e.sh` {#p2-go}
 - [ ] Run p2a.sh once (OpenCode live peer, answer "5", GO message stays synthetic) {#p2a-run}
 - [ ] Run p2b.sh once (Claude live peer via UserPromptSubmit drain + one claude -p turn, answer "5", GO message only as agent-tagged context) {#p2b-run}
 - [ ] Record results in ziel-c-plan-v2.md and spike NOTES; feed design deltas into WP-LIVE-* {#p2-record}
 
+## bus-spike review, D6 {#busspike-review}
+needs: []
+by: OpenCode worker, read-only
+- [x] WP-BUS-review (haiku; cross-checked by master): discard, main is the superset. Inventory of `feat/bus-spike` (`~/dev/bdb-dev/aos-wt-bus-spike`, base `68ab929`, 24 commits): files and functions, what Ziel C actually needs, quality and tests, overlap with the installed aos-bus. Result: short table plus recommendation (merge / delta / discard), sent to the master. No merge. {#wp-bus-review}
+
+## Inbound mechanisms for agy and Codex {#peer-research}
+needs: []
+by: read-only research worker (OpenCode, or haiku when the OpenCode slot is busy)
+- [x] (result in #live-agy-codex) WP-PEER-research: for agy and for Codex, which mechanism can deliver an incoming message into a **running** session and get the answer back? Candidates: hooks (agy `hooks.json` with named hooks, Codex hooks/notify), MCP (a local MCP server whose tool the session polls or that pushes notifications), ACP (`codex-acp`; agy has no sanctioned ACP), app-server (Codex), headless resume (`codex exec resume`, `agy --continue`). Per harness: what exists (with file or doc proof), how a reply returns, whether the A2A message can be kept from counting as a GO, and a fallback when there is no live path (spawn per message with session resume). {#wp-peer-research}
+
 ## A2A server and client in the repo {#a2a-cli}
 needs: []
 files: [lib/a2a-sidecar.mjs, lib/a2a-client.mjs, bin/aos-a2a.mjs, package.json, tests/a2a-sidecar.test.js, tests/a2a-client.test.js]
 tech: promote spike0 sidecar.mjs/send.mjs to library code behind `aos-a2a serve|send|reply|status|cancel`
-- [ ] WP-CLI-a: `lib/a2a-sidecar.mjs` + `serve` subcommand + tests (incl. real-SDK card acceptance) {#wp-cli-a}
+- [~] WP-CLI-a: `lib/a2a-sidecar.mjs` + `serve` subcommand + tests (incl. real-SDK card acceptance) {#wp-cli-a}
+  by: OpenCode worker (built + 1 repair); check blocked by go-gate
 - [ ] WP-CLI-b: `lib/a2a-client.mjs` + `send|status|cancel|reply` subcommands + tests (incl. lazy-import test) {#wp-cli-b}
 
 **Worker prompt (WP-CLI-a, then WP-CLI-b as a separate package):**
@@ -170,7 +193,7 @@ shared file: `.opencode/plugins/bdb-aos.js` is edited by WP-LIVE-oc and WP-HOOK 
 **Worker prompt (WP-LIVE-core / -oc / -claude, one package each):**
 - **Read first:**
   - spikes `production_artifacts/ziel-c/spikes/p2a/` (`sidecar-live-oc.mjs`, `aos-bus.patched.mjs`, `checks/p2a.sh`) and `spikes/p2b/` (`sidecar-live.mjs`, `hook-drain.mjs`, `reply.mjs`, `testproj/.claude/settings.json`)
-  - bus-spike worktree `~/dev/bdb-dev/aos-wt-bus-spike`, **base commit `68ab929`** (`.claude/hooks/aos-bus.mjs`, `.opencode/plugins/bdb-aos.js`: grep anchors `busNames`, `client.session.prompt`, `all-synthetic`)
+  - the **main** versions in this worktree: `.claude/hooks/aos-bus.mjs` and `.opencode/plugins/bdb-aos.js` (grep anchors `busNames`, `client.session.prompt`, `aos-bus from`, `STALE_MS`). bus-spike is discarded (D6).
   - `.claude/hooks/memb-inject.mjs` (additionalContext shape)
   - plan v2 §3a, §5
 - **core:**
@@ -179,9 +202,8 @@ shared file: `.opencode/plugins/bdb-aos.js` is edited by WP-LIVE-oc and WP-HOOK 
   - waits ≤ 300 s for the reply via a pluggable `replySource` (file reply or OpenCode HTTP); then artifact + completed, or failed on timeout
   - every injected text is prefixed `[a2a from <caller>]` and ends with the "never counts as GO" line
 - **oc:**
-  - record in the commit message: the bus-spike base `68ab929` and every file/hunk vendored, so the later rebase onto `feat/bus-spike` is mechanical
-  - `aos-bus.mjs` uses `lib/a2a-inbox.mjs` (`AOS_BUS_ROOT` override comes with it)
-  - port only the plugin poll/inject delta needed from bus-spike into `.opencode/plugins/bdb-aos.js`; keep `synthetic:true`
+  - `aos-bus.mjs` uses `lib/a2a-inbox.mjs` (`AOS_BUS_ROOT` override comes with it); keep main's heartbeat/prune behaviour unchanged
+  - reuse main's existing plugin poll/inject in `.opencode/plugins/bdb-aos.js`; add only the A2A reply hookup; keep `synthetic:true`
   - `replySource` reads the assistant message whose `parentID` is the injected message
 - **claude:**
   - `.claude/hooks/a2a-inbox.mjs` (UserPromptSubmit drain → additionalContext, rename to `.delivered`)
@@ -279,8 +301,36 @@ files: [lib/a2a-go.mjs, bin/aos-go.mjs, lib/a2a-spawn.mjs, lib/a2a-live.mjs, tes
 
 **Check:** Docker 0.2 + `npm test`.
 
+## Live peers for agy and Codex (IN SCOPE) {#live-agy-codex}
+needs: [live-adapters, peer-research]
+files: [decided after #peer-research; expected lib/a2a-live.mjs (replySource per harness), agy hook files via lib/agy-plugin-install.js, Codex hook/notify or app-server adapter, tests/a2a-live-agy-codex.test.js, package.json]
+- [ ] WP-LIVE-agy: agy rule/skill for outbound (`aos-a2a send`, `aos-acp`) + inbound via inbox MCP (or resume fallback) + reply; the never-GO rule holds {#wp-live-agy}
+- [ ] WP-LIVE-codex: inbound delivery + reply for Codex, per the research result; the never-GO rule holds {#wp-live-codex}
+- [ ] Extend `checks/live-e2e.sh` to a ring Claude → OpenCode → agy → Codex → Claude, with every ordered pair at least once (dispatcher, GO token) {#live-ring}
+- [ ] Orchestrator check for agy: an agy session sends to OpenCode and Claude, and starts one OpenCode worker via `aos-acp` (Tim's usual agy setup) {#agy-orch-check}
+
+**#peer-research result (haiku, 2026-10-06; items marked * still to verify with `--help` before the WP prompts are written):**
+
+| Harness | Live inbound path | Reply | GO safety | Plan |
+|---|---|---|---|---|
+| Codex | hooks are stable (`SessionStart`, `UserPromptSubmit`, `Stop`, `PreToolUse`, `PostToolUse` in `~/.codex/config.toml`, per `docs/codex-gate-smoke.md`); `codex queue --thread … --message …`*; `codex exec resume <id> "<prompt>"` | resume output / transcript | Codex gate's "last user message" handling is UNVERIFIED | WP-LIVE-codex: same pattern as Claude (UserPromptSubmit drain*, Stop nudge*), with `codex queue`* or `exec resume` as transport. Hook trust: new hooks need approval once by Tim |
+| agy | **no push into a running session found**: hooks are gate-only (`PreToolUse`/`PreInvocation`/`Stop`); no server or IPC | see the agy plan below | n/a | see the agy plan below (D5: full peer) |
+
+**agy plan (D5: full peer):**
+- **Outbound (agy as orchestrator):** in a normal agy session agy runs `aos-a2a send --to <peer>` and `aos-acp opencode|claude …` as shell commands.
+  - What is missing is only agy-side guidance: an AOS skill/rule in agy's config (installed by the existing agy plugin path, `lib/agy-plugin-install.js`) that tells agy when and how to use `aos-a2a send`, `aos-a2a list` and `aos-acp`, plus the never-GO rule.
+  - aos-acp already has the opencode/claude/codex adapters. No code change is needed for agy to *call* them.
+- **Inbound to a running agy main session**, two candidates, verified in WP-LIVE-agy before building:
+  1. **Inbox MCP tool (preferred if it works).** A tiny read/write-only MCP server `a2a-inbox` (tools `a2a_inbox`, `a2a_reply`) registered in agy's MCP config. The agy rule tells the agent to call `a2a_inbox` at the start of each turn and when told "check messages".
+     - Delivery is pull-based (on the next turn), like Claude's turn-start drain.
+     - Fork-bomb rule: this server never spawns agy or any harness and never probes at startup.
+  2. **Resume per message (fallback):** `agy --continue --print "<msg>" </dev/null` in the peer's project dir*; the reply is stdout. Documented limit: it runs as a separate headless turn next to the open TUI, so it is not the same live context.
+- WP-LIVE-agy builds 1 if a one-turn test shows agy calls the MCP tool reliably, otherwise 2, and writes the limit into `docs/a2a.md`.
+
+The worker prompts are written by the dispatcher after these `*` items are verified, in the same format as WP-LIVE-oc/claude. Live runs that need `agy --dangerously-skip-permissions` only happen with Tim present (D5).
+
 ## Installer and doctor (IN SCOPE, sidecar for live mode only) {#install}
-needs: [live-adapters]
+needs: [live-adapters, live-agy-codex]
 files: [installer.js, bin/aos-doctor.mjs, package.json, tests/a2a-install.test.js]
 - [ ] WP-INSTALL: installer ships `a2a-session.mjs` + `a2a-inbox.mjs` hooks to Claude and the plugin change to OpenCode; never registers the sidecar hook in a harness it delegates to (fork-bomb rule); doctor prints the A2A capability matrix per harness {#wp-install}
 
@@ -311,7 +361,7 @@ files: [mcps/mcsc/packages/mcp/server.js, docs/delegation-routing.md, tests/mcsc
 
 **Check:** Docker 0.2 for the mcsc tests + `npm test`. Fork-bomb regression: a spawned worker has `AOS_A2A_SIDECAR=off` and starts no sidecar.
 
-## AO session status replacement (LATER) {#ao-status}
+## AO session status replacement (DROPPED: AO is out of scope, Tim 2026-10-06; mcsc keeps get_agent_status) {#ao-status}
 needs: [a2a-cli]
 - [ ] WP-AO-research (OpenCode, read-only): how AO's `get_agent_status` consumers work (AO `AGENTS.md:155`, `HANDOVER_IST_ZUSTAND_2026-09-24.md` §3, sandbox mcsc `4e1f10b`); propose either an AO-fronting sidecar that lists AO sessions as cards/tasks, or `aos-a2a list --include-ao` reading the AO REST API {#wp-ao-research}
 - [ ] Implementation in AOS + AGENTS.md change in the AO repo — separate session/repo, needs master assignment {#ao-impl}
@@ -347,19 +397,22 @@ needs: [review]
 
 **In scope (this run):**
 ```
-a2a-cli ──────┐
-p2-checks ────┴→ live-adapters (incl. WP-HOOK, live-e2e) → install → docs → review → ship (v5, GO)
+busspike-review (D6) ─┐
+a2a-cli ──────────────┼→ live-adapters (Claude, OpenCode, WP-HOOK, live-e2e) ─┐
+p2-checks ────────────┘                                                       ├→ live-agy-codex (ring) → install → docs → review → ship (v5, GO)
+peer-research ────────────────────────────────────────────────────────────────┘
 ```
-- One OpenCode worker at a time, in this order: WP-CLI-a, WP-CLI-b (these two need no GO and can start now), WP-LIVE-core, WP-LIVE-oc, WP-LIVE-claude, WP-HOOK, WP-INSTALL, WP-DOCS.
+- Research first, in parallel with WP-CLI: WP-BUS-review and WP-PEER-research (read-only). Both are running as haiku workers, because dispatching OpenCode needs Bash and Bash is paused during the go-gate cooldown.
+- Then one OpenCode worker at a time, in this order: WP-CLI-a, WP-CLI-b, WP-LIVE-core, WP-LIVE-oc, WP-LIVE-claude, WP-HOOK, WP-LIVE-agy, WP-LIVE-codex, WP-INSTALL, WP-DOCS.
 - `#a2a-cli` no longer waits for `#p2-checks`; `#live-adapters` needs both.
 - A sanity check for the OpenCode cwd rule runs before WP-LIVE-oc: one trivial absolute-path edit to `.opencode/plugins/bdb-aos.js` from a scratch cwd must not hit `-32603`.
 
-**LATER backlog (not in this run):** spawn → perm → go → mcsc → ao-status, plus agy/Codex.
+**LATER backlog (not in this run):** spawn → perm → go → mcsc. Dropped: ao-status.
 
 ## Exit criteria for the run
 - All work packages are `[x]` and their checks are green in Docker.
 - All **in-scope** packages are `[x]`.
-- Host live checks are green: OpenCode and Claude exchange a message via A2A in both directions, and an A2A message "GO x" counts as nothing.
+- Host live checks are green: the ring Claude → OpenCode → agy → Codex → Claude with every ordered pair at least once, and an A2A message "GO x" counts as nothing.
 - The review has no open blocking findings.
 - No proxy, fledge model or machine path appears in the diff (`git diff origin/main.. -- . ':!production_artifacts' | grep -nE '8888|fledge|/Users/timrennings'` returns nothing). `production_artifacts/ziel-c/` is build bookkeeping and is excluded from the PR, or dropped before it with Tim's GO.
 - Push, PR and release happen only after Tim's GO.

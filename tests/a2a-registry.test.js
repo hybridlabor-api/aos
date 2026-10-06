@@ -2,9 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, statSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
-const tmp = mkdtempSync("/private/tmp/claude-501/a2a-reg-");
+const tmp = mkdtempSync(join(tmpdir(), "a2a-reg-"));
 process.env.AOS_SESSIONS_DIR = join(tmp, "sessions");
 const reg = await import("../lib/a2a-registry.mjs");
 const mode = (f) => statSync(f).mode & 0o777;
