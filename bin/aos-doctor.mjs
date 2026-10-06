@@ -232,6 +232,17 @@ function checkHarnesses() {
       `Run 'npx @hybridlabor-api/aos@latest' once (it retires AOS copies from ${tilde(codexRoot)} with a backup) or move your own copies out.`, true);
   }
 
+  // The same AOS skill as a manifest-recorded loose copy in the Claude skills dir and in the bdb-aos plugin is listed twice.
+  const looseRoot = hc('skills');
+  const claudePlugin = pluginSkills(HOME);
+  const installManifest = readJson(h('.agents', '.bdb-install-manifest.json')) || {};
+  const recorded = new Set(Object.keys(installManifest).filter((k) => k.startsWith(looseRoot + path.sep)).map((k) => k.slice(looseRoot.length + 1).split(path.sep)[0]));
+  const twice = claudePlugin ? [...claudePlugin.skills].filter((n) => recorded.has(n) && existsSync(path.join(looseRoot, n, 'SKILL.md'))) : [];
+  if (twice.length) {
+    add('harnesses', 'Claude duplicate skills', false, `${twice.length} AOS skill(s) exist both as loose copies in ${tilde(looseRoot)} and in the bdb-aos plugin, so Claude lists them twice`,
+      'Run the AOS installer again; it backs up and retires the loose copies (aos-uninstall --restore-plugin-backup restores them).', true);
+  }
+
   const ov = req('../lib/opencode-verify.js');
   results.push(...ov.checkOpencode({ home: HOME }), ...ov.checkAcpAndGoCheck({ home: HOME }));
   checkOpencodeMcpNames();
