@@ -644,6 +644,52 @@ function words(s) {
   return out;
 }
 
+// Rule 16 (Tim, 2026-10-06): a host command that is only `docker run` with read-only bind
+// mounts, optionally piped into plain readers, cannot touch the host from inside the
+// container. Script files and inline code it names are not read and the post-block cooldown
+// does not apply. Every other check (patterns, scopes, delete targets in the text) still runs.
+// Any flag not listed here (--privileged, --pid, --mount, --volumes-from, --cap-add, --device,
+// --ipc, --security-opt, ...) or a docker.sock / rw mount makes it an ordinary command.
+const DOCKER_FLAG = /^(?:--rm|-i|-t|-it|-ti|--interactive|--tty|--init|-q|--quiet|--read-only)$/;
+const DOCKER_VALUE = /^(?:-e|--env|-w|--workdir|--name|--entrypoint|--platform|--memory|--cpus|--network|--net|-u|--user|--pull|-l|--label)$/;
+const DOCKER_READER = /^(?:tail|head|grep|wc|sort|uniq|cut)$/;
+const roMount = (v) => { const p = unqQ(v).split(":"); return p.length >= 3 && p[0].startsWith("/") && !/docker\.sock/.test(p[0]) && p.slice(2).join(":").split(",").includes("ro"); };
+export function isReadOnlyDockerRun(command) {
+  if (typeof command !== "string" || commandTooLong(command)) return false;
+  const parts = [];
+  let cur = "", q = "";
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i], n = command[i + 1] ?? "", p = command[i - 1] ?? "";
+    if (q === "'") { cur += c; if (c === "'") q = ""; continue; }
+    if (c === "`" || (c === "$" && n === "(")) return false; // host-side substitution
+    if (q === '"') { cur += c; if (c === "\\") cur += command[++i] ?? ""; else if (c === '"') q = ""; continue; }
+    if (c === "'" || c === '"') { q = c; cur += c; continue; }
+    if (c === "\\") { cur += c + n; i++; continue; }
+    if (/[;\n<(){}]/.test(c)) return false;
+    if (c === "&" && p !== ">" && n !== ">") return false; // only 2>&1 / &> redirects
+    if (c === "|") { if (n === "|" || n === "&") return false; parts.push(cur); cur = ""; continue; }
+    cur += c;
+  }
+  if (q) return false;
+  parts.push(cur);
+  const tok = words(parts[0].trim());
+  if (unqQ(tok[0]) !== "docker" || unqQ(tok[1]) !== "run") return false;
+  let image = false;
+  for (let i = 2; i < tok.length && !image; i++) {
+    const t = unqQ(tok[i]);
+    const eq = /^(--?[\w-]+)=(.*)$/.exec(t);
+    const flag = eq ? eq[1] : t, val = eq ? eq[2] : unqQ(tok[i + 1] ?? "");
+    if (flag === "-v" || flag === "--volume") { if (!roMount(val)) return false; if (!eq) i++; continue; }
+    if ((flag === "--network" || flag === "--net") && val === "host") return false;
+    if (DOCKER_FLAG.test(t)) continue;
+    if (DOCKER_VALUE.test(flag)) { if (!eq) i++; continue; }
+    if (t.startsWith("-")) return false;
+    image = true;
+  }
+  if (!image) return false;
+  return parts.slice(1).every((s) => DOCKER_READER.test(base(words(s.trim())[0] ?? "")));
+}
+
 // Splits on unquoted ; & | newline ( ) and brace-group braces; quotes, ${...}, $(...) and `...` stay whole.
 function scanSplit(cmd) {
   const s = String(cmd), out = [];
@@ -1153,7 +1199,8 @@ export function analyzeDeletes(command, depth = 0, init = null) {
   if (depth > 3 || typeof command !== "string") return r;
   if (command.length > MAX_COMMAND) { r.unscoped = true; return r; }
   const st = init ? { cwd: init.cwd, vars: { ...init.vars } } : { cwd: gateCtx.cwd || process.cwd(), vars: Object.create(null) };
-  const snap = () => ({ cwd: st.cwd, vars: st.vars });
+  const ro = init ? !!init.ro : isReadOnlyDockerRun(command);
+  const snap = () => ({ cwd: st.cwd, vars: st.vars, ro });
   const merge = (o) => { r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.cmds.push(...o.cmds); r.files.push(...o.files); };
   const { text, code } = commandView(command, true);
   const un = (t) => String(t).replace(/^"([\s\S]*)"$/, (_, x) => x.replace(/\\(["\\$`])/g, "$1")).replace(/^'([\s\S]*)'$/, "$1");
@@ -1190,7 +1237,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     }
     if (/^(?:cd|pushd)$/.test(h)) st.cwd = cdTarget(tok, st);
     if (opaque || /^(?:cmd(?:\.exe)?|pwsh|powershell)$/i.test(h)) merge(analyzeDeletes(innerText(tok), depth + 1, snap()));
-    if (FILE_HEAD.test(h) && (!opaque || /^(?:bash|sh|zsh|dash|ksh)$/.test(h))) {
+    if (!ro && FILE_HEAD.test(h) && (!opaque || /^(?:bash|sh|zsh|dash|ksh)$/.test(h))) {
       const f = scriptFile(h, tok.slice(1).map(unqQ));
       if (f.module && /rm|remov|delet|rimraf|trash|clean|purge|wipe/i.test(f.module)) r.unscoped = true;
       if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""));
@@ -1202,7 +1249,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     if (p.sep === "(") stack.push(st.cwd);
     else if (p.sep === ")" && stack.length) st.cwd = stack.pop();
   }
-  for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
+  if (!ro) for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
   const subs = substitutions(text);
   if (subs.length > 64) r.unscoped = true; // too many to read within the budget
   for (const s of subs.slice(0, 64)) merge(analyzeDeletes(unprep(s), depth + 1, snap()));
@@ -2037,7 +2084,10 @@ function main() {
   if (goAllows(go, command)) return respond(isAgy, true, "", command);
   const reasons = [go.ok ? "a GO with PR numbers covers only gh pr merge/edit/close/review/comment for those PRs; type a plain GO" : go.reason];
   const cooling = analyzeDeletes(command).cooldown;
-  if (cooling) reasons.unshift(COOLDOWN_MESSAGE);
+  if (cooling) {
+    const left = Math.max(1, Math.ceil((COOLDOWN_MS - (Date.now() - readBlockTs(blockKey))) / 60000));
+    reasons.unshift(`${COOLDOWN_MESSAGE} The block cooldown ends in about ${left} min; after that the same unchanged command may run once (rule 16).`);
+  }
   if (tooLong) reasons.unshift(TOO_LONG_MESSAGE);
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).

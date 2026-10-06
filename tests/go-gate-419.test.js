@@ -265,6 +265,46 @@ describe('read-only chains after a peer message (v5 V10)', () => {
         }
     });
 
+    test('rule 16: docker run with only :ro mounts is not script-analysed and has no cooldown', () => {
+        const ok = [
+            `docker run --rm -v ${work}:/src:ro -e AOS_TEST_SANDBOX=container node:24-bookworm bash -c 'cd /src && node --test tests/evil.test.js; echo "exit \${PIPESTATUS[0]}"' > ${work}/log.txt 2>&1`,
+            `docker run --rm -v ${work}:/src:ro node:24 node /src/evil.mjs | tail -5`,
+            `docker run --rm -i --volume=${work}:/src:ro,z -w /src node:24 node --test tests/evil.test.js 2>&1 | grep -E fail | head`,
+        ];
+        const no = [
+            `docker run --rm -v ${work}:/src node:24 node /src/evil.mjs`,
+            `docker run --rm -v ${work}:/src:rw node:24 node /src/evil.mjs`,
+            `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:ro node:24 node /src/evil.mjs`,
+            `docker run --rm --privileged -v ${work}:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm --pid=host -v ${work}:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm --network host -v ${work}:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm --mount type=bind,src=${work},dst=/src node:24 node /src/evil.mjs`,
+            `docker run --rm -v src:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm -v ${work}:/src:ro node:24 node /src/evil.mjs; node evil.mjs`,
+            `docker run --rm -v ${work}:/src:ro node:24 node /src/evil.mjs && git status`,
+            `docker run --rm -v ${work}:/src:ro node:24 cat /src/x | sh`,
+            `docker run --rm -v $(pwd):/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm -v "${work}:/src:ro" node:24 node "$(cat x)"`,
+            `docker build -t x .`,
+        ];
+        for (const c of ok) assert.equal(g.isReadOnlyDockerRun(c), true, `ro: ${c}`);
+        for (const c of no) assert.equal(g.isReadOnlyDockerRun(c), false, `not ro: ${c}`);
+
+        // A fresh deleting test file after a block: the :ro container run passes, the host run and a rw mount do not.
+        fs.mkdirSync(path.join(home, '.aos', 'gate'), { recursive: true });
+        fs.writeFileSync(path.join(home, '.aos', 'gate', `${g.sessionKey('s1')}.block`), JSON.stringify({ ts: Date.now() - 60e3 }));
+        put(path.join(work, 'tests'), 'evil.test.js', 'const { rmSync } = require("node:fs");\nrmSync("build", { recursive: true, force: true });\n');
+        inSoftAfterPeer();
+        // No `cd` inside, so the gate resolves tests/evil.test.js against the host cwd and finds the file.
+        const inner = `bash -c 'true && node --test tests/evil.test.js 2>&1 | tail -5'`;
+        assert.equal(run(`docker run --rm -v ${work}:/src:ro -w /src node:24 ${inner}`, { cwd: work }).status, 0);
+        assert.equal(run(`docker run --rm -v ${work}:/src:ro node:24 node /src/tests/evil.test.js`, { cwd: work }).status, 0);
+        inSoftAfterPeer();
+        const host = run('node --test tests/evil.test.js', { cwd: work });
+        assert.equal(host.status, 2);
+        assert.match(host.stdout + host.stderr, /cooldown ends in about \d+ min/);
+    });
+
     test('every deny writes the command and its classification to the session log', () => {
         inSoftAfterPeer();
         assert.equal(run('git status; gh pr merge 12', { cwd: work }).status, 2);
