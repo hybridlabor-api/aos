@@ -9,6 +9,57 @@
 ### Security
 
 * Pinned the `@agentclientprotocol/claude-agent-acp` (0.86.0) and `codex-acp` (2.1.1) adapters launched by `aos-acp` instead of fetching the latest via `npx`.
+## [4.19.0](https://github.com/hybridlabor-api/aos/compare/v4.18.1...v4.19.0) (2026-10-06)
+
+
+### Features
+
+* **agy:** install the bdb-aos plugin through the agy CLI with a flat staged skills dir ([cc6ad8d](https://github.com/hybridlabor-api/aos/commit/cc6ad8d46c85cdd30649e6318a2bc4eb95d8c1a2))
+* **codenotch:** show how to start the app after install ([32530b5](https://github.com/hybridlabor-api/aos/commit/32530b5e0f44772ac25cd5af1ed765523ec65625))
+* **codex:** install the bdb-aos Codex plugin through the codex CLI ([6e29a4d](https://github.com/hybridlabor-api/aos/commit/6e29a4d201bb9872d34a38e6657a2a694c32b78e))
+* **doctor:** check agy hooks format and bdb-aos plugin registration per harness ([195052e](https://github.com/hybridlabor-api/aos/commit/195052e58c413502e8a754089473fe5e1523f80c))
+* **doctor:** verify OpenCode plugin, commands, aos-acp and go-check ([86b24ea](https://github.com/hybridlabor-api/aos/commit/86b24ea845b94ee4be9ce032e52b34c77d5b6842))
+* **gate:** classify recursive deletes in any language and hard-block home deletes ([687b27e](https://github.com/hybridlabor-api/aos/commit/687b27e072633cad607ff50367650b983d167959))
+* **installer:** run the agy plugin step and undo it in aos-uninstall ([013fa9f](https://github.com/hybridlabor-api/aos/commit/013fa9fdb32f1d38860797644e0b2233134de717))
+* **installer:** wire Codex plugin install, uninstall and docs ([e9094ba](https://github.com/hybridlabor-api/aos/commit/e9094ba71b1bb7108d43a4e32e8614ef29a5625e))
+* **plugins:** add cli-spawn resolver and cmd.exe-safe runner ([e63d773](https://github.com/hybridlabor-api/aos/commit/e63d773397c68c819535dd419877806550c36408))
+* **rules:** add managed Destructive Actions block to every instruction template ([5705490](https://github.com/hybridlabor-api/aos/commit/570549061a736c67c607cf422231582fd27494a6))
+
+
+### Bug Fixes
+
+* **acp:** pin the claude and codex ACP adapters to exact versions ([7585e32](https://github.com/hybridlabor-api/aos/commit/7585e32b3ec7bd769d9035842406bfd456fca683))
+* **acp:** resolve go-gate and trail from the installed layout, --help exits 0 ([f35a72f](https://github.com/hybridlabor-api/aos/commit/f35a72f8213560401b4807de9aa8377f3bbb88ec))
+* **agents:** Codex agent files in Codex format without a fixed model; OpenCode inherits ([e2522a4](https://github.com/hybridlabor-api/aos/commit/e2522a4ca96d77b9a39745f6116ed114271908d4))
+* **agy-hooks:** write one named hook per concern, migrate the legacy hooks lump, write through symlinks ([d481b0e](https://github.com/hybridlabor-api/aos/commit/d481b0ef3b03b3315cd4481cb35eff4c3b7b86bb))
+* AOS 4.18.2 installer fixes, go-gate delete guard and pinned MCPs ([156726f](https://github.com/hybridlabor-api/aos/commit/156726fe08ca3c1dc2b24404dc499367629ed83e))
+* **codenotch:** single friendly line when no release exists yet ([42ea456](https://github.com/hybridlabor-api/aos/commit/42ea4565c52ca155b1f9daba395a43cf910bcd90))
+* **codex-plugin:** record ownership only for what AOS installed ([71bf189](https://github.com/hybridlabor-api/aos/commit/71bf189cbee4f5cacb0e49f7b31591e761344e58))
+* **codex:** make AOS hook/MCP removal and merge independent of marker comments ([1b01254](https://github.com/hybridlabor-api/aos/commit/1b01254831f1d379fa0784d38c297df92d5f7c19))
+* **codex:** review follow-ups for F4 (features table, doctor hooks check, MCP sub-tables, deja ownership) ([6f42383](https://github.com/hybridlabor-api/aos/commit/6f4238383da4b5e21912d8a2c328ec3b41d35ac7))
+* **doctor:** no installer.js dependency, nested plugin skills, real MCSC and named agy hooks ([6fbbac8](https://github.com/hybridlabor-api/aos/commit/6fbbac8c1fa10a0d4a492d7e843d458b441c0c0f))
+* **gate:** classify feature-branch pushes by proving the destination from the git config (aos-22b) ([32e034a](https://github.com/hybridlabor-api/aos/commit/32e034ae34b1bc402bf5fb9fd95f4787f57a6441))
+* **gate:** fail closed, narrow the home policy, fix pipe and loop regressions (aos-22) ([c45c48a](https://github.com/hybridlabor-api/aos/commit/c45c48aa42ba7cac0822b71067d12967246fcf41))
+* **gate:** resolve cwd and variables for home-level targets, close review findings ([d8cc247](https://github.com/hybridlabor-api/aos/commit/d8cc24729c267bbfe52f5c3fdccdd5b34b14f917))
+* **gate:** review round 3, repo state and env taint, path normalisation, budget, aliases ([7d34331](https://github.com/hybridlabor-api/aos/commit/7d343318a4bd7686e6e4b73fdcfa79e01041ae3e))
+* **installer,doctor:** stop writing ~/.codex/skills, honour CLAUDE_CONFIG_DIR, single pluginSkills ([5f6f62d](https://github.com/hybridlabor-api/aos/commit/5f6f62dd87fc829b63e5295ac4a96e65c75e494e))
+* **installer:** aos-07 items 1-8 and 10, aos-16, aos-17 installer bugs ([d6c9641](https://github.com/hybridlabor-api/aos/commit/d6c96415cb1640c3d6dbabb6dd0632aeeecd88f8))
+* **installer:** aos-bus launcher with marker, real launcher list, go-buildinfo and uninstall records ([c901e10](https://github.com/hybridlabor-api/aos/commit/c901e105d604196fab68da7d2e1bbfea5d58bd1c))
+* **installer:** no empty or needless backups, de-duplicate kept-edit report; harden cli-spawn; document measured Codex roots ([c74ad95](https://github.com/hybridlabor-api/aos/commit/c74ad95f9ccec0399612236072149fff267cc04a))
+* **installer:** Quick Update plugin steps, single Codex skill root, drop HOME .codex-plugin ([a345195](https://github.com/hybridlabor-api/aos/commit/a345195683fd61360ae5a151aa5129645fb2fc3f))
+* **installer:** read .agents/AGENTS.md with its real case ([4009c4f](https://github.com/hybridlabor-api/aos/commit/4009c4f7371f383b8f863e8e938befde807099c0))
+* **installer:** string-aware JSONC parsing and no rewrite of unparseable configs ([2392b6b](https://github.com/hybridlabor-api/aos/commit/2392b6b395b1841097c0f5b369ab388383e60571))
+* **installer:** wire aos-acp on PATH, ship lib and trail.mjs for installed CLIs ([06e64ac](https://github.com/hybridlabor-api/aos/commit/06e64ac721fbd6193ec183335fe32c193539113c))
+* **mcp:** run computer-use via pinned npx and pin every npx MCP (aos-18, aos-20) ([375fa3b](https://github.com/hybridlabor-api/aos/commit/375fa3b9e7df5ec2063c26087ae673edb41ffc44))
+* **mcsc:** gate every startup CLI call, not only the inventory probe ([d08e7d0](https://github.com/hybridlabor-api/aos/commit/d08e7d09af388de714b0a4d1dfd0a03140999d86))
+* **mcsc:** stop the agy inventory probe from recursing through agy's own MCP servers ([7082b20](https://github.com/hybridlabor-api/aos/commit/7082b205bd1418a1cb337b77429336e9681f9b55))
+* **plugin-migration:** recursive plugin.json-aware skill evidence requiring every wanted skill ([01d4635](https://github.com/hybridlabor-api/aos/commit/01d4635f08f632e208a35d815d82c69804e31ec0))
+* **plugin:** parse real claude plugin list output, handle disabled and already-installed ([af48bb5](https://github.com/hybridlabor-api/aos/commit/af48bb5ca7597b82bbd46a29cba7c491db740a2d))
+* **plugin:** run claude plugin marketplace add/install after settings registration ([1c90589](https://github.com/hybridlabor-api/aos/commit/1c905898812a735e55cb6ff83d9336095c585709))
+* **plugins:** honest update log, 300s clone timeout, opt-outs, npx source, CLAUDE_CONFIG_DIR ([6e84722](https://github.com/hybridlabor-api/aos/commit/6e84722138e34be02dc15369f9bcdacde1728651))
+* **uninstall:** keep foreign Codex tables and JSONC comments, honour CLAUDE_CONFIG_DIR and AOS_PLUGIN_CLI=on ([676ae67](https://github.com/hybridlabor-api/aos/commit/676ae671d1dae828f2a8d21d547ba63a23bcd556))
+* **uninstall:** reverse agy, Codex, OpenCode, launcher and Claude plugin registrations ([5ba41f1](https://github.com/hybridlabor-api/aos/commit/5ba41f129277f7c741b1d41d561b107d9d2b52e5))
+
 ## [4.18.1](https://github.com/hybridlabor-api/aos/compare/v4.18.0...v4.18.1) (2026-10-02)
 
 
