@@ -3352,7 +3352,36 @@ function getTierExcludeSkills(tier) {
 //
 // Secrets never go into a harness config: every server that needs one is written in launcher form
 // (lib/mcp-secrets.js, bin/aos-mcp-env.mjs) and the values live in ~/.aos/secrets.env (0600).
-const mcpShipped = () => mcpSecrets.shippedServers(srcDir);
+// Ownership is judged against every shipped definition (both candidates of an app group), so a picked
+// official entry is still AOS-owned for update and uninstall.
+const mcpShipped = () => mcpSecrets.shippedAll(srcDir);
+// App-aware pick, once per process: winners are written, `retired` (losing candidates) are removed again.
+let mcpPickDetect = null;
+let mcpPickCache = null;
+const mcpPicks = () => {
+    if (!mcpPickCache) {
+        const detect = mcpPickDetect || require('./lib/mcp-pick').detectApps({ platform: process.platform, env: process.env });
+        mcpPickCache = mcpSecrets.shippedPicks(srcDir, { detect, env: process.env });
+    }
+    return mcpPickCache;
+};
+// Test hook: inject detect results (null restores real detection).
+function setMcpPickDetect(fn) { mcpPickDetect = typeof fn === 'function' ? fn : null; mcpPickCache = null; }
+// Drops AOS-owned entries of losing candidates from a harness server map (OpenCode shape with opencode=true).
+// A user's own same-name entry, http entries and entries holding inline secrets stay.
+function retireMcpServers(map, opencode = false) {
+    if (!map || typeof map !== 'object') return false;
+    const shipped = mcpShipped();
+    let changed = false;
+    for (const name of mcpPicks().retired) {
+        if (map[name] === undefined) continue;
+        const canon = opencode ? mcpSecrets.fromOpencode(map[name]) : map[name];
+        if (!canon || canon.url || mcpSecrets.inlineSecrets(canon.env).length || !mcpSecrets.isAosOwned(name, canon, null, shipped)) continue;
+        delete map[name];
+        changed = true;
+    }
+    return changed;
+}
 // null once the launcher or its lib could not be installed: nothing is then wrapped and no inline value is moved.
 let mcpLauncherFailed = false;
 const mcpLauncher = () => (mcpLauncherFailed ? null : mcpSecrets.launcherPath(homeDir));
@@ -3397,6 +3426,7 @@ function installMcpLauncher() {
         [path.join(srcDir, 'bin', mcpSecrets.LAUNCHER_FILE), mcpSecrets.launcherPath(homeDir)],
         [path.join(srcDir, 'lib', 'mcp-secrets.js'), path.join(homeDir, '.agents', 'lib', 'mcp-secrets.js')],
         [path.join(srcDir, 'lib', 'jsonc.js'), path.join(homeDir, '.agents', 'lib', 'jsonc.js')],
+        [path.join(srcDir, 'lib', 'mcp-pick.js'), path.join(homeDir, '.agents', 'lib', 'mcp-pick.js')],
     ];
     let ok = true;
     for (const [src, dest] of pairs) {
@@ -3440,6 +3470,7 @@ function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
             const before = JSON.stringify(data);
             const collector = mcpSecrets.createCollector();
             mcpSecrets.mergeServers(data.mcpServers, JSON.parse(JSON.stringify(servers)), { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(target) });
+            retireMcpServers(data.mcpServers);
             if (existing && JSON.stringify(data) === before) continue;
             if (!stashInlineSecrets(collector, target)) continue;
             fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -3635,6 +3666,9 @@ async function installMcpsForTarget(paths, ctx) {
     const skippedMcpConfigKeys = resolveUnsupportedMcpConfigKeys();
     try {
         const parsedMcpConfig = JSON.parse(mcpConfigStr);
+        // One MCP per app: the pick's winners replace the template's servers (placeholders resolved below).
+        const pickOnly = new Set(Object.keys(mcpPicks().servers).filter((n) => !(n in parsedMcpConfig.mcpServers)));
+        parsedMcpConfig.mcpServers = { ...mcpPicks().servers };
         // npm's Windows shim is deja.cmd, which Node refuses to spawn without
         // a shell (EINVAL since the CVE-2024-27980 fix) -- wrap the command in
         // cmd /c here so every generated config, the Codex TOML block and the
@@ -3668,7 +3702,8 @@ async function installMcpsForTarget(paths, ctx) {
 
         for (const [key, val] of Object.entries(parsedMcpConfig.mcpServers)) {
             let keep = !skippedMcpConfigKeys.includes(key);
-            for (const available of availableFolders) {
+            // An official pick runs outside mcps/; its package name may still contain a folder name.
+            for (const available of (pickOnly.has(key) && !JSON.stringify(val).includes('__MCPS_DIR__') ? [] : availableFolders)) {
                 if (!selectedMcps.includes(available) && JSON.stringify(val).includes(available)) {
                     keep = false;
                     break;
@@ -3779,6 +3814,7 @@ async function installMcpsForTarget(paths, ctx) {
                 const newServers = newConfig.mcpServers || {};
                 const collector = mcpSecrets.createCollector();
                 mcpSecrets.mergeServers(oldServers, newServers, { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(paths.mcpConfigPath) });
+                retireMcpServers(oldServers);
                 oldConfig.mcpServers = oldServers;
                 // The backup can hold credentials: only made (0600) when the merge really changes the content.
                 if (JSON.stringify(oldConfig) === beforeMerge) {
@@ -5183,17 +5219,24 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     const refused = new Set(Object.entries(priorTables)
         .filter(([, t]) => t.unparsed.length || (!mcpLauncher() && mcpSecrets.inlineSecrets(t.env).length))
         .map(([n]) => n));
+    // Losing pick candidates (no incoming entry): dropped only when the table is AOS-shaped and holds no inline secret.
+    const retired = new Set(mcpPicks().retired);
     const owns = (name, sec) => {
         const cfg = (servers || {})[name];
-        if (!cfg || refused.has(name)) return false;
+        const gone = !cfg && retired.has(name);
+        if ((!cfg && !gone) || refused.has(name)) return false;
         const t = mcpSecrets.parseCodexTables(sec.join('\n'))[name];
         const command = t && t.fields.command;
         if (typeof command !== 'string') return false;
-        const inc = mcpSecrets.unwrap(cfg);
-        const ok = Array.isArray(t.fields.args)
-            ? mcpSecrets.isAosOwned(name, { command, args: t.fields.args }, cfg, shipped)
-            : [cfg.command, inc.command].includes(command);
-        if (ok) ownedNames.add(name);
+        let ok;
+        if (gone) ok = Array.isArray(t.fields.args) && !mcpSecrets.inlineSecrets(t.env).length && mcpSecrets.isAosOwned(name, { command, args: t.fields.args }, null, shipped);
+        else {
+            const inc = mcpSecrets.unwrap(cfg);
+            ok = Array.isArray(t.fields.args)
+                ? mcpSecrets.isAosOwned(name, { command, args: t.fields.args }, cfg, shipped)
+                : [cfg.command, inc.command].includes(command);
+            if (ok) ownedNames.add(name);
+        }
         return ok;
     };
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
@@ -6179,6 +6222,7 @@ function syncMcpConfigFile(targetPath, masterMcpData) {
         if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
         const collector = mcpSecrets.createCollector();
         mcpSecrets.mergeServers(data.mcpServers, masterMcpData.mcpServers, { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(targetPath) });
+        retireMcpServers(data.mcpServers);
         if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
         if (!stashInlineSecrets(collector, targetPath)) return;
         if (writeConfigWithBackup(targetPath, data, before)) recordMcpConfigPath(targetPath);
@@ -6245,6 +6289,8 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
                 };
             }
         }
+
+        retireMcpServers(data.mcp, true);
 
         // Wire BDB AOS Plugin for OpenCode. `data` is handed in because this
         // function owns the write -- it merges MCP servers in the same pass.
@@ -7082,6 +7128,7 @@ module.exports = {
     installProjectHarness,
     promptMcpSelection,
     mirrorMcpServersTo,
+    setMcpPickDetect,
     ensureDejaExclude,
     // Manifest store (exported for verification tests)
     computeFileHash,
