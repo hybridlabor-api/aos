@@ -606,6 +606,97 @@ describe('fail closed: file I/O, length, types, pathological input', () => {
     });
 });
 
+describe('aos-22b push scopes: feature branches and bare pushes', () => {
+    const sc = (c) => g.commandScopes(c);
+    beforeEach(() => {
+        // plain names need a repository whose config proves the destination: a feature branch, no refmap
+        const d = path.join(home, 'repo-default');
+        fs.mkdirSync(path.join(d, '.git'), { recursive: true });
+        fs.writeFileSync(path.join(d, '.git', 'HEAD'), 'ref: refs/heads/feat/default\n');
+        fs.writeFileSync(path.join(d, '.git', 'config'), '');
+        g.setGateContext({ cwd: d, blockTs: 0, home, realHome: home });
+    });
+    const mk = (name, head, { link } = {}) => {
+        const d = path.join(home, name);
+        fs.mkdirSync(path.join(d, 'sub', 'deeper'), { recursive: true });
+        fs.mkdirSync(path.join(d, '.git'), { recursive: true });
+        fs.writeFileSync(path.join(d, '.git', 'HEAD'), head);
+        return d;
+    };
+    test('a plain branch name is branch:branch, so feature branches are push-feature', () => {
+        for (const c of ['git push -u origin fix/x', 'git push --set-upstream origin feat/y', 'git push origin fix/serviceinstall-windows', 'git push -u origin HEAD:fix/x',
+            'git push origin maintenance', 'git push origin feat/main-menu', 'git push -u origin fix/serviceinstall-windows']) assert.deepEqual(sc(c), ['push-feature'], c);
+    });
+    test('protected branches and unreadable refspecs are push-main', () => {
+        for (const c of ['git push origin main', 'git push origin master', 'git push origin HEAD:main', 'git push -f origin main', 'git push origin +main', 'git push origin refs/heads/main',
+            'git push origin develop', 'git push origin HEAD', 'git push origin @', 'git push origin refs/heads/fix/x']) assert.deepEqual(sc(c), ['push-main'], c);
+    });
+    test('push then gh pr create --base main is push-feature plus github-write, never push-main', () => {
+        assert.deepEqual([...sc('git push -u origin fix/serviceinstall-windows && gh pr create --base main')].sort(), ['github-write', 'push-feature']);
+        assert.deepEqual(sc('gh pr create --base main --title x --body y'), ['github-write']);
+    });
+    test('a bare push reads the current branch from HEAD: feature = push-feature, else push-main', () => {
+        const feat = mk('repo-feat', 'ref: refs/heads/fix/serviceinstall-windows\n');
+        const main = mk('repo-main', 'ref: refs/heads/main\n');
+        const master = mk('repo-master', 'ref: refs/heads/master\n');
+        const det = mk('repo-det', '0123456789abcdef0123456789abcdef01234567\n');
+        const run1 = (cwd, c) => { g.setGateContext({ cwd, blockTs: 0, home }); return sc(c); };
+        for (const c of ['git push', 'git push -u origin', 'git push --set-upstream origin']) {
+            assert.deepEqual(run1(feat, c), ['push-feature'], c);
+            assert.deepEqual(run1(path.join(feat, 'sub', 'deeper'), c), ['push-feature'], `${c} from a subdirectory`);
+            assert.deepEqual(run1(main, c), ['push-main'], c);
+            assert.deepEqual(run1(master, c), ['push-main'], c);
+            assert.deepEqual(run1(det, c), ['push-main'], `${c} on a detached HEAD`);
+            assert.deepEqual(run1(work, c), ['push-main'], `${c} outside a repository`);
+        }
+    });
+    test('cd X && and git -C X choose the repository', () => {
+        const feat = mk('repo-feat2', 'ref: refs/heads/feat/z\n');
+        const main = mk('repo-main2', 'ref: refs/heads/main\n');
+        g.setGateContext({ cwd: work, blockTs: 0, home });
+        assert.deepEqual(sc(`cd ${feat} && git push`), ['push-feature']);
+        assert.deepEqual(sc(`cd ${feat} && git push -u origin`), ['push-feature']);
+        assert.deepEqual(sc(`git -C ${feat} push`), ['push-feature']);
+        assert.deepEqual(sc(`git -C ${main} push -u origin`), ['push-main']);
+        assert.deepEqual(sc(`cd ${main} && git push`), ['push-main']);
+        assert.deepEqual(sc(`cd ${feat} && cd ${main} && git push`), ['push-main']);
+        assert.deepEqual(sc(`cd ${feat}/sub && git -C .. push`), ['push-feature']);
+        assert.deepEqual(sc(`git --git-dir=${feat}/.git push`), ['push-main'], 'an explicit git dir is not followed');
+        assert.deepEqual(sc(`git -c push.default=matching push`), ['push-main'], 'config overrides are push-main');
+    });
+    test('a linked worktree (.git file -> gitdir) is read, absolute and relative', () => {
+        const mainRepo = mk('repo-wt', 'ref: refs/heads/main\n');
+        const gd = path.join(mainRepo, '.git', 'worktrees', 'wt1');
+        fs.mkdirSync(gd, { recursive: true });
+        fs.writeFileSync(path.join(gd, 'HEAD'), 'ref: refs/heads/fix/serviceinstall-windows\n');
+        const wt = path.join(home, 'wt1');
+        fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(wt, '.git'), `gitdir: ${gd}\n`);
+        const gd2 = path.join(mainRepo, '.git', 'worktrees', 'wt2');
+        fs.mkdirSync(gd2, { recursive: true });
+        fs.writeFileSync(path.join(gd2, 'HEAD'), 'ref: refs/heads/main\n');
+        const wt2 = path.join(mainRepo, 'wt2dir');
+        fs.mkdirSync(wt2);
+        fs.writeFileSync(path.join(wt2, '.git'), 'gitdir: ../.git/worktrees/wt2\n');
+        g.setGateContext({ cwd: path.join(wt, 'src'), blockTs: 0, home });
+        assert.deepEqual(sc('git push -u origin'), ['push-feature']);
+        g.setGateContext({ cwd: wt2, blockTs: 0, home });
+        assert.deepEqual(sc('git push'), ['push-main']);
+        assert.equal(g.currentBranch(wt), 'fix/serviceinstall-windows');
+        assert.equal(g.currentBranch(wt2), 'main');
+    });
+    test('through the hook: a bare push on a feature branch is allowed by a push-feature grant', () => {
+        const feat = mk('repo-feat3', 'ref: refs/heads/fix/q\n');
+        add(human('hello'));
+        typed('gogate grant push-feature 1h');
+        add(human('go on'));
+        assert.equal(run('git push -u origin', { cwd: feat }).status, 0);
+        assert.equal(run('git push -u origin fix/x', { cwd: feat }).status, 0);
+        assert.equal(run('git push origin main', { cwd: feat }).status, 2);
+        assert.equal(run('git push -u origin', { cwd: path.join(home, 'repo-nope') }).status, 2);
+    });
+});
+
 describe('aos-22 read-only npm lookups and loops', () => {
     test('npm view/info/show/v is never guarded, alone or in loops, with or without sudo/time/watch', () => {
         const pkg = '@hybridlabor-api/bdb-agent-orchestrator@1.5.0';

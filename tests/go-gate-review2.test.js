@@ -55,7 +55,8 @@ describe('H1 push refmap escape', () => {
         'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=x GIT_CONFIG_VALUE_0=y git push origin feat:feat',
         'git remote set-url --push origin ../evil && git push origin feat:feat',
         'git remote add m2 ../x && git push m2 feat:feat',
-        'git push origin feat', 'git push -u origin feat', 'git push origin HEAD',
+        // a plain name or a bare push is push-feature only when the repo config proves it (H1b below)
+        'git push origin HEAD', 'git push origin @', 'HOME=/tmp git push -u origin feat', 'git --git-dir=x push origin feat',
     ];
     test('never push-feature; an explicit src:dst still is', () => {
         for (const c of escapes) assert.ok(!pushFeatureOnly(g.commandScopes(c)), `${c} -> ${JSON.stringify(g.commandScopes(c))}`);
@@ -66,6 +67,134 @@ describe('H1 push refmap escape', () => {
         add(human('carry on'));
         ok('git push origin feat:feat');
         for (const c of escapes) blocked(c);
+    });
+});
+
+describe('H1b push destinations proven by the git config files (aos-22b)', () => {
+    let repo;
+    const sc = (c) => g.commandScopes(c);
+    const feature = (c) => assert.deepEqual(sc(c), ['push-feature'], c);
+    const main = (c) => assert.deepEqual(sc(c), ['push-main'], c);
+    const mk = (head, config, dir = repo) => {
+        fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.git', 'HEAD'), head);
+        fs.writeFileSync(path.join(dir, '.git', 'config'), config);
+    };
+    const FEAT = 'ref: refs/heads/feat/work\n';
+    beforeEach(() => {
+        repo = path.join(home, 'repo');
+        mk(FEAT, '');
+        g.setGateContext({ cwd: repo, realHome: home });
+    });
+    afterEach(() => g.setGateContext({}));
+    const gitconfig = (text) => fs.writeFileSync(path.join(home, '.gitconfig'), text);
+
+    test('without refmaps and with a feature branch, plain names and bare pushes are push-feature', () => {
+        for (const c of ['git push origin feat', 'git push -u origin feat', 'git push', 'git push -u origin', 'git push --set-upstream origin', 'git push origin']) feature(c);
+        for (const c of ['git push origin main', 'git push origin HEAD', 'git push origin @', 'git push -f origin main']) main(c);
+    });
+    test('a remote.<name>.push refmap makes plain names and bare pushes push-main; explicit src:dst is not remapped', () => {
+        mk(FEAT, '[remote "origin"]\n\turl = x\n\tpush = refs/heads/feat/work:refs/heads/main\n');
+        for (const c of ['git push origin feat', 'git push -u origin feat', 'git push', 'git push origin']) main(c);
+        feature('git push origin feat:feat');
+        mk(FEAT, '[remote "other"]\n\tpush = refs/heads/*:refs/heads/main\n');
+        feature('git push origin feat');
+        main('git push other feat');
+        mk(FEAT, '[remote "origin"]\n\tmirror = true\n');
+        main('git push');
+    });
+    test('push.default upstream follows branch.<cur>.merge; a protected or unset upstream is push-main', () => {
+        mk(FEAT, '[push]\n\tdefault = upstream\n[branch "feat/work"]\n\tmerge = refs/heads/main\n');
+        main('git push');
+        mk(FEAT, '[push]\n\tdefault = upstream\n');
+        main('git push');
+        mk(FEAT, '[push]\n\tdefault = tracking\n[branch "feat/work"]\n\tmerge = refs/heads/feat/up\n');
+        feature('git push');
+        mk(FEAT, '[push]\n\tdefault = upstream\n[branch "feat/work"]\n\tmerge = refs/heads/feat/up\n');
+        feature('git push -u origin');
+    });
+    test('push.default simple needs an unset or matching merge; matching and nothing are push-main; current is the branch', () => {
+        mk(FEAT, '[branch "feat/work"]\n\tmerge = refs/heads/main\n');
+        main('git push');
+        mk(FEAT, '[push]\n\tdefault = simple\n[branch "feat/work"]\n\tmerge = refs/heads/feat/work\n');
+        feature('git push');
+        mk(FEAT, '[push]\n\tdefault = matching\n');
+        main('git push');
+        mk(FEAT, '[push]\n\tdefault = nothing\n');
+        main('git push');
+        mk(FEAT, '[push]\n\tdefault = current\n[branch "feat/work"]\n\tmerge = refs/heads/main\n');
+        feature('git push');
+        mk('ref: refs/heads/main\n', '[push]\n\tdefault = current\n');
+        main('git push');
+    });
+    test('branch.<cur>.pushRemote and remote.pushDefault count only when that remote has no refmap', () => {
+        mk(FEAT, '[branch "feat/work"]\n\tpushRemote = fork\n[remote "fork"]\n\tpush = refs/heads/feat/work:refs/heads/main\n');
+        main('git push');
+        mk(FEAT, '[remote]\n\tpushDefault = fork\n[remote "fork"]\n\tpush = x:refs/heads/main\n');
+        main('git push');
+        mk(FEAT, '[remote]\n\tpushDefault = fork\n[remote "fork"]\n\turl = u\n');
+        feature('git push');
+    });
+    test('include, includeIf, unreadable config, config.worktree and the global file are all read', () => {
+        mk(FEAT, '[include]\n\tpath = ../x\n');
+        main('git push'); main('git push origin feat');
+        mk(FEAT, '[includeIf "gitdir:~/x/"]\n\tpath = ../x\n');
+        main('git push');
+        mk(FEAT, '');
+        fs.rmSync(path.join(repo, '.git', 'config'));
+        fs.mkdirSync(path.join(repo, '.git', 'config'));
+        main('git push'); // a directory where the config should be: unreadable, fail closed
+        fs.rmSync(path.join(repo, '.git', 'config'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.git', 'config'), '');
+        feature('git push');
+        gitconfig('[push]\n\tdefault = upstream\n');
+        main('git push');
+        gitconfig('[include]\n\tpath = x\n');
+        main('git push origin feat');
+        gitconfig('[user]\n\tname = x\n');
+        feature('git push origin feat');
+        mk(FEAT, '[extensions]\n\tworktreeConfig = true\n');
+        fs.writeFileSync(path.join(repo, '.git', 'config.worktree'), '[remote "origin"]\n\tpush = a:refs/heads/main\n');
+        main('git push origin feat');
+    });
+    test('a linked worktree reads the common dir config and its own HEAD', () => {
+        const common = path.join(home, 'main-repo');
+        mk('ref: refs/heads/main\n', '[remote "origin"]\n\tpush = a:refs/heads/main\n', common);
+        const gd = path.join(common, '.git', 'worktrees', 'w');
+        fs.mkdirSync(gd, { recursive: true });
+        fs.writeFileSync(path.join(gd, 'HEAD'), FEAT);
+        fs.writeFileSync(path.join(gd, 'commondir'), '../..\n');
+        const wt = path.join(home, 'wt');
+        fs.mkdirSync(wt);
+        fs.writeFileSync(path.join(wt, '.git'), `gitdir: ${gd}\n`);
+        g.setGateContext({ cwd: wt, realHome: home });
+        main('git push'); main('git push origin feat');
+        fs.writeFileSync(path.join(common, '.git', 'config'), '');
+        feature('git push'); feature('git push origin feat');
+    });
+    test('-c, GIT_*/HOME/XDG env, --git-dir, GIT_CONFIG in the hook environment and a detached HEAD are push-main', () => {
+        assert.ok(!pushFeatureOnly(sc('GIT_CONFIG_GLOBAL=/x git push origin feat')), 'GIT_CONFIG_* is never push-feature');
+        for (const c of ['git -c remote.origin.push=a:b push origin feat', 'GIT_DIR=x git push', 'HOME=/tmp git push', 'XDG_CONFIG_HOME=/tmp git push',
+            'env HOME=/tmp git push origin feat', 'git --git-dir=.git push origin feat', 'git --work-tree=. push']) main(c);
+        mk('0123456789abcdef0123456789abcdef01234567\n', '');
+        main('git push'); feature('git push origin feat');
+        mk(FEAT, '');
+        process.env.GIT_CONFIG_COUNT = '1';
+        try { main('git push origin feat'); } finally { delete process.env.GIT_CONFIG_COUNT; }
+    });
+    test('through the hook with a push-feature grant: provable pushes pass, every refmap escape is blocked', () => {
+        typed('gogate grant push-feature 1h');
+        add(human('carry on'));
+        ok('git push -u origin feat', { cwd: repo });
+        ok('git push', { cwd: repo });
+        mk(FEAT, '[remote "origin"]\n\tpush = refs/heads/feat/work:refs/heads/main\n');
+        blocked('git push -u origin feat', { cwd: repo });
+        blocked('git push', { cwd: repo });
+        mk(FEAT, '[push]\n\tdefault = upstream\n[branch "feat/work"]\n\tmerge = refs/heads/main\n');
+        blocked('git push', { cwd: repo });
+        mk(FEAT, '[include]\n\tpath = x\n');
+        blocked('git push origin feat', { cwd: repo });
+        ok('git push origin feat:feat', { cwd: repo });
     });
 });
 

@@ -141,7 +141,7 @@ function stripPrefix(tok) {
   for (;;) {
     const t = unq(tok[i] ?? "");
     if (t === "!") { i++; continue; }
-    if (/^\w+=/.test(t)) { gitEnv ||= /^GIT_/.test(t); i++; continue; }
+    if (/^\w+=/.test(t)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=)/.test(t); i++; continue; }
     const w = WRAPPERS[base(tok[i] ?? "")];
     if (!w) break;
     const name = base(tok[i]);
@@ -149,7 +149,7 @@ function stripPrefix(tok) {
     let pos = w.pos || 0;
     while (i < tok.length) {
       const o = unq(tok[i]);
-      if (name === "env" && /^\w+=/.test(o)) { gitEnv ||= /^GIT_/.test(o); i++; continue; }
+      if (name === "env" && /^\w+=/.test(o)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=)/.test(o); i++; continue; }
       if (o.startsWith("-") && o !== "-") {
         if ((name === "env" && /^-S/.test(o)) || (name === "script" && o === "-c")) opaque = true;
         i += w.v?.test(o) ? 2 : 1;
@@ -200,7 +200,107 @@ const SAFE_PUSH_OPT = /^(?:-u|--set-upstream|-q|--quiet|-v|--verbose|--no-verify
 // explicit destination is never remapped by remote.<name>.push or push.default), the
 // destination not protected. Anything it cannot read (quotes, $, globs, @, +, refs/ outside
 // heads/tags, config overrides, stdin-fed xargs, no `:dst`) needs push-main.
-function pushScopes(args, unsafe, protectedFor) {
+// Current branch of the repository containing `dir`, read from HEAD without spawning git.
+// Handles a .git directory and a linked worktree (.git file -> gitdir). null = unknown or a
+// detached HEAD, which callers treat as the protected case.
+let segCwd = "";
+// { gitdir, common } of the repository containing `dir` (a .git directory, or a linked
+// worktree's .git file -> gitdir -> commondir), found without spawning git. null = none.
+function locateGit(dir) {
+  try {
+    let d = resolve(dir);
+    for (let k = 0; k < 64; k++) {
+      let gitdir = null;
+      try {
+        const g = join(d, ".git"), st = statSync(g);
+        if (st.isDirectory()) gitdir = g;
+        else if (st.isFile() && st.size < 4096) {
+          const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(g, "utf8"));
+          if (m) gitdir = resolve(d, m[1].trim());
+        }
+      } catch { /* no .git here */ }
+      if (gitdir) {
+        let common = gitdir;
+        try { common = resolve(gitdir, readFileSync(join(gitdir, "commondir"), "utf8").trim()); } catch { /* not a linked worktree */ }
+        return { gitdir, common };
+      }
+      const up = resolve(d, "..");
+      if (up === d) return null;
+      d = up;
+    }
+  } catch { /* unreadable: unknown */ }
+  return null;
+}
+
+// Current branch, read from HEAD. null = unknown or a detached HEAD (callers treat both as protected).
+export function currentBranch(dir) {
+  const loc = locateGit(dir);
+  if (!loc) return null;
+  try {
+    const f = join(loc.gitdir, "HEAD");
+    const head = statSync(f).size < 4096 ? readFileSync(f, "utf8").trim() : "";
+    const b = /^ref:\s*refs\/heads\/(\S+)$/.exec(head)?.[1];
+    return b && SAFE_NAME.test(b) ? b : null;
+  } catch { return null; }
+}
+
+// Minimal git config reader: system, XDG, ~/.gitconfig (the OS user's real home, injectable via
+// setGateContext({realHome})), the repo's config (the common dir for a linked worktree) and
+// config.worktree when extensions.worktreeConfig is on. Any include/includeIf, unreadable or
+// oversized file, or a GIT_* variable that redirects git makes it null: callers then fail closed.
+const GIT_REDIRECT = /^(?:GIT_DIR|GIT_COMMON_DIR|GIT_WORK_TREE|GIT_CONFIG\w*|GIT_INDEX_FILE|GIT_NAMESPACE)$/;
+function parseGitConfig(text, out) {
+  let section = "", sub = null;
+  for (let line of text.split(/\r?\n/)) {
+    line = line.trim();
+    if (!line || line[0] === "#" || line[0] === ";") continue;
+    const h = /^\[\s*([A-Za-z0-9.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\](.*)$/.exec(line);
+    if (h) {
+      section = h[1].toLowerCase();
+      sub = h[2] ?? null;
+      if (/^include(?:if)?(?:\.|$)/.test(section)) return false;
+      if (sub === null && section.includes(".")) { const i = section.indexOf("."); sub = h[1].slice(i + 1); section = section.slice(0, i); }
+      line = h[3].trim();
+      if (!line || /^[#;]/.test(line)) continue;
+    }
+    const m = /^([A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(.*))?$/.exec(line);
+    if (!m) continue;
+    const v = m[2] === undefined ? "true" : m[2].replace(/\s+[#;].*$/, "").trim().replace(/^"(.*)"$/, "$1");
+    out.push({ s: section, sub, k: m[1].toLowerCase(), v });
+  }
+  return true;
+}
+export function gitConfig(repoDir) {
+  if (Object.keys(process.env).some((k) => GIT_REDIRECT.test(k))) return null;
+  const loc = locateGit(repoDir);
+  if (!loc) return null;
+  const rh = gateCtx.realHome ?? osHome();
+  const out = [];
+  const readOne = (f) => {
+    let text;
+    try {
+      if (statSync(f).size > 256 * 1024) return false;
+      text = readFileSync(f, "utf8");
+    } catch (e) { return e?.code === "ENOENT" || e?.code === "ENOTDIR"; }
+    return parseGitConfig(text, out);
+  };
+  for (const f of ["/etc/gitconfig", join(process.env.XDG_CONFIG_HOME || join(rh, ".config"), "git", "config"), join(rh, ".gitconfig"), join(loc.common, "config")]) if (!readOne(f)) return null;
+  const last = (s, sub, k) => out.filter((e) => e.s === s && e.sub === sub && e.k === k).at(-1)?.v;
+  if (/^(?:true|yes|on|1)$/i.test(last("extensions", null, "worktreeconfig") ?? "") && !readOne(join(loc.gitdir, "config.worktree"))) return null;
+  return {
+    get: (s, sub, k) => last(s, sub ?? null, k),
+    all: (s, sub, k) => out.filter((e) => e.s === s && e.sub === (sub ?? null) && e.k === k).map((e) => e.v),
+  };
+}
+const isTrue = (v) => /^(?:true|yes|on|1)$/i.test(v ?? "");
+
+// A plain branch name (`git push origin fix/x`) and a bare push (`git push [-u] [remote]`) are
+// push-feature only when the config files PROVE the destination is an unprotected branch:
+// no remote.<name>.push refmap (or mirror) for any remote involved, and for a bare push the
+// current branch plus push.default (simple/current: the branch's own name, and for simple a
+// branch.<cur>.merge that is unset or equal; upstream/tracking: branch.<cur>.merge). Everything
+// else (matching, nothing, includes, -c, GIT_*, detached HEAD, unknown branch) is push-main.
+function pushScopes(args, unsafe, protectedFor, repo = null) {
   let main = unsafe, publish = false;
   const pos = [];
   for (let i = 0; i < args.length; i++) {
@@ -212,9 +312,34 @@ function pushScopes(args, unsafe, protectedFor) {
     else pos.push(t);
   }
   const [remote, ...refs] = pos;
-  if (!remote || !SAFE_NAME.test(remote) || !refs.length) main = true; // bare push: current branch and refmap unknown
+  if (remote && !SAFE_NAME.test(remote)) main = true;
   const prot = protectedFor(remote || "");
-  for (const r of refs) {
+  const cfg = repo?.cfg ?? null, branch = repo?.branch ?? null;
+  const refmap = (name) => !!cfg && !!name && (cfg.all("remote", name, "push").length > 0 || isTrue(cfg.get("remote", name, "mirror")));
+  const badBranch = (b) => !b || b.startsWith("-") || b.startsWith(".") || /^head$/i.test(b) || isProtected(b, prot);
+  if (cfg && isTrue(cfg.get("push", null, "followtags"))) publish = true;
+  if (!refs.length) {
+    // bare push: the remote and the destination both come from the config
+    if (!cfg || !branch) main = true;
+    else {
+      const named = [remote, cfg.get("branch", branch, "pushremote"), cfg.get("remote", null, "pushdefault"), cfg.get("branch", branch, "remote")].filter(Boolean);
+      if ([...named, named[0] ?? "origin"].some(refmap)) main = true; // no remote named anywhere: git pushes to origin
+      if (named[0] && /^\./.test(named[0])) main = true;
+      const mode = (cfg.get("push", null, "default") ?? "simple").toLowerCase();
+      const merge = cfg.get("branch", branch, "merge");
+      let dst = null;
+      if (mode === "current") dst = branch;
+      else if (mode === "simple") dst = merge === undefined || merge === `refs/heads/${branch}` ? branch : null;
+      else if (mode === "upstream" || mode === "tracking") dst = /^refs\/heads\//.test(merge ?? "") ? merge.slice(11) : null;
+      if (badBranch(dst)) main = true;
+    }
+  }
+  for (const r0 of refs) {
+    // `fix/x` on the command line means `fix/x:fix/x` unless a push refmap exists for the remote;
+    // HEAD, @ and refs/... stay unreadable.
+    const plain = !r0.includes(":") && /^[A-Za-z0-9._/-]+$/.test(r0) && !/^refs\//.test(r0);
+    if (plain && (!cfg || !remote || refmap(remote))) { main = true; continue; }
+    const r = plain ? `${r0}:${r0}` : r0;
     const m = /^([A-Za-z0-9._/-]+):([A-Za-z0-9._/-]+)$/.exec(r);
     if (/^(?:refs\/tags\/|v?\d+(?:\.\d+)+)/.test(r.split(":").pop())) { publish = true; continue; }
     if (!m) { main = true; continue; } // no explicit destination
@@ -257,11 +382,21 @@ export function classify(seg, protectedFor = staticResolver) {
     return inner?.length && inner.every((x) => x === "destructive") ? ["destructive"] : null;
   }
   if (cmd === "git" || cmd === "hub") {
-    let i = 1, config = false;
+    let i = 1, config = false, repoDir = segCwd || gateCtx.cwd || process.cwd();
     for (;;) {
       const t = unq(tok[i] ?? "");
-      if (GIT_VALUE_OPTS.test(t)) { config ||= /^(?:-c|--config-env)$/.test(t); i += 2; }
-      else if (/^(?:-[cC].|--[\w-]+=)/.test(t)) { config ||= /^(?:-c.|--config-env=)/.test(t); i++; }
+      if (GIT_VALUE_OPTS.test(t)) {
+        config ||= /^(?:-c|--config-env)$/.test(t);
+        if (t === "-C") repoDir = resolve(expandHome(repoDir), expandHome(unq(tok[i + 1] ?? "")));
+        else if (/^--(?:git-dir|work-tree)$/.test(t)) repoDir = null;
+        i += 2;
+      }
+      else if (/^(?:-[cC].|--[\w-]+=)/.test(t)) {
+        config ||= /^(?:-c.|--config-env=)/.test(t);
+        if (/^-C./.test(t)) repoDir = resolve(expandHome(repoDir), expandHome(t.slice(2)));
+        else if (/^--(?:git-dir|work-tree)=/.test(t)) repoDir = null;
+        i++;
+      }
       else if (GIT_FLAG_OPTS.test(t)) i++;
       else if (t.startsWith("-")) return catchAll(tok, seg) ? null : []; // unknown global option
       else break;
@@ -269,7 +404,7 @@ export function classify(seg, protectedFor = staticResolver) {
     const sub = unq(tok[i]), r = tok.slice(i + 1).map(unq);
     if (sub === "push") {
       const unsafe = config || gitEnv || /[<'"$\x60\\*?{}[\]~^]/.test(tok.slice(i).join(" "));
-      return pushScopes(r, unsafe, protectedFor);
+      return pushScopes(r, unsafe, protectedFor, repoDir ? { branch: currentBranch(repoDir), cfg: gitConfig(repoDir) } : null);
     }
     if (sub === "reset" && r.includes("--hard")) return ["destructive"];
     if (sub === "clean" && r.some((t) => /^-[a-zA-Z]*f/.test(t) || t === "--force")) return ["destructive"];
@@ -936,8 +1071,15 @@ function scopesOf(orig, protectedFor) {
   const command = commandView(orig).text;
   // Raw text on purpose: data that a later pipe stage turns into commands must stay visible.
   if (feedsShell(segs) && catchAll(tokens(String(orig)), "", true)) return null;
+  // The working directory follows `cd X &&` so a bare push reads the right repository.
+  let cwd = gateCtx.cwd || process.cwd();
+  const outerCwd = segCwd;
   for (const seg of segs) {
-    const s = classify(seg, protectedFor);
+    segCwd = cwd;
+    let s;
+    try { s = classify(seg, protectedFor); } finally { segCwd = outerCwd; }
+    const cdTok = stripPrefix(tokens(seg)).rest;
+    if (/^(?:cd|pushd)$/.test(base(cdTok[0] ?? "")) && cdTok[1]) cwd = resolve(expandHome(cwd), expandHome(unqQ(cdTok[1])));
     if (s === null) return null;
     if (!s.length && GUARDED_PATTERNS.some((r) => r.test(seg))) return null;
     s.forEach((x) => out.add(x));
