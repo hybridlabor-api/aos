@@ -58,11 +58,11 @@ test('dispatcher prefers skills instead of closing the list', () => {
     assert.match(dispatch, /commonSkills = Array\.isArray\(registryResult\?\.common\)/);
 });
 
-test('the seven pipeline nodes keep their order and models', () => {
+test('the seven pipeline nodes keep their order and pin no model', () => {
     assert.deepStrictEqual(Object.keys(nodes.nodes), ['architect', 'techlead', 'ui_ux', 'engineering', 'media_eventtech', 'reviewer', 'shipping']);
     for (const [id, n] of Object.entries(nodes.nodes)) {
         assert.ok(n.skills.length > 0, `${id} has own skills`);
-        assert.ok(n.model, `${id} has a model`);
+        assert.ok(!('model' in n), `${id} pins no model (pipeline.json decides)`);
     }
 });
 

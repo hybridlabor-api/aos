@@ -74,10 +74,15 @@ test('an old --init-default file: tier warns, its gemini model errors, claude/co
     assert.deepStrictEqual(res.filter((r) => !r.ok && !r.warningOnly).map((r) => r.name), ['Agent model techlead/antigravity']);
 });
 
-test('a role key matching no agent warns (inert override); aliases such as ui_ux do too', () => {
-    const res = run({ ui_ux: { models: { claude: 'fable' } }, godmode_ui_ux: { models: { claude: 'fable' } } });
-    assert.deepStrictEqual(res.map((r) => r.name), ['Agent role ui_ux']);
+test('a role key matching no agent warns (inert override)', () => {
+    const res = run({ uix: { models: { claude: 'fable' } }, godmode_ui_ux: { models: { claude: 'fable' } } });
+    assert.deepStrictEqual(res.map((r) => r.name), ['Agent role uix']);
     assert.strictEqual(res[0].warningOnly, true);
+});
+
+test('dispatcher node ids and helper roles are valid keys', () => {
+    const m = { models: { claude: 'haiku' } };
+    assert.deepStrictEqual(run({ ui_ux: m, load_registry: m, merge_state: m, archify_verify: m, validate_skills: m }), []);
 });
 
 test('models that is not an object is an error, not "unknown harness 0"', () => {

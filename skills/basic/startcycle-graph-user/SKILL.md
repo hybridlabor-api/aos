@@ -88,7 +88,8 @@ Pick the worker path in this priority order, first one found wins:
    directly per the raw-fallback column, following the `antigravity` skill's
    invocation pattern and cost discipline.
 3. **None present** → fall back to Claude Code's own `Agent` tool for each
-   worker, with an explicit `model: "haiku"` override. This is the only path
+   worker, with a `model` only if `.aos/pipeline.json` or the user names one
+   (otherwise it inherits the session model). This is the only path
    that costs Anthropic tokens for the worker step, and the only one
    guaranteed to exist everywhere — it is the floor, not the default.
 
@@ -110,8 +111,8 @@ itself, and treat an empty body as a failure no matter what the status says.
 `Workflow` script.** A `Workflow` script's body has no shell or filesystem
 access (ambient `agent()`/`pipeline()` globals only), so it cannot itself
 check `command -v` or shell out to `agy-job`. If you reach for the `Workflow`
-tool for the worker step, that already means you're on the haiku fallback
-path (case 4) — cases 1-3 are driven directly from your own Bash calls, no
+tool for the worker step, that already means you're on the Agent-tool fallback
+path (case 3) — cases 1-3 are driven directly from your own Bash calls, no
 `Workflow` tool involved.
 
 ## 3. Model choice — the session model unless overridden

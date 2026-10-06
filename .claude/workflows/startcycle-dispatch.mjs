@@ -35,7 +35,7 @@
 //    .agents/state.schema.json's $defs.stateFragment) and never touches
 //    state.json. Immediately after each pipeline() call returns -- the
 //    barrier where every parallel node has finished -- mergeStateD() below
-//    invokes one dedicated haiku agent that folds every state.d/*.json
+//    invokes one dedicated helper agent (role merge_state) that folds every state.d/*.json
 //    fragment into state.json, deterministically, before the run continues.
 //    This still happens inside the workflow run, never deferred, because
 //    graph-gate.mjs reads state.json at turn end. Sequential nodes
@@ -43,15 +43,15 @@
 //    pipeline() fan-out, so they are not part of this race and keep
 //    writing state.json directly, same as before.
 //
-// 4. The seven node identities (persona file, model, which skills each may
+// 4. The seven node identities (persona file, which skills each may
 //    reach for, build-node instructions) used to be hardcoded in this
 //    script. They now live in .agents/nodes.json (owned by a different
 //    agent than this file) so that registry can grow without touching this
 //    dispatcher. Since this script has no filesystem access (see #1), it
 //    can't read that file itself either -- so the very first thing this run
-//    does is spawn a small haiku `load-registry` agent whose only job is to
+//    does is spawn a small `load-registry` agent whose only job is to
 //    read .agents/nodes.json and return it, schema-validated. Everything
-//    downstream (BUILD_NODES, NODE_ENUM, NODE_NAMES, every agentType/model
+//    downstream (BUILD_NODES, NODE_ENUM, NODE_NAMES, every agentType
 //    passed to agent(), every skills allowlist, every build-node
 //    instruction string) is derived from that returned object, not
 //    hardcoded. If the registry fails to load or comes back with fewer
@@ -235,7 +235,7 @@ if (typeof globalThis.agent === 'undefined') {
       try {
         const nodesPath = path ? path.resolve('.agents', 'nodes.json') : '.agents/nodes.json';
         if (fs && fs.existsSync(nodesPath)) {
-          return JSON.parse(fs.readFileSync(nodesPath, 'utf8'));
+          return { ...JSON.parse(fs.readFileSync(nodesPath, 'utf8')), pipeline: readPipelineConfigFs() };
         }
       } catch {}
       return { version: 0, nodes: {} };
@@ -587,6 +587,50 @@ function humanList(items) {
   return `${quoted.slice(0, -1).join(', ')}, or ${quoted[quoted.length - 1]}`;
 }
 
+// Model resolution (docs/agent-models.md). AOS pins no model: a node or helper agent gets a model
+// only from pipeline.json (same lookup order and key normalization as installer resolveAgentConfig,
+// harness = claude), otherwise agent() is called without `model` and inherits the session model.
+// Helper roles (valid pipeline.json keys): load_registry, merge_state, archify_verify, validate_skills.
+let pipelineCfg = null;
+
+function readPipelineConfigFs() {
+  if (!fs || !path || !os) return null;
+  const candidates = [
+    path.resolve('.aos', 'pipeline.json'),
+    path.resolve('.aos', 'project.json'),
+    path.join(os.homedir(), '.aos', 'pipeline.json'),
+  ];
+  for (const p of candidates) {
+    try {
+      if (!fs.existsSync(p)) continue;
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (data && data.pipeline && typeof data.pipeline === 'object') return data.pipeline;
+    } catch {}
+  }
+  return null;
+}
+
+// First role key (agent slug before node id) with a usable claude model wins; null = inherit.
+function modelFor(...roles) {
+  if (!pipelineCfg) return null;
+  for (const role of roles) {
+    if (!role) continue;
+    const cfg = pipelineCfg[String(role).toLowerCase().replace(/-/g, '_')] || pipelineCfg[role];
+    if (!cfg || typeof cfg !== 'object') continue;
+    const models = cfg.models && typeof cfg.models === 'object' ? cfg.models : {};
+    const value = Object.prototype.hasOwnProperty.call(models, 'claude') ? models.claude
+      : (cfg.model !== undefined && (!cfg.harness || cfg.harness === 'claude')) ? cfg.model : undefined;
+    if (typeof value === 'string' && value !== '' && !/\s/.test(value)) return value;
+  }
+  return null;
+}
+
+const modelOpt = (...roles) => {
+  const model = modelFor(...roles);
+  return model ? { model } : {};
+};
+const nodeModelOpt = (n) => modelOpt(n.agentType, n.id);
+
 // Centralizes every escalation path through one place, so `needs_human` and
 // `phase: escalated` actually land in state.json instead of only in this
 // script's return value (found the same way: grep for "needs_human" in an
@@ -612,7 +656,7 @@ async function escalate(reason, extra = {}) {
 // parallel build nodes have finished this pass) -- never deferred, since
 // .claude/hooks/graph-gate.mjs reads production_artifacts/state.json at turn
 // end and needs the merged result to already be there. Deterministic fold
-// only: model 'haiku', explicitly told not to invent, reinterpret, or drop
+// only (role merge_state, haiku suggested by the shipped pipeline default), explicitly told not to invent, reinterpret, or drop
 // any field.
 async function mergeStateD() {
   return await agent(
@@ -641,7 +685,7 @@ async function mergeStateD() {
       'in; skipped lists any fragment filenames that could not be merged, each with a short reason; needsHuman is true if any fragment requested it.',
     {
       label: `merge-${iteration}`,
-      model: 'haiku',
+      ...modelOpt('merge_state'),
       schema: {
         type: 'object',
         required: ['merged', 'skipped', 'needsHuman'],
@@ -671,7 +715,7 @@ async function verifyArchifyArtifacts() {
       'Return only: { "validateOk": boolean, "deliverOk": boolean, "checksPassed": number, "checkCount": number, "error": string }.',
     {
       label: `archify-verify-${iteration}`,
-      model: 'haiku',
+      ...modelOpt('archify_verify'),
       schema: {
         type: 'object',
         required: ['validateOk', 'deliverOk', 'checksPassed', 'checkCount', 'error'],
@@ -699,17 +743,17 @@ const REGISTRY_SCHEMA = {
     version: { type: 'number' },
     description: { type: 'string' },
     common: { type: 'array', items: { type: 'string' } },
+    pipeline: { type: ['object', 'null'] },
     nodes: {
       type: 'object',
       minProperties: 1,
       additionalProperties: {
         type: 'object',
-        required: ['label', 'agentType', 'personaFile', 'model', 'role'],
+        required: ['label', 'agentType', 'personaFile', 'role'],
         properties: {
           label: { type: 'string' },
           agentType: { type: 'string' },
           personaFile: { type: 'string' },
-          model: { type: 'string' },
           role: { type: 'string', enum: ['plan', 'approve', 'build', 'review', 'gate'] },
           // artifactKey/writes/instructions are null on nodes where they don't apply (e.g. techlead
           // has no artifactKey, architect/techlead/reviewer/shipping have writes: null and
@@ -730,13 +774,20 @@ const REQUIRED_NODE_IDS = ['architect', 'techlead', 'ui_ux', 'engineering', 'med
 
 export async function runWorkflow() {
 try {
+// Without fs (Claude workflow runtime) the loader itself cannot know its own model: it inherits, and
+// reads the pipeline config for every later spawn.
+pipelineCfg = readPipelineConfigFs();
 const registryResult = await agent(
   'Read the file .agents/nodes.json (repository root) and return its exact contents, parsed as JSON, matching ' +
     'the given schema. This is a read-only lookup, not a reasoning task: do not invent, modify, reinterpret, ' +
     'merge, or add any field that is not literally present in the file. If the file is missing, unreadable, or ' +
-    'not valid JSON, return { "version": 0, "nodes": {} } rather than guessing at its contents.',
-  { label: 'load-registry', model: 'haiku', schema: REGISTRY_SCHEMA }
+    'not valid JSON, return { "version": 0, "nodes": {} } rather than guessing at its contents. ' +
+    'Also add a top-level "pipeline" field: the value of the "pipeline" object from the first of these files that ' +
+    'exists, parses as JSON and has a "pipeline" object: ./.aos/pipeline.json, ./.aos/project.json, ' +
+    '~/.aos/pipeline.json; null if none does. Copy it verbatim.',
+  { label: 'load-registry', ...modelOpt('load_registry'), schema: REGISTRY_SCHEMA }
 );
+if (!pipelineCfg && registryResult?.pipeline && typeof registryResult.pipeline === 'object') pipelineCfg = registryResult.pipeline;
 
 const registryNodes = registryResult?.nodes ?? {};
 commonSkills = Array.isArray(registryResult?.common) ? registryResult.common.filter((s) => typeof s === 'string') : [];
@@ -832,7 +883,7 @@ if (mandatorySkillNames.length > 0) {
       'Return only: { "found": string[], "missing": string[], "store_matches": string[], "suggestions": string[] }.',
     {
       label: 'validate-mandatory-skills',
-      model: 'haiku',
+      ...modelOpt('validate_skills'),
       schema: {
         type: 'object',
         required: ['found', 'missing', 'store_matches'],
@@ -896,7 +947,7 @@ while (!approved) {
     {
       label: `architect-${iteration}`,
       agentType: architectNode.agentType,
-      model: architectNode.model,
+      ...nodeModelOpt(architectNode),
       schema: {
         type: 'object',
         required: ['planPath', 'needsMedia'],
@@ -982,7 +1033,7 @@ while (!approved) {
     {
       label: `techlead-${iteration}`,
       agentType: techleadNode.agentType,
-      model: techleadNode.model,
+      ...nodeModelOpt(techleadNode),
       schema: {
         type: 'object',
         required: ['approved', 'reason'],
@@ -1042,7 +1093,7 @@ while (!reviewedClean) {
   const isSolo = nodesToRun.length === 1;
   const pipelineResults = await pipeline(nodesToRun, (n) => {
     const openFindings = findings.filter((f) => f.node === n.id && f.status === 'open');
-    const opts = { label: n.id, agentType: n.agentType, model: n.model };
+    const opts = { label: n.id, agentType: n.agentType, ...nodeModelOpt(n) };
     if (isSolo) {
       opts.schema = {
         type: 'object',
@@ -1110,7 +1161,7 @@ while (!reviewedClean) {
     {
       label: `reviewer-${iteration}`,
       agentType: reviewerNode.agentType,
-      model: reviewerNode.model,
+      ...nodeModelOpt(reviewerNode),
       schema: {
         type: 'object',
         required: ['findings', 'blockingCount'],
@@ -1216,7 +1267,7 @@ while (!allGatesPass) {
     {
       label: `shipping-${iteration}`,
       agentType: shippingNode.agentType,
-      model: shippingNode.model,
+      ...nodeModelOpt(shippingNode),
       schema: {
         type: 'object',
         required: ['gate', 'blockingNodes'],
@@ -1258,7 +1309,7 @@ while (!allGatesPass) {
 
   const isSolo = blockingNodes.length === 1;
   const pipelineResults = await pipeline(blockingNodes, (n) => {
-    const opts = { label: `${n.id}-gate-fix-${iteration}`, agentType: n.agentType, model: n.model };
+    const opts = { label: `${n.id}-gate-fix-${iteration}`, agentType: n.agentType, ...nodeModelOpt(n) };
     if (isSolo) {
       opts.schema = {
         type: 'object',

@@ -29,6 +29,16 @@ AOS pins no model. Every harness gets agent files without a `model` and the agen
 - A value that is empty, contains whitespace or a newline, is not a string, or (OpenCode) is not `provider/model` is skipped with a warning when agent files are compiled: no model is written and no other model is substituted.
 - Role keys must be agent slugs with `-` as `_`; a key matching no agent in `.agents/AGENTS.md` is inert and the doctor warns. `setup-subagents --set-role` still accepts the old short keys (`ui_ux`, `engineering`, `media_eventtech`, `shipping`) and writes the real slug.
 
+### /startcycle-graph dispatcher and helper agents
+
+`.agents/nodes.json` pins no model. The dispatcher (`.claude/workflows/startcycle-dispatch.mjs`) passes `model` to `agent()` only when `pipeline.json` has a `claude` model for the node (role = agent slug, then node id: `godmode_ui_ux` or `ui_ux`); otherwise it passes none and the agent inherits the session model.
+
+Helper agents use these role keys (valid for `aos-doctor`): `load_registry`, `merge_state`, `archify_verify`, `validate_skills`. The `escalate` step has no key and always inherits.
+
+**Shipped default.** `assets/pipeline.default.json` suggests `haiku` for the four helper roles and nothing else. The installer copies it to `~/.aos/pipeline.json` **only if that file does not exist** (it carries a top-level `_comment`) and never overwrites or removes it, so the file is yours to edit; delete an entry to inherit. A project `.aos/pipeline.json` replaces it whole (see below), so copy the helper entries over if you want them there.
+
+Without filesystem access (the Claude workflow runtime) the `load-registry` agent itself cannot read its own model from the file and inherits; it returns the pipeline config and every later spawn uses it.
+
 ### Which file wins
 
 First file wins, no merge: `.aos/pipeline.json` in the project, then `.aos/project.json`, then `~/.aos/pipeline.json`. The first one that parses and has a `pipeline` object is used whole. An unparseable file is skipped (the installer moves on to the next); `aos-doctor` reports it.

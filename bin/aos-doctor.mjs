@@ -514,6 +514,8 @@ function checkAgentModels() {
   const slugs = agentsMd ? new Set([...readFileSync(agentsMd, 'utf8').split(/\n## /).slice(1)]
     .filter((b) => /-\s*\*\*Role\*\*:/.test(b))
     .map((b) => b.split('\n')[0].replace(/^[^\w]+/, '').trim().split(/\s+/)[0].toLowerCase().replace(/-/g, '_'))) : null;
+  // Node ids and the /startcycle-graph helper agents are valid role keys too (docs/agent-models.md).
+  if (slugs) for (const k of ['ui_ux', 'engineering', 'media_eventtech', 'shipping', 'load_registry', 'merge_state', 'archify_verify', 'validate_skills']) slugs.add(k);
   const files = [
     path.join(process.cwd(), '.aos', 'pipeline.json'),
     path.join(process.cwd(), '.aos', 'project.json'),

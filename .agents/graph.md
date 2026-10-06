@@ -84,7 +84,7 @@ Seven, up from the original five — `Planner_Orchestrator` is split into
 **Architect** (system plan) and **TechLead** (execution coordination,
 capability-map approval) per the reference diagram (B5), and an explicit
 **Reviewer** is added (B1's adversarial-review step, modeled on B3's
-`doubt-driven-development` discipline — see below). Node identity, model,
+`doubt-driven-development` discipline — see below). Node identity
 and skill allowlist now come from `.agents/nodes.json` (a declarative
 registry the dispatcher loads at run start via a `load-registry` step) —
 this table stays the routing summary; per-node config lives in the
@@ -161,8 +161,8 @@ a Claude-only file:
   Code's Dynamic Workflows runtime (a script holds the loop and branches;
   the seven agents are leaves it calls via `agent()`/`pipeline()`, never
   calling each other). The script's first action is a `load-registry` step
-  that reads `.agents/nodes.json` for each node's `agentType`, `model`, and
-  `skills` allowlist — if a required node id is missing from that file, the
+  that reads `.agents/nodes.json` for each node's `agentType` and
+  `skills` allowlist (no model: a node gets one only from `pipeline.json`, role = agent slug or node id, harness `claude`; otherwise `agent()` is called without `model` and inherits the session model) — if a required node id is missing from that file, the
   script escalates rather than falling back to a hardcoded list. It's a
   translation, not a re-derivation — every edge in the table above has a
   corresponding branch in that script, with two deliberate exceptions: the
@@ -184,8 +184,8 @@ a Claude-only file:
   writing the same file at once would race and silently drop an update.
   Each writes only its own `production_artifacts/state.d/<nodeId>.json`
   fragment instead; immediately after the `pipeline()` call returns (the
-  barrier where every parallel node has finished), one dedicated `haiku`
-  merge step folds every fragment into `state.json` before the run
+  barrier where every parallel node has finished), one dedicated
+  merge step (role `merge_state`, model from `pipeline.json`, `haiku` by the shipped default) folds every fragment into `state.json` before the run
   continues — never deferred, since `graph-gate.mjs` reads `state.json` at
   turn end. The fragment-and-merge machinery exists ONLY because parallel
   writers would race. When a pass fans out to exactly ONE build node (the

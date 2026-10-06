@@ -3889,6 +3889,18 @@ function resolveAgentConfig(agentSlug, harness, pipelineConfig = null) {
     return { model, enabled: !roleCfg || roleCfg.enabled !== false, harness };
 }
 
+// Ships the suggested helper-agent models (assets/pipeline.default.json) as a normal, user-editable
+// ~/.aos/pipeline.json. Written only when absent ('wx'): an existing file is never touched.
+function installPipelineDefault({ targetHome = homeDir } = {}) {
+    const src = path.join(srcDir, 'assets', 'pipeline.default.json');
+    const dest = path.join(targetHome, '.aos', 'pipeline.json');
+    if (!fs.existsSync(src) || fs.existsSync(dest)) return false;
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, fs.readFileSync(src), { flag: 'wx' });
+    log.step(`Wrote default model suggestions to ${dest} (edit freely; never overwritten)`);
+    return true;
+}
+
 // Generates .claude/agents/<name>.md — Claude Code's native subagent format.
 // Only frontmatter fields confirmed against code.claude.com/docs/en/sub-agents
 // are emitted (name, description, model). `model` is optional and omitting it inherits the
@@ -4232,6 +4244,10 @@ function injectHarnessRules() {
             });
             installGlobalHooks();
         }, '');
+
+        installStep('write the default ~/.aos/pipeline.json', () => {
+            if (!DRY_RUN) installPipelineDefault();
+        }, 'Helper agents of /startcycle-graph then inherit the session model.');
 
         installStep('apply Claude model overrides to the shipped agents', () => {
             if (DRY_RUN || !_sessionManifest) return;
@@ -6867,6 +6883,7 @@ module.exports = {
     applyClaudeModelOverrides,
     loadPipelineConfig,
     resolveAgentConfig,
+    installPipelineDefault,
     // Launchpad lifecycle (exported for regression tests)
     generateAndOpenLaunchpad,
     shouldOpenLaunchpad,
