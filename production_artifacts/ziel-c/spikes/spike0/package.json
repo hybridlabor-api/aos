@@ -1,0 +1,17 @@
+{
+  "name": "spike0",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@a2a-js/sdk": "^1.3.0",
+    "express": "^5.2.1"
+  }
+}

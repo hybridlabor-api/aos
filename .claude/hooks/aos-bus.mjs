@@ -5,11 +5,12 @@
 import {
   chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, utimesSync, writeFileSync,
 } from "node:fs";
-import { homedir, userInfo } from "node:os";
+import { userInfo } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { slug } from "./go-gate.mjs";
+import { inboxRoot } from "../../lib/a2a-inbox.mjs";
 
 const MAX_SEND = 8 * 1024;
 const MAX_FILE = 16 * 1024;
@@ -17,7 +18,7 @@ const MAX_FILE = 16 * 1024;
 export function busPaths(name) {
   const n = slug(String(name ?? ""));
   if (!n || n.startsWith(".")) throw new Error("invalid session name");
-  const root = join(homedir(), ".aos", "bus");
+  const root = inboxRoot();
   return { name: n, root, sessions: join(root, "sessions"), reg: join(root, "sessions", `${n}.json`), inbox: join(root, "inbox", n) };
 }
 
@@ -70,7 +71,7 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { 
 
 // prune: also delete registrations that are dead, stale or corrupt (registration files only, never inboxes).
 export function listSessions({ prune = false } = {}) {
-  const dir = join(homedir(), ".aos", "bus", "sessions");
+  const dir = join(inboxRoot(), "sessions");
   const out = [];
   let files = [];
   try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch { /* none */ }

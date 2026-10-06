@@ -4553,6 +4553,11 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         try { copyDirRecursiveSync(trailLibSrc, path.join(opencodeDir, 'plugins', 'lib')); } catch (e) { log.warn(`Could not install OpenCode plugin lib: ${e.message}`); }
     }
 
+    // The plugin imports ../../lib/a2a-inbox.mjs and ../../lib/a2a-session.mjs
+    // directly; two levels above plugins/ is the opencode config dir's parent,
+    // so the a2a lib must land there or the plugin fails to load.
+    installA2aLibCopies({ targetHome, opencodeDir });
+
     // Slash-command payloads (/startcycle-graph and the generated /bdb-aos-<cmd> files).
     const commandsSrc = path.join(srcDir, '.opencode', 'commands');
     if (fs.existsSync(commandsSrc)) {
@@ -4652,6 +4657,12 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     mergeBdbSettingsHooks(claudeSettings);
     const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });
     if (deny.length) log.step(`Added ${deny.length} permissions.deny rule(s) for home-level deletes to ${claudeSettings}`);
+    // a2a-inbox.mjs (drain + stop) ships inside the hooks dir copy above and is
+    // wired by mergeBdbSettingsHooks from the shipped settings template. The
+    // optional SessionStart sidecar hook registers only when the hook file is
+    // actually shipped in the package.
+    installClaudeA2aSessionHook({ targetHome });
+    installA2aLibCopies({ targetHome, targetGemini });
 
     // 2. Google Antigravity
     const agyHooksDir = path.join(targetGemini, 'config', 'hooks');
@@ -4676,6 +4687,17 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
             copyDirRecursiveSync(workflowsSrc, agyCliWorkflowsDir);
         }
         mergeAntigravityHooks(path.join(agyCliDir, 'hooks.json'));
+    }
+
+    // A2A inbox MCP for agy is print-only: the installer never runs agy (WP-INSTALL
+    // fact 3 / fork-bomb rule), and agy is a delegation target, so it must never
+    // carry a sidecar hook either. The registry-style mcp add args mirror
+    // agyMcpAddArgs in lib/a2a-agy.mjs (kept inline here: installer is CJS, the
+    // a2a lib is ESM).
+    const agyA2aMcpSrc = path.join(srcDir, 'bin', 'a2a-inbox-mcp.mjs');
+    if (fs.existsSync(agyA2aMcpSrc)) {
+        const agyMcpInstalled = path.join(homeDir, '.agents', 'bin', 'a2a-inbox-mcp.mjs');
+        log.message(`Optional agy A2A inbox MCP (not registered automatically; never run from the installer): agy mcp add aos-a2a-inbox node "${agyMcpInstalled}"`);
     }
 
     // 3. OpenAI Codex CLI
@@ -4724,6 +4746,97 @@ function installGoCheck({ targetHome = homeDir } = {}) {
     for (const [src, name] of files) copyDirRecursiveSync(src, path.join(dest, name));
     log.step(`Installed go-check to ${dest}`);
     return true;
+}
+
+// WP-INSTALL: the a2a hooks (Claude .claude/hooks/a2a-inbox.mjs + optional
+// a2a-session.mjs, also copied into per-harness hook dirs) and the OpenCode
+// plugin (.opencode/plugins/bdb-aos.js) import their shared logic from
+// ../../lib/a2a-*.mjs. Inside the package checkout that resolves to lib/; in
+// the installed layout those files are scattered across harness dirs under the
+// home dir, so a lib copy must land two directory levels above each of them or
+// every A2A hook dies with MODULE_NOT_FOUND. Copies are additive and owned
+// (same files as the running package). go-gate solves the same problem by
+// being blob-copied; the a2a lib keeps its import-path contract instead.
+function a2aLibFiles() {
+    const libDir = path.join(srcDir, 'lib');
+    if (!fs.existsSync(libDir)) return [];
+    let names = [];
+    try { names = fs.readdirSync(libDir).filter((f) => /^a2a-.+\.mjs$/.test(f)); } catch (e) { logDebug(e, 'list a2a lib'); }
+    return names.map((f) => path.join(libDir, f));
+}
+
+function installA2aLibCopies({ targetHome = homeDir, targetGemini = geminiDir, opencodeDir = null } = {}) {
+    const files = a2aLibFiles();
+    if (!files.length || DRY_RUN) return false;
+    const targets = new Set();
+    // claudeConfigDir default ~/.claude -> <home>/lib; an explicit
+    // CLAUDE_CONFIG_DIR gets <claudeConfigDir>/../lib, which is the same
+    // up-two relative path the hooks resolve (hooks sit at
+    // <claudeConfigDir>/hooks, so their ../.. lands on dirname(claudeConfigDir)).
+    targets.add(path.join(targetHome, 'lib'));
+    targets.add(path.join(path.dirname(claudeConfigDir(targetHome)), 'lib'));
+    // agy hook copies land under <targetGemini>/config/hooks -> <targetGemini>/lib
+    targets.add(path.join(targetGemini, 'lib'));
+    if (opencodeDir) targets.add(path.join(path.dirname(opencodeDir), 'lib'));
+    let wrote = 0;
+    for (const dir of targets) {
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+            for (const src of files) { copyDirRecursiveSync(src, path.join(dir, path.basename(src))); wrote++; }
+        } catch (e) {
+            log.warn(`Could not install A2A lib copies to ${dir}: ${e.message}`);
+        }
+    }
+    if (wrote) log.step(`Installed A2A lib copies (a2a-*.mjs) so ../../lib imports resolve in the installed layout (${wrote} files)`);
+    log.message('A2A sidecar/client need @a2a-js/sdk and express: installed with the npm package; the copies under ~/.agents are for hooks only');
+    return wrote > 0;
+}
+
+// The sidecar SessionStart hook is registered for Claude Code ONLY, and only
+// when the hook file ships inside this package (Tim may copy it in later; a
+// package without it installs fine). It is deliberately NOT registered in agy
+// or Codex: both are delegation targets and the fork-bomb rule keeps any
+// sidecar started-by-session out of them. The installer itself never starts a
+// sidecar. At runtime the hook delegates to ensureSidecar
+// (lib/a2a-session.mjs), which skips on AOS_A2A_SIDECAR=off (the off switch)
+// and on AOS_DELEGATE_DEPTH>0 (delegated workers), so no harness that a
+// delegator spawns can ever fork another sidecar.
+function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
+    const hookSrc = path.join(srcDir, '.claude', 'hooks', 'a2a-session.mjs');
+    if (!fs.existsSync(hookSrc)) {
+        log.step('a2a-session.mjs hook is not shipped in this package: Claude A2A session-start sidecar hook not registered (safe to ignore)');
+        return false;
+    }
+    if (DRY_RUN) {
+        log.message('[dry-run] would register the a2a-session.mjs Claude SessionStart sidecar hook');
+        return false;
+    }
+    const claudeHome = claudeConfigDir(targetHome);
+    const hooksDir = path.join(claudeHome, 'hooks');
+    try {
+        fs.mkdirSync(hooksDir, { recursive: true });
+        copyDirRecursiveSync(hookSrc, path.join(hooksDir, 'a2a-session.mjs'));
+    } catch (e) {
+        log.warn(`Could not install a2a-session.mjs hook: ${e.message}`);
+        return false;
+    }
+    const settingsPath = path.join(claudeHome, 'settings.json');
+    try {
+        let settings = readJsonFile(settingsPath);
+        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) settings = {};
+        if (JSON.stringify(settings).includes('a2a-session.mjs')) return true; // already wired
+        settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
+        if (!Array.isArray(settings.hooks.SessionStart)) settings.hooks.SessionStart = [];
+        settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/a2a-session.mjs"' }] });
+        if (fs.existsSync(settingsPath)) fs.copyFileSync(settingsPath, `${settingsPath}.${timestamp}.bak`);
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+        log.step('Registered a2a-session.mjs Claude SessionStart sidecar hook (skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0)');
+        return true;
+    } catch (e) {
+        log.warn(`Could not wire the a2a-session hook into settings.json: ${e.message}`);
+        return false;
+    }
 }
 
 function installGlobalBinaries() {
@@ -6941,6 +7054,8 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
     installGlobalHooks,
+    installA2aLibCopies,
+    installClaudeA2aSessionHook,
     installGoCheck,
     installGlobalBinaries,
     codexGateSnippet,
