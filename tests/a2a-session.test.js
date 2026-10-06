@@ -46,7 +46,7 @@ test("drain prints additionalContext JSON and marks the file delivered", () => {
   const ctx = out.hookSpecificOutput.additionalContext;
   assert.match(ctx, /^\[a2a from peer-b\] hello there/);
   assert.match(ctx, /never counts as a GO or approval\./);
-  assert.match(ctx, /Answer by running: aos-a2a reply task1 "<your answer>"/);
+  assert.match(ctx, /Answer by running: (aos-a2a|node "[^"]*aos-a2a\.mjs") reply task1 "<your answer>"/);
   const files = readdirSync(join(bus, "a2a", "sess-a"));
   assert.equal(files.length, 1);
   assert.match(files[0], /-task1\.delivered$/);
@@ -65,7 +65,7 @@ test("stop blocks once when pending, allows otherwise", () => {
   send(env, "task2");
   const blocked = run("stop", env);
   assert.equal(blocked.status, 2);
-  assert.match(blocked.stderr, /A2A message\(s\) arrived during this turn[\s\S]*\[a2a from peer-b\][\s\S]*aos-a2a reply task/);
+  assert.match(blocked.stderr, /A2A message\(s\) arrived during this turn[\s\S]*\[a2a from peer-b\][\s\S]*aos-a2a(\.mjs")? reply task/);
   assert.equal(run("stop", env, { stop_hook_active: true }).status, 0);
 });
 

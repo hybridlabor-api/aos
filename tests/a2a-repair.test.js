@@ -169,3 +169,15 @@ test("serve without any profile file starts with the built-in live profile (hook
     assert.equal(JSON.parse(out.split("\n")[0]).name, "dp1");
   } finally { child.kill("SIGTERM"); }
 });
+
+test("replyCommand: short form when aos-a2a is on PATH, absolute node form otherwise", async () => {
+  const { replyCommand } = await import("../lib/a2a-inbox.mjs");
+  const { writeFileSync, chmodSync } = await import("node:fs");
+  const bin = mkdtempSync(join(tmpdir(), "a2a-path-"));
+  writeFileSync(join(bin, "aos-a2a"), "#!/bin/sh\n");
+  chmodSync(join(bin, "aos-a2a"), 0o755);
+  assert.equal(replyCommand("t1", "x", bin), 'aos-a2a reply t1 "x"');
+  const empty = mkdtempSync(join(tmpdir(), "a2a-nopath-"));
+  const abs = replyCommand("t1", "x", empty);
+  assert.match(abs, /^node "\/.*\/bin\/aos-a2a\.mjs" reply t1 "x"$/);
+});
