@@ -17,21 +17,19 @@ async function main() {
   const input = readInput();
   const session =
     process.env.AOS_A2A_NAME || `claude-${String(input.session_id || "").slice(0, 8)}`;
-  const { pending, claim, formatInjection } = await import(
+  const { pending, claim, formatInjection, replyCommand } = await import(
     new URL("../../lib/a2a-inbox.mjs", import.meta.url)
   );
   if (mode === "stop" && input.stop_hook_active === true) return 0; // already nudged once: claim nothing
   const waiting = pending(session);
   if (!waiting.length) return 0;
 
-  // claim every pending message and render it with its reply command
+  // claim every pending message and render it with its reply command (absolute path when aos-a2a is not on PATH)
   const texts = [];
   for (const m of waiting) {
     const msg = claim(m.file);
     if (!msg) continue;
-    texts.push(
-      `${formatInjection(msg)}\nAnswer by running: aos-a2a reply ${msg.taskId} "<your answer>"`,
-    );
+    texts.push(`${formatInjection(msg)}\nAnswer by running: ${replyCommand(msg.taskId)}`);
   }
   if (!texts.length) return 0;
 
