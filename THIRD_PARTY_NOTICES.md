@@ -308,23 +308,78 @@ dependency.
 ## BuilderIO/skills
 
 <https://github.com/BuilderIO/skills> — MIT. Copyright (c) 2026 Builder.io.
+Ported from upstream `main` at commit `530d9eee0453be9672960ef7b0a265c949cd8b08`
+(2026-10-03; final five ports completed 2026-10-06). Thirteen skills are
+adapted under `skills/global_config/`: nine Factory skills — four earlier
+(`factory-human-digest`, `factory-collect`, `factory-lookback`,
+`factory-review-prs`) plus five new (`factory`, `factory-babysit-pr`,
+`factory-ship`, `factory-watchdog`, `factory-recover`) — and four earlier
+non-Factory skills (read-the-damn-docs, stay-within-limits, quick-recap,
+plan-arbiter).
 
-Eight skills are adapted under `skills/global_config/`: `read-the-damn-docs`, `stay-within-limits`, `quick-recap`, `plan-arbiter`, `factory-human-digest`, `factory-collect`, `factory-lookback`, and `factory-review-prs`. The four Factory skills and `plan-arbiter` have `installer-group` dropped and `category`/`source` added; in `factory-collect`, `factory-lookback` and `factory-review-prs` reply, close, approve, merge and publish actions are reduced to drafts or readiness reports that need the user's GO, and all of them carry an "AOS safety rules" section. `plan-arbiter` drops `agents/openai.yaml` and adds an AOS section on double plans. `stay-within-limits` and `quick-recap` are carried over with `category:` and `source:` added; `stay-within-limits` pins `ccusage` to 20.0.26 instead of `@latest`, and `quick-recap` no longer asks the installer to inject a managed `AGENTS.md` / `CLAUDE.md` block. `read-the-damn-docs` is described below:
-the docs-first trigger list, the source hierarchy, the required workflow, the
-must-trigger examples, and the "if docs are unavailable" rule. AOS additionally
-adds a Verification section, a `category:` key (Builder's own validator forbids
-one, AOS requires it), a division-of-labour note against the `AGENTS.md` *Zero
-guesswork* rule, and a pointer to the installed `firecrawl-search` /
-`firecrawl-scrape` tools. Prose only — the upstream `agents/openai.yaml` and
-README were not carried over, and no executable from the repo is referenced.
+Per-skill adaptations:
 
-The other 13 skills in that repo (as of commit 0dba9ef) are **not** vendored. Three of them
-(`an`, `turn-into-app`, `rewind`) plus three others
+- **All thirteen** — AOS safety rules / GO gate section added; `category` and
+  `source` frontmatter keys added (upstream `installer-group` dropped where
+  present); the upstream skill-side relative Factory guide link
+  (`../../docs/factory.md`, which does not resolve after installer relocation)
+  replaced by the plain text `docs/factory.md in the AOS repo` plus the
+  upstream URL, with no relative path.
+- **The nine Factory skills** — in every skill that upstream has perform an
+  external write (reply, close, approve, merge, publish, push, notify, resume,
+  schedule creation), those steps are reduced to draft-or-prepare-only and need
+  the user's literal GO for that exact action. `factory-watchdog` is
+  report-only (it no longer sends reminders unattended) and `factory-recover`
+  is a read-only resume-candidate report.
+- **plan-arbiter** — drops `agents/openai.yaml` and adds an AOS section on
+  double plans.
+- **stay-within-limits** — pins `ccusage` to 20.0.26 instead of `@latest`.
+- **quick-recap** — no longer asks the installer to inject a managed
+  `AGENTS.md` / `CLAUDE.md` block.
+- **read-the-damn-docs** — AOS adds a Verification section, the `category:`
+  key (Builder's own validator forbids one, AOS requires it), a
+  division-of-labour note against the `AGENTS.md` *Zero guesswork* rule, and a
+  pointer to the installed `firecrawl-search` / `firecrawl-scrape` tools.
+  Prose only — the upstream `agents/openai.yaml` and README were not carried
+  over, and no executable from the repo is referenced.
+- **factory-collect, factory-lookback, factory-review-prs** (earlier ports) —
+  reply, close, approve, merge and publish actions reduced to drafts or
+  readiness reports that need the user's GO.
+
+The other 8 skills in that repo (as of commit 0dba9ef) are **not** vendored.
+Three of them (`an`, `turn-into-app`, `rewind`) plus three others
 are build artefacts synced from a different upstream by
 `scripts/sync-agent-native-skills.mjs`, and the repo's own documentation says
 not to treat them as standalone. Its `.mcp.json` and plugin manifests register
 external HTTP MCP servers without a prompt, so the plugin surface must never be
 installed.
+
+```
+MIT License
+
+Copyright (c) 2026 Builder.io
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
 ## obra/superpowers
 
 <https://github.com/obra/superpowers> — MIT. Copyright (c) 2025 Jesse Vincent.
