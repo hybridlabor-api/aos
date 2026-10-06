@@ -34,8 +34,13 @@ const HOOKS = existsSync(new URL('./aos-hooks/go-gate.mjs', import.meta.url)) ? 
 const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
 // `opencode run "..."` is scriptable by an agent, so it never sets gogate modes or grants
 const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
+// Profile flag written by the installer (--no-hooks / minimal profile = contextHooks false). Fails open to true.
+// It switches off ONLY the context behaviours (memB inject, rules inject, trail telemetry/autostart); gates and A2A stay on.
+let contextHooks = true;
+try { if (JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8'))?.contextHooks === false) contextHooks = false; } catch {}
+const noContext = { buildMemoryBlock: async () => '', rulesText: () => '' };
 const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
-  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map(hook));
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map((f) => (!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs') ? noContext : hook(f))));
 const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
 // ---------------------------------------------------------------------------
@@ -335,7 +340,7 @@ export default async function bdbAosPlugin(input) {
   // ponytail: 1 s poll; fs.watch if latency matters. A wake turn is awaited, so it delays later messages until it ends.
   });
   const trail = (hook_event_name, session_id, extra = {}) =>
-    void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
+    contextHooks && void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
 
   return {
     // W-6 loop-keeper. Fires whenever a session goes idle. Reads the graph
@@ -407,6 +412,7 @@ export default async function bdbAosPlugin(input) {
       } catch {}
 
       try {
+        if (!contextHooks) throw 0; // profile without context hooks: no memB injection
         const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
         s.identitySent = true;
         const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
@@ -424,6 +430,7 @@ export default async function bdbAosPlugin(input) {
 
       // Destructive-actions rules on every human message, so compaction cannot drop them.
       try {
+        if (!contextHooks) throw 0; // profile without context hooks: no rules injection
         const rules = rulesText();
         if (rules) {
           msgOutput.parts.unshift({
@@ -465,12 +472,13 @@ export default async function bdbAosPlugin(input) {
     'tool.execute.before': async (toolInput, toolOutput) => {
       // Live-map telemetry first; must never affect the go-gate logic below.
       try {
+        if (!contextHooks) throw 0;
         const tool_name = mapTrailToolName(toolInput.tool);
         const tool_input = mapTrailToolInput(toolOutput?.args, directory);
         pendingArgs.set(toolInput.callID, tool_input);
         trail('PreToolUse', toolInput.sessionID, { tool_name, tool_input });
       } catch {}
-      await trailAutostart(toolInput, directory, input.client);
+      if (contextHooks) await trailAutostart(toolInput, directory, input.client);
       const toolName = (toolInput.tool || '').toLowerCase();
       // Intercept bash, terminal, or command execution tools
       if (toolName === 'bash' || toolName === 'terminal' || toolName === 'shell' || toolName === 'exec' || toolName === 'run_command') {
@@ -562,6 +570,7 @@ export default async function bdbAosPlugin(input) {
 
     'tool.execute.after': async (toolInput) => {
       try {
+        if (!contextHooks) throw 0;
         const tool_input = pendingArgs.get(toolInput.callID);
         pendingArgs.delete(toolInput.callID);
         trail('PostToolUse', toolInput.sessionID, { tool_name: mapTrailToolName(toolInput.tool), tool_input });

@@ -4407,7 +4407,8 @@ function injectHarnessRules() {
                     const targetPath = path.join(homeDir, dir);
                     // settings.json is merged separately below: a wholesale
                     // copy would clobber user-owned keys like enabledPlugins.
-                    const exclude = dir === '.claude' ? ['settings.json'] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    // hooks: installGlobalHooks delivers only what each harness wires.
+                    const exclude = dir === '.claude' ? ['settings.json', 'hooks'] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
@@ -4643,6 +4644,17 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         try { copyDirRecursiveSync(trailLibSrc, path.join(opencodeDir, 'plugins', 'lib')); } catch (e) { log.warn(`Could not install OpenCode plugin lib: ${e.message}`); }
     }
 
+    // Profile flag for the plugin (context behaviours only; gates and A2A are never switched off).
+    if (pluginInstalled && !DRY_RUN) {
+        try {
+            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn);
+            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}`);
+            uninstallRecords.recordOpencodeProfile(targetHome, flag.file);
+        } catch (e) {
+            log.warn(`Could not write OpenCode plugin profile flag: ${e.message}`);
+        }
+    }
+
     // The plugin imports ../../lib/a2a-inbox.mjs and ../../lib/a2a-session.mjs
     // directly; two levels above plugins/ is the opencode config dir's parent,
     // so the a2a lib must land there or the plugin fails to load.
@@ -4729,14 +4741,12 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 // what happened to memb-inject.mjs in v4.4.0, on the machines that needed it
 // most (a fresh install got it; every machine that already had AOS did not).
 function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } = {}) {
-    const hooksSrc = path.join(srcDir, '.claude', 'hooks');
     const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
 
+    // Every harness gets only the scripts it wires (lib/v5/profile.js HARNESS_HOOKS), before any merge or self-check runs.
+    installHarnessHookCopies({ targetHome, targetGemini });
+
     // 1. Claude Code
-    if (fs.existsSync(hooksSrc)) {
-        copyDirRecursiveSync(hooksSrc, path.join(claudeConfigDir(targetHome), 'hooks'));
-        log.step(`Installed hooks to ${path.join(claudeConfigDir(targetHome), 'hooks')}`);
-    }
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(targetHome), 'workflows'));
     }
@@ -4755,24 +4765,14 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     installA2aLibCopies({ targetHome, targetGemini });
 
     // 2. Google Antigravity
-    const agyHooksDir = path.join(targetGemini, 'config', 'hooks');
     const agyWorkflowsDir = path.join(targetGemini, 'config', 'workflows');
-    if (fs.existsSync(hooksSrc)) {
-        copyDirRecursiveSync(hooksSrc, agyHooksDir);
-        log.step(`Installed hooks to ${agyHooksDir}`);
-    }
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, agyWorkflowsDir);
     }
     mergeAntigravityHooks(path.join(targetGemini, 'config', 'hooks.json'));
     const agyCliDir = path.join(targetGemini, 'antigravity-cli');
     if (fs.existsSync(agyCliDir)) {
-        const agyCliHooksDir = path.join(agyCliDir, 'hooks');
         const agyCliWorkflowsDir = path.join(agyCliDir, 'workflows');
-        if (fs.existsSync(hooksSrc)) {
-            copyDirRecursiveSync(hooksSrc, agyCliHooksDir);
-            log.step(`Installed hooks to ${agyCliHooksDir}`);
-        }
         if (fs.existsSync(workflowsSrc)) {
             copyDirRecursiveSync(workflowsSrc, agyCliWorkflowsDir);
         }
@@ -4791,12 +4791,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     }
 
     // 3. OpenAI Codex CLI
-    const codexHooksDir = path.join(targetHome, '.codex', 'hooks');
     const codexWorkflowsDir = path.join(targetHome, '.codex', 'workflows');
-    if (fs.existsSync(hooksSrc)) {
-        copyDirRecursiveSync(hooksSrc, codexHooksDir);
-        log.step(`Installed hooks to ${codexHooksDir}`);
-    }
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
     }
@@ -4818,6 +4813,31 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
 
     // 6. Fixed-path GO check for AO and other non-hook callers
     installGoCheck({ targetHome });
+}
+
+// Copies only the named hook scripts (never the whole dir). Scripts an older install left behind stay untouched.
+function copyHookScripts(hooksSrc, destDir, names) {
+    for (const name of names) copyDirRecursiveSync(path.join(hooksSrc, name), path.join(destDir, name));
+}
+
+// Each harness dir gets its own list (lib/v5/profile.js HARNESS_HOOKS: wired scripts plus what they import).
+// agy's antigravity-cli dir only when agy created it, as before.
+function installHarnessHookCopies({ targetHome = homeDir, targetGemini = geminiDir } = {}) {
+    const hooksSrc = path.join(srcDir, '.claude', 'hooks');
+    if (!fs.existsSync(hooksSrc)) return [];
+    const { claude, agy, codex } = v5Profile.HARNESS_HOOKS;
+    const agyCliDir = path.join(targetGemini, 'antigravity-cli');
+    const targets = [
+        [path.join(claudeConfigDir(targetHome), 'hooks'), claude],
+        [path.join(targetGemini, 'config', 'hooks'), agy],
+        ...(fs.existsSync(agyCliDir) ? [[path.join(agyCliDir, 'hooks'), agy]] : []),
+        [path.join(targetHome, '.codex', 'hooks'), codex],
+    ];
+    for (const [dir, names] of targets) {
+        copyHookScripts(hooksSrc, dir, names);
+        log.step(`Installed hooks to ${dir}`);
+    }
+    return targets.map(([dir]) => dir);
 }
 
 // go-check.mjs is the fixed-path GO check for callers that are not a harness hook (AO).
@@ -5504,9 +5524,10 @@ function installProjectHarness() {
     installStep('copy hooks into project', () => {
         const hooksSrc = path.join(srcDir, '.claude', 'hooks');
         if (fs.existsSync(hooksSrc)) {
-            copyDirRecursiveSync(hooksSrc, path.join(projectClaudeDir, 'hooks'));
-            copyDirRecursiveSync(hooksSrc, path.join(projectAgentsDir, 'hooks'));
-            copyDirRecursiveSync(hooksSrc, path.join(projectCodexDir, 'hooks'));
+            const { claude, agy, codex } = v5Profile.HARNESS_HOOKS;
+            copyHookScripts(hooksSrc, path.join(projectClaudeDir, 'hooks'), claude);
+            copyHookScripts(hooksSrc, path.join(projectAgentsDir, 'hooks'), agy);
+            copyHookScripts(hooksSrc, path.join(projectCodexDir, 'hooks'), codex);
             log.step(`Copied hooks to project harnesses`);
         }
     }, 'go-gate / graph-gate enforcement stays inactive in this project.');
@@ -7250,6 +7271,8 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
     installGlobalHooks,
+    installHarnessHookCopies,
+    copyHookScripts,
     installA2aLibCopies,
     installClaudeA2aSessionHook,
     installGoCheck,
