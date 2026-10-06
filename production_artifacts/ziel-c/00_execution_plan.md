@@ -2,7 +2,7 @@
 
 **Goal.** Every harness session (Claude Code, OpenCode, agy, Codex, Cursor, Kimi, AO) can reach the others over A2A on localhost. Any harness can act as orchestrator or as worker. Roles are set per run through a profile. Delegation goes through one CLI, `aos-a2a`. mcsc becomes a shim and is removed later.
 
-**Source of truth.** The design lives in `~/.aos/recovery-plan/ziel-c-plan-v2.md`, sections 2–9 and decisions §11. This file is the build plan that executes it.
+**Source of truth.** The design lives in `~/.aos/recovery-plan/archive/2026-10-06/ziel-c-plan-v2.md`, sections 2–9 and decisions §11. This file is the build plan that executes it.
 
 **Branch.** `feat/ziel-c-phase1` in `~/dev/bdb-dev/aos-wt-zielc` (base origin/main 4.19.0). Done so far:
 - `22887ff`: registry, card, `aos-a2a list/card`
@@ -226,7 +226,7 @@ files: [lib/a2a-spawn.mjs, lib/a2a-worktree.mjs, bin/aos-acp.mjs, tests/a2a-spaw
   - `scratchpad/a2a/spike0/sidecar-worker.mjs`, `checks/p1b.sh`
   - `bin/aos-acp.mjs`
   - mcsc adapters `mcps/mcsc/packages/core/src/adapters/{agy,codex}.js`, `depth.js`, `trail.js`
-  - plan v2 §3b, §4.1 of v1 (`~/.aos/recovery-plan/ziel-c-plan.md`)
+  - plan v2 §3b, §4.1 of v1 (`~/.aos/recovery-plan/archive/2026-10-06/ziel-c-plan.md`)
 - **`lib/a2a-worktree.mjs`:**
   - `createJobWorktree(repo, taskId)` → `git worktree add <repo>/../aos-wt-job-<taskId> -b job/<taskId>`; returns the path
   - never removes anything (removal is a dispatcher task after a GO)
