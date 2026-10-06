@@ -2219,7 +2219,9 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
         // new version in place, failure to clean up retiredDir must be non-fatal.
         safeRmDirSync(retiredDir);
 
-        s.stop(`${displayName} ready (v${status.localVer || 'latest'})`);
+        let installedVer = '';
+        try { installedVer = JSON.parse(fs.readFileSync(path.join(targetDir, 'package.json'), 'utf8')).version || ''; } catch { /* shown without a version */ }
+        s.stop(installedVer ? `${displayName} ready (v${installedVer})` : `${displayName} ready`);
         return true;
     } catch (e) {
         s.stop(`Failed downloading ${displayName}: ${e.message}`);

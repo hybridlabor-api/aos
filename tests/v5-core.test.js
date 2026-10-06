@@ -253,12 +253,9 @@ test('token-saver verify always reports ok', () => {
     assert.strictEqual(result.ok, true);
 });
 
-test('vlatest fixed: downloadOrUpdateModule prints localVer not dist-tag', () => {
-    // This is tested indirectly via installer.js behavior; the vlatest fix
-    // ensures that when a module is downloaded, the status message uses
-    // status.localVer (the installed version from package.json) instead of
-    // status.remoteVer (which might be the npm dist-tag 'latest')
-    // Direct test would require mocking the entire npm pipeline.
-    // The test file structure expects this to be verified through integration.
-    assert.ok(true, 'vlatest tested via installer.js download behavior');
+test('vlatest fixed: the ready line names the version from the installed package.json', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
+    const body = src.slice(src.indexOf('function downloadOrUpdateModule'), src.indexOf('function downloadOrUpdateModule') + 9000);
+    assert.match(body, /readFileSync\(path\.join\(targetDir, 'package\.json'\)/);
+    assert.doesNotMatch(body, /ready \(v\$\{[^}]*'latest'\}\)/);
 });
