@@ -307,6 +307,17 @@ test('release fallback: a dirty or untagged checkout uses the published package,
     } finally { fs.existsSync = real; }
 });
 
+test('without AOS_AO_DEV_BUILD the checkout is not even inspected, even when clean and tagged (4.19.1 finding 1)', () => {
+    const real = fs.existsSync;
+    fs.existsSync = (p) => p === '/mods/ao/backend/bin/ao-test' || real(p);
+    try {
+        let inspected = 0;
+        const { deps, calls } = selectFixture({ checkWorkspace: () => { inspected++; return { ok: true, head: 'abc' }; } });
+        assert.strictEqual(selectAoCandidate(deps).source, 'release');
+        assert.deepStrictEqual([inspected, calls.build], [0, []]);
+    } finally { fs.existsSync = real; }
+});
+
 test('release fallback: nothing is downloaded under --dry-run', () => {
     const { deps, calls } = selectFixture({ dryRun: true });
     assert.strictEqual(selectAoCandidate(deps).bin, null);

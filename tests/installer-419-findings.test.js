@@ -1,0 +1,46 @@
+// 4.19.1 installer findings (items 2-5, 8). Offline; HOME is a temp dir; fake values only.
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-419-home-'));
+process.env.HOME = home;
+process.env.USERPROFILE = home;
+for (const k of ['OPENROUTER_API_KEY', 'GITHUB_PERSONAL_ACCESS_TOKEN', 'GEMINI_API_KEY', 'OPENWIKI_PROVIDER']) delete process.env[k];
+test.after(() => fs.rmSync(home, { recursive: true, force: true }));
+
+const installer = require('../installer.js');
+const write = (rel, text, mode = 0o600) => {
+    const p = path.join(home, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, text, { mode });
+    fs.chmodSync(p, mode);
+    return p;
+};
+
+test('finding 2: stored provider, model and keys are found in secrets file and ~/.openwiki/.env', () => {
+    write('.aos/secrets.env', 'GITHUB_PERSONAL_ACCESS_TOKEN=ghp_TESTONLY1\n');
+    write('.openwiki/.env', 'OPENWIKI_PROVIDER=openrouter\nOPENWIKI_MODEL_ID=vendor/some-model\nOPENROUTER_API_KEY=sk-TESTONLY2\n');
+    const e = installer.loadExistingEnv(null);
+    assert.strictEqual(e.GITHUB_PERSONAL_ACCESS_TOKEN, 'ghp_TESTONLY1');
+    assert.strictEqual(e.OPENWIKI_PROVIDER, 'openrouter');
+    assert.strictEqual(e.OPENWIKI_MODEL_ID, 'vendor/some-model');
+    assert.strictEqual(e.OPENROUTER_API_KEY, 'sk-TESTONLY2');
+});
+
+test('finding 2: openai-compatible in ~/.openwiki/.env maps back to the AOS provider by base URL', () => {
+    write('.openwiki/.env', 'OPENWIKI_PROVIDER=openai-compatible\nOPENAI_COMPATIBLE_BASE_URL=https://api.groq.com/openai/v1\nOPENAI_COMPATIBLE_API_KEY=gsk_TESTONLY3\n');
+    const e = installer.loadExistingEnv(null);
+    assert.strictEqual(e.OPENWIKI_PROVIDER, 'groq');
+    assert.strictEqual(e.GROQ_API_KEY, 'gsk_TESTONLY3');
+    assert.strictEqual(e.OPENWIKI_BASE_URL, 'https://api.groq.com/openai/v1');
+});
+
+test('finding 2: the wizard carries no stale per-provider model lists', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
+    const start = src.indexOf('async function promptCredentials');
+    const wizard = src.slice(start, src.indexOf('const DAEMON_LOGON_FALLBACK_EXIT_CODE', start));
+    assert.ok(!/claude-3\.5-sonnet|gpt-4o/.test(wizard));
+});

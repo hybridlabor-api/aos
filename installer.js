@@ -1564,6 +1564,22 @@ function loadExistingEnv(targetMcpDir) {
     const stored = mcpSecrets.readSecretsFile(mcpSecrets.secretsPath(homeDir));
     for (const [k, v] of Object.entries(stored.vars)) if (v && !envData[k]) envData[k] = v;
 
+    // ~/.openwiki/.env speaks the openwiki CLI's provider names; translate them back to AOS's.
+    let ow = {};
+    try { ow = mcpSecrets.parseEnvText(fs.readFileSync(path.join(homeDir, '.openwiki', '.env'), 'utf8')); } catch (e) { if (e.code !== 'ENOENT') logDebug(e, 'operation'); }
+    const base = ow.OPENAI_COMPATIBLE_BASE_URL;
+    const aosProvider = ow.OPENWIKI_PROVIDER === 'gemini' ? 'google'
+        : ow.OPENWIKI_PROVIDER === 'openai-compatible' ? (Object.keys(OPENWIKI_CLI_PROVIDERS).find((p) => OPENWIKI_CLI_PROVIDERS[p].baseUrl && OPENWIKI_CLI_PROVIDERS[p].baseUrl === base) || 'custom')
+            : ow.OPENWIKI_PROVIDER;
+    if (aosProvider && OPENWIKI_CLI_PROVIDERS[aosProvider] && !envData.OPENWIKI_PROVIDER) {
+        envData.OPENWIKI_PROVIDER = aosProvider;
+        if (ow.OPENWIKI_MODEL_ID && !envData.OPENWIKI_MODEL_ID) envData.OPENWIKI_MODEL_ID = ow.OPENWIKI_MODEL_ID;
+        if (base && !envData.OPENWIKI_BASE_URL) envData.OPENWIKI_BASE_URL = base;
+        const keyName = PROVIDER_KEY_ENV_NAMES[aosProvider];
+        const key = ow[OPENWIKI_CLI_PROVIDERS[aosProvider].key];
+        if (keyName && key && !envData[keyName]) envData[keyName] = key;
+    }
+
     for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GITHUB_PERSONAL_ACCESS_TOKEN', 'GROQ_API_KEY', 'XAI_API_KEY', 'NVIDIA_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY']) {
         if (process.env[k] && !envData[k]) {
             envData[k] = process.env[k];
@@ -1616,78 +1632,60 @@ async function promptCredentials(referenceMcpDir) {
         return { gemini: "", github: existingGithub, openwikiProvider: "nvidia", openwikiModel: "nvidia/llama-3.1-nemotron-70b-instruct", openwikiBaseUrl: "https://integrate.api.nvidia.com/v1", keyEnvName: 'NVIDIA_API_KEY' };
     }
 
-    const hasKeys = Boolean(existingGemini || existingGithub);
-
-    if (hasKeys) {
-        log.info('Integrations & Credentials');
-        if (existingGemini) log.message(`GEMINI/OpenWiki Key: ${maskApiKey(existingGemini)}`);
-        if (existingGithub) log.message(`GitHub MCP Token:    ${maskApiKey(existingGithub)}`);
-
-        const credAction = await selectWithBack({
-            message: 'Credentials Setup:',
-            options: [
-                { value: 'keep', label: 'Keep existing credentials & LLM provider settings (Recommended)' },
-                { value: 'update', label: 'Re-configure API keys / LLM provider wizard' }
-            ],
-            initialValue: 'keep'
-        });
-
-        if (credAction === BACK) return BACK;
-
-        if (credAction === 'keep') {
-            return {
-                gemini: existingGemini,
-                github: existingGithub,
-                openwikiProvider: existingProvider,
-                openwikiModel: existingModel,
-                openwikiBaseUrl: existingBaseUrl,
-                keyEnvName: existingKeyEnvName
-            };
-        }
+    // Stored values are reused, never asked again; only what is missing is prompted for.
+    const haveOpenWiki = Boolean(existingGemini) || existingProvider === 'ollama';
+    const stored = { gemini: existingGemini, github: existingGithub, openwikiProvider: existingProvider, openwikiModel: existingModel, openwikiBaseUrl: existingBaseUrl, keyEnvName: existingKeyEnvName };
+    if (haveOpenWiki || existingGithub) {
+        log.info('Integrations & Credentials (reusing stored values)');
+        if (existingGemini) log.message(`${existingKeyEnvName}: ${maskApiKey(existingGemini)}`);
+        if (existingGithub) log.message(`GITHUB_PERSONAL_ACCESS_TOKEN: ${maskApiKey(existingGithub)}`);
+        log.message('To change a stored key or the provider, use `aos-config`.');
+    }
+    if (haveOpenWiki && existingGithub) return stored;
+    if (haveOpenWiki) {
+        const gh = await passwordWithBack({ message: 'GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP (leave blank to skip) (< = back):' });
+        if (gh === BACK) return BACK;
+        return { ...stored, github: ((gh || '') + '').trim() };
     }
 
+    // Model names change faster than this installer: no per-provider model lists, the model is free text.
     const provOptions = [
-        { value: '1', label: 'Google AI Studio / Gemini – gemma-4-26b-a4b-it, gemini-2.5-pro, gemini-3.5-flash' },
-        { value: '2', label: 'Groq – llama-3.3-70b-versatile, llama-3.1-8b-instant' },
-        { value: '3', label: 'Grok / xAI – grok-2-latest, grok-3' },
-        { value: '4', label: 'NVIDIA NIM – meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct' },
-        { value: '5', label: 'OpenRouter – anthropic/claude-3.5-sonnet, openai/gpt-4o' },
-        { value: '6', label: 'OpenAI – gpt-4o-mini, gpt-4o, o1' },
+        { value: '1', label: 'Google AI Studio / Gemini' },
+        { value: '2', label: 'Groq' },
+        { value: '3', label: 'Grok / xAI' },
+        { value: '4', label: 'NVIDIA NIM' },
+        { value: '5', label: 'OpenRouter' },
+        { value: '6', label: 'OpenAI' },
         { value: '7', label: 'Ollama / LM Studio – Local LLM (no API key, no cost)' },
         { value: '8', label: 'Custom OpenAI API / Base URL + API Key + Model' }
     ];
 
     const defaultsFor = (c) => {
-        let provider = "google", model = "", baseUrl = "", keyEnvName = "GEMINI_API_KEY";
+        let provider = "google", baseUrl = "", keyEnvName = "GEMINI_API_KEY";
         const v = (c || '1').trim();
-        if (v === "2")      { provider = "groq";       model = "llama-3.3-70b-versatile";     keyEnvName = "GROQ_API_KEY"; }
-        else if (v === "3") { provider = "grok";       model = "grok-2-latest";               keyEnvName = "XAI_API_KEY"; }
-        else if (v === "4") { provider = "nvidia";     model = "meta/llama-3.3-70b-instruct"; keyEnvName = "NVIDIA_API_KEY"; baseUrl = "https://integrate.api.nvidia.com/v1"; }
-        else if (v === "5") { provider = "openrouter"; model = "anthropic/claude-3.5-sonnet"; keyEnvName = "OPENROUTER_API_KEY"; }
-        else if (v === "6") { provider = "openai";     model = "gpt-4o-mini";                 keyEnvName = "OPENAI_API_KEY"; }
-        else if (v === "7") { provider = "ollama";     model = "llama3";                      baseUrl = "http://localhost:11434/v1"; }
+        if (v === "2")      { provider = "groq";       keyEnvName = "GROQ_API_KEY"; }
+        else if (v === "3") { provider = "grok";       keyEnvName = "XAI_API_KEY"; }
+        else if (v === "4") { provider = "nvidia";     keyEnvName = "NVIDIA_API_KEY"; baseUrl = "https://integrate.api.nvidia.com/v1"; }
+        else if (v === "5") { provider = "openrouter"; keyEnvName = "OPENROUTER_API_KEY"; }
+        else if (v === "6") { provider = "openai";     keyEnvName = "OPENAI_API_KEY"; }
+        else if (v === "7") { provider = "ollama";     baseUrl = "http://localhost:11434/v1"; }
         else if (v === "8") { provider = "custom";     keyEnvName = "OPENWIKI_API_KEY"; }
-        return { provider, model, baseUrl, keyEnvName };
+        return { provider, baseUrl, keyEnvName };
     };
-
-    const defaultModelFor = (provider) => provider === "google"
-        ? "gemma-4-26b-a4b-it"
-        : provider === "groq"
-            ? "llama-3.3-70b-versatile"
-            : provider === "grok"
-                ? "grok-2-latest"
-                : provider === "nvidia"
-                    ? "meta/llama-3.3-70b-instruct"
-                    : provider === "openai"
-                        ? "gpt-4o-mini"
-                        : provider === "ollama"
-                            ? "llama3"
-                            : "gpt-4o-mini";
 
     let sub = 0;
     let choice = '1';
     let d = defaultsFor('1');
     let enteredModel = '', customBaseUrl = '', apiKey = '', github = '';
+    // A provider is already stored but its key is missing: ask for the key only.
+    const storedChoice = { google: '1', groq: '2', grok: '3', nvidia: '4', openrouter: '5', openai: '6' }[existingEnv['OPENWIKI_PROVIDER']];
+    if (storedChoice) {
+        choice = storedChoice;
+        d = defaultsFor(choice);
+        enteredModel = existingModel;
+        customBaseUrl = existingBaseUrl;
+        sub = 2;
+    }
 
     while (true) {
         if (sub === 0) {
@@ -1713,10 +1711,8 @@ async function promptCredentials(referenceMcpDir) {
                 if (((u || '') + '').trim()) customBaseUrl = ((u || '') + '').trim();
             }
 
-            const fallbackModel = d.model || defaultModelFor(d.provider);
             const m = await textWithBack({
-                message: `Model name [default: ${fallbackModel}] (< = back):`,
-                placeholder: fallbackModel
+                message: `Model name (free text; blank = the OpenWiki daemon's own default) (< = back):`
             });
             if (m === BACK) { sub = 0; continue; }
             enteredModel = ((m || '') + '').trim();
@@ -1740,6 +1736,7 @@ async function promptCredentials(referenceMcpDir) {
         }
 
         const ghExisting = existingEnv['GITHUB_PERSONAL_ACCESS_TOKEN'] || existingEnv['GITHUB_TOKEN'] || '';
+        if (ghExisting) { github = ghExisting; break; }
         const enteredGithub = await passwordWithBack({
             message: `GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP${ghExisting ? ` (existing detected: ${maskApiKey(ghExisting)}, leave blank to keep)` : ' (leave blank to skip)'} (< = back):`
         });
@@ -1752,7 +1749,7 @@ async function promptCredentials(referenceMcpDir) {
         gemini: apiKey.trim(),
         github: github.trim(),
         openwikiProvider: d.provider,
-        openwikiModel: enteredModel || d.model || defaultModelFor(d.provider),
+        openwikiModel: enteredModel,
         openwikiBaseUrl: customBaseUrl || d.baseUrl,
         keyEnvName: d.keyEnvName
     };
@@ -2952,9 +2949,9 @@ function aoPlatformBinaries(dir) {
     return [b('bin', `ao-${plat}-${arch}`), b('ao-daemon'), b('bin', 'ao'), b('ao')];
 }
 
-// Picks the binary this run may install. A local checkout counts only when it
-// is a release source (clean, HEAD on a tag) or AOS_AO_DEV_BUILD=1 opts in;
-// otherwise the published release package is used, never the dev checkout.
+// Picks the binary this run may install. A local checkout is looked at only
+// when AOS_AO_DEV_BUILD=1 opts in; otherwise the published release package is
+// used silently, never the dev checkout.
 function selectAoCandidate({
     checkoutDir, isLocalGitRepo, releaseDir,
     devOptIn = process.env.AOS_AO_DEV_BUILD === '1',
@@ -2964,7 +2961,7 @@ function selectAoCandidate({
     build = buildAoFromSource,
     candidatesIn = aoPlatformBinaries,
 }) {
-    if (isLocalGitRepo) {
+    if (isLocalGitRepo && devOptIn) {
         const ws = checkWorkspace(checkoutDir);
         if (ws.ok) {
             if (dryRun) return { bin: null, source: 'dry-run' };
@@ -2975,12 +2972,9 @@ function selectAoCandidate({
             });
             return { bin: prebuilt || build(checkoutDir), source: 'checkout' };
         }
-        if (devOptIn) {
-            log.warn(`AOS_AO_DEV_BUILD=1: building ao from ${checkoutDir} HEAD although ${ws.reason}; a downgrade is still refused.`);
-            if (dryRun) return { bin: null, source: 'dry-run' };
-            return { bin: build(checkoutDir), source: 'dev', allowDirty: true };
-        }
-        log.warn(`The AO checkout ${checkoutDir} is not a release source (${ws.reason}; Go also counts untracked files as uncommitted), so the published release is used. To build from the checkout instead, rerun with AOS_AO_DEV_BUILD=1.`);
+        log.warn(`AOS_AO_DEV_BUILD=1: building ao from ${checkoutDir} HEAD although ${ws.reason}; a downgrade is still refused.`);
+        if (dryRun) return { bin: null, source: 'dry-run' };
+        return { bin: build(checkoutDir), source: 'dev', allowDirty: true };
     }
     if (fs.existsSync(path.join(releaseDir, '.git'))) {
         log.warn(`${releaseDir} is a git checkout; not downloading the release over it. Keeping the installed ao.`);
@@ -3008,7 +3002,7 @@ async function installOSAgentWorkspace() {
         path.join(homeDir, 'dev', 'agents', 'bdb-agent-orchestrator'),
         path.join(homeDir, 'dev', 'bdb-dev', 'bdb-agent-orchestrator'),
     ].find((d) => fs.existsSync(path.join(d, '.git')));
-    if (checkoutDir) log.step(`Found a local AO checkout: ${checkoutDir}`);
+    if (checkoutDir && process.env.AOS_AO_DEV_BUILD === '1') log.step(`Found a local AO checkout: ${checkoutDir}`);
 
     const pick = selectAoCandidate({ checkoutDir, isLocalGitRepo: !!checkoutDir, releaseDir });
     if (DRY_RUN) {
@@ -6929,6 +6923,7 @@ module.exports = {
     findSynapseBinary,
     describeMissingSynapseBinary,
     isValidOpenWikiModelId,
+    loadExistingEnv,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
