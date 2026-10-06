@@ -174,7 +174,7 @@ export async function delegate(req) {
       finalize({ exit: 1, output: (lastAgentMessage || stderrBuf || `codex exited with code ${code}`).trim() });
     });
 
-    // An open stdin pipe makes the CLI wait for input forever.
-    child.stdin.end();
+    // stdin is spawned as 'ignore' (child.stdin is null), which already stops the CLI from waiting for input.
+    child.stdin?.end();
   });
 }
