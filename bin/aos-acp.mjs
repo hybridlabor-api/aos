@@ -31,7 +31,7 @@ const gateMod = await loadFrom([
   join(homedir(), ".claude", "hooks", "go-gate.mjs"),
 ]);
 if (!gateMod) throw new Error("go-gate.mjs not found (run the AOS installer): refusing to run without the GO gate");
-const { GUARDED_PATTERNS, slug, tokenGrantsGo } = gateMod;
+const { isGuardedCommand, hardBlockReason, slug, tokenGrantsGo, setGateContext, readBlockTs, markBlock, nameKey, commandTooLong, TOO_LONG_MESSAGE } = gateMod;
 const emitTrail = (await loadFrom([
   join(here, "..", "mcps", "mcsc", "packages", "core", "src", "trail.js"),
   join(homedir(), ".aos", "bin", "trail.mjs"),
@@ -53,7 +53,7 @@ export function commandOf(toolCall = {}) {
 }
 
 export function isGuarded(cmd) {
-  return GUARDED_PATTERNS.some((re) => re.test(cmd));
+  return isGuardedCommand(cmd);
 }
 
 function pickOption(options, kinds) {
@@ -68,10 +68,20 @@ function pickOption(options, kinds) {
 export async function decidePermission(params, opts, log = () => {}) {
   const options = params.options || [];
   const cmd = commandOf(params.toolCall);
+  // Same block cooldown as the hook, keyed by the worker name (the ACP session id is per run).
+  const key = opts.name && nameKey ? nameKey(opts.name) : "";
+  setGateContext?.({ cwd: opts.cwd || "", blockTs: key ? readBlockTs(key) : 0 });
   const guarded = !!cmd && isGuarded(cmd);
-  let allow = opts.allowDefault === "allow";
+  const hard = cmd ? hardBlockReason(cmd) : null;
+  // A command the gate cannot read as text (an object, a number) is refused outright.
+  const rawIn = params.toolCall?.rawInput || {};
+  const odd = [rawIn.command, rawIn.cmd, rawIn.script, rawIn.CommandLine].some((v) => v != null && v !== "" && typeof v !== "string" && !Array.isArray(v));
+  let allow = opts.allowDefault === "allow" && !hard && !odd;
   let reason = `default ${opts.allowDefault}`;
-  if (guarded) {
+  if (hard || odd) {
+    allow = false;
+    reason = hard || "command in the permission request is not a string; the gate cannot read it";
+  } else if (guarded) {
     const deadline = Date.now() + (opts.goWait || 0) * 1000;
     let r = tokenGrantsGo(opts.name, { consume: opts.consume });
     if (!r.ok && opts.goWait) log("permission_pending", { command: cmd, waiting_s: opts.goWait });
@@ -80,8 +90,9 @@ export async function decidePermission(params, opts, log = () => {}) {
       r = tokenGrantsGo(opts.name, { consume: opts.consume });
     }
     allow = r.ok;
-    reason = r.ok ? "GO token" : r.reason;
+    reason = r.ok ? "GO token" : `${commandTooLong?.(cmd) ? `${TOO_LONG_MESSAGE}; ` : ""}${r.reason}`;
   }
+  if (!allow && (hard || odd || guarded)) markBlock?.(key);
   const optionId = allow
     ? pickOption(options, ["allow_once", "allow_always"])
     : pickOption(options, ["reject_once", "reject_always"]);

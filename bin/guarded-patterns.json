@@ -11,87 +11,87 @@
   ],
   "patterns": [
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:git\\s+push|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+push)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:git\\s+push|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+push)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?npm\\s+publish\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?npm\\s+publish\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?npm\\s+version\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?npm\\s+version\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:gh\\s+pr\\s+merge|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+pr\\s+merge)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+pr\\s+merge|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+pr\\s+merge)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:gh\\s+release\\s+create|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+release\\s+create)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+release\\s+create|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+release\\s+create)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:git\\s+reset\\s+--hard|(?:git\\s+|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+)reset\\b[^;&|\\n]*\\s--hard)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:git\\s+reset\\s+--hard|(?:git\\s+|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+)reset\\b[^;&|\\n]*\\s--hard)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:git\\s+clean|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+clean)\\b[^;&|\\n]*\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:git\\s+clean|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+clean)\\b[^;&|\\n]*\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?rm\\s+(?:[^;&|\\n]*\\s)?['\"]?(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?rm\\s+(?:[^;&|\\n]*\\s)?['\"]?(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:git\\s+branch|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+branch)\\b[^;&|\\n]*\\s(?:-[a-zA-Z]*D[a-zA-Z]*|-[a-zA-Z]*(?:df|fd)[a-zA-Z]*)(?=\\s|$)",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:git\\s+branch|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+branch)\\b[^;&|\\n]*\\s(?:-[a-zA-Z]*D[a-zA-Z]*|-[a-zA-Z]*(?:df|fd)[a-zA-Z]*)(?=\\s|$)",
       "flags": ""
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:git\\s+branch|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+branch)\\b(?=[^;&|\\n]*\\s(?:-d|--delete)\\b)(?=[^;&|\\n]*\\s(?:-f|--force)\\b)",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:git\\s+branch|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+branch)\\b(?=[^;&|\\n]*\\s(?:-d|--delete)\\b)(?=[^;&|\\n]*\\s(?:-f|--force)\\b)",
       "flags": ""
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:git\\s+worktree|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+worktree)\\s+remove\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:git\\s+worktree|git(?:\\s+(?:-[cC]\\s*(?:\"[^\"]*\"|'[^']*'|\\S+)|--[\\w-]+(?:=(?:\"[^\"]*\"|'[^']*'|\\S+))?))+\\s+worktree)\\s+remove\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)pr\\s+(?:create|comment|edit|review|close)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)pr\\s+(?:create|comment|edit|review|close)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)issue\\s+(?:create|comment)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)issue\\s+(?:create|comment)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)release\\s+(?:edit|delete)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)release\\s+(?:edit|delete)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)repo\\s+(?:create|edit|delete)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)repo\\s+(?:create|edit|delete)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)api\\b[^;&|\\n]*\\s(?:-X\\s*|--method[\\s=]+)(?:POST|PATCH|PUT|DELETE)\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)api\\b[^;&|\\n]*\\s(?:-X\\s*|--method[\\s=]+)(?:POST|PATCH|PUT|DELETE)\\b",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)api\\b[^;&|\\n]*\\s(?:-[fF]|--field|--raw-field|--input)",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)api\\b[^;&|\\n]*\\s(?:-[fF]|--field|--raw-field|--input)",
       "flags": ""
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?git\\s+(?:-[cC]\\s*\\S+\\s+)*-c\\s*['\"]?alias\\.",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?git\\s+(?:-[cC]\\s*\\S+\\s+)*-c\\s*['\"]?alias\\.",
       "flags": "i"
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?opencode\\s+run\\b[^;&|\\n]*\\s(?:-[a-zA-Z]*[sc]\\S*|--session|--continue)(?=[\\s=]|$)",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?opencode\\s+run\\b[^;&|\\n]*\\s(?:-[a-zA-Z]*[sc]\\S*|--session|--continue)(?=[\\s=]|$)",
       "flags": ""
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?claude\\b[^;&|\\n]*\\s(?:-[a-zA-Z]*[cr]\\S*|--resume|--continue)(?=[\\s=]|$)",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?claude\\b[^;&|\\n]*\\s(?:-[a-zA-Z]*[cr]\\S*|--resume|--continue)(?=[\\s=]|$)",
       "flags": ""
     },
     {
-      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]*\\/)?opencode\\s+attach\\b",
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:[^\\s;&|()'\"]{0,128}\\/)?opencode\\s+attach\\b",
       "flags": "i"
     },
     {

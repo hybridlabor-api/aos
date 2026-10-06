@@ -27,7 +27,7 @@ const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
 const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
 const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus, { applyGogate }] =
   await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs'].map(hook));
-const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog } = gate;
+const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
 // ---------------------------------------------------------------------------
 // Graph gate (W-5, W-6)
@@ -441,10 +441,23 @@ export default async function bdbAosPlugin(input) {
       const toolName = (toolInput.tool || '').toLowerCase();
       // Intercept bash, terminal, or command execution tools
       if (toolName === 'bash' || toolName === 'terminal' || toolName === 'shell' || toolName === 'exec' || toolName === 'run_command') {
-        const cmd = toolOutput?.args?.command || toolOutput?.args?.cmd || toolOutput?.args?.script || '';
-        const storeReason = gateStoreReason(cmd);
-        if (storeReason) throw new Error(storeReason);
-        if (typeof cmd === 'string' && (GUARDED_PATTERNS.some((re) => re.test(cmd)) || isGuardedCommand(cmd))) {
+        let cmd = toolOutput?.args?.command || toolOutput?.args?.cmd || toolOutput?.args?.script || '';
+        if (Array.isArray(cmd)) cmd = cmd.join(' ');
+        const bkey = ocKey(toolInput.sessionID);
+        setGateContext({ cwd: directory, blockTs: readBlockTs(bkey) });
+        const deny = (msg) => { markBlock(bkey); throw new Error(msg); };
+        if (typeof cmd !== 'string') deny('Blocked by BDB go-gate: the command is not a string; the gate cannot read it (ask for GO).');
+        // Over the length cap nothing is parsed: guarded, lifted only by a GO, not a hard block.
+        const tooLong = commandTooLong(cmd);
+        if (!tooLong) {
+          // Unconditional, before any GO, grant, mode or token.
+          const hardReason = hardBlockReason(cmd);
+          if (hardReason) deny(hardReason);
+          const storeReason = gateStoreReason(cmd);
+          if (storeReason) deny(storeReason);
+        }
+        if (isGuardedCommand(cmd)) {
+          const cooling = analyzeDeletes(cmd).cooldown;
           const s = sess(toolInput.sessionID);
           // An unanswered lookup is not proof of a root session: token-only for this call, not cached.
           let tokenOnly = !!s.parentID;
@@ -478,7 +491,7 @@ export default async function bdbAosPlugin(input) {
           }
 
           // Modes and grants of the root session (verified against opencode.db); usable by its subagents.
-          if (!authorized) {
+          if (!authorized && !cooling && !tooLong) {
             const root = await rootSessionId(input.client, toolInput.sessionID, tokenOnly ? undefined : s.parentID);
             if (root) {
               const key = ocKey(root);
@@ -496,8 +509,8 @@ export default async function bdbAosPlugin(input) {
           }
 
           if (!authorized) {
-            throw new Error(
-              `Blocked by BDB go-gate: Command "${cmd.slice(0, 80)}" is guarded and requires explicit authorization with the literal word "GO" before proceeding.`
+            deny(
+              `${cooling ? COOLDOWN_MESSAGE + ' ' : ''}${tooLong ? TOO_LONG_MESSAGE + ' ' : ''}Blocked by BDB go-gate: Command "${cmd.slice(0, 80)}" is guarded and requires explicit authorization with the literal word "GO" before proceeding.`
             );
           }
         }

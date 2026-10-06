@@ -33,7 +33,13 @@ export const patternsJson = (gate) => ({
 
 export function check(gate, { session, command, consume = false }) {
   if (typeof command !== "string" || !command.trim()) return { code: 2, out: { guarded: null, ok: false, scope: null, reason: "--command is empty" } };
-  const storeReason = gate.gateStoreReason(command);
+  // Same block cooldown as the hook, keyed by the worker name given as --session.
+  const key = typeof session === "string" && session && gate.nameKey ? gate.nameKey(session) : "";
+  gate.setGateContext?.({ cwd: process.cwd(), blockTs: key ? gate.readBlockTs(key) : 0 });
+  const hard = gate.hardBlockReason(command);
+  if (hard) { gate.markBlock?.(key); return { code: 1, out: { guarded: true, ok: false, scope: null, reason: hard } }; }
+  const long = gate.commandTooLong?.(command);
+  const storeReason = long ? null : gate.gateStoreReason(command);
   if (storeReason) return { code: 1, out: { guarded: true, ok: false, scope: null, reason: storeReason } };
   if (!gate.isGuardedCommand(command)) return { code: 0, out: { guarded: false, ok: true, scope: [], reason: "" } };
   const scope = gate.commandScopes(command);
@@ -41,9 +47,10 @@ export function check(gate, { session, command, consume = false }) {
     return { code: 2, out: { guarded: true, ok: false, scope, reason: "--session is missing or has no usable name" } };
   }
   const r = gate.tokenGrantsGo(session, { consume });
+  if (!r.ok) gate.markBlock?.(key);
   return r.ok
     ? { code: 0, out: { guarded: true, ok: true, scope, reason: consume ? "GO token consumed" : "GO token valid (not consumed)" } }
-    : { code: 1, out: { guarded: true, ok: false, scope, reason: r.reason } };
+    : { code: 1, out: { guarded: true, ok: false, scope, reason: long ? `${gate.TOO_LONG_MESSAGE}; ${r.reason}` : r.reason } };
 }
 
 export function parseArgs(argv) {
