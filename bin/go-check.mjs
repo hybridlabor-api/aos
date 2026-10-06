@@ -38,7 +38,8 @@ export function check(gate, { session, command, consume = false }) {
   gate.setGateContext?.({ cwd: process.cwd(), blockTs: key ? gate.readBlockTs(key) : 0 });
   const hard = gate.hardBlockReason(command);
   if (hard) { gate.markBlock?.(key); return { code: 1, out: { guarded: true, ok: false, scope: null, reason: hard } }; }
-  const storeReason = gate.gateStoreReason(command);
+  const long = gate.commandTooLong?.(command);
+  const storeReason = long ? null : gate.gateStoreReason(command);
   if (storeReason) return { code: 1, out: { guarded: true, ok: false, scope: null, reason: storeReason } };
   if (!gate.isGuardedCommand(command)) return { code: 0, out: { guarded: false, ok: true, scope: [], reason: "" } };
   const scope = gate.commandScopes(command);
@@ -49,7 +50,7 @@ export function check(gate, { session, command, consume = false }) {
   if (!r.ok) gate.markBlock?.(key);
   return r.ok
     ? { code: 0, out: { guarded: true, ok: true, scope, reason: consume ? "GO token consumed" : "GO token valid (not consumed)" } }
-    : { code: 1, out: { guarded: true, ok: false, scope, reason: r.reason } };
+    : { code: 1, out: { guarded: true, ok: false, scope, reason: long ? `${gate.TOO_LONG_MESSAGE}; ${r.reason}` : r.reason } };
 }
 
 export function parseArgs(argv) {

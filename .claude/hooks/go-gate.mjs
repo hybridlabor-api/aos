@@ -63,8 +63,8 @@ import { fileURLToPath } from "node:url";
 // builtin/exec/nohup/time/xargs/eval with options, `bash -c`, VAR=x), an optional opening
 // quote (bash -c 'git push') and an optional directory (/usr/bin/git). The regexes are the
 // fast first line; the token classifier below (classify + the catch-all) is the authority.
-const WRAP = String.raw`(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else)(?:\s+-{1,2}[\w-]+(?:=\S*)?(?:\s+(?![-'"])(?!(?:\S*/)?(?:git|gh|npm|rm|opencode|curl|wget)\b)[^\s;&|'"]+)?)*\s+|(?:bash|sh|zsh|dash|ksh)(?:\s+-\w+)*\s+-c\s+|\w+=\S*\s+)*`;
-const A = String.raw`(?:^|[;&|\n({\x60])\s*${WRAP}['"]?(?:[^\s;&|()'"]*/)?`;
+const WRAP = String.raw`(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\s+-{1,2}[\w-]+(?:=\S*)?(?:\s+(?![-'"])(?!(?:\S*/)?(?:git|gh|npm|rm|opencode|curl|wget)\b)[^\s;&|'"]+)?)*\s+|(?:bash|sh|zsh|dash|ksh)(?:\s+-\w+)*\s+-c\s+|\w+=\S*\s+)*`;
+const A = String.raw`(?:^|[;&|\n({\x60])\s*${WRAP}['"]?(?:[^\s;&|()'"]{0,128}/)?`;
 // git / gh with global options before the subcommand (plain `git <sub>` is spelled out too).
 const G = String.raw`git(?:\s+(?:-[cC]\s*(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+(?:=(?:"[^"]*"|'[^']*'|\S+))?))+\s+`;
 const GH = String.raw`gh(?:\s+(?:-R|--repo)(?:\s+|=)\S+)+\s+`;
@@ -129,7 +129,8 @@ const base = (t) => unq(t).replace(/^.*\//, "");
 const WRAPPERS = {
   sudo: { v: /^-[ugCDhpRrTUt]$/ }, doas: { v: /^-[uC]$/ }, env: { v: /^-[uCS]$/ }, command: {}, builtin: {}, exec: { v: /^-a$/ },
   nohup: {}, time: {}, nice: { v: /^-n$/ }, timeout: { v: /^-[sk]$/, pos: 1 }, caffeinate: { v: /^-[tw]$/ }, stdbuf: { v: /^-[ioe]$/ },
-  xargs: { v: /^-[IPndLsEa]$/ }, script: { v: /^-[Ft]$/, pos: 1 }, then: {}, do: {}, else: {},
+  // Loop and condition keywords run the command after them (aos-22: `until npm view ...; do ...; done`).
+  xargs: { v: /^-[IPndLsEa]$/ }, script: { v: /^-[Ft]$/, pos: 1 }, then: {}, do: {}, else: {}, until: {}, while: {}, if: {}, elif: {},
 };
 const SHELLS = /^(?:bash|sh|zsh|dash|ksh|eval|watch|parallel)$/;
 
@@ -328,7 +329,9 @@ function catchAll(tok, seg, opaque = false) {
   const after = (i, set) => w.slice(i + 1).some((x) => set.test(x));
   for (let i = 0; i < w.length; i++) {
     if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
-    if ((PM.test(w[i]) || w[i] === "npx") && after(i, /^(?:publish|version)$/)) return true;
+    // `npm view|info|show|v <pkg> version` only reads: its subcommand is not publish/version.
+    const sub = w.slice(i + 1).find((x) => !x.startsWith("-"));
+    if ((PM.test(w[i]) || w[i] === "npx") && !/^(?:view|info|show|v)$/.test(sub ?? "") && after(i, /^(?:publish|version)$/)) return true;
     if (w[i] === "gh" && after(i, /^(?:merge|create|delete|edit|comment|close|review|api)$/)) return true;
     if (/^(?:np|release-it|semantic-release)$/.test(w[i]) || (w[i] === "changeset" && after(i, /^publish$/))) return true;
     if (w[i] === "rm" && w.slice(i + 1).some((x) => /^-[a-zA-Z]*[rR]/.test(x) || x === "--recursive")) return true;
@@ -351,6 +354,12 @@ const SHELLISH = /(?:^|[\s;&|(])(?:sudo\s+)?(?:bash|sh|zsh|dash|ksh|fish|source|
 const INTERP = /^(?:node(?:js)?|bun|deno|python[\d.]*|ruby|perl|php|pwsh|powershell|cmd(?:\.exe)?|lua|osascript)$/i;
 const DATA_HEAD = /^(?:echo|printf|grep|egrep|fgrep|rg|ag|jq|awk|gawk|sed)$/;
 const unqQ = (t) => String(t ?? "").replace(/["']/g, "");
+
+// A command longer than this is not analysed at all: it is guarded without a scope (a GO
+// lifts it, a grant or mode does not), so no parser input can make the hook slow.
+export const MAX_COMMAND = 16 * 1024;
+export const TOO_LONG_MESSAGE = "command too long for the gate; split it or ask for GO";
+export const commandTooLong = (c) => typeof c === "string" && c.length > MAX_COMMAND;
 
 // Like tokens(), but $(...) and `...` stay inside one word, so a delete target such as
 // $(echo ~) is seen whole.
@@ -424,6 +433,18 @@ function blankQuotes(s) {
     '""' + (dq ? [...dq.matchAll(/\$\(([^)]*)\)|`([^`]*)`/g)].map((m) => ` ; ${m[1] ?? m[2]}`).join("") : ""));
 }
 const FEEDS = /^(?:bash|sh|zsh|dash|ksh|fish|xargs|eval|source|\.|parallel|node|nodejs|bun|deno|python[\d.]*|ruby|perl|pwsh|powershell)$/;
+// awk and sed programs can run commands (system(), getline, `| "cmd"`, sed's `e` command and
+// `s///e`); such a program is never blanked as data.
+const AWK_EXEC = /system\s*\(|getline|close\s*\(|\|\s*["'$]|\bprint[^;}]*\|\s*\S/;
+const SED_EXEC = /(?<![A-Za-z_\\])e(?![A-Za-z_])|\/[gimIM0-9]*e[gimIM0-9]*\s*(?:["';}]|$)/;
+// Does any LATER stage of the pipeline starting at piece k run a shell or interpreter?
+function pipeFeeds(pieces, k) {
+  if (pieces[k].sep !== "|") return false;
+  for (let j = k; j < pieces.length - 1 && "|(){".includes(pieces[j].sep || "x"); j++) {
+    if (FEEDS.test(base(stripPrefix(tokens(pieces[j + 1].t)).rest[0] ?? ""))) return true;
+  }
+  return false;
+}
 // Inline interpreter code (node -e, python -c ...) is blanked too unless keepCode: it is
 // not shell text, so execution points are read from it by analyzeDeletes instead.
 function blankData(text, keepCode = false) {
@@ -433,9 +454,9 @@ function blankData(text, keepCode = false) {
     const h = base(rest[0] ?? "");
     if (!keepCode && !opaque && INTERP.test(h) && !/^(?:pwsh|powershell|cmd)/i.test(h) && scriptFile(h, rest.slice(1).map(unqQ)).inline) return blankQuotes(p.t) + p.sep;
     const sub = h === "git" ? rest.slice(1).map(unq).find((t, i, a) => !t.startsWith("-") && !/^-[cC]$/.test(a[i - 1] ?? "")) : "";
-    const next = pieces[k + 1];
-    const feeds = p.sep === "|" && next && FEEDS.test(base(stripPrefix(tokens(next.t)).rest[0] ?? ""));
-    return ((DATA_HEAD.test(h) || sub === "grep") && !opaque && !feeds ? blankQuotes(p.t) : p.t) + p.sep;
+    const prog = rest.slice(1).filter((t) => !t.startsWith("-")).map(unqQ).join(" ");
+    const executes = (/^g?awk$/.test(h) && AWK_EXEC.test(prog)) || (h === "sed" && SED_EXEC.test(prog));
+    return ((DATA_HEAD.test(h) || sub === "grep") && !opaque && !executes && !pipeFeeds(pieces, k) ? blankQuotes(p.t) : p.t) + p.sep;
   }).join("");
 }
 
@@ -471,28 +492,75 @@ export function commandView(command, keepCode = false) {
 
 const HOME_VAR = String.raw`(?:~[\w.+-]*|\$HOME|\$USERPROFILE|%USERPROFILE%|%HOMEPATH%|\$env:(?:USERPROFILE|HOME)|\$\{env:(?:USERPROFILE|HOME)\})`;
 const HOME_PATH = new RegExp(`^${HOME_VAR}(?:/(.*))?$`, "i");
-const realHome = (() => { try { return userInfo().homedir.replace(/\/+$/, ""); } catch { return ""; } })();
+const osHome = () => { try { return userInfo().homedir.replace(/\/+$/, ""); } catch { return ""; } };
 const pathSegs = (s) => String(s ?? "").split("/").filter((x) => x && x !== ".");
+const GLOB = /[*?{}[\]]/;
 
-// true for `/`, a bare `*`, the home directory and its direct children, in every spelling
-// (shell variables, ~, /Users|/home|/root, C:\Users, the real home from the OS user database).
-// Also true for the gate's own state (~/.aos/gate, ~/.aos/go): a delete there lifts the cooldown.
-// `${HOME:-x}`, `${HOME%/}` ... and ~user are home forms. A bare `*` is resolved against the
-// working directory by the caller, so it is not decided here.
-export function isHomeLevel(p) {
+// What a path is relative to the home directory, in every spelling (shell variables, ~, ~user,
+// /Users|/home|/root, C:\Users, the real home from the OS user database):
+//   root   `/` or `/*`           state  the gate's own ~/.aos/gate and ~/.aos/go
+//   home   the home directory (or something above it, or a `..` that may reach it)
+//   child  one direct child of home; `real` is its filesystem path when known
+//   glob   a glob or brace pattern at home level
+// null = anywhere else. `${HOME:-x}` and `${HOME%/}` count as $HOME. A bare `*` is resolved
+// against the working directory by the caller.
+export function homeKind(p) {
   let s = String(p).replace(/["'`]/g, "").replace(/\$\{(HOME|USERPROFILE)(?:[:#%/^,@-][^}]*)?\}/gi, "$$HOME").replace(/\\/g, "/").replace(/\/{2,}/g, "/");
   if (s.length > 1) s = s.replace(/\/+$/, "");
-  if (s === "/" || s === "/*") return true;
-  if (/(?:^|\/)\.aos\/(?:gate|go)(?:\/|$)/.test(s)) return true;
+  if (s === "/" || s === "/*") return { kind: "root" };
+  if (/(?:^|\/)\.aos\/(?:gate|go)(?:\/|$)/.test(s)) return { kind: "state" };
+  const child = (name, real) => (GLOB.test(name) ? { kind: "glob" } : { kind: "child", name, real });
   let m = HOME_PATH.exec(s);
-  if (m) { const r = pathSegs(m[1]); return r.length <= 1 || r.includes(".."); }
+  if (m) {
+    const r = pathSegs(m[1]);
+    if (r.includes("..") || r.length === 0) return { kind: "home" };
+    return r.length === 1 ? child(r[0], join(gateCtx.home || homedir(), r[0])) : null;
+  }
   m = /^(?:[A-Za-z]:)?\/(?:Users|home)(?:\/(.*))?$/i.exec(s);
-  if (m) { const r = pathSegs(m[1]); return r.length <= 2 || r.includes(".."); }
+  if (m) {
+    const r = pathSegs(m[1]);
+    if (r.includes("..") || r.length <= 1) return { kind: "home" };
+    return r.length === 2 ? child(r[1], /^\//.test(s) ? s : "") : null;
+  }
   m = /^\/root(?:\/(.*))?$/.exec(s);
-  if (m) { const r = pathSegs(m[1]); return r.length <= 1 || r.includes(".."); }
-  if (realHome && (s === realHome || s.startsWith(realHome + "/"))) { const r = pathSegs(s.slice(realHome.length)); return r.length <= 1 || r.includes(".."); }
-  return false;
+  if (m) {
+    const r = pathSegs(m[1]);
+    if (r.includes("..") || r.length === 0) return { kind: "home" };
+    return r.length === 1 ? child(r[0], s) : null;
+  }
+  const rh = gateCtx.realHome ?? osHome();
+  if (rh && (s === rh || s.startsWith(rh + "/"))) {
+    const r = pathSegs(s.slice(rh.length));
+    if (r.includes("..") || r.length === 0) return { kind: "home" };
+    return r.length === 1 ? child(r[0], s) : null;
+  }
+  return null;
 }
+export const isHomeLevel = (p) => homeKind(p) !== null;
+
+const entryType = (real) => {
+  try { const st = lstatSync(real); return st.isDirectory() ? "dir" : "file"; } catch { return "missing"; }
+};
+
+// Policy for a delete, move or overwrite aimed at `p`:
+//   "hard"  the home directory, `/`, the gate state, or (recursive delete, move, chmod/chown -R,
+//           rsync --delete) a top-level directory of home, one that is missing or unknown, or a
+//           home-level glob. Never liftable.
+//   "go"    one file or symlink directly in home (checked with lstat), or a non-recursive delete
+//           of a glob/directory there: needs a GO and is not grantable.
+//   null    anything else.
+// `op.recursive` covers the recursive family; `op.move` is mv.
+function homeVerdict(p, op = {}) {
+  const k = homeKind(p);
+  if (!k) return null;
+  if (k.kind === "root" || k.kind === "home" || k.kind === "state") return "hard";
+  const strong = op.recursive || op.move;
+  if (k.kind === "glob") return strong ? "hard" : "go";
+  return k.real && entryType(k.real) === "file" ? "go" : strong ? "hard" : "go";
+}
+
+// A dotfile directly in home that a command overwrites (`> ~/.x`, tee, dd of=, cp, ln -f, truncate).
+const isHomeDotfile = (p) => { const k = homeKind(p); return !!k && k.kind === "child" && k.name.startsWith("."); };
 
 const DEL_CMD = /^(?:rm|rmdir|unlink|shred|remove-item|ri|del|erase|rd|trash)$/i;
 const PS_REC = /^-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?$/i;
@@ -522,9 +590,15 @@ function shellDelete(tok) {
   }
   const pos = a.filter((t) => !t.startsWith("-"));
   // Moving a home-level path away destroys it as surely as deleting it.
-  if (cmd === "mv") return { targets: pos.length > 1 ? pos.slice(0, -1) : [], recursive: false };
+  if (cmd === "mv") return { targets: pos.length > 1 ? pos.slice(0, -1) : [], recursive: false, move: true, writes: pos.length > 1 ? pos.slice(-1) : [] };
   if (cmd === "rsync" && a.some((t) => /^--(?:del|delete\S*|remove-source-files)$/.test(t))) return { targets: pos.slice(-1), recursive: true };
-  if (/^(?:chmod|chown|chgrp)$/.test(cmd) && a.some((t) => /^-[a-zA-Z]*R|^--recursive$/.test(t))) return { targets: pos.slice(1), recursive: false };
+  if (/^(?:chmod|chown|chgrp)$/.test(cmd) && a.some((t) => /^-[a-zA-Z]*R|^--recursive$/.test(t))) return { targets: pos.slice(1), recursive: false, strong: true };
+  // Overwrites of a dotfile directly in home need a GO (the `writes` list is checked separately).
+  if (cmd === "truncate") return { targets: [], recursive: false, writes: pos };
+  if (cmd === "tee" && !a.some((t) => /^-[a-zA-Z]*a|^--append$/.test(t))) return { targets: [], recursive: false, writes: pos };
+  if (cmd === "dd") return { targets: [], recursive: false, writes: a.filter((t) => t.startsWith("of=")).map((t) => t.slice(3)) };
+  if (cmd === "cp" || cmd === "install") return { targets: [], recursive: false, writes: pos.slice(-1) };
+  if (cmd === "ln" && a.some((t) => /^-[a-zA-Z]*f|^--force$/.test(t))) return { targets: [], recursive: false, writes: pos.slice(-1) };
   if (cmd === "rimraf" || (/^(?:npx|pnpm|yarn|bunx|npm|bun|dlx)$/.test(cmd) && tok.slice(0, 5).some((t) => base(t) === "rimraf"))) {
     const i = tok.findIndex((t) => base(t) === "rimraf");
     return { targets: tok.slice(i + 1).map(unqQ).filter((t) => !t.startsWith("-")), recursive: true };
@@ -606,9 +680,12 @@ function codeInto(r, text, lang = "") {
   for (const m of masked.matchAll(DEL_CALL)) {
     const name = m[0].replace(/\s*\(?\s*$/, "");
     const after = text.slice(m.index + m[0].length);
-    if (RECURSIVE_CALL.test(name.replace(/^.*\./, "")) || (OPTION_CALL.test(name) && /recursive/.test(after.slice(0, 300)))) r.destructive = true;
+    const rec = RECURSIVE_CALL.test(name.replace(/^.*\./, "")) || (OPTION_CALL.test(name) && /recursive/.test(after.slice(0, 300)));
+    if (rec) r.destructive = true;
     const p = codeArgToPath(after);
-    if (p && isHomeLevel(p)) r.hard ||= p;
+    const v = p ? homeVerdict(p, { recursive: rec }) : null;
+    if (v === "hard") r.hard ||= p;
+    else if (v === "go") r.unscoped = true;
   }
   for (const m of masked.matchAll(EXEC_CALL)) {
     const c = execCommand(text.slice(m.index + m[0].length), m[0].replace(/\s*\(?\s*$/, ""));
@@ -653,14 +730,25 @@ function scriptInto(r, h, file, cwd) {
   const path = resolve(expandHome(cwd), expandHome(file));
   let st, mtime;
   try { st = statSync(path); mtime = Math.max(st.mtimeMs, lstatSync(path).mtimeMs); } catch { r.unscoped = true; return; }
-  if (st.isDirectory()) return;
+  // Only a regular file is ever opened: a device (/dev/zero), FIFO, socket or directory is
+  // unscoped and never read (a read could hang the hook). statSync follows a symlink.
+  if (!st.isFile()) { r.unscoped = true; return; }
   // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
   // written before the block, or remove the marker through a path built at run time; the
   // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
   if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && mtime > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
   let body;
-  try { body = readFileSync(path, "utf8"); } catch { r.unscoped = true; return; }
+  try {
+    const fd = openSync(path, "r");
+    try {
+      const buf = Buffer.alloc(SCRIPT_MAX + 1);
+      let n = 0;
+      for (let k; n < buf.length && (k = readSync(fd, buf, n, buf.length - n, n)) > 0;) n += k;
+      if (n > SCRIPT_MAX) { r.unscoped = true; return; }
+      body = buf.toString("utf8", 0, n);
+    } finally { closeSync(fd); }
+  } catch { r.unscoped = true; return; }
   if (/^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i.test(h)) r.cmds.push(body);
   else codeInto(r, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
 }
@@ -732,11 +820,12 @@ const cdTarget = (tok, st) => {
 };
 
 export function analyzeDeletes(command, depth = 0, init = null) {
-  const r = { destructive: false, hard: null, unscoped: false, cooldown: false, cmds: [] };
+  const r = { destructive: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] };
   if (depth > 3 || typeof command !== "string") return r;
+  if (command.length > MAX_COMMAND) { r.unscoped = true; return r; }
   const st = init ? { cwd: init.cwd, vars: { ...init.vars } } : { cwd: gateCtx.cwd || process.cwd(), vars: Object.create(null) };
   const snap = () => ({ cwd: st.cwd, vars: st.vars });
-  const merge = (o) => { r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.cmds.push(...o.cmds); };
+  const merge = (o) => { r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.cmds.push(...o.cmds); r.files.push(...o.files); };
   const { text, code } = commandView(command, true);
   const un = (t) => String(t).replace(/^"([\s\S]*)"$/, (_, x) => x.replace(/\\(["\\$`])/g, "$1")).replace(/^'([\s\S]*)'$/, "$1");
   const stack = [];
@@ -747,17 +836,35 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     if (d.recursive) r.destructive = true;
     for (const t of d.targets) {
       const p = resolveTarget(t, st);
-      if (p === null) r.unscoped = true;
-      else if (isHomeLevel(p)) r.hard ||= t;
+      if (p === null) { r.unscoped = true; continue; }
+      const v = homeVerdict(p, { recursive: d.recursive || d.strong, move: d.move });
+      if (v === "hard") r.hard ||= t;
+      else if (v === "go") r.unscoped = true;
+    }
+    // Overwriting a dotfile directly in home (commands with a write target, and `>` redirects).
+    const writes = [...(d.writes ?? [])];
+    const w = words(seg);
+    for (let i = 0; i < w.length; i++) {
+      const m = /^\d*>(?!>)\|?(.*)$/.exec(unqQ(w[i]));
+      if (m && !/^&/.test(m[1])) writes.push(m[1] || unqQ(w[i + 1] ?? ""));
+    }
+    for (const t of writes) {
+      const p = resolveTarget(t, st);
+      if (p !== null && isHomeDotfile(p)) r.unscoped = true;
     }
     const h = base(tok[0] ?? "");
+    // A sed/awk program that executes (`1e cmd`, system()) is read like an opaque command text.
+    if (h === "sed" || /^g?awk$/.test(h)) {
+      const prog = tok.slice(1).filter((t) => !t.startsWith("-")).map(unqQ).join(" ");
+      if ((h === "sed" ? SED_EXEC : AWK_EXEC).test(prog) && catchAll([prog], "", true)) r.unscoped = true;
+    }
     if (/^(?:cd|pushd)$/.test(h)) st.cwd = cdTarget(tok, st);
     if (opaque || /^(?:cmd(?:\.exe)?|pwsh|powershell)$/i.test(h)) merge(analyzeDeletes(innerText(tok), depth + 1, snap()));
     if (FILE_HEAD.test(h) && (!opaque || /^(?:bash|sh|zsh|dash|ksh)$/.test(h))) {
       const f = scriptFile(h, tok.slice(1).map(unqQ));
       if (f.module && /rm|remov|delet|rimraf|trash|clean|purge|wipe/i.test(f.module)) r.unscoped = true;
       if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""));
-      else if (f.file) scriptInto(r, h, f.file, st.cwd);
+      else if (f.file) r.files.push({ h, file: f.file, cwd: st.cwd });
     }
   };
   for (const p of scanSplit(text)) {
@@ -767,13 +874,33 @@ export function analyzeDeletes(command, depth = 0, init = null) {
   }
   for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
   for (const m of text.matchAll(/\$\(([^)]*)\)|`([^`]*)`/g)) merge(analyzeDeletes(unprep(m[1] ?? m[2]), depth + 1, snap()));
-  for (const c of r.cmds.splice(0)) { r.cmds.push(c); if (depth < 3) { const o = analyzeDeletes(c, depth + 1, snap()); r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; } }
+  // Spawned command texts are analysed too (their own cmds are classified by commandScopes).
+  let seen = 0;
+  const drain = () => {
+    for (; seen < r.cmds.length; seen++) {
+      if (depth >= 3) continue;
+      const o = analyzeDeletes(r.cmds[seen], depth + 1, snap());
+      r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.files.push(...o.files);
+    }
+  };
+  drain();
+  // Script files are read last, and only when the shell text itself already holds no hard
+  // block: nothing is opened for a command that is refused anyway.
+  if (depth === 0) {
+    for (let n = 0; r.files.length && !r.hard; n++) {
+      if (n >= 16) { r.unscoped = true; break; }
+      const f = r.files.shift();
+      scriptInto(r, f.h, f.file, f.cwd);
+      drain();
+    }
+    r.files.length = 0;
+  }
   return r;
 }
 
 export function hardBlockReason(command) {
   const { hard } = analyzeDeletes(command);
-  return hard ? `Blocked by go-gate: HARD BLOCK, unconditional. This command deletes the home directory, the filesystem root or a direct child of one (target: ${hard}). No GO, grant, mode or token lifts this block. Stop now and report this command to the user; do not rephrase it or try another tool, language or route to the same effect.` : null;
+  return hard ? `Blocked by go-gate: HARD BLOCK, unconditional. This command deletes or moves away the home directory, the filesystem root or a top-level directory of home (target: ${hard}). No GO, grant, mode or token lifts this block. Stop now and report this command to the user; do not rephrase it or try another tool, language or route to the same effect.` : null;
 }
 
 const segGuarded = (seg) => { const c = classify(seg); return c === null || c.length > 0 || GUARDED_PATTERNS.some((r) => r.test(seg)); };
@@ -803,10 +930,12 @@ export function commandScopes(command, protectedFor = staticResolver) {
 }
 
 function scopesOf(orig, protectedFor) {
+  if (commandTooLong(orig)) return null;
   const out = new Set();
   const segs = segments(orig);
   const command = commandView(orig).text;
-  if (feedsShell(segs) && catchAll(tokens(command), "", true)) return null;
+  // Raw text on purpose: data that a later pipe stage turns into commands must stay visible.
+  if (feedsShell(segs) && catchAll(tokens(String(orig)), "", true)) return null;
   for (const seg of segs) {
     const s = classify(seg, protectedFor);
     if (s === null) return null;
@@ -827,7 +956,7 @@ function scopesOf(orig, protectedFor) {
 }
 
 export const isGuardedCommand = (command) =>
-  typeof command === "string" && (GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
+  typeof command === "string" && (commandTooLong(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
 
 // ---------------------------------------------------------------------------
 // Grant store protection (Bash side; Write/Edit side is env-file-protection).
@@ -843,10 +972,12 @@ const STORE_REF = /\.aos[/,\s+]+(?:\.[/]+)*(?:gate|go)(?![\w.-])|\.aos\/+[^\s/]*
 export function gateStoreReason(command) {
   if (typeof command !== "string") return null;
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
-  if (!STORE_REF.test(norm)) return null;
+  // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
+  const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
+  if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
   // `>` covers redirects and `>(`; `<(` and `$(`/backticks run commands of their own.
   const readOnly = !/[>\x60]|\$\(|<\(/.test(norm) &&
-    norm.split(/&&|\|\||[;|&\n]/).every((s) => /^\s*(?:cat|ls|grep|head|tail)\b/.test(s));
+    norm.split(/&&|\|\||[;|&\n]/).every((s) => /^\s*(?:cat|ls|grep|head|tail|cd)\b/.test(s));
   return readOnly ? null : "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail is allowed.";
 }
 
@@ -862,7 +993,8 @@ function readStdin() {
 let blockKey = "";
 const blockFile = (key) => join(gateDir(), `${key}.block`);
 export function readBlockTs(key) {
-  try { return Number(JSON.parse(readFileSync(blockFile(key), "utf8")).ts) || 0; } catch { return 0; }
+  // A marker from the future (a forged or skewed ts) counts as written now, never as later.
+  try { return Math.min(Number(JSON.parse(readFileSync(blockFile(key), "utf8")).ts) || 0, Date.now()); } catch { return 0; }
 }
 export function markBlock(key, now = Date.now()) {
   if (!key || now - readBlockTs(key) < COOLDOWN_MS) return;
@@ -1023,6 +1155,7 @@ const ghPrTarget = (seg) => {
 export function goAllows(go, command) {
   if (!go?.ok) return false;
   if (!go.prs) return true;
+  if (commandTooLong(command)) return false;
   if (commandScopes(command) === null) return false; // something in it cannot be classified
   let guardedSeen = false;
   for (const seg of segments(command)) {
@@ -1458,20 +1591,25 @@ function main() {
   // Detect harness
   const isAgy = !!(input?.toolCall || input?.conversationId || input?.artifactDirectoryPath || input?.workspacePaths);
 
-  const command =
+  // File-writing tools carry content, never a command.
+  if (/^(?:write|edit|multiedit|notebookedit|apply_patch|patch|create|str_replace\w*)$/i.test(String(input?.tool_name ?? ""))) {
+    respond(isAgy, true);
+    return;
+  }
+
+  const raw =
     input?.toolCall?.args?.CommandLine ||
     input?.toolCall?.args?.command ||
     input?.tool_input?.command ||
     input?.command ||
     "";
-
-  if (typeof command !== "string" || !command.trim()) {
-    respond(isAgy, true);
+  // An argv array is joined like aos-acp does; any other non-string value is refused.
+  const command = Array.isArray(raw) ? raw.join(" ") : raw;
+  if (typeof command !== "string") {
+    respond(isAgy, false, "command in hook input is not a string; the gate cannot read it (ask for GO)", "");
     return;
   }
-
-  // File-writing tools carry content, never a command.
-  if (/^(?:write|edit|multiedit|notebookedit|apply_patch|patch|create|str_replace\w*)$/i.test(String(input?.tool_name ?? ""))) {
+  if (!command.trim()) {
     respond(isAgy, true);
     return;
   }
@@ -1479,22 +1617,26 @@ function main() {
   blockKey = hookBlockKey(input, isAgy);
   setGateContext({ cwd: typeof input.cwd === "string" ? input.cwd : "", blockTs: blockKey ? readBlockTs(blockKey) : 0 });
 
-  // Unconditional: before any GO, grant, mode or token is looked at.
-  const hardReason = hardBlockReason(command);
-  if (hardReason) {
-    respond(isAgy, false, hardReason, command, true);
-    return;
-  }
+  // Over the length cap nothing is parsed: it is guarded, only a GO lifts it, and it is not a hard block.
+  const tooLong = commandTooLong(command);
+  if (!tooLong) {
+    // Unconditional: before any GO, grant, mode or token is looked at.
+    const hardReason = hardBlockReason(command);
+    if (hardReason) {
+      respond(isAgy, false, hardReason, command, true);
+      return;
+    }
 
-  const storeReason = gateStoreReason(command);
-  if (storeReason) {
-    respond(isAgy, false, storeReason, command);
-    return;
-  }
+    const storeReason = gateStoreReason(command);
+    if (storeReason) {
+      respond(isAgy, false, storeReason, command);
+      return;
+    }
 
-  if (!isGuardedCommand(command)) {
-    respond(isAgy, true);
-    return;
+    if (!isGuardedCommand(command)) {
+      respond(isAgy, true);
+      return;
+    }
   }
 
   const transcriptPath = input?.transcriptPath || input?.transcript_path;
@@ -1512,10 +1654,11 @@ function main() {
   const reasons = [go.ok ? "a GO with PR numbers covers only gh pr merge/edit/close/review/comment for those PRs; type a plain GO" : go.reason];
   const cooling = analyzeDeletes(command).cooldown;
   if (cooling) reasons.unshift(COOLDOWN_MESSAGE);
+  if (tooLong) reasons.unshift(TOO_LONG_MESSAGE);
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).
   const key = !isAgy && input.session_id ? sessionKey(input.session_id) : "";
-  if (key && !cooling) {
+  if (key && !cooling && !tooLong) {
     const eff = effectiveGate(key, { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
     for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
     if (eff.mode === "off") {

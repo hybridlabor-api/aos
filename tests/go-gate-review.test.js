@@ -161,8 +161,8 @@ describe('5 store guard forms (M1)', () => {
             assert.ok(g.gateStoreReason(c), c);
         }
         for (const c of ['cat ~/.aos/gate/k.json', 'ls -la ~/.AOS/gate', 'grep x ~/.aos/gate/k.json | head -1']) assert.equal(g.gateStoreReason(c), null, c);
-        // documented gap: a relative path after cd cannot be caught by string matching
-        assert.equal(g.gateStoreReason('cd ~/.aos && cp /tmp/x gate/k.json'), null);
+        // a relative gate/ or go/ path right after `cd <...>/.aos` is caught too
+        assert.ok(g.gateStoreReason('cd ~/.aos && cp /tmp/x gate/k.json'));
     });
     test('Write to ~/.AOS/gate (case-insensitive APFS) is blocked', () => {
         for (const f of ['~/.AOS/gate/k.json', '~/.aos/Gate/k.json', `${home}/.aos//gate/k.json`, `${home}/.aos/./go/w.token`]) assert.ok(envp.envFileReason(f), f);
