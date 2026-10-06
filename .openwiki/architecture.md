@@ -251,7 +251,6 @@ bdb-dev-optimized-agent-skills/
 │   ├── bdb_ma3_mcp/                 # grandMA3 OSC/UDP automation
 │   ├── bdb_resolume_mcp/            # Resolume Arena REST API controller
 │   ├── memb-mcp/                    # memB local SQLite + ONNX vector memory server
-│   └── zavora_computer_use/         # Native precompiled OS automation binaries
 ├── skills/                          # 185 curated agent skills
 │   ├── global_config/               # System skills (openwiki-skill, memb-skill, MCP docs)
 │   └── ...                          # Domain-specific development and creative skills

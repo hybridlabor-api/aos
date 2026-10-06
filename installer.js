@@ -3289,7 +3289,7 @@ async function installMcpsForTarget(paths, ctx) {
     }
     log.step(`Installed selected MCP servers to ${mcpCodeTarget}`);
 
-    const nodeMcps = ['adobe_uxp_mcp', 'unreal_mcp', 'tdmcp', 'touchdesigner-mcp', 'davinci-resolve-mcp', 'after-effects-mcp', 'computer-use-mcp', 'mcsc'];
+    const nodeMcps = ['adobe_uxp_mcp', 'unreal_mcp', 'tdmcp', 'touchdesigner-mcp', 'davinci-resolve-mcp', 'after-effects-mcp', 'mcsc'];
     for (const mcpFolder of nodeMcps.filter(m => selectedMcps.includes(m))) {
         const targetFolder = path.join(mcpCodeTarget, mcpFolder);
         if (fs.existsSync(path.join(targetFolder, 'package.json'))) {
@@ -4970,7 +4970,7 @@ async function promptMcpSelection(tier) {
     if (!availableMcps.includes(CORE_MCP)) availableMcps.push(CORE_MCP);
 
     if (tier === '2') {
-        const basicMcps = ['computer-use-mcp', 'memb-mcp', 'windows-computer-use-mcp'];
+        const basicMcps = ['memb-mcp', 'windows-computer-use-mcp'];
         availableMcps = availableMcps.filter(m => basicMcps.includes(m));
     }
 

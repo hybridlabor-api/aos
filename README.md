@@ -312,7 +312,7 @@ npx skills add hybridlabor-api/aos
 - **Additional:** grandMA3 (OSC/UDP on port 8000), Resolume (REST API on port 8080), Vectorworks (semantic RAG on port 8765), Adobe UXP bridge, Open Design
 
 **OS control & system automation:**
-- **macOS/Linux** — `zavora_computer_use` (native Rust NAPI binary, no runtime compile), skill: `bdb-computer-use-mcp`
+- **macOS/Linux** — `zavora_computer_use` (`npx -y @zavora-ai/computer-use-mcp@7.4.0`, native Rust module bundled in the npm package), skill: `bdb-computer-use-mcp`
 - **Windows** — `bdb_windows_computer_use` (Win32 / COM / UIAutomation, local OCR with Tesseract)
 
 **Memory, delegation & infrastructure:**
