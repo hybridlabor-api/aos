@@ -44,6 +44,10 @@
       "args": ["--directory", "__MCPS_DIR__/blender-mcp", "run", "-m", "blender_mcp.server"]
     },
     "bdb_after_effects_mcp": {
+      "command": "npx",
+      "args": ["-y", "@kumoproductions/mcp-aftereffects@0.3.1"]
+    },
+    "bdb_after_effects_mcp_legacy": {
       "command": "node",
       "args": ["__MCPS_DIR__/after-effects-mcp/build/index.js"]
     },
