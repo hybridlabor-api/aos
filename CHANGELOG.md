@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+* Removed the foreign `agent-orchestrator` skill (not the AO product `bdb-agent-orchestrator`, nor `ao-orchestrator`). Installed copies are retired on update; edited or foreign files are backed up first.
 ## [4.18.1](https://github.com/hybridlabor-api/aos/compare/v4.18.0...v4.18.1) (2026-10-02)
 
 

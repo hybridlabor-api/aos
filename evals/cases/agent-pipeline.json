@@ -18,7 +18,7 @@
     "negative": [
       {
         "prompt": "Coordinate the agents and match skills.",
-        "owner": "agent-orchestrator"
+        "owner": "ao-orchestrator"
       },
       {
         "prompt": "Another plausible near-miss request.",

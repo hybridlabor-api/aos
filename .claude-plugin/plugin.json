@@ -41,7 +41,6 @@
     "./skills/github-repo",
     "./skills/global_config/agent-manager-skill",
     "./skills/global_config/agent-memory-mcp",
-    "./skills/global_config/agent-orchestrator",
     "./skills/global_config/agent-pipeline",
     "./skills/global_config/agent-tool-builder",
     "./skills/global_config/agentic-harness-patterns",

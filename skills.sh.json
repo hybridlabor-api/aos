@@ -8,7 +8,6 @@
       "skills": [
         "agent-manager-skill",
         "agent-memory-mcp",
-        "agent-orchestrator",
         "agent-pipeline",
         "agenttrail",
         "ao-orchestrator",
