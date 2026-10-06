@@ -210,10 +210,17 @@ test('package adapters detect when not installed', () => {
     }
 });
 
-test('deja detect when not on PATH', () => {
+const withPath = (dir, fn) => { const prev = process.env.PATH; process.env.PATH = dir; try { return fn(); } finally { process.env.PATH = prev; } };
+
+test('T30: deja detect is PATH-isolated (passes on a machine that has deja)', () => {
     const deja = pk.registry.find((p) => p.id === 'deja');
-    const d = deja.detect();
-    assert.strictEqual(d.installed, false, 'deja detect should fail when not on PATH');
+    const empty = path.join(mkHome(), 'empty');
+    fs.mkdirSync(empty);
+    assert.strictEqual(withPath(empty, () => deja.detect()).installed, false, 'not on PATH');
+
+    const bin = path.join(mkHome(), 'bin');
+    script(path.join(bin, 'deja'), 'echo "deja 0.21.1"');
+    assert.deepStrictEqual(withPath(bin, () => deja.detect()), { installed: true, version: '0.21.1' });
 });
 
 test('codenotch detect when not installed', () => {
@@ -227,12 +234,18 @@ test('codenotch detect when not installed', () => {
     assert.ok(typeof d.installed === 'boolean');
 });
 
-test('remote verify requires --version', () => {
+test('T29: remote verify runs `remote --version` (fake binary fails on any other argument)', () => {
     const m = machine();
     const pkg = pk.registry.find((p) => p.id === 'remote');
-    const result = pkg.verify({ host: m.host, home: m.home });
-    // On test machine, remote binary likely won't exist
-    assert.strictEqual(result.ok, false);
+    const bin = path.join(mkHome(), 'bin');
+    const log = path.join(mkHome(), 'args.txt');
+    script(path.join(bin, 'remote'), `echo "$@" > "${log}"\n[ "$1" = "--version" ] || exit 1`);
+    assert.strictEqual(withPath(bin, () => pkg.verify({ host: m.host, home: m.home })).ok, true);
+    assert.strictEqual(fs.readFileSync(log, 'utf8').trim(), '--version');
+
+    const empty = path.join(mkHome(), 'empty');
+    fs.mkdirSync(empty);
+    assert.strictEqual(withPath(empty, () => pkg.verify({ host: m.host, home: m.home })).ok, false);
 });
 
 test('memB verify detects import run failure in memb-mcp', () => {
@@ -380,9 +393,89 @@ test('A6: token-saver detect finds the CLI on PATH, ~/.token-saver, or the enabl
     assert.strictEqual(ts.detect({ home: withPlugin, env: { PATH: empty } }).installed, true);
 });
 
-test('vlatest fixed: the ready line names the version from the installed package.json', () => {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
-    const body = src.slice(src.indexOf('function downloadOrUpdateModule'), src.indexOf('function downloadOrUpdateModule') + 9000);
-    assert.match(body, /readFileSync\(path\.join\(targetDir, 'package\.json'\)/);
-    assert.doesNotMatch(body, /ready \(v\$\{[^}]*'latest'\}\)/);
+test('T28: downloadOrUpdateModule names the installed version in the ready line, never "vlatest"', { skip: process.platform === 'win32' }, () => {
+    const bin = path.join(mkHome(), 'bin');
+    const sysPath = process.env.PATH;
+    script(path.join(bin, 'npm'), [
+        'if [ "$1" = "view" ]; then echo 9.9.9; exit 0; fi',
+        'mkdir -p package && echo \'{"version":"9.9.9"}\' > package/package.json',
+        'tar -czf mod-9.9.9.tgz package && rm -r package',
+    ].join('\n'));
+    const target = path.join(mkHome(), 'mod');
+    const host = require('../installer.js');
+    const written = [];
+    const realWrite = process.stdout.write;
+    process.env.PATH = `${bin}${path.delimiter}${sysPath}`;
+    process.stdout.write = (chunk, ...rest) => { written.push(String(chunk)); return realWrite.call(process.stdout, chunk, ...rest); };
+    let ok;
+    try { ok = host.downloadOrUpdateModule('x/mod', target, 'Mod'); } finally { process.stdout.write = realWrite; process.env.PATH = sysPath; }
+    assert.strictEqual(ok, true);
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(target, 'package.json'), 'utf8')).version, '9.9.9');
+    const text = written.join('');
+    assert.match(text, /Mod ready \(v9\.9\.9\)/);
+    assert.doesNotMatch(text, /vlatest/);
+});
+
+test('A7: a package whose version cannot be read is "version unknown" in Status; no-npm packages say so', async () => {
+    const m = machine();
+    fs.mkdirSync(path.join(m.home, '.agents', 'bdb-dev-creator-extension'), { recursive: true });
+    await menu.status(m.host, m.opts({ npmView: current }));
+    assert.match(m.out.join(''), /Creator Extension\s+version unknown/);
+});
+
+test('A8: an outdated kernel is not reported as success and the old version is not recorded', async () => {
+    const m = machine();
+    const code = await menu.update(m.host, m.opts({ npmView: async (name) => (name.endsWith('/aos') ? '4.1.0' : '2.4.0') }));
+    const text = m.out.join('');
+    assert.strictEqual(code, 1);
+    assert.match(text, /AOS 4\.1\.0 available: run `npx @hybridlabor-api\/aos@latest`/);
+    assert.doesNotMatch(text, /Verify: all ok/);
+    assert.ok(!m.calls.includes('saveManifest'));
+});
+
+test('B12: Settings -> Install OpenWiki without a key asks first, then reports skipped as a failure', async () => {
+    const m = machine();
+    m.host.PROVIDER_KEY_ENV_NAMES = { google: 'GEMINI_API_KEY' };
+    let refreshed = 0;
+    m.host.refreshOpenWikiSilently = async (o = {}) => { refreshed++; return Boolean(o.key); };
+    const ui = { select: async () => 'pkg:openwiki' };
+    const asked = [];
+    assert.strictEqual(await menu.settings(m.host, m.opts({ ui: { ...ui, ask: async (k) => { asked.push(k); return ''; } } })), 1);
+    assert.deepStrictEqual(asked, ['GEMINI_API_KEY']);
+    assert.match(m.out.join(''), /✖ OpenWiki — skipped: no key/);
+    assert.strictEqual(refreshed, 0);
+
+    const m2 = machine();
+    m2.host.PROVIDER_KEY_ENV_NAMES = { google: 'GEMINI_API_KEY' };
+    m2.host.refreshOpenWikiSilently = async (o = {}) => Boolean(o.key);
+    assert.strictEqual(await menu.settings(m2.host, m2.opts({ ui: { ...ui, ask: async () => 'k-123' } })), 0);
+    assert.match(m2.out.join(''), /✔ OpenWiki/);
+});
+
+test('C14: a refused secrets file is reported, never asked into or written', async () => {
+    const home = mkHome();
+    fs.mkdirSync(path.dirname(secretsPath(home)), { recursive: true });
+    fs.writeFileSync(secretsPath(home), 'X=1\n', { mode: 0o644 });
+    fs.chmodSync(secretsPath(home), 0o644);
+    const ask = async () => assert.fail('asked');
+    if (process.platform !== 'win32') {
+        assert.deepStrictEqual(await secrets.need([PAT], { home, ask }), { [PAT]: '' });
+        assert.strictEqual(await secrets.reask(PAT, { home, ask }), '');
+        assert.match(secrets.refusal(home), /secrets file refused \(permissions\/owner\)/);
+        assert.strictEqual(fs.readFileSync(secretsPath(home), 'utf8'), 'X=1\n');
+    }
+});
+
+test('C17: an Ollama OpenWiki provider is never asked for an API key', async () => {
+    const m = machine();
+    pkgJson(path.join(m.home, '.openwiki'), '1.0.0');
+    m.host.loadExistingEnv = () => ({ OPENWIKI_PROVIDER: 'ollama' });
+    m.host.PROVIDER_KEY_ENV_NAMES = { ollama: null };
+    const bin = path.join(mkHome(), 'bin');
+    script(path.join(bin, 'openwiki'), 'echo 1.0.0');
+    const asked = [];
+    const prev = process.env.PATH;
+    process.env.PATH = `${bin}${path.delimiter}${prev}`;
+    try { await menu.update(m.host, m.opts({ npmView: current, ui: { ask: async (k) => { asked.push(k); return 'x'; } } })); } finally { process.env.PATH = prev; }
+    assert.deepStrictEqual(asked, [PAT]);
 });

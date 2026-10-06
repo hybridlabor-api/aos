@@ -6331,12 +6331,12 @@ function quickUpdateHarnesses() {
 }
 
 // No prompt: only refreshes when a key (or ollama) is already configured. Returns false when there is nothing to refresh.
-async function refreshOpenWikiSilently() {
+async function refreshOpenWikiSilently({ key: given } = {}) {
     const paths = resolveTargetPaths('1', null);
     const env = loadExistingEnv(paths.targetMcpDir);
     const provider = env['OPENWIKI_PROVIDER'] || 'google';
     const keyName = PROVIDER_KEY_ENV_NAMES[provider] || 'GEMINI_API_KEY';
-    const key = env[keyName] || env['GEMINI_API_KEY'] || env['GOOGLE_API_KEY'] || env['OPENWIKI_API_KEY'] || '';
+    const key = given || env[keyName] || env['GEMINI_API_KEY'] || env['GOOGLE_API_KEY'] || env['OPENWIKI_API_KEY'] || '';
     if (!key && provider !== 'ollama') return false;
     await installOpenWikiDaemon(key, paths.targetSkillDir, { provider, model: env['OPENWIKI_MODEL_ID'] || env['OPENWIKI_MODEL'] || '', baseUrl: env['OPENWIKI_BASE_URL'] || '' });
     await installOpenWikiVisualizer();
