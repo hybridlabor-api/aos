@@ -25,10 +25,24 @@
 #   A2A_E2E_ROOT       repo root. Default: three levels up from this script.
 #   A2A_E2E_TIMEOUT    deadline in seconds for every wait. Default: 60.
 #                      Raise it for live harness turns (claude/agy/codex).
-#   A2A_E2E_AGY=1      enable the agy legs (#live-ring + #agy-orch-check);
-#                      otherwise they SKIP, naming this flag.
-#   A2A_E2E_CODEX=1    enable the Codex ring legs; otherwise they SKIP,
+#   A2A_E2E_AGY=1      enable the agy legs (#live-ring + #agy-orch-check) and
+#                      launch the agy sidecar itself before the ring:
+#                      `aos-a2a serve --name e2e-agy --mode agy` with cwd
+#                      $A2A_E2E_AGY_DIR (default $AGY_WORK_DIR under the temp
+#                      root). NOTE: `agy --continue` continues the most recent
+#                      conversation of that project directory, so
+#                      A2A_E2E_AGY_DIR should be a directory where you already
+#                      HAVE an agy conversation; an empty temp dir means agy
+#                      starts fresh conversations. Otherwise the legs SKIP,
 #                      naming this flag.
+#   A2A_E2E_AGY_DIR    working directory for the agy sidecar (see above).
+#   A2A_E2E_CODEX=1    enable the Codex ring legs; requires
+#                      A2A_E2E_CODEX_THREAD to be set to the session UUID or
+#                      exact name of an ALREADY OPEN Codex session of yours
+#                      (this script never creates one). The codex sidecar is
+#                      launched as `aos-a2a serve --name e2e-codex --mode codex
+#                      --thread $A2A_E2E_CODEX_THREAD`. If the thread variable
+#                      is missing, the codex legs SKIP naming it.
 #   A2A_E2E_AGY_YOLO=1 pass `--dangerously-skip-permissions` to agy. A human
 #                      must be present; the flag is never passed otherwise.
 #
@@ -259,6 +273,55 @@ wait_logged_send() { # wait_logged_send <name> <pid> <log> <expect>
 # hook registers a known name instead of `opencode-<8 chars>`. E5: no echo
 # fallback exists; a leg that never comes up live is reported as FAIL.
 
+# ---- sidecar bring-up for the agy / codex ring legs (#live-ring) -------------------
+# A2A_E2E_AGY=1 starts an agy sidecar (`--mode agy`) so agy is reachable as an
+# INBOUND target: the executor spawns `agy --continue --print <injected prompt>`
+# in the sidecar's cwd and answers with its stdout. $A2A_E2E_AGY_DIR (default:
+# the temp AGY_WORK_DIR) should hold an existing agy conversation, because
+# `agy --continue` resumes the most recent conversation of that project
+# directory.
+# A2A_E2E_CODEX=1 with $A2A_E2E_CODEX_THREAD set starts a codex sidecar against
+# an ALREADY OPEN Codex session (UUID or exact name); the script never creates
+# the Codex session, and without the thread variable the legs SKIP.
+
+start_agy_sidecar() { # FAILs if the sidecar never registers
+  local log="$TMP_DIR/agy-sidecar.log" dir
+  dir="${A2A_E2E_AGY_DIR:-$AGY_WORK_DIR}"
+  mkdir -p "$dir"
+  ( cd "$dir" && exec env AOS_A2A_NAME="$AGY_SESSION" \
+      AOS_SESSIONS_DIR="$AOS_SESSIONS_DIR" AOS_BUS_ROOT="$AOS_BUS_ROOT" \
+      AOS_A2A_INBOX="$AOS_A2A_INBOX" node "$A2A_BIN" serve \
+      --name "$AGY_SESSION" --harness agy --mode agy --parent-pid "$$" ) \
+    >"$log" 2>&1 &
+  capture_pid "$!"
+  if ! wait_for "$AGY_SESSION"; then
+    fail "sidecar-agy-bringup" "$AGY_SESSION not registered within ${TIMEOUT}s (log tail: $(trunc "$(tail -c 300 "$log")"))"
+    return 1
+  fi
+  pass "sidecar-agy-bringup"
+  return 0
+}
+
+start_codex_sidecar() { # requires $A2A_E2E_CODEX_THREAD; FAILs if never registered
+  if [ -z "${A2A_E2E_CODEX_THREAD:-}" ]; then
+    return 1 # caller SKIPs naming the missing variable
+  fi
+  local log="$TMP_DIR/codex-sidecar.log"
+  ( cd "$ROOT" && exec env AOS_A2A_NAME="$CODEX_SESSION" \
+      AOS_SESSIONS_DIR="$AOS_SESSIONS_DIR" AOS_BUS_ROOT="$AOS_BUS_ROOT" \
+      AOS_A2A_INBOX="$AOS_A2A_INBOX" node "$A2A_BIN" serve \
+      --name "$CODEX_SESSION" --harness codex --mode codex \
+      --thread "$A2A_E2E_CODEX_THREAD" --parent-pid "$$" ) \
+    >"$log" 2>&1 &
+  capture_pid "$!"
+  if ! wait_for "$CODEX_SESSION"; then
+    fail "sidecar-codex-bringup" "$CODEX_SESSION not registered within ${TIMEOUT}s (log tail: $(trunc "$(tail -c 300 "$log")"))"
+    return 1
+  fi
+  pass "sidecar-codex-bringup"
+  return 0
+}
+
 # ---- OpenCode bring-up -----------------------------------------------------------
 # Verified in the docs (2026-10): https://opencode.ai/docs/server — headless HTTP
 # server: `opencode serve [--port <number>] [--hostname <string>]` (the bare
@@ -466,9 +529,9 @@ ring_checks() {
       send_probe "ring-pair-agy-claude" "$AGY_SESSION" "$CL_SESSION"
       send_probe "ring-pair-opencode-agy" "$OC_SESSION" "$AGY_SESSION"
     else
-      skip "ring-pair-agy-opencode" "$AGY_SESSION not registered"
-      skip "ring-pair-agy-claude" "$AGY_SESSION not registered"
-      skip "ring-pair-opencode-agy" "$AGY_SESSION not registered"
+      skip "ring-pair-agy-opencode" "$AGY_SESSION not registered (agy sidecar did not come up; see sidecar-agy-bringup)"
+      skip "ring-pair-agy-claude" "$AGY_SESSION not registered (agy sidecar did not come up; see sidecar-agy-bringup)"
+      skip "ring-pair-opencode-agy" "$AGY_SESSION not registered (agy sidecar did not come up; see sidecar-agy-bringup)"
     fi
   else
     skip "ring-pair-agy-opencode" "requires A2A_E2E_AGY=1"
@@ -481,8 +544,8 @@ ring_checks() {
       send_probe "ring-pair-codex-claude" "$CODEX_SESSION" "$CL_SESSION"
       send_probe "ring-pair-claude-codex" "$CL_SESSION" "$CODEX_SESSION"
     else
-      skip "ring-pair-codex-claude" "$CODEX_SESSION not registered"
-      skip "ring-pair-claude-codex" "$CODEX_SESSION not registered"
+      skip "ring-pair-codex-claude" "$CODEX_SESSION not registered (codex sidecar did not come up; needs A2A_E2E_CODEX_THREAD)"
+      skip "ring-pair-claude-codex" "$CODEX_SESSION not registered (codex sidecar did not come up; needs A2A_E2E_CODEX_THREAD)"
     fi
   else
     skip "ring-pair-codex-claude" "requires A2A_E2E_CODEX=1"
@@ -631,6 +694,9 @@ dry_run_plan() {
   echo " 10. #agy-orch-check (A2A_E2E_AGY=1 and agy present, else SKIP; ${A2A_E2E_AGY_YOLO:+--dangerously-skip-permissions [A2A_E2E_AGY_YOLO=1]}${A2A_E2E_AGY_YOLO:-no skip-permissions flag}): one agy turn sends to the OpenCode session and the Claude session, then starts one OpenCode worker via 'aos-acp opencode --name e2e-agy-worker --cwd <tmp>/agy-worker --prompt \"Reply with the number 3 only.\" --allow-default allow --go-wait 600 --timeout 1800'."
   echo " 11. cleanup: trap on EXIT/INT/TERM kills ONLY the PIDs this script captured (never pkill/killall); poll 'aos-a2a list --prune' up to 20 s (sleep 1) until empty before asserting (the opencode sidecar exits via --parent-pid polling within ~5-10 s); compare a shasum over the sorted file list of ~/.config/opencode against the snapshot taken at start (read-only; SKIP if that dir does not exist). No rm anywhere; temp files are left in place and their path is printed."
   echo " 12. print PASS/FAIL/SKIP line per check and a summary with counts; exit non-zero if any FAIL."
+  echo " 13. ring-leg sidecars, started BEFORE item 1:"
+  echo "     with A2A_E2E_AGY=1, the agy sidecar (PASS/FAIL 'sidecar-agy-bringup'): ( cd ${A2A_E2E_AGY_DIR:+$A2A_E2E_AGY_DIR}${A2A_E2E_AGY_DIR:-<TMP>/agy-worker [set A2A_E2E_AGY_DIR to a dir with an existing agy conversation; agy --continue resumes the most recent conversation of the project dir]} && exec env AOS_A2A_NAME=$AGY_SESSION node $ROOT_PLACEHOLDER/bin/aos-a2a.mjs serve --name $AGY_SESSION --harness agy --mode agy --parent-pid \$\$ ) & ; wait via 'aos-a2a list' (wait_for), FAIL with the log tail if never registered."
+  echo "     with A2A_E2E_CODEX=1 AND ${A2A_E2E_CODEX_THREAD:+A2A_E2E_CODEX_THREAD=$A2A_E2E_CODEX_THREAD}${A2A_E2E_CODEX_THREAD:-the A2A_E2E_CODEX_THREAD variable set to an already open Codex session UUID/name (never created by this script)}, the codex sidecar (PASS/FAIL 'sidecar-codex-bringup'): ( cd $ROOT_PLACEHOLDER && exec env AOS_A2A_NAME=$CODEX_SESSION node $ROOT_PLACEHOLDER/bin/aos-a2a.mjs serve --name $CODEX_SESSION --harness codex --mode codex --thread <A2A_E2E_CODEX_THREAD> --parent-pid \$\$ ) & ; same wait_for; without the thread variable the codex legs SKIP naming it."
   exit 0
 }
 
@@ -674,6 +740,23 @@ main() {
   snapshot_opencode_config
 
   say "live-e2e: ROOT=$ROOT TMP_DIR=$TMP_DIR TIMEOUT=${TIMEOUT}s AGY=$AGY_ENABLED CODEX=$CODEX_ENABLED"
+
+  # sidecar bring-up for the agy / codex ring legs, BEFORE the ring runs
+  # (independent of whether the real agy/codex binaries are in PATH: --mode gy
+  # --mode agy spawns agy itself, --mode codex talks to the open Codex session
+  # given via A2A_E2E_CODEX_THREAD through codex queue/exec resume).
+  if [ "$AGY_ENABLED" = 1 ]; then
+    say "starting agy sidecar (--mode agy)"
+    start_agy_sidecar || true
+  fi
+  if [ "$CODEX_ENABLED" = 1 ]; then
+    if [ -n "${A2A_E2E_CODEX_THREAD:-}" ]; then
+      say "starting codex sidecar (--mode codex --thread $A2A_E2E_CODEX_THREAD)"
+      start_codex_sidecar || true
+    else
+      skip "sidecar-codex-bringup" "A2A_E2E_CODEX=1 but A2A_E2E_CODEX_THREAD is not set (codex legs need an already open Codex session UUID/exact name; never created by this script)"
+    fi
+  fi
 
   say "checking item 1 sessions live"
   check_item1

@@ -27,7 +27,7 @@ A delegate profile is a JSON file (`--profile <file>`, or auto-discovered as `.a
 ```
 aos-a2a list [--json] [--prune]
 aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
-aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live] [--parent-pid <pid>]
+aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|codex] [--parent-pid <pid>] [--thread <t>] [--codex-transport queue|resume]
 aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
 aos-a2a status --to <name> <taskId>
 aos-a2a cancel --to <name> <taskId>
@@ -46,6 +46,8 @@ aos-a2a reply [--name <name>] <taskId> "<text>"
 - With `--parent-pid <pid>` the sidecar polls that process every 5 seconds and exits (unregistering) when it is gone, so a sidecar started detached by a hook dies with its session.
 - SIGTERM/SIGINT stop the server and unregister only the sidecar's own two files.
 - `--mode echo` answers with an echo (testing); `--mode live` is the real path: the message is written to the session inbox and the sidecar waits up to 300 seconds for the session's reply file, then publishes it as the task artifact. No reply in time fails the task with "live reply timeout".
+- `--mode agy` starts the agy sidecar itself: every inbound message is answered by spawning `agy --continue --print "<injected prompt>"` in the sidecar's cwd (the agy resume executor, see the agy limit below) and publishing its stdout as the artifact. Useful when no interactive agy session is open, e.g. to run the agy ring legs of the live e2e check.
+- `--mode codex` injects inbound messages into an ALREADY OPEN Codex session: it needs `--thread <session UUID or exact name>` (without it `serve` exits non-zero) and spawns `codex queue --thread <t> --message <prompt>` (default `--codex-transport queue`, or `codex exec resume <t> <prompt>` with `--codex-transport resume`); the answer is the session's `<taskId>.reply` file. The Codex session is never created by this path.
 - `AOS_A2A_SIDECAR=off` makes `serve` refuse to start (and hooks/plugins skip starting it) — this is how spawned workers are kept from starting sidecars of their own.
 
 ## a2abook
