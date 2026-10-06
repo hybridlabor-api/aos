@@ -148,6 +148,20 @@ if (platformsArgRaw) {
     }
 }
 
+// --profile, --no-hooks, --hooks-only, --without (docs/install-options.md). Parsed once; main() resolves them
+// against the persisted v5 settings before anything installs.
+const v5Profile = require('./lib/v5/profile');
+let INSTALL_OPTS;
+try {
+    INSTALL_OPTS = v5Profile.parseOptions(process.argv, process.env, () => require('./lib/v5/packages').registry.map((p) => p.id));
+} catch (e) {
+    console.error(`${colors.red} -> ${e.message}${colors.reset}`);
+    process.exit(1);
+}
+let contextHooksOn = true;
+let activeProfile = v5Profile.DEFAULT_PROFILE;
+let installExcluded = new Set();
+
 if (DRY_RUN) {
     const guardedFns = ['writeFileSync', 'mkdirSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'symlinkSync', 'appendFileSync', 'chmodSync', 'rmdirSync', 'rmSync'];
     for (const fn of guardedFns) {
@@ -3513,6 +3527,7 @@ function removeAosMcscFromAgyConfigs(home = homeDir) {
     return removed;
 }
 
+let warnedDisabledMcps = false;
 async function installMcpsForTarget(paths, ctx) {
     const { selectedMcps, mode, platformValue, creds } = ctx;
     const mcpSrcDir = path.join(srcDir, 'mcps');
@@ -3675,6 +3690,13 @@ async function installMcpsForTarget(paths, ctx) {
         // ~/.claude.json mirror get the launchable form.
         if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
             parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+        }
+        // AOS_DISABLED_MCPS=a,b: shipped server names that no harness config gets (universal sync reuses this result).
+        const dropped = v5Profile.filterMcpServers(parsedMcpConfig.mcpServers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS));
+        parsedMcpConfig.mcpServers = dropped.servers;
+        if (dropped.unknown.length && !warnedDisabledMcps) {
+            warnedDisabledMcps = true;
+            log.warn(`AOS_DISABLED_MCPS: unknown MCP name(s) ignored: ${dropped.unknown.join(', ')}. Shipped: ${Object.keys(mcpPicks().servers).join(', ')}`);
         }
         const finalMcpServers = {};
         const availableFolders = fs.readdirSync(mcpSrcDir);
@@ -4111,7 +4133,7 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
 
 // Antigravity loads <dir>/agents/<slug>/agent.md (Markdown, YAML frontmatter, H1 + system prompt); the
 // old <name>.json form is no longer written and existing .json files are left alone.
-function compileAgyAgents(agents, targetDir) {
+function compileAgyAgents(agents, targetDir, pipelineConfig = null) {
     const items = agents.map((a) => {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
         if (!/^[a-z0-9][a-z0-9._-]*$/.test(slug) || slug.includes('..')) throw new Error(`unsafe agent name: ${JSON.stringify(a.name)}`);
@@ -4119,7 +4141,9 @@ function compileAgyAgents(agents, targetDir) {
     });
     for (const { a, slug } of items) {
         const file = path.join(targetDir, slug, 'agent.md');
-        const text = ['---', 'subagent: true', 'inheritMcp: true', '---', '', `# ${a.name}`, '', a.systemPrompt, ''].join('\n');
+        // A model line only for an explicit pipeline.json override (aos-23: no pinned models); agy documents inherit|flash|pro.
+        const model = resolveAgentConfig(slug, 'antigravity', pipelineConfig).model;
+        const text = ['---', 'subagent: true', 'inheritMcp: true', ...(model ? [`model: ${model}`] : []), '---', '', `# ${a.name}`, '', a.systemPrompt, ''].join('\n');
         if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) continue;
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, text);
@@ -4234,7 +4258,7 @@ function injectHarnessRules() {
             installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
-                    compileAgyAgents(parseAgentsMd(agentsMdContent), agyAgentsDir);
+                    compileAgyAgents(parseAgentsMd(agentsMdContent), agyAgentsDir, loadPipelineConfig());
                     log.step(`Compiled AGENTS.md to native Antigravity subagents in ${agyAgentsDir}`);
                 }
             }, 'Antigravity agents unchanged');
@@ -4972,7 +4996,9 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
             if (!Array.isArray(entries)) continue;
             const foreignEntries = (Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [])
                 .filter((e) => !isBdbEntry(e));
-            merged.hooks[event] = [...foreignEntries, ...cloneBdbEntries(entries)];
+            // Only context-injection hooks can be dropped here (--no-hooks, minimal profile); the gates never are.
+            const own = cloneBdbEntries(entries);
+            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn ? own : v5Profile.dropContextHooks(own))];
         }
         return merged;
     };
@@ -5107,6 +5133,12 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
         }
     };
 
+    const allHookNames = Object.keys(bdbHooks);
+    if (!contextHooksOn) {
+        delete bdbHooks['aos-trail-relay'];
+        bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !v5Profile.isContextCommand(h.command));
+    }
+
     // Earlier AOS versions wrote all handlers under one named hook called "hooks" (old wrapped shapes
     // included). Strip the BDB handlers out of it, keep foreign ones, and drop it when nothing is left.
     const flatEvents = ['PreInvocation', 'PostInvocation', 'Stop'];
@@ -5135,7 +5167,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
             const hasEvents = rest && typeof rest === 'object' && Object.keys(rest).some((k) => Array.isArray(rest[k]));
             if (hasEvents) merged.hooks = rest; else delete merged.hooks;
         }
-        for (const name of Object.keys(bdbHooks)) delete merged[name];
+        for (const name of allHookNames) delete merged[name];
         return { ...merged, ...bdbHooks };
     };
 
@@ -5316,7 +5348,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     const workflowsDir = projectLocal ? path.join(currentDir, '.codex', 'workflows') : path.join(baseDir, 'workflows');
     const globalHooksDir = projectLocal ? path.join(homeDir, '.codex', 'hooks') : hooksDir;
 
-    const tomlSnippet = [
+    const fullSnippet = [
         '# AOS:HOOKS:START',
         codexGateSnippet(hooksDir),
         '',
@@ -5363,6 +5395,9 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         'timeout = 2',
         '# AOS:HOOKS:END'
     ].join('\n');
+    // Blocks are blank-line separated; without context hooks only blocks naming a context script go.
+    const tomlSnippet = contextHooksOn ? fullSnippet
+        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !v5Profile.isContextCommand(b)).join('\n\n')}\n# AOS:HOOKS:END`;
 
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
 
@@ -5532,7 +5567,7 @@ function parseModuleSelection(argv = process.argv, env = process.env) {
 }
 
 async function promptOptionalModules(installedModules, requested = parseModuleSelection(), modulesOverride = null) {
-    const allModules = modulesOverride || [
+    const allModules = (modulesOverride || [
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: installSynapse },
         { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: () => installMemB(true) },
         { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: installOSRemoteGateway },
@@ -5546,7 +5581,7 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: installCreatorExtension },
         { id: 'hardware', name: 'BDB Hardware & PCB (KiCad + OpenSCAD Electrical/PCB Design)', fn: installHardwarePcb },
         { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
-    ];
+    ]).filter((m) => !installExcluded.has(m.id));
 
     const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
     if (isAutoYes) {
@@ -6652,8 +6687,24 @@ function v5Options(interactive) {
     return { home: homeDir, write: (s) => process.stdout.write(s), ui };
 }
 
+// Flags/env win over the persisted v5 settings; a flag that was given is persisted so `aos update` keeps it.
+function applyInstallOptions(home = homeDir) {
+    const st = v5Profile.readSettings(home);
+    const r = v5Profile.resolve(INSTALL_OPTS, st);
+    contextHooksOn = r.contextHooks;
+    activeProfile = r.profile;
+    installExcluded = r.excluded;
+    if (!DRY_RUN && (INSTALL_OPTS.profileGiven || INSTALL_OPTS.noHooks || INSTALL_OPTS.without.length)) {
+        try {
+            v5Profile.writeSettings(home, { ...st, profile: r.profile, noHooks: r.noHooks, disabled: [...new Set([...(st.disabled || []), ...INSTALL_OPTS.without])] });
+        } catch (e) { log.warn(`Could not save the install profile: ${e.message}`); }
+    }
+    return r;
+}
+
 async function main() {
     const args = process.argv.slice(2);
+    applyInstallOptions();
     if (['status', 'update', 'repair'].includes(args[0])) {
         process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
         return;
@@ -6702,6 +6753,22 @@ Options:
                    Skip (off) or only report (check) the bdb-aos plugin registration and
                    removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.
                    --dry-run implies check. Default: on.
+  --profile=minimal|standard|full
+                   Or AOS_PROFILE. standard (default) = today's install. minimal = skills,
+                   agents and harness rules only: no context-injection hooks, no OpenWiki,
+                   Token Saver, Codenotch, optional modules, gateway or fleet. full = standard
+                   plus all optional modules with -y. Saved, so \`aos update\` keeps it.
+  --no-hooks       Skip only the context-injection hooks (memb-inject, rules-inject, trail
+                   relay/autostart). The go-gate, graph-gate and safety hooks are ALWAYS
+                   installed; no profile or flag removes them.
+  --hooks-only     Install or refresh only the hooks and their settings entries, then exit.
+  --without=ID,ID  Exclude packages by id (memb, synapse, openwiki, remote, ao, creator,
+                   hardware, installer, deja, token-saver, codenotch, gateway, fleet);
+                   saved to the v5 disabled list. An unknown id is an error; kernel cannot
+                   be excluded.
+  AOS_DISABLED_MCPS=a,b
+                   Shipped MCP server names that are not written to any harness config;
+                   unknown names are ignored with one warning.
   --verbose, -v    Verbose output
   -V, --version    Print the version and exit
   -h, --help       Print this help and exit`);
@@ -6773,6 +6840,13 @@ Options:
     if (PROJECT_HARNESS_ARG) {
         installProjectHarness();
         outro('Project harness installation complete.');
+        return;
+    }
+
+    if (INSTALL_OPTS.hooksOnly) {
+        installGlobalHooks();
+        flushSessionManifest();
+        outro(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
         return;
     }
 
@@ -7028,17 +7102,25 @@ Options:
     }
     migrateMcpSecrets();
 
-    await installOpenWikiDaemon(creds.gemini, primaryTarget.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
-    await installOpenWikiVisualizer();
-    await installTokenSaver(primaryTarget.platformValue);
+    if (installExcluded.has('openwiki')) log.step('OpenWiki skipped (profile or --without).');
+    else {
+        await installOpenWikiDaemon(creds.gemini, primaryTarget.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+        await installOpenWikiVisualizer();
+    }
+    if (installExcluded.has('token-saver')) log.step('Token Saver skipped (profile or --without).');
+    else await installTokenSaver(primaryTarget.platformValue);
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];
+    const modulePlan = v5Profile.PROFILES[activeProfile].modules;
+    const explicitModules = parseModuleSelection();
     // Unlike runQuickUpdate, nothing here reinstalls modules already in installedModulesForPrompt
     // -- only promptOptionalModules's own return value (the ones it just chose-and-installed
     // this call) actually ran an install-and-verify pass this run. Anything already in the
     // array before this call was untouched here and must still get its normal reloadDaemons()
     // check, not be skipped.
-    const justInstalled = await promptOptionalModules(installedModulesForPrompt) || [];
+    const justInstalled = (modulePlan === 'none' && !explicitModules.length)
+        ? []
+        : await promptOptionalModules(installedModulesForPrompt, explicitModules.length || modulePlan !== 'all' ? explicitModules : ['all']) || [];
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
 
@@ -7058,7 +7140,7 @@ Options:
 
     console.log('');
     verifyEcosystemInstallation();
-    await maybeInstallCodenotch();
+    if (!installExcluded.has('codenotch')) await maybeInstallCodenotch();
 
     outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
 }

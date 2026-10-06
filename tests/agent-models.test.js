@@ -88,7 +88,7 @@ describe('compilers write a model only for an override', () => {
         assert.strictEqual(modelOf(path.join(d, 'claude', 'reviewer.md')), undefined);
     });
 
-    test('Antigravity agent.md carries no model and no tier (the format has no model field)', () => {
+    test('Antigravity agent.md carries no model and no tier unless overridden', () => {
         const src = fs.readFileSync(path.join(root, 'installer.js'), 'utf8');
         assert.ok(!/model_tier/.test(src));
         const d = tmp();
@@ -97,6 +97,10 @@ describe('compilers write a model only for an override', () => {
         for (const slug of fs.readdirSync(path.join(d, 'agy'))) {
             assert.doesNotMatch(fs.readFileSync(path.join(d, 'agy', slug, 'agent.md'), 'utf8'), /^model/m, slug);
         }
+        const o = path.join(d, 'agy-override');
+        compileAgyAgents(agents, o, { architect: { models: { antigravity: 'pro' } } });
+        assert.match(fs.readFileSync(path.join(o, 'architect', 'agent.md'), 'utf8'), /^model: pro$/m);
+        assert.doesNotMatch(fs.readFileSync(path.join(o, 'reviewer', 'agent.md'), 'utf8'), /^model/m);
     });
 });
 
