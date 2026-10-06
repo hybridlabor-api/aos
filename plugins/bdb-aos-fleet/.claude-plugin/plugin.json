@@ -1,0 +1,6 @@
+{
+  "name": "bdb-aos-fleet",
+  "version": "0.1.0",
+  "description": "AOS fleet view: which Claude sessions are working, which need you, and the active projects",
+  "types": "./types/index.d.ts"
+}
