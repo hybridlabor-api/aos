@@ -36,6 +36,12 @@ The `CODEX_HOME` variable and the `-C` flag of `codex exec` are assumed from gen
 
 ## Results
 
+## Delete hard block and block cooldown (same classifier everywhere)
+
+- Deleting, moving away or `rsync --delete`-ing `/`, the home directory or a direct child of it is blocked unconditionally by `hardBlockReason` in `go-gate.mjs`; no GO, grant, mode or token lifts it. The Claude hook, the OpenCode plugin, `aos-acp` (Codex over ACP) and `go-check` all call it.
+- After a block, a script file written later than the block needs a fresh GO for 10 minutes. The marker is `~/.aos/gate/<key>.block`. Keys: Claude hook = session id (else conversation id, transcript path or cwd, prefixed `x-`); OpenCode = the OpenCode session id; `aos-acp` and `go-check` = the worker name (`--name` / `--session`). A host that sends no stable key (a hook input without session id, transcript path and cwd) has no cooldown.
+- Limits: an agent can backdate a script (`touch -t`), run a script written before the block, or remove the marker through a path built at run time (literal paths into `~/.aos/gate` are hard-blocked).
+
 | Step | Date | Codex version | Result |
 |---|---|---|---|
 | exec-fires | | | UNVERIFIED |

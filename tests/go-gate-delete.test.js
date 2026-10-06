@@ -1,7 +1,7 @@
 // Delete classification, the unconditional home hard block, data-vs-command false positives,
 // interpreter code and script files, and the block cooldown. Offline; the hook runs as a child
 // process with HOME set to a fresh temp dir. Nothing here deletes anything: temp dirs stay.
-const { test, describe, beforeEach, before } = require('node:test');
+const { test, describe, beforeEach, afterEach, before } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
@@ -73,6 +73,14 @@ const PASS = [
     'ls ~ && ls $HOME/.config',
     PB4,
     'node -e "console.log(1)"',
+    // S2: no command substitution inside single quotes or after a backslash
+    "git commit -m 'note: `rm -rf ~` is bad'",
+    "echo 'see $(rm -rf ~)' > /tmp/x",
+    'echo \\`rm -rf ~\\`',
+    // S3: comments
+    'ls # note; rm -rf ~', 'ls\n# rm -rf ~\npwd', 'echo a #b $(rm -rf ~)',
+    // relative targets that stay below home, and a cd that is undone by a subshell
+    'cd ~/dev/x && rm -f ./a.txt', '(cd ~ && ls); rm -f ./a.txt', 'cd build && rm file.txt', 'mv ~/dev/a ~/dev/b', 'chmod -R 755 build',
 ];
 
 const GUARDED = [
@@ -93,6 +101,10 @@ const GUARDED = [
     'rm -rf ~/dev/x/build', 'rm -rf $HOME/dev/x/build', 'rm -rf /Users/timrennings/dev/x/build',
     "bash -c 'rm -rf build'", 'sh -c "rm -rf build"', 'find . -name x | xargs rm -rf',
     'git clean -fdx',
+    // S1: a bare * is only hard when the working directory is home-level or /
+    'rm -rf *', 'cd build && rm -rf *', 'cd ~/dev/x && rm -rf ./*', 'find . -delete', 'cd build && find . -delete',
+    // S5: rimraf and rsync --delete below home are normal destructive
+    'npx rimraf dist', 'rimraf ./build', 'rsync -a --delete src/ dist/',
     `python3 -c "import subprocess; subprocess.run(['rm','-rf','build'])"`,
     `node -e "require('child_process').execSync('rm -rf build')"`,
     `node -e "require('fs').rmSync(require('path').join(require('os').homedir(),'dev','x','build'),{recursive:true})"`,
@@ -103,7 +115,21 @@ const HARD = [
     `python3 -c "import shutil, pathlib; shutil.rmtree(pathlib.Path.home())"`,
     'rm -rf ~', 'rm -rf ~/', 'rm -rf $HOME', 'rm -rf "$HOME"', 'rm -rf "${HOME}"', 'rm -rf ${HOME}', 'rm -rf ~/.config', 'rm -rf $HOME/.claude',
     'rm -rf /Users/timrennings', 'rm -rf /Users/timrennings/Library', 'rm -rf /home/tim', 'rm -rf /home/tim/.ssh',
-    'find ~ -delete', 'find $HOME -maxdepth 1 -delete', 'rm -rf /', 'rm -rf *', 'rm -rf /*',
+    'find ~ -delete', 'find $HOME -maxdepth 1 -delete', 'rm -rf /', 'rm -rf /*',
+    // relative targets resolve against the tracked cwd
+    'cd ~ && rm -rf .', 'cd ~ && rm -rf ./*', 'cd $HOME; rm -rf ./', 'cd ~ && find . -delete', 'cd ~; rm -rf *', 'cd /; rm -rf *',
+    'cd ~/dev && rm -rf ..', 'pushd ~ && rm -rf .', 'cd ~ && cd .. && rm -rf *', '(cd ~ && rm -rf .)', 'cd ~; rm -rf build', 'cd ~ && rm *',
+    // variables and substitutions
+    'H=$HOME; rm -rf $H', 'x=~; rm -rf "$x"', 'export D=$HOME/.config; rm -rf $D', 'a=$HOME; b=$a; rm -rf "${b}"',
+    'rm -rf $(echo ~)', 'rm -rf "$(echo $HOME)"', 'cd ~ && rm -rf $(pwd)', 'cd ~ && rm -rf "$PWD"', 'rm -rf `echo ~`', 'echo "$(rm -rf ~)"',
+    // ~user and parameter-expansion forms of HOME
+    'rm -rf ~timrennings', 'rm -rf ~root', 'rm -rf ~timrennings/.config', 'rm -rf ${HOME:-x}', 'rm -rf ${HOME:?}', 'rm -rf ${HOME%/}', 'rm -rf "${HOME:-/nonexistent}/.ssh"',
+    // moving away or syncing over a home-level path
+    'mv ~ /tmp/x', 'mv ~/.ssh /tmp/x', 'mv ~/* /tmp', 'rsync -a --delete /tmp/empty/ ~/', 'rsync -a --delete-after /tmp/empty/ $HOME/.config',
+    'chmod -R 000 ~', 'chmod -R 777 $HOME/.ssh', 'chown -R nobody ~', 'rimraf ~', 'npx rimraf ~/.config', 'npx rimraf $HOME',
+    // the gate's own state
+    'rm ~/.aos/gate/s1.block', 'rm -rf ~/.aos/go', `python3 -c "import os; os.remove(os.path.expanduser('~/.aos/gate/s1.block'))"`,
+    `node -e "require('fs').unlinkSync(require('os').homedir()+'/.aos/gate/s1.block')"`,
     'bash -c "rm -rf ~"', "sh -c 'rm -rf $HOME/.ssh'", 'sudo rm -rf ~', '(rm -rf ~)', 'true && rm -rf ~',
     'Remove-Item -Recurse $env:USERPROFILE', 'Remove-Item -Recurse -Force $env:HOME', 'rd /s /q C:\\Users\\tim', 'rd /s /q C:\\Users\\tim\\AppData',
     'rm ~/.zshrc', 'rm -f $HOME/notes.txt', 'rmdir ~/Documents', 'unlink ~/.profile', 'rm -rf %USERPROFILE%',
@@ -150,7 +176,7 @@ describe('A/C classification table', () => {
         }
     });
     test('home-level means home and direct children only', () => {
-        for (const p of ['~', '~/x', '$HOME/x', '/Users/a', '/Users/a/b', '/home/a/b', 'C:\\Users\\a', 'C:\\Users\\a\\b', '/', '*']) assert.ok(g.isHomeLevel(p), p);
+        for (const p of ['~', '~/x', '$HOME/x', '/Users/a', '/Users/a/b', '/home/a/b', 'C:\\Users\\a', 'C:\\Users\\a\\b', '/', '~bob', '~bob/x', '${HOME:-x}', '${HOME%/}/x', '~/.aos/gate/s1.block']) assert.ok(g.isHomeLevel(p), p);
         for (const p of ['~/dev/x', '$HOME/dev/x', '/Users/a/b/c', '/tmp/x', '/private/tmp/claude-501/x', './build', 'dist', 'C:\\Users\\a\\b\\c']) assert.ok(!g.isHomeLevel(p), p);
     });
 });
@@ -191,15 +217,143 @@ describe('B hard block cannot be lifted', () => {
         for (const c of CASES) assert.equal(run(c, { transcript_path: w }).status, 2, c);
         assert.equal(run('rm -rf ./build', { transcript_path: w }).status, 0, 'the token itself is valid and opens a normal delete');
     });
-    test('the OpenCode/ACP/go-check callers see the same function', async () => {
-        const chk = await import(pathToFileURL(path.resolve(__dirname, '..', 'bin', 'go-check.mjs')).href);
-        const r = chk.check(g, { session: 'w', command: 'rm -rf ~', consume: false });
+});
+
+describe('S6 the other harness paths enforce the same block functionally', () => {
+    let saved;
+    beforeEach(() => { saved = process.env.HOME; process.env.HOME = home; });
+    const restore = () => { process.env.HOME = saved; };
+    afterEach(restore);
+    const ROOT = path.resolve(__dirname, '..');
+    const params = (command) => ({ options: [{ kind: 'allow_once', optionId: 'allow' }, { kind: 'reject_once', optionId: 'reject' }], toolCall: { rawInput: { command } } });
+    const acpOpts = () => ({ allowDefault: 'allow', name: 'w-acp', consume: false, goWait: 0, cwd: work });
+    const validToken = (name) => {
+        const m = path.join(home, `master-${name}.jsonl`);
+        add(human(`GO ${name}`), m);
+        fs.mkdirSync(path.join(home, '.aos', 'go'), { recursive: true });
+        fs.writeFileSync(path.join(home, '.aos', 'go', `${name}.token`), JSON.stringify({ target: name, issued_at: new Date().toISOString(), master_transcript: m }));
+    };
+
+    test('go-check denies a hard block and records the cooldown marker for the worker', async () => {
+        const chk = await import(pathToFileURL(path.join(ROOT, 'bin', 'go-check.mjs')).href);
+        const r = chk.check(g, { session: 'w-chk', command: 'rm -rf ~', consume: false });
         assert.equal(r.code, 1);
         assert.match(r.out.reason, /unconditional/);
-        const acp = fs.readFileSync(path.resolve(__dirname, '..', 'bin', 'aos-acp.mjs'), 'utf8');
-        const oc = fs.readFileSync(path.resolve(__dirname, '..', '.opencode', 'plugins', 'bdb-aos.js'), 'utf8');
-        assert.match(acp, /hardBlockReason\(cmd\)/);
-        assert.match(oc, /hardBlockReason\(cmd\)/);
+        assert.ok(fs.existsSync(path.join(home, '.aos', 'gate', `${g.nameKey('w-chk')}.block`)));
+        restore();
+    });
+
+    test('aos-acp rejects a hard block even with allowDefault allow and a valid token', async () => {
+        const acp = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-acp.mjs')).href);
+        assert.equal((await acp.decidePermission(params('echo hi'), acpOpts())).outcome.optionId, 'allow', 'harmless stays allowed');
+        assert.equal((await acp.decidePermission(params('rm -rf ~'), acpOpts())).outcome.optionId, 'reject');
+        validToken('w-acp');
+        assert.equal((await acp.decidePermission(params('rm -rf $HOME/.ssh'), acpOpts())).outcome.optionId, 'reject');
+        assert.equal((await acp.decidePermission(params(`node -e 'require("fs").rmSync(process.env.HOME,{recursive:true})'`), acpOpts())).outcome.optionId, 'reject');
+        assert.ok(fs.existsSync(path.join(home, '.aos', 'go', 'w-acp.token')), 'a hard block does not consume the token');
+        restore();
+    });
+
+    test('aos-acp applies the block cooldown to a freshly written script', async () => {
+        const acp = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-acp.mjs')).href);
+        const older = path.join(work, 'old.py');
+        fs.writeFileSync(older, 'print(1)');
+        const past = new Date(Date.now() - 3600e3);
+        fs.utimesSync(older, past, past);
+        assert.equal((await acp.decidePermission(params('git push origin main'), acpOpts())).outcome.optionId, 'reject');
+        sleep(30);
+        const fresh = path.join(work, 'new.py');
+        fs.writeFileSync(fresh, 'print(2)');
+        assert.equal((await acp.decidePermission(params(`python3 ${fresh}`), acpOpts())).outcome.optionId, 'reject');
+        assert.equal((await acp.decidePermission(params(`python3 ${older}`), acpOpts())).outcome.optionId, 'allow');
+        restore();
+    });
+
+    test('the OpenCode plugin throws on a hard block and on nothing harmless', async () => {
+        const client = { session: { get: async ({ path: p }) => ({ data: { id: p.id, parentID: null } }), messages: async () => ({ data: [] }), prompt: async () => ({ data: {} }) } };
+        const mod = await import(`file://${path.join(ROOT, '.opencode', 'plugins', 'bdb-aos.js')}?t=${Date.now()}${Math.random()}`);
+        const hooks = await mod.default({ directory: work, client });
+        const call = (command) => hooks['tool.execute.before']({ tool: 'bash', sessionID: 'ocs-del', callID: `c${++n}` }, { args: { command } });
+        await call('echo hi');
+        await assert.rejects(call('rm -rf ~'), /unconditional/);
+        await assert.rejects(call('cd ~ && rm -rf .'), /unconditional/);
+        await assert.rejects(call('H=$HOME; rm -rf $H'), /unconditional/);
+        await assert.rejects(call(`node -e 'require("fs").rmSync(process.env.HOME,{recursive:true})'`), /unconditional/);
+        assert.ok(fs.existsSync(path.join(home, '.aos', 'gate', `${g.sessionKey('oc-ocs-del')}.block`)), 'cooldown marker');
+        restore();
+    });
+});
+
+describe('B2 variables and substitutions that cannot be resolved', () => {
+    test('a delete target that still holds a variable or substitution is unscoped (needs GO)', () => {
+        for (const c of ['rm -rf "$BUILD"', 'rm -f $x', 'rm -rf $(find . -name x)', 'rm -rf `cat list`', 'rm -rf ${DIR:-out}/x', 'x=$(date); rm -rf "$x"']) {
+            assert.equal(g.commandScopes(c), null, c);
+            assert.ok(guarded(c), c);
+            assert.ok(!hard(c), c);
+        }
+    });
+    test('an unresolvable cd counts as the hook cwd', () => {
+        assert.deepEqual(g.commandScopes('cd "$d" && rm -rf .'), ['destructive']);
+        assert.ok(!hard('cd - && rm -rf .'));
+    });
+    test('a resolvable assignment is substituted, not unscoped', () => {
+        assert.deepEqual(g.commandScopes('d=build; rm -rf "$d"'), ['destructive']);
+        assert.deepEqual(g.commandScopes('export d=./out && rm -rf $d/x'), ['destructive']);
+        assert.deepEqual(g.commandScopes('cd build && rm -rf "$(pwd)/x"'), ['destructive']);
+    });
+    test('osascript delete and move-to-trash, and python -m with a delete-ish module, are unscoped', () => {
+        for (const c of [`osascript -e 'tell application "Finder" to delete (POSIX file "/x")'`, `osascript -e 'tell application "Finder" to move x to trash'`,
+            'osascript - <<E\ntell application "Finder" to delete item 1\nE', 'python3 -m rmtree_tool x', 'python3 -m send2trash x']) {
+            assert.equal(g.commandScopes(c), null, c);
+        }
+        assert.deepEqual(g.commandScopes(`osascript -e 'display dialog "hi"'`), []);
+    });
+});
+
+describe('perf and symlinks', () => {
+    test('a 50 KB command and a 256 KB script classify within 500 ms each', () => {
+        const big = Array.from({ length: 3000 }, (_, i) => `echo "step ${i} rm -rf ~ $(date)" && ls ./d${i}`).join(' ; ').slice(0, 50 * 1024);
+        let t0 = Date.now();
+        g.commandScopes(big); g.hardBlockReason(big); g.isGuardedCommand(big);
+        assert.ok(Date.now() - t0 < 500, `50 KB command took ${Date.now() - t0} ms`);
+        const body = Array.from({ length: 6000 }, (_, i) => `x${i} = "value ${i} 'quoted' rmtree(" # don't\nprint(x${i})`).join('\n').slice(0, 255 * 1024);
+        fs.writeFileSync(path.join(work, 'big.py'), body);
+        t0 = Date.now();
+        g.commandScopes('python3 big.py'); g.hardBlockReason('python3 big.py');
+        assert.ok(Date.now() - t0 < 500, `256 KB script took ${Date.now() - t0} ms`);
+    });
+    test('a symlinked script is resolved and its target analysed', () => {
+        const target = path.join(work, 'real.js');
+        fs.writeFileSync(target, "require('fs').rmSync(process.env.HOME,{recursive:true})");
+        const link = path.join(work, 'link.js');
+        fs.symlinkSync(target, link);
+        assert.ok(hard('node link.js'));
+        const ok = path.join(work, 'fine.py');
+        fs.writeFileSync(ok, 'print(1)');
+        fs.symlinkSync(ok, path.join(work, 'fine-link.py'));
+        assert.deepEqual(g.commandScopes('python3 fine-link.py'), []);
+    });
+    test('a link created after a block counts as fresh even when its target is old', () => {
+        const old = path.join(work, 'older.py');
+        fs.writeFileSync(old, 'print(1)');
+        const past = new Date(Date.now() - 3600e3);
+        fs.utimesSync(old, past, past);
+        g.setGateContext({ cwd: work, blockTs: Date.now() - 1000 });
+        sleep(20);
+        fs.symlinkSync(old, path.join(work, 'newlink.py'));
+        assert.equal(g.commandScopes('python3 older.py').length, 0);
+        assert.equal(g.commandScopes('python3 newlink.py'), null);
+    });
+});
+
+describe('S4 cooldown keys', () => {
+    test('the Claude hook falls back to the transcript path when session_id is missing', () => {
+        add(human('hello'));
+        const r = gateRaw({ tool_name: 'Bash', tool_input: { command: 'git push origin main' }, transcript_path: t });
+        assert.equal(r.status, 2);
+        const files = fs.readdirSync(path.join(home, '.aos', 'gate')).filter((f) => f.endsWith('.block'));
+        assert.equal(files.length, 1);
+        assert.match(files[0], /^x-/);
     });
 });
 

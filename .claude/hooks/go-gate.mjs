@@ -51,7 +51,7 @@
 // Origin: only human-typed entries count, as GO and as gogate commands
 // (isHumanEntry). Loops, peers, task notifications, SDK and system prompts never.
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync } from "node:fs";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -352,18 +352,42 @@ const INTERP = /^(?:node(?:js)?|bun|deno|python[\d.]*|ruby|perl|php|pwsh|powersh
 const DATA_HEAD = /^(?:echo|printf|grep|egrep|fgrep|rg|ag|jq|awk|gawk|sed)$/;
 const unqQ = (t) => String(t ?? "").replace(/["']/g, "");
 
-// Splits on unquoted ; & | newline ( ) backtick and brace-group braces; quotes and ${...} stay whole.
-function scanSplit(cmd) {
-  const s = String(cmd), out = [];
-  let cur = "", q = "", depth = 0;
+// Like tokens(), but $(...) and `...` stay inside one word, so a delete target such as
+// $(echo ~) is seen whole.
+function words(s) {
+  const out = [];
+  let cur = "", q = "", sub = 0, bt = false;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (q) { cur += c; if (c === "\\" && q === '"') cur += s[++i] ?? ""; else if (c === q) q = ""; continue; }
     if (c === "\\") { cur += c + (s[++i] ?? ""); continue; }
     if (c === "'" || c === '"') { q = c; cur += c; continue; }
+    if (c === "`") { bt = !bt; cur += c; continue; }
+    if (c === "$" && s[i + 1] === "(") { sub++; cur += "$("; i++; continue; }
+    if (sub && c === ")") { sub--; cur += c; continue; }
+    if (/\s/.test(c) && !sub && !bt) { if (cur) out.push(cur); cur = ""; continue; }
+    cur += c;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+// Splits on unquoted ; & | newline ( ) and brace-group braces; quotes, ${...}, $(...) and `...` stay whole.
+function scanSplit(cmd) {
+  const s = String(cmd), out = [];
+  let cur = "", q = "", depth = 0, sub = 0, bt = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) { cur += c; if (c === "\\" && q === '"') cur += s[++i] ?? ""; else if (c === q) q = ""; continue; }
+    if (c === "\\") { cur += c + (s[++i] ?? ""); continue; }
+    if (c === "'" || c === '"') { q = c; cur += c; continue; }
+    if (c === "`") { bt = !bt; cur += c; continue; }
+    if (bt) { cur += c; continue; }
     if (c === "$" && s[i + 1] === "{") { depth++; cur += "${"; i++; continue; }
     if (depth && c === "}") { depth--; cur += c; continue; }
-    if (";&|\n()`".includes(c) || (c === "{" && /\s/.test(s[i + 1] ?? " ")) || (c === "}" && /[\s;]/.test(s[i - 1] ?? ";"))) { out.push({ t: cur, sep: c }); cur = ""; continue; }
+    if (sub) { if (c === "(") sub++; else if (c === ")") sub--; cur += c; continue; }
+    if (c === "$" && s[i + 1] === "(") { sub++; cur += "$("; i++; continue; }
+    if (";&|\n()".includes(c) || (c === "{" && /\s/.test(s[i + 1] ?? " ")) || (c === "}" && /[\s;]/.test(s[i - 1] ?? ";"))) { out.push({ t: cur, sep: c }); cur = ""; continue; }
     cur += c;
   }
   out.push({ t: cur, sep: "" });
@@ -375,14 +399,14 @@ const topSegments = (cmd) => scanSplit(cmd).map((p) => p.t.trim()).filter(Boolea
 // Unquoted heredocs still expand $(...) and backticks, so those stay visible.
 // Fed to a shell the body is commands (kept in the text); fed to an interpreter it is code,
 // returned in `code` with its language and inspected only at execution points (codeInto).
-const HEREDOC_LANG = /(?:^|[\s;&|(])(?:sudo\s+)?(node|nodejs|bun|deno|python[\d.]*|ruby|perl|php|lua)(?=\s|$)/;
+const HEREDOC_LANG = /(?:^|[\s;&|(])(?:sudo\s+)?(node|nodejs|bun|deno|python[\d.]*|ruby|perl|php|lua|osascript)(?=\s|$)/;
 function stripHeredocs(cmd) {
   const out = [], code = [];
   let end = null, keep = false, expand = false, buf = [], lang = "";
   const close = () => {
     if (keep && lang) code.push({ body: buf.join("\n"), lang });
     else if (keep) out.push(...buf);
-    else if (expand) for (const m of buf.join("\n").matchAll(/\$\([^)]*\)|`[^`]*`/g)) out.push(m[0]);
+    else if (expand) for (const m of buf.join("\n").matchAll(/\$\([^)]*\)|(?<!\\)`[^`]*`/g)) out.push(m[0]);
     end = null; buf = [];
   };
   for (const line of String(cmd).split("\n")) {
@@ -415,22 +439,51 @@ function blankData(text, keepCode = false) {
   }).join("");
 }
 
+// Quote-aware pre-pass. An unquoted `#` at a word start comments out the rest of the line.
+// Backticks and `$(` inside single quotes, or backslash-escaped, are inert: they become the
+// placeholders \u0001 / $\u0002, which unprep() turns back where the text really is executed
+// (bash -c '...', node -e '...').
+function prepText(s) {
+  let out = "", q = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q === "'") {
+      if (c === "'") { q = ""; out += c; }
+      else if (c === "`") out += "\u0001";
+      else if (c === "$" && s[i + 1] === "(") { out += "$\u0002"; i++; }
+      else out += c;
+      continue;
+    }
+    if (c === "\\") { const n = s[++i] ?? ""; out += n === "`" ? "\u0001" : c + n; continue; }
+    if (q === '"') { if (c === '"') q = ""; out += c; continue; }
+    if (c === "'" || c === '"') { q = c; out += c; continue; }
+    if (c === "#" && (i === 0 || /[\s;&|(]/.test(s[i - 1]))) { while (i < s.length && s[i] !== "\n") i++; i--; continue; }
+    out += c;
+  }
+  return out;
+}
+const unprep = (s) => String(s).replace(/\u0001/g, "`").replace(/\$\u0002/g, "$(");
+
 export function commandView(command, keepCode = false) {
   const { text, code } = stripHeredocs(command);
-  return { text: blankData(text, keepCode), code };
+  return { text: blankData(prepText(text), keepCode), code };
 }
 
-const HOME_VAR = String.raw`(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|%HOMEPATH%|\$env:(?:USERPROFILE|HOME)|\$\{env:(?:USERPROFILE|HOME)\})`;
+const HOME_VAR = String.raw`(?:~[\w.+-]*|\$HOME|\$USERPROFILE|%USERPROFILE%|%HOMEPATH%|\$env:(?:USERPROFILE|HOME)|\$\{env:(?:USERPROFILE|HOME)\})`;
 const HOME_PATH = new RegExp(`^${HOME_VAR}(?:/(.*))?$`, "i");
 const realHome = (() => { try { return userInfo().homedir.replace(/\/+$/, ""); } catch { return ""; } })();
 const pathSegs = (s) => String(s ?? "").split("/").filter((x) => x && x !== ".");
 
 // true for `/`, a bare `*`, the home directory and its direct children, in every spelling
 // (shell variables, ~, /Users|/home|/root, C:\Users, the real home from the OS user database).
+// Also true for the gate's own state (~/.aos/gate, ~/.aos/go): a delete there lifts the cooldown.
+// `${HOME:-x}`, `${HOME%/}` ... and ~user are home forms. A bare `*` is resolved against the
+// working directory by the caller, so it is not decided here.
 export function isHomeLevel(p) {
-  let s = String(p).replace(/["'`]/g, "").replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+  let s = String(p).replace(/["'`]/g, "").replace(/\$\{(HOME|USERPROFILE)(?:[:#%/^,@-][^}]*)?\}/gi, "$$HOME").replace(/\\/g, "/").replace(/\/{2,}/g, "/");
   if (s.length > 1) s = s.replace(/\/+$/, "");
-  if (s === "/" || s === "/*" || s === "*") return true;
+  if (s === "/" || s === "/*") return true;
+  if (/(?:^|\/)\.aos\/(?:gate|go)(?:\/|$)/.test(s)) return true;
   let m = HOME_PATH.exec(s);
   if (m) { const r = pathSegs(m[1]); return r.length <= 1 || r.includes(".."); }
   m = /^(?:[A-Za-z]:)?\/(?:Users|home)(?:\/(.*))?$/i.exec(s);
@@ -466,6 +519,15 @@ function shellDelete(tok) {
     const targets = [];
     for (; i < a.length && !/^[-(!]/.test(a[i]); i++) targets.push(a[i]);
     return { targets: targets.length ? targets : ["."], recursive: true };
+  }
+  const pos = a.filter((t) => !t.startsWith("-"));
+  // Moving a home-level path away destroys it as surely as deleting it.
+  if (cmd === "mv") return { targets: pos.length > 1 ? pos.slice(0, -1) : [], recursive: false };
+  if (cmd === "rsync" && a.some((t) => /^--(?:del|delete\S*|remove-source-files)$/.test(t))) return { targets: pos.slice(-1), recursive: true };
+  if (/^(?:chmod|chown|chgrp)$/.test(cmd) && a.some((t) => /^-[a-zA-Z]*R|^--recursive$/.test(t))) return { targets: pos.slice(1), recursive: false };
+  if (cmd === "rimraf" || (/^(?:npx|pnpm|yarn|bunx|npm|bun|dlx)$/.test(cmd) && tok.slice(0, 5).some((t) => base(t) === "rimraf"))) {
+    const i = tok.findIndex((t) => base(t) === "rimraf");
+    return { targets: tok.slice(i + 1).map(unqQ).filter((t) => !t.startsWith("-")), recursive: true };
   }
   return { targets: [], recursive: false };
 }
@@ -537,6 +599,8 @@ function execCommand(src, name) {
 // Code of an interpreter, inspected at execution points only. Sets r.hard / r.destructive /
 // r.unscoped and pushes spawned command texts to r.cmds (the caller classifies those).
 function codeInto(r, text, lang = "") {
+  text = unprep(text);
+  if (lang === "osascript" && /\bdelete\b|\bmove\b[^\n;]*\bto\b[^\n;]*\btrash|\bdo shell script\b/i.test(text)) r.unscoped = true;
   const masked = maskStrings(text);
   if (UNSCOPED_CODE.test(masked) || HTTP_PATTERNS.some((re) => re.test(text))) r.unscoped = true;
   for (const m of masked.matchAll(DEL_CALL)) {
@@ -561,7 +625,7 @@ let gateCtx = { cwd: "", blockTs: 0 };
 export const setGateContext = (c) => { gateCtx = { cwd: "", blockTs: 0, ...c }; };
 export const COOLDOWN_MS = 10 * 60 * 1000;
 export const COOLDOWN_MESSAGE = "go-gate: blocked recently; a freshly written script after a block needs a GO; stop and report.";
-const FILE_HEAD = /^(?:python[\d.]*|node(?:js)?|bun|deno|ruby|perl|php|bash|sh|zsh|dash|ksh|pwsh|powershell)$/i;
+const FILE_HEAD = /^(?:python[\d.]*|node(?:js)?|bun|deno|ruby|perl|php|bash|sh|zsh|dash|ksh|pwsh|powershell|osascript)$/i;
 const INLINE_FLAG = /^(?:-[a-zA-Z]*[ce]|--eval|-p|--print|-command|-c)$/i;
 const VALUE_FLAG = /^(?:-r|--require|--import|--loader|--experimental-loader|--env-file|--input-type|-C|--conditions|-W|-X|-Q|-I)$/;
 const SCRIPT_MAX = 256 * 1024;
@@ -574,7 +638,8 @@ function scriptFile(h, a) {
   if (/^(?:deno|bun)$/.test(lc) && /^(?:run|eval)$/.test(args[0] ?? "")) { if (args[0] === "eval") return { inline: true }; i = 1; }
   for (; i < args.length; i++) {
     const t = args[i];
-    if (t === "-" || t === "-m") return {};
+    if (t === "-m") return { module: args[i + 1] ?? "" };
+    if (t === "-") return {};
     if (INLINE_FLAG.test(t) && !/^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
     if (/^(?:-c|-[a-zA-Z]*c)$/.test(t) && /^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
     if (VALUE_FLAG.test(t)) { i++; continue; }
@@ -585,11 +650,14 @@ function scriptFile(h, a) {
 }
 
 function scriptInto(r, h, file, cwd) {
-  const path = resolve(cwd, expandHome(file));
-  let st;
-  try { st = statSync(path); } catch { r.unscoped = true; return; }
+  const path = resolve(expandHome(cwd), expandHome(file));
+  let st, mtime;
+  try { st = statSync(path); mtime = Math.max(st.mtimeMs, lstatSync(path).mtimeMs); } catch { r.unscoped = true; return; }
   if (st.isDirectory()) return;
-  if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && st.mtimeMs > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
+  // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
+  // written before the block, or remove the marker through a path built at run time; the
+  // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
+  if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && mtime > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
   let body;
   try { body = readFileSync(path, "utf8"); } catch { r.unscoped = true; return; }
@@ -599,7 +667,7 @@ function scriptInto(r, h, file, cwd) {
 
 // Text a shell/eval/xargs/cmd/pwsh runs, from its tokens (after prefix stripping).
 function innerText(tok) {
-  const h = base(tok[0] ?? ""), un = (t) => String(t).replace(/^(["'])([\s\S]*)\1$/, "$2");
+  const h = base(tok[0] ?? ""), un = (t) => unprep(String(t).replace(/^(["'])([\s\S]*)\1$/, "$2"));
   if (/^(?:bash|sh|zsh|dash|ksh)$/.test(h)) {
     const i = tok.findIndex((t, k) => k && /^-[a-zA-Z]*c[a-zA-Z]*$/.test(unqQ(t)));
     return i > 0 ? tok.slice(i + 1).map(un).join(" ") : "";
@@ -611,30 +679,95 @@ function innerText(tok) {
   return tok.slice(SHELLS.test(h) ? 1 : 0).map(un).join(" ");
 }
 
-export function analyzeDeletes(command, depth = 0) {
+// Shell state followed through one command: the working directory (cd, pushd, subshells) and
+// plain VAR=value assignments. A relative delete target is resolved against it; a target that
+// still holds a variable or substitution after expansion cannot be judged and is unscoped.
+const ABS_LIKE = /^(?:\/|~|\$HOME|\$USERPROFILE|%|\$env:|[A-Za-z]:[\\/])/i;
+const OWN_VAR = /^(?:HOME|USERPROFILE)$/i;
+function normPath(p) {
+  const out = [];
+  for (const x of p.replace(/\\/g, "/").split("/")) {
+    if (!x || x === ".") continue;
+    if (x === ".." && out.length && out.at(-1) !== ".." && !/^(?:~[\w.+-]*|\$HOME|\$USERPROFILE|%\w+%|\$env:\w+)$/i.test(out.at(-1))) { out.pop(); continue; }
+    out.push(x);
+  }
+  return (p.startsWith("/") ? "/" : "") + out.join("/");
+}
+function expandVars(s, st) {
+  s = s.replace(/\$\{(HOME|USERPROFILE)(?:[:#%/^,@-][^}]*)?\}/gi, "$$HOME");
+  for (let k = 0; k < 6 && /[$`]/.test(s); k++) {
+    s = s.replace(/\$\(\s*pwd\s*\)|`\s*pwd\s*`|\$\{PWD\}|\$PWD(?!\w)/g, () => st.cwd)
+      .replace(/\$\(\s*echo\s+((?:[^()$`]|\$HOME(?!\w))*?)\s*\)|`\s*echo\s+((?:[^`$()]|\$HOME(?!\w))*?)\s*`/g, (_, a, b) => a ?? b)
+      .replace(/\$\{(\w+)(?::?[-=+?][^}]*)?\}|\$(\w+)/g, (m, a, b) => {
+        const n = a ?? b;
+        return OWN_VAR.test(n) ? "$HOME" : typeof st.vars[n] === "string" ? st.vars[n] : m;
+      });
+  }
+  const left = s.replace(/\$HOME(?!\w)|\$env:\w+/gi, "");
+  return /[$`\u0001\u0002]/.test(left) ? null : s;
+}
+const resolveTarget = (t, st) => {
+  const e = expandVars(unprep(t), st);
+  if (e === null) return null;
+  return ABS_LIKE.test(e) ? e : normPath(`${st.cwd}/${e}`);
+};
+const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
+const assignments = (raw, st) => {
+  let i = 0;
+  while (/^(?:export|declare|typeset|local|readonly)$/.test(unq(raw[i] ?? "")) || (i > 0 && /^-\w+$/.test(raw[i] ?? ""))) i++;
+  for (; i < raw.length; i++) {
+    const m = ASSIGN.exec(raw[i]);
+    if (!m) return;
+    const v = expandVars(unqQ(m[2]), st);
+    st.vars[m[1]] = v === null ? null : v;
+  }
+};
+const cdTarget = (tok, st) => {
+  const t = tok.slice(1).map(unqQ).find((x) => !/^-[LPe@]+$/.test(x));
+  const home = gateCtx.cwd || process.cwd();
+  if (t === undefined) return "~";
+  const e = expandVars(unprep(t), st);
+  if (e === null || e === "-") return home;
+  return ABS_LIKE.test(e) ? normPath(e) : normPath(`${st.cwd}/${e}`);
+};
+
+export function analyzeDeletes(command, depth = 0, init = null) {
   const r = { destructive: false, hard: null, unscoped: false, cooldown: false, cmds: [] };
   if (depth > 3 || typeof command !== "string") return r;
+  const st = init ? { cwd: init.cwd, vars: { ...init.vars } } : { cwd: gateCtx.cwd || process.cwd(), vars: Object.create(null) };
+  const snap = () => ({ cwd: st.cwd, vars: st.vars });
   const merge = (o) => { r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.cmds.push(...o.cmds); };
   const { text, code } = commandView(command, true);
-  let cwd = gateCtx.cwd || process.cwd();
   const un = (t) => String(t).replace(/^"([\s\S]*)"$/, (_, x) => x.replace(/\\(["\\$`])/g, "$1")).replace(/^'([\s\S]*)'$/, "$1");
-  for (const seg of topSegments(text)) {
-    const { rest: tok, opaque } = stripPrefix(tokens(seg));
+  const stack = [];
+  const segment = (seg) => {
+    assignments(words(seg), st);
+    const { rest: tok, opaque } = stripPrefix(words(seg));
     const d = shellDelete(tok);
     if (d.recursive) r.destructive = true;
-    for (const t of d.targets) if (isHomeLevel(t)) r.hard ||= t;
+    for (const t of d.targets) {
+      const p = resolveTarget(t, st);
+      if (p === null) r.unscoped = true;
+      else if (isHomeLevel(p)) r.hard ||= t;
+    }
     const h = base(tok[0] ?? "");
-    if (/^(?:cd|pushd)$/.test(h) && tok[1]) cwd = resolve(cwd, expandHome(unqQ(tok[1])));
-    if (opaque || /^(?:cmd(?:\.exe)?|pwsh|powershell)$/i.test(h)) merge(analyzeDeletes(innerText(tok), depth + 1));
+    if (/^(?:cd|pushd)$/.test(h)) st.cwd = cdTarget(tok, st);
+    if (opaque || /^(?:cmd(?:\.exe)?|pwsh|powershell)$/i.test(h)) merge(analyzeDeletes(innerText(tok), depth + 1, snap()));
     if (FILE_HEAD.test(h) && (!opaque || /^(?:bash|sh|zsh|dash|ksh)$/.test(h))) {
       const f = scriptFile(h, tok.slice(1).map(unqQ));
+      if (f.module && /rm|remov|delet|rimraf|trash|clean|purge|wipe/i.test(f.module)) r.unscoped = true;
       if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""));
-      else if (f.file) scriptInto(r, h, f.file, cwd);
+      else if (f.file) scriptInto(r, h, f.file, st.cwd);
     }
+  };
+  for (const p of scanSplit(text)) {
+    if (p.t.trim()) segment(p.t.trim());
+    if (p.sep === "(") stack.push(st.cwd);
+    else if (p.sep === ")" && stack.length) st.cwd = stack.pop();
   }
   for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
-  for (const m of text.matchAll(/\$\(([^)]*)\)|`([^`]*)`/g)) merge(analyzeDeletes(m[1] ?? m[2], depth + 1));
-  for (const c of r.cmds.splice(0)) { r.cmds.push(c); if (depth < 3) { const o = analyzeDeletes(c, depth + 1); r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; } }
+  for (const m of text.matchAll(/\$\(([^)]*)\)|`([^`]*)`/g)) merge(analyzeDeletes(unprep(m[1] ?? m[2]), depth + 1, snap()));
+  for (const c of r.cmds.splice(0)) { r.cmds.push(c); if (depth < 3) { const o = analyzeDeletes(c, depth + 1, snap()); r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; } }
   return r;
 }
 
@@ -737,6 +870,16 @@ export function markBlock(key, now = Date.now()) {
     mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
     writeFileSync(blockFile(key), JSON.stringify({ ts: now }), { mode: 0o600 });
   } catch { /* the cooldown is best effort; the block itself already holds */ }
+}
+
+// Cooldown key: the session id; without one (Antigravity, other hosts) a conversation id, else
+// the transcript path, else the cwd, each prefixed so it never collides with a real session id.
+// A host that sends none of these has no cooldown.
+export const nameKey = (name) => sessionKey(`name-${slug(String(name ?? ""))}`);
+function hookBlockKey(input, isAgy) {
+  const pick = [!isAgy && input.session_id, input.conversationId, input.transcript_path, input.transcriptPath, input.cwd].find((v) => typeof v === "string" && v);
+  if (!pick) return "";
+  return pick === input.session_id && !isAgy ? sessionKey(pick) : sessionKey(`x-${pick}`);
 }
 
 function respond(isAgy, allowed, reason = "", command = "", hard = false) {
@@ -1333,7 +1476,7 @@ function main() {
     return;
   }
 
-  blockKey = !isAgy && typeof input.session_id === "string" && input.session_id ? sessionKey(input.session_id) : "";
+  blockKey = hookBlockKey(input, isAgy);
   setGateContext({ cwd: typeof input.cwd === "string" ? input.cwd : "", blockTs: blockKey ? readBlockTs(blockKey) : 0 });
 
   // Unconditional: before any GO, grant, mode or token is looked at.

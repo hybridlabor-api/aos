@@ -31,7 +31,7 @@ const gateMod = await loadFrom([
   join(homedir(), ".claude", "hooks", "go-gate.mjs"),
 ]);
 if (!gateMod) throw new Error("go-gate.mjs not found (run the AOS installer): refusing to run without the GO gate");
-const { isGuardedCommand, hardBlockReason, slug, tokenGrantsGo } = gateMod;
+const { isGuardedCommand, hardBlockReason, slug, tokenGrantsGo, setGateContext, readBlockTs, markBlock, nameKey } = gateMod;
 const emitTrail = (await loadFrom([
   join(here, "..", "mcps", "mcsc", "packages", "core", "src", "trail.js"),
   join(homedir(), ".aos", "bin", "trail.mjs"),
@@ -68,6 +68,9 @@ function pickOption(options, kinds) {
 export async function decidePermission(params, opts, log = () => {}) {
   const options = params.options || [];
   const cmd = commandOf(params.toolCall);
+  // Same block cooldown as the hook, keyed by the worker name (the ACP session id is per run).
+  const key = opts.name && nameKey ? nameKey(opts.name) : "";
+  setGateContext?.({ cwd: opts.cwd || "", blockTs: key ? readBlockTs(key) : 0 });
   const guarded = !!cmd && isGuarded(cmd);
   const hard = cmd ? hardBlockReason(cmd) : null;
   let allow = opts.allowDefault === "allow" && !hard;
@@ -86,6 +89,7 @@ export async function decidePermission(params, opts, log = () => {}) {
     allow = r.ok;
     reason = r.ok ? "GO token" : r.reason;
   }
+  if (!allow && (hard || guarded)) markBlock?.(key);
   const optionId = allow
     ? pickOption(options, ["allow_once", "allow_always"])
     : pickOption(options, ["reject_once", "reject_always"]);
