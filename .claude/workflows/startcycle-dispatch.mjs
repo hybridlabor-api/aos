@@ -131,6 +131,8 @@ function readStdinSync() {
 let inputGoal = null;
 let inputSkills = [];
 let isHookInvocation = false;
+// Codex/Claude payloads carry hook_event_name and reject agy's injectSteps; agy payloads do not.
+let hookEventName = '';
 
 // 1. Fast-exit & input handling for hook invocations (Antigravity PreInvocation, Codex UserPromptSubmit)
 if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && fs) {
@@ -143,6 +145,7 @@ if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && f
       try { payload = JSON.parse(stdinRaw); } catch {}
 
       if (payload && typeof payload === 'object') {
+        hookEventName = String(payload.hook_event_name || '');
         let promptText = payload.prompt || payload.userPrompt || '';
         if (!promptText && payload.transcriptPath && fs.existsSync(payload.transcriptPath)) {
           try {
@@ -162,7 +165,7 @@ if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY && f
         const match = (promptText || '').match(/^\/startcycle-graph(?:\s+(.*))?$/is);
         if (!match) {
           // Clean fast-exit when invoked on non-command prompts
-          if (process.stdout) {
+          if (process.stdout && !hookEventName) {
             process.stdout.write(JSON.stringify({ injectSteps: [] }) + '\n');
           }
           process.exit(0);
@@ -1373,11 +1376,10 @@ const result = await runWorkflow();
 if (!isClaudeWorkflow && typeof process !== 'undefined' && process.exit) {
   if (isHookInvocation && process.stdout) {
     const msg = `[startcycle-graph] Phase: ${result?.phase || 'done'}. ${result?.reason || ''}`;
-    process.stdout.write(JSON.stringify({
-      injectSteps: [{ ephemeralMessage: msg }],
-      systemMessage: msg,
-      result,
-    }) + '\n');
+    // Codex and Claude send hook_event_name and accept only hookSpecificOutput; agy payloads lack it and keep injectSteps.
+    process.stdout.write(JSON.stringify(hookEventName
+      ? { systemMessage: msg, hookSpecificOutput: { hookEventName, additionalContext: msg } }
+      : { injectSteps: [{ ephemeralMessage: msg }], systemMessage: msg, result }) + '\n');
   } else if (result && process.stdout) {
     console.log(JSON.stringify(result, null, 2));
   }
