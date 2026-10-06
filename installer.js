@@ -2219,7 +2219,7 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
         // new version in place, failure to clean up retiredDir must be non-fatal.
         safeRmDirSync(retiredDir);
 
-        s.stop(`${displayName} ready (v${status.remoteVer || 'latest'})`);
+        s.stop(`${displayName} ready (v${status.localVer || 'latest'})`);
         return true;
     } catch (e) {
         s.stop(`Failed downloading ${displayName}: ${e.message}`);
@@ -6895,7 +6895,13 @@ module.exports = {
     newestDistTag,
     verifyEcosystemInstallation,
     installBinaryAtomically,
+    installOSRemoteGateway,
     installOSAgentWorkspace,
+    installCreatorExtension,
+    installHardwarePcb,
+    installDevToolInstaller,
+    installDeja,
+    installTokenSaver,
     readGoBuildInfo,
     parseGoBuildInfo,
     decideAoInstall,
