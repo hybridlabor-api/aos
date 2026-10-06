@@ -10,6 +10,8 @@
 * `.agents/nodes.json` no longer pins a model and the `/startcycle-graph` dispatcher no longer hardcodes `haiku`. A node gets a model only from `pipeline.json` (role = agent slug or node id, harness `claude`), otherwise it inherits. Helper agents (`load_registry`, `merge_state`, `archify_verify`, `validate_skills`) are suggested `haiku` by `assets/pipeline.default.json`, which the installer writes to `~/.aos/pipeline.json` only when absent and never overwrites. `aos-doctor` accepts those keys and node ids. See `docs/agent-models.md`.
 * `aos-acp --model` no longer rejects Fable ids; the string is passed through to the adapter.
 
+* The five "Destructive Actions" rules are re-injected on every prompt (`.claude/hooks/rules-inject.mjs`: Claude Code and Codex `UserPromptSubmit`, Antigravity `PreInvocation`, OpenCode `chat.message`), so context compaction cannot drop them. The installer also adds home-level `rm` deny rules (`Bash(rm * ~)`, `Bash(rm * "$HOME")`, ...) to the Claude `permissions.deny`, records only what it added and removes only that on uninstall. `aos-doctor` reports both. See `docs/destructive-rules.md`.
+
 ### Removed
 
 * Removed the foreign `agent-orchestrator` skill (not the AO product `bdb-agent-orchestrator`, nor `ao-orchestrator`). Installed copies are retired on update; edited or foreign files are backed up first.

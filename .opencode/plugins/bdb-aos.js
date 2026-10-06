@@ -25,8 +25,8 @@ const HOOKS = existsSync(new URL('./aos-hooks/go-gate.mjs', import.meta.url)) ? 
 const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
 // `opencode run "..."` is scriptable by an agent, so it never sets gogate modes or grants
 const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
-const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus, { applyGogate }] =
-  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs'].map(hook));
+const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map(hook));
 const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
 // ---------------------------------------------------------------------------
@@ -399,6 +399,21 @@ export default async function bdbAosPlugin(input) {
             messageID: msgInput.messageID || '',
             type: 'text',
             text: membContext,
+            synthetic: true,
+          });
+        }
+      } catch {}
+
+      // Destructive-actions rules on every human message, so compaction cannot drop them.
+      try {
+        const rules = rulesText();
+        if (rules) {
+          msgOutput.parts.unshift({
+            id: `aos-rules-${Date.now()}`,
+            sessionID: msgInput.sessionID,
+            messageID: msgInput.messageID || '',
+            type: 'text',
+            text: rules,
             synthetic: true,
           });
         }

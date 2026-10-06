@@ -138,6 +138,15 @@
             "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/rules-inject.mjs\"",
+            "timeout": 3
+          }
+        ]
       }
     ]
   }

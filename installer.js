@@ -30,7 +30,7 @@ const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const mcpSecrets = require('./lib/mcp-secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
-const { START: DESTRUCTIVE_START, upsertDestructiveBlock } = require('./lib/destructive-rules');
+const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -4559,7 +4559,13 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(targetHome), 'workflows'));
     }
-    mergeBdbSettingsHooks(path.join(claudeConfigDir(targetHome), 'settings.json'));
+    // rules-inject.mjs reads the rules text from here when it does not run from a checkout.
+    const rulesLib = path.join(srcDir, 'lib', 'destructive-rules.js');
+    if (fs.existsSync(rulesLib)) copyDirRecursiveSync(rulesLib, path.join(targetHome, '.agents', 'lib', 'destructive-rules.js'));
+    const claudeSettings = path.join(claudeConfigDir(targetHome), 'settings.json');
+    mergeBdbSettingsHooks(claudeSettings);
+    const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });
+    if (deny.length) log.step(`Added ${deny.length} permissions.deny rule(s) for home-level deletes to ${claudeSettings}`);
 
     // 2. Google Antigravity
     const agyHooksDir = path.join(targetGemini, 'config', 'hooks');
@@ -4697,14 +4703,14 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
     // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
     // prompt in any project the harness was never installed into. trail-relay
     // talks to machine-global live-map daemons, so it is anchored the same way.
-    const machineGlobalHooks = ['memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs'];
+    const machineGlobalHooks = ['memb-inject.mjs', 'rules-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs'];
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
             .map((h) => (h && typeof h.command === 'string' ? h.command : ''))
@@ -4790,7 +4796,7 @@ function agyHookCommand(hooksJsonDir, scriptPath, args = '') {
 // Runs every AOS command of a hooks.json once with `{}` on stdin, the way agy does.
 // Returns [{ command, reason }] for each failure; `spawn` is injectable for tests.
 function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
-    const bdbScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     const data = readJsonFile(hooksPath);
     const commands = [];
     const walk = (v) => {
@@ -4822,7 +4828,7 @@ function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = spawnSync } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'rules-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
     const isBdbHandler = (h) => typeof h?.command === 'string' && bdbHookScripts.some((name) => h.command.includes(name));
 
     const baseDir = path.dirname(hooksPath);
@@ -4859,6 +4865,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
         'aos-context': {
             PreInvocation: [
                 { type: 'command', command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
+                { type: 'command', command: obs(globalHooksDir, 'rules-inject.mjs'), timeout: 3 },
                 { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
             ]
         }
@@ -5070,6 +5077,12 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`)}`,
         'timeout = 30',
+        '',
+        '[[hooks.UserPromptSubmit]]',
+        '[[hooks.UserPromptSubmit.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'rules-inject.mjs')}"`)}`,
+        'timeout = 10',
         '',
         '[[hooks.SessionStart]]',
         '[[hooks.SessionStart.hooks]]',

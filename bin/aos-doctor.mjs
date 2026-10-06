@@ -283,6 +283,22 @@ function checkHooks() {
     claudeWiredOk ? 'PreToolUse & UserPromptSubmit registered' : 'Hooks not fully registered in ~/.claude/settings.json',
     'Run the AOS installer to wire hooks in settings.json.');
 
+  // Destructive-actions rules re-injected per prompt, and the home-level permissions.deny rules.
+  const injectFile = path.join(claudeHooksDir, 'rules-inject.mjs');
+  const injectWired = JSON.stringify(claudeSettings?.hooks?.UserPromptSubmit || []).includes('rules-inject.mjs');
+  add('hooks', 'Destructive rules re-injection (rules-inject)', existsSync(injectFile) && injectWired,
+    existsSync(injectFile) ? (injectWired ? `${tilde(injectFile)}, UserPromptSubmit registered` : `${tilde(injectFile)} present but not registered in settings.json`) : `${tilde(injectFile)} missing`,
+    'Run the AOS installer to install and register rules-inject.mjs.', true);
+  let denyRules = [];
+  try { denyRules = req('../lib/destructive-rules.js').CLAUDE_DENY_RULES; } catch {}
+  if (denyRules.length) {
+    const have = Array.isArray(claudeSettings?.permissions?.deny) ? claudeSettings.permissions.deny : [];
+    const missingDeny = denyRules.filter((r) => !have.includes(r));
+    add('hooks', 'Claude permissions.deny (home-level rm)', missingDeny.length === 0,
+      missingDeny.length === 0 ? `${denyRules.length}/${denyRules.length} AOS deny rules in ${tilde(hc('settings.json'))}` : `${missingDeny.length}/${denyRules.length} AOS deny rules missing from ${tilde(hc('settings.json'))}`,
+      'Run the AOS installer to add the deny rules (it never touches your own rules).', true);
+  }
+
   // Antigravity hooks
   const agHooksFile = firstExisting([
     h('.gemini', 'antigravity-cli', 'hooks.json'),
