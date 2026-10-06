@@ -33,6 +33,8 @@ export const patternsJson = (gate) => ({
 
 export function check(gate, { session, command, consume = false }) {
   if (typeof command !== "string" || !command.trim()) return { code: 2, out: { guarded: null, ok: false, scope: null, reason: "--command is empty" } };
+  const hard = gate.hardBlockReason(command);
+  if (hard) return { code: 1, out: { guarded: true, ok: false, scope: null, reason: hard } };
   const storeReason = gate.gateStoreReason(command);
   if (storeReason) return { code: 1, out: { guarded: true, ok: false, scope: null, reason: storeReason } };
   if (!gate.isGuardedCommand(command)) return { code: 0, out: { guarded: false, ok: true, scope: [], reason: "" } };

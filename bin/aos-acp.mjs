@@ -31,7 +31,7 @@ const gateMod = await loadFrom([
   join(homedir(), ".claude", "hooks", "go-gate.mjs"),
 ]);
 if (!gateMod) throw new Error("go-gate.mjs not found (run the AOS installer): refusing to run without the GO gate");
-const { GUARDED_PATTERNS, slug, tokenGrantsGo } = gateMod;
+const { isGuardedCommand, hardBlockReason, slug, tokenGrantsGo } = gateMod;
 const emitTrail = (await loadFrom([
   join(here, "..", "mcps", "mcsc", "packages", "core", "src", "trail.js"),
   join(homedir(), ".aos", "bin", "trail.mjs"),
@@ -53,7 +53,7 @@ export function commandOf(toolCall = {}) {
 }
 
 export function isGuarded(cmd) {
-  return GUARDED_PATTERNS.some((re) => re.test(cmd));
+  return isGuardedCommand(cmd);
 }
 
 function pickOption(options, kinds) {
@@ -69,9 +69,13 @@ export async function decidePermission(params, opts, log = () => {}) {
   const options = params.options || [];
   const cmd = commandOf(params.toolCall);
   const guarded = !!cmd && isGuarded(cmd);
-  let allow = opts.allowDefault === "allow";
+  const hard = cmd ? hardBlockReason(cmd) : null;
+  let allow = opts.allowDefault === "allow" && !hard;
   let reason = `default ${opts.allowDefault}`;
-  if (guarded) {
+  if (hard) {
+    allow = false;
+    reason = hard;
+  } else if (guarded) {
     const deadline = Date.now() + (opts.goWait || 0) * 1000;
     let r = tokenGrantsGo(opts.name, { consume: opts.consume });
     if (!r.ok && opts.goWait) log("permission_pending", { command: cmd, waiting_s: opts.goWait });
