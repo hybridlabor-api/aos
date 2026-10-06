@@ -7,7 +7,7 @@ import { cardFromProfile, loadProfile } from "../lib/a2a-card.mjs";
 const USAGE = `usage:
   aos-a2a list [--json] [--prune]
   aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
-  aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo] [--parent-pid <pid>]
+  aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live] [--parent-pid <pid>]
   aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
   aos-a2a status --to <name> <taskId>
   aos-a2a cancel --to <name> <taskId>
@@ -37,15 +37,15 @@ try {
     console.log(JSON.stringify(cardFromProfile(loadProfile({ profile: o.profile }), { name: o.name, harness: o.harness, model: o.model, url: o.url }), null, 2));
   } else if (cmd === "serve") {
     if (!o.name || !o.harness) throw new Error("serve needs --name and --harness");
-    if (o.mode && o.mode !== "echo") throw new Error(`unknown --mode ${o.mode} (only echo)`);
+    if (o.mode && o.mode !== "echo" && o.mode !== "live") throw new Error(`unknown --mode ${o.mode} (echo or live)`);
     const { startSidecar, echoExecutor } = await import("../lib/a2a-sidecar.mjs");
     const { loadProfile } = await import("../lib/a2a-card.mjs");
     const parentPid = o["parent-pid"] ? Number(o["parent-pid"]) : undefined;
     const profile = loadProfile({ profile: o.profile });
-    const s = await startSidecar({
-      name: o.name, harness: o.harness, profile, parentPid, asCli: true,
-      executor: echoExecutor({ name: o.name, harness: o.harness }),
-    });
+    const executor = o.mode === "live"
+      ? (await import("../lib/a2a-live.mjs")).liveExecutor({ session: o.name })
+      : echoExecutor({ name: o.name, harness: o.harness });
+    const s = await startSidecar({ name: o.name, harness: o.harness, profile, parentPid, asCli: true, executor });
     console.log(JSON.stringify({ name: o.name, url: s.url, cardUrl: s.cardUrl, pid: process.pid }));
   } else if (cmd === "send") {
     if ((!o.to && !o.role) || positionals.length < 2) throw new Error('usage: aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"');
