@@ -852,6 +852,90 @@ describe('review round 3: repo state changes, env, paths, perf, aliases, config 
     });
 });
 
+describe('D1 gh api writes that move or write a protected branch, gh repo sync', () => {
+    const sc = (c) => g.commandScopes(c);
+    test('push-main: protected refs, branch protection, merges, contents, unknown targets, repo sync', () => {
+        for (const c of [
+            'gh api -X PUT repos/o/r/git/refs/heads/main -f sha=abc', 'gh api --method PATCH repos/o/r/git/refs/heads/main -f sha=x -F force=true', 'gh api -X delete repos/o/r/git/refs/heads/master',
+            'gh api -XPATCH repos/o/r/git/refs/heads/main', 'gh api --method=DELETE repos/o/r/git/refs/heads/release/1.0', 'gh api repos/o/r/git/refs/heads/main -X PATCH -f sha=x',
+            'gh api -X POST repos/o/r/git/refs -f ref=refs/heads/main -f sha=x', 'gh api -X POST repos/o/r/git/refs -F ref=refs/heads/main -f sha=x', 'gh api -X POST repos/o/r/git/refs --raw-field ref=refs/heads/master',
+            'gh api -X POST repos/o/r/git/refs --field=ref=refs/heads/main', 'gh api -X POST repos/o/r/git/refs -fref=refs/heads/main', 'gh api -X POST repos/o/r/git/refs --input body.json', 'gh api -X POST repos/o/r/git/refs',
+            'gh api -X POST repos/o/r/git/refs -f ref=refs/heads/$B -f sha=x', 'gh api -X POST repos/o/r/git/refs -f ref=@ref.txt',
+            'gh api -X PUT repos/o/r/branches/main/protection --input p.json', 'gh api -X POST repos/o/r/branches/main/rename -f new_name=x', 'gh api -X DELETE repos/o/r/branches/master/protection',
+            'gh api -X PUT repos/o/r/branches/main/protection/required_status_checks -f strict=true',
+            'gh api -X POST repos/o/r/merges -f base=main -f head=feat', 'gh api -X POST repos/o/r/merges -f head=feat', 'gh api -X POST repos/o/r/merges -f base=$B -f head=feat',
+            'gh api -X PUT repos/o/r/contents/README.md -f message=m -f content=Zg==', 'gh api -X PUT repos/o/r/contents/a/b.txt -f branch=main -f message=m', 'gh api -X DELETE repos/o/r/contents/a -f message=m -f sha=x',
+            'gh api -X PUT repos/o/r/contents/a --input b.json', "gh api -X PUT 'repos/o/r/git/refs/heads/$B' -f sha=x", 'gh api -X PATCH repos/{owner}/{repo}/git/refs/heads/{branch} -f sha=x',
+            'gh api -X PATCH repos/o/r/git/refs/heads/ma%69n -f sha=x', 'gh api -X PATCH https://api.github.com/repos/o/r/git/refs/heads/main -f sha=x', 'gh api -X PATCH /repos/o/r/git/refs/heads/main -f sha=x',
+            'gh api -X PATCH "repos/o/r/git/refs/heads/main?x=1" -f sha=x', 'gh api -X PATCH repos/o/r/git/refs/heads/develop -f sha=x', 'gh api -X PATCH repos/o/r/git/refs/heads/HEAD -f sha=x',
+            'gh repo sync', 'gh repo sync o/r -b main', 'gh repo sync --force', 'gh repo sync o/r', 'sudo gh repo sync',
+        ]) assert.deepEqual(sc(c), ['push-main'], c);
+        assert.equal(sc("bash -c 'gh repo sync'"), null, 'inside bash -c it is guarded without a scope, like every opaque guarded command');
+    });
+    test('github-write only: a proven feature branch, other endpoints', () => {
+        for (const c of [
+            'gh api -X PATCH repos/o/r/git/refs/heads/feat/x -f sha=y', 'gh api -X POST repos/o/r/git/refs -f ref=refs/heads/feat/x -f sha=y', 'gh api -X POST repos/o/r/git/refs -f ref=refs/tags/v1 -f sha=y',
+            'gh api -X POST repos/o/r/merges -f base=feat/x -f head=y', 'gh api -X PUT repos/o/r/contents/a -f branch=feat/x -f message=m', 'gh api -X PUT repos/o/r/branches/dev/protection --input p.json',
+            'gh api -X POST repos/o/r/issues -f title=x', 'gh api -X POST repos/o/r/issues -f title=x -f body=y', 'gh api --method PATCH repos/o/r', 'gh api repos/o/r -f a=b', 'gh api -X DELETE repos/o/r/git/refs/tags/v1',
+            'gh api -X POST repos/o/r/issues/5/comments -f body=hi', 'gh api -X PUT user/starred/o/r',
+        ]) assert.deepEqual(sc(c), ['github-write'], c);
+    });
+    test('read-only gh api stays unguarded', () => {
+        for (const c of ['gh api repos/o/r/git/refs/heads/main', 'gh api repos/o/r/branches/main', 'gh api -X GET repos/o/r/git/refs/heads/main', 'gh api repos/o/r/contents/README.md', 'gh api -X get repos/o/r/git/refs/heads/main',
+            'gh api repos/o/r/merges', 'gh api repos/o/r/git/refs', 'gh api user', 'gh api repos/o/r/pulls --jq ".[0].number"', 'gh repo view o/r', 'gh repo clone o/r']) {
+            assert.deepEqual(sc(c), [], c);
+            assert.ok(!guarded(c), c);
+        }
+    });
+    test('the hook: push-main is needed for a protected ref write, github-write is not enough', () => {
+        add(human('hello'));
+        typed('gogate grant github-write 1h');
+        add(human('go on'));
+        assert.equal(run('gh api -X POST repos/o/r/issues -f title=x').status, 0);
+        assert.equal(run('gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=x').status, 2);
+        assert.equal(run('gh repo sync').status, 2);
+        typed('gogate grant push-main 1h');
+        add(human('go on'));
+        assert.equal(run('gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=x').status, 0);
+        assert.equal(run('gh repo sync').status, 0);
+    });
+});
+
+describe('D2 emptying a top-level home directory is a hard block', () => {
+    test('wildcard-only tails below a top-level directory, in every spelling, with a recursive delete or a move', () => {
+        for (const c of [
+            'rm -rf ~/Documents/*', 'rm -rf ~/Documents/.*', 'rm -rf ~/Documents/.[!.]*', 'rm -rf ~/Documents/*/', 'rm -rf -- ~/Documents/*', 'rm -rf ~/Documents/??*', 'rm -r ~/Documents/*', 'rm -fr ~/Documents/*',
+            'rm -rf $HOME/Documents/*', 'rm -rf "${HOME}/Documents/"*', 'rm -rf "$HOME/Documents"/*', 'rm -rf /Users/alice/Documents/*', 'rm -rf /Users/alice/Documents/.*', 'rm -rf /home/alice/Documents/*',
+            'cd ~/Documents && rm -rf *', 'cd ~/Documents && rm -rf ./*', 'cd ~/Documents && rm -rf .[!.]*', 'cd $HOME/Documents && rm -rf .*', 'cd /Users/alice/Documents && rm -rf *', 'cd ~ && cd Documents && rm -rf *',
+            'find ~/Documents -mindepth 1 -delete', 'find ~/Documents/ -mindepth 1 -maxdepth 1 -delete', 'find $HOME/Documents -mindepth 1 -delete', 'find /Users/alice/Documents -mindepth 1 -delete',
+            'find ~/Documents/* -delete', 'cd ~/Documents && find . -mindepth 1 -delete',
+            'rm -rf ~/Documents/', 'rm -rf -- ~/Documents', 'rm -rf ~/Documents/.', 'rm -rf $HOME/Documents/.', 'rm -rf /Users/alice/Documents/', 'cd ~ && rm -rf -- Documents/', 'cd ~/Documents && rm -rf .',
+            'mv ~/Documents/* /tmp/x', 'mv $HOME/Documents/.* /tmp/x',
+        ]) assert.ok(hard(c), c);
+    });
+    test('deeper paths, partial wildcards and braces stay normal destructive; non-recursive wildcards need a GO', () => {
+        for (const c of ['rm -rf ~/Documents/sub/*', 'rm -rf ~/Documents/sub', 'rm -rf ~/Documents/*.log', 'rm -rf ~/Documents/a*', 'rm -rf ~/Documents/{a,b}', 'rm -rf /Users/alice/Documents/sub/*', 'rm -rf $HOME/Documents/sub/.*',
+            'cd ~/Documents/sub && rm -rf *', 'find ~/Documents/sub -mindepth 1 -delete', 'find ~/dev/x -mindepth 1 -delete', 'rm -rf ~/dev/x/*']) {
+            assert.ok(!hard(c), c);
+            assert.deepEqual(g.commandScopes(c), ['destructive'], c);
+        }
+        for (const c of ['rm ~/Documents/*', 'rm -f $HOME/Documents/.*', 'cd ~/Documents && rm *']) {
+            assert.ok(!hard(c), c);
+            assert.equal(g.commandScopes(c), null, c);
+        }
+    });
+    test('the hook refuses the wildcard emptying even with a destructive grant or a GO', () => {
+        add(human('hello'));
+        typed('gogate grant destructive 1h');
+        add(human('go on'));
+        assert.equal(run('rm -rf ./build').status, 0);
+        assert.equal(run('rm -rf ~/Documents/sub/*').status, 0, 'deeper path: a destructive grant covers it');
+        assert.equal(run('rm -rf ~/Documents/*').status, 2);
+        add(human('GO'));
+        assert.equal(run('rm -rf ~/Documents/*').status, 2);
+    });
+});
+
 describe('aos-22 read-only npm lookups and loops', () => {
     test('npm view/info/show/v is never guarded, alone or in loops, with or without sudo/time/watch', () => {
         const pkg = '@hybridlabor-api/bdb-agent-orchestrator@1.5.0';
