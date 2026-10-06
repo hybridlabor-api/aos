@@ -314,6 +314,43 @@ function verifyPythonImports(pythonPath, cwd, importCode) {
     return !result.error && result.status === 0;
 }
 
+// Reconcile a memB venv against its requirements.txt on every run -- not only on a
+// version bump. A changed requirements hash, or a failing import of a required
+// module (mcp, when the venv's requirements list it), forces a reinstall with the
+// venv's pip or `uv pip install -r`. requirements.txt without mcp is a note, not an error.
+function reconcileMembVenv(membDir, opts = {}) {
+    const venvPython = opts.venvPython || (process.platform === 'win32'
+        ? path.join(membDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(membDir, '.venv', 'bin', 'python'));
+    const reqPath = opts.requirementsPath || path.join(membDir, 'requirements.txt');
+    let reqText;
+    try { reqText = fs.readFileSync(reqPath, 'utf8'); } catch { return { status: 'no-requirements' }; }
+    const hash = computeFileHash(reqPath);
+    const stampPath = path.join(membDir, '.venv', '.aos-requirements.sha256');
+    let stamped = null;
+    try { stamped = fs.readFileSync(stampPath, 'utf8').trim(); } catch { /* none yet */ }
+    const hasMcp = /(^|\n)\s*mcp\s*([<>=!~;\[]|$)/.test(reqText);
+    const verify = opts.verifyImports || ((code) => verifyPythonImports(venvPython, membDir, code));
+    if (!hasMcp) log.step('[memb] requirements.txt does not list mcp; import check skipped (note only)');
+    const importFailed = hasMcp && !verify('import mcp');
+    if (hash === stamped && !importFailed) {
+        try { fs.mkdirSync(path.dirname(stampPath), { recursive: true }); fs.writeFileSync(stampPath, hash); } catch { /* ignore */ }
+        return { status: 'up-to-date' };
+    }
+    const install = opts.runInstall || (() => {
+        const hasUv = (opts.hasUv !== undefined) ? opts.hasUv : (() => { try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore' }); return true; } catch { return false; } })();
+        const cmd = hasUv
+            ? `"${uvBin()}" pip install --python "${venvPython}" -r requirements.txt`
+            : `"${venvPython}" -m pip install -r requirements.txt --timeout 30 --no-input`;
+        return runPipWithRetry(cmd, { cwd: membDir, stdio: 'inherit' }, 'memB requirements reconcile', 2, 900000);
+    });
+    const ok = install();
+    if (ok) {
+        try { fs.mkdirSync(path.dirname(stampPath), { recursive: true }); fs.writeFileSync(stampPath, hash); } catch { /* ignore */ }
+    }
+    return { status: ok ? 'reinstalled' : 'failed' };
+}
+
 function resolveUnsupportedMcpConfigKeys() {
     const keys = unsupportedMcpConfigKeys.slice();
     conditionalMcpConfigKeys.forEach(entry => {
@@ -2315,7 +2352,8 @@ async function installMemB(interactive) {
             const installCmd = (pkgsArg) => hasUv ? uvInstall(pkgsArg) : pipInstall(pkgsArg);
 
             runPipWithRetry(installCmd('--upgrade setuptools'), { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
-            runPipWithRetry(installCmd('-r requirements.txt'), { cwd: membDir, stdio: 'inherit' }, 'pip install for memB standalone', 2, 900000);
+            const reconcile = reconcileMembVenv(membDir, { venvPython, hasUv });
+            if (reconcile.status === 'failed') log.warn('memB requirements reconcile failed; inspect the venv before starting the daemon.');
 
             if (installWebUI && fs.existsSync(serverPy)) {
                 runPipWithRetry(installCmd('fastapi uvicorn'), { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
@@ -3533,7 +3571,8 @@ async function installMcpsForTarget(paths, ctx) {
 
                 const pipViaPython = `"${venvPython}" -m pip`;
                 runPipWithRetry(`${pipViaPython} install --upgrade setuptools --timeout 30 --no-input`, { cwd: membMcpFolder, stdio: 'ignore' }, 'pip setuptools upgrade for memB MCP', 2, 120000);
-                runPipWithRetry(`${pipViaPython} install -r requirements.txt --timeout 30 --no-input`, { cwd: membMcpFolder, stdio: 'inherit' }, 'pip install for memB MCP', 2, 900000);
+                const reconcile = reconcileMembVenv(membMcpFolder, { venvPython });
+                if (reconcile.status === 'failed') log.warn('memB MCP requirements reconcile failed; inspect the venv before relying on memb-mcp.');
             } catch (e) {
                 log.warn(`Failed to set up Python virtual environment for memB: ${e.message}`);
             }
@@ -6915,6 +6954,7 @@ module.exports = {
     ensureDejaExclude,
     // Manifest store (exported for verification tests)
     computeFileHash,
+    reconcileMembVenv,
     getInstallManifestPath,
     loadInstallManifest,
     saveInstallManifest,

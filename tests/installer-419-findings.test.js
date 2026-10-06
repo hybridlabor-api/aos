@@ -157,6 +157,78 @@ test('finding 5: prompt uses CFBundleShortVersionString when present', async () 
     assert.ok(prompt && prompt.includes('1.2.3'), prompt);
 });
 
+test('finding 8: reconcile reinstalls on changed requirements hash and clears the failure', () => {
+    const dir = fresh('memb');
+    fs.mkdirSync(path.join(dir, '.venv', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'requirements.txt'), 'mcp\npydantic\n');
+    const stamp = path.join(dir, '.venv', '.aos-requirements.sha256');
+    let installs = 0;
+    const r1 = installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; }, verifyImports: () => false });
+    assert.strictEqual(r1.status, 'reinstalled');
+    assert.strictEqual(installs, 1);
+    assert.ok(fs.existsSync(stamp));
+    const r2 = installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; }, verifyImports: () => true });
+    assert.strictEqual(r2.status, 'up-to-date');
+    assert.strictEqual(installs, 1, 'unchanged requirements with passing import reinstalls nothing');
+    fs.writeFileSync(path.join(dir, 'requirements.txt'), 'mcp\npydantic\nopenai\n');
+    const r3 = installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; }, verifyImports: () => true });
+    assert.strictEqual(r3.status, 'reinstalled');
+    assert.strictEqual(installs, 2);
+});
+
+test('finding 8: failing mcp import forces a reinstall even with an unchanged hash', () => {
+    const dir = fresh('memb2');
+    fs.mkdirSync(path.join(dir, '.venv', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'requirements.txt'), 'mcp\n');
+    let installs = 0;
+    installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; }, verifyImports: () => true });
+    const r = installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; }, verifyImports: () => false });
+    assert.strictEqual(r.status, 'reinstalled');
+    assert.strictEqual(installs, 2);
+});
+
+test('finding 8: requirements without mcp is a note, not a failure', () => {
+    const dir = fresh('memb3');
+    fs.mkdirSync(path.join(dir, '.venv', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'requirements.txt'), 'pydantic\nonly\n');
+    let verifyCalls = 0;
+    const r1 = installer.reconcileMembVenv(dir, { runInstall: () => true, verifyImports: () => { verifyCalls++; return false; } });
+    assert.strictEqual(r1.status, 'reinstalled'); // hash missing -> reinstall once
+    const r2 = installer.reconcileMembVenv(dir, { runInstall: () => true, verifyImports: () => { verifyCalls++; return false; } });
+    assert.strictEqual(r2.status, 'up-to-date');
+    assert.strictEqual(verifyCalls, 0, 'mcp import check is not run when mcp is not required');
+});
+
+test('finding 8: default import check uses the venv python (fake python)', () => {
+    const dir = fresh('memb4');
+    fs.mkdirSync(path.join(dir, '.venv', 'bin'), { recursive: true });
+    const fakePython = path.join(dir, '.venv', 'bin', 'python');
+    fs.writeFileSync(fakePython, '#!/bin/sh\ncase "$2" in *"import mcp"*) exit 1;; *) exit 0;; esac\n', { mode: 0o755 });
+    fs.chmodSync(fakePython, 0o755);
+    fs.writeFileSync(path.join(dir, 'requirements.txt'), 'mcp\n');
+    let installs = 0;
+    const r = installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; } });
+    assert.strictEqual(r.status, 'reinstalled');
+    assert.strictEqual(installs, 1);
+});
+
+test('finding 8: doctor reports memB MCP venv entry-import status', () => {
+    const h = fresh('membdoc');
+    const dir = path.join(h, '.gemini', 'config', 'mcps', 'memb-mcp');
+    fs.mkdirSync(path.join(dir, '.venv', 'bin'), { recursive: true });
+    const fakePython = path.join(dir, '.venv', 'bin', 'python');
+    fs.writeFileSync(fakePython, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    fs.chmodSync(fakePython, 0o755);
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--json'], { env: { HOME: h, USERPROFILE: h, PATH: process.env.PATH }, encoding: 'utf8' });
+    const res = JSON.parse(r.stdout).results;
+    const entry = res.find((x) => x.name === 'memB MCP venv');
+    assert.ok(entry && entry.ok === false && /entry import failed/.test(entry.detail), JSON.stringify(entry));
+    fs.writeFileSync(fakePython, '#!/bin/sh\nexit 0\n');
+    const r2 = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--json'], { env: { HOME: h, USERPROFILE: h, PATH: process.env.PATH }, encoding: 'utf8' });
+    const entry2 = JSON.parse(r2.stdout).results.find((x) => x.name === 'memB MCP venv');
+    assert.ok(entry2 && entry2.ok === true, JSON.stringify(entry2));
+});
+
 test('finding 3: OpenCode plugin payload is installed when missing and left alone, silently, when identical', () => {
     const h = fresh('oc');
     const code = `i.installOpencodePlugin({ targetHome: ${JSON.stringify(h)}, configPath: ${JSON.stringify(path.join(h, '.config', 'opencode', 'opencode.jsonc'))} });`;

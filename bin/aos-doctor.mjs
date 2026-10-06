@@ -6,7 +6,7 @@
 //   node bin/aos-doctor.mjs [--json] [--net]
 
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { connect } from 'node:net';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -385,6 +385,25 @@ function checkInstallerBaks() {
 }
 
 async function checkDaemonsAndModules() {
+  // memB venv entry-module import check (10 s timeout)
+  {
+    const membMcp = firstExisting([h('.gemini', 'config', 'mcps', 'memb-mcp'), ...MODULE_BASES.map((b) => path.join(b, 'memb-mcp')), ...MODULE_BASES.map((b) => path.join(b, 'memB'))]);
+    const venvPython = membMcp && !IS_WIN ? path.join(membMcp, '.venv', 'bin', 'python') : membMcp ? path.join(membMcp, '.venv', 'Scripts', 'python.exe') : null;
+    if (!membMcp) {
+      add('daemons', 'memB MCP venv', true, 'memb-mcp not installed', undefined, true);
+    } else if (!venvPython || !existsSync(venvPython)) {
+      add('daemons', 'memB MCP venv', false, `no venv python at ${tilde(venvPython || '')}`, 're-run the AOS installer to create the venv', true);
+    } else {
+      const r = spawnSync(venvPython, ['-c', 'import memb; import run as memb_run'], { cwd: membMcp, timeout: 10000, encoding: 'utf8' });
+      if (r.error || r.status !== 0) {
+        const why = r.error && r.error.code === 'ETIMEDOUT' ? 'timed out after 10s' : (r.stderr || '').trim().split('\n').slice(-3).join(' | ') || `exit ${r.status}`;
+        add('daemons', 'memB MCP venv', false, `entry import failed: ${why}`, 'reinstall the venv: re-run the AOS installer (requirements reconcile) or delete the .venv and re-run', true);
+      } else {
+        add('daemons', 'memB MCP venv', true, `entry module imports OK (${tilde(venvPython)})`);
+      }
+    }
+  }
+
   // memB
   const membDir = findModule('memB');
   const membListening = await portOpen(8088);
