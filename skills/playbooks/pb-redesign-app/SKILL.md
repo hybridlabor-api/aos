@@ -37,11 +37,12 @@ What you get: one app's UI overhauled against a written audit, new design tokens
 4. startcycle (architect, techlead, reviewer) — the approved plan and audit → build on a new branch; godmode-ui-ux rules apply to the UI work — reviewer reports no open `blocking` finding
 5. bdb-visual-edit — point fixes the human annotates in the running app via `aos-plan-canvas annotate`, each after its diff plan is approved → edited files in the run log — only the picked files change
 6. wcag-audit-patterns and webapp-testing — accessibility pass plus a browser test of the changed screens, then the repo's lint and test scripts → results in the run log — all exit 0; each audit finding marked fixed or deferred
-7. [GO] git push -u origin <branch> and gh pr create — one combined GO; the WAITING FOR GO line names the branch, base branch, PR title and the head SHA. The run stops here until the human types GO. The hook guards `git push`; `gh pr create` is not hook-guarded, so this GO is its only guard. Afterwards `gh pr view <branch> --json state -q .state` equals `OPEN` and the PR URL is logged.
+7. [GO] git push -u origin <branch> and gh pr create — one combined GO; the WAITING FOR GO line names the branch, base branch, PR title and the head SHA. The run stops here until the human types GO. Where the hook runs, it covers `git push`; `gh pr create` is not hooked, so this GO is its only guard. Afterwards `gh pr view <branch> --json state -q .state` equals `OPEN` and the PR URL is logged.
 
 Run log: `production_artifacts/pb-redesign-app-<date>.md` in the start directory, never committed
 
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

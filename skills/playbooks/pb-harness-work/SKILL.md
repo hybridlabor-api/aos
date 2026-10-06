@@ -49,16 +49,19 @@ What you get: a harness change that was designed against the known gotchas, buil
    - Claude: `.claude/hooks/*.mjs`, settings hooks
    - agy: `hooks.json` via installer `mergeAntigravityHooks`
    - OpenCode: `.opencode/plugins/bdb-aos.js`
-   - Codex: `.codex/agents/*.toml`, `~/.codex/hooks` and `[features] hooks` in `~/.codex/config.toml` (both written by `installer.js`)
+   - Codex: `.codex/agents/*.toml`, `~/.codex/hooks` and `[features] hooks` in `~/.codex/config.toml` (both written by `installer.js`); go-gate firing unverified
+   - OpenCode plugin `.opencode/plugins/bdb-aos.js` loads the go-gate
+   - Cursor, Kimi: rules text only, no hook
    - check: every "yes" row has a test in `npm test` or a named manual check
 7. verification-before-completion — `npm test` (and `node scripts/validate-skills.mjs` if skills changed) → fresh output pasted in the run log — exit 0
-8. git commit — compare `git -C <repo> status --porcelain` with the plan's `files:` lines; unlisted changes outside `production_artifacts/` → stop and ask; stage only the listed files (never the run log or `production_artifacts/`) → SHA in the run log — the commit hook passes
+8. git commit — compare `git -C <repo> status --porcelain` with the plan's `files:` lines; unlisted changes outside `production_artifacts/` → stop and ask; stage only the listed files (never the run log or `production_artifacts/`) → SHA in the run log — commit succeeds (any hook failure is reported, never bypassed with --no-verify)
 9. git-pr-review — commits → PR body in `production_artifacts/pb-harness-work-<date>-pr.md` — body written, nothing posted
-10. [GO] github — `git -C <repo> push -u origin <branch>`, then `gh pr create -R <owner/repo> --base <default> --head <branch> --title "<title>" --body-file <body>` (`<owner/repo>` from `git -C <repo> remote get-url origin`) — the WAITING FOR GO line names branch, base and title. The run stops here until the human types GO. The hook guards the push only; the PR create is GO by contract.
+10. [GO] github — `git -C <repo> push -u origin <branch>`, then `gh pr create -R <owner/repo> --base <default> --head <branch> --title "<title>" --body-file <body>` (`<owner/repo>` from `git -C <repo> remote get-url origin`) — the WAITING FOR GO line names branch, base and title. The run stops here until the human types GO. Where the hook runs, it covers the push only; the PR create is not hooked, so this GO is its only guard.
 
 Run log: `production_artifacts/pb-harness-work-<date>.md` in the repo's start directory, never committed
 
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

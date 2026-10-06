@@ -35,7 +35,7 @@ What you get: one ranked findings report for the repo (blocking, should, note), 
 3. silent-failure-hunter (agent) — same scope → findings appended to `findings.md` — each finding cites file and line
 4. Dedupe and rank — `findings.md` → one table, each finding `blocking`, `should` or `note`, with id, file, line, source step — stops for approval (the human confirms the ranking and which blocking findings get an issue)
 5. github — `gh repo view <owner/repo> --json visibility -q .visibility` → run log line — equals `PRIVATE`; `PUBLIC` or unknown → no issue is filed, the blocking findings stay in the report only (a secret in a public issue leaks it), logged, steps 6 and 7 skipped
-6. [GO] gh issue create — per approved blocking finding: `gh issue create -R <owner/repo> --title "<title>" --body-file <body>` with file, line and impact but no secret value — the WAITING FOR GO line names the finding id and the title. The run stops here until the human types GO. One GO = one issue. (`gh issue create` is not hook-guarded; this GO is its only guard.)
+6. [GO] gh issue create — per approved blocking finding: `gh issue create -R <owner/repo> --title "<title>" --body-file <body>` with file, line and impact but no secret value — the WAITING FOR GO line names the finding id and the title. The run stops here until the human types GO. One GO = one issue. (`gh issue create` is not hooked; this GO is its only guard.)
 7. pb-bug-fix — per filed issue → one pb-bug-fix run with its own GO for the push and the PR (nothing is pushed from this playbook) — each issue number is logged next to its PR URL or "deferred"
 8. bdb-security-audit — re-run as in step 1 → delta (fixed, still open, new) in the run log — every remaining blocking finding names its pb-bug-fix PR
 9. verification-before-completion — delta → run log line — zero open blocking findings, or each remaining one named with its PR; output pasted, not claimed
@@ -44,5 +44,6 @@ Run log: `production_artifacts/pb-security-sweep-<date>.md` in the start directo
 
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

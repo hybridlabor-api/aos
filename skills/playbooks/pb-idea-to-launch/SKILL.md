@@ -23,6 +23,7 @@ est_time: 2-6 h
 
 # Idea to deployed prototype
 What you get: an idea turned into a deployed prototype with green CI and one hero image, pushed and deployed only after your GO.
+Availability: needs the comfyui-mcp server configured in the harness (no config is shipped). Missing → steps 2 to 4 still run, step 5 stops with that message.
 
 ## Inputs
 - idea — a short description, asked once
@@ -31,16 +32,16 @@ What you get: an idea turned into a deployed prototype with green CI and one her
 - deploy_target — the host and path or the target the human names, asked once
 
 ## Steps
-1. Preflight — one probe `check_comfyui_health` on `comfyui-mcp` (MCP tools may be deferred in the harness: try to load the tool once via the harness tool search before declaring it missing) → run log header — tool not loaded, call errors, or `status` is not `"online"` → log "Missing MCP: `comfyui-mcp` (`check_comfyui_health` unavailable). Start ComfyUI and check `mcpServers.comfyui-mcp` in your harness config." and mark step 5 to stop; steps 2 to 4 still run
+1. Preflight — one probe `check_comfyui_health` on `comfyui-mcp` (MCP tools may be deferred in the harness: try to load the tool once via the harness MCP list before declaring it missing) → run log header — tool not loaded, call errors, or `status` is not `"online"` → log "Availability: needs the comfyui-mcp server configured in the harness (no config is shipped). Start ComfyUI and check `mcpServers.comfyui-mcp`." and mark step 5 to stop; steps 2 to 4 still run
 2. bdbrainstorm or grill-me — idea → `production_artifacts/pb-idea-to-launch-<date>/spec.md` — spec written, open questions listed
 3. plan-canvas (Plan Builder mode) — the workflow and the planned prototype screens → `plan.md` in the same folder — stops for approval
-4. prototype, then startcycle (architect, techlead, reviewer) — spec and plan → prototype in the repo (a new project: a new local directory, no remote yet) — reviewer reports no open `blocking` finding
+4. prototype, then startcycle (architect, techlead, reviewer; no subagent support → the main session reads agents/reviewer.md and runs the review inline, using only the diff and the contract, never the session's reasoning) — spec and plan → prototype in the repo (a new project: a new local directory, no remote yet) — reviewer reports no open `blocking` finding
    - Commit: a new project gets `git init` first; the reviewed prototype files are staged by explicit path (never `git add -A`) and committed — SHA in the run log; the working tree has no uncommitted product files afterwards
-5. ComfyUI — the workflow file's text (prompt filled in) as the JSON string for `queue_prompt` → `get_history <prompt_id>` status success → `get_output_media_info` path copied to `hero.png` in the run folder — one image; `local_path` is only set when `COMFYUI_DIR` is set, so if `local_path` is empty or `exists_locally` is false, stop with a clear message and copy nothing; preflight failed in step 1 → stop with the "Missing MCP" message and write nothing except the run log
-6. pb-ci-fix (setup path) — run its steps up to and including the commit, but not its push step → workflow files committed, SHA in the run log — validator zero errors, commit hook passes; the push is covered by step 7, so pb-ci-fix's own push GO is skipped here
-7. [GO] git push — SHA → remote branch (name the branch in the WAITING FOR GO line). A new project without a remote: `gh repo create <owner>/<name> --private --source . --remote origin` runs in the same GO, never public, never any other visibility; the line names owner and name. The run stops here until the human types GO. The hook guards `git push`; `gh repo create` is not hook-guarded, so this GO is its only guard.
+5. ComfyUI — the workflow file's text (prompt filled in) as the JSON string for `queue_prompt` → `get_history <prompt_id>` status success → `get_output_media_info` path copied to `hero.png` in the run folder — one image; `local_path` is only set when `COMFYUI_DIR` is set, so if `local_path` is empty or `exists_locally` is false, stop with a clear message and copy nothing; preflight failed in step 1 → stop with the Availability message and write nothing except the run log
+6. pb-ci-fix (setup path) — run its steps up to and including the commit, but not its push step → workflow files committed, SHA in the run log — validator zero errors, commit succeeds (any hook failure is reported, never bypassed with --no-verify); the push is covered by step 7, so pb-ci-fix's own push GO is skipped here
+7. [GO] git push — SHA → remote branch (name the branch in the WAITING FOR GO line). A new project without a remote: `gh repo create <owner>/<name> --private --source . --remote origin` runs in the same GO, never public, never any other visibility; the line names owner and name. The run stops here until the human types GO. Where the go-gate hook runs (Claude Code, OpenCode, agy) it covers `git push`; it does not cover `gh repo create`, and elsewhere this GO is the only guard.
 8. github — SHA → `<id>` from `gh run list --commit <sha> --limit 1 --json databaseId` (wait until it exists), then `gh run watch <id> --exit-status` — `gh run list --commit <sha> --json conclusion -q '.[0].conclusion'` equals `success`; otherwise back to pb-ci-fix's debugging steps, at most 2 cycles, each push behind a fresh GO as in step 7, then stop and escalate
-9. [GO] bdb-deploy — build from the committed tree only (a clean checkout of the pushed SHA, e.g. `git worktree add <scratch> <sha>`, removed with `git worktree remove <scratch>` (no `--force`) when the deploy ends or the run stops) and rsync to `deploy_target`, the target, the file list and the command shown in full. The run stops here until the human types GO. The rsync deploy is not hook-guarded, so this GO is its only guard.
+9. [GO] bdb-deploy — build from the committed tree only (a clean checkout of the pushed SHA, e.g. `git worktree add <scratch> <sha>`, removed with `git worktree remove <scratch>` (no `--force`) when the deploy ends or the run stops) and rsync to `deploy_target`, the target, the file list and the command shown in full. The run stops here until the human types GO. The hook does not cover the rsync deploy, so this GO is its only guard.
 10. Check — `curl -sI <url>` → status line in the run log — returns 200
 
 Run log: `production_artifacts/pb-idea-to-launch-<date>.md` in the start directory, never committed
@@ -49,3 +50,4 @@ Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
 - A failed check stops the run: write the failure into the run log and report. No silent retries beyond what a step names.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.

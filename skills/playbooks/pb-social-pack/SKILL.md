@@ -28,7 +28,7 @@ What you get: posts per platform and clip cut-downs from your release recap, eve
 ## Inputs
 - recap — release notes, or a pb-ship / pb-release-aos run log
 - platforms — for example LinkedIn, X, Instagram, YouTube Shorts
-- launch_video (optional) — an mp4 from pb-launch-video; without it the pack is posts only and step 4 is skipped
+- launch_video (optional) — an mp4 from pb-launch-video; without it the pack is posts only and step 4 is skipped; pb-launch-video renders with hyperframes when installed, else with the remotion skill
 - formats (optional) — default 9:16 (1080x1920), 1:1 (1080x1080) and 16:9 (1920x1080)
 
 ## Steps
@@ -44,4 +44,5 @@ Run log: `production_artifacts/pb-social-pack-<date>.md` in the start directory,
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.
