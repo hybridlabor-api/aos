@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+* The installer pins no model on any harness. Claude Code, OpenCode, Codex and Antigravity agent files carry no `model` and inherit the session model; the tier table (`CANONICAL_TIERS`) is gone. A model is written only when `.aos/pipeline.json` sets one for that role and harness (`models: { "<harness>": "<model>" }`, free-form string, verbatim). `aos-doctor` checks the format of those overrides and names file, role, harness and value. Unedited installed agent files that carried `model: opus|sonnet` are rewritten on update; edited ones are kept. See `docs/agent-models.md`.
+* `aos-acp --model` no longer rejects Fable ids; the string is passed through to the adapter.
+
 ### Removed
 
 * Removed the foreign `agent-orchestrator` skill (not the AO product `bdb-agent-orchestrator`, nor `ao-orchestrator`). Installed copies are retired on update; edited or foreign files are backed up first.

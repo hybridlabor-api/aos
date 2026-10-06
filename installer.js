@@ -3806,24 +3806,8 @@ function yamlQuote(str) {
     return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
 }
 
-// Canonical model tiers mapped to verified provider-specific model IDs for each harness.
-// Protects against vendor model churn and provides seamless cross-harness defaults.
-const CANONICAL_TIERS = {
-    reasoning_max: {
-        claude: 'opus',
-        antigravity: 'gemini-3.1-pro-high'
-    },
-    standard_fast: {
-        claude: 'sonnet',
-        antigravity: 'gemini-3.8-flash-high'
-    },
-    trivial_low: {
-        claude: 'haiku',
-        antigravity: 'gemini-3.8-flash-low'
-    }
-};
-// Codex and OpenCode have no tier entries on purpose: an agent file's model overrides the session model
-// and an unknown id fails instead of falling back, so those harnesses inherit unless the user pins a model.
+// No harness gets a model from the installer: agent files carry none and inherit the session model.
+// A model is written only when .aos/pipeline.json pins one for that role and harness (docs/agent-models.md).
 
 // Loads .aos/pipeline.json or .aos/project.json containing role-to-model/harness mappings.
 function loadPipelineConfig(projectDir = currentDir) {
@@ -3843,43 +3827,30 @@ function loadPipelineConfig(projectDir = currentDir) {
     return null;
 }
 
-// Resolves model ID, tier, and enabled status for a given agent role and target harness.
+// Resolves the pinned model (or null) and enabled status for an agent role and harness.
+// Shape: pipeline[role] = { models: { <harness>: "<model>" }, model, harness, enabled }.
+// `models[harness]` wins; the legacy `model` applies when `harness` is absent or equal. Strings are verbatim.
 function resolveAgentConfig(agentSlug, harness, pipelineConfig = null) {
     const normSlug = agentSlug.toLowerCase().replace(/-/g, '_');
     const roleCfg = pipelineConfig ? (pipelineConfig[normSlug] || pipelineConfig[agentSlug]) : null;
-    // A role's model/harness describes where AO runs that role; only valid for that harness.
-    const ownHarness = !!roleCfg && (!roleCfg.harness || roleCfg.harness === harness);
-    if (roleCfg && ownHarness && roleCfg.model) {
-        return {
-            model: roleCfg.model,
-            tier: roleCfg.tier || 'custom',
-            enabled: roleCfg.enabled !== false,
-            harness
-        };
+    let model = null;
+    if (roleCfg) {
+        const perHarness = roleCfg.models && roleCfg.models[harness];
+        const legacy = (!roleCfg.harness || roleCfg.harness === harness) ? roleCfg.model : null;
+        model = [perHarness, legacy].find((m) => typeof m === 'string' && m !== '') || null;
     }
-    if (roleCfg && roleCfg.tier && CANONICAL_TIERS[roleCfg.tier] && CANONICAL_TIERS[roleCfg.tier][harness]) {
-        return {
-            model: CANONICAL_TIERS[roleCfg.tier][harness],
-            tier: roleCfg.tier,
-            enabled: roleCfg.enabled !== false,
-            harness
-        };
-    }
-    const defaultTier = (normSlug === 'architect' || normSlug === 'reviewer') ? 'reasoning_max' : 'standard_fast';
-    const fallbackModel = (CANONICAL_TIERS[defaultTier] && CANONICAL_TIERS[defaultTier][harness]) || 'inherit';
-    return { model: fallbackModel, tier: defaultTier, enabled: !(roleCfg && roleCfg.model && roleCfg.enabled === false), harness };
+    return { model, enabled: !roleCfg || roleCfg.enabled !== false, harness };
 }
 
 // Generates .claude/agents/<name>.md — Claude Code's native subagent format.
 // Only frontmatter fields confirmed against code.claude.com/docs/en/sub-agents
-// are emitted (name, description, model).
+// are emitted (name, description, model). `model` is optional and omitting it inherits the
+// session model, so it is written only for a pipeline.json override, verbatim.
 function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
-        const resolved = resolveAgentConfig(slug, 'claude', pipelineConfig);
-        let model = (resolved && resolved.model) ? resolved.model.toLowerCase() : (a.model ? a.model.toLowerCase() : 'inherit');
-        if (!/^(opus|sonnet|haiku|inherit|claude-.+)$/.test(model)) model = CANONICAL_TIERS[resolved.tier in CANONICAL_TIERS ? resolved.tier : 'standard_fast'].claude;
+        const { model } = resolveAgentConfig(slug, 'claude', pipelineConfig);
         const body = [
             a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
@@ -3891,10 +3862,10 @@ function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
             '---',
             `name: ${slug}`,
             `description: ${yamlQuote(a.role)}`,
-            `model: ${model}`,
+            model ? `model: ${model}` : null,
             '---',
             '',
-        ].join('\n');
+        ].filter((l) => l !== null).join('\n');
 
         fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
     }
@@ -3914,8 +3885,7 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
         const resolved = resolveAgentConfig(slug, 'opencode', pipelineConfig);
-        let model = resolved && resolved.model ? resolved.model : null;
-        if (model && !model.includes('/')) model = null;
+        const model = resolved.model;
         const body = [
             a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
@@ -3963,7 +3933,7 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
             continue;
         }
         const resolved = resolveAgentConfig(slug, 'codex', pipelineConfig);
-        const pinned = resolved.model && resolved.model !== 'inherit' ? resolved.model : null;
+        const pinned = resolved.model;
 
         const instructions = [
             a.role,
@@ -4055,8 +4025,7 @@ function injectHarnessRules() {
                         const agentConfig = {
                             name: a.name,
                             description: a.role,
-                            model: resolved.model,
-                            model_tier: resolved.tier,
+                            ...(resolved.model ? { model: resolved.model } : {}),
                             enable_write_tools: true,
                             enable_subagent_tools: true,
                             enable_mcp_tools: true,
@@ -6736,7 +6705,6 @@ module.exports = {
     compileCodexAgents,
     loadPipelineConfig,
     resolveAgentConfig,
-    CANONICAL_TIERS,
     // Launchpad lifecycle (exported for regression tests)
     generateAndOpenLaunchpad,
     shouldOpenLaunchpad,

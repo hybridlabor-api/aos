@@ -5,7 +5,7 @@
 //   aos doctor
 //   node bin/aos-doctor.mjs [--json] [--net]
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { connect } from 'node:net';
 import { createRequire } from 'node:module';
@@ -473,7 +473,49 @@ function checkPlugins() {
   }
 }
 
+// ---------------------------------------------------------------- 4c. agent model overrides (docs/agent-models.md)
+// Format check only: no network, no provider lists. The installer passes these strings through verbatim.
+function checkAgentModels() {
+  const harnesses = {
+    claude: (m) => !/\s/.test(m),
+    codex: (m) => !/\s/.test(m),
+    antigravity: (m) => !/\s/.test(m),
+    opencode: (m) => /^[^\s/]+\/[^\s]+$/.test(m),
+  };
+  const expects = { opencode: 'provider/model without whitespace' };
+  const files = [
+    path.join(process.cwd(), '.aos', 'pipeline.json'),
+    path.join(process.cwd(), '.aos', 'project.json'),
+    h('.aos', 'pipeline.json'),
+  ].filter(existsSync).map((f) => realpathSync(f)).filter((f, i, a) => a.indexOf(f) === i);
+  for (const file of files) {
+    const data = readJson(file);
+    if (data === null) {
+      if (!/project\.json$/.test(file)) add('agents', `Agent models ${tilde(file)}`, false, `${tilde(file)} is not valid JSON; its model overrides are ignored`, 'Fix the JSON or delete the file.');
+      continue;
+    }
+    for (const [role, cfg] of Object.entries(data.pipeline || {})) {
+      if (!cfg || typeof cfg !== 'object') continue;
+      const entries = [];
+      for (const [harness, value] of Object.entries(cfg.models || {})) entries.push([harness, value, `models.${harness}`]);
+      if (cfg.model !== undefined) {
+        for (const harness of cfg.harness ? [cfg.harness] : Object.keys(harnesses)) entries.push([harness, cfg.model, 'model']);
+      }
+      for (const [harness, value, field] of entries) {
+        let problem = null;
+        if (!harnesses[harness]) problem = `unknown harness (use ${Object.keys(harnesses).join(', ')})`;
+        else if (typeof value !== 'string' || value === '') problem = 'must be a non-empty string';
+        else if (!harnesses[harness](value)) problem = `must be ${expects[harness] || 'a string without whitespace'}`;
+        if (problem) add('agents', `Agent model ${role}/${harness}`, false,
+          `${tilde(file)}: role "${role}", harness "${harness}", ${field} = ${JSON.stringify(value)}: ${problem}`,
+          `Correct or remove ${field} for role "${role}" in ${tilde(file)}; AOS never substitutes another model.`);
+      }
+    }
+  }
+}
+
 checkHarnesses();
+checkAgentModels();
 checkHooks();
 checkPlugins();
 checkAgyMcsc();

@@ -178,7 +178,6 @@ export async function run(opts) {
     ? "agy has no sanctioned ACP adapter (antigravity-acp breaches Google's Antigravity terms); delegate via the mcsc skill instead"
     : `unknown adapter "${opts.adapter}" (claude|codex|opencode)`);
   if (adapter?.cwdFlag && !opts.cmd) cmd.push(adapter.cwdFlag, opts.cwd);
-  if (/fable/i.test(opts.model || "")) throw new Error(`model "${opts.model}" rejected: workers run on opus, sonnet or haiku only`);
   const consume = opts.consume ?? adapter?.consume ?? true;
   log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, model: opts.model || "adapter default" });
 

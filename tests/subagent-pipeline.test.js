@@ -19,8 +19,7 @@ const {
     compileOpenCodeAgents,
     compileCodexAgents,
     loadPipelineConfig,
-    resolveAgentConfig,
-    CANONICAL_TIERS
+    resolveAgentConfig
 } = require('../installer.js');
 
 const SAMPLE_AGENTS_MD = `
@@ -60,43 +59,25 @@ describe('Multi-Harness Subagent Architecture', () => {
         } catch {}
     });
 
-    test('CANONICAL_TIERS covers the harnesses that need a pinned model (Codex and OpenCode inherit)', () => {
-        const harnesses = ['claude', 'antigravity'];
-        for (const tier of ['reasoning_max', 'standard_fast', 'trivial_low']) {
-            assert.ok(CANONICAL_TIERS[tier], `Missing tier: ${tier}`);
-            for (const h of harnesses) {
-                assert.ok(CANONICAL_TIERS[tier][h], `Missing harness ${h} in tier ${tier}`);
-                assert.strictEqual(typeof CANONICAL_TIERS[tier][h], 'string');
-            }
-        }
-    });
-
-    test('resolveAgentConfig resolves overrides, tiers, and fallback defaults', () => {
+    test('resolveAgentConfig resolves overrides and enabled, never a default model', () => {
         const pipelineConfig = {
             architect: { harness: 'claude', model: 'claude-opus-custom', enabled: true },
             reviewer: { harness: 'codex', tier: 'reasoning_max', enabled: true },
-            shipping: { harness: 'antigravity', tier: 'standard_fast', enabled: false }
+            shipping: { harness: 'antigravity', enabled: false }
         };
 
-        // Explicit model override
         const arch = resolveAgentConfig('architect', 'claude', pipelineConfig);
         assert.strictEqual(arch.model, 'claude-opus-custom');
         assert.strictEqual(arch.enabled, true);
 
-        // A tier never pins a Codex model
-        const rev = resolveAgentConfig('reviewer', 'codex', pipelineConfig);
-        assert.strictEqual(rev.model, 'inherit');
-        assert.strictEqual(rev.tier, 'reasoning_max');
-        assert.strictEqual(rev.enabled, true);
+        assert.strictEqual(resolveAgentConfig('reviewer', 'codex', pipelineConfig).model, null);
 
-        // Disabled role
         const ship = resolveAgentConfig('shipping', 'antigravity', pipelineConfig);
-        assert.strictEqual(ship.model, CANONICAL_TIERS.standard_fast.antigravity);
+        assert.strictEqual(ship.model, null);
         assert.strictEqual(ship.enabled, false);
 
-        // Fallback default without config
         const fallback = resolveAgentConfig('godmode-engineering', 'codex', null);
-        assert.strictEqual(fallback.model, 'inherit');
+        assert.strictEqual(fallback.model, null);
         assert.strictEqual(fallback.enabled, true);
     });
 

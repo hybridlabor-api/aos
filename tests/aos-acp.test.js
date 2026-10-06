@@ -54,10 +54,10 @@ describe('aos-acp with a fake ACP agent', () => {
         assert.ok(!readLog('w2').some((e) => e.params?.configId));
     });
 
-    test('fable model ids are rejected before the agent starts', () => {
-        const r = run(['--name', 'w1', '--prompt', 'hi', '--model', 'claude-fable-5']);
-        assert.equal(r.status, 2);
-        assert.match(r.stderr, /opus, sonnet or haiku only/);
+    test('--model is a free string: a fable id reaches session/set_config_option', () => {
+        assert.equal(run(['--name', 'w1', '--prompt', 'hi', '--model', 'claude-fable-5-1']).status, 0);
+        const set = readLog('w1').find((e) => e.event === 'send' && e.params.configId);
+        assert.deepEqual(set.params, { sessionId: 'sess-1', configId: 'model', value: 'claude-fable-5-1' });
     });
 
     test('guarded command denied without token', () => {

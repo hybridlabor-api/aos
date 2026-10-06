@@ -1,7 +1,6 @@
 ---
 name: godmode-ui-ux
 description: "Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics."
-model: sonnet
 ---
 Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics.
 

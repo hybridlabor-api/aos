@@ -3,7 +3,7 @@
 /**
  * skills/global_config/subagent-setup/scripts/setup-subagents.mjs
  *
- * Interactive & CLI tool to configure subagent roles and model tiers across:
+ * CLI tool to configure subagent roles and optional per-harness model overrides across:
  * - Claude Code (.claude/agents/*.md)
  * - Google Antigravity (~/.gemini/config/agents/*.json)
  * - OpenCode (.opencode/agents/*.md)
@@ -41,7 +41,6 @@ function loadInstaller() {
 const installer = loadInstaller();
 
 const {
-    CANONICAL_TIERS,
     loadPipelineConfig,
     resolveAgentConfig,
     parseAgentsMd,
@@ -51,13 +50,13 @@ const {
 } = installer;
 
 const ROLES = [
-    { key: 'architect', label: 'Architect', defaultTier: 'reasoning_max', defaultHarness: 'claude' },
-    { key: 'techlead', label: 'TechLead', defaultTier: 'standard_fast', defaultHarness: 'antigravity' },
-    { key: 'ui_ux', label: 'Godmode_UI_UX', defaultTier: 'standard_fast', defaultHarness: 'claude' },
-    { key: 'engineering', label: 'Godmode_Engineering', defaultTier: 'standard_fast', defaultHarness: 'claude' },
-    { key: 'media_eventtech', label: 'Godmode_Media_EventTech', defaultTier: 'standard_fast', defaultHarness: 'antigravity', defaultEnabled: false },
-    { key: 'reviewer', label: 'Reviewer', defaultTier: 'reasoning_max', defaultHarness: 'codex' },
-    { key: 'shipping', label: 'Godmode_Shipping', defaultTier: 'standard_fast', defaultHarness: 'opencode' }
+    { key: 'architect', label: 'Architect', defaultHarness: 'claude' },
+    { key: 'techlead', label: 'TechLead', defaultHarness: 'antigravity' },
+    { key: 'ui_ux', label: 'Godmode_UI_UX', defaultHarness: 'claude' },
+    { key: 'engineering', label: 'Godmode_Engineering', defaultHarness: 'claude' },
+    { key: 'media_eventtech', label: 'Godmode_Media_EventTech', defaultHarness: 'antigravity', defaultEnabled: false },
+    { key: 'reviewer', label: 'Reviewer', defaultHarness: 'codex' },
+    { key: 'shipping', label: 'Godmode_Shipping', defaultHarness: 'opencode' }
 ];
 
 function printPipeline(pipeline) {
@@ -66,7 +65,6 @@ function printPipeline(pipeline) {
         'Role'.padEnd(20) +
         'Status'.padEnd(10) +
         'Harness'.padEnd(15) +
-        'Tier'.padEnd(18) +
         'Model'
     );
     console.log('-'.repeat(80));
@@ -75,14 +73,12 @@ function printPipeline(pipeline) {
         const cfg = pipeline[r.key] || {};
         const enabled = cfg.enabled !== false;
         const harness = cfg.harness || r.defaultHarness;
-        const tier = cfg.tier || r.defaultTier;
-        const model = cfg.model || (CANONICAL_TIERS[tier] ? CANONICAL_TIERS[tier][harness] : 'inherit');
+        const model = resolveAgentConfig(r.key, harness, pipeline).model || 'inherit (session model)';
 
         console.log(
             r.label.padEnd(20) +
             (enabled ? '✔ ON' : '✖ OFF').padEnd(10) +
             harness.padEnd(15) +
-            tier.padEnd(18) +
             model
         );
     }
@@ -92,14 +88,9 @@ function printPipeline(pipeline) {
 function getDefaultPipeline() {
     const pipeline = {};
     for (const r of ROLES) {
-        const harness = r.defaultHarness;
-        const tier = r.defaultTier;
-        const model = CANONICAL_TIERS[tier] ? CANONICAL_TIERS[tier][harness] : 'inherit';
         pipeline[r.key] = {
             enabled: r.defaultEnabled !== false,
-            harness,
-            tier,
-            model
+            harness: r.defaultHarness
         };
     }
     return pipeline;
@@ -167,7 +158,6 @@ async function main() {
         const role = args[setRoleIdx + 1].toLowerCase().replace(/-/g, '_');
         const harnessIdx = args.indexOf('--harness');
         const modelIdx = args.indexOf('--model');
-        const tierIdx = args.indexOf('--tier');
         const disableFlag = args.includes('--disable');
         const enableFlag = args.includes('--enable');
 
@@ -176,8 +166,11 @@ async function main() {
         }
 
         if (harnessIdx !== -1 && args[harnessIdx + 1]) pipeline[role].harness = args[harnessIdx + 1];
-        if (modelIdx !== -1 && args[modelIdx + 1]) pipeline[role].model = args[modelIdx + 1];
-        if (tierIdx !== -1 && args[tierIdx + 1]) pipeline[role].tier = args[tierIdx + 1];
+        if (modelIdx !== -1 && args[modelIdx + 1]) {
+            const h = pipeline[role].harness;
+            if (!h) { console.error('--model needs --harness (or a role that already has one).'); process.exit(2); }
+            pipeline[role].models = { ...pipeline[role].models, [h]: args[modelIdx + 1] };
+        }
         if (disableFlag) pipeline[role].enabled = false;
         if (enableFlag) pipeline[role].enabled = true;
 
@@ -195,7 +188,7 @@ async function main() {
     console.log('  node setup-subagents.mjs --show');
     console.log('  node setup-subagents.mjs --init-default');
     console.log('  node setup-subagents.mjs --sync');
-    console.log('  node setup-subagents.mjs --set-role <role> --harness <claude|antigravity|opencode|codex> --model <model> [--tier <tier>]');
+    console.log('  node setup-subagents.mjs --set-role <role> --harness <claude|antigravity|opencode|codex> --model <model>');
 }
 
 main().catch(err => {

@@ -1,7 +1,6 @@
 ---
 name: silent-failure-hunter
 description: "Reviews code for silent failures, swallowed errors, bad fallbacks, and missing error propagation. Finds the bugs that never raise."
-model: sonnet
 ---
 Reviews code for silent failures, swallowed errors, bad fallbacks, and missing error propagation. Finds the bugs that never raise.
 
