@@ -47,7 +47,7 @@ PROVIDER_DEFAULT_MODELS = {
 }
 
 BASE_URL = os.environ.get("OPENWIKI_BASE_URL", "").strip() or PROVIDER_BASE_URLS.get(PROVIDER, "https://api.openai.com/v1")
-MODEL_ID = os.environ.get("OPENWIKI_MODEL", "").strip() or PROVIDER_DEFAULT_MODELS.get(PROVIDER, "gemma-4-26b-a4b-it")
+MODEL_ID = os.environ.get("OPENWIKI_MODEL", "").strip() or os.environ.get("OPENWIKI_MODEL_ID", "").strip() or PROVIDER_DEFAULT_MODELS.get(PROVIDER, "gemma-4-26b-a4b-it")
 
 SYSTEM_PROMPT = """You are a technical documentation generator for software projects.
 You receive git evidence (recent commits, diffs, status) and existing wiki pages.
@@ -904,7 +904,7 @@ def check_and_update_project(project_dir, api_key):
 
 
 def run_daemon_loop(api_key):
-    log("OpenWiki daemon started (Gemma 4 direct API mode)")
+    log(f"OpenWiki daemon started (direct API mode, provider={PROVIDER}, model={MODEL_ID})")
     while True:
         try:
             projects, interval = get_projects()

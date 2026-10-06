@@ -132,7 +132,7 @@ Then, only for what the interview enabled:
 
 ```bash
 cp ~/.claude/skills/aos-project-init/assets/openwikiignore.template .openwikiignore
-openwiki --init                # needs `openwiki auth <provider>` from /aos-setup
+openwiki --init                # needs provider credentials in ~/.openwiki/.env (see /aos-setup)
 ```
 
 When the user chose to watch it, add the absolute path to `projects` in

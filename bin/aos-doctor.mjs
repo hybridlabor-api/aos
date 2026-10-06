@@ -299,6 +299,15 @@ function checkHooks() {
 }
 
 // ---------------------------------------------------------------- 5. Daemons & Ecosystem Modules (Including AO)
+// mcsc delegates to agy; agy loading mcsc from its own config recurses into a fork bomb.
+function checkAgyMcsc() {
+  for (const f of [h('.gemini', 'config', 'mcp_config.json'), h('.gemini', 'antigravity-cli', 'mcp_config.json')]) {
+    if (!existsSync(f) || !readJson(f)?.mcpServers?.mcsc) continue;
+    add('agy', 'mcsc not in agy config', false, `mcsc is registered in ${tilde(f)} and can recurse (agy -> mcsc -> agy ...)`,
+      `Remove the "mcsc" entry from ${tilde(f)}, or re-run the AOS installer (it removes its own entry).`, true);
+  }
+}
+
 async function checkDaemonsAndModules() {
   // memB
   const membDir = findModule('memB');
@@ -436,6 +445,7 @@ checkPrereqs();
 checkAosCore();
 checkHarnesses();
 checkHooks();
+checkAgyMcsc();
 await checkDaemonsAndModules();
 report();
 

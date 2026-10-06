@@ -250,6 +250,31 @@ function hasExecutable(binary) {
     }
 }
 
+// uv's installers drop it in ~/.local/bin or ~/.cargo/bin, which a GUI-launched or
+// fresh shell often lacks on PATH. PATH first, then the standard install locations.
+function findUv(home = homeDir, platform = process.platform) {
+    const win = platform === 'win32';
+    try {
+        const out = win
+            ? execFileSync('where.exe', ['uv'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' })
+            : execSync('command -v uv', { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+        const first = out.trim().split(/\r?\n/)[0];
+        if (first && fs.existsSync(first)) return first;
+    } catch (e) { logDebug(e, 'uv lookup'); }
+    const dirs = win
+        ? [path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'),
+           path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'Programs', 'uv'),
+           path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'uv', 'bin')]
+        : [path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'), '/opt/homebrew/bin', '/usr/local/bin'];
+    for (const d of dirs) {
+        const candidate = path.join(d, win ? 'uv.exe' : 'uv');
+        if (fs.existsSync(candidate)) return candidate;
+    }
+    return null;
+}
+let _uvBin;
+const uvBin = () => (_uvBin === undefined ? (_uvBin = findUv()) : _uvBin) || 'uv';
+
 // Windows installers launched from an existing terminal can inherit a stale
 // PATH after Go was installed through winget or the official installer. The
 // Synapse JS launcher shells out to Go on first run, so discover the standard
@@ -1552,7 +1577,7 @@ async function promptCredentials(referenceMcpDir) {
     const existingEnv = loadExistingEnv(referenceMcpDir);
     const existingGithub = existingEnv['GITHUB_PERSONAL_ACCESS_TOKEN'] || existingEnv['GITHUB_TOKEN'] || '';
     const existingProvider = existingEnv['OPENWIKI_PROVIDER'] || 'google';
-    const existingModel = existingEnv['OPENWIKI_MODEL'] || '';
+    const existingModel = existingEnv['OPENWIKI_MODEL_ID'] || existingEnv['OPENWIKI_MODEL'] || '';
     const existingBaseUrl = existingEnv['OPENWIKI_BASE_URL'] || '';
     const existingKeyEnvName = PROVIDER_KEY_ENV_NAMES[existingProvider] || 'OPENWIKI_API_KEY';
     // Gemini/Google/OpenWiki-generic keys are also accepted as a fallback so
@@ -1729,6 +1754,60 @@ function stableOpenWikiScripts() {
     return path.join(dest, 'scripts');
 }
 
+// Same format check the openwiki 0.5.0 CLI applies to OPENWIKI_MODEL_ID (dist/config/constants.js isValidModelId).
+// The CLI accepts custom ids per provider, so there is no closed list to compare against.
+function isValidOpenWikiModelId(id) {
+    const m = String(id || '').trim();
+    return m.length > 0 && m.length <= 120 && /^[@A-Za-z0-9][A-Za-z0-9._:/@+,-]*$/u.test(m) && !m.includes('://');
+}
+
+// AOS daemon provider name -> openwiki CLI provider and the env vars that CLI reads.
+const OPENWIKI_CLI_PROVIDERS = {
+    google:     { provider: 'gemini',            key: 'GEMINI_API_KEY' },
+    openai:     { provider: 'openai',            key: 'OPENAI_API_KEY' },
+    openrouter: { provider: 'openrouter',        key: 'OPENROUTER_API_KEY' },
+    nvidia:     { provider: 'nvidia',            key: 'NVIDIA_API_KEY' },
+    groq:       { provider: 'openai-compatible', key: 'OPENAI_COMPATIBLE_API_KEY', baseUrl: 'https://api.groq.com/openai/v1' },
+    grok:       { provider: 'openai-compatible', key: 'OPENAI_COMPATIBLE_API_KEY', baseUrl: 'https://api.x.ai/v1' },
+    xai:        { provider: 'openai-compatible', key: 'OPENAI_COMPATIBLE_API_KEY', baseUrl: 'https://api.x.ai/v1' },
+    ollama:     { provider: 'openai-compatible', key: 'OPENAI_COMPATIBLE_API_KEY', baseUrl: 'http://localhost:11434/v1' },
+    lmstudio:   { provider: 'openai-compatible', key: 'OPENAI_COMPATIBLE_API_KEY', baseUrl: 'http://localhost:1234/v1' },
+    custom:     { provider: 'openai-compatible', key: 'OPENAI_COMPATIBLE_API_KEY' },
+};
+
+// Merge-only: a key already present (non-empty) in ~/.openwiki/.env is never changed, and no
+// value is written that we do not have. Returns the list of keys it added.
+function writeOpenWikiEnv(apiKey, openwikiEnv = {}, envPath = path.join(homeDir, '.openwiki', '.env')) {
+    const map = OPENWIKI_CLI_PROVIDERS[openwikiEnv.provider || 'google'];
+    if (!map) return [];
+    const want = { OPENWIKI_PROVIDER: map.provider };
+    if (openwikiEnv.model) {
+        if (isValidOpenWikiModelId(openwikiEnv.model)) want.OPENWIKI_MODEL_ID = openwikiEnv.model.trim();
+        else log.warn(`OpenWiki model id "${openwikiEnv.model}" is not a valid model id (letters, digits and . _ : / @ + , - only, max 120 chars); OPENWIKI_MODEL_ID was not written.`);
+    }
+    const baseUrl = openwikiEnv.baseUrl || map.baseUrl;
+    if (map.provider === 'openai-compatible' && baseUrl) want.OPENAI_COMPATIBLE_BASE_URL = baseUrl;
+    if (apiKey) want[map.key] = apiKey;
+
+    let existing = '';
+    try { existing = fs.readFileSync(envPath, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') { logDebug(e, 'operation'); return []; } }
+    const present = new Set();
+    for (const line of existing.split(/\r?\n/)) {
+        const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+        if (m && m[2].replace(/^["']|["']$/g, '')) present.add(m[1]);
+    }
+    const added = Object.keys(want).filter((k) => !present.has(k));
+    if (!added.length) return [];
+    const q = (v) => (/^[A-Za-z0-9_.:/@+,-]*$/.test(v) ? v : JSON.stringify(v));
+    const body = (existing && !existing.endsWith('\n') ? '\n' : '') + added.map((k) => `${k}=${q(want[k])}\n`).join('');
+    try {
+        fs.mkdirSync(path.dirname(envPath), { recursive: true, mode: 0o700 });
+        fs.appendFileSync(envPath, body, { mode: 0o600 });
+        try { fs.chmodSync(envPath, 0o600); } catch (e) { logDebug(e, 'operation'); }
+    } catch (e) { logDebug(e, 'operation'); return []; }
+    return added;
+}
+
 async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     const prov = openwikiEnv.provider || "google";
     if (!apiKey && !["ollama", "lmstudio"].includes(prov)) {
@@ -1739,6 +1818,8 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
         log.step('[dry-run] would install the OpenWiki Daemon (scheduled every 2 hours)');
         return;
     }
+    const added = writeOpenWikiEnv(apiKey, openwikiEnv);
+    if (added.length) log.step(`Wrote ${added.join(', ')} to ~/.openwiki/.env`);
     const s = spinner();
     s.start('Installing OpenWiki Daemon...');
 
@@ -1747,6 +1828,7 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
     const daemonEnv = Object.assign({}, process.env, {
         OPENWIKI_PROVIDER:  prov,
         OPENWIKI_MODEL:     openwikiEnv.model   || '',
+        OPENWIKI_MODEL_ID:  openwikiEnv.model   || '',
         OPENWIKI_BASE_URL:  openwikiEnv.baseUrl || '',
         OPENWIKI_API_KEY:   apiKey || '',
         GEMINI_API_KEY:     prov === 'google' ? apiKey : (process.env.GEMINI_API_KEY || ''),
@@ -2180,7 +2262,7 @@ async function installMemB(interactive) {
             let createdViaUv = false;
             if (!fs.existsSync(venvPython)) {
                 try {
-                    execSync(`uv venv --seed .venv`, { cwd: membDir, stdio: 'ignore' });
+                    execSync(`"${uvBin()}" venv --seed .venv`, { cwd: membDir, stdio: 'ignore' });
                     createdViaUv = true;
                 } catch (e1) {
                     execSync(`${pythonCmd} -m venv .venv`, { cwd: membDir, stdio: 'ignore' });
@@ -2195,7 +2277,7 @@ async function installMemB(interactive) {
             // actually created the venv -- it's a strictly more reliable install path.
             let hasUv = createdViaUv;
             if (!hasUv) {
-                try { execSync('uv --version', { stdio: 'ignore' }); hasUv = true; } catch (e) { hasUv = false; }
+                try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore' }); hasUv = true; } catch (e) { hasUv = false; }
             }
             if (!hasUv && fs.existsSync(venvPython)) {
                 try {
@@ -2208,7 +2290,7 @@ async function installMemB(interactive) {
                     }
                 }
             }
-            const uvInstall = (pkgsArg) => `uv pip install --python "${venvPython}" ${pkgsArg}`;
+            const uvInstall = (pkgsArg) => `"${uvBin()}" pip install --python "${venvPython}" ${pkgsArg}`;
             const pipInstall = (pkgsArg) => `"${venvPython}" -m pip install ${pkgsArg} --timeout 30 --no-input`;
             const installCmd = (pkgsArg) => hasUv ? uvInstall(pkgsArg) : pipInstall(pkgsArg);
 
@@ -2310,6 +2392,29 @@ async function installMemB(interactive) {
     return membOk;
 }
 
+// Never downloads a binary: only what the package itself ships is linked.
+function findSynapseBinary(synapseDir, platform = process.platform, arch = process.arch) {
+    const goArch = { x64: 'amd64', arm64: 'arm64', ia32: '386' }[arch] || arch;
+    const osName = platform === 'win32' ? 'windows' : platform;
+    const names = platform === 'win32'
+        ? ['synapse.exe', `synapse-windows-${goArch}.exe`, 'synapse.js']
+        : ['synapse', `synapse-${osName}-${goArch}`];
+    for (const n of names) {
+        const candidate = path.join(synapseDir, 'bin', n);
+        if (fs.existsSync(candidate)) return candidate;
+    }
+    return null;
+}
+
+function describeMissingSynapseBinary(synapseDir, platform = process.platform, arch = process.arch) {
+    const head = `Synapse: the package ships no binary for ${platform}/${arch} in ${path.join(synapseDir, 'bin')}.`;
+    if (fs.existsSync(path.join(synapseDir, 'cmd', 'synapse'))) {
+        const out = platform === 'win32' ? 'synapse.exe' : 'synapse';
+        return `${head} Build it locally with Go (https://go.dev/dl/): cd "${synapseDir}" && go build -o bin/${out} ./cmd/synapse/ -- then re-run the installer.`;
+    }
+    return `${head} The package has no Go sources either, so it cannot be built here. Skipping Synapse; use a platform the package supports or ask the Synapse maintainers for a ${platform}/${arch} build.`;
+}
+
 async function installSynapse() {
     const synapseDir = path.join(moduleBasePath(), 'bdb-synapse');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-synapse', synapseDir, 'BDB Synapse')) {
@@ -2322,27 +2427,9 @@ async function installSynapse() {
     }
 
     const isWin = process.platform === 'win32';
-    let binaryPath;
-    if (isWin) {
-        if (fs.existsSync(path.join(synapseDir, 'bin', 'synapse.exe'))) {
-            binaryPath = path.join(synapseDir, 'bin', 'synapse.exe');
-        } else if (fs.existsSync(path.join(synapseDir, 'bin', 'synapse-windows-amd64.exe'))) {
-            binaryPath = path.join(synapseDir, 'bin', 'synapse-windows-amd64.exe');
-        } else {
-            binaryPath = path.join(synapseDir, 'bin', 'synapse.js');
-        }
-    } else {
-        binaryPath = path.join(synapseDir, 'bin', 'synapse');
-        if (!fs.existsSync(binaryPath)) {
-            if (process.platform === 'darwin' && fs.existsSync(path.join(synapseDir, 'bin', 'synapse-darwin-arm64'))) {
-                binaryPath = path.join(synapseDir, 'bin', 'synapse-darwin-arm64');
-            } else if (process.platform === 'linux' && fs.existsSync(path.join(synapseDir, 'bin', 'synapse-linux-amd64'))) {
-                binaryPath = path.join(synapseDir, 'bin', 'synapse-linux-amd64');
-            }
-        }
-    }
+    const binaryPath = findSynapseBinary(synapseDir);
 
-    if (fs.existsSync(binaryPath)) {
+    if (binaryPath) {
         if (!isWin) {
             try { fs.chmodSync(binaryPath, 0o755); } catch (e) { logDebug(e, 'operation'); }
         }
@@ -2442,7 +2529,7 @@ async function installSynapse() {
             } catch (e) { logDebug(e, 'windows synapse daemon setup'); }
         }
     } else {
-        log.warn(`No pre-built binary for this platform. Compile with: cd "${synapseDir}" && go build -o ${binaryName} ./cmd/synapse/`);
+        log.warn(describeMissingSynapseBinary(synapseDir));
         return false;
     }
 }
@@ -3244,6 +3331,33 @@ function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
     }
 }
 
+// mcsc delegates to agy (Antigravity), and agy loads its own MCP config: with mcsc registered there,
+// each mcsc start spawned an agy that started another mcsc (fork bomb). Never register it for agy.
+const agyMcpConfigPaths = (home = homeDir) => [
+    path.join(home, '.gemini', 'config', 'mcp_config.json'),
+    path.join(home, '.gemini', 'antigravity-cli', 'mcp_config.json'),
+];
+const isAgyMcpConfig = (p, home = homeDir) => agyMcpConfigPaths(home).some((a) => path.resolve(a) === path.resolve(p));
+// Owned by AOS = name mcsc running node on an mcsc/server.js; a user's own "mcsc" entry stays.
+const isAosMcscEntry = (e) => !!e && typeof e === 'object' && /(^|[\\/])node(\.exe)?$/i.test(String(e.command || ''))
+    && Array.isArray(e.args) && /[\\/]mcsc[\\/](.*[\\/])?server\.js$/.test(String(e.args[0] || ''));
+let lastGeneratedMcpServers = null;
+
+function removeAosMcscFromAgyConfigs(home = homeDir) {
+    const removed = [];
+    for (const f of agyMcpConfigPaths(home)) {
+        try {
+            const loaded = loadJsonConfig(f);
+            if (loaded.state !== 'ok' || !loaded.data.mcpServers || !isAosMcscEntry(loaded.data.mcpServers.mcsc)) continue;
+            const before = JSON.stringify(loaded.data);
+            delete loaded.data.mcpServers.mcsc;
+            if (writeConfigWithBackup(f, loaded.data, before)) removed.push(f);
+        } catch (e) { logDebug(e, 'remove mcsc from agy config'); }
+    }
+    if (removed.length) log.step(`Removed the AOS mcsc entry from ${removed.join(', ')} (it recurses when registered for agy)`);
+    return removed;
+}
+
 async function installMcpsForTarget(paths, ctx) {
     const { selectedMcps, mode, platformValue, creds } = ctx;
     const mcpSrcDir = path.join(srcDir, 'mcps');
@@ -3339,7 +3453,7 @@ async function installMcpsForTarget(paths, ctx) {
                     log.step(`[dry-run] would create the memb-mcp venv in ${membMcpFolder}`);
                 } else if (!fs.existsSync(venvPython)) {
                     try {
-                        execSync(`uv venv --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        execSync(`"${uvBin()}" venv --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
                     } catch (e1) {
                         execSync(`${pythonCmd} -m venv .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
                     }
@@ -3370,7 +3484,7 @@ async function installMcpsForTarget(paths, ctx) {
                 log.step(`[dry-run] would pre-warm Python deps for ${mcp.folder}`);
                 continue;
             }
-            const result = spawnSync('uv', prewarmArgs, { cwd: targetFolder, stdio: 'ignore' });
+            const result = spawnSync(uvBin(), prewarmArgs, { cwd: targetFolder, stdio: 'ignore' });
             if (result.error) {
                 // uv itself is missing or unrunnable. That is one machine-level
                 // fact, not six per-MCP failures — say it once and stop trying.
@@ -3445,17 +3559,7 @@ async function installMcpsForTarget(paths, ctx) {
     mcpConfigStr = mcpConfigStr.replace(/__MCPS_DIR__/g, () => jsonEscapePath(mcpCodeTarget));
     mcpConfigStr = mcpConfigStr.replace(/\{\{HOME\}\}/g, () => jsonEscapePath(homeDir));
 
-    let uvPath = 'uv';
-    try {
-        if (process.platform === 'win32') {
-            uvPath = execFileSync('where.exe', ['uv'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }).trim().split(/\r?\n/)[0];
-        } else {
-            uvPath = execSync('command -v uv', { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }).trim().split(/\r?\n/)[0];
-        }
-    } catch (e) {
-        if (fs.existsSync(path.join(homeDir, '.local', 'bin', 'uv'))) uvPath = path.join(homeDir, '.local', 'bin', 'uv');
-        else if (fs.existsSync(path.join(homeDir, '.cargo', 'bin', 'uv'))) uvPath = path.join(homeDir, '.cargo', 'bin', 'uv');
-    }
+    const uvPath = uvBin();
     mcpConfigStr = mcpConfigStr.replace(/"command":\s*"uv"/g, `"command": "${uvPath.replace(/\\/g, '/')}"`);
 
     if (selectedMcps.includes('memb-mcp')) {
@@ -3483,6 +3587,14 @@ async function installMcpsForTarget(paths, ctx) {
         } catch (e) {
             log.warn(`Could not attach GitHub token to the github MCP entry: ${e.message}`);
         }
+    }
+
+    try { lastGeneratedMcpServers = JSON.parse(mcpConfigStr).mcpServers || null; } catch (e) { lastGeneratedMcpServers = null; }
+    if (isAgyMcpConfig(paths.mcpConfigPath)) {
+        try {
+            const parsed = JSON.parse(mcpConfigStr);
+            if (parsed.mcpServers && parsed.mcpServers.mcsc) { delete parsed.mcpServers.mcsc; mcpConfigStr = JSON.stringify(parsed, null, 2); }
+        } catch (e) { logDebug(e, 'strip mcsc for agy'); }
     }
 
     const existingConfigIsEmpty = () => {
@@ -3583,6 +3695,7 @@ async function installMcpsForTarget(paths, ctx) {
         }
     }
 
+    removeAosMcscFromAgyConfigs();
     mirrorMcpServersTo(paths.extraMcpConfigPaths, mcpConfigStr);
 
     if (creds.gemini || creds.github || creds.keyEnvName) {
@@ -4775,6 +4888,14 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
         return !!cfg && sec.some((l) => l.trim() === `command = ${tomlValue((cfg || {}).command)}`);
     };
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
+    // Codex may insert a user's own [mcp_servers.x] table between the markers. Regenerating the
+    // block replaces its content, so tables AOS does not ship are moved behind the block, not lost.
+    let foreign = '';
+    if (hadBlock) {
+        const aosNames = new Set([...uninstallRecords.aosMcpNames(), ...Object.keys(servers || {})]);
+        const inner = content.match(blockRegex)[0].split(/\r?\n/).filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
+        foreign = uninstallRecords.dropMcpTables(inner, (n) => aosNames.has(n)).join('\n').trim();
+    }
     const stripped = content.replace(blockRegex, `${PLACEHOLDER}\n`).split(/\r?\n/)
         .filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
     const outsideLines = uninstallRecords.dropMcpTables(stripped, owns);
@@ -4787,7 +4908,7 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
         if (headerRegex.test(outside)) { skipped.push(name); return; }
         tables.push(rows(name, cfg).join('\n'));
     });
-    const block = ['# AOS:MCP:START', tables.join('\n\n'), '# AOS:MCP:END'].join('\n');
+    const block = ['# AOS:MCP:START', tables.join('\n\n'), '# AOS:MCP:END'].concat(foreign ? ['', foreign] : []).join('\n');
     if (hadBlock) {
         content = outsideLines.join('\n').replace(PLACEHOLDER, block);
     } else if (outside.trim().length) {
@@ -5027,9 +5148,16 @@ async function promptMcpSelection(tier) {
 // which may already contain ids from a prior run that this call does NOT touch) -- callers
 // use this to tell reloadDaemons() which daemons were just installed-and-verified here, so
 // it doesn't redundantly relaunch and re-check them a second time.
-async function promptOptionalModules(installedModules) {
-    if (isAutoYes) return [];
-    const allModules = [
+// Explicit opt-in for unattended runs: --modules=synapse,memb or AOS_MODULES (ids as in the
+// module picker, or "all"). -y alone selects none.
+function parseModuleSelection(argv = process.argv, env = process.env) {
+    const flag = argv.find((a) => a.startsWith('--modules='));
+    return [env.AOS_MODULES, flag && flag.slice('--modules='.length)].filter(Boolean).join(',')
+        .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+}
+
+async function promptOptionalModules(installedModules, requested = parseModuleSelection(), modulesOverride = null) {
+    const allModules = modulesOverride || [
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: installSynapse },
         { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: () => installMemB(true) },
         { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: installOSRemoteGateway },
@@ -5046,6 +5174,15 @@ async function promptOptionalModules(installedModules) {
     ];
 
     const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
+    if (isAutoYes) {
+        if (!requested.length) return [];
+        const wantAll = requested.includes('all');
+        for (const id of requested) {
+            if (id !== 'all' && !allModules.some((m) => m.id === id)) log.warn(`Unknown module "${id}" in --modules ignored (known: ${allModules.map((m) => m.id).join(', ')}).`);
+        }
+        const auto = uninstalled.filter((m) => wantAll || requested.includes(m.id)).map((m) => m.id);
+        return (await runModuleInstalls(allModules, auto, installedModules)).installed;
+    }
     if (uninstalled.length === 0) return [];
 
     const chosen = pick(await multiselect({
@@ -5793,6 +5930,8 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
     const detections = detectPlatforms();
     let masterMcpData = {};
     try { masterMcpData = JSON.parse(fs.readFileSync(primaryMcpConfigPath, 'utf8')); } catch (e) { logDebug(e, 'operation'); }
+    // The primary file may be agy's own, which must not hold mcsc; the other harnesses still get it.
+    if (lastGeneratedMcpServers) masterMcpData = Object.assign({}, masterMcpData, { mcpServers: lastGeneratedMcpServers });
 
     const syncMcpConfig = (targetPath) => syncMcpConfigFile(targetPath, masterMcpData);
     const syncOpencodeConfig = (targetPath) => syncOpencodeConfigFile(targetPath, masterMcpData);
@@ -5899,6 +6038,7 @@ async function runQuickUpdate(installState) {
     installStep('refresh harness rules, workflows, agents and hooks', () => {
         injectHarnessRules();
     }, 'Harness files keep whatever version this machine already had.');
+    installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.');
     runCodexPluginStep();
 
     // OpenWiki: if already configured, refresh the daemon silently (no prompt).
@@ -5911,7 +6051,7 @@ async function runQuickUpdate(installState) {
         const _owKeyName = PROVIDER_KEY_ENV_NAMES[_owProvider] || 'GEMINI_API_KEY';
         const _owKey = _owEnv[_owKeyName] || _owEnv['GEMINI_API_KEY'] || _owEnv['GOOGLE_API_KEY'] || _owEnv['OPENWIKI_API_KEY'] || '';
         if (_owKey || _owProvider === 'ollama') {
-            await installOpenWikiDaemon(_owKey, paths.targetSkillDir, { provider: _owProvider, model: _owEnv['OPENWIKI_MODEL'] || '', baseUrl: _owEnv['OPENWIKI_BASE_URL'] || '' });
+            await installOpenWikiDaemon(_owKey, paths.targetSkillDir, { provider: _owProvider, model: _owEnv['OPENWIKI_MODEL_ID'] || _owEnv['OPENWIKI_MODEL'] || '', baseUrl: _owEnv['OPENWIKI_BASE_URL'] || '' });
             await installOpenWikiVisualizer();
         } else {
             const creds = await promptCredentials(paths.targetMcpDir);
@@ -6043,6 +6183,9 @@ Options:
   --codex-gate     Print the go-gate [[hooks.PreToolUse]] stanza for ~/.codex/config.toml
                    and the Codex hook-trust note, then exit (writes nothing)
   -y, --yes        Non-interactive install (implied without a TTY)
+  --modules=LIST   With -y: also install these optional modules (comma list of synapse,
+                   memb, remote, ao, creator, hardware, installer, or all), or set
+                   AOS_MODULES. -y alone installs none. Ignored in interactive runs.
   --dry-run        Show what would change
   --opencode-optional=LIST
                    Opt in to OpenCode extras (comma list: ponytail, loop, rtk), or set
@@ -6550,6 +6693,16 @@ module.exports = {
     initSessionManifest,
     installTargetSkills,
     stableOpenWikiScripts,
+    writeOpenWikiEnv,
+    removeAosMcscFromAgyConfigs,
+    isAosMcscEntry,
+    isAgyMcpConfig,
+    findUv,
+    parseModuleSelection,
+    promptOptionalModules,
+    findSynapseBinary,
+    describeMissingSynapseBinary,
+    isValidOpenWikiModelId,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,

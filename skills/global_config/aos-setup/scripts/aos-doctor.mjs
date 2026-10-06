@@ -390,6 +390,16 @@ async function checkDeja() {
   }
 }
 
+// ---------------------------------------------------------------- agy / mcsc
+// mcsc delegates to agy; agy loading mcsc from its own config recurses into a fork bomb.
+function checkAgyMcsc() {
+  for (const f of [h('.gemini', 'config', 'mcp_config.json'), h('.gemini', 'antigravity-cli', 'mcp_config.json')]) {
+    if (!existsSync(f) || !readJson(f)?.mcpServers?.mcsc) continue;
+    add('agy', 'mcsc not in agy config', false, `mcsc is registered in ${tilde(f)} and can recurse (agy -> mcsc -> agy ...)`,
+      `Remove the "mcsc" entry from ${tilde(f)}, or re-run the AOS installer (it removes its own entry).`);
+  }
+}
+
 // ---------------------------------------------------------------- OpenWiki
 function checkOpenWiki() {
   const bin = which('openwiki');
@@ -397,7 +407,7 @@ function checkOpenWiki() {
 
   const env = h('.openwiki', '.env');
   add('openwiki', 'provider credentials', existsSync(env), existsSync(env) ? '~/.openwiki/.env' : 'no ~/.openwiki/.env — every run will fail auth',
-    'openwiki auth <provider>   (google | openai | groq | openrouter | ollama …)');
+    'openwiki --init   (wizard saves provider + key to ~/.openwiki/.env; /api-key in chat updates the key; `openwiki auth` is for connectors only)');
 
   if (bin) {
     try {
@@ -459,6 +469,7 @@ function report() {
 checkPrereqs();
 checkAos();
 checkHooks();
+checkAgyMcsc();
 await checkMemb();
 await checkMemory();
 await checkDeja();

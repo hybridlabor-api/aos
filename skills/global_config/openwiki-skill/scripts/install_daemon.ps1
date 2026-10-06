@@ -1,4 +1,4 @@
-# install_daemon.ps1 - Windows Scheduled Task Setup for OpenWiki Daemon (Gemma 4 API)
+# install_daemon.ps1 - Windows Scheduled Task Setup for OpenWiki Daemon (direct API)
 
 $UserHome = [System.Environment]::GetFolderPath('UserProfile')
 $ScriptPath = "$UserHome\.gemini\config\skills\openwiki-skill\scripts\openwiki_daemon.py"
@@ -8,7 +8,7 @@ $DaemonPython = ""
 
 Write-Host "=========================================================" -ForegroundColor Cyan
 Write-Host " Installing OpenWiki Background Daemon (Windows Task Scheduler)" -ForegroundColor Cyan
-Write-Host " Using Gemma 4 Direct API (no agy spawning)" -ForegroundColor Cyan
+Write-Host " Direct API mode, model from OPENWIKI_MODEL (no agy spawning)" -ForegroundColor Cyan
 Write-Host "=========================================================" -ForegroundColor Cyan
 
 # 1. Resolve script path
@@ -269,7 +269,7 @@ if ($BlockReason -ne "") {
     # First attempt: register using interactive user principal (needed for non-elevated users)
     if ($UserPrincipal) {
         try {
-            Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $UserPrincipal -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force -ErrorAction Stop | Out-Null
+            Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $UserPrincipal -Description "BDB OpenWiki Daemon - API documentation generator" -Force -ErrorAction Stop | Out-Null
             $TaskRegistered = $true
             $Registered = $true
         } catch {
@@ -280,7 +280,7 @@ if ($BlockReason -ne "") {
     # Second attempt: standard registration if principal registration was skipped or failed
     if (-not $TaskRegistered) {
         try {
-            Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - Gemma 4 API documentation generator" -Force -ErrorAction Stop | Out-Null
+            Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description "BDB OpenWiki Daemon - API documentation generator" -Force -ErrorAction Stop | Out-Null
             $Registered = $true
         } catch {
             $FailureMessage = $_.Exception.Message

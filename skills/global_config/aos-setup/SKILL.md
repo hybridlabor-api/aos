@@ -254,7 +254,8 @@ Verify by starting a session and checking that the first prompt carries a
 
 ```bash
 npm install -g openwiki@latest        # CLI, needs Node >= 22
-openwiki auth <provider>              # google | openai | groq | openrouter | ollama | …
+openwiki --init                       # run in a repo: the wizard saves provider, model and key to ~/.openwiki/.env
+                                      # (`openwiki auth <x>` only authenticates connectors: slack, gmail, x, notion)
 openwiki integrations list            # per-harness host integration status
 openwiki integrations install claude  # repeat for codex / cursor / opencode
 ```
