@@ -14,7 +14,6 @@
 [![skills](https://img.shields.io/badge/skills-223%20curated-brightgreen.svg)](#skills)
 [![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#mcp-server)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#unterstützte-harnesses)
-[![SkillSpector](https://img.shields.io/badge/NVIDIA%20SkillSpector-CLEAN-76B900?logo=nvidia&logoColor=white)](https://github.com/NVIDIA/SkillSpector)
 [![skills.sh](https://skills.sh/b/hybridlabor-api/aos)](https://skills.sh/hybridlabor-api/aos)
 
 AOS installiert eine kuratierte Skill-Bibliothek, ein Subagent-Verzeichnis, Gate-Hooks und eine ausführbare Multi-Agent-Build-Pipeline in jeden auf deinem Rechner installierten Coding-Agent-Harness.
