@@ -337,9 +337,7 @@ whole with its companion files: `verification-before-completion`,
 `requesting-code-review` (plus `code-reviewer.md`),
 `finishing-a-development-branch`, `using-git-worktrees`, and
 `dispatching-parallel-agents`. A sixth, `writing-plans`, **replaces** the AOS
-version of that skill; the superseded AOS original is kept alongside it as
-`writing-plans-legacy` (`source: community`, marked `deprecated_by`) rather than
-deleted.
+version of that skill; the superseded AOS original, `writing-plans-legacy`, was retired in 5.0.0.
 
 AOS modifications: `category:`, `source:` and `date_added:` added to the
 frontmatter; the `superpowers:` namespace prefix stripped from cross-skill

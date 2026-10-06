@@ -88,15 +88,13 @@
         "software-architecture",
         "subagent-driven-development",
         "systematic-debugging",
-        "tdd-workflow",
         "test-driven-development",
         "triage",
         "using-git-worktrees",
         "verification-before-completion",
         "wcag-audit-patterns",
         "webapp-testing",
-        "writing-plans",
-        "writing-plans-legacy"
+        "writing-plans"
       ]
     },
     {
@@ -213,7 +211,6 @@
         "neon-postgres",
         "nextjs-app-router-patterns",
         "nextjs-best-practices",
-        "notion-automation",
         "obsidian-markdown",
         "openapi-spec-generation",
         "os-scripting",
@@ -238,7 +235,6 @@
         "seo",
         "seo-audit",
         "seo-technical",
-        "slack-automation",
         "tanstack-query-expert",
         "tmux",
         "turborepo-caching",
