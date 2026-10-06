@@ -80,6 +80,7 @@ test('security headers: CSP frame-ancestors none, no unsafe-inline', () => {
   assert.match(h['content-security-policy'], /frame-ancestors 'none'/);
   assert.match(h['content-security-policy'], /default-src 'self'/);
   assert.match(h['content-security-policy'], /base-uri 'none'/);
+  assert.match(h['content-security-policy'], /form-action 'none'/);
   assert.doesNotMatch(h['content-security-policy'], /unsafe-inline/);
   assert.equal(h['x-content-type-options'], 'nosniff');
   assert.equal(h['cache-control'], 'no-store');

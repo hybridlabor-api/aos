@@ -21,7 +21,7 @@ const DEFAULT_PORT = 7900;
 export const homeDir = () => process.env.AOS_HUB_HOME || osHome();
 export const hubPaths = (home = homeDir()) => ({ dir: join(home, '.aos', 'hub'), file: join(home, '.aos', 'hub', 'hub.json') });
 
-function parseArgv(argv) {
+export function parseArgv(argv) {
   const out = { cmd: 'start', port: DEFAULT_PORT, tab: undefined, noOpen: false, json: false };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
@@ -31,10 +31,12 @@ function parseArgv(argv) {
     else if (a.startsWith('--port=')) out.port = Number(a.split('=')[1]);
     else if (a === '--tab') out.tab = argv[++i];
     else if (a.startsWith('--tab=')) out.tab = a.split('=')[1];
+    else if (a === '--serve') out.serve = true;
     else if (a === '--no-open') out.noOpen = true;
     else if (a === '--json') out.json = true;
     else rest.push(a);
   }
+  if (out.tab !== undefined && !/^[a-z]+$/.test(out.tab)) throw new Error(`invalid --tab: ${out.tab}`);
   if (rest.length) out.cmd = rest[0];
   if (!Number.isInteger(out.port) || out.port < 1 || out.port > 65535) throw new Error(`invalid --port: ${out.port}`);
   return out;
@@ -90,28 +92,42 @@ async function cmdStart(opts) {
     return 0;
   }
   const env = { ...process.env, AOS_HUB_SERVE: '1', AOS_HUB_TOKEN: randomBytes(32).toString('hex') };
-  const child = spawn(process.execPath, [SELF, '--port', String(opts.port)], {
+  const child = spawn(process.execPath, [SELF, '--serve', '--port', String(opts.port)], {
     detached: true, stdio: 'ignore', cwd: homeDir(), env, shell: false,
   });
   child.unref();
-  const token = env.AOS_HUB_TOKEN;
-  writeHubJson(homeDir(), { pid: child.pid, port: opts.port, version: packageVersion(), token });
   console.log(`AOS Hub starting: http://127.0.0.1:${opts.port}/ (pid ${child.pid})`);
-  if (!opts.noOpen) {
-    // Open once the child answers; give it a few seconds to bind.
-    for (let i = 0; i < 20; i++) {
-      await new Promise((ok) => setTimeout(ok, 250));
-      if (await probeHealth(opts.port, 700)) break;
+  // Only the process that actually bound the port writes hub.json (the child,
+  // after listen() succeeds). A start attempt that fails with EADDRINUSE
+  // never overwrites a live hub's record. The parent waits for a health
+  // probe of up to ~5 s and reports failure, but leaves the record alone.
+  // Hard wall-clock budget for the whole wait: each probe can burn its full
+  // timeout (e.g. a port that accepts but never answers), so the loop is
+  // bounded by a deadline instead of a fixed iteration count.
+  const up = await (async () => {
+    const deadline = Date.now() + 5000;
+    let probe = 0;
+    while (Date.now() < deadline) {
+      if (probe++ > 0) await new Promise((ok) => setTimeout(ok, 250));
+      if (await probeHealth(opts.port, 700)) return true;
     }
-    openBrowser(`http://127.0.0.1:${opts.port}/${opts.tab ? `?tab=${opts.tab}` : ''}`);
+    return false;
+  })();
+  if (!up) {
+    console.error(`AOS Hub did not come up on 127.0.0.1:${opts.port} within 5 s.`);
+    return 1;
   }
   return 0;
 }
 
 // Secondary kill path: SIGTERM hub.json.pid ONLY when `ps -p <pid> -o command=`
 // succeeds (spawn with args array, shell:false) and the output contains
-// 'aos-hub.mjs'. If ps is missing or fails: print the pid, kill nothing, exit 1.
-export async function killViaPs(pid, { runPs } = {}) {
+// 'aos-hub.mjs', the '--serve' marker and `--port <hub.json.port>`. hub.json is
+// untrusted input: pid must be a positive integer and never this process's own
+// pid. If ps is missing or fails: print the pid, kill nothing, exit 1.
+export async function killViaPs(pid, { runPs, selfPid = process.pid, port = null } = {}) {
+  pid = Number(pid);
+  if (!Number.isInteger(pid) || pid <= 0 || pid === selfPid) return false;
   const doPs = () => (runPs
     ? runPs(pid)
     : new Promise((ok) => {
@@ -121,12 +137,18 @@ export async function killViaPs(pid, { runPs } = {}) {
       const done = (ok_) => { if (!settled) { settled = true; ok(ok_); } };
       child.on('error', () => done({ ok: false }));
       child.stdout.on('data', (d) => { text += String(d); });
-      child.on('close', (code) => done(code === 0 && text.includes('aos-hub.mjs') ? { ok: true, text } : { ok: false, text }));
+      child.on('close', (code) => done(code === 0 ? { ok: true, text } : { ok: false, text }));
       setTimeout(() => done({ ok: false }), 3000).unref();
     }));
   const r = await doPs();
   if (!r || !r.ok) return false;
-  try { process.kill(Number(pid), 'SIGTERM'); return true; }
+  // Command line must identify this exact hub child: the binary, the serve
+  // marker and the same --port recorded in hub.json.
+  const line = String(r.text || '');
+  if (!line.includes('aos-hub.mjs')) return false;
+  if (!line.includes('--serve')) return false;
+  if (port != null && !new RegExp(`--port\\s*${String(Number(port))}\\b`).test(line)) return false;
+  try { process.kill(pid, 'SIGTERM'); return true; }
   catch { return false; }
 }
 
@@ -155,7 +177,12 @@ async function cmdStop() {
     console.log('AOS Hub is not running (no hub.json).');
     return 0;
   }
-  const ok = await killViaPs(rec.pid);
+  // hub.json is untrusted input: pid must be a positive integer, not ours.
+  const pidNum = Number(rec.pid);
+  const ok = await killViaPs(pidNum, {
+    selfPid: process.pid,
+    port: Number.isInteger(pidNum) ? rec.port : null,
+  });
   if (!ok) {
     console.log(`Could not verify the hub process with ps. Kill nothing. PID: ${rec.pid} (hub.json: ${file})`);
     return 1;
@@ -184,26 +211,34 @@ export async function cli(argv = process.argv.slice(2)) {
 // the parent via env when spawned detached; otherwise it is fresh per process.
 if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   process.env.AOS_HUB_CHILD_DONE = '1';
+  const hubToken = process.env.AOS_HUB_TOKEN || undefined;
+  if (process.env.AOS_HUB_TOKEN !== undefined) delete process.env.AOS_HUB_TOKEN;
   const { createHub } = await import(join(ROOT, 'lib', 'hub', 'server.mjs'));
-  const { routes: coreRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-plans.mjs'));
+  const { routes: planRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-plans.mjs'));
   const { routes: serviceRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-services.mjs'));
   const { routes: catalogRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-catalog.mjs'));
   const { routes: storeRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-store.mjs'));
   const home = homeDir();
-  const routes = [...coreRoutes, ...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes];
+  const routes = [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes];
   const hub = createHub({
     port: parseArgv(process.argv.slice(2)).port,
     home,
     routes,
-    ctx: {
-      root: ROOT,
-      hubJsonPath: hubPaths(home).file,
-      tokenEnv: process.env.AOS_HUB_TOKEN || undefined,
-    },
+    ctx: { root: ROOT, hubJsonPath: hubPaths(home).file, tokenEnv: hubToken },
   });
   await hub.listen();
+  // Only the process that actually bound the port writes hub.json. A failed
+  // bind (EADDRINUSE) rejects listen() before this line, so a live hub's
+  // record is never clobbered by a losing start attempt.
+  writeHubJson(home, { pid: process.pid, port: hub.server.address().port, version: packageVersion(), token: hub.token });
   console.log(`AOS Hub: http://127.0.0.1:${hub.server.address().port}/`);
-  const bye = () => process.exit(0);
+  const stopped = async () => {
+    try { unlinkSync(hubPaths(home).file); } catch { /* already gone */ }
+    await hub.close();
+    setTimeout(() => process.exit(0), 2000).unref();
+  };
+  let stopping = false;
+  const bye = () => { if (!stopping) { stopping = true; stopped(); } };
   process.on('SIGINT', bye);
   process.on('SIGTERM', bye);
 }

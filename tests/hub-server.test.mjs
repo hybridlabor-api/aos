@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { spawn } from 'node:child_process';
 import { createServer as createServer_fwd } from 'node:http';
-import { mkdirSync, statSync, existsSync } from 'node:fs';
+import { connect as netConnect } from 'node:net';
+import { mkdirSync, readFileSync, statSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHub } from '../lib/hub/server.mjs';
 import { routes as planRoutes, probeTrailPorts } from '../lib/hub/routes-plans.mjs';
-import { hubPaths, writeHubJson } from '../bin/aos-hub.mjs';
+import { hubPaths, writeHubJson, readHubJson, killViaPs, parseArgv } from '../bin/aos-hub.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 // Unique temp dir, never deleted (rules forbid recursive deletes).
@@ -39,6 +40,18 @@ const testRoutes = [
   {
     method: 'POST', path: '/api/test/slow', mutates: true, lock: 'other',
     handler: async () => ({ status: 200, json: { done: true } }),
+  },
+  {
+    method: 'GET', path: '/api/test/boom',
+    handler: async () => { throw new Error('secret detail that must not leak'); },
+  },
+  {
+    method: 'POST', path: '/api/test/ctx', mutates: true,
+    handler: async ({ ctx }) => ({ status: 200, json: { hasCleanEnv: 'cleanEnv' in ctx, tokenLeaked: 'AOS_HUB_TOKEN' in (ctx.cleanEnv || {}) } }),
+  },
+  {
+    method: 'GET', path: /^\/api\/re\/([^/?]+)$/,
+    handler: ({ params }) => ({ status: 200, json: { isArray: Array.isArray(params), params } }),
   },
 ];
 
@@ -229,9 +242,209 @@ test('hub stop with a failing ps: no kill, exit 1', async () => {
   assert.ok(existsSync(file), 'hub.json untouched');
 });
 
+// ---- finding 5: request targets ----
+const rawSocket = (targetLine, method = 'GET') => new Promise((ok, fail) => {
+  const port = hub.server.address().port;
+  const s = netConnect(port, '127.0.0.1');
+  let data = '';
+  s.on('connect', () => {
+    s.write(`${method} ${targetLine} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: close\r\n\r\n`);
+  });
+  s.on('data', (c) => { data += String(c); });
+  s.on('end', () => ok({ status: Number(data.split(' ')[1]) }));
+  s.on('error', fail);
+});
+
+test('request targets: //x and absolute-form rejected 400; backslash/dots/NUL -> 404', async () => {
+  assert.equal((await rawSocket('//x')).status, 400);
+  assert.equal((await rawSocket('http://evil.com/x')).status, 400);
+  assert.equal((await raw('/a\\b')).status, 404);
+  assert.equal((await raw('/a/%2e%2e/b')).status, 404);
+  assert.equal((await raw('/a/%00/b')).status, 404);
+  assert.equal((await raw('/api/health?x=1')).status, 200);
+});
+
 test('hub.json written 0600 in a 0700 dir (atomic tmp+rename)', () => {
   const { dir, file } = hubPaths(home);
   assert.ok(existsSync(file));
   assert.equal(statSync(dir).mode & 0o777, 0o700);
   assert.equal(statSync(file).mode & 0o777, 0o600);
+});
+
+// ---- finding 8: anchored RegExp routes + capture validation ----
+test('regex routes must be anchored at createHub time', () => {
+  assert.throws(() => createHub({ port: 0, home, routes: [{ method: 'GET', path: /api\/unanchored/, handler: () => ({ status: 200, json: {} }) }], ctx: { root } }),
+    /anchored/);
+});
+
+test('regex route params: array of decoded captures, charset-validated (404 otherwise)', async () => {
+  const good = await raw('/api/re/abc-1_2');
+  assert.equal(good.status, 200);
+  const j = JSON.parse(good.body);
+  assert.equal(j.isArray, true);
+  assert.deepEqual(j.params, ['abc-1_2']);
+  assert.equal((await raw('/api/re/ab%2Fc')).status, 404);
+  assert.equal((await raw('/api/re/ab.c')).status, 404);
+});
+
+// ---- finding 7: generic 500 body, no error text leaked ----
+test('500 responses: generic body with 8-hex id, handler message never leaked', async () => {
+  const res = await raw('/api/test/boom');
+  assert.equal(res.status, 500);
+  const j = JSON.parse(res.body);
+  assert.equal(j.error, 'internal error');
+  assert.match(j.id, /^[0-9a-f]{8}$/);
+  assert.doesNotMatch(res.body, /secret detail/);
+});
+
+// ---- finding 6: spawn helpers get a scrubbed env ----
+test('ctx.cleanEnv (spawn-helper env) never contains AOS_HUB_TOKEN', async () => {
+  process.env.AOS_HUB_TOKEN = 'leaky';
+  const h2 = createHub({
+    port: 0, home, routes: [{
+      method: 'GET', path: '/api/test/env',
+      handler: ({ ctx }) => ({ status: 200, json: { leaked: 'AOS_HUB_TOKEN' in ctx.cleanEnv } }),
+    }], ctx: { root },
+  });
+  delete process.env.AOS_HUB_TOKEN;
+  await h2.listen();
+  const port2 = h2.server.address().port;
+  const out = await new Promise((ok, fail) => request(`http://127.0.0.1:${port2}/api/test/env`, {
+    headers: { host: `127.0.0.1:${port2}` },
+  }, (r) => { let d = ''; r.on('data', (c) => { d += c; }); r.on('end', () => ok({ status: r.statusCode, body: d })); }).on('error', fail).end());
+  assert.equal(out.status, 200);
+  assert.deepEqual(JSON.parse(out.body), { leaked: false });
+  await h2.close();
+});
+
+// ---- finding 10: /api/trail 2 s cache on an injectable clock ----
+test('/api/trail result cached for 2 s (injectable ctx.now)', async () => {
+  const rp = await import('../lib/hub/routes-plans.mjs');
+  let hits = 0;
+  let fixture = null;
+  let fixturePort = null;
+  for (const p of rp.TRAIL_PORTS) {
+    try {
+      const s = createServer_fwd((req, res) => { hits += 1; res.writeHead(200); res.end('ok'); });
+      await new Promise((ok, bad) => { s.once('error', bad); s.listen(p, '127.0.0.1', () => ok()); });
+      fixture = s;
+      fixturePort = p;
+      break;
+    } catch (e) {
+      if (!String(e && e.code || e).includes('EADDRINUSE')) throw e;
+    }
+  }
+  assert.ok(fixture, 'no free trail port for fixture');
+
+  let fakeNow = 10_000_000;
+  const hub5 = createHub({ port: 0, home, routes: [...rp.routes], ctx: { root, now: () => fakeNow } });
+  await hub5.listen();
+  const b5 = `http://127.0.0.1:${hub5.server.address().port}`;
+  const getTrail = () => new Promise((ok, fail) => request(`${b5}/api/trail`, {}, (r) => {
+    let d = ''; r.on('data', (c) => { d += c; }); r.on('end', () => ok(JSON.parse(d)));
+  }).on('error', fail).end());
+
+  const r1 = await getTrail();
+  assert.equal(r1.live.includes(fixturePort), true);
+  assert.equal(hits, 1);
+  fakeNow += 1000; // within the 2 s window -> cached, no new probe
+  const r2 = await getTrail();
+  assert.equal(hits, 1);
+  assert.deepEqual(r2.live, r1.live);
+  fakeNow += 3000; // cache expired -> fresh probe
+  const r3 = await getTrail();
+  assert.equal(hits, 2);
+  assert.equal(r3.live.includes(fixturePort), true);
+  await hub5.close();
+  fixture.close();
+});
+
+// ---- findings 1 + 2 + 3: the real serve-mode child end to end ----
+test('serve-mode child: imports route graph, binds, writes hub.json after listen, POST shutdown -> clean exit + hub.json gone', async () => {
+  const homeServe = join(tmp, 'serve-home');
+  mkdirSync(homeServe, { recursive: true });
+  const serveToken = 'f'.repeat(64);
+  const portNum = 10000 + (Date.now() % 20000);
+  const child = spawn(process.execPath, [join(root, 'bin', 'aos-hub.mjs'), '--serve', '--port', String(portNum)], {
+    env: { ...process.env, AOS_HUB_SERVE: '1', AOS_HUB_TOKEN: serveToken, AOS_HUB_HOME: homeServe, AOS_HUB_CHILD_DONE: '' },
+    stdio: 'ignore',
+  });
+  const { file } = hubPaths(homeServe);
+  let rec = null;
+  for (let i = 0; i < 40 && !rec; i++) {
+    await new Promise((ok) => setTimeout(ok, 250));
+    rec = readHubJson(homeServe);
+  }
+  assert.ok(rec, 'child never wrote hub.json (import graph or bind failed)');
+  assert.equal(rec.port, portNum);
+  assert.equal(rec.token, serveToken);
+  assert.equal(Number.isInteger(rec.pid) && rec.pid > 0, true);
+  const health = await fetch(`http://127.0.0.1:${rec.port}/api/health`);
+  assert.equal(health.status, 200);
+  const res = await fetch(`http://127.0.0.1:${rec.port}/api/shutdown`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-aos-hub-token': serveToken },
+    body: JSON.stringify({ confirm: 'hub' }),
+  });
+  assert.equal(res.status, 200);
+  const exit = await Promise.race([
+    new Promise((ok) => child.once('exit', (c) => ok(c))),
+    new Promise((ok) => setTimeout(() => ok('timeout'), 5000)),
+  ]);
+  assert.notEqual(exit, 'timeout', 'child did not exit after shutdown');
+  assert.equal(exit, 0);
+  await new Promise((ok) => setTimeout(ok, 50));
+  assert.equal(existsSync(file), false, 'hub.json removed only after the reply was sent');
+});
+
+test('failed start (port busy) reports failure and never clobbers hub.json', async () => {
+  const homeFail = join(tmp, 'fail-home');
+  mkdirSync(homeFail, { recursive: true });
+  writeHubJson(homeFail, { pid: 424242, port: 59996, version: 'sentinel', token: 'y'.repeat(64) });
+  const { file } = hubPaths(homeFail);
+  const before6 = readFileSync(file, 'utf8');
+  const blocker = createServer_fwd(() => {});
+  await new Promise((ok, bad) => { blocker.once('error', bad); blocker.listen(59996, '127.0.0.1', ok); });
+  const prevHome = process.env.AOS_HUB_HOME;
+  const prevServe = process.env.AOS_HUB_SERVE;
+  process.env.AOS_HUB_HOME = homeFail;
+  process.env.AOS_HUB_SERVE = '';
+  try {
+    const { cli } = await import('../bin/aos-hub.mjs');
+    const code = await cli(['start', '--port', '59996', '--no-open']);
+    assert.equal(code, 1, 'start reports failure');
+  } finally {
+    process.env.AOS_HUB_HOME = prevHome;
+    process.env.AOS_HUB_SERVE = prevServe || '';
+    blocker.close();
+  }
+  assert.equal(readFileSync(file, 'utf8'), before6, 'hub.json untouched');
+});
+
+// ---- finding 4: ps fallback verification ----
+test('killViaPs: invalid pids rejected; marker + --port must all match', async () => {
+  let psCalls = 0;
+  const runPs = async () => { psCalls += 1; return { ok: true, text: 'node /x/aos-hub.mjs --serve --port 7900' }; };
+  assert.equal(await killViaPs('abc', { runPs }), false);
+  assert.equal(await killViaPs('-5', { runPs }), false);
+  assert.equal(await killViaPs(0, { runPs }), false);
+  assert.equal(await killViaPs(process.pid, { runPs }), false, 'never kills its own pid');
+  assert.equal(psCalls, 0, 'no ps run for invalid pids');
+  assert.equal(await killViaPs(42424284, { runPs: async () => ({ ok: true, text: 'node /x/aos-hub.mjs --port 7900' }), port: '7900' }), false);
+  assert.equal(await killViaPs(42424284, { runPs: async () => ({ ok: true, text: 'node /x/aos-hub.mjs --serve --port 1111' }), port: '7900' }), false);
+  const helper = spawn(process.execPath, ['-e', 'setInterval(()=>{},50)'], { stdio: 'ignore' });
+  const ok2 = await killViaPs(helper.pid, { runPs: async () => ({ ok: true, text: 'node /x/aos-hub.mjs --serve --port 7900' }), port: '7900' });
+  assert.equal(ok2, true);
+  const exit = await Promise.race([
+    new Promise((ok) => helper.once('exit', (c) => ok(c))),
+    new Promise((ok) => setTimeout(() => ok('timeout'), 3000)),
+  ]);
+  assert.notEqual(exit, 'timeout', 'SIGTERM did not reach the verified process');
+});
+
+// ---- finding 9: --tab validated before it reaches a URL ----
+test('parseArgv rejects --tab values outside [a-z]+', () => {
+  for (const bad of ['TAB', 'a1', 'a-b', 'a.b', ''])
+    assert.throws(() => parseArgv(['--tab', bad]), `should reject ${JSON.stringify(bad)}`);
+  assert.equal(parseArgv(['--tab=plans']).tab, 'plans');
 });
