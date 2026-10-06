@@ -59,7 +59,7 @@ test('uninstall leaves no dangling AOS registration and keeps foreign entries', 
 
         const dry = spawnSync(process.execPath, [path.join(REPO, 'bin', 'aos-uninstall.mjs'), '--dry-run'], { cwd: home, env: env(home), encoding: 'utf8' });
         assert.strictEqual(dry.status, 0, dry.stderr);
-        for (const needle of ['aos-go-gate', 'aos-context', 'AOS:HOOKS-Block', 'bdb-aos.js', 'plugin[]-Eintrag', 'aos-bus', 'aos-acp']) assert.ok(dry.stdout.includes(needle), `dry-run lists ${needle}\n${dry.stdout}`);
+        for (const needle of ['aos-go-gate', 'aos-context', 'AOS hooks and MCP entries','bdb-aos.js', 'plugin[]-Eintrag', 'aos-bus', 'aos-acp']) assert.ok(dry.stdout.includes(needle), `dry-run lists ${needle}\n${dry.stdout}`);
         assert.ok(fs.existsSync(path.join(oc, 'plugins', 'bdb-aos.js')), 'dry-run deletes nothing');
         assert.ok(Object.keys(readJson(hooksFile)).includes('aos-go-gate'));
 

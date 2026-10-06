@@ -291,8 +291,10 @@ function checkHooks() {
   const codexConf = h('.codex', 'config.toml');
   let codexToml = '';
   try { codexToml = readFileSync(codexConf, 'utf8'); } catch {}
-  add('hooks', 'Codex config.toml hooks', codexToml.includes('AOS:HOOKS'),
-    existsSync(codexConf) ? `${tilde(codexConf)} (${codexToml.includes('AOS:HOOKS') ? 'AOS:HOOKS block wired' : 'no AOS:HOOKS'})` : `${tilde(codexConf)} missing`,
+  // The Codex CLI drops comments when it rewrites config.toml, so the hook command itself is the evidence.
+  const codexWired = /^\s*command\s*=.*(?:go-gate|graph-gate|memb-inject|trail-relay)\.mjs/m.test(codexToml);
+  add('hooks', 'Codex config.toml hooks', codexWired,
+    existsSync(codexConf) ? `${tilde(codexConf)} (${codexWired ? 'AOS hook commands wired' : 'no AOS hook commands'})` : `${tilde(codexConf)} missing`,
     'Run the AOS installer to wire Codex hooks.', true);
 }
 

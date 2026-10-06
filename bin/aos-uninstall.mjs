@@ -260,12 +260,10 @@ function execute(p) {
       const raw = readFileSync(codexToml, 'utf8');
       const eol = raw.includes('\r\n') ? '\r\n' : '\n';
       const lines = raw.split(/\r?\n/);
-      const i = lines.findIndex((l) => l.trim() === '[mcp_servers.deja]');
-      if (i !== -1) {
-        let j = i + 1;
-        while (j < lines.length && !lines[j].trimStart().startsWith('[') && lines[j].trim() !== '# AOS:MCP:END') j++;
-        lines.splice(i, j - i);
-        writeFileSync(codexToml, lines.join(eol));
+      // Only the table AOS wrote (command "deja"); a user's own deja table and its sub-tables stay.
+      const kept = ur.dropMcpTables(lines, (n, sec) => n === 'deja' && sec.some((l) => l.trim() === 'command = "deja"'));
+      if (kept.length !== lines.length) {
+        writeFileSync(codexToml, kept.join(eol));
         console.log(`  deja-Tabelle aus ${tilde(codexToml)} entfernt`);
       }
     } catch { console.log(`  ${tilde(codexToml)} nicht lesbar — von Hand prüfen`); }

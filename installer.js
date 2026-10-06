@@ -4871,13 +4871,17 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
 
     // Ensure [features] hooks = true
-    const hasHooksFeature = /(?:hooks|codex_hooks)\s*=\s*true/m.test(content);
-    if (!hasHooksFeature) {
-        if (/^\[features\]/m.test(content)) {
-            content = content.replace(/^\[features\]/m, '[features]\nhooks = true');
-        } else {
-            content = `[features]\nhooks = true\n\n${content.trimStart()}`;
-        }
+    // Only the [features] table counts: `hooks = true` in another table does not enable hooks, and
+    // `hooks = false` there must be flipped, not duplicated (duplicate keys are invalid TOML).
+    const featuresRe = /^(\[features\][^\n]*\n)((?:(?!\s*\[)[^\n]*(?:\n|$))*)/m;
+    const fm = featuresRe.exec(content);
+    if (!fm) {
+        content = `[features]\nhooks = true\n\n${content.trimStart()}`;
+    } else if (!/^\s*(?:hooks|codex_hooks)\s*=\s*true\b/m.test(fm[2])) {
+        const body = /^\s*(?:hooks|codex_hooks)\s*=/m.test(fm[2])
+            ? fm[2].replace(/^(\s*(?:hooks|codex_hooks)\s*=\s*)\S+/m, '$1true')
+            : `hooks = true\n${fm[2]}`;
+        content = content.slice(0, fm.index) + fm[1] + body + content.slice(fm.index + fm[0].length);
     }
 
     // Drop every AOS hook entry (marker block or not, duplicates included), then append one fresh block.
