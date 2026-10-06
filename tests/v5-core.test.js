@@ -247,10 +247,26 @@ test('memB verify detects import run failure in memb-mcp', () => {
     assert.match(result.detail, /import run fails/);
 });
 
-test('token-saver verify always reports ok', () => {
+test('token-saver verify checks CLI and hook registration', () => {
     const pkg = pk.registry.find((p) => p.id === 'token-saver');
-    const result = pkg.verify({});
-    assert.strictEqual(result.ok, true);
+    const cases = [
+        { name: 'ok', cli: 'exit 0', hook: true, ok: true },
+        { name: 'missing CLI', cli: null, hook: true, ok: false, re: /CLI missing/ },
+        { name: 'CLI exit 1', cli: 'exit 1', hook: true, ok: false, re: /CLI failed \(exit 1\)/ },
+        { name: 'missing hook', cli: 'exit 0', hook: false, ok: false, re: /hook not registered in .*settings\.json/ },
+    ];
+    for (const t of cases) {
+        const home = mkHome();
+        const bin = path.join(home, 'bin');
+        fs.mkdirSync(bin, { recursive: true });
+        if (t.cli) script(path.join(bin, 'token-saver'), t.cli);
+        const settings = path.join(home, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(settings), { recursive: true });
+        fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: t.hook ? { 'token-saver@token-saver-marketplace': true } : {} }));
+        const result = pkg.verify({ home, env: { PATH: bin } });
+        assert.strictEqual(result.ok, t.ok, `${t.name}: ${result.detail}`);
+        if (t.re) assert.match(result.detail, t.re, t.name);
+    }
 });
 
 test('vlatest fixed: the ready line names the version from the installed package.json', () => {
