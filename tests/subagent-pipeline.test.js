@@ -60,8 +60,8 @@ describe('Multi-Harness Subagent Architecture', () => {
         } catch {}
     });
 
-    test('CANONICAL_TIERS covers all 4 harnesses', () => {
-        const harnesses = ['claude', 'antigravity', 'opencode', 'codex'];
+    test('CANONICAL_TIERS covers the harnesses that need a pinned model (Codex and OpenCode inherit)', () => {
+        const harnesses = ['claude', 'antigravity'];
         for (const tier of ['reasoning_max', 'standard_fast', 'trivial_low']) {
             assert.ok(CANONICAL_TIERS[tier], `Missing tier: ${tier}`);
             for (const h of harnesses) {
@@ -83,9 +83,9 @@ describe('Multi-Harness Subagent Architecture', () => {
         assert.strictEqual(arch.model, 'claude-opus-custom');
         assert.strictEqual(arch.enabled, true);
 
-        // Tier resolution for Codex
+        // A tier never pins a Codex model
         const rev = resolveAgentConfig('reviewer', 'codex', pipelineConfig);
-        assert.strictEqual(rev.model, CANONICAL_TIERS.reasoning_max.codex);
+        assert.strictEqual(rev.model, 'inherit');
         assert.strictEqual(rev.tier, 'reasoning_max');
         assert.strictEqual(rev.enabled, true);
 
@@ -96,7 +96,7 @@ describe('Multi-Harness Subagent Architecture', () => {
 
         // Fallback default without config
         const fallback = resolveAgentConfig('godmode-engineering', 'codex', null);
-        assert.strictEqual(fallback.model, CANONICAL_TIERS.standard_fast.codex);
+        assert.strictEqual(fallback.model, 'inherit');
         assert.strictEqual(fallback.enabled, true);
     });
 
@@ -118,34 +118,42 @@ describe('Multi-Harness Subagent Architecture', () => {
         assert.strictEqual(loaded.reviewer.model, 'o3-mini');
     });
 
-    test('compileCodexAgents emits valid .toml and .md files', () => {
+    test('compileCodexAgents emits Codex-format toml without a fixed model', () => {
         const agents = parseAgentsMd(SAMPLE_AGENTS_MD);
         const targetDir = path.join(tmpDir, '.codex', 'agents');
-        const pipelineConfig = {
-            architect: { harness: 'codex', model: 'o3-mini' },
-            reviewer: { harness: 'codex', tier: 'reasoning_max' }
-        };
+        compileCodexAgents(agents, targetDir, { architect: { harness: 'codex', model: 'o3-mini' } });
+        const arch = fs.readFileSync(path.join(targetDir, 'architect.toml'), 'utf8');
+        assert.ok(arch.includes('name = "architect"'));
+        assert.ok(arch.includes('model = "o3-mini"'), 'a model the user pinned is kept');
+        assert.ok(/^developer_instructions = ".+"$/m.test(arch));
+        for (const bad of ['prompt_file', 'tier =', 'enabled =']) assert.ok(!arch.includes(bad), bad);
+        assert.ok(!fs.existsSync(path.join(targetDir, 'architect.md')));
+        const rev = fs.readFileSync(path.join(targetDir, 'reviewer.toml'), 'utf8');
+        assert.ok(!/^model\s*=/m.test(rev), 'no model unless pinned');
+        assert.ok(rev.includes('sandbox_mode = "read-only"'));
+        assert.ok(arch.includes('sandbox_mode = "workspace-write"'));
+    });
 
-        compileCodexAgents(agents, targetDir, pipelineConfig);
+    test('compileCodexAgents rewrites AOS-owned (incl. legacy) files and leaves user files alone', () => {
+        const agents = parseAgentsMd(SAMPLE_AGENTS_MD);
+        const targetDir = path.join(tmpDir, '.codex', 'agents');
+        fs.mkdirSync(targetDir, { recursive: true });
+        fs.writeFileSync(path.join(targetDir, 'architect.toml'), '# Codex subagent configuration for architect\nname = "architect"\nmodel = "gpt-4o"\ntier = "standard_fast"\nenabled = true\nprompt_file = "architect.md"\n');
+        fs.writeFileSync(path.join(targetDir, 'reviewer.toml'), 'name = "reviewer"\nmodel = "mine"\n');
+        compileCodexAgents(agents, targetDir, null);
+        const arch = fs.readFileSync(path.join(targetDir, 'architect.toml'), 'utf8');
+        assert.ok(!arch.includes('gpt-4o') && arch.includes('developer_instructions'));
+        assert.strictEqual(fs.readFileSync(path.join(targetDir, 'reviewer.toml'), 'utf8'), 'name = "reviewer"\nmodel = "mine"\n');
+        compileCodexAgents(agents, targetDir, null);
+        assert.strictEqual(fs.readFileSync(path.join(targetDir, 'architect.toml'), 'utf8'), arch, 'idempotent');
+    });
 
-        // Check architect
-        const archTomlPath = path.join(targetDir, 'architect.toml');
-        const archMdPath = path.join(targetDir, 'architect.md');
-        assert.ok(fs.existsSync(archTomlPath), 'architect.toml should exist');
-        assert.ok(fs.existsSync(archMdPath), 'architect.md should exist');
-
-        const archToml = fs.readFileSync(archTomlPath, 'utf8');
-        assert.ok(archToml.includes('name = "architect"'));
-        assert.ok(archToml.includes('model = "o3-mini"'));
-        assert.ok(archToml.includes('prompt_file = "architect.md"'));
-
-        const archMd = fs.readFileSync(archMdPath, 'utf8');
-        assert.ok(archMd.includes('Role: Architect'));
-        assert.ok(archMd.includes('**Primary skills:** bdbrainstorm, planning-with-files'));
-
-        // Check reviewer
-        const revToml = fs.readFileSync(path.join(targetDir, 'reviewer.toml'), 'utf8');
-        assert.ok(revToml.includes('model = "o3-mini"'));
+    test('compileCodexAgents carries role skills in developer_instructions', () => {
+        const agents = parseAgentsMd(SAMPLE_AGENTS_MD);
+        const targetDir = path.join(tmpDir, '.codex', 'agents');
+        compileCodexAgents(agents, targetDir, null);
+        const arch = fs.readFileSync(path.join(targetDir, 'architect.toml'), 'utf8');
+        assert.ok(arch.includes('**Primary skills:** bdbrainstorm, planning-with-files'));
     });
 
     test('compileClaudeAgents applies pipelineConfig model', () => {
