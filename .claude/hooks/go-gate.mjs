@@ -1394,6 +1394,12 @@ export const TEST_HINT = "Test runs: use the Docker container (AOS_TEST_SANDBOX=
 function respond(isAgy, allowed, reason = "", command = "", hard = false) {
   if (!allowed) markBlock(blockKey);
   if (!allowed && !hard && TEST_RUN.test(command)) reason = `${reason} ${TEST_HINT}`.trim();
+  // Every deny leaves the command as the gate saw it; without this a block cannot be reproduced.
+  if (!allowed && blockKey) {
+    let why = "";
+    try { why = `guarded=${isGuardedCommand(command)} scopes=${JSON.stringify(commandScopes(command))}`; } catch { why = "classify failed"; }
+    gateLog(blockKey, `deny${hard ? " hard" : ""} ${why} ${JSON.stringify(command.slice(0, 200))} :: ${reason.slice(0, 120)}`);
+  }
   if (hard) {
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
     process.stderr.write(`${reason}\n`);

@@ -264,4 +264,11 @@ describe('read-only chains after a peer message (v5 V10)', () => {
             assert.equal(run(c, { cwd: work }).status, 2, `blocked: ${c}`);
         }
     });
+
+    test('every deny writes the command and its classification to the session log', () => {
+        inSoftAfterPeer();
+        assert.equal(run('git status; gh pr merge 12', { cwd: work }).status, 2);
+        const log = fs.readFileSync(path.join(home, '.aos', 'gate', `${g.sessionKey('s1')}.log`), 'utf8');
+        assert.match(log, /deny guarded=true scopes=\[[^\]]*\] "git status; gh pr merge 12" :: \S/);
+    });
 });
