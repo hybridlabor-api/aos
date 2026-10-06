@@ -26,7 +26,9 @@ def _check_int(value, what, minimum=0):
 
 def _check_name(value, what):
     if isinstance(value, str) and _NAME_RE.fullmatch(value):
-        return value
+        collapsed = " ".join(value.split())
+        if collapsed:
+            return collapsed
     raise ValueError(f"{what} must be 1-32 characters of letters, digits, space or underscore")
 
 
@@ -99,7 +101,7 @@ def cmd_store_cue(cue, sequence=None, executor=None):
 def cmd_label(kind, number, name):
     _check_kind(kind, LABEL_KINDS, "label kind")
     _check_int(number, "number", 1)
-    _check_name(name, "label name")
+    name = _check_name(name, "label name")
     return f'Label {kind} {number} "{name}"'
 
 

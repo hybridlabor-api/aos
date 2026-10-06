@@ -4,9 +4,15 @@
 # ]
 # ///
 
+import os
 import socket
+import sys
 import argparse
 from typing import Optional
+
+# Works when started as a script, with -m, from a copied file or from another cwd.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from mcp.server.fastmcp import FastMCP
 
 from grandma3_cmds import (
@@ -79,11 +85,14 @@ def patch_fixture(fixture_id: int, name: str, fixture_type: str, address: str) -
     """Label and patch fixture <fixture_id> at <universe>.<address> (e.g. 1.101). fixture_type is not settable from the command line and is ignored."""
     patch_cmd = cmd_patch_fixture(fixture_id, address)
     label_cmd = cmd_label("Fixture", fixture_id, name)
-    return f"{send_osc_message('/cmd', patch_cmd)}\n{send_osc_message('/cmd', label_cmd)}"
+    patched = send_osc_message("/cmd", patch_cmd)
+    if patched.startswith("Failed"):
+        return f"{patched}\nLabel command not sent because the patch command failed."
+    return f"{patched}\n{send_osc_message('/cmd', label_cmd)}"
 
 @mcp.tool()
 def ma3_select(kind: str, number: int) -> str:
-    """Select a Page/Sequence/Executor/World by number."""
+    """Select a Page, Executor or Sequence by number."""
     return send_osc_message("/cmd", cmd_select(kind, number))
 
 @mcp.tool()
@@ -118,7 +127,7 @@ def ma3_store_cue(cue: int, sequence: int = None, executor: int = None) -> str:
 
 @mcp.tool()
 def ma3_set_label(kind: str, number: int, name: str) -> str:
-    """Label an object (e.g. Sequence/Cue/Executor) with a new name."""
+    """Label a Group, Fixture or Sequence with a new name (letters, digits, space, underscore)."""
     return send_osc_message("/cmd", cmd_label(kind, number, name))
 
 @mcp.tool()
