@@ -8,7 +8,7 @@ const root = mkdtempSync(join(tmpdir(), 'a2a-live-oc-'));
 process.env.AOS_BUS_ROOT = join(root, 'bus');
 process.env.AOS_A2A_INBOX = join(root, 'a2a-inbox');
 const { writeMessage } = await import('../lib/a2a-inbox.mjs');
-const { deliverA2a, replySourceFor } = await import('../.opencode/plugins/bdb-aos.js');
+const { deliverA2a, replySourceFor } = await import('../lib/a2a-oc.mjs');
 
 const fakeClient = (messages = []) => {
   const prompts = [];
