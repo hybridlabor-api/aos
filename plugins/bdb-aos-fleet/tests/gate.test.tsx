@@ -117,3 +117,31 @@ test('session.start, turn.complete and tool.call never fill the prompt', async (
   expect(registered).toContain('gogate-panel')
   expect(fills).toBe(0)
 })
+
+test('clicking "gate soft" in the band opens the gate pane and fills nothing', async ($, on) => {
+  const opened: string[] = []
+  let fills = 0
+  on('env.get', () => ({ value: '/home' }))
+  on('session.id', () => ({ value: 'sid' }))
+  on('process.run', () => ({ value: STATUS }))
+  on('ui.open', (_$, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true as const } }
+  })
+  on('prompt.fill', () => {
+    fills++
+    return { isFilled: true }
+  })
+  on('clock.now', () => ({ value: 0 }))
+  await $.command.run({ command: 'gogate-panel', args: '' } as never)
+  opened.length = 0
+  const band = await $.ui.mount({
+    plugin: 'bdb-aos-fleet',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100 } as never,
+  })
+  await band.press({ key: 'gate' } as never)
+  expect(opened).toEqual(['gogate-panel'])
+  expect(fills).toBe(0)
+})
