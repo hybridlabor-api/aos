@@ -111,7 +111,7 @@ export const HTTP_PATTERNS = GUARDED_PATTERNS.slice(-2);
 // ---------------------------------------------------------------------------
 // Scopes: each guarded command segment maps to the grant scope(s) it needs.
 // ---------------------------------------------------------------------------
-export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destructive", "github-write"];
+export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destructive", "github-write", "container-test"];
 
 // Output redirections (`2>&1`, `>/dev/null`, `&>log`) are removed before splitting, so the
 // `&` in `2>&1` is not a separator and `git push origin a:a 2>&1` reads as a plain push.
@@ -484,7 +484,13 @@ function ghParts(tok) {
 
 const GIT_VALUE_OPTS = /^(?:-[cC]|--git-dir|--work-tree|--namespace|--super-prefix|--exec-path|--config-env|--list-cmds|--attr-source)$/;
 const GIT_FLAG_OPTS = /^(?:-[pP]|--paginate|--no-pager|--bare|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--no-lazy-fetch|--no-advice|--html-path|--man-path|--info-path|--version|--help)$/;
-const PUSHY_CONFIG = /push|remote\.|url\.|insteadof|alias\./i;
+const PUSHY_CONFIG = /push|remote\.|url\.|insteadof|alias\.|hookspath|gpgsign/i;
+// A commit that skips hooks or signing needs a plain GO: --no-verify (and its abbreviations), --no-gpg-sign, a -n
+// bundle, a -c / --config-env key that sets core.hooksPath or commit.gpgsign (or cannot be read), a bare $word.
+const COMMIT_BYPASS_FLAG = /^(?:--no-v(?:e(?:r(?:i(?:f(?:y)?)?)?)?)?|--no-g\S*|-[a-zA-Z]*n[a-zA-Z]*)$/;
+const badGitKey = (v) => { const key = String(v ?? "").split("=")[0]; return /^(?:core\.hookspath|commit\.gpgsign)$/i.test(key) || /[$\x60]/.test(key); };
+const commitBypass = (r) => { const end = r.indexOf("--"); return r.slice(0, end === -1 ? undefined : end).some((t) => COMMIT_BYPASS_FLAG.test(t) || /^[$\x60]/.test(t)); };
+const COMMIT_WORD_BYPASS = /^(?:--no-v(?:e(?:r(?:i(?:f(?:y)?)?)?)?)?|--no-g\S*|-[a-zA-Z]*n[a-zA-Z]*|-?c?core\.hookspath\S*|-?c?commit\.gpgsign\S*|--config-env=(?:core\.hookspath|commit\.gpgsign)\S*)$/i;
 const PM = /^(?:npm|pnpm|yarn|bun)$/;
 const NPM_VALUE_OPTS = /^(?:--prefix|-w|--workspace|-C|--dir|--registry|--userconfig|--cache|--tag|--otp|--access|--filter|--cwd)$/;
 
@@ -501,17 +507,20 @@ export function classify(seg, protectedFor = staticResolver) {
   }
   if (cmd === "git" || cmd === "hub") {
     // repoDir: null = unknown (an unresolvable cd/-C target, --git-dir): bare and plain pushes are push-main.
-    let i = 1, config = false, repoDir = segCwd === null ? null : segCwd || gateCtx.cwd || process.cwd();
+    let i = 1, config = false, hookKey = false, repoDir = segCwd === null ? null : segCwd || gateCtx.cwd || process.cwd();
     for (;;) {
       const t = unq(tok[i] ?? "");
       if (GIT_VALUE_OPTS.test(t)) {
         config ||= /^(?:-c|--config-env)$/.test(t);
+        if (/^(?:-c|--config-env)$/.test(t)) hookKey ||= badGitKey(unq(tok[i + 1] ?? ""));
         if (t === "-C") repoDir = resolveDir(repoDir, tok[i + 1] ?? "");
         else if (/^--(?:git-dir|work-tree)$/.test(t)) repoDir = null;
         i += 2;
       }
       else if (/^(?:-[cC].|--[\w-]+=)/.test(t)) {
         config ||= /^(?:-c.|--config-env=)/.test(t);
+        if (/^-c./.test(t)) hookKey ||= badGitKey(t.slice(2));
+        else if (/^--config-env=/.test(t)) hookKey ||= badGitKey(t.slice(13));
         if (/^-C./.test(t)) repoDir = resolveDir(repoDir, tok[i].slice(2));
         else if (/^--(?:git-dir|work-tree)=/.test(t)) repoDir = null;
         i++;
@@ -545,8 +554,10 @@ export function classify(seg, protectedFor = staticResolver) {
       const cfg = repoDir ? gitConfig(repoDir) : null;
       if (!cfg || cfg.get("alias", null, sub.toLowerCase()) !== undefined) return null;
     }
+    if (sub === "commit" && (hookKey || gitEnv || commitBypass(r))) return null;
     return [];
   }
+  if (cmd === "docker") return dockerScopes(tok, seg);
   if (PM.test(cmd) || cmd === "npx") {
     if (cmd === "npx") return catchAll(tok, seg) ? null : [];
     let i = 1;
@@ -589,8 +600,11 @@ function catchAll(tok, seg, opaque = false) {
   // inside sh -c / eval / watch the quoted text is the command, so split it into words
   const w = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(base);
   const after = (i, set) => w.slice(i + 1).some((x) => set.test(x));
+  const raw = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(unq);
   for (let i = 0; i < w.length; i++) {
     if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
+    // a commit that skips hooks or signing, inside sh -c / eval / xargs
+    if ((w[i] === "git" || w[i] === "hub") && w.slice(i + 1).includes("commit") && raw.slice(i + 1).some((x) => COMMIT_WORD_BYPASS.test(x))) return true;
     // `npm view|info|show|v <pkg> version` only reads: its subcommand is not publish/version.
     const sub = w.slice(i + 1).find((x) => !x.startsWith("-"));
     if ((PM.test(w[i]) || w[i] === "npx") && !/^(?:view|info|show|v)$/.test(sub ?? "") && after(i, /^(?:publish|version)$/)) return true;
@@ -660,18 +674,20 @@ const DOCKER_READER = /^(?:tail|head|grep|wc|sort|uniq|cut)$/;
 // through symlinks (realpath), with plain characters only, no dot segment and not under ~/Library.
 // `/`, /etc, the docker socket dirs, /Volumes, other users and dotdirs are ordinary commands again.
 // Known limit: the container may still read files inside that project (e.g. a .env) and use the network.
-const roMount = (v) => {
-  const p = unqQ(v).split(":");
-  if (p.length < 3 || !p.slice(2).join(":").split(",").includes("ro")) return false;
-  const src = p[0];
+const mountSource = (src) => {
   if (!/^\/[A-Za-z0-9._ /-]+$/.test(src) || /\/\/|(?:^|\/)\.{1,2}(?:\/|$)/.test(src)) return false;
   const home = osHome();
   if (!home) return false;
   let real, realHome;
-  try { real = realpathSync.native(src); realHome = realpathSync.native(home); } catch { return false; }
+  try { real = realpathSync.native(src); realHome = realpathSync.native(home); if (!statSync(real).isDirectory()) return false; } catch { return false; }
   if (!real.startsWith(`${realHome}/`)) return false;
   const rel = real.slice(realHome.length + 1).split("/");
   return rel.length >= 2 && !rel.some((s) => s.startsWith(".")) && rel[0] !== "Library";
+};
+const roMount = (v) => {
+  const p = unqQ(v).split(":");
+  if (p.length < 3 || !p.slice(2).join(":").split(",").includes("ro")) return false;
+  return mountSource(p[0]);
 };
 export function isReadOnlyDockerRun(command) {
   if (typeof command !== "string" || commandTooLong(command)) return false;
@@ -710,6 +726,46 @@ export function isReadOnlyDockerRun(command) {
   }
   if (!image) return false;
   return parts.slice(1).every((s) => DOCKER_READER.test(base(words(s.trim())[0] ?? "")));
+}
+
+// Scope `container-test` (Tim, 2026-10-06): a `docker run --rm` test run whose flags are all on the rule 16
+// allow-list, whose mounts are project directories (mountSource: at least two levels inside home, no dotdir,
+// symlinks resolved; read-only or writable), with no --privileged/--pid/--network host/docker.sock and no shell
+// expansion before the image. Everything else about docker stays as it was; a docker run that does not qualify is
+// guarded without a scope (plain GO). The text after the image is read by scopesOf like any other command text.
+function dockerScopes(tok, seg) {
+  const sub = unq(tok[1] ?? "");
+  if (sub.startsWith("-")) return tok.slice(1).some((t) => unq(t) === "run") ? null : []; // global option: another daemon or config
+  if (!(sub === "run" || (sub === "container" && unq(tok[2] ?? "") === "run"))) return [];
+  if (/(?:^|[\s;&|(])DOCKER_\w+=/.test(seg)) return null;
+  let rm = false, image = false, mounts = 0, allRo = true, i = sub === "run" ? 2 : 3;
+  const expands = (w) => /[$\x60]/.test(w ?? "") && !/^'[^']*'$/.test(w); // an expansion can turn into any flags
+  for (; i < tok.length && !image; i++) {
+    const raw = tok[i];
+    if (expands(raw)) return null;
+    const t = unq(raw);
+    const eq = /^(--?[\w-]+)=(.*)$/.exec(t);
+    const flag = eq ? eq[1] : t, val = eq ? eq[2] : unq(tok[i + 1] ?? "");
+    if (!eq && (flag === "-v" || flag === "--volume" || flag === "--network" || flag === "--net" || DOCKER_VALUE.test(flag)) && expands(tok[i + 1])) return null;
+    if (flag === "-v" || flag === "--volume") {
+      if (!mountSource(unqQ(val).split(":")[0])) return null;
+      mounts++; allRo &&= roMount(val);
+      if (!eq) i++;
+      continue;
+    }
+    if (flag === "--network" || flag === "--net") { if (!/^(?:none|bridge)$/.test(val)) return null; if (!eq) i++; continue; }
+    if (t === "--rm") { rm = true; continue; }
+    if (DOCKER_FLAG.test(t)) continue;
+    if (DOCKER_VALUE.test(flag)) { if (!eq) i++; continue; }
+    if (t.startsWith("-")) return null;
+    image = true;
+  }
+  if (!image) return null;
+  if (mounts && allRo) return []; // rule 16: only read-only project mounts stay free, as before
+  if (!rm) return null;
+  // The words after the image run inside the container, but git push, npm publish, gh writes and rm -r there
+  // still need their own scope or a GO: the text is read like an opaque `sh -c`.
+  return catchAll(tok.slice(i), seg, true) ? null : ["container-test"];
 }
 
 // Splits on unquoted ; & | newline ( ) and brace-group braces; quotes, ${...}, $(...) and `...` stay whole.
