@@ -134,6 +134,7 @@ function sendHtml(res, statusCode, html, { csp = true } = {}) {
 }
 
 const STATIC_READ_PATH = /^\/(sdk\.js|artifact\/[a-f0-9]{12}\/.*)$/;
+const PAGE_PATH = /^\/canvas\/[a-f0-9]{12}$/;
 
 function skillDescription(file) {
   try {
@@ -634,7 +635,14 @@ function createPlanCanvasServer({
     // and asset loads arrive as Sec-Fetch-Site: cross-site. Only those read-only
     // static paths may skip the fetch-site check; everything else keeps it.
     const isStaticRead = req.method === 'GET' && STATIC_READ_PATH.test(pathname);
-    if (!isStaticRead && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
+    // A top-level link from another loopback port (the Launchpad) arrives as same-site/cross-site.
+    // Rendering the home page or a canvas page is read-only and the linking page cannot read it,
+    // so a document navigation may skip the fetch-site check; fetch()/XHR and writes never do.
+    const isPageNavigation = req.method === 'GET'
+      && (pathname === '/' || PAGE_PATH.test(pathname))
+      && req.headers['sec-fetch-mode'] === 'navigate'
+      && req.headers['sec-fetch-dest'] === 'document';
+    if (!isStaticRead && !isPageNavigation && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
       return sendJson(res, 403, { error: 'forbidden fetch site' });
     }
 
