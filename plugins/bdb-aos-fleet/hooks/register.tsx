@@ -1,15 +1,18 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession } from '../types'
+import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateState } from '../types'
 
 const PANE = 'aos-fleet'
+const GATE_PANE = 'gogate-panel'
 const STALE_MS = 5 * 60_000
 const ROLES: FleetRole[] = ['master', 'task-manager', 'orchestrator', 'worker']
 const ATTENTION_PHASES = ['ready_to_ship', 'escalated']
 
 const fleet = atom({ plugin: 'bdb-aos-fleet', key: 'fleet' } as const, [])
 const frame_ = atom({ plugin: 'bdb-aos-fleet', key: 'frame' } as const, 0)
+const gate = atom({ plugin: 'bdb-aos-fleet', key: 'gate' } as const, { mode: 'soft', grants: [], raw: '' })
+const gateMsg = atom({ plugin: 'bdb-aos-fleet', key: 'gateMsg' } as const, '')
 const self = atom({ plugin: 'bdb-aos-fleet', key: 'self' } as const, {
   activity: 'idle',
 })
@@ -82,6 +85,39 @@ const DOT: Record<FleetActivity, { glyph: string; color: string }> = {
   attention: { glyph: '▲', color: 'yellow' },
   working: { glyph: '●', color: 'green' },
   idle: { glyph: '○', color: 'gray' },
+}
+
+const PRESETS = [
+  { label: 'release 2h', text: 'gogate grant push-feature,github-write,merge,publish 2h' },
+  { label: 'feature 2h', text: 'gogate grant push-feature,github-write 2h' },
+  { label: 'soft', text: 'gogate soft' },
+  { label: 'hard', text: 'gogate hard' },
+  { label: 'status', text: 'gogate status' },
+]
+const MODE_COLOR: Record<string, string> = { hard: 'red', soft: 'yellow', off: 'gray' }
+
+export function parseGateStatus(text: string): GateState {
+  const mode = /: mode (\w+)/.exec(text)?.[1] ?? 'soft'
+  const grants = [...text.matchAll(/^\s+grant (\S+) until \S+ \((-?\d+) min left/gm)].map(m => ({
+    scope: m[1]!,
+    minutesLeft: Number(m[2]),
+  }))
+  return { mode, grants, raw: text.trim() }
+}
+
+export const timeLeft = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}` : `${min}m`)
+
+async function readGate($: EngineInterface) {
+  const home = await $.env.get('HOME')
+  const r = await $.process.run(['node', `${home}/.claude/hooks/go-grant.mjs`, '--status', '--session', await $.session.id()])
+  await update($, gate, () => parseGateStatus(r.stdout))
+}
+
+// The only place that writes the prompt box, and only from a Button press.
+async function fillPreset($: EngineInterface, text: string) {
+  if ((await $.prompt.read()).text) return update($, gateMsg, () => 'Prompt is not empty – clear it first')
+  await $.prompt.fill({ text })
+  return update($, gateMsg, () => `You're about to approve: ${text} — press Enter in the prompt to record it.`)
 }
 
 let dir = ''
@@ -310,6 +346,7 @@ export const register: Register = on => {
     $.ui.status(undefined)
     id = await $.session.id()
     await $.command.register({ name: 'aos-fleet', description: 'Show the AOS fleet pane' })
+    await $.command.register({ name: 'gogate-panel', description: 'Show the go-gate status and grant presets' })
     await $.command.register({
       name: 'aos-role',
       description: `Set this session's AOS role: ${ROLES.join(' | ')}`,
@@ -320,6 +357,8 @@ export const register: Register = on => {
     await takeReading($).catch(() => undefined)
     await publish($)
     await loadFleet($)
+    await readGate($).catch(() => undefined)
+    $.clock.every(30_000, () => void readGate($).catch(() => undefined))
     $.clock.every(5_000, () => void loadFleet($))
     $.clock.every(30_000, () => void publish($))
     $.clock.every(700, () => void tick($))
@@ -351,6 +390,7 @@ export const register: Register = on => {
     if (name) await setSelf($, { name })
     await readProject($)
     await publish($)
+    await readGate($).catch(() => undefined)
     return next(e)
   })
 
@@ -383,6 +423,12 @@ export const register: Register = on => {
     await loadFleet($)
     await $.ui.open({ id: PANE, title: 'AOS fleet' })
     return { text: 'AOS fleet pane opened.' }
+  })
+
+  on('command.run', { command: 'gogate-panel' }, async $ => {
+    await readGate($).catch(() => undefined)
+    await $.ui.open({ id: GATE_PANE, title: 'go-gate' })
+    return { text: 'go-gate pane opened.' }
   })
 
   on('command.run', { command: 'aos-role' }, async ($, e) => {
@@ -451,10 +497,28 @@ export const register: Register = on => {
     )
   })
 
+  on('ui.render', { component: 'Pane', requestId: GATE_PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const { raw } = await read($, gate)
+    const msg = await read($, gateMsg)
+    return (
+      <Box flexDirection="column">
+        <Text>{raw || 'No status yet.'}</Text>
+        <Box flexDirection="row" marginTop={1}>
+          {PRESETS.map(p => (
+            <Button key={p.label} label={p.label} onPress={() => void fillPreset($, p.text)} />
+          ))}
+        </Box>
+        {msg && <Text color="yellow">{msg}</Text>}
+      </Box>
+    )
+  })
+
   // token-weather's line for this session, then one line for the fleet.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const list = await read($, fleet)
-    if (e.props.hasSurvey || (list.length === 0 && !reading)) return next(e)
+    const g = await read($, gate)
+    if (e.props.hasSurvey || (list.length === 0 && !reading && !g.raw)) return next(e)
     const { Box, Text } = $.ui.resolve(e)
     const wide = e.props.bodyColumns >= 70
     const others = list.filter(s => s.id !== id)
@@ -474,6 +538,19 @@ export const register: Register = on => {
       </Box>
     )
 
+    const gateSeg = g.raw && (
+      <Text>
+        {'   '}
+        <Text color={MODE_COLOR[g.mode] ?? 'yellow'}>gate {g.mode}</Text>
+        {g.grants.map(x => (
+          <Text key={x.scope} dimColor>
+            {' · '}
+            {x.scope} {timeLeft(x.minutesLeft)}
+          </Text>
+        ))}
+      </Text>
+    )
+
     const fleetLine = others.length > 0 && (
       <Box flexDirection="row" paddingX={1}>
         <Text dimColor>fleet </Text>
@@ -487,6 +564,12 @@ export const register: Register = on => {
           </Text>
         ))}
         {idle.length > 0 && <Text dimColor>{'  '}○ {idle.length} idle</Text>}
+        {gateSeg}
+      </Box>
+    )
+    const gateLine = others.length === 0 && gateSeg && (
+      <Box flexDirection="row" paddingX={1}>
+        {gateSeg}
       </Box>
     )
 
@@ -494,6 +577,7 @@ export const register: Register = on => {
       <Box flexDirection="column">
         {weatherLine}
         {fleetLine}
+        {gateLine}
       </Box>
     )
   })

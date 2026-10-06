@@ -28,12 +28,16 @@ export type FleetSelf = {
   reason?: string
 }
 
+export type GateState = { mode: string; grants: { scope: string; minutesLeft: number }[]; raw: string }
+
 declare module 'claude-code' {
   interface PluginState {
     'bdb-aos-fleet': {
       fleet: FleetSession[]
       self: FleetSelf
       frame: number
+      gate: GateState
+      gateMsg: string
     }
   }
 }
