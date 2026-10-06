@@ -36,9 +36,9 @@ What you get: a sanitized copy of the project with README and LICENSE in a new p
 2. opensource-sanitizer (agent) — fork dir → report with the verdict PASS, FAIL or PASS-WITH-WARNINGS in the run log — FAIL stops the run: the findings are logged, nothing is created or pushed
 3. github-repo + readme — fork dir, license → README.md and LICENSE in the fork dir following the repo standards — stops for approval (the human reads both files and the warnings from step 2)
 4. git — `git -C <fork dir> rev-parse --git-dir` (not a repo → `git -C <fork dir> init`), then `git -C <fork dir> add README.md LICENSE` plus each file the forker produced, listed by explicit path (never `-A` or `.`), then `git -C <fork dir> commit -m "Initial sanitized release"` → commit SHA in the run log — `git -C <fork dir> status --short` is empty and README.md and LICENSE are in `git -C <fork dir> ls-tree -r HEAD --name-only`
-5. [GO] gh repo create — `gh repo create <owner>/<target_name> --private` — the WAITING FOR GO line names owner, name and `--private`. The run stops here until the human types GO. (`gh repo create` is not hook-guarded; this GO is its only guard.)
+5. [GO] gh repo create — `gh repo create <owner>/<target_name> --private` — the WAITING FOR GO line names owner, name and `--private`. The run stops here until the human types GO. (`gh repo create` is not hooked; this GO is its only guard.)
 6. github — `gh repo view <owner>/<target_name> --json visibility -q .visibility` → run log line — equals `PRIVATE`, else stop
-7. [GO] git push — `git -C <fork dir> remote add origin <url>` is part of this step, then the push of the default branch to `origin` — the WAITING FOR GO line names the remote URL, the branch and the commit SHA from step 4. The run stops here until the human types GO. (The hook guards `git push`; the other commands here are not hook-guarded.)
+7. [GO] git push — `git -C <fork dir> remote add origin <url>` is part of this step, then the push of the default branch to `origin` — the WAITING FOR GO line names the remote URL, the branch and the commit SHA from step 4. The run stops here until the human types GO. (Where the hook runs, it covers `git push`; the other commands here are not hooked, so this GO is their only guard.)
 8. github — `gh repo view <owner>/<target_name> --json visibility -q .visibility`, then `gh api repos/<owner>/<target_name>/contents/LICENSE` and `.../contents/README.md` → final run log line — LICENSE and README.md both return 200 on the default branch, else stop; the run log ends with the sanitizer verdict and the line "visibility stays PRIVATE; flipping it is the human's own action"
 
 Run log: `production_artifacts/pb-open-source-<date>.md` in the start directory, never committed
@@ -46,5 +46,6 @@ Run log: `production_artifacts/pb-open-source-<date>.md` in the start directory,
 Rules
 - This playbook never runs `gh repo edit --visibility` or any other command that changes visibility.
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.

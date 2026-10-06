@@ -36,7 +36,7 @@ What you get: a green GitHub Actions run on a pushed commit, with the cause and 
 5. github-actions-validator — workflows → validator report — zero errors after the mandatory rerun
 6. bdbresilience — only if step 3 classified the failure as transient → retry or timeout on that step only — no blanket retries
 7. verification-before-completion — repro command → fresh passing output pasted in the run log — output pasted, not claimed
-8. git commit `ci: <cause>` — stage only the changed `.github/workflows/*` files (never the run log) → SHA in the run log — commit hook passes
+8. git commit `ci: <cause>` — stage only the changed `.github/workflows/*` files (never the run log) → SHA in the run log — commit succeeds (any hook failure is reported, never bypassed with --no-verify)
 9. [GO] git push — SHA → remote branch (name the branch in the WAITING FOR GO line) — The run stops here until the human types GO. Each retry cycle that pushes again needs its own fresh GO here.
 10. github — SHA → `<id>` from `gh run list --commit <sha> --limit 1 --json databaseId` (wait until it exists), then `gh run watch <id> --exit-status` — `gh run list --commit <sha> --json conclusion -q '.[0].conclusion'` equals `success`; otherwise back to step 3, at most 2 cycles (each push behind a fresh GO at step 9), then stop and escalate
 
@@ -44,5 +44,6 @@ Run log: `production_artifacts/pb-ci-fix-<date>.md`
 
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
+- GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.
 - A failed check stops the run: write the failure into the run log and report. No silent retries beyond what a step names.
 - Write one run-log line per step as it completes (`N. done|skipped|failed — artifact — check result`) and `WAITING FOR GO: <step>` at each gate.
