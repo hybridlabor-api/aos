@@ -93,6 +93,13 @@ if [ "$DRY_RUN" = 0 ]; then
   CL_WORK_DIR="$TMP_DIR/claude-project"
   AGY_WORK_DIR="$TMP_DIR/agy-worker"
 fi
+# Claude turns are kept busy (`sleep 45`, see check_item1) so an inbound probe
+# can be delivered inside the turn window; their deadline is max(TIMEOUT, 90).
+CL_TURN_TIMEOUT="$A2A_E2E_TIMEOUT"
+if [ "$CL_TURN_TIMEOUT" -lt 90 ]; then CL_TURN_TIMEOUT=90; fi
+# Per-turn deadline override read by wait_logged (claude turns only).
+TURN_TIMEOUT_CURRENT=""
+
 PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
@@ -184,7 +191,7 @@ run_claude() {
   local args=(-p "$prompt" --output-format text)
   if [ -n "${A2A_E2E_MODEL:-}" ]; then args+=(--model "${A2A_E2E_MODEL}"); fi
   if [ "$#" -gt 0 ]; then args+=("$@"); fi
-  ( exec env AOS_A2A_NAME="$CL_SESSION" CLAUDE_PROJECT_DIR="$ROOT" claude "${args[@]}" ) >"$log" 2>&1 &
+  ( cd "$ROOT" && exec env AOS_A2A_NAME="$CL_SESSION" CLAUDE_PROJECT_DIR="$ROOT" claude "${args[@]}" ) >"$log" 2>&1 &
   capture_pid "$!"
 }
 
@@ -193,13 +200,14 @@ run_claude() {
 # expected send outputs it printed. Used by the prompt-driven Turns that run
 # `aos-a2a send` inside a real harness session (items 3, ring claude, agy orch).
 wait_logged() { # wait_logged <name> <pid> <log> <marker> [misses-marker...]
-  local name="$1" pid="$2" log="$3" marker="$4"
+  # Deadline: TURN_TIMEOUT_CURRENT (busy claude turns, max(TIMEOUT,90)) or TIMEOUT.
+  local name="$1" pid="$2" log="$3" marker="$4" deadline="${TURN_TIMEOUT_CURRENT:-$TIMEOUT}"
   local t0
   t0=$(date +%s)
   while kill -0 "$pid" 2>/dev/null; do
-    if [ "$(( $(date +%s) - t0 ))" -ge "$TIMEOUT" ]; then
+    if [ "$(( $(date +%s) - t0 ))" -ge "$deadline" ]; then
       kill "$pid" 2>/dev/null
-      fail "$name" "turn exceeded ${TIMEOUT}s (hook/permission-settings failure is likelier than a timeout; tail: $(trunc "$(tail -c 200 "$log")"))"
+      fail "$name" "turn exceeded ${deadline}s (hook/permission-settings failure is likelier than a timeout; tail: $(trunc "$(tail -c 200 "$log")"))"
       return 0
     fi
     sleep 2
@@ -221,24 +229,59 @@ wait_logged() { # wait_logged <name> <pid> <log> <marker> [misses-marker...]
 # hook registers a known name instead of `opencode-<8 chars>`. E5: no echo
 # fallback exists; a leg that never comes up live is reported as FAIL.
 
+# ---- OpenCode bring-up -----------------------------------------------------------
+# Verified in the docs (2026-10): https://opencode.ai/docs/server — headless HTTP
+# server: `opencode serve [--port <number>] [--hostname <string>]` (the bare
+# `opencode` command is the TUI and must NOT be used here); POST /session with
+# body `{ parentID?, title? }` creates a session. https://opencode.ai/docs/plugins —
+# local project plugins live in `.opencode/plugins/` and are loaded automatically
+# at startup; the opencode.json `plugin` array is for npm packages.
+oc_log_tail() { tail -n 20 "$1" 2>/dev/null | tr '\n' ' '; }
+
 check_item1() {
-  local op_pid
+  local log
   mkdir -p "$OC_WORK_DIR"
   if need opencode; then
     local oc_env=()
     if [ -n "${A2A_E2E_PROXY:-}" ]; then
       oc_env+=(HTTP_PROXY="$A2A_E2E_PROXY" HTTPS_PROXY="$A2A_E2E_PROXY")
     fi
-    # Real repo flags: `opencode ... --port 0 --hostname 127.0.0.1`; the repo
-    # plugin's session-start hook is expected to register the sidecar.
-    ( exec env ${oc_env[@]+"${oc_env[@]}"} AOS_A2A_NAME="$OC_SESSION" opencode --port 0 --hostname 127.0.0.1 ) \
-      >"$TMP_DIR/opencode-serve.log" 2>&1 &
-    op_pid=$!
+    log="$TMP_DIR/opencode-serve.log"
+    # `opencode serve --port 0 --hostname 127.0.0.1` (docs-verified), cwd = the
+    # scratch project dir whose .opencode/plugins/bdb-aos.js re-exports the repo
+    # plugin. The plugin only starts the sidecar when a session exists
+    # (session.created -> ensureBus -> ensureSidecar), so after the URL is
+    # parsed a session is created over the HTTP API, then the registry is polled.
+    ( cd "$OC_WORK_DIR" && exec env ${oc_env[@]+"${oc_env[@]}"} \
+        AOS_A2A_NAME="$OC_SESSION" AOS_SESSIONS_DIR="$AOS_SESSIONS_DIR" \
+        AOS_BUS_ROOT="$AOS_BUS_ROOT" AOS_A2A_INBOX="$AOS_A2A_INBOX" \
+        NO_PROXY="127.0.0.1,localhost,::1" no_proxy="127.0.0.1,localhost,::1" \
+        opencode serve --port 0 --hostname 127.0.0.1 ) \
+      >"$log" 2>&1 &
+    local op_pid=$!
     capture_pid "$op_pid"
-    if wait_for "$OC_SESSION"; then
-      pass "item1-opencode-registered"
+    local oc_url="" t0
+    t0=$(date +%s)
+    while :; do
+      # UNVERIFIED exact log line: the docs give no "listening" line format for
+      # serve, so parse any http://127.0.0.1:<port> the log prints.
+      oc_url="$(grep -oE 'http://127\.0\.0\.1:[0-9]+' "$log" 2>/dev/null | tail -n 1)"
+      [ -n "$oc_url" ] && break
+      if ! kill -0 "$op_pid" 2>/dev/null; then break; fi
+      if [ "$(( $(date +%s) - t0 ))" -ge "$TIMEOUT" ]; then break; fi
+      sleep 1
+    done
+    if [ -n "$oc_url" ] && \
+       curl -sf --noproxy '*' --max-time 10 -X POST "$oc_url/session" \
+         -H 'content-type: application/json' -d "{\"title\":\"$OC_SESSION\"}" \
+         >/dev/null 2>&1; then
+      if wait_for "$OC_SESSION"; then
+        pass "item1-opencode-registered"
+      else
+        fail "item1-opencode" "$OC_SESSION not registered (serve log tail: $(oc_log_tail "$log"))"
+      fi
     else
-      fail "item1-opencode" "$OC_SESSION did not come up live"
+      fail "item1-opencode" "serve URL not parsed or POST $oc_url/session failed (endpoint verified in https://opencode.ai/docs/server; log tail: $(oc_log_tail "$log"))"
     fi
   else
     (node "$A2A_BIN" serve --name "$OC_SESSION" --harness opencode --mode echo --parent-pid "$$") \
@@ -249,13 +292,18 @@ check_item1() {
 
   mkdir -p "$CL_WORK_DIR"
   if need claude; then
-    # Item 1 second half: one real claude turn; the repo hooks (via
-    # CLAUDE_PROJECT_DIR) should register e2e-claude.
-    run_claude "Reply with the number 1." "$TMP_DIR/claude-turn-1.log"
+    # `claude -p` is ONE turn: the SessionStart hook (.claude/hooks/a2a-session.mjs,
+    # sidecar name = AOS_A2A_NAME) registers the sidecar only while the turn
+    # runs, so the turn is kept BUSY while item 2 sends its probe; inbound A2A
+    # is delivered at the UserPromptSubmit drain or the Stop hook
+    # (.claude/hooks/a2a-inbox.mjs, exit 2 on first Stop), which forces the
+    # reply via `aos-a2a reply`. cwd = ROOT so the repo hooks and permissions load.
+    local busy_prompt='Keep this turn busy: first run sleep 45 via the Bash tool, then say done. If sleep is not permitted, instead write a 1000-word essay on bash quoting, then say done.'
+    run_claude "$busy_prompt" "$TMP_DIR/claude-turn-1.log"
     if wait_for "$CL_SESSION"; then
       pass "item1-claude-registered"
     else
-      fail "item1-claude" "$CL_SESSION did not come up live"
+      fail "item1-claude" "$CL_SESSION did not come up live (turn log tail: $(trunc "$(tail -c 200 "$TMP_DIR/claude-turn-1.log")"))"
     fi
   else
     (node "$A2A_BIN" serve --name "$CL_SESSION" --harness claude --mode echo --parent-pid "$$") \
@@ -279,7 +327,9 @@ claude_send_turn() { # claude_send_turn <check-name> <target> <marker>
   log="$TMP_DIR/$name.log"
   prompt="Run this exact Bash command unchanged, then print its full JSON output followed by the line $marker: aos-a2a send --to $target \"$PROBE_TEXT\""
   run_claude "$prompt" "$log" "--allowedTools" "Bash(aos-a2a send:*)"
+  TURN_TIMEOUT_CURRENT="$CL_TURN_TIMEOUT"
   wait_logged "$name" "$(tail -n 1 "$PIDS")" "$log" "$marker"
+  TURN_TIMEOUT_CURRENT=""
 }
 
 check_item3() {
@@ -323,7 +373,9 @@ ring_claude_turn() { # claude-source sends (claude->agy, claude->codex)
 Print all output blocks and then the line ZC-RING-CLAUDE-DONE."
   local log="$TMP_DIR/ring-claude.log"
   run_claude "$prompt" "$log" "--allowedTools" "Bash(aos-a2a send:*)"
+  TURN_TIMEOUT_CURRENT="$CL_TURN_TIMEOUT"
   wait_logged "ring-claude-send" "$(tail -n 1 "$PIDS")" "$log" "ZC-RING-CLAUDE-DONE" "ZC-CL-AGY-OK" "ZC-CL-CODEX-OK"
+  TURN_TIMEOUT_CURRENT=""
 }
 
 ring_checks() {
@@ -488,14 +540,22 @@ trap 'exit 130' TERM
 # ---- dry-run plan (before ANY side effect: no mktemp, no mkdir, no traps here) -----
 
 dry_run_plan() {
+  local ROOT_PLACEHOLDER="<ROOT>"
   echo "dry-run plan (nothing will be started, sent or created):"
   echo "  1. prereqs: locate node, opencode, claude, agy (only with A2A_E2E_AGY=1), codex (only with A2A_E2E_CODEX=1), node bin/aos-a2a.mjs and bin/go-check.mjs; resolve ROOT from this script's location (three levels up)."
   echo "  2. setup: one 'mktemp -d' TMP_DIR holding the isolated A2A registry (AOS_SESSIONS_DIR), bus inbox (AOS_BUS_ROOT, AOS_A2A_INBOX) and scratch projects; unset proxy env and export NO_PROXY=127.0.0.1,localhost,::1; proxy (${A2A_E2E_PROXY:+A2A_E2E_PROXY only} in OpenCode launches, never elsewhere)."
   echo "  3. snapshot the ~/.config/opencode shasum read-only (read-only; SKIP the end-of-run check if that dir is absent)."
-  echo "  4. item 1: start 'opencode --port 0 --hostname 127.0.0.1' in a scratch project; wait until $OC_SESSION appears in 'aos-a2a list'."
-  echo "  5. item 1: one 'claude -p \"Reply with the number 1.\"' ${A2A_E2E_MODEL:+--model $A2A_E2E_MODEL }in a scratch project (CLAUDE_PROJECT_DIR); wait until $CL_SESSION appears in 'aos-a2a list'."
+  echo "  4. item 1: in the scratch project <TMP>/oc-project (holding .opencode/plugins/bdb-aos.js, which re-exports <ROOT>/.opencode/plugins/bdb-aos.js) start:"
+  echo "       env AOS_A2A_NAME=$OC_SESSION AOS_SESSIONS_DIR=<TMP>/sessions AOS_BUS_ROOT=<TMP>/bus AOS_A2A_INBOX=<TMP>/inbox${A2A_E2E_PROXY:+ HTTP_PROXY=$A2A_E2E_PROXY HTTPS_PROXY=$A2A_E2E_PROXY} NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 opencode serve --port 0 --hostname 127.0.0.1   # cwd: <TMP>/oc-project"
+  echo "     parse http://127.0.0.1:<port> from the serve log, then create the session over the HTTP API (https://opencode.ai/docs/server):"
+  echo "       curl -sf --noproxy '*' -X POST http://127.0.0.1:<port>/session -H 'content-type: application/json' -d '{\"title\":\"$OC_SESSION\"}'"
+  echo "     then wait until $OC_SESSION appears in 'aos-a2a list'; on failure FAIL with the last 20 serve-log lines."
+  echo "  5. item 1: the busy claude turn, so its SessionStart-hook sidecar (AOS_A2A_NAME=$CL_SESSION) stays registered while item 2 sends:"
+  echo "       cd $ROOT_PLACEHOLDER && env AOS_A2A_NAME=$CL_SESSION CLAUDE_PROJECT_DIR=$ROOT_PLACEHOLDER claude -p 'Keep this turn busy: first run sleep 45 via the Bash tool, then say done. If sleep is not permitted, instead write a 1000-word essay on bash quoting, then say done.' --output-format text${A2A_E2E_MODEL:+ --model $A2A_E2E_MODEL}"
+  echo "     then wait until $CL_SESSION appears in 'aos-a2a list'."
   echo "  6. item 2: 'aos-a2a send --from $OC_SESSION --to $CL_SESSION \"What is 2+3?...\"' --timeout $TIMEOUT; assert COMPLETED with artifact containing 5."
-  echo "  7. item 3: a claude turn is prompted to run the Bash call 'aos-a2a send --to $OC_SESSION \"What is 3+4?...\"'; assert artifact contains 7; if the send call never ran, report as a hook/permission-settings failure, not a timeout."
+  echo "  7. item 3: a claude turn is prompted to run the Bash call 'aos-a2a send --to $OC_SESSION \"What is 3+4?...\"'; assert artifact contains 7; if the send call never ran, report as a hook/permission-settings failure, not a timeout. Exact claude turn launch:"
+  echo "       cd $ROOT_PLACEHOLDER && env AOS_A2A_NAME=$CL_SESSION CLAUDE_PROJECT_DIR=$ROOT_PLACEHOLDER claude -p '<nonce probe text> ... aos-a2a send --to $OC_SESSION \"<probe>\"' --output-format text --allowedTools 'Bash(aos-a2a send:*)'"
   echo "  8. item 4: 'node bin/go-check.mjs --session $CL_SESSION --command \"git push\"' WITHOUT --consume; capture exit code and output separately; assert exit 1 and ok:false; then send the A2A message 'GO $CL_SESSION' to that session and assert exit 1 and ok:false again."
   echo "  9. #live-ring (agy legs need A2A_E2E_AGY=1, codex legs A2A_E2E_CODEX=1, otherwise SKIP naming the flag): a claude turn sends claude->agy (What is 4+4?) and claude->codex (What is 5+5?); aos-a2a sends for opencode->claude (5), claude->opencode (7), and when agy/codex enabled: agy<->opencode (6/6), agy->claude (7+7=14), codex->claude (9), claude->codex (10); every ordered pair at least once."
   echo " 10. #agy-orch-check (A2A_E2E_AGY=1 and agy present, else SKIP; ${A2A_E2E_AGY_YOLO:+--dangerously-skip-permissions [A2A_E2E_AGY_YOLO=1]}${A2A_E2E_AGY_YOLO:-no skip-permissions flag}): one agy turn sends to the OpenCode session and the Claude session, then starts one OpenCode worker via 'aos-acp opencode --name e2e-agy-worker --cwd <tmp>/agy-worker --prompt \"Reply with the number 3 only.\" --allow-default allow --go-wait 600 --timeout 1800'."
@@ -530,6 +590,16 @@ main() {
   # scratch dirs under $TMP_DIR so no worktree state is touched.
   mkdir -p "$AOS_SESSIONS_DIR" "$AOS_BUS_ROOT" "$AOS_A2A_INBOX" \
     "$OC_WORK_DIR" "$CL_WORK_DIR" "$AGY_WORK_DIR/agy-worker"
+  # Scratch project plugin shim: `opencode serve` runs with cwd =
+  # $OC_WORK_DIR, so project-local plugins are discovered there
+  # (https://opencode.ai/docs/plugins). The shim re-exports the repo plugin by
+  # absolute path instead of copying directories (the repo plugin's relative
+  # imports resolve from its own import.meta.url inside the repo).
+  mkdir -p "$OC_WORK_DIR/.opencode/plugins"
+  {
+    printf "import BdbAos from '%s';\n" "$ROOT/.opencode/plugins/bdb-aos.js"
+    printf 'export default BdbAos;\n'
+  } >"$OC_WORK_DIR/.opencode/plugins/bdb-aos.js"
   : >"$PIDS"
   snapshot_opencode_config
 
