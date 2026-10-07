@@ -83,4 +83,26 @@ describe('(1) opaque bodies are split statement-wise, not by whitespace only', (
     });
 });
 
+// ---------------------------------------------------------------------------
+// (2) the option scan reaches -c past earlier options and their values.
+// ---------------------------------------------------------------------------
+describe('(2) shell options are scanned until -c', () => {
+    test('null: -c after -o/--rcfile and their values is found', () => {
+        scopes("bash -o pipefail -c 'g=git; p=push; $g $p origin HEAD:main'", null);
+        scopes("bash --rcfile /x/r -c 'g=git; p=push; $g $p origin HEAD:main'", null);
+        scopes("sh -O globstar -c 'g=git; p=push; $g $p origin HEAD:main'", null);
+    });
+    test('[] unchanged: bodies behind such options stay free without a $ head', () => {
+        scopes("bash -o pipefail -c 'echo hi'", []);
+        scopes("bash --rcfile /x/r -c 'echo hi'", []);
+    });
+    test('hook: the option-hidden body needs a plain GO', () => {
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked("bash -o pipefail -c 'g=git; p=push; $g $p origin HEAD:main'");
+        add(human('GO'));
+        ok("bash -o pipefail -c 'g=git; p=push; $g $p origin HEAD:main'");
+    });
+});
+
 module.exports = {};

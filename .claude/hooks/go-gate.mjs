@@ -647,8 +647,16 @@ function opaqueBodyWords(toks) {
     let body = null;
     if (h === "eval") { if (/^['"]/.test(toks[i + 1] ?? "")) body = toks[++i]; }
     else if (SHELLS.test(h)) {
+      // Every option token is scanned, not just the first: `bash -o pipefail -c '...'` reaches
+      // -c. -o/-O and --rcfile/--init-file take a value, which is skipped whole; any other
+      // option is its own token. The first token after -c is the body.
       let j = i + 1, sawC = false;
-      while (j < toks.length && /^-/.test(toks[j])) { if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(unqQ(toks[j]))) sawC = true; j++; }
+      while (j < toks.length) {
+        const o = unqQ(toks[j]);
+        if (!/^-/.test(o)) break;
+        if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(o)) { sawC = true; break; }
+        if (/^(?:-[oO]|--rcfile|--init-file)$/.test(o)) j += 2; else j++;
+      }
       if (sawC && toks[j]) { body = toks[j]; i = j; }
     }
     if (body) {
