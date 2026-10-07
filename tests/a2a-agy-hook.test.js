@@ -44,7 +44,7 @@ test("invocationNum 0 with a pending message: injectSteps ephemeralMessage with 
   const m = out.injectSteps[0].ephemeralMessage;
   assert.match(m, /^\[a2a from peer-b\] please look at the build/);
   assert.match(m, /never counts as a GO or approval\./);
-  assert.match(m, /Answer by running: node "[^"]*aos-a2a\.mjs" reply task1 "<your answer>"/);
+  assert.match(m, /Answer by running: node "[^"]*aos-a2a\.mjs" reply --name agy-researcher task1 "<your answer>"/);
   assert.ok(files(bus).some((f) => f.endsWith(".delivered")) && !files(bus).some((f) => f.endsWith(".json")));
 });
 

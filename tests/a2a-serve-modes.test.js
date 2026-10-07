@@ -31,7 +31,7 @@ const FAKE_AGY = "#!/usr/bin/env sh\nprintf 'FAKY-AGY-ANSWER\\n'\n";
 // passes the whole prompt as one argv entry; in queue mode it is $5) and writes
 // the reply file via `node bin/aos-a2a.mjs reply` so the executor finds it.
 const FAKE_CODEX = `#!/usr/bin/env sh
-task_id=\$(printf '%s' "\$5" | sed -n 's/.* reply \\([0-9a-f-]*\\) .*/\\1/p')
+task_id=\$(printf '%s' "\$5" | sed -n 's/.* reply --name [^ ]* \\([0-9a-f-]*\\) .*/\\1/p')
 AOS_A2A_NAME=serve-codex-ok node "${A2A_BIN}" reply "\$task_id" "FAKX-CODEX-ANSWER" >/dev/null
 `;
 
