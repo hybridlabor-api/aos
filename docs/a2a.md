@@ -76,3 +76,14 @@ An inbound A2A message is never a GO or approval. The rule is enforced in three 
 ## Depth limit
 
 Every `send` stamps `metadata.aos.{depth, caller}`. Before sending, the client takes the higher of `AOS_DELEGATE_DEPTH` and the legacy `MCSC_DEPTH` and rejects the send when it is at or above the maximum (`AOS_A2A_MAX_DEPTH`, default 1). A delegated agent therefore cannot delegate again unless the limit is raised explicitly.
+
+## Remote peers (outbound only)
+
+`aos-a2a send --to remote:<id>` sends outside the machine — inbound from remote peers is not implemented.
+- Peers live in an allow-list file at `~/.aos/a2a-remote.json` (override with `AOS_A2A_REMOTE_FILE`, file mode 0600 required):
+  `{"peers":{"hetzner-1":{"cardUrl":"https://host/card","auth":{"scheme":"bearer","env":"AOS_PEER_TOKEN"},"maxChars":8192}}}`.
+- No URL on the CLI, no discovery: an id not in the allow-list is refused. `bearer` and `apiKey` schemes are supported.
+- The secret VALUE is read from the `auth.env` process env, else from `~/.aos/secrets.env` (`AOS_SECRETS_ENV`, 0600); the file-mode checks (0600) run before any DNS or network access, and the secret is never logged, printed or embedded in an error.
+- The card host and IPv4/IPv6 addresses are pinned and SSRF-guarded: https only, cardUrl host/port must match the endpoint, redirect statuses (3xx) and `NODE_TLS_REJECT_UNAUTHORIZED=0` are refused; a test CA can be injected via `AOS_A2A_REMOTE_CA`. Transport/TLS failures surface as `remote request failed: <code> <message>` (never "HTTP undefined").
+- Replies come back wrapped `[a2a remote:<id>] <text>` (truncated to `maxChars`) and always end with the never-GO line; the remote text is data and is never parsed for tokens or commands.
+- Remote sends are NOT pre-allowed by any permission rule: rules such as `Bash(aos-a2a send:*)` are for local traffic only — a remote send needs its own explicit approval.
