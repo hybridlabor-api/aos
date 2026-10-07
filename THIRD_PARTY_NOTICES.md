@@ -614,3 +614,15 @@ Ported to `skills/global_config/agentic-harness-patterns/` (English variant only
 | `skills/global_config/agentic-harness-patterns/SKILL.md` | `skills/agentic-harness-patterns/SKILL.md` (frontmatter: added `category` and `metadata`) |
 | `skills/global_config/agentic-harness-patterns/metadata.json` | `skills/agentic-harness-patterns/metadata.json` |
 | `skills/global_config/agentic-harness-patterns/references/**` | `skills/agentic-harness-patterns/references/**` (unchanged) |
+
+---
+
+## DeusData/codebase-memory-mcp
+
+- **Upstream:** <https://github.com/DeusData/codebase-memory-mcp>
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
+- **Copyright:** Copyright (c) 2025 DeusData
+
+Not vendored: the AOS installer ships no upstream code or binary — it only references the
+upstream MCP server (opt-in registration in `mcp_picks.json`, gated on the binary being
+installed) and curates `skills/codebase-memory/SKILL.md` as original documentation of it.
