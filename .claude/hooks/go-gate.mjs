@@ -661,10 +661,12 @@ function catchAll(tok, seg, opaque = false) {
   const after = (i, set) => w.slice(i + 1).some((x) => set.test(x));
   const raw = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(unq);
   if (opaque && cposDollar(w)) return true;
+  let cmd = true; // the first word of any segment text is a command position
   for (let i = 0; i < w.length; i++) {
-    // a computed head that a later guarded verb would complete (`$x push`, `$D rm -rf x`,
-    // also outside opaque text, where segment splitting detached it from its shell wrapper)
-    if (/^[$`\u0001\u0002]/.test(w[i]) && after(i, GUARDED_NOUN)) return true;
+    // a computed head that a later guarded verb would complete (`$x push`, `$D rm -rf x`).
+    // Only in command position (tracked like cposDollar), unless opaque where the shell text
+    // can sit anywhere between built words: `echo $X config` is data and stays free.
+    if ((cmd || opaque) && /^[$`\u0001\u0002]/.test(w[i]) && after(i, GUARDED_NOUN)) return true;
     if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
     // a commit that skips hooks or signing, inside sh -c / eval / xargs
     if ((w[i] === "git" || w[i] === "hub") && w.slice(i + 1).includes("commit") && raw.slice(i + 1).some((x) => COMMIT_WORD_BYPASS.test(x) || /^[$\x60]/.test(x) || (/^-/.test(x) && /[$\x60]/.test(x)))) return true;
@@ -674,6 +676,7 @@ function catchAll(tok, seg, opaque = false) {
     if (w[i] === "gh" && after(i, /^(?:merge|create|delete|edit|comment|close|review|api|sync)$/)) return true;
     if (/^(?:np|release-it|semantic-release)$/.test(w[i]) || (w[i] === "changeset" && after(i, /^publish$/))) return true;
     if (w[i] === "rm" && w.slice(i + 1).some((x) => /^-[a-zA-Z]*[rR]/.test(x) || x === "--recursive")) return true;
+    cmd = CPOS_JOINER.test(w[i]);
   }
   return false;
 }

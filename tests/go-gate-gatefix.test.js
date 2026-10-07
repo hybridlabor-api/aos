@@ -241,4 +241,20 @@ describe('(f) all-ro mounts stay free even without --rm', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// (g) the dollar-word/guarded-noun rule fires only in opaque text or command positions.
+// ---------------------------------------------------------------------------
+describe('(g) harmless data words keep their decision outside opaque command text', () => {
+    test('[]: a guarded-noun word after a dollar-argument of a reader is data', () => {
+        scopes('echo $X config', []);
+        scopes('echo $X config > out.log', []);
+        scopes('grep $pat config', []);
+    });
+    test('null unchanged: opaque text and command positions still fail closed', () => {
+        scopes("sh -c 'echo $X; $g config user.name'", null);
+        scopes("sh -c 'echo $X config'", null);
+        scopes('$x config', null);
+    });
+});
+
 module.exports = {};
