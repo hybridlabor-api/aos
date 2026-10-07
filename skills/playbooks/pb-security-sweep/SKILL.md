@@ -42,6 +42,12 @@ What you get: one ranked findings report for the repo (blocking, should, note), 
 
 Run log: `production_artifacts/pb-security-sweep-<date>.md` in the start directory, never committed; the findings file stays in `production_artifacts/` and is not staged
 
+## Optional gate check: Strix
+
+- **Strix** (https://github.com/usestrix/strix) is an open-source autonomous AI penetration-testing agent: it runs your code dynamically, finds and validates vulnerabilities with working PoCs, and reports with CVSS/OWASP classification. Apache-2.0 licensed.
+- **Install path/binary** (as the README documents it): `curl -sSL https://strix.ai/install | bash`, binary `strix`; first run needs Docker and an LLM API key.
+- **This is optional.** Installation is a separate manual step that needs its own GO from the human — never install, run or download Strix as part of this playbook. If it is installed, `strix --target <repo>` can complement steps 1-3; its findings go through the same dedupe and rank step.
+
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
 - GO is by contract in every harness. The go-gate hook is only a backstop on Claude Code, OpenCode and agy (Codex: unverified; Cursor, Kimi: none). A missing hook is never permission to proceed.

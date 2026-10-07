@@ -41,6 +41,13 @@ What you get: posts per platform and clip cut-downs from your release recap, eve
 
 Run log: `production_artifacts/pb-social-pack-<date>.md` in the start directory, never committed
 
+## Optional silence-cut step: auto-editor
+
+- **auto-editor** (https://github.com/WyattBlue/auto-editor) cuts silent sections from a clip automatically — useful before scale/crop when the launch video is a talking-head recording.
+- **Preflight probe:** `auto-editor --version`. If the binary is missing or errors, log "auto-editor not installed: silence-cut skipped" and continue — the step never fails the run.
+- **Usage when present:** `auto-editor <launch_video> -o <out.mp4>` before the ffmpeg cut-downs in step 5; the cut-downs then take the silence-cut file as input.
+- Installing auto-editor (`pip install auto-editor`) is a manual opt-in step for the user — never pip-install it as part of this playbook.
+
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.
 - A failed check stops the run: write the failure into the run log and report. No silent retries.

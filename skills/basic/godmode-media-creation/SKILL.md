@@ -1,118 +1,63 @@
 ---
 name: godmode-media-creation
-description: "Use when assembling video timelines, syncing beats, or executing media creation via OpenMontage, Palmier Pro, or TouchDesigner audio/visuals."
+description: "Use when assembling video timelines, rendering code-driven motion graphics, or executing media creation via Remotion, OpenMontage, or TouchDesigner audio/visuals."
 category: media-eventtech
 ---
 
-# 🎬 Godmode Media Creation: MCP-First Video & Media Pipeline
+# 🎬 Godmode Media Creation: CLI-First & Hybrid MCP Media Pipeline
 
-You are the Master Orchestrator for all media creation workflows within the BDB Creator OS. This skill operates on an **MCP-First paradigm**, translating user creative intent into explicit JSON tool call payloads for video editing, timeline creation, audio-video synchronization, and AI video rendering.
+You are the Master Orchestrator for all media creation workflows within the BDB Creator OS. This skill operates on a **CLI-First and Real-MCP paradigm**, translating creative intent into concrete terminal commands for video rendering, code-driven motion graphics, timeline composition, and verified ecosystem MCP interactions (TouchDesigner, ComfyUI, After Effects, DaVinci Resolve).
 
 ---
 
 ## 1. Engine & Local Backend Architecture
 
-The core local video generation backends are hosted within the Creator Extension:
+The core local video generation backends are hosted within the Creator Extension (external module, not part of this repo):
 `bdb-dev-creator-extension/engines/video/`
 
 ### Primary Engines & Services:
-* **OpenMontage** (`engines/video/openmontage`): Storyboarding, script analysis, multi-track sequence assembly, and timeline orchestration.
-* **Palmier Pro** (`engines/video/palmier-pro`): High-precision NLE timeline editing, color grading, audio beat synchronization, and export workflows.
-* **Video Shotcraft** (`engines/video/video-shotcraft`): Generative shot planning, camera movement prompting, and multi-shot composition.
-* **TouchDesigner Media MCP** (`bdb_td_minddesigner`): Provides real-time generative audio and generative art tools (e.g. `create_generative_audio`, `create_generative_art` MCP tools).
+* **Video Shotcraft** (`engines/video/video-shotcraft`): Production-grade Remotion template engine with programmatic motion graphics, shot recipe cards, and CLI video rendering.
+* **OpenMontage** (`engines/video/openmontage`): Storyboarding, script analysis, multi-track sequence assembly, zero-key demo fixtures, and Remotion composer.
+* **Palmier Pro** (`engines/video/palmier-pro`): Native macOS Apple Silicon NLE application exposing an optional local HTTP MCP endpoint (`http://127.0.0.1:19789/mcp`) when running on the desktop.
+* **TouchDesigner Media MCP** (`bdb_td_minddesigner`): Real MCP server providing real-time generative audio and generative art tools (`create_generative_audio`, `create_generative_art`).
+* **ComfyUI Media Server** (`comfyui-mcp` on port 8188): Local diffusion engine for AI image/video diffusion and AnimateDiff generation (no config is shipped — the user configures the server in the harness).
 
 ---
 
-## 2. Concrete MCP Tool Call Specifications
+## 2. Concrete CLI & Real MCP Execution Specifications
 
-When executing media workflows, construct valid JSON payloads for the targeted MCP servers.
+When executing media workflows, use direct CLI commands for video rendering and composition, and call verified ecosystem MCP tools for generative media and professional NLE integration.
 
-### A. OpenMontage MCP (`openmontage_mcp`)
-Use `create_video_timeline` to structure multi-shot sequences, assemble video assets, and manage sequence transitions.
+### A. Motion & Promo Video: Video Shotcraft Remotion CLI (external: Creator Extension)
+Render programmatic motion graphics, promotional sequences, and kinetic typography directly via Remotion CLI:
 
-```json
-{
-  "tool": "create_video_timeline",
-  "server": "openmontage_mcp",
-  "arguments": {
-    "timeline_name": "cinematic_promo_v1",
-    "fps": 30,
-    "resolution": {
-      "width": 1920,
-      "height": 1080
-    },
-    "tracks": [
-      {
-        "track_id": "video_main",
-        "type": "video",
-        "clips": [
-          {
-            "clip_id": "shot_01",
-            "source_path": "./assets/shots/intro_landscape.mp4",
-            "start_time": 0.0,
-            "duration": 4.5,
-            "in_point": 0.0,
-            "out_point": 4.5
-          },
-          {
-            "clip_id": "shot_02",
-            "source_path": "./assets/shots/performance_stage.mp4",
-            "start_time": 4.5,
-            "duration": 5.0,
-            "in_point": 1.0,
-            "out_point": 6.0
-          }
-        ]
-      },
-      {
-        "track_id": "audio_bgm",
-        "type": "audio",
-        "clips": [
-          {
-            "clip_id": "bgm_track",
-            "source_path": "./assets/audio/synthwave_120bpm.wav",
-            "start_time": 0.0,
-            "duration": 9.5,
-            "volume_db": -3.0
-          }
-        ]
-      }
-    ],
-    "export_format": "mp4"
-  }
-}
+```bash
+# Render promotional video composition (1080p @ 30fps):
+npx --prefix engines/video/video-shotcraft/template remotion render src/index.ts AiflPromo <output_path.mp4>
+
+# Render single QA still frame (e.g. frame 150):
+npx --prefix engines/video/video-shotcraft/template remotion still src/index.ts AiflPromo <output_path.png> --frame=150
 ```
 
-### B. Palmier Pro MCP (`palmier_pro_mcp`)
-Use `sync_audio_beat` to align video cut points, motion effects, or markers precisely to audio transients and beat grids.
+### B. Video Composition & Montage: OpenMontage CLI (external: Creator Extension)
+Render automated multi-shot sequence montages or preview demo fixtures:
 
-```json
-{
-  "tool": "sync_audio_beat",
-  "server": "palmier_pro_mcp",
-  "arguments": {
-    "audio_source": "./assets/audio/synthwave_120bpm.wav",
-    "timeline_id": "cinematic_promo_v1",
-    "bpm": 120.0,
-    "beat_offset_ms": 15,
-    "quantize_grid": "1/4",
-    "target_video_track": "video_main",
-    "transition_effect": "crossfade",
-    "transition_duration_frames": 6,
-    "ducking": {
-      "enabled": true,
-      "threshold_db": -18.0,
-      "attenuation_db": -6.0
-    }
-  }
-}
+```bash
+# List available automated demo templates:
+python engines/video/openmontage/render_demo.py --list
+
+# Render automated demo composition:
+python engines/video/openmontage/render_demo.py <demo>
+# e.g.: python engines/video/openmontage/render_demo.py code-to-screen
+
+# Render custom props via Remotion Composer:
+npx --prefix engines/video/openmontage/remotion-composer remotion render src/index.tsx Explainer <output_path.mp4> --props <props.json> --codec h264
 ```
 
-### C. Generative Audio & Visual Tools (`bdb_td_minddesigner`)
-Audio and visual generation tools are provided as direct MCP tools on `bdb_td_minddesigner` (not external skills):
-* `create_generative_audio`: Generates audio loops, synthesizes procedural soundscapes, or creates audio stems inside TouchDesigner.
-* `create_generative_art`: Generates real-time procedural textures or video buffers.
+### C. Generative Audio & Visual Art: Real MCP (`bdb_td_minddesigner`)
+Invoke verified TouchDesigner MCP tools to synthesize procedural soundscapes, audio stems, and real-time generative textures:
 
+* **Generative Audio Synthesis (`create_generative_audio`):**
 ```json
 {
   "tool": "create_generative_audio",
@@ -132,47 +77,121 @@ Audio and visual generation tools are provided as direct MCP tools on `bdb_td_mi
 }
 ```
 
+* **Generative Visual Art (`create_generative_art`):**
+```json
+{
+  "tool": "create_generative_art",
+  "server": "bdb_td_minddesigner",
+  "arguments": {
+    "parent_path": "/project1",
+    "node_name": "generative_visuals",
+    "palette": "neon_cyber",
+    "resolution": [1920, 1080]
+  }
+}
+```
+
+### D. AI Video & Diffusion: ComfyUI (`comfyui-mcp` on port 8188)
+Queue diffusion workflows for video synthesis, style transfer, and frame interpolation:
+
+```json
+{
+  "tool": "check_comfyui_health",
+  "server": "comfyui-mcp",
+  "arguments": {}
+}
+```
+
 ---
 
-## 3. Workflow Execution Pipeline
+## 3. Workflow Routing & Execution Pipeline
 
-1. **Verify MCP Connectivity:** Verify `openmontage_mcp`, `palmier_pro_mcp`, and `bdb_td_minddesigner` are connected.
-2. **Storyboarding & Shot Planning:** Define timeline layout and parameters using `openmontage_mcp` (`create_video_timeline`).
-3. **Asset Generation:** Invoke generative tools on `bdb_td_minddesigner` or external render nodes for required media elements.
-4. **Beat Sync & Final NLE Polish:** Pass timeline and audio assets to `palmier_pro_mcp` (`sync_audio_beat`) for frame-accurate cut synchronization and audio ducking.
-5. **Export & Delivery:** Render out final composition with verified codecs (H.264/ProRes) and matching frame rate.
+Route media tasks based on output type, timeline control needs, and target fidelity:
 
+1. **Code-Driven Motion Graphics & Promotional Video:**
+   - **Primary Action:** Remotion CLI via Video Shotcraft.
+   - **Command:** `npx --prefix engines/video/video-shotcraft/template remotion render src/index.ts AiflPromo <output_path.mp4>`
+   - **Output:** Frame-accurate `.mp4` rendered programmatically.
+
+2. **Automated Multi-Shot Video Composition:**
+   - **Primary Action:** OpenMontage CLI or Remotion Composer.
+   - **Command:** `python engines/video/openmontage/render_demo.py <demo>`
+   - **Output:** Assembled video sequence from storyboarded assets.
+
+3. **Generative Audio & Sound Design:**
+   - **Primary Action:** Real MCP `bdb_td_minddesigner` (`create_generative_audio`).
+   - **Output:** Synced procedural audio stems and synth waveforms.
+
+4. **Procedural Visual Textures & Real-Time Media:**
+   - **Primary Action:** Real MCP `bdb_td_minddesigner` (`create_generative_art`, `create_audio_reactive`, `create_feedback_network`).
+   - **Output:** Real-time visual network buffers.
+
+5. **AI Video Diffusion & Style Transfer:**
+   - **Primary Action:** ComfyUI server on port 8188 via `comfyui-mcp`.
+   - **Output:** Rendered AI video frames.
+
+---
+
+## 4. Hardware Constraints & Resilient Fallback Matrix
+
+When headless environments, platform limitations, or pro NLE integrations are required, apply the integrated fallback routes:
+
+1. **Professional NLE Timeline & Post-Production Fallback:**
+   - For timeline assembly, layer adjustments, and multi-track color grading, dispatch to verified professional NLE MCP servers:
+     * **`bdb_after_effects_mcp`**: Composition creation, layer keyframes, effects (`ae_create_composition`, `apply-effect`, `setLayerKeyframe`).
+     * **`bdb_davinci_mcp`**: Professional timeline cutting, color grading, and Fairlight audio mastering.
+
+2. **Interactive Desktop NLE Bridge (Palmier Pro):**
+   - In macOS Apple Silicon desktop environments where the user has Palmier Pro open, an optional local HTTP MCP server (`http://127.0.0.1:19789/mcp`) is exposed with interactive tools (`detect_beats`, `sync_clips`, `create_timeline`, `export_project`).
+   - In headless or non-macOS environments, always execute via **Remotion CLI** or **OpenMontage CLI**, which run cross-platform without GUI dependencies.
+
+3. **Diffusion Video Fallback:**
+   - If local GPU resources are insufficient for ComfyUI video diffusion on port 8188, fall back to procedural TouchDesigner visuals via `bdb_td_minddesigner` (`create_generative_art`) or code-driven Remotion particle animations.
+
+---
+
+## 5. External Render Path: onetake
+
+When a look brief needs a rendered clip and Hyperframes is not available on this machine, suggest **onetake** (https://github.com/feitangyuan/onetake) as the render path.
+
+- **Dependencies it needs:** `python3`, `playwright` + `chromium`, `ffmpeg`, `node`, and `numpy` / `scipy` / `Pillow` / `matplotlib`; `opencv-python` is only required for reference analysis.
+- **Licence:** onetake is PolyForm Noncommercial — non-commercial use only. Check before using it for client work.
+- **Install:** none is executed here. Cloning the repository is a manual step the user performs themselves.
+
+---
 
 ## Overview
-This skill orchestrates offline and real-time media creation, coordinating storyboarding, timeline assembly, and beat-syncing via OpenMontage, Palmier Pro, and TouchDesigner.
+Godmode Media Creation orchestrates video rendering, code-driven motion graphics, timeline composition, and generative media using Remotion CLI, OpenMontage, TouchDesigner MCP, and professional post-production MCPs.
 
 ## When to Use
-- **Trigger:** The user needs to assemble a video timeline, synchronize clips to an audio beat, or generate real-time audiovisual art.
-- **Exclude:** Do not use for live show protocol routing or 3D CAD modeling.
+- **Trigger:** The user needs to render a promotional video, assemble a multi-shot video timeline, generate procedural audio/visual art, or produce AI video.
+- **Exclude:** Do not use for 3D CAD modeling or static print layouts.
 
 ## Core Process
-1. Verify connectivity with `openmontage_mcp` and `palmier_pro_mcp`.
-2. Use OpenMontage to define the multi-track timeline sequence and ingest source clips.
-3. If audio sync is required, use Palmier Pro's `sync_audio_beat` to align transients.
-4. Render the final composition matching the target frame rate and codec.
+1. Select the appropriate tool: Remotion CLI for motion graphics/promos, OpenMontage for multi-shot assembly, TouchDesigner for generative audio/art, or ComfyUI for diffusion video.
+2. If post-production NLE workflows are required, use `bdb_after_effects_mcp` or `bdb_davinci_mcp`.
+3. Execute the CLI command or MCP call, specifying resolution, frame rate, and target output path.
+4. Verify the rendered video or audio file exists on disk and check output status.
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
-| "I'll just eyeball the cut to the music." | Beat synchronization must be precise using Palmier Pro's grid and transient detection. |
-| "H.264 is fine for intermediate editing." | H.264 causes decoding lag; use ProRes or DNxHR for intermediate NLE timelines. |
-| "I'll generate the audio and video in one pass." | Generative audio and visuals should be created in separate passes via `bdb_td_minddesigner` to ensure sync. |
+| "I need an MCP to render Remotion videos." | Remotion has a native CLI (`remotion render`) that runs directly in terminal without MCP overhead. |
+| "I'll just eyeball cut timings." | Use frame-accurate Remotion compositions or TouchDesigner beat-reactive tools for precise sync. |
+| "H.264 is fine for all intermediate editing." | H.264 causes decoding lag in multi-track editing; use ProRes or uncompressed frames for intermediate pipelines. |
+| "I'll generate audio and video in one undocumented step." | Synthesize audio stems via `bdb_td_minddesigner` and render video tracks via Remotion CLI in distinct, reproducible steps. |
 
 ## Red Flags
 
-- Attempting to manually calculate beat offsets instead of using `sync_audio_beat`.
-- Outputting timelines with mismatched clip framerates.
-- Failing to verify MCP tool connectivity before building the timeline.
+- Constructing fictitious JSON payloads or inventing non-existent video MCP servers.
+- Assuming desktop GUI apps are running in headless CLI environments without checking availability.
+- Rendering videos without specifying explicit output path and format.
+- Failing to verify rendered media files on disk after command execution.
 
 ## Verification
 
-- [ ] Timeline JSON payload includes correct framerate and resolution.
-- [ ] Audio-driven cuts explicitly reference BPM and beat offsets.
-- [ ] Final output format and codec are explicitly defined.
-
+- [ ] Video rendering targets concrete CLI commands or real ecosystem MCPs.
+- [ ] No phantom MCP references exist in tool calls or descriptions.
+- [ ] Output format (resolution, fps, codec) is explicitly defined.
+- [ ] Rendered media file exists on disk and has non-zero size.
