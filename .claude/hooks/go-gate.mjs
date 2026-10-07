@@ -514,20 +514,22 @@ const NPM_VALUE_OPTS = /^(?:--prefix|-w|--workspace|-C|--dir|--registry|--userco
 export function classify(seg, protectedFor = staticResolver) {
   const { rest: tok, opaque, gitEnv, xargs } = stripPrefix(tokens(seg));
   const cmd = base(tok[0] ?? "");
-  // xargs takes the command's own words from stdin (`echo push origin HEAD:main | xargs git`,
-  // `echo -rf build | xargs rm`): when NO argument word is visible after the guarded program,
-  // the whole guarded word is stdin-fed and the segment is unscoped. A flag-only row still
-  // counts as stdin words (`xargs rm -rf`: the flags say what to delete, but the WORDS fed
-  // from stdin make the scope unknowable — GO only), so the same decision holds there and
-  // every later branch still judges the visible `rm -rf` flags the same way it did before.
+  // xargs takes its command words from stdin (`echo push origin HEAD:main | xargs git`,
+  // `echo -rf build | xargs rm`): when NO argument of its own is visible after the guarded
+  // program the whole guarded word is stdin-fed and the segment is unscoped. An EMPTY-rule
+  // view of this (`xargs rm -rf`, `xargs rm`) is covered further down: the visible flag row
+  // is judged by the normal branches (assessment, normal xargs-ing, keep-rules), and the
+  // whole segment only loses rule 16 when the visible words themselves carry one.
   if (xargs && XARGS_PROG.test(cmd) && !tok.slice(1).length) return null;
-    if (opaque) {
-      if (!catchAll(tok, seg, true)) return [];
-      if (stripPrefix(tokens(seg)).xargs) return null;
-      // `bash -c 'rm -rf build'` is understood: a destructive-only inner command is grantable.
-      const inner = commandScopes(innerText(tok), protectedFor);
-      return inner?.length && inner.every((x) => x === "destructive") ? ["destructive"] : null;
-    }
+   if (xargs && (cmd === "rm" || cmd === "rmx") && !tok.slice(1).length) return null;
+  if (xargs && (cmd === "rm" || cmd === "rmx")) return catchAll(tok, seg) ? null : ["destructive"];
+  if (opaque) {
+    if (!catchAll(tok, seg, true)) return [];
+    if (stripPrefix(tokens(seg)).xargs) return null;
+    // `bash -c 'rm -rf build'` is understood: a destructive-only inner command is grantable.
+    const inner = commandScopes(innerText(tok), protectedFor);
+    return inner?.length && inner.every((x) => x === "destructive") ? ["destructive"] : null;
+  }
   if (cmd === "git" || cmd === "hub") {
     // repoDir: null = unknown (an unresolvable cd/-C target, --git-dir): bare and plain pushes are push-main.
     let i = 1, config = false, hookKey = false, repoDir = segCwd === null ? null : segCwd || gateCtx.cwd || process.cwd();
