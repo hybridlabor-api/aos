@@ -64,6 +64,26 @@
       ]
     },
     {
+      "group": "firecrawl",
+      "candidates": [
+        {
+          "name": "firecrawl_mcp",
+          "requires": {
+            "env": {
+              "AOS_FIRECRAWL_MCP": "on"
+            }
+          },
+          "entry": {
+            "command": "npx",
+            "args": [
+              "-y",
+              "firecrawl-mcp@3.28.2"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "group": "codebase_memory",
       "candidates": [
         {

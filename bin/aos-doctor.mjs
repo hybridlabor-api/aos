@@ -415,7 +415,11 @@ function checkAgyMcsc() {
 
 // Secrets belong in ~/.aos/secrets.env (0600), never inline in a harness MCP config. Names only, never values.
 function checkMcpSecrets() {
-  const { findInlineSecrets, secretsPath } = req('../lib/mcp-secrets.js');
+  const { findInlineSecrets, secretsPath, readSecretsFile, firecrawlDoctorHint } = req('../lib/mcp-secrets.js');
+  // Opt-in firecrawl pick: warn names-only when it is enabled without a key (see docs/firecrawl-mcp.md).
+  const firecrawlHint = firecrawlDoctorHint(process.env, readSecretsFile(secretsPath(HOME)).vars);
+  if (firecrawlHint) add('mcp-secrets', 'Firecrawl MCP key', false, firecrawlHint,
+    'Add FIRECRAWL_API_KEY=value to the MCP secrets file, or unset AOS_FIRECRAWL_MCP to keep the pick off (docs/firecrawl-mcp.md).', true);
   const byEntry = new Map();
   for (const f of findInlineSecrets(HOME, process.env)) {
     const k = `${f.file}\0${f.server}`;

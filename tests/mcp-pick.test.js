@@ -190,3 +190,45 @@ describe('shipped template contract', () => {
         assert.ok(!cfg.GATEWAY_SERVERS.includes('bdb_resolume_official_mcp'));
     });
 });
+
+describe('firecrawl pick: opt-in, never registered by default', () => {
+    test('default (no opt-in env): firecrawl_mcp is never registered', () => {
+        const s = secrets.shippedServers(ROOT, { env: {} });
+        assert.ok(!s.firecrawl_mcp);
+        const r = secrets.shippedPicks(ROOT, { env: {} });
+        assert.ok(!r.servers.firecrawl_mcp);
+        // unsatisfied opt-in entries are dropped through `retired` by design (same as the AE legacy entry)
+    });
+    test('AOS_FIRECRAWL_MCP=on registers the pinned npx entry', () => {
+        const s = secrets.shippedServers(ROOT, { env: { AOS_FIRECRAWL_MCP: 'on' } });
+        const e = s.firecrawl_mcp;
+        assert.ok(e);
+        assert.equal(e.command, 'npx');
+        assert.ok(e.args.join(' ').includes('firecrawl-mcp@3.28.2'));
+    });
+    test('wrong opt-in value stays off (exact match)', () => {
+        assert.ok(!secrets.shippedServers(ROOT, { env: { AOS_FIRECRAWL_MCP: '1' } }).firecrawl_mcp);
+    });
+    test('gateway routing: firecrawl_mcp stays direct, not gateway', () => {
+        assert.ok(cfg.DIRECT_SERVERS.includes('firecrawl_mcp'));
+        assert.ok(!cfg.GATEWAY_SERVERS.includes('firecrawl_mcp'));
+    });
+    test('no key value pattern lands in the shipped entry; the secret moves to the launcher', () => {
+        const e = entryOf('firecrawl_mcp');
+        assert.equal(e.env && e.env.FIRECRAWL_API_KEY, undefined);
+        assert.ok(!JSON.stringify(e).match(/fc-[A-Za-z0-9_-]{8,}/));
+        const wrapped = secrets.wrapServer('firecrawl_mcp', e, '/agents/bin/aos-mcp-env.mjs');
+        const u = secrets.unwrap(wrapped);
+        assert.deepEqual(u.vars, ['FIRECRAWL_API_KEY']);
+        assert.ok(!JSON.stringify(wrapped).match(/fc-[A-Za-z0-9_-]{8,}/));
+    });
+    test('doctor hint: names only, fires only when the pick is enabled and no key is set', () => {
+        const hint = secrets.firecrawlDoctorHint;
+        assert.equal(hint({}, {}), null);
+        assert.equal(hint({ AOS_FIRECRAWL_MCP: '1' }, {}), null);
+        assert.equal(hint({ AOS_FIRECRAWL_MCP: 'on', FIRECRAWL_API_KEY: 'fc-x' }, {}), null);
+        assert.equal(hint({ AOS_FIRECRAWL_MCP: 'on' }, { FIRECRAWL_API_KEY: 'fc-x' }), null);
+        assert.equal(hint({ AOS_FIRECRAWL_MCP: 'on' }, {}),
+            'firecrawl: no FIRECRAWL_API_KEY set (hosted needs a key and burns credits)');
+    });
+});
