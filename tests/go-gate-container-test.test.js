@@ -419,6 +419,24 @@ describe('container-test grant semantics', () => {
 // V31 bug (acp, 2026-10-07): a container-test grant covered ONE docker run and the next one was blocked with an empty scope
 // list, because `docker run ... npm test` made the gate read the project's test scripts as if the HOST ran them
 // (a test file containing a delete = unscoped = GO only). A qualifying docker run keeps container scripts out of that analysis.
+// V31 bug 2 (acp, 2026-10-07): under machine load the wall-clock analysis budget (150 ms) overran on the first look at an
+// ordinary command, which then counted as unscoped; the second look was cached and fast, so the log showed scopes=[].
+// The budget now counts CPU time, so a stalled process (a loaded machine) no longer changes the verdict.
+describe('analysis budget counts CPU time, not the wall clock', () => {
+    test('a 400 ms stall in the middle of the analysis does not make a covered docker run unscoped', () => {
+        const f = path.join(work, 'x');
+        fs.mkdirSync(f, { recursive: true });
+        const realNow = Date.now;
+        let n = 0, off = 0;
+        Date.now = () => { if (++n === 3) off = 400; return realNow() + off; };
+        try { scopes(`docker run --rm -v {P}:/src -w /src node:24 bash -c 'npm test'`, CT); } finally { Date.now = realNow; }
+    });
+    test('a zero budget still makes everything unscoped (fail closed)', () => {
+        g.setGateContext({ ...ctx, budgetMs: -1 });
+        try { assert.equal(g.commandScopes(fill(`docker run --rm -v {P}:/src node:24 bash -c 'npm test'`)), null); } finally { g.setGateContext(ctx); }
+    });
+});
+
 describe('docker run: the container runs scripts, the host analysis does not read them', () => {
     const put = (rel, body, root = work) => { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body); return f; };
     const DEL = ['r' + 'mSync', '("build", { recursive: true })'].join('');

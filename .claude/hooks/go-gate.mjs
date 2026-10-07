@@ -210,12 +210,20 @@ let segCwd = "", segTaint = false;
 // analysis runs under a wall-clock budget: past it the command is unscoped (guarded, GO needed).
 let memo = new Map();
 const BUDGET = Symbol("budget");
-let deadline = 0;
-const tick = () => { if (deadline && Date.now() > deadline) throw BUDGET; };
+// The budget counts this process's CPU time, not the wall clock: on a loaded machine (several sessions, Docker, test
+// runs) a wall-clock budget made the first analysis of an ordinary command overrun and turn "unscoped" at random, so a
+// container-test grant covered one run and not the next. A wall-clock ceiling stays as the backstop against a hang.
+let deadline = 0, wallDeadline = 0;
+const cpuMs = () => { const u = process.cpuUsage(); return (u.user + u.system) / 1000; };
+const tick = () => { if (deadline && (cpuMs() > deadline || Date.now() > wallDeadline)) throw BUDGET; };
 function withBudget(fn, onExceed) {
-  const outer = deadline;
-  if (!outer) deadline = Date.now() + (gateCtx.budgetMs ?? 150);
-  try { return fn(); } catch (e) { if (e === BUDGET) return onExceed; throw e; } finally { deadline = outer; }
+  const outer = deadline, outerWall = wallDeadline;
+  if (!outer) {
+    const ms = gateCtx.budgetMs ?? 150;
+    deadline = cpuMs() + ms;
+    wallDeadline = Date.now() + (ms <= 0 ? ms : Math.max(ms * 20, 3000));
+  }
+  try { return fn(); } catch (e) { if (e === BUDGET) return onExceed; throw e; } finally { deadline = outer; wallDeadline = outerWall; }
 }
 const GIT_BUILTINS = /^(?:add|am|apply|archive|bisect|blame|branch|bundle|cat-file|check-ref-format|checkout|cherry|cherry-pick|clean|clone|commit|commit-tree|config|count-objects|credential|describe|diff|diff-files|diff-index|diff-tree|difftool|fast-export|fast-import|fetch|filter-branch|for-each-ref|format-patch|fsck|gc|grep|hash-object|help|init|log|ls-files|ls-remote|ls-tree|maintenance|merge|merge-base|mergetool|mv|name-rev|notes|pack-refs|prune|pull|push|range-diff|rebase|reflog|remote|repack|request-pull|reset|restore|rev-list|rev-parse|revert|rm|send-email|shortlog|show|show-ref|sparse-checkout|stash|status|stripspace|submodule|subtree|switch|symbolic-ref|tag|unpack-file|update-ref|var|version|whatchanged|worktree|write-tree)$/;
 // A directory named by `cd` / `git -C`: null when it cannot be resolved (variable, backtick, ~user,
