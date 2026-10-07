@@ -44,6 +44,18 @@ test('go-token only where it is wired, aos-bus only in the Claude dir (the launc
     assert.ok(fs.existsSync(path.join(home, '.claude', 'hooks', 'go-token.mjs')));
 });
 
+// The installer reads agy-hooks/ and mcp_picks.json from the package; a path missing from package.json "files" is not in the tarball.
+test('package.json files lists every top-level path the installer reads from the package', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
+    const read = new Set([...src.matchAll(/path\.join\(srcDir,\s*'([\w.-]+)'/g)].map((m) => m[1]).filter((n) => n !== '..' && n !== '.'));
+    for (const top of read) {
+        const covered = pkg.files.some((f) => !f.startsWith('!') && (f === top || f.replace(/\/\*?\*?$/, '') === top || f.startsWith(`${top}/`)));
+        assert.ok(covered, `${top} is read by the installer but is not in package.json "files"`);
+    }
+    assert.ok(pkg.files.includes('agy-hooks/'));
+});
+
 test('every list is closed under same-dir imports', () => {
     for (const [harness, names] of Object.entries(HARNESS_HOOKS)) {
         for (const name of names) {

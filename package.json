@@ -62,6 +62,8 @@
     "plugin-commands.json",
     "commands/",
     "agy-commands/",
+    "agy-hooks/",
+    ".cursor/",
     "plugins/bdb-aos-codex/",
     ".opencode/",
     "docs/",
