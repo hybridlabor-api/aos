@@ -516,12 +516,11 @@ export function classify(seg, protectedFor = staticResolver) {
   const cmd = base(tok[0] ?? "");
   // xargs takes its command words from stdin (`echo push origin HEAD:main | xargs git`,
   // `echo -rf build | xargs rm`): when NO argument of its own is visible after the guarded
-  // program the whole guarded word is stdin-fed and the segment is unscoped. An EMPTY-rule
-  // view of this (`xargs rm -rf`, `xargs rm`) is covered further down: the visible flag row
-  // is judged by the normal branches (assessment, normal xargs-ing, keep-rules), and the
-  // whole segment only loses rule 16 when the visible words themselves carry one.
+  // program the whole guarded word is stdin-fed and the segment is unscoped. An rm row with
+  // only its own flags visible (`xargs rm -rf`, `xargs rm`) keeps the OLD decision: the
+  // visible `rm -rf` is judged as before (destructive) while the stdin words stay
+  // unknowable, so catchAll's flag rule decides the GO-only case.
   if (xargs && XARGS_PROG.test(cmd) && !tok.slice(1).length) return null;
-   if (xargs && (cmd === "rm" || cmd === "rmx") && !tok.slice(1).length) return null;
   if (xargs && (cmd === "rm" || cmd === "rmx")) return catchAll(tok, seg) ? null : ["destructive"];
   if (opaque) {
     if (!catchAll(tok, seg, true)) return [];
