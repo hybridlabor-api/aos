@@ -651,7 +651,18 @@ function opaqueBodyWords(toks) {
       while (j < toks.length && /^-/.test(toks[j])) { if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(unqQ(toks[j]))) sawC = true; j++; }
       if (sawC && toks[j]) { body = toks[j]; i = j; }
     }
-    if (body) out.push(unq(body).split(/\s+/).map(base));
+    if (body) {
+      // The body is shell source: split it the way the shell reads it. A plain whitespace
+      // split misses a `$` word glued to a `;` (`true;g=git;p=push;$g $p ...`) and a
+      // ${IFS}-glued body, so scanSplit (quote- and `;`-aware) cuts the statements and
+      // stripPrefix removes wrappers/assignments before scopesOf judges each statement's
+      // token row with cposDollar. unq first removes the quotes and the backslashes of an
+      // escaped body (`sh -c g=git\;p=push\;\$g ...`), so the same rules apply to it.
+      for (const p of scanSplit(unq(body))) {
+        const t = p.t.trim();
+        if (t) out.push(stripPrefix(tokens(t)).rest);
+      }
+    }
   }
   return out;
 }
