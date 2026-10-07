@@ -111,7 +111,7 @@ export const HTTP_PATTERNS = GUARDED_PATTERNS.slice(-2);
 // ---------------------------------------------------------------------------
 // Scopes: each guarded command segment maps to the grant scope(s) it needs.
 // ---------------------------------------------------------------------------
-export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destructive", "github-write", "container-test"];
+export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destructive", "github-write", "container-test", "workspace"];
 
 // Output redirections (`2>&1`, `>/dev/null`, `&>log`) are removed before splitting, so the
 // `&` in `2>&1` is not a separator and `git push origin a:a 2>&1` reads as a plain push.
@@ -1123,7 +1123,9 @@ function execCommand(src, name) {
 
 // Code of an interpreter, inspected at execution points only. Sets r.hard / r.destructive /
 // r.unscoped and pushes spawned command texts to r.cmds (the caller classifies those).
-function codeInto(r, text, lang = "") {
+// ws = { root, cwd } for a script that lives in the session's own repo: a recursive delete whose literal target resolves inside
+// that root is recorded as r.workspace (scope `workspace`) instead of r.destructive. Anything else stays destructive.
+function codeInto(r, text, lang = "", ws = null) {
   text = unprep(text);
   if (lang === "osascript" && /\bdelete\b|\bmove\b[^\n;]*\bto\b[^\n;]*\btrash|\bdo shell script\b/i.test(text)) r.unscoped = true;
   const masked = maskStrings(text);
@@ -1132,8 +1134,8 @@ function codeInto(r, text, lang = "") {
     const name = m[0].replace(/\s*\(?\s*$/, "");
     const after = text.slice(m.index + m[0].length);
     const rec = RECURSIVE_CALL.test(name.replace(/^.*\./, "")) || (OPTION_CALL.test(name) && /recursive/.test(after.slice(0, 300)));
-    if (rec) r.destructive = true;
     const p = codeArgToPath(after);
+    if (rec) { if (ws && p && insideWorkspace(ws, p)) r.workspace = true; else r.destructive = true; }
     const v = p ? homeVerdict(p, { recursive: rec }) : null;
     if (v === "hard") r.hard ||= p;
     else if (v === "go") r.unscoped = true;
@@ -1202,6 +1204,39 @@ function installedScript(path, mtime) {
   });
 }
 
+// The session's own repo for a script file (scope `workspace`): the nearest directory above the script that holds a .git entry,
+// as its realpath, at least two levels inside the real home, no dot segment below home, not under ~/Library, and the script's
+// own realpath must lie inside it (a symlink out of the repo means no workspace). null = not a workspace script.
+function workspaceFor(file, cwd) {
+  try {
+    const home = osHome();
+    if (!home) return null;
+    const realHome = realpathSync.native(home), realFile = realpathSync.native(file);
+    let dir = dirname(realFile), root = null;
+    for (let i = 0; i < 12 && dir !== dirname(dir); i++, dir = dirname(dir)) {
+      if (existsSync(join(dir, ".git"))) { root = dir; break; }
+    }
+    if (!root || !realFile.startsWith(root + sep) || !root.startsWith(realHome + sep)) return null;
+    const rel = root.slice(realHome.length + 1).split(sep);
+    if (rel.length < 2 || rel.some((s) => s.startsWith(".")) || rel[0] === "Library") return null;
+    return { root, cwd: realpathSync.native(resolve(expandHome(cwd))) };
+  } catch { return null; }
+}
+// A literal delete target of a workspace script: resolved against the script's cwd, its existing parent directory resolved through
+// symlinks, and the result must stay inside the repo root. No expansions, no home spellings: those are not "inside".
+function insideWorkspace(ws, target) {
+  const t = String(target);
+  if (!t || /[$`]|^~|^%|\\\\/.test(t) || /(?:^|\/)\.\.(?:\/|$)/.test(t)) return false;
+  try {
+    const abs = resolve(ws.cwd, t);
+    let parent = dirname(abs);
+    try { parent = realpathSync.native(parent); } catch { /* parent not there yet: the lexical path decides */ }
+    const full = join(parent, abs.slice(dirname(abs).length + 1));
+    // strictly below the repo root (never the root itself) and not the repository's own .git
+    return full.startsWith(ws.root + sep) && !/^\.git(?:\/|$)/.test(full.slice(ws.root.length + 1));
+  } catch { return false; }
+}
+
 function scriptInto(r, h, file, cwd) {
   const path = resolve(expandHome(cwd), expandHome(file));
   let st, mtime;
@@ -1225,9 +1260,9 @@ function scriptInto(r, h, file, cwd) {
       body = buf.toString("utf8", 0, n);
     } finally { closeSync(fd); }
   } catch { r.unscoped = true; return; }
-  const t = installedScript(path, mtime) ? { destructive: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] } : r;
+  const t = installedScript(path, mtime) ? { destructive: false, workspace: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] } : r;
   if (/^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i.test(h)) t.cmds.push(body);
-  else codeInto(t, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
+  else codeInto(t, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"), t === r ? workspaceFor(path, cwd) : null);
   if (t !== r) {
     r.hard ||= t.hard;
     for (const c of t.cmds) r.hard ||= analyzeDeletes(c, 1).hard;
@@ -1321,13 +1356,13 @@ function substitutions(text) {
 }
 
 export function analyzeDeletes(command, depth = 0, init = null) {
-  const r = { destructive: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] };
+  const r = { destructive: false, workspace: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] };
   if (depth > 3 || typeof command !== "string") return r;
   if (command.length > MAX_COMMAND) { r.unscoped = true; return r; }
   const st = init ? { cwd: init.cwd, vars: { ...init.vars } } : { cwd: gateCtx.cwd || process.cwd(), vars: Object.create(null) };
   const ro = init ? !!init.ro : (isReadOnlyDockerRun(command) || isContainerTestRun(command));
   const snap = () => ({ cwd: st.cwd, vars: st.vars, ro });
-  const merge = (o) => { r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.cmds.push(...o.cmds); r.files.push(...o.files); };
+  const merge = (o) => { r.destructive ||= o.destructive; r.workspace ||= o.workspace; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.cmds.push(...o.cmds); r.files.push(...o.files); };
   const { text, code } = commandView(command, true);
   const un = (t) => String(t).replace(/^"([\s\S]*)"$/, (_, x) => x.replace(/\\(["\\$`])/g, "$1")).replace(/^'([\s\S]*)'$/, "$1");
   const stack = [];
@@ -1385,7 +1420,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     for (; seen < r.cmds.length; seen++) {
       if (depth >= 3) continue;
       const o = analyzeDeletes(r.cmds[seen], depth + 1, snap());
-      r.destructive ||= o.destructive; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.files.push(...o.files);
+      r.destructive ||= o.destructive; r.workspace ||= o.workspace; r.hard ||= o.hard; r.unscoped ||= o.unscoped; r.cooldown ||= o.cooldown; r.files.push(...o.files);
     }
   };
   drain();
@@ -1493,6 +1528,7 @@ function scopesOf(orig, protectedFor) {
   const a = analyzeDeletes(orig);
   if (a.unscoped) return null;
   if (a.destructive) out.add("destructive");
+  if (a.workspace) out.add("workspace");
   for (const c of a.cmds) {
     const s = commandScopes(c, protectedFor);
     if (s === null) return null;
@@ -1937,7 +1973,9 @@ export function effectiveGate(key, { source, cmds, opencode = false }, now = Dat
 
 export const grantsCover = (command, grants, protectedFor) => {
   const need = commandScopes(command, protectedFor);
-  return !!need && need.length > 0 && need.every((s) => grants.some((g) => g.scope === s));
+  // A destructive grant has always covered a repo script that deletes; the narrower `workspace` scope (the same script, in the
+  // session's own repo, every delete target inside it) is therefore covered by either grant.
+  return !!need && need.length > 0 && need.every((s) => grants.some((g) => g.scope === s || (s === "workspace" && g.scope === "destructive")));
 };
 
 export function statusText(key, eff, now = Date.now()) {

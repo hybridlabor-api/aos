@@ -8,7 +8,8 @@
     "publish",
     "destructive",
     "github-write",
-    "container-test"
+    "container-test",
+    "workspace"
   ],
   "patterns": [
     {
