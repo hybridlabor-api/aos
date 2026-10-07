@@ -28,7 +28,7 @@ Built for people who already run **Claude Code, Google Antigravity, Codex CLI, O
 After install you have:
 
 - **<!-- count:skills -->223<!-- /count --> skills** in six categories, discoverable by every harness as `<name>/SKILL.md`.
-- **<!-- count:agents -->13<!-- /count --> subagents** (Architect, TechLead, Reviewer, the Godmodes, security and silent-failure reviewers) compiled into each harness's native agent format.
+- **<!-- count:agents -->29<!-- /count --> subagents** (Architect, TechLead, Reviewer, the Godmodes, security and silent-failure reviewers) compiled into each harness's native agent format.
 - **<!-- count:mcps -->21<!-- /count --> MCP servers** for creative software, OS control, memory and cross-harness delegation.
 - **Three pipelines** — `/startcycle`, `/startcycle-graph`, `/startcycle-graph-user` — and a **GO gate** that mechanically blocks `git push`, `npm publish`, `npm version` and recursive `rm`.
 - **Tools:** Plan Canvas, agenttrail, archify, the AOS Store, the Launchpad dashboard and `aos doctor`.
@@ -228,7 +228,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 
 ## What's Included
 
-### The <!-- count:agents -->13<!-- /count --> Subagents
+### The <!-- count:agents -->29<!-- /count --> Subagents
 
 The dispatcher graph compiles these agents, available as Claude Code subagents and loadable into Antigravity, Cursor, Codex, OpenCode and others:
 

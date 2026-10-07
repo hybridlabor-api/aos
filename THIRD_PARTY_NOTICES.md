@@ -12,7 +12,7 @@ provenance survives the file being read in isolation.
 ## affaan-m/ECC
 
 - **Upstream:** <https://github.com/affaan-m/ECC>
-- **License:** MIT
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
 - **Copyright:** Copyright (c) 2026 Affaan Mustafa
 
 Two independent deliverables were ported from this project.
