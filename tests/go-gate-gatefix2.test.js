@@ -344,7 +344,11 @@ describe('(10) catchAll stays linear on a five-thousand-word command', () => {
         }
         // the long docker case, split the way dockerScopes feeds it: [img, ...rest], opaque
         const longTok = ['node:24', 'echo', ...Array(5000).fill('$a')];
+        const t0b = process.hrtime.bigint();
         assert.equal(!!catchAll(longTok, 'echo', true), !!old(longTok, 'echo', true), 'the long word row decides the same way');
+        const msb = Number(process.hrtime.bigint() - t0b) / 1e6;
+        assert.ok(msb < 2000, `the differential long row took ${msb.toFixed(0)} ms`);
     });
+});
 
 module.exports = {};
