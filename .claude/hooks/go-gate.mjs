@@ -824,11 +824,15 @@ function dockerScopes(tok, seg, tainted = segTaint) {
     image = true;
   }
   if (!image) return null;
-  if (mounts && allRo) return []; // rule 16: only read-only project mounts stay free, as before
-  if (!rm) return null;
   // The words after the image run inside the container, but git push, npm publish, gh writes and rm -r there
-  // still need their own scope or a GO: the text is read like an opaque `sh -c`.
-  return catchAll(tok.slice(i), seg, true) ? null : ["container-test"];
+  // still need their own scope or a GO: the text is read like an opaque `sh -c`. This runs BEFORE the rule 16
+  // early return: a read-only run cannot host a guarded command inside the container either (the mount is a
+  // project clone with .git, remotes and credential helpers); only text that trips catchAll loses rule 16.
+  const container = catchAll(tok.slice(i), seg, true);
+  if (container) return null;
+  if (!rm) return null;
+  if (mounts && allRo) return []; // rule 16: only read-only project mounts stay free, as before
+  return ["container-test"];
 }
 
 // Splits on unquoted ; & | newline ( ) and brace-group braces; quotes, ${...}, $(...) and `...` stay whole.
