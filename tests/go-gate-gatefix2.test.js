@@ -280,4 +280,71 @@ describe('(9) process-hiding wrappers keep the command readable', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// (10) catchAll is linear (suffix lookups + tick, no per-word slices): five thousand $
+// words are analysed in well under 2 s, and the decisions are the OLD catchAll's
+// (the pre-rewrite implementation is kept below as the reference).
+// ---------------------------------------------------------------------------
+describe('(10) catchAll stays linear on a five-thousand-word command', () => {
+    test('fast and unchanged on a long benign docker echo', () => {
+        const c = `docker run --rm -v {P}:/src:ro node:24 echo ${Array(5000).fill('$a').join(' ')}`;
+        const t0 = process.hrtime.bigint();
+        const got = sc(c);
+        const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+        assert.deepEqual(got, [], fill(c).slice(0, 80));
+        assert.ok(ms < 2000, `took ${ms.toFixed(0)} ms`);
+    });
+    test('differential: the rewrite decides exactly like the old catchAll', () => {
+        // The OLD catchAll, kept verbatim as the reference (pre-rewrite unq/split form).
+        const old = (tok, seg, opaque = false) => {
+            const w = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(base);
+            const after = (i, set) => w.slice(i + 1).some((x) => set.test(x));
+            const raw = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(unq);
+            if (opaque && cposDollar(w)) return true;
+            let cmd = true;
+            for (let i = 0; i < w.length; i++) {
+                if ((cmd || opaque) && /^[$`\u0001\u0002]/.test(w[i]) &&
+                    (after(i, GUARDED_NOUN) || (cmd && w.slice(i + 1).some((x) => /^[$`\u0001\u0002]/.test(x))))) return true;
+                if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
+                if ((w[i] === "git" || w[i] === "hub") && w.slice(i + 1).includes("commit") && raw.slice(i + 1).some((x) => COMMIT_WORD_BYPASS.test(x) || /^[$\x60]/.test(x) || (/^-/.test(x) && /[$\x60]/.test(x)))) return true;
+                const sub = w.slice(i + 1).find((x) => !x.startsWith("-"));
+                if ((PM.test(w[i]) || w[i] === "npx") && !/^(?:view|info|show|v)$/.test(sub ?? "") && after(i, /^(?:publish|version)$/)) return true;
+                if (w[i] === "gh" && after(i, /^(?:merge|create|delete|edit|comment|close|review|api|sync)$/)) return true;
+                if (/^(?:np|release-it|semantic-release)$/.test(w[i]) || (w[i] === "changeset" && after(i, /^publish$/))) return true;
+                if (w[i] === "rm" && w.slice(i + 1).some((x) => /^-[a-zA-Z]*[rR]/.test(x) || x === "--recursive")) return true;
+                cmd = CPOS_JOINER.test(w[i]);
+            }
+            return false;
+        };
+        const { catchAll, cposDollar, tokens, unq, base, GUARDED_NOUN, GIT_VERBS, CPOS_JOINER, PM, COMMIT_WORD_BYPASS } = g._catchAllInternals;
+        const A = [
+            "git push origin main", "npm publish", "npm view @a/b version", "npm version patch", "npm v @a/b dist-tags",
+            "gh pr merge 117", "gh release create", "gh api users", "rm -rf build", "echo hi", "echo $X config",
+            "git commit --no-verify -m x", "git commit -m x", "git $p origin main", "setsid echo hi",
+            "q=push; git $q origin HEAD:main", "sudo $g $p origin HEAD:main", "g=git p=push $g $p origin HEAD:main",
+            `docker run --rm -v x:/src node:24 bash -c 'echo $a; $g push'`, "watch npm publish", "x=$(date); rm -rf build",
+            '$X --version', '$X rst', '$X config',
+        ];
+        // a few generated ones, including glued statements and long rows
+        const gen = Array.from({ length: 42 }, (_, k) => {
+            const f = k % 7;
+            if (f === 0) return `echo ${Array((k % 7) + 2).fill('$a').join(' ')} config`;
+            if (f === 1) return `sh -c 'echo ok${";".repeat((k % 3) + 1)}g=git;p=push;$g $p origin main'`;
+            if (f === 2) return `sh -c '${Array(20).fill('mid').join(';')} $g ${(k % 2) ? 'config user.name' : 'echo hi'}'`;
+            if (f === 3) return `sudo -u x npm ${(k % 2) ? 'view @a/b version' : 'version'}`;
+            if (f === 4) return `cat f | xargs git ${(k % 2) ? 'push origin HEAD:main' : ''}`;
+            if (f === 5) return `xargs ${(k % 2) ? 'rm -rf' : 'rm'}`;
+            return `printf '%s' ${(k % 2) ? 'push' : 'status'} | xargs git`;
+        });
+        for (const c of [...A, ...gen]) {
+            for (const op of [false, true]) {
+                const t = tokens(c);
+                assert.equal(!!catchAll(t, c, op), !!old(t, c, op), `${JSON.stringify(c)} opaque=${op}`);
+            }
+        }
+        // the long docker case, split the way dockerScopes feeds it: [img, ...rest], opaque
+        const longTok = ['node:24', 'echo', ...Array(5000).fill('$a')];
+        assert.equal(!!catchAll(longTok, 'echo', true), !!old(longTok, 'echo', true), 'the long word row decides the same way');
+    });
+
 module.exports = {};

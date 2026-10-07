@@ -515,15 +515,19 @@ export function classify(seg, protectedFor = staticResolver) {
   const { rest: tok, opaque, gitEnv, xargs } = stripPrefix(tokens(seg));
   const cmd = base(tok[0] ?? "");
   // xargs takes the command's own words from stdin (`echo push origin HEAD:main | xargs git`,
-  // `echo -rf / | xargs rm`): a guarded program head with no visible arguments of its own is
-  // unscoped. Arguments that ARE visible are judged by the normal branches below.
-  if (xargs && XARGS_PROG.test(cmd) && !tok.slice(1).some((t) => !unq(t).startsWith("-"))) return null;
-  if (opaque) {
-    if (!catchAll(tok, seg, true)) return [];
-    // `bash -c 'rm -rf build'` is understood: a destructive-only inner command is grantable.
-    const inner = commandScopes(innerText(tok), protectedFor);
-    return inner?.length && inner.every((x) => x === "destructive") ? ["destructive"] : null;
-  }
+  // `echo -rf build | xargs rm`): when NO argument word is visible after the guarded program,
+  // the whole guarded word is stdin-fed and the segment is unscoped. A flag-only row still
+  // counts as stdin words (`xargs rm -rf`: the flags say what to delete, but the WORDS fed
+  // from stdin make the scope unknowable — GO only), so the same decision holds there and
+  // every later branch still judges the visible `rm -rf` flags the same way it did before.
+  if (xargs && XARGS_PROG.test(cmd) && !tok.slice(1).length) return null;
+    if (opaque) {
+      if (!catchAll(tok, seg, true)) return [];
+      if (stripPrefix(tokens(seg)).xargs) return null;
+      // `bash -c 'rm -rf build'` is understood: a destructive-only inner command is grantable.
+      const inner = commandScopes(innerText(tok), protectedFor);
+      return inner?.length && inner.every((x) => x === "destructive") ? ["destructive"] : null;
+    }
   if (cmd === "git" || cmd === "hub") {
     // repoDir: null = unknown (an unresolvable cd/-C target, --git-dir): bare and plain pushes are push-main.
     let i = 1, config = false, hookKey = false, repoDir = segCwd === null ? null : segCwd || gateCtx.cwd || process.cwd();
@@ -691,33 +695,64 @@ function opaqueBodyWords(toks) {
   return out;
 }
 function catchAll(tok, seg, opaque = false) {
-  // inside sh -c / eval / watch the quoted text is the command, so split it into words
-  const w = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(base);
-  const after = (i, set) => w.slice(i + 1).some((x) => set.test(x));
-  const raw = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(unq);
+  // inside sh -c / eval / watch the quoted text is the command, so split it into words;
+  // scanSplit also cuts the statement boundaries a glued `;` or a ${IFS}-glued body hides
+  // from a plain whitespace split, so glued statements keep their command positions.
+  const rawWords = opaque
+    ? tok.flatMap((t) => scanSplit(unq(t)).flatMap((p) => tokens(p.t.trim())))
+    : tok;
+  const w = rawWords.map(base), raw = rawWords.map(unq);
   if (opaque && cposDollar(w)) return true;
+  // One backward pass builds suffix lookups over the words AFTER i (arrays are read at
+  // [i + 1]), so every rule below is O(1) instead of a per-word slice scan: five thousand
+  // `$a` words must not cost quadratic time. tick() keeps the loop inside the budget.
+  const n = w.length;
+  const DOLLAR = /^[$`\u0001\u0002]/;
+  const noun = new Array(n + 1).fill(false), verb = new Array(n + 1).fill(false),
+    pub = new Array(n + 1).fill(false), pubOnly = new Array(n + 1).fill(false), ghv = new Array(n + 1).fill(false),
+    rec = new Array(n + 1).fill(false), hasCommit = new Array(n + 1).fill(false),
+    bypassish = new Array(n + 1).fill(false), dollar = new Array(n + 1).fill(false),
+    nonDash = new Array(n + 1).fill("");
+  for (let i = n - 1; i >= 0; i--) {
+    const b = w[i], r = raw[i];
+    noun[i] = noun[i + 1] || GUARDED_NOUN.test(b);
+    verb[i] = verb[i + 1] || GIT_VERBS.test(b);
+    pub[i] = pub[i + 1] || /^(?:publish|version)$/.test(b);
+    pubOnly[i] = pubOnly[i + 1] || b === "publish";
+    ghv[i] = ghv[i + 1] || /^(?:merge|create|delete|edit|comment|close|review|api|sync)$/.test(b);
+    rec[i] = rec[i + 1] || /^-[a-zA-Z]*[rR]/.test(b) || b === "--recursive";
+    hasCommit[i] = hasCommit[i + 1] || b === "commit";
+    bypassish[i] = bypassish[i + 1] || COMMIT_WORD_BYPASS.test(r) || /^[$\x60]/.test(r) || (/^-/.test(r) && /[$\x60]/.test(r));
+    dollar[i] = dollar[i + 1] || DOLLAR.test(b);
+    nonDash[i] = !b.startsWith("-") ? b : nonDash[i + 1];
+  }
   let cmd = true; // the first word of any segment text is a command position
-  for (let i = 0; i < w.length; i++) {
-    // a computed head that a later guarded verb would complete (`$x push`, `$D rm -rf x`),
-    // or one whose NEXT word is computed too (`g=git; p=push; $g $p origin HEAD:main`,
-    // `sudo $g $p`): the verb is assembled from variables, so it is unscoped. Only in command
-    // position (tracked like cposDollar), unless opaque where the shell text can sit anywhere
-    // between built words: `echo $X config` is data and stays free.
-    if ((cmd || opaque) && /^[$`\u0001\u0002]/.test(w[i]) &&
-        (after(i, GUARDED_NOUN) || (cmd && w.slice(i + 1).some((x) => /^[$`\u0001\u0002]/.test(x))))) return true;
-    if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
-    // a commit that skips hooks or signing, inside sh -c / eval / xargs
-    if ((w[i] === "git" || w[i] === "hub") && w.slice(i + 1).includes("commit") && raw.slice(i + 1).some((x) => COMMIT_WORD_BYPASS.test(x) || /^[$\x60]/.test(x) || (/^-/.test(x) && /[$\x60]/.test(x)))) return true;
+  for (let i = 0; i < n; i++) {
+    tick();
+    const b = w[i];
+    // a computed head that a later guarded verb would complete at [i + 1] (`$x push`,
+    // `$D rm -rf x`, `$X rst`), or one whose NEXT word is computed too (`g=git; p=push;
+    // $g $p origin HEAD:main`, `sudo $g $p`): the verb is assembled from variables, so it
+    // is unscoped. Only in command position (tracked like cposDollar), unless opaque where
+    // the shell text can sit anywhere between built words: `echo $X config` is data.
+    if ((cmd || opaque) && DOLLAR.test(b) && (noun[i + 1] || (cmd && dollar[i + 1]))) return true;
+    if ((b === "git" || b === "hub") && (noun[i + 1] || (verb[i + 1] || (hasCommit[i + 1] && bypassish[i + 1])))) return true;
     // `npm view|info|show|v <pkg> version` only reads: its subcommand is not publish/version.
-    const sub = w.slice(i + 1).find((x) => !x.startsWith("-"));
-    if ((PM.test(w[i]) || w[i] === "npx") && !/^(?:view|info|show|v)$/.test(sub ?? "") && after(i, /^(?:publish|version)$/)) return true;
-    if (w[i] === "gh" && after(i, /^(?:merge|create|delete|edit|comment|close|review|api|sync)$/)) return true;
-    if (/^(?:np|release-it|semantic-release)$/.test(w[i]) || (w[i] === "changeset" && after(i, /^publish$/))) return true;
-    if (w[i] === "rm" && w.slice(i + 1).some((x) => /^-[a-zA-Z]*[rR]/.test(x) || x === "--recursive")) return true;
-    cmd = CPOS_JOINER.test(w[i]);
+    if ((PM.test(b) || b === "npx") && !/^(?:view|info|show|v)$/.test(nonDash[i + 1]) && pub[i + 1]) return true;
+    if (b === "gh" && ghv[i + 1]) return true;
+    if (/^(?:np|release-it|semantic-release)$/.test(b) || (b === "changeset" && pubOnly[i + 1])) return true;
+    if (b === "rm" && rec[i + 1]) return true;
+    cmd = CPOS_JOINER.test(b);
   }
   return false;
 }
+
+// Test support only: the catchAll internals the differential in tests/go-gate-gatefix2.test.js
+// compares against. No production consumer; nothing else reads this.
+export const _catchAllInternals = {
+  catchAll, cposDollar, tokens, unq, base,
+  GUARDED_NOUN, GIT_VERBS, CPOS_JOINER, PM, COMMIT_WORD_BYPASS,
+};
 
 // ---------------------------------------------------------------------------
 // Delete analysis. One pass over a command yields { destructive, hard }:
