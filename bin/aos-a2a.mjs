@@ -11,7 +11,8 @@ const USAGE = `usage:
   aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
   aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|codex|spawn] [--parent-pid <pid>]
                 [--write] [--repo <path>] [--thread <codex thread name or uuid>] [--codex-transport queue|resume]
-  aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
+  aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background]
+               [--task <taskId> --go-ref <ref>] "<text>"
   aos-a2a status --to <name> <taskId>
   aos-a2a cancel --to <name> <taskId>
   aos-a2a watch <name> [--once]
@@ -25,6 +26,7 @@ const { values: o, positionals } = parseArgs({
     mode: { type: "string" }, "parent-pid": { type: "string" }, write: { type: "boolean" }, repo: { type: "string" },
     thread: { type: "string" }, "codex-transport": { type: "string" },
     to: { type: "string" }, role: { type: "string" }, from: { type: "string" },
+    task: { type: "string" }, "go-ref": { type: "string" },
     timeout: { type: "string" },     background: { type: "boolean" },
     once: { type: "boolean" },
   },
@@ -81,10 +83,14 @@ try {
     const s = await startSidecar({ name: o.name, harness: o.harness, profile, parentPid, asCli: true, executor });
     console.log(JSON.stringify({ name: o.name, url: s.url, cardUrl: s.cardUrl, pid: process.pid }));
   } else if (cmd === "send") {
-    if ((!o.to && !o.role) || positionals.length < 2) throw new Error('usage: aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"');
+    if ((!o.to && !o.role) || positionals.length < 2) throw new Error('usage: aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] [--task <taskId> --go-ref <ref>] "<text>"');
     const { send } = await import("../lib/a2a-client.mjs");
     const result = await send({
       to: o.to, role: o.role, from: o.from, text: positionals.slice(1).join(" "),
+      // GO-over-A2A follow-up: --task <taskId> --go-ref <ref> repeats the same task id with the
+      // human-forwarded reference in metadata.aos.goRef. The reference is a pointer, not a GO;
+      // the receiver verifies it read-only and the session's own gate decides.
+      taskId: o.task, goRef: o["go-ref"],
       timeoutMs: o.timeout ? Number(o.timeout) * 1000 : undefined, background: !!o.background,
     });
     console.log(JSON.stringify(result, null, 2));
