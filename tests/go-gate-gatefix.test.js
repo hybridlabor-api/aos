@@ -227,4 +227,18 @@ describe('(e) --entrypoint fails closed; a git image counts as the entry program
     });
 });
 
+// ---------------------------------------------------------------------------
+// (f) rule 16 again covers a read-only run WITHOUT --rm (after the container scan).
+// ---------------------------------------------------------------------------
+describe('(f) all-ro mounts stay free even without --rm', () => {
+    test('[]: a read-only run without --rm is free again', () => {
+        scopes('docker run -v {P}:/src:ro node:24 npm test', []);
+        scopes('docker run -v {P}:/src:ro node:24 npm test 2>&1 | tail -5', []);
+    });
+    test('null unchanged: missing --rm with a non-ro mount or guarded text needs a GO', () => {
+        scopes('docker run -v {P}:/src node:24 npm test', null);
+        scopes('docker run -v {P}:/src:ro node:24 npm publish', null);
+    });
+});
+
 module.exports = {};

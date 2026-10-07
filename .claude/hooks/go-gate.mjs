@@ -901,8 +901,11 @@ function dockerScopes(tok, seg, tainted = segTaint) {
   const img = unq(tok[i - 1] ?? "").replace(/@[\s\S]*$/, "").replace(/:[^/:]*$/, "");
   const container = catchAll([img, ...tok.slice(i)], seg, true);
   if (container) return null;
-  if (!rm) return null;
+  // Missing --rm: a read-only run needs a GO only when its mounts are not all read-only.
+  // Rule 16 kept --rm optional (DOCKER_FLAG lists it as one flag among many), a reconnect
+  // regression from the reorder placed the unclassified return ahead of this branch.
   if (mounts && allRo) return []; // rule 16: only read-only project mounts stay free, as before
+  if (!rm) return null;
   return ["container-test"];
 }
 
