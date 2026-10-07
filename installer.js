@@ -29,6 +29,7 @@ const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const mcpSecrets = require('./lib/mcp-secrets');
+const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
@@ -1146,6 +1147,11 @@ function detectInstallState() {
         if (fs.existsSync(sub.dir) && !installedModules.includes(sub.id)) {
             installedModules.push(sub.id);
         }
+    }
+
+    // No module directory: Codebase Memory is opted into by the binary itself.
+    if (codebaseMemory.cmbAppStatus().found && !installedModules.includes('codebase-memory')) {
+        installedModules.push('codebase-memory');
     }
 
     const currentVersion = pkg.version || '3.9.6';
@@ -2942,6 +2948,19 @@ async function installHardwarePcb() {
         const removed = stripHwMcpEntries(gate.skip);
         if (removed.length && !DRY_RUN) log.step(`Removed ${gate.skip.join(' and ')} MCP entries from ${[...new Set(removed.map(([f]) => path.basename(f)))].join(', ')}.`);
     }
+}
+
+// Codebase Memory MCP is third-party (DeusData/codebase-memory-mcp): a self-contained
+// stdio binary with a local SQLite DB and no install-time download from AOS. The MCP
+// entry is not written here; it comes from the one-MCP-per-app pick (mcp_picks.json,
+// candidate gated on the binary), so a machine without the binary gets nothing registered.
+function installCodebaseMemory() {
+    const status = codebaseMemory.cmbAppStatus();
+    if (!status.found) {
+        log.warn(`${codebaseMemory.cmbMissingMessage({ status })} — install codebase-memory-mcp as in docs/codebase-memory.md and re-run the AOS installer to enable it.`);
+        return;
+    }
+    log.step(`Codebase Memory MCP: binary at ${status.path}; the codebase_memory_mcp MCP entry is registered with the next harness MCP sync.`);
 }
 
 async function installOSRemoteGateway() {
@@ -5792,6 +5811,7 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
             : []),
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: installCreatorExtension },
         { id: 'hardware', name: 'BDB Hardware & PCB (KiCad + OpenSCAD Electrical/PCB Design)', fn: installHardwarePcb },
+        { id: 'codebase-memory', name: 'Codebase Memory MCP (Code Knowledge Graph, Local SQLite)', fn: installCodebaseMemory },
         { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
     ]).filter((m) => !installExcluded.has(m.id));
 
@@ -6814,6 +6834,7 @@ async function runQuickUpdate(installState) {
         else if (subId === 'ao' && aoSupportedHere()) await installOSAgentWorkspace();
         else if (subId === 'creator') await installCreatorExtension();
         else if (subId === 'hardware') await installHardwarePcb();
+        else if (subId === 'codebase-memory') installCodebaseMemory();
         else if (subId === 'installer') await installDevToolInstaller();
     }
 
@@ -7452,6 +7473,7 @@ module.exports = {
     installOSAgentWorkspace,
     installCreatorExtension,
     installHardwarePcb,
+    installCodebaseMemory,
     installDevToolInstaller,
     installDeja,
     installTokenSaver,

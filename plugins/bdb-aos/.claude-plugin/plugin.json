@@ -42,6 +42,7 @@
     "./skills/basic/teamwork-preview",
     "./skills/bdb-aos",
     "./skills/bdbrainstorm",
+    "./skills/codebase-memory",
     "./skills/github-repo",
     "./skills/global_config/agent-manager-skill",
     "./skills/global_config/agent-memory-mcp",

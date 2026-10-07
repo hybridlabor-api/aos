@@ -62,6 +62,21 @@
           "name": "bdb_after_effects_mcp"
         }
       ]
+    },
+    {
+      "group": "codebase_memory",
+      "candidates": [
+        {
+          "name": "codebase_memory_mcp",
+          "requires": {
+            "app": "codebase-memory"
+          },
+          "entry": {
+            "command": "codebase-memory-mcp",
+            "args": []
+          }
+        }
+      ]
     }
   ]
 }

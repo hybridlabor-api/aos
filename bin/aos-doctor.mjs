@@ -557,6 +557,26 @@ async function checkDaemonsAndModules() {
     }
   }
 
+  // Codebase Memory MCP: third-party stdio binary, not an @hybridlabor-api module. Nothing
+  // is registered without the binary, so the doctor reports presence/'app missing' in the
+  // same style as the kicad/openscad check above (warning only — installing the binary
+  // re-enables it; docs/codebase-memory.md has the exact install commands).
+  {
+    let codebaseMemory = null;
+    try { codebaseMemory = req('../lib/codebase-memory.js'); } catch { /* check skipped, never fatal */ }
+    if (codebaseMemory) {
+      const status = codebaseMemory.cmbAppStatus();
+      if (status.found) {
+        add('daemons', 'codebase-memory-mcp (codebase-memory MCP)', true,
+          `present: ${tilde(status.path)} · stdio binary, local SQLite at ~/.cache/codebase-memory-mcp (no cloud calls)`);
+      } else {
+        add('daemons', 'codebase-memory-mcp (codebase-memory MCP)', false,
+          `${codebaseMemory.cmbMissingMessage({ status })} — the codebase-memory MCP server is not registered`,
+          'install codebase-memory-mcp per docs/codebase-memory.md, then re-run the AOS installer', true);
+      }
+    }
+  }
+
   // memB
   const membDir = findModule('memB');
   const membListening = await portOpen(8088);
