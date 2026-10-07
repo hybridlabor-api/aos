@@ -606,12 +606,36 @@ export function classify(seg, protectedFor = staticResolver) {
 // a package manager followed later by publish/version, gh followed by a write verb, or rm
 // with a recursive flag makes the segment guarded with no scope.
 const GIT_VERBS = /^(?:push|reset|clean|branch|worktree|config)$/;
+// A guarded verb a later word could complete a computed head into (`$x push`, `$D rm -rf x`).
+const GUARDED_NOUN = /^(?:push|reset|clean|branch|worktree|config|publish|version|merge|create|delete|edit|comment|close|review|api|sync|rm|exec)$/;
+// A word that makes the NEXT word a command position (shell/xargs head, a shell's -c value,
+// wrappers sudo/env/command/exec, loop starters then/do/else/if..., assignments, or a word
+// that itself ends in a separator because one glued to it: `sh -c "g=git; $g push"`).
+const CPOS_JOINER = /^(?:sudo|env|command|exec|xargs|then|do|else|if|elif|while|until|bash|sh|zsh|dash|ksh|eval|watch|parallel|-c)$|^\w+=|.*[;&|(]$/;
+// A computed command name inside opaque text (`sh -c '$x push'`, `sh -c 'g=git; $g push'`,
+// `eval "$(echo git) push"`): catchAll matches literal words only, so it cannot see the verb
+// the expansion assembles and would wrongly answer "unguarded". A `$`/backtick/${...}/$(...)
+// word in COMMAND position therefore fails closed (null = plain GO), the same way commitBypass
+// treats a bare $FLAGS among commit arguments. Arguments (`sh -c 'echo $HOME'`) keep today's
+// decision; non-opaque top-level heads are covered at classify (the push|publish line) without this.
+function cposDollar(w) {
+  let cmd = true; // the first word of an opaque text is a command position
+  for (const x of w) {
+    if (cmd && /^[$`\u0001\u0002]/.test(x)) return true;
+    cmd = CPOS_JOINER.test(x);
+  }
+  return false;
+}
 function catchAll(tok, seg, opaque = false) {
   // inside sh -c / eval / watch the quoted text is the command, so split it into words
   const w = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(base);
   const after = (i, set) => w.slice(i + 1).some((x) => set.test(x));
   const raw = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(unq);
+  if (opaque && cposDollar(w)) return true;
   for (let i = 0; i < w.length; i++) {
+    // a computed head that a later guarded verb would complete (`$x push`, `$D rm -rf x`,
+    // also outside opaque text, where segment splitting detached it from its shell wrapper)
+    if (/^[$`\u0001\u0002]/.test(w[i]) && after(i, GUARDED_NOUN)) return true;
     if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
     // a commit that skips hooks or signing, inside sh -c / eval / xargs
     if ((w[i] === "git" || w[i] === "hub") && w.slice(i + 1).includes("commit") && raw.slice(i + 1).some((x) => COMMIT_WORD_BYPASS.test(x) || /^[$\x60]/.test(x) || (/^-/.test(x) && /[$\x60]/.test(x)))) return true;

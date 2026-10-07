@@ -96,6 +96,36 @@ describe('(b) docker -e only as KEY=literal', () => {
 });
 
 // ---------------------------------------------------------------------------
+// (c) `$`-assembled verbs in opaque text fail closed.
+// ---------------------------------------------------------------------------
+describe('(c) computed verbs in opaque text fail closed', () => {
+    test('null (plain GO) for computed command names in sh -c / eval', () => {
+        scopes("sh -c '$x push'", null);
+        scopes('sh -c "g=git; $g push origin main"', null);
+        scopes('eval "$(echo git) push"', null);
+        scopes("bash -c '${F} push'", null);
+        scopes("bash -c 'x; $y push'", null);
+        scopes("sh -c 'sudo $x push'", null);
+        scopes(`bash -c '$D ${RMRF}'`, null);
+        scopes("bash -c '`echo -n git` push origin main'", null);
+    });
+    test("today's decision for args of a computed head: sh -c 'echo $HOME' stays []", () => {
+        scopes("sh -c 'echo $HOME'", []);
+        scopes("bash -c 'VAR=x echo hi'", []);
+        scopes("sh -c 'echo $x; echo oops'", []);
+        scopes("bash -c 'npm test'", []);
+        scopes("sh -c 'echo hi'", []);
+    });
+    test('hook: computed verbs are blocked without GO and allowed after GO', () => {
+        add(human('go on'));
+        blocked("sh -c '$x push'");
+        blocked('sh -c "g=git; $g push origin main"');
+        add(human('GO'));
+        ok("sh -c '$x push'");
+    });
+});
+
+// ---------------------------------------------------------------------------
 // (a) Read-only docker mounts must not skip the in-container check.
 // ---------------------------------------------------------------------------
 describe('(a) ro mounts: the text after the image is still read for guarded words', () => {
