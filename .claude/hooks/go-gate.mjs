@@ -626,6 +626,31 @@ function cposDollar(w) {
   }
   return false;
 }
+
+// Bodies the segment split cannot keep whole: the `;` inside `sh -c 'g=git; p=push; $g $p
+// origin main'` splits the command into fragments before classify sees it, so the $-head
+// rule never fires and `sh -c 'g=git; p=push; $g $p origin HEAD:main'` is read as free.
+// This re-reads the token row of the command view (quotes stay glued there): every sh/bash/
+// zsh/dash/ksh takes option tokens up to its -c flag and its body is the first token after
+// that (a docker run's `sh -c` after the image is the same token row), and eval's single
+// quoted argument is its whole body. Each body's words are then judged by cposDollar as a
+// whole. Literal expansions are already covered by the per-piece rules; this closes the
+// pieces that a variable/volume/verb boundary hides the joiner context from.
+function opaqueBodyWords(toks) {
+  const out = [];
+  for (let i = 0; i < toks.length; i++) {
+    const h = base(toks[i]);
+    let body = null;
+    if (h === "eval") { if (/^['"]/.test(toks[i + 1] ?? "")) body = toks[++i]; }
+    else if (SHELLS.test(h)) {
+      let j = i + 1, sawC = false;
+      while (j < toks.length && /^-/.test(toks[j])) { if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(unqQ(toks[j]))) sawC = true; j++; }
+      if (sawC && toks[j]) { body = toks[j]; i = j; }
+    }
+    if (body) out.push(unq(body).split(/\s+/).map(base));
+  }
+  return out;
+}
 function catchAll(tok, seg, opaque = false) {
   // inside sh -c / eval / watch the quoted text is the command, so split it into words
   const w = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(base);
@@ -1550,6 +1575,11 @@ function scopesOf(orig, protectedFor) {
   const command = commandView(orig).text;
   // Raw text on purpose: data that a later pipe stage turns into commands must stay visible.
   if (feedsShell(segs) && catchAll(tokens(String(orig)), "", true)) return null;
+  // Quoted opaque bodies (sh -c 'g=git; p=push; $g $p origin main') are split by the segment
+  // split at the ; INSIDE the quotes; classify therefore sees fragments and the $-head rule
+  // never fires. Read each -c / eval body whole here: a $/backtick/${}/$( word in command
+  // position of the body fails closed (null = plain GO), whatever the fragments decide.
+  for (const w of opaqueBodyWords(tokens(command))) if (cposDollar(w)) return null;
   // Repository state followed through the command, so a push is judged on what it will find:
   // the cwd (cd/pushd; null = unresolvable; restored at `)`), and a taint once an earlier segment
   // may have changed HEAD, the config or the branch (git checkout/branch/config/..., a write

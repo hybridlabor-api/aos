@@ -155,4 +155,28 @@ describe('(a) ro mounts: the text after the image is still read for guarded word
     });
 });
 
+// ---------------------------------------------------------------------------
+// (c2) whole quoted bodies: `;` inside sh -c '...' must not split the $-head rule away.
+// ---------------------------------------------------------------------------
+describe('(c2) opaque bodies are judged whole, not by the fragments the split leaves', () => {
+    test('null: $-head rule sees the whole sh -c / eval body', () => {
+        scopes("sh -c 'g=git; p=push; $g $p origin HEAD:main'", null);
+        scopes(`docker run --rm -v {P}:/src node:24 sh -c 'g=git; p=push; $g $p origin main'`, null);
+        scopes(`docker run --rm -v {P}:/src:ro node:24 sh -c 'g=git; p=push; $g $p origin main'`, null);
+        scopes("eval 'g=git; $g push origin main'", null);
+    });
+    test('[] unchanged: bodies without a $-word in command position stay free', () => {
+        scopes(`docker run --rm -v {P}:/src:ro node:24 sh -c 'echo ok'`, []);
+        scopes(`docker run --rm -v {P}:/src:ro node:24 sh -c 'cd /src && node --test'`, []);
+        scopes("sh -c 'g=git; p=push; echo skipped'", []);
+    });
+    test('hook: the assembled push needs a plain GO', () => {
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked(`docker run --rm -v {P}:/src node:24 sh -c 'g=git; p=push; $g $p origin main'`);
+        add(human('GO'));
+        ok(`docker run --rm -v {P}:/src node:24 sh -c 'g=git; p=push; $g $p origin main'`);
+    });
+});
+
 module.exports = {};
