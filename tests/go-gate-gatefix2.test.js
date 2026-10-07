@@ -127,4 +127,33 @@ describe('(3) escaped opaque bodies are unescaped before judging', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// (4) a wrapper keeps command position through its options and arguments.
+// ---------------------------------------------------------------------------
+describe('(4) $ after a wrapper with options/args stays in command position', () => {
+    test('null: the computed head after the wrapper arguments is seen', () => {
+        scopes(`g=git p=push sh -c 'timeout 60 $g $p origin HEAD:main'`, null);
+        scopes(`g=git sh -c 'nice -n 5 $g $p origin HEAD:main'`, null);
+        scopes(`g=git sh -c 'sudo -u x $g $p origin HEAD:main'`, null);
+        scopes(`g=git sh -c 'env -u X $g $p origin HEAD:main'`, null);
+        scopes(`g=git sh -c 'stdbuf -o0 $g $p origin HEAD:main'`, null);
+        scopes(`g=git sh -c 'time -p $g $p origin HEAD:main'`, null);
+        scopes(`g=git sh -c 'exec -a x $g $p origin HEAD:main'`, null);
+        scopes(`docker run --rm -v {P}:/src:ro -e g=git -e p=push node sh -c 'timeout 60 $g $p origin HEAD:main'`, null);
+        scopes(`docker run --rm -v {P}:/src node sh -c 'timeout 60 $g $p origin HEAD:main'`, null);
+    });
+    test("[] unchanged: the wrapper's own arguments are not the command", () => {
+        scopes(`sh -c 'timeout 60 echo done'`, []);
+        scopes(`sh -c 'nice -n 5 echo done'`, []);
+        scopes(`docker run --rm -v {P}:/src:ro node sh -c 'timeout 60 echo done'`, []);
+    });
+    test('hook: the wrapper-hidden computed push needs a plain GO', () => {
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked(`docker run --rm -v {P}:/src:ro -e g=git -e p=push node sh -c 'timeout 60 $g $p origin HEAD:main'`);
+        add(human('GO'));
+        ok(`docker run --rm -v {P}:/src:ro -e g=git -e p=push node sh -c 'timeout 60 $g $p origin HEAD:main'`);
+    });
+});
+
 module.exports = {};

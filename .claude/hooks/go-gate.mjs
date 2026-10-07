@@ -623,10 +623,14 @@ const CPOS_JOINER = new RegExp(`^(?:${[...Object.keys(WRAPPERS), "bash", "sh", "
 // treats a bare $FLAGS among commit arguments. Arguments (`sh -c 'echo $HOME'`) keep today's
 // decision; non-opaque top-level heads are covered at classify (the push|publish line) without this.
 function cposDollar(w) {
-  let cmd = true; // the first word of an opaque text is a command position
+  let cmd = true, wrapped = false; // the first word of an opaque text is a command position
   for (const x of w) {
-    if (cmd && /^[$`\u0001\u0002]/.test(x)) return true;
-    cmd = CPOS_JOINER.test(x);
+    // a wrapper keeps command position through its option, numeric and value words
+    // (`timeout 60 $g $p`, `sudo -u x $g`): once a wrapper word is seen in command position,
+    // any later $ word fails closed, however many arguments the wrapper takes.
+    if ((cmd || wrapped) && /^[$`\u0001\u0002]/.test(x)) return true;
+    if (cmd) cmd = CPOS_JOINER.test(x);
+    if (cmd && WRAPPERS[base(x)]) wrapped = true;
   }
   return false;
 }
