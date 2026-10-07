@@ -116,6 +116,12 @@ export function checkRef(gate, { session, ref, consume = false }) {
   const age = Date.now() - Date.parse(tok?.issued_at);
   if (!(age >= 0 && age < gate.TOKEN_TTL_MS))
     return { code: 1, out: { ok: false, reason: "GO token expired" } };
+  // R4: --ref verify runs the same read-only checks tokenGrantsGo performs (master transcript
+  // still ends with the GO; the GO is not in the consumed ledger) — WITHOUT the expiry unlink
+  // and without any write. A revoked GO, or a token already in the consumed ledger whose file
+  // still exists, must NOT verify.
+  const still = tokenStillValid(gate, { name, tokenText });
+  if (!still.ok) return { code: 1, out: { ok: false, reason: still.reason } };
   if (consume) {
     // Final authority stays with the gate: its own single-use write (master transcript still
     // ends with the GO, master-consumed ledger, token deletion).
@@ -125,6 +131,49 @@ export function checkRef(gate, { session, ref, consume = false }) {
     return { code: 0, out: { ok: true, reason: "GO ref consumed" } };
   }
   return { code: 0, out: { ok: true, reason: "GO ref valid (not consumed)" } };
+}
+
+// R4: PURE read-only validity — the checks of the gate's tokenGrantsGo that do not write,
+// split out for --ref verification. NO expiry unlink (an expired token's file is never deleted
+// from here) and no consume: this function never writes or deletes anything. For
+// claude-transcript tokens it re-checks target and TTL and requires that the master transcript
+// STILL ends with the human-typed `GO <name>`; the GO's uuid must not sit in the consumed
+// ledger (`~/.aos/go/.consumed`, read-only mirror of the gate's readConsumed()). For
+// opencode-issued tokens the master-DB check is not reachable read-only from here, so only the
+// consumed-ledger check runs against the minted message id (fail-closed when it is missing) —
+// the gate itself re-checks everything at consume time either way.
+export function tokenStillValid(gate, { name, tokenText }) {
+  let tok;
+  try { tok = JSON.parse(tokenText); } catch { return { ok: false, reason: "GO token unreadable" }; }
+  if (!tok || typeof tok !== "object") return { ok: false, reason: "GO token unreadable" };
+  const age = Date.now() - Date.parse(tok?.issued_at);
+  if (!(age >= 0 && age < gate.TOKEN_TTL_MS)) return { ok: false, reason: "GO token expired" };
+  if (typeof tok.target !== "string" || gate.slug(tok.target) !== name)
+    return { ok: false, reason: "GO token names another session" };
+  let key = null;
+  if (tok.issuer === "opencode") {
+    if (typeof tok.master_message_id !== "string" || !tok.master_message_id)
+      return { ok: false, reason: "GO token has no master transcript" };
+    key = tok.master_message_id;
+  } else if (typeof tok.master_transcript === "string" && typeof gate.lastUserText === "function") {
+    const last = gate.lastUserText(tok.master_transcript);
+    if (last.error) return { ok: false, reason: last.error };
+    if (!last.text || !last.human || last.text.trim().toLowerCase() !== `go ${name}`)
+      return { ok: false, reason: "master transcript no longer ends with this GO" };
+    if (!last.uuid) return { ok: false, reason: "master GO entry has no uuid" };
+    key = last.uuid;
+  } else {
+    return { ok: false, reason: "GO token has no master transcript" };
+  }
+  let consumed;
+  try {
+    consumed = readFileSync(join(homedir(), ".aos", "go", ".consumed"), "utf8").split("\n").filter(Boolean);
+  } catch (e) {
+    if (e?.code === "ENOENT") consumed = [];
+    else return { ok: false, reason: "GO consumed list unreadable" };
+  }
+  if (consumed.includes(key)) return { ok: false, reason: "GO already used" };
+  return { ok: true };
 }
 
 export function parseArgs(argv) {
