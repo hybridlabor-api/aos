@@ -1,6 +1,13 @@
 ---
 name: startcycle-graph-user
-description: Use when a task needs a small, throwaway multi-agent fan-out (a couple of parallel workers plus a review pass) in ANY project, without the full /startcycle-graph contract — no .agents/graph.md bootstrap, no state.json schema, no persistent files. Model-tiered by role (opus plan, sonnet review, haiku or an external CLI for workers) and portable across machines that may not have Antigravity/OpenCode/Codex installed.
+description: >-
+  Use when a task needs a small, throwaway multi-agent fan-out (a couple of
+  parallel workers plus a review pass) in ANY project — trigger phrases
+  "spawn a few parallel agents", "fan out", "quick worker team" — without the
+  full /startcycle-graph contract, no .agents/graph.md bootstrap, no state.json
+  schema, no persistent files. Model-tiered by role (opus plan, sonnet review,
+  haiku or an external CLI for workers) and portable across machines that may
+  not have Antigravity/OpenCode/Codex installed.
 category: bdb-core
 ---
 
