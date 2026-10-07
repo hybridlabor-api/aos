@@ -23,6 +23,10 @@ function el(tag, props, children) {
 const clear = (node) => { while (node && node.firstChild) node.removeChild(node.firstChild) }
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
 
+// Cards whose task list is expanded. Collapsed by default: only active, blocked
+// and next-due tasks stay visible until the control expands all.
+const expandedCards = new Set()
+
 // The exact text Tim has to type. Copy only — the hub cannot act on it.
 function goText(item) {
   if (item.kind === 'go') return item.sessionKey ? `GO ${item.sessionKey}` : 'GO'
@@ -113,6 +117,32 @@ function renderSessions(model) {
   }
 }
 
+function taskSection(plan) {
+  const tasks = plan.tasks || []
+  if (!tasks.length) return null
+  const expanded = expandedCards.has(plan.planKey)
+  const shown = expanded ? tasks : visibleEntries(tasks)
+  const wrap = el('div', { class: 'tasks', 'data-cols': String(entryColumns(shown.length)) })
+  for (const t of shown) {
+    wrap.appendChild(el('div', { class: `t ${t.status}` }, [
+      el('span', { class: 'id', text: `#${t.id}` }),
+      el('span', { text: t.title || '' }),
+    ]))
+  }
+  const hidden = tasks.length - shown.length
+  const btn = el('button', {
+    type: 'button',
+    text: expanded ? 'HIDE TASKS ↑' : `SHOW TASKS ↓ (+${hidden})`,
+    'aria-expanded': String(expanded),
+  })
+  btn.addEventListener('click', () => {
+    if (expanded) expandedCards.delete(plan.planKey)
+    else expandedCards.add(plan.planKey)
+    refresh(true)
+  })
+  return el('div', { class: 'tasks-wrap' }, [wrap, btn])
+}
+
 function planCard(repo, plan, opts) {
   const card = el('article', { class: `card lifecycle-${plan.lifecycle}` })
   card.appendChild(el('h3', { text: plan.name || plan.path || 'plan' }))
@@ -134,6 +164,8 @@ function planCard(repo, plan, opts) {
   if ((plan.mirrors || []).length) {
     card.appendChild(el('div', { class: 'sub', text: `also checked out in: ${plan.mirrors.map((m) => m.branch || m.path).join(', ')}` }))
   }
+  const tasks = taskSection(plan)
+  if (tasks) card.appendChild(tasks)
   for (const d of plan.divergent || []) {
     card.appendChild(el('div', { class: 'sub' }, [
       el('span', { class: 'tag blocked', text: `divergent: ${d.tasks} task${d.tasks === 1 ? '' : 's'}` }),
@@ -161,10 +193,20 @@ function renderPlans(model) {
   clear(host)
   const plans = (model.repos || []).flatMap((r) => (r.plans || []).map((p) => ({ repo: r.root, plan: p })))
   if (!plans.length) {
+    host.removeAttribute('data-cols')
     host.appendChild(el('div', { class: 'dim', text: 'no plan on the main view' }))
     return
   }
-  for (const { repo, plan } of plans) host.appendChild(planCard(repo, plan, { keepVisible: true }))
+  // Several rows instead of one long column: a near-square grid, cards placed
+  // row-major so index i sits at gridPlace(i, cols).
+  const cols = gridColumns(plans.length)
+  host.setAttribute('data-cols', String(cols))
+  plans.forEach(({ repo, plan }, i) => {
+    const { row, col } = gridPlace(i, cols)
+    const card = planCard(repo, plan, { keepVisible: true })
+    card.setAttribute('data-place', `${row}:${col}`)
+    host.appendChild(card)
+  })
 }
 
 function renderArchive(model) {
@@ -173,10 +215,18 @@ function renderArchive(model) {
   document.getElementById('archive-count').textContent = String(items.length)
   clear(host)
   if (!items.length) {
+    host.removeAttribute('data-cols')
     host.appendChild(el('div', { class: 'dim', text: 'nothing archived' }))
     return
   }
-  for (const plan of items) host.appendChild(planCard(plan.repoRoot, plan, { keepVisible: true }))
+  const cols = gridColumns(items.length)
+  host.setAttribute('data-cols', String(cols))
+  items.forEach((plan, i) => {
+    const { row, col } = gridPlace(i, cols)
+    const card = planCard(plan.repoRoot, plan, { keepVisible: true })
+    card.setAttribute('data-place', `${row}:${col}`)
+    host.appendChild(card)
+  })
 }
 
 function renderGate(model) {
@@ -241,6 +291,40 @@ function renderGate(model) {
 const now0 = () => (modelNow || Date.now())
 let modelNow = Date.now()
 
+// Card layout, mirrored from lib/hub-model.mjs (kept tiny; the table tests in
+// tests/agenttrail-v2-ui.test.mjs pin the two copies to the same behaviour).
+
+// Collapsed by default: active, blocked, and the next pending entry.
+const visibleEntries = (entries) => {
+  const list = Array.isArray(entries) ? entries : []
+  const shown = list.filter((e) => e.status === 'active' || e.status === 'blocked')
+  const nextDue = list.find((e) => !e.status || e.status === 'pending')
+  if (nextDue && !shown.includes(nextDue)) shown.push(nextDue)
+  return shown
+}
+
+// From 6 visible entries the list wraps into 2-3 columns.
+const entryColumns = (count) => {
+  const n = Math.max(0, Math.floor(Number(count) || 0))
+  if (n < 6) return 1
+  if (n <= 12) return 2
+  return 3
+}
+
+// The board ends up wider than tall: a near-square grid of cards.
+const gridColumns = (count) => {
+  const n = Math.max(0, Math.floor(Number(count) || 0))
+  if (n <= 1) return 1
+  return Math.min(5, Math.max(2, Math.ceil(Math.sqrt(n))))
+}
+
+// Row-major placement — index i sits at (row, col) in a c-column grid.
+const gridPlace = (index, cols) => {
+  const c = Math.max(1, Math.floor(Number(cols) || 1))
+  const i = Math.max(0, Math.floor(Number(index) || 0))
+  return { row: Math.floor(i / c), col: i % c }
+}
+
 function renderBar(model) {
   modelNow = Date.parse(model.now) || Date.now()
   document.getElementById('port').textContent = `port ${model.port ?? '—'}`
@@ -290,4 +374,4 @@ function start() {
 }
 
 if (start()) globalThis.__trailStarted = true
-globalThis.__trail = { render, renderWaiting, renderSessions, renderPlans, renderGate, renderArchive, ageText, goText, doingText, el, clear, start }
+globalThis.__trail = { render, renderWaiting, renderSessions, renderPlans, renderGate, renderArchive, ageText, goText, doingText, el, clear, start, visibleEntries, entryColumns, gridColumns, gridPlace }

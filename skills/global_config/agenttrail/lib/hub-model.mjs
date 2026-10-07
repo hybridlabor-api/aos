@@ -10,6 +10,43 @@ import { lifecycle, stalledTasks, branchState, defaultBranchOf, CONFIG_DEFAULTS 
 import { waitingList } from './sessions.mjs'
 import { listWorktrees, selectPlan } from '../bin/repoid.mjs'
 
+// Card layout helpers. Pure and exported so the hub tests can table-drive them
+// without a browser: which entries a collapsed card shows, how many columns a
+// card's list wraps into, and how the whole board spreads its cards.
+
+// Collapsed by default: only the entries that need attention stay visible —
+// active, blocked, and the next pending entry (the next one due to be worked).
+export function visibleEntries(entries) {
+  const list = Array.isArray(entries) ? entries : []
+  const shown = list.filter((e) => e.status === 'active' || e.status === 'blocked')
+  const nextDue = list.find((e) => !e.status || e.status === 'pending')
+  if (nextDue && !shown.includes(nextDue)) shown.push(nextDue)
+  return shown
+}
+
+// From 6 visible entries a card's list wraps into 2-3 columns.
+export function entryColumns(count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0))
+  if (n < 6) return 1
+  if (n <= 12) return 2
+  return 3
+}
+
+// The whole board must end up wider than tall: a near-square grid of cards,
+// several rows instead of one long column, clamped to keep cards readable.
+export function gridColumns(count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0))
+  if (n <= 1) return 1
+  return Math.min(5, Math.max(2, Math.ceil(Math.sqrt(n))))
+}
+
+// Row-major placement — index i sits at (row, col) in a c-column grid.
+export function gridPlace(index, cols) {
+  const c = Math.max(1, Math.floor(Number(cols) || 1))
+  const i = Math.max(0, Math.floor(Number(index) || 0))
+  return { row: Math.floor(i / c), col: i % c }
+}
+
 const statSafe = (p) => { try { return fs.statSync(p) } catch { return null } }
 const readSafe = (p) => { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
 
@@ -128,6 +165,7 @@ const live = inPrimary.some((s) => now - (s.lastEventAt || 0) < cfg.liveMs && !s
         mirrors: mirrors.map((m) => ({ path: m.path, branch: m.branch })),
         divergent: divergent.map((m) => ({ path: m.path, branch: m.branch, tasks: differingTasks(m, primary) })),
         components: components.map((c) => ({ id: c.id, title: c.title, status: c.status, files: c.files })),
+        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status })),
         progress: { done: tasks.filter((t) => t.status === 'done').length, total: tasks.length, stalled: stalled.size },
         lastActivity: new Date(lastActivity).toISOString(),
       }

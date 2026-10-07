@@ -8,6 +8,7 @@ import net from 'node:net';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { visibleEntries, entryColumns, gridColumns, gridPlace } from '../skills/global_config/agenttrail/lib/hub-model.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hubDir = path.join(root, 'skills/global_config/agenttrail/public/hub');
@@ -115,6 +116,9 @@ const loadApp = () => {
   return { api: sandbox.__trail, byId }
 }
 
+let api;
+let byId;
+
 describe('static checks on the served assets', () => {
   test('no script tag without a src, and no inline style attribute', () => {
     const html = fs.readFileSync(path.join(hubDir, 'index.html'), 'utf8')
@@ -158,9 +162,6 @@ describe('static checks on the served assets', () => {
 });
 
 describe('rendering a fixture model', () => {
-  let api;
-  let byId;
-
   before(() => { const l = loadApp(); api = l.api; byId = l.byId })
 
   test('render runs on the whole model without throwing', () => {
@@ -258,6 +259,129 @@ const collect = (node, out = []) => {
   walk(node)
   return out.filter(Boolean)
 };
+
+const tasks = (statuses) => statuses.map((status, i) => ({ id: `t${i + 1}`, title: `task ${i + 1}`, status }))
+
+describe('card layout: which entries a collapsed card shows', () => {
+  const table = [
+    ['empty plan', [], []],
+    ['only done tasks collapse to nothing', tasks(['done', 'done']), []],
+    ['active stays visible', tasks(['done', 'active', 'done']), ['t2']],
+    ['blocked stays visible', tasks(['done', 'blocked', 'done']), ['t2']],
+    ['next pending is the next-due entry', tasks(['done', 'pending', 'pending']), ['t2']],
+    ['active, blocked and next-due together', tasks(['pending', 'active', 'done', 'blocked', 'pending']), ['t2', 't4', 't1']],
+    ['all done shows nothing until expanded', tasks(['done']), []],
+  ]
+  for (const [name, input, want] of table) {
+    test(name, () => {
+      assert.deepEqual(visibleEntries(input).map((t) => t.id), want)
+    })
+  }
+
+  test('expanding is the caller showing the full list — the pure helper only picks the collapsed subset', () => {
+    const list = tasks(['done', 'active', 'pending', 'blocked'])
+    assert.deepEqual(visibleEntries(list).map((t) => t.id), ['t2', 't4', 't3'])
+    assert.equal(list.length, 4, 'the untouched list still holds every entry for expansion')
+  })
+
+  test('non-arrays and missing statuses are handled without throwing', () => {
+    assert.deepEqual(visibleEntries(null), [])
+    assert.deepEqual(visibleEntries('nope'), [])
+    assert.deepEqual(visibleEntries([{ id: 'x' }]).map((t) => t.id), ['x'], 'a statusless entry counts as pending (next due)')
+  })
+})
+
+describe('card layout: column count for a card task list', () => {  const table = [
+    [0, 1], [1, 1], [5, 1], [6, 2], [10, 2], [12, 2], [13, 3], [30, 3],
+  ]
+  for (const [count, want] of table) {
+    test(`${count} visible entries -> ${want} column${want > 1 ? 's' : ''}`, () => {
+      assert.equal(entryColumns(count), want)
+    })
+  }
+})
+
+describe('card layout: the board grid is wider than tall', () => {
+  const table = [
+    [0, 1], [1, 1], [2, 2], [3, 2], [4, 2], [5, 3], [9, 3], [16, 4], [25, 5], [40, 5],
+  ]
+  for (const [count, want] of table) {
+    test(`${count} cards -> ${want} column${want > 1 ? 's' : ''}`, () => {
+      assert.equal(gridColumns(count), want)
+    })
+  }
+
+  test('placement is row-major: index i sits at (row, col)', () => {
+    const table2 = [
+      [0, 3, { row: 0, col: 0 }],
+      [2, 3, { row: 0, col: 2 }],
+      [3, 3, { row: 1, col: 0 }],
+      [7, 4, { row: 1, col: 3 }],
+      [11, 4, { row: 2, col: 3 }],
+    ]
+    for (const [i, cols, want] of table2) assert.deepEqual(gridPlace(i, cols), want)
+  })
+
+  test('a full grid is wider than tall for realistic card sizes', () => {
+    for (const n of [4, 6, 9, 12, 20]) {
+      const cols = gridColumns(n)
+      const rows = Math.ceil(n / cols)
+      assert.ok(cols >= rows, `${n} cards: ${cols} columns vs ${rows} rows must not be a tall column`)
+    }
+  })
+})
+
+describe('card layout: the browser copy matches the model copy', () => {
+  test('app.js and hub-model.mjs agree on the layout tables', () => {
+    for (const statuses of [['done'], ['done', 'active', 'pending'], ['blocked', 'pending', 'pending'], ['active', 'blocked']]) {
+      const list = tasks(statuses)
+      assert.deepEqual(api.visibleEntries(list).map((t) => t.id), visibleEntries(list).map((t) => t.id))
+    }
+    for (const n of [0, 1, 5, 6, 12, 13, 40]) {
+      assert.equal(api.entryColumns(n), entryColumns(n))
+      assert.equal(api.gridColumns(n), gridColumns(n))
+      assert.deepEqual(JSON.parse(JSON.stringify(api.gridPlace(n, 3))), gridPlace(n, 3))
+    }
+  })
+})
+
+describe('card layout: rendering respects the collapsed list and the grid', () => {
+  test('a card shows only active, blocked and next-due tasks, plus the SHOW TASKS control', () => {
+    const m = JSON.parse(JSON.stringify(MODEL))
+    m.repos[0].plans[0].tasks = [
+      { id: 'a1', title: 'done work', status: 'done' },
+      { id: 'a2', title: 'active work', status: 'active' },
+      { id: 'a3', title: 'pending work', status: 'pending' },
+      { id: 'a4', title: 'blocked work', status: 'blocked' },
+      { id: 'a5', title: 'later work', status: 'pending' },
+    ]
+    api.render(m)
+    const text = collect(byId.get('plans-list')).join(' | ')
+    for (const want of ['#a2', '#a4', '#a3', 'SHOW TASKS']) assert.ok(text.includes(want), `missing "${want}"`)
+    assert.ok(!text.includes('#a1'), 'done tasks stay collapsed')
+    assert.ok(!text.includes('#a5'), 'only the first pending task is next due')
+    assert.ok(!text.includes('HIDE TASKS'), 'collapsed by default')
+  })
+
+  test('the board grid carries the column count and row-major places', () => {
+    const m = JSON.parse(JSON.stringify(MODEL))
+    m.repos[0].plans.push(
+      { ...JSON.parse(JSON.stringify(m.repos[0].plans[0])), planKey: 'pk2', name: 'Second', tasks: [] },
+      { ...JSON.parse(JSON.stringify(m.repos[0].plans[0])), planKey: 'pk3', name: 'Third', tasks: [] },
+    )
+    api.render(m)
+    const host = byId.get('plans-list')
+    assert.equal(host.attributes['data-cols'], '2', '3 cards -> 2 columns, several rows instead of a column')
+    const places = host.children.map((c) => c.attributes['data-place'])
+    assert.deepEqual(places, ['0:0', '0:1', '1:0'])
+  })
+
+  test('an empty board drops the grid attribute', () => {
+    api.render({ now: new Date().toISOString(), repos: [], archive: [] })
+    assert.equal(byId.get('plans-list').attributes['data-cols'], undefined)
+    assert.equal(byId.get('archive-list').attributes['data-cols'], undefined)
+  })
+})
 
 describe('the hub serves the UI', () => {
   let port;
