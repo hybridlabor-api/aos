@@ -678,7 +678,7 @@ function opaqueBodyWords(toks) {
         if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(o)) { sawC = true; break; }
         if (/^(?:-[oO]|--rcfile|--init-file)$/.test(o)) j += 2; else j++;
       }
-      if (sawC && toks[j]) { body = toks[j]; i = j; }
+      if (sawC && toks[j + 1]) { body = toks[++j]; i = j; }
     }
     if (body) {
       // The body is shell source: split it the way the shell reads it. A plain whitespace
