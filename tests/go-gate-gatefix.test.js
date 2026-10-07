@@ -64,6 +64,38 @@ const RMRF = ['r' + 'm', '-r' + 'f', 'build'].join(' '); // assembled: no litera
 const CT = ['container-test'];
 
 // ---------------------------------------------------------------------------
+// (b) `docker -e` / `--env` only as KEY=literal.
+// ---------------------------------------------------------------------------
+describe('(b) docker -e only as KEY=literal', () => {
+    const run = (envFlag) => `docker run --rm -v {P}:/src ${envFlag} node:24 npm test`;
+    test('null: a bare NAME forwards the HOST variable into the container', () => {
+        scopes(run('-e GH_TOKEN'), null);
+        scopes(run('--env NPM_TOKEN'), null);
+        scopes(run('-e'), null); // dangling
+        scopes(run('--env-file .env'), null);
+        scopes(run('-e GH_TOKEN -e AOS_TEST_SANDBOX=container'), null);
+    });
+    test('null: anything but a plain KEY=literal value', () => {
+        scopes(run('-e KEY=~home'), null);
+        scopes(run('-e KEY=$X'), null); // expansion before the image (pre-existing)
+        scopes(run('-e "X=$(id)"'), null); // pre-existing
+    });
+    test('container-test: the official test template keeps working', () => {
+        scopes(run('-e AOS_TEST_SANDBOX=container'), CT);
+        scopes(run('-e CI=1'), CT);
+        scopes(run('-e FOO=bar=baz'), CT); // only the first = separates KEY from value
+        scopes(run('--env=CI=1'), CT);
+        scopes(run("--env 'CI=1'"), CT);
+    });
+    test('hook: benign literal envs are covered by a grant, bare names are not', () => {
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        ok(run('-e AOS_TEST_SANDBOX=container'));
+        blocked(run('-e NPM_TOKEN'));
+    });
+});
+
+// ---------------------------------------------------------------------------
 // (a) Read-only docker mounts must not skip the in-container check.
 // ---------------------------------------------------------------------------
 describe('(a) ro mounts: the text after the image is still read for guarded words', () => {

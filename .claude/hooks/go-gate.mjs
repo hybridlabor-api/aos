@@ -819,6 +819,16 @@ function dockerScopes(tok, seg, tainted = segTaint) {
     if (flag === "--network" || flag === "--net") { if (!/^(?:none|bridge)$/.test(val)) return null; if (!eq) i++; continue; }
     if (t === "--rm") { rm = true; continue; }
     if (DOCKER_FLAG.test(t)) continue;
+    // `-e`/`--env` only as KEY=literal: a bare NAME forwards the HOST variable into the
+    // container (GH_TOKEN, NPM_TOKEN, ...), so it is not a literal and fails closed
+    // (null = ordinary guarded command). No `$`, backtick, `~` or whitespace in the value;
+    // the token regex keeps quoted values whole and unq strips their quotes.
+    if (flag === "-e" || flag === "--env") {
+      const v = eq ? eq[2] : unq(tok[i + 1] ?? "");
+      if (!/^[A-Za-z_][A-Za-z0-9_]*=[^`$"~\s]*$/.test(v.replace(/["'\\]/g, ""))) return null;
+      if (!eq) i++;
+      continue;
+    }
     if (DOCKER_VALUE.test(flag)) { if (!eq) i++; continue; }
     if (t.startsWith("-")) return null;
     image = true;
