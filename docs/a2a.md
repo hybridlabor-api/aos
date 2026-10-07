@@ -31,12 +31,14 @@ aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|
 aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
 aos-a2a status --to <name> <taskId>
 aos-a2a cancel --to <name> <taskId>
+aos-a2a watch <name> [--once]
 aos-a2a reply [--name <name>] <taskId> "<text>"
 ```
 
 - `list` shows live registry entries (`name`, `harness`, `pid`, `url`, `cwd`). `--prune` removes only stale entries' own `.json`/`.token` files. `card` prints the Agent Card without starting a server.
 - `send` waits up to 360 seconds by default (`--timeout` in seconds); `--background` returns as soon as the target answers with a task id. The result is JSON: `{taskId, contextId, state, artifacts, statusMessage}`.
 - `reply` writes the answer file the peer's live executor is waiting for. The name comes from `--name` or `AOS_A2A_NAME`.
+- `watch` follows a live peer read-only: one header line (harness, url, status, pid, last heartbeat), then the tail of `<sessionsDir>/<name>.log` (last 20 lines at start, new lines live), inbox arrivals as `inbox  <ts> from=<caller> task=<id> "<first 80 chars>"`, `.delivered` renames as `delivered <task>`, and `*.reply` files as `reply   task=<id> (<n> bytes)`. It never claims, writes or deletes anything, and never prints full message bodies or tokens. `--once` prints a snapshot (header + last 20 log lines + pending/delivered counts) and exits; without it the watcher runs until Ctrl-C or until the registry entry disappears (`peer gone`, exit 0). A peer that is not registered prints `not registered` and exits non-zero with `--once`.
 - The SDK (`@a2a-js/sdk`) and `express` are lazy-imported only by `serve`, `send`, `status` and `cancel`; `list`, `card` and `--help` run without them and the others fail with a clear "SDK missing" error.
 
 ## Sidecar (`serve`)
