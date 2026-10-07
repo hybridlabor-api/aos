@@ -686,10 +686,13 @@ function catchAll(tok, seg, opaque = false) {
   if (opaque && cposDollar(w)) return true;
   let cmd = true; // the first word of any segment text is a command position
   for (let i = 0; i < w.length; i++) {
-    // a computed head that a later guarded verb would complete (`$x push`, `$D rm -rf x`).
-    // Only in command position (tracked like cposDollar), unless opaque where the shell text
-    // can sit anywhere between built words: `echo $X config` is data and stays free.
-    if ((cmd || opaque) && /^[$`\u0001\u0002]/.test(w[i]) && after(i, GUARDED_NOUN)) return true;
+    // a computed head that a later guarded verb would complete (`$x push`, `$D rm -rf x`),
+    // or one whose NEXT word is computed too (`g=git; p=push; $g $p origin HEAD:main`,
+    // `sudo $g $p`): the verb is assembled from variables, so it is unscoped. Only in command
+    // position (tracked like cposDollar), unless opaque where the shell text can sit anywhere
+    // between built words: `echo $X config` is data and stays free.
+    if ((cmd || opaque) && /^[$`\u0001\u0002]/.test(w[i]) &&
+        (after(i, GUARDED_NOUN) || (cmd && w.slice(i + 1).some((x) => /^[$`\u0001\u0002]/.test(x))))) return true;
     if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
     // a commit that skips hooks or signing, inside sh -c / eval / xargs
     if ((w[i] === "git" || w[i] === "hub") && w.slice(i + 1).includes("commit") && raw.slice(i + 1).some((x) => COMMIT_WORD_BYPASS.test(x) || /^[$\x60]/.test(x) || (/^-/.test(x) && /[$\x60]/.test(x)))) return true;

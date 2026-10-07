@@ -156,4 +156,28 @@ describe('(4) $ after a wrapper with options/args stays in command position', ()
     });
 });
 
+// ---------------------------------------------------------------------------
+// (5) a command-position $ head followed by another $ word is unscoped.
+// ---------------------------------------------------------------------------
+describe('(5) computed head followed by a computed word needs a GO', () => {
+    test('null: the verb and its arguments are assembled from variables', () => {
+        scopes('g=git; p=push; $g $p origin HEAD:main', null);
+        scopes('sudo $g $p origin HEAD:main', null);
+        scopes('g=git p=push $g $p origin HEAD:main', null);
+    });
+    test('[] unchanged: a $ argument of a reader is data, a single $ head without a guarded noun stays free', () => {
+        scopes('echo $X $Y config', []);
+        scopes('echo $X config > out.log', []);
+        scopes('$X --version', []);
+        scopes('sh -c "echo $X; echo oops"', []);
+    });
+    test('hook: the assembled push needs a plain GO', () => {
+        typed('gogate grant push-feature 1h');
+        add(human('go on'));
+        blocked('g=git; p=push; $g $p origin HEAD:main');
+        add(human('GO'));
+        ok('g=git; p=push; $g $p origin HEAD:main');
+    });
+});
+
 module.exports = {};
