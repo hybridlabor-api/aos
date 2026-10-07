@@ -3804,6 +3804,15 @@ async function installMcpsForTarget(paths, ctx) {
         if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
             parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
         }
+        // Direct mode spawns one process per harness session, so adobe_uxp_mcp (which binds a
+        // WebSocket) gets AOS_UXP_PORT=auto: a free port per session, resolved by the entry and
+        // printed to stderr. Gateway mode shares ONE instance built from the shipped template,
+        // which keeps the default 8080 (or whatever AOS_UXP_PORT the gateway process carries);
+        // a user-set AOS_UXP_PORT in this env block is never overwritten.
+        const uxpEntry = parsedMcpConfig.mcpServers.adobe_uxp_mcp;
+        if (uxpEntry && !(uxpEntry.env && uxpEntry.env.AOS_UXP_PORT)) {
+            parsedMcpConfig.mcpServers.adobe_uxp_mcp = { ...uxpEntry, env: { ...(uxpEntry.env || {}), AOS_UXP_PORT: 'auto' } };
+        }
         // AOS_DISABLED_MCPS=a,b: shipped server names that no harness config gets (universal sync reuses this result).
         const dropped = v5Profile.filterMcpServers(parsedMcpConfig.mcpServers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS));
         parsedMcpConfig.mcpServers = dropped.servers;

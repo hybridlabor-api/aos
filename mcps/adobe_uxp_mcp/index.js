@@ -4,8 +4,18 @@ const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio
 const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const { resolveWsPort, DEFAULT_WS_PORT } = require('./port.js');
 
-const WS_PORT = 8080;
+if (require.main === module) {
+    resolveWsPort(process.env.AOS_UXP_PORT, (WS_PORT) => {
+        startServer(WS_PORT);
+    });
+}
+
+function startServer(WS_PORT) {
+    if (WS_PORT !== DEFAULT_WS_PORT) {
+        process.stderr.write(`[adobe_uxp_mcp] WebSocket listening on 127.0.0.1:${WS_PORT}\n`);
+    }
 const wss = new WebSocket.Server({ port: WS_PORT });
 
 // Connected UXP Clients
@@ -132,3 +142,4 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 const transport = new StdioServerTransport();
 server.connect(transport).catch(console.error);
+}

@@ -33,7 +33,7 @@ mcp = FastMCP("BDB grandMA3 MCP")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ip", default="127.0.0.1", help="Target IP")
-parser.add_argument("--port", default="8080", help="WebAPI Port")
+parser.add_argument("--port", default="8081", help="WebAPI Port")
 parser.add_argument("--mode", default="webapi_only", help="Operation Mode")
 args, _ = parser.parse_known_args()
 
