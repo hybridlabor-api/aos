@@ -20,7 +20,7 @@ describe('godmode-media-creation phantom MCP regression', () => {
 
   it('eval case has no phantom MCP names', () => {
     const text = readFileSync(
-      join(ROOT, 'evals', 'cases', 'godmode-media-creation.json'), 'utf8',
+      join(ROOT, 'tests', 'evals', 'cases', 'godmode-media-creation.json'), 'utf8',
     );
     assert.equal(PHANTOM.test(text), false, 'eval case still references openmontage_mcp or palmier_pro_mcp');
   });
