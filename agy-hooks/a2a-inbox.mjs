@@ -51,7 +51,7 @@ try {
   for (const m of inbox.pending(name)) {
     const msg = inbox.claim(m.file);
     if (!msg) continue;
-    texts.push(`${inbox.formatInjection(msg)}\nAnswer by running: ${inbox.replyCommand(msg.taskId, undefined, "")}`);
+    texts.push(`${inbox.formatInjection(msg)}\nAnswer by running: ${inbox.replyCommand(msg.taskId, undefined, "", name)}`);
   }
   if (!texts.length) done();
   done(JSON.stringify({ injectSteps: [{ ephemeralMessage: texts.join("\n\n") }] }));

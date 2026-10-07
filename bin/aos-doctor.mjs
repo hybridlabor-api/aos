@@ -376,10 +376,23 @@ function checkA2aMatrix() {
   add(area, 'A2A OpenCode', ocOk, ocDetail, 'Run the AOS installer to install the OpenCode plugin.', !ocPlugin);
 
   // agy: pull-side MCP payload present (registration is a manual `agy mcp add`).
-  const agyMcp = firstExisting([h('.agents', 'bin', 'a2a-inbox-mcp.mjs'), existsSync(pkgBin) ? pkgBin : null]);
+  const agyMcp = firstExisting([h('.agents', 'bin', 'aos-a2a-mcp.mjs'), h('.agents', 'bin', 'a2a-inbox-mcp.mjs'), existsSync(path.join(path.resolve(new URL(import.meta.url).pathname, '..'), 'aos-a2a-mcp.mjs')) ? path.join(path.resolve(new URL(import.meta.url).pathname, '..'), 'aos-a2a-mcp.mjs') : null, existsSync(pkgBin) ? pkgBin : null]);
   add(area, 'A2A agy (Antigravity)', !!agyMcp,
-    agyMcp ? `${tilde(agyMcp)} shipped · optional: agy mcp add aos-a2a-inbox node "${agyMcp}"` : 'a2a-inbox-mcp.mjs missing (install AOS)',
-    'Run the AOS installer; register with: agy mcp add aos-a2a-inbox node <path to a2a-inbox-mcp.mjs>', true);
+    agyMcp ? `${tilde(agyMcp)} shipped · optional: agy mcp add aos-a2a node "${agyMcp}"` : 'aos-a2a-mcp.mjs missing (install AOS)',
+    'Run the AOS installer; register with: agy mcp add aos-a2a node <path to aos-a2a-mcp.mjs>', true);
+
+  // Cursor: check ~/.cursor/mcp.json for aos-a2a with AOS_A2A_NAME
+  const cursorMcpFile = h('.cursor', 'mcp.json');
+  const cursorCfg = readJson(cursorMcpFile);
+  const cursorEntry = cursorCfg?.mcpServers?.['aos-a2a'] || cursorCfg?.mcpServers?.['aos-a2a-mcp'];
+  if (cursorEntry) {
+    const cursorHasName = Boolean(cursorEntry?.env?.AOS_A2A_NAME);
+    add(area, 'A2A Cursor MCP', cursorHasName,
+      cursorHasName ? `registered in ${tilde(cursorMcpFile)} with AOS_A2A_NAME="${cursorEntry.env.AOS_A2A_NAME}"`
+        : `registered in ${tilde(cursorMcpFile)} but lacks AOS_A2A_NAME in env`,
+      'Set AOS_A2A_NAME in ~/.cursor/mcp.json env', true);
+  }
+
 
   // Codex: live through the shared CLI/lib (no sidecar hook — delegation target).
   const codexLib = firstExisting([h('.agents', 'lib', 'a2a-codex.mjs')]);

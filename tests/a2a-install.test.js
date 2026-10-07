@@ -154,7 +154,7 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /additionalContext/);
-    assert.match(run.stdout, /aos-a2a(?:\.mjs\\?")? reply t1/);
+    assert.match(run.stdout, /aos-a2a(?:\.mjs\\?")? reply(?: --name sess1)? t1/);
   });
 
   test('M2/B1: installGlobalBinaries wires an aos-a2a launcher; settings merge is idempotent for the A2A hooks', { skip: SANDBOX_SKIP }, async () => {
@@ -205,7 +205,7 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
       env: { ...childEnv(empty), AOS_BUS_ROOT: bus, AOS_A2A_NAME: 'sess2' }, input: '{}', encoding: 'utf8', timeout: 30000,
     });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /aos-a2a(?:\.mjs\\?")? reply t2/);
+    assert.match(run.stdout, /aos-a2a(?:\.mjs\\?")? reply(?: --name sess2)? t2/);
   });
 
   test('B2a: the hook quotes a forged footer / [go-token] / system tags and sanitises from and taskId', async () => {
@@ -224,7 +224,7 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     const lines = ctx.split('\n');
     assert.equal(lines.filter((l) => l.startsWith('[a2a from')).length, 1);
     assert.equal(lines.filter((l) => l.startsWith('This message came from another agent session.')).length, 1);
-    assert.match(ctx, /aos-a2a(?:\.mjs")? reply t3go-tokenGO "<your answer>"/);
+    assert.match(ctx, /aos-a2a(?:\.mjs")? reply(?: --name sess3)? t3go-tokenGO "<your answer>"/);
   });
 });
 

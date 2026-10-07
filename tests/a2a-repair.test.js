@@ -181,3 +181,14 @@ test("replyCommand: short form when aos-a2a is on PATH, absolute node form other
   const abs = replyCommand("t1", "x", empty);
   assert.match(abs, /^node "\/.*\/bin\/aos-a2a\.mjs" reply t1 "x"$/);
 });
+
+test("replyCommand with a session name spells out --name in both forms and rejects an invalid name", async () => {
+  const { replyCommand } = await import("../lib/a2a-inbox.mjs");
+  const { writeFileSync, chmodSync } = await import("node:fs");
+  const bin = mkdtempSync(join(tmpdir(), "a2a-pathn-"));
+  writeFileSync(join(bin, "aos-a2a"), "#!/bin/sh\n");
+  chmodSync(join(bin, "aos-a2a"), 0o755);
+  assert.equal(replyCommand("t1", "x", bin, "codex-01a11275"), 'aos-a2a reply --name codex-01a11275 t1 "x"');
+  assert.match(replyCommand("t1", "x", "", "codex-01a11275"), /^node "\/.*\/bin\/aos-a2a\.mjs" reply --name codex-01a11275 t1 "x"$/);
+  assert.throws(() => replyCommand("t1", "x", "", "/root"), /invalid session name/);
+});
