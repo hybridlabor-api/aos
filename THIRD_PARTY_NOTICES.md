@@ -461,7 +461,7 @@ Both are ports, not verbatim copies, and the differences are behavioural:
 
 Upstream's `secret-scanner`, `tdd-gate`, and `dangerous-command-blocker` were
 reviewed and **not** shipped; they remain available on demand from the ECC
-store. Reasons are in `docs/handover/` and the branch description for
+store. Reasons are in the branch description for
 `feat/cicd-skills-import`.
 
 ---

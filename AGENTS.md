@@ -98,8 +98,7 @@ auto-creates the GitHub Release, and auto-publishes to npm.
 
 ## Before adding a check
 
-`docs/sessions/audit-2026-09-14-silent-failures.md` lists sixteen defects found
-in one session, all of one shape: a component reporting a state it is not in. A
+An audit on 2026-09-14 found sixteen defects in one session, all of one shape: a component reporting a state it is not in. A
 clean run, a green check, nothing delivered. They survived many releases
 precisely because the output said it worked.
 
