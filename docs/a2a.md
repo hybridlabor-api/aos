@@ -20,14 +20,14 @@ A delegate profile is a JSON file (`--profile <file>`, or auto-discovered as `.a
 
 - Every role needs `harness`, `model`, `write` (boolean) and `mode` (`live` or `spawn`). `default` is required.
 - The Agent Card of a sidecar lists the profile's roles for its harness as skills. `aos-a2a send --role <id>` resolves a role to a live registry entry through those skill ids.
-- `mode: "spawn"` is validated by the profile but not implemented yet; only `live` has an executor wired into `aos-a2a serve`.
+- `mode: "spawn"` runs the real harness as a one-shot worker (see "Spawn mode" below); `live` is the interactive path with an executor wired into `aos-a2a serve`.
 
 ## The CLI
 
 ```
 aos-a2a list [--json] [--prune]
 aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
-aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|codex] [--parent-pid <pid>] [--thread <t>] [--codex-transport queue|resume]
+aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|codex|spawn] [--parent-pid <pid>] [--write] [--repo <path>] [--thread <t>] [--codex-transport queue|resume]
 aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
 aos-a2a status --to <name> <taskId>
 aos-a2a cancel --to <name> <taskId>
@@ -49,6 +49,21 @@ aos-a2a reply [--name <name>] <taskId> "<text>"
 - `--mode agy` starts the agy sidecar itself: every inbound message is answered by spawning `agy --print "<injected prompt>"` in a fresh conversation (never `--continue`, which would resume and hijack the user's most recent interactive agy conversation) and publishing its stdout as the artifact. Limit: without a conversation id there is no context between messages; a headless agy turn can take several minutes. Useful when no interactive agy session is open, e.g. to run the agy ring legs of the live e2e check.
 - `--mode codex` injects inbound messages into an ALREADY OPEN Codex session: it needs `--thread <session UUID or exact name>` (without it `serve` exits non-zero) and spawns `codex queue --thread <t> --message <prompt>` (default `--codex-transport queue`, or `codex exec resume <t> <prompt>` with `--codex-transport resume`); the answer is the session's `<taskId>.reply` file. The Codex session is never created by this path.
 - `AOS_A2A_SIDECAR=off` makes `serve` refuse to start (and hooks/plugins skip starting it) — this is how spawned workers are kept from starting sidecars of their own.
+
+## Spawn mode (`serve --mode spawn`)
+
+Unlike `--mode live`, which drops the message into an already open session, `--mode spawn` starts a fresh worker process per task (`lib/a2a-spawn.mjs`):
+
+```
+aos-a2a serve --name <n> --harness <h> --mode spawn [--write] [--repo <path>] [--profile <file>]
+```
+
+- Without `--write` the worker runs read-only in a scratch dir; with `--write` the executor creates a job worktree first (`lib/a2a-worktree.mjs`): `git worktree add <repo>/../aos-wt-job-<taskId> -b job/<taskId>` — never removed by this code (removal is a dispatcher task after a GO).
+- Backends: `claude`/`opencode` run `node <repo>/bin/aos-acp.mjs <harness> --name <task> --cwd <dir> --prompt-file <f> --allow-default scoped` (never `allow` — writes stay scoped to the job worktree); `agy`/`codex` run `agy --print <prompt>` / `codex exec <prompt>` with plain argument arrays, no shell.
+- The prompt is prefixed `[a2a from <caller>]` and ends with the never-GO line; the prompt file for aos-acp backends is written `0600`.
+- Child env: `AOS_DELEGATE_DEPTH` is the inbound depth + 1, and an inbound depth over `AOS_A2A_MAX_DEPTH` is rejected by the receiving executor before anything is spawned; `AOS_A2A_SIDECAR=off` so the worker cannot start a sidecar of its own. Proxy variables are stripped unless the sidecar's own environment carries `AOS_WORKER_PROXY_URL`, in which case `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY` are set from it (plus local `NO_PROXY`) — no hard-coded proxy values anywhere.
+- Statuses: `SUBMITTED` → `WORKING`; on exit 0 an artifact with the last 40 output lines (plus `git diff --stat` of the worktree for write tasks) is published and the task completes; any other exit, a spawn error or the `timeoutMs` deadline (default 10 minutes) fails the task with the last lines as the message.
+- `aos-a2a cancel` (or `cancelTask`) kills the whole process group of the worker — the child is spawned detached, so group kill is `kill(-pid)`. A timed-out worker is reaped the same way.
 
 ## a2abook
 
