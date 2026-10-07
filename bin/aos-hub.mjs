@@ -7,6 +7,7 @@
 // token-authed POST /api/shutdown and only falls back to ps+SIGTERM, failing
 // closed when ps is unavailable.
 import { spawn } from 'node:child_process';
+import { connect as netConnect } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, renameSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir as osHome } from 'node:os';
@@ -54,6 +55,17 @@ export const probeHealth = async (port, timeoutMs = 1500) => {
     return status === 200 && json.ok === true && json.service === 'aos-hub';
   } catch { return false; }
 };
+
+// True when SOMETHING on 127.0.0.1:<port> accepts a TCP connection, even if
+// it does not answer HTTP: that is a foreign process holding the port.
+export const portConnectable = (port, timeoutMs = 800) => new Promise((resolve) => {
+  const sock = netConnect({ host: '127.0.0.1', port });
+  const done = (v) => { try { sock.destroy(); } catch { /* already gone */ } resolve(v); };
+  sock.setTimeout(timeoutMs);
+  sock.once('connect', () => done(true));
+  sock.once('timeout', () => done(false));
+  sock.once('error', () => done(false));
+});
 
 export const openBrowser = (url) => {
   const [cmd, args] = process.platform === 'darwin' ? ['open', [url]]
@@ -114,6 +126,13 @@ async function cmdStart(opts) {
     return false;
   })();
   if (!up) {
+    // Distinguish "the child did not start" from "a foreign process holds the
+    // port": if the port accepts TCP connections after we could not health-
+    // probe an aos-hub there, say exactly what is holding it.
+    if (await portConnectable(opts.port)) {
+      console.error(`port ${opts.port} is in use by another process (an old aos-dashboard?); stop it or use --port`);
+      return 1;
+    }
     console.error(`AOS Hub did not come up on 127.0.0.1:${opts.port} within 5 s.`);
     return 1;
   }
@@ -234,6 +253,12 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   console.log(`AOS Hub: http://127.0.0.1:${hub.server.address().port}/`);
   const stopped = async () => {
     try { unlinkSync(hubPaths(home).file); } catch { /* already gone */ }
+    try {
+      // OpenWiki graph viewers are child processes of this server: kill them
+      // on the way out, on /api/shutdown AND on SIGINT/SIGTERM.
+      const { stopViewers: stopVis } = await import(join(ROOT, 'lib', 'hub', 'services.mjs'));
+      stopVis();
+    } catch { /* services module unimportable; nothing viewers-side to stop */ }
     await hub.close();
     setTimeout(() => process.exit(0), 2000).unref();
   };

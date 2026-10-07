@@ -448,3 +448,52 @@ test('parseArgv rejects --tab values outside [a-z]+', () => {
     assert.throws(() => parseArgv(['--tab', bad]), `should reject ${JSON.stringify(bad)}`);
   assert.equal(parseArgv(['--tab=plans']).tab, 'plans');
 });
+
+// ---- security round: the default ctx.run is the REAL runner (no silent stub) ----
+test('defaultRun spawns for real, scrubs the env, resizes timeout, never throws', async () => {
+  const { defaultRun } = await import('../lib/hub/server.mjs');
+  process.env.AOS_HUB_TOKEN = 'leaky-stub-token';
+  process.env.MY_SECRET_1 = 'leaky-secret-value';
+  try {
+    const out = await defaultRun(process.execPath, ['-e', 'console.log("RAN")']);
+    assert.equal(out.ok, true, 'a real child ran');
+    assert.match(out.stdout, /RAN/, 'the stub would have faked stdout');
+    // env scrub: the child must not see AOS_HUB_TOKEN or secret-shaped vars
+    const envProbe = await defaultRun(process.execPath, ['-e', 'console.log(JSON.stringify({ t: process.env.AOS_HUB_TOKEN ?? null, s: process.env.MY_SECRET_1 ?? null, p: !!process.env.PATH }))']);
+    const seen = JSON.parse(envProbe.stdout.trim());
+    assert.deepEqual(seen, { t: null, s: null, p: true });
+    // timeout: the slow child is killed and the promise resolves ok:false
+    const timedOut = await defaultRun(process.execPath, ['-e', 'setTimeout(()=>{}, 90000)'], { timeout: 400 });
+    assert.equal(timedOut.ok, false);
+    // failing child: resolves with ok:false, never throws
+    const boom = await defaultRun(process.execPath, ['-e', 'process.exit(3)']);
+    assert.equal(boom.ok, false);
+    assert.equal(boom.code, 3);
+  } finally {
+    delete process.env.AOS_HUB_TOKEN;
+    delete process.env.MY_SECRET_1;
+  }
+});
+
+test('a hub without an injected run does not use the old silent stub', async () => {
+  const h7 = createHub({
+    port: 0, home,
+    routes: [{ method: 'GET', path: '/api/test/run-type', handler: ({ ctx }) => ({ status: 200, json: { isReal: typeof ctx.run === 'function', isStub: ctx.run.length <= 3 && ctx.run !== undefined && ctx.run.toString().includes('Promise.resolve') } }) }],
+    ctx: { root },
+  });
+  await h7.listen();
+  const p7 = h7.server.address().port;
+  const out = await new Promise((ok, fail) => request(`http://127.0.0.1:${p7}/api/test/run-type`, { headers: { host: `127.0.0.1:${p7}` } }, (r) => { let d = ''; r.on('data', (c) => { d += c; }); r.on('end', () => ok(JSON.parse(d))); }).on('error', fail).end());
+  assert.equal(out.isReal, true);
+  assert.equal(out.isStub, false);
+  await h7.close();
+});
+
+test('portConnectable: a foreign listener is connectable; a dead port is not', async () => {
+  const { portConnectable } = await import('../bin/aos-hub.mjs');
+  const blocker = createServer_fwd(() => {});
+  await new Promise((ok, bad) => { blocker.once('error', bad); blocker.listen(59995, '127.0.0.1', ok); });
+  assert.equal(await portConnectable(59995), true);
+  assert.equal(await portConnectable(1), false, 'nothing listens on 127.0.0.1:1');
+  blocker.close();
+});

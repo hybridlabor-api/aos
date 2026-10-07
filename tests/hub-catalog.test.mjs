@@ -123,7 +123,7 @@ test('store index items listed with source id; core wins for local skills', () =
       'demo-index-agent': { description: 'index-only fixture agent' },
     },
   }));
-  const cat = buildCatalog({ root: ROOT, home: tmpBase, now: () => Date.now(), env: { AOS_STORE_INDEX: fixture } });
+  const cat = buildCatalog({ root: ROOT, home: tmpBase, now: () => Date.now(), env: { AOS_STORE_TEST_OVERRIDES: '1', AOS_STORE_INDEX: fixture } });
   // core wins: the local entry is reported, the index duplicate does not override it
   const dup = byName(cat.skills, 'bdb-aos');
   assert.ok(dup, 'locally present skill listed');

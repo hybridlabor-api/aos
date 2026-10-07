@@ -111,3 +111,33 @@ test('redact: tokens, keys, bearer values', () => {
   const hexRedacted = redact('prefix 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef suffix');
   assert.match(hexRedacted, /\[redacted-hex64\]/);
 });
+
+test('redact: mid-line assignments, argv pairs, userinfo, JWTs, Authorization headers', () => {
+  // mid-line / query-string assignments
+  assert.match(redact('fetch https://api.x/v1?ids=1&token=sup3rS3cret&pages=2'), /token=\[redacted\]/);
+  assert.doesNotMatch(redact('fetch https://api.x/v1?ids=1&token=sup3rS3cret&pages=2'), /sup3rS3cret/);
+  assert.match(redact('curl --token=abc1234 def'), /--token=\[redacted\]/);
+  assert.match(redact('{"apikey":"sv-value-9"}'), /apikey"?:"?\[redacted\]/);
+  assert.doesNotMatch(redact('password: p4ssword123'), /p4ssword123/);
+  // assert.ok kept for the value that must survive
+  assert.equal(redact('retry=3'), 'retry=3');
+  // argv value pairs (kept value-free)
+  assert.match(redact('preview od-auth --api-key AKVA123 --debug'), /--api-key .*[redacted]/);
+  assert.equal(redact('preview od-auth --api-key AKVA123 --debug').includes('AKVA123'), false);
+  assert.match(redact('run --secret two-words-tok'), /--secret\s+\[redacted\]/);
+  // URL userinfo user:pass
+  const ui = redact('clone https://gituser:gmailpass@github.com/a/b.git or http://u:verysecret@x.local/');
+  assert.match(ui, /https:\/\/\[redacted\]:\[redacted\]@github\.com/);
+  assert.doesNotMatch(ui, /verysecret/);
+  // JWT three base64url parts starting eyJ
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQsssIc';
+  const outJwt = redact(`header authorization sees ${jwt} done`);
+  assert.match(outJwt, /\[redacted-jwt\]/);
+  assert.equal(outJwt.includes('SflKxwRJSMe'), false);
+  // Authorization header with a scheme that is not caught by the Bearer pattern
+  const auth = redact('Authorization: Snoken 3eafa9ff11');
+  assert.match(auth, /Authorization: \S+ \[redacted\]/);
+  assert.equal(auth.includes('3eafa9ff11'), false);
+  // harmless text survives
+  assert.equal(redact('visited token status page'), 'visited token status page');
+});

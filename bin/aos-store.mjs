@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchSkillFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
+import { MAX_BYTES, fetchSkillFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sources = loadSources(ROOT);
@@ -84,6 +84,7 @@ async function install(name) {
       files = await fetchSkillFiles(pSrc.raw_base, pSrc.pinned_commit, dirname(p.item.upstream_path), p.item.files);
     } else {
       const content = await download(pSrc, p.item.upstream_path);
+      if (content.length > MAX_BYTES) throw new Error(`Item too large (> ${MAX_BYTES} bytes)`);
       const digest = createHash('sha256').update(content).digest('hex');
       if (digest !== p.item.sha256) throw new Error(`SHA-256 mismatch for ${p.name}: expected ${p.item.sha256}, got ${digest}`);
       files = null;

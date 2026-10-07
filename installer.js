@@ -7260,6 +7260,7 @@ module.exports = {
     describeExecError,
     migrateMcpSecrets,
     installMcpLauncher,
+    installMcpsForTarget,
     mergeBdbSettingsHooks,
     mergeAntigravityHooks,
     agyHookCommand,

@@ -6,9 +6,11 @@ import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { routes as storeRoutes } from '../lib/hub/routes-store.mjs';
-import { rollbackInstall, appendInstallLog, installsLogPath, storeIso, readInstallsLog } from '../lib/store-shared.mjs';
+import { rollbackInstall, appendInstallLog, installWithBackup, installsLogPath, storeIso, readInstallsLog } from '../lib/store-shared.mjs';
+
+const reqCjs = createRequire(import.meta.url);
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname);
 // Unique temp dirs, never deleted (rules forbid recursive deletes).
@@ -38,7 +40,8 @@ let srv, rawPort;
 const savedEnv = {};
 before(async () => {
   // Route handlers read the store index / raw base from process.env.
-  for (const k of ['AOS_STORE_INDEX', 'AOS_STORE_RAW_BASE']) savedEnv[k] = process.env[k];
+  for (const k of ['AOS_STORE_INDEX', 'AOS_STORE_RAW_BASE', 'AOS_STORE_TEST_OVERRIDES']) savedEnv[k] = process.env[k];
+  process.env.AOS_STORE_TEST_OVERRIDES = '1';
   process.env.AOS_STORE_INDEX = join(base, 'index.json');
   srv = createServer((req, res) => {
     const trimmed = req.url.replace(`/${COMMIT}/`, '');
@@ -58,6 +61,7 @@ after(() => {
   srv.close();
   if (savedEnv.AOS_STORE_INDEX === undefined) delete process.env.AOS_STORE_INDEX; else process.env.AOS_STORE_INDEX = savedEnv.AOS_STORE_INDEX;
   if (savedEnv.AOS_STORE_RAW_BASE === undefined) delete process.env.AOS_STORE_RAW_BASE; else process.env.AOS_STORE_RAW_BASE = savedEnv.AOS_STORE_RAW_BASE;
+  if (savedEnv.AOS_STORE_TEST_OVERRIDES === undefined) delete process.env.AOS_STORE_TEST_OVERRIDES; else process.env.AOS_STORE_TEST_OVERRIDES = savedEnv.AOS_STORE_TEST_OVERRIDES;
 });
 
 writeFileSync(join(base, 'index.json'), JSON.stringify({
@@ -80,6 +84,7 @@ writeFileSync(join(base, 'index.json'), JSON.stringify({
 const env = (overrides = {}) => ({
   ...process.env,
   HOME: projHome,
+  AOS_STORE_TEST_OVERRIDES: '1',
   AOS_STORE_INDEX: join(base, 'index.json'),
   AOS_STORE_RAW_BASE: `http://127.0.0.1:${rawPort}`,
   ...overrides,
@@ -209,14 +214,28 @@ test('install route: 400 without the typed confirm, and never spawns', async () 
 
 test('install route spawns the fixed-argv CLI (shell:false), nothing interpolated', async () => {
   const before = calls.length;
-  const res = await post('/api/store/install', { name: 'hub-fixture', scope: 'project', confirm: 'hub-fixture' });
+  const res = await post('/api/store/install', { name: 'hub-fixture', scope: 'global', confirm: 'hub-fixture' });
   assert.equal(res.status, 200);
   assert.equal(calls.length, before + 1);
   const { cmd, args, opts } = calls[calls.length - 1];
   assert.equal(cmd, 'node');
   assert.equal(args[0], join(ROOT, 'bin', 'aos-store.mjs'));
-  assert.deepEqual(args.slice(1), ['install', 'hub-fixture', '--net', '--project']);
+  assert.deepEqual(args.slice(1), ['install', 'hub-fixture', '--net']);
   assert.equal(opts.shell, false);
+});
+
+test('scope project is refused by the hub (400) on preview, install and rollback — nothing spawns', async () => {
+  const before = calls.length;
+  const pv = await post('/api/store/preview', { kind: 'skill', name: 'hub-fixture', scope: 'project' });
+  assert.equal(pv.status, 400);
+  const ins = await post('/api/store/install', { name: 'hub-fixture', scope: 'project', confirm: 'hub-fixture' });
+  assert.equal(ins.status, 400);
+  const insMcp = await post('/api/store/install', { kind: 'mcp', name: 'gog-gateway', scope: 'project', target: 'claude', confirm: 'gog-gateway' });
+  assert.equal(insMcp.status, 400);
+  const rb = await post('/api/store/rollback', { name: 'hub-fixture', scope: 'project', confirm: 'hub-fixture' });
+  assert.equal(rb.status, 400);
+  assert.equal(calls.length, before, 'refusals never spawn');
+  for (const j of [pv, ins, insMcp, rb]) assert.equal(j.json.error, 'project scope is not available from the hub');
 });
 
 test('mcp kind refuses names not shipped in mcp_config.json/mcp_picks.json', async () => {
@@ -242,9 +261,16 @@ test('mcp preview lists harness targets; install validates the target + argv', a
   const ok = await post('/api/store/install', { kind: 'mcp', name, target: 'claude', confirm: name });
   assert.equal(ok.status, 200);
   assert.deepEqual(calls.at(-1).args, [join(ROOT, 'installer.js'), 'package', 'mcp', name, '--target', 'claude']);
+  // finding 2: the mcp verb reaches the real installer, so it must be exported.
+  const { installMcpsForTarget } = reqCjs(join(ROOT, 'installer.js'));
+  assert.equal(typeof installMcpsForTarget, 'function');
+  // stdout/stderr pass through redact before leaving the route (finding 9).
+  const routesSrc = readFileSync(join(ROOT, 'lib', 'hub', 'routes-store.mjs'), 'utf8');
+  assert.doesNotMatch(routesSrc, /stdout: String\(/);
+  assert.doesNotMatch(routesSrc, /stderr: String\(/);
 });
 
-test('rollback route runs in-process and restores content from a real backup', async () => {
+test('rollback route refuses scope project; the in-process restore stays CLI-covered', async () => {
   const home2 = join(base, 'home-route');
   const proj2 = join(base, 'proj-route');
   mkdirSync(proj2, { recursive: true });
@@ -259,11 +285,9 @@ test('rollback route runs in-process and restores content from a real backup', a
     body: { name: 'hub-fixture', scope: 'project', confirm: 'hub-fixture' },
     ctx: storeCtx(home2, proj2),
   });
-  assert.equal(ok.status, 200);
-  assert.equal(ok.json.ok, true);
-  assert.equal(readFileSync(target, 'utf8'), FILES['SKILL.md'], 'content restored from the backup');
-  assert.ok(readdirSync(join(proj2, 'skills')).some((n) => n.startsWith('hub-fixture.aos-failed-')));
-  assert.equal(calls.length, before, 'rollback never spawns: it renames in-process');
+  assert.equal(ok.status, 400, 'project scope refused from the hub');
+  assert.equal(calls.length, before, 'refusal never spawns');
+  assert.equal(readFileSync(target, 'utf8'), 'current (bad) content\n', 'refusal renamed nothing');
 });
 
 test('tampered installs.jsonl: abort with zero renames (target outside roots, foo.bak backup, non-ISO suffix)', () => {
@@ -317,6 +341,58 @@ test('a valid installs.jsonl restores content and parks the overwritten state', 
   assert.equal(res.restored, 1);
   assert.equal(readFileSync(target, 'utf8'), FILES['SKILL.md']);
   assert.ok(readdirSync(join(cwd, 'skills')).some((n) => n.startsWith('hub-fixture.aos-failed-')));
+});
+
+// ---- security round: partial states, disk validation, ISO reservations ----
+test('installWithBackup: mid-write failure parks the partial target and restores the backup', () => {
+  const home = join(base, 'home-partial');
+  const cwd = join(base, 'proj-partial');
+  mkdirSync(join(cwd, 'skills', 'partial'), { recursive: true });
+  mkdirSync(home, { recursive: true });
+  const target = join(cwd, 'skills', 'partial', 'SKILL.md');
+  writeFileSync(target, 'v1\n');
+  // the second write walks into a file used as its parent dir: mkdirSync fails mid-write
+  writeFileSync(join(cwd, 'agents'), 'not a directory\n');
+  const writes = [
+    { type: 'file', target, data: 'v2\n' },
+    { type: 'file', target: join(cwd, 'agents', 'agent-x.md'), data: 'y\n' },
+  ];
+  assert.throws(() => installWithBackup({ writes, home }), /installWithBackup failed|ENOTDIR|EEXIST/);
+  assert.equal(readFileSync(target, 'utf8'), 'v1\n', 'backup restored after the failure');
+  const parkedFiles = readdirSync(join(cwd, 'skills', 'partial')).filter((n) => n.startsWith('SKILL.md.aos-failed-'));
+  assert.equal(parkedFiles.length, 1, 'the partial (no-backup) write was parked, never deleted');
+  assert.ok(existsSync(join(join(cwd, 'skills', 'partial'), parkedFiles[0])), 'parked artifact keeps its bytes');
+});
+
+test('rollback: a last entry with no backups is an error, and a dirname disk for agents or a harness root is refused', () => {
+  const home = join(base, 'home-validate');
+  const cwd = join(base, 'proj-validate');
+  mkdirSync(home, { recursive: true });
+  const agentTarget = join(cwd, 'agents', 'agent-x.md');
+  const agentEntry = { ts: new Date().toISOString(), name: 'agent-x', kind: 'agent', source: 'ecc', commit: COMMIT, scope: 'project', targets: [agentTarget] };
+  appendInstallLog(home, { ...agentEntry, backups: [null] });
+  // no backups at all -> nothing to restore must be an ERROR, not a silent ok
+  assert.throws(() => rollbackInstall({ name: 'agent-x', home, project: true, cwd }), /nothing to restore/);
+  // agents: the unit is the file itself; a dirname disk must be refused
+  const placed = { ...agentEntry, disks: [dirname(agentTarget)], backups: [] };
+  writeFileSync(installsLogPath(home), `${JSON.stringify(placed)}\n`);
+  assert.throws(() => rollbackInstall({ name: 'agent-x', home, project: true, cwd }), /does not belong/);
+  // skills: a logged disk equal to the harness skills ROOT is refused
+  const skillTarget = join(cwd, 'skills', 'grad-one', 'SKILL.md');
+  const skillEntry = { ts: new Date().toISOString(), name: 'grad-one', kind: 'skill', source: 'ecc', commit: COMMIT, scope: 'project', targets: [skillTarget] };
+  writeFileSync(installsLogPath(home), `${JSON.stringify({ ...skillEntry, disks: [join(cwd, 'skills')], backups: [null] })}\n`);
+  assert.throws(() => rollbackInstall({ name: 'grad-one', home, project: true, cwd }), /harness skills\/agents root|does not belong/);
+  // ...but a legit skill dir-unit disk (dirname of SKILL.md) stays allowed
+  const isoDir = storeIso();
+  mkdirSync(dirname(skillTarget), { recursive: true });
+  writeFileSync(skillTarget, 'bad\n');
+  // a skill's physical backup is the renamed DIRECTORY (<dir>.aos-bak-<ISO>), the unit named by `disks`
+  const bakDir = `${join(cwd, 'skills', 'grad-one')}.aos-bak-${isoDir}`;
+  mkdirSync(bakDir, { recursive: true });
+  writeFileSync(join(bakDir, 'SKILL.md'), 'good\n');
+  writeFileSync(installsLogPath(home), `${JSON.stringify({ ...skillEntry, disks: [join(cwd, 'skills', 'grad-one')], backups: [bakDir] })}\n`);
+  assert.equal(rollbackInstall({ name: 'grad-one', home, project: true, cwd }).restored, 1);
+  assert.equal(readFileSync(skillTarget, 'utf8'), 'good\n');
 });
 
 test('GET /api/store returns index items + package rows', async () => {

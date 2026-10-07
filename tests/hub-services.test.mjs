@@ -9,7 +9,7 @@ import { routes as servicesRoutes } from '../lib/hub/routes-services.mjs';
 import {
   SERVICE_IDS, byId,
   controlService, statusService, serviceMeta,
-  portOpen, cli,
+  portOpen, cli, readServiceLog, openWikiProjects,
   setA2aListForTests, resetMetaCacheForTests, resetWikiCacheForTests,
 } from '../lib/hub/services.mjs';
 import { routes as planRoutes } from '../lib/hub/routes-plans.mjs';
@@ -57,6 +57,45 @@ test('launchd start without a plist: clear error, fake ctx.run never called', as
   assert.equal(calls.length, 0);
 });
 
+test('launchd: "Bootstrap failed: 5" on start kicks the loaded agent; restart polls launchctl print', async () => {
+  const home5 = join(tmp, 'home-b5');
+  mkdirSync(join(home5, 'Library', 'LaunchAgents'), { recursive: true });
+  const plist = join(home5, 'Library', 'LaunchAgents', 'com.bdb.memb.webui.plist');
+  writeFileSync(plist, '<plist/>');
+  const seq = [];
+  const ctx = {
+    ...recordingCtx({ home: home5 }),
+    run: async (cmd, args) => {
+      seq.push([cmd, ...args]);
+      if (args[0] === 'bootstrap') return { ok: false, code: 5, stdout: '', stderr: 'Bootstrap failed: 5: Input/output error' };
+      if (args[0] === 'print') return { ok: false, code: 37, stdout: '', stderr: 'not loaded' };
+      return { ok: true, code: 0, stdout: '', stderr: '' };
+    },
+  };
+  const res = await controlService(ctx, 'memb', 'start');
+  assert.equal(res.ok, true, 'exit 5 counts as already-loaded, kicked afterwards');
+  assert.deepEqual(seq, [
+    ['launchctl', 'bootstrap', 'gui/501', plist],
+    ['launchctl', 'kickstart', '-k', 'gui/501/com.bdb.memb.webui'],
+  ]);
+  // restart: bootout -> launchctl print must be asked before the bootstrap.
+  seq.length = 0;
+  let printAsked = false;
+  const ctx2 = {
+    ...recordingCtx({ home: home5 }),
+    run: async (cmd, args) => {
+      seq.push([cmd, ...args]);
+      if (args[0] === 'print') { printAsked = true; return { ok: false, code: 37, stdout: '', stderr: 'not loaded' }; }
+      return { ok: true, code: 0, stdout: '', stderr: '' };
+    },
+  };
+  const res2 = await controlService(ctx2, 'memb', 'restart');
+  assert.equal(res2.ok, true);
+  assert.equal(seq[0][1], 'bootout');
+  assert.equal(printAsked, true, 'restart polls launchctl print before bootstrapping');
+  assert.equal(seq[seq.length - 1][1], 'bootstrap');
+});
+
 test('launchd control with a plist fixture: exact bootstrap argv', async () => {
   const home2 = join(tmp, 'home-plist');
   mkdirSync(join(home2, 'Library', 'LaunchAgents'), { recursive: true });
@@ -69,6 +108,41 @@ test('launchd control with a plist fixture: exact bootstrap argv', async () => {
   const res = await controlService(local, 'memb', 'start');
   assert.deepEqual(calls.map((c) => [c.cmd, c.args]), [['launchctl', ['bootstrap', 'gui/501', plist]]]);
   assert.equal(res.ok, true);
+});
+
+test('windows: memb/synapse stop is disabled (Task Scheduler message); wscript start stays', async () => {
+  const homeWin = join(tmp, 'home-win');
+  const startup = join(homeWin, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  mkdirSync(startup, { recursive: true });
+  writeFileSync(join(startup, 'com.bdb.memb.webui.vbs'), "' vbs stub");
+  const savedAppData = process.env.APPDATA;
+  delete process.env.APPDATA;
+  try {
+    calls.length = 0;
+    await assert.rejects(
+      () => controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'stop'),
+      /Task Scheduler/,
+      'no substring process-kill on Windows: the exact installed path is not derivable',
+    );
+    assert.equal(calls.length, 0, 'stop must not even attempt a kill');
+    const res = await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'start');
+    assert.equal(res.ok, true);
+    assert.deepEqual(calls.at(-1), { cmd: 'wscript.exe', args: [join(startup, 'com.bdb.memb.webui.vbs')], opts: { timeout: 10000 } });
+  } finally {
+    if (savedAppData !== undefined) process.env.APPDATA = savedAppData;
+  }
+});
+
+test('readServiceLog reads at most the last 64 KB and still redacts', async () => {
+  const homeLog = join(tmp, 'home-tail');
+  mkdirSync(join(homeLog, '.memb'), { recursive: true });
+  const big = 'x'.repeat(200 * 1024);
+  writeFileSync(join(homeLog, '.memb', 'webui.stdout.log'), `${big}\nDATA1 filler beyond every tail\n${'y'.repeat(70 * 1024)}tail token=hunter2\n`);
+  const text = await readServiceLog(recordingCtx({ home: homeLog }), 'memb', 'webui.stdout.log');
+  assert.ok(text.length < 80 * 1024, 'the tail is bounded at 64 KB');
+  assert.doesNotMatch(text, /DATA1/, 'content before the 64 KB tail never reaches the response');
+  assert.match(text, /token=\[redacted\]/);
+  assert.doesNotMatch(text, /hunter2/);
 });
 
 test('observe-only services refuse stop; id must be in the table', async () => {
@@ -138,7 +212,30 @@ test('visualize with an unknown project -> 400', async () => {
   const viz = servicesRoutes.find((r) => r.path === '/api/services/openwiki/visualize');
   const out = await viz.handler({ url: new URL('http://x/api/services/openwiki/visualize'), params: [], body: { project: '/tmp/definitely-unknown-proj' }, ctx: recordingCtx({ wikiRoot: join(tmp, 'empty-dev') }) });
   assert.equal(out.status, 400);
-  assert.match(out.json.error, /unknown project/);
+  assert.match(out.json.error, /unknown project|dev root/);
+});
+
+test('visualize route sits on the services lock; projects.json paths outside the dev root are refused', async () => {
+  const viz = servicesRoutes.find((r) => r.path === '/api/services/openwiki/visualize');
+  assert.equal(viz.lock, 'services', 'viewer children take the services gate');
+  resetWikiCacheForTests();
+  const homeP = join(tmp, 'home-proj');
+  const devRoot = join(tmp, 'dev-proj');
+  const inside = join(devRoot, 'repo-a');
+  mkdirSync(join(inside, '.openwiki'), { recursive: true });
+  writeFileSync(join(inside, '.openwiki', 'index1.md'), 'a\n');
+  const outside = join(tmp, 'outside-repo');
+  mkdirSync(join(outside, '.openwiki'), { recursive: true });
+  writeFileSync(join(outside, '.openwiki', 'index2.md'), 'b\n');
+  mkdirSync(join(homeP, '.openwiki'), { recursive: true });
+  writeFileSync(join(homeP, '.openwiki', 'projects.json'), JSON.stringify({ projects: [inside, outside] }));
+  const ctx = recordingCtx({ home: homeP, wikiRoot: devRoot });
+  const list = openWikiProjects(ctx).map((p) => p.path);
+  assert.deepEqual(list, [inside], 'path outside the dev root is never offered');
+  // the route refuses it too, with its own message, before the lookup:
+  const r2 = await viz.handler({ url: new URL('http://x/api/services/openwiki/visualize'), params: [], body: { project: outside }, ctx });
+  assert.equal(r2.status, 400);
+  assert.match(r2.json.error, /dev root|unknown project/);
 });
 
 test('log route rejects ../x and unknown names', async () => {
