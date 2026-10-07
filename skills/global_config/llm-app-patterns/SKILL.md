@@ -94,14 +94,14 @@ VECTOR_DB_OPTIONS = {
     }
 }
 
-# Embedding model selection
+# Embedding model selection — resolve the current model IDs in the provider docs at the time of use
 EMBEDDING_MODELS = {
-    "openai/text-embedding-3-small": {
+    "small": {
         "dimensions": 1536,
         "cost": "$0.02/1M tokens",
         "quality": "Good for most use cases"
     },
-    "openai/text-embedding-3-large": {
+    "large": {
         "dimensions": 3072,
         "cost": "$0.13/1M tokens",
         "quality": "Best for complex queries"

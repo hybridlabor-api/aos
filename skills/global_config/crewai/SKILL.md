@@ -184,6 +184,7 @@ Manager agent delegates to workers
 
 **When to use**: Complex tasks needing coordination
 
+import os
 from crewai import Crew, Process
 
 # Define specialized agents
@@ -227,6 +228,7 @@ Generate execution plan before running
 
 **When to use**: Complex workflows needing structure
 
+import os
 from crewai import Crew, Process
 
 # Enable planning
@@ -284,7 +286,7 @@ crew = Crew(
     ),
     embedder={
         "provider": "openai",
-        "config": {"model": "text-embedding-3-small"}
+        "config": {"model": "<embedding-model-id>"}
     }
 )
 

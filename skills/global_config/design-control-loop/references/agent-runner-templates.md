@@ -91,7 +91,7 @@ Secret: provider-specific, commonly `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
   run: |
     opencode run "$PROMPT" \
       --dir "$GITHUB_WORKSPACE" \
-      --model $AGENT_MODEL \
+      --model "$AGENT_MODEL" \
       --format json \
       --dangerously-skip-permissions \
       2>&1 | tee /tmp/agent-output.txt
@@ -126,7 +126,7 @@ Secret: usually `ANTHROPIC_API_KEY` for Anthropic-backed runs.
   run: |
     bunx @humanlayer/cli@latest codelayer \
       --provider anthropic \
-      --model $AGENT_MODEL \
+      --model "$AGENT_MODEL" \
       --thinking high \
       --prompt "$PROMPT" \
       2>&1 | tee /tmp/agent-output.txt

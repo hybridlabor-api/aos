@@ -19,11 +19,33 @@ function walk(dir, out = []) {
   return out;
 }
 
+// Docs-like files inside skills/, exactly the set the repo-wide
+// `node scripts/validate-skills.mjs` run lints: every SKILL.md plus
+// .md/.yml/.yaml auxiliaries (references/, templates/). Runtime code
+// (.py/.js/.mjs/…) is never model-name linted.
+const DOC_SUFFIX = /(?:SKILL\.md|\.(?:md|ya?ml))$/;
+
 test('W-MODEL01 flags a fixed model name', () => {
   const findings = checkModelNames('Configure model="gpt-4o" before the call.');
   assert.equal(findings.length, 1);
   assert.equal(findings[0].code, 'W-MODEL01');
   assert.equal(findings[0].level, 'warn');
+});
+
+test('prose-friendly words are not flagged', () => {
+  assert.deepEqual(checkModelNames('Use Claude Code with the opus tier chosen in prose.'), []);
+});
+
+test('uppercase and spaced variants are flagged', () => {
+  for (const line of ['GPT-4 came first.', 'Llama 3 is open.', 'bunx cli --model sonnet --thinking high']) {
+    assert.equal(checkModelNames(line).length, 1, line);
+  }
+});
+
+test('embedding and OSS family ids are flagged', () => {
+  for (const line of ['set model: text-embedding-3-small', 'Mixtral 8x7B needs 45GB', 'Try Qwen2.', 'gemma-4-26b-a4b-it']) {
+    assert.equal(checkModelNames(line).length, 1, line);
+  }
 });
 
 test('clean text produces no findings', () => {
@@ -33,10 +55,10 @@ test('clean text produces no findings', () => {
   );
 });
 
-test('skills/ in this clone contains zero fixed model names', () => {
+test('skills/ docs contain zero fixed model names', () => {
   const hits = [];
   for (const p of walk(skillsDir)) {
-    if (!p.endsWith('SKILL.md')) continue;
+    if (!DOC_SUFFIX.test(p)) continue;
     const rel = p.startsWith(repo) ? p.slice(repo.length + 1) : p;
     for (const f of checkModelNames(readFileSync(p, 'utf8'))) {
       hits.push(`${rel}:${f.line} ${f.msg}`);

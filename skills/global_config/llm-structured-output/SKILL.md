@@ -62,6 +62,8 @@ Do NOT use this skill when:
 ### Example 1: OpenAI Structured Outputs with Pydantic (Python)
 
 ```python
+import os
+
 from pydantic import BaseModel, Field
 from openai import OpenAI
 from enum import Enum
@@ -158,7 +160,7 @@ const EventSchema = z.object({
 });
 
 const client = new OpenAI();
-const MODEL = process.env.OPENAI_MODEL; // current model ID from the provider docs
+const MODEL = process.env.OPENAI_MODEL ?? '<model-id>'; // current model ID from the provider docs
 const completion = await client.beta.chat.completions.parse({
   model: MODEL,
   messages: [

@@ -50,7 +50,7 @@ const schema = z.object({
   summary: z.string().max(200)
 });
 
-const MODEL = process.env.MODEL;
+const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
 
 const response = await openai.chat.completions.create({
   model: MODEL,
@@ -65,6 +65,8 @@ const parsed = schema.parse(JSON.parse(response.content));
 Stream LLM responses to show progress and reduce perceived latency
 
 **When to use**: User-facing chat or generation features
+
+const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
 
 const stream = await openai.chat.completions.create({
   model: MODEL,
@@ -111,7 +113,7 @@ let embedding = await cache.get(cacheKey);
 
 if (!embedding) {
   embedding = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
+    model: process.env.EMBEDDING_MODEL ?? '<embedding-model-id>',
     input: text
   });
   await cache.set(cacheKey, embedding, '30d');
@@ -189,6 +191,8 @@ const ResponseSchema = z.object({
   confidence: z.number().min(0).max(1),
   sources: z.array(z.string()).optional(),
 });
+
+const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
 
 async function queryLLM(prompt: string) {
   const response = await openai.chat.completions.create({
@@ -281,7 +285,7 @@ Recommended fix:
 import { encoding_for_model } from 'tiktoken';
 
 // Tokenize against the current model family's tokenizer; update the identifier when you switch models
-const enc = encoding_for_model(process.env.TOKENIZER_MODEL);
+const enc = encoding_for_model(process.env.TOKENIZER_MODEL ?? '<model-id>');
 
 function countTokens(text: string): number {
   return enc.encode(text).length;
@@ -334,6 +338,7 @@ import { OpenAIStream, StreamingTextResponse } from 'ai';
 
 export async function POST(req: Request) {
   const { messages } = await req.json();
+  const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
 
   const response = await openai.chat.completions.create({
     model: MODEL,
@@ -383,6 +388,7 @@ Recommended fix:
 
 ```typescript
 async function queryWithCostTracking(prompt: string, userId: string) {
+  const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
   const response = await openai.chat.completions.create({...});
 
   const usage = response.usage;

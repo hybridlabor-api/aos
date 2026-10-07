@@ -48,7 +48,7 @@ export GEMINI_API_KEY="your-api-key-here"
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const MODEL = process.env.MODEL; // current model ID — look it up in the provider docs at the time of use
+const MODEL = process.env.GEMINI_MODEL ?? '<model-id>'; // current model ID — look it up in the provider docs at the time of use
 const model = genAI.getGenerativeModel({ model: MODEL });
 
 const result = await model.generateContent("Explain async/await in JavaScript");
@@ -61,7 +61,7 @@ import google.generativeai as genai
 import os
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = os.environ["MODEL"]  # current model ID — look it up in the provider docs at the time of use
+MODEL = os.environ["GEMINI_MODEL"]  # current model ID — look it up in the provider docs at the time of use
 model = genai.GenerativeModel(MODEL)
 
 response = model.generate_content("Explain async/await in JavaScript")
@@ -112,7 +112,7 @@ const tools = [{
   }],
 }];
 
-const model = genAI.getGenerativeModel({ model: process.env.REASONING_MODEL, tools });
+const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL ?? '<model-id>', tools });
 const result = await model.generateContent("What's the weather in Mumbai?");
 
 const call = result.response.functionCalls()?.[0];
@@ -139,16 +139,15 @@ console.log(response.response.text());
 
 ### 7. Model Selection Guide
 
-**Never hard-code a model name from memory — model IDs change frequently.** Look up the current model list in the Google AI / Gemini provider docs at the time of use, and pick among capability tiers:
+**Never hard-code a model name from memory — model IDs change frequently.** Resolve one variable (`GEMINI_MODEL`, same convention as the `gemini-api-dev` skill) from the environment and set it to the current ID from the official models page: [https://ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models) — look it up at the time of use. Pick among three distinct capability tiers first, then take today's ID of that tier from the page:
 
 | Tier | Best For | Speed | Cost |
 |-------|----------|-------|------|
-| Fast tier | High-throughput, cost-sensitive tasks | Fast | Low |
-| Reasoning tier | Complex reasoning, long context | Medium | Medium |
-| Latest fast tier | Cutting-edge fast model, multimodal | Very Fast | Low |
-| Flagship tier | Most capable, advanced tasks | Slow | High |
+| Fast | Simple classification, short completions, high volume | Very fast | Lowest |
+| Balanced | Everyday multimodal calls, function calling | Fast | Low |
+| Reasoning | Complex reasoning, long context, agentic work | Slower | Higher |
 
-Subscribe the tier → current model ID mapping from the official model catalogue page.
+The tier only decides which current ID you assign to `GEMINI_MODEL`; the tier names themselves are never valid `--model`/API values.
 
 ## Best Practices
 

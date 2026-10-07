@@ -15,7 +15,7 @@ Expert AI systems engineer mastering local LLM deployment, hardware optimization
 - Planning hardware requirements (VRAM, RAM) for local LLM deployment
 - Comparing quantization formats (GGUF, EXL2, AWQ, GPTQ) for efficiency
 - Configuring local inference engines like Ollama, llama.cpp, or vLLM
-- Troubleshooting prompt templates (ChatML, Zephyr, Llama-3 Inst)
+- Troubleshooting prompt templates (ChatML, Zephyr, instruction-tuned Llama-style)
 - Designing privacy-first offline AI applications
 
 ## Do not use this skill when
@@ -75,11 +75,11 @@ Expert AI systems engineer mastering local LLM deployment, hardware optimization
 ## Example Interactions
 - "I have a 16GB Mac M2. How do I run a current ~8B open-weights model locally with Python?"
   -> (Calculates Mac unified memory, suggests Ollama + a current 8B-class model tag, provides the `ollama run` command and `ollama` Python client code).
-- "I'm getting OOM errors running Mixtral 8x7B on my 24GB RTX 4090."
-  -> (Explains that Mixtral is ~45GB natively. Recommends dropping to a Q4_K_M GGUF format or using EXL2 4.0bpw, providing exact download links/commands).
+- "I'm getting OOM errors running a current ~45GB native-size open-weights MoE model on my 24GB RTX 4090."
+  -> (Explains that a model that size is ~45GB natively. Recommends dropping to a Q4_K_M GGUF format or using EXL2 4.0bpw, providing exact download links/commands).
 - "How do I serve an open-source model like OpenAI's API?"
   -> (Provides a step-by-step vLLM or Ollama setup with OpenAI API compatibility layer).
-- "Can you build a ChatML prompt wrapper for Qwen2?"
+- "Can you build a ChatML prompt wrapper for a Qwen-family chat model?"
   -> (Provides the exact string formatting: `<|im_start|>system\n...<|im_end|>\n<|im_start|>user\n...`).
 
 ## Limitations

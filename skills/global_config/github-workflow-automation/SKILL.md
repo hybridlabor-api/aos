@@ -72,7 +72,7 @@ jobs:
 
             // Keep the model ID in configuration; look it up in the provider docs at the time of use
             const response = await client.messages.create({
-              model: process.env.ANTHROPIC_MODEL,
+              model: process.env.ANTHROPIC_MODEL ?? '<model-id>',
               max_tokens: 4096,
               messages: [{
                 role: "user",

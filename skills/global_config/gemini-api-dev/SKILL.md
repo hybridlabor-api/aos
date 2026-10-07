@@ -62,7 +62,7 @@ print(response.text)
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({});
-const MODEL = process.env.GEMINI_MODEL; // current model ID from the provider docs
+const MODEL = process.env.GEMINI_MODEL ?? '<model-id>'; // current model ID from the provider docs
 const response = await ai.models.generateContent({
   model: MODEL,
   contents: "Explain quantum computing"

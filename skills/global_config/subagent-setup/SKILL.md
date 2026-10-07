@@ -45,7 +45,7 @@ node skills/global_config/subagent-setup/scripts/setup-subagents.mjs \
 
 # Example: Set Shipping to OpenCode with Free Tier
 node skills/global_config/subagent-setup/scripts/setup-subagents.mjs \
-  --set-role godmode_shipping --harness opencode --model opencode/muse-spark-1.3-contributor-free
+  --set-role godmode_shipping --harness opencode --model <model-id>
 
 # Example: Enable or Disable a Role
 node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --set-role godmode_media_eventtech --enable

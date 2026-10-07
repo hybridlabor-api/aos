@@ -39,7 +39,7 @@ import { openai } from "@ai-sdk/openai";
 
 // Keep the model in configuration, not in code: model IDs change frequently.
 // Look up the current model list in the provider docs at the time of use.
-const MODEL = process.env.OPENAI_MODEL;
+const MODEL = process.env.OPENAI_MODEL ?? '<model-id>'; // current model ID from the provider docs
 
 // Returns the full string once completion is done (no streaming)
 const { text, usage } = await generateText({
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
   const { messages } = await req.json();
 
   const result = streamText({
-    model: openai(process.env.OPENAI_MODEL),
+    model: openai(process.env.OPENAI_MODEL ?? '<model-id>'),
     system: 'You are a friendly customer support bot.',
     messages,
   });
@@ -84,7 +84,7 @@ import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 
 const { object } = await generateObject({
-  model: openai(process.env.OPENAI_MODEL), // use a model good at structured output
+  model: openai(process.env.OPENAI_MODEL ?? '<model-id>'), // use a model good at structured output
   system: 'Extract information from the receipt text.',
   prompt: receiptText,
   // Pass a Zod schema to enforce output structure
@@ -166,7 +166,7 @@ export async function POST(req: Request) {
   const { messages } = await req.json();
 
   const result = streamText({
-    model: openai(process.env.OPENAI_MODEL),
+    model: openai(process.env.OPENAI_MODEL ?? '<model-id>'),
     messages,
     tools: {
       getWeather: tool({

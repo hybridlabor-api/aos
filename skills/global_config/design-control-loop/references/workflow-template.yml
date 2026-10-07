@@ -41,12 +41,13 @@ jobs:
          github.event.comment.author_association == 'COLLABORATOR')
       )
     runs-on: ubuntu-latest
+    env:
+      AGENT_MODEL: ${{ vars.AGENT_MODEL }} # current model ID — look it up in the provider docs at the time of use
     steps:
       - name: Check iterate marker to bound work-in-progress
         id: agent_gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AGENT_MODEL: ${{ vars.AGENT_MODEL }} # current model ID — look it up in the provider docs at the time of use
           EVENT_NAME: ${{ github.event_name }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_URL: ${{ github.event.issue.pull_request.url }}
@@ -83,6 +84,10 @@ jobs:
             echo "run_agent=false" >> "$GITHUB_OUTPUT"
             echo "PR was not created by $WORKFLOW_ID; no-op."
           fi
+
+      - name: Fail fast when AGENT_MODEL is unset (vars.AGENT_MODEL)
+        if: steps.agent_gate.outputs.run_agent == 'true'
+        run: test -n "$AGENT_MODEL" || (echo "AGENT_MODEL is empty — set the 'AGENT_MODEL' repository variable to a current model ID from the provider docs" >&2; exit 1)
 
       - uses: actions/checkout@v5
         if: steps.agent_gate.outputs.run_agent == 'true' && github.event_name != 'issue_comment'
@@ -160,7 +165,7 @@ jobs:
 
           # NOTE: replace with your agent runner from references/agent-runner-templates.md
           bunx @humanlayer/cli@latest codelayer \
-            --provider anthropic --model $AGENT_MODEL --thinking high \
+            --provider anthropic --model "$AGENT_MODEL" --thinking high \
             --prompt "$(cat /tmp/agent-prompt.md)" \
             2>&1 | tee /tmp/agent-output.txt
 
@@ -218,7 +223,7 @@ jobs:
           # Each agent has different output formats — see that file for extraction steps.
           # AGENT_MODEL is resolved from configuration (repo variable), not hard-coded.
           bunx @humanlayer/cli@latest codelayer \
-            --provider anthropic --model $AGENT_MODEL --thinking high \
+            --provider anthropic --model "$AGENT_MODEL" --thinking high \
             --prompt "$PROMPT" \
             2>&1 | tee /tmp/agent-output.txt
 
