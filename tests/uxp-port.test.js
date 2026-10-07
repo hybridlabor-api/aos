@@ -44,10 +44,15 @@ test('grandma3 default is 8081 in the shipped template (no collision with adobe_
     assert.ok(secrets.includes("'--port', '8080', '--mode', 'webapi_only'"), 'LEGACY_SHAPES keep the old 8080 shape');
 });
 
-test('direct mode sets AOS_UXP_PORT=auto at the installer write site; entry resolves env AOS_UXP_PORT', () => {
+test('direct mode pins the fixed port 8080 at the installer write site (plugins hard-code ws://localhost:8080); entry resolves env AOS_UXP_PORT', () => {
     const installer = fs.readFileSync(path.join(ROOT, 'installer.js'), 'utf8');
-    assert.ok(installer.includes("AOS_UXP_PORT: 'auto'"), 'installer injects AOS_UXP_PORT=auto for adobe_uxp_mcp (direct mode)');
+    assert.ok(installer.includes("AOS_UXP_PORT: '8080'"), 'installer injects the FIXED AOS_UXP_PORT=8080 for adobe_uxp_mcp (direct mode)');
+    assert.ok(!installer.includes('AOS_UXP_PORT: \'auto\''), 'direct-mode entries must not get auto (plugins hard-code 8080)');
     const entry = fs.readFileSync(path.join(ROOT, 'mcps', 'adobe_uxp_mcp', 'index.js'), 'utf8');
     assert.match(entry, /process\.env\.AOS_UXP_PORT/, 'entry reads AOS_UXP_PORT');
     assert.ok(!entry.match(/WebSocket\.Server\(\{ port: 8080 \}\)/), 'no fixed 8080 constructor anymore');
+    // gateway mode stays on the template (no AOS_UXP_PORT there -> server default 8080)
+    const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'mcp_config.json'), 'utf8'));
+    const env = cfg.mcpServers.adobe_uxp_mcp && cfg.mcpServers.adobe_uxp_mcp.env;
+    assert.ok(!env || !('AOS_UXP_PORT' in env), 'shipped template keeps default 8080');
 });

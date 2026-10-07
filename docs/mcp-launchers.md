@@ -52,7 +52,7 @@ which needs `uv` (or python 3) on the harness's own PATH.
   This repo's own `.npmignore` excludes `**/.venv/` and the contract test
   keeps that from regressing (tests/hardware-apps.test.js).
 
-## 3. Fixed port 8080 — adobe_uxp_mcp / bdb_grandma3_mcp (RESOLVED, port-collision fix shipped)
+## 3. Fixed port 8080 — adobe_uxp_mcp / bdb_grandma3_mcp (RESOLVED, port-collision fix shipped; direct mode now pins 8080)
 
 - `mcps/adobe_uxp_mcp/index.js` no longer hard-codes port 8080. The WebSocket
   port comes from `AOS_UXP_PORT` (`mcps/adobe_uxp_mcp/port.js`, dependency-free
@@ -67,12 +67,16 @@ which needs `uv` (or python 3) on the harness's own PATH.
   given by placing `AOS_UXP_PORT` in the gateway process env via
   `buildUpstreams` `passEnv`.
 - **Direct mode** (the installer writes the template into each harness
-  config): one process per harness session would collide on a fixed port, so
-  the installer (`installer.js`, direct-config build) adds
-  `env: { AOS_UXP_PORT: "auto" }` to the `adobe_uxp_mcp` entry it writes. Each
-  session resolves its own free port; a user-supplied `AOS_UXP_PORT` in the
-  entry's env block is kept (`isAosOwned` compares command/args only, so
-  ownership detection is unaffected).
+  config): DIRECT writes the FIXED default port 8080 — the installed Photoshop
+  and Premiere UXP plugins hard-code `ws://localhost:8080`
+  (`mcps/adobe_uxp_mcp/plugins/*/index.js:3`, `manifest.json:15`), so a free
+  per-session port would leave them connected nowhere. The installer
+  (`installer.js`, direct-config build) adds
+  `env: { AOS_UXP_PORT: "8080" }` to the `adobe_uxp_mcp` entry it writes; only
+  one direct instance is supported at a time. Gateway mode keeps one shared
+  instance and stays free-port capable. A user-supplied `AOS_UXP_PORT` in the
+  entry's env block is kept regardless (`isAosOwned` compares command/args
+  only, so ownership detection is unaffected).
 - **grandma3** moved off 8080 to avoid the collision: the shipped template
   (`mcp_config.json`) and `mcps/grandma3_mcp.py`'s `--port` default are now
   8081 (still overridable with `--port` as before). The legacy-shape entry in
@@ -93,4 +97,6 @@ detection, the `.venv` npmignore contract, and the `reconcileMembVenv`
 invalid-value fallback, valid-range passthrough, the `auto` free-port pick
 (single `listen(0)` on 127.0.0.1), the grandma3 8081 default in template and
 `--port` parser (with the retained LEGACY_SHAPES 8080 shape), and the
-installer/direct-mode `AOS_UXP_PORT: "auto"` injection contract.
+installer/direct-mode `AOS_UXP_PORT: "8080"` injection contract (direct pins
+the plugin-side `ws://localhost:8080`; the template itself stays without
+`AOS_UXP_PORT`).
