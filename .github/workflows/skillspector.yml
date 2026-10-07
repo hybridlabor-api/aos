@@ -1,0 +1,124 @@
+name: SkillSpector
+
+on:
+  pull_request:
+    paths:
+      - 'skills/**'
+      - '.github/workflows/skillspector.yml'
+      - '.github/skillspector-baseline.json'
+      - '.github/scripts/skillspector-filter.mjs'
+  push:
+    branches: [main]
+    paths:
+      - 'skills/**'
+      - '.github/workflows/skillspector.yml'
+      - '.github/skillspector-baseline.json'
+      - '.github/scripts/skillspector-filter.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  SKILLSPECTOR_ENFORCE_FROM: '2026-10-21'
+  SKILLSPECTOR_COMMIT: c7958a3268d9498644b22edb75d0f051bbc8cbfc # NVIDIA/SkillSpector v2.12.0
+
+jobs:
+  scan:
+    name: Scan skills
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: '22'
+
+      - name: Install SkillSpector (pinned commit)
+        run: pip install --no-cache-dir "git+https://github.com/NVIDIA/SkillSpector@${SKILLSPECTOR_COMMIT}"
+
+      - name: Select skills
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "pull_request" ]; then
+            changed="$(mktemp)"
+            git -c core.quotepath=off diff -z --name-only --diff-filter=ACMR "$BASE_SHA...$HEAD_SHA" -- 'skills/' > "$changed"
+            : > skill-dirs.txt
+            while IFS= read -r -d '' path; do
+              rel="${path#skills/}"
+              if [ "$rel" = "$path" ]; then
+                echo "::warning::Changed path outside skills/: $path"
+                continue
+              fi
+              dir=""
+              probe="$(dirname "$path")"
+              while :; do
+                if [ "$probe" = "skills" ]; then break; fi
+                if [ -f "$probe/SKILL.md" ]; then dir="$probe"; break; fi
+                parent="$(dirname "$probe")"
+                if [ "$parent" = "$probe" ]; then break; fi
+                probe="$parent"
+              done
+              if [ -n "$dir" ]; then
+                echo "$dir" >> skill-dirs.txt
+              else
+                base="${rel%%/*}"
+                rest="${rel#*/}"
+                if [ "$rest" != "$rel" ] && [ -n "$base" ]; then
+                  echo "skills/${base}/${rest%%/*}" >> skill-dirs.txt
+                else
+                  echo "::warning::No resolvable skill directory for changed path ($path); skipping"
+                fi
+              fi
+            done < "$changed"
+            sort -u -o skill-dirs.txt skill-dirs.txt
+          else
+            find skills -name SKILL.md -exec dirname {} \; | sort -u > skill-dirs.txt
+          fi
+          echo "Skills to scan: $(wc -l < skill-dirs.txt)"
+
+      - name: Scan
+        run: |
+          mkdir -p reports
+          i=0
+          while IFS= read -r dir; do
+            if [ ! -d "$dir" ]; then
+              echo "::error::Resolved skill directory missing on disk: $dir"
+              exit 1
+            fi
+            i=$((i+1))
+            rc=0
+            skillspector scan "$dir" --no-llm --format json -o "reports/$i.json" || rc=$?
+            # 0/1 = scan completed (1 = score>50, handled by the filter); anything else is an error
+            if [ "$rc" -gt 1 ]; then
+              echo "::error::skillspector failed on $dir (exit $rc)"
+              exit "$rc"
+            fi
+            printf '%s\n' "${dir#skills/}" > "reports/$i.path"
+          done < skill-dirs.txt
+
+      - name: Evaluate findings
+        run: node .github/scripts/skillspector-filter.mjs reports .github/skillspector-baseline.json "$SKILLSPECTOR_ENFORCE_FROM" skill-dirs.txt
+
+      - uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        if: always()
+        with:
+          name: skillspector-reports
+          path: reports/
+          retention-days: 14
+          if-no-files-found: ignore
