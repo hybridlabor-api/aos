@@ -105,4 +105,26 @@ describe('(2) shell options are scanned until -c', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// (3) a backslash-escaped body: unq removes the escapes before the body is
+// judged, so `\$g` is the computed head it really is.
+// ---------------------------------------------------------------------------
+describe('(3) escaped opaque bodies are unescaped before judging', () => {
+    test('null: one escaped token carries the whole computed command', () => {
+        scopes('sh -c g=git\\;p=push\\;\\$g\\ \\$p\\ origin\\ HEAD:main', null);
+        scopes('bash -c g=git\\;p=push\\;\\$g\\ \\$p\\ origin\\ HEAD:main', null);
+    });
+    test('[] unchanged: escaped bodies without a computed head stay free', () => {
+        scopes('sh -c echo\\ hello', []);
+        scopes('sh -c g=git\\;echo\\ done', []);
+    });
+    test('hook: the escaped body needs a plain GO', () => {
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked('sh -c g=git\\;p=push\\;\\$g\\ \\$p\\ origin\\ HEAD:main');
+        add(human('GO'));
+        ok('sh -c g=git\\;p=push\\;\\$g\\ \\$p\\ origin\\ HEAD:main');
+    });
+});
+
 module.exports = {};
