@@ -62,7 +62,9 @@ draft is how a pasted secret becomes published.
 **Never copy into the draft:**
 
 - Secret-shaped strings: tokens, API keys, `Bearer …`, `key=`/`token=`/
-  `password=` fragments, anything `sk-`/`ghp_`/`github_pat_`/AKIA-shaped.
+  `password=` fragments, anything `sk-`/`ghp_`/`github_pat_`/`xox`/AKIA-shaped.
+- JWT-shaped strings: three dot-separated base64 parts
+  (`header.payload.signature`).
 - `.env`, credential, `*.pem`, `*.key` files — do not open them and do not
   name their contents.
 - E-mail addresses and author names (`git author` is for counting patterns,

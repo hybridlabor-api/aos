@@ -26,6 +26,12 @@ silently treated as empty: report that there is nothing to export and stop.
 If the JSON does not parse, fail loudly with the parse error — never export
 garbage "with best effort".
 
+**Shared bounds, same as on the import side:** `trigger` and `action` must be
+JSON strings ≤ 200 / ≤ 400 characters, no newlines or control characters;
+at most 200 instinct entries. A store that fails these bounds is corrupt, not
+exportable — fail loudly with the reason the same way as the parse-error path
+above, never ship an artifact `/instinct-import` would reject wholesale.
+
 **Field allowlist:** every exported entry keeps exactly the six shared fields
 — `id`, `trigger`, `action`, `confidence` (0–1), `source`, `updated` — and
 **every other field is dropped.** No auxiliary metadata travels with the
