@@ -24,12 +24,13 @@ async function main() {
   const waiting = pending(session);
   if (!waiting.length) return 0;
 
-  // claim every pending message and render it with its reply command (absolute path when aos-a2a is not on PATH)
+  // claim every pending message and render it with its reply command (absolute path when aos-a2a is not on PATH,
+  // always with --name <session>: a harness shell often has no AOS_A2A_NAME and a model would invent one)
   const texts = [];
   for (const m of waiting) {
     const msg = claim(m.file);
     if (!msg) continue;
-    texts.push(`${formatInjection(msg)}\nAnswer by running: ${replyCommand(msg.taskId)}`);
+    texts.push(`${formatInjection(msg)}\nAnswer by running: ${replyCommand(msg.taskId, undefined, undefined, session)}`);
   }
   if (!texts.length) return 0;
 
