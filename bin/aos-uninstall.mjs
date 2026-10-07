@@ -29,6 +29,11 @@ const cn = createRequire(import.meta.url)('../lib/codenotch.js');
 const cp = createRequire(import.meta.url)('../lib/codex-plugin-install.js');
 const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js');
 const ur = createRequire(import.meta.url)('../lib/uninstall-records.js');
+// A2A MCP registrations (agy + Cursor) live inside harness configs that this
+// manifest-based uninstall otherwise leaves alone; the removal is done by the
+// installer's own removal code, which only ever touches AOS-owned entries and
+// backs the file up first.
+const installer = createRequire(import.meta.url)('../installer.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -275,6 +280,13 @@ function execute(p) {
   }
 
   agyPlugin.uninstall({ home: HOME, dryRun: DRY });
+
+  // A2A MCP entries (agy + Cursor): only the AOS-owned ones leave the harness
+  // configs, each file backed up first (writeConfigWithBackup inside).
+  try {
+    const cleanedA2a = installer.removeAosA2aEntries({ targetHome: HOME });
+    for (const f of cleanedA2a) console.log(`  A2A-MCP-Eintrag aus ${tilde(f)} entfernt`);
+  } catch (e) { console.log(`  A2A-MCP-Einträge konnten nicht geprüft werden: ${e.message}`); }
 
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);

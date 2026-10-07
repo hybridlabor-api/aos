@@ -364,7 +364,31 @@ function warnUnparseable(filePath, what, loaded) {
     log.warn(`Could not parse ${filePath} (${loaded.error}); left untouched, ${what} skipped. Fix or remove the file and run the installer again.`);
 }
 
-// Writes `data` over an existing config only when it changed (`before` = JSON.stringify of the parsed original, null for none), after a backup.
+// Backup name collision (hardening): the backup is `<file>.<fsStr>.bak` where fsStr has one-second
+// granularity, so a second write to the same file within the same run would otherwise overwrite the
+// first backup and LOSE the original. fs.copyFileSync with COPYFILE_EXCL never overwrites; on EEXIST
+// a counter suffix (.1, .2, …) is appended until a fresh backup name is found or a cap is hit.
+function backupConfigPath(src, fsStr) {
+    const base = `${src}.${fsStr}.bak`;
+    try { fs.copyFileSync(src, base, fs.constants.COPYFILE_EXCL); return base; }
+    catch (e) {
+        if (e && e.code !== 'EEXIST') throw e;
+        for (let n = 1; ; n++) {
+            const dest = `${base}.${n}`;
+            try { fs.copyFileSync(src, dest, fs.constants.COPYFILE_EXCL); return dest; }
+            catch (e2) {
+                if (e2 && e2.code !== 'EEXIST') throw e2;
+                if (n >= 1000) throw new Error(`no free backup name for ${src} after 1000 attempts`);
+            }
+        }
+    }
+}
+
+// Writes `data` over an existing config only when it changed (`before` = JSON.stringify of the
+// parsed original, null for none), after a non-destructive exclusive backup. The write is atomic:
+// the temp file `<file>.tmp-<pid>` is written in the same directory with mode 0600 and renamed
+// over the target; a failed rename leaves the backup and the original intact, and no temp file
+// survives either path.
 function writeConfigWithBackup(filePath, data, before) {
     const serialized = JSON.stringify(data, null, 2);
     if (before !== null && before === JSON.stringify(data)) {
@@ -372,13 +396,36 @@ function writeConfigWithBackup(filePath, data, before) {
         return false;
     }
     if (fs.existsSync(filePath)) {
-        try { fs.copyFileSync(filePath, `${filePath}.${timestamp}.bak`); } catch (e) {
+        try {
+            backupConfigPath(filePath, timestamp);
+            const tmp = `${filePath}.tmp-${process.pid}`;
+            try {
+                fs.writeFileSync(tmp, serialized, { mode: 0o600 });
+                try { fs.chmodSync(tmp, 0o600); } catch (e) { logDebug(e, 'chmod config tmp'); }
+                try { fs.renameSync(tmp, filePath); } catch (e) {
+                    try { fs.unlinkSync(tmp); } catch (e2) { logDebug(e2, 'unlink config tmp'); }
+                    throw e;
+                }
+            } catch (e) {
+                log.warn(`Could not write ${filePath}, not rewriting it: ${e.message}`);
+                return false;
+            }
+        } catch (e) {
             log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
             return false;
         }
+    } else {
+        const tmp = `${filePath}.tmp-${process.pid}`;
+        try {
+            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            fs.writeFileSync(tmp, serialized, { mode: 0o600 });
+            fs.renameSync(tmp, filePath);
+        } catch (e) {
+            try { fs.unlinkSync(tmp); } catch (e2) { logDebug(e2, 'unlink config tmp'); }
+            log.warn(`Could not write ${filePath}: ${e.message}`);
+            return false;
+        }
     }
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, serialized, { mode: 0o600 });
     try { fs.chmodSync(filePath, 0o600); } catch (e) { logDebug(e, 'chmod config'); }
     return true;
 }
@@ -3359,6 +3406,127 @@ function removeAosMcscFromAgyConfigs(home = homeDir) {
     return removed;
 }
 
+// A2A MCP server entry detection, registration and cleanup for agy and Cursor.
+const isAosA2aEntry = (e) => !!e && typeof e === 'object'
+    && /(^|[\\/])node(\.exe)?$/i.test(String(e.command || ''))
+    && Array.isArray(e.args)
+    && /[\\/](aos-a2a-mcp|a2a-inbox-mcp)\.mjs$/i.test(String(e.args[0] || ''));
+
+// A2A MCP session names follow lib/a2a-registry.mjs validName rules (same alphabet the
+// registry files use, so a name can never alias another file). The ESM module is loaded by
+// require(esm) when the Node supports it; the identical pattern is kept inline as a fallback
+// for a Node that cannot require() an .mjs yet.
+function validA2aMcpSessionName(name) {
+    let mod = null;
+    try { mod = require('./lib/a2a-registry.mjs'); } catch { /* older Node, no require(esm) */ }
+    if (mod) { try { return mod.validName(name); } catch { return null; } }
+    const n = String(name ?? '');
+    if (!n || n.length > 64 || n.startsWith('.') || n.startsWith('-') || n.endsWith('-') || !/^[a-z0-9._-]+$/.test(n)) return null;
+    return n;
+}
+
+// Every A2A MCP registration name goes through the validName rules: invalid or empty
+// becomes a warning plus the fixed default for that harness (never a silently invented
+// name, never AOS_A2A_NAME from the installer's own environment).
+function resolveAosA2aMcpName(raw, fallback, where) {
+    const validated = raw == null ? null : validA2aMcpSessionName(String(raw));
+    if (validated) return validated;
+    // An unset override (raw == null) simply takes the fixed default — not a warning (B5):
+    // only an override that was actually SET and is invalid gets the loud fallback message.
+    if (raw == null) return fallback;
+    log.warn(`${where} MCP session name ${JSON.stringify(raw)} is not a valid A2A session name (use [a-z0-9._-], no leading dot/dash, max 64); using "${fallback}"`);
+    return fallback;
+}
+
+function makeAosA2aMcpEntry(sessionName, home = homeDir) {
+    const cleanName = validA2aMcpSessionName(String(sessionName ?? ''));
+    if (!cleanName) {
+        throw new Error('AOS_A2A_NAME is required: session identity must be specified');
+    }
+    const scriptPath = path.join(home, '.agents', 'bin', 'aos-a2a-mcp.mjs');
+    return {
+        command: 'node',
+        args: [scriptPath],
+        env: {
+            AOS_A2A_NAME: cleanName
+        }
+    };
+}
+
+// Defaults are fixed and distinct per harness (never AOS_A2A_NAME of the installer's own
+// session): overriding happens ONLY via the explicit AOS_A2A_MCP_NAME_CURSOR /
+// AOS_A2A_MCP_NAME_AGY env vars, and every name pressure-validates through validName.
+const A2A_MCP_DEFAULT_NAME_CURSOR = 'cursor-mcp';
+const A2A_MCP_DEFAULT_NAME_AGY = 'agy-mcp';
+
+function registerA2aMcpCursor({ targetHome = homeDir, name = A2A_MCP_DEFAULT_NAME_CURSOR } = {}) {
+    const sessionName = resolveAosA2aMcpName(name, A2A_MCP_DEFAULT_NAME_CURSOR, 'Cursor');
+    const cursorMcpPath = path.join(targetHome, '.cursor', 'mcp.json');
+    const loaded = loadJsonConfig(cursorMcpPath);
+    // An unparseable config is never rewritten: the user's file stays untouched (B2).
+    if (loaded.state === 'invalid') { warnUnparseable(cursorMcpPath, 'the Cursor A2A MCP registration', loaded); return cursorMcpPath; }
+    const data = loaded.data;
+    if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
+    // A foreign "aos-a2a" entry (not one of ours) is never overwritten (B3).
+    if (data.mcpServers['aos-a2a'] != null && !isAosA2aEntry(data.mcpServers['aos-a2a'])) {
+        log.warn(`${cursorMcpPath} already has its own "aos-a2a" entry that was not written by AOS; it was left untouched. Rename or remove that entry and run the installer again to register the A2A MCP.`);
+        return cursorMcpPath;
+    }
+    const before = JSON.stringify(data);
+    data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(sessionName, targetHome);
+    fs.mkdirSync(path.dirname(cursorMcpPath), { recursive: true });
+    writeConfigWithBackup(cursorMcpPath, data, before);
+    return cursorMcpPath;
+}
+
+function registerA2aMcpAgy({ targetHome = homeDir, name = A2A_MCP_DEFAULT_NAME_AGY } = {}) {
+    const sessionName = resolveAosA2aMcpName(name, A2A_MCP_DEFAULT_NAME_AGY, 'agy');
+    const registered = [];
+    for (const f of agyMcpConfigPaths(targetHome)) {
+        const loaded = loadJsonConfig(f);
+        if (loaded.state === 'invalid') { warnUnparseable(f, 'the agy A2A MCP registration', loaded); continue; }
+        const data = loaded.data;
+        if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
+        if (data.mcpServers['aos-a2a'] != null && !isAosA2aEntry(data.mcpServers['aos-a2a'])) {
+            log.warn(`${f} already has its own "aos-a2a" entry that was not written by AOS; it was left untouched. Rename or remove that entry and run the installer again to register the A2A MCP.`);
+            continue;
+        }
+        const before = JSON.stringify(data);
+        data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(sessionName, targetHome);
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        writeConfigWithBackup(f, data, before);
+        registered.push(f);
+    }
+    return registered;
+}
+
+function removeAosA2aEntries({ targetHome = homeDir } = {}) {
+    const targets = [
+        path.join(targetHome, '.cursor', 'mcp.json'),
+        ...agyMcpConfigPaths(targetHome)
+    ];
+    const cleaned = [];
+    for (const f of targets) {
+        if (!fs.existsSync(f)) continue;
+        const loaded = loadJsonConfig(f);
+        if (loaded.state !== 'ok' || !loaded.data.mcpServers) continue;
+        const before = JSON.stringify(loaded.data);
+        let modified = false;
+        for (const [k, v] of Object.entries(loaded.data.mcpServers)) {
+            if ((k === 'aos-a2a' || k === 'aos-a2a-mcp' || k === 'aos-a2a-inbox') && isAosA2aEntry(v)) {
+                delete loaded.data.mcpServers[k];
+                modified = true;
+            }
+        }
+        if (modified) {
+            writeConfigWithBackup(f, loaded.data, before);
+            cleaned.push(f);
+        }
+    }
+    return cleaned;
+}
+
+
 async function installMcpsForTarget(paths, ctx) {
     const { selectedMcps, mode, platformValue, creds } = ctx;
     const mcpSrcDir = path.join(srcDir, 'mcps');
@@ -4541,11 +4709,19 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     // carry a sidecar hook either. The registry-style mcp add args mirror
     // agyMcpAddArgs in lib/a2a-agy.mjs (kept inline here: installer is CJS, the
     // a2a lib is ESM).
-    const agyA2aMcpSrc = path.join(srcDir, 'bin', 'a2a-inbox-mcp.mjs');
-    if (fs.existsSync(agyA2aMcpSrc)) {
-        const agyMcpInstalled = path.join(homeDir, '.agents', 'bin', 'a2a-inbox-mcp.mjs');
-        log.message(`Optional agy A2A inbox MCP (not registered automatically; never run from the installer): agy mcp add aos-a2a-inbox node "${agyMcpInstalled}"`);
+    const agyA2aMcpSrc = path.join(srcDir, 'bin', 'aos-a2a-mcp.mjs');
+    if (fs.existsSync(agyA2aMcpSrc) || fs.existsSync(path.join(srcDir, 'bin', 'a2a-inbox-mcp.mjs'))) {
+        const agyMcpInstalled = path.join(homeDir, '.agents', 'bin', 'aos-a2a-mcp.mjs');
+        log.message(`A2A MCP for agy and Cursor: node "${agyMcpInstalled}" (opt-in registration: AOS_A2A_MCP=on)`);
     }
+    if (process.env.AOS_A2A_MCP === 'on' || process.env.AOS_A2A_MCP === '1') {
+        // Fixed, distinct defaults; the installer's own AOS_A2A_NAME is deliberately NOT used here
+        // (running from inside a session would impersonate that session), and the override env vars
+        // are validated through validName (invalid -> warning + default).
+        registerA2aMcpAgy({ targetHome, name: resolveAosA2aMcpName(process.env.AOS_A2A_MCP_NAME_AGY, A2A_MCP_DEFAULT_NAME_AGY, 'agy') });
+        registerA2aMcpCursor({ targetHome, name: resolveAosA2aMcpName(process.env.AOS_A2A_MCP_NAME_CURSOR, A2A_MCP_DEFAULT_NAME_CURSOR, 'Cursor') });
+    }
+
 
     // 3. OpenAI Codex CLI
     const codexHooksDir = path.join(targetHome, '.codex', 'hooks');
@@ -6833,6 +7009,15 @@ module.exports = {
     removeAosMcscFromAgyConfigs,
     isAosMcscEntry,
     isAgyMcpConfig,
+    makeAosA2aMcpEntry,
+    registerA2aMcpCursor,
+    registerA2aMcpAgy,
+    removeAosA2aEntries,
+    isAosA2aEntry,
+    resolveAosA2aMcpName,
+    backupConfigPath,
+    writeConfigWithBackup,
+
     findUv,
     parseModuleSelection,
     promptOptionalModules,
