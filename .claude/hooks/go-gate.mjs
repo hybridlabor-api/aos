@@ -1360,6 +1360,9 @@ function scriptFile(h, a) {
     const t = args[i];
     if (t === "-m") return { module: args[i + 1] ?? "" };
     if (t === "-") return {};
+    // Option values are not script files: `bash -o pipefail echo hi` would otherwise read
+    // 'pipefail' as a script and fail closed (a file that is not there is unscoped).
+    if (/^(?:-[oO]|--rcfile|--init-file)$/.test(t)) { i++; continue; }
     if (INLINE_FLAG.test(t) && !/^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
     if (/^(?:-c|-[a-zA-Z]*c)$/.test(t) && /^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
     if (VALUE_FLAG.test(t)) { i++; continue; }
