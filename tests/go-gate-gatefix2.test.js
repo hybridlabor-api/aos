@@ -180,4 +180,27 @@ describe('(5) computed head followed by a computed word needs a GO', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// (6) a $-assembled git subcommand is unscoped.
+// ---------------------------------------------------------------------------
+describe('(6) git subcommands assembled from variables are unscoped', () => {
+    test('null: the alias lookup cannot read a computed verb', () => {
+        scopes('p=push; git $p origin HEAD:main', null);
+        scopes('git $p origin HEAD:main', null);
+        scopes('git "$p" origin HEAD:main', null);
+    });
+    test('[] unchanged: readable free subcommands keep their decision', () => {
+        scopes('git status', []);
+        scopes('git log -1', []);
+        scopes('git push origin feat:feat', ['push-feature']);
+    });
+    test('hook: the computed git subcommand needs a plain GO', () => {
+        typed('gogate grant push-feature 1h');
+        add(human('go on'));
+        blocked('p=push; git $p origin HEAD:main');
+        add(human('GO'));
+        ok('p=push; git $p origin HEAD:main');
+    });
+});
+
 module.exports = {};

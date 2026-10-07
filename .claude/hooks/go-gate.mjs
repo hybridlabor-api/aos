@@ -540,6 +540,9 @@ export function classify(seg, protectedFor = staticResolver) {
       else break;
     }
     const sub = unq(tok[i]), r = tok.slice(i + 1).map(unq);
+    // `p=push; git $p origin HEAD:main`: the subcommand is computed, the alias check cannot
+    // read it and it must not fall through as an unknown-but-free alias.
+    if (/[$`\u0001\u0002]/.test(sub)) return null;
     if (sub === "push") {
       const unsafe = config || gitEnv || /[<'"$\x60\\*?{}[\]~^]/.test(tok.slice(i).join(" "));
       // An earlier segment of the same command may have changed the repo state (segTaint).
