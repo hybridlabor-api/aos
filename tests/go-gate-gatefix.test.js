@@ -257,4 +257,20 @@ describe('(g) harmless data words keep their decision outside opaque command tex
     });
 });
 
+// ---------------------------------------------------------------------------
+// (h) rule 16's docker parser agrees with dockerScopes on -e/--env values.
+// ---------------------------------------------------------------------------
+describe('(h) isReadOnlyDockerRun: -e only as KEY=literal', () => {
+    test('rule 16 agrees with the scope parser', () => {
+        assert.equal(g.isReadOnlyDockerRun(fill('docker run --rm -v {P}:/src:ro -e CI=1 node:24 npm test')), true);
+        assert.equal(g.isReadOnlyDockerRun(fill('docker run --rm -v {P}:/src:ro -e AOS_TEST_SANDBOX=container node:24 npm test')), true);
+        assert.equal(g.isReadOnlyDockerRun(fill('docker run --rm -v {P}:/src:ro -e NPM_TOKEN node:24 npm test')), false);
+        assert.equal(g.isReadOnlyDockerRun(fill('docker run --rm -v {P}:/src:ro --env GH_TOKEN node:24 npm test')), false);
+        assert.equal(g.isReadOnlyDockerRun(fill('docker run --rm -v {P}:/src:ro -e node:24 npm test')), false); // dangling
+    });
+    test('scopes: both parsers answer unscoped for a bare name', () => {
+        scopes('docker run --rm -v {P}:/src:ro -e NPM_TOKEN node:24 npm test', null);
+    });
+});
+
 module.exports = {};

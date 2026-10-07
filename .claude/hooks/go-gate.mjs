@@ -788,6 +788,9 @@ export function isReadOnlyDockerRun(command) {
     const flag = eq ? eq[1] : t, val = eq ? eq[2] : unqQ(tok[i + 1] ?? "");
     if (flag === "-v" || flag === "--volume") { if (!roMount(val)) return false; if (!eq) i++; continue; }
     if ((flag === "--network" || flag === "--net") && val === "host") return false;
+    // `-e`/`--env` exactly like dockerScopes: only a plain KEY=literal value keeps the run
+    // rule 16; a bare NAME forwards the HOST variable into the container (secrets).
+    if ((flag === "-e" || flag === "--env") && !/^[A-Za-z_][A-Za-z0-9_]*=[^`$"~\s]*$/.test(val.replace(/["'\\]/g, ""))) return false;
     if (DOCKER_FLAG.test(t)) continue;
     if (DOCKER_VALUE.test(flag)) { if (!eq) i++; continue; }
     if (t.startsWith("-")) return false;
