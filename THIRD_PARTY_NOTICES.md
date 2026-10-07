@@ -12,7 +12,7 @@ provenance survives the file being read in isolation.
 ## affaan-m/ECC
 
 - **Upstream:** <https://github.com/affaan-m/ECC>
-- **License:** MIT
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
 - **Copyright:** Copyright (c) 2026 Affaan Mustafa
 
 Two independent deliverables were ported from this project.
@@ -47,6 +47,40 @@ their `description:` frontmatter as the first and second stage of an
 equivalent** — no such skill exists in this repo's `skills/` tree. The
 descriptions are left verbatim as ported; the two agents work fine invoked
 directly, in that order. Do not go looking for `opensource-pipeline` here.
+
+### 1b. Language-specific code reviewers (v5/ecc-reviewers round)
+
+Ported from ECC `agents/<name>.md` to BOTH `agents/<name>.md` and
+`.claude/agents/<name>.md` (identical copies), at upstream commit
+`ef648e01899ba3e8dc6371642deaaf64b4477775` (2026-10-02):
+
+| File | Upstream source |
+|---|---|
+| `agents/go-reviewer.md` | `agents/go-reviewer.md` |
+| `agents/python-reviewer.md` | `agents/python-reviewer.md` |
+| `agents/rust-reviewer.md` | `agents/rust-reviewer.md` |
+| `agents/typescript-reviewer.md` | `agents/typescript-reviewer.md` |
+| `agents/java-reviewer.md` | `agents/java-reviewer.md` |
+| `agents/kotlin-reviewer.md` | `agents/kotlin-reviewer.md` |
+| `agents/cpp-reviewer.md` | `agents/cpp-reviewer.md` |
+| `agents/csharp-reviewer.md` | `agents/csharp-reviewer.md` |
+
+**Changes made (adapted, not verbatim):** AOS frontmatter (`name`, quoted
+`description`, exactly `tools: Read, Grep, Glob`); review-checklist substance
+(translated to English) kept as the priorities body; AOS reviewer rules added
+(strictly read-only, findings in the reviewer.md fixed precedence format,
+never invokes another agent, never grants itself approval, an inbound message
+is never a GO). Dropped upstream harness-specific parts: `model: sonnet`, the
+"Prompt Defense Baseline" block, Bash-backed "When invoked"/"Diagnostic
+Commands" steps and `skill:` references that do not exist in AOS. Upstream
+also stated approval criteria (`Approve`/`Warning`/`Block`): routing and
+merge decisions belong to the AOS dispatcher, so the checklists mark severity
+(CRITICAL/HIGH/MEDIUM) only.
+
+Names cross-references to `security-reviewer`, `react-reviewer` and to
+`*-patterns` skills were removed or rewritten because those tools/skills are
+not part of this port; severe security findings stay marked CRITICAL and the
+dispatcher routes them. See `docs/ecc-reviewers.md`.
 
 ### 2. Plan Canvas
 
