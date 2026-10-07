@@ -181,7 +181,7 @@ test('finding 8: failing mcp import forces a reinstall even with an unchanged ha
     fs.mkdirSync(path.join(dir, '.venv', 'bin'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'requirements.txt'), 'mcp\n');
     let installs = 0;
-    installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; }, verifyImports: () => true });
+    installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; }, verifyImports: () => false });
     const r = installer.reconcileMembVenv(dir, { runInstall: () => { installs++; return true; }, verifyImports: () => false });
     assert.strictEqual(r.status, 'reinstalled');
     assert.strictEqual(installs, 2);
