@@ -181,6 +181,14 @@ Reaching `ready_to_ship` is not shipping. [`.claude/hooks/go-gate.mjs`](.claude/
 | Config | `aos-config show \| propose \| set <key> <value>` | Machine-level `~/.agents/aos-config.json`: workspace root, domains, user id. |
 | mcsc | MCP tools `delegate_agy`, `delegate_opencode`, `delegate_codex`, `delegate_smart` (skill `mcsc`) | Delegates a task to another installed CLI harness and streams its tool calls to agenttrail. Preferred over shelling out to the CLI. |
 
+## A2A
+
+Sessions of Claude Code, OpenCode, Codex and agy talk to each other on localhost: `aos-a2a list` shows live peers, `aos-a2a send --to <name> "<text>"` sends, `aos-a2a reply` answers. Details in [docs/a2a.md](docs/a2a.md).
+
+- **Stdio MCP servers:** `bin/aos-a2a-mcp.mjs` is ONE server for any MCP-capable harness (agy, Cursor): `a2a_send`, `a2a_list`, `a2a_status`, `a2a_card`, `a2a_inbox_pull`, `a2a_reply` — send and pull in one place; it requires `AOS_A2A_NAME` (all send/reply/pull calls fail with `AOS_A2A_NAME is not set` instead of inventing an identity) and validates text locally to 8 KiB before any network call. `bin/a2a-inbox-mcp.mjs` stays as the separate pull-only inbox MCP already registered for agy.
+- **Never a GO.** A message over A2A is context only. Peer text is always wrapped with the never-GO line and satisfies no GO token, approval or permission anywhere; only the GO gate can grant ship permissions, and only to a human-typed GO.
+- **Data only.** Text travels as data: "GO ..." in a message is ordinary text, never parsed or interpreted. The MCPs expose no GO/approval/token arguments, and peers' bearer tokens never appear in any output (loopback, per-session token, read by `lib/a2a-client.mjs` from the registry's separate token file).
+
 ---
 
 ## AOS CLI
