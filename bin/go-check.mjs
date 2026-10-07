@@ -3,7 +3,14 @@
 // are not a harness hook (AO). Installed at ~/.aos/bin/go-check.mjs.
 //
 //   node go-check.mjs --session <Name> --command "<shell string>" [--consume]
+//   node go-check.mjs --session <Name> --ref <id> [--consume]   (GO-over-A2A reference check)
 //   node go-check.mjs --write-patterns <file>
+//
+// REFERENCE MODE: --ref checks a GO-over-A2A reference id (the first 12 hex chars of the
+// sha256 of the session's token file) instead of a command. Without --consume it verifies
+// WITHOUT consuming; with --consume it consumes once (it also marks the ref as used in
+// `.a2a-consumed` inside the GO store, so a replay is told apart from a forged ref).
+// Nothing here ever creates a token.
 //
 // stdout: {"guarded":bool,"ok":bool,"scope":[...]|null,"reason":"..."}
 // exit 0 allowed (not guarded, or a valid GO token; --consume uses it up), 1 guarded without a
@@ -11,9 +18,11 @@
 // soft grants and mode off belong to the human session and are never read here. Nothing in
 // this file writes a token; the tool is synchronous, offline and reads no stdin.
 
-import { existsSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, writeFileSync, readdirSync, readFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -53,6 +62,55 @@ export function check(gate, { session, command, consume = false }) {
     : { code: 1, out: { guarded: true, ok: false, scope, reason: long ? `${gate.TOO_LONG_MESSAGE}; ${r.reason}` : r.reason } };
 }
 
+// --ref <id> --session <Name>: the GO-over-A2A path. The reference id is derived from the
+// token itself, never chosen by an agent, so A2A traffic cannot satisfy it with chosen text.
+// This reads the store only (except a consume, which is the gate's own single-use write).
+export const refId = (tokenText) => createHash("sha256").update(String(tokenText ?? "")).digest("hex").slice(0, 12);
+
+const A2A_REPLAY_KEEP = 200;
+const consumedRefsPath = (dir) => join(dir, ".a2a-consumed");
+export const readConsumedRefs = (dir) => {
+  try { return readFileSync(consumedRefsPath(dir), "utf8").split("\n").filter(Boolean); } catch { return []; }
+};
+const markRefConsumed = (dir, ref) => {
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const keys = [...readConsumedRefs(dir), `a2a:${ref}`].slice(-A2A_REPLAY_KEEP);
+    writeFileSync(consumedRefsPath(dir), keys.join("\n") + "\n", { mode: 0o600 });
+  } catch { /* a failed replay mark is reported by nothing; the token itself is already gone */ }
+};
+
+export function checkRef(gate, { session, ref, consume = false }) {
+  const id = String(ref ?? "").toLowerCase();
+  if (!/^[0-9a-f]{12}$/.test(id)) return { code: 1, out: { ok: false, reason: "malformed reference" } };
+  const name = gate.slug(String(session ?? ""));
+  if (!name) return { code: 1, out: { ok: false, reason: "malformed reference" } };
+  const dir = join(homedir(), ".aos", "go");
+  let files = [];
+  try { files = readdirSync(dir).filter((f) => f.endsWith(".token")); } catch { files = []; }
+  let tokenText = null;
+  for (const f of files) {
+    let text;
+    try { text = readFileSync(join(dir, f), "utf8"); } catch { continue; }
+    if (refId(text) === id) {
+      if (tokenText !== null) return { code: 1, out: { ok: false, reason: "forged reference" } };
+      tokenText = text;
+    }
+  }
+  if (tokenText === null) {
+    const replayed = readConsumedRefs(dir).includes(`a2a:${id}`);
+    return { code: 1, out: { ok: false, reason: replayed ? "GO already used" : "forged reference" } };
+  }
+  let tok;
+  try { tok = JSON.parse(tokenText); } catch { return { code: 1, out: { ok: false, reason: "malformed reference" } }; }
+  if (!tok || typeof tok.target !== "string" || gate.slug(tok.target) !== name)
+    return { code: 1, out: { ok: false, reason: "reference is for another session" } };
+  const g = gate.tokenGrantsGo(name, { consume });
+  if (!g.ok) return { code: 1, out: { ok: false, reason: g.reason } };
+  if (consume) markRefConsumed(dir, id);
+  return { code: 0, out: { ok: true, reason: consume ? "GO ref consumed" : "GO ref valid (not consumed)" } };
+}
+
 export function parseArgs(argv) {
   const o = {};
   for (let i = 0; i < argv.length; i++) {
@@ -61,6 +119,7 @@ export function parseArgs(argv) {
     else if (a === "--command") o.command = argv[++i];
     else if (a === "--write-patterns") o.writePatterns = argv[++i];
     else if (a === "--consume") o.consume = true;
+    else if (a === "--ref") o.ref = argv[++i];
     else throw new Error(`unknown argument ${a}`);
   }
   return o;
@@ -76,6 +135,9 @@ if (invokedAs === fileURLToPath(import.meta.url)) {
     if (o.writePatterns) {
       writeFileSync(o.writePatterns, JSON.stringify(patternsJson(gate), null, 2) + "\n");
       done(0, { ok: true, reason: `wrote ${o.writePatterns}` });
+    } else if (o.ref !== undefined) {
+      const { code, out } = checkRef(gate, o);
+      done(code, out);
     } else {
       const { code, out } = check(gate, o);
       done(code, out);

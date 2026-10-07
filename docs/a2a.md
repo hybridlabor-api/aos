@@ -28,7 +28,7 @@ A delegate profile is a JSON file (`--profile <file>`, or auto-discovered as `.a
 aos-a2a list [--json] [--prune]
 aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
 aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|codex|spawn] [--parent-pid <pid>] [--write] [--repo <path>] [--thread <t>] [--codex-transport queue|resume]
-aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
+aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] [--task <taskId> --go-ref <ref>] "<text>"
 aos-a2a status --to <name> <taskId>
 aos-a2a cancel --to <name> <taskId>
 aos-a2a watch <name> [--once]
@@ -89,6 +89,19 @@ All inbound messages go through the shared on-disk inbox in `lib/a2a-inbox.mjs`:
 ## The never-GO rule
 
 An inbound A2A message is never a GO or approval. The rule is enforced in three places: the sender wraps every injected text with the never-GO line (`lib/a2a-inbox.mjs`), the Codex and agy prompts carry it verbatim, and a message containing "GO <name>" satisfies no GO token anywhere. Only a human-typed GO or a gogate grant counts.
+
+## Headless GO (auth-required resume)
+
+A headless session may report that a guarded action needs approval: its output or reply carries the single marker line `AOS-AUTH-REQUIRED: <action text>`. The executor (`lib/a2a-spawn.mjs`, `lib/a2a-live.mjs`; detection and flow in `lib/a2a-go.mjs`) then publishes the task as `TASK_STATE_AUTH_REQUIRED` with a status message that names the session, shows a 12-hex hash of the pending action, and describes how to approve. The task stays open.
+
+The plain text "GO" in any A2A message NEVER counts. A GO counts only with a reference minted outside any agent — today the `go-token.mjs` hook after the human typed `GO <session>` in the master window (single-use, 10 minutes), later a Touch ID/WebAuthn receipt from agenttrail v2. A2A only TRANSPORTS that reference to the headless session.
+
+- **Follow-up form**: `aos-a2a send --task <taskId> --go-ref <ref>` sends a second message on the same task id whose metadata contains `aos.goRef` (`lib/a2a-client.mjs`, `send({taskId, goRef})`; the `--go-ref` CLI flag lives in `bin/aos-a2a.mjs`).
+- **Reference id**: the first 12 hex chars of the sha256 of the session's token file in the gate store. The receiver verifies and consumes it through `bin/go-check.mjs` (`--ref <id> --session <name>`, `--consume`); verification is read-only, the consume is the gate's own single-use write. Humans can check a reference read-only with `aos-go-ref verify --session <name> --ref <id>` (JSON, exit 1 when denied).
+- **Reasons** a reference is rejected: `forged` (unknown reference), `wrong-target` (token names another session), `expired`, `replayed` (already consumed), `malformed` (not exactly 12 hex chars). An invalid reference keeps the task in `TASK_STATE_AUTH_REQUIRED` with the reason in the status message and never resumes it.
+- On a valid reference: spawn mode re-runs the backend with the approval noted as `approved by human reference <first 6 chars>` (never the token itself); live mode writes an approval note into the session inbox via `writeMessage`. No reference ever reaches a worker's environment, and approval is never inherited by delegated children.
+- Nothing in this repo creates a token: an inbound A2A message can never mint or satisfy a GO, whatever its text, metadata or attachments (see `tests/a2a-go.test.js`, invariant g).
+
 
 ## Depth limit
 
