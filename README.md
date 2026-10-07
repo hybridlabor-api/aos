@@ -278,6 +278,8 @@ The full catalog with detailed descriptions: [docs/skills_table.md](docs/skills_
 
 **Persona Layer:** The **Godmode** skills are specialized personas that directly map to the build and ship nodes of the dispatcher graph:
 
+All UI/UX work (the `godmode-ui-ux` persona and the design skills it routes through, such as `bdbdesignpro`) draws components first from the BDB component and motion-icon library (`@bdb` shadcn registry backed by npm `@hybridlabor-api/ui-motion-library`), before falling back to third-party registries or building from scratch.
+
 | Godmode | Owns | Maps to |
 |---|---|---|
 | `godmode-engineering` | Domain-Driven Design, Clean Architecture, strict TypeScript/Python, systematic debugging, database best practices. | **Engineering** node |

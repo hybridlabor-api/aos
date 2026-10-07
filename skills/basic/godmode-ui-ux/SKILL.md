@@ -8,6 +8,8 @@ category: design-ui-ux
 
 This skill is the single source of truth for all design decisions. It replaces: design-taste-frontend, frontend-design.
 
+**Routing:** Components first from the BDB library (@bdb registry; version-pinned unpkg entry `https://unpkg.com/@hybridlabor-api/ui-motion-library@0.1.0/publish/registry/{name}.json` in `components.json`), then third-party registries.
+
 ## 0. Brand Discovery (MANDATORY FIRST STEP)
 
 Before ANY design work, gather project context. Never assume colors, fonts, or visual direction.
