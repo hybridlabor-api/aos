@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, renameSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir as osHome } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(SELF), '..');
@@ -232,11 +232,11 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   process.env.AOS_HUB_CHILD_DONE = '1';
   const hubToken = process.env.AOS_HUB_TOKEN || undefined;
   if (process.env.AOS_HUB_TOKEN !== undefined) delete process.env.AOS_HUB_TOKEN;
-  const { createHub } = await import(join(ROOT, 'lib', 'hub', 'server.mjs'));
-  const { routes: planRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-plans.mjs'));
-  const { routes: serviceRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-services.mjs'));
-  const { routes: catalogRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-catalog.mjs'));
-  const { routes: storeRoutes } = await import(join(ROOT, 'lib', 'hub', 'routes-store.mjs'));
+  const { createHub } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'server.mjs')).href);
+  const { routes: planRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-plans.mjs')).href);
+  const { routes: serviceRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-services.mjs')).href);
+  const { routes: catalogRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-catalog.mjs')).href);
+  const { routes: storeRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-store.mjs')).href);
   const home = homeDir();
   const routes = [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes];
   const hub = createHub({
@@ -256,7 +256,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
     try {
       // OpenWiki graph viewers are child processes of this server: kill them
       // on the way out, on /api/shutdown AND on SIGINT/SIGTERM.
-      const { stopViewers: stopVis } = await import(join(ROOT, 'lib', 'hub', 'services.mjs'));
+      const { stopViewers: stopVis } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'services.mjs')).href);
       stopVis();
     } catch { /* services module unimportable; nothing viewers-side to stop */ }
     await hub.close();

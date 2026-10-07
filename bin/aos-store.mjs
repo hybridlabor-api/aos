@@ -39,7 +39,28 @@ async function download(src, upstreamPath) {
   const url = `${src.raw_base}/${src.pinned_commit}/${upstreamPath}`;
   const response = await fetch(url, { headers: { 'user-agent': 'aos-store' } });
   if (!response.ok) throw new Error(`Download failed (${response.status}): ${url}`);
-  return Buffer.from(await response.arrayBuffer());
+  // Reject an oversized transfer BEFORE any body bytes are buffered.
+  const declared = Number(response.headers.get('content-length') || 0);
+  if (declared > MAX_BYTES) throw new Error(`Download too large (${declared} > ${MAX_BYTES} bytes): ${url}`);
+  if (response.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > MAX_BYTES) {
+        try { reader.cancel(); } catch { /* already closed */ }
+        throw new Error(`Item too large (> ${MAX_BYTES} bytes): ${url}`);
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks);
+  }
+  const content = Buffer.from(await response.arrayBuffer());
+  if (content.length > MAX_BYTES) throw new Error(`Item too large (> ${MAX_BYTES} bytes): ${url}`);
+  return content;
 }
 
 const targetsFor = (type, name) => sharedTargetsFor(type, name, { project });

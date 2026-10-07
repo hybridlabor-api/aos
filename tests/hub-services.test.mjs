@@ -12,6 +12,7 @@ import {
   portOpen, cli, readServiceLog, openWikiProjects,
   setA2aListForTests, resetMetaCacheForTests, resetWikiCacheForTests,
 } from '../lib/hub/services.mjs';
+import { redact } from '../lib/hub/redact.mjs';
 import { routes as planRoutes } from '../lib/hub/routes-plans.mjs';
 
 const repo = resolve(new URL('..', import.meta.url).pathname);
@@ -313,4 +314,56 @@ test('cli exit codes', async () => {
     assert.equal(await cli(['start', 'memb'], mac), 1); // memb plist missing -> failed
     assert.equal(await cli(['stop', 'gateway', '--confirm', 'gateway'], mac), 0);
   }
+});
+
+// ---------------------------------------------------- regression: review fixes
+test('launchd benign is per-command: a real bootout failure (EPERM) throws, "not loaded" stays benign', async () => {
+  const homeE = join(tmp, 'home-bootout');
+  mkdirSync(join(homeE, 'Library', 'LaunchAgents'), { recursive: true });
+  writeFileSync(join(homeE, 'Library', 'LaunchAgents', 'com.bdb.memb.webui.plist'), '<plist/>');
+  const eperm = {
+    ...recordingCtx({ home: homeE }),
+    run: async () => ({ ok: false, code: 1, stdout: '', stderr: 'Boot-out failed. Operation not permitted.' }),
+  };
+  await assert.rejects(
+    () => controlService(eperm, 'memb', 'stop'),
+    /Operation not permitted/,
+    '"boot-out failed" must not read as benign on the stop path',
+  );
+  const notLoaded = {
+    ...recordingCtx({ home: homeE }),
+    run: async () => ({ ok: false, code: 1, stdout: '', stderr: 'not loaded' }),
+  };
+  assert.equal((await controlService(notLoaded, 'memb', 'stop')).ok, true, '"not loaded" stays benign for bootout');
+  // Bootstrap only accepts its OWN benign output: bootout-benign stderr on a
+  // failed bootstrap must be an error.
+  const bootBenignBootstrap = {
+    ...recordingCtx({ home: homeE }),
+    run: async (cmd, args) => (args[0] === 'bootstrap'
+      ? { ok: false, code: 1, stdout: '', stderr: 'not loaded' }
+      : { ok: true, code: 0, stdout: '', stderr: '' }),
+  };
+  await assert.rejects(() => controlService(bootBenignBootstrap, 'memb', 'start'), /bootstrap failed/);
+});
+
+test('readServiceLog drops the mid-file cut fragment and keeps at most the last 400 lines', async () => {
+  const homeLog2 = join(tmp, 'home-tail-lines');
+  mkdirSync(join(homeLog2, '.memb'), { recursive: true });
+  const f = join(homeLog2, '.memb', 'webui.stdout.log');
+  const filler = 'x'.repeat(70 * 1024) + '\n'; // the 64 KB tail starts inside this line
+  const body = Array.from({ length: 500 }, (_, i) => `line-${i}`).join('\n') + '\n';
+  writeFileSync(f, filler + body);
+  const text = await readServiceLog(recordingCtx({ home: homeLog2 }), 'memb', 'webui.stdout.log');
+  const shown = text.split('\n');
+  assert.ok(shown.length <= 400, `the 400-line cap is reapplied (got ${shown.length})`);
+  assert.ok(!shown[0].startsWith('x'), 'the cut mid-file fragment line is not shown');
+  assert.match(shown[0], /^line-\d+$/, 'the first shown line is complete');
+});
+
+test('redact: a 64 KB lowercase line without an URL scheme finishes under 500 ms', () => {
+  const line = 'a'.repeat(64 * 1024);
+  const t0 = Date.now();
+  const out = redact(`${line}\ntokentoadmin 64KB-fill ${line.slice(0, 16)}\n`);
+  assert.ok(Date.now() - t0 < 500, `redact took ${Date.now() - t0} ms`);
+  assert.match(out, /tokentoadmin/, 'normal content stays untouched');
 });

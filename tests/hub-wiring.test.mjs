@@ -109,3 +109,13 @@ describe('WP5 hub wiring', () => {
         assert.ok(existsSync(path.join(repo, 'docs', 'hub.md')));
     });
 });
+
+// Regression: a bare `import(join(ROOT, ...))` path fails on Windows (a
+// dynamic import needs a file:// URL); every hub dynamic import must be
+// wrapped in pathToFileURL.
+test('bin/aos-hub.mjs wraps every dynamic import in pathToFileURL', () => {
+    const src = read('bin/aos-hub.mjs');
+    assert.match(src, /pathToFileURL/);
+    assert.ok(!/import\(join\(ROOT/.test(src), 'bare join paths must never be handed to dynamic import');
+});
+

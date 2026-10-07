@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { routes as storeRoutes } from '../lib/hub/routes-store.mjs';
-import { rollbackInstall, appendInstallLog, installWithBackup, installsLogPath, storeIso, readInstallsLog } from '../lib/store-shared.mjs';
+import { rollbackInstall, appendInstallLog, fetchSkillFiles, installWithBackup, installsLogPath, storeIso, readInstallsLog } from '../lib/store-shared.mjs';
 
 const reqCjs = createRequire(import.meta.url);
 
@@ -444,6 +444,74 @@ test('packages route: registry id lookup, fixed spawn, unknown id 404', async ()
   });
   assert.equal(noConfirm.status, 400);
   assert.equal(calls.length, before + 1);
+});
+
+test('installWithBackup: one failed restore step does not skip the later ones', () => {
+  const home = join(base, 'home-restore-agg');
+  const cwd = join(base, 'proj-restore-agg');
+  const dirA = join(cwd, 'skills', 'agg-a');
+  mkdirSync(dirA, { recursive: true });
+  mkdirSync(home, { recursive: true });
+  // Unit A: a basename long enough that parking it adds 'aos-failed-' + the
+  // 24-char ISO beyond the 255-byte NAME_MAX while the .aos-bak- backup of
+  // the same unit still fits (221 + 33 = 254 <= 255, 221 + 36 = 257 > 255).
+  // The parking step of THIS unit fails (ENAMETOOLONG) without breaking the
+  // earlier backup or write phases.
+  const longName = 'K'.repeat(221);
+  const ta = join(dirA, longName);
+  writeFileSync(ta, 'a-v1\n');
+  // Unit B is fully restorable: a v1 on disk, a successful backup, a
+  // successful v2 write — only its restore step stands behind unit A's.
+  const dirB = join(cwd, 'skills', 'agg-b');
+  const tb = join(dirB, 'b.md');
+  mkdirSync(dirB, { recursive: true });
+  writeFileSync(tb, 'b-v1\n');
+  // Unit C's write walks into a file used as its parent dir: ENOTDIR
+  // mid-write, so the restore phase runs while B is genuinely restorable.
+  writeFileSync(join(cwd, 'agents'), 'not a directory\n');
+  const tc = join(cwd, 'agents', 'c.md');
+  const writes = [
+    { type: 'file', target: ta, data: 'a-v2\n' },
+    { type: 'file', target: tb, data: 'b-v2\n' },
+    { type: 'file', target: tc, data: 'c-v2\n' },
+  ];
+  let caught = null;
+  try { installWithBackup({ writes, home }); } catch (e) { caught = e; }
+  assert.ok(caught, 'install fails');
+  assert.match(caught.message, /restore also failed/, 'restore errors are aggregated into ONE error');
+  // Unit A's park-name is beyond NAME_MAX, so A's own restore cannot move its
+  // disk aside again: a-v2 stays on disk and its .aos-bak- backup stays parked.
+  // That is the code's honest, non-destructive outcome — still every byte is
+  // accounted for and nothing is deleted. The regression being proven is that
+  // this failure does NOT skip the LATER step: unit B's backup must come back.
+  assert.equal(readFileSync(ta, 'utf8'), 'a-v2\n', 'a too-long-to-park disk cannot be moved aside again');
+  assert.equal(readFileSync(tb, 'utf8'), 'b-v1\n', 'unit B is restored even though unit A\'s restore failed');
+});
+
+test('fetchSkillFiles: oversized content-length is refused before buffering; the body is streamed and verified', async () => {
+  const srvF = createServer((req, res) => {
+    if (req.url.endsWith('/too-big.bin')) {
+      res.writeHead(200, { 'content-length': String(6 * 1024 * 1024) });
+      return res.end('x');
+    }
+    const body = Buffer.from('tiny\n');
+    res.writeHead(200, { 'content-length': String(body.length) });
+    res.end(body);
+  });
+  await new Promise((ok) => srvF.listen(0, '127.0.0.1', ok));
+  const rawBase = `http://127.0.0.1:${srvF.address().port}/c/sk`;
+  try {
+    await assert.rejects(
+      () => fetchSkillFiles(rawBase, 'c', 'sk', [{ path: 'too-big.bin' }]),
+      /too large/,
+      'declared content-length over the cap must be rejected without buffering the body',
+    );
+    const sha = createHash('sha256').update('tiny\n').digest('hex');
+    const out = await fetchSkillFiles(rawBase, 'c', 'sk', [{ path: 'tiny.txt', size: 5, sha256: sha }]);
+    assert.equal(out[0].data.toString('utf8'), 'tiny\n', 'the streamed body is hash-verified');
+  } finally {
+    srvF.close();
+  }
 });
 
 test('static: store-shared.mjs and routes-store.mjs contain no destructive fs calls', () => {
