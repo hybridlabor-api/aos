@@ -29,6 +29,7 @@ const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const mcpSecrets = require('./lib/mcp-secrets');
+const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
@@ -343,7 +344,23 @@ function reconcileMembVenv(membDir, opts = {}) {
     const hasMcp = /(^|\n)\s*mcp\s*([<>=!~;\[]|$)/.test(reqText);
     const verify = opts.verifyImports || ((code) => verifyPythonImports(venvPython, membDir, code));
     if (!hasMcp) log.step('[memb] requirements.txt does not list mcp; import check skipped (note only)');
-    const importFailed = hasMcp && !verify('import mcp');
+    // entryImport must mirror what the server's entry file actually imports. The memb-mcp
+    // copy's run.py resolves FastMCP from `mcp` first, `fastmcp` second; neither module is
+    // reliably listed in requirements.txt, so the default `import mcp` check cannot see that
+    // break. A caller proves the real entry by passing its import statement here.
+    const entryImport = opts.entryImport || (hasMcp ? 'import mcp' : null);
+    let importFailed = false;
+    if (entryImport) {
+        if (verify(entryImport)) {
+            // The entry's imports resolve on the installed venv: that is the actual
+            // up-to-date proof, even when the stamp is absent or stale. Requirements
+            // without mcp are notes; a verified entry outranks a hash mismatch.
+            try { fs.mkdirSync(path.dirname(stampPath), { recursive: true }); fs.writeFileSync(stampPath, hash); } catch { /* ignore */ }
+            return { status: 'up-to-date' };
+        }
+        // entry import fails -> straight to reinstall below (import check outranks the stamp)
+        importFailed = true;
+    }
     if (hash === stamped && !importFailed) {
         try { fs.mkdirSync(path.dirname(stampPath), { recursive: true }); fs.writeFileSync(stampPath, hash); } catch { /* ignore */ }
         return { status: 'up-to-date' };
@@ -2828,6 +2845,60 @@ async function installCreatorExtension() {
     }
 }
 
+// Removes kicad/openscad entries the hardware module registered in harness configs whose
+// backing app is absent. The module's installer.js always registers both; this is the
+// AOS-side gate, so an entry never points at a launcher that cannot start. Idempotent:
+// an entry that is not there makes no change. Returns the removed [file, name] pairs.
+function stripHwMcpEntries(serverNames) {
+    const home = homeDir;
+    const removed = [];
+    const claudeJson = path.join(home, '.claude.json');
+    if (fs.existsSync(claudeJson)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(claudeJson, 'utf8'));
+            for (const name of serverNames) {
+                if (data && data.mcpServers && typeof data.mcpServers === 'object' && data.mcpServers[name]) {
+                    delete data.mcpServers[name];
+                    removed.push([claudeJson, name]);
+                }
+            }
+            if (removed.some(([f]) => f === claudeJson)) {
+                fs.writeFileSync(claudeJson, JSON.stringify(data, null, 2) + '\n');
+            }
+        } catch (e) { logDebug(e, 'strip hw entry (claude.json)'); }
+    }
+    // agy keeps one config; the antigravity-cli variant is a link on the same inode.
+    const agyConfig = path.join(home, '.gemini', 'config', 'mcp_config.json');
+    if (fs.existsSync(agyConfig)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(agyConfig, 'utf8'));
+            for (const name of serverNames) {
+                if (data && data.mcpServers && typeof data.mcpServers === 'object' && data.mcpServers[name]) {
+                    delete data.mcpServers[name];
+                    removed.push([agyConfig, name]);
+                }
+            }
+            if (removed.some(([f]) => f === agyConfig)) {
+                fs.writeFileSync(agyConfig, JSON.stringify(data, null, 2) + '\n');
+            }
+        } catch (e) { logDebug(e, 'strip hw entry (mcp_config.json)'); }
+    }
+    // Codex keeps its own entries where the user put them; drop these two by table name.
+    const codexToml = path.join(home, '.codex', 'config.toml');
+    if (fs.existsSync(codexToml)) {
+        try {
+            const lines = fs.readFileSync(codexToml, 'utf8').split(/\r?\n/);
+            const want = new Set(serverNames.map(String));
+            const stripped = uninstallRecords.dropMcpTables(lines, (name) => want.has(name));
+            if (stripped.length !== lines.length) {
+                fs.writeFileSync(codexToml, stripped.join('\n'));
+                for (const name of serverNames) removed.push([codexToml, name]);
+            }
+        } catch (e) { logDebug(e, 'strip hw entry (config.toml)'); }
+    }
+    return removed;
+}
+
 async function installHardwarePcb() {
     const hwDir = path.join(moduleBasePath(), 'bdb-hardware-pcb');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-hardware-pcb', hwDir, 'BDB Hardware & PCB (KiCad + OpenSCAD)')) {
@@ -2838,6 +2909,19 @@ async function installHardwarePcb() {
         log.step('[dry-run] would run BDB Hardware & PCB setup');
         return;
     }
+    // The published package once shipped prebuilt .venv trees whose interpreter
+    // shebang points at a python that does not exist on this machine ("bad
+    // interpreter"). A venv dir with a dangling `bin/python` link must not stand
+    // between the launcher and its dependency install: run `uv sync` per server
+    // dir before the module installer registers the launchers.
+    const needsSync = hardwareApps.hwServerDirsNeedingSync(hwDir);
+    for (const serverDir of needsSync) {
+        log.step(`Hardware & PCB: venv python missing in ${path.basename(serverDir)} — running uv sync (explicit uv path: ${uvBin()}).`);
+        const res = spawnSync(uvBin(), ['sync'], { cwd: serverDir, stdio: 'ignore', timeout: 600000 });
+        if (res.error || res.status !== 0) {
+            log.warn(`uv sync failed for ${path.basename(serverDir)}${res.error ? ` (${res.error.message})` : ` (exit ${res.status})`}. The MCP launcher may fall back to 'uv run', which needs uv on the harness's PATH.`);
+        }
+    }
     const installerScript = path.join(hwDir, 'installer.js');
     if (fs.existsSync(installerScript)) {
         const setupResult = spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: hwDir });
@@ -2845,6 +2929,18 @@ async function installHardwarePcb() {
             log.warn(`Hardware & PCB setup note: exit code ${setupResult.status}`);
             return false;
         }
+    }
+    // Gate: the module registered both servers; undo the registrations whose app
+    // is absent, with a plain notice. Kept after the module run because the
+    // module itself offers no skip switch.
+    const statuses = { kicad: hardwareApps.hwAppStatus('kicad'), openscad: hardwareApps.hwAppStatus('openscad') };
+    const gate = hardwareApps.hwAppGate(statuses);
+    if (gate.skip.length) {
+        for (const appId of gate.skip) {
+            log.warn(`${hardwareApps.appMissingMessage(appId)} — the '${appId}' MCP server is not registered (install the app and re-run the AOS installer to enable it).`);
+        }
+        const removed = stripHwMcpEntries(gate.skip);
+        if (removed.length && !DRY_RUN) log.step(`Removed ${gate.skip.join(' and ')} MCP entries from ${[...new Set(removed.map(([f]) => path.basename(f)))].join(', ')}.`);
     }
 }
 
@@ -3631,7 +3727,24 @@ async function installMcpsForTarget(paths, ctx) {
 
                 const pipViaPython = `"${venvPython}" -m pip`;
                 runPipWithRetry(`${pipViaPython} install --upgrade setuptools --timeout 30 --no-input`, { cwd: membMcpFolder, stdio: 'ignore' }, 'pip setuptools upgrade for memB MCP', 2, 120000);
-                const reconcile = reconcileMembVenv(membMcpFolder, { venvPython });
+                // run.py resolves FastMCP as `try: from mcp.server.fastmcp import FastMCP
+                // except ImportError: from fastmcp import FastMCP`. requirements.txt does not
+                // list `mcp`, so a reconcile whose hash stamp still matches leaves the venv
+                // without the MCP SDK and run.py dies on import far from the real cause.
+                const fastmcpImport = 'try:\n    from mcp.server.fastmcp import FastMCP\nexcept ImportError:\n    from fastmcp import FastMCP';
+                if (!verifyPythonImports(venvPython, membMcpFolder, fastmcpImport)) {
+                    log.step('[memb] mcp/fastmcp SDK missing from the memb-mcp venv; installing the MCP SDK pin.');
+                    let hasUvSdk = false;
+                    try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore' }); hasUvSdk = true; } catch (e) { logDebug(e, 'uv lookup for memb-mcp'); }
+                    const sdkCmd = hasUvSdk
+                        ? `"${uvBin()}" pip install --python "${venvPython}" "mcp>=1.0.0,<2.0.0" --no-input`
+                        : `"${venvPython}" -m pip install "mcp>=1.0.0,<2.0.0" --timeout 30 --no-input`;
+                    runPipWithRetry(sdkCmd, { cwd: membMcpFolder, stdio: 'ignore' }, 'mcp SDK for memB MCP', 2, 300000);
+                    if (!verifyPythonImports(venvPython, membMcpFolder, fastmcpImport)) {
+                        log.warn('memB MCP venv still cannot import FastMCP after the mcp install; memb-mcp will fail to start until it is repaired.');
+                    }
+                }
+                const reconcile = reconcileMembVenv(membMcpFolder, { venvPython, entryImport: fastmcpImport });
                 if (reconcile.status === 'failed') log.warn('memB MCP requirements reconcile failed; inspect the venv before relying on memb-mcp.');
             } catch (e) {
                 log.warn(`Failed to set up Python virtual environment for memB: ${e.message}`);
@@ -3690,6 +3803,15 @@ async function installMcpsForTarget(paths, ctx) {
         // ~/.claude.json mirror get the launchable form.
         if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
             parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+        }
+        // Direct mode spawns one process per harness session, so adobe_uxp_mcp (which binds a
+        // WebSocket) gets AOS_UXP_PORT=auto: a free port per session, resolved by the entry and
+        // printed to stderr. Gateway mode shares ONE instance built from the shipped template,
+        // which keeps the default 8080 (or whatever AOS_UXP_PORT the gateway process carries);
+        // a user-set AOS_UXP_PORT in this env block is never overwritten.
+        const uxpEntry = parsedMcpConfig.mcpServers.adobe_uxp_mcp;
+        if (uxpEntry && !(uxpEntry.env && uxpEntry.env.AOS_UXP_PORT)) {
+            parsedMcpConfig.mcpServers.adobe_uxp_mcp = { ...uxpEntry, env: { ...(uxpEntry.env || {}), AOS_UXP_PORT: 'auto' } };
         }
         // AOS_DISABLED_MCPS=a,b: shipped server names that no harness config gets (universal sync reuses this result).
         const dropped = v5Profile.filterMcpServers(parsedMcpConfig.mcpServers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS));
@@ -7406,6 +7528,8 @@ module.exports = {
     isAosMcscEntry,
     isAgyMcpConfig,
     findUv,
+    stripHwMcpEntries,
+    hardwareApps,
     parseModuleSelection,
     promptOptionalModules,
     findSynapseBinary,
