@@ -95,7 +95,20 @@ const PRESETS = [
   { label: 'hard', text: 'gogate hard', frees: '', color: undefined },
   { label: 'status', text: 'gogate status', frees: '', color: undefined },
 ]
-const MODE_COLOR: Record<string, string> = { hard: 'red', soft: 'yellow', off: 'gray' }
+// Card colours: HARD is the safe ask (green), SOFT the waiting state (yellow), OFF the danger (red).
+const MODE_COLOR: Record<string, string> = { hard: 'green', soft: 'yellow', off: 'red' }
+const LOCK_COLOR: Record<string, number> = { hard: 0x2ea043, soft: 0xd7a017, off: 0xd9534f }
+const LOCK_PIXELS: Record<string, string[]> = {
+  hard: ['.XXXX.', 'XX..XX', 'XXXXXX', 'XXXXXX'],
+  soft: ['XXXXXX', 'X....X', 'XXXXXX', 'XXXXXX'],
+  off: ['.XXXXX', 'X...X.', 'XXXXXX', 'XXXXXX'],
+}
+const LOCK_GLYPH: Record<string, string> = { hard: '🔒', soft: '🔓', off: '🔓' }
+const MEANING: Record<string, string> = {
+  hard: 'every guarded command needs a GO',
+  soft: 'guarded commands wait until you grant or type GO',
+  off: 'gate does not block anything',
+}
 const SEG_MODES = ['hard', 'soft', 'off'] as const
 const MAX_BLOCKS = 3
 const CMD_MAX = 60
@@ -150,6 +163,28 @@ export const grantBar = (minutesLeft: number) => {
   const total = Math.max(GRANT_DEFAULT_MIN, minutesLeft)
   const on = Math.max(0, Math.min(GRANT_BAR, Math.ceil((minutesLeft / total) * GRANT_BAR)))
   return { on, off: GRANT_BAR - on }
+}
+
+// Grant rows turn yellow under 30 minutes and red under 10.
+export const grantColor = (minutesLeft: number) =>
+  minutesLeft >= 30 ? 'green' : minutesLeft >= 10 ? 'yellow' : 'red'
+
+// The hero lock as half-block pixel cells; packed like spriteCells (two pixel rows per screen row).
+const LOCK_W = 6
+export function lockCells(mode: string) {
+  const color = LOCK_COLOR[mode] ?? LOCK_COLOR.soft!
+  const pixels = LOCK_PIXELS[mode] ?? LOCK_PIXELS.soft!
+  const words: number[] = []
+  for (let r = 0; r < pixels.length; r += 2) {
+    for (let c = 0; c < LOCK_W; c++) {
+      const top = pixels[r]![c] === 'X'
+      const bottom = pixels[r + 1]![c] === 'X'
+      const glyph = top && bottom ? 0x2588 : top ? 0x2580 : bottom ? 0x2584 : 0x20
+      words.push(glyph, glyph === 0x20 ? DEFAULT_COLOR : color, DEFAULT_COLOR)
+    }
+  }
+  const bytes = new Uint8Array(Uint32Array.from(words).buffer) as Uint8Array & { toBase64(): string }
+  return bytes.toBase64()
 }
 
 // How many chips (own width each, 2-cell gaps) fit; leaves room for "+k more" when any are dropped.
@@ -598,7 +633,9 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: GATE_PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button } = ui
+    const Raster = 'Raster' in ui ? ui.Raster : undefined
     const { mode, grants, raw } = await read($, gate)
     const msg = await read($, gateMsg)
     const width = e.props.bodyColumns
@@ -606,128 +643,190 @@ export const register: Register = on => {
     const demo = await isDemo($)
     const nowMs = await $.clock.now()
     const blockList = demo ? demoBlocks(nowMs) : await read($, blocks)
-    const button = (p: (typeof PRESETS)[number], i: number) => (
-      <Button key={p.label} label={p.label} hotkey={String(i + 1)} onPress={() => void fillPreset($, p.text)} />
-    )
-    const segment = (m: (typeof SEG_MODES)[number]) =>
-      m === mode ? (
-        <Text key={m} bold color={MODE_COLOR[m]}>
-          {m.toUpperCase()}
-        </Text>
-      ) : m === 'off' ? (
-        <Text key={m} color={MODE_COLOR.off}>
-          OFF
-        </Text>
-      ) : (
-        <Button key={m} label={m.toUpperCase()} onPress={() => void fillPreset($, m === 'hard' ? 'gogate hard' : 'gogate soft')} />
+    const segment = (m: (typeof SEG_MODES)[number]) => {
+      if (m === mode)
+        return (
+          <Text key={`seg-${m}`} bold backgroundColor={MODE_COLOR[m]} color="black">
+            {` ${m.toUpperCase()} `}
+          </Text>
+        )
+      if (m === 'off')
+        return (
+          <Text key={`seg-${m}`} color={MODE_COLOR[m]}>
+            {` ${m.toUpperCase()} `}
+          </Text>
+        )
+      return (
+        <Button
+          key={`seg-${m}`}
+          plain
+          label={m.toUpperCase()}
+          onPress={() => void fillPreset($, m === 'hard' ? 'gogate hard' : 'gogate soft')}
+        />
       )
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text bold wrap="truncate-end">
+    }
+    // HERO
+    const heroCard = (
+      <Box key="hero" flexDirection="column" borderStyle="round" borderColor={MODE_COLOR[mode] ?? 'yellow'} paddingX={1} marginBottom={1}>
+        <Box key="hero-head" flexDirection="row" justifyContent="space-between">
+          <Box key="hero-left" flexDirection="row">
+            {Raster ? (
+              <Raster key="lock" columns={6} rows={2} cells={lockCells(mode)} />
+            ) : (
+              <Text key="lock-fallback" color={MODE_COLOR[mode] ?? 'yellow'}>
+                {LOCK_GLYPH[mode] ?? '🔒'}
+              </Text>
+            )}
+            <Text key="mode-word" bold>
+              {' '}
+              {mode.toUpperCase()}
+            </Text>
+          </Box>
+          <Text key="hero-tag" dimColor wrap="truncate-end">
             go-gate
           </Text>
-          <Box flexDirection="row">
-            <Text color="gray">[ </Text>
-            {SEG_MODES.map((m, i) => (
-              <Box key={m} flexDirection="row">
-                {i > 0 && <Text color="gray"> | </Text>}
-                {segment(m)}
-              </Box>
-            ))}
-            <Text color="gray"> ]</Text>
-          </Box>
         </Box>
-        {mode === 'soft' && (
+        <Text key="hero-meaning" dimColor wrap="truncate-end">
+          {MEANING[mode] ?? MEANING.soft}
+        </Text>
+        <Box key="hero-segments" flexDirection="row">
+          {SEG_MODES.map((m, i) => (
+            <Box key={`seg-slot-${m}`} flexDirection="row">
+              {i > 0 && <Text>{'   '}</Text>}
+              {segment(m)}
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    )
+    // GRANTS
+    const grantsCard = (
+      <Box key="grants" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginBottom={1}>
+        <Box key="grants-head" flexDirection="row" justifyContent="space-between">
+          <Text bold>GRANTS</Text>
           <Text dimColor wrap="truncate-end">
-            soft mode blocks guarded commands until you grant or type GO
+            {grants.length} active
+          </Text>
+        </Box>
+        {grants.length === 0 ? (
+          <Text dimColor wrap="truncate-end">
+            no grants — guarded commands stay blocked
+          </Text>
+        ) : (
+          grants.map(x => {
+            const bar = grantBar(x.minutesLeft)
+            return (
+              <Box key={`grant-${x.scope}`} flexDirection="row" justifyContent="space-between">
+                <Box key={`grant-${x.scope}-l`} flexDirection="row">
+                  <Text wrap="truncate-end">{x.scope.padEnd(scopeW)}</Text>
+                  <Text color={grantColor(x.minutesLeft)}>{'■'.repeat(bar.on)}</Text>
+                  <Text dimColor>{'□'.repeat(bar.off)}</Text>
+                </Box>
+                <Text dimColor wrap="truncate-end">
+                  {timeLeft(x.minutesLeft)} left
+                </Text>
+              </Box>
+            )
+          })
+        )}
+      </Box>
+    )
+    // LAST BLOCKED
+    const blockedCard = (
+      <Box key="blocked" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+        <Text bold>LAST BLOCKED</Text>
+        {blockList.length === 0 ? (
+          <Text dimColor wrap="truncate-end">
+            nothing blocked yet
+          </Text>
+        ) : (
+          blockList.map((b, i) => {
+            const mins = Math.max(0, Math.round((nowMs - b.at) / 60_000))
+            return (
+              <Box key={`row-blk-${i}`} flexDirection="row" justifyContent="space-between">
+                <Box key={`row-blk-${i}-l`} flexDirection="row">
+                  <Text color="yellow">▸ </Text>
+                  <Button key={`blk-${i}`} plain label={b.cmd} onPress={() => void fillPreset($, presetForCommand(b.cmd))} />
+                </Box>
+                <Text dimColor wrap="truncate-end">
+                  {mins}m ago
+                </Text>
+              </Box>
+            )
+          })
+        )}
+      </Box>
+    )
+    // PRESETS
+    const presetRow = (p: (typeof PRESETS)[number], i: number, primary: boolean) => (
+      <Box key={`row-${p.label}`} flexDirection="row">
+        {p.color && <Text color={p.color}>● </Text>}
+        <Button
+          key={p.label}
+          label={p.label}
+          hotkey={String(i + 1)}
+          {...(primary ? { variant: 'primary' as const } : { plain: true as const })}
+          onPress={() => void fillPreset($, p.text)}
+        />
+        {p.frees && (
+          <Text dimColor wrap="truncate-end">
+            {'  '}
+            {p.frees}
           </Text>
         )}
-        <Text dimColor wrap="truncate-end">
-          {'─'.repeat(width)}
-        </Text>
+      </Box>
+    )
+    const presetsCard = (
+      <Box key="presets" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+        <Text bold>PRESETS</Text>
+        {presetRow(PRESETS[0]!, 0, true)}
+        {presetRow(PRESETS[1]!, 1, false)}
+        <Box key="row-compact" flexDirection="row">
+          <Text color="gray">● </Text>
+          {PRESETS.slice(2).map((p, i) => (
+            <Box key={`cp-${p.label}`} marginRight={1}>
+              <Button key={p.label} label={p.label} hotkey={String(i + 3)} plain onPress={() => void fillPreset($, p.text)} />
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    )
+    const wide = width >= 96
+    const body = wide ? (
+      <Box key="cols" flexDirection="row">
+        <Box key="col-left" flexGrow={1} flexDirection="column">
+          {heroCard}
+          {presetsCard}
+        </Box>
+        <Box key="col-right" flexGrow={1} flexDirection="column">
+          {grantsCard}
+          {blockedCard}
+        </Box>
+      </Box>
+    ) : (
+      <Box key="stack" flexDirection="column">
+        {heroCard}
+        {grantsCard}
+        {blockedCard}
+        {presetsCard}
+      </Box>
+    )
+    return (
+      <Box flexDirection="column">
+        {body}
         {raw && !/: mode \w+/.test(raw) && (
           <Text dimColor wrap="truncate-end">
             {raw}
           </Text>
         )}
+        {msg && (
+          <Text color="yellow" wrap="truncate-end">
+            {msg}
+          </Text>
+        )}
         <Text dimColor wrap="truncate-end">
-          GRANTS
+          click prefills your prompt · you press Enter to record
         </Text>
-        {grants.length === 0 && (
-          <Text dimColor wrap="truncate-end">
-            no grants
-          </Text>
-        )}
-        {grants.map(x => (
-          <Text key={x.scope} wrap="truncate-end">
-            {x.scope.padEnd(scopeW)}
-            {'  '}
-            <Text color="green">{'■'.repeat(grantBar(x.minutesLeft).on)}</Text>
-            <Text dimColor>{'□'.repeat(grantBar(x.minutesLeft).off)}</Text>
-            {'  '}
-            {timeLeft(x.minutesLeft)} left
-          </Text>
-        ))}
-        <Text dimColor wrap="truncate-end">
-          LAST BLOCKED
-        </Text>
-        {blockList.length === 0 && (
-          <Text dimColor wrap="truncate-end">
-            nothing blocked yet
-          </Text>
-        )}
-        {blockList.map((b, i) => {
-          const mins = Math.max(0, Math.round((nowMs - b.at) / 60_000))
-          return (
-            <Button
-              key={`blk-${i}`}
-              label={`${b.cmd} · ${mins}m ago`}
-              onPress={() => void fillPreset($, presetForCommand(b.cmd))}
-            />
-          )
-        })}
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text dimColor wrap="truncate-end">
-            PRESETS
-          </Text>
-          <Text dimColor wrap="truncate-end">
-            frees
-          </Text>
-        </Box>
-        {PRESETS.slice(0, 2).map((p, i) => (
-          <Box key={p.label} flexDirection="row">
-            <Text color={p.color}>● </Text>
-            {button(p, i)}
-            <Text dimColor wrap="truncate-end">
-              {'  '}
-              {p.frees}
-            </Text>
-          </Box>
-        ))}
-        <Box flexDirection="row">
-          {PRESETS.slice(2).map((p, i) => (
-            <Box key={p.label} marginRight={1}>
-              {button(p, i + 2)}
-            </Box>
-          ))}
-        </Box>
-        {msg.startsWith('▸') ? (
-          <Box flexDirection="column">
-            <Text color="yellow" wrap="truncate-end">
-              {msg}
-            </Text>
-            <Text dimColor wrap="truncate-end">
-              press Enter to record · clear the prompt to cancel
-            </Text>
-          </Box>
-        ) : (
-          msg && (
-            <Text color="yellow" wrap="truncate-end">
-              {msg}
-            </Text>
-          )
-        )}
       </Box>
     )
   })
