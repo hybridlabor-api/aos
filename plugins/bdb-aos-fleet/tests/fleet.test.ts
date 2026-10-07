@@ -28,6 +28,8 @@ test('a go-gate block marks the session as needing a GO, the next tool call clea
     writes.push(e.value as { activity?: string; reason?: string })
     return next(e)
   })
+  on('clock.now', () => ({ value: 0 }))
+  on('env.get', () => ({ value: '/home' }))
   on('tool.call', { tool: 'Bash' }, (_$, e) =>
     e.command.startsWith('npm publish')
       ? { result: { stdout: '', stderr: '', interrupted: false }, isError: true, text: 'Blocked by go-gate hook: npm publish' }

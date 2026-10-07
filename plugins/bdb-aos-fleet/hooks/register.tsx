@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateState } from '../types'
+import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateBlock, GateState } from '../types'
 
 const PANE = 'aos-fleet'
 const GATE_PANE = 'gogate-panel'
@@ -13,6 +13,7 @@ const fleet = atom({ plugin: 'bdb-aos-fleet', key: 'fleet' } as const, [])
 const frame_ = atom({ plugin: 'bdb-aos-fleet', key: 'frame' } as const, 0)
 const gate = atom({ plugin: 'bdb-aos-fleet', key: 'gate' } as const, { mode: 'soft', grants: [], raw: '' })
 const gateMsg = atom({ plugin: 'bdb-aos-fleet', key: 'gateMsg' } as const, '')
+const blocks = atom({ plugin: 'bdb-aos-fleet', key: 'blocks' } as const, [] as GateBlock[])
 const self = atom({ plugin: 'bdb-aos-fleet', key: 'self' } as const, {
   activity: 'idle',
 })
@@ -88,13 +89,58 @@ const DOT: Record<FleetActivity, { glyph: string; color: string }> = {
 }
 
 const PRESETS = [
-  { label: 'release 2h', text: 'gogate grant push-feature,github-write,merge,publish 2h', frees: 'push-feature · github-write · merge · publish' },
-  { label: 'feature 2h', text: 'gogate grant push-feature,github-write 2h', frees: 'push-feature · github-write' },
-  { label: 'soft', text: 'gogate soft', frees: '' },
-  { label: 'hard', text: 'gogate hard', frees: '' },
-  { label: 'status', text: 'gogate status', frees: '' },
+  { label: 'release 2h', text: 'gogate grant push-feature,github-write,merge,publish 2h', frees: 'push-feature · github-write · merge · publish', color: 'red' },
+  { label: 'feature 2h', text: 'gogate grant push-feature,github-write 2h', frees: 'push-feature · github-write', color: 'yellow' },
+  { label: 'soft', text: 'gogate soft', frees: '', color: undefined },
+  { label: 'hard', text: 'gogate hard', frees: '', color: undefined },
+  { label: 'status', text: 'gogate status', frees: '', color: undefined },
 ]
 const MODE_COLOR: Record<string, string> = { hard: 'red', soft: 'yellow', off: 'gray' }
+const SEG_MODES = ['hard', 'soft', 'off'] as const
+const MAX_BLOCKS = 3
+const CMD_MAX = 60
+const DEMO_MIN = 74
+
+export const demoGate = (): GateState => ({
+  mode: 'soft',
+  grants: [
+    { scope: 'push-feature', minutesLeft: DEMO_MIN },
+    { scope: 'github-write', minutesLeft: DEMO_MIN },
+  ],
+  raw: 'AOS go-gate, session demo: mode soft',
+})
+
+export const demoFleet = (): FleetSession[] =>
+  ['demo-orchestrator', 'demo-web', 'demo-api'].map(name => ({
+    id: `demo:${name}`,
+    name,
+    role: roleFromName(name),
+    activity: 'working',
+    repo: name.replace('demo-', ''),
+    cwd: `~/demo/${name.replace('demo-', '')}`,
+    updatedAt: 0,
+  }))
+
+export const demoBlocks = (now: number): GateBlock[] => [
+  { cmd: 'git push origin feat/demo-landing', at: now - 3 * 60_000 },
+  { cmd: 'npm publish', at: now - 8 * 60_000 },
+]
+
+// Mask secrets first, then truncate — the masked result must never leak a token tail.
+export const maskCommand = (cmd: string) => {
+  const s = cmd
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{8,}|gho_[A-Za-z0-9]{8,}|github_pat_[A-Za-z0-9_]{8,}|xox[bp]-[A-Za-z0-9-]{8,}|AKIA[A-Z0-9]{12,})/g, '***')
+    .replace(/\bBearer\s+[^\s"']+/gi, 'Bearer ***')
+    .replace(/(--(?:token|password|secret|api-key)[= ])[^\s&"']+/gi, '$1***')
+    .replace(/\b[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)=[^\s&"']+/gi, m => `${m.split('=')[0]}=***`)
+    .replace(/\b[A-Za-z0-9]{32,}\b/g, '***')
+  return s.length > CMD_MAX ? `${s.slice(0, CMD_MAX - 1)}…` : s
+}
+
+export const presetForCommand = (cmd: string) =>
+  /merge|publish/i.test(cmd) ? PRESETS[0]!.text : PRESETS[1]!.text
+
+const isDemo = async ($: EngineInterface) => (await $.env.get('AOS_FLEET_DEMO')) === '1'
 const GRANT_BAR = 10
 const GRANT_DEFAULT_MIN = 120
 const LIST_STALE_MIN = 15
@@ -139,6 +185,10 @@ export function parseGateStatus(text: string): GateState {
 export const timeLeft = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}` : `${min}m`)
 
 async function readGate($: EngineInterface) {
+  if (await isDemo($)) {
+    await update($, gate, () => demoGate())
+    return
+  }
   const home = await $.env.get('HOME')
   const r = await $.process.run(['node', `${home}/.claude/hooks/go-grant.mjs`, '--status', '--session', await $.session.id()])
   await update($, gate, () => parseGateStatus(r.stdout))
@@ -320,6 +370,7 @@ async function readProject($: EngineInterface) {
 }
 
 async function publish($: EngineInterface, ended = false) {
+  if (await isDemo($)) return
   if (!id) return
   dir ||= `${await $.env.get('HOME')}/.aos/fleet`
   const me = await read($, self)
@@ -343,6 +394,10 @@ async function publish($: EngineInterface, ended = false) {
 }
 
 async function loadFleet($: EngineInterface) {
+  if (await isDemo($)) {
+    await update($, fleet, () => demoFleet())
+    return
+  }
   dir ||= `${await $.env.get('HOME')}/.aos/fleet`
   if (!(await $.fs.exists(dir))) return
   const now = await $.clock.now()
@@ -451,7 +506,11 @@ export const register: Register = on => {
     const result = await next(e)
     const blocked = result.isError && result.text && /go-gate/i.test(result.text)
     if (blocked) {
-      const command = e.tool === 'Bash' ? e.command.slice(0, 80) : String(e.tool)
+      const command = e.tool === 'Bash' ? maskCommand(e.command) : String(e.tool)
+      if (!(await isDemo($))) {
+        const at = await $.clock.now()
+        await update($, blocks, list => [{ cmd: command, at }, ...list].slice(0, MAX_BLOCKS))
+      }
       await setSelf($, { activity: 'attention', reason: `GO: ${command}` })
       await publish($)
     } else if ((await read($, self)).activity === 'attention') {
@@ -543,21 +602,47 @@ export const register: Register = on => {
     const { mode, grants, raw } = await read($, gate)
     const msg = await read($, gateMsg)
     const width = e.props.bodyColumns
-    const color = MODE_COLOR[mode] ?? 'yellow'
     const scopeW = Math.max(...grants.map(x => x.scope.length), 0)
+    const demo = await isDemo($)
+    const nowMs = await $.clock.now()
+    const blockList = demo ? demoBlocks(nowMs) : await read($, blocks)
     const button = (p: (typeof PRESETS)[number], i: number) => (
       <Button key={p.label} label={p.label} hotkey={String(i + 1)} onPress={() => void fillPreset($, p.text)} />
     )
+    const segment = (m: (typeof SEG_MODES)[number]) =>
+      m === mode ? (
+        <Text key={m} bold color={MODE_COLOR[m]}>
+          {m.toUpperCase()}
+        </Text>
+      ) : m === 'off' ? (
+        <Text key={m} color={MODE_COLOR.off}>
+          OFF
+        </Text>
+      ) : (
+        <Button key={m} label={m.toUpperCase()} onPress={() => void fillPreset($, m === 'hard' ? 'gogate hard' : 'gogate soft')} />
+      )
     return (
       <Box flexDirection="column">
         <Box flexDirection="row" justifyContent="space-between">
           <Text bold wrap="truncate-end">
             go-gate
           </Text>
-          <Text bold color={color} wrap="truncate-end">
-            {mode.toUpperCase()} ●
-          </Text>
+          <Box flexDirection="row">
+            <Text color="gray">[ </Text>
+            {SEG_MODES.map((m, i) => (
+              <Box key={m} flexDirection="row">
+                {i > 0 && <Text color="gray"> | </Text>}
+                {segment(m)}
+              </Box>
+            ))}
+            <Text color="gray"> ]</Text>
+          </Box>
         </Box>
+        {mode === 'soft' && (
+          <Text dimColor wrap="truncate-end">
+            soft mode blocks guarded commands until you grant or type GO
+          </Text>
+        )}
         <Text dimColor wrap="truncate-end">
           {'─'.repeat(width)}
         </Text>
@@ -571,7 +656,7 @@ export const register: Register = on => {
         </Text>
         {grants.length === 0 && (
           <Text dimColor wrap="truncate-end">
-            none — soft mode blocks guarded commands until you grant or type GO
+            no grants
           </Text>
         )}
         {grants.map(x => (
@@ -584,7 +669,25 @@ export const register: Register = on => {
             {timeLeft(x.minutesLeft)} left
           </Text>
         ))}
-        <Box marginTop={1} flexDirection="row" justifyContent="space-between">
+        <Text dimColor wrap="truncate-end">
+          LAST BLOCKED
+        </Text>
+        {blockList.length === 0 && (
+          <Text dimColor wrap="truncate-end">
+            nothing blocked yet
+          </Text>
+        )}
+        {blockList.map((b, i) => {
+          const mins = Math.max(0, Math.round((nowMs - b.at) / 60_000))
+          return (
+            <Button
+              key={`blk-${i}`}
+              label={`${b.cmd} · ${mins}m ago`}
+              onPress={() => void fillPreset($, presetForCommand(b.cmd))}
+            />
+          )
+        })}
+        <Box flexDirection="row" justifyContent="space-between">
           <Text dimColor wrap="truncate-end">
             PRESETS
           </Text>
@@ -594,6 +697,7 @@ export const register: Register = on => {
         </Box>
         {PRESETS.slice(0, 2).map((p, i) => (
           <Box key={p.label} flexDirection="row">
+            <Text color={p.color}>● </Text>
             {button(p, i)}
             <Text dimColor wrap="truncate-end">
               {'  '}
@@ -609,7 +713,7 @@ export const register: Register = on => {
           ))}
         </Box>
         {msg.startsWith('▸') ? (
-          <Box marginTop={1} flexDirection="column">
+          <Box flexDirection="column">
             <Text color="yellow" wrap="truncate-end">
               {msg}
             </Text>
