@@ -17,8 +17,16 @@ const end = src.indexOf('\n}\n', start)
 const at = src.indexOf('prompt.fill')
 if (start < 0 || at < start || at > end) fail('prompt.fill must sit inside fillPreset')
 
-// The only caller may be a Button's onPress: no hook, timer or tool reaches the fill.
+// Every fillPreset call site must be a Button's onPress: no hook, timer or tool reaches the fill.
 const callers = [...src.matchAll(/fillPreset\(/g)].length - 1
-if (callers !== 1) fail(`expected exactly one fillPreset caller, found ${callers}`)
+const viaButton = [...src.matchAll(/void fillPreset\(/g)].length
+if (callers < 1) fail('expected at least one fillPreset caller')
+if (callers !== viaButton) fail(`every fillPreset caller must be onPress={() => void fillPreset($, ...)}: ${callers} callers, ${viaButton} via onPress`)
 if (!/onPress=\{\(\) => void fillPreset\(/.test(src)) fail('fillPreset must be called only from a Button onPress')
+// The only file write is the heartbeat in publish(); the gate pane and the blocks list never write a file.
+const writes = src.split('fs.write').length - 1
+const pubStart = src.indexOf('async function publish(')
+const pubEnd = src.indexOf('\n}\n', pubStart)
+const w = src.indexOf('fs.write')
+if (writes !== 1 || w < pubStart || w > pubEnd) fail('fs.write must appear once, inside publish')
 console.log('source-guard: ok')

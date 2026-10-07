@@ -30,6 +30,8 @@ export type FleetSelf = {
 
 export type GateState = { mode: string; grants: { scope: string; minutesLeft: number }[]; raw: string }
 
+export type GateBlock = { cmd: string; at: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'bdb-aos-fleet': {
@@ -38,6 +40,7 @@ declare module 'claude-code' {
       frame: number
       gate: GateState
       gateMsg: string
+      blocks: GateBlock[]
     }
   }
 }
