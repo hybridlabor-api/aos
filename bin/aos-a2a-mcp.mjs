@@ -85,6 +85,19 @@ function optionalBool(args, key) {
 // Every peer text (artifact or status message) is wrapped as data with the never-GO line.
 const wrapped = (to, text) => formatInjection({ from: to, text: text ?? "" });
 
+// Depth limit, per process (B1): checkDepth() reads the MCP process env, which is frozen at spawn
+// time, so a harness session that ANSWERED a depth-N inbound message could otherwise resend at its
+// (frozen) depth forever — loops A -> agy -> B -> agy would be unbounded. Instead the server
+// remembers the depth of every inbound message it hands out through a2a_inbox_pull; while such a
+// message is pulled and not yet answered with a2a_reply, a2a_send is refused when that depth is at
+// or above AOS_A2A_MAX_DEPTH (default 1). Replies always stay allowed.
+const openInboundDepths = new Map(); // taskId -> inbound depth of a pulled, not-yet-answered message
+const maxDepth = () => Number(process.env.AOS_A2A_MAX_DEPTH || 1);
+const pulledDepthOverLimit = () => {
+  for (const d of openInboundDepths.values()) if (d >= maxDepth()) return d;
+  return null;
+};
+
 function peerTextParts(res, to) {
   const lines = [`taskId: ${res.taskId}`, `state: ${res.state}`];
   for (const a of res.artifacts ?? []) lines.push(`artifact ${a.name}: ${wrapped(to, a.text)}`);
@@ -128,7 +141,7 @@ const tools = [
     description: "Write the reply file this session owes an A2A peer for a claimed message (task from a a2a_inbox_pull / inbox injection).",
     inputSchema: {
       type: "object",
-      properties: { taskId: { type: "string" }, text: { type: "string" }, name: { type: "string" } },
+      properties: { taskId: { type: "string" }, text: { type: "string" } },
       required: ["taskId", "text"],
       additionalProperties: false,
     },
@@ -170,6 +183,10 @@ const handleCall = async (name, args) => {
     }
     if (name === "a2a_send") {
       validateArgs(args, new Set(["to", "text", "timeout_s", "background"]), ["to", "text"]);
+      // A pulled inbound message whose depth is at/above the limit must be answered first:
+      // no onward send while it is open (replies via a2a_reply are unaffected).
+      const pulled = pulledDepthOverLimit();
+      if (pulled != null) throw new ToolError(`A2A depth limit reached (pulled message depth ${pulled} >= AOS_A2A_MAX_DEPTH ${maxDepth()}, answer it with a2a_reply before sending)`);
       const from = sessionName();
       const to = validPeer(args.to);
       const text = text8k(args.text, "text");
@@ -189,12 +206,15 @@ const handleCall = async (name, args) => {
       return { isError: false, text: peerTextParts(res, to).join("\n") };
     }
     if (name === "a2a_reply") {
-      validateArgs(args, new Set(["taskId", "text", "name"]), ["taskId", "text"]);
+      // No `name` argument (B7): the model must not be able to write reply files for an arbitrary
+      // session — the reply always goes out under AOS_A2A_NAME. additionalProperties:false would
+      // reject an extra name anyway; it must not even exist in the schema.
+      validateArgs(args, new Set(["taskId", "text"]), ["taskId", "text"]);
       sessionName(); // identity check first: an unset AOS_A2A_NAME must fail before any write
       const taskId = validName(str(args.taskId, "taskId"));
       const text = text8k(args.text, "text");
-      const nameOpt = args.name == null ? undefined : validName(str(args.name, "name"));
-      const { path } = reply({ taskId, text, name: nameOpt });
+      const { path } = reply({ taskId, text });
+      openInboundDepths.delete(taskId); // answered: the depth hold on this message is released
       return { isError: false, text: `reply written to ${path}` };
     }
     if (name === "a2a_card") {
@@ -205,6 +225,12 @@ const handleCall = async (name, args) => {
       const to = validPeer(args.to);
       const entry = list().find((x) => x.name === to);
       if (!entry) throw new ToolError(`no live registry entry for "${to}"`);
+      // SSRF guard (B6): the registry is user-writable, so the cardUrl is fetched only when its
+      // host is loopback — never a host an attacker planted a registry entry for.
+      const host = (() => { try { return new URL(entry.cardUrl).hostname; } catch { return ""; } })();
+      if (!(host === "127.0.0.1" || host === "localhost" || host === "[::1]")) {
+        throw new ToolError(`card fetch refused for peer "${to}": the card URL is not loopback (127.0.0.1, ::1 or localhost)`);
+      }
       let card;
       try {
         const res = await fetch(entry.cardUrl);
@@ -213,9 +239,13 @@ const handleCall = async (name, args) => {
       } catch {
         throw new ToolError(`card fetch failed for peer "${to}"`);
       }
+      // The card name survives only when it is a safe session-name-shaped string; description is a
+      // free-text field from the network and is wrapped as data with the never-GO line (B6).
+      const cardName = typeof card?.name === "string" && card.name.length <= 64 && /^[a-z0-9._-]+$/.test(card.name) ? card.name : to;
+      const rawDescription = typeof card?.description === "string" ? card.description : "";
       const out = {
-        name: typeof card?.name === "string" ? card.name : to,
-        description: typeof card?.description === "string" ? card.description : "",
+        name: cardName,
+        description: formatInjection({ from: cardName, text: rawDescription.slice(0, MAX_TEXT) }),
         skills: (Array.isArray(card?.skills) ? card.skills : []).map((s) => s?.id).filter((id) => typeof id === "string"),
         harness: entry.harness ?? null,
       };
@@ -230,6 +260,10 @@ const handleCall = async (name, args) => {
       for (const m of pending(me)) {
         const got = claim(m.file);
         if (!got) continue; // claimed meanwhile or corrupt
+        // Remember this message's inbound depth (B1): while it stays unanswered, sends are
+        // refused at/above AOS_A2A_MAX_DEPTH, so the session cannot relay onward forever.
+        const d = Number(got?.depth);
+        if (Number.isFinite(d) && d > 0) openInboundDepths.set(got.taskId, d);
         const hint = `Answer with a2a_reply (taskId ${got.taskId}), or run: ${replyCommand(got.taskId, "<your answer>", process.env.PATH, me)}`;
         parts.push(`${formatInjection(got)}\n${hint}`);
       }
@@ -265,6 +299,9 @@ rl.on("line", async (line) => {
   if (!line.trim()) return;
   let msg;
   try { msg = JSON.parse(line); } catch { return; }
+  // B8: `null`, numbers, arrays or bare strings parse to non-RPC values; accessing msg.method on
+  // them would throw outside the dispatcher and kill the server. Drop them silently.
+  if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
   if (msg.method === "initialize") {
     process.stdout.write(JSON.stringify({
       jsonrpc: "2.0", id: msg.id,

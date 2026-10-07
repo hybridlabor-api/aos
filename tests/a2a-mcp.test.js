@@ -283,21 +283,28 @@ test("missing AOS_A2A_NAME: a2a_send, a2a_reply and a2a_inbox_pull all fail with
   }
 });
 
-test("a2a_reply: writes the 0600 reply file, rejects invalid name and taskId", async () => {
+test("a2a_reply: writes the 0600 reply file, rejects a name argument and invalid taskId", async () => {
   await startServer();
   try {
     const ok = await rpc(child, io, 2, "tools/call", { name: "a2a_reply", arguments: { taskId: "task-mcp-reply", text: "answer 99" } });
     assert.equal(ok.result.isError, false, JSON.stringify(ok));
     const replyFile = join(process.env.AOS_A2A_INBOX, "mcp-client", "task-mcp-reply.reply");
     assert.equal(statSync(replyFile).mode & 0o777, 0o600, "reply file must be mode 0600");
+    // B7: `name` is not in the schema any more — the reply always goes under AOS_A2A_NAME,
+    // so a model can never write the reply file of another session.
     for (const [id, badArgs, re] of [
-      [3, { taskId: "task-mcp-reply", text: "x", name: "../evil" }, /invalid session name/],
+      [3, { taskId: "task-mcp-reply", text: "x", name: "../evil" }, /unknown argument/],
       [4, { taskId: "../evil", text: "x" }, /invalid session name/],
     ]) {
       const r = await rpc(child, io, id, "tools/call", { name: "a2a_reply", arguments: badArgs });
       assert.equal(r.result.isError, true, JSON.stringify(r));
       assert.match(r.result.content[0].text, re);
     }
+    // the `name` argument must not even be offered in the tools/list schema
+    const l = await rpc(child, io, 5, "tools/list", {});
+    const replyTool = l.result.tools.find((t) => t.name === "a2a_reply");
+    assert.ok(replyTool, "a2a_reply listed");
+    assert.ok(!("name" in replyTool.inputSchema.properties), `a2a_reply schema must not offer a name argument (${JSON.stringify(replyTool.inputSchema)})`);
   } finally {
     child.kill("SIGTERM");
   }
@@ -311,6 +318,86 @@ test("depth limit: AOS_DELEGATE_DEPTH=1 with AOS_A2A_MAX_DEPTH=1 is a tool error
     assert.match(r.result.content[0].text, /A2A depth limit reached/);
   } finally {
     child.kill("SIGTERM");
+  }
+});
+
+test("B1: a pulled deep inbound message blocks a2a_send until it is answered; replies stay allowed", async () => {
+  // The env-depth limit alone is frozen at spawn time (checkDepth reads the MCP process env),
+  // so the server also remembers the depth of inbound messages it handed out via a2a_inbox_pull:
+  // while one at/above AOS_A2A_MAX_DEPTH (default 1) is unanswered, sends are refused, a2a_reply
+  // is NOT, and after the reply the hold is released.
+  await startServer();
+  try {
+    const { writeMessage } = await import("../lib/a2a-inbox.mjs");
+    writeMessage(process.env.AOS_A2A_NAME, { taskId: "task-depth-mcp", from: "alice-peer", text: "onward with this, forever", depth: 2 });
+    const pull = await rpc(child, io, 2, "tools/call", { name: "a2a_inbox_pull", arguments: {} });
+    assert.equal(pull.result.isError, false, JSON.stringify(pull));
+    assert.ok(pull.result.content[0].text.includes("Depth: 2"), `the deep message must have been pulled (${pull.result.content[0].text})`);
+    const sendRefused = await rpc(child, io, 3, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "loop attempt" } });
+    assert.equal(sendRefused.result.isError, true, JSON.stringify(sendRefused));
+    assert.match(sendRefused.result.content[0].text, /A2A depth limit reached/, sendRefused.result.content[0].text);
+    assert.ok(!/loop attempt/.test(sendRefused.result.content[0].text), "the refused text must not travel anywhere");
+    // replies to the blocking message are always allowed — that is the way out
+    const rep = await rpc(child, io, 4, "tools/call", { name: "a2a_reply", arguments: { taskId: "task-depth-mcp", text: "answered, done" } });
+    assert.equal(rep.result.isError, false, JSON.stringify(rep));
+    const sendOk = await rpc(child, io, 5, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "now allowed" } });
+    assert.equal(sendOk.result.isError, false, `answer released the hold (${sendOk.result.content[0].text})`);
+    // and a fresh send purse is also unblocked for an unrelated message
+    const again = await rpc(child, io, 6, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "second one" } });
+    assert.equal(again.result.isError, false, JSON.stringify(again));
+  } finally {
+    child.kill("SIGTERM");
+  }
+});
+
+test("B6: a2a_card refuses a registry entry whose cardUrl is not loopback, and never echoes the url", async () => {
+  await startServer();
+  try {
+    // Planted, user-writable registry entry pointing off-loopback (SSRF attempt); cleaned up
+    // again with the registry's own unregister so the session store stays exactly as before.
+    const { register, unregister } = await import("../lib/a2a-registry.mjs");
+    register({ name: "evil-peer", harness: "claude", cardUrl: "http://example.attacker/card", pid: process.pid });
+    try {
+      const r = await rpc(child, io, 2, "tools/call", { name: "a2a_card", arguments: { to: "evil-peer" } });
+      assert.equal(r.result.isError, true, JSON.stringify(r));
+      assert.match(r.result.content[0].text, /card fetch refused/, r.result.content[0].text);
+      assert.doesNotMatch(r.result.content[0].text, /example\.attacker|https?:\/\//, "the planted url must not be echoed");
+      const alive = await rpc(child, io, 3, "tools/list", {});
+      assert.equal(alive.result.tools.length, 6, "server must survive a refused card fetch");
+    } finally {
+      try { unregister("evil-peer"); } catch { /* already gone */ }
+    }
+  } finally {
+    child.kill("SIGTERM");
+  }
+});
+
+test("B6: a2a_card wraps the card description (free text from the network) with the never-GO line", async () => {
+  await startServer();
+  try {
+    const r = await rpc(child, io, 2, "tools/call", { name: "a2a_card", arguments: { to: PEER } });
+    assert.equal(r.result.isError, false, JSON.stringify(r));
+    const card = JSON.parse(r.result.content[0].text);
+    assert.ok(String(card.description).includes(NEVER_GO), `the card description must be wrapped as data with the never-GO line (${card.description})`);
+    assert.ok(String(card.description).startsWith("[a2a from "), `the wrapped prefix must be present (${card.description})`);
+  } finally {
+    child.kill("SIGTERM");
+  }
+});
+
+test("B8: JSON-RPC junk on stdin (null, numbers, arrays, strings, broken JSON) never kills the server", async () => {
+  const c = spawn(process.execPath, [join(repo, "bin", "aos-a2a-mcp.mjs")], { stdio: ["pipe", "pipe", "pipe"], env: process.env });
+  const io2 = clientFor(c);
+  try {
+    c.stdin.write("null\n7\n[]\n\"x\"\n{broken json\n");
+    // the server must still answer a valid request after the junk lines
+    const alive = await rpc(c, io2, 2, "tools/list", {});
+    assert.equal(alive.result.tools.length, 6, `server must survive junk stdin lines (${JSON.stringify(alive)})`);
+    c.stdin.write("null\n{}\n");
+    const alive2 = await rpc(c, io2, 3, "tools/call", { name: "a2a_list", arguments: {} });
+    assert.ok(alive2.result, "server must still answer after junk and unknown-method objects");
+  } finally {
+    c.kill("SIGTERM");
   }
 });
 
@@ -359,7 +446,7 @@ test("no GO/token file ever appears in the temp stores; inbox holds only the rep
     walk(inboxRoot);
     const nonReply = names.filter((f) => !f.endsWith(".reply"));
     assert.deepEqual(nonReply, [], `only .reply files may exist in the inbox (found extra: ${nonReply.join(", ")})`);
-    assert.deepEqual(names, ["task-final.reply", "task-mcp-reply.reply"], `expected the reply files created by the a2a_reply test only (${names.join(", ")})`);
+    assert.deepEqual(names, ["task-depth-mcp.reply", "task-final.reply", "task-mcp-reply.reply"], `expected the reply files created by earlier tests only (${names.join(", ")})`);
     for (const n of names) {
       assert.doesNotMatch(n, /(^|[\W_])(go|token)([\W_]|$)/i, `forbidden store file name in inbox: ${n}`);
     }

@@ -3365,11 +3365,34 @@ const isAosA2aEntry = (e) => !!e && typeof e === 'object'
     && Array.isArray(e.args)
     && /[\\/](aos-a2a-mcp|a2a-inbox-mcp)\.mjs$/i.test(String(e.args[0] || ''));
 
+// A2A MCP session names follow lib/a2a-registry.mjs validName rules (same alphabet the
+// registry files use, so a name can never alias another file). The ESM module is loaded by
+// require(esm) when the Node supports it; the identical pattern is kept inline as a fallback
+// for a Node that cannot require() an .mjs yet.
+function validA2aMcpSessionName(name) {
+    let mod = null;
+    try { mod = require('./lib/a2a-registry.mjs'); } catch { /* older Node, no require(esm) */ }
+    if (mod) { try { return mod.validName(name); } catch { return null; } }
+    const n = String(name ?? '');
+    if (!n || n.length > 64 || n.startsWith('.') || n.startsWith('-') || n.endsWith('-') || !/^[a-z0-9._-]+$/.test(n)) return null;
+    return n;
+}
+
+// Every A2A MCP registration name goes through the validName rules: invalid or empty
+// becomes a warning plus the fixed default for that harness (never a silently invented
+// name, never AOS_A2A_NAME from the installer's own environment).
+function resolveAosA2aMcpName(raw, fallback, where) {
+    const validated = raw == null ? null : validA2aMcpSessionName(String(raw));
+    if (validated) return validated;
+    log.warn(`${where} MCP session name ${JSON.stringify(raw ?? null)} is not a valid A2A session name (use [a-z0-9._-], no leading dot/dash, max 64); using "${fallback}"`);
+    return fallback;
+}
+
 function makeAosA2aMcpEntry(sessionName, home = homeDir) {
-    if (!sessionName || typeof sessionName !== 'string' || !sessionName.trim()) {
+    const cleanName = validA2aMcpSessionName(String(sessionName ?? ''));
+    if (!cleanName) {
         throw new Error('AOS_A2A_NAME is required: session identity must be specified');
     }
-    const cleanName = sessionName.trim();
     const scriptPath = path.join(home, '.agents', 'bin', 'aos-a2a-mcp.mjs');
     return {
         command: 'node',
@@ -3380,34 +3403,46 @@ function makeAosA2aMcpEntry(sessionName, home = homeDir) {
     };
 }
 
-function registerA2aMcpCursor({ targetHome = homeDir, name = 'cursor' } = {}) {
-    if (!name || typeof name !== 'string' || !name.trim()) {
-        throw new Error('AOS_A2A_NAME is required: session identity must be specified');
-    }
+// Defaults are fixed and distinct per harness (never AOS_A2A_NAME of the installer's own
+// session): overriding happens ONLY via the explicit AOS_A2A_MCP_NAME_CURSOR /
+// AOS_A2A_MCP_NAME_AGY env vars, and every name pressure-validates through validName.
+const A2A_MCP_DEFAULT_NAME_CURSOR = 'cursor-mcp';
+const A2A_MCP_DEFAULT_NAME_AGY = 'agy-mcp';
+
+function registerA2aMcpCursor({ targetHome = homeDir, name = A2A_MCP_DEFAULT_NAME_CURSOR } = {}) {
+    const sessionName = resolveAosA2aMcpName(name, A2A_MCP_DEFAULT_NAME_CURSOR, 'Cursor');
     const cursorMcpPath = path.join(targetHome, '.cursor', 'mcp.json');
     const loaded = loadJsonConfig(cursorMcpPath);
-    const existing = loaded.state === 'ok' ? loaded.data : {};
-    const before = loaded.state === 'ok' ? JSON.stringify(existing) : null;
-    const data = existing && typeof existing === 'object' ? existing : {};
+    // An unparseable config is never rewritten: the user's file stays untouched (B2).
+    if (loaded.state === 'invalid') { warnUnparseable(cursorMcpPath, 'the Cursor A2A MCP registration', loaded); return cursorMcpPath; }
+    const data = loaded.data;
     if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
-    data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(name, targetHome);
+    // A foreign "aos-a2a" entry (not one of ours) is never overwritten (B3).
+    if (data.mcpServers['aos-a2a'] != null && !isAosA2aEntry(data.mcpServers['aos-a2a'])) {
+        log.warn(`${cursorMcpPath} already has its own "aos-a2a" entry that was not written by AOS; it was left untouched. Rename or remove that entry and run the installer again to register the A2A MCP.`);
+        return cursorMcpPath;
+    }
+    const before = JSON.stringify(data);
+    data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(sessionName, targetHome);
     fs.mkdirSync(path.dirname(cursorMcpPath), { recursive: true });
     writeConfigWithBackup(cursorMcpPath, data, before);
     return cursorMcpPath;
 }
 
-function registerA2aMcpAgy({ targetHome = homeDir, name = 'antigravity' } = {}) {
-    if (!name || typeof name !== 'string' || !name.trim()) {
-        throw new Error('AOS_A2A_NAME is required: session identity must be specified');
-    }
+function registerA2aMcpAgy({ targetHome = homeDir, name = A2A_MCP_DEFAULT_NAME_AGY } = {}) {
+    const sessionName = resolveAosA2aMcpName(name, A2A_MCP_DEFAULT_NAME_AGY, 'agy');
     const registered = [];
     for (const f of agyMcpConfigPaths(targetHome)) {
         const loaded = loadJsonConfig(f);
-        const existing = loaded.state === 'ok' ? loaded.data : {};
-        const before = loaded.state === 'ok' ? JSON.stringify(existing) : null;
-        const data = existing && typeof existing === 'object' ? existing : {};
+        if (loaded.state === 'invalid') { warnUnparseable(f, 'the agy A2A MCP registration', loaded); continue; }
+        const data = loaded.data;
         if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
-        data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(name, targetHome);
+        if (data.mcpServers['aos-a2a'] != null && !isAosA2aEntry(data.mcpServers['aos-a2a'])) {
+            log.warn(`${f} already has its own "aos-a2a" entry that was not written by AOS; it was left untouched. Rename or remove that entry and run the installer again to register the A2A MCP.`);
+            continue;
+        }
+        const before = JSON.stringify(data);
+        data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(sessionName, targetHome);
         fs.mkdirSync(path.dirname(f), { recursive: true });
         writeConfigWithBackup(f, data, before);
         registered.push(f);
@@ -4630,8 +4665,11 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
         log.message(`A2A MCP for agy and Cursor: node "${agyMcpInstalled}" (opt-in registration: AOS_A2A_MCP=on)`);
     }
     if (process.env.AOS_A2A_MCP === 'on' || process.env.AOS_A2A_MCP === '1') {
-        registerA2aMcpAgy({ targetHome, name: process.env.AOS_A2A_NAME || 'antigravity' });
-        registerA2aMcpCursor({ targetHome, name: process.env.AOS_A2A_NAME || 'cursor' });
+        // Fixed, distinct defaults; the installer's own AOS_A2A_NAME is deliberately NOT used here
+        // (running from inside a session would impersonate that session), and the override env vars
+        // are validated through validName (invalid -> warning + default).
+        registerA2aMcpAgy({ targetHome, name: resolveAosA2aMcpName(process.env.AOS_A2A_MCP_NAME_AGY, A2A_MCP_DEFAULT_NAME_AGY, 'agy') });
+        registerA2aMcpCursor({ targetHome, name: resolveAosA2aMcpName(process.env.AOS_A2A_MCP_NAME_CURSOR, A2A_MCP_DEFAULT_NAME_CURSOR, 'Cursor') });
     }
 
 
@@ -6926,6 +6964,7 @@ module.exports = {
     registerA2aMcpAgy,
     removeAosA2aEntries,
     isAosA2aEntry,
+    resolveAosA2aMcpName,
 
     findUv,
     parseModuleSelection,
