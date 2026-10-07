@@ -230,4 +230,29 @@ describe('(7) docker exec/compose run what their words say', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// (8) xargs takes its command words from stdin.
+// ---------------------------------------------------------------------------
+describe('(8) xargs with a guarded program head and no visible arguments is unscoped', () => {
+    test('null: the stdin-fed words carry the guarded command', () => {
+        scopes('echo push origin HEAD:main | xargs git', null);
+        scopes('xargs git', null);
+        scopes('printf "%s" publish | xargs npm', null);
+        scopes('echo -rf build | xargs rm', null);
+    });
+    test('decisions unchanged: visible arguments are judged by the normal branches', () => {
+        scopes('find . -name x | xargs rm -rf', ['destructive']);
+        scopes('xargs git push origin < f', null);
+        scopes('echo done | xargs echo', []);
+        scopes('echo f | xargs cat', []);
+    });
+    test('hook: stdin-fed xargs git needs a plain GO', () => {
+        typed('gogate grant push-feature 1h');
+        add(human('go on'));
+        blocked('echo push origin HEAD:main | xargs git');
+        add(human('GO'));
+        ok('echo push origin HEAD:main | xargs git');
+    });
+});
+
 module.exports = {};

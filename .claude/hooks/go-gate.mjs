@@ -137,7 +137,7 @@ const SHELLS = /^(?:bash|sh|zsh|dash|ksh|eval|watch|parallel)$/;
 // Strips `!`, VAR=x and wrappers. `opaque`: the real command text is hidden (sh -c, eval,
 // watch, env -S, linux `script -c`, xargs input); `gitEnv`: a GIT_* variable is set.
 function stripPrefix(tok) {
-  let i = 0, opaque = false, gitEnv = false;
+  let i = 0, opaque = false, gitEnv = false, xargs = false;
   for (;;) {
     const t = unq(tok[i] ?? "");
     if (t === "!") { i++; continue; }
@@ -158,11 +158,11 @@ function stripPrefix(tok) {
       if (pos > 0) { pos--; i++; continue; }
       break;
     }
-    if (name === "xargs") opaque = true;
+    if (name === "xargs") { opaque = true; xargs = true; }
   }
   const head = base(tok[i] ?? "");
   if (SHELLS.test(head)) opaque = true;
-  return { rest: tok.slice(i), opaque, gitEnv };
+  return { rest: tok.slice(i), opaque, gitEnv, xargs };
 }
 
 // Branches a push-feature grant never covers. Default: main/master plus the usual long-lived
@@ -502,13 +502,19 @@ const badGitKey = (v) => { const key = String(v ?? "").split("=")[0]; return /^(
 const commitBypass = (r) => { const end = r.indexOf("--"); return r.slice(0, end === -1 ? undefined : end).some((t) => COMMIT_BYPASS_FLAG.test(t) || /^[$\x60]/.test(t) || (/^-/.test(t) && /[$\x60]/.test(t))); };
 const COMMIT_WORD_BYPASS = /^(?:--no-v(?:e(?:r(?:i(?:f(?:y)?)?)?)?)?|--no-g\S*|-[a-zA-Z]*n[a-zA-Z]*|-?c?core\.hookspath\S*|-?c?commit\.gpgsign\S*|--config-env=(?:core\.hookspath|commit\.gpgsign)\S*)$/i;
 const PM = /^(?:npm|pnpm|yarn|bun)$/;
+// Program heads whose real arguments xargs reads from stdin.
+const XARGS_PROG = /^(?:git|hub|npm|pnpm|yarn|bun|npx|rm|gh|docker)$/;
 const NPM_VALUE_OPTS = /^(?:--prefix|-w|--workspace|-C|--dir|--registry|--userconfig|--cache|--tag|--otp|--access|--filter|--cwd)$/;
 
 // Precise classification of one segment: array of scopes, [] = not guarded,
 // null = guarded but not classifiable (never grantable).
 export function classify(seg, protectedFor = staticResolver) {
-  const { rest: tok, opaque, gitEnv } = stripPrefix(tokens(seg));
+  const { rest: tok, opaque, gitEnv, xargs } = stripPrefix(tokens(seg));
   const cmd = base(tok[0] ?? "");
+  // xargs takes the command's own words from stdin (`echo push origin HEAD:main | xargs git`,
+  // `echo -rf / | xargs rm`): a guarded program head with no visible arguments of its own is
+  // unscoped. Arguments that ARE visible are judged by the normal branches below.
+  if (xargs && XARGS_PROG.test(cmd) && !tok.slice(1).some((t) => !unq(t).startsWith("-"))) return null;
   if (opaque) {
     if (!catchAll(tok, seg, true)) return [];
     // `bash -c 'rm -rf build'` is understood: a destructive-only inner command is grantable.
