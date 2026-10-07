@@ -3359,6 +3359,89 @@ function removeAosMcscFromAgyConfigs(home = homeDir) {
     return removed;
 }
 
+// A2A MCP server entry detection, registration and cleanup for agy and Cursor.
+const isAosA2aEntry = (e) => !!e && typeof e === 'object'
+    && /(^|[\\/])node(\.exe)?$/i.test(String(e.command || ''))
+    && Array.isArray(e.args)
+    && /[\\/](aos-a2a-mcp|a2a-inbox-mcp)\.mjs$/i.test(String(e.args[0] || ''));
+
+function makeAosA2aMcpEntry(sessionName, home = homeDir) {
+    if (!sessionName || typeof sessionName !== 'string' || !sessionName.trim()) {
+        throw new Error('AOS_A2A_NAME is required: session identity must be specified');
+    }
+    const cleanName = sessionName.trim();
+    const scriptPath = path.join(home, '.agents', 'bin', 'aos-a2a-mcp.mjs');
+    return {
+        command: 'node',
+        args: [scriptPath],
+        env: {
+            AOS_A2A_NAME: cleanName
+        }
+    };
+}
+
+function registerA2aMcpCursor({ targetHome = homeDir, name = 'cursor' } = {}) {
+    if (!name || typeof name !== 'string' || !name.trim()) {
+        throw new Error('AOS_A2A_NAME is required: session identity must be specified');
+    }
+    const cursorMcpPath = path.join(targetHome, '.cursor', 'mcp.json');
+    const loaded = loadJsonConfig(cursorMcpPath);
+    const existing = loaded.state === 'ok' ? loaded.data : {};
+    const before = loaded.state === 'ok' ? JSON.stringify(existing) : null;
+    const data = existing && typeof existing === 'object' ? existing : {};
+    if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
+    data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(name, targetHome);
+    fs.mkdirSync(path.dirname(cursorMcpPath), { recursive: true });
+    writeConfigWithBackup(cursorMcpPath, data, before);
+    return cursorMcpPath;
+}
+
+function registerA2aMcpAgy({ targetHome = homeDir, name = 'antigravity' } = {}) {
+    if (!name || typeof name !== 'string' || !name.trim()) {
+        throw new Error('AOS_A2A_NAME is required: session identity must be specified');
+    }
+    const registered = [];
+    for (const f of agyMcpConfigPaths(targetHome)) {
+        const loaded = loadJsonConfig(f);
+        const existing = loaded.state === 'ok' ? loaded.data : {};
+        const before = loaded.state === 'ok' ? JSON.stringify(existing) : null;
+        const data = existing && typeof existing === 'object' ? existing : {};
+        if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
+        data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(name, targetHome);
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        writeConfigWithBackup(f, data, before);
+        registered.push(f);
+    }
+    return registered;
+}
+
+function removeAosA2aEntries({ targetHome = homeDir } = {}) {
+    const targets = [
+        path.join(targetHome, '.cursor', 'mcp.json'),
+        ...agyMcpConfigPaths(targetHome)
+    ];
+    const cleaned = [];
+    for (const f of targets) {
+        if (!fs.existsSync(f)) continue;
+        const loaded = loadJsonConfig(f);
+        if (loaded.state !== 'ok' || !loaded.data.mcpServers) continue;
+        const before = JSON.stringify(loaded.data);
+        let modified = false;
+        for (const [k, v] of Object.entries(loaded.data.mcpServers)) {
+            if ((k === 'aos-a2a' || k === 'aos-a2a-mcp' || k === 'aos-a2a-inbox') && isAosA2aEntry(v)) {
+                delete loaded.data.mcpServers[k];
+                modified = true;
+            }
+        }
+        if (modified) {
+            writeConfigWithBackup(f, loaded.data, before);
+            cleaned.push(f);
+        }
+    }
+    return cleaned;
+}
+
+
 async function installMcpsForTarget(paths, ctx) {
     const { selectedMcps, mode, platformValue, creds } = ctx;
     const mcpSrcDir = path.join(srcDir, 'mcps');
@@ -4541,11 +4624,16 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     // carry a sidecar hook either. The registry-style mcp add args mirror
     // agyMcpAddArgs in lib/a2a-agy.mjs (kept inline here: installer is CJS, the
     // a2a lib is ESM).
-    const agyA2aMcpSrc = path.join(srcDir, 'bin', 'a2a-inbox-mcp.mjs');
-    if (fs.existsSync(agyA2aMcpSrc)) {
-        const agyMcpInstalled = path.join(homeDir, '.agents', 'bin', 'a2a-inbox-mcp.mjs');
-        log.message(`Optional agy A2A inbox MCP (not registered automatically; never run from the installer): agy mcp add aos-a2a-inbox node "${agyMcpInstalled}"`);
+    const agyA2aMcpSrc = path.join(srcDir, 'bin', 'aos-a2a-mcp.mjs');
+    if (fs.existsSync(agyA2aMcpSrc) || fs.existsSync(path.join(srcDir, 'bin', 'a2a-inbox-mcp.mjs'))) {
+        const agyMcpInstalled = path.join(homeDir, '.agents', 'bin', 'aos-a2a-mcp.mjs');
+        log.message(`A2A MCP for agy and Cursor: node "${agyMcpInstalled}" (opt-in registration: AOS_A2A_MCP=on)`);
     }
+    if (process.env.AOS_A2A_MCP === 'on' || process.env.AOS_A2A_MCP === '1') {
+        registerA2aMcpAgy({ targetHome, name: process.env.AOS_A2A_NAME || 'antigravity' });
+        registerA2aMcpCursor({ targetHome, name: process.env.AOS_A2A_NAME || 'cursor' });
+    }
+
 
     // 3. OpenAI Codex CLI
     const codexHooksDir = path.join(targetHome, '.codex', 'hooks');
@@ -6833,6 +6921,12 @@ module.exports = {
     removeAosMcscFromAgyConfigs,
     isAosMcscEntry,
     isAgyMcpConfig,
+    makeAosA2aMcpEntry,
+    registerA2aMcpCursor,
+    registerA2aMcpAgy,
+    removeAosA2aEntries,
+    isAosA2aEntry,
+
     findUv,
     parseModuleSelection,
     promptOptionalModules,
