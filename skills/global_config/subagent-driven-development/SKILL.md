@@ -1,6 +1,6 @@
 ---
 name: subagent-driven-development
-description: "Use when executing implementation plans with independent tasks in the current session"
+description: "Use when executing implementation plans with independent tasks in the current session — trigger phrases \"execute the plan\", \"independent tasks\", \"parallel tasks\", \"subagents for the plan\",\"split the plan into subagents\". Dispatches a fresh subagent per task with two-stage review after each: spec compliance first, then code quality."
 category: engineering-method
 risk: unknown
 source: community

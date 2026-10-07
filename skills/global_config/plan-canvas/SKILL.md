@@ -1,6 +1,13 @@
 ---
 name: plan-canvas
-description: Open plans and HTML artifacts in a local browser canvas where the human annotates elements, chats, and approves or requests changes without leaving the page. Use when presenting a plan for review, or when feedback like "move this, change that" is easier pointed at than typed.
+description: >-
+  Open plans and HTML artifacts in a local browser canvas where the human
+  annotates elements, chats, and approves or requests changes without leaving
+  the page. Use for planning, whenever a user says "plan", "roadmap",
+  "visualize the plan", "review the plan" or /plan-canvas, right after a
+  brainstorm or grill interview has produced a plan, and whenever any skill's
+  artifact (plan, design, comparison, report, diagram) can be reviewed
+  visually instead of with typed feedback.
 category: bdb-core
 metadata:
   version: "1.1.0"
