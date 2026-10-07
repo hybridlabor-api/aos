@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/aos/.agents/profiles/_schema.json",
+  "title": "BDB Startcycle Domain Profile",
+  "description": "Schema for a domain profile in .agents/profiles/. A profile adapts the default seven-node /startcycle-graph pipeline to a non-software domain: it replaces build nodes, renames gates, and names domain artifacts. It is sugar around .agents/nodes.json — never parsed when absent, and the default software pipeline stays exactly as is. See .agents/graph.md, section 'Domain profiles (opt-in)'.",
+  "type": "object",
+  "required": ["version", "domain", "nodes", "gates", "artifacts", "selection"],
+  "properties": {
+    "version": { "const": 1 },
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "description": "Short lowercase kebab name of the domain, e.g. kicad. Matches the profile filename without .json."
+    },
+    "nodes": {
+      "type": "object",
+      "description": "Per-slot overrides keyed by a default registry node id (null = keep the default node as is) or by a free key for an added domain node slot. 'replace' lists registry node ids to drop; 'add' carries new node entries in the registry shape.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "null" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "replace": {
+                "type": "array",
+                "items": { "type": "string" },
+                "minItems": 1,
+                "description": "Default registry node ids this slot drops."
+              },
+              "add": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/nodeEntry" },
+                "minItems": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    "gates": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Shipping gate names for this domain, each mapping to a short human description of what passing means. Replaces the default lint/typecheck/tests/a11y/seo/security keys for this run.",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "artifacts": {
+      "type": "object",
+      "description": "Artifact key -> path relative to the repo root, always under production_artifacts/.",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^production_artifacts/[A-Za-z0-9._/-]+$"
+      }
+    },
+    "selection": {
+      "type": "object",
+      "description": "How the dispatcher or the Architect's plan gate picks this profile from the goal text.",
+      "required": ["triggers", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "triggers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+          },
+          "description": "Lowercase keyword strings typical for this domain. Triggers must be unique across profiles — a goal text hitting two domains' triggers is an ambiguity that must escalate, not a coin flip."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One-line summary used by the plan-gate decision and by humans browsing .agents/profiles/."
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional: domain-wide extra skills layered onto every node, on top of each node's own allowlist."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional free-form prose for maintainers."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nodeEntry": {
+      "type": "object",
+      "description": "A new node in the same shape as one .agents/nodes.json node entry.",
+      "required": ["id", "role", "agentType", "skills", "artifactKey", "writes", "instructions"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["plan", "approve", "build", "review", "gate"],
+          "description": "Same role enum as the registry. 'gate' is Shipping's role; a profile cannot add a second shipping."
+        },
+        "agentType": {
+          "type": "string",
+          "description": "Compiled agent name — must exist as .claude/agents/<name>.md or as a node's agentType in .agents/nodes.json."
+        },
+        "personaFile": {
+          "type": "string",
+          "description": "Optional persona file path, as in the registry."
+        },
+        "skills": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Skill allowlist for this node; every name must exist as skills/**/<name>/SKILL.md."
+        },
+        "artifactKey": {
+          "type": ["string", "null"],
+          "description": "Key this node writes into state.artifacts."
+        },
+        "writes": {
+          "type": ["string", "null"],
+          "description": "state.d fragment path, as in the registry; null for sequential nodes."
+        },
+        "instructions": {
+          "type": ["string", "null"],
+          "description": "Per-node prompt instructions, as in the registry."
+        }
+      }
+    }
+  }
+}

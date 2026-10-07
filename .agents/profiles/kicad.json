@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "domain": "kicad",
+  "description": "KiCad hardware builds: schematic capture, PCB layout, enclosure co-design, and ERC/DRC/stackup sign-off instead of lint/typecheck/tests.",
+  "nodes": {
+    "architect": null,
+    "techlead": null,
+    "build": {
+      "replace": ["ui_ux", "engineering", "media_eventtech"],
+      "add": [
+        {
+          "id": "pcb",
+          "role": "build",
+          "agentType": "godmode-engineering",
+          "skills": ["godmode-hardware-pcb", "pb-pcb-to-case"],
+          "artifactKey": "pcb",
+          "writes": "production_artifacts/state.d/pcb.json",
+          "instructions": "Design the schematic and layout per the plan (KiCad), trace geometry and stackup from first principles per godmode-hardware-pcb, and write production_artifacts/01_pcb_design.md plus the state.d fragment."
+        },
+        {
+          "id": "firmware",
+          "role": "build",
+          "agentType": "godmode-engineering",
+          "skills": ["godmode-engineering"],
+          "artifactKey": "firmware",
+          "writes": "production_artifacts/state.d/firmware.json",
+          "instructions": "Optional: implement the firmware that runs on the board per the plan. Write production_artifacts/02_firmware_design.md and the state.d fragment. Skip and leave the artifact null when the plan says the build is hardware-only."
+        }
+      ]
+    },
+    "reviewer": null,
+    "shipping": null
+  },
+  "gates": {
+    "erc": "KiCad ERC runs with zero errors (the run_erc probe reports none)",
+    "drc": "KiCad DRC runs with zero errors (the run_drc probe reports none)",
+    "constraints": "Stackup, netclass and impedance constraints check out against the pcb-constraint rules the plan states"
+  },
+  "artifacts": {
+    "pcb": "production_artifacts/01_pcb_design.md",
+    "firmware": "production_artifacts/02_firmware_design.md"
+  },
+  "selection": {
+    "triggers": ["kicad", "pcb", "schematic", "gerber", "footprint", "erc", "drc", "enclosure", "stackup"],
+    "description": "Pick when the goal is a hardware/PCB build: schematics, layout, gerbers, ERC/DRC sign-off."
+  },
+  "notes": "agentType godmode-engineering is used because no hardware-specific compiled agent exists yet; the domain behavior comes from the godmode-hardware-pcb skill allowlist. Firmware is the optional second build node per the analysis (skip when the goal is hardware-only)."
+}

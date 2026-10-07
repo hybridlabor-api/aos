@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "domain": "creator",
+  "description": "3D and media-creation builds: meshes, scenes, render pipelines and exports, gated by render/preview checks, an export probe and a poly budget instead of lint/typecheck/tests.",
+  "nodes": {
+    "architect": null,
+    "techlead": null,
+    "build": {
+      "replace": ["ui_ux", "engineering", "media_eventtech"],
+      "add": [
+        {
+          "id": "creator",
+          "role": "build",
+          "agentType": "godmode-media-eventtech",
+          "personaFile": ".claude/agents/godmode-media-eventtech.md",
+          "skills": ["godmode-media-creation", "godmode-3d-creation", "pb-image-to-3d", "threejs-skills"],
+          "artifactKey": "creation",
+          "writes": "production_artifacts/state.d/creator.json",
+          "instructions": "Produce the 3D/media asset per the plan (TRELLIS/Text-to-CAD/Blender/OpenMontage as applicable). Write production_artifacts/03_creation.md and the state.d fragment."
+        }
+      ]
+    },
+    "reviewer": null,
+    "shipping": null
+  },
+  "gates": {
+    "render-preview": "A render or preview of the asset exists and matches the plan's look brief (scene info read back, start frame and gens sane)",
+    "export-probe": "Every export passes its probe: ffprobe on video exports, glTF/glb sanity on meshes — the file exists at the asked dimensions/format",
+    "poly-budget": "The mesh stays within the plan's poly budget, decimated per pb-image-to-3d if it exceeded it"
+  },
+  "artifacts": {
+    "creation": "production_artifacts/03_creation.md"
+  },
+  "selection": {
+    "triggers": ["mesh", "blender", "text-to-cad", "glb", "render", "3d-model", "video-timeline", "motion-graphics", "moodboard"],
+    "description": "Pick when the goal is producing a 3D asset or media artifact: meshes, renders, exports, timelines."
+  },
+  "notes": "The creator node reuses the godmode-media-eventtech agent and persona; no dedicated creator agent exists in .claude/agents/. The three gates mirror pb-image-to-3d's poly budget and the ffprobe check pb-social-pack/pb-launch-video run."
+}
