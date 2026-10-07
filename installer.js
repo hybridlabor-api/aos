@@ -2848,51 +2848,67 @@ async function installCreatorExtension() {
 // Removes kicad/openscad entries the hardware module registered in harness configs whose
 // backing app is absent. The module's installer.js always registers both; this is the
 // AOS-side gate, so an entry never points at a launcher that cannot start. Idempotent:
-// an entry that is not there makes no change. Returns the removed [file, name] pairs.
-function stripHwMcpEntries(serverNames) {
-    const home = homeDir;
+// an entry that is not there makes no change. Works like retireMcpServers: only entries
+// AOS ships/registered are removed — a same-named user entry (a command that is not one of
+// the hardware module's runner scripts and is not a shipped template shape) survives and
+// triggers warnUserMcpEntry. Returns the removed [file, name] pairs.
+function stripHwMcpEntries(serverNames, { home = homeDir } = {}) {
     const removed = [];
-    const claudeJson = path.join(home, '.claude.json');
-    if (fs.existsSync(claudeJson)) {
+    const warnUser = (file) => warnUserMcpEntry(file);
+    // The plain shipped template does not list the hw servers; they live in the module's own
+    // install dir (bdb-hardware-pcb/scripts/run_*_mcp.*). isAosOwned covers them if a template
+    // ever does; the runner-script match is the ownership rule that matters today.
+    const shipped = mcpShipped();
+    const hwOwned = (name, entry) => {
+        if (!entry || typeof entry !== 'object') return false;
+        if (mcpSecrets.isAosOwned(name, entry, null, shipped)) return true;
+        const u = mcpSecrets.unwrap(entry);
+        return typeof u.command === 'string'
+            && /(^|[\\/])bdb-hardware-pcb([\\/]|$)/.test(u.command)
+            && /(^|[\\/])run_(kicad|openscad)_mcp/.test(u.command);
+    };
+    const removeJson = (file, warnTag = file) => {
+        if (!fs.existsSync(file)) return;
         try {
-            const data = JSON.parse(fs.readFileSync(claudeJson, 'utf8'));
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            let changed = false;
             for (const name of serverNames) {
                 if (data && data.mcpServers && typeof data.mcpServers === 'object' && data.mcpServers[name]) {
+                    if (!hwOwned(name, data.mcpServers[name])) { warnUser(warnTag)(name); continue; }
                     delete data.mcpServers[name];
-                    removed.push([claudeJson, name]);
+                    removed.push([file, name]);
+                    changed = true;
                 }
             }
-            if (removed.some(([f]) => f === claudeJson)) {
-                fs.writeFileSync(claudeJson, JSON.stringify(data, null, 2) + '\n');
+            if (changed) {
+                // Temp file in the same directory + rename: a crash mid-write cannot destroy the config.
+                writeFileAtomic(file, JSON.stringify(data, null, 2) + '\n');
             }
-        } catch (e) { logDebug(e, 'strip hw entry (claude.json)'); }
-    }
+        } catch (e) { logDebug(e, `strip hw entry (${path.basename(file)})`); }
+    };
+    removeJson(path.join(home, '.claude.json'));
     // agy keeps one config; the antigravity-cli variant is a link on the same inode.
-    const agyConfig = path.join(home, '.gemini', 'config', 'mcp_config.json');
-    if (fs.existsSync(agyConfig)) {
-        try {
-            const data = JSON.parse(fs.readFileSync(agyConfig, 'utf8'));
-            for (const name of serverNames) {
-                if (data && data.mcpServers && typeof data.mcpServers === 'object' && data.mcpServers[name]) {
-                    delete data.mcpServers[name];
-                    removed.push([agyConfig, name]);
-                }
-            }
-            if (removed.some(([f]) => f === agyConfig)) {
-                fs.writeFileSync(agyConfig, JSON.stringify(data, null, 2) + '\n');
-            }
-        } catch (e) { logDebug(e, 'strip hw entry (mcp_config.json)'); }
-    }
-    // Codex keeps its own entries where the user put them; drop these two by table name.
+    removeJson(path.join(home, '.gemini', 'config', 'mcp_config.json'), 'agy-mcp_config');
+    // Codex keeps its own entries where the user put them: drop these two by table name, but
+    // only when the table's command/args say AOS (or the hw module) wrote them.
     const codexToml = path.join(home, '.codex', 'config.toml');
     if (fs.existsSync(codexToml)) {
         try {
             const lines = fs.readFileSync(codexToml, 'utf8').split(/\r?\n/);
             const want = new Set(serverNames.map(String));
-            const stripped = uninstallRecords.dropMcpTables(lines, (name) => want.has(name));
+            const droppedNames = [];
+            const drop = (name, sec) => {
+                if (!want.has(name)) return false;
+                const t = mcpSecrets.parseCodexTables(sec.join('\n'))[name];
+                const entry = t && { command: t.fields.command, args: t.fields.args };
+                if (!entry || !hwOwned(name, entry)) { warnUser(codexToml)(name); return false; }
+                droppedNames.push(name);
+                return true;
+            };
+            const stripped = uninstallRecords.dropMcpTables(lines, drop);
             if (stripped.length !== lines.length) {
                 fs.writeFileSync(codexToml, stripped.join('\n'));
-                for (const name of serverNames) removed.push([codexToml, name]);
+                for (const name of serverNames) if (droppedNames.includes(name)) removed.push([codexToml, name]);
             }
         } catch (e) { logDebug(e, 'strip hw entry (config.toml)'); }
     }
@@ -3804,14 +3820,16 @@ async function installMcpsForTarget(paths, ctx) {
         if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
             parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
         }
-        // Direct mode spawns one process per harness session, so adobe_uxp_mcp (which binds a
-        // WebSocket) gets AOS_UXP_PORT=auto: a free port per session, resolved by the entry and
-        // printed to stderr. Gateway mode shares ONE instance built from the shipped template,
-        // which keeps the default 8080 (or whatever AOS_UXP_PORT the gateway process carries);
-        // a user-set AOS_UXP_PORT in this env block is never overwritten.
+        // Direct mode spawns ONE plugin per harness session; the UXP plugins (Photoshop / Premiere)
+        // hard-code ws://localhost:8080 (mcps/adobe_uxp_mcp/plugins/*/index.js:3), so a free-port
+        // pick would leave them disconnected: direct mode therefore pins the FIXED default port
+        // 8080 (only one direct instance per machine is supported). Gateway mode shares ONE
+        // instance built from the shipped template, which keeps the default 8080 (or whatever
+        // AOS_UXP_PORT the gateway process carries); a user-set AOS_UXP_PORT in this env block
+        // is never overwritten.
         const uxpEntry = parsedMcpConfig.mcpServers.adobe_uxp_mcp;
         if (uxpEntry && !(uxpEntry.env && uxpEntry.env.AOS_UXP_PORT)) {
-            parsedMcpConfig.mcpServers.adobe_uxp_mcp = { ...uxpEntry, env: { ...(uxpEntry.env || {}), AOS_UXP_PORT: 'auto' } };
+            parsedMcpConfig.mcpServers.adobe_uxp_mcp = { ...uxpEntry, env: { ...(uxpEntry.env || {}), AOS_UXP_PORT: '8080' } };
         }
         // AOS_DISABLED_MCPS=a,b: shipped server names that no harness config gets (universal sync reuses this result).
         const dropped = v5Profile.filterMcpServers(parsedMcpConfig.mcpServers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS));
@@ -5018,6 +5036,24 @@ function a2aLibFiles() {
     return names.map((f) => path.join(libDir, f));
 }
 
+// The A2A sidecar and client resolve @a2a-js/sdk and express (package.json deps) from the
+// package dir, not from the ~/.agents copies — lib/a2a-sdk-resolve.mjs reads the recorded
+// package root beside the copies. The record is registered with the a2a lib copies, so the
+// uninstall path removes it symmetrically with them. Returns the written path or null.
+function writeA2aPackageRootRecord({ targetHome = homeDir } = {}) {
+    const dir = path.join(targetHome, '.agents', 'lib');
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, '.aos-package-root.json');
+        fs.writeFileSync(file, JSON.stringify({ packageRoot: srcDir }, null, 2) + '\n');
+        uninstallRecords.recordA2aLibCopies(targetHome, [file]);
+        return file;
+    } catch (e) {
+        logDebug(e, 'write a2a packageRoot record');
+        return null;
+    }
+}
+
 // The hooks and the OpenCode plugin fall back to ~/.agents/lib when ../../lib is absent, so the
 // copies live under that one AOS-owned dir, never in the bare $HOME/lib or $HOME/.gemini/lib.
 // Each copy is in the install manifest (copyDirRecursiveSync) and in the uninstall records.
@@ -5036,6 +5072,8 @@ function installA2aLibCopies({ targetHome = homeDir } = {}) {
     } catch (e) {
         log.warn(`Could not install A2A lib copies to ${dir}: ${e.message}`);
     }
+    const record = writeA2aPackageRootRecord({ targetHome });
+    if (record) copied.push(record);
     uninstallRecords.recordA2aLibCopies(targetHome, copied);
     if (copied.length) log.step(`Installed A2A lib copies (a2a-*.mjs) to ${dir} (${copied.length} files)`);
     return copied.length > 0;
@@ -5095,6 +5133,8 @@ function installGlobalBinaries() {
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
         copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(homeDir, '.agents', 'lib'));
+        // lib/a2a-sdk-resolve.mjs in the copy above needs the package root (deps are package deps).
+        writeA2aPackageRootRecord();
     }
 
     const localBinDir = path.join(homeDir, '.local', 'bin');

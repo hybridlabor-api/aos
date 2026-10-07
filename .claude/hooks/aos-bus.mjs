@@ -3,14 +3,23 @@
 // Library + CLI. The receiver (OpenCode plugin) injects each message as a synthetic + ignored part pair.
 
 import {
-  chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, utimesSync, writeFileSync,
+  chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, utimesSync, writeFileSync,
 } from "node:fs";
-import { userInfo } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { slug } from "./go-gate.mjs";
-import { inboxRoot } from "../../lib/a2a-inbox.mjs";
+
+// Checkout layout (../../lib), else the machine-wide ~/.agents/lib copy — the same resolution
+// the a2a hooks use: the installed hook lives in ~/.claude/hooks, where ../../lib does not exist.
+const inboxLib = [
+  fileURLToPath(new URL("../../lib/a2a-inbox.mjs", import.meta.url)),
+  join(homedir(), ".agents", "lib", "a2a-inbox.mjs"),
+].find((p) => existsSync(p)) ?? null;
+const { inboxRoot } = inboxLib
+  ? await import(pathToFileURL(inboxLib).href)
+  : { inboxRoot() { throw new Error("lib/a2a-inbox.mjs not found (checkout ../../lib or ~/.agents/lib)"); } };
 
 const MAX_SEND = 8 * 1024;
 const MAX_FILE = 16 * 1024;

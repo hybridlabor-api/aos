@@ -168,3 +168,92 @@ describe('reconcileMembVenv entryImport (memb-mcp run.py FastMCP fallback)', () 
         fs.rmSync(dir, { recursive: true, force: true });
     });
 });
+
+// V13 Fix 3: stripHwMcpEntries removes only AOS-owned kicad/openscad entries; a same-named
+// user entry (a different command) survives, and the JSON writes are atomic (tmp + rename).
+describe("stripHwMcpEntries app-absence gate (ownership)", () => {
+    const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-hwstrip-'));
+    const HOME_RUNNER = { command: '/Users/someone/.agents/bdb-hardware-pcb/scripts/run_kicad_mcp.sh', args: [] };
+    const USER_KICAD = { command: 'my-kicad-agent', args: ['serve'] };
+    const json = { mcpServers: { kicad: HOME_RUNNER, openscad: USER_KICAD, other: { command: 'x', args: [] } } };
+
+    test('AOS-owned (hw runner) entry is removed, user-owned same-name entry survives with a warning', () => {
+        const home = tmp();
+        fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify(json));
+        const removed = installer.stripHwMcpEntries(['kicad', 'openscad'], { home });
+        assert.deepEqual(removed, [[path.join(home, '.claude.json'), 'kicad']]);
+        const after = JSON.parse(fs.readFileSync(path.join(home, '.claude.json'), 'utf8'));
+        assert.ok(!after.mcpServers.kicad, 'AOS-owned entry removed');
+        assert.deepEqual(after.mcpServers.openscad, USER_KICAD, 'user-owned entry survives');
+        assert.deepEqual(after.mcpServers.other, { command: 'x', args: [] }, 'unrelated entries untouched');
+        assert.ok(after.mcpServers.openscad, 'openscad key kept');
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    test('agy mcp_config.json follows the same rule', () => {
+        const home = tmp();
+        fs.mkdirSync(path.join(home, '.gemini', 'config'), { recursive: true });
+        fs.writeFileSync(path.join(home, '.gemini', 'config', 'mcp_config.json'), JSON.stringify(json));
+        const removed = installer.stripHwMcpEntries(['kicad', 'openscad'], { home });
+        assert.deepEqual(removed, [[path.join(home, '.gemini', 'config', 'mcp_config.json'), 'kicad']]);
+        const after = JSON.parse(fs.readFileSync(path.join(home, '.gemini', 'config', 'mcp_config.json'), 'utf8'));
+        assert.ok(!after.mcpServers.kicad);
+        assert.deepEqual(after.mcpServers.openscad, USER_KICAD);
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    test('codex config.toml drops only the registered runner table, user table stays', () => {
+        const home = tmp();
+        const toml = [
+            '[mcp_servers.kicad]',
+            `command = "${HOME_RUNNER.command}"`,
+            'args = []',
+            'enabled = true',
+            '',
+            '[mcp_servers.openscad]',
+            'command = "my-openscad-thing"',
+            'args = ["--lint"]',
+            '',
+            '[model]',
+            'name = "gpt-5"',
+            '',
+        ].join('\n');
+        fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
+        fs.writeFileSync(path.join(home, '.codex', 'config.toml'), toml);
+        const removed = installer.stripHwMcpEntries(['kicad', 'openscad'], { home });
+        assert.deepEqual(removed, [[path.join(home, '.codex', 'config.toml'), 'kicad']]);
+        const after = fs.readFileSync(path.join(home, '.codex', 'config.toml'), 'utf8');
+        assert.match(after, /my-openscad-thing/, 'the user table stays');
+        assert.doesNotMatch(after, /run_kicad_mcp/);
+        assert.match(after, /\[model\]/, 'other tables stay');
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    test('JSON rewrite is atomic: the result is valid JSON either way (tmp+rename writer)', () => {
+        const home = tmp();
+        fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify(json, null, 2));
+        installer.stripHwMcpEntries(['kicad'], { home });
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, '.claude.json'), 'utf8')).mcpServers, { openscad: USER_KICAD, other: { command: 'x', args: [] } });
+        assert.ok(fs.readdirSync(home).filter((f) => f.endsWith('.tmp')).length === 0, 'no tmp leftovers');
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    test('a launcher-wrapped AOS runner entry is still recognized as AOS-owned (unwrap)', () => {
+        const home = tmp();
+        const wrapped = { mcpServers: { kicad: { command: 'node', args: [`/Users/someone/.agents/bin/aos-mcp-env.mjs`, '--', HOME_RUNNER.command] } } };
+        fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify(wrapped));
+        const removed = installer.stripHwMcpEntries(['kicad'], { home });
+        assert.deepEqual(removed, [[path.join(home, '.claude.json'), 'kicad']]);
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+
+    test('a runner entry outside the module dir is user-owned (warn, not removed)', () => {
+        const home = tmp();
+        const outside = { mcpServers: { kicad: { command: '/opt/kicad-bundle/run_kicad_mcp.sh', args: [] } } };
+        fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify(outside));
+        const removed = installer.stripHwMcpEntries(['kicad'], { home });
+        assert.deepEqual(removed, []);
+        assert.ok(JSON.parse(fs.readFileSync(path.join(home, '.claude.json'), 'utf8')).mcpServers.kicad);
+        fs.rmSync(home, { recursive: true, force: true });
+    });
+});
