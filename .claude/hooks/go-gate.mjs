@@ -882,6 +882,11 @@ function dockerScopes(tok, seg, tainted = segTaint) {
       if (!eq) i++;
       continue;
     }
+    // --entrypoint replaces the image's own entry command with an arbitrary program (`--entrypoint
+    // git ... push`, `--entrypoint rm ... -rf`, with the words after the image as its arguments).
+    // Reconstructing the argv means trusting docker's image metadata, which is not read here:
+    // fail closed instead (null = plain GO). The official test template uses no --entrypoint.
+    if (flag === "--entrypoint") return null;
     if (DOCKER_VALUE.test(flag)) { if (!eq) i++; continue; }
     if (t.startsWith("-")) return null;
     image = true;
@@ -891,7 +896,10 @@ function dockerScopes(tok, seg, tainted = segTaint) {
   // still need their own scope or a GO: the text is read like an opaque `sh -c`. This runs BEFORE the rule 16
   // early return: a read-only run cannot host a guarded command inside the container either (the mount is a
   // project clone with .git, remotes and credential helpers); only text that trips catchAll loses rule 16.
-  const container = catchAll(tok.slice(i), seg, true);
+  // An image whose basename is the program itself (`alpine/git sudden push`, `git ...`) is fed as the first
+  // word so catchAll sees `git push ...` too; tags and digests are stripped.
+  const img = unq(tok[i - 1] ?? "").replace(/@[\s\S]*$/, "").replace(/:[^/:]*$/, "");
+  const container = catchAll([img, ...tok.slice(i)], seg, true);
   if (container) return null;
   if (!rm) return null;
   if (mounts && allRo) return []; // rule 16: only read-only project mounts stay free, as before

@@ -202,4 +202,29 @@ describe('(d) every wrapper starts a command position for the $-head rule', () =
     });
 });
 
+// ---------------------------------------------------------------------------
+// (e) --entrypoint and git images: the entry program is judged like the container text.
+// ---------------------------------------------------------------------------
+describe('(e) --entrypoint fails closed; a git image counts as the entry program', () => {
+    const RM = RMRF.split(' ')[0]; // assembled: no literal destructive word in this file
+    test('null (plain GO): an arbitrary entry program runs the words after the image', () => {
+        scopes('docker run --rm -v {P}:/src:ro -w /src --entrypoint git node:24 push origin HEAD:main', null);
+        scopes('docker run --rm -v {P}:/src --entrypoint=npm node:24 publish', null);
+        scopes('docker run --rm -v {P}:/src:ro alpine/git push origin main', null);
+        scopes(`docker run --rm -v {P}:/src --entrypoint ${RM} busybox -r${'f /src'}`, null);
+        scopes('docker run --rm -v {P}:/src --entrypoint "git" node:24 push origin main', null);
+    });
+    test('[] and container-test unchanged: benign entrypoints keep their decisions', () => {
+        scopes('docker run --rm -v {P}:/src:ro alpine/git npm test', []);
+        scopes('docker run --rm -v {P}:/src:ro node:24 npm test', []);
+        scopes(SAFE, CT);
+    });
+    test('hook: entrypoint runs are not covered by a container-test grant', () => {
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked('docker run --rm -v {P}:/src --entrypoint=npm node:24 publish');
+        blocked('docker run --rm -v {P}:/src alpine/git push origin main');
+    });
+});
+
 module.exports = {};
