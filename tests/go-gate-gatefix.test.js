@@ -179,4 +179,27 @@ describe('(c2) opaque bodies are judged whole, not by the fragments the split le
     });
 });
 
+// ---------------------------------------------------------------------------
+// (d) command-position joiners cover every wrapper: `g=git p=push sh -c 'time $g ...'`.
+// ---------------------------------------------------------------------------
+describe('(d) every wrapper starts a command position for the $-head rule', () => {
+    test('null: a $-head after a wrapper inside opaque text fails closed', () => {
+        scopes(`g=git p=push sh -c 'time $g $p origin main'`, null);
+        scopes(`g=git sh -c 'nohup $g push origin main'`, null);
+        scopes(`g=git sh -c 'nice $g push origin main'`, null);
+        scopes(`g=git bash -c 'timeout 5 $g push origin main'`, null);
+        scopes(`g=git sh -c 'builtin $g push origin main'`, null);
+        scopes(`g=git sh -c 'stdbuf -o0 $g push origin main'`, null);
+        scopes(`g=git sh -c 'caffeinate $g push origin main'`, null);
+        scopes(`g=git sh -c 'doas $g push origin main'`, null);
+        scopes(`g=git sh -c 'script -q /dev/null $g push'`, null);
+        scopes(`sh -c '! $g push origin main'`, null);
+        scopes(`sh -c '{ $g push origin main; }'`, null);
+    });
+    test('[] unchanged: same words as arguments keep today\'s decision', () => {
+        scopes(`sh -c 'echo time nice builtin'`, []);
+        scopes(`sh -c 'time echo hi'`, []);
+    });
+});
+
 module.exports = {};

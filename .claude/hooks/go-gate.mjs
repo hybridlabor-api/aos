@@ -609,9 +609,13 @@ const GIT_VERBS = /^(?:push|reset|clean|branch|worktree|config)$/;
 // A guarded verb a later word could complete a computed head into (`$x push`, `$D rm -rf x`).
 const GUARDED_NOUN = /^(?:push|reset|clean|branch|worktree|config|publish|version|merge|create|delete|edit|comment|close|review|api|sync|rm|exec)$/;
 // A word that makes the NEXT word a command position (shell/xargs head, a shell's -c value,
-// wrappers sudo/env/command/exec, loop starters then/do/else/if..., assignments, or a word
-// that itself ends in a separator because one glued to it: `sh -c "g=git; $g push"`).
-const CPOS_JOINER = /^(?:sudo|env|command|exec|xargs|then|do|else|if|elif|while|until|bash|sh|zsh|dash|ksh|eval|watch|parallel|-c)$|^\w+=|.*[;&|(]$/;
+// ALL of the WRAPPERS (sudo, env, doas, nohup, time, nice, timeout, builtin, stdbuf,
+// caffeinate, script, ... then/do/else/if...), a negation `!` or brace group `{`, assignments,
+// or a word that itself ends in a separator because one glued to it: `sh -c "g=git; $g push"`,
+// `p=push; $g $p ...`). The wrapper list is derived from the WRAPPERS keys so wrapper and
+// command-position knowledge stay in sync; the separator rule reads only the last character
+// (anchored), so a long token cannot cost quadratic time.
+const CPOS_JOINER = new RegExp(`^(?:${[...Object.keys(WRAPPERS), "bash", "sh", "zsh", "dash", "ksh", "eval", "watch", "parallel", "-c", "!", "{"].join("|")})$|^\\w+=|[;&|(]$`);
 // A computed command name inside opaque text (`sh -c '$x push'`, `sh -c 'g=git; $g push'`,
 // `eval "$(echo git) push"`): catchAll matches literal words only, so it cannot see the verb
 // the expansion assembles and would wrongly answer "unguarded". A `$`/backtick/${...}/$(...)
