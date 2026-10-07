@@ -14,6 +14,7 @@ const USAGE = `usage:
   aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] "<text>"
   aos-a2a status --to <name> <taskId>
   aos-a2a cancel --to <name> <taskId>
+  aos-a2a watch <name> [--once]
   aos-a2a reply [--name <name>] <taskId> "<text>"`;
 
 const { values: o, positionals } = parseArgs({
@@ -24,7 +25,8 @@ const { values: o, positionals } = parseArgs({
     mode: { type: "string" }, "parent-pid": { type: "string" }, write: { type: "boolean" }, repo: { type: "string" },
     thread: { type: "string" }, "codex-transport": { type: "string" },
     to: { type: "string" }, role: { type: "string" }, from: { type: "string" },
-    timeout: { type: "string" }, background: { type: "boolean" },
+    timeout: { type: "string" },     background: { type: "boolean" },
+    once: { type: "boolean" },
   },
 });
 
@@ -95,6 +97,10 @@ try {
     if (!o.to || positionals.length < 2) throw new Error("usage: aos-a2a cancel --to <name> <taskId>");
     const { cancel } = await import("../lib/a2a-client.mjs");
     console.log(JSON.stringify(await cancel({ to: o.to, taskId: positionals[1] }), null, 2));
+  } else if (cmd === "watch") {
+    if (positionals.length < 2) throw new Error("usage: aos-a2a watch <name> [--once]");
+    const { watch } = await import("../lib/a2a-watch.mjs");
+    process.exitCode = await watch({ name: positionals[1], once: !!o.once });
   } else if (cmd === "reply") {
     if (positionals.length < 3) throw new Error('usage: aos-a2a reply [--name <name>] <taskId> "<text>"');
     const { reply } = await import("../lib/a2a-client.mjs");
