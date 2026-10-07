@@ -123,11 +123,11 @@ AOS pins no model. Nodes inherit the session model; an override comes from
 `.aos/pipeline.json` (`docs/agent-models.md`) or the user's explicit request.
 The table is a suggestion for when you do choose a model per role, not a default.
 
-| Role | Suggested model | Why |
+| Role | Suggested tier | Why |
 |---|---|---|
-| Plan | `opus` | Mistakes here propagate to every worker; the one place worth paying for. |
-| Workers | `haiku` (fallback path) or external CLI (agy/opencode/codex) | Mechanical execution once the plan is concrete. Never sonnet/opus for this. |
-| Review | `sonnet` | Needs real judgment to be adversarial, not full Opus reasoning. |
+| Plan | top-tier reasoning | Mistakes here propagate to every worker; the one place worth paying for. |
+| Workers | lightweight tier (fallback path) or external CLI (agy/opencode/codex) | Mechanical execution once the plan is concrete. Never a heavyweight model for this. |
+| Review | mid-tier | Needs real judgment to be adversarial, not the full top-tier. |
 
 Pass `model` on an `Agent`/`agent()` call only when an override exists or the
 user asked for one; otherwise omit it and the node inherits the session model.
@@ -141,7 +141,7 @@ worker overrides in `.aos/pipeline.json`.
 - Worker nodes: fan out per step 2's chosen path, in parallel where the tasks
   are actually independent.
 - Review node: one adversarial pass ("find what's wrong," not "does this look
-  good") over the combined worker output, sonnet-tier.
+  good") over the combined worker output, mid-tier.
 - Report the outcome directly to the user. Nothing gets written to
   `.agents/`, no `state.json`, no persistent contract — this graph existed for
   the duration of the task and is gone once it's done.
@@ -163,7 +163,7 @@ graph (`.agents/graph.md`) already does properly.
 | Rationalization | Reality |
 |---|---|
 | "agy is on my machine, so it'll be on everyone's." | It won't. Always run the detection step; never hardcode a tool as present. |
-| "The session is already on Opus, so the worker call inherits it fine." | That's exactly the cost this skill exists to avoid — force the tier explicitly every time. |
+| "The session is already on a top-tier model, so the worker call inherits it fine." | That's exactly the cost this skill exists to avoid — force the tier explicitly every time. |
 | "This task has one obvious step, but a 3-node graph looks more thorough." | More nodes than the task needs is overhead, not rigor. Size the graph to the work. |
 | "I'll just call the Workflow tool and let the script figure out which backend to use." | The script can't — it has no shell access. That decision is yours, before the Workflow call, or not via Workflow at all. |
 | "The CLI is on PATH, so I'll shell out to it directly." | If its plugin subagent is installed, that's the supported path — it already handles the wrapper flags and cost discipline. Shell out only when no subagent exists. |
@@ -171,7 +171,7 @@ graph (`.agents/graph.md`) already does properly.
 
 ## 7. Red Flags
 
-- Any worker node running on sonnet/opus without a specific reason forced by the task.
+- Any worker node running on a heavyweight tier without a specific reason forced by the task.
 - Assuming agy/OpenCode/Codex is present without checking.
 - Writing `.agents/`, `state.json`, or any persistent file for a task this skill was invoked for — that's `/startcycle-graph`'s job, not this one's.
 - A "light" graph with more nodes than the task actually has independent workstreams.

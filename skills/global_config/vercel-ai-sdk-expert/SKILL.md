@@ -37,9 +37,13 @@ The Vercel AI SDK is a unified framework that abstracts away provider-specific A
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 
+// Keep the model in configuration, not in code: model IDs change frequently.
+// Look up the current model list in the provider docs at the time of use.
+const MODEL = process.env.OPENAI_MODEL ?? '<model-id>'; // current model ID from the provider docs
+
 // Returns the full string once completion is done (no streaming)
 const { text, usage } = await generateText({
-  model: openai("gpt-4o"),
+  model: openai(MODEL),
   system: "You are a helpful assistant evaluating code.",
   prompt: "Review the following python code...",
 });
@@ -62,7 +66,7 @@ export async function POST(req: Request) {
   const { messages } = await req.json();
 
   const result = streamText({
-    model: openai('gpt-4o'),
+    model: openai(process.env.OPENAI_MODEL ?? '<model-id>'),
     system: 'You are a friendly customer support bot.',
     messages,
   });
@@ -80,7 +84,7 @@ import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 
 const { object } = await generateObject({
-  model: openai('gpt-4o-2024-08-06'), // Use models good at structured output
+  model: openai(process.env.OPENAI_MODEL ?? '<model-id>'), // use a model good at structured output
   system: 'Extract information from the receipt text.',
   prompt: receiptText,
   // Pass a Zod schema to enforce output structure
@@ -162,7 +166,7 @@ export async function POST(req: Request) {
   const { messages } = await req.json();
 
   const result = streamText({
-    model: openai('gpt-4o'),
+    model: openai(process.env.OPENAI_MODEL ?? '<model-id>'),
     messages,
     tools: {
       getWeather: tool({
@@ -206,7 +210,7 @@ When using `maxSteps`, the `useChat` hook will display intermediate tool calls i
 
 ## Best Practices
 
-- ✅ **Do:** Use `openai('gpt-4o')` or `anthropic('claude-3-5-sonnet-20240620')` format (from specific provider packages like `@ai-sdk/openai`) instead of the older edge runtime wrappers.
+- ✅ **Do:** Use a provider-pack format — e.g. `openai(MODEL)` or `anthropic(MODEL)` with the model ID read from configuration (from specific provider packages like `@ai-sdk/openai`) — instead of the older edge runtime wrappers. Look up the current model ID in the provider docs at the time of use; never hard-code one from memory.
 - ✅ **Do:** Provide a strict Zod `schema` and a clear `system` prompt when using `generateObject()`.
 - ✅ **Do:** Set `maxDuration = 30` (or higher if on Pro) in Next.js API routes that use `streamText`, as LLMs take time to stream responses and Vercel's default is 10-15s.
 - ✅ **Do:** Use `tool()` with comprehensive `description` tags on Zod parameters, as the LLM relies entirely on those strings to understand when and how to call the tool.

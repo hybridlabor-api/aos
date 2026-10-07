@@ -91,13 +91,13 @@ Secret: provider-specific, commonly `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
   run: |
     opencode run "$PROMPT" \
       --dir "$GITHUB_WORKSPACE" \
-      --model anthropic/claude-sonnet-4-5 \
+      --model "$AGENT_MODEL" \
       --format json \
       --dangerously-skip-permissions \
       2>&1 | tee /tmp/agent-output.txt
 ```
 
-Change `--model` and env secrets together, for example to an `openai/...` model with `OPENAI_API_KEY`.
+Change `--model` and env secrets together, for example to an `openai/...` model with `OPENAI_API_KEY`. Keep the model ID resolved from configuration (an env var or repo variable such as `AGENT_MODEL`) and look up the current value in the provider docs at the time of use — model IDs change frequently.
 
 **Response extraction:** OpenCode with `--format json` outputs structured JSON. Extract the final message:
 
@@ -126,7 +126,7 @@ Secret: usually `ANTHROPIC_API_KEY` for Anthropic-backed runs.
   run: |
     bunx @humanlayer/cli@latest codelayer \
       --provider anthropic \
-      --model claude-opus-4-8 \
+      --model "$AGENT_MODEL" \
       --thinking high \
       --prompt "$PROMPT" \
       2>&1 | tee /tmp/agent-output.txt
