@@ -110,6 +110,7 @@ before(async () => {
 });
 
 after(async () => {
+  for (const c of children) { try { c.kill(); } catch {} }
   for (const s of servers) await new Promise((r) => { s.close(r); s.closeAllConnections?.(); });
   for (let p = LO; p <= HI; p += 1) {
     const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
