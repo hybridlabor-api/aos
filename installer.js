@@ -4180,6 +4180,16 @@ const READ_ONLY_AGENT_SLUGS = new Set([
     'silent-failure-hunter',
     'devils-advocate',
     'opensource-sanitizer',
+    // ECC language reviewers (v5/ecc-reviewers): strictly read-only by
+    // frontmatter tools and by allowlist enforcement here.
+    'go-reviewer',
+    'python-reviewer',
+    'rust-reviewer',
+    'typescript-reviewer',
+    'java-reviewer',
+    'kotlin-reviewer',
+    'cpp-reviewer',
+    'csharp-reviewer',
 ]);
 const isReadOnlyAgent = (slug) => READ_ONLY_AGENT_SLUGS.has(slug);
 

@@ -149,7 +149,7 @@ next. This file defines *what each agent is*, not *what calls what*.
 
 # Auxiliary agents
 
-The fourteen below are **not** pipeline nodes — they are never in `.agents/nodes.json`,
+The twenty-two below are **not** pipeline nodes — they are never in `.agents/nodes.json`,
 not part of the seven-agent routing above: the dispatcher decides every invocation;
 agents never invoke each other.
 They are standalone specialists you reach for directly. They live here rather than
@@ -338,6 +338,111 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — see
   - `memb_mcp`
 - **Output Artifact**: findings returned inline (writes no file)
 - Security and operability focus: user input reaching dangerous sinks, secrets in code or logs, missing auth checks, swallowed errors, and changes that cannot be rolled back when they fail in production. Independent by design: reviews the artifacts and the contract, never the implementer's claim that it is done.
+
+---
+
+Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the language-specific reviewer set, kept strictly read-only; see `docs/ecc-reviewers.md` and `THIRD_PARTY_NOTICES.md`.
+
+---
+
+## 🐹 go-reviewer
+- **Role**: Independent read-only Go code reviewer: idiomatic Go, concurrency, error handling, and performance for `.go` changes. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `golang-pro`
+  - `go-concurrency-patterns`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: SQL/command injection, path traversal, races, ignored and unwrapped errors, goroutine leaks, deadlocks, non-idiomatic patterns, N+1 queries.
+
+---
+
+## 🐍 python-reviewer
+- **Role**: Independent read-only Python code reviewer: Pythonic idioms, PEP 8, type hints, security, and concurrency for `.py` changes. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `python-pro`
+  - `python-patterns`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: f-string SQL, bare excepts, unsafe deserialization, mutable default arguments, sync/async mixing, missing annotations.
+
+---
+
+## 🦀 rust-reviewer
+- **Role**: Independent read-only Rust code reviewer: ownership, lifetimes, unsafe usage, error handling, and idiomatic patterns for `.rs` changes. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `systematic-debugging`
+  - `clean-code`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: unchecked unwrap/expect, undocumented unsafe, silenced must_use results, blocking in async, unbounded channels, unnecessary clones.
+
+---
+
+## ⬢ typescript-reviewer
+- **Role**: Independent read-only TypeScript/JavaScript code reviewer: type safety, async correctness, Node/web security, and idiomatic patterns for `.ts`/`.tsx`/`.js`/`.jsx` changes. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `typescript-pro`
+  - `react-best-practices`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: eval injection, XSS, floating promises, swallowed errors, weakened tsconfig strictness, sync fs in request handlers, React re-render traps.
+
+---
+
+## ☕ java-reviewer
+- **Role**: Independent read-only Java code reviewer for Spring Boot and Quarkus projects: layered architecture, JPA/Panache, security, concurrency, testing. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `systematic-debugging`
+  - `clean-code`
+  - `api-design-principles`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: framework detection from the build file first ([SPRING]/[QUARKUS]), SQL injection via concatenation, `Optional.get()`, field injection, `@Transactional` placement, N+1 eager collections, unbounded list endpoints.
+
+---
+
+## 🤖 kotlin-reviewer
+- **Role**: Independent read-only Kotlin/Android/KMP code reviewer: idiomatic Kotlin, coroutine and Flow safety, Compose recomposition traps, clean architecture, Android pitfalls. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `systematic-debugging`
+  - `clean-code`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: framework imports in the domain layer, `GlobalScope`, swallowed `CancellationException`, mutable `StateFlow` state, Compose recomposition traps, exported Android components, cleartext traffic.
+
+---
+
+## 🧱 cpp-reviewer
+- **Role**: Independent read-only C++ code reviewer: memory safety, modern C++ idioms, concurrency, and performance for `.cpp`/`.hpp`/`.cc`/`.h` changes. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `systematic-debugging`
+  - `clean-code`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: raw `new`/`delete`, buffer overflows, use-after-free, missing RAII, format-string attacks, data races, Rule-of-Five violations.
+
+---
+
+## 💠 csharp-reviewer
+- **Role**: Independent read-only C#/.NET code reviewer: .NET conventions, async patterns, security, nullable reference types, EF Core. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `systematic-debugging`
+  - `clean-code`
+  - `api-design-principles`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: SQL injection, `BinaryFormatter`, blocking async (`.Result`/`.Wait()`), `async void`, nullable warnings suppressed with `!`, EF Core lazy-loading N+1.
 
 ---
 ## 🔄 Context Boot Sequence
