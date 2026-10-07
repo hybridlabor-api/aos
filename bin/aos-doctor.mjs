@@ -494,6 +494,29 @@ async function checkDaemonsAndModules() {
     }
   }
 
+  // Hardware & PCB module: KiCad / OpenSCAD app presence. The module registers both MCP
+  // servers unconditionally; when the app is absent the installer skips the registration,
+  // so the doctor labels it app missing (warning only — installing the app re-enables it).
+  {
+    const hwDir = findModule('bdb-hardware-pcb');
+    if (hwDir) {
+      let hardwareApps = null;
+      try { hardwareApps = req('../lib/hardware-apps.js'); } catch { /* check skipped, never fatal */ }
+      if (hardwareApps) {
+        for (const appId of ['kicad', 'openscad']) {
+          const status = hardwareApps.hwAppStatus(appId);
+          if (status.found) {
+            add('daemons', `${hardwareApps.HW_APPS[appId].label} (${appId} MCP)`, true,
+              `present: ${tilde(status.path || '')} · shipped launcher: ${path.join(hwDir, 'scripts', appId === 'kicad' ? 'run_kicad_mcp.sh' : 'run_openscad_mcp.sh')}`);
+          } else {
+            add('daemons', `${hardwareApps.HW_APPS[appId].label} (${appId} MCP)`, false,
+              `${hardwareApps.appMissingMessage(appId)} — the ${appId} MCP server was not registered`, 'install KiCad/OpenSCAD, then re-run the AOS installer', true);
+          }
+        }
+      }
+    }
+  }
+
   // memB
   const membDir = findModule('memB');
   const membListening = await portOpen(8088);
