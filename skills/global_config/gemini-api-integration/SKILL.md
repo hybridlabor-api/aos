@@ -48,7 +48,8 @@ export GEMINI_API_KEY="your-api-key-here"
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const MODEL = process.env.MODEL; // current model ID — look it up in the provider docs at the time of use
+const model = genAI.getGenerativeModel({ model: MODEL });
 
 const result = await model.generateContent("Explain async/await in JavaScript");
 console.log(result.response.text());
@@ -60,7 +61,8 @@ import google.generativeai as genai
 import os
 
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-1.5-flash")
+MODEL = os.environ["MODEL"]  # current model ID — look it up in the provider docs at the time of use
+model = genai.GenerativeModel(MODEL)
 
 response = model.generate_content("Explain async/await in JavaScript")
 print(response.text)
@@ -110,7 +112,7 @@ const tools = [{
   }],
 }];
 
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro", tools });
+const model = genAI.getGenerativeModel({ model: process.env.REASONING_MODEL, tools });
 const result = await model.generateContent("What's the weather in Mumbai?");
 
 const call = result.response.functionCalls()?.[0];
@@ -137,21 +139,25 @@ console.log(response.response.text());
 
 ### 7. Model Selection Guide
 
-| Model | Best For | Speed | Cost |
+**Never hard-code a model name from memory — model IDs change frequently.** Look up the current model list in the Google AI / Gemini provider docs at the time of use, and pick among capability tiers:
+
+| Tier | Best For | Speed | Cost |
 |-------|----------|-------|------|
-| `gemini-1.5-flash` | High-throughput, cost-sensitive tasks | Fast | Low |
-| `gemini-1.5-pro` | Complex reasoning, long context | Medium | Medium |
-| `gemini-2.0-flash` | Latest fast model, multimodal | Very Fast | Low |
-| `gemini-2.0-pro` | Most capable, advanced tasks | Slow | High |
+| Fast tier | High-throughput, cost-sensitive tasks | Fast | Low |
+| Reasoning tier | Complex reasoning, long context | Medium | Medium |
+| Latest fast tier | Cutting-edge fast model, multimodal | Very Fast | Low |
+| Flagship tier | Most capable, advanced tasks | Slow | High |
+
+Subscribe the tier → current model ID mapping from the official model catalogue page.
 
 ## Best Practices
 
-- ✅ **Do:** Use `gemini-1.5-flash` for most tasks — it's fast and cost-effective
+- ✅ **Do:** Use the current fast-tier model for most tasks — it's typically the cheapest and quickest option in the catalogue
 - ✅ **Do:** Always stream responses for user-facing chat UIs to reduce perceived latency
 - ✅ **Do:** Store API keys in environment variables, never hard-code them
 - ✅ **Do:** Implement exponential backoff for rate limit (429) errors
 - ✅ **Do:** Use `systemInstruction` to set persistent model behavior
-- ❌ **Don't:** Use `gemini-pro` for simple tasks — Flash is cheaper and faster
+- ❌ **Don't:** Use the most capable (premium-tier) model for simple tasks — fast-tier models are cheaper and quicker
 - ❌ **Don't:** Send large base64 images inline for files > 20MB — use File API instead
 - ❌ **Don't:** Ignore safety ratings in responses for production apps
 
@@ -183,7 +189,7 @@ try {
 **Solution:** Check `result.response.promptFeedback.blockReason` and adjust your prompt or safety settings.
 
 **Problem:** Slow response times
-**Solution:** Switch to `gemini-1.5-flash` and enable streaming. Consider caching repeated prompts.
+**Solution:** Switch to the current fast-tier model and enable streaming. Consider caching repeated prompts.
 
 **Problem:** `RESOURCE_EXHAUSTED` (quota exceeded)
 **Solution:** Check your quota in Google Cloud Console. Implement request queuing and exponential backoff.

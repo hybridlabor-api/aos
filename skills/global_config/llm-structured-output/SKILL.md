@@ -36,7 +36,7 @@ Do NOT use this skill when:
 1. Identify the target schema. Ask the user what fields they need extracted. Define every field with its type, whether it's required or optional, and valid enum values if applicable. Do not proceed without a concrete schema.
 
 2. Choose the provider-appropriate method:
-   - **OpenAI (gpt-4o, gpt-4o-mini):** Use `response_format: { type: "json_schema", json_schema: { ... } }`. This enables Structured Outputs with guaranteed schema conformance via constrained decoding.
+   - **OpenAI:** Use `response_format: { type: "json_schema", json_schema: { ... } }`. This enables Structured Outputs with guaranteed schema conformance via constrained decoding.
    - **Anthropic (Claude):** Define a single tool with the target schema as `input_schema` and set `tool_choice: { type: "tool", name: "extract_data" }`. Claude returns the structured data in the `tool_use` content block.
    - **Google (Gemini):** Use `generationConfig.responseSchema` with a JSON Schema object and set `responseMimeType: "application/json"`.
    - **Local models (llama.cpp, vLLM):** Use GBNF grammars or `--json-schema` flag for constrained decoding at the token level.
@@ -77,9 +77,12 @@ class ReviewAnalysis(BaseModel):
     purchase_intent: bool = Field(description="Whether the reviewer would buy again")
     confidence_score: float = Field(ge=0.0, le=1.0, description="Model confidence 0-1")
 
+# Use a current model ID — look it up in the provider's docs at the time of use
+MODEL = os.environ["OPENAI_MODEL"]
+
 client = OpenAI()
 response = client.beta.chat.completions.parse(
-    model="gpt-4o-2024-08-06",
+    model=MODEL,
     messages=[
         {"role": "system", "content": "Extract structured review analysis."},
         {"role": "user", "content": "This laptop is amazing. The battery lasts forever and the keyboard feels great. Definitely buying the next version."}
@@ -96,10 +99,13 @@ result = response.choices[0].message.parsed
 
 ```python
 import anthropic
+import os
 
 client = anthropic.Anthropic()
+MODEL = os.environ["ANTHROPIC_MODEL"]  # current model ID from the provider docs
+
 response = client.messages.create(
-    model="claude-sonnet-4-20250514",
+    model=MODEL,
     max_tokens=1024,
     system="You are a data extraction system. Use the provided tool to return structured data.",
     tools=[{
@@ -152,8 +158,9 @@ const EventSchema = z.object({
 });
 
 const client = new OpenAI();
+const MODEL = process.env.OPENAI_MODEL; // current model ID from the provider docs
 const completion = await client.beta.chat.completions.parse({
-  model: "gpt-4o-2024-08-06",
+  model: MODEL,
   messages: [
     { role: "system", content: "Extract event details from the text." },
     { role: "user", content: "Tech Summit 2025 in Austin at the Convention Center on March 15th. Expecting 2000 attendees, in-person only." },
@@ -199,7 +206,7 @@ const event = completion.choices[0].message.parsed;
 
 2. **Use enums instead of free-form strings for categorical data.** A field `mood: str` can return anything. A field `mood: Literal["happy", "sad", "neutral", "angry"]` constrains the model to exactly those values. This reduces downstream parsing logic to zero.
 
-3. **Pin the model version in production.** `gpt-4o` is an alias that changes when OpenAI releases new versions. Structured output behavior can change between versions. Use `gpt-4o-2024-08-06` explicitly so that your schema+prompt combination remains stable until you deliberately upgrade.
+3. **Pin the model version in production.** A provider alias can change underneath you when it releases new versions, and structured output behavior can change between versions. Resolve the concrete versioned model ID (from the provider's current docs at the time of deployment) into your config — not a moving alias — so that your schema+prompt combination remains stable until you deliberately upgrade.
 
 4. **Test schema changes against 20+ real inputs before deploying.** Schema changes (adding a field, changing a type, modifying a description) can break extraction on inputs that previously worked. Build a test suite of real inputs with expected outputs and run it on every schema change. This is the structured output equivalent of unit testing.
 

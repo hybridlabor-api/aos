@@ -56,6 +56,7 @@ A: Let's think step by step:"""
 Generate multiple reasoning paths and take the majority vote:
 
 ```python
+import os
 import openai
 from collections import Counter
 
@@ -65,7 +66,7 @@ def self_consistency_cot(query, n=5, temperature=0.7):
     responses = []
     for _ in range(n):
         response = openai.ChatCompletion.create(
-            model="gpt-5",
+            model=os.environ["MODEL"],  # a reasoning-capable model; keep the ID in configuration
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature
         )

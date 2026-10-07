@@ -46,6 +46,7 @@ jobs:
         id: agent_gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AGENT_MODEL: ${{ vars.AGENT_MODEL }} # current model ID — look it up in the provider docs at the time of use
           EVENT_NAME: ${{ github.event_name }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_URL: ${{ github.event.issue.pull_request.url }}
@@ -159,7 +160,7 @@ jobs:
 
           # NOTE: replace with your agent runner from references/agent-runner-templates.md
           bunx @humanlayer/cli@latest codelayer \
-            --provider anthropic --model claude-sonnet-4-6 --thinking high \
+            --provider anthropic --model $AGENT_MODEL --thinking high \
             --prompt "$(cat /tmp/agent-prompt.md)" \
             2>&1 | tee /tmp/agent-output.txt
 
@@ -215,8 +216,9 @@ jobs:
 
           # NOTE: replace this block with your agent runner from references/agent-runner-templates.md.
           # Each agent has different output formats — see that file for extraction steps.
+          # AGENT_MODEL is resolved from configuration (repo variable), not hard-coded.
           bunx @humanlayer/cli@latest codelayer \
-            --provider anthropic --model claude-opus-4-8 --thinking high \
+            --provider anthropic --model $AGENT_MODEL --thinking high \
             --prompt "$PROMPT" \
             2>&1 | tee /tmp/agent-output.txt
 

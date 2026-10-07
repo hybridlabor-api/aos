@@ -480,7 +480,7 @@ def search_web(query: str) -> str:
 
 # Tool runner handles the loop
 runner = client.beta.messages.tool_runner(
-    model="claude-sonnet-4-5",
+    model=os.environ["MODEL"],
     max_tokens=1024,
     tools=[get_weather, search_web],
     messages=[
@@ -518,7 +518,7 @@ const getWeatherTool = betaZodTool({
 });
 
 const runner = anthropic.beta.messages.toolRunner({
-  model: 'claude-sonnet-4-5',
+  model: process.env.MODEL,
   max_tokens: 1024,
   tools: [getWeatherTool],
   messages: [{ role: 'user', content: "What's the weather in Paris?" }]
@@ -593,7 +593,7 @@ rather than sequentially."
 ## Disabling Parallel (When Needed)
 """
 response = client.messages.create(
-    model="claude-sonnet-4-5",
+    model=os.environ["MODEL"],
     tools=tools,
     tool_choice={"type": "auto", "disable_parallel_tool_use": True},
     messages=messages

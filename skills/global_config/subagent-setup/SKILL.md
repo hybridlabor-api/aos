@@ -39,9 +39,9 @@ node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --init-defa
 
 ### Update a Specific Role
 ```bash
-# Example: Set Reviewer to Codex with o3-mini
+# Example: Set Reviewer to an external CLI harness with a lightweight model
 node skills/global_config/subagent-setup/scripts/setup-subagents.mjs \
-  --set-role reviewer --harness codex --model o3-mini
+  --set-role reviewer --harness codex --model <model-id>
 
 # Example: Set Shipping to OpenCode with Free Tier
 node skills/global_config/subagent-setup/scripts/setup-subagents.mjs \

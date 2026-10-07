@@ -296,6 +296,39 @@ export function checkInvocation(name, byKey) {
   return [{ level: 'error', code: 'E-DMI01', line: dmi.line, msg: `\`${name}\` is a pipeline/role skill and must stay model-invocable — remove \`disable-model-invocation: true\` (go-gate guards its side effects)` }];
 }
 
+// Tim's policy: model names change weekly, so a skill must never hard-code a
+// current model ID as a concrete value. Capability tiers, placeholders
+// (`<model-id>`) or environment variables keep the teaching value without
+// pinning the text to a model that ships next week.
+// Conservative by design: `gpt-4o` trip wires, `llama.cpp`, `claude-code`,
+// the word "Opus" in general prose and `o1-lookups`-style anchors do not.
+const MODEL_NAME_RE = /gpt-\d|claude-\d|claude-(?:opus|sonnet|haiku)|gemini-\d|llama-?\d|o[134]-(?:mini|preview)/;
+
+// A skill that documents a forbidden pattern may show a counter-example:
+// a fenced block whose opening fence line says "anti-example" is one.
+const ANTI_EXAMPLE = /anti[-_ ]?example/i;
+
+export function checkModelNames(text) {
+  const out = [];
+  const lines = text.split(/\r?\n/);
+  let fence = null;
+  for (let n = 0; n < lines.length; n++) {
+    const trimmed = lines[n].trim();
+    if (/^(```|~~~)/.test(trimmed)) {
+      fence = fence === null ? (ANTI_EXAMPLE.test(trimmed) ? 'anti' : 'plain') : null;
+      continue;
+    }
+    if (fence === 'anti') continue;
+    if (MODEL_NAME_RE.test(lines[n])) {
+      out.push({
+        level: 'warn', code: 'W-MODEL01', line: n + 1,
+        msg: 'fixed model name in a skill — use a capability tier, a placeholder (`<model-id>`) or an environment variable instead',
+      });
+    }
+  }
+  return out;
+}
+
 function validate() {
   const { skills, strays } = collect();
   const known = new Set(skills.map((f) => basename(dirname(f))));
@@ -372,6 +405,7 @@ function validate() {
     checkLeakedPaths(text, rel, findings);
     checkLocalRefs(text, dir, rel, findings);
     checkSkillRefs(text, rel, known, dirName, findings);
+    for (const f of checkModelNames(text)) findings.push({ ...f, file: rel });
 
     // A skill ships more than its SKILL.md, and a leaked path in a reference
     // file is just as published as one in the entry point.
@@ -560,17 +594,37 @@ function selftest() {
     'quoted item and trailing comma survive',
   );
 
+  // W-MODEL01: fixed model names are warnings, tiers are not, and an
+  // anti-example fence is deliberate.
+  const modelHit = checkModelNames('Use gpt-4o for extraction.');
+  assert.equal(modelHit.length, 1);
+  assert.equal(modelHit[0].code, 'W-MODEL01');
+  assert.ok(!MODEL_NAME_RE.test('Run it through llama.cpp or Ollama.'));
+  assert.deepEqual(checkModelNames('Use a reasoning-capable model via process.env.MODEL.'), []);
+  assert.deepEqual(checkModelNames('```\nanti-example: deliberately shows the forbidden model="gpt-4o" literal\n```'), []);
+  assert.equal(
+    checkModelNames('```\nplain fence keeps the check active: model="gpt-4o"\n```').length, 1,
+    'a fence not marked anti-example is still checked',
+  );
+
   console.log('✓ selftest passed');
 }
 
 // ------------------------------------------------------------------------ main
 
-const argv = process.argv.slice(2);
-if (argv.includes('--selftest')) { selftest(); process.exit(0); }
+// Guarded so tests can import the exported check functions without the CLI
+// run (and its process.exit) firing on import.
+const runningAsMain =
+  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-const { findings, counts } = validate();
-process.exit(report(findings, counts, {
-  json: argv.includes('--json'),
-  quiet: argv.includes('--quiet'),
-  strict: argv.includes('--strict'),
-}));
+if (runningAsMain) {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--selftest')) { selftest(); process.exit(0); }
+
+  const { findings, counts } = validate();
+  process.exit(report(findings, counts, {
+    json: argv.includes('--json'),
+    quiet: argv.includes('--quiet'),
+    strict: argv.includes('--strict'),
+  }));
+}
