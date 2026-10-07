@@ -516,12 +516,14 @@ export function classify(seg, protectedFor = staticResolver) {
   const cmd = base(tok[0] ?? "");
   // xargs takes its command words from stdin (`echo push origin HEAD:main | xargs git`,
   // `echo -rf build | xargs rm`): when NO argument of its own is visible after the guarded
-  // program the whole guarded word is stdin-fed and the segment is unscoped. An rm row with
-  // only its own flags visible (`xargs rm -rf`, `xargs rm`) keeps the OLD decision: the
-  // visible `rm -rf` is judged as before (destructive) while the stdin words stay
-  // unknowable, so catchAll's flag rule decides the GO-only case.
+  // program the whole guarded word is stdin-fed and the segment is unscoped. An rm row that
+  // SHOWS its own recursive flag (`xargs rm -rf`) is judged as before (destructive, the
+  // visible word row is the truth); an rm row without one is unscoped, because its flags can
+  // come from the stdin words (`echo -rf build | xargs rm`), the old bare `rm -rf` row.
   if (xargs && XARGS_PROG.test(cmd) && !tok.slice(1).length) return null;
-  if (xargs && (cmd === "rm" || cmd === "rmx")) return catchAll(tok, seg) ? null : ["destructive"];
+  if (xargs && (cmd === "rm" || cmd === "rmx")) {
+    if (tok.slice(1).some((t) => /^-[a-zA-Z]*[rR]/.test(unq(t)) || unq(t) === "--recursive")) return ["destructive"];
+    return null;
   if (opaque) {
     if (!catchAll(tok, seg, true)) return [];
     if (stripPrefix(tokens(seg)).xargs) return null;
