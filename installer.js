@@ -4826,16 +4826,26 @@ function installHarnessHookCopies({ targetHome = homeDir, targetGemini = geminiD
     const hooksSrc = path.join(srcDir, '.claude', 'hooks');
     if (!fs.existsSync(hooksSrc)) return [];
     const { claude, agy, codex } = v5Profile.HARNESS_HOOKS;
+    // The agy A2A inbox hook is an agy-only variant; its source ships in agy-hooks/, not .claude/hooks.
+    const agyA2aSrc = path.join(srcDir, 'agy-hooks', 'a2a-inbox.mjs');
+    const agyNames = agy.filter((n) => n !== 'a2a-inbox.mjs');
     const agyCliDir = path.join(targetGemini, 'antigravity-cli');
+    const agyDirs = [path.join(targetGemini, 'config', 'hooks'), ...(fs.existsSync(agyCliDir) ? [path.join(agyCliDir, 'hooks')] : [])];
     const targets = [
         [path.join(claudeConfigDir(targetHome), 'hooks'), claude],
-        [path.join(targetGemini, 'config', 'hooks'), agy],
-        ...(fs.existsSync(agyCliDir) ? [[path.join(agyCliDir, 'hooks'), agy]] : []),
+        [agyDirs[0], agyNames],
+        ...(agyDirs.length > 1 ? [[agyDirs[1], agyNames]] : []),
         [path.join(targetHome, '.codex', 'hooks'), codex],
     ];
     for (const [dir, names] of targets) {
         copyHookScripts(hooksSrc, dir, names);
         log.step(`Installed hooks to ${dir}`);
+    }
+    if (fs.existsSync(agyA2aSrc)) {
+        for (const dir of agyDirs) {
+            copyDirRecursiveSync(agyA2aSrc, path.join(dir, 'a2a-inbox.mjs'));
+            log.step(`Installed the agy A2A inbox hook to ${dir}`);
+        }
     }
     return targets.map(([dir]) => dir);
 }
@@ -4899,11 +4909,10 @@ function installA2aLibCopies({ targetHome = homeDir } = {}) {
     return copied.length > 0;
 }
 
-// The sidecar SessionStart hook is registered for Claude Code ONLY, and only
-// when the hook file ships inside this package (Tim may copy it in later; a
-// package without it installs fine). It is deliberately NOT registered in agy
-// or Codex: both are delegation targets and the fork-bomb rule keeps any
-// sidecar started-by-session out of them. The installer itself never starts a
+// The sidecar SessionStart hook is registered here for Claude Code, and only
+// when the hook file ships inside this package (a package without it installs
+// fine). Codex gets the same hook from mergeCodexTomlHooks (SessionStart); agy
+// has no session-start event, so it gets none. The installer itself never starts a
 // sidecar. At runtime the hook delegates to ensureSidecar
 // (lib/a2a-session.mjs), which skips on AOS_A2A_SIDECAR=off (the off switch)
 // and on AOS_DELEGATE_DEPTH>0 (delegated workers), so no harness that a
@@ -5178,6 +5187,12 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
                 { type: 'command', command: obs(globalHooksDir, 'rules-inject.mjs'), timeout: 3 },
                 { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
             ]
+        },
+        'aos-a2a-inbox': {
+            // Interactive-session A2A inbox (agy PreInvocation): delivers pending messages only on the
+            // first model call of a turn. Not a context hook, so --no-hooks and minimal keep it; the
+            // hook fails open itself, but stay fail-safe around it as well.
+            PreInvocation: [{ type: 'command', command: obs(globalHooksDir, 'a2a-inbox.mjs'), timeout: 5 }]
         }
     };
 
@@ -5424,6 +5439,13 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`)}`,
         'timeout = 30',
         '',
+        // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints nothing; skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
+        '[[hooks.SessionStart]]',
+        '[[hooks.SessionStart.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'a2a-session.mjs')}" --harness codex`)}`,
+        'timeout = 10',
+        '',
         '[[hooks.UserPromptSubmit]]',
         '[[hooks.UserPromptSubmit.hooks]]',
         'type = "command"',
@@ -5525,8 +5547,11 @@ function installProjectHarness() {
         const hooksSrc = path.join(srcDir, '.claude', 'hooks');
         if (fs.existsSync(hooksSrc)) {
             const { claude, agy, codex } = v5Profile.HARNESS_HOOKS;
+            const agyA2aSrc = path.join(srcDir, 'agy-hooks', 'a2a-inbox.mjs');
+            const agyNames = agy.filter((n) => n !== 'a2a-inbox.mjs');
             copyHookScripts(hooksSrc, path.join(projectClaudeDir, 'hooks'), claude);
-            copyHookScripts(hooksSrc, path.join(projectAgentsDir, 'hooks'), agy);
+            copyHookScripts(hooksSrc, path.join(projectAgentsDir, 'hooks'), agyNames);
+            if (fs.existsSync(agyA2aSrc)) copyDirRecursiveSync(agyA2aSrc, path.join(projectAgentsDir, 'hooks', 'a2a-inbox.mjs'));
             copyHookScripts(hooksSrc, path.join(projectCodexDir, 'hooks'), codex);
             log.step(`Copied hooks to project harnesses`);
         }

@@ -51,7 +51,7 @@ const brokenOld = {
     },
     other: { Stop: [foreign] }
 };
-const NAMES = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
+const NAMES = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox'];
 
 test('fresh output is valid per agy hook format: one named, non-empty hook per concern', () => {
     const p = path.join(tmp(), 'hooks.json');

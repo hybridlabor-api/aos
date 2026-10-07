@@ -308,7 +308,7 @@ function checkHooks() {
   ]);
   const agHooks = agHooksFile ? readJson(agHooksFile) : null;
   // New format: one named hook per concern at the top level; legacy: all handlers under "hooks".
-  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
+  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox'];
   const namedWired = AG_NAMED.filter((n) => agHooks && agHooks[n]);
   const legacyWired = JSON.stringify(agHooks?.hooks || {}).includes('memb-inject.mjs');
   const missingNamed = AG_NAMED.filter((n) => !(agHooks && agHooks[n]));

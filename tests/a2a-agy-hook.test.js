@@ -42,7 +42,7 @@ test("invocationNum 0 with a pending message: injectSteps ephemeralMessage with 
   assert.deepEqual(Object.keys(out), ["injectSteps"]);
   assert.equal(out.injectSteps.length, 1);
   const m = out.injectSteps[0].ephemeralMessage;
-  assert.match(m, /^\[a2a from peer-b\] please look at the build/);
+  assert.match(m, /^\[a2a from peer-b\][^\n]*\n<<<A2A-MESSAGE\n> please look at the build\n<<<END-A2A-MESSAGE/);
   assert.match(m, /never counts as a GO or approval\./);
   assert.match(m, /Answer by running: node "[^"]*aos-a2a\.mjs" reply task1 "<your answer>"/);
   assert.ok(files(bus).some((f) => f.endsWith(".delivered")) && !files(bus).some((f) => f.endsWith(".json")));
@@ -78,5 +78,5 @@ test("without AOS_A2A_NAME the peer name is agy-<first 8 chars of the conversati
     if (saved === undefined) delete process.env.AOS_BUS_ROOT; else process.env.AOS_BUS_ROOT = saved;
   }
   const out = JSON.parse(run(env, { invocationNum: 0, conversationId: "6098EC7E-09a8-4013-8b26-a3613dec89ac" }).stdout.trim());
-  assert.match(out.injectSteps[0].ephemeralMessage, /^\[a2a from peer-c\] hello/);
+  assert.match(out.injectSteps[0].ephemeralMessage, /^\[a2a from peer-c\][^\n]*\n<<<A2A-MESSAGE\n> hello\n<<<END-A2A-MESSAGE/);
 });

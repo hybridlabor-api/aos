@@ -85,3 +85,15 @@ test('the installer no longer copies the whole hooks dir anywhere', () => {
     // the OpenCode plugin copy (aos-hooks) is owned elsewhere
     assert.deepStrictEqual(whole.filter((c) => !/aos-hooks|opencode/i.test(c)), []);
 });
+
+test('agy gets the agy-hooks a2a-inbox variant, not the Claude one (existing Claude dir copy untouched)', () => {
+    const { home, gemini } = install();
+    const codex = path.join(home, '.codex', 'hooks');
+    assert.ok(!fs.existsSync(path.join(codex, 'a2a-inbox.mjs')), 'Codex dir stays without a2a-inbox.mjs');
+    const claudeSrc = fs.readFileSync(path.join(HOOKS_SRC, 'a2a-inbox.mjs'), 'utf8');
+    const agySrc = fs.readFileSync(path.join(__dirname, '..', 'agy-hooks', 'a2a-inbox.mjs'), 'utf8');
+    assert.notStrictEqual(claudeSrc, agySrc);
+    for (const dir of [path.join(gemini, 'config', 'hooks'), path.join(gemini, 'antigravity-cli', 'hooks')]) {
+        assert.strictEqual(fs.readFileSync(path.join(dir, 'a2a-inbox.mjs'), 'utf8'), agySrc, dir);
+    }
+});

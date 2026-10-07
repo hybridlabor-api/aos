@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 
 const DOCTOR = path.resolve(__dirname, '..', 'bin', 'aos-doctor.mjs');
 const write = (p, text) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); };
-const NAMES = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
+const NAMES = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox'];
 
 function run(setup) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-docpl-'));
