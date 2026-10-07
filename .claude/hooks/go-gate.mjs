@@ -753,7 +753,7 @@ function catchAll(tok, seg, opaque = false) {
 // Test support only: the catchAll internals the differential in tests/go-gate-gatefix2.test.js
 // compares against. No production consumer; nothing else reads this.
 export const _catchAllInternals = {
-  catchAll, cposDollar, tokens, unq, base,
+  catchAll, cposDollar, tokens, unq, base, scanSplit,
   GUARDED_NOUN, GIT_VERBS, CPOS_JOINER, PM, COMMIT_WORD_BYPASS,
 };
 

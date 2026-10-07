@@ -295,11 +295,16 @@ describe('(10) catchAll stays linear on a five-thousand-word command', () => {
         assert.ok(ms < 2000, `took ${ms.toFixed(0)} ms`);
     });
     test('differential: the rewrite decides exactly like the old catchAll', () => {
-        // The OLD catchAll, kept verbatim as the reference (pre-rewrite unq/split form).
+        // The OLD catchAll, kept verbatim as the reference (pre-rewrite rules form), over the
+        // word stream the rewrite feeds it: the statement-wise scanSplit flattening is finding
+        // (1)'s intended behaviour change (`sh -c 'echo ok;;g=git;p=push;$g $p ...'` catches
+        // glued statements the plain whitespace split misses), so the reference runs the naive
+        // quadratic rules over the same scanSplit words; the rewrite must decide identically.
         const old = (tok, seg, opaque = false) => {
-            const w = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(base);
+            const flat = () => tok.flatMap((t) => scanSplit(unq(t)).flatMap((p) => tokens(p.t.trim())));
+            const w = (opaque ? flat() : tok).map(base);
             const after = (i, set) => w.slice(i + 1).some((x) => set.test(x));
-            const raw = (opaque ? tok.flatMap((t) => unq(t).split(/\s+/)) : tok).map(unq);
+            const raw = (opaque ? flat() : tok).map(unq);
             if (opaque && cposDollar(w)) return true;
             let cmd = true;
             for (let i = 0; i < w.length; i++) {
@@ -316,7 +321,7 @@ describe('(10) catchAll stays linear on a five-thousand-word command', () => {
             }
             return false;
         };
-        const { catchAll, cposDollar, tokens, unq, base, GUARDED_NOUN, GIT_VERBS, CPOS_JOINER, PM, COMMIT_WORD_BYPASS } = g._catchAllInternals;
+        const { catchAll, cposDollar, tokens, unq, base, scanSplit, GUARDED_NOUN, GIT_VERBS, CPOS_JOINER, PM, COMMIT_WORD_BYPASS } = g._catchAllInternals;
         const A = [
             "git push origin main", "npm publish", "npm view @a/b version", "npm version patch", "npm v @a/b dist-tags",
             "gh pr merge 117", "gh release create", "gh api users", "rm -rf build", "echo hi", "echo $X config",
