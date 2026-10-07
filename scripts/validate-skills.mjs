@@ -619,7 +619,7 @@ function selftest() {
   assert.ok(!MODEL_NAME_RE.test('the words opus and sonnet alone in prose are fine'));
   assert.ok(!MODEL_NAME_RE.test('codebase-graph'));
   assert.deepEqual(checkModelNames('Use a reasoning-capable model via process.env.MODEL.'), []);
-  assert.deepEqual(checkModelNames('```\nanti-example: deliberately shows the forbidden model="gpt-4o" literal\n```'), []);
+  assert.deepEqual(checkModelNames('``` anti-example\ndeliberately shows the forbidden model="gpt-4o" literal\n```'), []);
   assert.equal(
     checkModelNames('```\nplain fence keeps the check active: model="gpt-4o"\n```').length, 1,
     'a fence not marked anti-example is still checked',
