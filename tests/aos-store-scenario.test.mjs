@@ -59,7 +59,7 @@ async function withEnv(fn, { scenario, eccSkills } = {}) {
     const cwd = join(tmp, 'proj');
     mkdirSync(cwd);
     mkdirSync(join(tmp, 'home'));
-    const env = { ...process.env, HOME: join(tmp, 'home'), AOS_STORE_INDEX: join(tmp, 'ecc.json'), AOS_STORE_RAW_BASE: base, AOS_STORE_INDEX_SCENARIO: join(tmp, 'scenario.json'), AOS_STORE_RAW_BASE_SCENARIO: base };
+    const env = { ...process.env, HOME: join(tmp, 'home'), AOS_STORE_TEST_OVERRIDES: '1', AOS_STORE_INDEX: join(tmp, 'ecc.json'), AOS_STORE_RAW_BASE: base, AOS_STORE_INDEX_SCENARIO: join(tmp, 'scenario.json'), AOS_STORE_RAW_BASE_SCENARIO: base };
     const run = (args, e = env) => new Promise((ok) => execFile(process.execPath, [cli, ...args], { cwd, env: e }, (error, stdout, stderr) => ok({ code: error ? error.code : 0, stdout, stderr })));
     await fn({ run, cwd, env, store, tmp });
   } finally {
@@ -168,7 +168,7 @@ test('dry-run lists the files of the required skill too and warns', async () => 
 test('UI catalog shows both sources; preview carries license, requires and exec-bridge warning flags', async () => {
   await withEnv(async ({ cwd, env }) => {
     const saved = {};
-    for (const k of ['HOME', 'AOS_STORE_INDEX', 'AOS_STORE_RAW_BASE', 'AOS_STORE_INDEX_SCENARIO', 'AOS_STORE_RAW_BASE_SCENARIO']) { saved[k] = process.env[k]; process.env[k] = env[k]; }
+    for (const k of ['HOME', 'AOS_STORE_TEST_OVERRIDES', 'AOS_STORE_INDEX', 'AOS_STORE_RAW_BASE', 'AOS_STORE_INDEX_SCENARIO', 'AOS_STORE_RAW_BASE_SCENARIO']) { saved[k] = process.env[k]; process.env[k] = env[k]; }
     const server = createStoreServer({ cwd });
     await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
     try {

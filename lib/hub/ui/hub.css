@@ -1,0 +1,38 @@
+:root{
+  --bg:#0a0a0a; --card:#141414; --line:#262626; --line-soft:#1d1d1d;
+  --fg:#fff; --dim:#8a8a8a; --dimmer:#5f5f5f;
+  --accent:#9b30c4; --plum:#51116F; --pill:#180524;
+  --up:#4ade80; --down:#f87171;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.5 ui-sans-serif,-apple-system,"SF Pro Display",Inter,system-ui,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:20px 28px;
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;line-height:1.2}
+.brand b{font-size:16px;font-weight:700;letter-spacing:.01em}
+.brand span{font-size:11px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
+.grow{flex:1}
+.ver{font:600 12px/1 ui-monospace,"SF Mono",monospace;color:var(--dim);
+  border:1px solid var(--line);border-radius:999px;padding:6px 11px}
+nav#tabs{display:flex;gap:6px;flex-wrap:wrap}
+nav#tabs a,nav#tabs button{font:inherit;font-size:12.5px;background:transparent;color:var(--fg);
+  border:1px solid var(--line);border-radius:7px;padding:5px 12px;cursor:pointer;text-decoration:none}
+nav#tabs a.active,nav#tabs button.active{border-color:var(--accent);background:var(--pill);color:#fff}
+.trail{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.trail a{font:600 11px/1 ui-monospace,"SF Mono",monospace;color:#d8b4fe;
+  border:1px solid rgba(155,48,196,.45);background:var(--pill);
+  border-radius:999px;padding:6px 12px;text-decoration:none}
+.trail .none{font-size:11px;color:var(--dimmer)}
+main{padding:22px 28px;display:grid;gap:10px;max-width:960px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.note{margin:0;padding:10px 16px;border-radius:8px;font-size:12.5px;line-height:1.45;
+  background:var(--pill);border:1px solid rgba(155,48,196,.45);color:#d8b4fe}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--line-soft)}
+th{font-size:11px;color:var(--dimmer);letter-spacing:.06em;text-transform:uppercase}
+td a{color:#d8b4fe;text-decoration:none}
+td a:hover{text-decoration:underline}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle}
+.up{background:var(--up)}.down{background:var(--down)}.unknown{background:var(--dimmer)}
+footer{padding:16px 28px 30px;color:var(--dimmer);font-size:12px}

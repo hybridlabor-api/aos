@@ -66,7 +66,7 @@ async function withFixture(mutate, fn) {
     writeFileSync(indexPath, JSON.stringify({ version: '1.0.0', pinned_commit: COMMIT, skills: { 'fixture-multi': item }, subagents: { x: item } }));
     const cwd = join(tmp, 'proj');
     mkdirSync(cwd);
-    const env = { ...process.env, HOME: join(tmp, 'home'), AOS_STORE_INDEX: indexPath, AOS_STORE_RAW_BASE: `http://127.0.0.1:${srv.address().port}` };
+    const env = { ...process.env, HOME: join(tmp, 'home'), AOS_STORE_TEST_OVERRIDES: '1', AOS_STORE_INDEX: indexPath, AOS_STORE_RAW_BASE: `http://127.0.0.1:${srv.address().port}` };
     const cli2 = (args) => new Promise((ok) => execFile(process.execPath, [cli, ...args], { cwd, env }, (error, stdout, stderr) => ok({ code: error ? error.code : 0, stdout, stderr })));
     await fn({ cli: cli2, cwd, item });
   } finally {

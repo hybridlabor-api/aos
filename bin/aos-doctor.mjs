@@ -474,6 +474,46 @@ function checkInstallerBaks() {
     'Review: node bin/aos-doctor.mjs --list-baks. Remove (your call, nothing is deleted automatically): node bin/aos-doctor.mjs --list-baks | while IFS= read -r f; do rm -- "$f"; done', true);
 }
 
+// AOS Hub (on demand): reachability is informational, not a failure — the hub
+// starts only when `aos hub` or a browser opens it. hub.json holds a pid+token
+// and must stay 0600. Leftover store backup parked dirs are listed only.
+async function checkHub() {
+  const hubFile = h('.aos', 'hub', 'hub.json');
+  const hubRecord = readJson(hubFile);
+  const hubPort = Number(hubRecord?.port) || 7900;
+  const hubReachable = await portOpen(hubPort);
+  add('hub', 'AOS Hub (:7900)', hubReachable,
+    hubReachable ? 'Running on http://127.0.0.1:7900' : 'Not running — the hub starts on demand (`aos hub`); never failed here',
+    'aos hub', true);
+
+  if (existsSync(hubFile)) {
+    let modeLoose = !IS_WIN && (statSync(hubFile).mode & 0o077) !== 0;
+    add('hub', 'Hub state file permissions', !modeLoose,
+      modeLoose ? `${tilde(hubFile)} has mode ${(statSync(hubFile).mode & 0o777).toString(8)}, must be 600` : `${tilde(hubFile)} exists (mode 600 ok)`,
+      `chmod 600 ${tilde(hubFile)}`, true);
+  } else {
+    add('hub', 'Hub state file permissions', true,
+      `${tilde(hubFile)} not present (nothing written yet)`, '', true);
+  }
+
+  const backupRoots = [h('.aos', 'store')];
+  try {
+    const storeDir = h('.aos', 'store');
+    const parked = [];
+    for (const dir of backupRoots) {
+      let names;
+      try { names = readdirSync(dir); } catch { continue; }
+      for (const n of names) {
+        if (/\.(aos-bak-|aos-failed-)/.test(n)) parked.push(path.join(dir, n));
+      }
+    }
+    if (parked.length) {
+      add('hub', 'Store backup leftovers', false, `${parked.length} parked backup(s), e.g. ${tilde(parked[0])}`,
+        'Rollback or restore first (`aos store rollback`); leftover backups are only removed on a successful rollback or reinstall. Nothing is deleted here.', true);
+    }
+  } catch { /* informational; never fails the doctor */ }
+}
+
 async function checkDaemonsAndModules() {
   // memB venv entry-module import check (10 s timeout)
   {
@@ -713,6 +753,7 @@ checkPlugins();
 checkAgyMcsc();
 checkMcpSecrets();
 checkInstallerBaks();
+await checkHub();
 checkA2aMatrix();
 await checkDaemonsAndModules();
 await checkGateway();
