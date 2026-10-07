@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// aos-bus spike: master -> running OpenCode session via per-session inbox files.
+// aos-bus: master -> running OpenCode session via per-session inbox files.
 // Library + CLI. The receiver (OpenCode plugin) injects each message as a synthetic + ignored part pair.
 
 import {
