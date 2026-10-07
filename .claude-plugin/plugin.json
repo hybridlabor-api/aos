@@ -292,6 +292,7 @@
     "./commands/brainstorm.md",
     "./commands/doctor.md",
     "./commands/graph.md",
+    "./commands/hub.md",
     "./commands/init.md",
     "./commands/loop.md",
     "./commands/mastersession.md",
