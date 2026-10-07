@@ -82,8 +82,8 @@ async function ensure(cwd) {
 // The lane semantics belong to the legacy per-repo daemon, which stays selectable,
 // so these tests start it directly instead of going through --ensure.
 const children = [];
-function startLegacy(repo, port) {
-  const c = spawn(process.execPath, [binary, repo, '--port', String(port), '--no-open'], { env: baseEnv(), stdio: ['ignore', 'ignore', 'pipe'] });
+function startLegacy(repo, port, planRel = 'production_artifacts/00_execution_plan.md') {
+  const c = spawn(process.execPath, [binary, repo, '--plan', planRel, '--port', String(port), '--no-open'], { env: baseEnv(), stdio: ['ignore', 'ignore', 'pipe'] });
   children.push(c);
   const url = `http://127.0.0.1:${port}`;
   return (async () => {
