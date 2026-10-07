@@ -193,3 +193,73 @@ describe('A2A MCP Installer Integration', () => {
     assert.match(out, /cursor-peer/);
   });
 });
+
+// WP-A2A-MCP-4 final round (Opus re-check APPROVE-WITH-FIXES): B5 spurious warning, exclusive
+// backups per write and the atomic tmp-then-rename write for the A2A MCP registration helpers.
+describe('A2A MCP Installer Hardening (WP-A2A-MCP-4)', () => {
+  const installer = require(INSTALLER);
+
+  test('B5: resolveAosA2aMcpName warns only when an override is SET and invalid, never for an unset one', () => {
+    let seen = '';
+    const origOut = process.stdout.write.bind(process.stdout), origErr = process.stderr.write.bind(process.stderr);
+    process.stdout.write = (s, ...a) => { seen += String(s); return origOut(s, ...a); };
+    process.stderr.write = (s, ...a) => { seen += String(s); return origErr(s, ...a); };
+    try {
+      assert.equal(installer.resolveAosA2aMcpName(null, 'cursor-mcp', 'Cursor'), 'cursor-mcp');
+      assert.equal(installer.resolveAosA2aMcpName(undefined, 'agy-mcp', 'agy'), 'agy-mcp');
+    } finally {
+      process.stdout.write = origOut, process.stderr.write = origErr;
+    }
+    assert.doesNotMatch(seen, /not a valid A2A session name/, `an unset override must not warn (seen=${JSON.stringify(seen)})`);
+    // sanity: a set-but-invalid override still warns and falls back
+    let seen2 = '';
+    process.stdout.write = (s, ...a) => { seen2 += String(s); return origOut(s, ...a); };
+    process.stderr.write = (s, ...a) => { seen2 += String(s); return origErr(s, ...a); };
+    try {
+      assert.equal(installer.resolveAosA2aMcpName('bad name!', 'cursor-mcp', 'Cursor'), 'cursor-mcp');
+    } finally {
+      process.stdout.write = origOut, process.stderr.write = origErr;
+    }
+    assert.match(seen2, /not a valid A2A session name/, 'a set invalid override must still warn');
+  });
+
+  test('hardening: two writes to one config in one process keep two distinct backups, the first holding the ORIGINAL content', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2a-bak-'));
+    const file = path.join(dir, 'mcp.json');
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { mine: { command: 'echo' } } }, null, 2));
+    const original = fs.readFileSync(file, 'utf8');
+
+    installer.writeConfigWithBackup(file, { mcpServers: { aos_stuff: 1 } }, original);
+    installer.writeConfigWithBackup(file, { mcpServers: { aos_stuff: 2 } }, JSON.stringify({ mcpServers: { aos_stuff: 1 } }));
+
+    const backups = fs.readdirSync(dir)
+      .filter((f) => /\.bak(\.\d+)?$/.test(f))
+      .map((f) => ({ f, suffixed: /\.bak\.\d+$/.test(f), content: fs.readFileSync(path.join(dir, f), 'utf8') }));
+    assert.equal(backups.length, 2, `two distinct backups expected (${JSON.stringify(backups.map((x) => x.f))})`);
+    assert.equal(new Set(backups.map((x) => x.f)).size, 2, 'backup names must be distinct');
+    const first = JSON.parse(fs.readFileSync(path.join(dir, backups.find((x) => !x.suffixed).f), 'utf8'));
+    const second = JSON.parse(fs.readFileSync(path.join(dir, backups.find((x) => x.suffixed).f), 'utf8'));
+    assert.deepEqual(first, { mcpServers: { mine: { command: 'echo' } } }, 'the FIRST backup must still hold the ORIGINAL content');
+    assert.deepEqual(second, { mcpServers: { aos_stuff: 1 } }, 'the second backup must hold the post-first-write content');
+  });
+
+  test('hardening: a failing rename between tmp write and replace leaves the original config intact with no temp leftovers', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2a-bak2-'));
+    const file = path.join(dir, 'mcp.json');
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { mine: { command: 'echo' } } }, null, 2));
+    const original = fs.readFileSync(file, 'utf8');
+
+    const realRename = fs.renameSync;
+    fs.renameSync = () => { throw new Error('simulated crash before rename'); };
+    let result;
+    try {
+      result = installer.writeConfigWithBackup(file, { changed: true }, original);
+    } finally {
+      fs.renameSync = realRename;
+    }
+    assert.equal(result, false, 'a failed write is reported false, never a silent success');
+    assert.equal(fs.readFileSync(file, 'utf8'), original, 'the original file must be byte for byte intact');
+    const leftovers = fs.readdirSync(dir).filter((f) => f.includes('.tmp-'));
+    assert.deepEqual(leftovers, [], 'no temp file may survive a failed write');
+  });
+});

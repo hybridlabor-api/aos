@@ -230,3 +230,57 @@ test("withTransientRetry: retries consecutive failures, resets on success, throw
   }, { sleepFn: noSleep });
   assert.equal(out, 3, `failures then success resolves with the success value (m=${m})`);
 });
+
+// --- WP-A2A-MCP-4 (B1): send() accepts an explicit `depth` option. Effective current depth is
+// max(env depth, options.depth); the limit check (effective >= AOS_A2A_MAX_DEPTH) fires BEFORE any
+// target resolution or network call, so the rejection is provably the client's own check. ---
+test("send({depth}) rejects at/before AOS_A2A_MAX_DEPTH before touching the registry", async () => {
+  const restore = {
+    AOS_DELEGATE_DEPTH: process.env.AOS_DELEGATE_DEPTH,
+    MCSC_DEPTH: process.env.MCSC_DEPTH,
+    AOS_A2A_MAX_DEPTH: process.env.AOS_A2A_MAX_DEPTH,
+  };
+  delete process.env.AOS_DELEGATE_DEPTH;
+  delete process.env.MCSC_DEPTH;
+  delete process.env.AOS_A2A_MAX_DEPTH;
+  try {
+    // depth 1 == default max -> refused, and explicitly NOT with the unknown-peer error the call
+    // would otherwise produce (proves the depth check runs first)
+    await assert.rejects(client.send({ to: "no-depth-target-x", text: "x", depth: 1 }), /A2A depth limit reached/);
+    await assert.rejects(client.send({ to: "no-depth-target-x", text: "x", depth: 2 }), /A2A depth limit reached/);
+    // depth 0 (or unset) does not trigger the client limit: the error is the ordinary target error
+    await assert.rejects(client.send({ to: "no-depth-target-x", text: "x", depth: 0 }), /no live registry entry/);
+    await assert.rejects(client.send({ to: "no-depth-target-x", text: "x" }), /no live registry entry/);
+    // a negative depth option cannot buy depth back: it fails plain
+    await assert.rejects(client.send({ to: "no-depth-target-x", text: "x", depth: -5 }), /no live registry entry/);
+  } finally {
+    for (const [k, v] of Object.entries(restore)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
+});
+
+test("send({depth}) combines with the env depth (higher wins) and stamps effective + 1", async () => {
+  const restore = {
+    AOS_DELEGATE_DEPTH: process.env.AOS_DELEGATE_DEPTH,
+    AOS_A2A_MAX_DEPTH: process.env.AOS_A2A_MAX_DEPTH,
+  };
+  try {
+    process.env.AOS_DELEGATE_DEPTH = "0";
+    process.env.AOS_A2A_MAX_DEPTH = "3";
+    // env 0 + option 2 -> effective 2, stamped 3 (max 3 refuses effective 3, so 2 is the deepest send)
+    const s = await sidecar.startSidecar({ name: "cpdepth", harness: "claude", profile: profile() });
+    try {
+      // The metadata depth is not directly observable through the echo, but send must NOT be
+      // refused at effective 2 < max 3 even though env depth is only 0.
+      const res = await client.send({ to: "cpdepth", text: "depth via option", depth: 2 });
+      assert.equal(res.state, "TASK_STATE_COMPLETED", `depth-option send below max must complete (res=${JSON.stringify(res)})`);
+    } finally { s.stop(); }
+    process.env.AOS_DELEGATE_DEPTH = "3";
+    await assert.rejects(client.send({ to: "cpdepth-gone", text: "x" }), /A2A depth limit reached/);
+  } finally {
+    for (const [k, v] of Object.entries(restore)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
+});

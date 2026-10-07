@@ -321,11 +321,11 @@ test("depth limit: AOS_DELEGATE_DEPTH=1 with AOS_A2A_MAX_DEPTH=1 is a tool error
   }
 });
 
-test("B1: a pulled deep inbound message blocks a2a_send until it is answered; replies stay allowed", async () => {
-  // The env-depth limit alone is frozen at spawn time (checkDepth reads the MCP process env),
-  // so the server also remembers the depth of inbound messages it handed out via a2a_inbox_pull:
-  // while one at/above AOS_A2A_MAX_DEPTH (default 1) is unanswered, sends are refused, a2a_reply
-  // is NOT, and after the reply the hold is released.
+test("B1: a2a_send passes max(env, highest pulled depth) to the client; a pulled deep message blocks sends even AFTER being answered (replies always allowed)", async () => {
+  // The env depth is frozen at spawn time (checkDepth reads the MCP process env), so the server
+  // also remembers, per process, the HIGHEST depth of each message handed out via a2a_inbox_pull
+  // — never lowered, NOT cleared by a2a_reply. The stamped outbound depth is that + 1 and the
+  // client's own limit check rejects the relay, so A -> agy -> B -> agy loops stay bounded.
   await startServer();
   try {
     const { writeMessage } = await import("../lib/a2a-inbox.mjs");
@@ -337,21 +337,54 @@ test("B1: a pulled deep inbound message blocks a2a_send until it is answered; re
     assert.equal(sendRefused.result.isError, true, JSON.stringify(sendRefused));
     assert.match(sendRefused.result.content[0].text, /A2A depth limit reached/, sendRefused.result.content[0].text);
     assert.ok(!/loop attempt/.test(sendRefused.result.content[0].text), "the refused text must not travel anywhere");
-    // replies to the blocking message are always allowed — that is the way out
+    // answering the deep message stays allowed — that is the way out — but it must NOT refresh
+    // the relay budget: the next a2a_send is STILL refused (the hold is never cleared by a reply).
     const rep = await rpc(child, io, 4, "tools/call", { name: "a2a_reply", arguments: { taskId: "task-depth-mcp", text: "answered, done" } });
-    assert.equal(rep.result.isError, false, JSON.stringify(rep));
-    const sendOk = await rpc(child, io, 5, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "now allowed" } });
-    assert.equal(sendOk.result.isError, false, `answer released the hold (${sendOk.result.content[0].text})`);
-    // and a fresh send purse is also unblocked for an unrelated message
-    const again = await rpc(child, io, 6, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "second one" } });
-    assert.equal(again.result.isError, false, JSON.stringify(again));
+    assert.equal(rep.result.isError, false, `the reply itself must be allowed (${JSON.stringify(rep)})`);
+    assert.ok(existsSync(join(process.env.AOS_A2A_INBOX, "mcp-client", "task-depth-mcp.reply")), "the reply file must exist");
+    const sendStillRefused = await rpc(child, io, 5, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "still a loop" } });
+    assert.equal(sendStillRefused.result.isError, true, `answering then relaying must still be refused (${JSON.stringify(sendStillRefused)})`);
+    assert.match(sendStillRefused.result.content[0].text, /A2A depth limit reached/, sendStillRefused.result.content[0].text);
+    // and a third, different deep message never resets the downward-only hold either
+    writeMessage(process.env.AOS_A2A_NAME, { taskId: "task-depth-mcp-2", from: "bob-peer", text: "again", depth: 2 });
+    const pull2 = await rpc(child, io, 6, "tools/call", { name: "a2a_inbox_pull", arguments: {} });
+    assert.equal(pull2.result.isError, false, JSON.stringify(pull2));
+    const deeperRefused = await rpc(child, io, 7, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "third try" } });
+    assert.equal(deeperRefused.result.isError, true, JSON.stringify(deeperRefused));
+    assert.match(deeperRefused.result.content[0].text, /A2A depth limit reached/, deeperRefused.result.content[0].text);
   } finally {
     child.kill("SIGTERM");
   }
 });
 
-test("B6: a2a_card refuses a registry entry whose cardUrl is not loopback, and never echoes the url", async () => {
+test("B1: with no pulled message a2a_send works at the frozen env depth", async () => {
   await startServer();
+  try {
+    const r = await rpc(child, io, 2, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "no pull, no hold" } });
+    assert.equal(r.result.isError, false, `a send without any pulled message must work (${JSON.stringify(r)})`);
+  } finally {
+    child.kill("SIGTERM");
+  }
+});
+
+test("B1: a pulled depth-0 (or depth-less) message does not raise the hold; a2a_send passes the max depth for the client limit check", async () => {
+  const { writeMessage } = await import("../lib/a2a-inbox.mjs");
+  // depth omitted entirely: writeMessage writes no depth field, the pull must not raise the hold
+  writeMessage(process.env.AOS_A2A_NAME, { taskId: "task-depth-mcp-0", from: "alice-peer", text: "no depth on this one" });
+  await startServer();
+  try {
+    const pull = await rpc(child, io, 2, "tools/call", { name: "a2a_inbox_pull", arguments: {} });
+    assert.equal(pull.result.isError, false, JSON.stringify(pull));
+    assert.ok(pull.result.content[0].text.includes("no depth on this one"), `the message must have been pulled (${pull.result.content[0].text})`);
+    assert.doesNotMatch(pull.result.content[0].text, /Depth: /, `a depth-less message must not show a Depth line (${pull.result.content[0].text})`);
+    const r = await rpc(child, io, 3, "tools/call", { name: "a2a_send", arguments: { to: PEER, text: "depth-zero does not block" } });
+    assert.equal(r.result.isError, false, `a pulled depth-less message must not block a send (${JSON.stringify(r)})`);
+  } finally {
+    child.kill("SIGTERM");
+  }
+});
+
+test("B6: a2a_card refuses a registry entry whose cardUrl is not loopback, and never echoes the url", async () => {  await startServer();
   try {
     // Planted, user-writable registry entry pointing off-loopback (SSRF attempt); cleaned up
     // again with the registry's own unregister so the session store stays exactly as before.
@@ -366,6 +399,36 @@ test("B6: a2a_card refuses a registry entry whose cardUrl is not loopback, and n
       assert.equal(alive.result.tools.length, 6, "server must survive a refused card fetch");
     } finally {
       try { unregister("evil-peer"); } catch { /* already gone */ }
+    }
+  } finally {
+    child.kill("SIGTERM");
+  }
+});
+
+test("B6: a2a_card refuses a redirecting loopback card server (fetch uses redirect manual; any 3xx is a tool error)", async () => {
+  await startServer();
+  try {
+    const http = await import("node:http");
+    // A loopback server that answers every request with a 302 to an attacker host: the tool must
+    // refuse instead of following the redirect off-loopback.
+    const srv = http.createServer((req, res) => {
+      res.writeHead(302, { Location: "http://example.attacker/card" });
+      res.end();
+    });
+    await new Promise((resolve) => srv.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${srv.address().port}/card`;
+    const { register, unregister } = await import("../lib/a2a-registry.mjs");
+    register({ name: "loopback-redirect-peer", harness: "claude", cardUrl: url, pid: process.pid });
+    try {
+      const r = await rpc(child, io, 2, "tools/call", { name: "a2a_card", arguments: { to: "loopback-redirect-peer" } });
+      assert.equal(r.result.isError, true, JSON.stringify(r));
+      assert.match(r.result.content[0].text, /card fetch refused.*redirect refused/, r.result.content[0].text);
+      assert.doesNotMatch(r.result.content[0].text, /example\.attacker|https?:\/\//, "no url in the error");
+      const alive = await rpc(child, io, 3, "tools/list", {});
+      assert.equal(alive.result.tools.length, 6, "server must survive a redirect-refused card fetch");
+    } finally {
+      srv.close();
+      try { unregister("loopback-redirect-peer"); } catch { /* already gone */ }
     }
   } finally {
     child.kill("SIGTERM");

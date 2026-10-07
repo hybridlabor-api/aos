@@ -364,7 +364,31 @@ function warnUnparseable(filePath, what, loaded) {
     log.warn(`Could not parse ${filePath} (${loaded.error}); left untouched, ${what} skipped. Fix or remove the file and run the installer again.`);
 }
 
-// Writes `data` over an existing config only when it changed (`before` = JSON.stringify of the parsed original, null for none), after a backup.
+// Backup name collision (hardening): the backup is `<file>.<fsStr>.bak` where fsStr has one-second
+// granularity, so a second write to the same file within the same run would otherwise overwrite the
+// first backup and LOSE the original. fs.copyFileSync with COPYFILE_EXCL never overwrites; on EEXIST
+// a counter suffix (.1, .2, …) is appended until a fresh backup name is found or a cap is hit.
+function backupConfigPath(src, fsStr) {
+    const base = `${src}.${fsStr}.bak`;
+    try { fs.copyFileSync(src, base, fs.constants.COPYFILE_EXCL); return base; }
+    catch (e) {
+        if (e && e.code !== 'EEXIST') throw e;
+        for (let n = 1; ; n++) {
+            const dest = `${base}.${n}`;
+            try { fs.copyFileSync(src, dest, fs.constants.COPYFILE_EXCL); return dest; }
+            catch (e2) {
+                if (e2 && e2.code !== 'EEXIST') throw e2;
+                if (n >= 1000) throw new Error(`no free backup name for ${src} after 1000 attempts`);
+            }
+        }
+    }
+}
+
+// Writes `data` over an existing config only when it changed (`before` = JSON.stringify of the
+// parsed original, null for none), after a non-destructive exclusive backup. The write is atomic:
+// the temp file `<file>.tmp-<pid>` is written in the same directory with mode 0600 and renamed
+// over the target; a failed rename leaves the backup and the original intact, and no temp file
+// survives either path.
 function writeConfigWithBackup(filePath, data, before) {
     const serialized = JSON.stringify(data, null, 2);
     if (before !== null && before === JSON.stringify(data)) {
@@ -372,13 +396,36 @@ function writeConfigWithBackup(filePath, data, before) {
         return false;
     }
     if (fs.existsSync(filePath)) {
-        try { fs.copyFileSync(filePath, `${filePath}.${timestamp}.bak`); } catch (e) {
+        try {
+            backupConfigPath(filePath, timestamp);
+            const tmp = `${filePath}.tmp-${process.pid}`;
+            try {
+                fs.writeFileSync(tmp, serialized, { mode: 0o600 });
+                try { fs.chmodSync(tmp, 0o600); } catch (e) { logDebug(e, 'chmod config tmp'); }
+                try { fs.renameSync(tmp, filePath); } catch (e) {
+                    try { fs.unlinkSync(tmp); } catch (e2) { logDebug(e2, 'unlink config tmp'); }
+                    throw e;
+                }
+            } catch (e) {
+                log.warn(`Could not write ${filePath}, not rewriting it: ${e.message}`);
+                return false;
+            }
+        } catch (e) {
             log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
             return false;
         }
+    } else {
+        const tmp = `${filePath}.tmp-${process.pid}`;
+        try {
+            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            fs.writeFileSync(tmp, serialized, { mode: 0o600 });
+            fs.renameSync(tmp, filePath);
+        } catch (e) {
+            try { fs.unlinkSync(tmp); } catch (e2) { logDebug(e2, 'unlink config tmp'); }
+            log.warn(`Could not write ${filePath}: ${e.message}`);
+            return false;
+        }
     }
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, serialized, { mode: 0o600 });
     try { fs.chmodSync(filePath, 0o600); } catch (e) { logDebug(e, 'chmod config'); }
     return true;
 }
@@ -3384,7 +3431,10 @@ function validA2aMcpSessionName(name) {
 function resolveAosA2aMcpName(raw, fallback, where) {
     const validated = raw == null ? null : validA2aMcpSessionName(String(raw));
     if (validated) return validated;
-    log.warn(`${where} MCP session name ${JSON.stringify(raw ?? null)} is not a valid A2A session name (use [a-z0-9._-], no leading dot/dash, max 64); using "${fallback}"`);
+    // An unset override (raw == null) simply takes the fixed default — not a warning (B5):
+    // only an override that was actually SET and is invalid gets the loud fallback message.
+    if (raw == null) return fallback;
+    log.warn(`${where} MCP session name ${JSON.stringify(raw)} is not a valid A2A session name (use [a-z0-9._-], no leading dot/dash, max 64); using "${fallback}"`);
     return fallback;
 }
 
@@ -6965,6 +7015,8 @@ module.exports = {
     removeAosA2aEntries,
     isAosA2aEntry,
     resolveAosA2aMcpName,
+    backupConfigPath,
+    writeConfigWithBackup,
 
     findUv,
     parseModuleSelection,

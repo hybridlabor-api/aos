@@ -88,15 +88,13 @@ const wrapped = (to, text) => formatInjection({ from: to, text: text ?? "" });
 // Depth limit, per process (B1): checkDepth() reads the MCP process env, which is frozen at spawn
 // time, so a harness session that ANSWERED a depth-N inbound message could otherwise resend at its
 // (frozen) depth forever — loops A -> agy -> B -> agy would be unbounded. Instead the server
-// remembers the depth of every inbound message it hands out through a2a_inbox_pull; while such a
-// message is pulled and not yet answered with a2a_reply, a2a_send is refused when that depth is at
-// or above AOS_A2A_MAX_DEPTH (default 1). Replies always stay allowed.
-const openInboundDepths = new Map(); // taskId -> inbound depth of a pulled, not-yet-answered message
-const maxDepth = () => Number(process.env.AOS_A2A_MAX_DEPTH || 1);
-const pulledDepthOverLimit = () => {
-  for (const d of openInboundDepths.values()) if (d >= maxDepth()) return d;
-  return null;
-};
+// remembers, per process, the HIGHEST depth of every message it handed out through a2a_inbox_pull:
+// it is never lowered and an a2a_reply does NOT clear it (answering then relaying must not refresh
+// the relay budget). a2a_send passes `depth = max(env depth, highest pulled depth)` to the client,
+// so the stamped outbound depth is that + 1 and the client's own limit check rejects the send with
+// `A2A depth limit reached` as soon as the inbound depth reached AOS_A2A_MAX_DEPTH (default 1).
+// A pulled message without a depth (or with depth 0) does not raise the hold.
+let highestPulledDepth = 0;
 
 function peerTextParts(res, to) {
   const lines = [`taskId: ${res.taskId}`, `state: ${res.state}`];
@@ -183,14 +181,15 @@ const handleCall = async (name, args) => {
     }
     if (name === "a2a_send") {
       validateArgs(args, new Set(["to", "text", "timeout_s", "background"]), ["to", "text"]);
-      // A pulled inbound message whose depth is at/above the limit must be answered first:
-      // no onward send while it is open (replies via a2a_reply are unaffected).
-      const pulled = pulledDepthOverLimit();
-      if (pulled != null) throw new ToolError(`A2A depth limit reached (pulled message depth ${pulled} >= AOS_A2A_MAX_DEPTH ${maxDepth()}, answer it with a2a_reply before sending)`);
+      // The effective depth is the higher of the frozen env depth and the deepest message this
+      // process ever handed out via a2a_inbox_pull: the client's own checkDepth-style limit check
+      // (effective >= AOS_A2A_MAX_DEPTH) then refuses the send. Replies via a2a_reply are unaffected.
       const from = sessionName();
       const to = validPeer(args.to);
       const text = text8k(args.text, "text");
-      const params = { to, text, from };
+      const envDepth = Math.max(Number(process.env.AOS_DELEGATE_DEPTH || 0), Number(process.env.MCSC_DEPTH || 0));
+      const depth = Math.max(envDepth, highestPulledDepth);
+      const params = { to, text, from, depth };
       const timeoutMs = optionalTimeout(args);
       if (timeoutMs != null) params.timeoutMs = timeoutMs;
       const background = optionalBool(args, "background");
@@ -214,7 +213,8 @@ const handleCall = async (name, args) => {
       const taskId = validName(str(args.taskId, "taskId"));
       const text = text8k(args.text, "text");
       const { path } = reply({ taskId, text });
-      openInboundDepths.delete(taskId); // answered: the depth hold on this message is released
+      // highestPulledDepth is deliberately NOT released here: answering a deep message must not
+      // refresh the session's onward relay budget (B1).
       return { isError: false, text: `reply written to ${path}` };
     }
     if (name === "a2a_card") {
@@ -233,10 +233,16 @@ const handleCall = async (name, args) => {
       }
       let card;
       try {
-        const res = await fetch(entry.cardUrl);
+        // A loopback card server can still redirect anywhere: fetch is pinned to manual redirect
+        // handling (B6) and every 3xx is refused as a tool error instead of being followed.
+        const res = await fetch(entry.cardUrl, { redirect: "manual" });
+        if (res.status >= 300 && res.status < 400) throw new Error("card redirect refused");
         if (!res.ok) throw new Error("unavailable");
         card = await res.json();
-      } catch {
+      } catch (e) {
+        if (e instanceof ToolError || /card redirect refused/.test(String(e?.message ?? ""))) {
+          throw new ToolError(`card fetch refused for peer "${to}": redirect refused`);
+        }
         throw new ToolError(`card fetch failed for peer "${to}"`);
       }
       // The card name survives only when it is a safe session-name-shaped string; description is a
@@ -260,10 +266,10 @@ const handleCall = async (name, args) => {
       for (const m of pending(me)) {
         const got = claim(m.file);
         if (!got) continue; // claimed meanwhile or corrupt
-        // Remember this message's inbound depth (B1): while it stays unanswered, sends are
-        // refused at/above AOS_A2A_MAX_DEPTH, so the session cannot relay onward forever.
+        // Remember the HIGHEST inbound depth this process ever handed out (B1): it is never
+        // lowered and never cleared by a reply, so the relay budget only ever shrinks.
         const d = Number(got?.depth);
-        if (Number.isFinite(d) && d > 0) openInboundDepths.set(got.taskId, d);
+        if (Number.isFinite(d) && d > highestPulledDepth) highestPulledDepth = d;
         const hint = `Answer with a2a_reply (taskId ${got.taskId}), or run: ${replyCommand(got.taskId, "<your answer>", process.env.PATH, me)}`;
         parts.push(`${formatInjection(got)}\n${hint}`);
       }
