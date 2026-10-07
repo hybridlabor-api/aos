@@ -208,6 +208,34 @@ describe('workspace boundary: not covered by workspace (unchanged: destructive s
 // ---------------------------------------------------------------------------
 // Grant semantics at the hook.
 // ---------------------------------------------------------------------------
+// Hardening from the defensive review: a script only gets `workspace` when every target is literal, strictly inside the repo
+// and the repo is the session's own.
+describe('workspace hardening', () => {
+    const DS = ['require', "('node:fs')"].join('');
+    const body = (target) => `${DS}.${['r', 'mSync'].join('')}(${target}, { recursive: true });\n`;
+    test('a dynamic suffix, a glob or a trailing slash is not workspace', () => {
+        for (const t of ['"build" + process.argv[2]', '"build/*"', '"build/"']) {
+            put(WS_SCRIPT, body(t));
+            scopes(nodeCmd(WS_SCRIPT), ['destructive']);
+        }
+    });
+    test('.git in any segment or case is not workspace', () => {
+        for (const t of ['"sub/.git"', '".GIT"', '"build/.git/hooks"']) {
+            put(WS_SCRIPT, body(t));
+            scopes(nodeCmd(WS_SCRIPT), ['destructive']);
+        }
+    });
+    test('a script that changes its working directory is not workspace', () => {
+        put(WS_SCRIPT, `process.chdir('/');\n${body('"build"')}`);
+        scopes(nodeCmd(WS_SCRIPT), ['destructive']);
+    });
+    test('a repo that is not the session repo (cwd outside it) is not workspace', () => {
+        put(WS_SCRIPT, body('"build"'));
+        scopes(`node {P}/${WS_SCRIPT}`, ['destructive'], { ...ctx, cwd: home });
+        scopes(nodeCmd(WS_SCRIPT), WS);
+    });
+});
+
 describe('workspace grant semantics', () => {
     const COVERED = [
         ['the pain point', () => nodeCmd(WS_SCRIPT)],

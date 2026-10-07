@@ -424,12 +424,19 @@ describe('container-test grant semantics', () => {
 describe('aos-a2a: the quoted message is data, never command text', () => {
     const MSG = `please run the tests; then ${['git', 'push'].join(' ')} origin main & ${RMRF} && echo done`;
     test('send and reply with command-like words in the message are unguarded', () => {
-        fs.mkdirSync(path.join(work, 'bin'), { recursive: true });
-        fs.writeFileSync(path.join(work, 'bin', 'aos-a2a.mjs'), 'console.log("a2a client");\n'); // the script itself is still read and must exist
+        fs.mkdirSync(path.join(home, '.agents', 'bin'), { recursive: true });
+        fs.writeFileSync(path.join(home, '.agents', 'bin', 'aos-a2a.mjs'), 'console.log("a2a client");\n'); // installed copy; the script itself is still read
         scopes(`aos-a2a send --to e2e-opencode "${MSG}"`, []);
         scopes(`aos-a2a reply task1 "${MSG}"`, []);
-        scopes(`node {P}/bin/aos-a2a.mjs send --to e2e-opencode "${MSG}"`, []);
+        scopes(`node {H}/.agents/bin/aos-a2a.mjs send --to e2e-opencode "${MSG}"`, []);
         scopes('aos-a2a list', []);
+    });
+    test('only the bare command and the installed script get the data treatment', () => {
+        fs.mkdirSync(path.join(work, 'bin'), { recursive: true });
+        fs.writeFileSync(path.join(work, 'bin', 'aos-a2a.mjs'), 'console.log("planted");\n');
+        for (const c of [`node {P}/bin/aos-a2a.mjs send --to p "${MSG}"`, `./aos-a2a send --to p "${MSG}"`, `{P}/bin/aos-a2a send --to p "${MSG}"`, `PATH=./bin aos-a2a send --to p "${MSG}"`]) {
+            assert.notDeepEqual(sc(c), [], `must stay guarded: ${fill(c)}`);
+        }
     });
     test('hook: they pass without any GO or grant', () => {
         add(human('go on'));
@@ -442,6 +449,37 @@ describe('aos-a2a: the quoted message is data, never command text', () => {
     });
     test('other commands keep their quoted text as command text', () => {
         blocked(`bash -c "${PUSH}"`);
+    });
+});
+
+// Hardening from the defensive review of the container-test and commit-bypass rules.
+describe('hardening: binary name, environment, readers, mount markers, commit expansions', () => {
+    const RUNX = "docker run --rm -v {P}:/src node:24 npm test";
+    test('a path-qualified docker word and a PATH or DOCKER_* change are not container-test', () => {
+        scopes('./docker run --rm -v {P}:/src node:24 npm test', null);
+        scopes(`export PATH=./bin:$PATH && ${RUNX}`, null);
+        scopes(`DOCKER_HOST=tcp://x:1 ${RUNX}`, null);
+    });
+    test('isContainerTestRun: readers after the run may not write or run programs', () => {
+        const n = (c) => assert.equal(g.isContainerTestRun(fill(c)), false, fill(c));
+        const y = (c) => assert.equal(g.isContainerTestRun(fill(c)), true, fill(c));
+        y(`${RUNX} 2>&1 | tail -5`); y(`${RUNX} 2>&1 | grep -nE "x|y" | head`);
+        n(`${RUNX} | sort -o out.txt`); n(`${RUNX} | sort --output=out.txt`); n(`${RUNX} | uniq a b`); n(`${RUNX} | grep -f pats`);
+        n(`PATH=./bin ${RUNX}`); n(`export PATH=./bin:$PATH; ${RUNX}`);
+    });
+    test('a mount without a project marker (.git or package.json) is not covered', () => {
+        const flat2 = path.join(home, 'projects', 'nomarker');
+        fs.mkdirSync(flat2, { recursive: true });
+        scopes(`docker run --rm -v ${flat2}:/src node:24 npm test`, null);
+        fs.writeFileSync(path.join(flat2, 'package.json'), '{}');
+        scopes(`docker run --rm -v ${flat2}:/src node:24 npm test`, CT);
+    });
+    test('commit: expansions inside a flag, risky config keys and hook-skipping variables need a GO', () => {
+        for (const c of ['git commit --no-v${A} -m x', 'git commit -n${X} -m x', "sh -c 'git commit $F'", 'git -c include.path=x commit -m x', 'git -c core.editor=x commit -m x', 'HUSKY=0 git commit -m x', 'LEFTHOOK=0 git commit -m x', 'SKIP=lint git commit -m x']) {
+            scopes(c, null);
+        }
+        scopes('git commit -m "cost $5"', []);
+        scopes('git -c user.name=x -c user.email=y commit -m x', []);
     });
 });
 

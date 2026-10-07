@@ -141,7 +141,7 @@ function stripPrefix(tok) {
   for (;;) {
     const t = unq(tok[i] ?? "");
     if (t === "!") { i++; continue; }
-    if (/^\w+=/.test(t)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=)/.test(t); i++; continue; }
+    if (/^\w+=/.test(t)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=|HUSKY=|LEFTHOOK=|SKIP=|PRE_COMMIT)/.test(t); i++; continue; }
     const w = WRAPPERS[base(tok[i] ?? "")];
     if (!w) break;
     const name = base(tok[i]);
@@ -149,7 +149,7 @@ function stripPrefix(tok) {
     let pos = w.pos || 0;
     while (i < tok.length) {
       const o = unq(tok[i]);
-      if (name === "env" && /^\w+=/.test(o)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=)/.test(o); i++; continue; }
+      if (name === "env" && /^\w+=/.test(o)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=|HUSKY=|LEFTHOOK=|SKIP=|PRE_COMMIT)/.test(o); i++; continue; }
       if (o.startsWith("-") && o !== "-") {
         if ((name === "env" && /^-S/.test(o)) || (name === "script" && o === "-c")) opaque = true;
         i += w.v?.test(o) ? 2 : 1;
@@ -496,8 +496,10 @@ const PUSHY_CONFIG = /push|remote\.|url\.|insteadof|alias\.|hookspath|gpgsign/i;
 // A commit that skips hooks or signing needs a plain GO: --no-verify (and its abbreviations), --no-gpg-sign, a -n
 // bundle, a -c / --config-env key that sets core.hooksPath or commit.gpgsign (or cannot be read), a bare $word.
 const COMMIT_BYPASS_FLAG = /^(?:--no-v(?:e(?:r(?:i(?:f(?:y)?)?)?)?)?|--no-g\S*|-[a-zA-Z]*n[a-zA-Z]*)$/;
-const badGitKey = (v) => { const key = String(v ?? "").split("=")[0]; return /^(?:core\.hookspath|commit\.gpgsign)$/i.test(key) || /[$\x60]/.test(key); };
-const commitBypass = (r) => { const end = r.indexOf("--"); return r.slice(0, end === -1 ? undefined : end).some((t) => COMMIT_BYPASS_FLAG.test(t) || /^[$\x60]/.test(t)); };
+// Config keys that skip or redirect hooks, signing, the editor or helper programs; a commit may set only a few harmless ones.
+const badGitKey = (v) => { const key = String(v ?? "").split("=")[0]; return /^(?:core\.(?:hookspath|editor|fsmonitor|pager|sshcommand|askpass)|commit\.gpgsign|gpg\.program|include(?:if)?\..*|credential\.helper)$/i.test(key) || /[$\x60]/.test(key); };
+// A flag-shaped word that carries an expansion (`--no-v${A}`) is as unreadable as a bare `$FLAGS`.
+const commitBypass = (r) => { const end = r.indexOf("--"); return r.slice(0, end === -1 ? undefined : end).some((t) => COMMIT_BYPASS_FLAG.test(t) || /^[$\x60]/.test(t) || (/^-/.test(t) && /[$\x60]/.test(t))); };
 const COMMIT_WORD_BYPASS = /^(?:--no-v(?:e(?:r(?:i(?:f(?:y)?)?)?)?)?|--no-g\S*|-[a-zA-Z]*n[a-zA-Z]*|-?c?core\.hookspath\S*|-?c?commit\.gpgsign\S*|--config-env=(?:core\.hookspath|commit\.gpgsign)\S*)$/i;
 const PM = /^(?:npm|pnpm|yarn|bun)$/;
 const NPM_VALUE_OPTS = /^(?:--prefix|-w|--workspace|-C|--dir|--registry|--userconfig|--cache|--tag|--otp|--access|--filter|--cwd)$/;
@@ -612,7 +614,7 @@ function catchAll(tok, seg, opaque = false) {
   for (let i = 0; i < w.length; i++) {
     if ((w[i] === "git" || w[i] === "hub") && after(i, GIT_VERBS)) return true;
     // a commit that skips hooks or signing, inside sh -c / eval / xargs
-    if ((w[i] === "git" || w[i] === "hub") && w.slice(i + 1).includes("commit") && raw.slice(i + 1).some((x) => COMMIT_WORD_BYPASS.test(x))) return true;
+    if ((w[i] === "git" || w[i] === "hub") && w.slice(i + 1).includes("commit") && raw.slice(i + 1).some((x) => COMMIT_WORD_BYPASS.test(x) || /^[$\x60]/.test(x) || (/^-/.test(x) && /[$\x60]/.test(x)))) return true;
     // `npm view|info|show|v <pkg> version` only reads: its subcommand is not publish/version.
     const sub = w.slice(i + 1).find((x) => !x.startsWith("-"));
     if ((PM.test(w[i]) || w[i] === "npx") && !/^(?:view|info|show|v)$/.test(sub ?? "") && after(i, /^(?:publish|version)$/)) return true;
@@ -682,7 +684,7 @@ const DOCKER_READER = /^(?:tail|head|grep|wc|sort|uniq|cut)$/;
 // through symlinks (realpath), with plain characters only, no dot segment and not under ~/Library.
 // `/`, /etc, the docker socket dirs, /Volumes, other users and dotdirs are ordinary commands again.
 // Known limit: the container may still read files inside that project (e.g. a .env) and use the network.
-const mountSource = (src) => {
+const mountSource = (src, marker = false) => {
   if (!/^\/[A-Za-z0-9._ /-]+$/.test(src) || /\/\/|(?:^|\/)\.{1,2}(?:\/|$)/.test(src)) return false;
   const home = osHome();
   if (!home) return false;
@@ -690,7 +692,10 @@ const mountSource = (src) => {
   try { real = realpathSync.native(src); realHome = realpathSync.native(home); if (!statSync(real).isDirectory()) return false; } catch { return false; }
   if (!real.startsWith(`${realHome}/`)) return false;
   const rel = real.slice(realHome.length + 1).split("/");
-  return rel.length >= 2 && !rel.some((s) => s.startsWith(".")) && rel[0] !== "Library";
+  if (!(rel.length >= 2 && !rel.some((s) => s.startsWith(".")) && rel[0] !== "Library")) return false;
+  // container-test only (marker = true): a mount is a project, not a folder of projects or documents, so it holds a .git entry or a
+  // package.json at its root. Rule 16 (read-only mounts) keeps its older, looser rule.
+  return !marker || existsSync(join(real, ".git")) || existsSync(join(real, "package.json"));
 };
 const roMount = (v) => {
   const p = unqQ(v).split(":");
@@ -768,8 +773,17 @@ export function isContainerTestRun(command) {
   let k = 0;
   while (k < segs.length && base(words(segs[k])[0] ?? "") === "cd") { if (/[$\x60]/.test(segs[k])) return false; k++; }
   if (k >= segs.length || unqQ(words(segs[k])[0] ?? "") !== "docker") return false;
-  if (dockerScopes(stripPrefix(tokens(segs[k])).rest, segs[k]) === null) return false;
-  return segs.slice(k + 1).every((s) => DOCKER_READER.test(base(words(s)[0] ?? "")));
+  if (dockerScopes(stripPrefix(tokens(segs[k])).rest, segs[k], ENV_CHANGE.test(command)) === null) return false;
+  // Readers may not write or run anything: no sort -o/--output/--compress-program, no uniq output file, nothing path-valued.
+  const readerOk = (s) => {
+    const w = words(s).map(unqQ), h = base(w[0] ?? "");
+    if (!DOCKER_READER.test(h)) return false;
+    if (h === "sort" && w.some((a) => /^(?:-[a-zA-Z]*o|--output|--compress-program|-T|--temporary-directory|--files0-from)/.test(a))) return false;
+    if (h === "uniq" && w.slice(1).filter((a) => !a.startsWith("-")).length > 1) return false;
+    if (/^(?:grep)$/.test(h) && w.some((a) => /^(?:-[a-zA-Z]*f|--file)/.test(a))) return false;
+    return true;
+  };
+  return segs.slice(k + 1).every(readerOk);
 }
 
 // Scope `container-test` (Tim, 2026-10-06): a `docker run --rm` test run whose flags are all on the rule 16
@@ -777,10 +791,14 @@ export function isContainerTestRun(command) {
 // symlinks resolved; read-only or writable), with no --privileged/--pid/--network host/docker.sock and no shell
 // expansion before the image. Everything else about docker stays as it was; a docker run that does not qualify is
 // guarded without a scope (plain GO). The text after the image is read by scopesOf like any other command text.
-function dockerScopes(tok, seg) {
+function dockerScopes(tok, seg, tainted = segTaint) {
+  // Only the real `docker` word: a path-qualified or planted executable of that name is an ordinary command (GO only), and a
+  // PATH or DOCKER_* assignment anywhere earlier in the command (taint, see ENV_CHANGE) could point the word at another program.
+  if (unq(tok[0] ?? "") !== "docker") return base(tok[0] ?? "") === "docker" ? null : [];
   const sub = unq(tok[1] ?? "");
   if (sub.startsWith("-")) return tok.slice(1).some((t) => unq(t) === "run") ? null : []; // global option: another daemon or config
   if (!(sub === "run" || (sub === "container" && unq(tok[2] ?? "") === "run"))) return [];
+  if (tainted) return null;
   if (/(?:^|[\s;&|(])DOCKER_\w+=/.test(seg)) return null;
   let rm = false, image = false, mounts = 0, allRo = true, i = sub === "run" ? 2 : 3;
   const expands = (w) => /[$\x60]/.test(w ?? "") && !/^'[^']*'$/.test(w); // an expansion can turn into any flags
@@ -792,8 +810,9 @@ function dockerScopes(tok, seg) {
     const flag = eq ? eq[1] : t, val = eq ? eq[2] : unq(tok[i + 1] ?? "");
     if (!eq && (flag === "-v" || flag === "--volume" || flag === "--network" || flag === "--net" || DOCKER_VALUE.test(flag)) && expands(tok[i + 1])) return null;
     if (flag === "-v" || flag === "--volume") {
-      if (!mountSource(unqQ(val).split(":")[0])) return null;
-      mounts++; allRo &&= roMount(val);
+      const isRo = roMount(val); // read-only project mounts keep rule 16's rule; only writable mounts need the project marker
+      if (!mountSource(unqQ(val).split(":")[0], !isRo)) return null;
+      mounts++; allRo &&= isRo;
       if (!eq) i++;
       continue;
     }
@@ -894,7 +913,11 @@ function blankData(text, keepCode = false) {
     // `aos-a2a send|reply ... "<message>"` (also `node <dir>/aos-a2a.mjs ...`): the quoted message is data for the A2A client and
     // is never run; read as command text, words like `; git push` inside a peer message made the whole send guarded (GO only).
     // The script file of a `node` run is still analysed on its own (scriptInto), so a planted aos-a2a.mjs gains nothing.
-    const a2aCli = h === "aos-a2a" || (/^node(?:js)?$/.test(h) && base(rest[1] ?? "") === "aos-a2a.mjs");
+    // Strict on purpose: the bare command name (no path, no PATH= assignment that could point it at a planted file) or node with an
+    // absolute aos-a2a.mjs inside an installed tool directory. Anything else keeps its quoted text as command text.
+    const head0 = unq(rest[0] ?? ""), arg1 = unqQ(rest[1] ?? "");
+    const a2aCli = !/(?:^|\s)PATH=/.test(p.t) &&
+      (head0 === "aos-a2a" || (/^node(?:js)?$/.test(head0) && arg1.startsWith("/") && base(arg1) === "aos-a2a.mjs" && trustedDirs().some((d) => arg1.startsWith(d + sep))));
     return ((DATA_HEAD.test(h) || sub === "grep" || a2aCli) && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
   }).join("");
 }
@@ -1127,6 +1150,8 @@ function execCommand(src, name) {
 // that root is recorded as r.workspace (scope `workspace`) instead of r.destructive. Anything else stays destructive.
 function codeInto(r, text, lang = "", ws = null) {
   text = unprep(text);
+  // A script that changes its own working directory makes relative targets unjudgeable: no workspace scope then.
+  if (ws && /\bchdir\s*\(|\bcd\s*\(|process\.chdir|os\.chdir|Dir\.chdir|\bchdir\b/.test(maskStrings(text))) ws = null;
   if (lang === "osascript" && /\bdelete\b|\bmove\b[^\n;]*\bto\b[^\n;]*\btrash|\bdo shell script\b/i.test(text)) r.unscoped = true;
   const masked = maskStrings(text);
   if (UNSCOPED_CODE.test(masked) || HTTP_PATTERNS.some((re) => re.test(text))) r.unscoped = true;
@@ -1219,21 +1244,26 @@ function workspaceFor(file, cwd) {
     if (!root || !realFile.startsWith(root + sep) || !root.startsWith(realHome + sep)) return null;
     const rel = root.slice(realHome.length + 1).split(sep);
     if (rel.length < 2 || rel.some((s) => s.startsWith(".")) || rel[0] === "Library") return null;
-    return { root, cwd: realpathSync.native(resolve(expandHome(cwd))) };
+    // tied to the session: the shell's working directory must itself lie inside this repo (a planted repo elsewhere is not "own")
+    const real = realpathSync.native(resolve(expandHome(cwd)));
+    if (real !== root && !real.startsWith(root + sep)) return null;
+    return { root, cwd: real };
   } catch { return null; }
 }
 // A literal delete target of a workspace script: resolved against the script's cwd, its existing parent directory resolved through
 // symlinks, and the result must stay inside the repo root. No expansions, no home spellings: those are not "inside".
 function insideWorkspace(ws, target) {
   const t = String(target);
-  if (!t || /[$`]|^~|^%|\\\\/.test(t) || /(?:^|\/)\.\.(?:\/|$)/.test(t)) return false;
+  // No expansions, home spellings, `..`, globs or a dynamic tail (codeArgToPath turns `"x"+y` into `x/*`), no trailing slash.
+  if (!t || /[$`*?{}[\]]|^~|^%|\\\\|\/$/.test(t) || /(?:^|\/)\.\.(?:\/|$)/.test(t)) return false;
   try {
     const abs = resolve(ws.cwd, t);
     let parent = dirname(abs);
     try { parent = realpathSync.native(parent); } catch { /* parent not there yet: the lexical path decides */ }
-    const full = join(parent, abs.slice(dirname(abs).length + 1));
-    // strictly below the repo root (never the root itself) and not the repository's own .git
-    return full.startsWith(ws.root + sep) && !/^\.git(?:\/|$)/.test(full.slice(ws.root.length + 1));
+    let full = join(parent, abs.slice(dirname(abs).length + 1));
+    try { full = realpathSync.native(full); } catch { /* the target does not exist yet */ }
+    // strictly below the repo root (never the root itself) and never the repository's own .git (any segment, any case)
+    return full.startsWith(ws.root + sep) && !/(?:^|\/)\.git(?:\/|$)/i.test(full.slice(ws.root.length + 1));
   } catch { return false; }
 }
 
@@ -1466,7 +1496,7 @@ function feedsShell(segs) {
 
 let nest = 0;
 const SEG_SPLIT = /(&&|\|\||\$\(|[;&|\n(){}\x60])/;
-const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|GIT_[A-Za-z0-9_]+)=|\bset\s+-[a-z]*a/;
+const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|PATH|DOCKER_[A-Za-z0-9_]+|GIT_[A-Za-z0-9_]+)=|\bset\s+-[a-z]*a/;
 const TAINT_SUBS = /^(?:checkout|switch|branch|reset|symbolic-ref|update-ref|worktree|remote|config|stash|rebase|merge|pull|fetch|restore|clone|init|am|cherry-pick|revert)$/;
 const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|stat|file|test|\[|diff|cmp|realpath|dirname|basename|echo|printf)$/;
 export function commandScopes(command, protectedFor = staticResolver) {
