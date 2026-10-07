@@ -64,7 +64,11 @@ export function check(gate, { session, command, consume = false }) {
 
 // --ref <id> --session <Name>: the GO-over-A2A path. The reference id is derived from the
 // token itself, never chosen by an agent, so A2A traffic cannot satisfy it with chosen text.
-// This reads the store only (except a consume, which is the gate's own single-use write).
+// The reference is a POINTER (not a secret, not proof of approval of a task or action): a
+// verify tells the caller that a valid token for THIS session is in the store; the session's
+// own gate is the authority and consumes the token itself when the guarded command runs.
+// Verify (no --consume) reads the store only and stays read-only; only a --consume is the
+// gate's own single-use write.
 export const refId = (tokenText) => createHash("sha256").update(String(tokenText ?? "")).digest("hex").slice(0, 12);
 
 const A2A_REPLAY_KEEP = 200;
@@ -88,27 +92,39 @@ export function checkRef(gate, { session, ref, consume = false }) {
   const dir = join(homedir(), ".aos", "go");
   let files = [];
   try { files = readdirSync(dir).filter((f) => f.endsWith(".token")); } catch { files = []; }
-  let tokenText = null;
+  let tokenText = null, matchedFile = null;
   for (const f of files) {
     let text;
     try { text = readFileSync(join(dir, f), "utf8"); } catch { continue; }
-    if (refId(text) === id) {
-      if (tokenText !== null) return { code: 1, out: { ok: false, reason: "forged reference" } };
-      tokenText = text;
-    }
+    if (refId(text) !== id) continue;
+    if (tokenText !== null) return { code: 1, out: { ok: false, reason: "forged reference" } };
+    tokenText = text;
+    matchedFile = f;
   }
   if (tokenText === null) {
     const replayed = readConsumedRefs(dir).includes(`a2a:${id}`);
     return { code: 1, out: { ok: false, reason: replayed ? "GO already used" : "forged reference" } };
   }
+  // Exactly ONE read of the matched file produced tokenText; the hash and the whole pointer
+  // check below run on that one read (no re-read / no TOCTOU window).
+  if (matchedFile !== `${name}.token`)
+    return { code: 1, out: { ok: false, reason: "reference is for another session" } };
   let tok;
   try { tok = JSON.parse(tokenText); } catch { return { code: 1, out: { ok: false, reason: "malformed reference" } }; }
   if (!tok || typeof tok.target !== "string" || gate.slug(tok.target) !== name)
     return { code: 1, out: { ok: false, reason: "reference is for another session" } };
-  const g = gate.tokenGrantsGo(name, { consume });
-  if (!g.ok) return { code: 1, out: { ok: false, reason: g.reason } };
-  if (consume) markRefConsumed(dir, id);
-  return { code: 0, out: { ok: true, reason: consume ? "GO ref consumed" : "GO ref valid (not consumed)" } };
+  const age = Date.now() - Date.parse(tok?.issued_at);
+  if (!(age >= 0 && age < gate.TOKEN_TTL_MS))
+    return { code: 1, out: { ok: false, reason: "GO token expired" } };
+  if (consume) {
+    // Final authority stays with the gate: its own single-use write (master transcript still
+    // ends with the GO, master-consumed ledger, token deletion).
+    const g = gate.tokenGrantsGo(name, { consume: true });
+    if (!g.ok) return { code: 1, out: { ok: false, reason: g.reason } };
+    markRefConsumed(dir, id);
+    return { code: 0, out: { ok: true, reason: "GO ref consumed" } };
+  }
+  return { code: 0, out: { ok: true, reason: "GO ref valid (not consumed)" } };
 }
 
 export function parseArgs(argv) {
