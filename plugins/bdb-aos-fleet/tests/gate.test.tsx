@@ -1,6 +1,16 @@
 import { expect, test } from 'claude-code/testing'
 
-import { demoBlocks, demoFleet, demoGate, maskCommand, parseGateStatus, presetForCommand } from '../hooks/register'
+import {
+  demoBlocks,
+  demoFleet,
+  demoGate,
+  grantBar,
+  grantColor,
+  lockCells,
+  maskCommand,
+  parseGateStatus,
+  presetForCommand,
+} from '../hooks/register'
 
 const RELEASE = 'gogate grant push-feature,github-write,merge,publish 2h'
 const FEATURE = 'gogate grant push-feature,github-write 2h'
@@ -330,4 +340,94 @@ test('clicking "gate soft" in the band opens the gate pane and fills nothing', a
   await band.press({ key: 'gate' } as never)
   expect(opened).toEqual(['gogate-panel'])
   expect(fills).toBe(0)
+})
+
+test('grantColor picks the threshold colour; grantBar keeps the width contract', () => {
+  expect(grantColor(120)).toBe('green')
+  expect(grantColor(30)).toBe('green')
+  expect(grantColor(29)).toBe('yellow')
+  expect(grantColor(10)).toBe('yellow')
+  expect(grantColor(9)).toBe('red')
+  expect(grantColor(0)).toBe('red')
+  expect(grantBar(74)).toEqual({ on: 7, off: 3 })
+})
+
+const GATE_PANE_MOUNT = (bodyColumns: number) => ({
+  plugin: 'bdb-aos-fleet',
+  surface: 'terminal',
+  component: 'Pane',
+  requestId: 'gogate-panel',
+  props: { bodyColumns } as never,
+})
+
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+const gatePaneMocks = (on: any, stdout: string | (() => string)) => {
+  on('env.get', () => ({ value: '/home' }))
+  on('session.id', () => ({ value: 'sid' }))
+  on('process.run', () => ({ value: { ...STATUS, stdout: typeof stdout === 'function' ? stdout() : stdout } }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('prompt.fill', () => ({ isFilled: true }))
+  on('clock.now', () => ({ value: 1000 }))
+}
+
+const STATUS_WITH_GRANT = (mode: string) =>
+  `AOS go-gate, session sid: mode ${mode}\n  grant push-feature until ${new Date(Date.now() + 102 * 60000).toISOString()} (102 min left)`
+
+test('the hero card shows the mode word, meaning line and a lock raster', async ($, on) => {
+  const cur = { mode: 'soft' }
+  gatePaneMocks(on as never, () => STATUS_WITH_GRANT(cur.mode))
+  const meanings: [string, string][] = [
+    ['hard', 'every guarded command needs a GO'],
+    ['soft', 'guarded commands wait until you grant or type GO'],
+    ['off', 'gate does not block anything'],
+  ]
+  for (const [mode, meaning] of meanings) {
+    cur.mode = mode
+    await $.command.run({ command: 'gogate-panel', args: '' } as never)
+    const pane = await $.ui.mount(GATE_PANE_MOUNT(80) as never)
+    const drawn = JSON.stringify(await pane.drawn())
+    await pane.unmount()
+    expect(drawn).toContain(mode.toUpperCase())
+    expect(drawn).toContain(meaning)
+    expect(drawn.includes('lock') || drawn.includes('🔒') || drawn.includes('🔓')).toBe(true)
+  }
+})
+
+test('lockCells packs 6 columns x 2 rows of half-block triples', () => {
+  const cells = lockCells('hard')
+  const raw = atobBase64(cells)
+  expect(raw.byteLength).toBe(6 * 2 * 3 * 4)
+})
+
+function atobBase64(s: string) {
+  return Uint8Array.from(atob(s), c => c.charCodeAt(0))
+}
+
+test('the pane is two-column wide and stacked narrow, both with GRANTS and PRESETS', async ($, on) => {
+  gatePaneMocks(on as never, STATUS_WITH_GRANT('soft'))
+  const wide = await $.ui.mount(GATE_PANE_MOUNT(96) as never)
+  const wideDrawn = JSON.stringify(await wide.drawn())
+  expect(wideDrawn).toContain('GRANTS')
+  expect(wideDrawn).toContain('PRESETS')
+  expect(wideDrawn).toContain('col-left')
+  expect(wideDrawn).toContain('col-right')
+  expect(wideDrawn).not.toContain('"stack"')
+  await wide.unmount()
+  const narrow = await $.ui.mount(GATE_PANE_MOUNT(80) as never)
+  const narrowDrawn = JSON.stringify(await narrow.drawn())
+  expect(narrowDrawn).toContain('GRANTS')
+  expect(narrowDrawn).toContain('PRESETS')
+  expect(narrowDrawn).toContain('"stack"')
+  expect(narrowDrawn).not.toContain('col-left')
+})
+
+test('the footer always shows the click hint above the gateMsg', async ($, on) => {
+  gatePaneMocks(on as never, STATUS_WITH_GRANT('soft'))
+  const pane = await $.ui.mount(GATE_PANE_MOUNT(80) as never)
+  await pane.press({ key: 'feature 2h' } as never)
+  const drawn = JSON.stringify(await pane.drawn())
+  expect(drawn).toContain('click prefills your prompt · you press Enter to record')
+  expect(drawn).toContain('▸ in your prompt: gogate grant push-feature,github-write 2h')
+  expect(drawn.indexOf('▸ in your prompt')).toBeLessThan(drawn.indexOf('click prefills your prompt'))
 })

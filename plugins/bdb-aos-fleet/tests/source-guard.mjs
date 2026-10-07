@@ -29,4 +29,10 @@ const pubStart = src.indexOf('async function publish(')
 const pubEnd = src.indexOf('\n}\n', pubStart)
 const w = src.indexOf('fs.write')
 if (writes !== 1 || w < pubStart || w > pubEnd) fail('fs.write must appear once, inside publish')
+
+// The gate pane draws itself; nothing may submit a prompt, and Button has no colour prop in this UI API.
+for (const line of src.split('\n')) {
+  const t = line.trim()
+  if (t.includes('<Button') && /(?:^|[^.\w])color=/.test(t)) fail(`Button takes no color prop: ${t}`)
+}
 console.log('source-guard: ok')
