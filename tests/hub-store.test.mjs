@@ -1,0 +1,385 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { routes as storeRoutes } from '../lib/hub/routes-store.mjs';
+import { rollbackInstall, appendInstallLog, installsLogPath, storeIso, readInstallsLog } from '../lib/store-shared.mjs';
+
+const ROOT = resolve(new URL('..', import.meta.url).pathname);
+// Unique temp dirs, never deleted (rules forbid recursive deletes).
+const base = mkdtempSync(join(tmpdir(), 'hub-store-'));
+const proj = join(base, 'proj');
+const projHome = join(base, 'home');
+mkdirSync(proj, { recursive: true });
+mkdirSync(projHome, { recursive: true });
+
+// ---- fixture index + fixture HTTP server ------------------------------------
+const COMMIT = 'b'.repeat(40);
+const SKILL_DIR = 'skills/hub-fixture';
+const FILES = {
+  'SKILL.md': '---\nname: hub-fixture\n---\nhello\n',
+  'scripts/hub.sh': '#!/bin/sh\necho hub\n',
+  'refs/h.md': 'refs\n',
+};
+const ENVELOPE = Buffer.from('---\nname: hub-agent\n---\nagent\n');
+const ENVELOPE_SHA = createHash('sha256').update(ENVELOPE).digest('hex');
+const fileEntries = Object.entries(FILES).map(([p, data]) => ({
+  path: p,
+  size: Buffer.byteLength(data),
+  sha256: createHash('sha256').update(data).digest('hex'),
+}));
+
+let srv, rawPort;
+const savedEnv = {};
+before(async () => {
+  // Route handlers read the store index / raw base from process.env.
+  for (const k of ['AOS_STORE_INDEX', 'AOS_STORE_RAW_BASE']) savedEnv[k] = process.env[k];
+  process.env.AOS_STORE_INDEX = join(base, 'index.json');
+  srv = createServer((req, res) => {
+    const trimmed = req.url.replace(`/${COMMIT}/`, '');
+    if (trimmed === 'subagents/hub-agent.md') return res.end(ENVELOPE);
+    if (trimmed.startsWith(`${SKILL_DIR}/`)) {
+      const hit = FILES[trimmed.slice(SKILL_DIR.length + 1)];
+      if (hit) return res.end(hit);
+    }
+    res.statusCode = 404;
+    res.end('nope');
+  });
+  await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+  rawPort = srv.address().port;
+  process.env.AOS_STORE_RAW_BASE = `http://127.0.0.1:${rawPort}`;
+});
+after(() => {
+  srv.close();
+  if (savedEnv.AOS_STORE_INDEX === undefined) delete process.env.AOS_STORE_INDEX; else process.env.AOS_STORE_INDEX = savedEnv.AOS_STORE_INDEX;
+  if (savedEnv.AOS_STORE_RAW_BASE === undefined) delete process.env.AOS_STORE_RAW_BASE; else process.env.AOS_STORE_RAW_BASE = savedEnv.AOS_STORE_RAW_BASE;
+});
+
+writeFileSync(join(base, 'index.json'), JSON.stringify({
+  version: '1.0.0',
+  pinned_commit: COMMIT,
+  skills: {
+    'hub-fixture': {
+      description: 'hub-store fixture skill',
+      category: 'library',
+      sha256: fileEntries[0].sha256,
+      upstream_path: `${SKILL_DIR}/SKILL.md`,
+      files: fileEntries,
+    },
+  },
+  subagents: {
+    'hub-agent': { description: 'hub fixture agent', category: 'library', sha256: ENVELOPE_SHA, upstream_path: 'subagents/hub-agent.md' },
+  },
+}));
+
+const env = (overrides = {}) => ({
+  ...process.env,
+  HOME: projHome,
+  AOS_STORE_INDEX: join(base, 'index.json'),
+  AOS_STORE_RAW_BASE: `http://127.0.0.1:${rawPort}`,
+  ...overrides,
+});
+
+const cli = (args, overrides = {}, cwd = proj) => new Promise((ok) => execFile(
+  process.execPath,
+  [join(ROOT, 'bin', 'aos-store.mjs'), ...args],
+  { cwd, env: env(overrides), maxBuffer: 1 << 22 },
+  (error, stdout, stderr) => ok({ code: error ? (error.code || 1) : 0, stdout, stderr: stderr || (error?.message || '') }),
+));
+
+const route = (path) => storeRoutes.find((r) => r.path === path);
+const reRoute = storeRoutes.find((r) => r.path instanceof RegExp);
+const handler = (path) => route(path).handler;
+const reHandler = reRoute.handler;
+
+// fake ctx.run: records argv, resolves ok (the hub spawns; the fixture does not).
+const calls = [];
+const fakeRun = async (cmd, args, opts) => {
+  calls.push({ cmd, args, opts });
+  return { ok: true, stdout: 'simulated', stderr: '' };
+};
+
+const storeCtx = (home = projHome, cwd = proj, { run = fakeRun } = {}) => ({
+  root: ROOT,
+  home,
+  cwd,
+  log: () => {},
+  run,
+  now: () => Date.now(),
+});
+
+const post = async (path, body, ctx = storeCtx()) =>
+  handler(path)({ url: new URL(path, 'http://127.0.0.1'), params: [], body, ctx });
+
+// ---------------------------------------------------------------------------
+const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/;
+
+test('routes carry the planned mutates/confirm/lock flags; regexes anchored', () => {
+  assert.equal(route('/api/store').mutates, undefined);
+  assert.equal(route('/api/store/preview').mutates, true);
+  assert.equal(route('/api/store/install').confirm, 'name');
+  assert.equal(route('/api/store/install').lock, 'packages');
+  assert.equal(route('/api/store/rollback').confirm, 'name');
+  assert.equal(route('/api/store/rollback').lock, 'packages');
+  assert.equal(reRoute.path.source, '^\\/api\\/packages\\/([A-Za-z0-9_-]+)\\/(install|update|repair)$');
+  assert.equal(reRoute.confirm, 'id');
+  assert.equal(reRoute.lock, 'packages');
+  assert.equal(reRoute.path.exec('/api/packages/ao/destroy'), null);
+});
+
+test('install writes targets + a jsonl log line', async () => {
+  const r = await cli(['install', 'hub-fixture', '--project', '--net']);
+  assert.equal(r.code, 0, r.stderr || r.stdout);
+  const target = join(proj, 'skills', 'hub-fixture', 'SKILL.md');
+  assert.equal(readFileSync(target, 'utf8'), FILES['SKILL.md']);
+  const log = readInstallsLog(projHome);
+  const entry = log[log.length - 1];
+  assert.equal(entry.name, 'hub-fixture');
+  assert.equal(entry.kind, 'skill');
+  assert.equal(entry.scope, 'project');
+  assert.match(entry.commit, /^[a-f0-9]{40}$/);
+  assert.deepEqual(entry.targets, [target]);
+  assert.equal(entry.backups[0], null, 'first install has nothing to back up');
+});
+
+test('re-install renames the existing target to .aos-bak-<ISO> and keeps it', async () => {
+  const r = await cli(['install', 'hub-fixture', '--project', '--net']);
+  assert.equal(r.code, 0, r.stderr || r.stdout);
+  const entries = readdirSync(join(proj, 'skills'))
+    .filter((n) => /^hub-fixture\.aos-bak-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/.test(n) && statSync(join(proj, 'skills', n)).isDirectory());
+  assert.equal(entries.length, 1);
+  assert.equal(readFileSync(join(proj, 'skills', 'hub-fixture', 'SKILL.md'), 'utf8'), FILES['SKILL.md'], 'new copy in place');
+  const bak = join(proj, 'skills', entries[0]);
+  assert.ok(existsSync(join(bak, 'SKILL.md')), 'backup keeps the whole skill dir');
+  assert.match(String(readInstallsLog(projHome).at(-1).backups[0]), /\.aos-bak-\d{4}/);
+  // backups[0] is a full path ending in .aos-bak-<ISO>: extract the ISO suffix.
+  const loggedBackup = String(readInstallsLog(projHome).at(-1).backups[0]);
+  const loggedSuffix = loggedBackup.slice(loggedBackup.indexOf('.aos-bak-') + '.aos-bak-'.length);
+  assert.match(loggedSuffix, isoRe);
+});
+
+test('a tampered download byte fails verification and writes nothing', async () => {
+  const bad = createServer((_req, res) => { res.end(Buffer.from(FILES['SKILL.md'] + '\n')); });
+  await new Promise((ok) => bad.listen(0, '127.0.0.1', ok));
+  const badPort = bad.address().port;
+  try {
+    const listSkills = () => (existsSync(join(proj, 'skills')) ? readdirSync(join(proj, 'skills')).sort() : []);
+    const beforeNames = listSkills();
+    const beforeLog = readInstallsLog(projHome).length;
+    // The +1 byte trips in-memory verification: fetchSkillFiles checks the
+    // recorded size before the digest, so the real message is Size mismatch
+    // (the unaffected paths still report SHA-256 mismatch).
+    const r = await cli(['install', 'hub-fixture', '--project', '--net'], { AOS_STORE_RAW_BASE: `http://127.0.0.1:${badPort}` });
+    assert.notEqual(r.code, 0);
+    assert.match(`${r.stderr}\n${r.stdout}`, /(Size|SHA-256) mismatch for SKILL\.md/);
+    assert.deepEqual(listSkills(), beforeNames, 'no renames, no writes');
+    assert.equal(readInstallsLog(projHome).length, beforeLog, 'no log line appended');
+    assert.equal(readFileSync(join(proj, 'skills', 'hub-fixture', 'SKILL.md'), 'utf8'), FILES['SKILL.md'], 'on-disk content untouched');
+  } finally { bad.close(); }
+});
+
+test('rollback restores the last installed content (bak -> target, old state parked)', async () => {
+  const dir = join(proj, 'skills', 'hub-fixture');
+  writeFileSync(join(dir, 'SKILL.md'), 'tampered later revision\n');
+  const r = await cli(['rollback', 'hub-fixture', '--project']);
+  assert.equal(r.code, 0, r.stderr || r.stdout);
+  assert.equal(readFileSync(join(dir, 'SKILL.md'), 'utf8'), FILES['SKILL.md'], 'content restored from the backup');
+  const dirs = readdirSync(join(proj, 'skills')).filter((n) => n.startsWith('hub-fixture.'));
+  assert.ok(dirs.some((n) => n.startsWith('hub-fixture.aos-failed-')), 'the overwritten state is parked, not deleted');
+});
+
+// ---- hub routes -------------------------------------------------------------
+test('install route: 400 without the typed confirm, and never spawns', async () => {
+  const before = calls.length;
+  const res = await post('/api/store/install', { name: 'hub-fixture' });
+  assert.equal(res.status, 400);
+  const res2 = await post('/api/store/install', { name: 'hub-fixture', confirm: 'other-name' });
+  assert.equal(res2.status, 400);
+  const nope = await post('/api/store/install', { name: '../etc/passwd', confirm: '../etc/passwd' });
+  assert.equal(nope.status, 400);
+  const unknown = await post('/api/store/install', { name: 'hub-never-existed', confirm: 'hub-never-existed' });
+  assert.equal(unknown.status, 404);
+  assert.equal(calls.length, before);
+});
+
+test('install route spawns the fixed-argv CLI (shell:false), nothing interpolated', async () => {
+  const before = calls.length;
+  const res = await post('/api/store/install', { name: 'hub-fixture', scope: 'project', confirm: 'hub-fixture' });
+  assert.equal(res.status, 200);
+  assert.equal(calls.length, before + 1);
+  const { cmd, args, opts } = calls[calls.length - 1];
+  assert.equal(cmd, 'node');
+  assert.equal(args[0], join(ROOT, 'bin', 'aos-store.mjs'));
+  assert.deepEqual(args.slice(1), ['install', 'hub-fixture', '--net', '--project']);
+  assert.equal(opts.shell, false);
+});
+
+test('mcp kind refuses names not shipped in mcp_config.json/mcp_picks.json', async () => {
+  const before = calls.length;
+  const pv = await post('/api/store/preview', { kind: 'mcp', name: 'hub-never-shipped' });
+  assert.equal(pv.status, 404);
+  const iv = await post('/api/store/install', { kind: 'mcp', name: 'hub-never-shipped', target: 'claude', confirm: 'hub-never-shipped' });
+  assert.equal(iv.status, 404);
+  assert.equal(calls.length, before, 'nothing spawned for refused names');
+});
+
+test('mcp preview lists harness targets; install validates the target + argv', async () => {
+  const cfg = JSON.parse(readFileSync(join(ROOT, 'mcp_config.json'), 'utf8'));
+  const name = Object.keys(cfg.mcpServers)[0];
+  const pv = await post('/api/store/preview', { kind: 'mcp', name });
+  assert.equal(pv.status, 200);
+  assert.ok(Array.isArray(pv.json.targets));
+  for (const t of pv.json.targets) assert.ok(t.file && t.kind, 'targets are harness config descriptors, not arbitrary paths');
+  const badTarget = await post('/api/store/install', { kind: 'mcp', name, target: 'opencode-ish', confirm: name });
+  assert.equal(badTarget.status, 400);
+  const missingTarget = await post('/api/store/install', { kind: 'mcp', name, confirm: name });
+  assert.equal(missingTarget.status, 400);
+  const ok = await post('/api/store/install', { kind: 'mcp', name, target: 'claude', confirm: name });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(calls.at(-1).args, [join(ROOT, 'installer.js'), 'package', 'mcp', name, '--target', 'claude']);
+});
+
+test('rollback route runs in-process and restores content from a real backup', async () => {
+  const home2 = join(base, 'home-route');
+  const proj2 = join(base, 'proj-route');
+  mkdirSync(proj2, { recursive: true });
+  await cli(['install', 'hub-fixture', '--project', '--net'], { HOME: home2 }, proj2);
+  await cli(['install', 'hub-fixture', '--project', '--net'], { HOME: home2 }, proj2);
+  const target = join(proj2, 'skills', 'hub-fixture', 'SKILL.md');
+  writeFileSync(target, 'current (bad) content\n');
+  const before = calls.length;
+  const ok = await handler('/api/store/rollback')({
+    url: new URL('/api/store/rollback', 'http://127.0.0.1'),
+    params: [],
+    body: { name: 'hub-fixture', scope: 'project', confirm: 'hub-fixture' },
+    ctx: storeCtx(home2, proj2),
+  });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.ok, true);
+  assert.equal(readFileSync(target, 'utf8'), FILES['SKILL.md'], 'content restored from the backup');
+  assert.ok(readdirSync(join(proj2, 'skills')).some((n) => n.startsWith('hub-fixture.aos-failed-')));
+  assert.equal(calls.length, before, 'rollback never spawns: it renames in-process');
+});
+
+test('tampered installs.jsonl: abort with zero renames (target outside roots, foo.bak backup, non-ISO suffix)', () => {
+  const home = join(base, 'home-tamper');
+  const cwd = join(base, 'proj-tamper');
+  mkdirSync(join(cwd, 'skills', 'hub-fixture'), { recursive: true });
+  mkdirSync(home, { recursive: true });
+  const target = join(cwd, 'skills', 'hub-fixture', 'SKILL.md');
+  const iso = storeIso();
+  writeFileSync(target, FILES['SKILL.md']);
+  writeFileSync(`${target}.aos-bak-${iso}`, FILES['SKILL.md']);
+  const put = (entry) => {
+    mkdirSync(join(home, '.aos', 'store'), { recursive: true });
+    writeFileSync(installsLogPath(home), `${JSON.stringify(entry)}\n`);
+  };
+  const baseEntry = { ts: new Date().toISOString(), name: 'hub-fixture', kind: 'skill', source: 'ecc', commit: COMMIT, scope: 'project' };
+  const expectNoRenames = () => {
+    assert.equal(readFileSync(target, 'utf8'), FILES['SKILL.md']);
+    assert.ok(existsSync(`${target}.aos-bak-${iso}`));
+    assert.ok(!readdirSync(join(cwd, 'skills')).some((n) => n.startsWith('hub-fixture.aos-failed-')));
+  };
+  // a log entry whose target is not produced by targetsFor
+  put({ ...baseEntry, targets: ['/etc/x'], backups: ['foo.bak'] });
+  assert.throws(() => rollbackInstall({ name: 'hub-fixture', home, project: true, cwd }), /not a current target/);
+  expectNoRenames();
+  // a backup not named <target>.aos-bak-<ISO>
+  put({ ...baseEntry, targets: [target], backups: ['foo.bak'] });
+  assert.throws(() => rollbackInstall({ name: 'hub-fixture', home, project: true, cwd }), /does not match target/);
+  expectNoRenames();
+  // a non-ISO suffix
+  put({ ...baseEntry, targets: [target], backups: [`${target}.aos-bak-foo.bak`] });
+  assert.throws(() => rollbackInstall({ name: 'hub-fixture', home, project: true, cwd }), /suffix/);
+  expectNoRenames();
+  // bad names refused outright
+  assert.throws(() => rollbackInstall({ name: '/etc/x', home, project: true, cwd }), /Invalid store name/);
+  assert.throws(() => rollbackInstall({ name: '../etc/passwd', home, project: true, cwd }), /Invalid store name/);
+  expectNoRenames();
+});
+
+test('a valid installs.jsonl restores content and parks the overwritten state', () => {
+  const home = join(base, 'home-ok');
+  const cwd = join(base, 'proj-ok');
+  mkdirSync(join(cwd, 'skills', 'hub-fixture'), { recursive: true });
+  mkdirSync(home, { recursive: true });
+  const target = join(cwd, 'skills', 'hub-fixture', 'SKILL.md');
+  const iso = storeIso();
+  writeFileSync(target, 'current (bad) content\n');
+  writeFileSync(`${target}.aos-bak-${iso}`, FILES['SKILL.md']);
+  appendInstallLog(home, { ts: new Date().toISOString(), name: 'hub-fixture', kind: 'skill', source: 'ecc', commit: COMMIT, scope: 'project', targets: [target], backups: [`${target}.aos-bak-${iso}`] });
+  const res = rollbackInstall({ name: 'hub-fixture', home, project: true, cwd });
+  assert.equal(res.restored, 1);
+  assert.equal(readFileSync(target, 'utf8'), FILES['SKILL.md']);
+  assert.ok(readdirSync(join(cwd, 'skills')).some((n) => n.startsWith('hub-fixture.aos-failed-')));
+});
+
+test('GET /api/store returns index items + package rows', async () => {
+  const res = await route('/api/store').handler({
+    url: new URL('/api/store', 'http://127.0.0.1'),
+    params: [],
+    body: undefined,
+    ctx: storeCtx(),
+  });
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.json.items) && res.json.items.length > 0, 'index items listed');
+  assert.ok(res.json.items.some((i) => i.name === 'hub-fixture'), 'fixture item present');
+  assert.ok(Array.isArray(res.json.packages));
+  assert.ok(res.json.packages.some((p) => p.id === 'kernel'), 'packages detected via the registry');
+  assert.ok(res.json.items.every((i) => ['skill', 'agent'].includes(i.kind)));
+});
+
+test('packages route: registry id lookup, fixed spawn, unknown id 404', async () => {
+  const pk = createRequire(import.meta.url)(join(ROOT, 'lib', 'v5', 'packages.js'));
+  const p0 = pk.registry[0].id;
+  const before = calls.length;
+  const ok = await reHandler({
+    url: new URL(`/api/packages/${p0}/install`, 'http://127.0.0.1'),
+    params: [p0, 'install'],
+    body: { id: p0, confirm: p0 },
+    ctx: storeCtx(),
+  });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(calls.at(-1).args, [join(ROOT, 'installer.js'), 'package', 'install', p0]);
+  const wrongAction = await reHandler({
+    url: new URL(`/api/packages/${p0}/destroy`, 'http://127.0.0.1'),
+    params: [p0, 'destroy'],
+    body: { id: p0, confirm: p0 },
+    ctx: storeCtx(),
+  });
+  assert.equal(wrongAction.status, 400);
+  const unknown = await reHandler({
+    url: new URL('/api/packages/zzz/install', 'http://127.0.0.1'),
+    params: ['zzz', 'install'],
+    body: { id: 'zzz', confirm: 'zzz' },
+    ctx: storeCtx(),
+  });
+  assert.equal(unknown.status, 404);
+  const noConfirm = await reHandler({
+    url: new URL(`/api/packages/${p0}/install`, 'http://127.0.0.1'),
+    params: [p0, 'install'],
+    body: { id: p0 },
+    ctx: storeCtx(),
+  });
+  assert.equal(noConfirm.status, 400);
+  assert.equal(calls.length, before + 1);
+});
+
+test('static: store-shared.mjs and routes-store.mjs contain no destructive fs calls', () => {
+  for (const f of ['lib/store-shared.mjs', 'lib/hub/routes-store.mjs']) {
+    const text = readFileSync(join(ROOT, f), 'utf8');
+    assert.doesNotMatch(text, /rmSync|unlinkSync/, f);
+    assert.doesNotMatch(text, /\brm -|fs\.rm\b/, f);
+  }
+  assert.doesNotMatch(readFileSync(join(ROOT, 'bin', 'aos-store.mjs'), 'utf8'), /rmSync|unlinkSync|\brm -|fs\.rm\b/);
+  assert.doesNotMatch(readFileSync(join(ROOT, 'lib', 'hub', 'ui', 'store.js'), 'utf8'), /window\.prompt|rmSync|unlinkSync/);
+});
+
+test('temp dirs are never deleted by the tests', () => {
+  assert.ok(existsSync(base));
+});

@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createStoreServer } from '../lib/store-ui/server.mjs';
@@ -25,7 +25,7 @@ before(async () => {
 after(() => {
   server.close();
   process.env.HOME = realHome;
-  rmSync(tmp, { recursive: true, force: true });
+  // The temp dir is deliberately never deleted (rules forbid recursive deletes).
 });
 
 const post = (path, body, headers = {}) => fetch(base + path, {
@@ -101,4 +101,13 @@ test('catalog feeds a Playbooks area with every pb-* skill and the UI renders it
   assert.match(html, /chip\('tab','playbook'/);
   const inline = html.match(/<script>([\s\S]*)<\/script>/)[1];
   assert.doesNotThrow(() => new Function(inline));
+});
+
+test('WP4: catalog/previewMeta are exported for the hub', async () => {
+  const mod = await import(new URL('../lib/store-ui/server.mjs', import.meta.url));
+  assert.equal(typeof mod.catalog, 'function');
+  assert.equal(typeof mod.previewMeta, 'function');
+  const meta = mod.previewMeta('django-patterns', 'skill');
+  assert.ok(meta.source && meta.pinned_commit, 'preview meta carries source + commit');
+  assert.equal(typeof mod.catalog('global', cwd).items.length, 'number');
 });

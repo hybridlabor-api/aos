@@ -5633,6 +5633,11 @@ async function runModuleInstalls(allModules, chosen, installedModules) {
 // Module ids whose daemons ship a web interface or background service worth
 // surfacing in the launchpad (each has a card in the generated HTML below).
 const LAUNCHPAD_WEB_MODULES = ['memb', 'synapse', 'openwiki', 'ao', 'remote'];
+// The hub is a core, on-demand service (started with `aos hub`, same as the
+// store UI), not an optional daemon module — but its launchpad card belongs on
+// the page. Registered after the literal so the constant itself keeps its
+// documented daemon-module shape.
+LAUNCHPAD_WEB_MODULES.push('hub');
 
 // Explicit opt-in flags that open the launchpad even outside a dev checkout.
 const LAUNCHPAD_OPEN_FLAGS = ['--launchpad', '--dashboard', '--open', '--dev'];
@@ -6123,6 +6128,28 @@ function generateAndOpenLaunchpad(installedModules = []) {
           <span class="status-dot" id="dot-plancanvas" title="Checking..."></span>
         </div>
       </a>
+      <a class="card" href="http://127.0.0.1:7900/" target="_blank">
+        <div class="card-content">
+          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="grad-hub" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#9b30c4"/></linearGradient></defs>
+            <circle cx="50" cy="50" r="34" fill="url(#grad-hub)" opacity="0.85"/>
+            <circle cx="50" cy="50" r="9" fill="#0a0a0a"/>
+            <circle cx="50" cy="18" r="4" fill="#FFFFFF"/><circle cx="79" cy="65" r="4" fill="#FFFFFF"/><circle cx="21" cy="65" r="4" fill="#FFFFFF"/>
+            <line x1="50" y1="50" x2="50" y2="18" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+            <line x1="50" y1="50" x2="79" y2="65" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+            <line x1="50" y1="50" x2="21" y2="65" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+          </svg></div>
+          <div class="card-info">
+            <h2>AOS Hub</h2>
+            <p>Services, plan kits and the store in one page</p>
+            <div class="card-hint">on demand — run: <code data-copy="aos hub" title="Click to copy">aos hub</code></div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="port-pill">:7900</span>
+          <span class="status-dot" id="dot-hub" title="Checking..."></span>
+        </div>
+      </a>
     </div>
     <div class="footer">
       <span>Autostart Daemons • 127.0.0.1</span>
@@ -6151,6 +6178,7 @@ function generateAndOpenLaunchpad(installedModules = []) {
       checkHealth('http://127.0.0.1:4321', 'dot-openwiki');
       checkHealth('http://127.0.0.1:4322', 'dot-store');
       checkHealth('http://127.0.0.1:4519', 'dot-plancanvas');
+      checkHealth('http://127.0.0.1:7900', 'dot-hub');
     }
     document.addEventListener('click', (ev) => {
       const el = ev.target.closest && ev.target.closest('[data-copy]');
@@ -6751,6 +6779,9 @@ async function main() {
 
 Commands:
   store            Browse and install skills
+  hub              Open the AOS Hub (start|stop|status on 127.0.0.1:7900)
+  services         Status or control of the local services (status|start|stop|restart)
+  package          Install, update, repair or verify one v5 package by id
   doctor|checkup   Check the installation
 
 Options:
@@ -6825,6 +6856,27 @@ Options:
         const doctorArgs = process.argv.slice(process.argv[2] === 'doctor' || process.argv[2] === 'checkup' ? 3 : 2).filter(a => a !== '--doctor');
         const result = spawnSync(process.execPath, [doctorScript, ...doctorArgs], { stdio: 'inherit' });
         process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
+    if (process.argv[2] === 'hub') {
+        // bin/aos-hub.mjs is ESM: run it with the current node binary and an
+        // args array, shell:false, so no value from argv can become a command.
+        const hubScript = path.join(srcDir, 'bin', 'aos-hub.mjs');
+        const hubArgs = process.argv.slice(3);
+        const result = spawnSync(process.execPath, [hubScript, ...hubArgs], { stdio: 'inherit', shell: false });
+        process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
+    if (process.argv[2] === 'services') {
+        const { cli } = await import('./lib/hub/services.mjs');
+        const code = await cli(process.argv.slice(3), {});
+        process.exitCode = code ?? 0;
+        return;
+    }
+    if (process.argv[2] === 'package') {
+        // WP4 store handler: `aos package <install|update|repair|verify> <id>`
+        // and `aos package mcp <name> --target <harness>`. Never prompts.
+        process.exitCode = await require('./lib/v5/menu').packageCommand(module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)), process.argv.slice(3));
         return;
     }
     // Before the intro, the telemetry card and the update check: refreshing hooks needs none of them.

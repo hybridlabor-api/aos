@@ -19,18 +19,24 @@ A web UI for discovering and installing AOS skills and agents. Lists what is alr
 
 ## How It Works
 
-Run `aos-store ui` to start the local store server. It prints the URL (default `http://127.0.0.1:4322`), opens your browser unless `--no-open` is set, and runs in the foreground.
+The store can be run standalone or inside the AOS Hub. Run `aos-store ui` to start the local store server; it prints the URL (default `http://127.0.0.1:4322`), opens your browser unless `--no-open` is set, and runs in the foreground. Alternatively start `aos hub` (same security model, port 7900) and open the store's tab there — the hub embeds the store UI, nothing else changes.
 
 ```bash
 # Start the store UI (opens browser automatically)
 aos-store ui
 
+# Start the store as a tab of the AOS Hub
+aos hub
+
 # Start with a custom port
 AOS_STORE_PORT=5000 aos-store ui
 
-# Start without opening the browser
-aos-store ui --no-open
+# Roll back the most recent install of a named item (every target and backup
+# is re-validated first; nothing is ever deleted)
+aos store rollback <skill-name>
 ```
+
+**Confirmations are typed, not clicked:** writes need the exact name spelled back (`confirm`), and stopping or restarting a service through the hub CLI needs `--confirm <id>`. Nothing is installed or rolled back silently.
 
 **Fallback (if `aos-store` is not on PATH):**
 ```bash
