@@ -37,7 +37,7 @@ describe('opencode-verify', () => {
     test('COMMANDS equals the shipped /bdb-aos-* files', () => {
         const shipped = fs.readdirSync(path.join(REPO, '.opencode', 'commands')).filter((f) => f.startsWith('bdb-aos-')).sort();
         assert.deepEqual([...COMMANDS].sort(), shipped);
-        assert.equal(COMMANDS.length, 14);
+        assert.equal(COMMANDS.length, 15);
     });
 
     test('nothing installed and no CLI: no results', () => {
@@ -151,7 +151,7 @@ describe('installed layout', () => {
         assert.equal(row('go-check').ok, true, row('go-check').detail);
     });
 
-    test('real opencode CLI sees one plugin and 14 commands (AOS_E2E_CLI=1)', { skip: process.env.AOS_E2E_CLI !== '1' }, () => {
+    test('real opencode CLI sees one plugin and 15 commands (AOS_E2E_CLI=1)', { skip: process.env.AOS_E2E_CLI !== '1' }, () => {
         const proj = path.join(home, 'proj');
         fs.mkdirSync(proj);
         const script = `const i=require(${JSON.stringify(path.join(REPO, 'installer.js'))});` +
@@ -161,7 +161,7 @@ describe('installed layout', () => {
         assert.equal(inst.status, 0, inst.stderr);
         const r = byName(checkOpencode({ home, env, cwd: proj }));
         for (const [n, v] of Object.entries(r)) assert.ok(v.ok, `${n}: ${v.detail}`);
-        assert.match(r['OpenCode CLI view'].detail, /14 \/bdb-aos-\* commands, 1 bdb-aos\.js entry/);
+        assert.match(r['OpenCode CLI view'].detail, /15 \/bdb-aos-\* commands, 1 bdb-aos\.js entry/);
     });
 });
 
