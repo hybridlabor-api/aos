@@ -46,7 +46,7 @@ jobs:
           node-version: '22'
 
       - name: Install SkillSpector (pinned commit)
-        run: pip install "git+https://github.com/NVIDIA/SkillSpector@${SKILLSPECTOR_COMMIT}"
+        run: pip install --no-cache-dir "git+https://github.com/NVIDIA/SkillSpector@${SKILLSPECTOR_COMMIT}"
 
       - name: Select skills
         env:
@@ -54,9 +54,39 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
           if [ "$EVENT" = "pull_request" ]; then
-            git diff --name-only --diff-filter=ACMR "$BASE_SHA...$HEAD_SHA" -- 'skills/*SKILL.md' \
-              | xargs -r -n1 dirname | sort -u > skill-dirs.txt
+            changed="$(mktemp)"
+            git -c core.quotepath=off diff -z --name-only --diff-filter=ACMR "$BASE_SHA...$HEAD_SHA" -- 'skills/' > "$changed"
+            : > skill-dirs.txt
+            while IFS= read -r -d '' path; do
+              rel="${path#skills/}"
+              if [ "$rel" = "$path" ]; then
+                echo "::warning::Changed path outside skills/: $path"
+                continue
+              fi
+              dir=""
+              probe="$(dirname "$path")"
+              while :; do
+                if [ "$probe" = "skills" ]; then break; fi
+                if [ -f "$probe/SKILL.md" ]; then dir="$probe"; break; fi
+                parent="$(dirname "$probe")"
+                if [ "$parent" = "$probe" ]; then break; fi
+                probe="$parent"
+              done
+              if [ -n "$dir" ]; then
+                echo "$dir" >> skill-dirs.txt
+              else
+                base="${rel%%/*}"
+                rest="${rel#*/}"
+                if [ "$rest" != "$rel" ] && [ -n "$base" ]; then
+                  echo "skills/${base}/${rest%%/*}" >> skill-dirs.txt
+                else
+                  echo "::warning::No resolvable skill directory for changed path ($path); skipping"
+                fi
+              fi
+            done < "$changed"
+            sort -u -o skill-dirs.txt skill-dirs.txt
           else
             find skills -name SKILL.md -exec dirname {} \; | sort -u > skill-dirs.txt
           fi
@@ -65,17 +95,25 @@ jobs:
       - name: Scan
         run: |
           mkdir -p reports
+          i=0
           while IFS= read -r dir; do
-            [ -d "$dir" ] || continue
-            name="${dir#skills/}"; name="${name//\//__}"
+            if [ ! -d "$dir" ]; then
+              echo "::error::Resolved skill directory missing on disk: $dir"
+              exit 1
+            fi
+            i=$((i+1))
             rc=0
-            skillspector scan "$dir" --no-llm --format json -o "reports/$name.json" || rc=$?
+            skillspector scan "$dir" --no-llm --format json -o "reports/$i.json" || rc=$?
             # 0/1 = scan completed (1 = score>50, handled by the filter); anything else is an error
-            if [ "$rc" -gt 1 ]; then echo "::error::skillspector failed on $dir (exit $rc)"; exit "$rc"; fi
+            if [ "$rc" -gt 1 ]; then
+              echo "::error::skillspector failed on $dir (exit $rc)"
+              exit "$rc"
+            fi
+            printf '%s\n' "${dir#skills/}" > "reports/$i.path"
           done < skill-dirs.txt
 
       - name: Evaluate findings
-        run: node .github/scripts/skillspector-filter.mjs reports .github/skillspector-baseline.json "$SKILLSPECTOR_ENFORCE_FROM"
+        run: node .github/scripts/skillspector-filter.mjs reports .github/skillspector-baseline.json "$SKILLSPECTOR_ENFORCE_FROM" skill-dirs.txt
 
       - uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
         if: always()
