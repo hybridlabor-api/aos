@@ -122,6 +122,15 @@ function fakeDaemon(port, repoPath, { shutdown = false } = {}) {
   return new Promise((resolve) => s.listen(port, '127.0.0.1', () => resolve({ calls, server: s })));
 }
 
+async function stopHubs() {
+  const keep = new Set([process.pid, ...children.map((c) => c.pid)]);
+  for (let p = LO; p <= HI; p += 1) {
+    const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
+    for (const pid of (r.stdout || '').split('\n').filter(Boolean).map(Number)) { if (!keep.has(pid)) { try { process.kill(pid); } catch {} } }
+  }
+  await sleep(300);
+}
+
 before(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'trail-lanes-')));
   fs.mkdirSync(path.join(tmp, 'home'));
@@ -230,6 +239,7 @@ describe('daemon upgrade', () => {
   });
 
   test('an old per-worktree daemon that supports shutdown is retired after the new one is up; unrelated daemons are never touched', async () => {
+    await stopHubs();
     const main = gitRepo('old-go');
     const wt = path.join(tmp, 'old-go-wt');
     git(main, 'worktree', 'add', '-q', '-b', 'feat/o', wt);
@@ -261,6 +271,7 @@ describe('daemon upgrade', () => {
 
 describe('ensure race', () => {
   test('two simultaneous ensures start exactly one daemon', async () => {
+    await stopHubs();
     const main = gitRepo('race');
     const [a, b] = await Promise.all([ensure(main), ensure(main)]);
     assert.equal(a.url, b.url, JSON.stringify([a, b]));
@@ -270,6 +281,7 @@ describe('ensure race', () => {
   });
 
   test('a stale lock from a dead pid does not block ensure', async () => {
+    await stopHubs();
     const main = gitRepo('stale');
     const lock = path.join(tmp, 'aos-trail-ensure', `${crypto.createHash('sha1').update(main).digest('hex').slice(0, 16)}.lock`);
     write(lock, JSON.stringify({ pid: 2147483646, at: Date.now() }));
