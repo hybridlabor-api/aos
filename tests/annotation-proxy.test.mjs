@@ -321,6 +321,12 @@ test('uniform: upgrade tunnel echoes frames after guard checks (echo server)', a
   const wsServer = makeWsEchoServer();
   const wsPort = await listen(wsServer);
   const strict = await createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: wsPort } });
+  const tracked = new Map();
+  for (const srv of [strict.server, wsServer]) {
+    const set = new Set();
+    tracked.set(srv, set);
+    srv.on('connection', (c) => set.add(c));
+  }
   const socket = net.connect(strict.port, '127.0.0.1');
   const key = 'dGhlIHNhbXBsZSBub25jZQ==';
   const sentinel = '.echo-payload-42';
@@ -330,11 +336,14 @@ test('uniform: upgrade tunnel echoes frames after guard checks (echo server)', a
   });
   const head101 = await new Promise((resolve, reject) => {
     let raw = '';
+    const timer = setTimeout(() => reject(new Error('no 101 within 4s; raw=' + JSON.stringify(raw))), 4000);
+    socket.on('close', () => { clearTimeout(timer); reject(new Error('closed before 101; raw=' + JSON.stringify(raw))); });
     socket.on('data', function onData(chunk) {
       raw += chunk.toString('latin1');
       const sep = raw.indexOf('\r\n\r\n');
       if (sep < 0) return;
       socket.removeListener('data', onData);
+      clearTimeout(timer);
       resolve({ status: Number(raw.split(' ')[1]), body: raw.slice(sep + 4) });
     });
     socket.on('error', reject);
@@ -351,6 +360,10 @@ test('uniform: upgrade tunnel echoes frames after guard checks (echo server)', a
   });
   assert.ok(echoed.includes(sentinel));
   socket.destroy();
+  for (const srv of [strict.server, wsServer]) {
+    srv.closeAllConnections?.();
+    for (const s of tracked.get(srv) ?? []) s.destroy();
+  }
   await Promise.all([
     new Promise((r) => strict.server.close(r)),
     new Promise((r) => wsServer.close(r)),
