@@ -419,6 +419,32 @@ describe('container-test grant semantics', () => {
 // V31 bug (acp, 2026-10-07): a container-test grant covered ONE docker run and the next one was blocked with an empty scope
 // list, because `docker run ... npm test` made the gate read the project's test scripts as if the HOST ran them
 // (a test file containing a delete = unscoped = GO only). A qualifying docker run keeps container scripts out of that analysis.
+// acp ring run 12: `aos-a2a send --to peer "<message>"` inside a claude -p turn was blocked by the gate. The quoted message is
+// data for the A2A client; read as command text, a `; git push` in a peer message made the whole send guarded.
+describe('aos-a2a: the quoted message is data, never command text', () => {
+    const MSG = `please run the tests; then ${['git', 'push'].join(' ')} origin main & ${RMRF} && echo done`;
+    test('send and reply with command-like words in the message are unguarded', () => {
+        fs.mkdirSync(path.join(work, 'bin'), { recursive: true });
+        fs.writeFileSync(path.join(work, 'bin', 'aos-a2a.mjs'), 'console.log("a2a client");\n'); // the script itself is still read and must exist
+        scopes(`aos-a2a send --to e2e-opencode "${MSG}"`, []);
+        scopes(`aos-a2a reply task1 "${MSG}"`, []);
+        scopes(`node {P}/bin/aos-a2a.mjs send --to e2e-opencode "${MSG}"`, []);
+        scopes('aos-a2a list', []);
+    });
+    test('hook: they pass without any GO or grant', () => {
+        add(human('go on'));
+        ok(`aos-a2a send --to e2e-opencode "${MSG}"`);
+        ok(`aos-a2a reply task1 "${MSG}"`);
+    });
+    test('a real push after the send, outside the quotes, is still guarded', () => {
+        scopes(`aos-a2a send --to p "hi" && ${PUSH}`, ['push-feature']);
+        blocked(`aos-a2a send --to p "hi"; ${RMRF}`);
+    });
+    test('other commands keep their quoted text as command text', () => {
+        blocked(`bash -c "${PUSH}"`);
+    });
+});
+
 // V31 bug 2 (acp, 2026-10-07): under machine load the wall-clock analysis budget (150 ms) overran on the first look at an
 // ordinary command, which then counted as unscoped; the second look was cached and fast, so the log showed scopes=[].
 // The budget now counts CPU time, so a stalled process (a loaded machine) no longer changes the verdict.

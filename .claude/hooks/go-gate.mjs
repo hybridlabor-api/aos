@@ -891,7 +891,11 @@ function blankData(text, keepCode = false) {
     const sub = h === "git" ? rest.slice(1).map(unq).find((t, i, a) => !t.startsWith("-") && !/^-[cC]$/.test(a[i - 1] ?? "")) : "";
     const prog = rest.slice(1).filter((t) => !t.startsWith("-")).map(unqQ).join(" ");
     const executes = (/^g?awk$/.test(h) && AWK_EXEC.test(prog)) || (h === "sed" && SED_EXEC.test(prog));
-    return ((DATA_HEAD.test(h) || sub === "grep") && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
+    // `aos-a2a send|reply ... "<message>"` (also `node <dir>/aos-a2a.mjs ...`): the quoted message is data for the A2A client and
+    // is never run; read as command text, words like `; git push` inside a peer message made the whole send guarded (GO only).
+    // The script file of a `node` run is still analysed on its own (scriptInto), so a planted aos-a2a.mjs gains nothing.
+    const a2aCli = h === "aos-a2a" || (/^node(?:js)?$/.test(h) && base(rest[1] ?? "") === "aos-a2a.mjs");
+    return ((DATA_HEAD.test(h) || sub === "grep" || a2aCli) && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
   }).join("");
 }
 
