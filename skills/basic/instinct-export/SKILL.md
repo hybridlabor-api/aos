@@ -10,6 +10,9 @@ category: bdb-core
 
 # instinct-export — sanitize and share learned instincts
 
+Concept inspired by the instinct/skill-create ideas in affaan-m/ECC;
+no code copied.
+
 Instincts are small learned behaviours stored locally under
 `~/.aos/instincts/instincts.json` (format defined in `/instinct-status`).
 Exporting one means making it portable — into version control, a teammate's

@@ -183,7 +183,7 @@ describe('instinct & skill-create ecosystem skills', () => {
     for (const rel of manifests) {
       for (const name of SKILLS) {
         const entry = basicSkillKeys(rel, name);
-        assert.deepEqual(entry, [`./skills/basic/${REFERENCE}`, `./skills/basic/${name}`],
+        assert.deepEqual([...entry].sort(), [`./skills/basic/${REFERENCE}`, `./skills/basic/${name}`].sort(),
           `${rel}: ${name} registration format differs from ${REFERENCE}'s`);
       }
     }

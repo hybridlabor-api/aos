@@ -16,8 +16,8 @@ convention the team follows shows up in the diffs as a pattern repeated across
 time. Analyze that history, find the patterns, and write them down as a SKILL.md
 draft the human can review.
 
-Concept inspired by the instinct/skill-create ideas in affaan-m/ECC; no code
-copied.
+Concept inspired by the instinct/skill-create ideas in affaan-m/ECC;
+no code copied.
 
 ## 1. Confirm scope with the user, before any analysis
 

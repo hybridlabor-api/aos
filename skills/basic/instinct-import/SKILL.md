@@ -10,6 +10,9 @@ category: bdb-core
 
 # instinct-import — merge instincts into the local store
 
+Concept inspired by the instinct/skill-create ideas in affaan-m/ECC;
+no code copied.
+
 The counterpart of `/instinct-export`. Instincts live in
 `~/.aos/instincts/instincts.json` (format defined in `/instinct-status`;
 exports add an `exported` date). An import that silently rewrites what is

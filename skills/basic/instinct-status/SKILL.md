@@ -9,6 +9,9 @@ category: bdb-core
 
 # instinct-status — show this agent's learned instincts
 
+Concept inspired by the instinct/skill-create ideas in affaan-m/ECC;
+no code copied.
+
 Instincts are small learned behaviours with a confidence score. They accumulate
 in one local file this skill family owns:
 
