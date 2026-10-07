@@ -203,4 +203,31 @@ describe('(6) git subcommands assembled from variables are unscoped', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// (7) docker subcommands other than run are read through catchAll.
+// ---------------------------------------------------------------------------
+describe('(7) docker exec/compose run what their words say', () => {
+    test('null: guarded words behind docker exec and compose need a GO', () => {
+        scopes('docker exec ctr git push origin HEAD:main', null);
+        scopes('docker compose run app npm publish', null);
+        scopes("docker exec ctr sh -c 'git push origin HEAD:main'", null);
+        scopes('docker exec ctr rm -rf build', null);
+    });
+    test('[] unchanged: benign docker subcommands stay free', () => {
+        scopes('docker exec x ls', []);
+        scopes('docker ps', []);
+        scopes('docker build -t x .', []);
+        scopes('docker compose up -d', []);
+        scopes("docker exec ctr sh -c 'echo ok'", []);
+        scopes('docker compose run app npm test', []);
+    });
+    test('hook: docker exec git push is not covered by a container-test grant', () => {
+        typed('gogate grant container-test 2h');
+        add(human('go on'));
+        blocked('docker exec ctr git push origin HEAD:main');
+        add(human('GO'));
+        ok('docker exec ctr git push origin HEAD:main');
+    });
+});
+
 module.exports = {};

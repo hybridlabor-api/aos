@@ -885,7 +885,14 @@ function dockerScopes(tok, seg, tainted = segTaint) {
   if (unq(tok[0] ?? "") !== "docker") return base(tok[0] ?? "") === "docker" ? null : [];
   const sub = unq(tok[1] ?? "");
   if (sub.startsWith("-")) return tok.slice(1).some((t) => unq(t) === "run") ? null : []; // global option: another daemon or config
-  if (!(sub === "run" || (sub === "container" && unq(tok[2] ?? "") === "run"))) return [];
+  // Known limit: the entry program is guessed from the image name for `run` only, and only
+  // for names whose basename is a program (`alpine/git`); an image that wraps its program in
+  // an unusual basename or entrypoint script is not seen here and needs a GO by other rules.
+  // Every OTHER subcommand (exec, compose, build, ...) runs what its words say with no run
+  // parser: `docker exec ctr git push origin HEAD:main`, `docker compose run app npm publish`
+  // and `docker exec ctr sh -c 'git push origin HEAD:main'` are read like an opaque text, and
+  // a guarded word anywhere in them needs a GO.
+  if (!(sub === "run" || (sub === "container" && unq(tok[2] ?? "") === "run"))) return catchAll(tok, seg, true) ? null : [];
   if (tainted) return null;
   if (/(?:^|[\s;&|(])DOCKER_\w+=/.test(seg)) return null;
   let rm = false, image = false, mounts = 0, allRo = true, i = sub === "run" ? 2 : 3;
