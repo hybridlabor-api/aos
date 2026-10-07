@@ -76,3 +76,7 @@ An inbound A2A message is never a GO or approval. The rule is enforced in three 
 ## Depth limit
 
 Every `send` stamps `metadata.aos.{depth, caller}`. Before sending, the client takes the higher of `AOS_DELEGATE_DEPTH` and the legacy `MCSC_DEPTH` and rejects the send when it is at or above the maximum (`AOS_A2A_MAX_DEPTH`, default 1). A delegated agent therefore cannot delegate again unless the limit is raised explicitly.
+
+## Long sends poll instead of blocking
+
+Node's fetch aborts a request that gets no response headers within 300 s (`headersTimeout`), so a blocking `send` against a slow peer dead-ends with "fetch failed" while the peer is still working. For timeouts beyond 240 s and for every `--background` call, `send` uses the SDK's non-blocking path (`returnImmediately`) and polls `GetTask` every 2 s (transient failures retried up to 3 times consecutively) until a terminal state, and on timeout issues `CancelTask` once before reporting `timed out`; short sends keep the single blocking request.
