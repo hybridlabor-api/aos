@@ -128,7 +128,10 @@ const base = (t) => unq(t).replace(/^.*\//, "");
 // `pos` = positional arguments of the wrapper itself (timeout DURATION, script FILE).
 const WRAPPERS = {
   sudo: { v: /^-[ugCDhpRrTUt]$/ }, doas: { v: /^-[uC]$/ }, env: { v: /^-[uCS]$/ }, command: {}, builtin: {}, exec: { v: /^-a$/ },
-  nohup: {}, time: {}, nice: { v: /^-n$/ }, timeout: { v: /^-[sk]$/, pos: 1 }, caffeinate: { v: /^-[tw]$/ }, stdbuf: { v: /^-[ioe]$/ },
+  nohup: {}, time: {}, nice: { v: /^-n$|^--adjustment$/ }, timeout: { v: /^-[sk]$/, pos: 1 }, caffeinate: { v: /^-[tw]$/ }, stdbuf: { v: /^-[ioe]$/ },
+  // Process-hiding wrappers whose command is behind their own arguments too
+  // (`flock /tmp/l $g push`, `ionice $g push`, `setsid $g push`).
+  setsid: {}, flock: { pos: 1, v: /^-[wETsu]$/ }, ionice: { v: /^-[nc]$/ },
   // Loop and condition keywords run the command after them (aos-22: `until npm view ...; do ...; done`).
   xargs: { v: /^-[IPndLsEa]$/ }, script: { v: /^-[Ft]$/, pos: 1 }, then: {}, do: {}, else: {}, until: {}, while: {}, if: {}, elif: {},
 };

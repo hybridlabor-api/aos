@@ -255,4 +255,29 @@ describe('(8) xargs with a guarded program head and no visible arguments is unsc
     });
 });
 
+// ---------------------------------------------------------------------------
+// (9) setsid / flock / ionice are wrappers too.
+// ---------------------------------------------------------------------------
+describe('(9) process-hiding wrappers keep the command readable', () => {
+    test('null: the computed head behind them is seen', () => {
+        scopes('g=git; setsid $g push origin HEAD:main', null);
+        scopes('g=git; flock /tmp/l $g push origin HEAD:main', null);
+        scopes('g=git; ionice $g push origin HEAD:main', null);
+        scopes('g=git; nice --adjustment 5 $g push origin HEAD:main', null);
+    });
+    test('[] unchanged: their benign commands stay free', () => {
+        scopes('setsid echo hi', []);
+        scopes('flock /tmp/l echo hi', []);
+        scopes('ionice echo hi', []);
+        scopes('nice --adjustment 5 echo hi', []);
+    });
+    test('hook: the setsid-hidden push needs a plain GO', () => {
+        typed('gogate grant push-feature 1h');
+        add(human('go on'));
+        blocked('g=git; setsid $g push origin HEAD:main');
+        add(human('GO'));
+        ok('g=git; setsid $g push origin HEAD:main');
+    });
+});
+
 module.exports = {};
