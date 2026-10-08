@@ -24,6 +24,13 @@ test('default graph unchanged: same 7 node ids, order, models, gate keys', () =>
     ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security']);
 });
 
+test('a profile run tells Architect and TechLead the domain and lets Architect skip optional nodes; the default prompt is kept', () => {
+  assert.ok(dispatch.includes('(profileNote ?? `Decide whether the goal needs the Media_EventTech build node'));
+  assert.ok(dispatch.includes("profile ? !skipNodes.includes(id) : (id !== 'media_eventtech' || needsMedia)"));
+  assert.ok(dispatch.includes('approve only if the plan covers its build nodes'));
+  assert.ok(dispatch.includes('architectResult.skipNodes.filter((id) => profileOptionalIds.includes(id))'));
+});
+
 test('a profile run derives build nodes and gate keys from the profile', () => {
   assert.ok(dispatch.includes('for (const id of spec?.replace ?? [])'));
   assert.ok(dispatch.includes('for (const entry of spec?.add ?? [])'));
