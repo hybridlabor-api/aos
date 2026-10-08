@@ -2461,7 +2461,7 @@ export function statusText(key, eff, now = Date.now()) {
 }
 
 export const listStateKeys = () => {
-  try { return readdirSync(gateDir()).filter((f) => f.endsWith(".json") && !f.endsWith(".req.json")).map((f) => f.slice(0, -5)); } catch { return []; }
+  try { return readdirSync(gateDir()).filter((f) => f.endsWith(".json") && !/\.(req|revoke)\.json$|^trail-credential\.json$/.test(f)).map((f) => f.slice(0, -5)); } catch { return []; }
 };
 export const TOKEN_TTL_MS = 10 * 60 * 1000;
 

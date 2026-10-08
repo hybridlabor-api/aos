@@ -62,7 +62,10 @@ const readSmall = (f, max) => {
   try {
     const st = fs.fstatSync(fd)
     if (!st.isFile() || st.size > max) throw new Error('not a small regular file')
-    return fs.readFileSync(fd, 'utf8')
+    const buf = Buffer.alloc(st.size)
+    let n = 0
+    while (n < st.size) { const k = fs.readSync(fd, buf, n, st.size - n, n); if (!k) break; n += k }
+    return buf.toString('utf8', 0, n)
   } finally { fs.closeSync(fd) }
 }
 
@@ -82,7 +85,7 @@ export async function panel({ now = Date.now(), gate, dir } = {}) {
   const rejected = []
 
   for (const key of keys) {
-    const log = safe(() => fs.readFileSync(path.join(gdir, `${key}.log`), 'utf8'), '')
+    const log = safe(() => readSmall(path.join(gdir, `${key}.log`), 1 << 20), '')
     const lines = log.split('\n').filter(Boolean).map(parseLogLine).filter(Boolean)
 
     for (const l of lines) {
@@ -99,7 +102,7 @@ export async function panel({ now = Date.now(), gate, dir } = {}) {
       })
     }
 
-    const marker = safe(() => JSON.parse(fs.readFileSync(path.join(gdir, `${key}.block`), 'utf8')), null)
+    const marker = safe(() => JSON.parse(readSmall(path.join(gdir, `${key}.block`), 4096)), null)
     if (marker && Number.isFinite(Date.parse(marker.ts))) {
       blocks.push({ sessionKey: key, ts: Date.parse(marker.ts), command: '', why: 'blocked recently', reason: '', hard: false, click: false, source: 'block-marker' })
     }

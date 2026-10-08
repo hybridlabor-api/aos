@@ -178,7 +178,7 @@ describe('go-gate request records (WP-8)', () => {
         assert.equal(d, 'foo');
     });
 
-    test('a deny for session foo.req leaves foo records untouched', () => {
+    test('a deny for session foo.req leaves foo records intact and records under its own key', () => {
         fs.mkdirSync(gateDir, { recursive: true });
         const mine = path.join(gateDir, 'foo.req.json');
         fs.writeFileSync(mine, '[{"id":"keep"}]');
@@ -187,6 +187,19 @@ describe('go-gate request records (WP-8)', () => {
         });
         assert.equal(r.status, 2);
         assert.equal(fs.readFileSync(mine, 'utf8'), '[{"id":"keep"}]');
+        const other = fs.readdirSync(gateDir).filter((f) => f.endsWith('.req.json') && f !== 'foo.req.json');
+        assert.equal(other.length, 1);
+        assert.match(other[0], /^foo\.req-[0-9a-f]{12}\.req\.json$/);
+        assert.equal(JSON.parse(fs.readFileSync(path.join(gateDir, other[0]), 'utf8')).length, 1);
+    });
+
+    test('a FIFO planted as the log file does not hang the hook', (ctx) => {
+        fs.mkdirSync(gateDir, { recursive: true });
+        try { execFileSync('mkfifo', [path.join(gateDir, 'sess-req.log')]); } catch { return ctx.skip('no mkfifo'); }
+        const r = spawnSync(process.execPath, [GATE], {
+            input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push origin main' }, transcript_path: t, session_id: 'sess-req', cwd: work }), env: env(), encoding: 'utf8', timeout: 15000,
+        });
+        assert.equal(r.status, 2);
     });
 
     test('a FIFO planted as the req file does not hang the hook', (ctx) => {
