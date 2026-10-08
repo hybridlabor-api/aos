@@ -26,6 +26,12 @@
       "source": "./plugins/bdb-aos-sessions",
       "description": "AOS sessions viewer for Claude Code: every session of every harness plus the ACP workers (read-only, uses the aos-sessions CLI)",
       "version": "4.19.0"
+    },
+    {
+      "name": "bdb-aos-alert",
+      "source": "./plugins/bdb-aos-alert",
+      "description": "Alert mod for Claude Code: blinks a red bar around the prompt when the session needs you (go-gate block, permission request, question)",
+      "version": "4.19.0"
     }
   ]
 }
