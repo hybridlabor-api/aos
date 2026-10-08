@@ -100,6 +100,9 @@ async function runPrint(opts, log, emitTrail) {
     const ok = code === 0 && !timedOut && !printTimedOut && parsed?.status === "SUCCESS" && response.trim() !== "";
     if (response) { out.write(response); log("text", { text: response }); }
     out.write("\n");
+    if (!ok && (printTimedOut || (parsed?.status === "SUCCESS" && response.trim() === ""))) {
+      process.stderr.write("aos-acp: agy returned no answer (empty response; status SUCCESS is not trusted). Likely causes, not narrowed down: cold start (raise --print-timeout; 180s was not enough on the dev Mac on 2026-10-08), the agy project (mcsc passes --project mcsc-delegate), the login/auth state (run `agy` once interactively), or the model id (`agy models`).\n");
+    }
     log("done", {
       stopReason: ok ? "end_turn" : timedOut || printTimedOut ? "timeout" : "error",
       exit: code, status: parsed?.status, conversation_id: parsed?.conversation_id,

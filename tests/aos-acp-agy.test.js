@@ -89,6 +89,9 @@ describe('aos-acp agy', () => {
     const r = run([], { FAKE_AGY_MODE: 'timeout' });
     assert.equal(r.status, 1);
     assert.equal(readLog().find((e) => e.event === 'done').stopReason, 'timeout');
+    assert.match(r.stderr, /cold start/);
+    assert.match(r.stderr, /--project mcsc-delegate/);
+    assert.match(r.stderr, /auth/);
   });
 
   test('non-JSON output and a non-zero exit are failures', () => {
