@@ -876,7 +876,7 @@ if (profileName) {
 }
 
 // Effective node table: profile `replace` drops registry build ids, profile `add`
-// entries become build nodes. Same rules as scripts/validate-profile.mjs, re-checked
+// entries become build nodes. A subset of scripts/validate-profile.mjs, re-checked
 // here because the profile is read by an agent, not by the validator.
 const effectiveNodes = { ...registryNodes };
 if (profile) {
@@ -892,6 +892,13 @@ if (profile) {
       delete effectiveNodes[id];
     }
     for (const entry of spec?.add ?? []) {
+      if (
+        typeof entry.id !== 'string' || !/^[a-z0-9_]+$/.test(entry.id) ||
+        typeof entry.agentType !== 'string' || entry.agentType === '' ||
+        (entry.writes !== undefined && !/^production_artifacts\/state\.d\/[a-z0-9_-]+\.json$/.test(String(entry.writes)))
+      ) {
+        return await escalate(`profile \`${profileName}\` has an add entry with an invalid id, agentType or writes path.`);
+      }
       if (entry.role !== 'build' || registryNodes[entry.id] || addIds.has(entry.id)) {
         return await escalate(`profile \`${profileName}\` adds node \`${entry.id}\`: must be role build, not a registry id, and unique.`);
       }
@@ -1324,7 +1331,7 @@ while (!allGatesPass) {
     `You are acting as the ${shippingNode.label} agent (${shippingNode.personaFile}). ${dispatchNote(shippingNode)}${skillsNote(shippingNode)}\n\n` +
       `Run the automated quality gate against the artifacts from the plan at ${planPath}: ${GATE_LABELS}. Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect ` +
       `which apply; use "skip" only for a check that genuinely doesn't apply to this repo, not for one you didn't run). ` +
-      `Write production_artifacts/04_release_report.md and update state.gate. ` +
+      `Write production_artifacts/04_release_report.md and set state.gate to exactly these keys, dropping any other key left by an earlier run: ${GATE_KEYS.join(', ')}. ` +
       `If every gate check is 'pass' or 'skip', you must also set state.phase = "ready_to_ship" in state.json.\n\n` +
       `Return only: { "gate": { ${GATE_KEYS.map((k) => `"${k}": "pass"|"fail"|"skip"`).join(', ')} }, "blockingNodes": string[] } ` +
       `-- blockingNodes lists which build node(s) (${NODE_NAMES}) own fixing each failing check; empty if all pass.`,

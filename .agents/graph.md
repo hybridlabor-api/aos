@@ -248,7 +248,7 @@ Reviewer/Shipping prompts enumerate. Four profiles ship today:
 **Selection order** (first match wins, mirroring how `--skill=<name>` is
 resolved):
 
-1. **Explicit flag** — `/startcycle-graph --profile=<name> <goal>` (planned, step 2b) is the
+1. **Explicit flag** — `/startcycle-graph --profile=<name> <goal>` is the
    strongest signal and skips keyword matching entirely. A `--profile` name
    that does not resolve to a file in `.agents/profiles/` escalates the same
    way as a missing `--skill` name: stop, surface the error to the user,
@@ -269,12 +269,12 @@ validated against this repo by `node scripts/validate-profile.mjs`
 (`npm run validate:profiles`); `tests/profile-files.test.mjs` pins the four
 profiles and asserts the default registry is untouched.
 
-**Status, stated honestly:** profiles are validated and documented; the
-dispatcher does not consume them yet. Wiring profile loading into
-`.claude/workflows/startcycle-dispatch.mjs` (deriving `BUILD_NODES`, the
-Reviewer prompt's artifact enumeration, and the Shipping `GATE_KEYS` from
-the profile) and opening the `state.schema.json` gate/artifact enums to
-profile-defined keys is a follow-up change; until that lands, a profile is
-a spec a human dispatcher can follow by hand, nothing the workflow script
-reads.
+**Status, stated honestly:** the explicit `--profile=<name>` flag is wired.
+`.claude/workflows/startcycle-dispatch.mjs` loads the profile after
+`.agents/nodes.json`, derives `BUILD_NODES`, the Reviewer prompt's artifact
+enumeration and the Shipping `GATE_KEYS` from it, and escalates on an
+unknown, malformed or invalid profile; `state.schema.json` accepts
+profile-defined gate and artifact keys. Not built yet: keyword selection from
+the goal text (the plan-gate `profile` decision) and a successful-run test of
+a profile end to end. Without `--profile` the default pipeline runs unchanged.
 
