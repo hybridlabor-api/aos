@@ -733,12 +733,12 @@ export async function renderGateBody($: EngineInterface, e: PaneInput) {
         blockList.map((b, i) => {
           const mins = Math.max(0, Math.round((nowMs - b.at) / 60_000))
           return (
-            <Box key={`row-blk-${i}`} flexDirection="row" justifyContent="space-between">
+            <Box key={`row-blk-${i}`} flexDirection="column">
               <Box key={`row-blk-${i}-l`} flexDirection="row">
                 <Text color="yellow">▸ </Text>
                 <Button key={`blk-${i}`} plain label={b.cmd} onPress={() => void fillPreset($, presetForCommand(b.cmd))} />
               </Box>
-              <Text dimColor wrap="truncate-end">{mins}m ago</Text>
+              <Text dimColor wrap="truncate-end">  {mins}m ago</Text>
             </Box>
           )
         })
