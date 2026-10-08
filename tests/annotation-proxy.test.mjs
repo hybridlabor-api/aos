@@ -967,10 +967,27 @@ test('crash: upstream abort after headers still leaves proxy serving', { timeout
     },
     {},
     async ({ port }) => {
-      const first = await req({ port, path: '/abort' }).catch((e) => ({ error: String(e) }));
+      const abortReq = (path) => new Promise((resolve) => {
+        const chunks = [];
+        const r = http.request({ host: '127.0.0.1', port, method: 'GET', path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}` } }, (res) => {
+          res.on('data', (c) => chunks.push(c));
+          res.on('aborted', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
+          res.on('error', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
+          res.on('close', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
+          res.on('end', () => settle({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+        });
+        let done = false;
+        const settle = (v) => { if (done) return; done = true; clearTimeout(t); resolve(v); };
+        r.on('error', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
+        const t = setTimeout(() => { r.destroy(); settle({ aborted: true, body: Buffer.concat(chunks).toString() }); }, 3000);
+        t.unref?.();
+        r.end();
+      });
+      const first = await abortReq('/abort');
       const second = await req({ port, path: '/ok' });
       assert.equal(second.status, 200);
       assert.equal(second.body, 'second-ok');
+      assert.equal(first.aborted, true);
       return first;
     },
   );
