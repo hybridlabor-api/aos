@@ -122,6 +122,20 @@ What the installer writes for each target. Paths are the defaults; the installer
 
 Every install also writes the universal copy to `~/.agents/skills`, which is what the AOS CLI and the `skills` CLI read.
 
+### Capability tiers
+
+The harnesses do not get the same safety layer. The tier says what is actually wired, not what a harness could do in theory; per-row evidence is in [docs/harness-capabilities.md](docs/harness-capabilities.md).
+
+| Tier | Harnesses | What you get |
+|---|---|---|
+| 1 Full | Claude Code | GO gate as an enforced hook, typed grants and modes (`gogate grant ...`), Fleet panel, A2A inbox drained into the next prompt, all context hooks, MCP gateway entries |
+| 2 Gate and grants | OpenCode | GO gate through the plugin, grants capped at 2 h and no `off` mode, A2A injected as a prompt, MCP gateway entries; no panel |
+| 3 Gate hook only | Codex CLI, Antigravity (agy) | A `PreToolUse` gate hook is installed; grants and modes are not wired (only a literal human `GO` counts); Codex needs a one-time `/hooks` trust, and whether the hook fires under `codex exec`, `aos-acp` or `agy --print` is **unverified**; A2A inbound by `codex queue` (Codex) or pull-only (agy); MCP gateway entries not written for these two |
+| 4 Skills, rules, MCP | Cursor, Windsurf, Roo Code / Cline, Aider | Skills and project rules (Cursor `.mdc`, Roo modes); MCP entries for Cursor; **no hook**, so the Destructive Actions text in `AGENTS.md` is the only safety layer |
+| Not supported | Zed, Kimi | No installer target |
+
+Where a tier has no hook, nothing mechanical stops a guarded command: use a Tier 1 or 2 harness for anything that can push, publish or delete.
+
 ---
 
 ## The pipelines
@@ -157,6 +171,22 @@ What keeps the full graph honest:
 | Per-node state fragments | Parallel build nodes write `state.d/<node>.json`; the dispatcher merges. No lost-update race on one file. |
 | Iteration ceiling | `max_iterations` (default 3) stops the loop unconditionally. |
 | In-loop human edge | Any node can set `needs_human: true` and stop the run. |
+
+## Playbooks
+
+34 playbooks (`skills/playbooks/pb-*`) are ordinary skills that walk one job step by step, with the GO points marked. They install like every other skill; there is one command, `playbooks`, that lists them with duration and difficulty and starts one. No per-playbook command exists.
+
+`pb-bug-fix` · `pb-ci-fix` · `pb-clip-from-moodboard` · `pb-crew-call-sheet` · `pb-deploy-saas` · `pb-docs-site` · `pb-event-tracker` · `pb-focus-chunks` · `pb-handover` · `pb-harness-work` · `pb-health-weekly` · `pb-idea-to-launch` · `pb-image-to-3d` · `pb-inbox-zero` · `pb-invoice-check` · `pb-landing-page` · `pb-launch-video` · `pb-machine-setup` · `pb-master` · `pb-meeting-actions` · `pb-newsletter` · `pb-offer` · `pb-open-source` · `pb-pcb-to-case` · `pb-project-new` · `pb-redesign-app` · `pb-release-aos` · `pb-security-sweep` · `pb-ship` · `pb-show-build` · `pb-social-pack` · `pb-todo` · `pb-week-plan` · `pb-worktrees-land`
+
+| Harness | Type this |
+|---|---|
+| Claude Code | `/bdb-aos:playbooks`, then name one; or say what you want ("master session" starts `pb-master`) |
+| Codex | `$bdb-aos:playbooks`; mentioning a playbook by name in words also works through `~/.agents/skills` (direct `$pb-<name>` use is unverified) |
+| OpenCode | `/bdb-aos-playbooks`, or ask in words; playbooks that need an app server (media, show) stop with "Missing MCP" by design |
+| Antigravity (agy) | `/bdb-aos:playbooks` (command namespacing on a live agy is unverified, see [docs/agy-coverage.md](docs/agy-coverage.md)) |
+| Cursor, Windsurf, Roo Code / Cline, Aider | skills folder only, no command: ask for the playbook by name |
+
+Limits: a playbook runs in your main session. Its `(agent)` steps use Claude subagents only, so there is no worker fan-out. The gate is only a backstop on Claude Code, OpenCode and agy (Codex unverified; Cursor and Kimi none), so a playbook with a GO point still depends on you typing `GO`.
 
 ## The GO gate
 

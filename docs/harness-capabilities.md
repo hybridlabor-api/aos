@@ -8,7 +8,7 @@ What each harness can do inside AOS: delegation channels, inbound A2A, gate hook
 | A2A inbound | UserPromptSubmit drain + Stop nudge (`.claude/hooks/a2a-inbox.mjs`) | plugin inject as synthetic prompt (`.opencode/plugins/bdb-aos.js`) | `codex queue` / `codex exec resume` (`lib/a2a-codex.mjs`) | pull only, inbox MCP `a2a_inbox_pull` (`bin/a2a-inbox-mcp.mjs`); a running interactive session cannot be pushed into |
 | A2A reply | `aos-a2a reply` via pre-approved Bash rules | reply file written by the plugin from the assistant message | answer to the queued/resumed prompt, as the reply file | `a2a_reply` tool, or `aos-a2a reply` |
 | A2A sidecar mode | `--mode live` | `--mode live` | `--mode live` (executor in `lib/a2a-codex.mjs`) | `--mode live` (resume executor in `lib/a2a-agy.mjs`) |
-| GO gate hook | yes (`.claude/hooks/go-gate.mjs`) | yes (plugin, shared hooks) | yes (smoke-tested, `docs/codex-gate-smoke.md`) | gate-only hooks (`PreToolUse`/`PreInvocation`/`Stop`) |
+| GO gate hook | yes (`.claude/hooks/go-gate.mjs`) | yes (plugin, shared hooks) | installed in `config.toml`; firing is unverified, the smoke test in `docs/codex-gate-smoke.md` has not been run | gate-only hooks (`PreToolUse`/`PreInvocation`/`Stop`); firing is unverified |
 | Never-GO on A2A inbound | yes (prefix + never-GO line) | yes | yes | yes |
 
 Notes:
@@ -29,6 +29,22 @@ Notes:
 | Fleet view | `plugins/bdb-aos-fleet` ("which Claude sessions are working, which need you, and the active projects"); the installer only registers it in Claude Code `settings.json` (needs Claude Code >= 2.1.287, opt out with `AOS_NO_FLEET=1`) |
 | GO helper | `aos-gogate status [--session <id>]`, `preset <name>`, `presets` are read-only: they print status or the text you type yourself and never record a grant |
 | Orchestrator chain | master session -> project orchestrator -> package orchestrator: `docs/orchestrator-chain.md` |
+
+## Capability tiers
+
+The README groups the harnesses into tiers (Claude Code full; OpenCode gate and grants; Codex and agy gate hook only; Cursor, Windsurf, Roo/Cline and Aider skills, rules and MCP; Zed and Kimi unsupported). The evidence per tier:
+
+| Tier | Gate hook | Grants / modes | Panel | A2A inbound | MCP gateway entries | Source |
+|---|---|---|---|---|---|---|
+| 1 Claude Code | `settings.json` PreToolUse, enforced | `go-grant.mjs` + `go-token.mjs` (UserPromptSubmit), all modes | Fleet mod (`plugins/bdb-aos-fleet`) | UserPromptSubmit drain + Stop nudge | yes | `lib/v5/profile.js` HARNESS_HOOKS.claude |
+| 2 OpenCode | plugin `tool.execute.before` | via plugin, no `off`, grants capped at 2 h | none | plugin injects a prompt | yes | `.opencode/plugins/bdb-aos.js` |
+| 3 Codex | `[[hooks.PreToolUse]]` in `config.toml`, manual `/hooks` trust, firing unverified | not wired | none | `codex queue` / `exec resume` | not written (shape unverified) | `installer.js` mergeCodexTomlHooks |
+| 3 agy | named hook `aos-go-gate`, firing unverified | not wired | none | pull only (`a2a_inbox_pull`) | not written (shape unverified) | `installer.js` mergeAntigravityHooks |
+| 4 Cursor | none | none | none | MCP `aos-a2a-mcp`, opt-in `AOS_A2A_MCP=on` | yes | README harness table |
+| 4 Windsurf, Roo/Cline, Aider | none | none | none | none | no | README harness table |
+| Zed, Kimi | no installer target | - | - | - | - | grep of `installer.js` |
+
+Without a hook the only safety layer is the Destructive Actions text in `AGENTS.md`. Hook kill switches today: `--no-hooks` (context hooks only), `--profile minimal`, `AOS_NO_FLEET=1`; there is no per-hook disable.
 
 ## GO grants per harness
 
