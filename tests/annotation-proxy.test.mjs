@@ -227,6 +227,29 @@ function rawProbe(port, hostHeader, token) {
 
 const hostOverrideProbe = (port, hostHeader) => rawProbe(port, hostHeader, TOKEN);
 
+test('secure: the real proxy refuses CONNECT and opens no connection upstream', async () => {
+  let upstreamConns = 0;
+  const count = () => { upstreamConns += 1; };
+  upstream.server.on('connection', count);
+  try {
+    const raw = await new Promise((resolve, reject) => {
+      const socket = net.connect(proxyPort, '127.0.0.1');
+      let out = '';
+      socket.on('connect', () => {
+        socket.write(`CONNECT 127.0.0.1:${upstreamPort} HTTP/1.1\r\nHost: 127.0.0.1:${upstreamPort}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\n\r\n`);
+      });
+      socket.on('data', (c) => { out += c.toString('latin1'); });
+      socket.on('error', () => {});
+      socket.on('close', () => resolve(out));
+      setTimeout(() => { socket.destroy(); reject(new Error('CONNECT probe: socket stayed open')); }, 3000).unref();
+    });
+    assert.ok(!/^HTTP\/1\.[01] 2/.test(raw), `no 2xx answer to CONNECT, got: ${raw.slice(0, 60)}`);
+    assert.equal(upstreamConns, 0, 'CONNECT must not reach the upstream');
+  } finally {
+    upstream.server.off('connection', count);
+  }
+});
+
 test('uniform: same-origin filled-in Origin keeps guard fully engaged', async () => {
   const ok = await req({ path: '/plain', headers: { origin: `http://127.0.0.1:${proxyPort}` } });
   assert.ok(ok.status === 200 || ok.status === 404);
