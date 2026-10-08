@@ -116,10 +116,7 @@ describe('aos-acp with a fake ACP agent', () => {
         assert.match(out, /decision=yes-once/);
     });
 
-    test('agy adapter is refused with a pointer to mcsc; unknown adapter errors', () => {
-        const r = spawnSync(process.execPath, [BIN, 'agy', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' });
-        assert.equal(r.status, 2);
-        assert.match(r.stderr, /mcsc/);
+    test('unknown adapter errors (agy is covered in aos-acp-agy.test.js)', () => {
         assert.equal(spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' }).status, 2);
     });
 

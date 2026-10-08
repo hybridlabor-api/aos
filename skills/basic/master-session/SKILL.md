@@ -17,7 +17,7 @@ One session is the **master**: it keeps the overview, asks workers for status, a
 - **Spawn** — start the workers yourself. AO is optional; without it:
   - Claude: `claude --bg --name <name> --permission-mode auto "<prompt>"`, or over ACP as below.
   - Codex / OpenCode / Claude over ACP: `aos-acp <codex|opencode|claude> --name <name> --cwd <worktree> --prompt "<task>" --go-wait 600 &` (one process per worker; run it in the background and read its log). Details: `docs/master-session-acp.md`.
-  - agy: no sanctioned ACP adapter (`antigravity-acp` breaches Google's Antigravity terms). Adopt agy sessions or delegate via the `mcsc` skill.
+  - agy: `aos-acp agy ...` runs the vendor's `agy --print` (no ACP server, so no per-tool GO requests; `--allow-default` maps to agy's modes, see `docs/delegation-routing.md`). The third-party `antigravity-acp` shim is not used. Running agy sessions are adopted, not spawned.
   - If AO is installed, `ao-orchestrator` may run the same workers; it adds nothing the token protocol needs.
 
 ### Routing: which channel for which job
