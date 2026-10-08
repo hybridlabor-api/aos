@@ -108,7 +108,7 @@ test('unit: cookie parser and issued cookie shape', () => {
   assert.equal(cookieToken(`${COOKIE_NAME}=${TOKEN}; other=x`), TOKEN);
   assert.equal(cookieToken('x=1'), null);
   const set = issueCookie(TOKEN, 60);
-  assert.match(set, new RegExp(`^${COOKIE_NAME}=${TOKEN}; HttpOnly; SameSite=Strict; Path=/aos-api; Max-Age=60$`));
+  assert.match(set, new RegExp(`^${COOKIE_NAME}=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=60$`));
   assert.doesNotMatch(set, /Domain=/);
   assert.doesNotMatch(set, /Secure/);
 });
@@ -245,10 +245,18 @@ test('integration: cross-site and same-site fetch metadata refused', async () =>
   }
 });
 
-test('integration: non-GET/POST methods refused', async () => {
-  for (const method of ['PUT', 'DELETE']) {
+test('integration: unsafe non-dev methods refused; dev methods forwarded', async () => {
+  // TRACE is never a normal dev-app method: always refused.
+  for (const method of ['TRACE', 'CONNECT']) {
     const res = await request({ method, headers: { ...baseHeaders(), 'content-type': 'application/json' } });
     assert.equal(res.status, 403, method);
     assert.equal(JSON.parse(res.body).code, 'E_METHOD', method);
+  }
+});
+
+test('integration: dev method set (HEAD/PUT/PATCH/DELETE/OPTIONS) passes the guard', { timeout: 8000 }, async () => {
+  for (const method of ['HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+    const res = await request({ method, headers: baseHeaders() });
+    assert.equal(res.status, 200, method);
   }
 });

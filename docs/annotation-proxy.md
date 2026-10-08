@@ -14,14 +14,28 @@ proxy so the annotation canvas and the app share an origin.
   origin are blocked with typed JSON (`E_REDIRECT_OFF_ALLOWLIST`); upstream and
   proxy-origin redirects are rewritten to proxy-relative paths. `Set-Cookie`
   loses its `Domain` attribute.
+- Cookie/token isolation: the guard's own `aos_ann` cookie is stripped from the
+  forwarded `Cookie` header (HTTP and the hand-built upgrade request; the
+  header is dropped when nothing remains) and from every upstream `Set-Cookie`
+  line, so the app can never read, set or overwrite it. `Authorization` is
+  dropped both directions of the request path. `accept-encoding` is pinned to
+  `identity` toward upstream, so upstreams send unencoded bodies.
 - HTML responses (`text/html`, <= 8 MB by default): exactly one
   `<script src="/__aos_annot/overlay.js?v=0.1.0" nonce="...">` before
-  `</body>`, `accept-encoding` stripped toward upstream, gzip/deflate/brotli
-  decoded before injection, `content-length` fixed, `X-AOS-Annot: rewritten`.
-  Oversize HTML passes through untouched with `X-AOS-Annot: skipped`.
+  `</body>`, gzip/deflate/brotli decoded with a hard `maxOutputLength` cap
+  (`maxHtmlBytes`) before injection — a compressed bomb fails closed —
+  `content-length` fixed, `X-AOS-Annot: rewritten`. If the decode fails or the
+  decoded size exceeds the cap, the buffered raw bytes are passed through
+  unchanged with the original headers and `X-AOS-Annot: skipped`; the response
+  always ends, the upstream stream is never re-piped and nothing leaks
+  (`res.on('close')` destroys upstream request/response). Oversize HTML passes
+  through untouched with `X-AOS-Annot: skipped`.
+- Concurrency: a slot is held until the response finishes or the client
+  disconnects (`res` `finish`/`close`/upstream error), released exactly once.
 - Proxy-owned routes (`/__aos_annot/*`) carry a strict CSP: nonce'd script-src,
-  no inline/eval, `connect-src 'self'`, `frame-ancestors 'none'`. Upstream CSP
-  and `X-Frame-Options` are stripped only on proxied app responses.
+  no inline/eval, `connect-src 'self'`, `frame-ancestors 'none'`. Upstream app
+  CSP is kept with the per-response nonce appended (never deleted; absent
+  stays absent); `X-Frame-Options` is kept unless `embedOrigin` is set.
 - WebSocket upgrades to `/_vite*`, `/ws*` (Vite HMR uses `/`) tunnel raw bytes
   to the same fixed upstream with a 120 s idle timeout.
 - Caps: 8 MB HTML rewrite, 30 s upstream timeout, WS idle timeout,
