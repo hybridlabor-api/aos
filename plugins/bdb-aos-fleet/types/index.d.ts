@@ -30,7 +30,9 @@ export type FleetSelf = {
 
 export type GateState = { mode: string; grants: { scope: string; minutesLeft: number }[]; raw: string }
 
-export type GateBlock = { cmd: string; at: number }
+export type GateBlock = { cmd: string; at: number; releaseClass?: boolean }
+
+export type GateProfile = { profile: 'strict' | 'work' | 'off'; minutesLeft: number | null; note?: string }
 
 export type PlanTask = { id: string; text: string; mark: ' ' | '~' | 'x' | '!'; by?: string }
 
@@ -45,6 +47,7 @@ declare module 'claude-code' {
       gate: GateState
       gateMsg: string
       blocks: GateBlock[]
+      profile: GateProfile | null
       plan: PlanComponent[]
       planFile: string
       tab: 'fleet' | 'gate' | 'plan'

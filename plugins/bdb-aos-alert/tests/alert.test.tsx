@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine, TestBody } from 'claude-code/testing'
 
-import { barText, blinkPhase, maskCommand } from '../hooks/register'
+import { barText, blinkPhase, isReleaseClassBlock, maskCommand } from '../hooks/register'
 
 type On = Parameters<TestBody>[1]
 
@@ -70,6 +70,17 @@ test('blocked tool.call, then a successful one, toggles the alarm', async ($, on
   blocked = false
   await $.tool.call({ tool: 'Bash', command: 'ls' })
   expect(await bar($)).not.toContain('ACTION NEEDED')
+})
+
+test('a release-class block says so in the alert reason', async ($, on) => {
+  mocks(on)
+  expect(isReleaseClassBlock('profile work: this command is in the release class and needs a GO')).toBe(true)
+  expect(isReleaseClassBlock('go-gate: blocked')).toBe(false)
+  on('tool.call', () => ({ ...DENIED, text: 'go-gate: profile work: this command is in the release class and needs a GO' }))
+  await $.tool.call({ tool: 'Bash', command: 'npm publish --token sk-abcdefghijkl' })
+  const json = await bar($)
+  expect(json).toContain('GO needed (release class): npm publish --token ***')
+  expect(json).not.toContain('sk-abcdefghijkl')
 })
 
 test('permission request and AskUserQuestion set the alarm, turn.start clears it', async ($, on) => {

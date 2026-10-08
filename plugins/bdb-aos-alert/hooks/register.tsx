@@ -22,6 +22,8 @@ export const maskCommand = (cmd: string) => {
   return s.length > CMD_MAX ? `${s.slice(0, CMD_MAX - 1)}…` : s
 }
 
+export const isReleaseClassBlock = (text: string) => text.includes('release class')
+
 export type Phase = 'on' | 'off' | 'steady'
 
 export const blinkPhase = (frame: number, elapsedMs: number): Phase =>
@@ -106,7 +108,8 @@ export const register: Register = on => {
     if (e.tool === 'AskUserQuestion') await activate($, 'question')
     const result = await next(e)
     if (result.isError && result.text && /go-gate/i.test(result.text)) {
-      await activate($, `GO needed: ${e.tool === 'Bash' ? maskCommand(e.command) : String(e.tool)}`)
+      const label = isReleaseClassBlock(result.text) ? 'GO needed (release class)' : 'GO needed'
+      await activate($, `${label}: ${e.tool === 'Bash' ? maskCommand(e.command) : String(e.tool)}`)
     } else if (!result.isError) {
       await clear($)
     }

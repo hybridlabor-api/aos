@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateBlock, GateState, PlanComponent, PlanTask } from '../types'
+import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateBlock, GateProfile, GateState, PlanComponent, PlanTask } from '../types'
 
 const PANE = 'aos-fleet'
 const GATE_PANE = 'gogate-panel'
@@ -18,6 +18,7 @@ const tab = atom({ plugin: 'bdb-aos-fleet', key: 'tab' } as const, 'fleet')
 const gate = atom({ plugin: 'bdb-aos-fleet', key: 'gate' } as const, { mode: 'soft', grants: [], raw: '' })
 const gateMsg = atom({ plugin: 'bdb-aos-fleet', key: 'gateMsg' } as const, '')
 const blocks = atom({ plugin: 'bdb-aos-fleet', key: 'blocks' } as const, [] as GateBlock[])
+const profile = atom({ plugin: 'bdb-aos-fleet', key: 'profile' } as const, null as GateProfile | null)
 const self = atom({ plugin: 'bdb-aos-fleet', key: 'self' } as const, {
   activity: 'idle',
 })
@@ -327,6 +328,39 @@ export function parseGateStatus(text: string): GateState {
 
 export const timeLeft = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}` : `${min}m`)
 
+export function parseProfile(text: string): GateProfile | null {
+  const m = /^profile:\s*(strict|work|off)\b(?:\s*\((?:(\d+) min left|no expiry)\))?/m.exec(text)
+  if (!m) return null
+  const note = /^note:\s*(.+)$/m.exec(text)?.[1]?.trim()
+  return { profile: m[1] as GateProfile['profile'], minutesLeft: m[2] ? Number(m[2]) : null, ...(note ? { note } : {}) }
+}
+
+export const isReleaseClassBlock = (text: string) => text.includes('release class')
+
+export const demoProfile = (): GateProfile => ({ profile: 'work', minutesLeft: 187 })
+
+const PROFILE_COLOR: Record<string, string> = { strict: 'gray', work: 'yellow', off: 'red' }
+
+// Display only: runs the read-only status CLI; a missing CLI shows nothing.
+async function readProfile($: EngineInterface) {
+  if (await isDemo($)) {
+    await update($, profile, () => demoProfile())
+    return
+  }
+  const home = await $.env.get('HOME')
+  let found: GateProfile | null = null
+  for (const cmd of [['aos-gate', 'status'], ['node', `${home}/.agents/bin/aos-gate.mjs`, 'status']]) {
+    try {
+      const r = await $.process.run(cmd)
+      found = r.exitCode === 0 ? parseProfile(r.stdout) : null
+    } catch {
+      found = null
+    }
+    if (found) break
+  }
+  await update($, profile, () => found)
+}
+
 async function readGate($: EngineInterface) {
   if (await isDemo($)) {
     await update($, gate, () => demoGate())
@@ -340,6 +374,7 @@ async function readGate($: EngineInterface) {
 // The only place that writes the prompt box, and only from a Button press.
 async function openGatePane($: EngineInterface) {
   await readGate($).catch(() => undefined)
+  await readProfile($).catch(() => undefined)
   await $.ui.open({ id: GATE_PANE, title: 'go-gate' })
 }
 
@@ -648,6 +683,7 @@ export async function renderGateBody($: EngineInterface, e: PaneInput) {
   const Raster = 'Raster' in ui ? ui.Raster : undefined
   const { mode, grants, raw } = await read($, gate)
   const msg = await read($, gateMsg)
+  const prof = await read($, profile)
   const width = e.props.bodyColumns ?? 80
   const scopeW = Math.max(...grants.map(x => x.scope.length), 0)
   const demo = await isDemo($)
@@ -689,6 +725,14 @@ export async function renderGateBody($: EngineInterface, e: PaneInput) {
         <Text key="hero-tag" dimColor wrap="truncate-end">go-gate</Text>
       </Box>
       <Text key="hero-meaning" dimColor wrap="truncate-end">{MEANING[mode] ?? MEANING.soft}</Text>
+      {prof && (
+        <Text key="hero-profile" wrap="truncate-end">
+          <Text color={PROFILE_COLOR[prof.profile]}>
+            {`profile: ${prof.profile} · ${prof.minutesLeft === null ? 'no expiry' : `${timeLeft(prof.minutesLeft)} left`}`}
+          </Text>
+          {prof.note && <Text dimColor>{` (config ignored: ${prof.note})`}</Text>}
+        </Text>
+      )}
       <Box key="hero-segments" flexDirection="row">
         {SEG_MODES.map((m, i) => (
           <Box key={`seg-slot-${m}`} flexDirection="row">
@@ -737,6 +781,7 @@ export async function renderGateBody($: EngineInterface, e: PaneInput) {
               <Box key={`row-blk-${i}-l`} flexDirection="row">
                 <Text color="yellow">▸ </Text>
                 <Button key={`blk-${i}`} plain label={b.cmd} onPress={() => void fillPreset($, presetForCommand(b.cmd))} />
+                {b.releaseClass && <Text color="red">{' '}release class</Text>}
               </Box>
               <Text dimColor wrap="truncate-end">  {mins}m ago</Text>
             </Box>
@@ -882,7 +927,9 @@ export const register: Register = on => {
     await loadFleet($)
     await loadPlan($)
     await readGate($).catch(() => undefined)
+    await readProfile($).catch(() => undefined)
     $.clock.every(30_000, () => void readGate($).catch(() => undefined))
+    $.clock.every(30_000, () => void readProfile($).catch(() => undefined))
     $.clock.every(5_000, () => void loadFleet($))
     $.clock.every(5_000, () => void loadPlan($).catch(() => undefined))
     $.clock.every(30_000, () => void publish($))
@@ -937,7 +984,8 @@ export const register: Register = on => {
       const command = e.tool === 'Bash' ? maskCommand(e.command) : String(e.tool)
       if (!(await isDemo($))) {
         const at = await $.clock.now()
-        await update($, blocks, list => [{ cmd: command, at }, ...list].slice(0, MAX_BLOCKS))
+        const releaseClass = isReleaseClassBlock(result.text ?? '')
+        await update($, blocks, list => [{ cmd: command, at, releaseClass }, ...list].slice(0, MAX_BLOCKS))
       }
       await setSelf($, { activity: 'attention', reason: `GO: ${command}` })
       await publish($)
@@ -974,6 +1022,7 @@ export const register: Register = on => {
     }
     await loadFleet($)
     await readGate($)
+    await readProfile($).catch(() => undefined)
     await loadPlan($)
     await $.ui.open({ id: HUB_PANE, title: 'AOS hub' })
     return { text: 'AOS hub pane opened.' }
@@ -1027,6 +1076,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const list = await read($, fleet)
     const g = await read($, gate)
+    const prof = await read($, profile)
     if (e.props.hasSurvey || (list.length === 0 && !reading && !g.raw)) return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
     const wide = e.props.bodyColumns >= 70
@@ -1075,6 +1125,7 @@ export const register: Register = on => {
         <Button key="gate" plain label={`gate ${g.mode}`} onPress={() => void openGatePane($)} />
         <Text dimColor wrap="truncate-end">
           {g.grants.map(x => ` · ${x.scope} ${timeLeft(x.minutesLeft)}`).join('')}
+          {prof && prof.profile !== 'strict' ? ` · ${prof.profile}${prof.minutesLeft === null ? '' : ` ${timeLeft(prof.minutesLeft)}`}` : ''}
           {'   '}
         </Text>
       </Box>
