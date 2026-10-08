@@ -1,10 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateBlock, GateState } from '../types'
+import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, GateBlock, GateState, PlanComponent, PlanTask } from '../types'
 
 const PANE = 'aos-fleet'
 const GATE_PANE = 'gogate-panel'
+const PLAN_PANE = 'aos-plan'
 const STALE_MS = 5 * 60_000
 const ROLES: FleetRole[] = ['master', 'task-manager', 'orchestrator', 'worker']
 const ATTENTION_PHASES = ['ready_to_ship', 'escalated']
@@ -17,6 +18,8 @@ const blocks = atom({ plugin: 'bdb-aos-fleet', key: 'blocks' } as const, [] as G
 const self = atom({ plugin: 'bdb-aos-fleet', key: 'self' } as const, {
   activity: 'idle',
 })
+const plan = atom({ plugin: 'bdb-aos-fleet', key: 'plan' } as const, [] as PlanComponent[])
+const planFile = atom({ plugin: 'bdb-aos-fleet', key: 'planFile' } as const, '')
 
 export const roleFromName = (name: string): FleetRole =>
   /master/i.test(name)
@@ -168,6 +171,108 @@ export const grantBar = (minutesLeft: number) => {
 // Grant rows turn yellow under 30 minutes and red under 10.
 export const grantColor = (minutesLeft: number) =>
   minutesLeft >= 30 ? 'green' : minutesLeft >= 10 ? 'yellow' : 'red'
+
+export type PlanState = 'Completed' | 'Blocked' | 'Underway' | 'Waiting'
+
+export function parsePlan(text: string): PlanComponent[] {
+  const comps: PlanComponent[] = []
+  let cur: PlanComponent | null = null
+  let lastTask: PlanTask | null = null
+  let inFence = false
+  let taskTotal = 0
+  for (const raw of text.split('\n')) {
+    const t = raw.trim()
+    if (t.startsWith('```')) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+    const h = /^##\s+(.+?)\s*\{#([\w-]+)\}\s*$/.exec(t)
+    if (h) {
+      if (comps.length >= 200) break
+      cur = { id: h[2]!, name: h[1]!, needs: [], tasks: [] }
+      comps.push(cur)
+      lastTask = null
+      continue
+    }
+    if (!cur) continue
+    const needs = /^needs:\s*\[([^\]]*)\]/.exec(t)
+    if (needs) {
+      cur.needs = needs[1]!.split(',').map(s => s.trim()).filter(Boolean)
+      continue
+    }
+    const task = /^-\s+\[([ ~x!])\]\s+(.+?)(?:\s*\{#([\w-]+)\})?\s*$/.exec(t)
+    if (task) {
+      if (taskTotal >= 200) continue
+      const tt: PlanTask = { id: task[3] ?? `t${cur.tasks.length}`, text: task[2]!, mark: task[1] as PlanTask['mark'] }
+      cur.tasks.push(tt)
+      taskTotal++
+      lastTask = tt
+      continue
+    }
+    const by = /^(?:by|from):\s*(\S+)/.exec(t)
+    if (by && lastTask && !lastTask.by) {
+      lastTask.by = by[1]!
+    }
+  }
+  return comps
+}
+
+export function planStats(c: PlanComponent): { done: number; total: number; doing: number; stuck: number; state: PlanState } {
+  const total = c.tasks.length
+  const done = c.tasks.filter(t => t.mark === 'x').length
+  const doing = c.tasks.filter(t => t.mark === '~').length
+  const stuck = c.tasks.filter(t => t.mark === '!').length
+  const state: PlanState =
+    total > 0 && done === total ? 'Completed' : stuck > 0 ? 'Blocked' : doing > 0 || done > 0 ? 'Underway' : 'Waiting'
+  return { done, total, doing, stuck, state }
+}
+
+export const demoPlan = (): PlanComponent[] => [
+  { id: 'setup', name: 'Setup Pulse rig', needs: [], tasks: [
+    { id: 'rig', text: 'Patch fixtures and check signal', mark: 'x', by: 'claude' },
+    { id: 'net', text: 'Join show network', mark: 'x', by: 'codex' },
+    { id: 'cue', text: 'Load opening cue list', mark: '~', by: 'agy' },
+  ] },
+  { id: 'look', name: 'Design the look', needs: ['setup'], tasks: [
+    { id: 'pal', text: 'Pick palette for act one', mark: 'x', by: 'claude' },
+    { id: 'viz', text: 'Build generative visual', mark: '~', by: 'opencode' },
+    { id: 'media', text: 'Queue media clips', mark: ' ', by: 'claude' },
+  ] },
+  { id: 'show', name: 'Run the show', needs: ['look'], tasks: [
+    { id: 'reh', text: 'Rehearse transitions', mark: ' ', by: 'agy' },
+    { id: 'go', text: 'Call the GO cues', mark: ' ', by: 'codex' },
+    { id: 'oops', text: 'Fix stuck blackout', mark: '!', by: 'claude' },
+  ] },
+]
+
+const PLAN_CANDIDATES = ['PLAN.md', 'production_artifacts/00_execution_plan.md', 'production_artifacts/PLAN.md']
+
+async function loadPlan($: EngineInterface) {
+  if (await isDemo($)) {
+    await update($, plan, () => demoPlan())
+    await update($, planFile, () => 'demo')
+    return
+  }
+  const cwd = await $.session.cwd()
+  const repo = await $.session.repo().catch(() => null)
+  const root = (repo as { root?: string } | null)?.root ?? cwd
+  for (const f of PLAN_CANDIDATES) {
+    try {
+      const text = await $.fs.read(`${root}/${f}`)
+      const parsed = parsePlan(text)
+      if (parsed.length > 0) {
+        await update($, plan, () => parsed)
+        await update($, planFile, () => f)
+        return
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  await update($, plan, () => [])
+  await update($, planFile, () => '')
+}
 
 // The hero lock as half-block pixel cells; packed like spriteCells (two pixel rows per screen row).
 const LOCK_W = 6
@@ -479,6 +584,7 @@ export const register: Register = on => {
     id = await $.session.id()
     await $.command.register({ name: 'aos-fleet', description: 'Show the AOS fleet pane' })
     await $.command.register({ name: 'gogate-panel', description: 'Show the go-gate status and grant presets' })
+    await $.command.register({ name: 'aos-plan', description: 'Show the live plan box' })
     await $.command.register({
       name: 'aos-role',
       description: `Set this session's AOS role: ${ROLES.join(' | ')}`,
@@ -489,9 +595,11 @@ export const register: Register = on => {
     await takeReading($).catch(() => undefined)
     await publish($)
     await loadFleet($)
+    await loadPlan($)
     await readGate($).catch(() => undefined)
     $.clock.every(30_000, () => void readGate($).catch(() => undefined))
     $.clock.every(5_000, () => void loadFleet($))
+    $.clock.every(5_000, () => void loadPlan($).catch(() => undefined))
     $.clock.every(30_000, () => void publish($))
     $.clock.every(700, () => void tick($))
 
@@ -564,6 +672,12 @@ export const register: Register = on => {
   on('command.run', { command: 'gogate-panel' }, async $ => {
     await openGatePane($)
     return { text: 'go-gate pane opened.' }
+  })
+
+  on('command.run', { command: 'aos-plan' }, async $ => {
+    await loadPlan($)
+    await $.ui.open({ id: PLAN_PANE, title: 'plan' })
+    return { text: 'plan pane opened.' }
   })
 
   on('command.run', { command: 'aos-role' }, async ($, e) => {
@@ -827,6 +941,78 @@ export const register: Register = on => {
         <Text dimColor wrap="truncate-end">
           click prefills your prompt · you press Enter to record
         </Text>
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PLAN_PANE }, async ($, e) => {
+    const ui = $.ui.resolve(e)
+    const { Box, Text } = ui
+    const comps = await read($, plan)
+    const totals = comps.map(planStats)
+    const doneAll = totals.reduce((a, s) => a + s.done, 0)
+    const totalAll = totals.reduce((a, s) => a + s.total, 0)
+    if (comps.length === 0) {
+      return (
+        <Box flexDirection="column">
+          <Text dimColor wrap="truncate-end">no plan file found (PLAN.md or production_artifacts/00_execution_plan.md)</Text>
+        </Box>
+      )
+    }
+    const PLAN_BAR = 10
+    const MARK: Record<string, { glyph: string; color: string }> = {
+      x: { glyph: '✓', color: 'green' },
+      '~': { glyph: '●', color: 'yellow' },
+      '!': { glyph: '✗', color: 'red' },
+      ' ': { glyph: '○', color: 'gray' },
+    }
+    const COLOR: Record<string, string> = { Completed: 'green', Underway: 'yellow', Blocked: 'red', Waiting: 'gray' }
+    const rank: Record<string, number> = { '~': 0, '!': 1, ' ': 2, x: 3 }
+    const cards = comps.map((c, i) => {
+      const s = totals[i]!
+      const filled = totalAll === 0 || s.total === 0 ? 0 : Math.round((s.done / s.total) * PLAN_BAR)
+      const rows = [...c.tasks].sort((a, b) => rank[a.mark]! - rank[b.mark]!).slice(0, 6)
+      const more = c.tasks.length - rows.length
+      return (
+        <Box key={`plan-${c.id}`} flexDirection="column" borderStyle="round" borderColor={COLOR[s.state] ?? 'gray'} paddingX={1} marginBottom={1}>
+          <Box key={`plan-${c.id}-head`} flexDirection="row" justifyContent="space-between">
+            <Text bold wrap="truncate-end">{c.name}</Text>
+            <Text color={COLOR[s.state]} wrap="truncate-end">{s.state}</Text>
+          </Box>
+          <Box key={`plan-${c.id}-bar`} flexDirection="row">
+            <Text color="green">{'■'.repeat(filled)}</Text>
+            <Text dimColor>{'□'.repeat(PLAN_BAR - filled)}</Text>
+            <Text dimColor wrap="truncate-end"> {s.done}/{s.total}</Text>
+          </Box>
+          {rows.map(t => (
+            <Box key={`plan-${c.id}-${t.id}`} flexDirection="row" justifyContent="space-between">
+              <Box key={`plan-${c.id}-${t.id}-l`} flexDirection="row">
+                <Text color={MARK[t.mark]!.color}>{MARK[t.mark]!.glyph} </Text>
+                <Text wrap="truncate-end">{t.text}</Text>
+              </Box>
+              {t.by && <Text dimColor wrap="truncate-end">{t.by[0]!.toUpperCase()}</Text>}
+            </Box>
+          ))}
+          {more > 0 && <Text dimColor wrap="truncate-end">+{more} more</Text>}
+        </Box>
+      )
+    })
+    const wide = (e.props.bodyColumns ?? 80) >= 96
+    const body = wide ? (
+      <Box key="cols" flexDirection="row">
+        <Box key="col-left" flexGrow={1} flexDirection="column">{cards.filter((_, i) => i % 2 === 0)}</Box>
+        <Box key="col-right" flexGrow={1} flexDirection="column">{cards.filter((_, i) => i % 2 === 1)}</Box>
+      </Box>
+    ) : (
+      <Box key="stack" flexDirection="column">{cards}</Box>
+    )
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row" justifyContent="space-between">
+          <Text bold wrap="truncate-end">PLAN</Text>
+          <Text dimColor wrap="truncate-end">{doneAll}/{totalAll} tasks</Text>
+        </Box>
+        {body}
       </Box>
     )
   })

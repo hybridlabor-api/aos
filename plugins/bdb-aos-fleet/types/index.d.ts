@@ -32,6 +32,10 @@ export type GateState = { mode: string; grants: { scope: string; minutesLeft: nu
 
 export type GateBlock = { cmd: string; at: number }
 
+export type PlanTask = { id: string; text: string; mark: ' ' | '~' | 'x' | '!'; by?: string }
+
+export type PlanComponent = { id: string; name: string; needs: string[]; tasks: PlanTask[] }
+
 declare module 'claude-code' {
   interface PluginState {
     'bdb-aos-fleet': {
@@ -41,6 +45,8 @@ declare module 'claude-code' {
       gate: GateState
       gateMsg: string
       blocks: GateBlock[]
+      plan: PlanComponent[]
+      planFile: string
     }
   }
 }

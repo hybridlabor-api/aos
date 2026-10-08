@@ -35,4 +35,6 @@ for (const line of src.split('\n')) {
   const t = line.trim()
   if (t.includes('<Button') && /(?:^|[^.\w])color=/.test(t)) fail(`Button takes no color prop: ${t}`)
 }
+const planPane = src.slice(src.indexOf("requestId: PLAN_PANE"), src.indexOf('token-weather'))
+if (planPane.includes('<Button')) fail('aos-plan pane must contain no <Button')
 console.log('source-guard: ok')
