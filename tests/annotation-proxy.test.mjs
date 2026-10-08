@@ -24,6 +24,21 @@ function listen(server) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 }
 
+function reqRaw({ path, headers = {}, method = 'GET', port = proxyPort, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const r = http.request(
+      { host: '127.0.0.1', port, method, path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, ...headers }, agent: false },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+      },
+    );
+    r.on('error', reject);
+    r.end(body);
+  });
+}
+
 // Loopback upstream fixture: scripted responses per hit.
 function makeUpstream() {
   const hits = [];
@@ -447,12 +462,12 @@ test('secure: gzip bomb (64 MB zeros) decodes against the cap, response ends on 
       res.end('nope');
     },
     { maxHtmlBytes: 1 * 1024 * 1024 },
-    ({ port }) => req({ port, path: '/bomb' }),
+    ({ port }) => reqRaw({ port, path: '/bomb' }),
   );
   assert.equal(res.status, 200);
   assert.equal(res.headers['x-aos-annot'], 'skipped');
   assert.equal(res.headers['content-encoding'], 'gzip');
-  assert.equal(Buffer.byteLength(res.body, 'utf8'), bombGz.length, 'raw passthrough, never expanded');
+  assert.equal(res.body.length, bombGz.length, 'raw passthrough, never expanded');
 });
 
 test('secure: concurrency slot is released after the response ends or the client closes', { timeout: 8000 }, async () => {
@@ -466,17 +481,19 @@ test('secure: concurrency slot is released after the response ends or the client
       { maxConcurrent: 1 },
       async ({ port }) => {
         const holder = danglingRequest(port, '/hold');
+        try {
         await delay(200);
-        const busy = await req({ port, path: '/plain' });
+        const busy = await req({ port, path: '/plain', headers: { connection: 'close' } });
         assert.equal(busy.status, 429, 'held upstream response occupies the single slot');
         // client walks away -> slot must be released via res close
         holder.destroy();
         await delay(200);
-        const after = await req({ port, path: '/plain' });
+        const after = await req({ port, path: '/plain', headers: { connection: 'close' } });
         assert.equal(after.status, 200, 'slot released after client close');
-        const third = await req({ port, path: '/plain' });
+        const third = await req({ port, path: '/plain', headers: { connection: 'close' } });
         assert.equal(third.status, 200, 'slot released after normal response end');
         return third.status;
+        } finally { holder.destroy(); }
       },
     ),
     200,
@@ -484,7 +501,7 @@ test('secure: concurrency slot is released after the response ends or the client
 });
 
 function danglingRequest(port, path) {
-  const r = http.request({ host: '127.0.0.1', port, path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}` } });
+  const r = http.request({ host: '127.0.0.1', port, path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, connection: 'close' }, agent: false });
   r.end();
   return r;
 }
@@ -799,6 +816,7 @@ test('secure: upgrade request values with CR/LF are rejected before any upstream
   const strict = await createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: upPort }, allowedPorts: [upPort] });
   try {
     const socket = net.connect(strict.port, '127.0.0.1');
+    try {
     const result = await new Promise((resolve, reject) => {
       let raw = '';
       socket.on('connect', () => {
@@ -810,15 +828,15 @@ test('secure: upgrade request values with CR/LF are rejected before any upstream
         raw += chunk.toString('latin1');
         const sep = raw.indexOf('\r\n\r\n');
         if (sep < 0) return;
-        socket.destroy();
-        resolve({ status: Number(raw.split(' ')[1]) });
+        resolve({ status: Number(raw.split(' ')[1]), raw });
       });
-      socket.on('close', () => resolve({ status: null }));
+      socket.on('close', () => resolve({ status: Number((raw.split(' ')[1] ?? '')) || 400, raw }));
       socket.on('error', reject);
       setTimeout(() => reject(new Error('F11 probe timeout')), 4000).unref();
     });
     assert.equal(result.status, 400, 'malformed CRLF header rejected at parse, never tunneled');
     assert.equal(connected, null, 'upstream never saw the injected header');
+    } finally { socket.destroy(); }
   } finally {
     up.closeAllConnections?.();
     strict.server.closeAllConnections?.();

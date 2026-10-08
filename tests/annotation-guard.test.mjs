@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import net from 'node:net';
 import { Readable } from 'node:stream';
 import {
   COOKIE_NAME,
@@ -247,12 +248,32 @@ test('integration: cross-site and same-site fetch metadata refused', async () =>
 
 test('integration: unsafe non-dev methods refused; dev methods forwarded', async () => {
   // TRACE is never a normal dev-app method: always refused.
-  for (const method of ['TRACE', 'CONNECT']) {
-    const res = await request({ method, headers: { ...baseHeaders(), 'content-type': 'application/json' } });
-    assert.equal(res.status, 403, method);
-    assert.equal(JSON.parse(res.body).code, 'E_METHOD', method);
-  }
+  const trace = await request({ method: 'TRACE', headers: { ...baseHeaders(), 'content-type': 'application/json' } });
+  assert.equal(trace.status, 403, 'TRACE');
+  assert.equal(JSON.parse(trace.body).code, 'E_METHOD', 'TRACE');
+  const connect = await rawMethodProbe('CONNECT', '/aos-api/annotations/collect');
+  assert.equal(connect.status, 403, 'CONNECT');
+  assert.equal(JSON.parse(connect.body).code, 'E_METHOD', 'CONNECT');
 });
+
+function rawMethodProbe(method, path) {
+  return new Promise((resolve, reject) => {
+      const socket = net.connect(PORT, '127.0.0.1');
+      let raw = '';
+      socket.on('connect', () => {
+        socket.write(
+          `${method} ${path} HTTP/1.1\r\nHost: 127.0.0.1:${PORT}\r\nOrigin: http://127.0.0.1:${PORT}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
+        );
+      });
+      socket.on('data', (chunk) => { raw += chunk.toString('latin1'); });
+      socket.on('close', () => {
+        const sep = raw.indexOf('\r\n\r\n');
+        const status = Number((raw.split(' ')[1] ?? ''));
+        resolve({ status, body: sep < 0 ? '' : raw.slice(sep + 4) });
+      });
+      socket.on('error', reject);
+  });
+}
 
 test('integration: dev method set (HEAD/PUT/PATCH/DELETE/OPTIONS) passes the guard', { timeout: 8000 }, async () => {
   for (const method of ['HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
