@@ -10,15 +10,15 @@ proxy so the annotation canvas and the app share an origin.
   before the guard runs — same binding, one code path.
 - Upstream: one fixed origin from `parseUpstream('<host>:<port>', allowPorts)`
   (loopback spellings only; default range 5173-5199, explicit port only via
-  CLI). The request path never changes the upstream. Redirects to any other
+     CLI). The upstream host may be `127.0.0.1`, `localhost` or `[::1]` plus port. The request path never changes the upstream. Redirects to any other
   origin are blocked with typed JSON (`E_REDIRECT_OFF_ALLOWLIST`); upstream and
   proxy-origin redirects are rewritten to proxy-relative paths. `Set-Cookie`
   loses its `Domain` attribute.
 - Cookie/token isolation: the guard's own `aos_ann` cookie is stripped from the
   forwarded `Cookie` header (HTTP and the hand-built upgrade request; the
   header is dropped when nothing remains) and from every upstream `Set-Cookie`
-  line, so the app can never read, set or overwrite it. `Authorization` is
-  dropped both directions of the request path. `accept-encoding` is pinned to
+   line, so the app can never read, set or overwrite it. `Authorization` is
+  dropped on requests only. `accept-encoding` is pinned to
   `identity` toward upstream, so upstreams send unencoded bodies.
 - HTML responses (`text/html`, <= 8 MB by default): exactly one
   `<script src="/__aos_annot/overlay.js?v=0.1.0" nonce="...">` before
@@ -45,3 +45,7 @@ proxy so the annotation canvas and the app share an origin.
   (`window.__AOS_ANNOT = {version}`) is WP4, not this task.
 - Tests: `tests/annotation-proxy.test.mjs` (node:test, upstream + proxy on
   port 0, loopback only). Docs: this file.
+- Known limits: (a) the aos_ann cookie is not port-scoped, so the browser also
+  sends it to other localhost ports including the dev app; the claim "never
+  reaches upstream" holds for the proxy's forwarded requests only; (b) HTML
+  buffering can hold up to 8 MB raw + 8 MB decoded per concurrent HTML response.

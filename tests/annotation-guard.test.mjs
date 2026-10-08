@@ -285,3 +285,10 @@ test('integration: dev method set (HEAD/PUT/PATCH/DELETE/OPTIONS) passes the gua
     assert.equal(res.status, 200, method);
   }
 });
+
+test('vite hmr query keys pass except under /__aos_annot/', { timeout: 8000 }, async () => {
+  const mk = (url) => ({ method: 'GET', url, headers: { host: `127.0.0.1:${PORT}`, origin: `http://127.0.0.1:${PORT}`, cookie: `${COOKIE_NAME}=${TOKEN}` } });
+  checkRequest(mk('/src/a.js?t=123'), { port: PORT, tokenSha: SHA });
+  checkRequest(mk('/?token=abc'), { port: PORT, tokenSha: SHA });
+  assert.throws(() => checkRequest(mk('/__aos_annot/overlay.js?token=x'), { port: PORT, tokenSha: SHA }), (e) => e.code === 'E_QUERY_TOKEN');
+});
