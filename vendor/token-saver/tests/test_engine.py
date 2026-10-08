@@ -863,3 +863,45 @@ class TestProcessorChaining:
 
         monkeypatch.delenv("TOKEN_SAVER_MAX_CHAIN_DEPTH")
         config.reload()
+
+
+class TestMachineConsumedPassthrough:
+    def setup_method(self):
+        self.engine = CompressionEngine()
+
+    def _long_json(self):
+        import json
+
+        return json.dumps({"items": [{"id": i, "v": "x" * 50} for i in range(100)]})
+
+    def test_piped_curl_passes_through(self):
+        out = self._long_json()
+        c, _p, was = self.engine.compress("curl -s http://127.0.0.1:9/x | wc -c", out)
+        assert not was and c == out
+
+    def test_piped_curl_to_node_passes_through(self):
+        out = self._long_json()
+        c, _p, was = self.engine.compress("curl -s http://127.0.0.1:9/x | node", out)
+        assert not was and c == out
+
+    def test_plain_curl_untouched(self):
+        out = self._long_json()
+        c, _p, was = self.engine.compress("curl -s http://127.0.0.1:9/x", out)
+        assert not was and c == out
+
+    def test_redirect_and_substitution_pass_through(self):
+        out = "line\n" * 300
+        for cmd in (
+            "curl -s http://x > file",
+            "curl -s http://x -o file",
+            "echo $(curl -s http://x)",
+            "echo `curl -s http://x`",
+            "git log | head -5",
+        ):
+            c, _p, was = self.engine.compress(cmd, out)
+            assert not was and c == out, cmd
+
+    def test_unpiped_non_curl_still_compresses(self):
+        out = "line\n" * 300 + "unique\n" + "line\n" * 300
+        _c, _p, was = self.engine.compress("some_command", out)
+        assert was

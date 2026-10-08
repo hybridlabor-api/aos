@@ -397,8 +397,8 @@ class TestCurlPrecision:
     def setup_method(self):
         self.engine = CompressionEngine()
 
-    def test_curl_verbose_preserves_status_and_body(self):
-        """HTTP status code and response body must survive compression."""
+    def test_curl_verbose_passes_through_unchanged(self):
+        """curl output is never compressed: consumers may parse it as JSON."""
         output = "\n".join(
             [
                 "* Trying 10.0.0.1:443...",
@@ -422,12 +422,8 @@ class TestCurlPrecision:
         compressed, _, was_compressed = self.engine.compress(
             "curl -v https://api.example.com/api/users", output
         )
-        assert was_compressed
-        assert "HTTP/2 201" in compressed
-        assert "POST /api/users" in compressed
-        assert '{"id": 42' in compressed
-        assert "location: /api/users/42" in compressed
-        assert "TLSv1.3" not in compressed
+        assert not was_compressed
+        assert compressed == output
 
 
 class TestDockerPsPrecision:
