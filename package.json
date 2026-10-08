@@ -40,7 +40,7 @@
     "access": "public"
   },
   "repository": {
-    "type": "git && node --test tests/gateway-roo.test.js",
+    "type": "git",
     "url": "git+https://github.com/hybridlabor-api/aos.git"
   },
   "bugs": {
