@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agenttrail enrol</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/enroll.js" defer></script>
+<meta name="csrf-token" content="__TRAIL_CSRF__">
+</head>
+<body>
+<header class="bar"><h1>agenttrail <span class="dim">enrol</span></h1></header>
+<main>
+  <section class="panel">
+    <h2>Enrol this device</h2>
+    <p class="note">Enter the code that <code>aos-trail enroll</code> printed in your terminal. Your browser then asks for Touch ID or a security key and stores the public key only.</p>
+    <div class="copy-row">
+      <input id="code" type="text" maxlength="8" autocomplete="off" spellcheck="false" aria-label="enrolment code">
+      <button id="go" type="button">Enrol</button>
+      <span id="out" class="dim"></span>
+    </div>
+  </section>
+</main>
+</body>
+</html>

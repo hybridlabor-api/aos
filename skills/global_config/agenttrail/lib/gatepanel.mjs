@@ -44,7 +44,7 @@ export function parseLogLine(line) {
 }
 
 export function filterStateKeys(keys) {
-  return (keys || []).filter((k) => typeof k === 'string' && !/\.(req|revoke)$/.test(k) && k !== 'trail-credential')
+  return (keys || []).filter((k) => typeof k === 'string' && !/\.(req|revoke)$/.test(k) && k !== 'trail-credential' && k !== 'trail-enroll')
 }
 
 export async function loadGate(modPath = process.env.AOS_GOGATE_PATH) {

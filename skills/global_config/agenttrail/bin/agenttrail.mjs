@@ -11,6 +11,7 @@ import crypto from 'node:crypto'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
 import { parsePlan, lintPlan } from '../lib/plan.mjs'
 import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
+import { enrolRefusal, createEnrolCode } from '../lib/click.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -49,6 +50,9 @@ let emitStatus = null
 let emitFile = null
 let emitMessage = null
 let emitStdin = false
+// AOS v2: `enroll [--replace] [--no-open]` registers the platform authenticator for GO clicks
+let replaceFlag = false
+let portArg = null
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
@@ -56,6 +60,8 @@ for (let i = 0; i < argv.length; i++) {
   // AOS patch: ask engine CLI — asks the human a question via the map
   else if (a === 'ask') cmd = 'ask'
   else if (a === 'emit') cmd = 'emit'
+  else if (a === 'enroll' && cmd === null) cmd = 'enroll'
+  else if (a === '--replace') replaceFlag = true
   else if (a === '--ensure') ensureMode = true
   else if (a === '--cwd') ensureCwd = argv[++i]
   else if (a === '--session') { ensureSession = argv[++i]; if (cmd === 'emit') emitSession = ensureSession }
@@ -69,7 +75,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (cmd === 'emit' && a === '--json') emitStdin = true
   else if (cmd === 'emit' && emitKind === null && !a.startsWith('-')) emitKind = a
   else if (a === '--json') jsonOut = true
-  else if (a === '--port') port = parseInt(argv[++i], 10)
+  else if (a === '--port') { port = parseInt(argv[++i], 10); portArg = port }
   else if (a === '--open') openBrowser = true
   else if (a === '--no-open') { noOpen = true; openBrowser = false }
   else if (a === '--yes' || a === '-y') assumeYes = true
@@ -157,10 +163,30 @@ if (cmd === 'init') { hooksOnly ? installHooks() : await init(); process.exit(0)
 if (cmd === 'up') { await upAll(); process.exit(0) }
 if (cmd === 'autostart') { autostart(); process.exit(0) }
 if (cmd === 'hook') { await relayHook(); process.exit(0) }
+// AOS v2: one-time enrolment. Runs only in the user's own terminal; the code is printed
+// here and never travels over HTTP.
+if (cmd === 'enroll') { process.exit(await enrollFlow()) }
 // AOS v2: report one event to the hub. Always exits 0 — a reporting hook never fails a tool call.
 if (cmd === 'emit') { await emitFlow(); process.exit(0) }
 // AOS patch: ask engine CLI — blocks until the map answers; exit 0 = go, 1 = deny/timeout
 if (cmd === 'ask') { process.exit(await askFlow()) }
+
+async function enrollFlow() {
+  const refusal = enrolRefusal({ stdinTTY: process.stdin.isTTY, stdoutTTY: process.stdout.isTTY, env: process.env })
+  if (refusal) { console.error(`aos-trail enroll: ${refusal}`); return 1 }
+  let made
+  try { made = createEnrolCode({ replace: replaceFlag }) } catch (e) {
+    console.error(e && e.code === 'already-enrolled' ? 'aos-trail enroll: a credential is already enrolled; pass --replace to swap it' : `aos-trail enroll: ${String((e && e.message) || e).slice(0, 120)}`)
+    return 1
+  }
+  const url = `http://localhost:${portArg || Number(process.env.AGENTTRAIL_PORT) || 5350}/enroll`
+  console.log(`enrolment code: ${made.code}  (valid 5 min, 3 tries)\nopen ${url} and enter the code`)
+  if (!noOpen) {
+    const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
+    try { (await import('node:child_process')).spawn(opener, [url], { stdio: 'ignore', shell: false }).unref() } catch { /* the URL is printed above */ }
+  }
+  return 0
+}
 
 // AOS v2: build one event and hand it to the hub. Errors are swallowed on purpose:
 // a hook that cannot reach the board must not disturb the agent that called it.

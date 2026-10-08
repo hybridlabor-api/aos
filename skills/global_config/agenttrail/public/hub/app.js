@@ -1,7 +1,9 @@
 // The hub board. Vanilla JS, no external requests, no inline script or style.
 // Every value that came off the wire goes into the DOM as a text node — never as
 // markup — so a session name or a command preview cannot become a tag.
-// There is deliberately no Approve button: a GO is answered by typing it.
+// An Approve button exists only once a platform authenticator is enrolled (model.gate.enrolled):
+// the click asks the OS for Touch ID, and the gate re-verifies the signature itself.
+// Without an enrolled credential a GO is answered by typing it, so only copy text shows.
 
 const CSRF = (() => {
   const meta = document.querySelector('meta[name="csrf-token"]')
@@ -18,6 +20,69 @@ function el(tag, props, children) {
   }
   for (const c of [].concat(children || [])) if (c !== null && c !== undefined) node.appendChild(c)
   return node
+}
+
+let enrolled = false
+
+const toB64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const fromB64u = (s) => {
+  const p = String(s).replace(/-/g, '+').replace(/_/g, '/')
+  return Uint8Array.from(atob(p + '='.repeat((4 - (p.length % 4)) % 4)), (c) => c.charCodeAt(0)).buffer
+}
+
+async function postGate(route, body) {
+  const r = await fetch(`/v1/gate/${route}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-trail-csrf': CSRF },
+    body: JSON.stringify(body),
+  })
+  let data = {}
+  try { data = await r.json() } catch { /* an empty body carries no error code */ }
+  return { ok: r.ok, status: r.status, data }
+}
+
+// challenge -> OS prompt -> confirm. Every step reports the hub's error code as text.
+async function approve(item, out) {
+  out.textContent = 'asking for Touch ID…'
+  try {
+    const c = await postGate('challenge', { requestId: item.id, decision: 'go' })
+    if (!c.ok) { out.textContent = `refused: ${c.data.error || c.status}`; return }
+    const o = c.data.publicKey
+    const got = await navigator.credentials.get({
+      publicKey: {
+        challenge: fromB64u(o.challenge),
+        rpId: o.rpId,
+        timeout: o.timeout,
+        userVerification: 'required',
+        allowCredentials: (o.allowCredentials || []).map((a) => ({ type: a.type, id: fromB64u(a.id) })),
+      },
+    })
+    const r = got.response
+    const done = await postGate('confirm', {
+      requestId: c.data.requestId,
+      assertion: { id: got.id, authenticatorData: toB64u(r.authenticatorData), clientDataJSON: toB64u(r.clientDataJSON), signature: toB64u(r.signature) },
+    })
+    out.textContent = done.ok ? 'approved; the command can be retried within 10 minutes' : `refused: ${done.data.error || done.status}`
+  } catch {
+    out.textContent = 'cancelled'
+  }
+}
+
+function approveRow(item) {
+  const out = el('span', { class: 'dim', text: '' })
+  const btn = el('button', { type: 'button', class: 'approve', text: 'Approve (Touch ID)' })
+  btn.addEventListener('click', () => { approve(item, out) })
+  return el('div', { class: 'copy-row' }, [btn, out])
+}
+
+function revokeRow(sessionKey) {
+  const out = el('span', { class: 'dim', text: '' })
+  const btn = el('button', { type: 'button', text: 'revoke session' })
+  btn.addEventListener('click', async () => {
+    const r = await postGate('revoke', { sessionKey }).catch(() => null)
+    out.textContent = r && r.ok ? 'revoked' : `refused: ${(r && r.data.error) || 'error'}`
+  })
+  return el('div', { class: 'copy-row' }, [btn, out])
 }
 
 const clear = (node) => { while (node && node.firstChild) node.removeChild(node.firstChild) }
@@ -88,6 +153,7 @@ function renderWaiting(model) {
     else if (item.sessionId) what.appendChild(el('div', { class: 'dim', text: item.sessionId }))
 
     if (item.decision) what.appendChild(copyRow(goText(item), 'copy GO text'))
+    if (item.decision && item.click !== false && enrolled) what.appendChild(approveRow(item))
     if (item.kind === 'claim') what.appendChild(el('div', { class: 'meta', text: 'this is an agent’s own claim — no gate request backs it' }))
 
     const meta = el('div', { class: 'meta', text: ageText(item.age) })
@@ -250,6 +316,7 @@ function renderGate(model) {
         el('div', { class: 'what' }, [
           el('div', { text: `${g.scope} · ${g.sessionKey}` }),
           el('div', { class: 'meta', text: `until ${g.until} · ${g.minutesLeft} min left${g.session ? ' · session grant' : ''}` }),
+          enrolled ? revokeRow(g.sessionKey) : null,
         ]),
       ]))
     }
@@ -265,6 +332,7 @@ function renderGate(model) {
         el('div', {}, [el('code', { class: 'cmd', text: r.command || r.id })]),
       ])
       if (r.click) what.appendChild(copyRow(`GO ${r.sessionKey}`, 'copy GO text'))
+      if (r.click && enrolled) what.appendChild(approveRow(r))
       ul.appendChild(el('li', { class: 'row' }, [what, el('div', { class: 'meta', text: ageText(now0() - r.ts) })]))
     }
     host.appendChild(el('div', {}, [el('h3', { text: 'open requests' }), ul]))
@@ -329,7 +397,12 @@ function renderBar(model) {
   modelNow = Date.parse(model.now) || Date.now()
   document.getElementById('port').textContent = `port ${model.port ?? '—'}`
   const g = model.gate || {}
-  document.getElementById('gate').textContent = g.available ? `gate readable · ${(g.requests || []).length} open` : 'gate not readable'
+  enrolled = !!g.enrolled
+  const note = document.getElementById('waiting-note')
+  if (note) note.textContent = enrolled
+    ? 'Approve asks for your fingerprint each time. It approves exactly the command shown, once. Typing GO still works.'
+    : 'A GO request can only be answered by you, by typing it. Nothing on this page can approve anything. Run aos-trail enroll in your own terminal to enable Touch ID approval.'
+  document.getElementById('gate').textContent = g.available ? `gate readable · ${(g.requests || []).length} open${enrolled ? ' · enrolled' : ''}` : 'gate not readable'
   document.getElementById('clock').textContent = new Date(modelNow).toLocaleTimeString()
 }
 

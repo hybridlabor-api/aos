@@ -12,7 +12,8 @@ import { validateEvent, fromLegacyHook, MAX_BODY_BYTES } from '../lib/events.mjs
 import { SessionTable, readA2aRegistry } from '../lib/sessions.mjs'
 import { buildModel } from '../lib/hub-model.mjs'
 import { panel as gatePanel, loadGate } from '../lib/gatepanel.mjs'
-import { csrfToken } from '../lib/httpguard.mjs'
+import { csrfToken, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, MAX_BODY_BYTES as GATE_BODY_BYTES } from '../lib/httpguard.mjs'
+import { createClick, ClickError } from '../lib/click.mjs'
 import { loadConfig } from '../lib/stale.mjs'
 import { STATE_DIR, loadRepos, registerRepo, loadState, setPinned } from '../lib/hub-state.mjs'
 
@@ -72,6 +73,58 @@ function securityHeaders(res) {
 // CSRF token: delivered only in the same-origin HTML, required on every write.
 const CSRF = csrfToken()
 
+const click = createClick({
+  port,
+  gate: async () => {
+    const mod = await loadGate()
+    if (!mod) return null
+    const p = await gatePanel({ gate: mod })
+    if (!p.available) return null
+    return {
+      requests: p.requests,
+      sessionKeys: p.modes.map((m) => m.sessionKey),
+      scopes: Array.isArray(mod.SCOPES) ? mod.SCOPES : [],
+      maxGrantMs: typeof mod.MAX_GRANT_MS === 'number' ? mod.MAX_GRANT_MS : 24 * 60 * 60 * 1000,
+    }
+  },
+})
+
+const GATE_ROUTES = {
+  'enroll-begin': (b) => click.enrolBegin(b),
+  'enroll-finish': (b) => click.enrolFinish(b),
+  challenge: (b) => click.challenge(b),
+  confirm: (b) => click.confirm(b),
+  revoke: (b) => click.revoke(b),
+}
+
+// Every check runs before the body is read and before any state is touched. The order
+// is fixed so each failure has one precise status: Host, method, Origin, fetch site,
+// content type, CSRF.
+async function handleGate(req, res, urlPath) {
+  const reply = (status, obj) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(obj))
+  if (!strictHostOk(req.headers.host, port, { click: true })) { res.writeHead(421).end(); return }
+  if (req.method !== 'POST') { res.writeHead(405).end(); return }
+  if (!originOk(req.headers.origin, port)) { rejected.foreignOrigin += 1; reply(403, { error: 'origin' }); return }
+  if (!sameOriginFetchSite(req.headers)) { reply(403, { error: 'fetch-site' }); return }
+  if (!contentTypeOk(req)) { reply(415, { error: 'content-type' }); return }
+  if (!csrfOk(req.headers, CSRF)) { reply(403, { error: 'csrf' }); return }
+  const handler = Object.hasOwn(GATE_ROUTES, urlPath.slice('/v1/gate/'.length)) ? GATE_ROUTES[urlPath.slice('/v1/gate/'.length)] : null
+  if (!handler) { res.writeHead(404).end(); return }
+  const body = await readJson(req, res, { maxBytes: GATE_BODY_BYTES })
+  if (!body.ok) return
+  if (!body.value || typeof body.value !== 'object' || Array.isArray(body.value)) { reply(400, { error: 'bad-body' }); return }
+  try {
+    const result = await handler(body.value)
+    modelCache = null
+    reply(200, result)
+    broadcast()
+  } catch (e) {
+    // Only the error code leaves the hub: no input is echoed back.
+    if (e instanceof ClickError) reply(e.status, { error: e.code })
+    else reply(500, { error: 'internal' })
+  }
+}
+
 function readJson(req, res, { maxBytes = MAX_BODY_BYTES } = {}) {
   return new Promise((resolve) => {
     let size = 0
@@ -99,6 +152,7 @@ const MODEL_TTL_MS = 700
 async function buildNow() {
   const gateMod = await loadGate()
   const gate = await gatePanel({ gate: gateMod, dir: gateMod ? undefined : null })
+  gate.enrolled = click.enrolled()
   const state = loadState()
   const a2a = readA2aRegistry(path.join(os.homedir(), '.aos', 'sessions'))
   for (const a of a2a) {
@@ -131,7 +185,7 @@ const tick = setInterval(broadcast, 2000)
 tick.unref()
 
 async function serveStatic(req, res, urlPath) {
-  const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '')
+  const rel = urlPath === '/' ? 'index.html' : urlPath === '/enroll' ? 'enroll.html' : urlPath.replace(/^\/+/, '')
   const file = path.join(PUBLIC, rel)
   if (!file.startsWith(PUBLIC)) { res.writeHead(404).end(); return }
   let data = null
@@ -139,7 +193,7 @@ async function serveStatic(req, res, urlPath) {
   if (!data) { res.writeHead(404, { 'content-type': 'text/plain' }).end('not found'); return }
   const type = MIME[path.extname(file)] || 'application/octet-stream'
   // The CSRF token reaches the page here and nowhere else.
-  if (rel === 'index.html') res.writeHead(200, { 'content-type': type }).end(data.toString('utf8').replace('__TRAIL_CSRF__', CSRF))
+  if (rel === 'index.html' || rel === 'enroll.html') res.writeHead(200, { 'content-type': type }).end(data.toString('utf8').replace('__TRAIL_CSRF__', CSRF))
   else res.writeHead(200, { 'content-type': type }).end(data)
 }
 
@@ -157,7 +211,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(403).end()
     return
   }
-  if (clickRoute(urlPath)) { res.writeHead(404).end(); return }
+  if (clickRoute(urlPath)) { await handleGate(req, res, urlPath); return }
 
   try {
     if (req.method === 'GET' && urlPath === '/whoami') {
