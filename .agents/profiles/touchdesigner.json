@@ -33,7 +33,7 @@
     "shipping": null
   },
   "gates": {
-    "get_td_node_errors": "get_td_node_errors over the TouchDesigner network reports zero errors or warnings",
+    "td-node-errors": "get_td_node_errors over the TouchDesigner network reports zero errors or warnings",
     "performance-budget": "The network meets the plan's fps/CPU budget, measured live, not eyeballed"
   },
   "artifacts": {
