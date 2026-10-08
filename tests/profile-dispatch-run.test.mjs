@@ -29,7 +29,8 @@ function run(...cliArgs) {
 
 test('a valid profile passes the load stage (no profile-related escalation)', () => {
   const { result } = run('--profile=kicad', 'add a status LED board');
-  console.error('EXPLORATORY result:', JSON.stringify(result).slice(0, 600));
+  // Docker 2026-10-08: the stub run gets through plan, build and review, then ends at the archify
+  // boundary check (the container has no archify), so it cannot reach ready_to_ship here.
   assert.doesNotMatch(String(result.reason ?? ''), /profile/i);
 });
 
