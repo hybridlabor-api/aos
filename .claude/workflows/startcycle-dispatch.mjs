@@ -761,48 +761,6 @@ if (missingNodeIds.length > 0) {
   );
 }
 
-// Optional domain profile: loaded in the same load step as nodes.json.
-// Unknown or missing profile file escalates -- never silently falls back.
-let profile = null;
-if (profileName) {
-  const profileResult = await agent(
-    `Read the file .agents/profiles/${profileName}.json (repository root) and return its exact contents, parsed as JSON. ` +
-      'This is a read-only lookup, not a reasoning task: do not invent, modify, reinterpret, merge, or add any field that is not literally present in the file. ' +
-      'If the file is missing, unreadable, or not valid JSON, return { "missing": true } rather than guessing at its contents.',
-    { label: 'load-profile', model: 'haiku', profile: profileName }
-  );
-  if (!profileResult || profileResult.missing || !profileResult.gates) {
-    return await escalate(
-      `--profile named a profile that could not be loaded: ${profileName}. ` +
-        'Check .agents/profiles/ for the exact profile name. ' +
-        'Refusing to silently fall back to the default pipeline.'
-    );
-  }
-  profile = profileResult;
-}
-
-// Effective node table: profile `replace` drops registry build ids,
-// profile `add` entries become build nodes (registry shape).
-const effectiveNodes = { ...registryNodes };
-if (profile) {
-  const buildSpec = profile?.nodes?.build;
-  for (const id of buildSpec?.replace ?? []) delete effectiveNodes[id];
-  for (const entry of buildSpec?.add ?? []) {
-    effectiveNodes[entry.id] = {
-      label: entry.label || entry.id,
-      agentType: entry.agentType,
-      personaFile: entry.personaFile || `.claude/agents/${entry.agentType}.md`,
-      model: entry.model || registryNodes[entry.id]?.model || 'sonnet',
-      role: 'build',
-      artifactKey: entry.artifactKey ?? entry.id,
-      writes: entry.writes || `production_artifacts/state.d/${entry.id}.json`,
-      optional: !!entry.optional,
-      skills: entry.skills || [],
-      instructions: entry.instructions || null,
-    };
-  }
-}
-
 const architectNode = { id: 'architect', ...registryNodes.architect };
 const techleadNode = { id: 'techlead', ...registryNodes.techlead };
 const reviewerNode = { id: 'reviewer', ...registryNodes.reviewer };
@@ -877,6 +835,82 @@ if (profileMalformed > 0) {
   );
 }
 const profileName = profileFromFlag || (typeof resolvedArgs?.profile === 'string' ? resolvedArgs.profile : null) || null;
+if (/(^|\s)--profile(\s|$)/.test(goalAfterProfile)) {
+  return await escalate('--profile needs a value: write --profile=<name>, e.g. --profile=kicad. Refusing to run the default pipeline when you asked for a profile.');
+}
+if (profileName !== null && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(profileName)) {
+  return await escalate(
+    `--profile name \`${profileName}\` is not a lowercase kebab-case profile name. ` +
+      'Refusing to proceed rather than silently running the default pipeline.'
+  );
+}
+
+// Optional domain profile: loaded in the same load step shape as nodes.json.
+// Unknown, missing or invalid profile escalates -- never silently falls back.
+const PROFILE_SCHEMA = {
+  type: 'object',
+  properties: {
+    missing: { type: 'boolean' },
+    domain: { type: 'string' },
+    nodes: { type: 'object' },
+    gates: { type: 'object' },
+    artifacts: { type: 'object' },
+  },
+};
+let profile = null;
+if (profileName) {
+  const profileResult = await agent(
+    `Read the file .agents/profiles/${profileName}.json (repository root) and return its exact contents, parsed as JSON. ` +
+      'This is a read-only lookup, not a reasoning task: do not invent, modify, reinterpret, merge, or add any field that is not literally present in the file. ' +
+      'If the file is missing, unreadable, or not valid JSON, return { "missing": true } rather than guessing at its contents.',
+    { label: 'load-profile', model: 'haiku', schema: PROFILE_SCHEMA, profile: profileName }
+  );
+  if (!profileResult || profileResult.missing || !profileResult.gates || Object.keys(profileResult.gates).length === 0) {
+    return await escalate(
+      `--profile named a profile that could not be loaded: ${profileName}. ` +
+        'Check .agents/profiles/ for the exact profile name. ' +
+        'Refusing to silently fall back to the default pipeline.'
+    );
+  }
+  profile = profileResult;
+}
+
+// Effective node table: profile `replace` drops registry build ids, profile `add`
+// entries become build nodes. Same rules as scripts/validate-profile.mjs, re-checked
+// here because the profile is read by an agent, not by the validator.
+const effectiveNodes = { ...registryNodes };
+if (profile) {
+  if (profile.domain !== profileName) {
+    return await escalate(`profile \`${profileName}\` declares domain \`${profile.domain}\`; they must match.`);
+  }
+  const addIds = new Set();
+  for (const spec of Object.values(profile.nodes ?? {})) {
+    for (const id of spec?.replace ?? []) {
+      if (registryNodes[id]?.role !== 'build') {
+        return await escalate(`profile \`${profileName}\` replaces \`${id}\`, which is not a registry build node.`);
+      }
+      delete effectiveNodes[id];
+    }
+    for (const entry of spec?.add ?? []) {
+      if (entry.role !== 'build' || registryNodes[entry.id] || addIds.has(entry.id)) {
+        return await escalate(`profile \`${profileName}\` adds node \`${entry.id}\`: must be role build, not a registry id, and unique.`);
+      }
+      addIds.add(entry.id);
+      effectiveNodes[entry.id] = {
+        label: entry.label || entry.id,
+        agentType: entry.agentType,
+        personaFile: entry.personaFile || `.claude/agents/${entry.agentType}.md`,
+        model: entry.model || 'sonnet',
+        role: 'build',
+        artifactKey: entry.artifactKey ?? entry.id,
+        writes: entry.writes || `production_artifacts/state.d/${entry.id}.json`,
+        optional: !!entry.optional,
+        skills: entry.skills || [],
+        instructions: entry.instructions || null,
+      };
+    }
+  }
+}
 const { skills: skillsFromFlags, goal, malformed } = extractMandatorySkills(goalAfterProfile);
 if (malformed > 0) {
   return await escalate(
