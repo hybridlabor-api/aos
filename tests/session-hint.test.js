@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
-const HOOK = join(REPO, 'hooks-shared', 'aos-session-hint.mjs');
+const HOOK = join(REPO, '.claude', 'hooks', 'aos-session-hint.mjs');
 
 const run = (env, stdin = '{"session_id":"test"}') =>
   spawnSync(process.execPath, [HOOK], {

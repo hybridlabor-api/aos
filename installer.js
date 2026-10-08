@@ -5800,6 +5800,12 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`)}`,
         'timeout = 30',
         '',
+        '[[hooks.SessionStart]]',
+        '[[hooks.SessionStart.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'aos-session-hint.mjs')}"`)}`,
+        'timeout = 3',
+        '',
         // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints nothing; skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
         '[[hooks.SessionStart]]',
         '[[hooks.SessionStart.hooks]]',
