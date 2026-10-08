@@ -282,6 +282,24 @@ test("prompt file (default aos-acp backend) is 0600, carries the [a2a from] pref
   } finally { s.stop(); }
 });
 
+test("agy backend goes through `aos-acp agy`: read-only is deny, a write job is scoped, never allow", async () => {
+  for (const [write, expected] of [[false, "deny"], [true, "scoped"]]) {
+    const name = write ? "sp-agy-rw" : "sp-agy-ro";
+    const { calls, spawnImpl } = fakeCore();
+    const s = await inSidecar(name, spawnExecutor({ session: name, harness: "agy", write, repo, spawnImpl }));
+    try {
+      const res = await sendTo(name);
+      assert.equal(res.state, "TASK_STATE_COMPLETED", j(res));
+      const args = calls[0].args;
+      assert.ok(args[0].endsWith(join("bin", "aos-acp.mjs")), args.join(" "));
+      assert.equal(args[1], "agy");
+      assert.equal(args[args.indexOf("--allow-default") + 1], expected);
+      assert.ok(!args.includes("allow"));
+      assert.ok(args.includes("--prompt-file"));
+    } finally { s.stop(); }
+  }
+});
+
 test("worktree creation round-trip via createJobWorktree", async () => {
   const wt = await createJobWorktree(repo, "task-direct");
   assert.equal(wt, jobWorktreePath(repo, "task-direct"));
