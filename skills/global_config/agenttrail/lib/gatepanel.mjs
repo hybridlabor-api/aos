@@ -56,6 +56,15 @@ export async function loadGate(modPath = process.env.AOS_GOGATE_PATH) {
 }
 
 const safe = (fn, fallback) => { try { return fn() } catch { return fallback } }
+// Regular file only, no symlink, no blocking open: a planted FIFO/link must not stall the hub.
+const readSmall = (f, max) => {
+  const fd = fs.openSync(f, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK)
+  try {
+    const st = fs.fstatSync(fd)
+    if (!st.isFile() || st.size > max) throw new Error('not a small regular file')
+    return fs.readFileSync(fd, 'utf8')
+  } finally { fs.closeSync(fd) }
+}
 
 const EMPTY = () => ({ available: false, blocks: [], requests: [], grants: [], modes: [], rejected: [], reason: 'gate module not found' })
 
@@ -95,7 +104,7 @@ export async function panel({ now = Date.now(), gate, dir } = {}) {
       blocks.push({ sessionKey: key, ts: Date.parse(marker.ts), command: '', why: 'blocked recently', reason: '', hard: false, click: false, source: 'block-marker' })
     }
 
-    const rec = safe(() => JSON.parse(fs.readFileSync(path.join(gdir, `${key}.req.json`), 'utf8')), null)
+    const rec = safe(() => JSON.parse(readSmall(path.join(gdir, `${key}.req.json`), 64 * 1024)), null)
     for (const r of (Array.isArray(rec) ? rec : rec ? [rec] : [])) {
       if (!r || !r.id) continue
       const ts = Date.parse(r.ts)
@@ -108,7 +117,7 @@ export async function panel({ now = Date.now(), gate, dir } = {}) {
       if (!(now < ts + ttl)) continue // older than a GO token: the decision was made elsewhere
       requests.push({
         id: r.id,
-        sessionKey: r.session_key || key,
+        sessionKey: key,
         sessionName: r.session_name || '',
         cwd: r.cwd || '',
         ts,

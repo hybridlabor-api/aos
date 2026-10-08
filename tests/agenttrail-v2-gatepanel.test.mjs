@@ -241,6 +241,27 @@ describe('panel', () => {
     assert.equal(p.requests[0].click, false);
   });
 
+  test('sessionKey comes from the file name, not the record', async () => {
+    writeJson('s1.req.json', { id: 'r5', ts: ago(60000), session_key: 'evil', cmd_hash: 'h5', cmd_preview: 'git push origin feat', scopes: ['push-feature'], hard: false });
+    const p = await panel({ now: NOW, gate, dir });
+    assert.equal(p.requests.length, 1);
+    assert.equal(p.requests[0].sessionKey, 's1');
+  });
+
+  test('an oversized or symlinked req file is ignored', async () => {
+    const f = path.join(dir, 's1.req.json');
+    const rec = { id: 'r6', ts: ago(60000), session_key: 's1', cmd_hash: 'h6', cmd_preview: 'x', scopes: [], hard: false };
+    write('s1.req.json', JSON.stringify([rec]) + ' '.repeat(70 * 1024));
+    assert.equal((await panel({ now: NOW, gate, dir })).requests.length, 0);
+    fs.rmSync(f);
+    const target = path.join(dir, 'target.txt');
+    fs.writeFileSync(target, JSON.stringify([rec]));
+    fs.symlinkSync(target, f);
+    assert.equal((await panel({ now: NOW, gate, dir })).requests.length, 0);
+    fs.rmSync(f);
+    fs.rmSync(target);
+  });
+
   test('a missing gate module means available:false and nothing else', async () => {
     const p = await panel({ now: NOW, gate: null, dir });
     assert.equal(p.available, false);

@@ -51,10 +51,10 @@
 // Origin: only human-typed entries count, as GO and as gogate commands
 // (isHumanEntry). Loops, peers, task notifications, SDK and system prompts never.
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync } from "node:fs";
+import { constants as FS, readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync } from "node:fs";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir, userInfo } from "node:os";
 import { join, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2012,11 +2012,29 @@ export function readBlockTs(key) {
   // A marker from the future (a forged or skewed ts) counts as written now, never as later.
   try { return Math.min(Number(JSON.parse(readFileSync(blockFile(key), "utf8")).ts) || 0, Date.now()); } catch { return 0; }
 }
+// Never blocks or follows a link: a planted FIFO/device/symlink must not hang the hook (fail-open).
+// null = missing, false = not a small regular file, else the text.
+export function readSmallRegular(f, max) {
+  let fd;
+  try {
+    fd = openSync(f, FS.O_RDONLY | FS.O_NOFOLLOW | FS.O_NONBLOCK);
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > max) return false;
+    const buf = Buffer.alloc(st.size);
+    let n = 0;
+    while (n < st.size) { const k = readSync(fd, buf, n, st.size - n, n); if (!k) break; n += k; }
+    return buf.toString("utf8", 0, n);
+  } catch (e) { return e.code === "ENOENT" ? null : false; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ } }
+}
+function writeNoHang(f, data, flags) {
+  const fd = openSync(f, FS.O_WRONLY | FS.O_CREAT | FS.O_NOFOLLOW | FS.O_NONBLOCK | flags, 0o600);
+  try { writeFileSync(fd, data); } finally { closeSync(fd); }
+}
 export function markBlock(key, now = Date.now()) {
   if (!key || now - readBlockTs(key) < COOLDOWN_MS) return;
   try {
     mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
-    writeFileSync(blockFile(key), JSON.stringify({ ts: now }), { mode: 0o600 });
+    writeNoHang(blockFile(key), JSON.stringify({ ts: now }), FS.O_TRUNC);
   } catch { /* the cooldown is best effort; the block itself already holds */ }
 }
 
@@ -2042,7 +2060,8 @@ export function maskSecrets(text) {
     .replace(/(--?(?:token|password|passwd|secret|api-?key|auth)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi, "$1***")
     .replace(/(\s-u\s+)[^\s:]+:\S+/g, "$1***")
     .replace(/\b(?:gh[pousr]_|github_pat_|sk-|xox[abprs]-|glpat-|AKIA)[A-Za-z0-9_-]{6,}/g, "***")
-    .replace(/(:\/\/)[^\s/]*@/g, "$1***@");
+    .replace(/(:\/\/)[^\s/]*@/g, "$1***@")
+    .replace(/(authorization[:=]\s*)(?!\*\*\*)[^\s"']+(\s+[^\s"']+)?/gi, "$1***");
 }
 
 function respond(isAgy, allowed, reason = "", command = "", hard = false) {
@@ -2050,9 +2069,10 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
   if (!allowed && !hard && TEST_RUN.test(command)) reason = `${reason} ${TEST_HINT}`.trim();
   // Every deny leaves the command as the gate saw it; without this a block cannot be reproduced.
   if (!allowed && blockKey) {
-    let why = "";
-    try { why = `guarded=${isGuardedCommand(command)} scopes=${JSON.stringify(commandScopes(command))}`; } catch { why = "classify failed"; }
+    let why = "", sc = null;
+    try { const r = commandScopes(command); sc = r ? [...r].sort() : null; why = `guarded=${isGuardedCommand(command)} scopes=${JSON.stringify(r)}`; } catch { why = "classify failed"; }
     gateLog(blockKey, `deny${hard ? " hard" : ""} ${why} ${JSON.stringify(maskSecrets(command).slice(0, 200))} :: ${maskSecrets(reason).slice(0, 120)}`);
+    recordRequest(blockKey, command, sc, hard);
   }
   if (hard) {
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
@@ -2306,7 +2326,7 @@ export const gateDir = () => join(homedir(), ".aos", "gate");
 export const sessionKey = (id) => {
   const raw = String(id ?? "");
   if (!raw) return "";
-  return /^[a-z0-9][a-z0-9._-]{0,127}$/.test(raw) ? raw : `${slug(raw).replace(/^\.+/, "").slice(0, 64) || "s"}-${createHash("sha256").update(raw).digest("hex").slice(0, 12)}`;
+  return /^[a-z0-9][a-z0-9._-]{0,127}$/.test(raw) && !/\.(req|revoke)$|^trail-credential$/.test(raw) ? raw : `${slug(raw).replace(/^\.+/, "").slice(0, 64) || "s"}-${createHash("sha256").update(raw).digest("hex").slice(0, 12)}`;
 };
 export const statePath = (key) => join(gateDir(), `${key}.json`);
 
@@ -2324,9 +2344,31 @@ export function gateLog(key, line) {
   try {
     mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
     const f = join(gateDir(), `${key}.log`);
-    appendFileSync(f, `${new Date().toISOString()} ${String(line).slice(0, 400).replace(/[\r\n]+/g, " ")}\n`, { mode: 0o600 });
+    writeNoHang(f, `${new Date().toISOString()} ${String(line).slice(0, 400).replace(/[\r\n]+/g, " ")}\n`, FS.O_APPEND);
     if (statSync(f).size > LOG_MAX) writeFileSync(f, readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-LOG_KEEP).join("\n") + "\n");
   } catch { /* logging never blocks */ }
+}
+
+// Structured deny records for the trail hub: <gate dir>/<key>.req.json, a JSON array of the last
+// 20 denies. Best effort and after the decision is fixed: any failure is swallowed.
+const REQ_KEEP = 20;
+export function recordRequest(key, command, scopes, hard) {
+  try {
+    const f = join(gateDir(), `${key}.req.json`);
+    let all = [];
+    const txt = readSmallRegular(f, 64 * 1024);
+    if (txt === false) return;
+    try { const a = JSON.parse(txt ?? "[]"); if (Array.isArray(a)) all = a; } catch { /* corrupt: start over */ }
+    const preview = maskSecrets(command).slice(0, 200);
+    all.push({
+      id: randomUUID(), ts: new Date().toISOString(), session_key: key, session_name: process.env.AOS_SESSION_NAME || "",
+      cwd: gateCtx.cwd || "", cmd_hash: textHash(command), cmd_preview: preview, scopes: scopes ?? null, hard: !!hard,
+    });
+    mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
+    const tmp = `${f}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(all.slice(-REQ_KEEP), null, 2), { mode: 0o600, flag: "wx" });
+    renameSync(tmp, f);
+  } catch { /* the record never changes the decision */ }
 }
 
 // Gogate commands from human entries of a Claude transcript, oldest first. `strict`
@@ -2419,7 +2461,7 @@ export function statusText(key, eff, now = Date.now()) {
 }
 
 export const listStateKeys = () => {
-  try { return readdirSync(gateDir()).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)); } catch { return []; }
+  try { return readdirSync(gateDir()).filter((f) => f.endsWith(".json") && !f.endsWith(".req.json")).map((f) => f.slice(0, -5)); } catch { return []; }
 };
 export const TOKEN_TTL_MS = 10 * 60 * 1000;
 
