@@ -13,13 +13,25 @@ function run(...cliArgs) {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'r8-dispatch-'));
   try {
     fs.cpSync(path.join(ROOT, '.agents'), path.join(cwd, '.agents'), { recursive: true });
-    const r = spawnSync(process.execPath, [DISPATCH, ...cliArgs], { cwd, encoding: 'utf8', timeout: 20000 });
+    // PATH holds only node, so the standalone shim never finds a real `agy` and uses its deterministic stubs.
+    const r = spawnSync(process.execPath, [DISPATCH, ...cliArgs], {
+      cwd,
+      encoding: 'utf8',
+      timeout: 20000,
+      env: { PATH: path.dirname(process.execPath), HOME: cwd },
+    });
     const out = r.stdout.slice(r.stdout.indexOf('{'));
     return { status: r.status, result: JSON.parse(out), stderr: r.stderr };
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 }
+
+test('a valid profile passes the load stage (no profile-related escalation)', () => {
+  const { result } = run('--profile=kicad', 'add a status LED board');
+  console.error('EXPLORATORY result:', JSON.stringify(result).slice(0, 600));
+  assert.doesNotMatch(String(result.reason ?? ''), /profile/i);
+});
 
 test('profile flag with a path-traversal name escalates before any build', () => {
   const { result } = run('--profile=../x', 'add a thing');
