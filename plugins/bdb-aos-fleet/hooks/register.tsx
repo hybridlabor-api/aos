@@ -6,12 +6,15 @@ import type { FleetActivity, FleetProgress, FleetRole, FleetSelf, FleetSession, 
 const PANE = 'aos-fleet'
 const GATE_PANE = 'gogate-panel'
 const PLAN_PANE = 'aos-plan'
+const HUB_PANE = 'aos-hub'
+type PaneInput = Parameters<EngineInterface['ui']['resolve']>[0] & { props: { bodyColumns?: number } }
 const STALE_MS = 5 * 60_000
 const ROLES: FleetRole[] = ['master', 'task-manager', 'orchestrator', 'worker']
 const ATTENTION_PHASES = ['ready_to_ship', 'escalated']
 
 const fleet = atom({ plugin: 'bdb-aos-fleet', key: 'fleet' } as const, [])
 const frame_ = atom({ plugin: 'bdb-aos-fleet', key: 'frame' } as const, 0)
+const tab = atom({ plugin: 'bdb-aos-fleet', key: 'tab' } as const, 'fleet')
 const gate = atom({ plugin: 'bdb-aos-fleet', key: 'gate' } as const, { mode: 'soft', grants: [], raw: '' })
 const gateMsg = atom({ plugin: 'bdb-aos-fleet', key: 'gateMsg' } as const, '')
 const blocks = atom({ plugin: 'bdb-aos-fleet', key: 'blocks' } as const, [] as GateBlock[])
@@ -577,6 +580,287 @@ async function tick($: EngineInterface) {
   if ((await read($, fleet)).some(s => s.activity === 'working')) await update($, frame_, f => f + 1)
 }
 
+// -----------------------------------------------------------------------------
+// Pane body renderers (extracted from the ui.render hooks so the validator
+// can inspect $-taking helpers at top level).
+// -----------------------------------------------------------------------------
+
+const PLAN_BAR = 10
+const PLAN_MARK: Record<string, { glyph: string; color: string }> = {
+  x: { glyph: '✓', color: 'green' },
+  '~': { glyph: '●', color: 'yellow' },
+  '!': { glyph: '✗', color: 'red' },
+  ' ': { glyph: '○', color: 'gray' },
+}
+const PLAN_COLOR: Record<string, string> = { Completed: 'green', Underway: 'yellow', Blocked: 'red', Waiting: 'gray' }
+const PLAN_RANK: Record<string, number> = { '~': 0, '!': 1, ' ': 2, x: 3 }
+const TAB_ACCENT = { fleet: 0x2ea043, gate: 0xd7a017, plan: 0x6a9be0 }
+
+export async function renderFleetBody($: EngineInterface, e: PaneInput) {
+  const ui = $.ui.resolve(e)
+  const { Box, Text } = ui
+  const Raster = 'Raster' in ui ? ui.Raster : undefined
+  const list = await read($, fleet)
+  const frame = await read($, frame_)
+  const fits = Math.max(1, Math.floor((e.props.bodyColumns ?? 80) / CARD))
+  if (!Raster) return <Text dimColor>The fleet cards need the terminal.</Text>
+  const rows: FleetSession[][] = []
+  for (let i = 0; i < list.length; i += fits) rows.push(list.slice(i, i + fits))
+  return (
+    <Box flexDirection="column">
+      {list.length === 0 && <Text dimColor>No sessions reporting yet.</Text>}
+      {rows.map((shown, i) => (
+        <Box key={`row-${i}`} flexDirection="column" marginBottom={1}>
+          <Box flexDirection="row">
+            {shown.map(s => (
+              <Box key={s.id} flexDirection="column" width={CARD}>
+                <Raster key={`sprite-${s.id}`} columns={SPRITE_W} rows={2} cells={spriteCells(s, frame)} />
+                <Text bold={s.id === id} color={hex(roleColor(s))}>{fit(s.name, CARD - 2)}</Text>
+                <Text color={DOT[s.activity].color}>{DOT[s.activity].glyph} {fit(s.reason ?? (s.activity === 'working' ? s.phase ?? 'working' : 'idle'), CARD - 4)}</Text>
+                {s.progress ? (
+                  <Box flexDirection="row">
+                    <Text color="green">{'■'.repeat(filled(s.progress))}</Text>
+                    <Text dimColor>{'■'.repeat(BAR - filled(s.progress))}</Text>
+                    <Text dimColor>{' '}{s.progress.done}/{s.progress.total}</Text>
+                    {s.progress.blocked > 0 && <Text color="yellow"> !{s.progress.blocked}</Text>}
+                  </Box>
+                ) : (
+                  <Text> </Text>
+                )}
+                {s.context !== undefined ? (
+                  <Text color={weather(s.context).color}>{weather(s.context).icon} {Math.round(s.context)}% {weather(s.context).advice}</Text>
+                ) : (
+                  <Text> </Text>
+                )}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      ))}
+      <Text dimColor wrap="truncate-end">{(extras.boards ?? []).map(b => `${b.project} ${b.p.done}/${b.p.total}`).join('   ')}</Text>
+    </Box>
+  )
+}
+
+export async function renderGateBody($: EngineInterface, e: PaneInput) {
+  const ui = $.ui.resolve(e)
+  const { Box, Text, Button } = ui
+  const Raster = 'Raster' in ui ? ui.Raster : undefined
+  const { mode, grants, raw } = await read($, gate)
+  const msg = await read($, gateMsg)
+  const width = e.props.bodyColumns ?? 80
+  const scopeW = Math.max(...grants.map(x => x.scope.length), 0)
+  const demo = await isDemo($)
+  const nowMs = await $.clock.now()
+  const blockList = demo ? demoBlocks(nowMs) : await read($, blocks)
+  const segment = (m: (typeof SEG_MODES)[number]) => {
+    if (m === mode)
+      return (
+        <Text key={`seg-${m}`} bold backgroundColor={MODE_COLOR[m]} color="black">
+          {` ${m.toUpperCase()} `}
+        </Text>
+      )
+    if (m === 'off')
+      return (
+        <Text key={`seg-${m}`} color={MODE_COLOR[m]}>
+          {` ${m.toUpperCase()} `}
+        </Text>
+      )
+    return (
+      <Button
+        key={`seg-${m}`}
+        plain
+        label={m.toUpperCase()}
+        onPress={() => void fillPreset($, m === 'hard' ? 'gogate hard' : 'gogate soft')}
+      />
+    )
+  }
+  const heroCard = (
+    <Box key="hero" flexDirection="column" borderStyle="round" borderColor={MODE_COLOR[mode] ?? 'yellow'} paddingX={1} marginBottom={1}>
+      <Box key="hero-head" flexDirection="row" justifyContent="space-between">
+        <Box key="hero-left" flexDirection="row">
+          {Raster ? (
+            <Raster key="lock" columns={6} rows={2} cells={lockCells(mode)} />
+          ) : (
+            <Text key="lock-fallback" color={MODE_COLOR[mode] ?? 'yellow'}>{LOCK_GLYPH[mode] ?? '🔒'}</Text>
+          )}
+          <Text key="mode-word" bold>{' '}{mode.toUpperCase()}</Text>
+        </Box>
+        <Text key="hero-tag" dimColor wrap="truncate-end">go-gate</Text>
+      </Box>
+      <Text key="hero-meaning" dimColor wrap="truncate-end">{MEANING[mode] ?? MEANING.soft}</Text>
+      <Box key="hero-segments" flexDirection="row">
+        {SEG_MODES.map((m, i) => (
+          <Box key={`seg-slot-${m}`} flexDirection="row">
+            {i > 0 && <Text>{'   '}</Text>}
+            {segment(m)}
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  )
+  const grantsCard = (
+    <Box key="grants" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginBottom={1}>
+      <Box key="grants-head" flexDirection="row" justifyContent="space-between">
+        <Text bold>GRANTS</Text>
+        <Text dimColor wrap="truncate-end">{grants.length} active</Text>
+      </Box>
+      {grants.length === 0 ? (
+        <Text dimColor wrap="truncate-end">no grants — guarded commands stay blocked</Text>
+      ) : (
+        grants.map(x => {
+          const bar = grantBar(x.minutesLeft)
+          return (
+            <Box key={`grant-${x.scope}`} flexDirection="row" justifyContent="space-between">
+              <Box key={`grant-${x.scope}-l`} flexDirection="row">
+                <Text wrap="truncate-end">{x.scope.padEnd(scopeW)}</Text>
+                <Text color={grantColor(x.minutesLeft)}>{'■'.repeat(bar.on)}</Text>
+                <Text dimColor>{'□'.repeat(bar.off)}</Text>
+              </Box>
+              <Text dimColor wrap="truncate-end">{timeLeft(x.minutesLeft)} left</Text>
+            </Box>
+          )
+        })
+      )}
+    </Box>
+  )
+  const blockedCard = (
+    <Box key="blocked" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Text bold>LAST BLOCKED</Text>
+      {blockList.length === 0 ? (
+        <Text dimColor wrap="truncate-end">nothing blocked yet</Text>
+      ) : (
+        blockList.map((b, i) => {
+          const mins = Math.max(0, Math.round((nowMs - b.at) / 60_000))
+          return (
+            <Box key={`row-blk-${i}`} flexDirection="row" justifyContent="space-between">
+              <Box key={`row-blk-${i}-l`} flexDirection="row">
+                <Text color="yellow">▸ </Text>
+                <Button key={`blk-${i}`} plain label={b.cmd} onPress={() => void fillPreset($, presetForCommand(b.cmd))} />
+              </Box>
+              <Text dimColor wrap="truncate-end">{mins}m ago</Text>
+            </Box>
+          )
+        })
+      )}
+    </Box>
+  )
+  const presetRow = (p: (typeof PRESETS)[number], i: number, primary: boolean) => (
+    <Box key={`row-${p.label}`} flexDirection="row">
+      {p.color && <Text color={p.color}>● </Text>}
+      <Button
+        key={p.label}
+        label={p.label}
+        hotkey={String(i + 1)}
+        {...(primary ? { variant: 'primary' as const } : { plain: true as const })}
+        onPress={() => void fillPreset($, p.text)}
+      />
+      {p.frees && (
+        <Text dimColor wrap="truncate-end">{'  '}{p.frees}</Text>
+      )}
+    </Box>
+  )
+  const presetsCard = (
+    <Box key="presets" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Text bold>PRESETS</Text>
+      {presetRow(PRESETS[0]!, 0, true)}
+      {presetRow(PRESETS[1]!, 1, false)}
+      <Box key="row-compact" flexDirection="row">
+        <Text color="gray">● </Text>
+        {PRESETS.slice(2).map((p, i) => (
+          <Box key={`cp-${p.label}`} marginRight={1}>
+            <Button key={p.label} label={p.label} hotkey={String(i + 3)} plain onPress={() => void fillPreset($, p.text)} />
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  )
+  const wide = width >= 96
+  const body = wide ? (
+    <Box key="cols" flexDirection="row">
+      <Box key="col-left" flexGrow={1} flexDirection="column">{heroCard}{presetsCard}</Box>
+      <Box key="col-right" flexGrow={1} flexDirection="column">{grantsCard}{blockedCard}</Box>
+    </Box>
+  ) : (
+    <Box key="stack" flexDirection="column">{heroCard}{grantsCard}{blockedCard}{presetsCard}</Box>
+  )
+  return (
+    <Box flexDirection="column">
+      {body}
+      {raw && !/: mode \w+/.test(raw) && (
+        <Text dimColor wrap="truncate-end">{raw}</Text>
+      )}
+      {msg && (
+        <Text color="yellow" wrap="truncate-end">{msg}</Text>
+      )}
+      <Text dimColor wrap="truncate-end">click prefills your prompt · you press Enter to record</Text>
+    </Box>
+  )
+}
+
+export async function renderPlanBody($: EngineInterface, e: PaneInput) {
+  const ui = $.ui.resolve(e)
+  const { Box, Text } = ui
+  const comps = await read($, plan)
+  const totals = comps.map(planStats)
+  const doneAll = totals.reduce((a, s) => a + s.done, 0)
+  const totalAll = totals.reduce((a, s) => a + s.total, 0)
+  if (comps.length === 0) {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor wrap="truncate-end">no plan file found (PLAN.md or production_artifacts/00_execution_plan.md)</Text>
+      </Box>
+    )
+  }
+  const cards = comps.map((c, i) => {
+    const s = totals[i]!
+    const filled = totalAll === 0 || s.total === 0 ? 0 : Math.round((s.done / s.total) * PLAN_BAR)
+    const rows = [...c.tasks].sort((a, b) => PLAN_RANK[a.mark]! - PLAN_RANK[b.mark]!).slice(0, 6)
+    const more = c.tasks.length - rows.length
+    return (
+      <Box key={`plan-${c.id}`} flexDirection="column" borderStyle="round" borderColor={PLAN_COLOR[s.state] ?? 'gray'} paddingX={1} marginBottom={1}>
+        <Box key={`plan-${c.id}-head`} flexDirection="row" justifyContent="space-between">
+          <Text bold wrap="truncate-end">{c.name}</Text>
+          <Text color={PLAN_COLOR[s.state]} wrap="truncate-end">{s.state}</Text>
+        </Box>
+        <Box key={`plan-${c.id}-bar`} flexDirection="row">
+          <Text color="green">{'■'.repeat(filled)}</Text>
+          <Text dimColor>{'□'.repeat(PLAN_BAR - filled)}</Text>
+          <Text dimColor wrap="truncate-end"> {s.done}/{s.total}</Text>
+        </Box>
+        {rows.map(t => (
+          <Box key={`plan-${c.id}-${t.id}`} flexDirection="row" justifyContent="space-between">
+            <Box key={`plan-${c.id}-${t.id}-l`} flexDirection="row">
+              <Text color={PLAN_MARK[t.mark]!.color}>{PLAN_MARK[t.mark]!.glyph} </Text>
+              <Text wrap="truncate-end">{t.text}</Text>
+            </Box>
+            {t.by && <Text dimColor wrap="truncate-end">{t.by[0]!.toUpperCase()}</Text>}
+          </Box>
+        ))}
+        {more > 0 && <Text dimColor wrap="truncate-end">+{more} more</Text>}
+      </Box>
+    )
+  })
+  const wide = (e.props.bodyColumns ?? 80) >= 96
+  const body = wide ? (
+    <Box key="cols" flexDirection="row">
+      <Box key="col-left" flexGrow={1} flexDirection="column">{cards.filter((_, i) => i % 2 === 0)}</Box>
+      <Box key="col-right" flexGrow={1} flexDirection="column">{cards.filter((_, i) => i % 2 === 1)}</Box>
+    </Box>
+  ) : (
+    <Box key="stack" flexDirection="column">{cards}</Box>
+  )
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row" justifyContent="space-between">
+        <Text bold wrap="truncate-end">PLAN</Text>
+        <Text dimColor wrap="truncate-end">{doneAll}/{totalAll} tasks</Text>
+      </Box>
+      {body}
+    </Box>
+  )
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
@@ -585,6 +869,7 @@ export const register: Register = on => {
     await $.command.register({ name: 'aos-fleet', description: 'Show the AOS fleet pane' })
     await $.command.register({ name: 'gogate-panel', description: 'Show the go-gate status and grant presets' })
     await $.command.register({ name: 'aos-plan', description: 'Show the live plan box' })
+    await $.command.register({ name: 'aos-hub', description: 'Show fleet, gate and plan in one pane' })
     await $.command.register({
       name: 'aos-role',
       description: `Set this session's AOS role: ${ROLES.join(' | ')}`,
@@ -680,6 +965,20 @@ export const register: Register = on => {
     return { text: 'plan pane opened.' }
   })
 
+  on('command.run', { command: 'aos-hub' }, async ($, e) => {
+    if (e.args) {
+      const arg = e.args.trim() as 'fleet' | 'gate' | 'plan'
+      if (arg === 'fleet' || arg === 'gate' || arg === 'plan') {
+        await update($, tab, () => arg)
+      }
+    }
+    await loadFleet($)
+    await readGate($)
+    await loadPlan($)
+    await $.ui.open({ id: HUB_PANE, title: 'AOS hub' })
+    return { text: 'AOS hub pane opened.' }
+  })
+
   on('command.run', { command: 'aos-role' }, async ($, e) => {
     const role = e.args.trim() as FleetRole
     if (!ROLES.includes(role)) return { text: `Unknown role "${e.args}". Use: ${ROLES.join(', ')}` }
@@ -690,328 +989,35 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const ui = $.ui.resolve(e)
-    const { Box, Text } = ui
-    const Raster = 'Raster' in ui ? ui.Raster : undefined
-    const list = await read($, fleet)
-    const frame = await read($, frame_)
-    const fits = Math.max(1, Math.floor((e.props.bodyColumns ?? 80) / CARD))
-    if (!Raster) return <Text dimColor>The fleet cards need the terminal.</Text>
-    const rows: FleetSession[][] = []
-    for (let i = 0; i < list.length; i += fits) rows.push(list.slice(i, i + fits))
-    return (
-      <Box flexDirection="column">
-        {list.length === 0 && <Text dimColor>No sessions reporting yet.</Text>}
-        {rows.map((shown, i) => (
-          <Box key={`row-${i}`} flexDirection="column" marginBottom={1}>
-            <Box flexDirection="row">
-              {shown.map(s => (
-                <Box key={s.id} flexDirection="column" width={CARD}>
-                  <Raster key={`sprite-${s.id}`} columns={SPRITE_W} rows={2} cells={spriteCells(s, frame)} />
-                  <Text bold={s.id === id} color={hex(roleColor(s))}>
-                    {fit(s.name, CARD - 2)}
-                  </Text>
-                  <Text color={DOT[s.activity].color}>
-                    {DOT[s.activity].glyph} {fit(s.reason ?? (s.activity === 'working' ? s.phase ?? 'working' : 'idle'), CARD - 4)}
-                  </Text>
-                  {s.progress ? (
-                    <Box flexDirection="row">
-                      <Text color="green">{'■'.repeat(filled(s.progress))}</Text>
-                      <Text dimColor>{'■'.repeat(BAR - filled(s.progress))}</Text>
-                      <Text dimColor>
-                        {' '}
-                        {s.progress.done}/{s.progress.total}
-                      </Text>
-                      {s.progress.blocked > 0 && <Text color="yellow"> !{s.progress.blocked}</Text>}
-                    </Box>
-                  ) : (
-                    <Text> </Text>
-                  )}
-                  {s.context !== undefined ? (
-                    <Text color={weather(s.context).color}>
-                      {weather(s.context).icon} {Math.round(s.context)}% {weather(s.context).advice}
-                    </Text>
-                  ) : (
-                    <Text> </Text>
-                  )}
-                </Box>
-              ))}
-                      </Box>
-          </Box>
-        ))}
-        <Text dimColor wrap="truncate-end">
-          {(extras.boards ?? []).map(b => `${b.project} ${b.p.done}/${b.p.total}`).join('   ')}
-        </Text>
-      </Box>
-    )
+    return renderFleetBody($, e)
   })
 
   on('ui.render', { component: 'Pane', requestId: GATE_PANE }, async ($, e) => {
-    const ui = $.ui.resolve(e)
-    const { Box, Text, Button } = ui
-    const Raster = 'Raster' in ui ? ui.Raster : undefined
-    const { mode, grants, raw } = await read($, gate)
-    const msg = await read($, gateMsg)
-    const width = e.props.bodyColumns
-    const scopeW = Math.max(...grants.map(x => x.scope.length), 0)
-    const demo = await isDemo($)
-    const nowMs = await $.clock.now()
-    const blockList = demo ? demoBlocks(nowMs) : await read($, blocks)
-    const segment = (m: (typeof SEG_MODES)[number]) => {
-      if (m === mode)
-        return (
-          <Text key={`seg-${m}`} bold backgroundColor={MODE_COLOR[m]} color="black">
-            {` ${m.toUpperCase()} `}
-          </Text>
-        )
-      if (m === 'off')
-        return (
-          <Text key={`seg-${m}`} color={MODE_COLOR[m]}>
-            {` ${m.toUpperCase()} `}
-          </Text>
-        )
-      return (
-        <Button
-          key={`seg-${m}`}
-          plain
-          label={m.toUpperCase()}
-          onPress={() => void fillPreset($, m === 'hard' ? 'gogate hard' : 'gogate soft')}
-        />
-      )
-    }
-    // HERO
-    const heroCard = (
-      <Box key="hero" flexDirection="column" borderStyle="round" borderColor={MODE_COLOR[mode] ?? 'yellow'} paddingX={1} marginBottom={1}>
-        <Box key="hero-head" flexDirection="row" justifyContent="space-between">
-          <Box key="hero-left" flexDirection="row">
-            {Raster ? (
-              <Raster key="lock" columns={6} rows={2} cells={lockCells(mode)} />
-            ) : (
-              <Text key="lock-fallback" color={MODE_COLOR[mode] ?? 'yellow'}>
-                {LOCK_GLYPH[mode] ?? '🔒'}
-              </Text>
-            )}
-            <Text key="mode-word" bold>
-              {' '}
-              {mode.toUpperCase()}
-            </Text>
-          </Box>
-          <Text key="hero-tag" dimColor wrap="truncate-end">
-            go-gate
-          </Text>
-        </Box>
-        <Text key="hero-meaning" dimColor wrap="truncate-end">
-          {MEANING[mode] ?? MEANING.soft}
-        </Text>
-        <Box key="hero-segments" flexDirection="row">
-          {SEG_MODES.map((m, i) => (
-            <Box key={`seg-slot-${m}`} flexDirection="row">
-              {i > 0 && <Text>{'   '}</Text>}
-              {segment(m)}
-            </Box>
-          ))}
-        </Box>
-      </Box>
-    )
-    // GRANTS
-    const grantsCard = (
-      <Box key="grants" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginBottom={1}>
-        <Box key="grants-head" flexDirection="row" justifyContent="space-between">
-          <Text bold>GRANTS</Text>
-          <Text dimColor wrap="truncate-end">
-            {grants.length} active
-          </Text>
-        </Box>
-        {grants.length === 0 ? (
-          <Text dimColor wrap="truncate-end">
-            no grants — guarded commands stay blocked
-          </Text>
-        ) : (
-          grants.map(x => {
-            const bar = grantBar(x.minutesLeft)
-            return (
-              <Box key={`grant-${x.scope}`} flexDirection="row" justifyContent="space-between">
-                <Box key={`grant-${x.scope}-l`} flexDirection="row">
-                  <Text wrap="truncate-end">{x.scope.padEnd(scopeW)}</Text>
-                  <Text color={grantColor(x.minutesLeft)}>{'■'.repeat(bar.on)}</Text>
-                  <Text dimColor>{'□'.repeat(bar.off)}</Text>
-                </Box>
-                <Text dimColor wrap="truncate-end">
-                  {timeLeft(x.minutesLeft)} left
-                </Text>
-              </Box>
-            )
-          })
-        )}
-      </Box>
-    )
-    // LAST BLOCKED
-    const blockedCard = (
-      <Box key="blocked" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
-        <Text bold>LAST BLOCKED</Text>
-        {blockList.length === 0 ? (
-          <Text dimColor wrap="truncate-end">
-            nothing blocked yet
-          </Text>
-        ) : (
-          blockList.map((b, i) => {
-            const mins = Math.max(0, Math.round((nowMs - b.at) / 60_000))
-            return (
-              <Box key={`row-blk-${i}`} flexDirection="row" justifyContent="space-between">
-                <Box key={`row-blk-${i}-l`} flexDirection="row">
-                  <Text color="yellow">▸ </Text>
-                  <Button key={`blk-${i}`} plain label={b.cmd} onPress={() => void fillPreset($, presetForCommand(b.cmd))} />
-                </Box>
-                <Text dimColor wrap="truncate-end">
-                  {mins}m ago
-                </Text>
-              </Box>
-            )
-          })
-        )}
-      </Box>
-    )
-    // PRESETS
-    const presetRow = (p: (typeof PRESETS)[number], i: number, primary: boolean) => (
-      <Box key={`row-${p.label}`} flexDirection="row">
-        {p.color && <Text color={p.color}>● </Text>}
-        <Button
-          key={p.label}
-          label={p.label}
-          hotkey={String(i + 1)}
-          {...(primary ? { variant: 'primary' as const } : { plain: true as const })}
-          onPress={() => void fillPreset($, p.text)}
-        />
-        {p.frees && (
-          <Text dimColor wrap="truncate-end">
-            {'  '}
-            {p.frees}
-          </Text>
-        )}
-      </Box>
-    )
-    const presetsCard = (
-      <Box key="presets" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
-        <Text bold>PRESETS</Text>
-        {presetRow(PRESETS[0]!, 0, true)}
-        {presetRow(PRESETS[1]!, 1, false)}
-        <Box key="row-compact" flexDirection="row">
-          <Text color="gray">● </Text>
-          {PRESETS.slice(2).map((p, i) => (
-            <Box key={`cp-${p.label}`} marginRight={1}>
-              <Button key={p.label} label={p.label} hotkey={String(i + 3)} plain onPress={() => void fillPreset($, p.text)} />
-            </Box>
-          ))}
-        </Box>
-      </Box>
-    )
-    const wide = width >= 96
-    const body = wide ? (
-      <Box key="cols" flexDirection="row">
-        <Box key="col-left" flexGrow={1} flexDirection="column">
-          {heroCard}
-          {presetsCard}
-        </Box>
-        <Box key="col-right" flexGrow={1} flexDirection="column">
-          {grantsCard}
-          {blockedCard}
-        </Box>
-      </Box>
-    ) : (
-      <Box key="stack" flexDirection="column">
-        {heroCard}
-        {grantsCard}
-        {blockedCard}
-        {presetsCard}
-      </Box>
-    )
-    return (
-      <Box flexDirection="column">
-        {body}
-        {raw && !/: mode \w+/.test(raw) && (
-          <Text dimColor wrap="truncate-end">
-            {raw}
-          </Text>
-        )}
-        {msg && (
-          <Text color="yellow" wrap="truncate-end">
-            {msg}
-          </Text>
-        )}
-        <Text dimColor wrap="truncate-end">
-          click prefills your prompt · you press Enter to record
-        </Text>
-      </Box>
-    )
+    return renderGateBody($, e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PLAN_PANE }, async ($, e) => {
+    return renderPlanBody($, e)
+  })
+
+  on('ui.render', { component: 'Pane', requestId: HUB_PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
-    const { Box, Text } = ui
-    const comps = await read($, plan)
-    const totals = comps.map(planStats)
-    const doneAll = totals.reduce((a, s) => a + s.done, 0)
-    const totalAll = totals.reduce((a, s) => a + s.total, 0)
-    if (comps.length === 0) {
-      return (
-        <Box flexDirection="column">
-          <Text dimColor wrap="truncate-end">no plan file found (PLAN.md or production_artifacts/00_execution_plan.md)</Text>
-        </Box>
-      )
-    }
-    const PLAN_BAR = 10
-    const MARK: Record<string, { glyph: string; color: string }> = {
-      x: { glyph: '✓', color: 'green' },
-      '~': { glyph: '●', color: 'yellow' },
-      '!': { glyph: '✗', color: 'red' },
-      ' ': { glyph: '○', color: 'gray' },
-    }
-    const COLOR: Record<string, string> = { Completed: 'green', Underway: 'yellow', Blocked: 'red', Waiting: 'gray' }
-    const rank: Record<string, number> = { '~': 0, '!': 1, ' ': 2, x: 3 }
-    const cards = comps.map((c, i) => {
-      const s = totals[i]!
-      const filled = totalAll === 0 || s.total === 0 ? 0 : Math.round((s.done / s.total) * PLAN_BAR)
-      const rows = [...c.tasks].sort((a, b) => rank[a.mark]! - rank[b.mark]!).slice(0, 6)
-      const more = c.tasks.length - rows.length
-      return (
-        <Box key={`plan-${c.id}`} flexDirection="column" borderStyle="round" borderColor={COLOR[s.state] ?? 'gray'} paddingX={1} marginBottom={1}>
-          <Box key={`plan-${c.id}-head`} flexDirection="row" justifyContent="space-between">
-            <Text bold wrap="truncate-end">{c.name}</Text>
-            <Text color={COLOR[s.state]} wrap="truncate-end">{s.state}</Text>
-          </Box>
-          <Box key={`plan-${c.id}-bar`} flexDirection="row">
-            <Text color="green">{'■'.repeat(filled)}</Text>
-            <Text dimColor>{'□'.repeat(PLAN_BAR - filled)}</Text>
-            <Text dimColor wrap="truncate-end"> {s.done}/{s.total}</Text>
-          </Box>
-          {rows.map(t => (
-            <Box key={`plan-${c.id}-${t.id}`} flexDirection="row" justifyContent="space-between">
-              <Box key={`plan-${c.id}-${t.id}-l`} flexDirection="row">
-                <Text color={MARK[t.mark]!.color}>{MARK[t.mark]!.glyph} </Text>
-                <Text wrap="truncate-end">{t.text}</Text>
-              </Box>
-              {t.by && <Text dimColor wrap="truncate-end">{t.by[0]!.toUpperCase()}</Text>}
-            </Box>
-          ))}
-          {more > 0 && <Text dimColor wrap="truncate-end">+{more} more</Text>}
-        </Box>
+    const { Box, Text, Button } = ui
+    const active = await read($, tab)
+    const body = active === 'fleet' ? await renderFleetBody($, e) : active === 'gate' ? await renderGateBody($, e) : await renderPlanBody($, e)
+    const tabBars = (['fleet', 'gate', 'plan'] as const).map(k => {
+      const label = k === 'fleet' ? 'Fleet' : k === 'gate' ? 'Gate' : 'Plan'
+      const hotkey = k === 'fleet' ? 'f' : k === 'gate' ? 'g' : 'p'
+      return active === k ? (
+        <Text key={`tab-${k}`} bold backgroundColor={hex(TAB_ACCENT[k])} color="black">{label}</Text>
+      ) : (
+        <Button key={`tab-${k}`} plain label={label} hotkey={hotkey} onPress={() => void update($, tab, () => k)} />
       )
     })
-    const wide = (e.props.bodyColumns ?? 80) >= 96
-    const body = wide ? (
-      <Box key="cols" flexDirection="row">
-        <Box key="col-left" flexGrow={1} flexDirection="column">{cards.filter((_, i) => i % 2 === 0)}</Box>
-        <Box key="col-right" flexGrow={1} flexDirection="column">{cards.filter((_, i) => i % 2 === 1)}</Box>
-      </Box>
-    ) : (
-      <Box key="stack" flexDirection="column">{cards}</Box>
-    )
     return (
       <Box flexDirection="column">
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text bold wrap="truncate-end">PLAN</Text>
-          <Text dimColor wrap="truncate-end">{doneAll}/{totalAll} tasks</Text>
-        </Box>
+        <Box flexDirection="row">{tabBars}</Box>
+        <Text dimColor wrap="truncate-end">{'\u2500'.repeat(e.props.bodyColumns ?? 80)}</Text>
         {body}
       </Box>
     )

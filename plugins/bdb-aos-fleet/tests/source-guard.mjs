@@ -37,4 +37,11 @@ for (const line of src.split('\n')) {
 }
 const planPane = src.slice(src.indexOf("requestId: PLAN_PANE"), src.indexOf('token-weather'))
 if (planPane.includes('<Button')) fail('aos-plan pane must contain no <Button')
+
+const hubStart = src.indexOf("requestId: 'aos-hub'")
+if (hubStart >= 0) {
+  const hubSection = src.slice(hubStart, src.indexOf('token-weather'))
+  if (hubSection.includes('fillPreset')) fail('aos-hub render must not call fillPreset')
+  if (hubSection.includes('fs.write')) fail('aos-hub render must not call fs.write')
+}
 console.log('source-guard: ok')
