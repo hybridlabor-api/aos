@@ -502,6 +502,7 @@ test('secure: concurrency slot is released after the response ends or the client
 
 function danglingRequest(port, path) {
   const r = http.request({ host: '127.0.0.1', port, path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, connection: 'close' }, agent: false });
+  r.on('error', () => {});
   r.end();
   return r;
 }
@@ -821,7 +822,7 @@ test('secure: upgrade request values with CR/LF are rejected before any upstream
       let raw = '';
       socket.on('connect', () => {
         socket.write(
-          `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${strict.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nCookie: aos_ann=${TOKEN}; other=a\r\nb: injected\r\n\r\n`,
+          `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${strict.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nCookie: aos_ann=${TOKEN}\r\nX-Smuggle: a\rb\r\n\r\n`,
         );
       });
       socket.on('data', (chunk) => {

@@ -53,6 +53,10 @@ before(async () => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
   });
+  server.on('connect', (_req, socket) => {
+    socket.write('HTTP/1.1 403 Forbidden\r\ncontent-type: application/json\r\nconnection: close\r\n\r\n{"code":"E_METHOD"}');
+    socket.end();
+  });
   await new Promise((resolve) => server.listen(PORT, '127.0.0.1', resolve));
 });
 after(() => new Promise((resolve) => server.close(resolve)));
