@@ -842,11 +842,12 @@ test('secure: upgrade against a plain HTTP upstream answers 502 JSON, both socke
 });
 
 test('secure: upgrade request values with CR/LF are rejected before any upstream connect (F11)', { timeout: 8000 }, async () => {
-  // Node refuses to parse malformed header lines as values containing CRLF via
-  // raw sockets; use a raw socket probe with a header containing CR.
-  let connected = null;
+  // A horizontal tab is accepted by llhttp in a field value but forbidden by
+  // the proxy's own wsForwardLines check, so this hits the proxy branch.
+  let connections = 0;
   const up = http.createServer(() => {});
-  up.on('upgrade', () => { connected = true; });
+  up.on('connection', () => { connections += 1; });
+  up.on('upgrade', () => {});
   const upPort = await listen(up);
   const strict = await createProxy({ token: TOKEN, upstream: { host: '127.0.0.1', port: upPort }, allowedPorts: [upPort] });
   try {
@@ -856,7 +857,7 @@ test('secure: upgrade request values with CR/LF are rejected before any upstream
       let raw = '';
       socket.on('connect', () => {
         socket.write(
-          `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${strict.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nCookie: aos_ann=${TOKEN}\r\nX-Smuggle: a\rb\r\n\r\n`,
+          `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${strict.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: a\tb\r\nCookie: aos_ann=${TOKEN}\r\n\r\n`,
         );
       });
       socket.on('data', (chunk) => {
@@ -867,13 +868,11 @@ test('secure: upgrade request values with CR/LF are rejected before any upstream
       });
       socket.on('close', () => resolve({ status: Number((raw.split(' ')[1] ?? '')) || 400, raw }));
       socket.on('error', reject);
-      setTimeout(() => reject(new Error('F11 probe timeout')), 4000).unref();
     });
-    assert.equal(result.status, 400, 'malformed CRLF header rejected at parse, never tunneled');
-    assert.equal(connected, null, 'upstream never saw the injected header');
-    const src = await import('node:fs/promises').then((fs) => fs.readFile(new URL('../lib/annotation/proxy.mjs', import.meta.url), 'utf8'));
-    assert.ok(src.indexOf('forwardLines === null') < src.indexOf('net.connect(up.port'), 'null check precedes connect');
-    assert.match(result.raw, /^HTTP\/1\.1 400 /);
+    assert.equal(result.status, 400, 'proxy rejects tabbed header value');
+    assert.ok(result.raw.startsWith('HTTP/1.1 400 Bad Request'), 'exact proxy 400 status line');
+    assert.equal(JSON.parse(result.raw.slice(result.raw.indexOf('\r\n\r\n') + 4)).error, 'E_UPSTREAM');
+    assert.equal(connections, 0, 'upstream saw zero connections');
     } finally { socket.destroy(); }
   } finally {
     up.closeAllConnections?.();
@@ -965,8 +964,9 @@ test('crash: upstream abort after headers still leaves proxy serving', { timeout
       if (req.url === '/abort') { res.writeHead(200, { 'content-type': 'text/plain' }); res.write('part'); setTimeout(() => res.destroy(), 50); return; }
       res.writeHead(200, { 'content-type': 'text/plain' }); res.end('second-ok');
     },
-    {},
+    { maxConcurrent: 1 },
     async ({ port }) => {
+      const start = Date.now();
       const abortReq = (path) => new Promise((resolve) => {
         const chunks = [];
         const r = http.request({ host: '127.0.0.1', port, method: 'GET', path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}` } }, (res) => {
@@ -984,6 +984,7 @@ test('crash: upstream abort after headers still leaves proxy serving', { timeout
         r.end();
       });
       const first = await abortReq('/abort');
+      assert.ok(Date.now() - start < 1500, 'abort surfaces well before the 3 s timer');
       const second = await req({ port, path: '/ok' });
       assert.equal(second.status, 200);
       assert.equal(second.body, 'second-ok');
@@ -1089,4 +1090,74 @@ test('uniform: localhost upstream reaches a 127.0.0.1 listener', { timeout: 8000
     upServer.closeAllConnections?.();
     await Promise.all([new Promise((r) => proxied.server.close(r)), new Promise((r) => upServer.close(r))]);
   }
+});
+
+test('smuggling: chunked DELETE body is refused 400 and upstream sees zero requests', { timeout: 8000 }, async () => {
+  let count = 0;
+  await proxyFixture(
+    (_req, res) => { count += 1; res.writeHead(200, { 'content-type': 'text/plain' }); res.end('up'); },
+    {},
+    async ({ port }) => {
+      const first = await new Promise((resolve, reject) => {
+        const s = net.connect(port, '127.0.0.1');
+        let raw = '';
+        s.on('connect', () => s.write(`DELETE /x HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n\r\n`));
+        s.on('data', (c) => { raw += c.toString('latin1'); });
+        s.on('close', () => resolve(raw));
+        s.on('error', reject);
+      });
+      assert.match(first, /^HTTP\/1\.1 400 /);
+      assert.equal(JSON.parse(first.slice(first.indexOf('\r\n\r\n') + 4)).error, 'E_CHUNKED_BODY');
+      assert.equal(count, 0);
+      const second = await req({ port, path: '/x' });
+      assert.equal(second.status, 200);
+      assert.equal(second.body, 'up');
+      assert.equal(count, 1);
+    },
+  );
+});
+
+test('ipv6: proxy reaches an upstream listening on [::1]', { timeout: 8000 }, async () => {
+  const upServer = http.createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('via-ipv6'); });
+  let upPort;
+  try {
+    upPort = await new Promise((resolve, reject) => {
+      upServer.once('error', reject);
+      upServer.listen(0, '::1', () => resolve(upServer.address().port));
+    });
+  } catch { upServer.close(); return; }
+  let proxied = null;
+  try {
+    proxied = await createProxy({ token: TOKEN, upstream: `[::1]:${upPort}`, allowedPorts: [upPort] });
+  } catch { upServer.close(); throw new Error('ipv6 proxy failed'); }
+  try {
+    const res = await req({ port: proxied.port, path: '/' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body, 'via-ipv6');
+  } finally {
+    proxied.server.closeAllConnections?.();
+    upServer.closeAllConnections?.();
+    await Promise.all([new Promise((r) => proxied.server.close(r)), new Promise((r) => upServer.close(r))]);
+  }
+});
+
+test('url: dot-dot spellings rejected but query %2e%2e forwarded', { timeout: 8000 }, async () => {
+  await proxyFixture(
+    (req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('up:' + req.url); },
+    {},
+    async ({ port }) => {
+      const rawPath = (p) => new Promise((resolve, reject) => {
+        const s = net.connect(port, '127.0.0.1'); let raw = '';
+        s.on('connect', () => s.write(`GET ${p} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nConnection: close\r\n\r\n`));
+        s.on('data', (c) => { raw += c.toString('latin1'); });
+        s.on('close', () => resolve({ status: Number(raw.split(' ')[1]), raw }));
+        s.on('error', reject);
+      });
+      const bad = await rawPath('/a/.%2e/b');
+      assert.equal(bad.status, 400);
+      const good = await req({ port, path: '/ok?next=%2e%2e' });
+      assert.equal(good.status, 200);
+      assert.ok(good.body.includes('/ok?next=%2e%2e'));
+    },
+  );
 });

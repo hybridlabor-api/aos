@@ -10,10 +10,10 @@ proxy so the annotation canvas and the app share an origin.
   before the guard runs — same binding, one code path.
 - Upstream: one fixed origin from `parseUpstream('<host>:<port>', allowPorts)`
   (loopback spellings only; default range 5173-5199, explicit port only via
-     CLI). The upstream host may be `127.0.0.1`, `localhost` or `[::1]` plus port. The request path never changes the upstream. Redirects to any other
-  origin are blocked with typed JSON (`E_REDIRECT_OFF_ALLOWLIST`); upstream and
-  proxy-origin redirects are rewritten to proxy-relative paths. `Set-Cookie`
-  loses its `Domain` attribute.
+  CLI). The upstream host may be `127.0.0.1`, `localhost` or `[::1]` plus
+  port. The request path never changes the upstream. Redirects to any other
+  origin are blocked with typed JSON (`E_REDIRECT_OFF_ALLOWLIST`); proxy-origin
+  redirects are blocked too. `Set-Cookie` loses its `Domain` attribute.
 - Cookie/token isolation: the guard's own `aos_ann` cookie is stripped from the
   forwarded `Cookie` header (HTTP and the hand-built upgrade request; the
   header is dropped when nothing remains) and from every upstream `Set-Cookie`

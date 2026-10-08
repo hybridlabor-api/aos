@@ -220,6 +220,16 @@ test('integration: token in the query string refused even with valid cookie', as
   assert.equal(JSON.parse(res.body).code, 'E_QUERY_TOKEN');
 });
 
+test('integration: exact query-token paths refused, other query strings pass', { timeout: 8000 }, async () => {
+  for (const p of [`/aos-api?token=${TOKEN}`, `/__aos_annot?token=${TOKEN}`]) {
+    const r = await request({ headers: baseHeaders(), path: p });
+    assert.equal(r.status, 403, p);
+    assert.equal(JSON.parse(r.body).code, 'E_QUERY_TOKEN', p);
+  }
+  const ok = await request({ headers: baseHeaders(), path: '/src/a.js?t=1' });
+  assert.equal(ok.status, 200);
+});
+
 test('integration: oversized body (declared) rejected with E_BODY', async () => {
   const res = await request({
     method: 'POST',
