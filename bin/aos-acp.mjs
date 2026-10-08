@@ -12,7 +12,8 @@
 //   aos-acp <claude|codex|opencode|agy> --name <worker> [--cwd <dir>]
 //           (--prompt "<text>" | --prompt-file <f>) [--allow-default deny|allow|scoped]
 //           [--go-wait <sec>] [--consume|--no-consume] [--log <file>]
-//           [--model <id>] [--timeout <sec>] [--cmd "<custom agent command>"]
+//           [--model <id>] [--timeout <sec>] [--print-timeout <sec>] [--cmd "<custom agent command>"]
+//   agy runs `agy --print` (no ACP server, no per-tool permission requests): see agyArgs.
 
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
@@ -49,10 +50,71 @@ export const ADAPTERS = {
   claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.86.0"], consume: false },
   codex: { cmd: ["npx", "-y", "@agentclientprotocol/codex-acp@2.1.1"], consume: true },
   opencode: { cmd: ["opencode", "acp"], consume: false, cwdFlag: "--cwd" },
-  // antigravity-acp (MIT) is third-party; its README states that driving agy
-  // through it breaches Google's Antigravity terms. Not shipped: use mcsc.
-  agy: null,
+  // agy has no ACP server. This target drives the vendor's own `agy --print` (the same call mcsc and
+  // aos-a2a spawn make), not the third-party antigravity-acp shim. Print mode answers no per-tool
+  // permission requests, so --allow-default maps onto agy's own flags (see agyArgs).
+  agy: { print: true },
 };
+
+// --allow-default for agy, where aos-acp cannot see single tool calls:
+//   deny   -> --mode plan                      (read-only planning)
+//   scoped -> --mode accept-edits --sandbox    (edits accepted; paths are NOT narrowed to the worktree
+//                                               by aos-acp, only by agy's sandbox and the aos-go-gate hook)
+//   allow  -> --dangerously-skip-permissions
+export function agyArgs(opts) {
+  const args = [];
+  if (opts.model) args.push("--model", opts.model);
+  if (opts.allowDefault === "allow") args.push("--dangerously-skip-permissions");
+  else if (opts.allowDefault === "scoped") args.push("--mode", "accept-edits", "--sandbox");
+  else args.push("--mode", "plan");
+  args.push("--print-timeout", `${opts.printTimeout ?? 900}s`, "--output-format", "json", "--print", opts.prompt);
+  return args;
+}
+
+// agy reports status SUCCESS with an empty response when its own print timeout fires, and waits
+// forever on an open stdin, so: stdin is closed and success needs a non-empty response.
+async function runPrint(opts, log, emitTrail) {
+  const args = agyArgs(opts);
+  log("start", { adapter: "agy", cmd: `agy ${args.slice(0, -1).join(" ")} <prompt>`, cwd: opts.cwd, allow_default: opts.allowDefault, model: opts.model || "adapter default" });
+  const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `agy:${opts.name}` };
+  emitTrail({ ...trail, hook_event_name: "SessionStart" });
+  const out = opts.stdout || process.stdout;
+  const child = spawn("agy", args, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" } });
+  let stdout = "", stderr = "", timedOut = false;
+  child.stdout.on("data", (d) => { stdout += d; });
+  child.stderr.on("data", (d) => { stderr += d; });
+  const stop = () => { child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 5000).unref(); };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  const hardLimit = opts.timeout ? opts.timeout : (opts.printTimeout ?? 900) + 60;
+  const timer = setTimeout(() => { timedOut = true; log("timeout", {}); stop(); }, hardLimit * 1000);
+  try {
+    const code = await new Promise((resolveExit, reject) => {
+      child.on("error", reject);
+      child.on("close", resolveExit);
+    });
+    let parsed = null;
+    try { parsed = JSON.parse(stdout.trim()); } catch { /* not JSON: reported below */ }
+    const response = typeof parsed?.response === "string" ? parsed.response : "";
+    const printTimedOut = /print timeout/i.test(stderr);
+    const ok = code === 0 && !timedOut && !printTimedOut && parsed?.status === "SUCCESS" && response.trim() !== "";
+    if (response) { out.write(response); log("text", { text: response }); }
+    out.write("\n");
+    log("done", {
+      stopReason: ok ? "end_turn" : timedOut || printTimedOut ? "timeout" : "error",
+      exit: code, status: parsed?.status, conversation_id: parsed?.conversation_id,
+      num_turns: parsed?.num_turns, duration_seconds: parsed?.duration_seconds, usage: parsed?.usage,
+      stderr: ok ? undefined : stderr.slice(-400),
+    });
+    return ok ? 0 : 1;
+  } catch (e) {
+    log("error", { message: e.message });
+    throw new Error(e.code === "ENOENT" ? "agy is not installed or not on PATH" : e.message);
+  } finally {
+    clearTimeout(timer);
+    await emitTrail({ ...trail, hook_event_name: "SessionEnd" });
+  }
+}
 
 export function commandOf(toolCall = {}) {
   const r = toolCall.rawInput || {};
@@ -185,10 +247,9 @@ export async function run(opts) {
   };
 
   const adapter = ADAPTERS[opts.adapter];
+  if (adapter?.print && !opts.cmd) return runPrint(opts, log, emitTrail);
   const cmd = opts.cmd ? ["sh", "-c", opts.cmd] : adapter?.cmd;
-  if (!cmd) throw new Error(opts.adapter === "agy"
-    ? "agy has no sanctioned ACP adapter (antigravity-acp breaches Google's Antigravity terms); delegate via the mcsc skill instead"
-    : `unknown adapter "${opts.adapter}" (claude|codex|opencode)`);
+  if (!cmd) throw new Error(`unknown adapter "${opts.adapter}" (claude|codex|opencode|agy)`);
   if (adapter?.cwdFlag && !opts.cmd) cmd.push(adapter.cwdFlag, opts.cwd);
   const consume = opts.consume ?? adapter?.consume ?? true;
   log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, model: opts.model || "adapter default" });
@@ -261,6 +322,7 @@ export function parseArgs(argv) {
     else if (a === "--allow-default") o.allowDefault = v, i++;
     else if (a === "--go-wait") o.goWait = Number(v), i++;
     else if (a === "--timeout") o.timeout = Number(v), i++;
+    else if (a === "--print-timeout") o.printTimeout = Number(v), i++;
     else if (a === "--log") o.log = v, i++;
     else if (a === "--model") o.model = v, i++;
     else if (a === "--cmd") o.cmd = v, i++;
@@ -273,7 +335,7 @@ export function parseArgs(argv) {
   return o;
 }
 
-const USAGE = "usage: aos-acp <claude|codex|opencode> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>]";
+const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900]";
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
   if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }
