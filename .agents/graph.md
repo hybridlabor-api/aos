@@ -244,3 +244,50 @@ the Reviewer node.
   interactive session and `/startcycle-graph` needs to run headless — see F-17's
   addendum in `audit-agents.md` for the full reasoning. Revisit if `/startcycle-graph`
   ever becomes interactive-only by design.
+
+## Domain profiles (opt-in)
+
+A **domain profile** adapts the seven-node pipeline above to a non-software
+domain — hardware (KiCad), live media (TouchDesigner), 3D/media creation, or
+copywriting — without touching the default graph. A profile is a declarative
+sibling of `.agents/nodes.json`, stored at `.agents/profiles/<domain>.json`
+(schema: `.agents/profiles/_schema.json`): it names which default build
+nodes to `replace`, which domain build nodes to `add` (same registry shape
+as nodes.json), which **gate keys** replace `lint/typecheck/tests/...` for
+this run (KiCad: `erc`, `drc`, `constraints`), and which artifact names the
+Reviewer/Shipping prompts enumerate. Four profiles ship today:
+`kicad`, `touchdesigner`, `creator`, `copywriter`.
+
+**Selection order** (first match wins, mirroring how `--skill=<name>` is
+resolved):
+
+1. **Explicit flag** — `/startcycle-graph --profile=<name> <goal>` is the
+   strongest signal and skips keyword matching entirely. A `--profile` name
+   that does not resolve to a file in `.agents/profiles/` escalates the same
+   way as a missing `--skill` name: stop, surface the error to the user,
+   never silently fall back to the default pipeline.
+2. **Plan-gate decision** — if no flag is given, TechLead's plan-approval step
+   (the capability-map gate) emits a `profile` decision
+   derived from the goal text against each profile's
+   `selection.triggers` (lowercase keywords, unique across profiles — an
+   ambiguous goal that hits two domains' triggers escalates rather than
+   guessing). There is no regex in the dispatcher; the decision is a
+   judgment call recorded like any other plan-gate decision.
+3. **Default** — no profile selected means the current software pipeline,
+   unchanged: the same seven nodes, the same gate keys, the same artifact
+   names. Every existing behavior is the "no profile" branch.
+
+Every skill name, agent type, and persona file a profile references is
+validated against this repo by `node scripts/validate-profile.mjs`
+(`npm run validate:profiles`); `tests/profile-files.test.mjs` pins the four
+profiles and asserts the default registry is untouched.
+
+**Status, stated honestly:** the explicit `--profile=<name>` flag is wired.
+`.claude/workflows/startcycle-dispatch.mjs` loads the profile after
+`.agents/nodes.json`, derives `BUILD_NODES`, the Reviewer prompt's artifact
+enumeration and the Shipping `GATE_KEYS` from it, and escalates on an
+unknown, malformed or invalid profile; `state.schema.json` accepts
+profile-defined gate and artifact keys. Not built yet: keyword selection from
+the goal text (the plan-gate `profile` decision) and a successful-run test of
+a profile end to end. Without `--profile` the default pipeline runs unchanged.
+

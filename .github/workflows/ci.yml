@@ -25,6 +25,8 @@ jobs:
         run: |
           node scripts/validate-skills.mjs --selftest
           node scripts/validate-skills.mjs
+          node scripts/validate-profile.mjs --selftest
+          node scripts/validate-profile.mjs
 
       - name: Validate JSON files
         run: |
