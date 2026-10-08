@@ -63,8 +63,8 @@ import { fileURLToPath } from "node:url";
 // builtin/exec/nohup/time/xargs/eval with options, `bash -c`, VAR=x), an optional opening
 // quote (bash -c 'git push') and an optional directory (/usr/bin/git). The regexes are the
 // fast first line; the token classifier below (classify + the catch-all) is the authority.
-const WRAP = String.raw`(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\s+-{1,2}[\w-]+(?:=\S*)?(?:\s+(?![-'"])(?!(?:\S*/)?(?:git|gh|npm|rm|opencode|curl|wget)\b)[^\s;&|'"]+)?)*\s+|(?:bash|sh|zsh|dash|ksh)(?:\s+-\w+)*\s+-c\s+|\w+=\S*\s+)*`;
-const A = String.raw`(?:^|[;&|\n({\x60])\s*${WRAP}['"]?(?:[^\s;&|()'"]{0,128}/)?`;
+const WRAP = String.raw`(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\s+-{1,2}[\w-]+(?:=\S*)?(?:\s+(?![-'"])(?!(?:\S*/|=)?(?:git|gh|npm|rm|opencode|curl|wget)\b)[^\s;&|'"]+)?)*\s+|(?:bash|sh|zsh|dash|ksh)(?:\s+-\w+)*\s+-c\s+|\w+=\S*\s+)*`;
+const A = String.raw`(?:^|[;&|\n({\x60])\s*${WRAP}['"]?(?:=|[^\s;&|()'"]{0,128}/)?`;
 // git / gh with global options before the subcommand (plain `git <sub>` is spelled out too).
 const G = String.raw`git(?:\s+(?:-[cC]\s*(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+(?:=(?:"[^"]*"|'[^']*'|\S+))?))+\s+`;
 const GH = String.raw`gh(?:\s+(?:-R|--repo)(?:\s+|=)\S+)+\s+`;
@@ -116,13 +116,78 @@ export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destruc
 // Output redirections (`2>&1`, `>/dev/null`, `&>log`) are removed before splitting, so the
 // `&` in `2>&1` is not a separator and `git push origin a:a 2>&1` reads as a plain push.
 // Process substitutions `>(`/`<(` are kept (the `(` splits them into their own segment).
+// `${IFS}`/`$IFS` (gatefix4 4) reads as a space before judging; the default IFS is exactly
+// that, and an unquoted expansion is word-split, so a glued `git${IFS}push` body must be
+// judged as the push it becomes (a quoted body loses only this, never more: fail closed).
+const UNIFS = /\$\{IFS\}|\$IFS/g;
+const unIFS = (s) => String(s).replace(UNIFS, " ");
 const REDIR = /\d*>&\d+|&>>?\s*[^\s(;&|]+|\d*>>?\s*[^\s(;&|]+/g;
-const segments = (cmd) => commandView(cmd).text.replace(REDIR, " ").split(/&&|\|\||\$\(|[;&|\n(){}\x60]/).map((s) => s.trim()).filter(Boolean);
+const segments = (cmd) => unIFS(commandView(cmd).text).replace(REDIR, " ").split(/&&|\|\||\$\(|[;&|\n(){}\x60]/).map((s) => s.trim()).filter(Boolean);
 // Tokens keep quoted parts glued to their word; unq() gives the shell value (quotes and
 // backslashes removed: `g\it`, `'git'`, `"push"` are git and push to the shell too).
 const tokens = (s) => s.match(/(?:"[^"]*"|'[^']*'|[^\s"']+)+/g) || [];
-const unq = (t) => String(t ?? "").replace(/["'\\]/g, "");
-const base = (t) => unq(t).replace(/^.*\//, "");
+// (H7d) a `$` directly in front of a quote (`$'rm'`, `$"git"`) is ANSI-C/locale quoting: the shell value has no `$`.
+// (H7f) the body of `$'..'` is decoded (`$'\x72m'` is rm).
+const ANSI_ESC = { n: "\n", t: "\t", r: "\r", a: "\x07", b: "\b", e: "\x1b", E: "\x1b", f: "\f", v: "\v" };
+const ansiC = (b) => b.replace(/\\(?:x([0-9a-fA-F]{1,2})|([0-7]{1,3})|[uU]([0-9a-fA-F]{1,8})|([\s\S]))/g, (m, x, o, u, c) => {
+  const n = x !== undefined ? parseInt(x, 16) : o !== undefined ? parseInt(o, 8) : u !== undefined ? parseInt(u, 16) : -1;
+  return n < 0 ? ANSI_ESC[c] ?? c : n > 0x10ffff ? "" : String.fromCodePoint(n);
+});
+const unq = (t) => String(t ?? "").replace(/\$'((?:[^'\\]|\\[\s\S])*)'|\$(?=["'])|["'\\]/g, (m, a) => (a === undefined ? "" : ansiC(a)));
+// (H7d) bash brace expansion of one unquoted word (`{git,push}`, `{push,}`); (H7f) also sequences (`{g..g}it`, `{1..3}`).
+// null = more than 64 results or a word too long to expand. (H7h) One linear stack scan finds the leftmost-outermost valid
+// group (own-depth comma or a valid sequence body; `${` never opens a group): an invalid inner `{}` keeps its parent, and a
+// nested group is split only at the commas of its own depth, as bash does.
+const SEQ = /^(?:(-?\d{1,6})\.\.(-?\d{1,6})|([A-Za-z])\.\.([A-Za-z]))(?:\.\.(-?\d{1,6}))?$/;
+function braceAt(b) {
+  if (!b.includes("{")) return null; // fast path: most words have no brace, and a 5000-word command pays per word
+  const st = [];
+  let best = null;
+  for (let j = 0; j < b.length; j++) {
+    const c = b[j];
+    if (c === "{") st.push({ o: j, d: b[j - 1] === "$", k: [] });
+    else if (c === "}") {
+      const f = st.pop();
+      if (f && !f.d && (best === null || f.o < best[0]) && (f.k.length || (j - f.o < 32 && SEQ.test(b.slice(f.o + 1, j))))) best = [f.o, j, f.k];
+    } else if (c === "," && st.length) st[st.length - 1].k.push(j);
+  }
+  return best;
+}
+const BRACE = { test: (s) => braceAt(s) !== null };
+const bareOf = (w) => w.replace(/"[^"]*"|'[^']*'/g, (m) => "\u0007".repeat(m.length));
+function seqParts(body) {
+  const m = SEQ.exec(body);
+  if (!m) return null;
+  const num = m[1] !== undefined, a = num ? +m[1] : m[3].charCodeAt(0), z = num ? +m[2] : m[4].charCodeAt(0), step = Math.abs(+m[5]) || 1;
+  if (Math.floor(Math.abs(z - a) / step) >= 64) return null;
+  const out = [], d = z >= a ? step : -step;
+  for (let v = a; d > 0 ? v <= z : v >= z; v += d) out.push(num ? String(v) : String.fromCharCode(v));
+  return out;
+}
+function expandBrace(w) {
+  if (!w.includes("{")) return [w];
+  if (w.length > 4096) return braceAt(bareOf(w)) ? null : [w];
+  const out = [w];
+  for (let k = 0, it = 0; k < out.length;) {
+    tick();
+    if (out.length > 64 || ++it > 256) return null;
+    const x = out[k], b = bareOf(x), m = braceAt(b);
+    if (!m) { k++; continue; }
+    const [s, e, cm] = m;
+    let parts = [];
+    if (cm.length) {
+      for (let j = 0, from = s + 1; j <= cm.length; j++) { const q = j < cm.length ? cm[j] : e; parts.push(x.slice(from, q)); from = q + 1; }
+    } else if (!(parts = seqParts(b.slice(s + 1, e)))) return null;
+    out.splice(k, 1, ...parts.map((q) => x.slice(0, s) + q + x.slice(e + 1)));
+  }
+  return out;
+}
+const braceRow = (tk) => !tk.some((t) => t.includes("{")) ? tk : tk.flatMap((t) => expandBrace(t) ?? [t]);
+// (H7d) a command word that is itself a glob (`/usr/bin/?it`, `[g]it`) names a program the gate cannot read; `[` and `[[` are the test builtins.
+const globHead = (w) => /[?*\[]/.test(w) && !/^\[\[?$/.test(w);
+const globRe = (g) => new RegExp("^" + g.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\[!/g, "[^").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+// (H7f) zsh `=git` expands to the program path: the word names git (`FOO=bar` and `a=b` are not affected).
+const base = (t) => unq(t).replace(/^=(?=[A-Za-z][^=]*$)/, "").replace(/^.*\//, "");
 
 // Transparent prefixes: the command after them is what runs. `v` = options taking a value,
 // `pos` = positional arguments of the wrapper itself (timeout DURATION, script FILE).
@@ -131,16 +196,18 @@ const WRAPPERS = {
   nohup: {}, time: {}, nice: { v: /^-n$|^--adjustment$/ }, timeout: { v: /^-[sk]$/, pos: 1 }, caffeinate: { v: /^-[tw]$/ }, stdbuf: { v: /^-[ioe]$/ },
   // Process-hiding wrappers whose command is behind their own arguments too
   // (`flock /tmp/l $g push`, `ionice $g push`, `setsid $g push`).
+  // (H7d) arch/xcrun run the command behind their own options.
+  arch: { v: /^-arch$/ }, xcrun: { v: /^-{1,2}(?:sdk|toolchain)$/ },
   setsid: {}, flock: { pos: 1, v: /^-[wETsu]$/ }, ionice: { v: /^-[nc]$/ },
   // Loop and condition keywords run the command after them (aos-22: `until npm view ...; do ...; done`).
-  xargs: { v: /^-[IPndLsEa]$/ }, script: { v: /^-[Ft]$/, pos: 1 }, then: {}, do: {}, else: {}, until: {}, while: {}, if: {}, elif: {},
+  xargs: { v: /^-[^IPndLsEaJ-]*[IPndLsEaJ]$|^--(?:max-args|max-procs|max-lines|max-chars|delimiter|arg-file|eof|process-slot-var)$/ }, script: { v: /^-[Ft]$/, pos: 1 }, then: {}, do: {}, else: {}, until: {}, while: {}, if: {}, elif: {},
 };
 const SHELLS = /^(?:bash|sh|zsh|dash|ksh|eval|watch|parallel)$/;
 
 // Strips `!`, VAR=x and wrappers. `opaque`: the real command text is hidden (sh -c, eval,
 // watch, env -S, linux `script -c`, xargs input); `gitEnv`: a GIT_* variable is set.
 function stripPrefix(tok) {
-  let i = 0, opaque = false, gitEnv = false, xargs = false;
+  let i = 0, opaque = false, gitEnv = false, xargs = false, xargsReplace = false;
   for (;;) {
     const t = unq(tok[i] ?? "");
     if (t === "!") { i++; continue; }
@@ -153,8 +220,26 @@ function stripPrefix(tok) {
     while (i < tok.length) {
       const o = unq(tok[i]);
       if (name === "env" && /^\w+=/.test(o)) { gitEnv ||= /^(?:GIT_|HOME=|XDG_CONFIG_HOME=|HUSKY=|LEFTHOOK=|SKIP=|PRE_COMMIT)/.test(o); i++; continue; }
+      if (name === "xargs" && /^-[0-9prtxovV]*[iIJ]|^--replace/.test(o)) xargsReplace = true;
       if (o.startsWith("-") && o !== "-") {
-        if ((name === "env" && /^-S/.test(o)) || (name === "script" && o === "-c")) opaque = true;
+        // env -S / --split-string and flock/script -c take a command STRING as their value
+        // (7, 8): the value is opaque shell text and must be judged, not skipped. A glued
+        // value is rewound into a quoted token of its own; a separate value token simply
+        // stays first in the token row (the shell rules and innerText read it from there).
+        if ((name === "env" && /^(?:-[i0v]*S|--split-string)/.test(o)) || ((name === "flock" || name === "script") && /^(?:-[a-zA-Z]*c|--command(?:=|$))/.test(o))) {
+          opaque = true;
+          pos = 0; // the command string replaces script's FILE positional; it must not be skipped as one
+          const raw = tok[i];
+          // (H5) -S bundled (`-vS`) or quoted (`"-S"'...'`): the unquoted word carries the body.
+          const m = name === "env"
+            ? /^-[i0v]*S(.+)$/s.exec(raw) ?? /^--split-string=(.+)$/s.exec(raw) ?? /^-[i0v]*S(.+)$/s.exec(o) ?? /^--split-string=(.+)$/s.exec(o)
+            : /^-[a-zA-Z]*c(.+)$/s.exec(raw) ?? /^--command=(.+)$/s.exec(raw) ?? /^-[a-zA-Z]*c(.+)$/s.exec(o) ?? /^--command=(.+)$/s.exec(o);
+          // glued value: the rewritten token IS the body and stays first in the row;
+          // separate value: skip the flag alone, the body follows as the next token.
+          if (m && m[1]) { tok[i] = m[1]; continue; }
+          i++;
+          continue;
+        }
         i += w.v?.test(o) ? 2 : 1;
         continue;
       }
@@ -165,7 +250,7 @@ function stripPrefix(tok) {
   }
   const head = base(tok[i] ?? "");
   if (SHELLS.test(head)) opaque = true;
-  return { rest: tok.slice(i), opaque, gitEnv, xargs };
+  return { rest: tok.slice(i), opaque, gitEnv, xargs, xargsReplace };
 }
 
 // Branches a push-feature grant never covers. Default: main/master plus the usual long-lived
@@ -208,7 +293,7 @@ const SAFE_PUSH_OPT = /^(?:-u|--set-upstream|-q|--quiet|-v|--verbose|--no-verify
 // detached HEAD, which callers treat as the protected case.
 // Per-segment state handed to classify by scopesOf: the working directory (null = unknown) and
 // whether an earlier segment of the same command may have changed the repository state.
-let segCwd = "", segTaint = false;
+let segCwd = "", segTaint = false, segFeed = "";
 // Git lookups are memoised for one hook invocation (setGateContext clears them), and every
 // analysis runs under a wall-clock budget: past it the command is unscoped (guarded, GO needed).
 let memo = new Map();
@@ -507,12 +592,44 @@ const COMMIT_WORD_BYPASS = /^(?:--no-v(?:e(?:r(?:i(?:f(?:y)?)?)?)?)?|--no-g\S*|-
 const PM = /^(?:npm|pnpm|yarn|bun)$/;
 // Program heads whose real arguments xargs reads from stdin.
 const XARGS_PROG = /^(?:git|hub|npm|pnpm|yarn|bun|npx|rm|gh|docker)$/;
+// (gatefix4 5) for a stdin-fed xargs row a guarded subcommand must be VISIBLE: stdin can
+// splice it in otherwise. git/hub: one of the git verbs; the package managers: publish or
+// version; gh: one of the write verbs (a bare `gh pr` glued `merge` from stdin stays
+// unscoped); docker: one of the run-like subcommands.
+// (M2) a VISIBLE subcommand is what keeps a stdin-fed row judgeable: guarded or read-only, stdin
+// only appends arguments to it. No visible subcommand (`xargs git --no-pager`, `xargs npm`) is unscoped.
+const xargsSubVisible = (cmd, r) => {
+  const w = r.map(unq);
+  if (/^(?:git|hub)$/.test(cmd)) {
+    let i = 0;
+    while (i < w.length && w[i].startsWith("-")) i += GIT_VALUE_OPTS.test(w[i]) ? 2 : 1;
+    return i < w.length;
+  }
+  if (PM.test(cmd)) {
+    let i = 0;
+    while (i < w.length && w[i].startsWith("-")) i += NPM_VALUE_OPTS.test(w[i]) ? 2 : 1;
+    return i < w.length;
+  }
+  if (cmd === "gh") { const { a, b } = ghParts(["gh", ...r]); return !!a && !!b && !a.startsWith("-") && !b.startsWith("-") && a !== "api"; }
+  if (cmd === "docker") return w.length > 0 && !w[0].startsWith("-");
+  return true;
+};
+const PM_SAFE = /^(?:install|i|ci|add|remove|rm|uninstall|update|up|test|t|build|lint|ls|list|why|outdated|audit|info|view|init|config|cache|start|dev|pkg|help|search|whoami)$/;
 const NPM_VALUE_OPTS = /^(?:--prefix|-w|--workspace|-C|--dir|--registry|--userconfig|--cache|--tag|--otp|--access|--filter|--cwd)$/;
+
+// (H7) a word whose literal head is (a prefix of / starts with) a guarded program and that has a computed
+// part after it: `gi$p`, `r${u}`, `git$p`. A pure `$X` head and unrelated heads (`echo$x`) are not meant.
+const GLUED_PROGS = ["git", "hub", "npm", "pnpm", "yarn", "bun", "npx", "rm", "gh", "docker", "bash", "sh", "zsh", "dash", "ksh", "eval", "watch", "parallel"];
+const gluedHead = (w) => {
+  if (/^\w+=/.test(w)) return false; // (H7d) an assignment word (`git_sha=$(...)`) is not a program name
+  const p = w.split(/[$`\u0001\u0002?*\[]/, 1)[0];
+  return p.length > 0 && p.length < w.length && GLUED_PROGS.some((g) => g.startsWith(p) || p.startsWith(g));
+};
 
 // Precise classification of one segment: array of scopes, [] = not guarded,
 // null = guarded but not classifiable (never grantable).
 export function classify(seg, protectedFor = staticResolver) {
-  const { rest: tok, opaque, gitEnv, xargs } = stripPrefix(tokens(seg));
+  const { rest: tok, opaque, gitEnv, xargs, xargsReplace } = stripPrefix(tokens(seg));
   const cmd = base(tok[0] ?? "");
   // xargs takes its command words from stdin (`echo push origin HEAD:main | xargs git`,
   // `echo -rf build | xargs rm`): when NO argument of its own is visible after the guarded
@@ -520,10 +637,29 @@ export function classify(seg, protectedFor = staticResolver) {
   // SHOWS its own recursive flag (`xargs rm -rf`) is judged as before (destructive, the
   // visible word row is the truth); an rm row without one is unscoped, because its flags can
   // come from the stdin words (`echo -rf build | xargs rm`), the old bare `rm -rf` row.
-  if (xargs && XARGS_PROG.test(cmd) && !tok.slice(1).length) return null;
+  // (5) -I/-J/--replace splices the stdin words anywhere (flags, subcommand): always
+  // unscoped. And with a guarded program head a guarded subcommand must be visible —
+  // `echo push origin HEAD:main | xargs git --no-pager` assembles it from stdin.
+  // (H3) `git$p origin ...`: a `$` glued inside a guarded-program-prefixed head word is computed.
+  // (H7) a head glued from a guarded-program prefix and a computed part (`gi$p push`, `r$p -rf x`); a pure `$X` head stays free here (catchAll judges it).
+  if (!opaque && gluedHead(cmd)) return null;
+  if (xargs && XARGS_PROG.test(cmd)) {
+    if (xargsReplace) return null;
+    if (!tok.slice(1).length) return null;
+    if (!(cmd === "rm" || cmd === "rmx") && !xargsSubVisible(cmd, tok.slice(1))) return null;
+    if (PM.test(cmd)) {
+      const w = tok.slice(1).map(unq);
+      let i = 0;
+      while (i < w.length && w[i].startsWith("-")) i += NPM_VALUE_OPTS.test(w[i]) ? 2 : 1;
+      if (/^(?:publish|version)$/.test(w[i] ?? "") && !w.some((t) => /[$`\u0001\u0002]/.test(t))) return ["publish"];
+    }
+  }
   if (xargs && (cmd === "rm" || cmd === "rmx")) {
     if (tok.slice(1).some((t) => /^-[a-zA-Z]*[rR]/.test(unq(t)) || unq(t) === "--recursive")) return ["destructive"];
-    return null;
+    // visible flags (`xargs rm -f`): fed by find/fd the stdin only adds file words (old decision, grantable);
+    // any other feeder (`echo -r ~/x | xargs rm -f`) can add flags: unscoped.
+    return tok.slice(1).some((t) => unq(t).startsWith("-")) && /^(?:find|fd)$/.test(segFeed) ? ["destructive"] : null;
+  }
   if (opaque) {
     if (!catchAll(tok, seg, true)) return [];
     if (stripPrefix(tokens(seg)).xargs) return null;
@@ -577,6 +713,9 @@ export function classify(seg, protectedFor = staticResolver) {
       const read = r.some((t) => /^(?:--get\S*|--list|-l)$/.test(t)) || (args.length === 1 && !r.some((t) => /^--(?:add|unset\S*|replace-all|edit|rename-section|remove-section)$|^-e$/.test(t)));
       return read ? [] : null;
     }
+    // (H7f) subcommands that push (`subtree push|split`, `lfs push`, `send-pack`) or run a command string (`submodule foreach`, `rebase -x|--exec`, `bisect run`).
+    if ((sub === "subtree" && r.some((t) => /^(?:push|split)$/.test(t))) || (sub === "lfs" && r.includes("push")) || sub === "send-pack") return ["push-main"];
+    if (((sub === "submodule" && r.includes("foreach")) || (sub === "rebase" && r.some((t) => /^(?:-[a-zA-Z]*x|--exec(?:=|$))/.test(t))) || (sub === "bisect" && r[0] === "run")) && catchAll(tok, seg, true)) return null;
     // An unknown subcommand may be an alias (`[alias] p = push origin HEAD:main`, `q = !git push`):
     // guarded when the config defines it, or cannot be read.
     if (sub && !GIT_BUILTINS.test(sub)) {
@@ -587,13 +726,17 @@ export function classify(seg, protectedFor = staticResolver) {
     return [];
   }
   if (cmd === "docker") return dockerScopes(tok, seg);
+  // (H7f) the git programs behind the subcommands (`/usr/lib/git-core/git-push`, `git-subtree push`).
+  if (/^git-(?:push|send-pack)$/.test(cmd) || (/^git-(?:subtree|lfs)$/.test(cmd) && tok.slice(1).some((t) => /^(?:push|split)$/.test(unq(t))))) return ["push-main"];
   if (PM.test(cmd) || cmd === "npx") {
     if (cmd === "npx") return catchAll(tok, seg) ? null : [];
     let i = 1;
     while (unq(tok[i] ?? "").startsWith("-")) i += NPM_VALUE_OPTS.test(unq(tok[i])) ? 2 : 1;
     const sub = unq(tok[i]), next = unq(tok[i + 1]);
+    if (/[$`\u0001\u0002]/.test(sub)) return null; // (H2) computed subcommand
     if (/^(?:publish|version)$/.test(sub) || (cmd === "yarn" && sub === "npm" && next === "publish")) return ["publish"];
-    return /^(?:run|run-script|exec|x|dlx)$/.test(sub) && catchAll(tok, seg) ? null : [];
+    // (H7f) any other subcommand may run a release bin (`pnpm changeset publish`, `yarn lerna publish`, `yarn workspaces foreach npm publish`).
+    return !PM_SAFE.test(sub) && catchAll(tok, seg) ? null : [];
   }
   if (cmd === "rm") {
     const r = tok.slice(1).map(unq);
@@ -602,6 +745,7 @@ export function classify(seg, protectedFor = staticResolver) {
   }
   if (cmd === "gh") {
     const { a, b, rest } = ghParts(tok);
+    if (/[$`\u0001\u0002]/.test(a) || (a !== "api" && /[$`\u0001\u0002]/.test(b))) return null; // (H2) computed subcommand
     if (a === "pr" && b === "merge") return ["merge"];
     if (a === "pr" && /^(?:create|comment|edit|review|close)$/.test(b)) return ["github-write"];
     if (a === "release" && b === "create") return ["publish"];
@@ -671,14 +815,16 @@ function opaqueBodyWords(toks) {
     if (h === "eval") { if (/^['"]/.test(toks[i + 1] ?? "")) body = toks[++i]; }
     else if (SHELLS.test(h)) {
       // Every option token is scanned, not just the first: `bash -o pipefail -c '...'` reaches
-      // -c. -o/-O and --rcfile/--init-file take a value, which is skipped whole; any other
-      // option is its own token. The first token after -c is the body.
+      // -c. -o/-O and --rcfile/--init-file take a value, which is skipped whole; a BUNDLED -o
+      // (`bash -euo pipefail -c ...`) takes the next word as its value the same way, so the
+      // scan must not stop at `pipefail` (9); any other option is its own token. The first
+      // token after -c is the body.
       let j = i + 1, sawC = false;
       while (j < toks.length) {
         const o = unqQ(toks[j]);
         if (!/^-/.test(o)) break;
         if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(o)) { sawC = true; break; }
-        if (/^(?:-[oO]|--rcfile|--init-file)$/.test(o)) j += 2; else j++;
+        if (/^(?:-[oO]|--rcfile|--init-file)$/.test(o) || /^-[a-zA-Z]*[oO][a-zA-Z]*$/.test(o)) j += 2; else j++;
       }
       if (sawC && toks[j + 1]) { body = toks[++j]; i = j; }
     }
@@ -688,8 +834,9 @@ function opaqueBodyWords(toks) {
       // ${IFS}-glued body, so scanSplit (quote- and `;`-aware) cuts the statements and
       // stripPrefix removes wrappers/assignments before scopesOf judges each statement's
       // token row with cposDollar. unq first removes the quotes and the backslashes of an
-      // escaped body (`sh -c g=git\;p=push\;\$g ...`), so the same rules apply to it.
-      for (const p of scanSplit(unq(body))) {
+      // escaped body (`sh -c g=git\;p=push\;\$g ...`), so the same rules apply to it; the
+      // ${IFS}/$IFS words read as spaces before the split (4).
+      for (const p of scanSplit(unIFS(unq(body)))) {
         const t = p.t.trim();
         if (t) out.push(stripPrefix(tokens(t)).rest);
       }
@@ -701,9 +848,9 @@ function catchAll(tok, seg, opaque = false) {
   // inside sh -c / eval / watch the quoted text is the command, so split it into words;
   // scanSplit also cuts the statement boundaries a glued `;` or a ${IFS}-glued body hides
   // from a plain whitespace split, so glued statements keep their command positions.
-  const rawWords = opaque
-    ? tok.flatMap((t) => scanSplit(unq(t)).flatMap((p) => tokens(p.t.trim())))
-    : tok;
+  const rawWords = braceRow(opaque
+    ? tok.flatMap((t) => scanSplit(unIFS(unq(t))).flatMap((p) => tokens(p.t.trim())))
+    : tok);
   const w = rawWords.map(base), raw = rawWords.map(unq);
   if (opaque && cposDollar(w)) return true;
   // One backward pass builds suffix lookups over the words AFTER i (arrays are read at
@@ -739,11 +886,12 @@ function catchAll(tok, seg, opaque = false) {
     // is unscoped. Only in command position (tracked like cposDollar), unless opaque where
     // the shell text can sit anywhere between built words: `echo $X config` is data.
     if ((cmd || opaque) && DOLLAR.test(b) && (noun[i + 1] || (cmd && dollar[i + 1]))) return true;
+    if (cmd && (gluedHead(b) || globHead(raw[i]))) return true;
     if ((b === "git" || b === "hub") && (noun[i + 1] || (verb[i + 1] || (hasCommit[i + 1] && bypassish[i + 1])))) return true;
     // `npm view|info|show|v <pkg> version` only reads: its subcommand is not publish/version.
     if ((PM.test(b) || b === "npx") && !/^(?:view|info|show|v)$/.test(nonDash[i + 1]) && pub[i + 1]) return true;
     if (b === "gh" && ghv[i + 1]) return true;
-    if (/^(?:np|release-it|semantic-release)$/.test(b) || (b === "changeset" && pubOnly[i + 1])) return true;
+    if (/^(?:np|release-it|semantic-release)$/.test(b) || (b === "changeset" && pubOnly[i + 1]) || (b === "lerna" && pub[i + 1])) return true;
     if (b === "rm" && rec[i + 1]) return true;
     cmd = CPOS_JOINER.test(b);
   }
@@ -753,7 +901,8 @@ function catchAll(tok, seg, opaque = false) {
 // Test support only: the catchAll internals the differential in tests/go-gate-gatefix2.test.js
 // compares against. No production consumer; nothing else reads this.
 export const _catchAllInternals = {
-  catchAll, cposDollar, tokens, unq, base, scanSplit,
+  catchAll, cposDollar, tokens, unq, base, scanSplit, classify, stripPrefix, opaqueBodyWords,
+  hasGuardedAssign: (segs) => hasGuardedAssign(segs),
   GUARDED_NOUN, GIT_VERBS, CPOS_JOINER, PM, COMMIT_WORD_BYPASS,
 };
 
@@ -939,7 +1088,18 @@ function dockerScopes(tok, seg, tainted = segTaint) {
   // parser: `docker exec ctr git push origin HEAD:main`, `docker compose run app npm publish`
   // and `docker exec ctr sh -c 'git push origin HEAD:main'` are read like an opaque text, and
   // a guarded word anywhere in them needs a GO.
-  if (!(sub === "run" || (sub === "container" && unq(tok[2] ?? "") === "run"))) return catchAll(tok, seg, true) ? null : [];
+  if (!(sub === "run" || (sub === "container" && unq(tok[2] ?? "") === "run"))) {
+    // (gatefix4 10) restore the old free decision for a read-only git branch row: exec/compose
+    // hands the container exactly the visible words (no bash-style stdin), so the row is the
+    // command — `docker exec ctr git branch` (no flags, no expansion) is free, like
+    // `git branch` outside docker. Anything else behind exec/compose keeps the gatefix (7)
+    // catch-all: a guarded word anywhere in it needs a GO.
+    const gi = tok.findIndex((t, k) => k && /^(?:git|hub)$/.test(base(t)));
+    // (H6) only when the REST of the row (sh -c bodies, quoted words) holds no guarded noun: catch-all it first.
+    if (gi > 0 && unq(tok[gi + 1] ?? "") === "branch" && !tok.slice(gi + 2).some((t) => /^-/.test(unq(t)) || /[$\x60\u0001\u0002]/.test(unq(t))) &&
+        !catchAll([...tok.slice(0, gi), ...tok.slice(gi + 2)], seg, true)) return [];
+    return catchAll(tok, seg, true) ? null : [];
+  }
   if (tainted) return null;
   if (/(?:^|[\s;&|(])DOCKER_\w+=/.test(seg)) return null;
   let rm = false, image = false, mounts = 0, allRo = true, i = sub === "run" ? 2 : 3;
@@ -1105,7 +1265,7 @@ function prepText(s) {
       else out += c;
       continue;
     }
-    if (c === "\\") { const n = s[++i] ?? ""; out += n === "`" ? "\u0001" : c + n; continue; }
+    if (c === "\\") { const n = s[++i] ?? ""; if (n === "\n") continue; out += n === "`" ? "\u0001" : c + n; continue; }
     if (q === '"') { if (c === '"') q = ""; out += c; continue; }
     if (c === "'" || c === '"') { q = c; out += c; continue; }
     if (c === "#" && (i === 0 || /[\s;&|(]/.test(s[i - 1]))) { while (i < s.length && s[i] !== "\n") i++; i--; continue; }
@@ -1212,7 +1372,8 @@ const rmRecursive = (tok) => {
 
 // Delete targets of one simple command (after prefix stripping) and whether it is recursive.
 function shellDelete(tok) {
-  const cmd = base(tok[0] ?? "").toLowerCase();
+  let cmd = base(tok[0] ?? "").toLowerCase();
+  if (globHead(cmd)) { const re = globRe(cmd); cmd = ["rm", "rmdir", "unlink", "shred", "trash"].find((n) => re.test(n)) ?? cmd; } // (H7d) `/bin/[r]m`
   const a = tok.slice(1).map(unqQ).filter((t) => !/^\d*>/.test(t));
   if (DEL_CMD.test(cmd)) {
     const dd = a.indexOf("--");
@@ -1364,7 +1525,7 @@ function scriptFile(h, a) {
     if (t === "-") return {};
     // Option values are not script files: `bash -o pipefail echo hi` would otherwise read
     // 'pipefail' as a script and fail closed (a file that is not there is unscoped).
-    if (/^(?:-[oO]|--rcfile|--init-file)$/.test(t)) { i++; continue; }
+    if (/^(?:-[oO]|--rcfile|--init-file)$/.test(t) || (/^(?:bash|sh|zsh|dash|ksh)$/.test(lc) && /^-[a-zA-Z]*[oO]$/.test(t))) { i++; continue; }
     if (INLINE_FLAG.test(t) && !/^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
     if (/^(?:-c|-[a-zA-Z]*c)$/.test(t) && /^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
     if (VALUE_FLAG.test(t)) { i++; continue; }
@@ -1569,7 +1730,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
   const segment = (seg) => {
     tick();
     assignments(words(seg), st);
-    const { rest: tok, opaque } = stripPrefix(words(seg));
+    const { rest: tok, opaque } = stripPrefix(braceRow(words(seg))); // (H7d) `{rm,-rf} ~`
     const d = shellDelete(tok);
     if (d.recursive) r.destructive = true;
     for (const t of d.targets) {
@@ -1652,23 +1813,33 @@ const segGuarded = (seg) => { const c = classify(seg); return c === null || c.le
 // push that follows; the whole command then gets no scope.
 const UNSAFE_COMPOUND = /GIT_CONFIG|\bexport\s+GIT_|\bgit\b[^;&|\n]*\bconfig\b[^;&|\n]*(?:push|remote\.|url\.|insteadof)|\bgit\b[^;&|\n]*\bremote\s+(?:add|set-url|rename|set-branches)\b/i;
 
-// null = guarded but at least one guarded part maps to no scope (never covered by a grant).
-// A shell reading commands from stdin (`... | sh`, `bash -s`, `source /dev/stdin`): the text it
-// runs is whatever the other segments print, so their quoted words are the command.
+// A shell reading commands from stdin (`... | sh`, `bash -s`, `source /dev/stdin`, or a
+// here-string `sh <<< "$c"`): the text it runs is whatever the other segments print, so
+// their quoted words are the command.
 function feedsShell(segs) {
   return segs.some((seg) => {
     const { rest } = stripPrefix(tokens(seg));
     const head = base(rest[0] ?? ""), args = rest.slice(1).map(unq);
-    if (/^(?:sh|bash|zsh|dash|ksh|fish)$/.test(head)) return !args.some((a) => !a.startsWith("-")) || args.includes("-s") || args.includes("/dev/stdin");
+    if (/^(?:sh|bash|zsh|dash|ksh|fish)$/.test(head)) return !args.some((a) => !a.startsWith("-")) || args.includes("-s") || args.includes("/dev/stdin") || args.some((a) => a.startsWith("<<<"));
     return /^(?:source|\.)$/.test(head) && args.some((a) => a === "/dev/stdin" || a === "-");
   });
 }
+
+// (gatefix4 2) an assignment (`c="git push"`, `c=git`) whose value names a guarded program
+// anywhere in the command text: a later command-position `$` head can run it. Simplest safe
+// rule: any command-position `$` word in any segment fails closed while such an assignment exists.
+const GUARDED_PROG = /(?:^|[\s'"`;&|(])(?:git|hub|npm|pnpm|yarn|bun|npx|rm|gh|docker|lerna|changeset|semantic-release|release-it)(?:$|[\s'"`;&|)])/;
+const hasGuardedAssign = (segs) => segs.some((seg) => tokens(seg).some((t) => {
+  const m = /^\w+=(.+)$/s.exec(unq(t));
+  return !!m && (GUARDED_PROG.test(m[1]) || m[1].split(/[\s'"]+/).some((x) => GUARDED_NOUN.test(x))); // (H3) `b="t push"` completes `a=gi`
+}));
 
 let nest = 0;
 const SEG_SPLIT = /(&&|\|\||\$\(|[;&|\n(){}\x60])/;
 const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|PATH|DOCKER_[A-Za-z0-9_]+|GIT_[A-Za-z0-9_]+)=|\bset\s+-[a-z]*a/;
 const TAINT_SUBS = /^(?:checkout|switch|branch|reset|symbolic-ref|update-ref|worktree|remote|config|stash|rebase|merge|pull|fetch|restore|clone|init|am|cherry-pick|revert)$/;
 const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|stat|file|test|\[|diff|cmp|realpath|dirname|basename|echo|printf)$/;
+// null = guarded but at least one guarded part maps to no scope (never covered by a grant).
 export function commandScopes(command, protectedFor = staticResolver) {
   if (nest > 3) return null;
   nest++;
@@ -1679,25 +1850,76 @@ function scopesOf(orig, protectedFor) {
   if (commandTooLong(orig)) return null;
   const out = new Set();
   const segs = segments(orig);
-  const command = commandView(orig).text;
+  const command = unIFS(commandView(orig).text);
   // Raw text on purpose: data that a later pipe stage turns into commands must stay visible.
   if (feedsShell(segs) && catchAll(tokens(String(orig)), "", true)) return null;
+  // (gatefix4 6) data fed into a shell (`| sh`, `sh <<<`) whose source is a `$` expansion
+  // assigned from a guarded noun: the fed stage prints a guarded command, the raw scan above
+  // cannot read it through the variable, so the whole command is unscoped. Every existing
+  // feed test keeps its decision: they are guarded without an assignment as well.
+  const guardedAssign = hasGuardedAssign(segs);
+  if (feedsShell(segs) && guardedAssign && /[$\x60]/.test(orig)) return null;
   // Quoted opaque bodies (sh -c 'g=git; p=push; $g $p origin main') are split by the segment
   // split at the ; INSIDE the quotes; classify therefore sees fragments and the $-head rule
   // never fires. Read each -c / eval body whole here: a $/backtick/${}/$( word in command
   // position of the body fails closed (null = plain GO), whatever the fragments decide.
   for (const w of opaqueBodyWords(tokens(command))) if (cposDollar(w)) return null;
+  // (gatefix4 1) `git $(echo push) origin HEAD:main`, git `echo push` origin HEAD:main`:
+  // the segment split cuts at $(/backtick and classify would see a bare `git` with no
+  // subcommand. A command substitution inside a git/npm/rm-family segment's words can
+  // assemble the subcommand or flags, so such a segment is unscoped (plain GO).
+  // scanSplit keeps $(...)/`...` whole; \u0002 is the placeholder of an inert quoted $(.
+  for (const p of scanSplit(command)) {
+    const tk = tokens(p.t.trim());
+    if (!tk.length) continue;
+    const sp = stripPrefix(tk), head = base(sp.rest[0] ?? "");
+    // (H7d) command words the gate cannot read literally are guarded (plain GO): a brace group (`{git,push} x`, `git {push,}`: the
+    // expansion is judged and a guarded result is never grantable), a glob head, an ANSI-C head with escapes, an alias to a guarded
+    // program, `find -exec` / `watch` commands whose head is computed.
+    if (tk.some((t) => t.includes("{") && BRACE.test(bareOf(t)))) {
+      const ex = tk.map((t) => expandBrace(t));
+      if (ex.includes(null)) return null;
+      const bs = commandScopes(ex.flat().filter(Boolean).join(" "), protectedFor);
+      // (H7e) a literal delete command with only brace-expanded targets (`rm -rf ~/Documents/{a,b}`) keeps its ordinary destructive verdict
+      const plainDelete = DEL_CMD.test(head) && !BRACE.test(bareOf(sp.rest[0] ?? "")) && bs !== null && bs.every((x) => x === "destructive" || x === "workspace");
+      if (bs === null || (bs.length && !plainDelete)) return null;
+    }
+    if (sp.opaque && !sp.xargs && (BRACE.test(p.t) || (/^(?:watch|parallel)$/.test(head) && /\$\(|\x60/.test(p.t))) && catchAll(sp.rest, p.t, true)) return null;
+    if ((globHead(unq(sp.rest[0] ?? "")) && !(p.sep === ")" && tk.length === 1)) || /\$'[^']*\\/.test(sp.rest[0] ?? "")) return null;
+    if (head === "alias" && sp.rest.slice(1).some((t) => /^[\w.-]+=/.test(unq(t)) && GUARDED_PROG.test(unq(t).replace(/^[^=]*=/, "")))) return null;
+    if (head === "find") {
+      const e = sp.rest.findIndex((t) => /^-(?:exec|execdir|ok|okdir)$/.test(unq(t)));
+      if (e > 0 && commandScopes(sp.rest.slice(e + 1).join(" ").replace(/\s*\\?;\s*$|\s\+\s*$/, ""), protectedFor) === null) return null;
+    }
+    // (H7c) SEG_SPLIT cuts `$(`/backtick/`{}` before classify, so judge the glued or computed head here; a computed head's
+    // quoted body is read opaque behind a neutral first word (`$X --version` stays free, `$SHELL -c 'git push ...'` does not).
+    if (gluedHead(head)) return null;
+    if (/^[$\x60]/.test(head)) { const r = stripPrefix(tk).rest; if (catchAll(r, p.t) || catchAll(["x", ...r.slice(1)], p.t, true)) return null; }
+    // (H1) $( / backtick is live inside double quotes: walk the token, only single quotes are inert
+    // (and those were already turned into placeholders). rm keeps the old rule (`rm -rf "$(pwd)/x"` stays
+    // grantable-destructive); a commit message value (`commit -m "$(cat <<EOF ...)"`) is data; gh: only its
+    // subcommand words count (`gh api -X PATCH $(echo ...)` is judged by its endpoint rules).
+    const live = (t) => { for (let k = 0; k < t.length; k++) { if (t[k] === "\\") k++; else if (t[k] === "`" || (t[k] === "$" && t[k + 1] === "(")) return true; } return false; };
+    const msgVal = (k) => /^(?:-[a-zA-Z]*m|--message)$/.test(unq(tk[k - 1] ?? "")) && tk.slice(0, 6).some((x) => unq(x) === "commit");
+    if (/^(?:rm|rmx)$/.test(head)) { if (tk.some((t) => /^[^'"](?:\\.|[^'"\\])*$/.test(t) && /\$\(|\x60/.test(t))) return null; }
+    else if (/^(?:git|hub|npm|pnpm|yarn|bun|npx)$/.test(head)) { if (tk.some((t, k) => live(t) && !(/^(?:git|hub)$/.test(head) && msgVal(k)))) return null; }
+    else if (head === "gh") {
+      let k = 1;
+      while (/^(?:-R|--repo)$/.test(unq(tk[k] ?? ""))) k += 2;
+      if (live(tk[k] ?? "") || (unq(tk[k] ?? "") !== "api" && live(tk[k + 1] ?? ""))) return null;
+    }
+  }
   // Repository state followed through the command, so a push is judged on what it will find:
   // the cwd (cd/pushd; null = unresolvable; restored at `)`), and a taint once an earlier segment
   // may have changed HEAD, the config or the branch (git checkout/branch/config/..., a write
   // under .git/) or the command assigns HOME/XDG_CONFIG_HOME/GIT_* anywhere. A tainted bare or
   // plain-name push is push-main; an explicit src:dst is still read on its own.
-  const view = commandView(orig).text;
+  const view = unIFS(commandView(orig).text);
   // gh's {owner}/{repo}/{branch} placeholders must not be cut at the braces (a placeholder is an unknown name)
   const marked = view.replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " ")).replace(/(?<!\$)\{([a-z_]+)\}/g, "\u0004$1\u0005");
   const st = { cwd: gateCtx.cwd || process.cwd(), taint: ENV_CHANGE.test(view) };
   const stack = [];
-  const outerCwd = segCwd, outerTaint = segTaint;
+  const outerCwd = segCwd, outerTaint = segTaint, outerFeed = segFeed;
   try {
     const parts = marked.split(SEG_SPLIT);
     for (let pi = 0; pi < parts.length; pi++) {
@@ -1710,6 +1932,11 @@ function scopesOf(orig, protectedFor) {
       const seg = parts[pi].trim();
       if (!seg) continue;
       segCwd = st.cwd; segTaint = st.taint;
+      segFeed = parts[pi - 1] === "|" ? base(stripPrefix(tokens((parts[pi - 2] ?? "").trim())).rest[0] ?? "") : "";
+      // (gatefix4 2) while an assignment with a guarded noun exists anywhere in the text,
+      // a command-position `$` head cannot be scoped (`c="git push"; ${=c} origin
+      // HEAD:main`, a heredoc body `c="git push"; $c origin HEAD:main`).
+      if (guardedAssign && (cposDollar(tokens(seg).map(base)) || /[$`\u0001\u0002]/.test(stripPrefix(tokens(seg)).rest[0] ?? ""))) return null;
       const s = classify(seg, protectedFor);
       const tk = stripPrefix(tokens(seg)).rest, h = base(tk[0] ?? "");
       if (seg.includes("\u0003")) st.taint = true;
@@ -1727,7 +1954,7 @@ function scopesOf(orig, protectedFor) {
       if (!s.length && GUARDED_PATTERNS.some((r) => r.test(seg))) return null;
       s.forEach((x) => out.add(x));
     }
-  } finally { segCwd = outerCwd; segTaint = outerTaint; }
+  } finally { segCwd = outerCwd; segTaint = outerTaint; segFeed = outerFeed; }
   // The view blanks quoted text, so a GraphQL mutation that moves or merges a ref is read on the raw command.
   if (/\bgh\b[\s\S]*?\bapi\b[\s\S]*?\bgraphql\b/.test(orig) && /\b(?:updateRef|createRef|deleteRef|createCommitOnBranch|mergePullRequest|mergeBranch|updateBranchProtectionRule)\b/.test(orig)) { out.delete("github-write"); out.add("push-main"); }
   const a = analyzeDeletes(orig);
