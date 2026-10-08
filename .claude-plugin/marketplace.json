@@ -20,6 +20,12 @@
       "source": "./plugins/bdb-aos-fleet",
       "description": "Fleet band for Claude Code: which AOS sessions work or need you, context weather, read-only go-gate panel",
       "version": "4.19.0"
+    },
+    {
+      "name": "bdb-aos-sessions",
+      "source": "./plugins/bdb-aos-sessions",
+      "description": "AOS sessions viewer for Claude Code: every session of every harness plus the ACP workers (read-only, uses the aos-sessions CLI)",
+      "version": "0.1.0"
     }
   ]
 }

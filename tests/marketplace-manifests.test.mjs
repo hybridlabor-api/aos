@@ -15,6 +15,7 @@ const manifests = [
   'plugins/bdb-aos/.claude-plugin/plugin.json',
   'plugins/bdb-aos/plugin.json',
   'plugins/bdb-aos-fleet/.claude-plugin/plugin.json',
+  'plugins/bdb-aos-sessions/.claude-plugin/plugin.json',
   '.codex-plugin/plugin.json',
   'plugins/bdb-aos-codex/.codex-plugin/plugin.json',
   '.agents/plugins/marketplace.json',
