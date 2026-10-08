@@ -18,13 +18,27 @@
 // soft grants and mode off belong to the human session and are never read here. Nothing in
 // this file writes a token; the tool is synchronous, offline and reads no stdin.
 
-import { existsSync, realpathSync, writeFileSync, readdirSync, readFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { constants as FS, openSync, fstatSync, readSync, closeSync, existsSync, realpathSync, writeFileSync, readdirSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// Bounded regular-file read: a planted FIFO/device must not hang the check. Throws like
+// readFileSync (ENOENT keeps its code) for a missing, non-regular or oversized file.
+function readReg(f, max = 1 << 20) {
+  const fd = openSync(f, FS.O_RDONLY | FS.O_NONBLOCK);
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > max) throw new Error("not a small regular file");
+    const buf = Buffer.alloc(st.size);
+    let n = 0;
+    while (n < st.size) { const k = readSync(fd, buf, n, st.size - n, n); if (!k) break; n += k; }
+    return buf.toString("utf8", 0, n);
+  } finally { closeSync(fd); }
+}
 
 async function loadGate() {
   for (const f of [join(here, "go-gate.mjs"), join(here, "..", ".claude", "hooks", "go-gate.mjs")]) {
@@ -74,13 +88,14 @@ export const refId = (tokenText) => createHash("sha256").update(String(tokenText
 const A2A_REPLAY_KEEP = 200;
 const consumedRefsPath = (dir) => join(dir, ".a2a-consumed");
 export const readConsumedRefs = (dir) => {
-  try { return readFileSync(consumedRefsPath(dir), "utf8").split("\n").filter(Boolean); } catch { return []; }
+  try { return readReg(consumedRefsPath(dir)).split("\n").filter(Boolean); } catch { return []; }
 };
 const markRefConsumed = (dir, ref) => {
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const keys = [...readConsumedRefs(dir), `a2a:${ref}`].slice(-A2A_REPLAY_KEEP);
-    writeFileSync(consumedRefsPath(dir), keys.join("\n") + "\n", { mode: 0o600 });
+    const fd = openSync(consumedRefsPath(dir), FS.O_WRONLY | FS.O_CREAT | FS.O_TRUNC | FS.O_NOFOLLOW | FS.O_NONBLOCK, 0o600);
+    try { writeFileSync(fd, keys.join("\n") + "\n"); } finally { closeSync(fd); }
   } catch { /* a failed replay mark is reported by nothing; the token itself is already gone */ }
 };
 
@@ -95,7 +110,7 @@ export function checkRef(gate, { session, ref, consume = false }) {
   let tokenText = null, matchedFile = null;
   for (const f of files) {
     let text;
-    try { text = readFileSync(join(dir, f), "utf8"); } catch { continue; }
+    try { text = readReg(join(dir, f), 64 * 1024); } catch { continue; }
     if (refId(text) !== id) continue;
     if (tokenText !== null) return { code: 1, out: { ok: false, reason: "forged reference" } };
     tokenText = text;
@@ -167,7 +182,7 @@ export function tokenStillValid(gate, { name, tokenText }) {
   }
   let consumed;
   try {
-    consumed = readFileSync(join(homedir(), ".aos", "go", ".consumed"), "utf8").split("\n").filter(Boolean);
+    consumed = readReg(join(homedir(), ".aos", "go", ".consumed")).split("\n").filter(Boolean);
   } catch (e) {
     if (e?.code === "ENOENT") consumed = [];
     else return { ok: false, reason: "GO consumed list unreadable" };

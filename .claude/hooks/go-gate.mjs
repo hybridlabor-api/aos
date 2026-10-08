@@ -338,13 +338,13 @@ function locateGit0(dir) {
         const g = join(d, ".git"), st = statSync(g);
         if (st.isDirectory()) gitdir = g;
         else if (st.isFile() && st.size < 4096) {
-          const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(g, "utf8"));
+          const m = /^gitdir:\s*(.+)$/m.exec(readSmallRegular(g, 4095, true) || "");
           if (m) gitdir = resolve(d, m[1].trim());
         }
       } catch { /* no .git here */ }
       if (gitdir) {
         let common = gitdir;
-        try { common = resolve(gitdir, readFileSync(join(gitdir, "commondir"), "utf8").trim()); } catch { /* not a linked worktree */ }
+        try { common = resolve(gitdir, mustRead(join(gitdir, "commondir"), 64 * 1024).trim()); } catch { /* not a linked worktree */ }
         return { gitdir, common };
       }
       const up = resolve(d, "..");
@@ -361,7 +361,7 @@ export function currentBranch(dir) {
   if (!loc) return null;
   try {
     const f = join(loc.gitdir, "HEAD");
-    const head = statSync(f).size < 4096 ? readFileSync(f, "utf8").trim() : "";
+    const head = (readSmallRegular(f, 4095, true) || "").trim();
     const b = /^ref:\s*refs\/heads\/(\S+)$/.exec(head)?.[1];
     return b && SAFE_NAME.test(b) ? b : null;
   } catch { return null; }
@@ -417,15 +417,8 @@ function readConfigFile(f) {
   let st;
   try { st = statSync(f); } catch (e) { return e?.code === "ENOENT" || e?.code === "ENOTDIR" ? "" : null; }
   if (!st.isFile() || st.size > 256 * 1024) return null;
-  try {
-    const fd = openSync(f, "r");
-    try {
-      const buf = Buffer.alloc(st.size + 1);
-      let n = 0;
-      for (let k; n < buf.length && (k = readSync(fd, buf, n, buf.length - n, n)) > 0;) n += k;
-      return n > 256 * 1024 ? null : buf.toString("utf8", 0, n);
-    } finally { closeSync(fd); }
-  } catch { return null; }
+  const text = readSmallRegular(f, 256 * 1024, true);
+  return typeof text === "string" ? text : null;
 }
 function gitConfig0(repoDir) {
   if (Object.keys(process.env).some((k) => GIT_REDIRECT.test(k))) return null;
@@ -1610,17 +1603,8 @@ function scriptInto(r, h, file, cwd) {
   // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
   if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && mtime > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
-  let body;
-  try {
-    const fd = openSync(path, "r");
-    try {
-      const buf = Buffer.alloc(SCRIPT_MAX + 1);
-      let n = 0;
-      for (let k; n < buf.length && (k = readSync(fd, buf, n, buf.length - n, n)) > 0;) n += k;
-      if (n > SCRIPT_MAX) { r.unscoped = true; return; }
-      body = buf.toString("utf8", 0, n);
-    } finally { closeSync(fd); }
-  } catch { r.unscoped = true; return; }
+  const body = readSmallRegular(path, SCRIPT_MAX, true);
+  if (typeof body !== "string") { r.unscoped = true; return; }
   const t = installedScript(path, mtime) ? { destructive: false, workspace: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] } : r;
   if (/^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i.test(h)) t.cmds.push(body);
   else codeInto(t, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"), t === r ? workspaceFor(path, cwd) : null);
@@ -2010,14 +1994,17 @@ let blockKey = "";
 const blockFile = (key) => join(gateDir(), `${key}.block`);
 export function readBlockTs(key) {
   // A marker from the future (a forged or skewed ts) counts as written now, never as later.
-  try { return Math.min(Number(JSON.parse(readFileSync(blockFile(key), "utf8")).ts) || 0, Date.now()); } catch { return 0; }
+  // A planted non-regular marker (FIFO/device/dir/symlink/oversize) fails closed: the cooldown window is always open. Missing = 0.
+  const txt = readSmallRegular(blockFile(key), 4096);
+  if (txt === false) return Date.now() - (COOLDOWN_MS >> 1);
+  try { return Math.min(Number(JSON.parse(txt ?? "")?.ts) || 0, Date.now()); } catch { return 0; }
 }
 // Never blocks or follows a link: a planted FIFO/device/symlink must not hang the hook (fail-open).
-// null = missing, false = not a small regular file, else the text.
-export function readSmallRegular(f, max) {
+// null = missing, false = not a small regular file, else the text. follow=true keeps a symlink to a regular file readable (the fstat still rejects a FIFO/device behind it).
+export function readSmallRegular(f, max, follow = false) {
   let fd;
   try {
-    fd = openSync(f, FS.O_RDONLY | FS.O_NOFOLLOW | FS.O_NONBLOCK);
+    fd = openSync(f, FS.O_RDONLY | FS.O_NONBLOCK | (follow ? 0 : FS.O_NOFOLLOW));
     const st = fstatSync(fd);
     if (!st.isFile() || st.size > max) return false;
     const buf = Buffer.alloc(st.size);
@@ -2026,7 +2013,18 @@ export function readSmallRegular(f, max) {
     return buf.toString("utf8", 0, n);
   } catch (e) { return e.code === "ENOENT" ? null : false; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ } }
 }
-function writeNoHang(f, data, flags) {
+// Regular-file text or a throw (callers keep their catch): FIFO, device, oversize and missing all throw.
+function mustRead(f, max) {
+  const t = readSmallRegular(f, max, true);
+  if (typeof t !== "string") throw new Error("not a small regular file");
+  return t;
+}
+// A path an external reader (sqlite) will open: only a regular file, so a planted FIFO cannot hang it.
+function isRegularFile(p) { try { return statSync(p).isFile(); } catch { return false; } }
+// sqlite also opens the WAL/SHM/journal sidecars (blocking open): each must be absent or a regular file.
+// The db itself must not be a symlink either: sqlite would open the sidecars next to the link target, unchecked.
+const sqliteSafe = (p) => { try { if (!lstatSync(p).isFile()) return false; } catch { return false; } return ["-wal", "-shm", "-journal"].every((s) => { try { return lstatSync(p + s).isFile(); } catch (e) { return e.code === "ENOENT"; } }); };
+export function writeNoHang(f, data, flags) {
   const fd = openSync(f, FS.O_WRONLY | FS.O_CREAT | FS.O_NOFOLLOW | FS.O_NONBLOCK | flags, 0o600);
   try { writeFileSync(fd, data); } finally { closeSync(fd); }
 }
@@ -2230,36 +2228,73 @@ export function goAllows(go, command) {
 // huge transcript never becomes one giant string. Non-object lines are skipped.
 // ---------------------------------------------------------------------------
 const CHUNK = 1 << 20;
-function* fileLines(path) {
-  const fd = openSync(path, "r");
+// Limits are fail-closed: exceeding one throws SCANLIMIT (never skips data), and every caller turns a throw into a deny.
+const MAX_LINE = 64 << 20;
+const MAX_SCAN = 512 << 20; // reverse scan budget
+const MAX_SCAN_FWD = 1024 << 20; // forward scan budget (a planted sparse transcript must not run the hook into its timeout)
+// Wall-clock limit, well inside the hook timeout: per scan, and per hook call once main() sets hookDeadline.
+// Never measured from process start: long-lived importers (OpenCode plugin, hub, aos-acp) scan transcripts too.
+const SCAN_MS = 20000;
+let hookDeadline = Infinity;
+const scanLimit = () => Object.assign(new Error("transcript scan limit exceeded"), { code: "SCANLIMIT" });
+function openTranscript(path) {
+  const fd = openSync(path, FS.O_RDONLY | FS.O_NONBLOCK);
+  try { if (!fstatSync(fd).isFile()) throw new Error("transcript is not a regular file"); } catch (e) { closeSync(fd); throw e; }
+  return fd;
+}
+export function* fileLines(path) {
+  const fd = openTranscript(path);
   try {
     const buf = Buffer.alloc(CHUNK);
-    let rest = Buffer.alloc(0);
+    const deadline = Math.min(hookDeadline, Date.now() + SCAN_MS);
+    let parts = [], plen = 0, total = 0; // pieces of the line still open at the end of the last chunk
     for (let n; (n = readSync(fd, buf, 0, CHUNK, null)) > 0;) {
-      const chunk = Buffer.concat([rest, buf.subarray(0, n)]);
+      if ((total += n) > MAX_SCAN_FWD || Date.now() > deadline) throw scanLimit();
+      const chunk = buf.subarray(0, n);
       let start = 0;
-      for (let i; (i = chunk.indexOf(10, start)) !== -1; start = i + 1) if (i > start) yield chunk.toString("utf8", start, i);
-      rest = chunk.subarray(start);
+      for (let i; (i = chunk.indexOf(10, start)) !== -1; start = i + 1) {
+        if (i === start && !parts.length) continue; // empty line
+        const piece = chunk.subarray(start, i);
+        const line = parts.length ? Buffer.concat([...parts, piece]) : piece;
+        parts = []; plen = 0;
+        if (line.length) yield line.toString("utf8");
+      }
+      if (start < n) {
+        plen += n - start;
+        if (plen > MAX_LINE) throw scanLimit();
+        parts.push(Buffer.from(chunk.subarray(start)));
+      }
     }
-    if (rest.length) yield rest.toString("utf8");
+    if (plen) yield Buffer.concat(parts).toString("utf8");
   } finally { closeSync(fd); }
 }
 function* fileLinesReverse(path) {
-  const fd = openSync(path, "r");
+  const fd = openTranscript(path);
   try {
     let pos = fstatSync(fd).size;
-    let rest = Buffer.alloc(0);
+    const deadline = Math.min(hookDeadline, Date.now() + SCAN_MS);
+    let parts = [], plen = 0, scanned = 0; // pieces of the line still open at the start of the last chunk
     while (pos > 0) {
+      if (scanned >= MAX_SCAN || Date.now() > deadline) throw scanLimit();
       const len = Math.min(CHUNK, pos);
       pos -= len;
+      scanned += len;
       const b = Buffer.alloc(len);
       readSync(fd, b, 0, len, pos);
-      const chunk = Buffer.concat([b, rest]);
-      let end = chunk.length;
-      for (let i; end > 0 && (i = chunk.lastIndexOf(10, end - 1)) !== -1; end = i) if (end > i + 1) yield chunk.toString("utf8", i + 1, end);
-      rest = chunk.subarray(0, end);
+      let end = len;
+      for (let i; end > 0 && (i = b.lastIndexOf(10, end - 1)) !== -1; end = i) {
+        const piece = b.subarray(i + 1, end);
+        const line = parts.length ? Buffer.concat([piece, ...parts]) : piece;
+        parts = []; plen = 0;
+        if (line.length) yield line.toString("utf8");
+      }
+      if (end > 0) {
+        plen += end;
+        if (plen > MAX_LINE) throw scanLimit();
+        parts.unshift(b.subarray(0, end));
+      }
     }
-    if (rest.length) yield rest.toString("utf8");
+    if (plen) yield Buffer.concat(parts).toString("utf8");
   } finally { closeSync(fd); }
 }
 const parseEntry = (line) => { try { const e = JSON.parse(line); return e && typeof e === "object" && !Array.isArray(e) ? e : null; } catch { return null; } };
@@ -2331,12 +2366,12 @@ export const sessionKey = (id) => {
 export const statePath = (key) => join(gateDir(), `${key}.json`);
 
 export function readState(key) {
-  try { return JSON.parse(readFileSync(statePath(key), "utf8")); } catch { return null; }
+  try { return JSON.parse(mustRead(statePath(key), 256 * 1024)); } catch { return null; }
 }
 export function writeState(key, state) {
   mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
   const tmp = `${statePath(key)}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(state, null, 2), { mode: 0o600 });
+  writeNoHang(tmp, JSON.stringify(state, null, 2), FS.O_TRUNC);
   renameSync(tmp, statePath(key));
 }
 const LOG_MAX = 256 * 1024, LOG_KEEP = 500;
@@ -2345,7 +2380,7 @@ export function gateLog(key, line) {
     mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
     const f = join(gateDir(), `${key}.log`);
     writeNoHang(f, `${new Date().toISOString()} ${String(line).slice(0, 400).replace(/[\r\n]+/g, " ")}\n`, FS.O_APPEND);
-    if (statSync(f).size > LOG_MAX) writeFileSync(f, readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-LOG_KEEP).join("\n") + "\n");
+    if (statSync(f).size > LOG_MAX) { const t = readSmallRegular(f, 16 << 20, true); writeNoHang(f, typeof t === "string" ? t.split("\n").filter(Boolean).slice(-LOG_KEEP).join("\n") + "\n" : "", FS.O_TRUNC); }
   } catch { /* logging never blocks */ }
 }
 
@@ -2385,7 +2420,7 @@ export function claudeGogateCommands(transcriptPath) {
       const parsed = parseGogate(text);
       if (parsed && !parsed.error) out.push({ id: e.uuid ?? null, ts: Date.parse(e.timestamp), hash: textHash(text), parsed, strict: isStrictHumanEntry(e) });
     }
-  } catch { return []; }
+  } catch (e) { if (e.code === "SCANLIMIT") throw e; return []; } // safeMain denies on a throw
   return out;
 }
 
@@ -2475,21 +2510,22 @@ function ownSessionName(transcriptPath) {
       if (e.type === "agent-name" && typeof e.agentName === "string" && e.agentName) name = e.agentName;
       else if (e.type === "custom-title" && typeof e.customTitle === "string" && e.customTitle && !name) name = e.customTitle;
     }
-  } catch { /* unreadable */ }
+  } catch (e) { if (e.code === "SCANLIMIT") throw e; /* unreadable */ }
   return name || process.env.AOS_SESSION_NAME || "";
 }
 
 const CONSUMED_KEEP = 200;
 const consumedFile = () => join(homedir(), ".aos", "go", ".consumed");
 const readConsumed = () => {
-  try { return readFileSync(consumedFile(), "utf8").split("\n").filter(Boolean); } catch (e) { return e.code === "ENOENT" ? [] : null; }
+  const t = readSmallRegular(consumedFile(), 1 << 20, true);
+  return t === null ? [] : t === false ? null : t.split("\n").filter(Boolean);
 };
 
 function opencodeLastUser(sessionId) {
   let db;
   try {
     const dbPath = join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "opencode", "opencode.db");
-    if (typeof sessionId !== "string" || !existsSync(dbPath)) return null;
+    if (typeof sessionId !== "string" || !sqliteSafe(dbPath)) return null;
     const require = createRequire(import.meta.url);
     try {
       db = new (require("node:sqlite").DatabaseSync)(dbPath, { readOnly: true });
@@ -2522,7 +2558,7 @@ export function opencodeGogateCommands(sessionId) {
   let db;
   try {
     const dbPath = join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "opencode", "opencode.db");
-    if (typeof sessionId !== "string" || !existsSync(dbPath)) return [];
+    if (typeof sessionId !== "string" || !sqliteSafe(dbPath)) return [];
     const require = createRequire(import.meta.url);
     try {
       db = new (require("node:sqlite").DatabaseSync)(dbPath, { readOnly: true });
@@ -2559,7 +2595,7 @@ export function tokenGrantsGo(own, { consume = true } = {}) {
   if (!existsSync(file)) return { ok: false, reason: "no GO token for this session" };
   let tok;
   try {
-    tok = JSON.parse(readFileSync(file, "utf8"));
+    tok = JSON.parse(mustRead(file, 64 * 1024));
   } catch {
     return { ok: false, reason: "GO token unreadable" };
   }
@@ -2596,7 +2632,7 @@ export function tokenGrantsGo(own, { consume = true } = {}) {
   if (consume) {
     try {
       // ponytail: read-modify-write, concurrent consumers in the same ms can drop a key; switch to append+trim if that ever matters.
-      writeFileSync(consumedFile(), [...consumed, key].slice(-CONSUMED_KEEP).join("\n") + "\n");
+      writeNoHang(consumedFile(), [...consumed, key].slice(-CONSUMED_KEEP).join("\n") + "\n", FS.O_TRUNC);
       unlinkSync(file);
     } catch { return { ok: false, reason: "could not consume GO token" }; }
   }
@@ -2655,6 +2691,7 @@ export function lastUserText(transcriptPath) {
 }
 
 function main() {
+  hookDeadline = Date.now() + SCAN_MS;
   const rawInput = readStdin();
   let input = {};
   if (rawInput.trim()) {
