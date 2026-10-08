@@ -47,7 +47,7 @@ export function registryNodeRoles() {
   return roles;
 }
 
-function registryNodeIds() {
+export function registryNodeIds() {
   const registry = JSON.parse(readFileSync(join(REPO, '.agents', 'nodes.json'), 'utf8'));
   return new Set(Object.keys(registry.nodes ?? {}));
 }
@@ -140,6 +140,8 @@ export function validateProfile(profile, ctx) {
   for (const [key, path] of Object.entries(artifacts)) {
     if (typeof path === 'string' && (path.includes('..') || !path.startsWith('production_artifacts/'))) {
       errors.push(`${d}: artifact \`${key}\` path \`${path}\` escapes production_artifacts/`);
+    } else if (typeof path === 'string' && (path === 'production_artifacts/state.json' || path.startsWith('production_artifacts/state.d/'))) {
+      errors.push(`${d}: artifact \`${key}\` path \`${path}\` collides with the pipeline state files`);
     }
   }
 

@@ -52,5 +52,5 @@
     ],
     "description": "Pick when the goal is written content: landing-page copy, newsletters, social posts, taglines."
   },
-  "notes": "agentType godmode-ui-ux is the closest compiled agent (it owns landing pages); the domain behavior comes from the copywriting skill and the fact-check gate mirrors pb-social-pack step 4's [F<n>] claim tagging and pb-newsletter's every-claim-cites-a-source verify. Known persona gap: nodes need no MCP server (copy-only; fact sources come from the brief), which no persona file covers yet."
+  "notes": "agentType godmode-ui-ux is the closest compiled agent (it owns landing pages); the domain behavior comes from the copywriting skill and the fact-check gate mirrors pb-social-pack step 4's [F<n>] claim tagging and pb-newsletter's every-claim-cites-a-source verify. Known persona gap: godmode-ui-ux carries design MCPs, none of which this copy-only domain needs; fact sources come from the brief."
 }

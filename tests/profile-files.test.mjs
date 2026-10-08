@@ -61,7 +61,7 @@ test('rejections match a specific error message', async (t) => {
     ['escaping artifact path', (p) => { p.artifacts[Object.keys(p.artifacts)[0]] = 'production_artifacts/../escape.md'; }, /escapes production_artifacts/],
     ['role deploy', (p) => { p.nodes.build.add[0].role = 'deploy'; }, /unknown role `deploy`/],
     ['bad writes path', (p) => { p.nodes.build.add[0].writes = 'production_artifacts/other.json'; }, /must match production_artifacts\/state\.d/],
-    ['bad personaFile', (p) => { p.nodes.build.add[0].personaFile = '../escape.md'; }, /personaFile/],
+    ['bad personaFile', (p) => { p.nodes.build.add[0].personaFile = '../escape.md'; }, /must exist under \.claude\/agents/],
     ['unknown top-level skill', (p) => { p.skills = ['definitely-not-a-skill']; }, /top-level skill/],
     ['unknown artifactKey', (p) => { p.nodes.build.add[0].artifactKey = 'nope'; }, /not in artifacts/],
     ['domain filename mismatch', (p) => { p.domain = 'other'; }, /must equal the file name/],

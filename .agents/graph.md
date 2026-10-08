@@ -253,8 +253,8 @@ resolved):
    that does not resolve to a file in `.agents/profiles/` escalates the same
    way as a missing `--skill` name: stop, surface the error to the user,
    never silently fall back to the default pipeline.
-2. **Plan-gate decision** — if no flag is given, the Architect's plan gate
-   (the TechLead capability-map approval step) emits a `profile` decision
+2. **Plan-gate decision** — if no flag is given, TechLead's plan-approval step
+   (the capability-map gate) emits a `profile` decision
    derived from the goal text against each profile's
    `selection.triggers` (lowercase keywords, unique across profiles — an
    ambiguous goal that hits two domains' triggers escalates rather than

@@ -32,6 +32,7 @@
             "godmode-engineering"
           ],
           "artifactKey": "firmware",
+          "optional": true,
           "writes": "production_artifacts/state.d/firmware.json",
           "instructions": "Optional: implement the firmware that runs on the board per the plan. Write production_artifacts/02_firmware_design.md and the state.d fragment. Skip and leave the artifact null when the plan says the build is hardware-only."
         }
