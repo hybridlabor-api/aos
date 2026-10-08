@@ -179,7 +179,7 @@ if (inputGoal === null && typeof process !== 'undefined' && Array.isArray(proces
   const cliArgs = process.argv.slice(2);
   if (cliArgs.length > 0) {
     if (cliArgs.includes('--help') || cliArgs.includes('-h')) {
-      console.log('Usage: node startcycle-dispatch.mjs [--skill=<name>] <goal>');
+      console.log('Usage: node startcycle-dispatch.mjs [--skill=<name>] [--profile=<name>] <goal>');
       process.exit(0);
     }
     const joined = cliArgs.join(' ').trim();
@@ -229,6 +229,19 @@ if (typeof globalThis.pipeline === 'undefined') {
 if (typeof globalThis.agent === 'undefined') {
   globalThis.agent = async function standaloneAgent(prompt, options = {}) {
     const label = options.label || '';
+
+    // Deterministic step: load-profile (same load step shape as load-registry)
+    if (label === 'load-profile') {
+      try {
+        const name = String(options?.profile || '');
+        if (!/^[a-z0-9][a-z0-9_-]*$/i.test(name)) return { missing: true, name };
+        const pPath = path ? path.resolve('.agents', 'profiles', `${name}.json`) : `.agents/profiles/${name}.json`;
+        if (fs && fs.existsSync(pPath)) {
+          return { ...JSON.parse(fs.readFileSync(pPath, 'utf8')), missing: false };
+        }
+      } catch {}
+      return { missing: true };
+    }
 
     // Deterministic step: load-registry
     if (label === 'load-registry') {
@@ -748,6 +761,48 @@ if (missingNodeIds.length > 0) {
   );
 }
 
+// Optional domain profile: loaded in the same load step as nodes.json.
+// Unknown or missing profile file escalates -- never silently falls back.
+let profile = null;
+if (profileName) {
+  const profileResult = await agent(
+    `Read the file .agents/profiles/${profileName}.json (repository root) and return its exact contents, parsed as JSON. ` +
+      'This is a read-only lookup, not a reasoning task: do not invent, modify, reinterpret, merge, or add any field that is not literally present in the file. ' +
+      'If the file is missing, unreadable, or not valid JSON, return { "missing": true } rather than guessing at its contents.',
+    { label: 'load-profile', model: 'haiku', profile: profileName }
+  );
+  if (!profileResult || profileResult.missing || !profileResult.gates) {
+    return await escalate(
+      `--profile named a profile that could not be loaded: ${profileName}. ` +
+        'Check .agents/profiles/ for the exact profile name. ' +
+        'Refusing to silently fall back to the default pipeline.'
+    );
+  }
+  profile = profileResult;
+}
+
+// Effective node table: profile `replace` drops registry build ids,
+// profile `add` entries become build nodes (registry shape).
+const effectiveNodes = { ...registryNodes };
+if (profile) {
+  const buildSpec = profile?.nodes?.build;
+  for (const id of buildSpec?.replace ?? []) delete effectiveNodes[id];
+  for (const entry of buildSpec?.add ?? []) {
+    effectiveNodes[entry.id] = {
+      label: entry.label || entry.id,
+      agentType: entry.agentType,
+      personaFile: entry.personaFile || `.claude/agents/${entry.agentType}.md`,
+      model: entry.model || registryNodes[entry.id]?.model || 'sonnet',
+      role: 'build',
+      artifactKey: entry.artifactKey ?? entry.id,
+      writes: entry.writes || `production_artifacts/state.d/${entry.id}.json`,
+      optional: !!entry.optional,
+      skills: entry.skills || [],
+      instructions: entry.instructions || null,
+    };
+  }
+}
+
 const architectNode = { id: 'architect', ...registryNodes.architect };
 const techleadNode = { id: 'techlead', ...registryNodes.techlead };
 const reviewerNode = { id: 'reviewer', ...registryNodes.reviewer };
@@ -767,6 +822,26 @@ if (!rawGoal) {
 // mechanism for injecting a skill this script has never heard of (a user's
 // own private skill, never part of .agents/nodes.json's registry) -- see
 // .agents/graph.md's "Mandatory Skill Injection" section.
+function extractProfileFlag(text) {
+  const flagPattern = /--profile=("[^"]+"|'[^']+'|\S+)|--profile=(?=\s|$)/g;
+  let profile = null;
+  let malformed = 0;
+  const goal = text
+    .replace(flagPattern, (_, val) => {
+      if (val === undefined) { malformed++; return ''; }
+      const unquoted =
+        (val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))
+          ? val.slice(1, -1)
+          : val;
+      if (unquoted.trim() === '') { malformed++; return ''; }
+      profile = unquoted;
+      return '';
+    })
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return { profile, goal, malformed };
+}
+
 function extractMandatorySkills(text) {
   // The `|--skill=(?=\s|$)` alternative deliberately matches a flag with an
   // EMPTY value ("--skill= add OAuth"). Without it, `\S+` simply fails to
@@ -794,7 +869,15 @@ function extractMandatorySkills(text) {
   return { skills, goal, malformed };
 }
 
-const { skills: skillsFromFlags, goal, malformed } = extractMandatorySkills(rawGoal);
+const { profile: profileFromFlag, goal: goalAfterProfile, malformed: profileMalformed } = extractProfileFlag(rawGoal);
+if (profileMalformed > 0) {
+  return await escalate(
+    `--profile was given with an empty value (${profileMalformed} time(s)). Write --profile=<name>, e.g. --profile=kicad. ` +
+      'Refusing to proceed rather than silently running the default pipeline when you asked for a profile.'
+  );
+}
+const profileName = profileFromFlag || (typeof resolvedArgs?.profile === 'string' ? resolvedArgs.profile : null) || null;
+const { skills: skillsFromFlags, goal, malformed } = extractMandatorySkills(goalAfterProfile);
 if (malformed > 0) {
   return await escalate(
     `--skill was given with an empty value (${malformed} time(s)). Write --skill=<name>, e.g. --skill=my-custom-skill. ` +
@@ -1014,10 +1097,10 @@ while (!approved) {
 // media_eventtech specifically) Architect's needsMedia decision.
 // ---------------------------------------------------------------------
 
-const BUILD_NODES = Object.keys(registryNodes)
-  .filter((id) => registryNodes[id]?.role === 'build')
-  .filter((id) => id !== 'media_eventtech' || needsMedia)
-  .map((id) => ({ id, ...registryNodes[id] }));
+const BUILD_NODES = Object.keys(effectiveNodes)
+  .filter((id) => effectiveNodes[id]?.role === 'build')
+  .filter((id) => (profile ? true : (id !== 'media_eventtech' || needsMedia)))
+  .map((id) => ({ id, ...effectiveNodes[id] }));
 
 if (BUILD_NODES.length === 0) {
   return await escalate('No build-role nodes resolved from .agents/nodes.json for this goal.');
@@ -1089,9 +1172,7 @@ while (!reviewedClean) {
   const reviewResult = await agent(
     `You are acting as the ${reviewerNode.label} agent (${reviewerNode.personaFile}). ${reviewerStateNote()}${skillsNote(reviewerNode)}\n\n` +
       `Read the plan/contract at ${planPath} and the artifacts it produced ` +
-      `(production_artifacts/01_frontend_spec.md, 02_backend_schema.md${
-        needsMedia ? ', 03_media_pipeline.md' : ''
-      }, and the actual code). ` +
+      `(${(profile && profile.artifacts ? Object.values(profile.artifacts).join(', ') : `production_artifacts/01_frontend_spec.md, 02_backend_schema.md${needsMedia ? ', 03_media_pipeline.md' : ''}`)}, and the actual code). ` +
       `Do an adversarial review against the contract: find what is wrong, do not validate, do not summarize. ` +
       `Do not assume the implementation is correct just because it exists. ` +
       (mandatorySkills.length > 0
@@ -1198,7 +1279,8 @@ while (!reviewedClean) {
 // state.d + merge treatment as the build/review loop above.
 // ---------------------------------------------------------------------
 
-const GATE_KEYS = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
+const GATE_KEYS = profile ? Object.keys(profile.gates) : ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
+const GATE_LABELS = profile ? Object.entries(profile.gates).map(([k, v]) => `${k} (${v})`).join(', ') : 'lint, typecheck, tests, a11y, seo, security';
 const GATE_VALUE_ENUM = ['pass', 'fail', 'skip'];
 let allGatesPass = false;
 let lastGate = null;
@@ -1206,12 +1288,11 @@ let lastGate = null;
 while (!allGatesPass) {
   const shipResult = await agent(
     `You are acting as the ${shippingNode.label} agent (${shippingNode.personaFile}). ${dispatchNote(shippingNode)}${skillsNote(shippingNode)}\n\n` +
-      `Run the automated quality gate against the artifacts from the plan at ${planPath}: lint, typecheck, ` +
-      `tests, a11y, seo, security. Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect ` +
+      `Run the automated quality gate against the artifacts from the plan at ${planPath}: ${GATE_LABELS}. Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect ` +
       `which apply; use "skip" only for a check that genuinely doesn't apply to this repo, not for one you didn't run). ` +
       `Write production_artifacts/04_release_report.md and update state.gate. ` +
       `If every gate check is 'pass' or 'skip', you must also set state.phase = "ready_to_ship" in state.json.\n\n` +
-      `Return only: { "gate": { "lint": "pass"|"fail"|"skip", "typecheck": "pass"|"fail"|"skip", "tests": "pass"|"fail"|"skip", "a11y": "pass"|"fail"|"skip", "seo": "pass"|"fail"|"skip" }, "blockingNodes": string[] } ` +
+      `Return only: { "gate": { ${GATE_KEYS.map((k) => `"${k}": "pass"|"fail"|"skip"`).join(', ')} }, "blockingNodes": string[] } ` +
       `-- blockingNodes lists which build node(s) (${NODE_NAMES}) own fixing each failing check; empty if all pass.`,
     {
       label: `shipping-${iteration}`,
