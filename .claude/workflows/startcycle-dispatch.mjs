@@ -917,7 +917,7 @@ if (profileName) {
     `Read the file .agents/profiles/${profileName}.json (repository root) and return its exact contents, parsed as JSON. ` +
       'This is a read-only lookup, not a reasoning task: do not invent, modify, reinterpret, merge, or add any field that is not literally present in the file. ' +
       'If the file is missing, unreadable, or not valid JSON, return { "missing": true } rather than guessing at its contents.',
-    { label: 'load-profile', model: 'haiku', schema: PROFILE_SCHEMA, profile: profileName }
+    { label: 'load-profile', ...modelOpt('load_registry'), schema: PROFILE_SCHEMA, profile: profileName }
   );
   if (!profileResult || profileResult.missing || !profileResult.gates || Object.keys(profileResult.gates).length === 0) {
     return await escalate(
@@ -961,7 +961,6 @@ if (profile) {
         label: entry.label || entry.id,
         agentType: entry.agentType,
         personaFile: entry.personaFile || `.claude/agents/${entry.agentType}.md`,
-        model: entry.model || 'sonnet',
         role: 'build',
         artifactKey: entry.artifactKey ?? entry.id,
         writes: entry.writes || `production_artifacts/state.d/${entry.id}.json`,
