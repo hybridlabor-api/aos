@@ -24,10 +24,20 @@ Type a preset's text yourself as the whole message; this tool never records anyt
 
 const claudeDir = () => process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(os.homedir(), '.claude');
 
+// The installer copies go-grant.mjs next to go-gate.mjs into every harness hook dir it wires
+// (installer.js hook targets), so status works with any one of them installed, not only Claude.
+const grantCandidates = () => [
+  path.join(claudeDir(), 'hooks'),
+  path.join(os.homedir(), '.codex', 'hooks'),
+  path.join(os.homedir(), '.gemini', 'config', 'hooks'),
+  path.join(os.homedir(), '.gemini', 'antigravity-cli', 'hooks'),
+].map((d) => path.join(d, 'go-grant.mjs'));
+
 function status(argv) {
-  const grant = path.join(claudeDir(), 'hooks', 'go-grant.mjs');
-  if (!existsSync(grant)) {
-    console.error(`aos-gogate: go-gate is not installed (${grant} missing)`);
+  const candidates = grantCandidates();
+  const grant = candidates.find((p) => existsSync(p));
+  if (!grant) {
+    console.error(`aos-gogate: go-gate is not installed (looked for go-grant.mjs in: ${candidates.map((p) => path.dirname(p)).join(', ')})`);
     return 2;
   }
   const i = argv.indexOf('--session');
