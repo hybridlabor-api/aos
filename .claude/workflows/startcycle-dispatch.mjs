@@ -1055,6 +1055,19 @@ if (mandatorySkillNames.length > 0) {
 
 let planPath = null;
 let needsMedia = false;
+let skipNodes = [];
+// A profile run tells Architect and TechLead which domain and build nodes the plan is for; the default run's prompts are unchanged.
+const profileBuildIds = profile ? Object.keys(effectiveNodes).filter((id) => effectiveNodes[id]?.role === 'build') : [];
+const profileOptionalIds = profileBuildIds.filter((id) => effectiveNodes[id]?.optional);
+const profileNote = profile
+  ? `This run uses the "${profile.domain}" domain profile${profile.description ? ` (${profile.description})` : ''}. Its build nodes are: ` +
+    `${profileBuildIds.map((id) => `${id} (${effectiveNodes[id].label})`).join(', ')}. ` +
+    `Plan the capability map around exactly these nodes, not around a software frontend/backend split. ` +
+    (profileOptionalIds.length > 0
+      ? `Optional nodes: ${profileOptionalIds.join(', ')}; list in skipNodes the ones this plan does not need. `
+      : '') +
+    `Set needsMedia to false.\n\n`
+  : null;
 let approved = false;
 let lastRejectionReason = '';
 
@@ -1073,8 +1086,8 @@ while (!approved) {
       `link it from the relevant plan component with a url: production_artifacts/00_architecture.html line, ` +
       `and set state.goal, state.phase = "plan", state.artifacts.plan to the plan path, state.artifacts.architecture to production_artifacts/00_architecture.html only on a passing showcase receipt (9/9 checks, 0 errors), and state.mandatory_skills to ${JSON.stringify(mandatorySkills)}. ` +
       `On a failed validate/deliver preserve the previous HTML and report deliverOk false instead of proceeding silently. ` +
-      `Decide whether the goal needs the Media_EventTech build node (TouchDesigner/show-control/3D/media work) -- most goals don't.\n\n` +
-      `Return only: { "planPath": string, "needsMedia": boolean, "architectureSpec": string, "architectureHtml": string, "deliverOk": boolean }.`,
+      (profileNote ?? `Decide whether the goal needs the Media_EventTech build node (TouchDesigner/show-control/3D/media work) -- most goals don't.\n\n`) +
+      `Return only: { "planPath": string, "needsMedia": boolean, "architectureSpec": string, "architectureHtml": string, "deliverOk": boolean${profileOptionalIds.length > 0 ? ', "skipNodes": string[]' : ''} }.`,
     {
       label: `architect-${iteration}`,
       agentType: architectNode.agentType,
@@ -1088,6 +1101,7 @@ while (!approved) {
           architectureSpec: { type: 'string' },
           architectureHtml: { type: 'string' },
           deliverOk: { type: 'boolean' },
+          ...(profileOptionalIds.length > 0 ? { skipNodes: { type: 'array', items: { type: 'string' } } } : {}),
         },
       },
     }
@@ -1095,6 +1109,9 @@ while (!approved) {
 
   planPath = architectResult?.planPath;
   needsMedia = !!architectResult?.needsMedia;
+  skipNodes = profileOptionalIds.length > 0 && Array.isArray(architectResult?.skipNodes)
+    ? architectResult.skipNodes.filter((id) => profileOptionalIds.includes(id))
+    : [];
   const architectureSpec = architectResult?.architectureSpec || 'production_artifacts/00_architecture.json';
   const architectureHtml = architectResult?.architectureHtml || 'production_artifacts/00_architecture.html';
   const deliverOk = architectResult?.deliverOk !== false;
@@ -1159,6 +1176,9 @@ while (!approved) {
           `Reject the plan if it does not actually account for them — catching that here costs one planning round, ` +
           `whereas letting it through wastes a full build cycle before Reviewer flags it.\n`
         : '') +
+      (profile
+        ? `This run uses the "${profile.domain}" domain profile: approve only if the plan covers its build nodes (${profileBuildIds.join(', ')}) and does not assume a software frontend/backend split.\n`
+        : '') +
       `Record your decision in state.json (plan approval, state.phase = "build" if approved).\n\n` +
       `Return only: { "approved": boolean, "reason": string }.`,
     {
@@ -1198,7 +1218,7 @@ while (!approved) {
 
 const BUILD_NODES = Object.keys(effectiveNodes)
   .filter((id) => effectiveNodes[id]?.role === 'build')
-  .filter((id) => (profile ? true : (id !== 'media_eventtech' || needsMedia)))
+  .filter((id) => (profile ? !skipNodes.includes(id) : (id !== 'media_eventtech' || needsMedia)))
   .map((id) => ({ id, ...effectiveNodes[id] }));
 
 if (BUILD_NODES.length === 0) {
