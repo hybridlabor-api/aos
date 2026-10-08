@@ -13,10 +13,8 @@ const builderDir = path.join(root, 'skills/global_config/plan-canvas/scripts/lib
 const require = createRequire(import.meta.url);
 const { renderPlanSource, renderPlanFolder } = require(path.join(builderDir, 'index.js'));
 
-// agenttrail.mjs starts a daemon on import, so lift its real parser out of the source.
-const trailSrc = fs.readFileSync(path.join(root, 'skills/global_config/agenttrail/bin/agenttrail.mjs'), 'utf8');
-const parserSrc = trailSrc.slice(trailSrc.indexOf('const NODE_RE'), trailSrc.indexOf('// ---------- live state'));
-const parsePlan = new Function(`${parserSrc}; return parsePlan;`)();
+// the parser now lives in its own side-effect-free module, so import it directly
+const { parsePlan } = await import('../skills/global_config/agenttrail/lib/plan.mjs');
 
 const PLAN = `---
 title: Checkout rewrite

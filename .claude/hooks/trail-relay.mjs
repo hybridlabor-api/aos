@@ -13,7 +13,12 @@ if (!ev || typeof ev !== 'object') process.exit(0);
 ev.agent = arg('--agent') || ev.agent || 'claude';
 ev.hook_event_name ||= arg('--event');
 ev.cwd ||= process.cwd();
-
-const ports = process.env.AGENTTRAIL_PORT ? [Number(process.env.AGENTTRAIL_PORT)] : Array.from({ length: 15 }, (_, i) => 5330 + i);
 const body = JSON.stringify(ev);
-await Promise.allSettled(ports.map((p) => fetch(`http://127.0.0.1:${p}/hook`, { method: 'POST', body, signal: AbortSignal.timeout(300) })));
+
+// v2: the hub first, on one named port. The legacy per-repo range is only tried
+// when AGENTTRAIL_LEGACY=1, so it can be switched off once every repo is migrated.
+const hubPort = Number(process.env.AGENTTRAIL_PORT) || 5350;
+const legacy = process.env.AGENTTRAIL_LEGACY === '1';
+const legacyPorts = legacy ? Array.from({ length: 15 }, (_, i) => 5330 + i).filter((p) => p !== hubPort) : [];
+const targets = [{ url: `http://127.0.0.1:${hubPort}/hook`, body }, ...legacyPorts.map((p) => ({ url: `http://127.0.0.1:${p}/hook`, body }))];
+await Promise.allSettled(targets.map((t) => fetch(t.url, { method: 'POST', body: t.body, signal: AbortSignal.timeout(300) })));

@@ -6,6 +6,11 @@ import cp from 'node:child_process'
 // /whoami protocol: 2 = one map per repo (worktree lanes, /shutdown); daemons without it are older
 export const PROTOCOL = 2
 
+// v2 hub protocol: one hub serves every repo, so it is asked by name, not by range.
+export const HUB_PROTOCOL = 3
+export const HUB_PORT = Number(process.env.AGENTTRAIL_PORT) || 5350
+export const hubUrl = (port = HUB_PORT) => `http://127.0.0.1:${port}`
+
 export const norm = p => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
 
 // AOS_TRAIL_PORTS="lo-hi" overrides the probed range (tests); default 5330-5344 like trail-relay.mjs

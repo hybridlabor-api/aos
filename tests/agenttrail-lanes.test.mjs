@@ -60,8 +60,8 @@ function exec(args, env) {
   });
 }
 function baseEnv(extra = {}) {
-  const e = { ...process.env, ...GIT_ENV, HOME: path.join(tmp, 'home'), TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0', CI: '1' };
-  for (const k of ['SSH_CONNECTION', 'SSH_TTY', 'AO_BROWSER_CAPABILITY', 'AOS_TRAIL_OPENER', 'CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'AGENTTRAIL_PORT']) delete e[k];
+  const e = { ...process.env, ...GIT_ENV, HOME: path.join(tmp, 'home'), TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, AGENTTRAIL_PORT: String(LO), DISPLAY: ':0', CI: '1' };
+  for (const k of ['SSH_CONNECTION', 'SSH_TTY', 'AO_BROWSER_CAPABILITY', 'AOS_TRAIL_OPENER', 'CLAUDE_SESSION_ID', 'CODEX_SESSION_ID']) delete e[k];
   return { ...e, ...extra };
 }
 async function ensure(cwd, env = baseEnv()) {
@@ -73,6 +73,26 @@ const getJson = (url) => fetch(url).then((r) => r.json());
 const hook = (url, ev) => fetch(`${url}/hook`, { method: 'POST', body: JSON.stringify(ev) });
 const edit = (session, cwd, file) => ({ hook_event_name: 'PostToolUse', session_id: session, cwd, tool_name: 'Edit', tool_input: { file_path: file } });
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
+
+// v2: --ensure starts the hub, whose /whoami and /model have no per-repo lanes.
+// The lane semantics belong to the legacy per-repo daemon, which stays selectable,
+// so these tests start it directly instead of going through --ensure.
+const children = [];
+function startLegacy(repo, port, env = baseEnv()) {
+  const c = spawn(process.execPath, [binary, repo, '--port', String(port), '--no-open'], { env, stdio: ['ignore', 'ignore', 'pipe'] });
+  children.push(c);
+  const url = `http://127.0.0.1:${port}`;
+  return (async () => {
+    for (let i = 0; i < 80; i += 1) {
+      try {
+        const w = await fetch(`${url}/whoami`).then((r) => r.json());
+        if (w && w.protocol === 2) return { url, repoPath: w.repoPath };
+      } catch { /* not up yet */ }
+      await sleep(100);
+    }
+    throw new Error(`legacy daemon did not start on :${port}`);
+  })();
+}
 
 async function whoAnswers(repo) {
   let n = 0;
@@ -102,6 +122,31 @@ function fakeDaemon(port, repoPath, { shutdown = false } = {}) {
   return new Promise((resolve) => s.listen(port, '127.0.0.1', () => resolve({ calls, server: s })));
 }
 
+function hubPids() {
+  const pids = new Set();
+  try {
+    for (const d of fs.readdirSync('/proc')) {
+      if (!/^\d+$/.test(d)) continue;
+      let argv;
+      try { argv = fs.readFileSync(`/proc/${d}/cmdline`, 'utf8').split('\0'); } catch { continue; }
+      const i = argv.findIndex((a) => a.endsWith('trail-hub.mjs'));
+      const port = i >= 0 ? Number(argv[argv.indexOf('--port', i) + 1]) : NaN;
+      if (port >= LO && port <= HI) pids.add(Number(d));
+    }
+  } catch {}
+  for (let p = LO; p <= HI; p += 1) {
+    const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
+    for (const pid of (r.stdout || '').split('\n').filter(Boolean).map(Number)) pids.add(pid);
+  }
+  return pids;
+}
+
+async function stopHubs() {
+  const keep = new Set([process.pid, ...children.map((c) => c.pid)]);
+  for (const pid of hubPids()) { if (!keep.has(pid)) { try { process.kill(pid); } catch {} } }
+  await sleep(300);
+}
+
 before(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'trail-lanes-')));
   fs.mkdirSync(path.join(tmp, 'home'));
@@ -111,11 +156,9 @@ before(async () => {
 });
 
 after(async () => {
+  for (const c of children) { try { c.kill(); } catch {} }
   for (const s of servers) await new Promise((r) => { s.close(r); s.closeAllConnections?.(); });
-  for (let p = LO; p <= HI; p += 1) {
-    const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
-    for (const pid of (r.stdout || '').split('\n').filter(Boolean)) { try { process.kill(Number(pid)); } catch {} }
-  }
+  await stopHubs();
   await sleep(100);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
@@ -134,25 +177,24 @@ describe('lane cap', () => {
     write(path.join(shim, 'git'), `#!/bin/sh\necho "$@" >> "${log}"\nexec "${realGit}" "$@"\n`);
     fs.chmodSync(path.join(shim, 'git'), 0o755);
     const env = baseEnv({ PATH: `${shim}:${process.env.PATH}` });
-    const a = await ensure(main, env);
-    assert.equal(a.started, true, JSON.stringify(a));
-    const who = await getJson(`${a.url}/whoami`);
+    const { url } = await startLegacy(main, LO + 1, env);
+    const who = await getJson(`${url}/whoami`);
     assert.equal(who.protocol, 2);
     assert.equal(who.worktrees.length, 12);
     const inLane = new Set(who.worktrees.map((w) => w.path));
     const out = wts.filter((w) => !inLane.has(w));
     assert.equal(out.length, 2);
-    for (const w of wts.filter((x) => inLane.has(x))) await hook(a.url, edit(`s-${path.basename(w)}`, w, path.join(w, 'src', 'a.js')));
+    for (const w of wts.filter((x) => inLane.has(x))) await hook(url, edit(`s-${path.basename(w)}`, w, path.join(w, 'src', 'a.js')));
     fs.writeFileSync(log, '');
     for (let i = 0; i < 5; i += 1) {
       const dir = path.join(out[0], 'src', `d${i}`);
       fs.mkdirSync(dir, { recursive: true });
-      await hook(a.url, edit('s-out', dir, path.join(dir, 'x.js')));
+      await hook(url, edit('s-out', dir, path.join(dir, 'x.js')));
     }
     const calls = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
     assert.ok(calls.filter((c) => c.startsWith('worktree list')).length <= 1, calls.join('\n'));
     assert.ok(calls.length <= 3, calls.join('\n'));
-    const m = await getJson(`${a.url}/model`);
+    const m = await getJson(`${url}/model`);
     const run = m.runs.find((r) => r.id === 's-out');
     assert.equal(run.lane, 'other');
     assert.equal(m.lanes.find((l) => l.key === 'other').label, 'other worktrees');
@@ -167,16 +209,15 @@ describe('setup writes into the requesting lane', () => {
     const wt = path.join(tmp, 'setup-wt');
     git(main, 'worktree', 'add', '-q', '-b', 'feat/s', wt);
     const real = fs.realpathSync(wt);
-    const a = await ensure(main);
-    assert.equal(a.started, true, JSON.stringify(a));
-    const lane = (await getJson(`${a.url}/whoami`)).worktrees.find((w) => !w.main);
-    const key = (await getJson(`${a.url}/model`)).lanes.find((l) => !l.main).key;
+    const { url } = await startLegacy(main, LO + 3);
+    const lane = (await getJson(`${url}/whoami`)).worktrees.find((w) => !w.main);
+    const key = (await getJson(`${url}/model`)).lanes.find((l) => !l.main).key;
     assert.ok(lane);
-    const refused = await post(`${a.url}/setup`, {});
+    const refused = await post(`${url}/setup`, {});
     assert.equal(refused.ok, false);
     assert.match(refused.error, /lane/);
     assert.equal(fs.existsSync(path.join(main, 'CLAUDE.md')), false);
-    const ok = await post(`${a.url}/setup`, { lane: key });
+    const ok = await post(`${url}/setup`, { lane: key });
     assert.equal(ok.ok, true, JSON.stringify(ok));
     assert.match(fs.readFileSync(path.join(real, 'CLAUDE.md'), 'utf8'), /agenttrail plan convention/);
     assert.equal(fs.existsSync(path.join(main, 'CLAUDE.md')), false);
@@ -187,8 +228,8 @@ describe('setup writes into the requesting lane', () => {
     const dir = path.join(tmp, 'setup-plain');
     write(path.join(dir, 'production_artifacts', '00_execution_plan.md'), PLAN);
     const real = fs.realpathSync(dir);
-    const a = await ensure(real);
-    assert.equal((await post(`${a.url}/setup`, {})).ok, true);
+    const { url } = await startLegacy(real, LO + 4);
+    assert.equal((await post(`${url}/setup`, {})).ok, true);
     assert.ok(fs.existsSync(path.join(real, 'CLAUDE.md')));
   });
 });
@@ -200,7 +241,7 @@ describe('daemon upgrade', () => {
     const a = await ensure(main);
     assert.equal(a.started, true, JSON.stringify(a));
     assert.notEqual(a.url, `http://127.0.0.1:${LO + 5}`);
-    assert.equal((await getJson(`${a.url}/whoami`)).protocol, 2);
+    assert.equal((await getJson(`${a.url}/whoami`)).protocol, 3);
     assert.match(a.hint, new RegExp(`:${LO + 5}`));
     assert.ok(old.calls.every((c) => c.startsWith('POST /shutdown')), old.calls.join('|'));
     assert.equal(await fetch(`http://127.0.0.1:${LO + 5}/whoami`).then(() => true).catch(() => false), true);
@@ -211,6 +252,7 @@ describe('daemon upgrade', () => {
   });
 
   test('an old per-worktree daemon that supports shutdown is retired after the new one is up; unrelated daemons are never touched', async () => {
+    await stopHubs();
     const main = gitRepo('old-go');
     const wt = path.join(tmp, 'old-go-wt');
     git(main, 'worktree', 'add', '-q', '-b', 'feat/o', wt);
@@ -231,26 +273,28 @@ describe('daemon upgrade', () => {
 
   test('a daemon refuses shutdown for another repo and for a form post', async () => {
     const main = gitRepo('sd');
-    const a = await ensure(main);
-    const wrong = await fetch(`${a.url}/shutdown`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repoPath: tmp }) });
+    const { url } = await startLegacy(main, LO + 2);
+    const wrong = await fetch(`${url}/shutdown`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repoPath: tmp }) });
     assert.equal(wrong.status, 409);
-    const form = await fetch(`${a.url}/shutdown`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ repoPath: main }) });
+    const form = await fetch(`${url}/shutdown`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ repoPath: main }) });
     assert.equal(form.status, 403);
-    assert.equal((await getJson(`${a.url}/whoami`)).repoPath, main);
+    assert.equal((await getJson(`${url}/whoami`)).repoPath, main);
   });
 });
 
 describe('ensure race', () => {
   test('two simultaneous ensures start exactly one daemon', async () => {
+    await stopHubs();
     const main = gitRepo('race');
     const [a, b] = await Promise.all([ensure(main), ensure(main)]);
     assert.equal(a.url, b.url, JSON.stringify([a, b]));
     assert.equal([a, b].filter((x) => x.started).length, 1);
     await sleep(500);
-    assert.equal(await whoAnswers(main), 1);
+    assert.notEqual(await canBind(LO), true, 'exactly one hub listens on AGENTTRAIL_PORT');
   });
 
   test('a stale lock from a dead pid does not block ensure', async () => {
+    await stopHubs();
     const main = gitRepo('stale');
     const lock = path.join(tmp, 'aos-trail-ensure', `${crypto.createHash('sha1').update(main).digest('hex').slice(0, 16)}.lock`);
     write(lock, JSON.stringify({ pid: 2147483646, at: Date.now() }));
