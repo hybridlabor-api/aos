@@ -838,6 +838,7 @@ function extractProfileFlag(text) {
   const flagPattern = /--profile=("[^"]+"|'[^']+'|\S+)|--profile=(?=\s|$)/g;
   let profile = null;
   let malformed = 0;
+  let duplicates = 0;
   const goal = text
     .replace(flagPattern, (_, val) => {
       if (val === undefined) { malformed++; return ''; }
@@ -846,12 +847,13 @@ function extractProfileFlag(text) {
           ? val.slice(1, -1)
           : val;
       if (unquoted.trim() === '') { malformed++; return ''; }
+      if (profile !== null) duplicates++;
       profile = unquoted;
       return '';
     })
     .replace(/\s{2,}/g, ' ')
     .trim();
-  return { profile, goal, malformed };
+  return { profile, goal, malformed, duplicates };
 }
 
 function extractMandatorySkills(text) {
@@ -881,7 +883,10 @@ function extractMandatorySkills(text) {
   return { skills, goal, malformed };
 }
 
-const { profile: profileFromFlag, goal: goalAfterProfile, malformed: profileMalformed } = extractProfileFlag(rawGoal);
+const { profile: profileFromFlag, goal: goalAfterProfile, malformed: profileMalformed, duplicates: profileDuplicates } = extractProfileFlag(rawGoal);
+if (profileDuplicates > 0) {
+  return await escalate('--profile was given more than once. Name exactly one profile, e.g. --profile=kicad. Refusing to pick one silently.');
+}
 if (profileMalformed > 0) {
   return await escalate(
     `--profile was given with an empty value (${profileMalformed} time(s)). Write --profile=<name>, e.g. --profile=kicad. ` +
@@ -1382,7 +1387,7 @@ let lastGate = null;
 while (!allGatesPass) {
   const shipResult = await agent(
     `You are acting as the ${shippingNode.label} agent (${shippingNode.personaFile}). ${dispatchNote(shippingNode)}${skillsNote(shippingNode)}\n\n` +
-      `Run the automated quality gate against the artifacts from the plan at ${planPath}: ${GATE_LABELS}. Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect ` +
+      `Run the automated quality gate against the artifacts from the plan at ${planPath}: ${GATE_LABELS}. ${profile ? 'Run the check each gate above describes with the tools that domain uses -- detect ' : "Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect "}` +
       `which apply; use "skip" only for a check that genuinely doesn't apply to this repo, not for one you didn't run). ` +
       `Write production_artifacts/04_release_report.md and set state.gate to exactly these keys, dropping any other key left by an earlier run: ${GATE_KEYS.join(', ')}. ` +
       `If every gate check is 'pass' or 'skip', you must also set state.phase = "ready_to_ship" in state.json.\n\n` +

@@ -52,6 +52,12 @@ test('empty --profile= value escalates', () => {
   assert.match(result.reason, /--profile was given with an empty value/);
 });
 
+test('two --profile flags escalate instead of keeping the last one', () => {
+  const { result } = run('--profile=kicad', '--profile=creator', 'add a thing');
+  assert.equal(result.phase, 'escalated');
+  assert.match(result.reason, /more than once/);
+});
+
 test('bare --profile without a value escalates', () => {
   const { result } = run('--profile', 'kicad', 'add a thing');
   assert.equal(result.phase, 'escalated');
