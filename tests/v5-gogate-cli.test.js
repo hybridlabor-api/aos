@@ -38,6 +38,16 @@ test('presets print the exact text to type', () => {
   assert.match(cli(['presets'], { HOME: home }).out, /release\s+gogate grant push-feature,github-write,merge,publish 2h/);
 });
 
+test('status works with only a Codex hook dir installed (no ~/.claude)', () => {
+  const home = tmp();
+  fakeGrant(path.join(home, '.codex'));
+  const before = tree(home);
+  const r = cli(['status'], { HOME: home });
+  assert.equal(r.status, 7);
+  assert.equal(r.out, 'FAKE:--status');
+  assert.deepEqual(tree(home), before);
+});
+
 test('status without go-gate installed exits 2 and writes nothing', () => {
   const home = tmp();
   const before = tree(home);

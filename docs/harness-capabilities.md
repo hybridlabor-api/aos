@@ -29,3 +29,15 @@ Notes:
 | Fleet view | `plugins/bdb-aos-fleet` ("which Claude sessions are working, which need you, and the active projects"); the installer only registers it in Claude Code `settings.json` (needs Claude Code >= 2.1.287, opt out with `AOS_NO_FLEET=1`) |
 | GO helper | `aos-gogate status [--session <id>]`, `preset <name>`, `presets` are read-only: they print status or the text you type yourself and never record a grant |
 | Orchestrator chain | master session -> project orchestrator -> package orchestrator: `docs/orchestrator-chain.md` |
+
+## GO grants per harness
+
+A grant or mode is always typed by the human as the whole message (`gogate grant ...`, `gogate hard|soft|off|status`); no agent, peer message or tool ever records one. `aos-gogate preset <name>` prints the exact text, `aos-gogate status [--session <id>]` reads the state without Claude: it finds `go-grant.mjs` in the Claude, Codex or agy hook dir, whichever is installed.
+
+| Harness | Where typed grants take effect |
+|---|---|
+| Claude Code | `go-grant.mjs` + `go-token.mjs` (UserPromptSubmit); all modes |
+| OpenCode | plugin loads go-gate, go-grant, go-token; `off` not available, grants capped at 2h |
+| Codex | gate hook only (PreToolUse); `go-grant`/`go-token` are not wired, so only a literal human `GO` counts. Firing is unverified: `docs/codex-gate-smoke.md` |
+| agy | gate hook only; grants and modes are not wired, only a literal human `GO` counts. Firing is unverified: `docs/codex-agy-setup.md` |
+| Cursor, Windsurf, Roo/Cline, Aider | no gate hook; rules and skills only |
