@@ -1,0 +1,6 @@
+{
+  "name": "bdb-aos-sessions",
+  "version": "0.1.0",
+  "description": "AOS sessions viewer: every session of every harness plus the ACP workers",
+  "types": "./types/index.d.ts"
+}
