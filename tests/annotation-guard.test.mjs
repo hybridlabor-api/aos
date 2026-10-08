@@ -221,7 +221,7 @@ test('integration: token in the query string refused even with valid cookie', as
 });
 
 test('integration: exact query-token paths refused, other query strings pass', { timeout: 8000 }, async () => {
-  for (const p of [`/aos-api?token=${TOKEN}`, `/__aos_annot?token=${TOKEN}`]) {
+  for (const p of [`/aos-api?token=${TOKEN}`, `/__aos_annot?token=${TOKEN}`, `/AOS-API?token=x`, `/%61os-api?token=x`, `/./aos-api?token=x`, `//aos-api?token=x`]) {
     const r = await request({ headers: baseHeaders(), path: p });
     assert.equal(r.status, 403, p);
     assert.equal(JSON.parse(r.body).code, 'E_QUERY_TOKEN', p);

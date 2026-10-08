@@ -995,33 +995,46 @@ test('crash: upstream abort after headers still leaves proxy serving', { timeout
   assert.ok(res !== undefined);
 });
 
-test('smuggling: DELETE json body forwarded framed, keep-alive parses second request', { timeout: 8000 }, async () => {
-  let bodies = [];
-  let count = 0;
+test('smuggling: GET/HEAD/DELETE/OPTIONS with CL body over one keep-alive socket', { timeout: 8000 }, async () => {
+  const bodies = [];
   await proxyFixture(
     (req, res) => {
       let b = '';
       req.on('data', (c) => { b += c; });
-      req.on('end', () => { bodies.push(b); count += 1; res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok' + count); });
+      req.on('end', () => { bodies.push(b); res.writeHead(200, { 'content-type': 'text/plain', 'content-length': 2 }); res.end('ok'); });
     },
     {},
-    async ({ port }) => {
-      const body = 'x'.repeat(20);
-      const agent = new http.Agent({ keepAlive: true });
-      const doReq = (path, b) => new Promise((resolve, reject) => {
-        const r = http.request({ host: '127.0.0.1', port, method: 'DELETE', path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(b) }, agent }, (res) => {
-          const ch = []; res.on('data', (c) => ch.push(c)); res.on('end', () => resolve(Buffer.concat(ch).toString()));
-        });
-        r.on('error', reject); r.end(b);
+    ({ port }) => new Promise((resolve, reject) => {
+      const s = net.connect(port, '127.0.0.1');
+      let raw = '';
+      const need = 4;
+      let done = 0;
+      s.on('connect', () => {
+        for (const m of ['GET', 'HEAD', 'DELETE', 'OPTIONS']) {
+          s.write(`${m} /k HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\n12345`);
+        }
       });
-      const a = await doReq('/a', body);
-      const c = await doReq('/b', body);
-      assert.equal(a, 'ok1'); assert.equal(c, 'ok2');
-      agent.destroy();
-    },
+      s.on('data', (c) => {
+        raw += c.toString('latin1');
+        while (true) {
+          const sep = raw.indexOf('\r\n\r\n');
+          if (sep < 0) break;
+          const head = raw.slice(0, sep);
+          const m = /content-length:\s*(\d+)/i.exec(head);
+          const len = m ? Number(m[1]) : 0;
+          if (raw.length < sep + 4 + len) break;
+          raw = raw.slice(sep + 4 + len);
+          done += 1;
+          if (done === need) { s.destroy(); break; }
+        }
+      });
+      s.on('close', () => resolve());
+      s.on('error', reject);
+      setTimeout(() => { s.destroy(); reject(new Error('keep-alive smuggling timeout')); }, 5000).unref();
+    }),
   );
-  assert.equal(bodies[0].length, 20);
-  assert.equal(bodies[1].length, 20);
+  assert.equal(bodies.length, 4);
+  for (const b of bodies) assert.equal(b.length, 5);
 });
 
 test('cap: chunked body over cap answers 413 E_BODY', { timeout: 8000 }, async () => {
@@ -1051,7 +1064,7 @@ test('url: bad paths rejected 400, vite paths forwarded', { timeout: 8000 }, asy
         s.on('close', () => resolve({ status: Number(raw.split(' ')[1]), raw }));
         s.on('error', reject);
       });
-      for (const p of ['http://x/', '//evil/x', '/a/../b', '/%2e%2e/x', '/a\\b']) {
+      for (const p of ['http://x/', '//evil/x', '/a/../b', '/%2e%2e/x', '/a\\b', '/ok#frag']) {
         const r = await rawPath(p);
         assert.equal(r.status, 400, p);
       }
@@ -1117,7 +1130,7 @@ test('smuggling: chunked DELETE body is refused 400 and upstream sees zero reque
   );
 });
 
-test('ipv6: proxy reaches an upstream listening on [::1]', { timeout: 8000 }, async () => {
+test('ipv6: proxy reaches an upstream listening on [::1]', { timeout: 8000 }, async (t) => {
   const upServer = http.createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('via-ipv6'); });
   let upPort;
   try {
@@ -1125,7 +1138,7 @@ test('ipv6: proxy reaches an upstream listening on [::1]', { timeout: 8000 }, as
       upServer.once('error', reject);
       upServer.listen(0, '::1', () => resolve(upServer.address().port));
     });
-  } catch { upServer.close(); return; }
+  } catch { upServer.close(); t.skip('ipv6 loopback unavailable'); return; }
   let proxied = null;
   try {
     proxied = await createProxy({ token: TOKEN, upstream: `[::1]:${upPort}`, allowedPorts: [upPort] });
