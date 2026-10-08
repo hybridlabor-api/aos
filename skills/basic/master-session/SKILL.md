@@ -66,6 +66,10 @@ Collate replies into one block per session and show it to the human:
 
 The human answers per session. Items under `GO needed` are the human's to decide; list them verbatim, never summarised into something softer.
 
+## Portable mode (no Claude Code)
+
+Without `ListAgents`/`SendMessage` the same steps run from a shell: roster = `aos-a2a list`, status request = `aos-a2a send --to <name> "<block>"` (read later with `aos-a2a status --to <name> <taskId>`), idle check = `aos-a2a watch <name> --once`. Limits: agy is pull-only, and only a Claude Code or OpenCode master can issue `GO <session>` tokens, so any other master tells the human to type `GO` in the worker's own window. Details and the role convention (master, task manager, project orchestrator, package worker): `docs/master-session-portable.md`.
+
 ## Idle notices
 
 - Subscribe (`SendMessage` with `notify_when_idle`) only **after** you sent that session work.
