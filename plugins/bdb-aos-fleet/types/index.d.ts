@@ -47,6 +47,7 @@ declare module 'claude-code' {
       blocks: GateBlock[]
       plan: PlanComponent[]
       planFile: string
+      tab: 'fleet' | 'gate' | 'plan'
     }
   }
 }
