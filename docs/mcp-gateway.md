@@ -31,3 +31,15 @@ Only these shipped servers are shared through the gateway (`GATEWAY_SERVERS` in 
 | Blender | `bdb_blender_official_mcp` | Blender >= 5.1 found (macOS app bundle or Windows Program Files) | `bdb_blender_mcp` |
 | Resolume | `bdb_resolume_official_mcp` | Resolume Arena's `mcp/resolume_arena_mcp_server` binary found | `bdb_resolume_mcp` |
 | After Effects | `bdb_after_effects_mcp_legacy` | only with env `AOS_AE_MCP=legacy` | `bdb_after_effects_mcp` |
+
+## Harness support tiers for `enable` (checked 2026-10-08)
+
+| Harness | Config file | Remote entry shape | Status |
+|---|---|---|---|
+| Claude, Cursor, OpenCode | see `harnessMcpFiles` | `type http` / `url` / `type remote` | enabled (earlier work) |
+| Roo | global `.../globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`, project `.roo/mcp.json` | `{type: "streamable-http", url, headers}` | **enabled**. Verified: vendor docs (https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo) and the real global file on this machine (top-level `mcpServers`, stdio entries). Remote shape from docs only. |
+| Codex | `~/.codex/config.toml` | `[mcp_servers.aos]` with `url`, `http_headers` (https://learn.chatgpt.com/docs/extend/mcp?surface=cli) | skipped: shape documented and `[mcp_servers.*]` confirmed locally, but `enable` has no TOML writer yet (JSON only). |
+| Antigravity (agy) | `~/.gemini/config/mcp_config.json`, workspace `.agents/mcp_config.json` | `{serverUrl, headers}`; `url`/`httpUrl` not supported (https://antigravity.google/docs/mcp) | skipped: documented only, no such file on the test machine to confirm; a `url` entry would be wrong, so it stays untouched. |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `{serverUrl, headers}` (secondary guides; vendor docs moved to https://docs.devin.ai/desktop/cascade/mcp, which lists another path) | skipped: path and shape not confirmed from a vendor page or locally. |
+
+A skipped harness is reported as `skipped: shape unverified` and never modified.
