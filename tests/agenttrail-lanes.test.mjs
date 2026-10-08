@@ -122,12 +122,28 @@ function fakeDaemon(port, repoPath, { shutdown = false } = {}) {
   return new Promise((resolve) => s.listen(port, '127.0.0.1', () => resolve({ calls, server: s })));
 }
 
-async function stopHubs() {
-  const keep = new Set([process.pid, ...children.map((c) => c.pid)]);
+function hubPids() {
+  const pids = new Set();
+  try {
+    for (const d of fs.readdirSync('/proc')) {
+      if (!/^\d+$/.test(d)) continue;
+      let argv;
+      try { argv = fs.readFileSync(`/proc/${d}/cmdline`, 'utf8').split('\0'); } catch { continue; }
+      const i = argv.findIndex((a) => a.endsWith('trail-hub.mjs'));
+      const port = i >= 0 ? Number(argv[argv.indexOf('--port', i) + 1]) : NaN;
+      if (port >= LO && port <= HI) pids.add(Number(d));
+    }
+  } catch {}
   for (let p = LO; p <= HI; p += 1) {
     const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
-    for (const pid of (r.stdout || '').split('\n').filter(Boolean).map(Number)) { if (!keep.has(pid)) { try { process.kill(pid); } catch {} } }
+    for (const pid of (r.stdout || '').split('\n').filter(Boolean).map(Number)) pids.add(pid);
   }
+  return pids;
+}
+
+async function stopHubs() {
+  const keep = new Set([process.pid, ...children.map((c) => c.pid)]);
+  for (const pid of hubPids()) { if (!keep.has(pid)) { try { process.kill(pid); } catch {} } }
   await sleep(300);
 }
 
@@ -142,10 +158,7 @@ before(async () => {
 after(async () => {
   for (const c of children) { try { c.kill(); } catch {} }
   for (const s of servers) await new Promise((r) => { s.close(r); s.closeAllConnections?.(); });
-  for (let p = LO; p <= HI; p += 1) {
-    const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
-    for (const pid of (r.stdout || '').split('\n').filter(Boolean)) { try { process.kill(Number(pid)); } catch {} }
-  }
+  await stopHubs();
   await sleep(100);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
