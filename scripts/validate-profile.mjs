@@ -7,7 +7,7 @@
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, basename, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROFILES_DIR = join(REPO, '.agents', 'profiles');
@@ -17,7 +17,7 @@ const ROLES = new Set(['plan', 'approve', 'build', 'review', 'gate']);
 
 // ------------------------------------------------------------ repo lookups
 
-function repoSkillNames() {
+export function repoSkillNames() {
   const names = new Set();
   const walk = (dir) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -31,13 +31,20 @@ function repoSkillNames() {
   return names;
 }
 
-function repoAgentTypes() {
+export function repoAgentTypes() {
   const names = new Set();
   const dir = join(REPO, '.claude', 'agents');
   if (existsSync(dir)) for (const e of readdirSync(dir)) if (e.endsWith('.md')) names.add(e.slice(0, -3));
   const registry = JSON.parse(readFileSync(join(REPO, '.agents', 'nodes.json'), 'utf8'));
   for (const n of Object.values(registry.nodes ?? {})) if (n.agentType) names.add(n.agentType);
   return names;
+}
+
+export function registryNodeRoles() {
+  const registry = JSON.parse(readFileSync(join(REPO, '.agents', 'nodes.json'), 'utf8'));
+  const roles = new Map();
+  for (const [id, n] of Object.entries(registry.nodes ?? {})) roles.set(id, n.role);
+  return roles;
 }
 
 function registryNodeIds() {
@@ -136,23 +143,51 @@ export function validateProfile(profile, ctx) {
     }
   }
 
+  const fileBase = ctx.fileBase ?? (typeof profile.domain === 'string' ? profile.domain : null);
+  if (typeof profile.domain === 'string' && fileBase && profile.domain !== fileBase) {
+    errors.push(`${d}: domain \`${profile.domain}\` must equal the file name without .json (\`${fileBase}\`)`);
+  }
+  for (const s of profile.skills ?? []) {
+    if (typeof s === 'string' && !ctx.skillNames.has(s)) errors.push(`${d}: top-level skill \`${s}\`, which has no SKILL.md in skills/`);
+  }
+  const WRITES_RE = /^production_artifacts\/state\.d\/[a-z0-9_-]+\.json$/;
   const nodes = profile.nodes && typeof profile.nodes === 'object' && !Array.isArray(profile.nodes) ? profile.nodes : {};
+  const seenAddIds = new Set();
   for (const slot of Object.values(nodes)) {
     if (slot === null || typeof slot !== 'object') continue;
     for (const id of slot.replace ?? []) {
       if (!ctx.registryIds.has(id)) errors.push(`${d}: replace id \`${id}\` does not exist in .agents/nodes.json`);
+      else if (ctx.registryRoles?.get(id) !== 'build') errors.push(`${d}: replace id \`${id}\` is role \`${ctx.registryRoles?.get(id)}\`, only build nodes may be replaced`);
     }
     for (const node of slot.add ?? []) {
       if (node === null || typeof node !== 'object') continue;
       if (!ROLES.has(node.role)) errors.push(`${d}: node \`${node.id}\` has unknown role \`${node.role}\``);
+      else if (node.role !== 'build') errors.push(`${d}: node \`${node.id}\` role \`${node.role}\` must be build`);
+      if (typeof node.id === 'string') {
+        if (seenAddIds.has(node.id)) errors.push(`${d}: node \`${node.id}\` duplicates another added node id`);
+        seenAddIds.add(node.id);
+        if (ctx.registryIds.has(node.id)) errors.push(`${d}: node \`${node.id}\` already exists in .agents/nodes.json`);
+      }
       if (!ctx.agentTypes.has(node.agentType)) {
         errors.push(`${d}: node \`${node.id}\` agentType \`${node.agentType}\` is neither .claude/agents/<name>.md nor a registry agentType`);
+      }
+      if (node.personaFile !== undefined) {
+        if (typeof node.personaFile !== 'string' || node.personaFile.includes('..') || node.personaFile.startsWith('/')) {
+          errors.push(`${d}: node \`${node.id}\` personaFile must exist under .claude/agents/, no ".." and no absolute path`);
+        } else if (!existsSync(join(REPO, node.personaFile))) {
+          errors.push(`${d}: node \`${node.id}\` personaFile \`${node.personaFile}\` does not exist`);
+        }
       }
       for (const s of node.skills ?? []) {
         if (!ctx.skillNames.has(s)) errors.push(`${d}: node \`${node.id}\` requires skill \`${s}\`, which has no SKILL.md in skills/`);
       }
-      if (node.writes && node.writes.includes('..')) {
+      if (typeof node.writes === 'string' && !WRITES_RE.test(node.writes)) {
+        errors.push(`${d}: node \`${node.id}\` writes path \`${node.writes}\` must match production_artifacts/state.d/<name>.json`);
+      } else if (node.writes && String(node.writes).includes('..')) {
         errors.push(`${d}: node \`${node.id}\` writes path escapes the tree`);
+      }
+      if (typeof node.artifactKey === 'string' && !(node.artifactKey in artifacts)) {
+        errors.push(`${d}: node \`${node.id}\` artifactKey \`${node.artifactKey}\` is not in artifacts`);
       }
     }
   }
@@ -177,6 +212,7 @@ export function validateAll() {
     skillNames: repoSkillNames(),
     agentTypes: repoAgentTypes(),
     registryIds: registryNodeIds(),
+    registryRoles: registryNodeRoles(),
     triggerOwner: new Map(),
   };
   const problems = [];
@@ -189,6 +225,7 @@ export function validateAll() {
       problems.push(`${file}: not valid JSON (${e.message})`);
       continue;
     }
+    ctx.fileBase = file.replace(/\.json$/, '');
     for (const err of validateProfile(profile, ctx)) problems.push(`${file}: ${err}`);
   }
   return { problems, files };
@@ -233,6 +270,7 @@ function selftest() {
     skillNames: new Set(['godmode-engineering']),
     agentTypes: new Set(['godmode-engineering']),
     registryIds: new Set(['ui_ux', 'engineering']),
+    registryRoles: new Map([['ui_ux', 'build'], ['engineering', 'build'], ['reviewer', 'review']]),
     triggerOwner: new Map([['kicad', 'kicad']]), // shared-trigger case swaps in a trigger owned by the kicad profile
   };
   const good = validateProfile(builtInGood(), ctx);
@@ -253,7 +291,9 @@ function selftest() {
 
 // ----------------------------------------------------------------------- main
 
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 const argv = process.argv.slice(2);
+if (!isMain) { /* imported as a module: do not run */ } else {
 if (argv.includes('--selftest')) {
   try { selftest(); process.exit(0); } catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
 }
@@ -265,3 +305,4 @@ if (problems.length) {
   process.exit(1);
 }
 console.log('✓ profiles valid');
+}

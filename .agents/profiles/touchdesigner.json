@@ -6,14 +6,23 @@
     "architect": null,
     "techlead": null,
     "build": {
-      "replace": ["ui_ux", "engineering", "media_eventtech"],
+      "replace": [
+        "ui_ux",
+        "engineering",
+        "media_eventtech"
+      ],
       "add": [
         {
           "id": "media",
           "role": "build",
           "agentType": "godmode-media-eventtech",
           "personaFile": ".claude/agents/godmode-media-eventtech.md",
-          "skills": ["godmode-eventtech", "bdbmediastorm", "mcp-manage", "pb-show-build"],
+          "skills": [
+            "godmode-eventtech",
+            "bdbmediastorm",
+            "mcp-manage",
+            "pb-show-build"
+          ],
           "artifactKey": "media",
           "writes": "production_artifacts/state.d/media.json",
           "instructions": "Build the TouchDesigner node network per the plan (TOP/CHOP chains, MCP scripting). Write production_artifacts/03_media_pipeline.md and the state.d fragment."
@@ -24,15 +33,25 @@
     "shipping": null
   },
   "gates": {
-    "node-errors": "get_node_errors over the TouchDesigner network reports zero errors or warnings",
+    "get_td_node_errors": "get_td_node_errors over the TouchDesigner network reports zero errors or warnings",
     "performance-budget": "The network meets the plan's fps/CPU budget, measured live, not eyeballed"
   },
   "artifacts": {
     "media": "production_artifacts/03_media_pipeline.md"
   },
   "selection": {
-    "triggers": ["touchdesigner", "resolume", "grandma3", "show-control", "generative-visuals", "dmx", "tops", "chops", "node-network"],
+    "triggers": [
+      "touchdesigner",
+      "resolume",
+      "grandma3",
+      "show-control",
+      "generative-visuals",
+      "dmx",
+      "tops",
+      "chops",
+      "node-network"
+    ],
     "description": "Pick when the goal is a live-media or TouchDesigner build: node networks, show control, generative visuals."
   },
-  "notes": "Reuses the existing godmode-media-eventtech agent and persona file; the trigger list mirrors the skill description wording so the Architect's plan gate can match goal text without regexes."
+  "notes": "Reuses the existing godmode-media-eventtech agent and persona file; the trigger list mirrors the skill description wording so the Architect's plan gate can match goal text without regexes. Known persona gap: nodes need the TouchDesigner MCP server (node-error and perf probes), which no persona file covers yet."
 }

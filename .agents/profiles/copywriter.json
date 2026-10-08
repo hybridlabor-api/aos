@@ -6,14 +6,23 @@
     "architect": null,
     "techlead": null,
     "build": {
-      "replace": ["ui_ux", "engineering", "media_eventtech"],
+      "replace": [
+        "ui_ux",
+        "engineering",
+        "media_eventtech"
+      ],
       "add": [
         {
           "id": "copy",
           "role": "build",
           "agentType": "godmode-ui-ux",
           "personaFile": ".claude/agents/godmode-ui-ux.md",
-          "skills": ["copywriting", "pb-landing-page", "pb-social-pack", "pb-newsletter"],
+          "skills": [
+            "copywriting",
+            "pb-landing-page",
+            "pb-social-pack",
+            "pb-newsletter"
+          ],
           "artifactKey": "copy",
           "writes": "production_artifacts/state.d/copy.json",
           "instructions": "Write the copy per the plan and the confirmed brief (copywriting rules: brief confirmed before writing, no fabricated claims). Tag every claim [F<n>] against the facts file. Write production_artifacts/01_copy.md and the state.d fragment."
@@ -31,8 +40,17 @@
     "copy": "production_artifacts/01_copy.md"
   },
   "selection": {
-    "triggers": ["copywriting", "newsletter", "tagline", "marketing-copy", "brand-voice", "landing-page-copy", "social-posts", "email-draft"],
+    "triggers": [
+      "copywriting",
+      "newsletter",
+      "tagline",
+      "marketing-copy",
+      "brand-voice",
+      "landing-page-copy",
+      "social-posts",
+      "email-draft"
+    ],
     "description": "Pick when the goal is written content: landing-page copy, newsletters, social posts, taglines."
   },
-  "notes": "agentType godmode-ui-ux is the closest compiled agent (it owns landing pages); the domain behavior comes from the copywriting skill and the fact-check gate mirrors pb-social-pack step 4's [F<n>] claim tagging and pb-newsletter's every-claim-cites-a-source verify."
+  "notes": "agentType godmode-ui-ux is the closest compiled agent (it owns landing pages); the domain behavior comes from the copywriting skill and the fact-check gate mirrors pb-social-pack step 4's [F<n>] claim tagging and pb-newsletter's every-claim-cites-a-source verify. Known persona gap: nodes need no MCP server (copy-only; fact sources come from the brief), which no persona file covers yet."
 }

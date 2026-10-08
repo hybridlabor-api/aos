@@ -6,14 +6,23 @@
     "architect": null,
     "techlead": null,
     "build": {
-      "replace": ["ui_ux", "engineering", "media_eventtech"],
+      "replace": [
+        "ui_ux",
+        "engineering",
+        "media_eventtech"
+      ],
       "add": [
         {
           "id": "creator",
           "role": "build",
           "agentType": "godmode-media-eventtech",
           "personaFile": ".claude/agents/godmode-media-eventtech.md",
-          "skills": ["godmode-media-creation", "godmode-3d-creation", "pb-image-to-3d", "threejs-skills"],
+          "skills": [
+            "godmode-media-creation",
+            "godmode-3d-creation",
+            "pb-image-to-3d",
+            "threejs-skills"
+          ],
           "artifactKey": "creation",
           "writes": "production_artifacts/state.d/creator.json",
           "instructions": "Produce the 3D/media asset per the plan (TRELLIS/Text-to-CAD/Blender/OpenMontage as applicable). Write production_artifacts/03_creation.md and the state.d fragment."
@@ -32,8 +41,18 @@
     "creation": "production_artifacts/03_creation.md"
   },
   "selection": {
-    "triggers": ["mesh", "blender", "text-to-cad", "glb", "render", "3d-model", "video-timeline", "motion-graphics", "moodboard"],
+    "triggers": [
+      "mesh",
+      "blender",
+      "text-to-cad",
+      "glb",
+      "render",
+      "3d-model",
+      "video-timeline",
+      "motion-graphics",
+      "moodboard"
+    ],
     "description": "Pick when the goal is producing a 3D asset or media artifact: meshes, renders, exports, timelines."
   },
-  "notes": "The creator node reuses the godmode-media-eventtech agent and persona; no dedicated creator agent exists in .claude/agents/. The three gates mirror pb-image-to-3d's poly budget and the ffprobe check pb-social-pack/pb-launch-video run."
+  "notes": "The creator node reuses the godmode-media-eventtech agent and persona; no dedicated creator agent exists in .claude/agents/. The three gates mirror pb-image-to-3d's poly budget and the ffprobe check pb-social-pack/pb-launch-video run. Known persona gap: nodes need Blender/media MCP servers (mesh/render probes), which no persona file covers yet."
 }

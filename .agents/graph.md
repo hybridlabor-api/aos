@@ -248,7 +248,7 @@ Reviewer/Shipping prompts enumerate. Four profiles ship today:
 **Selection order** (first match wins, mirroring how `--skill=<name>` is
 resolved):
 
-1. **Explicit flag** — `/startcycle-graph --profile=<name> <goal>` is the
+1. **Explicit flag** — `/startcycle-graph --profile=<name> <goal>` (planned, step 2b) is the
    strongest signal and skips keyword matching entirely. A `--profile` name
    that does not resolve to a file in `.agents/profiles/` escalates the same
    way as a missing `--skill` name: stop, surface the error to the user,
