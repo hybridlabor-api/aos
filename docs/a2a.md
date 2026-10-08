@@ -26,6 +26,7 @@ A delegate profile is a JSON file (`--profile <file>`, or auto-discovered as `.a
 
 ```
 aos-a2a list [--json] [--prune]
+aos-a2a book
 aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
 aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|codex|spawn] [--parent-pid <pid>] [--write] [--repo <path>] [--thread <t>] [--codex-transport queue|resume]
 aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] [--task <taskId> --go-ref <ref>] "<text>"
@@ -35,7 +36,7 @@ aos-a2a watch <name> [--once]
 aos-a2a reply [--name <name>] <taskId> "<text>"
 ```
 
-- `list` shows live registry entries (`name`, `harness`, `pid`, `url`, `cwd`). `--prune` removes only stale entries' own `.json`/`.token` files. `card` prints the Agent Card without starting a server.
+- `list` shows live registry entries (`name`, `harness`, `pid`, `url`, `cwd`). `--prune` removes only stale entries' own `.json`/`.token` files. `book` prints the intercom address book (see below) as JSON. `card` prints the Agent Card without starting a server.
 - `send` waits up to 360 seconds by default (`--timeout` in seconds); `--background` returns as soon as the target answers with a task id. The result is JSON: `{taskId, contextId, state, artifacts, statusMessage}`.
 - `reply` writes the answer file the peer's live executor is waiting for. The name comes from `--name` or `AOS_A2A_NAME`.
 - `watch` follows a live peer read-only: one header line (harness, url, status, pid, last heartbeat), then the tail of `<sessionsDir>/<name>.log` (last 20 lines at start, new lines live), inbox arrivals as `inbox  <ts> from=<caller> task=<id> "<first 80 chars>"`, `.delivered` renames as `delivered <task>`, and `*.reply` files as `reply   task=<id> (<n> bytes)`. It never claims, writes or deletes anything, and never prints full message bodies or tokens. `--once` prints a snapshot (header + last 20 log lines + pending/delivered counts) and exits; without it the watcher runs until Ctrl-C or until the registry entry disappears (`peer gone`, exit 0). A peer that is not registered prints `not registered` and exits non-zero with `--once`.
