@@ -39,7 +39,7 @@ const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
 let contextHooks = true;
 try { if (JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8'))?.contextHooks === false) contextHooks = false; } catch {}
 const noContext = { buildMemoryBlock: async () => '', rulesText: () => '' };
-const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
+const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
   await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map((f) => (!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs') ? noContext : hook(f))));
 const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
@@ -559,8 +559,8 @@ export default async function bdbAosPlugin(input) {
         if (reason) throw new Error(reason);
       } else if (['write', 'edit', 'multiedit', 'patch', 'apply_patch'].includes(toolName)) {
         const args = toolOutput?.args || {};
-        const paths = [args.filePath ?? ''];
-        for (const m of String(args.patchText ?? '').matchAll(/^\*\*\* (?:(?:Add|Update) File|Move to): (.+)$/gm)) paths.push(m[1].trim());
+        // One path extractor for all harnesses (every path key, apply_patch Add/Update/Delete/Move lines, no caps).
+        const paths = typeof targetsOf === 'function' ? targetsOf({ args }) : [args.filePath ?? '', ...[...String(args.patchText ?? '').matchAll(/^[ \t]*\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm)].map((m) => m[1].trim())];
         for (const f of paths) {
           const reason = envFileReason(f);
           if (reason) throw new Error(reason);

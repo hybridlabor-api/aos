@@ -187,4 +187,14 @@ describe('OpenCode adapter', () => {
         const patch = (patchText) => hooks['tool.execute.before']({ tool: 'apply_patch', sessionID: 's1', callID: 'c' }, { args: { patchText } });
         await assert.rejects(patch('*** Update File: a.js\n*** Move to: /srv/app/.env'), /env-file-protection/);
     });
+
+    test('patch Delete File and indented lines, and the go-gate store, are protected (WP-9b)', async () => {
+        const { hooks } = await load();
+        const patch = (patchText) => hooks['tool.execute.before']({ tool: 'apply_patch', sessionID: 's1', callID: 'c' }, { args: { patchText } });
+        await assert.rejects(patch('*** Begin Patch\n*** Delete File: /srv/app/.env\n*** End Patch'), /env-file-protection/);
+        await assert.rejects(patch('*** Begin Patch\n  *** Add File: /h/.aos/gate/trail-credential.json\n*** End Patch'), /go-gate store/);
+        await assert.rejects(patch('*** Begin Patch\n*** Delete File: /h/.aos/go/s1.click-x.json\n*** End Patch'), /go-gate store/);
+        await patch('*** Begin Patch\n*** Delete File: /srv/app/a.js\n*** End Patch');
+        await assert.rejects(hooks['tool.execute.before']({ tool: 'write', sessionID: 's1', callID: 'c' }, { args: { filePath: '/h/.aos/gate/x.json' } }), /go-gate store/);
+    });
 });
