@@ -260,10 +260,12 @@ test('uniform: same-origin filled-in Origin keeps guard fully engaged', async ()
 test('secure: allowlist roots upstream; path cannot select a different origin', () => {
   assert.deepEqual(parseUpstream('localhost:5173'), { host: 'localhost', port: 5173 });
   assert.deepEqual(parseUpstream('http://127.0.0.1:5199'), { host: '127.0.0.1', port: 5199 });
+  assert.deepEqual(parseUpstream('[::1]:5173', [5173]), { host: '[::1]', port: 5173 });
   assert.equal(parseUpstreamSafe('evil.example:5173').code, 'E_UPSTREAM');
   assert.equal(parseUpstreamSafe('127.0.0.1:5200').code, 'E_UPSTREAM');
   assert.equal(parseUpstreamSafe('127.0.0.1:22').code, 'E_UPSTREAM');
-  assert.equal(DEFAULT_PORTS.includes(upstreamPort) === false, true, 'fixture port is explicit, not from range');
+  assert.equal(parseUpstreamSafe('10.0.0.1:5173').code, 'E_UPSTREAM');
+  assert.equal(parseUpstreamSafe('example.com:5173').code, 'E_UPSTREAM');
   assert.equal(upstreamPortAlt >= 5173 && upstreamPortAlt <= 5199, true);
 });
 
@@ -276,10 +278,12 @@ function parseUpstreamSafe(spec) {
   }
 }
 
-test('secure: redirect to another loopback port is rewritten, off-allowlist blocked', async () => {
+test('secure: same-upstream redirect rewritten, different loopback port blocked', async () => {
   const good = await req({ path: '/redirect-loopback' });
   assert.equal(good.status, 302);
   assert.equal(good.headers.location, '/html');
+  const other = rewriteLocation(`http://127.0.0.1:${upstreamPortAlt}/x`, { upstreamOrigin: `http://127.0.0.1:${upstreamPort}` });
+  assert.equal(other.action, 'block', 'different allowlisted port is still blocked');
   const bad = await req({ path: '/redirect-off' });
   assert.equal(bad.status, 502);
   assert.equal(JSON.parse(bad.body).error, 'E_REDIRECT_OFF_ALLOWLIST');
@@ -737,12 +741,19 @@ test('secure: nonce is crypto base64url, fresh per HTML response, and never in t
       res.end('nope');
     },
     {},
-    ({ port, nonce }) => req({ port, path: '/html' }).then((r) => ({ r, nonce })),
+    async ({ port, nonce }) => {
+      const a = await req({ port, path: '/html' });
+      const b = await req({ port, path: '/html' });
+      const js = await req({ port, path: '/__aos_annot/overlay.js' });
+      return { a, b, js, nonce };
+    },
   );
   assert.match(html.nonce, /^[A-Za-z0-9_-]{22}$/, 'nonce is 16 random bytes base64url');
-  const tagNonce = (html.r.body.match(/nonce="([A-Za-z0-9_-]+)"/) ?? [])[1] ?? '';
+  const tagNonce = (html.a.body.match(/nonce="([A-Za-z0-9_-]+)"/) ?? [])[1] ?? '';
   assert.match(tagNonce, /^[A-Za-z0-9_-]{22}$/);
-  const overlay = await req({ path: '/__aos_annot/overlay.js' });
+  const tagNonce2 = (html.b.body.match(/nonce="([A-Za-z0-9_-]+)"/) ?? [])[1] ?? '';
+  assert.notEqual(tagNonce2, tagNonce, 'fresh nonce per HTML response');
+  const overlay = html.js;
   assert.equal(overlay.body.includes(tagNonce), false, 'nonce never in readable JS response body');
   assert.match(overlay.body, /^window\.__AOS_ANNOT/);
 });
@@ -860,6 +871,9 @@ test('secure: upgrade request values with CR/LF are rejected before any upstream
     });
     assert.equal(result.status, 400, 'malformed CRLF header rejected at parse, never tunneled');
     assert.equal(connected, null, 'upstream never saw the injected header');
+    const src = await import('node:fs/promises').then((fs) => fs.readFile(new URL('../lib/annotation/proxy.mjs', import.meta.url), 'utf8'));
+    assert.ok(src.indexOf('forwardLines === null') < src.indexOf('net.connect(up.port'), 'null check precedes connect');
+    assert.match(result.raw, /^HTTP\/1\.1 400 /);
     } finally { socket.destroy(); }
   } finally {
     up.closeAllConnections?.();
@@ -943,4 +957,136 @@ test('secure: oversized forwarded body is capped with 413 E_BODY (F13)', { timeo
       return tooBig.status;
     },
   );
+});
+
+test('crash: upstream abort after headers still leaves proxy serving', { timeout: 8000 }, async () => {
+  const res = await proxyFixture(
+    (req, res) => {
+      if (req.url === '/abort') { res.writeHead(200, { 'content-type': 'text/plain' }); res.write('part'); setTimeout(() => res.destroy(), 50); return; }
+      res.writeHead(200, { 'content-type': 'text/plain' }); res.end('second-ok');
+    },
+    {},
+    async ({ port }) => {
+      const abortReq = (path) => new Promise((resolve) => {
+        const chunks = [];
+        const r = http.request({ host: '127.0.0.1', port, method: 'GET', path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}` } }, (res) => {
+          res.on('data', (c) => chunks.push(c));
+          res.on('aborted', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
+          res.on('error', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
+          res.on('close', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
+          res.on('end', () => settle({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+        });
+        let done = false;
+        const settle = (v) => { if (done) return; done = true; clearTimeout(t); resolve(v); };
+        r.on('error', () => settle({ aborted: true, body: Buffer.concat(chunks).toString() }));
+        const t = setTimeout(() => { r.destroy(); settle({ aborted: true, body: Buffer.concat(chunks).toString() }); }, 3000);
+        t.unref?.();
+        r.end();
+      });
+      const first = await abortReq('/abort');
+      const second = await req({ port, path: '/ok' });
+      assert.equal(second.status, 200);
+      assert.equal(second.body, 'second-ok');
+      assert.equal(first.aborted, true);
+      return first;
+    },
+  );
+  assert.ok(res !== undefined);
+});
+
+test('smuggling: DELETE json body forwarded framed, keep-alive parses second request', { timeout: 8000 }, async () => {
+  let bodies = [];
+  let count = 0;
+  await proxyFixture(
+    (req, res) => {
+      let b = '';
+      req.on('data', (c) => { b += c; });
+      req.on('end', () => { bodies.push(b); count += 1; res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok' + count); });
+    },
+    {},
+    async ({ port }) => {
+      const body = 'x'.repeat(20);
+      const agent = new http.Agent({ keepAlive: true });
+      const doReq = (path, b) => new Promise((resolve, reject) => {
+        const r = http.request({ host: '127.0.0.1', port, method: 'DELETE', path, headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(b) }, agent }, (res) => {
+          const ch = []; res.on('data', (c) => ch.push(c)); res.on('end', () => resolve(Buffer.concat(ch).toString()));
+        });
+        r.on('error', reject); r.end(b);
+      });
+      const a = await doReq('/a', body);
+      const c = await doReq('/b', body);
+      assert.equal(a, 'ok1'); assert.equal(c, 'ok2');
+      agent.destroy();
+    },
+  );
+  assert.equal(bodies[0].length, 20);
+  assert.equal(bodies[1].length, 20);
+});
+
+test('cap: chunked body over cap answers 413 E_BODY', { timeout: 8000 }, async () => {
+  const res = await proxyFixture(
+    (req, res) => { req.resume(); req.on('end', () => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('up'); }); },
+    { maxBodyBytes: 64 },
+    ({ port }) => new Promise((resolve, reject) => {
+      const r = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/chunk', headers: { cookie: `${COOKIE_NAME}=${TOKEN}`, 'transfer-encoding': 'chunked', 'content-type': 'text/plain' } }, (res) => {
+        const ch = []; res.on('data', (c) => ch.push(c)); res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(ch).toString() }));
+      });
+      r.on('error', reject); r.write('y'.repeat(50)); r.write('z'.repeat(50)); r.end();
+    }),
+  );
+  assert.equal(res.status, 413);
+  assert.equal(JSON.parse(res.body).error, 'E_BODY');
+});
+
+test('url: bad paths rejected 400, vite paths forwarded', { timeout: 8000 }, async () => {
+  await proxyFixture(
+    (req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('up:' + req.url); },
+    {},
+    async ({ port }) => {
+      const rawPath = (p) => new Promise((resolve, reject) => {
+        const s = net.connect(port, '127.0.0.1'); let raw = '';
+        s.on('connect', () => s.write(`GET ${p} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nConnection: close\r\n\r\n`));
+        s.on('data', (c) => { raw += c.toString('latin1'); });
+        s.on('close', () => resolve({ status: Number(raw.split(' ')[1]), raw }));
+        s.on('error', reject);
+      });
+      for (const p of ['http://x/', '//evil/x', '/a/../b', '/%2e%2e/x', '/a\\b']) {
+        const r = await rawPath(p);
+        assert.equal(r.status, 400, p);
+      }
+      const good = await req({ port, path: '/@vite/client' });
+      assert.equal(good.status, 200);
+    },
+  );
+});
+
+test('encodings: unknown content-encoding passes raw with skipped marker', { timeout: 8000 }, async () => {
+  for (const enc of ['zstd', 'gzip, br']) {
+    const res = await proxyFixture(
+      (req, res) => { res.writeHead(200, { 'content-type': 'text/html', 'content-encoding': enc }); res.end(Buffer.from('<html><body>e</body></html>')); },
+      {},
+      ({ port }) => reqRaw({ port, path: '/enc' }),
+    );
+    assert.equal(res.headers['x-aos-annot'], 'skipped', enc);
+    assert.equal(res.headers['content-encoding'], enc);
+    assert.equal(res.body.toString().includes('<script'), false, enc);
+  }
+});
+
+test('uniform: localhost upstream reaches a 127.0.0.1 listener', { timeout: 8000 }, async () => {
+  const upServer = http.createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('via-localhost'); });
+  const upPort = await listen(upServer);
+  let proxied = null;
+  try {
+    proxied = await createProxy({ token: TOKEN, upstream: 'localhost:' + upPort, allowedPorts: [upPort] });
+  } catch (err) { upServer.close(); throw err; }
+  try {
+    const res = await req({ port: proxied.port, path: '/' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body, 'via-localhost');
+  } finally {
+    proxied.server.closeAllConnections?.();
+    upServer.closeAllConnections?.();
+    await Promise.all([new Promise((r) => proxied.server.close(r)), new Promise((r) => upServer.close(r))]);
+  }
 });
