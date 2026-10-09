@@ -5196,6 +5196,7 @@ function installGoCheck({ targetHome = homeDir } = {}) {
     const files = [
         [path.join(srcDir, 'bin', 'go-check.mjs'), 'go-check.mjs'],
         [path.join(srcDir, '.claude', 'hooks', 'go-gate.mjs'), 'go-gate.mjs'],
+        [path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs'), 'gate-profile.mjs'],
         [path.join(srcDir, 'bin', 'guarded-patterns.json'), 'guarded-patterns.json'],
         [path.join(srcDir, 'mcps', 'mcsc', 'packages', 'core', 'src', 'trail.js'), 'trail.mjs'],
         [path.join(srcDir, 'lib', 'a2a-permissions.mjs'), 'a2a-permissions.mjs'],
