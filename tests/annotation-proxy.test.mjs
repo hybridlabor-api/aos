@@ -1007,12 +1007,14 @@ test('smuggling: GET/HEAD/DELETE/OPTIONS with CL body over one keep-alive socket
     ({ port }) => new Promise((resolve, reject) => {
       const s = net.connect(port, '127.0.0.1');
       let raw = '';
-      const need = 4;
+      const need = 5;
+      const methods = ['GET', 'HEAD', 'DELETE', 'OPTIONS', 'POST'];
       let done = 0;
       s.on('connect', () => {
         for (const m of ['GET', 'HEAD', 'DELETE', 'OPTIONS']) {
           s.write(`${m} /k HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\n12345`);
         }
+        s.write(`POST /k HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nCookie: ${COOKIE_NAME}=${TOKEN}\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n5\r\nhello\r\n0\r\n\r\n`);
       });
       s.on('data', (c) => {
         raw += c.toString('latin1');
@@ -1021,7 +1023,7 @@ test('smuggling: GET/HEAD/DELETE/OPTIONS with CL body over one keep-alive socket
           if (sep < 0) break;
           const head = raw.slice(0, sep);
           const m = /content-length:\s*(\d+)/i.exec(head);
-          const len = m ? Number(m[1]) : 0;
+          const len = methods[done] === 'HEAD' ? 0 : (m ? Number(m[1]) : 0);
           if (raw.length < sep + 4 + len) break;
           raw = raw.slice(sep + 4 + len);
           done += 1;
@@ -1033,8 +1035,9 @@ test('smuggling: GET/HEAD/DELETE/OPTIONS with CL body over one keep-alive socket
       setTimeout(() => { s.destroy(); reject(new Error('keep-alive smuggling timeout')); }, 5000).unref();
     }),
   );
-  assert.equal(bodies.length, 4);
+  assert.equal(bodies.length, 5);
   for (const b of bodies) assert.equal(b.length, 5);
+  assert.equal(bodies[4], 'hello');
 });
 
 test('cap: chunked body over cap answers 413 E_BODY', { timeout: 8000 }, async () => {
