@@ -545,6 +545,9 @@ export default async function bdbAosPlugin(input) {
             }
           }
 
+          // Gate profile (shared with the Claude hook): hard blocks and the store check returned above.
+          if (!authorized && !cooling && !tooLong && typeof gate.profileAllows === 'function') authorized = gate.profileAllows(cmd);
+
           if (!authorized) {
             authorized = tokenGrantsGo(await ownSessionName(input.client, toolInput.sessionID)).ok;
           }

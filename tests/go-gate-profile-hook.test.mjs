@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -39,6 +39,23 @@ test("work: hard blocks stay", () => {
 });
 test("expired work falls back to strict", () => {
   assert.equal(run("git push origin HEAD:refs/heads/feat/x", { profile: "work", expires_at: exp(-1) }), 2);
+});
+test("work: a wrapped or assembled release command (unreadable scope) needs a GO", () => {
+  for (const c of ["bash -c 'git push origin main'", "p=push; git $p origin HEAD:main", "echo 'npm publish' | sh"]) assert.equal(run(c, work()), 2, c);
+});
+test("work: indirection that can carry a release command needs a GO", () => {
+  for (const c of ["eval 'git push origin main'", "echo 'git push origin main' | sh", "npx semantic-release", "git $(echo push) origin HEAD:main"]) assert.equal(run(c, work()), 2, c);
+});
+test("work: an unscoped guarded command without indirection is free", () => {
+  for (const c of ["gh pr view 5", "node script.mjs", "bash script.sh"]) assert.equal(run(c, work()), 0, c);
+});
+test("a go-gate copy without gate-profile.mjs still runs and keeps hard blocks and strict", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gp-nosib-"));
+  copyFileSync(HOOK, join(dir, "go-gate.mjs"));
+  const go = (command) => spawnSync("node", [join(dir, "go-gate.mjs")], { input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, transcript_path: join(dir, "none.jsonl") }), encoding: "utf8" }).status;
+  assert.equal(go("rm -rf ~/Desktop"), 2);
+  assert.equal(go("npm publish"), 2);
+  assert.equal(go("ls"), 0);
 });
 test("off allows a release command, but not a hard block", () => {
   assert.equal(run("npm publish", { profile: "off", expires_at: exp(1) }), 0);

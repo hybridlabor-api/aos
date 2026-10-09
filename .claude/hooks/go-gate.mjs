@@ -58,7 +58,9 @@ import { createHash, randomUUID, createPublicKey, verify as cryptoVerify, timing
 import { homedir, userInfo } from "node:os";
 import { join, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { profileFor } from "./gate-profile.mjs";
+// A missing sibling must read as strict, never crash the hook (a crash exits 1 and the harness runs the command).
+let profileFor = () => ({ profile: "strict" });
+try { ({ profileFor } = await import("./gate-profile.mjs")); } catch { /* strict */ }
 
 // Command start: line/separator/subshell start, then optional wrappers (sudo/env/command/
 // builtin/exec/nohup/time/xargs/eval with options, `bash -c`, VAR=x), an optional opening
@@ -2975,6 +2977,33 @@ export function lastUserText(transcriptPath) {
   return { text: null };
 }
 
+// Work profile: a guarded command with no scope (null) is free unless it carries indirection that can hide a release command.
+// Built from the classifier's own helpers: shell -c/eval bodies, pipes into a shell, computed or glued heads, braces, release tools through npx.
+function indirectReleaseRisk(command) {
+  const view = unIFS(commandView(command).text);
+  const segs = segments(command);
+  if (feedsShell(segs) || opaqueBodyWords(tokens(view)).length || UNSAFE_COMPOUND.test(command)) return true;
+  if (/\$\(|\x60/.test(view) || (hasGuardedAssign(segs) && /[$\x60]/.test(command))) return true;
+  return scanSplit(view).some((p) => {
+    const tk = tokens(p.t.trim());
+    if (!tk.length) return false;
+    const sp = stripPrefix(tk), h = base(sp.rest[0] ?? "");
+    return (sp.opaque && (!SHELLS.test(h) || /^(?:watch|parallel|eval)$/.test(h))) || /^(?:eval|source|\.)$/.test(h) || gluedHead(h) || /^[$\x60]/.test(h) || globHead(unq(sp.rest[0] ?? "")) ||
+      tk.some((t) => t.includes("{") && BRACE.test(bareOf(t))) ||
+      (/^(?:npx|pnpx|bunx|npm|pnpm|yarn)$/.test(h) && /semantic-release|release-it|changeset|\bnp\b|lerna/.test(p.t));
+  });
+}
+
+// Shared by the Claude hook and the OpenCode plugin. Callers run it after hard blocks, the store check, cooldown and the length cap.
+// off allows; work allows unless a release scope shows. null scope = guarded but unreadable: free only without indirection.
+export function profileAllows(command) {
+  const p = profileFor().profile;
+  if (p === "off") return true;
+  if (p !== "work") return false;
+  const sc = commandScopes(command);
+  return sc ? !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive") : !indirectReleaseRisk(command);
+}
+
 function main() {
   hookDeadline = Date.now() + SCAN_MS;
   const rawInput = readStdin();
@@ -3065,14 +3094,8 @@ function main() {
 
   // Gate profile config: any doubt reads as strict. Hard blocks and the store check returned above.
   if (!cooling && !tooLong) {
-    const prof = profileFor();
-    if (prof.profile === "off") return respond(isAgy, true, "", command);
-    if (prof.profile === "work") {
-      const sc = commandScopes(command);
-      // Unscoped (null) is free in work; only the release class needs a GO.
-      if (!sc || !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive")) return respond(isAgy, true, "", command);
-      reasons.push("profile work: this command is in the release class and needs a GO");
-    }
+    if (profileAllows(command)) return respond(isAgy, true, "", command);
+    if (profileFor().profile === "work") reasons.push("profile work: this command is in the release class and needs a GO");
   }
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).

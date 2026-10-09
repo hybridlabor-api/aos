@@ -194,6 +194,26 @@ describe('grants in OpenCode', () => {
         assert.equal(fs.existsSync(path.join(home, '.aos', 'gate', g.sessionKey(`oc-${id}`) + '.json')), false);
     });
 
+    test('gate profile work frees a feature push on OpenCode, the release class and hard blocks stay', async () => {
+        const dir = path.join(home, '.aos', 'gate');
+        fs.mkdirSync(dir, { recursive: true });
+        const cfg = (profile) => {
+            const f = path.join(dir, 'config.json');
+            fs.writeFileSync(f, JSON.stringify({ version: 1, profile, set_at: new Date(Date.now() - 3600e3).toISOString(), expires_at: new Date(Date.now() + 3600e3).toISOString() }), { mode: 0o600 });
+            fs.chmodSync(f, 0o600);
+        };
+        const { hooks, id } = await boot();
+        await assert.rejects(run(hooks, id, 'git push origin HEAD:refs/heads/feat/x'), /go-gate/);
+        cfg('work');
+        await run(hooks, id, 'git push origin HEAD:refs/heads/feat/x');
+        await assert.rejects(run(hooks, id, 'npm publish'), /go-gate/);
+        await assert.rejects(run(hooks, id, "bash -c 'git push origin main'"), /go-gate/);
+        await assert.rejects(run(hooks, id, 'rm -rf ~/Desktop'));
+        cfg('off');
+        await run(hooks, id, 'npm publish');
+        await assert.rejects(run(hooks, id, 'rm -rf ~/Desktop'));
+    });
+
     test('Bash and write tools cannot touch the store', async () => {
         const { hooks, id } = await boot();
         await assert.rejects(run(hooks, id, 'echo {} > ~/.aos/gate/x.json'), /GO\/grant store/);
