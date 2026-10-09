@@ -44,13 +44,14 @@ describe('go-gate request records (WP-8)', () => {
         const recs = records();
         assert.equal(recs.length, 1);
         const rec = recs[0];
-        assert.deepEqual(Object.keys(rec).sort(), ['cmd_hash', 'cmd_preview', 'cwd', 'hard', 'id', 'scopes', 'session_key', 'session_name', 'ts'].sort());
+        assert.deepEqual(Object.keys(rec).sort(), ['click', 'cmd_hash', 'cmd_preview', 'cwd', 'hard', 'id', 'scopes', 'session_key', 'session_name', 'ts'].sort());
         assert.ok(rec.id && typeof rec.id === 'string');
         assert.ok(Math.abs(Date.parse(rec.ts) - Date.now()) < 60000);
         assert.equal(rec.session_key, 'sess-req');
         assert.equal(rec.session_name, 'worker-7');
         assert.equal(rec.cwd, work);
         assert.equal(rec.hard, false);
+        assert.equal(rec.click, false, 'a command with secrets is never click-approvable');
         assert.equal(rec.cmd_hash, sha(cmd.replace(/\s+/g, ' ').trim()));
         assert.ok(Array.isArray(rec.scopes) || rec.scopes === null);
         assert.ok(rec.cmd_preview.length <= 200);
@@ -66,6 +67,17 @@ describe('go-gate request records (WP-8)', () => {
         const recs = records();
         assert.equal(recs.length, 1);
         assert.equal(recs[0].hard, true);
+        assert.equal(recs[0].click, false);
+    });
+
+    test('click is true only for a short, printable-ASCII, normal-form command without secrets', () => {
+        const click = (cmd) => { assert.equal(runGate(cmd).status, 2); const r = records(); return r[r.length - 1].click; };
+        assert.equal(click('git push origin main'), true);
+        assert.equal(click('git push  origin main'), false, 'double space');
+        assert.equal(click('git push origin main\n'), false, 'newline');
+        assert.equal(click('git push origin café'), false, 'non-ASCII');
+        assert.equal(click(`git push origin ${'x'.repeat(200)}`), false, 'longer than 200');
+        assert.equal(click('git push origin main --token abc123'), false, 'secret masked in the preview');
     });
 
     test('keeps only the last 20 records, oldest dropped', () => {

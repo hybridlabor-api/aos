@@ -51,10 +51,10 @@
 // Origin: only human-typed entries count, as GO and as gogate commands
 // (isHumanEntry). Loops, peers, task notifications, SDK and system prompts never.
 
-import { constants as FS, readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync } from "node:fs";
+import { constants as FS, readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync, mkdirSync, renameSync, appendFileSync, readdirSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync, opendirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, createPublicKey, verify as cryptoVerify, timingSafeEqual } from "node:crypto";
 import { homedir, userInfo } from "node:os";
 import { join, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2397,7 +2397,7 @@ export function recordRequest(key, command, scopes, hard) {
     const preview = maskSecrets(command).slice(0, 200);
     all.push({
       id: randomUUID(), ts: new Date().toISOString(), session_key: key, session_name: process.env.AOS_SESSION_NAME || "",
-      cwd: gateCtx.cwd || "", cmd_hash: textHash(command), cmd_preview: preview, scopes: scopes ?? null, hard: !!hard,
+      cwd: gateCtx.cwd || "", cmd_hash: textHash(command), cmd_preview: preview, scopes: scopes ?? null, hard: !!hard, click: !hard && clickEligible(command),
     });
     mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
     const tmp = `${f}.${process.pid}.tmp`;
@@ -2465,6 +2465,12 @@ export function effectiveGate(key, { source, cmds, opencode = false }, now = Dat
       rejected.push("off expired after 24h");
     } else mode = want;
   }
+  // A revoke file from the trail UI acts like a `hard` typed at its timestamp: tightening only, no proof needed.
+  const revokeTs = readRevokeTs(key, now);
+  if (revokeTs && mode !== "hard" && !(lastMode && Number.isFinite(lastMode.ts) && lastMode.ts > revokeTs)) {
+    mode = "hard";
+    rejected.push("revoked from the trail UI");
+  }
   const lastHard = cmds.findLastIndex((c) => c.parsed.cmd === "hard");
   const grants = [];
   for (const g of Array.isArray(state.grants) ? state.grants : []) {
@@ -2472,11 +2478,14 @@ export function effectiveGate(key, { source, cmds, opencode = false }, now = Dat
     if (!c) { rejected.push(`grant ${g?.scope} has no matching human gogate entry`); continue; }
     if (!c.strict) { rejected.push(`grant ${g?.scope} ignored: ${opencode ? OC_HINT : WEAK_HINT}`); continue; }
     if (cmds.indexOf(c) < lastHard) { rejected.push(`grant ${g.scope} revoked by a later hard`); continue; }
+    if (revokeTs && !(Number.isFinite(c.ts) && c.ts > revokeTs)) { rejected.push(`grant ${g.scope} revoked from the trail UI`); continue; }
     if (c.parsed.session && g.session_key !== key) { rejected.push(`session grant ${g.scope} belongs to another session`); continue; }
     const until = Math.min(Date.parse(g.until), c.ts + (opencode ? Math.min(c.parsed.ms, OPENCODE_MAX_GRANT_MS) : c.parsed.ms));
     if (!(now < until)) continue; // expired
     grants.push({ scope: g.scope, until, session: !!c.parsed.session });
   }
+  const hardTs = lastHard >= 0 ? (Number.isFinite(cmds[lastHard].ts) ? cmds[lastHard].ts : Infinity) : -Infinity;
+  grants.push(...clickGrants(key, now, { opencode, hardTs, revokeTs }));
   return { mode, grants, rejected };
 }
 
@@ -2639,6 +2648,281 @@ export function tokenGrantsGo(own, { consume = true } = {}) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------------------
+// Click receipts (WP-9). The trail hub writes <go dir>/<key>.click-<request id>.json = {payload, assertion}
+// after a WebAuthn click. Nothing the hub says is trusted: the gate re-verifies the assertion itself against the
+// public key pinned in <gate dir>/trail-credential.json. Every failure means "not covered" (the existing deny stands).
+// ---------------------------------------------------------------------------
+const CLICK_RP_ID = "localhost";
+const CLICK_ORIGIN = /^http:\/\/localhost:[0-9]{1,5}$/;
+const CLICK_KEY = /^[a-z0-9._-]{1,128}$/;
+const CLICK_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const B64U = /^[A-Za-z0-9_-]+$/;
+// The gate never removes receipts or their `.used` markers (it deletes nothing); pruning old ones is the hub's job. The scan
+// is bounded (CLICK_SCAN entries, CLICK_MAX_FILES matches), so a pile-up can only make receipts unusable, never unsafe.
+const CLICK_FILE_MAX = 16 * 1024, CLICK_CRED_MAX = 4096, CLICK_SCAN = 4096, CLICK_MAX_FILES = 32;
+const PAYLOAD_KEYS = ["v", "kind", "request_id", "session_key", "cmd_hash", "scopes", "ms", "issued_at", "expires_at", "nonce"];
+const sha256 = (data) => createHash("sha256").update(data).digest();
+const goDir = () => join(homedir(), ".aos", "go");
+
+function b64uDecode(v, max) {
+  return typeof v === "string" && v.length > 0 && v.length <= max && B64U.test(v) ? Buffer.from(v, "base64url") : null;
+}
+
+// Regular file, owned by this uid, mode exactly 0600, never followed, never blocking. null on anything else.
+function readOwnedPrivate(f, max) {
+  let fd;
+  try {
+    fd = openSync(f, FS.O_RDONLY | FS.O_NOFOLLOW | FS.O_NONBLOCK);
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > max || typeof process.getuid !== "function" || st.uid !== process.getuid() || (st.mode & 0o777) !== 0o600) return null;
+    const buf = Buffer.alloc(st.size);
+    let n = 0;
+    while (n < st.size) { const k = readSync(fd, buf, n, st.size - n, n); if (!k) break; n += k; }
+    return n === st.size ? buf.toString("utf8") : null;
+  } catch { return null; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ } }
+}
+
+// Fixed key order, identical to the hub's canonicalPayload; the challenge is base64url(sha256(this)).
+export const clickPayloadOk = (p) =>
+  !!p && typeof p === "object" && !Array.isArray(p) && Object.keys(p).length === PAYLOAD_KEYS.length && PAYLOAD_KEYS.every((k) => Object.hasOwn(p, k)) &&
+  p.v === 1 && (p.kind === "go" || p.kind === "grant") && typeof p.request_id === "string" && CLICK_ID.test(p.request_id) &&
+  typeof p.session_key === "string" && CLICK_KEY.test(p.session_key) && typeof p.cmd_hash === "string" && /^(?:[0-9a-f]{64})?$/.test(p.cmd_hash) &&
+  (p.scopes === null ? p.kind === "go" : Array.isArray(p.scopes) && p.scopes.length <= 16 && p.scopes.every((s) => typeof s === "string" && s.length <= 32)) &&
+  Number.isSafeInteger(p.ms) && p.ms >= 0 && Number.isSafeInteger(p.issued_at) && Number.isSafeInteger(p.expires_at) && typeof p.nonce === "string" && p.nonce.length <= 64;
+export const clickChallenge = (p) => sha256(JSON.stringify({
+  v: 1, kind: p.kind, request_id: p.request_id, session_key: p.session_key, cmd_hash: p.cmd_hash, scopes: p.scopes,
+  ms: p.ms, issued_at: p.issued_at, expires_at: p.expires_at, nonce: p.nonce,
+})).toString("base64url");
+
+// credential = {id, publicKey: JWK P-256}; assertion = {id, authenticatorData, clientDataJSON, signature} (base64url, DER signature).
+// Never throws. The signature counter is not checked: a receipt is single-use by request_id, and a counter check would deny
+// legitimate receipts that are clicked out of order.
+export function verifyWebAuthnAssertion({ credential, assertion, expectedChallenge, origin, rpId = CLICK_RP_ID } = {}) {
+  const no = (reason) => ({ ok: false, reason });
+  try {
+    if (!credential || typeof credential !== "object" || !assertion || typeof assertion !== "object") return no("malformed input");
+    if (typeof expectedChallenge !== "string" || !expectedChallenge || typeof origin !== "string" || !origin || typeof rpId !== "string" || !rpId) return no("malformed input");
+    const jwk = credential.publicKey;
+    if (!jwk || typeof jwk !== "object" || jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string" || typeof jwk.y !== "string") return no("bad credential key");
+    if (typeof credential.id !== "string" || !credential.id || assertion.id !== credential.id) return no("wrong credential");
+    const authData = b64uDecode(assertion.authenticatorData, 1400), cd = b64uDecode(assertion.clientDataJSON, 4096), sig = b64uDecode(assertion.signature, 200);
+    if (!authData || !cd || !sig) return no("bad encoding");
+    if (authData.length < 37) return no("short authenticator data");
+    let clientData;
+    try { clientData = JSON.parse(cd.toString("utf8")); } catch { return no("bad client data"); }
+    if (!clientData || typeof clientData !== "object" || Array.isArray(clientData)) return no("bad client data");
+    if (clientData.type !== "webauthn.get") return no("wrong type");
+    if (clientData.challenge !== expectedChallenge) return no("challenge mismatch");
+    if (clientData.origin !== origin || clientData.crossOrigin === true) return no("wrong origin");
+    if (!timingSafeEqual(authData.subarray(0, 32), sha256(rpId))) return no("wrong rpIdHash");
+    if (!(authData[32] & 0x01)) return no("user presence missing");
+    if (!(authData[32] & 0x04)) return no("user verification missing");
+    const key = createPublicKey({ key: { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y }, format: "jwk" });
+    if (!cryptoVerify("sha256", Buffer.concat([authData, sha256(cd)]), { key, dsaEncoding: "der" }, sig)) return no("bad signature");
+    return { ok: true, signCount: authData.readUInt32BE(33) };
+  } catch { return no("verification error"); }
+}
+
+// Minimal CBOR for an attestationObject: unsigned/negative ints, byte strings, text strings, maps. Definite lengths up to
+// 32 bit only; arrays, tags, floats, simple values, indefinite lengths, duplicate keys and deep nesting all throw.
+const CBOR_DEPTH = 4, CBOR_ITEMS = 16, CBOR_MAX = 4096;
+const UTF8 = new TextDecoder("utf-8", { fatal: true });
+function cborItem(buf, off, depth) {
+  if (depth > CBOR_DEPTH || off >= buf.length) throw new Error("cbor");
+  const ib = buf[off++], major = ib >> 5, ai = ib & 31;
+  let n;
+  if (ai < 24) n = ai;
+  else if (ai === 24) { if (off + 1 > buf.length) throw new Error("cbor"); n = buf[off++]; }
+  else if (ai === 25) { if (off + 2 > buf.length) throw new Error("cbor"); n = buf.readUInt16BE(off); off += 2; }
+  else if (ai === 26) { if (off + 4 > buf.length) throw new Error("cbor"); n = buf.readUInt32BE(off); off += 4; }
+  else throw new Error("cbor");
+  if (major === 0) return [n, off];
+  if (major === 1) return [-1 - n, off];
+  if (major === 2 || major === 3) {
+    if (off + n > buf.length) throw new Error("cbor");
+    const raw = buf.subarray(off, off + n);
+    return [major === 2 ? raw : UTF8.decode(raw), off + n];
+  }
+  if (major === 5) {
+    if (n > CBOR_ITEMS) throw new Error("cbor");
+    const m = new Map();
+    for (let i = 0; i < n; i += 1) {
+      const [k, o1] = cborItem(buf, off, depth + 1);
+      if ((typeof k !== "number" && typeof k !== "string") || m.has(k)) throw new Error("cbor");
+      const [v, o2] = cborItem(buf, o1, depth + 1);
+      m.set(k, v);
+      off = o2;
+    }
+    return [m, off];
+  }
+  throw new Error("cbor");
+}
+
+// attestationObject (Buffer or base64url) with fmt "none" -> {credentialId, publicKey: JWK}; null for anything malformed.
+export function parseCoseKey(attestationObject) {
+  try {
+    const buf = typeof attestationObject === "string" ? b64uDecode(attestationObject, 8192) : attestationObject instanceof Uint8Array ? Buffer.from(attestationObject) : null;
+    if (!buf || buf.length > CBOR_MAX) return null;
+    const [top, end] = cborItem(buf, 0, 0);
+    if (end !== buf.length || !(top instanceof Map) || top.get("fmt") !== "none") return null;
+    const stmt = top.get("attStmt"), ad = top.get("authData");
+    if (!(stmt instanceof Map) || stmt.size !== 0 || !Buffer.isBuffer(ad) || ad.length < 55 || !(ad[32] & 0x40)) return null;
+    const idLen = ad.readUInt16BE(53);
+    if (idLen < 1 || idLen > 1023 || 55 + idLen >= ad.length) return null;
+    const [cose, cend] = cborItem(ad, 55 + idLen, 0);
+    if (!(cose instanceof Map) || (cend !== ad.length && !(ad[32] & 0x80))) return null;
+    const x = cose.get(-2), y = cose.get(-3);
+    if (cose.size !== 5 || cose.get(1) !== 2 || cose.get(3) !== -7 || cose.get(-1) !== 1) return null;
+    if (!Buffer.isBuffer(x) || !Buffer.isBuffer(y) || x.length !== 32 || y.length !== 32) return null;
+    const publicKey = { kty: "EC", crv: "P-256", x: x.toString("base64url"), y: y.toString("base64url") };
+    createPublicKey({ key: publicKey, format: "jwk" }); // throws when the point is not on the curve
+    return { credentialId: ad.subarray(55, 55 + idLen).toString("base64url"), publicKey };
+  } catch { return null; }
+}
+
+function readClickCredential() {
+  const txt = readOwnedPrivate(join(gateDir(), "trail-credential.json"), CLICK_CRED_MAX);
+  if (!txt) return null;
+  try {
+    const c = JSON.parse(txt);
+    return c && c.v === 1 && typeof c.id === "string" && c.id && c.publicKey && typeof c.origin === "string" && CLICK_ORIGIN.test(c.origin) ? c : null;
+  } catch { return null; }
+}
+
+// Tightening marker: <gate dir>/<key>.revoke.json {ts}. Present but unreadable or malformed counts as "revoked now".
+function readRevokeTs(key, now) {
+  try {
+    if (typeof key !== "string" || !CLICK_KEY.test(key)) return 0;
+    // max(ts in the file, ctime of the file): overwriting a revoke file can only move it later, never reopen grants.
+    let fd, txt, mtime;
+    try {
+      fd = openSync(join(gateDir(), `${key}.revoke.json`), FS.O_RDONLY | FS.O_NOFOLLOW | FS.O_NONBLOCK);
+      const st = fstatSync(fd);
+      if (!st.isFile() || st.size > 1024) return now;
+      mtime = st.ctimeMs; // utimes() can set mtime backwards, never ctime
+      const buf = Buffer.alloc(st.size);
+      let n = 0;
+      while (n < st.size) { const k = readSync(fd, buf, n, st.size - n, n); if (!k) break; n += k; }
+      txt = buf.toString("utf8", 0, n);
+    } catch (e) { return e.code === "ENOENT" ? 0 : now; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ } }
+    let ts = NaN;
+    try { ts = Date.parse(JSON.parse(txt)?.ts); } catch { /* malformed: mtime alone decides */ }
+    return Math.min(Math.max(Number.isFinite(ts) ? ts : now, mtime), now);
+  } catch { return now; }
+}
+
+function clickNames(prefix) {
+  const out = [];
+  let d;
+  try {
+    d = opendirSync(goDir());
+    for (let i = 0, e; i < CLICK_SCAN && out.length < CLICK_MAX_FILES && (e = d.readSync()); i += 1) {
+      if (e.name.startsWith(prefix) && e.name.endsWith(".json")) out.push(e.name);
+    }
+  } catch { /* no dir: no receipts */ } finally { try { d?.closeSync(); } catch { /* ignore */ } }
+  return out;
+}
+
+// Reads and shape-checks one receipt; the file name must be exactly <key>.click-<payload.request_id>.json.
+function loadReceipt(key, name) {
+  const txt = readOwnedPrivate(join(goDir(), name), CLICK_FILE_MAX);
+  if (!txt) return null;
+  try {
+    const r = JSON.parse(txt);
+    const p = r?.payload;
+    if (!clickPayloadOk(p) || p.session_key !== key || name !== `${key}.click-${p.request_id}.json` || !r.assertion || typeof r.assertion !== "object") return null;
+    return { payload: p, assertion: r.assertion };
+  } catch { return null; }
+}
+
+function receiptValid(rec, cred, now) {
+  const p = rec.payload;
+  const cap = p.kind === "go" ? TOKEN_TTL_MS : MAX_GRANT_MS;
+  if (p.issued_at > now || !(now < p.expires_at) || p.expires_at - p.issued_at > cap) return false;
+  return verifyWebAuthnAssertion({ credential: cred, assertion: rec.assertion, expectedChallenge: clickChallenge(p), origin: cred.origin }).ok;
+}
+
+// Single use: the id goes into the shared consumed list (append + trim, like tokens) and an O_EXCL marker closes the race
+// between two gates holding the same receipt.
+function claimClick(key, id) {
+  const tag = `click-${id}`;
+  const txt = readSmallRegular(consumedFile(), 64 * 1024);
+  if (txt === false) return false;
+  const consumed = (txt ?? "").split("\n").filter(Boolean);
+  if (consumed.includes(tag)) return false;
+  let fd;
+  try {
+    fd = openSync(join(goDir(), `${key}.click-${id}.json.used`), FS.O_WRONLY | FS.O_CREAT | FS.O_EXCL | FS.O_NOFOLLOW | FS.O_NONBLOCK, 0o600);
+  } catch { return false; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ } }
+  try {
+    writeNoHang(consumedFile(), [...consumed, tag].slice(-CONSUMED_KEEP).join("\n") + "\n", FS.O_TRUNC);
+    return true;
+  } catch { return false; }
+}
+
+// A receipt that was already claimed (marker or consumed list); anything unreadable counts as spent.
+function clickSpent(key, id) {
+  const txt = readSmallRegular(consumedFile(), 64 * 1024);
+  if (txt === false || (txt ?? "").split("\n").includes(`click-${id}`)) return true;
+  try { lstatSync(join(goDir(), `${key}.click-${id}.json.used`)); return true; } catch (e) { return e.code !== "ENOENT"; }
+}
+
+// What a human can fully see and approve in the UI preview: short, printable ASCII, already in normal form (textHash
+// collapses whitespace) and free of anything maskSecrets would hide. recordRequest publishes the same predicate as `click`.
+export const clickEligible = (command) =>
+  typeof command === "string" && command.length > 0 && command.length <= 200 && /^[\x20-\x7e]+$/.test(command) &&
+  command === normalizeCommandText(command) && maskSecrets(command) === command;
+
+export function clickReceiptCovers(command, key, { now = Date.now(), consume = true } = {}) {
+  try {
+    if (typeof command !== "string" || !command.trim() || typeof key !== "string" || !CLICK_KEY.test(key)) return false;
+    // textHash collapses whitespace, so only a command that is already in normal form may be covered: a multi-line or
+    // whitespace-variant command needs a typed GO.
+    if (!clickEligible(command)) return false;
+    const names = clickNames(`${key}.click-`);
+    if (!names.length) return false;
+    const cred = readClickCredential();
+    if (!cred) return false;
+    const want = textHash(command);
+    const revokeTs = readRevokeTs(key, now);
+    for (const name of names) {
+      const rec = loadReceipt(key, name);
+      const p = rec?.payload;
+      if (!p || p.kind !== "go" || p.cmd_hash !== want || p.issued_at <= revokeTs || !receiptValid(rec, cred, now)) continue;
+      if (clickSpent(key, p.request_id)) continue;
+      if (!consume) return true;
+      if (claimClick(key, p.request_id)) return true;
+    }
+  } catch { /* fail closed */ }
+  return false;
+}
+
+// Valid, unexpired grant receipts as extra grants. Same validation as a typed `gogate grant`, same caps; a later typed hard
+// or a revoke file closes receipts issued before it.
+function clickGrants(key, now, { opencode, hardTs, revokeTs }) {
+  const out = [];
+  try {
+    if (typeof key !== "string" || !CLICK_KEY.test(key)) return out;
+    const names = clickNames(`${key}.click-g-`);
+    if (!names.length) return out;
+    const cred = readClickCredential();
+    if (!cred) return out;
+    for (const name of names) {
+      const rec = loadReceipt(key, name);
+      const p = rec?.payload;
+      if (!p || p.kind !== "grant" || p.cmd_hash !== "" || !Array.isArray(p.scopes) || !p.scopes.length) continue;
+      if (p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS)) continue;
+      const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
+      if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
+      const until = Math.min(p.expires_at, p.issued_at + (opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms));
+      if (!(now < until) || !receiptValid(rec, cred, now)) continue;
+      for (const scope of parsed.scopes) out.push({ scope, until, session: false });
+    }
+  } catch { /* fail closed: no click grants */ }
+  return out;
+}
+
 export function lastUserMessageIsGo(transcriptPath) {
   const last = lastUserText(transcriptPath);
   if (last.error) return { ok: false, reason: last.error };
@@ -2797,6 +3081,11 @@ function main() {
   const token = tokenGrantsGo(ownSessionName(transcriptPath));
   if (token.ok) return respond(isAgy, true, "", command);
   reasons.push(token.reason);
+  // Last additive path (WP-9): a signed click receipt for exactly this command. Hard blocks and the store check returned above.
+  if (key && !tooLong && !cooling && clickReceiptCovers(command, key)) {
+    gateLog(key, `click: allowed ${JSON.stringify(command.slice(0, 200))}`);
+    return respond(isAgy, true, "", command);
+  }
   respond(isAgy, false, reasons.join("; "), command);
 }
 
