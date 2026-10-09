@@ -1,6 +1,8 @@
+<div align="center">
+
 ![AOS — BDB Agent OS](assets/header-v5.png)
 
-🌐 **Language / Sprache / Idioma**: **English** | [ 🇩🇪 Deutsch ](README.de.md) | [ 🇵🇹 Português ](README.pt.md)
+**Language / Sprache / Idioma**: **English** · [Deutsch](README.de.md) · [Português](README.pt.md)
 
 # AOS — BDB Agent OS
 
@@ -13,9 +15,16 @@
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-blue.svg)](package.json)
 [![skills](https://img.shields.io/badge/skills-269%20curated-brightgreen.svg)](#skills)
+[![subagents](https://img.shields.io/badge/subagents-29-orange.svg)](#subagents)
 [![MCPs](https://img.shields.io/badge/local%20MCPs-21-brightgreen.svg)](#mcp-servers)
+[![playbooks](https://img.shields.io/badge/playbooks-34-informational.svg)](#playbooks)
 [![harnesses](https://img.shields.io/badge/harnesses-9%20supported-blueviolet.svg)](#supported-harnesses)
 [![skills.sh](https://skills.sh/b/hybridlabor-api/aos)](https://skills.sh/hybridlabor-api/aos)
+
+**The operating system for AI agent harnesses.**
+One install: the same 269 skills, 29 subagents and GO gate across nine harnesses.
+
+</div>
 
 AOS installs a curated skill library, a subagent roster, gate hooks and a runnable multi-agent build pipeline into every coding-agent harness on your machine.
 
@@ -23,43 +32,41 @@ AOS installs a curated skill library, a subagent roster, gate hooks and a runnab
 npx -y @hybridlabor-api/aos@latest
 ```
 
-Built for people who already run **Claude Code, Google Antigravity, Codex CLI, OpenCode, Cursor, Windsurf, Roo Code / Cline or Aider** and want all of them to behave the same way.
-
-After install you have:
-
-- **<!-- count:skills -->269<!-- /count --> skills** in six categories, discoverable by every harness as `<name>/SKILL.md`.
-- **<!-- count:agents -->29<!-- /count --> subagents** (Architect, TechLead, Reviewer, the Godmodes, security and silent-failure reviewers) compiled into each harness's native agent format.
-- **<!-- count:mcps -->21<!-- /count --> MCP servers** for creative software, OS control, memory and cross-harness delegation.
-- **Three pipelines** — `/startcycle`, `/startcycle-graph`, `/startcycle-graph-user` — and a **GO gate** that mechanically blocks `git push`, `npm publish`, `npm version` and recursive `rm`.
-- **Tools:** Plan Canvas, agenttrail, archify, the AOS Store, the Launchpad dashboard and `aos doctor`.
+Built for people who already run **Claude Code, Google Antigravity, Codex CLI, OpenCode, Cursor, Windsurf, Roo Code / Cline or Aider** and want all of them to behave the same way. Alternative: `npx skills add hybridlabor-api/aos` (skills only; gates and MCPs need the full installer).
 
 ---
 
-## The Dispatcher Graph
+## What you get
 
-The graph is harness-neutral and runs on Claude Code's Dynamic Workflows, Antigravity's parallel execution, and any compatible agent harness.
+| | |
+|---|---|
+| **Skills** | 269 curated skills in seven categories: bdb-core, design-ui-ux, engineering-method, engineering-hardware, media-eventtech, library, saas-ops. 34 of them are playbooks |
+| **Subagents** | 29 agents: the seven pipeline nodes plus 22 auxiliary specialists, compiled into each harness's native format. See [Subagents](#subagents) |
+| **MCP servers** | 21 local servers for creative software, OS control, memory and cross-harness delegation. See [MCP servers](#mcp-servers) |
+| **Pipelines** | `/startcycle` (linear), `/startcycle-graph` (durable state), `/startcycle-graph-user` (throwaway fan-out), plus the [multi-session workflow](#multi-session-workflow) |
+| **GO gate** | Hook-enforced release safety: blocks `git push`, `npm publish`, merges and destructive commands until you type **GO**, with scoped, time-limited grants and [gate profiles](#gate-profiles) |
+| **A2A** | Claude Code, OpenCode, Antigravity (agy) and Codex sessions exchange messages on localhost. See [A2A](#a2a-sessions-that-talk-to-each-other) |
+| **Memory** | memB (vector), deja (session index), OpenWiki (codebase wiki), Synapse (code city). See [Memory and knowledge](#memory-and-knowledge) |
+| **Playbooks** | 34 guided workflows (`pb-bug-fix`, `pb-ship`, `pb-show-build`, `pb-offer`, ...) with declared GO points |
+| **Commands** | 15 slash commands: `/plan`, `/graph`, `/playbooks`, `/setup`, `/init`, `/doctor`, `/store`, `/hub`, `/memb`, `/orchestrator`, `/mastersession`, `/brainstorm`, `/shipping`, `/startproject`, `/loop` |
+| **CLIs** | 20 `bin` entries in `package.json` (installer aliases, `aos-gate`, `aos-gogate`, `aos-a2a`, `aos-acp`, `aos-hub`, `aos-sessions`, `aos-doctor`, ...) |
+| **Tools** | Plan Canvas, agenttrail, archify, AOS Store, Launchpad, Doctor, MCP gateway, Codenotch |
+| **Modules** | Optional: Creator Extension, Hardware and PCB, AO, Synapse, Token Saver. See [Optional modules](#optional-modules) |
 
-```mermaid
-flowchart LR
-    U(["👤 User"])
-    A["<b>Architect</b><br/><span>System Plan</span>"]
-    T["<b>TechLead</b><br/><span>Capability Map</span>"]
-    UX["<b>UI_UX</b><br/><span>Frontend</span>"]
-    EN["<b>Engineering</b><br/><span>Backend</span>"]
-    ME["<b>Media_EventTech</b><br/><span>Creative</span>"]
-    R["<b>Reviewer</b><br/><span>QA</span>"]
-    S["<b>Shipping</b><br/><span>Gate</span>"]
+---
 
-    U --> A --> T
-    T --> UX & EN & ME
-    UX & EN & ME --> R
-    R --> S
+## Quick start
 
-    T -.->|reject| A
-    R -.->|findings| UX
-    S -.->|gate fail| EN
-    R -.->|escalate| U
-```
+| I want to... | Run |
+|---|---|
+| Install for every harness | `npx -y @hybridlabor-api/aos@latest` |
+| See what would change | `npx -y @hybridlabor-api/aos@latest --dry-run` |
+| Minimal context | `npx -y @hybridlabor-api/aos@latest --profile=minimal` |
+| Add every optional module | `npx -y @hybridlabor-api/aos@latest -y --profile=full` |
+| Refresh hooks only | `npx -y @hybridlabor-api/aos@latest --hooks-only` |
+| Check setup | `aos doctor` |
+| Browse and add skills | `aos store ui` or `/aos-store` |
+| Run a pipeline | `/plan` then `/startcycle-graph`, or `/playbooks` |
 
 ---
 
@@ -67,19 +74,13 @@ flowchart LR
 
 Requirements: Node.js >= 20. macOS, Linux and Windows (PowerShell).
 
-```bash
-npx -y @hybridlabor-api/aos@latest
-```
-
-**First run.** The installer detects which harnesses are present, asks which to target and which tier (Pro MEDIA or Basic), copies the skills into each harness's skill directory, compiles the subagents, wires the hooks, merges the MCP configuration into each harness's own config file (existing entries are kept), and offers the optional modules listed below.
-
-**Every later run** opens a menu instead:
+The installer detects harnesses, asks which to target, copies skills, compiles subagents, wires hooks, merges MCP configs (existing entries are kept) and offers the optional modules. Later runs open a menu:
 
 | Menu item | What it does |
 |---|---|
 | Quick Update | Refreshes skills, templates, hooks and installed modules to the version you just ran |
 | Run System Checkup / Doctor | Runs `aos doctor`: dependencies, file placement, daemons, hooks |
-| Drop Local Project Harness | Copies the dispatcher contract into the current directory (see below) |
+| Drop Local Project Harness | Copies the dispatcher contract into the current directory |
 | Reconfigure System | Change targets, tier or options |
 | Uninstall AOS | Removes what the installer placed; your data stays |
 
@@ -91,391 +92,342 @@ npx -y @hybridlabor-api/aos@latest -y --platforms=1,5 --mcps=none
 npx -y @hybridlabor-api/aos@latest --dry-run                 # print what would change
 ```
 
-`--platforms=` values: `0` universal (all detected), `1` Antigravity, `2` Claude Desktop / Claude Code, `3` Cursor, `5` Codex CLI, `6` Windsurf, `7` Roo Code / Cline, `8` Aider, `10` AOS CLI. `4` (custom paths) needs the interactive menu. `--mcps=<name,name>|all|none` picks the MCP subset. `--verbose` and `--no-intro` do what they say.
+`--platforms=` values: `0` universal (all detected), `1` Antigravity, `2` Claude Desktop / Claude Code, `3` Cursor, `5` Codex CLI, `6` Windsurf, `7` Roo Code / Cline, `8` Aider, `10` AOS CLI. `4` (custom paths) needs the interactive menu. `--mcps=<name,name>|all|none` picks the MCP subset.
+
+Profiles: `--profile=standard` (default), `minimal` (skills, agents, rules only; no context hooks, OpenWiki, Token Saver, Codenotch, modules, gateway or fleet) and `full` (standard plus every optional module with `-y`). Other flags: `--no-hooks`, `--hooks-only`, `--without=id,id`, `--modules=id,id`, `--dry-run`. Gate and safety hooks (`go-gate`, `go-token`, `go-grant`, `graph-gate`, `conventional-commits`, `env-file-protection`) always install.
 
 ### Local project harness
-
-Instead of installing into `$HOME`, drop only the dispatcher contract (`.agents/`, the gate hooks, the agent definitions, the `/startcycle-graph` workflow, the OpenCode plugin) into one repository:
 
 ```bash
 cd your-project && npx -y @hybridlabor-api/aos@latest --project-harness -y
 ```
 
+Drops only the dispatcher contract (`.agents/`), gate hooks, agent definitions, the `/startcycle-graph` workflow and the OpenCode plugin into one repository.
+
 ---
 
 ## Supported harnesses
 
-What the installer writes for each target. Paths are the defaults; the installer only writes to harnesses it actually detects.
-
 | Harness | Skills | Subagents | Hooks | Plugin / rules |
 |---|---|---|---|---|
-| Claude Code / Claude Desktop | `~/.claude/skills` | `~/.claude/agents` | `~/.claude/hooks` + `settings.json` (GO gate, graph gate, env-file protection, Conventional Commits, memB inject, trail relay) | `.claude-plugin/` manifest ships in the repo (see Contributing) |
-| Google Antigravity | `~/.gemini/config/skills` | `~/.gemini/config/agents` | `~/.gemini/config/hooks.json` and `~/.gemini/antigravity-cli/hooks.json` | root `plugin.json` / `plugins/bdb-aos/plugin.json`, commands `/bdb-aos:<cmd>`, see [docs/codex-agy-setup.md](docs/codex-agy-setup.md) |
-| Codex CLI | `~/.agents/skills` (Codex reads this root and `~/.codex/skills`; AOS writes only the first so skills are not listed twice) | `~/.codex/agents` | `~/.codex/hooks` + `config.toml` | `.codex-plugin/` + `.agents/plugins/marketplace.json`, commands `$bdb-aos:<cmd>`, see [docs/codex-agy-setup.md](docs/codex-agy-setup.md) |
-| OpenCode | `~/.config/opencode/skills` | `~/.opencode/agents` | via plugin | `bdb-aos.js` plugin + `/startcycle-graph` command, registered in `opencode.jsonc`; keeps a `/startcycle-graph` run moving on `session.idle`; generated `/bdb-aos-<cmd>` commands; opt-in extras, see [docs/opencode-setup.md](docs/opencode-setup.md) |
-| Cursor | `~/.cursor/skills` | — | — | `.cursor/rules` (project) |
-| Windsurf | `~/.windsurf/bdb-skills` | — | — | `mcp.json` |
-| Roo Code / Cline | `~/.roo/skills` | — | — | `.roomodes` (project) |
-| Aider | `~/.aider/bdb-skills` | — | — | — |
-| AOS CLI (`pi`) | reads `~/.agents/skills` | `~/.agents/AGENTS.md` as system prompt | — | no MCP; separate install, Node >= 22.19 — see [packages/aos-cli](packages/aos-cli/README.md) |
-| BDB AO Codenotch (macOS app, Windows installer) | macOS `/Applications` or `~/Applications`; Windows per-user NSIS install (`/S`, no admin) | — | — | installed by default on macOS and Windows (never Linux); opt out with `--no-codenotch` or `AOS_CODENOTCH=0`; failures only warn; DMG from the public releases repo created by Tim, SHA-256 verified, ad-hoc signed with quarantine removed, see [docs/codenotch.md](docs/codenotch.md) |
+| Claude Code / Desktop | `~/.claude/skills` | `~/.claude/agents` | `~/.claude/hooks` + `settings.json` (GO gate, graph gate, env-file protection, Conventional Commits, memB inject, trail relay) | `.claude-plugin/` manifest, slash commands |
+| Google Antigravity (agy) | `~/.gemini/config/skills` | `~/.gemini/config/agents` | `~/.gemini/config/hooks.json`, `~/.gemini/antigravity-cli/hooks.json` | `/bdb-aos:<cmd>` commands, see [docs/codex-agy-setup.md](docs/codex-agy-setup.md) |
+| Codex CLI | `~/.agents/skills` | `~/.codex/agents` | `~/.codex/hooks` + `config.toml` | `.codex-plugin/`, `$bdb-aos:<cmd>` commands, see [docs/codex-agy-setup.md](docs/codex-agy-setup.md) |
+| OpenCode | `~/.config/opencode/skills` | `~/.opencode/agents` | via plugin | `bdb-aos.js` plugin and `/startcycle-graph` command, see [docs/opencode-setup.md](docs/opencode-setup.md) |
+| Cursor | `~/.cursor/skills` | none | none | `.cursor/rules` (project) |
+| Windsurf | `~/.windsurf/bdb-skills` | none | none | `mcp.json` |
+| Roo Code / Cline | `~/.roo/skills` | none | none | `.roomodes` (project) |
+| Aider | `~/.aider/bdb-skills` | none | none | none |
+| AOS CLI (`pi`) | `~/.agents/skills` | `~/.agents/AGENTS.md` | none | separate install, Node >= 22.19, see [packages/aos-cli](packages/aos-cli/README.md) |
 
-Every install also writes the universal copy to `~/.agents/skills`, which is what the AOS CLI and the `skills` CLI read.
+BDB AO Codenotch (macOS app, Windows installer) is installed by default on macOS and Windows, never Linux; opt out with `--no-codenotch` or `AOS_CODENOTCH=0`. See [docs/codenotch.md](docs/codenotch.md).
 
 ### Capability tiers
 
-The harnesses do not get the same safety layer. The tier says what is actually wired, not what a harness could do in theory; per-row evidence is in [docs/harness-capabilities.md](docs/harness-capabilities.md).
+The tier says what is actually wired; per-row evidence is in [docs/harness-capabilities.md](docs/harness-capabilities.md).
 
 | Tier | Harnesses | What you get |
 |---|---|---|
-| 1 Full | Claude Code | GO gate as an enforced hook, typed grants and modes (`gogate grant ...`), Fleet panel, A2A inbox drained into the next prompt, all context hooks, MCP gateway entries |
+| 1 Full | Claude Code | GO gate as an enforced hook, typed grants and modes, Fleet panel, A2A inbox drained into the next prompt, all context hooks, MCP gateway entries |
 | 2 Gate and grants | OpenCode | GO gate through the plugin, grants capped at 2 h and no `off` mode, A2A injected as a prompt, MCP gateway entries; no panel |
-| 3 Gate hook only | Codex CLI, Antigravity (agy) | A `PreToolUse` gate hook is installed; grants and modes are not wired (only a literal human `GO` counts); Codex needs a one-time `/hooks` trust, and whether the hook fires under `codex exec`, `aos-acp` or `agy --print` is **unverified**; A2A inbound by `codex queue` (Codex) or pull-only (agy); MCP gateway entries not written for these two |
-| 4 Skills, rules, MCP | Cursor, Windsurf, Roo Code / Cline, Aider | Skills and project rules (Cursor `.mdc`, Roo modes); MCP entries for Cursor; **no hook**, so the Destructive Actions text in `AGENTS.md` is the only safety layer |
+| 3 Gate hook only | Codex CLI, Antigravity (agy) | A `PreToolUse` gate hook is installed; grants and modes are not wired (only a literal human `GO` counts); whether the hook fires under `codex exec`, `aos-acp` or `agy --print` is **unverified**; A2A inbound by `codex queue` (Codex) or pull-only (agy) |
+| 4 Skills, rules, MCP | Cursor, Windsurf, Roo Code / Cline, Aider | Skills and project rules; **no hook**, so the Destructive Actions text in `AGENTS.md` is the only safety layer |
 | Not supported | Zed, Kimi | No installer target |
 
 Where a tier has no hook, nothing mechanical stops a guarded command: use a Tier 1 or 2 harness for anything that can push, publish or delete.
 
 ---
 
-## The pipelines
-
-The contract lives in [`.agents/graph.md`](.agents/graph.md), the node roster in [`.agents/nodes.json`](.agents/nodes.json), the executable dispatcher in [`.claude/workflows/startcycle-dispatch.mjs`](.claude/workflows/startcycle-dispatch.mjs).
-
-**One rule: nodes never invoke each other.** A dispatcher reads `production_artifacts/state.json` after each node returns and decides what runs next. There is no hand-off chain and no agent telling another agent to go. This design ensures context fidelity, single-place auditability of routing logic, and portability across harnesses.
-
-Each node reads the plan and its own prior state, executes its work, writes its artifact and state fragments, and returns. The dispatcher merges per-node state fragments (`state.d/<node>.json`), evaluates edge predicates, and routes to the next node — or escalates to the user if a no-progress guard triggers (same blocking finding on the second repair cycle) or the iteration ceiling is reached.
+## The dispatcher graph
 
 ```mermaid
 flowchart LR
     U(["User"]) --> A["Architect"] --> T["TechLead"]
-    T --> UX["Godmode_UI_UX"] & EN["Godmode_Engineering"] & ME["Godmode_Media"]
+    T --> UX["UI_UX"] & EN["Engineering"] & ME["Media_EventTech"]
     UX & EN & ME --> R["Reviewer"] --> S["Shipping"]
     T -.->|reject| A
     R -.->|findings| UX
-    R -.->|needs_human| U
+    S -.->|gate fail| EN
+    R -.->|escalate| U
 ```
 
-| Command | Machinery | Use when |
+The graph is the contract behind `/startcycle-graph`: a typed record in `production_artifacts/state.json` (schema in [.agents/state.schema.json](.agents/state.schema.json)), per-node state fragments that the dispatcher merges, and predicate edges that send work back. Contract: [.agents/graph.md](.agents/graph.md). Node registry: [.agents/nodes.json](.agents/nodes.json). Executor: [.claude/workflows/startcycle-dispatch.mjs](.claude/workflows/startcycle-dispatch.mjs).
+
+- Nodes never call each other. A node reads state, works, writes its fragment, returns; only the dispatcher routes.
+- Reviewer isolation: it reads artifacts and the plan's contract, never the build node's reasoning.
+- No-progress guard: the same blocking finding ID on a second repair round escalates to a human; `max_iterations` (default 3) stops the loop.
+- Reviewer and Shipping are two different checks: adversarial correctness review, then mechanical gate execution.
+- The final push is behind the GO gate: the dispatcher asks for your **GO**, it cannot grant one.
+
+The graph runs with the Claude workflow runtime and Claude subagents. It does not start OpenCode, agy or Codex workers; for that use the [multi-session workflow](#multi-session-workflow).
+
+---
+
+## The pipelines
+
+| Variant | Use it when | State | Who runs the nodes |
+|---|---|---|---|
+| `/startcycle` | One feature, you stay in the loop | Markdown in `production_artifacts/`; no `state.json`, no repair loop | The main session plus subagents |
+| `/startcycle-graph` | A larger build that should run unattended with a record, repair loop, quality gate and escalation | `state.json` plus per-node fragments | The workflow `startcycle-dispatch.mjs` |
+| `/startcycle-graph-user` | Any project, small throwaway fan-out; nothing persistent left behind | None | The main session; workers via an installed external CLI if present, else the Agent tool |
+
+`/startcycle --skill=<name> <goal>` forces a skill into every node. Push, publish and version bumps stay behind the [GO gate](#the-go-gate) in every variant.
+
+---
+
+## Multi-session workflow
+
+The pipelines run inside one session. Real projects often run across several: one session you talk to, one orchestrator per repository, one shared plan, workers on different harnesses. AOS provides the channels (master session, `aos-acp`, `aos-a2a`, go-gate, agenttrail). The roles on top are a working convention, not a shipped component: [docs/orchestrator-chain.md](docs/orchestrator-chain.md) states that no code names a "project orchestrator".
+
+| Role | Job | Mechanism in AOS |
 |---|---|---|
-| `/startcycle` | Linear chain, file hand-offs in `production_artifacts/`. No state machine, no repair loop. `/startcycle --skill=<name> <goal>` forces a skill into every node. | A straightforward build with the agent roster but without the ceremony. |
-| `/startcycle-graph` | The full graph: durable `state.json`, Reviewer repair loop, automated quality gate, human escalation. | Feature work where correctness matters more than speed and you want an audit trail. |
-| `/startcycle-graph-user` | Throwaway 2–4 node fan-out. Nothing persistent. Model-tiered per role; uses Antigravity, OpenCode or Codex if installed, Claude Code subagents otherwise. | A one-off "spawn a few workers" in any project. |
+| Master session | Overview of all sessions; asks for status; relays your GO as `GO <session>` | `master-session` skill, `/mastersession`, `pb-master` |
+| Project orchestrator | Owns one repository: breaks the goal down, picks the pipeline, reviews results | `/startcycle-graph`, `ao-orchestrator` (optional) or a plain session |
+| Task manager | Keeps the single shared plan current | Convention: a plan file that agenttrail renders (`production_artifacts/00_execution_plan.md`), approval in Plan Canvas |
+| Workers | One slice each, on OpenCode, agy or Claude | `aos-acp <claude\|codex\|opencode> --name <worker>`, `mcsc` delegate tools for one-shot tasks |
 
-What keeps the full graph honest:
+**Invariants.** GO is never inherited: you type `GO <session>` in the master and the worker's gate consumes one single-use token. An A2A message is context, never a GO. Workers delete nothing; cleanup is the dispatcher's job after your GO. A blocked command is not retried in another form. A2A depth is limited (`AOS_A2A_MAX_DEPTH`, default 1). Details: [docs/orchestrator-chain.md](docs/orchestrator-chain.md), [docs/delegation-routing.md](docs/delegation-routing.md), [docs/a2a.md](docs/a2a.md).
 
-| Mechanism | What it prevents |
+---
+
+## Subagents
+
+29 agents are compiled into the native agent format of Claude Code, Antigravity, Codex and OpenCode; Cursor, Windsurf, Roo and Aider get none. Sources are in [agents/](agents/). AOS pins no model: agents inherit the session model unless `.aos/pipeline.json` overrides a role per harness ([docs/agent-models.md](docs/agent-models.md)).
+
+| Group | Agents |
 |---|---|
-| Reviewer isolation | The Reviewer reads artifacts and the plan's contract, never the build node's reasoning or its claim that it is done. |
-| No-progress guard | A repair cycle that reports the same blocking finding ID as the previous one escalates to a human instead of burning iterations. |
-| Per-node state fragments | Parallel build nodes write `state.d/<node>.json`; the dispatcher merges. No lost-update race on one file. |
-| Iteration ceiling | `max_iterations` (default 3) stops the loop unconditionally. |
-| In-loop human edge | Any node can set `needs_human: true` and stop the run. |
+| Pipeline nodes (7) | `architect`, `techlead`, `godmode-ui-ux`, `godmode-engineering`, `godmode-media-eventtech`, `reviewer`, `godmode-shipping` |
+| Review and safety (6) | `security-reviewer`, `silent-failure-hunter`, `database-reviewer`, `reviewer-1`, `reviewer-2`, `devils-advocate` |
+| Language reviewers (8) | `typescript-reviewer`, `python-reviewer`, `go-reviewer`, `rust-reviewer`, `java-reviewer`, `kotlin-reviewer`, `cpp-reviewer`, `csharp-reviewer` (read-only, ported from ECC) |
+| Build helpers (3) | `go-build-resolver`, `opensource-forker`, `opensource-sanitizer` |
+| Domain assistants (5) | `spec-prd-creator`, `pcb-design-assistant`, `event-manager-assistant`, `live-media-operator`, `video-motion-assistant` |
+
+The auxiliary agents are not nodes of the dispatcher graph. Subagents never inherit a GO and never invoke each other.
+
+---
+
+## The GO gate
+
+[.claude/hooks/go-gate.mjs](.claude/hooks/go-gate.mjs) is a `PreToolUse` hook that blocks `git push`, `gh pr merge`, GitHub writes, `npm publish`, `npm version` and destructive commands (recursive `rm`, `git reset --hard`) unless your immediately preceding message is the literal word **GO**. It is a hook, not a rule an agent is asked to respect: it fires before permission checks and cannot be argued around. Installed on Claude Code, Antigravity, Codex and OpenCode; on others the rule in [AGENTS.md](AGENTS.md) applies. A subagent never inherits its orchestrator's GO.
+
+**Scopes and grants.** Type `gogate grant <scope[,scope]> <15m|2h|1d|session>` as a plain message to allow matching commands without a fresh GO. Commands the gate cannot read plainly (wrappers, `eval`) always need a plain **GO**. Scopes include `push-feature`, `push-main`, `merge`, `publish`, `destructive` and `github-write`. Modes per session: `hard` (`gogate hard`), `soft` (`gogate soft`, default) and `off`. Status: `aos-gogate status`. Full text: the `gogate` skill, [docs/go-check.md](docs/go-check.md).
+
+### Gate profiles
+
+A machine-wide, human-set profile widens or narrows what the gate asks for. `.claude/hooks/go-gate.mjs` reads it through `.claude/hooks/gate-profile.mjs`, so every harness that uses the shared go-gate (Claude Code, OpenCode, Codex, agy) honours it.
+
+| Profile | Needs you | Default / maximum |
+|---|---|---|
+| `strict` | everything guarded (default) | never expires |
+| `work` | the release class only | 4 h / 24 h |
+| `off` | hard blocks only | 1 h / 2 h |
+
+```bash
+aos-gate status                       # profile, time left, last change
+aos-gate profile work --for 24h       # needs a real TTY; refused inside a harness session
+aos-gate profile strict               # no confirmation needed
+```
+
+- **Release class** (still needs a GO under `work`): push to the default branch, `main`/`master` or `release/*`, `npm publish`, `npm version`, `npm dist-tag add/rm`, `gh pr merge`, `gh release create`, recursive delete, bulk move out of home and delete outside the own worktree.
+- **Hard blocks stay in every profile**: writes to the gate store or its config, delete paths built from HOME, `~` or environment variables, recursive delete outside the own worktree, edits to the gate hooks and the settings that register them.
+- **Fail closed**: a missing, unreadable, symlinked, oversized, wrongly owned or wrong-mode (not 0600) config, a corrupt or expired file, or a `work`/`off` profile without expiry all read as `strict`. Config: `~/.aos/gate/config.json`.
+- Loosening requires typing back a random word on the TTY.
+- Accepted residual H2: code running as your own user can write the profile file directly. See [docs/gate-residuals.md](docs/gate-residuals.md).
+
+---
 
 ## Playbooks
 
-34 playbooks (`skills/playbooks/pb-*`) are ordinary skills that walk one job step by step, with the GO points marked. They install like every other skill; there is one command, `playbooks`, that lists them with duration and difficulty and starts one. No per-playbook command exists.
+34 `pb-*` playbooks are skills with `kind: playbook` that turn recurring jobs into guided runs with declared GO points. Run `/playbooks` to list and start one. A `[GO]` step stops with `WAITING FOR GO: <step>` until you type **GO**; one GO covers one step, once. Playbooks run in your main session; they do not start workers or use A2A on their own (`pb-master` supervises sessions).
 
 `pb-bug-fix` · `pb-ci-fix` · `pb-clip-from-moodboard` · `pb-crew-call-sheet` · `pb-deploy-saas` · `pb-docs-site` · `pb-event-tracker` · `pb-focus-chunks` · `pb-handover` · `pb-harness-work` · `pb-health-weekly` · `pb-idea-to-launch` · `pb-image-to-3d` · `pb-inbox-zero` · `pb-invoice-check` · `pb-landing-page` · `pb-launch-video` · `pb-machine-setup` · `pb-master` · `pb-meeting-actions` · `pb-newsletter` · `pb-offer` · `pb-open-source` · `pb-pcb-to-case` · `pb-project-new` · `pb-redesign-app` · `pb-release-aos` · `pb-security-sweep` · `pb-ship` · `pb-show-build` · `pb-social-pack` · `pb-todo` · `pb-week-plan` · `pb-worktrees-land`
 
 | Harness | Type this |
 |---|---|
-| Claude Code | `/bdb-aos:playbooks`, then name one; or say what you want ("master session" starts `pb-master`) |
-| Codex | `$bdb-aos:playbooks`; mentioning a playbook by name in words also works through `~/.agents/skills` (direct `$pb-<name>` use is unverified) |
-| OpenCode | `/bdb-aos-playbooks`, or ask in words; playbooks that need an app server (media, show) stop with "Missing MCP" by design |
+| Claude Code | `/bdb-aos:playbooks`, then name one |
+| Codex | `$bdb-aos:playbooks` (direct `$pb-<name>` use is unverified) |
+| OpenCode | `/bdb-aos-playbooks`, or ask in words |
 | Antigravity (agy) | `/bdb-aos:playbooks` (command namespacing on a live agy is unverified, see [docs/agy-coverage.md](docs/agy-coverage.md)) |
-| Cursor, Windsurf, Roo Code / Cline, Aider | skills folder only, no command: ask for the playbook by name |
+| Cursor, Windsurf, Roo Code / Cline, Aider | skills folder only: ask for the playbook by name |
 
-Limits: a playbook runs in your main session. Its `(agent)` steps use Claude subagents only, so there is no worker fan-out. The gate is only a backstop on Claude Code, OpenCode and agy (Codex unverified; Cursor and Kimi none), so a playbook with a GO point still depends on you typing `GO`.
+---
 
-## The GO gate
+## Factory
 
-Reaching `ready_to_ship` is not shipping. [`.claude/hooks/go-gate.mjs`](.claude/hooks/go-gate.mjs) is a `PreToolUse` hook that blocks `git push`, `npm publish`, `npm version` and recursive `rm` unless your immediately preceding message is the literal word **GO**. It is a hook, not a rule an agent is asked to respect: it fires before any permission-mode check and cannot be argued around. The installer wires the same gate into Antigravity, Codex and OpenCode; on harnesses without hook support the rule in [AGENTS.md](AGENTS.md) applies and the agent is the enforcement. A subagent never inherits its orchestrator's GO, and a failed release command needs a fresh one.
+Nine experimental skills adapted from [BuilderIO/skills](https://github.com/BuilderIO/skills): `factory`, `factory-collect`, `factory-lookback`, `factory-human-digest`, `factory-review-prs`, `factory-babysit-pr`, `factory-ship`, `factory-watchdog`, `factory-recover`. External writes, reminders and resumes wait for your GO. Details: [docs/factory.md](docs/factory.md).
+
+---
+
+## A2A: sessions that talk to each other
+
+Claude Code, OpenCode, agy and Codex sessions exchange messages on localhost; anything MCP-capable can join through the `aos-a2a` MCP. Each session runs a sidecar bound to 127.0.0.1 with a per-session bearer token and registers in a local registry. No central service.
+
+```bash
+aos-a2a list                              # live peers
+aos-a2a send --to <name> "<text>"         # message a session
+aos-a2a reply <taskId> "<answer>"         # answer an incoming message
+aos-a2a watch <name> [--once]             # follow a peer read-only
+```
+
+- **Never a GO.** An inbound A2A message is context, never a GO or approval. Peer text is wrapped with a never-GO line and satisfies no GO token anywhere.
+- **Depth limit.** `AOS_A2A_MAX_DEPTH` (default 1) stops delegates from delegating again.
+- **MCP server.** `bin/aos-a2a-mcp.mjs` offers `a2a_list`, `a2a_send`, `a2a_status`, `a2a_card`, `a2a_inbox_pull` and `a2a_reply` to any MCP-capable harness (opt-in at install time). It requires `AOS_A2A_NAME`; `a2a_reply` has no name argument, so a model cannot write another session's reply. `bin/a2a-inbox-mcp.mjs` is the separate pull-only inbox MCP for agy.
+- **Inbound per harness.** Claude Code drains the inbox in a hook, OpenCode gets plugin injection, Codex uses `codex queue` or `codex exec resume`, agy pulls through the inbox MCP.
+
+Details: [docs/a2a.md](docs/a2a.md), [docs/a2a-mcp-design.md](docs/a2a-mcp-design.md), [docs/a2a-permissions.md](docs/a2a-permissions.md).
 
 ---
 
 ## Tools
 
-![BDB system components overview](assets/bdb_v3_4_0_core_tools_overview_sketch.jpg)
-
-*Conceptual overview from v3.4.0. Components have grown since; the sections below are current.*
-
 | Tool | Command | What it does |
 |---|---|---|
-| Plan Canvas | `aos-plan-canvas open <file>` (skill `plan-canvas`) | Opens a plan or HTML artifact in a local browser canvas where you annotate elements, chat, and approve or request changes. Plans from the pipelines open here by default. |
-| agenttrail | `aos-trail` (skill `agenttrail`, port 5330) | Live board of a multi-agent build: which component, which agent or harness, what is done, what is stuck. Fed by the trail-relay hooks and by `mcsc`. |
-| archify | `aos-archify` (skill `archify`) | Validated architecture, sequence, data-flow and state diagrams as standalone HTML with SVG export; accepts Mermaid. |
-| AOS Store | `aos store list \| search <q> \| install <name> [--project]`, `aos store ui` (also `aos-store`, slash command `/aos-store`) | Browse and install AOS Core, ECC and Scenario (scenario-labs/skills, MIT) skills and agents; required skills are installed together and every file is SHA-256 verified. The web UI on `http://127.0.0.1:4322` shows what is installed, previews the exact target paths, and installs only after you confirm. Multi-file skills are installed completely. `list` and `search` read a pinned offline index. |
-| Launchpad | `aos-dashboard [--port 7900] [--no-open]` | One page with every local BDB service (memB, Synapse, OpenWiki, AO, Remote, AOS Store): status, start/stop, logs. Registered as an autostart entry. |
-| Doctor | `aos doctor [--json] [--net]` (also `aos-doctor`) | Verifies dependencies, skill placement per harness, daemons, hooks and modules; exits 1 when something needs attention. The first thing to run when anything misbehaves. |
-| Config | `aos-config show \| propose \| set <key> <value>` | Machine-level `~/.agents/aos-config.json`: workspace root, domains, user id. |
-| mcsc | MCP tools `delegate_agy`, `delegate_opencode`, `delegate_codex`, `delegate_smart` (skill `mcsc`) | Delegates a task to another installed CLI harness and streams its tool calls to agenttrail. Preferred over shelling out to the CLI. |
+| Plan Canvas | `aos-plan-canvas open <file>` | Open a plan or HTML artifact in a local canvas (127.0.0.1:4519) to annotate, chat, approve or request changes |
+| agenttrail | `aos-trail` (port 5330) | Live board of a multi-agent build: status, progress, stuck points, one lane per git worktree |
+| archify | `aos-archify` | Validated architecture, sequence, data-flow and state diagrams as standalone HTML; accepts Mermaid |
+| AOS Store | `aos store ui` (port 4322) | Browse and install skills, agents, playbooks; every file SHA-256 verified |
+| Launchpad | `aos-dashboard [--port 7900]` | One page for every local BDB service: memB, Synapse, OpenWiki, AO, Store |
+| AOS Hub | `aos-hub`, `/hub` | Starts the AOS Hub on 127.0.0.1:7900 on demand; `aos hub stop`, `aos hub status [--json]` |
+| Sessions | `aos-sessions [--json]` | Overview of active sessions of all harnesses and ACP workers |
+| Doctor | `aos doctor [--json] [--net]` | Verify dependencies, skill placement, daemons, hooks, modules; exit 1 on problems |
+| A2A | `aos-a2a list \| send \| reply` | Messages between live harness sessions |
+| Workers | `aos-acp <claude\|codex\|opencode> --name <worker>` | Start a worker whose guarded commands need a GO token for its name |
+| Gate | `aos-gogate status`, `aos-gate status\|profile` | Gate mode and grants per session; gate profile |
+| MCP gateway | `aos-gateway status \| enable \| direct` | One local endpoint for shared MCP servers (opt-in) |
+| Config | `aos-config show \| set <key> <value>` | Machine-level AOS config: workspace root, domains, user id |
+| mcsc | MCP tools `delegate_agy`, `delegate_opencode`, `delegate_codex`, `delegate_smart` | One-shot delegation to another CLI harness with live agenttrail telemetry |
 
-## A2A
-
-Sessions of Claude Code, OpenCode, Codex and agy talk to each other on localhost: `aos-a2a list` shows live peers, `aos-a2a send --to <name> "<text>"` sends, `aos-a2a reply` answers. Details in [docs/a2a.md](docs/a2a.md).
-
-- **Stdio MCP servers:** `bin/aos-a2a-mcp.mjs` is ONE server for any MCP-capable harness (agy, Cursor): `a2a_send`, `a2a_list`, `a2a_status`, `a2a_card`, `a2a_inbox_pull`, `a2a_reply` — send and pull in one place; it requires `AOS_A2A_NAME` (all send/reply/pull calls fail with `AOS_A2A_NAME is not set` instead of inventing an identity) and validates text locally to 8 KiB before any network call. `bin/a2a-inbox-mcp.mjs` stays as the separate pull-only inbox MCP already registered for agy.
-- **Never a GO.** A message over A2A is context only. Peer text is always wrapped with the never-GO line and satisfies no GO token, approval or permission anywhere; only the GO gate can grant ship permissions, and only to a human-typed GO.
-- **Data only.** Text travels as data: "GO ..." in a message is ordinary text, never parsed or interpreted. The MCPs expose no GO/approval/token arguments, and peers' bearer tokens never appear in any output (loopback, per-session token, read by `lib/a2a-client.mjs` from the registry's separate token file).
-
----
-
-## AOS CLI
-
-A lightweight CLI harness built on [pi](https://github.com/earendil-works/pi), a coding agent that runs in the terminal. AOS CLI reads `~/.agents/skills` (written by the installer) and `~/.agents/AGENTS.md` (the dispatcher graph as system instructions), runs no MCP servers of its own, and needs **Node >= 22.19** (pi's floor, higher than the main AOS installer).
+### Plan Canvas in practice
 
 ```bash
-aos-cli "what is the fastest way to fix this bug"
-aos-cli --continue                    # resume the previous session
+aos-plan-canvas templates                                    # list the 10 templates as JSON
+aos-plan-canvas new <template-id> <dir> [--mode standard|bdb-plan-builder]
+aos-plan-canvas open <file>                                  # start a review
+aos-plan-canvas await <file>                                 # block for feedback JSON
+aos-plan-canvas pending                                      # queued feedback with no listener
+aos-plan-canvas end <file>                                   # close a review
 ```
 
-The CLI launcher (`packages/aos-cli/bin/aos-cli.mjs`) ships with an AOS-themed dark mode (`aos.json`), the ten core skills from `core-skills.json` (ask-tim, aos-setup, systematic-debugging, archify, etc.), and two in-session read-only commands (`/aos` shows the install menu; `/aos-status` runs the health check).
+The 10 built-in templates: `architecture`, `bugfix`, `feature`, `migration`, `recap`, `recap-board`, `recap-review`, `release`, `research`, `show-control`. `new` copies one into an empty folder; a non-empty target or an unknown id exits 2.
 
-Install it through the AOS installer with the AOS CLI target: `npx -y @hybridlabor-api/aos@latest -y --platforms=10`. The package is private and is not published on npm, so `npm i -g @hybridlabor-api/aos-cli` does not work.
+### Claude Code mods
 
-
----
-
-## Plugins and Marketplace
-
-AOS ships native plugin/marketplace manifests for Claude Code, Codex and Antigravity (agy); OpenCode is loaded as a local plugin (there is no marketplace concept there). Sources: [docs/marketplaces.md](docs/marketplaces.md).
-
-| Harness | Install | Update |
-|---|---|---|
-| Claude Code | `claude plugin marketplace add hybridlabor-api/aos` · `claude plugin install bdb-aos@bdb-marketplace` | `claude plugin marketplace update bdb-marketplace` · `claude plugin update bdb-aos@bdb-marketplace` |
-| Codex CLI | `codex plugin marketplace add hybridlabor-api/aos` · `codex plugin add bdb-aos@bdb-aos` | `codex plugin marketplace upgrade bdb-aos` · `codex plugin add bdb-aos@bdb-aos` |
-| Antigravity (agy) | `agy plugin install <local plugin dir>` — run for you by the npm installer below | re-run the npm installer |
-| OpenCode | local plugin `.opencode/plugins/bdb-aos.js` (copied by the installer); no marketplace | overwrite the plugin file |
-
-The npm installer (`npx -y @hybridlabor-api/aos@latest`) still performs each harness's plugin registration best-effort; the CLI commands above are the manual equivalents.
-
-**Skills discovery:** Every harness finds skills in its native directory (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.roo/skills`, etc.). To browse and install additional skills after install:
+Two small read-only mods ship in the AOS marketplace (`bdb-marketplace`) next to the fleet mod: `bdb-aos-sessions` (`/aos-sessions`: one pane with NEEDS YOU, WORKING, IDLE and ACP WORKERS; the same overview works outside Claude Code as `aos-sessions`) and `bdb-aos-alert` (a red blinking bar when a go-gate block, permission request or question stops the session; `/aos-alert test`, `/aos-alert off`). Neither grants a GO or writes a file. The installer registers only the fleet mod (`bdb-aos-fleet`, via `lib/v5/pkg-fleet.js`); enable the others in Claude Code (2.1.287 or newer):
 
 ```bash
-npx skills add hybridlabor-api/aos
+claude plugin install bdb-aos-sessions@bdb-marketplace
+claude plugin install bdb-aos-alert@bdb-marketplace
 ```
-
-This discovers all <!-- count:skills -->269<!-- /count --> curated skills and installs them into the universal `~/.agents/skills` directory (used by all harnesses and the AOS CLI).
-
----
-
-## Memory and knowledge
-
-Installed as optional modules by the installer; `aos doctor` verifies them and the Launchpad shows them.
-
-- **memB** (`@hybridlabor-api/memb`) — local, offline vector memory with an MCP server (`add_memory`, `search_memory`, `list_memories`, `delete_memory`), a WebUI on port 8088, and an ambient hook that injects relevant memories into Claude Code sessions. Skills: `memb-skill`, `memb-ingest`, `bdb-memb-mcp`.
-- **deja** (`@vshulcz/deja-vu`, installed with memB) — indexes your agent transcripts locally with secrets redacted; `deja fix` on an error, `deja wip` when resuming, `deja search` for past sessions. Skill: `deja-memory`.
-- **OpenWiki** (`openwiki` CLI) — generates and refreshes a grounded wiki of a codebase, with a visualizer on port 4321 and a background daemon. Skill: `openwiki-skill`; this repo's own wiki is under [`.openwiki/`](.openwiki/quickstart.md).
-- **Synapse** (`@hybridlabor-api/bdb-synapse`) — renders a repository as a 3D code city and replays agent sessions through it. Skill: `synapse-integration-skill`.
-
-`aos-setup` brings a machine to a verified state for all four; `aos-project-init` binds one project to them (slug, wiki, memory, `AGENTS.md`).
-
----
-
-## What's Included
-
-### The <!-- count:agents -->29<!-- /count --> Subagents
-
-The dispatcher graph compiles these agents, available as Claude Code subagents and loadable into Antigravity, Cursor, Codex, OpenCode and others:
-
-| Agent | Purpose |
-|---|---|
-| **Architect** | Turns the user's goal into a system plan. Reads existing architecture before proposing changes. |
-| **TechLead** | Reviews the plan for a capability map (module boundaries, dependency direction, build order) before any build node starts. Approves or rejects back to Architect. |
-| **UI_UX** | Lead Frontend Designer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics. |
-| **Engineering** | Senior Fullstack & Backend Engineer. Enforces Domain-Driven Design, Clean Architecture, TDD cycles, and database best practices. |
-| **Media_EventTech** | Creative-Tech & Show-Control Specialist. Governs 3D modeling, TouchDesigner networks, DaVinci Resolve, lighting, and Resolume. |
-| **Reviewer** | Adversarial review of build-node output against the plan's contract. Modeled on doubt-driven-development discipline. |
-| **Shipping** | Release Gatekeeper & QA Auditor. Runs the automated quality gate (lint, typecheck, tests, a11y, seo) and enforces the GO gate. |
-| **Database Reviewer** | PostgreSQL specialist for query optimization, schema design, security, and performance. |
-| **Security Reviewer** | Security vulnerability detection and remediation. Flags secrets, SSRF, injection, unsafe crypto, and OWASP Top 10. |
-| **Silent-Failure Hunter** | Reviews code for silent failures, swallowed errors, bad fallbacks, and missing error propagation. |
-| **Go-Build Resolver** | Resolves Go build, vet, and compilation errors with minimal changes. |
-| **Opensource Forker** | Forks a project for open-sourcing — strips secrets, replaces internal references, generates `.env.example`. |
-| **Opensource Sanitizer** | Verifies an open-source fork is fully sanitized. Scans for leaked secrets, PII, internal references. |
-
-### Skills by Category
-
-<!-- count:skills -->269<!-- /count --> curated skills, discoverable by every harness:
-
-- **bdb-core** (31 skills): Core AOS infrastructure, pipelines, tools, and utilities — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill`, and more.
-- **design-ui-ux** (19 skills): Frontend, UI design, accessibility, tokens, motion, anti-slop — `senior-frontend`, `ui-component`, `ui-review`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns`, and more.
-- **engineering-method** (46 skills): Architecture, testing, debugging, CI/CD, code quality — `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `dockerfile-validator`, and more.
-- **library** (98 skills): Language/framework specifics — TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go, and more.
-- **media-eventtech** (19 skills): 3D, video, show control, spatial design — `godmode-eventtech`, `synapse-integration-skill`, `threejs-skills`, `blender-expert`, and more.
-- **engineering-hardware** (1 skill): PCB and electrical design — `godmode-hardware-pcb`.
-
-The full catalog with detailed descriptions: [docs/skills_table.md](docs/skills_table.md) — note: this file is out of date and lists 163 of 213 skills.
 
 ---
 
 ## Skills
 
-<!-- count:skills -->269<!-- /count --> skills, curated from open-source and proprietary collections, covering the full software development and creative pipeline. Every skill is a directory with a `SKILL.md` frontmatter declaring `name`, `description`, and one `category`: `bdb-core`, `design-ui-ux`, `engineering-method`, `engineering-hardware`, `media-eventtech`, `library`.
+269 skills. Every skill is a directory with a `SKILL.md` declaring `name`, `description` and one `category`. Counts by category (from the frontmatter): library 96, engineering-method 60, bdb-core 59, media-eventtech 26, design-ui-ux 24, engineering-hardware 2, saas-ops 2. Browse with `aos store list`, `/aos-store` or `npx skills add hybridlabor-api/aos`; recommendations: `ask-tim`. The generated [skills table](docs/skills_table.md) is partial.
 
-**Persona Layer:** The **Godmode** skills are specialized personas that directly map to the build and ship nodes of the dispatcher graph:
+**Godmodes** map to the pipeline nodes: `godmode-engineering` (DDD, Clean Architecture, TypeScript), `godmode-ui-ux` (Anti-Slop, DTCG tokens, motion), `godmode-shipping` (quality gate, rollback), `godmode-eventtech` (show control, DMX, TouchDesigner); optional specialists `godmode-3d-creation`, `godmode-media-creation`, `godmode-hardware-pcb`.
 
-All UI/UX work (the `godmode-ui-ux` persona and the design skills it routes through, such as `bdbdesignpro`) draws components first from the BDB component and motion-icon library (`@bdb` shadcn registry backed by npm `@hybridlabor-api/ui-motion-library`), before falling back to third-party registries or building from scratch.
-
-| Godmode | Owns | Maps to |
-|---|---|---|
-| `godmode-engineering` | Domain-Driven Design, Clean Architecture, strict TypeScript/Python, systematic debugging, database best practices. | **Engineering** node |
-| `godmode-ui-ux` | Anti-slop frontend principles, DTCG design tokens, motion dynamics, accessibility (WCAG), high-agency taste. | **UI_UX** node |
-| `godmode-shipping` | Pre-launch checks, automated quality gates, safe rollback procedures, Go-gate enforcement. | **Shipping** node |
-| `godmode-eventtech` | Show control, signal flow, DMX lighting, TouchDesigner networks, Resolume media servers, live-event hardware. | **Media_EventTech** node |
-| `godmode-3d-creation` | MCP-first 3D generation, mesh reconstruction, parametric CAD, spatial modeling. | Optional specialist |
-| `godmode-media-creation` | Video production, timeline assembly, motion design pipelines, OpenMontage, Remotion. | Optional specialist |
-| `godmode-hardware-pcb` | Electrical schematics, PCB layout and routing, KiCad ERC/DRC/DFM gate, enclosure co-design, OpenSCAD. | Optional specialist |
-
-**Entry Points & Navigation:**
-- **`ask-tim`** — Skill recommendation by description
-- **`bdbrainstorm`** and **`bdbmediastorm`** — Multi-agent ideation sessions ending in an executable plan
-- **`teamwork-preview`** — Prompt crafting, role delegation, collaboration setup
-- **Grilling family** — `grill-me` (general audit), `grill-with-docs` (documentation-grounded), `triage` (prioritization)
-- **CI/CD & Generators** — `ci-pipeline`, `github-actions-generator`, `dockerfile-generator`, `makefile-generator`
-- **Code Quality** — `bdb-security-audit`, `systematic-debugging`, `silent-failure-hunter`, `bdbresilience`
-- **Framework Specialists** — Full coverage of TypeScript, React, Next.js, Drizzle ORM, Prisma, Python, Go, and more
-
-The full catalog with descriptions and details: [docs/skills_table.md](docs/skills_table.md) (note: currently lists 163 of 213).
-
-The library is also readable by the `skills` CLI:
-
-```bash
-npx skills add hybridlabor-api/aos
-```
+**Entry points:** `bdbrainstorm` and `bdbmediastorm` (multi-agent ideation), `grill-me`, `teamwork-preview`, `plan-arbiter`, `master-session`, `mcsc`, `gogate`, `aos-setup`, `aos-project-init`. UI/UX work draws components first from the BDB component and motion-icon library (`@bdb` shadcn registry, npm `@hybridlabor-api/ui-motion-library`).
 
 ---
 
 ## MCP servers
 
-[`mcp_config.json`](mcp_config.json) defines <!-- count:mcps -->21<!-- /count --> servers, built or warmed by the installer from `mcps/` and merged into each harness's MCP configuration. Each server exposes tools for a specific domain; every harness sees the same set, avoiding per-tool incompatibilities.
+[`mcp_config.json`](mcp_config.json) defines 21 local stdio servers, merged into each harness's MCP configuration by the installer. Two routing modes: **direct** (default, each server in every harness config) and **gateway** (opt-in: `aos-gateway` forwards on 127.0.0.1:7790 in front of the 1mcp agent; `deja`, `memb_mcp` and `mcsc` stay direct). See [docs/mcp-gateway.md](docs/mcp-gateway.md).
 
-API keys and tokens for these servers are kept in `~/.aos/secrets.env` (mode 0600), never inline in a harness config: see [docs/mcp-secrets.md](docs/mcp-secrets.md).
+**By domain:** 3D/CAD (`bdb_blender_mcp`, `bdb_rhino_mcp`, `bdb_unreal_mcp`) • Video (`bdb_davinci_mcp`, `bdb_after_effects_mcp`, `adobe_uxp_mcp`) • Show control (`bdb_grandma3_mcp`, `bdb_resolume_mcp`, `bdb_td_minddesigner`) • OS control (`zavora_computer_use`, `bdb_windows_computer_use`) • Design (`open_design_mcp`, `chrome-devtools`) • Memory (`memb_mcp`, `deja`) • Infra (`mcsc`, `github`, `bdb_remoteos_mcp`). The 21 entries include the fallbacks `bdb_rhino_mcp_fallback`, `bdb_after_effects_mcp_fallback` and `bdb_td_backup`.
 
-**Creative software integrations** (primary and fallback pairs for redundancy):
-- **Unreal Engine** — `bdb_unreal_mcp` (Web Remote Control API on port 30010), skill: `bdb-unreal-mcp`
-- **Rhino 3D & Grasshopper** — `bdb_rhino_mcp` (McNeel's Yak router) + `bdb_rhino_mcp_fallback` (GOLEM 3D, 105 tools), skill: `bdb-rhino-mcp`
-- **DaVinci Resolve** — `bdb_davinci_mcp` (workspace scripts, 162 tools) + `bdb_davinci_mcp_studio` (Node.js for Studio) + `bdb_davinci_mcp_fallback`, skill: `bdb-davinci-mcp`
-- **Blender** — `bdb_blender_mcp` (socket integration) + `bdb_blender_mcp_fallback`, skill: `bdb-blender-mcp`
-- **After Effects** — `bdb_after_effects_mcp` + `bdb_after_effects_mcp_fallback`, skill: `bdb-after-effects-mcp`
-- **TouchDesigner** — `bdb_touchdesigner_mcp` (MindDesigner bridge on port 9980) + `bdb_touchdesigner_mcp_fallback`, skill: `bdb-touchdesigner-mcp`
-- **Additional:** grandMA3 (OSC/UDP on port 8000), Resolume (REST API on port 8080), Vectorworks (semantic RAG on port 8765), Adobe UXP bridge, Open Design
+The Adobe MCPs are not host verified inside AOS: their behaviour in the running creative apps is checked through a cloud test only. API keys live in `~/.aos/secrets.env` (mode 0600), see [docs/mcp-secrets.md](docs/mcp-secrets.md).
 
-**OS control & system automation:**
-- **macOS/Linux** — `zavora_computer_use` (`npx -y @zavora-ai/computer-use-mcp@7.4.0`, native Rust module bundled in the npm package), skill: `bdb-computer-use-mcp`
-- **Windows** — `bdb_windows_computer_use` (Win32 / COM / UIAutomation, local OCR with Tesseract)
+---
 
-**Memory, delegation & infrastructure:**
-- **memB** — `memb_mcp` (local offline vector memory, SQLite + ONNX model)
-- **deja** — local transcript indexing (secrets redacted)
-- **mcsc** — multi-harness task delegation
-- **GitHub** — native MCP tools for issues, PRs, workflows
-- **Chrome DevTools** — browser automation & debugging
-- **RemoteOS** — multi-cloud execution gateway with 4-eyes approval engine
+## Plugins and marketplace
+
+AOS ships plugin manifests for Claude Code (`.claude-plugin/`), Codex (`.codex-plugin/`) and Antigravity (`plugin.json`); OpenCode loads a local plugin. The Claude Code marketplace `bdb-marketplace` offers `bdb-aos` (skills and agents), `bdb-aos-fleet`, `bdb-aos-sessions` and `bdb-aos-alert`, all at version 4.19.0 like `package.json`. The marketplace route carries skills and subagents only; the npm installer also sets up gates and MCPs. Sources: [docs/marketplaces.md](docs/marketplaces.md).
+
+```bash
+claude plugin marketplace add hybridlabor-api/aos
+claude plugin install bdb-aos@bdb-marketplace
+codex plugin marketplace add hybridlabor-api/aos
+```
+
+---
+
+## Memory and knowledge
+
+Four local layers, each answering a different question. Everything runs on your machine.
+
+| Layer | Answers | How agents use it |
+|---|---|---|
+| **memB** (`@hybridlabor-api/memb`) | What do we know? | Offline vector store, MCP server `memb_mcp` (`search_memory`, `add_memory`, `get_memory`, `update_memory`, `delete_memory`), WebUI on port 8088, ambient hook; skills `memb-skill`, `memb-ingest`; `/memb` |
+| **deja** (`@vshulcz/deja-vu`) | What did we do, and what fixed it? | Local index of agent transcripts with secrets redacted: `deja fix`, `deja wip`, `deja search`; skill `deja-memory` |
+| **OpenWiki** (`openwiki` CLI) | How does this codebase work? | A grounded wiki per project in `.openwiki/`, background daemon, visualizer on port 4321; skill `openwiki-skill` |
+| **Synapse** (`@hybridlabor-api/bdb-synapse`) | Where did the agent go? | 3D code city of the repo plus session replays; skill `synapse-integration-skill` |
+
+The ambient hook `memb-inject` is the only part that pushes memory into context unasked, and it fails open. `aos-project-init` binds one folder to the layers (slug, memory, wiki, Synapse map); `aos-setup` verifies all four; `aos doctor` checks them.
 
 ---
 
 ## Optional modules
 
-The installer's module picker offers, and Quick Update keeps current. All are optional; AOS works standalone without any of them.
+Synapse, AO, Creator Extension and Hardware and PCB are published as their own npm packages; the module picker offers them and Quick Update keeps them current. AOS works standalone without any. Token Saver is vendored and part of the standard profile.
 
-### memB — Local Vector Memory
+### Creator Extension: image, 3D and video
 
-`@hybridlabor-api/memb`: offline, local vector memory with an MCP server, WebUI on port 8088, and an ambient hook that injects relevant memories into Claude Code sessions. Skill: `memb-skill`, `memb-ingest`, `bdb-memb-mcp`.
+`@hybridlabor-api/bdb-dev-creator-extension`: ComfyUI MCP (FLUX, SDXL images; video), image-to-3D (TripoSR, TRELLIS), Text-to-CAD and video engines (OpenMontage, Remotion-based Video Shotcraft). Model weights are opt-in downloads; TRELLIS and ComfyUI need a GPU. Enable: `-y --modules=creator`. Skills: `godmode-3d-creation`, `godmode-media-creation`; playbook `pb-image-to-3d`.
 
-### deja — Transcript Indexing
+### Hardware and PCB
 
-`@vshulcz/deja-vu`: indexes your agent transcripts locally (secrets redacted), with `deja fix` on an error, `deja wip` to resume, `deja search` for past sessions. Installed with memB. Skill: `deja-memory`.
+`@hybridlabor-api/bdb-hardware-pcb`: KiCad and OpenSCAD through two MCP servers, with an ERC/DRC exit code as the gate before any output (schematic capture as code, constraints, layout and routing, DFM audit, Gerber/BOM/CPL). Enable: `-y --modules=hardware`. Skills: `godmode-hardware-pcb` (core) plus `code-first-hardware-design`, `pcb-constraint-definition`, `pcb-layout-routing-automation`, `pcb-validation-dfm-signoff`, `schematic-datasheet-analysis`, `schematic-reverse-engineering`; playbook `pb-pcb-to-case`; agent `pcb-design-assistant`.
 
-### OpenWiki — Living Documentation
+### AO: Agent Orchestrator
 
-`openwiki` CLI: generates and refreshes a grounded wiki of a codebase, with a visualizer on port 4321 and a background daemon. Skill: `openwiki-skill`. This repo's wiki: [.openwiki/](.openwiki/quickstart.md).
+`@hybridlabor-api/bdb-agent-orchestrator` (v1.5.0): a Go daemon behind the `ao` CLI that runs parallel coding agents, each in its own git worktree, with a dashboard (daemon API on port 3101) for workers, pull requests, CI and reviews. CI and review feedback goes back to the agent. `ao spawn --role` maps AOS roles to harnesses. It mirrors agenttrail questions as GO cards but never authorizes a push, publish or delete: go-gate keeps that (`go-check.mjs` handshake). Enable: `-y --modules=ao`. Skill: `ao-orchestrator`; `/orchestrator`. The [multi-session workflow](#multi-session-workflow) works without AO.
 
-### Synapse — 3D Code City
+### Synapse: 3D code city
 
-`@hybridlabor-api/bdb-synapse`: renders a repository as a 3D code city and replays agent sessions as light trails. Skill: `synapse-integration-skill`.
+`@hybridlabor-api/bdb-synapse` (v1.2.1): a Go server with a WebGL city of the repository and replays of agent sessions. One binary reads Claude Code, Codex, pi and Antigravity logs (not OpenCode). Replay lenses per subagent; `synapse analyze` evaluates a session with your own `claude` or `codex` CLI (four process dimensions plus a task scorecard); viewing sends nothing anywhere. Enable: `-y --modules=synapse`. Skill: `synapse-integration-skill`.
 
-```mermaid
-flowchart LR
-    A[Agent Session Logs] -->|JSONL Parsing| B[Go Trace Adapters]
-    B --> C[Normalized Event Stream]
-    D[Repository Tree] -->|Deterministic Layout| E[3D Citymap Generator]
-    C & E --> F[Local Go Server]
-    F --> G[React + Three.js WebGL Frontend]
-    G --> H[Interactive 3D Code City]
-```
+### Token Saver
 
-### AO — Agent Orchestrator
-
-`@hybridlabor-api/bdb-agent-orchestrator`: parallel agents in Git worktrees with live terminal control and automated CI/CD feedback loops. Skill: `ao-orchestrator`.
-
-```mermaid
-flowchart TD
-    A[Desktop IDE Meta-Harness] --> B[Git Worktree Orchestrator]
-    B --> C[Agent Session 1: Feature Build]
-    B --> D[Agent Session 2: Refactoring]
-    B --> E[Agent Session N: Test & Verification]
-    C --> F[Live Terminal Control & Process Monitor]
-    D --> F
-    E --> F
-    F --> G[Automatic CI/CD Feedback Loops]
-    G --> H[PR Review & Merge Routing]
-    H --> I[Central Git Repository]
-```
-
-### Creator Extension — Media & 3D
-
-`@hybridlabor-api/bdb-dev-creator-extension`: ComfyUI MCP capabilities (FLUX, SDXL), image-to-3D (TripoSR, TRELLIS), and automated video production (OpenMontage, Remotion). Skill: `bdb-dev-creator-extension`.
-
-```mermaid
-flowchart LR
-    A[Core Skills Agent] -->|MCP Request| B[BDB Creator Extension Router]
-    B --> C[3D Generation Suite]
-    B --> D[Cinema Video Suite]
-    B --> E[Local ComfyUI MCP Engine]
-    C --> C1[TRELLIS: High-Fidelity 3D]
-    C --> C2[TripoSR: Fast Mesh]
-    C --> C3[CadQuery: Text-to-CAD]
-    D --> D1[OpenMontage AI Director]
-    D --> D2[Remotion Video-Shotcraft]
-    E --> E1[FLUX.1 Image Gen]
-    E --> E2[SDXL Pipeline]
-    C1 & C2 & C3 & D1 & D2 & E1 & E2 --> F[Rendered Media & Spatial Assets]
-```
-
-### Hardware & PCB — Electrical Design
-
-`@hybridlabor-api/bdb-hardware-pcb`: KiCad and OpenSCAD design module, driven by `godmode-hardware-pcb` skill. Exposes ERC/DRC gate, gerber sign-off, and parametric enclosure design. Skills: `godmode-hardware-pcb`, `bdb-hardware-pcb`.
-
-```mermaid
-flowchart LR
-    A[Agent] -->|MCP| B[kicad-mcp-server]
-    A -->|MCP| C[openscad-mcp-server]
-    B --> D[Schematic Capture & ERC]
-    B --> E[PCB Layout & Routing]
-    B --> F[DRC / DFM / Gerber Sign-Off]
-    C --> G[Parametric Enclosure]
-    D & E & F & G --> H[Fabrication-Ready Output]
-```
-
-### Heimdall Token Saver — CLI Output Compression
-
-`@hybridlabor-api/heimdall-token-saver`: compresses repeated CLI output via ambient hooks on every harness. Reduces token overhead on large projects. Skill: `token-saver-config`.
+`heimdall-token-saver`, vendored in `vendor/token-saver`, part of the standard profile. It compresses repeated CLI output (git, tests, builds, Docker, kubectl, Terraform) before it reaches the model, keeping errors, diffs and warnings. Output under 200 characters passes unchanged, source-file reads are never modified and `.env` secrets are redacted. `token-saver stats` shows savings; `token-saver benchmark '<command>'` measures your own commands (the savings figures in the module README are its own benchmarks, measure before relying on them). Needs Python 3.10+. Leave it out with `--without=token-saver` or `--profile=minimal`. Skill `token-saver-config`; command `/token-saver:token-saver-stats`.
 
 ---
 
-## Updating
+## On-demand extras
 
-Run the same command again. The installer sees the installed version, offers **Quick Update**, and refreshes skills, hooks, templates and modules:
+Not installed by default; nothing is installed until you ask, every store file is SHA-256 verified, and `--dry-run` shows what would change.
 
 ```bash
-npx -y @hybridlabor-api/aos@latest
+aos store list --type=skills        # or --type=agents
+aos store search <query>
+aos store install <name> --dry-run  # then without --dry-run; add --project for this repo only
+aos store ui                        # the same, in the browser (127.0.0.1:4322)
 ```
 
-There is no `aos update` subcommand. If you once ran `npm i -g @hybridlabor-api/aos`, a plain `aos` on your PATH runs that frozen copy and its version, not the latest; either update it (`npm i -g @hybridlabor-api/aos@latest`) or remove it and stay with `npx`. The installer prints the update command itself whenever a newer version exists; the `bdb-updater` skill wraps the same check for use from inside a session.
+The pinned store indexes in `lib/` hold 287 ECC skills (library 174, bdb-core 46, engineering-method 38, design-ui-ux 19, media-eventtech 10), 53 ECC subagents (library 23, engineering-method 22, bdb-core 4, design-ui-ux 4) and 13 Scenario skills (media-eventtech 10, engineering-method 2, design-ui-ux 1; third-party, MIT, [scenario-labs/skills](https://github.com/scenario-labs/skills)). Items already installed by default are excluded; use `aos store list` for names.
 
-## Uninstall
+---
+
+## Known residuals
+
+The gate guards against agent mistakes; it is not a sandbox. Accepted and open gaps, in full in [docs/gate-residuals.md](docs/gate-residuals.md):
+
+- A transcript above 1 GiB makes the forward scan deny (or issue no go-token); normal sessions are unaffected.
+- A planted non-regular block marker keeps the cooldown on permanently (fail closed) while the message says it ends in minutes.
+- The sqlite (OpenCode) sidecar check is check-then-open; a FIFO planted in between can still hang that read.
+- Click receipts R1 to R4: the credential file is the only trust root (code running as the user can plant its own key), a revoke file can be deleted, the signature counter is not checked, and an agent could serve its own page on the hub port.
+- H2 (accepted): code running as your user can write the gate profile file; the hook then reads `work` or `off`. Binding profiles to a human act is the first gate item after 5.0.0.
+- Codex has no enforceable file-write guard and it is unverified; agy argument names are unverified.
+- The live `~/.claude/settings.json` keeps the old file-tool matcher (no `NotebookEdit`) until you run the installer.
+- A real end-to-end run on agy is unproven.
+- The Windows Task Scheduler XML and the annotation overlay DOM were not tested live.
+
+---
+
+## Updating and uninstall
+
+Run the installer again and choose **Quick Update**: `npx -y @hybridlabor-api/aos@latest`. There is no `aos update` subcommand. Profile choices are saved in `~/.aos/v5-settings.json`.
 
 ```bash
 aos-uninstall              # removes what AOS installed; memory, wikis and credentials stay
@@ -483,24 +435,32 @@ aos-uninstall --purge      # also removes ~/.MemBDB, ~/.openwiki, ~/.synapse, ~/
 aos-uninstall --dry-run    # list everything, delete nothing
 ```
 
-The uninstaller works from the install manifest: a file that still matches the hash AOS wrote is removed, a file you edited is backed up instead, a file AOS never wrote is not touched. The same action is in the installer menu. `aos-uninstall --restore-plugin-backup` restores the loose skill copies the installer removed when it registered the plugin; see [docs/plugin-migration.md](docs/plugin-migration.md).
+The uninstaller works from the install manifest: a file that still matches its written hash is removed, an edited file is backed up, a file AOS never wrote is untouched. See [docs/plugin-migration.md](docs/plugin-migration.md).
+
+---
+
+## FAQ
+
+**Do I need all nine harnesses?** No. The installer only writes to harnesses it detects.
+
+**Will it overwrite my MCP config?** No. Existing entries are kept; AOS merges its own. `AOS_DISABLED_MCPS=a,b` keeps servers out.
+
+**Does the GO gate work on every harness?** It is a real hook on Claude Code, Antigravity, Codex and OpenCode (see the [tiers](#capability-tiers) for what is verified). On Cursor, Windsurf, Roo and Aider only the rule in `AGENTS.md` applies.
+
+**Can an agent approve its own push?** Not through the gate: only your own typed GO counts, never an agent, subagent or A2A message.
+
+**Something is broken.** Run `aos doctor`. It names what is missing and exits 1.
 
 ---
 
 ## Contributing
 
-- [AGENTS.md](AGENTS.md) is the single source of rules for every harness: the skill contract, category routing, the release gate, Conventional Commits.
-- A skill is a directory with `SKILL.md`; the frontmatter needs `name` (equal to the directory), `description` and `category`. `npm run validate` enforces the contract, as CI does on every push.
-- `npm test` runs the validator self-test, the plugin-manifest check and the installer, store, doctor and cross-harness hook tests.
-- `.claude-plugin/plugin.json` and `marketplace.json` are generated by `npm run plugin:build` and checked by `npm run plugin:check`. They exist today; the Claude Code marketplace install path is still being finalised, so the installer above remains the supported route.
-- Releases are cut by release-please from Conventional Commits; do not bump `package.json` by hand. `feat:` means a minor bump.
-- Skills derived from other projects record `source:` in the frontmatter and an entry in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[AGENTS.md](AGENTS.md) is the single source of rules for every harness: the skill contract, category routing, the release gate, Conventional Commits. A skill is a directory with `SKILL.md`; `npm run validate` enforces the contract. `.claude-plugin/plugin.json` and `marketplace.json` are generated by `npm run plugin:build` and checked by `npm run plugin:check`. Releases are cut by release-please from Conventional Commits; do not bump `package.json` by hand. The suite lives in `tests/` (219 test files); run `npm test`. Skills derived from other projects record `source:` and an entry in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The codebase wiki is under [`.openwiki/`](.openwiki/quickstart.md).
 
 ## Links
 
-- Package: [npmjs.com/package/@hybridlabor-api/aos](https://www.npmjs.com/package/@hybridlabor-api/aos)
-- Source and issues: [github.com/hybridlabor-api/aos](https://github.com/hybridlabor-api/aos) · [issues](https://github.com/hybridlabor-api/aos/issues)
-- [CHANGELOG.md](CHANGELOG.md) · [docs/skills_table.md](docs/skills_table.md)
+- [npm](https://www.npmjs.com/package/@hybridlabor-api/aos) · [GitHub](https://github.com/hybridlabor-api/aos) · [issues](https://github.com/hybridlabor-api/aos/issues)
+- [CHANGELOG.md](CHANGELOG.md) · [docs/](docs/)
 - Sibling repos: [bdb-agent-orchestrator](https://github.com/hybridlabor-api/bdb-agent-orchestrator) · [bdb-synapse](https://github.com/hybridlabor-api/bdb-synapse) · [bdb-dev-creator-extension](https://github.com/hybridlabor-api/bdb-dev-creator-extension) · [bdb-hardware-pcb](https://github.com/hybridlabor-api/bdb-hardware-pcb) · [bdb-os-remote](https://github.com/hybridlabor-api/bdb-os-remote)
 
 License: [Apache-2.0](LICENSE).

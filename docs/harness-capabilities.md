@@ -18,6 +18,8 @@ Notes:
 - **agy inbound is pull-based.** The inbox MCP server is read/write only; it never spawns agy or any harness.
 - **Spawn mode for A2A roles is reserved in profiles but not implemented**; only `live` executors exist.
 
+- **Gate profile (`work`/`off`):** read by `go-gate.mjs` through `gate-profile.mjs`, which is copied next to it in each hook dir. Honoured by the Claude hook and the OpenCode plugin (`profileAllows`); Codex and agy use the same `go-gate.mjs` only when their hook fires (unverified). Details: `docs/gate-profile.md`.
+
 ## Subagent files, MCP and fleet
 
 | Item | What the code does |
