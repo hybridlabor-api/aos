@@ -58,6 +58,7 @@ import { createHash, randomUUID, createPublicKey, verify as cryptoVerify, timing
 import { homedir, userInfo } from "node:os";
 import { join, resolve, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { profileFor } from "./gate-profile.mjs";
 
 // Command start: line/separator/subshell start, then optional wrappers (sudo/env/command/
 // builtin/exec/nohup/time/xargs/eval with options, `bash -c`, VAR=x), an optional opening
@@ -3061,6 +3062,18 @@ function main() {
     reasons.unshift(`${COOLDOWN_MESSAGE} The block cooldown ends in about ${left} min; after that the same unchanged command may run once (rule 16).`);
   }
   if (tooLong) reasons.unshift(TOO_LONG_MESSAGE);
+
+  // Gate profile config: any doubt reads as strict. Hard blocks and the store check returned above.
+  if (!cooling && !tooLong) {
+    const prof = profileFor();
+    if (prof.profile === "off") return respond(isAgy, true, "", command);
+    if (prof.profile === "work") {
+      const sc = commandScopes(command);
+      // Unscoped (null) is free in work; only the release class needs a GO.
+      if (!sc || !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive")) return respond(isAgy, true, "", command);
+      reasons.push("profile work: this command is in the release class and needs a GO");
+    }
+  }
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).
   const key = !isAgy && input.session_id ? sessionKey(input.session_id) : "";
