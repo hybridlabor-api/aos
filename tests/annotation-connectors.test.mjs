@@ -9,6 +9,7 @@ import {
   foreignMutation,
   selectorUsable,
 } from '../lib/annotation/overlay/connectors.mjs';
+import { pickElementOnce } from '../lib/annotation/overlay/notes.mjs';
 
 const rect = (l, t, w, h) => ({ left: l, top: t, width: w, height: h });
 
@@ -38,7 +39,7 @@ test('connectorPath 4 relative positions', () => {
   // target below
   assert.equal(connectorPath(note, rect(100, 200, 40, 20)), 'M 120 120 L 120 200');
   // target above
-  assert.equal(connectorPath(note, rect(100, 0, 40, 20)), 'M 120 100 L 120 40');
+  assert.equal(connectorPath(note, rect(100, 0, 40, 20)), 'M 120 100 L 120 20');
 });
 
 test('connectorPath rounds to 1 decimal', () => {
@@ -95,4 +96,27 @@ test('selectorUsable', () => {
   assert.equal(selectorUsable('x'.repeat(501)), false);
   assert.equal(selectorUsable('###'), false);
   assert.equal(selectorUsable('#a .b'), true);
+});
+
+test('pick-ignores-overlay-click', async () => {
+  const handlers = {};
+  const fakeDoc = {
+    addEventListener: (t, fn) => { handlers[t] = fn; },
+    removeEventListener: () => {},
+  };
+  const innerNode = { id: 'inner' };
+  const fakePanel = { contains: (t) => t === innerNode };
+  const fakeHostNode = { contains: () => false };
+  const p = pickElementOnce(fakeDoc, { host: fakeHostNode, panel: fakePanel });
+  let settled = null;
+  p.then((v) => { settled = v; }, () => { settled = 'rejected'; });
+  let prevented = false;
+  handlers.click({ target: fakeHostNode, composedPath: () => [innerNode, fakePanel, fakeHostNode], preventDefault: () => { prevented = true; }, stopPropagation: () => {} });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(settled, null);
+  assert.equal(prevented, false);
+  const pageEl = { tagName: 'DIV', id: 'page', classList: [], composedPath: undefined };
+  handlers.click({ target: pageEl, composedPath: () => [pageEl], preventDefault: () => {}, stopPropagation: () => {} });
+  const got = await p;
+  assert.equal(got.selector, '#page');
 });
