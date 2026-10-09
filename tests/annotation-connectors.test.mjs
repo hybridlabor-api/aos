@@ -6,6 +6,8 @@ import {
   nextNumber,
   filterNotes,
   driftState,
+  foreignMutation,
+  selectorUsable,
 } from '../lib/annotation/overlay/connectors.mjs';
 
 const rect = (l, t, w, h) => ({ left: l, top: t, width: w, height: h });
@@ -77,4 +79,20 @@ test('driftState', () => {
   assert.equal(driftState(rect(0, 0, 10, 10), rect(5, 0, 10, 10), 2), 'moved');
   assert.equal(driftState(null, null), 'same');
   assert.equal(driftState(null, rect(0, 0, 1, 1)), 'moved');
+});
+
+test('foreignMutation batch decision', () => {
+  const own = { id: 'own' };
+  const foreign = { id: 'x' };
+  const isOwn = (t) => t === own;
+  assert.equal(foreignMutation([{ target: own }, { target: own }], isOwn), false);
+  assert.equal(foreignMutation([{ target: own }, { target: foreign }], isOwn), true);
+  assert.equal(foreignMutation([], isOwn), false);
+});
+
+test('selectorUsable', () => {
+  assert.equal(selectorUsable(''), false);
+  assert.equal(selectorUsable('x'.repeat(501)), false);
+  assert.equal(selectorUsable('###'), false);
+  assert.equal(selectorUsable('#a .b'), true);
 });
