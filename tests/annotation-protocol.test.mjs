@@ -69,6 +69,11 @@ test('protocol: collect ETag/304, redaction, reply idempotency, 404, exporter', 
     const { copyForAi } = await import('../lib/annotation/protocol.mjs');
     const md = copyForAi(j1.threads);
     assert.ok(typeof md === 'string' && md.includes('unverified'));
+    for (const p of ['/aos-api/collect?TOKEN=x', '/aos-api/collect?to%6ben=x']) {
+      const bad = await reqOnce({ ...opts(port, token), path: p });
+      assert.equal(bad.res.statusCode, 403);
+      assert.equal(JSON.parse(bad.body.toString()).error, 'E_QUERY_TOKEN');
+    }
   } finally {
     server.close();
   }

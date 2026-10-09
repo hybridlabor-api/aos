@@ -41,7 +41,7 @@ proxy so the annotation canvas and the app share an origin.
 - Caps: 8 MB HTML rewrite, 30 s upstream timeout, WS idle timeout,
   256 concurrent, 16 KB request headers (`E_HEADERS`). Errors are typed JSON
   (`{ error: '<CODE>' }`, e.g. `E_TOKEN`, `E_HOST`, `E_REDIRECT_OFF_ALLOWLIST`,
-   `E_UPSTREAM`) with no internals. Chunked bodies on GET/HEAD/DELETE/OPTIONS
+  `E_UPSTREAM`) with no internals. Chunked bodies on GET/HEAD/DELETE/OPTIONS
   are refused with 400 `E_CHUNKED_BODY`. Placeholder overlay
   (`window.__AOS_ANNOT = {version}`) is WP4, not this task.
 - Tests: `tests/annotation-proxy.test.mjs` (node:test, upstream + proxy on

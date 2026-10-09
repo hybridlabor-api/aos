@@ -221,13 +221,15 @@ test('integration: token in the query string refused even with valid cookie', as
 });
 
 test('integration: exact query-token paths refused, other query strings pass', { timeout: 8000 }, async () => {
-  for (const p of [`/aos-api?token=${TOKEN}`, `/__aos_annot?token=${TOKEN}`, `/AOS-API?token=x`, `/%61os-api?token=x`, `/./aos-api?token=x`, `//aos-api?token=x`]) {
+  for (const p of [`/aos-api?token=${TOKEN}`, `/__aos_annot?token=${TOKEN}`, `/AOS-API?token=x`, `/%61os-api?token=x`, `/./aos-api?token=x`, `//aos-api?token=x`, `/aos-api;x?token=x`, `/aos-api;/x?token=x`, `/aos-api.?token=x`, `/aos-api%2Ffoo?token=x`, `/%2Faos-api?token=x`, `/aos-api?TOKEN=x`, `/aos-api?to%6ben=x`, `/aos-api?Access_Token=x`]) {
     const r = await request({ headers: baseHeaders(), path: p });
     assert.equal(r.status, 403, p);
     assert.equal(JSON.parse(r.body).code, 'E_QUERY_TOKEN', p);
   }
   const ok = await request({ headers: baseHeaders(), path: '/src/a.js?t=1' });
   assert.equal(ok.status, 200);
+  const ok2 = await request({ headers: baseHeaders(), path: '/a;b/c.js?t=1' });
+  assert.equal(ok2.status, 200);
 });
 
 test('integration: oversized body (declared) rejected with E_BODY', async () => {
