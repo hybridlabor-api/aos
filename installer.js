@@ -5323,6 +5323,9 @@ function installGlobalBinaries() {
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
         copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(homeDir, '.agents', 'lib'));
+        // lib/gate-profile.mjs is a re-export of the hook copy, which does not exist under ~/.agents: aos-gate needs the real file there.
+        const profileSrc = path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs');
+        if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(homeDir, '.agents', 'lib', 'gate-profile.mjs'));
         // lib/a2a-sdk-resolve.mjs in the copy above needs the package root (deps are package deps).
         writeA2aPackageRootRecord();
     }
@@ -5333,7 +5336,7 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus', 'aos-gateway', 'aos-a2a'];
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus', 'aos-gateway', 'aos-a2a', 'aos-gate'];
     // aos-bus ships as a hook (it imports ./go-gate.mjs), so its launcher points into ~/.claude/hooks.
     const binDirOf = (name) => (name === 'aos-bus' ? path.join(claudeConfigDir(homeDir), 'hooks') : globalAgentsBin);
     const wired = [];

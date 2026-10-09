@@ -178,6 +178,18 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     assert.equal(count('Stop', 'stop'), 1);
   });
 
+  test('installGlobalBinaries wires an aos-gate launcher whose installed copy resolves gate-profile and runs status', { skip: SANDBOX_SKIP }, async () => {
+    const home = makeTempHome();
+    const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(INSTALLER)}).installGlobalBinaries();console.log('DONE')`], { env: childEnv(home), encoding: 'utf8', timeout: 120000 });
+    assert.match(r.stdout || '', /DONE/, r.stderr);
+    const launcher = path.join(home, '.local', 'bin', 'aos-gate');
+    assert.ok(fs.existsSync(launcher), 'aos-gate launcher must be wired');
+    assert.match(fs.readFileSync(launcher, 'utf8'), /aos-gate\.mjs/);
+    const s = spawnSync(process.execPath, [path.join(home, '.agents', 'bin', 'aos-gate.mjs'), 'status'], { env: childEnv(home), encoding: 'utf8', timeout: 30000 });
+    assert.equal(s.status, 0, s.stderr);
+    assert.match(s.stdout, /^profile: strict/);
+  });
+
   test('M4: the Claude hook is a one-line no-op when no lib resolves', async () => {
     const home = makeTempHome();
     const hookCopy = path.join(home, '.claude', 'hooks', 'a2a-inbox.mjs');
