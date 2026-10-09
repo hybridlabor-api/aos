@@ -258,7 +258,8 @@ test('S6: update and repair skip what the profile excludes, like disabled ids', 
 test('R1: one hook list; the shipped Claude template is covered exactly once', () => {
     const lists = [p.ALWAYS_HOOKS, p.CONTEXT_HOOKS, p.OTHER_HOOKS];
     for (const l of lists) assert.strictEqual(new Set(l).size, l.length);
-    assert.deepStrictEqual([...p.HOOK_SCRIPTS].sort(), lists.flat().sort());
+    // gate-profile.mjs is an import-only helper of go-gate.mjs: copied with the hooks, never wired, so in no list.
+    assert.deepStrictEqual([...p.HOOK_SCRIPTS].sort(), ['gate-profile.mjs', ...lists.flat()].sort());
     assert.strictEqual(new Set(p.HOOK_SCRIPTS).size, p.HOOK_SCRIPTS.length, 'no script in two lists');
     assert.ok(p.CLAUDE_MERGE_HOOKS.every((n) => p.HOOK_SCRIPTS.includes(n)));
 

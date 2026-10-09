@@ -236,7 +236,7 @@ describe('docker run: never covered (null = plain GO only)', () => {
         ['variable as flags', 'docker run --rm $FLAGS -v {P}:/src node:24 npm test'],
         ['variable as image', 'docker run --rm -v {P}:/src "$IMG" npm test'],
         ['variable in a flag value', 'docker run --rm -e KEY=$SECRET -v {P}:/src node:24 npm test'],
-        ['variable in a mount', 'docker run --rm -v $PWD:/src node:24 npm test'],
+        ['variable in a mount', 'docker run --rm -v $SRC:/src node:24 npm test'],
         ['$(...) as flags', 'docker run --rm $(echo --privileged) node:24 true'],
         ['$(...) in a mount', 'docker run --rm -v "$(pwd)":/src node:24 npm test'],
         ['backticks as flags', 'docker run --rm `echo --privileged` node:24 true'],

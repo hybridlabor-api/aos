@@ -721,7 +721,7 @@ export function classify(seg, protectedFor = staticResolver) {
     if (sub === "commit" && (hookKey || gitEnv || commitBypass(r))) return null;
     return [];
   }
-  if (cmd === "docker") return dockerScopes(tok, seg);
+  if (cmd === "docker") return dockerScopes(tok, seg, segTaint, segCwd);
   // (H7f) the git programs behind the subcommands (`/usr/lib/git-core/git-push`, `git-subtree push`).
   if (/^git-(?:push|send-pack)$/.test(cmd) || (/^git-(?:subtree|lfs)$/.test(cmd) && tok.slice(1).some((t) => /^(?:push|split)$/.test(unq(t))))) return ["push-main"];
   if (PM.test(cmd) || cmd === "npx") {
@@ -1053,7 +1053,7 @@ export function isContainerTestRun(command) {
   let k = 0;
   while (k < segs.length && base(words(segs[k])[0] ?? "") === "cd") { if (/[$\x60]/.test(segs[k])) return false; k++; }
   if (k >= segs.length || unqQ(words(segs[k])[0] ?? "") !== "docker") return false;
-  if (dockerScopes(stripPrefix(tokens(segs[k])).rest, segs[k], ENV_CHANGE.test(command)) === null) return false;
+  if (dockerScopes(stripPrefix(tokens(segs[k])).rest, segs[k], ENV_CHANGE.test(command), k === 0 ? gateCtx.cwd : "") === null) return false;
   // Readers may not write or run anything: no sort -o/--output/--compress-program, no uniq output file, nothing path-valued.
   const readerOk = (s) => {
     const w = words(s).map(unqQ), h = base(w[0] ?? "");
@@ -1071,7 +1071,9 @@ export function isContainerTestRun(command) {
 // symlinks resolved; read-only or writable), with no --privileged/--pid/--network host/docker.sock and no shell
 // expansion before the image. Everything else about docker stays as it was; a docker run that does not qualify is
 // guarded without a scope (plain GO). The text after the image is read by scopesOf like any other command text.
-function dockerScopes(tok, seg, tainted = segTaint) {
+function dockerScopes(tok, seg, tainted = segTaint, pwd = "") {
+  // A bare "$PWD" as a -v source is the shell's cwd (tracked through cd; "" = unknown), which mountSource then judges.
+  if (pwd && /^\/[A-Za-z0-9._ /-]+$/.test(pwd)) tok = tok.map((t, k) => (k > 1 && /^(?:-v|--volume)$/.test(unq(tok[k - 1])) ? t.replace(/^(?:"\$PWD"|"\$\{PWD\}"|\$PWD|\$\{PWD\})(?=:)/, pwd) : t));
   // Only the real `docker` word: a path-qualified or planted executable of that name is an ordinary command (GO only), and a
   // PATH or DOCKER_* assignment anywhere earlier in the command (taint, see ENV_CHANGE) could point the word at another program.
   if (unq(tok[0] ?? "") !== "docker") return base(tok[0] ?? "") === "docker" ? null : [];
@@ -1522,6 +1524,8 @@ function scriptFile(h, a) {
     // Option values are not script files: `bash -o pipefail echo hi` would otherwise read
     // 'pipefail' as a script and fail closed (a file that is not there is unscoped).
     if (/^(?:-[oO]|--rcfile|--init-file)$/.test(t) || (/^(?:bash|sh|zsh|dash|ksh)$/.test(lc) && /^-[a-zA-Z]*[oO]$/.test(t))) { i++; continue; }
+    // node -c / --check only parses the file: nothing runs, so there is no script to scope.
+    if (/^node(?:js)?$/.test(lc) && /^(?:-c|--check)$/.test(t)) return {};
     if (INLINE_FLAG.test(t) && !/^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
     if (/^(?:-c|-[a-zA-Z]*c)$/.test(t) && /^(?:bash|sh|zsh|dash|ksh)$/.test(lc)) return { inline: true };
     if (VALUE_FLAG.test(t)) { i++; continue; }
@@ -1823,7 +1827,7 @@ const hasGuardedAssign = (segs) => segs.some((seg) => tokens(seg).some((t) => {
 
 let nest = 0;
 const SEG_SPLIT = /(&&|\|\||\$\(|[;&|\n(){}\x60])/;
-const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|PATH|DOCKER_[A-Za-z0-9_]+|GIT_[A-Za-z0-9_]+)=|\bset\s+-[a-z]*a/;
+const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|PATH|PWD|OLDPWD|DOCKER_[A-Za-z0-9_]+|GIT_[A-Za-z0-9_]+)=|\bset\s+-[a-z]*a/;
 const TAINT_SUBS = /^(?:checkout|switch|branch|reset|symbolic-ref|update-ref|worktree|remote|config|stash|rebase|merge|pull|fetch|restore|clone|init|am|cherry-pick|revert)$/;
 const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|stat|file|test|\[|diff|cmp|realpath|dirname|basename|echo|printf)$/;
 // null = guarded but at least one guarded part maps to no scope (never covered by a grant).
@@ -3048,7 +3052,9 @@ function main() {
   }
 
   blockKey = hookBlockKey(input, isAgy);
-  setGateContext({ cwd: typeof input.cwd === "string" ? input.cwd : "", blockTs: blockKey ? readBlockTs(blockKey) : 0 });
+  // Under work/off a fresh script is judged by its content (scriptInto), not held back by the block cooldown.
+  const looser = profileFor().profile !== "strict";
+  setGateContext({ cwd: typeof input.cwd === "string" ? input.cwd : "", blockTs: blockKey && !looser ? readBlockTs(blockKey) : 0 });
 
   // Over the length cap nothing is parsed: it is guarded, only a GO lifts it, and it is not a hard block.
   const tooLong = commandTooLong(command);
