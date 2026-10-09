@@ -128,6 +128,19 @@ this discipline exists to prevent:
    isn't making progress. Same intent (don't keep trusting a loop that isn't
    working), a form this control flow can actually reach.
 
+## Workers and scopes
+
+Each node in `.agents/nodes.json` may declare two optional fields:
+
+- `executor`: the harness/model class that runs it (e.g. `planner`, `builder`, `reviewer`, `gate`). Never a pinned model; models come only from `pipeline.json`.
+- `scope`: what the node may touch. `read-only` (inspect, write only its own artifact/finding), `worktree-write` (edit inside its task worktree), `none` (no network, no release actions).
+
+The dispatcher enforces both; a node never widens its own scope. Subagents and workers delete nothing; cleanup is the dispatcher's job after the human's GO. Release-class actions (publish, push to a remote, version bump, deploy) stay with the human via `state.approvals`. Scopes pair with the go-gate profile (`strict` / `work` / `off`): the profile decides how hard the hook blocks, the scope decides what a node is allowed to attempt at all.
+
+### Task-manager role
+
+The task-manager is the dispatcher's queue owner. It sequences work (which node or task runs next), owns the Docker/job queue so only one container-heavy task runs at a time, and never merges: merging build fragments is the `merge_state` step, merging branches is the human's decision.
+
 ## Edges
 
 Evaluated by the dispatcher after every node returns, against `state.json` —

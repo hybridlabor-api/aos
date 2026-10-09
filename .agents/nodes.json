@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Declarative node registry for /startcycle-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher. No model is pinned here: a node's model comes only from pipeline.json (docs/agent-models.md).",
+  "description": "Declarative node registry for /startcycle-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher. executor (harness/model class) and scope (read-only | worktree-write | none) are optional and enforced by the dispatcher (graph.md, Workers and scopes). No model is pinned here: a node's model comes only from pipeline.json (docs/agent-models.md).",
   "common": ["read-the-damn-docs", "agenttrail", "archify", "plan-canvas", "stay-within-limits", "quick-recap", "verification-before-completion"],
   "nodes": {
     "architect": {
@@ -11,6 +11,8 @@
       "artifactKey": "plan",
       "writes": null,
       "optional": false,
+      "executor": "planner",
+      "scope": "read-only",
       "skills": [
         "read-the-damn-docs",
         "bdbrainstorm",
@@ -29,6 +31,8 @@
       "artifactKey": null,
       "writes": null,
       "optional": false,
+      "executor": "planner",
+      "scope": "read-only",
       "skills": [
         "read-the-damn-docs",
         "startcycle-graph",
@@ -46,6 +50,8 @@
       "artifactKey": "frontend",
       "writes": "production_artifacts/state.d/ui_ux.json",
       "optional": false,
+      "executor": "builder",
+      "scope": "worktree-write",
       "skills": [
         "godmode-ui-ux",
         "bdbdesignpro",
@@ -68,6 +74,8 @@
       "artifactKey": "backend",
       "writes": "production_artifacts/state.d/engineering.json",
       "optional": false,
+      "executor": "builder",
+      "scope": "worktree-write",
       "skills": [
         "godmode-engineering",
         "software-architecture",
@@ -89,6 +97,8 @@
       "artifactKey": "media",
       "writes": "production_artifacts/state.d/media_eventtech.json",
       "optional": true,
+      "executor": "builder",
+      "scope": "worktree-write",
       "skills": [
         "godmode-eventtech",
         "godmode-media-creation",
@@ -108,6 +118,8 @@
       "artifactKey": "review",
       "writes": null,
       "optional": false,
+      "executor": "reviewer",
+      "scope": "read-only",
       "skills": [
         "ui-review",
         "ux-audit",
@@ -124,6 +136,8 @@
       "artifactKey": "report",
       "writes": null,
       "optional": false,
+      "executor": "gate",
+      "scope": "none",
       "skills": [
         "godmode-shipping",
         "brag",
