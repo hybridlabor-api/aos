@@ -13,6 +13,7 @@ const req = createRequire(import.meta.url);
 const { gatewayDir, GATEWAY_PORT, UPSTREAM_PORT } = req('../lib/gateway/config.js');
 const { createForwarder } = req('../lib/gateway/forwarder.js');
 const { enable, disable } = req('../lib/gateway/harness.js');
+const { shippedPresets } = req('../lib/v5/pkg-gateway.js');
 const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
 const adoptApi = req('../lib/gateway/adopt.js');
 
@@ -242,11 +243,12 @@ async function main() {
     if (cmd === 'direct' || cmd === 'enable') {
         const home = os.homedir();
         const files = harnessMcpFiles(home, process.env, process.platform, home);
+        const aosRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
         let report;
         try {
             report = cmd === 'direct'
                 ? disable({ home, files })
-                : enable({ home, files, token: readToken(gatewayDir(home)), shipped: shippedServers(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')) });
+                : enable({ home, files, token: readToken(gatewayDir(home)), shipped: shippedServers(aosRoot), presets: shippedPresets(aosRoot) });
         } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
         for (const r of report) {
             const bits = r.error ? [`ERROR ${r.error}`] : r.skipped ? [`skipped: ${r.skipped}`] : [

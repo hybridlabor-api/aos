@@ -1018,6 +1018,32 @@ test('update installs the MCP gateway on linux too', async () => {
     assert.doesNotMatch(out.join(''), /skipped on linux/);
 });
 
+for (const platform of ['linux', 'darwin']) {
+    test(`update: gateway installed but unverified on ${platform} is ${platform === 'darwin' ? 'a failure' : 'a warning'}`, async () => {
+        const menu = require('../lib/v5/menu.js');
+        const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+        const realInstall = gw.install, realVerify = gw.verify;
+        const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+        gw.install = async () => ({ ok: true });
+        gw.verify = async () => ({ ok: false });
+        Object.defineProperty(process, 'platform', { value: platform });
+        const home = tmp();
+        const out = [];
+        try {
+            await menu.update(gwHost(home), { home, platform, write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
+        } finally {
+            gw.install = realInstall; gw.verify = realVerify;
+            Object.defineProperty(process, 'platform', realPlatform);
+        }
+        const text = out.join('');
+        if (platform === 'darwin') assert.match(text, /✖ MCP gateway[^\n]*not running/);
+        else {
+            assert.match(text, /✔ MCP gateway[^\n]*service not confirmed on linux: harnesses left direct, run aos-gateway enable after aos-gateway status is green/);
+            assert.doesNotMatch(text, /✖ MCP gateway/);
+        }
+    });
+}
+
 describe('adoptGateway', () => {
     const menu = require('../lib/v5/menu.js');
     const adopt = require('../lib/gateway/adopt.js');
