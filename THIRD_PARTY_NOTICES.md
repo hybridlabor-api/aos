@@ -285,9 +285,9 @@ upstream repository, recorded here so the claim is not lost:
 
 ### Unresolved provenance
 
-These upstreams could not be cleared. They are recorded rather than hidden, and
-each needs a decision before the affected skills can be considered safely
-redistributable.
+These upstreams publish no licence file. The skills ship as published; this note
+records the missing licence. Upstream authors who object can open an issue and
+the skill is removed.
 
 | Upstream | Problem | Skills affected |
 |---|---|---|
