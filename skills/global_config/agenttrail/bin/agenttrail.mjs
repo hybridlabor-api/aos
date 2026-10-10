@@ -8,6 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import crypto from 'node:crypto'
+import { serveShared } from '../lib/shared-static.mjs'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
 import { parsePlan, lintPlan } from '../lib/plan.mjs'
 import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
@@ -873,6 +874,8 @@ const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
+  } else if (req.method === 'GET' && u.pathname.startsWith('/shared/')) {
+    serveShared(u.pathname, res)
   } else if (u.pathname.startsWith('/production_artifacts/')) {
     // AOS patch: serve pipeline artifacts so a card's relative `url:` (e.g. an archify diagram) opens
     let root

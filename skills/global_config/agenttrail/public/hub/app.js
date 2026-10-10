@@ -167,18 +167,18 @@ function renderSessions(model) {
   const sessions = model.sessions || []
   document.getElementById('sessions-count').textContent = sessions.length ? `(${sessions.length})` : ''
   if (!sessions.length) {
-    body.appendChild(el('tr', {}, [el('td', { colspan: '6', class: 'dim', text: 'no session is reporting' })]))
+    body.appendChild(el('span', { class: 'dim', text: 'no session is reporting' }))
     return
   }
-  const stateTag = { working: 'ok', 'waiting-for-you': 'wait', idle: '', ended: '', 'waiting-for-you ': 'wait' }
+  const stateTag = { working: 'ok', 'waiting-for-you': 'wait', idle: '', ended: '' }
   for (const s of sessions) {
-    body.appendChild(el('tr', {}, [
-      el('td', { text: (s.harnesses || [s.harness]).join(' ') }),
-      el('td', { text: s.name || '—' }),
-      el('td', { class: 'trunc', text: s.cwd || '—' }),
-      el('td', {}, [el('span', { class: `tag ${stateTag[s.state] || ''}`.trim(), text: s.state })]),
-      el('td', { class: 'trunc', text: doingText(s) || '—' }),
-      el('td', { text: ageText(s.age) }),
+    const doing = doingText(s)
+    body.appendChild(el('div', { class: 'sess', title: s.cwd || '' }, [
+      el('b', { text: (s.harnesses || [s.harness]).join(' ') }),
+      el('span', { class: 'trunc', text: s.name || baseName(s.cwd) || '—' }),
+      el('span', { class: `tag ${stateTag[s.state] || ''}`.trim(), text: s.state }),
+      doing ? el('span', { class: 'dim trunc', text: doing }) : null,
+      el('span', { class: 'dim', text: ageText(s.age) }),
     ]))
   }
 }
@@ -393,6 +393,97 @@ const gridPlace = (index, cols) => {
   return { row: Math.floor(i / c), col: i % c }
 }
 
+const baseName = (p) => String(p || '').split('/').filter(Boolean).pop() || ''
+
+// /v1/model -> the board shape the shared renderer (public/shared/map.js) draws.
+// One plan = one board = one region. The key doubles as the region id, so it carries no colon.
+function planBoard(repo, plan, sessions) {
+  const comps = plan.components || []
+  const tasks = plan.tasks || []
+  const taskParent = new Map(tasks.map((t) => [t.id, t.parent]))
+  const runs = sessions.map((x) => ({
+    id: x.id,
+    agent: x.harness || (x.harnesses || [])[0] || 'agent',
+    ended: x.state !== 'working',
+    componentId: (x.currentTask && taskParent.get(x.currentTask.id)) || null,
+    startedAt: Date.parse(x.lastEventAt) || 0,
+    todos: [], path: [], subagents: [], recentTools: [],
+  }))
+  const project = `${baseName(repo.root)} · ${plan.name || 'plan'}`
+  return {
+    port: String(plan.planKey || `${repo.root}/${plan.name}`).replace(/[^A-Za-z0-9_-]/g, '_'),
+    project,
+    session: { project },
+    hasPlan: true,
+    plan: [
+      ...comps.map((c) => ({ level: 'component', id: c.id, title: c.title || c.id, status: c.status || 'pending', parent: null, needs: c.needs || [], links: c.links || [], tech: c.tech || '', by: '', kind: '', url: '' })),
+      ...tasks.map((t) => ({ level: 'task', id: t.id, title: t.title || t.id, status: t.status || 'pending', parent: t.parent || null, needs: [], links: [], tech: '', by: '', src: '' })),
+    ],
+    runs,
+    handoffs: [],
+    activity: { at: Date.parse(plan.lastActivity) || 0 },
+  }
+}
+
+let mapFitted = false
+
+function renderMap(model) {
+  const host = document.getElementById('graph')
+  if (!host || typeof renderGraph !== 'function') return
+  const sessions = model.sessions || []
+  const boards = []
+  const plans = []
+  for (const repo of model.repos || []) for (const plan of repo.plans || []) plans.push({ repo, plan })
+  // Each session belongs to the one plan whose owner/mirror path is the longest prefix of its cwd.
+  const owned = plans.map(() => [])
+  for (const x of sessions) {
+    if (!x.cwd) continue
+    let best = -1, bestLen = -1
+    plans.forEach(({ plan }, i) => {
+      for (const r of [plan.owner && plan.owner.path, ...(plan.mirrors || []).map((m) => m.path)].filter(Boolean)) {
+        if ((x.cwd === r || String(x.cwd).startsWith(r + '/')) && r.length > bestLen) { best = i; bestLen = r.length }
+      }
+    })
+    if (best >= 0) owned[best].push(x)
+  }
+  plans.forEach(({ repo, plan }, i) => boards.push(planBoard(repo, plan, owned[i])))
+  renderJump(boards)
+  W = boards
+  M = boards[0] || null
+  if (!boards.length) {
+    host.textContent = 'no plan on the main view'
+    lastGraphKey = ''
+    mapFitted = false
+    return
+  }
+  const key = JSON.stringify(boards) + '|' + String(graphZoom < CARD_LOD)
+  if (key === lastGraphKey) return
+  lastGraphKey = key
+  graphNeedsFit = false
+  renderGraph()
+  if (!mapFitted) { mapFitted = true; requestAnimationFrame(fitWorld) }
+}
+
+// One chip per plan: click flies the map to its region. Rebuilt only when the plan list changes.
+let jumpKey = ''
+function renderJump(boards) {
+  const host = document.getElementById('plan-jump')
+  if (!host) return
+  const key = boards.map((b) => b.port + b.project).join('|')
+  if (key === jumpKey) return
+  jumpKey = key
+  clear(host)
+  if (!boards.length) return
+  const fit = el('button', { type: 'button', text: 'fit all' })
+  fit.addEventListener('click', () => { if (typeof fitWorld === 'function') fitWorld() })
+  host.appendChild(fit)
+  for (const b of boards) {
+    const btn = el('button', { type: 'button', text: b.project })
+    btn.addEventListener('click', () => { if (typeof flyToRegion === 'function') flyToRegion(b.port) })
+    host.appendChild(btn)
+  }
+}
+
 function renderBar(model) {
   modelNow = Date.parse(model.now) || Date.now()
   document.getElementById('port').textContent = `port ${model.port ?? '—'}`
@@ -411,6 +502,7 @@ function render(model) {
   renderWaiting(model)
   renderSessions(model)
   renderPlans(model)
+  renderMap(model)
   renderGate(model)
   renderArchive(model)
 }
@@ -447,4 +539,4 @@ function start() {
 }
 
 if (start()) globalThis.__trailStarted = true
-globalThis.__trail = { render, renderWaiting, renderSessions, renderPlans, renderGate, renderArchive, ageText, goText, doingText, el, clear, start, visibleEntries, entryColumns, gridColumns, gridPlace }
+globalThis.__trail = { planBoard, render, renderWaiting, renderSessions, renderPlans, renderGate, renderArchive, ageText, goText, doingText, el, clear, start, visibleEntries, entryColumns, gridColumns, gridPlace }

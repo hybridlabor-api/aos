@@ -16,6 +16,7 @@ import { csrfToken, hostOk as strictHostOk, originOk, sameOriginFetchSite, conte
 import { createClick, ClickError } from '../lib/click.mjs'
 import { loadConfig } from '../lib/stale.mjs'
 import { STATE_DIR, loadRepos, registerRepo, loadState, setPinned } from '../lib/hub-state.mjs'
+import { serveShared } from '../lib/shared-static.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PUBLIC = path.join(__dirname, '..', 'public', 'hub')
@@ -300,6 +301,7 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    if (req.method === 'GET' && urlPath.startsWith('/shared/')) { serveShared(urlPath, res); return }
     if (req.method === 'GET') { await serveStatic(req, res, urlPath); return }
     res.writeHead(405).end()
   } catch (e) {

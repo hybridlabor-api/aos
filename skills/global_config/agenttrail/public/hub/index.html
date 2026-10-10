@@ -3,23 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#000000">
 <title>agenttrail hub</title>
+<link rel="stylesheet" href="/shared/map.css">
 <link rel="stylesheet" href="/app.css">
-<script src="/app.js" defer></script>
 <meta name="csrf-token" content="__TRAIL_CSRF__">
 </head>
-<body>
+<body class="hub">
 <header class="bar">
   <h1>agenttrail <span class="dim">hub</span></h1>
   <div class="bar-right">
     <span id="port" class="chip">port —</span>
     <span id="gate" class="chip">gate —</span>
     <span id="clock" class="dim"></span>
+    <button class="theme-toggle" id="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Use light theme"><span id="theme-toggle-label">Light</span><span class="theme-track" aria-hidden="true"><span class="theme-thumb"></span></span></button>
   </div>
 </header>
 
-<main>
-  <section id="waiting" class="panel">
+<div class="strip">
+  <section id="waiting" class="strip-block">
     <h2>Waiting for you <span id="waiting-count" class="count"></span></h2>
     <p class="note" id="waiting-note">
       A GO request can only be answered by you, by typing it. Nothing on this page
@@ -28,25 +30,27 @@
     <ul id="waiting-list" class="list"></ul>
   </section>
 
-  <section id="sessions" class="panel">
+  <section id="sessions" class="strip-block">
     <h2>Sessions <span id="sessions-count" class="count"></span></h2>
-    <table class="table">
-      <thead>
-        <tr><th>Harness</th><th>Name</th><th>Repo</th><th>State</th><th>Doing</th><th>Age</th></tr>
-      </thead>
-      <tbody id="sessions-body"></tbody>
-    </table>
+    <div id="sessions-body" class="sessions"></div>
   </section>
+</div>
 
-  <section id="plans" class="panel">
-    <h2>Plans</h2>
-    <div id="plans-list" class="cards"></div>
-  </section>
+<section class="hub-map" aria-label="All registered plans">
+  <div id="plan-jump" class="jump"></div>
+  <section class="primary graph-view" id="graph" aria-label="Plan world map"></section>
+</section>
 
-  <section id="gate" class="panel">
+<main>
+  <section id="gatepanel" class="panel">
     <h2>Go-gate <span id="gate-mode" class="chip"></span></h2>
     <div id="gate-body"></div>
   </section>
+
+  <details id="plans" class="panel">
+    <summary>Plan cards</summary>
+    <div id="plans-list" class="cards"></div>
+  </details>
 
   <section id="archive" class="panel">
     <h2><button id="archive-toggle" type="button" aria-expanded="false">Archive (<span id="archive-count">0</span>)</button></h2>
@@ -57,5 +61,7 @@
 <footer class="foot dim">
   read-only board · the hub never edits a plan, the gate store or a repo
 </footer>
+<script src="/shared/map.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>

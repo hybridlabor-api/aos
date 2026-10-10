@@ -164,8 +164,8 @@ const live = inPrimary.some((s) => now - (s.lastEventAt || 0) < cfg.liveMs && !s
         owner: { path: primary.path, branch: primary.branch },
         mirrors: mirrors.map((m) => ({ path: m.path, branch: m.branch })),
         divergent: divergent.map((m) => ({ path: m.path, branch: m.branch, tasks: differingTasks(m, primary) })),
-        components: components.map((c) => ({ id: c.id, title: c.title, status: c.status, files: c.files })),
-        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status })),
+        components: components.map((c) => ({ id: c.id, title: c.title, status: c.status, files: c.files, needs: c.needs, links: c.links, tech: c.tech })),
+        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, parent: t.parent })),
         progress: { done: tasks.filter((t) => t.status === 'done').length, total: tasks.length, stalled: stalled.size },
         lastActivity: new Date(lastActivity).toISOString(),
       }
