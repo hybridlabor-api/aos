@@ -209,8 +209,8 @@ describe('firecrawl pick: opt-in, never registered by default', () => {
     test('wrong opt-in value stays off (exact match)', () => {
         assert.ok(!secrets.shippedServers(ROOT, { env: { AOS_FIRECRAWL_MCP: '1' } }).firecrawl_mcp);
     });
-    test('gateway routing: firecrawl_mcp stays direct, not gateway', () => {
-        assert.ok(cfg.DIRECT_SERVERS.includes('firecrawl_mcp'));
+    test('gateway routing: firecrawl_mcp is not a shipped gateway server (adopt may take it)', () => {
+        assert.ok(!cfg.DIRECT_SERVERS.includes('firecrawl_mcp'));
         assert.ok(!cfg.GATEWAY_SERVERS.includes('firecrawl_mcp'));
     });
     test('no key value pattern lands in the shipped entry; the secret moves to the launcher', () => {

@@ -188,9 +188,8 @@ test('MCP installed flags from fixture harness mcp configs (temp HOME, no CODEX_
   try {
     const cat = buildCatalog({ root: ROOT, home, now: () => Date.now() });
     const syn = byName(cat.mcps, 'synapse');
-    assert.ok(syn, 'synapse listed (DIRECT_SERVERS entry)');
-    assert.equal(syn.category, 'direct');
-    assert.equal(syn.installed.claude, true);
+    // synapse left DIRECT_SERVERS so `aos-gateway adopt` can take it; the catalog no longer invents a direct row.
+    assert.equal(syn, undefined);
   } finally {
     if (keep === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = keep;
   }
