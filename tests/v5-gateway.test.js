@@ -728,14 +728,15 @@ describe('harness enable/disable', () => {
         assert.deepEqual(oc.mcp.aos, { type: 'remote', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN }, enabled: true });
         assert.equal(oc.$schema, 'x');
         assert.deepEqual(rep.find((r) => r.file === fx.f.cursor).kept, [{ name: 'github', reason: 'user-owned' }]);
-        for (const k of ['codex', 'agy']) assert.equal(fs.readFileSync(fx.f[k], 'utf8'), before[k], `${k} byte-identical`);
-        assert.deepEqual(rep.filter((r) => r.skipped).map((r) => r.skipped), ['shape unverified', 'shape unverified']);
+        assert.equal(fs.readFileSync(fx.f.codex, 'utf8'), before.codex, 'codex byte-identical');
+        assert.deepEqual(rj(fx.f.agy).mcpServers.aos, { serverUrl: harness.GATEWAY_URL, headers: { 'x-aos-token': TOKEN } });
+        assert.deepEqual(rep.filter((r) => r.skipped).map((r) => r.skipped), ['shape unverified']);
         // backups hold the pre-change bytes; migration.json holds originals and the aos marker, no token
         assert.equal(fs.readFileSync(rep.find((r) => r.file === fx.f.claude).backup, 'utf8'), before.claude);
         const mig = fs.readFileSync(harness.migrationPath(fx.home), 'utf8');
         assert.ok(!mig.includes(TOKEN));
         const recs = JSON.parse(mig).records;
-        assert.equal(recs.filter((r) => r.added).length, 3);
+        assert.equal(recs.filter((r) => r.added).length, 4);
         assert.deepEqual(recs.find((r) => r.key === 'github' && r.kind === 'claude').original, owned(fx.home, 'github'));
         if (posix) assert.equal(mode(harness.migrationPath(fx.home)), 0o600);
     });
@@ -819,10 +820,10 @@ describe('harness enable/disable', () => {
         const before = snap(fx.f);
         run(fx);
         const rep = harness.disable({ home: fx.home, files: fx.files, now: 3000 });
-        for (const k of ['claude', 'cursor', 'oc']) {
+        for (const k of ['claude', 'cursor', 'oc', 'agy']) {
             assert.deepEqual(rj(fx.f[k]), JSON.parse(before[k]), k);
         }
-        for (const k of ['codex', 'agy']) assert.equal(fs.readFileSync(fx.f[k], 'utf8'), before[k]);
+        assert.equal(fs.readFileSync(fx.f.codex, 'utf8'), before.codex);
         assert.ok(!fs.existsSync(harness.migrationPath(fx.home)));
         assert.ok(fs.existsSync(`${harness.migrationPath(fx.home)}.restored-3000`));
         assert.ok(rep.some((r) => r.removedAos));

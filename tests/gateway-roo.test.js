@@ -47,9 +47,9 @@ test('enable adds streamable-http aos, keeps unrelated content, backs up, is ide
     assert.ok(back.mcpServers.github);
 });
 
-test('Antigravity, Windsurf and Codex stay skipped', () => {
+test('Windsurf and Codex stay skipped', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-roo-'));
-    const files = [path.join(home, '.gemini', 'config', 'mcp_config.json'), path.join(home, '.codeium', 'windsurf', 'mcp_config.json')].map((file) => {
+    const files = [path.join(home, '.codeium', 'windsurf', 'mcp_config.json')].map((file) => {
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, '{"mcpServers":{}}');
         return { file, kind: 'json' };
@@ -59,5 +59,5 @@ test('Antigravity, Windsurf and Codex stay skipped', () => {
     fs.writeFileSync(toml, '[mcp_servers.x]\ncommand = "a"\n');
     files.push({ file: toml, kind: 'toml' });
     const rep = harness.enable({ home, token: TOKEN, shipped, files, now: 1 });
-    assert.ok(rep.length === 3 && rep.every((r) => r.skipped === 'shape unverified'));
+    assert.ok(rep.length === 2 && rep.every((r) => r.skipped === 'shape unverified'));
 });
