@@ -2290,6 +2290,36 @@ function checkModuleUpdate(pkgName, targetDir) {
     }
 }
 
+// Anything a module generated in place -- venvs, caches, local state -- is not in its tarball and must
+// survive the staging swap in downloadOrUpdateModule.
+const MODULE_PRESERVE = ['.venv', 'venv', 'node_modules', '.env', 'data', 'logs'];
+// Move preserved entries from one tree to another; an entry that already exists there stays put.
+function movePreserved(fromDir, toDir) {
+    for (const keep of MODULE_PRESERVE) {
+        const from = path.join(fromDir, keep);
+        if (!fs.existsSync(from) || fs.existsSync(path.join(toDir, keep))) continue;
+        try { fs.renameSync(from, path.join(toDir, keep)); } catch (moveErr) { logDebug(moveErr, `preserve ${keep}`); }
+    }
+}
+// Stale .incoming-*/.previous-* dirs of an interrupted swap may hold the preserved .env/data/logs (or the
+// whole old tree): move those into targetDir, newest first, before the dirs are deleted (S1-1).
+function recoverStaleSwaps(targetDir) {
+    try {
+        const parentDir = path.dirname(targetDir);
+        const baseName = path.basename(targetDir);
+        if (!fs.existsSync(parentDir)) return;
+        fs.mkdirSync(targetDir, { recursive: true });
+        const stamp = (item) => item.slice(item.lastIndexOf('-') + 1);
+        const stale = fs.readdirSync(parentDir)
+            .filter((item) => item.startsWith(`${baseName}.incoming-`) || item.startsWith(`${baseName}.previous-`))
+            .sort((a, b) => stamp(b).localeCompare(stamp(a)));
+        for (const item of stale) {
+            movePreserved(path.join(parentDir, item), targetDir);
+            safeRmDirSync(path.join(parentDir, item));
+        }
+    } catch (_) {}
+}
+
 function downloadOrUpdateModule(pkgName, targetDir, displayName) {
     const status = checkModuleUpdate(pkgName, targetDir);
     if (status.installed && !status.updateAvailable) {
@@ -2335,37 +2365,14 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
         const stagingDir = `${targetDir}.incoming-${timestamp}`;
         const retiredDir = `${targetDir}.previous-${timestamp}`;
 
-        // Clean up any stale staging or retired directories left behind by earlier interrupted runs
-        try {
-            const parentDir = path.dirname(targetDir);
-            const baseName = path.basename(targetDir);
-            if (fs.existsSync(parentDir)) {
-                for (const item of fs.readdirSync(parentDir)) {
-                    if (item.startsWith(`${baseName}.incoming-`) || item.startsWith(`${baseName}.previous-`)) {
-                        safeRmDirSync(path.join(parentDir, item));
-                    }
-                }
-            }
-        } catch (_) {}
+        recoverStaleSwaps(targetDir);
 
         safeRmDirSync(stagingDir);
         fs.mkdirSync(stagingDir, { recursive: true });
         execSync(`tar -xzf "${path.join(targetDir, tarball)}" --strip-components=1 -C "${stagingDir}"`, { stdio: 'ignore' });
         fs.unlinkSync(path.join(targetDir, tarball));
 
-        // Anything the module generated in place -- venvs, caches, local state
-        // -- is not in the tarball and must survive the swap.
-        const PRESERVE = ['.venv', 'venv', 'node_modules', '.env', 'data', 'logs'];
-        for (const keep of PRESERVE) {
-            const from = path.join(targetDir, keep);
-            if (fs.existsSync(from) && !fs.existsSync(path.join(stagingDir, keep))) {
-                try {
-                    fs.renameSync(from, path.join(stagingDir, keep));
-                } catch (preserveErr) {
-                    logDebug(preserveErr, `preserve ${keep}`);
-                }
-            }
-        }
+        movePreserved(targetDir, stagingDir);
 
         // Phase 1: retire the live tree. On Windows a running daemon holds open
         // file handles into targetDir — retry with brief backoff before failing.
@@ -2388,6 +2395,8 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
                     } catch (_) {}
                     continue;
                 }
+                // The live tree stayed in place: give it its preserved entries back before staging goes.
+                movePreserved(stagingDir, targetDir);
                 safeRmDirSync(stagingDir);
                 throw retireError;
             }
@@ -2399,7 +2408,12 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
             fs.renameSync(stagingDir, targetDir);
         } catch (promoteError) {
             try { fs.renameSync(retiredDir, targetDir); } catch (_) {}
-            safeRmDirSync(stagingDir);
+            // Only delete staging once the preserved entries are back; if the old tree could not be
+            // restored either, keep staging so the next run's sweep can recover them.
+            if (fs.existsSync(targetDir)) {
+                movePreserved(stagingDir, targetDir);
+                safeRmDirSync(stagingDir);
+            }
             throw promoteError;
         }
 
@@ -8016,6 +8030,9 @@ Options:
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    movePreserved,
+    recoverStaleSwaps,
+    MODULE_PRESERVE,
     withoutGatewayServers,
     mirrorMcpServersTo,
     codexPluginInstall,
