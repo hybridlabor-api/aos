@@ -93,3 +93,44 @@ test('a record for a project that no longer exists stays recorded instead of lan
     assert.equal(read(fx.file).mcpServers.github, undefined);
     assert.ok(harness.readMigration(fx.home).some((r) => r.project === '/p/one'));
 });
+
+const doctor = require('../lib/gateway/doctor.js');
+const pkg = require('../lib/v5/pkg-gateway.js');
+
+function withGateway() {
+    const fx = fixture();
+    const d = read(fx.file);
+    d.mcpServers.aos = { type: 'http', url: harness.GATEWAY_URL };
+    delete d.mcpServers.github;
+    fs.writeFileSync(fx.file, JSON.stringify(d, null, 2));
+    const toml = path.join(fx.home, '.codex', 'config.toml');
+    fs.mkdirSync(path.dirname(toml), { recursive: true });
+    fs.writeFileSync(toml, `[mcp_servers.aos]\nurl = "${harness.GATEWAY_URL}"\n\n[mcp_servers.bdb_after_effects_mcp_fallback]\ncommand = ${JSON.stringify(fx.aeBin.command)}\nargs = []\n\n[mcp_servers.mine]\ncommand = "x"\n`);
+    return { ...fx, toml, files: [...fx.files, { file: toml, kind: 'toml' }] };
+}
+
+test('doctor reports per-project and Codex TOML duplicates red', () => {
+    const fx = withGateway();
+    const checks = doctor.gatewayChecks({ home: fx.home, files: fx.files, shipped, platform: 'linux' });
+    const dup = (f) => checks.find((c) => c.name === `gateway duplicates in ${f}`);
+    assert.equal(dup(fx.file).ok, false);
+    assert.match(dup(fx.file).detail, /bdb_after_effects_mcp_fallback/);
+    assert.match(dup(fx.file).detail, /github \(project \/p\/one\)/);
+    assert.equal(checks.find((c) => c.name === `gateway entry in ${fx.toml}`).ok, true);
+    assert.equal(dup(fx.toml).ok, false);
+    assert.match(dup(fx.toml).detail, /bdb_after_effects_mcp_fallback/);
+    assert.doesNotMatch(dup(fx.toml).detail, /mine/);
+});
+
+test('verify fails while AOS-owned duplicates sit next to a running gateway, passes once they are gone', async () => {
+    const fx = withGateway();
+    const ctx = { home: fx.home, env: {}, platform: 'linux', aosRoot: ROOT, statusFn: async () => ({ running: true, port: 7790, upstreams: [] }), sleep: async () => {} };
+    const bad = await pkg.verify(ctx, { tries: 1 });
+    assert.equal(bad.ok, false);
+    assert.ok(bad.dupes.some((d) => d.includes('/p/one')));
+    assert.equal((await pkg.verify(ctx, { tries: 1, forwarderOnly: true })).ok, true);
+
+    harness.enable({ home: fx.home, token: TOKEN, shipped, files: fx.files, now: 1000 });
+    const good = await pkg.verify(ctx, { tries: 1 });
+    assert.equal(good.ok, true, good.detail);
+});
