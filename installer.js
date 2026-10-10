@@ -5225,6 +5225,7 @@ function installGoCheck({ targetHome = homeDir } = {}) {
         [path.join(srcDir, 'bin', 'guarded-patterns.json'), 'guarded-patterns.json'],
         [path.join(srcDir, 'mcps', 'mcsc', 'packages', 'core', 'src', 'trail.js'), 'trail.mjs'],
         [path.join(srcDir, 'lib', 'a2a-permissions.mjs'), 'a2a-permissions.mjs'],
+        [path.join(srcDir, 'lib', 'sandbox.mjs'), 'sandbox.mjs'],
     ];
     if (!files.every(([src]) => fs.existsSync(src))) return false;
     fs.mkdirSync(dest, { recursive: true });

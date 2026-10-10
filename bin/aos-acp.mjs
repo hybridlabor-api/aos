@@ -12,7 +12,7 @@
 //   aos-acp <claude|codex|opencode|agy> --name <worker> [--cwd <dir>]
 //           (--prompt "<text>" | --prompt-file <f>) [--allow-default deny|allow|scoped]
 //           [--go-wait <sec>] [--consume|--no-consume] [--log <file>]
-//           [--model <id>] [--timeout <sec>] [--print-timeout <sec>] [--cmd "<custom agent command>"]
+//           [--sandbox coop|wsl2] [--model <id>] [--timeout <sec>] [--print-timeout <sec>] [--cmd "<custom agent command>"]
 //   agy runs `agy --print` (no ACP server, no per-tool permission requests): see agyArgs.
 
 import { spawn } from "node:child_process";
@@ -41,6 +41,12 @@ const permMod = await loadFrom([
   join(homedir(), ".aos", "bin", "a2a-permissions.mjs"),
 ]);
 const scopedDecide = permMod?.decide ?? (() => ({ allow: false, reason: "a2a-permissions.mjs not found; refusing to allow anything" }));
+// Loaded only for --sandbox, so the installed layout (no ../lib) keeps working without the flag.
+const loadSandbox = async () => {
+  const m = await loadFrom([join(here, "..", "lib", "sandbox.mjs"), join(homedir(), ".aos", "bin", "sandbox.mjs")]);
+  if (!m) throw new Error("sandbox.mjs not found (run the AOS installer): cannot honour --sandbox");
+  return m;
+};
 const emitTrail = (await loadFrom([
   join(here, "..", "mcps", "mcsc", "packages", "core", "src", "trail.js"),
   join(homedir(), ".aos", "bin", "trail.mjs"),
@@ -73,13 +79,14 @@ export function agyArgs(opts) {
 
 // agy reports status SUCCESS with an empty response when its own print timeout fires, and waits
 // forever on an open stdin, so: stdin is closed and success needs a non-empty response.
-async function runPrint(opts, log, emitTrail) {
+async function runPrint(opts, log, emitTrail, sandbox) {
   const args = agyArgs(opts);
-  log("start", { adapter: "agy", cmd: `agy ${args.slice(0, -1).join(" ")} <prompt>`, cwd: opts.cwd, allow_default: opts.allowDefault, model: opts.model || "adapter default" });
+  log("start", { adapter: "agy", cmd: `agy ${args.slice(0, -1).join(" ")} <prompt>`, cwd: opts.cwd, allow_default: opts.allowDefault, model: opts.model || "adapter default", ...(opts.sandbox && { sandbox: opts.sandbox }) });
   const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `agy:${opts.name}` };
   emitTrail({ ...trail, hook_event_name: "SessionStart" });
   const out = opts.stdout || process.stdout;
-  const child = spawn("agy", args, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" } });
+  const [bin, ...binArgs] = sandbox ? sandbox.wrap(["agy", ...args], { cwd: opts.cwd }) : ["agy", ...args];
+  const child = spawn(bin, binArgs, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" } });
   let stdout = "", stderr = "", timedOut = false;
   child.stdout.on("data", (d) => { stdout += d; });
   child.stderr.on("data", (d) => { stderr += d; });
@@ -243,6 +250,7 @@ function textOf(block) {
 }
 
 export async function run(opts) {
+  const sandbox = opts.sandbox ? (opts.resolveSandbox || (await loadSandbox()).resolveSandbox)(opts.sandbox) : null;
   const logFile = opts.log || join(homedir(), ".aos", "acp", `${slug(opts.name)}.jsonl`);
   mkdirSync(dirname(logFile), { recursive: true });
   const log = (event, data = {}) => {
@@ -250,12 +258,13 @@ export async function run(opts) {
   };
 
   const adapter = ADAPTERS[opts.adapter];
-  if (adapter?.print && !opts.cmd) return runPrint(opts, log, emitTrail);
-  const cmd = opts.cmd ? ["sh", "-c", opts.cmd] : adapter?.cmd;
+  if (adapter?.print && !opts.cmd) return runPrint(opts, log, emitTrail, sandbox);
+  let cmd = opts.cmd ? ["sh", "-c", opts.cmd] : adapter?.cmd;
   if (!cmd) throw new Error(`unknown adapter "${opts.adapter}" (claude|codex|opencode|agy)`);
   if (adapter?.cwdFlag && !opts.cmd) cmd.push(adapter.cwdFlag, opts.cwd);
+  if (sandbox) cmd = sandbox.wrap(cmd, { cwd: opts.cwd });
   const consume = opts.consume ?? adapter?.consume ?? true;
-  log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, model: opts.model || "adapter default" });
+  log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, model: opts.model || "adapter default", ...(opts.sandbox && { sandbox: opts.sandbox }) });
 
   const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `${opts.adapter}:${opts.name}` };
   const seenTools = new Map();
@@ -329,6 +338,7 @@ export function parseArgs(argv) {
     else if (a === "--log") o.log = v, i++;
     else if (a === "--model") o.model = v, i++;
     else if (a === "--cmd") o.cmd = v, i++;
+    else if (a === "--sandbox") o.sandbox = v, i++;
     else if (a === "--consume") o.consume = true;
     else if (a === "--no-consume") o.consume = false;
     else throw new Error(`unknown argument ${a}`);
@@ -338,7 +348,7 @@ export function parseArgs(argv) {
   return o;
 }
 
-const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900]";
+const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--sandbox coop|wsl2] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900]";
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
   if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }

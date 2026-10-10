@@ -146,11 +146,11 @@ test('installGoCheck places go-check, go-gate and the patterns, idempotently, an
     const home = fs.mkdtempSync(path.join(tmpHome, 'inst-'));
     assert.equal(installer.installGoCheck({ targetHome: home }), true);
     const bin = path.join(home, '.aos', 'bin');
-    assert.deepEqual(fs.readdirSync(bin).sort(), ['a2a-permissions.mjs', 'gate-profile.mjs', 'go-check.mjs', 'go-gate.mjs', 'guarded-patterns.json', 'trail.mjs']);
+    assert.deepEqual(fs.readdirSync(bin).sort(), ['a2a-permissions.mjs', 'gate-profile.mjs', 'go-check.mjs', 'go-gate.mjs', 'guarded-patterns.json', 'sandbox.mjs', 'trail.mjs']);
     const before = fs.readdirSync(bin).map((f) => fs.readFileSync(path.join(bin, f), 'utf8'));
     assert.equal(installer.installGoCheck({ targetHome: home }), true);
     assert.deepEqual(fs.readdirSync(bin).map((f) => fs.readFileSync(path.join(bin, f), 'utf8')), before);
-    assert.equal(fs.readdirSync(bin).length, 6,'no backup files on an unchanged re-run');
+    assert.equal(fs.readdirSync(bin).length, 7,'no backup files on an unchanged re-run');
     assert.equal(fs.readFileSync(path.join(bin, 'guarded-patterns.json'), 'utf8'), fs.readFileSync(path.join(REPO, 'bin', 'guarded-patterns.json'), 'utf8'));
     const r = check(['--session', 'w1', '--command', 'git push'], { HOME: home }, path.join(bin, 'go-check.mjs'));
     assert.equal(r.code, 1);
