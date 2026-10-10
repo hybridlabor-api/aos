@@ -175,9 +175,9 @@
 | `simplify-code` | Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes. |
 | `systematic-debugging` | Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes |
 | `triage` | Move issues and external PRs through a state machine of triage roles, categorise, verify, and write agent-ready briefs. |
-| `tdd` | Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests. |
-| `diagnosing-bugs` | Diagnosis loop for hard bugs and performance regressions. Use when the user says "diagnose"/"debug this", or reports something broken/throwing/failing/slow. |
-| `code-review` | Review the changes since a fixed point along two axes: Standards and Spec. Runs both reviews in parallel sub-agents and reports them side by side. |
+| `tdd` | Seam discipline for TDD (where tests go, what a good test is); complements `test-driven-development`, which covers the general workflow. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests. |
+| `diagnosing-bugs` | Loop-first diagnosis (no repro, no hypothesis); complements `systematic-debugging` and `debugger`. Diagnosis loop for hard bugs and performance regressions. Use when the user says "diagnose"/"debug this", or reports something broken/throwing/failing/slow. |
+| `two-axis-code-review` | Upstream `code-review`, renamed to avoid the built-in. Review the changes since a fixed point along two axes (Standards and Spec) in parallel sub-agents. Differs from `requesting-code-review`: a fixed-point diff report, not a pipeline gate. |
 | `to-spec` | Turn the current conversation into a spec and save it (or publish it to the issue tracker): no interview, just synthesis of what you've already discussed. |
 | `wayfinder` | Plan a huge chunk of work as a shared map of decision tickets, and resolve them one at a time until the way to the destination is clear. |
 | `golive` | Take an agent-written app from repo to live production on the user's own accounts, with providers they choose (hosting, database, auth, payments, email, domain/DNS). The human approves changes. |

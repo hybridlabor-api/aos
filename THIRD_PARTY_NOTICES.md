@@ -195,7 +195,7 @@ The grilling family and the domain-modeling discipline it composes with:
 | `skills/global_config/prototype/` | `skills/engineering/prototype/` |
 | `skills/global_config/tdd/` | `skills/engineering/tdd/` (incl. `tests.md`, `mocking.md`) |
 | `skills/global_config/diagnosing-bugs/` | `skills/engineering/diagnosing-bugs/` (incl. `scripts/hitl-loop.template.sh`) |
-| `skills/global_config/code-review/` | `skills/engineering/code-review/` |
+| `skills/global_config/two-axis-code-review/` | `skills/engineering/code-review/` (renamed: `code-review` collides with the built-in Claude Code skill) |
 | `skills/global_config/to-spec/` | `skills/engineering/to-spec/` |
 | `skills/global_config/wayfinder/` | `skills/engineering/wayfinder/` |
 
@@ -206,7 +206,7 @@ are thin wrappers that invoke the primitive rather than restating it. Upstream's
 `agents/openai.yaml` under `domain-modeling` is harness-specific to that project
 and was not carried over.
 
-`tdd`, `diagnosing-bugs`, `code-review`, `to-spec` and `wayfinder` were imported from upstream commit
+`tdd`, `diagnosing-bugs`, `code-review` (as `two-axis-code-review`), `to-spec` and `wayfinder` were imported from upstream commit
 `49dd158d1076134a641b33efb035946536778336` (2026-10-09). Changes: `category` and `source` frontmatter added;
 `GLOSSARY.md` references became `CONTEXT.md`; `/setup-matt-pocock-skills` and the upstream issue-tracker setup were
 replaced by AOS defaults (markdown files under `production_artifacts/`, GitHub issues via `gh` only on request);
