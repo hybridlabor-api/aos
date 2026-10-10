@@ -146,6 +146,7 @@
     "./skills/global_config/local-llm-expert",
     "./skills/global_config/loop-templates",
     "./skills/global_config/makefile-generator",
+    "./skills/global_config/makefile-pro",
     "./skills/global_config/makefile-validator",
     "./skills/global_config/mcp-manage",
     "./skills/global_config/mcsc",
@@ -287,6 +288,7 @@
     "./skills/workspace_agents/firecrawl-interact",
     "./skills/workspace_agents/firecrawl-map",
     "./skills/workspace_agents/firecrawl-scrape",
+    "./skills/workspace_agents/firecrawl-sdk",
     "./skills/workspace_agents/firecrawl-search"
   ],
   "commands": [
