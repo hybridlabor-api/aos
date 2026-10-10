@@ -4050,9 +4050,9 @@ async function installMcpsForTarget(paths, ctx) {
         }
     }
 
-    // The fallback template runs the compiled binary, not `go run` (a cold Go
-    // build on every MCP launch). Built once here; on failure the template's
-    // `go run` shape stays and the missing binary is reported like any other.
+    // The fallback runs the compiled binary, not `go run` (a cold Go build on
+    // every MCP launch). Built once here; on failure the template's `go run`
+    // shape is written instead (see the rewrite before __MCPS_DIR__ substitution).
     if (selectedMcps.includes('ae-mcp') && hasExecutable('go') && !DRY_RUN) {
         const aeDir = path.join(mcpCodeTarget, 'ae-mcp');
         const aeOut = path.join(aeDir, 'bin', process.platform === 'win32' ? 'ae-mcp.exe' : 'ae-mcp');
@@ -4233,6 +4233,11 @@ async function installMcpsForTarget(paths, ctx) {
                 }
             }
             if (keep) finalMcpServers[key] = val;
+        }
+        // The ae fallback runs the binary built above when it exists; otherwise the template's `go run` stays.
+        const aeBin = `ae-mcp/bin/ae-mcp${process.platform === 'win32' ? '.exe' : ''}`;
+        if (finalMcpServers.bdb_after_effects_mcp_fallback && fs.existsSync(path.join(mcpCodeTarget, aeBin))) {
+            finalMcpServers.bdb_after_effects_mcp_fallback = { command: `__MCPS_DIR__/${aeBin}`, args: [] };
         }
         parsedMcpConfig.mcpServers = finalMcpServers;
         mcpConfigStr = JSON.stringify(parsedMcpConfig, null, 2);

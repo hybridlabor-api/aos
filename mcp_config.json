@@ -56,8 +56,8 @@
       "args": ["-y", "@kumoproductions/mcp-aftereffects@0.3.1"]
     },
     "bdb_after_effects_mcp_fallback": {
-      "command": "__MCPS_DIR__/ae-mcp/bin/ae-mcp",
-      "args": []
+      "command": "go",
+      "args": ["-C", "__MCPS_DIR__/ae-mcp", "run", "./cmd/ae-mcp"]
     },
     "bdb_td_minddesigner": {
       "command": "node",
