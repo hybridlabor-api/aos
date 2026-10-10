@@ -380,7 +380,7 @@ describe('linux systemd control', () => {
   test('a row without a unit throws the not-available error and spawns nothing', async () => {
     calls.length = 0;
     await assert.rejects(
-      () => controlService(recordingCtx({ platform: 'linux' }), 'memb', 'start'),
+      () => controlService(recordingCtx({ platform: 'linux' }), 'ao', 'start'),
       /not available on this platform/,
     );
     assert.equal(calls.length, 0);
@@ -406,7 +406,7 @@ describe('linux systemd control', () => {
     calls.length = 0;
     const rows = await statusService(ctx);
     assert.equal(rows.find((r) => r.id === 'gateway').control, 'systemd');
-    assert.equal(rows.find((r) => r.id === 'memb').control, 'observe');
+    assert.equal(rows.find((r) => r.id === 'ao').control, 'observe');
     const loadCall = calls.find((c) => c.cmd === 'systemctl' && c.args[1] === 'is-enabled');
     assert.ok(loadCall, 'is-enabled was asked');
     assert.deepEqual(loadCall.args, ['--user', 'is-enabled', 'com.bdb.aos.gateway.service']);

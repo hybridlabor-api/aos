@@ -67,6 +67,8 @@ const AGENTS = [
   'com.bdb.memb.webui', 'com.bdb.synapse', 'com.bdb.openwiki.daemon',
   'com.bdb.ao.daemon', 'com.bdb.agent-workspace', 'com.hybridlabor.bdb-remote', 'com.bdb.plan-canvas',
 ];
+// Linux: the systemd user units the installer writes for the same services.
+const LINUX_UNITS = ['com.bdb.memb.webui.service', 'com.bdb.synapse.service', 'com.bdb.openwiki-visualize.service', 'com.bdb.plan-canvas.service'];
 
 const MODULE_DIRS = ['memB', 'bdb-synapse', 'bdb-os-remote', 'bdb-dev-creator-extension',
   'bdb-hardware-pcb',
@@ -113,7 +115,8 @@ function plan() {
 
   const agents = AGENTS
     .map((label) => ({ label, plist: h('Library', 'LaunchAgents', `${label}.plist`) }))
-    .filter((a) => existsSync(a.plist));
+    .filter((a) => existsSync(a.plist))
+    .concat(LINUX_UNITS.map((label) => ({ label, unit: h('.config', 'systemd', 'user', label) })).filter((a) => existsSync(a.unit)));
 
   const modules = MODULE_DIRS.filter(existsSync);
   const legacy = LEGACY_MARKERS.filter(existsSync);
@@ -212,6 +215,11 @@ async function execute(p) {
   let removed = 0, backed = 0;
 
   for (const a of agents) {
+    if (a.unit) {
+      try { execFileSync('systemctl', ['--user', 'disable', '--now', a.label], { stdio: 'ignore' }); } catch { /* not loaded */ }
+      try { rmSync(a.unit); } catch { /* already gone */ }
+      continue;
+    }
     try { execFileSync('launchctl', ['unload', a.plist], { stdio: 'ignore' }); } catch { /* not loaded */ }
     try { rmSync(a.plist); } catch { /* already gone */ }
   }
@@ -299,15 +307,15 @@ async function execute(p) {
 
   agyPlugin.uninstall({ home: HOME, dryRun: DRY });
 
-  // Fleet mod and MCP gateway are opt-in packages with their own registrations; the gateway only when Settings installed it.
-  for (const id of ['fleet', 'gateway']) {
+  // Fleet mod, MCP gateway and the hub service have their own registrations; gateway and hub only when installed.
+  for (const id of ['fleet', 'gateway', 'hub']) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
       const c = { home: HOME, dryRun: DRY };
-      if (id === 'gateway' && !(await pkg.detect(c)).installed) continue;
+      if (id !== 'fleet' && !(await pkg.detect(c)).installed) continue;
       const r = await pkg.uninstall(c);
       if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
-      else if (r && (r.changed || id === 'gateway')) console.log(`  ${pkg.name} entfernt`);
+      else if (r && (r.changed || id !== 'fleet')) console.log(`  ${pkg.name} entfernt`);
     } catch (e) { console.log(`  ${pkg.name}: ${e.message} — von Hand prüfen`); }
   }
 

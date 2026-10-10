@@ -28,6 +28,7 @@ const { claudeConfigDir } = require('./lib/plugin-evidence');
 const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
+const systemdUnits = require('./lib/systemd-units');
 const mcpSecrets = require('./lib/mcp-secrets');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
@@ -2566,6 +2567,33 @@ async function installMemB(interactive) {
                     log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
                 }
             } catch (e) { logDebug(e, 'operation'); }
+        } else if (process.platform === 'linux') {
+            // Same program, working dir and logs as the launchd plist above.
+            const venvPython = path.join(membDir, '.venv', 'bin', 'python');
+            const unitName = 'com.bdb.memb.webui.service';
+            try {
+                fs.mkdirSync(path.join(homeDir, '.memb'), { recursive: true });
+                const unitFile = systemdUnits.unitPath(homeDir, unitName);
+                fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+                fs.writeFileSync(unitFile, systemdUnits.buildUserUnit({
+                    description: 'memB WebUI',
+                    execStart: [venvPython, serverPy],
+                    workingDirectory: path.join(membDir, 'src', 'backend'),
+                    restart: 'always',
+                    logOut: path.join(homeDir, '.memb', 'webui.stdout.log'),
+                    logErr: path.join(homeDir, '.memb', 'webui.stderr.log'),
+                }));
+                await systemdUnits.enableUnit(async (cmd, args) => {
+                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    return { ok: true };
+                }, unitName);
+                const isListening = await verifyDaemonListening(8088, 'memB WebUI');
+                if (isListening) {
+                    log.success('memB WebUI systemd user unit active (Port 8088)');
+                } else {
+                    log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                }
+            } catch (e) { logDebug(e, 'linux memb unit'); }
         } else if (process.platform === 'win32') {
             const venvPython = path.join(membDir, '.venv', 'Scripts', 'python.exe');
             const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
@@ -2682,6 +2710,32 @@ async function installSynapse() {
                     log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
                 }
             } catch (e) { logDebug(e, 'synapse plist setup'); }
+        } else if (process.platform === 'linux') {
+            // Same program, args, working dir and logs as the launchd plist above.
+            const unitName = 'com.bdb.synapse.service';
+            try {
+                fs.mkdirSync(path.join(homeDir, '.synapse'), { recursive: true });
+                const unitFile = systemdUnits.unitPath(homeDir, unitName);
+                fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+                fs.writeFileSync(unitFile, systemdUnits.buildUserUnit({
+                    description: 'Synapse 3D',
+                    execStart: binaryPath.endsWith('.js') ? [process.execPath, binaryPath, 'serve', '--port', '7781'] : [binaryPath, 'serve', '--port', '7781'],
+                    workingDirectory: synapseDir,
+                    restart: 'always',
+                    logOut: path.join(homeDir, '.synapse', 'daemon.stdout.log'),
+                    logErr: path.join(homeDir, '.synapse', 'daemon.stderr.log'),
+                }));
+                await systemdUnits.enableUnit(async (cmd, args) => {
+                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    return { ok: true };
+                }, unitName);
+                const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
+                if (isListening) {
+                    log.success('Synapse 3D systemd user unit active (Port 7781)');
+                } else {
+                    log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                }
+            } catch (e) { logDebug(e, 'linux synapse unit'); }
         } else if (process.platform === 'win32') {
             const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
             fs.mkdirSync(startupDir, { recursive: true });
@@ -2887,6 +2941,33 @@ async function installOpenWikiVisualizer() {
                 log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
             }
         } catch (e) { logDebug(e, 'openwiki visualizer plist setup'); }
+    } else if (process.platform === 'linux') {
+        // Same program, args, working dir and logs as the launchd plist above (com.bdb.openwiki-visualize).
+        const unitName = 'com.bdb.openwiki-visualize.service';
+        try {
+            fs.mkdirSync(path.join(homeDir, '.openwiki'), { recursive: true });
+            const unitFile = systemdUnits.unitPath(homeDir, unitName);
+            fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+            const unit = systemdUnits.buildUserUnit({
+                description: 'OpenWiki Visualizer',
+                execStart: wikiPath ? [nodeBin, openwikiBin, 'visualize', wikiPath, '--port', '4321', '--no-open'] : [nodeBin, openwikiBin, 'visualize', '--port', '4321', '--no-open'],
+                workingDirectory: homeDir,
+                restart: 'always',
+                logOut: path.join(homeDir, '.openwiki', 'visualize.stdout.log'),
+                logErr: path.join(homeDir, '.openwiki', 'visualize.stderr.log'),
+            });
+            fs.writeFileSync(unitFile, unit);
+            await systemdUnits.enableUnit(async (cmd, args) => {
+                execFileSync(cmd, args, { stdio: 'ignore' });
+                return { ok: true };
+            }, unitName);
+            const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
+            if (isListening) {
+                log.success('OpenWiki Visualizer systemd user unit active (Port 4321)');
+            } else {
+                log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+            }
+        } catch (e) { logDebug(e, 'linux openwiki visualizer unit'); }
     } else if (process.platform === 'win32') {
         const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
         fs.mkdirSync(startupDir, { recursive: true });
@@ -6317,8 +6398,31 @@ function installPlanCanvasAutostart(overrides = {}) {
             fs.writeFileSync(vbsPath, files.vbs, 'utf-8');
             if (!overrides.skipLaunchctl) spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
             log.success('Plan Canvas Startup entry registered (Port 4519)');
+        } else if (platform === 'linux') {
+            // Same program, env and logs as the launchd plist above.
+            const unitName = 'com.bdb.plan-canvas.service';
+            const unitFile = systemdUnits.unitPath(home, unitName);
+            fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+            fs.writeFileSync(unitFile, systemdUnits.buildUserUnit({
+                description: 'Plan Canvas',
+                execStart: [nodeBin, scriptPath, 'server'],
+                workingDirectory: home,
+                env: { AOS_PLAN_CANVAS_IDLE_MS: '0' },
+                restart: 'always',
+                logOut: path.join(logDir, 'plan-canvas.stdout.log'),
+                logErr: path.join(logDir, 'plan-canvas.stderr.log'),
+            }));
+            if (!overrides.skipLaunchctl) {
+                // This install path stays synchronous (its return value is asserted
+                // in tests), so the enable result is reported outside the try.
+                systemdUnits.enableUnit(async (cmd, args) => {
+                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    return { ok: true };
+                }, unitName).catch((e) => logDebug(e, 'plan canvas linux unit'));
+            }
+            log.success('Plan Canvas systemd user unit registered (Port 4519)');
         } else {
-            log.step('Plan Canvas autostart is only wired for macOS and Windows. Start it with: aos-plan-canvas server');
+            log.step('Plan Canvas autostart is not wired for this platform. Start it with: aos-plan-canvas server');
             return false;
         }
         return true;
