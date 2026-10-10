@@ -9,7 +9,7 @@
 import { spawn } from 'node:child_process';
 import { connect as netConnect } from 'node:net';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, renameSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir as osHome } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -33,11 +33,13 @@ export function parseArgv(argv) {
     else if (a === '--tab') out.tab = argv[++i];
     else if (a.startsWith('--tab=')) out.tab = a.split('=')[1];
     else if (a === '--serve') out.serve = true;
+    else if (a === '--watch') out.watch = true;
     else if (a === '--no-open') out.noOpen = true;
     else if (a === '--json') out.json = true;
     else rest.push(a);
   }
   if (out.tab !== undefined && !/^[a-z]+$/.test(out.tab)) throw new Error(`invalid --tab: ${out.tab}`);
+  if (out.watch && !out.serve) throw new Error('--watch is only valid together with --serve');
   if (rest.length) out.cmd = rest[0];
   if (!Number.isInteger(out.port) || out.port < 1 || out.port > 65535) throw new Error(`invalid --port: ${out.port}`);
   return out;
@@ -90,6 +92,16 @@ export const writeHubJson = (home, { pid, port, version, token }) => {
 
 export const readHubJson = (home = homeDir()) => {
   try { return JSON.parse(readFileSync(hubPaths(home).file, 'utf8')); } catch { return null; }
+};
+
+// The service runs from ~/.agents, which has no package.json, so "has my code
+// changed under me" is the newest mtime of this file and lib/hub/*.
+const codeStamp = () => {
+  let newest = 0;
+  const files = [SELF];
+  try { for (const f of readdirSync(join(ROOT, 'lib', 'hub'))) files.push(join(ROOT, 'lib', 'hub', f)); } catch { /* no lib/hub: SELF only */ }
+  for (const f of files) { try { newest = Math.max(newest, statSync(f).mtimeMs); } catch { /* raced with the update */ } }
+  return newest;
 };
 
 const packageVersion = () => {
@@ -237,20 +249,55 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   const { routes: serviceRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-services.mjs')).href);
   const { routes: catalogRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-catalog.mjs')).href);
   const { routes: storeRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-store.mjs')).href);
+  const watchMod = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-watch.mjs')).href);
   const home = homeDir();
-  const routes = [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes];
+  const serveArgv = parseArgv(process.argv.slice(2));
+  // Read once at start: the stale check compares this snapshot against the
+  // package.json on disk every round, so an update is noticed even though the
+  // file changes under the running process.
+  const ownVersion = packageVersion();
+  const ownStamp = codeStamp();
   const hub = createHub({
-    port: parseArgv(process.argv.slice(2)).port,
+    port: serveArgv.port,
     home,
-    routes,
+    routes: [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes, ...watchMod.routes],
     ctx: { root: ROOT, hubJsonPath: hubPaths(home).file, tokenEnv: hubToken },
   });
   await hub.listen();
   // Only the process that actually bound the port writes hub.json. A failed
   // bind (EADDRINUSE) rejects listen() before this line, so a live hub's
   // record is never clobbered by a losing start attempt.
-  writeHubJson(home, { pid: process.pid, port: hub.server.address().port, version: packageVersion(), token: hub.token });
+  writeHubJson(home, { pid: process.pid, port: hub.server.address().port, version: ownVersion, token: hub.token });
   console.log(`AOS Hub: http://127.0.0.1:${hub.server.address().port}/`);
+
+  // --watch: supervise the other services through their service managers. The
+  // watcher shares the hub's ctx; the stale check runs at the start of every
+  // round and exits 3 on purpose (the Windows task restarts only on failure).
+  if (serveArgv.watch) {
+    const { createWatcher } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'watch.mjs')).href);
+    const statusFile = join(home, '.aos', 'status.json');
+    const watcher = createWatcher({
+      ctx: hub.ctx,
+      statusFile,
+      beforeTick: async () => {
+        const diskStamp = codeStamp();
+        if (diskStamp > ownStamp) {
+          try {
+            mkdirSync(dirname(statusFile), { recursive: true });
+            const tmp = `${statusFile}.tmp`;
+            writeFileSync(tmp, JSON.stringify({ staleSince: Date.now(), version: ownVersion }, null, 2));
+            renameSync(tmp, statusFile);
+          } catch { /* best effort; exit 3 is the signal the service manager acts on */ }
+          console.error('AOS Hub: its code changed on disk; exiting so the service manager restarts it on the new code');
+          process.exit(3);
+        }
+      },
+    });
+    watcher.start();
+    watchMod.setWatcher(watcher);
+    watcher.tick().catch(() => {});
+  }
+
   const stopped = async () => {
     try { unlinkSync(hubPaths(home).file); } catch { /* already gone */ }
     try {
