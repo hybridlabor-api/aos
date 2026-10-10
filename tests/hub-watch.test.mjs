@@ -53,7 +53,7 @@ test('restart brake: 3 restarts max in 10 minutes, then failed; clears when up',
   let up = false;
   const { w, now } = mk(() => [row('memb', up)]);
   for (let i = 0; i < 4; i++) {
-    now.t += 11 * 60_000; // outside any window: misses accrue again each round
+    now.t += 60_000; // all four rounds fall inside one 10-minute window
     await w.tick();
     await w.tick();
   }
