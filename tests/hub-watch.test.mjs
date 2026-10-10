@@ -20,7 +20,7 @@ const mk = (rows, opts = {}) => {
   const restarts = [];
   const w = createWatcher({
     ctx,
-    status: async () => rows,
+    status: async () => (typeof rows === 'function' ? rows() : rows),
     control: async (c, id, action) => { restarts.push({ id, action, t: now.t }); },
     now: () => now.t,
     statusFile,

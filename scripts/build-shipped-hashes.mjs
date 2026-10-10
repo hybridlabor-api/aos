@@ -33,10 +33,15 @@ const PAYLOAD_DIRS = [
 
 const tags = execFileSync('git', ['tag', '--list', 'v*'], { cwd: root, encoding: 'utf8' })
     .split('\n').filter(Boolean).sort();
-// A clone without tags (shallow CI checkout) would silently ship an empty list.
+// A clone without tags (shallow CI checkout) would ship an empty list: the
+// installer then just falls back to .new for old releases. Refuse that only
+// for a real publish; a test or local `npm pack` gets a warning.
 if (!tags.length) {
-    console.error('shipped-hashes: no v* tags in this clone; fetch tags before packing');
-    process.exit(1);
+    if (process.env.npm_command === 'publish') {
+        console.error('shipped-hashes: no v* tags in this clone; fetch tags before publishing');
+        process.exit(1);
+    }
+    console.warn('shipped-hashes: no v* tags in this clone; writing an empty list');
 }
 
 const blobIds = new Set();

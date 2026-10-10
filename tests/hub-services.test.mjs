@@ -407,7 +407,7 @@ describe('linux systemd control', () => {
     const rows = await statusService(ctx);
     assert.equal(rows.find((r) => r.id === 'gateway').control, 'systemd');
     assert.equal(rows.find((r) => r.id === 'memb').control, 'observe');
-    const loadCall = calls.find((c) => c.cmd === 'systemctl' && c.args[0] === 'is-enabled');
+    const loadCall = calls.find((c) => c.cmd === 'systemctl' && c.args[1] === 'is-enabled');
     assert.ok(loadCall, 'is-enabled was asked');
     assert.deepEqual(loadCall.args, ['--user', 'is-enabled', 'com.bdb.aos.gateway.service']);
   });
