@@ -20,6 +20,15 @@ const PAYLOAD_DIRS = [
     '.opencode/',
     '.codex/',
     'lib/',
+    // initFullSession (installer.js) tracks these roots too.
+    'mcps/',
+    '.cursor/',
+    '.github/',
+    '.codex-plugin/',
+    'RULES.md',
+    'AGENTS.md',
+    'CLAUDE.md',
+    'CODEX.md',
 ];
 
 const tags = execFileSync('git', ['tag', '--list', 'v*'], { cwd: root, encoding: 'utf8' })
