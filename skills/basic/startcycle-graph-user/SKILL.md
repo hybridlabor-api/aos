@@ -101,6 +101,14 @@ Pick the worker path in this priority order, first one found wins:
    that costs Anthropic tokens for the worker step, and the only one
    guaranteed to exist everywhere — it is the floor, not the default.
 
+**Start CLI workers without the MCP tool list.** A headless `claude -p` or
+`opencode run` worker loads every configured MCP server's tool schemas into
+its context before the task starts; on a smaller-context model that ends in
+autocompact thrash. Pass `--strict-mcp-config` to `claude -p`; for OpenCode
+set `OPENCODE_CONFIG_CONTENT='{"mcp":{"<name>":{"enabled":false}}}'` for each
+server `opencode mcp list` shows as connected. Give each worker exact files
+and line ranges, not an open-ended search.
+
 **Give the delegation a real timeout.** Measured 2026-09: a trivial headless
 `agy` prompt took **605s**. `agy-delegate` defaults to `--print-timeout 5m`,
 so it aborts at 300s and reports an empty body while the answer is still on
