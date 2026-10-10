@@ -370,7 +370,7 @@ The ambient hook `memb-inject` is the only part that pushes memory into context 
 
 ## Optional modules
 
-Synapse, AO, Creator Extension and Hardware and PCB are published as their own npm packages; the module picker offers them and Quick Update keeps them current. AOS works standalone without any. Token Saver is vendored and part of the standard profile. Rust + Tauri is vendored under `vendor/rustauri` and opt-in.
+Synapse, AO, Creator Extension and Hardware and PCB are published as their own npm packages; the module picker offers them and Quick Update keeps them current. AOS works standalone without any. Token Saver is vendored and part of the standard profile. Rust + Tauri (`vendor/rustauri`) and StyleSeed (`vendor/styleseed`) are vendored and opt-in.
 
 ### Creator Extension: image, 3D and video
 
@@ -383,6 +383,10 @@ Synapse, AO, Creator Extension and Hardware and PCB are published as their own n
 ### Rust + Tauri
 
 Ships inside the kernel under `vendor/rustauri`, no download. Skills: `tauri-pilot` (drive and test a running Tauri v2 app via CLI/MCP; MIT, adapted from mpiton/tauri-pilot) and `rust-pro`. Enable: `-y --modules=rustauri`.
+
+### StyleSeed
+
+Ships inside the kernel under `vendor/styleseed`, no download. Eight UI/UX skills in the StyleSeed Toss design language (MIT, from bitjaru/styleseed): `ui-component`, `ui-page`, `ui-pattern`, `ui-review`, `ui-tokens`, `ux-audit`, `ux-feedback`, `ux-flow`. Not installed by default because they assume that design system; existing copies from earlier installs are kept. Enable: `-y --modules=styleseed`.
 
 ### AO: Agent Orchestrator
 

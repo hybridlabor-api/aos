@@ -121,8 +121,8 @@ The directory layout mirrors ECC's `scripts/` shape so every relative
   port `4517` → `4519`, ECC-install prose replaced with AOS install prose, and
   two upstream claims corrected for this repo: the `stop:plan-canvas-pending`
   hook is not vendored, and the referenced `frontend-design-direction` /
-  `artifact-design` skills do not exist in AOS (replaced with `godmode-ui-ux` /
-  `ui-component`).
+  `artifact-design` skills do not exist in AOS (replaced with `godmode-ui-ux`,
+  plus `ui-component` when the optional StyleSeed package is installed).
 
 Upstream provenance comments inside the vendored sources — including the
 `affaan-m/ECC#2702` reference in `ui.js` — are left intact, as are
@@ -254,7 +254,7 @@ quoted verbatim from that file.
 
 | Upstream | Licence | Copyright | Skills in AOS |
 |---|---|---|---|
-| [bitjaru/styleseed](https://github.com/bitjaru/styleseed) | MIT | Copyright (c) 2026 StyleSeed Contributors | `ui-component`, `ui-page`, `ui-pattern`, `ui-review`, `ui-tokens`, `ux-audit`, `ux-feedback`, `ux-flow` |
+| [bitjaru/styleseed](https://github.com/bitjaru/styleseed) | MIT | Copyright (c) 2026 StyleSeed Contributors | `ui-component`, `ui-page`, `ui-pattern`, `ui-review`, `ui-tokens`, `ux-audit`, `ux-feedback`, `ux-flow` — the optional StyleSeed package, shipped under `vendor/styleseed/skills/` and installed only on request (`-y --modules=styleseed`) |
 | [firecrawl/skills](https://github.com/firecrawl/skills) | ISC | Copyright (c) Firecrawl | `firecrawl-sdk` (merged from `firecrawl-build`, `firecrawl-build-scrape`, `firecrawl-build-search`, `firecrawl-build-interact`, `firecrawl-build-onboarding` in 5.0.0) |
 | [Dimillian/Skills](https://github.com/Dimillian/Skills) | MIT | Copyright (c) 2026 Thomas Ricouard | `github`, `react-component-performance`, `simplify-code` |
 | [anthropics/skills](https://github.com/anthropics/skills) | Apache-2.0 (per-skill `LICENSE.txt`; the repo has no root licence) | Copyright 2026 Anthropic, PBC. | `webapp-testing`, `web-artifacts-builder` |

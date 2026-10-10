@@ -133,3 +133,18 @@ describe('installRustauri (container only)', { skip: !inContainer && 'needs AOS_
         assert.ok(!JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers['tauri-pilot']);
     });
 });
+
+describe('installStyleseed (container only)', { skip: !inContainer && 'needs AOS_TEST_SANDBOX=container' }, () => {
+    test('copies all eight StyleSeed skills into ~/.agents/skills and registers no MCP server', () => {
+        const home = tmpHome();
+        const out = path.join(home, 'result.json');
+        fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ mcpServers: {} }));
+        inChild(home, { out }, ({ inst, args, fs: f }) => { f.writeFileSync(args.out, JSON.stringify({ ok: inst.installStyleseed() })); });
+        assert.equal(JSON.parse(fs.readFileSync(out, 'utf8')).ok, true);
+        for (const s of ['ui-component', 'ui-page', 'ui-pattern', 'ui-review', 'ui-tokens', 'ux-audit', 'ux-feedback', 'ux-flow']) {
+            const file = path.join(home, '.agents', 'skills', s, 'SKILL.md');
+            assert.ok(fs.existsSync(file) && fs.statSync(file).size > 0, `${s} missing under temp HOME`);
+        }
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, '.claude.json'), 'utf8')).mcpServers, {});
+    });
+});

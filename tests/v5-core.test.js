@@ -411,6 +411,53 @@ test('rustauri vendored skills: frontmatter name matches directory, description,
     }
 });
 
+const STYLESEED = ['ui-component', 'ui-page', 'ui-pattern', 'ui-review', 'ui-tokens', 'ux-audit', 'ux-feedback', 'ux-flow'];
+
+test('styleseed detect and verify: installed only with all eight non-empty SKILL.md files', () => {
+    const seed = pk.registry.find((p) => p.id === 'styleseed');
+    const home = mkHome();
+    const src = path.join(home, 'vendor-styleseed');
+    pkgJson(src, '0.1.0');
+    const host = { styleseedSourceDir: () => src };
+    const skill = (s, body = 'x') => { const d = path.join(home, '.agents', 'skills', s); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'SKILL.md'), body); };
+    assert.deepStrictEqual(seed.detect({ host, home }), { installed: false, version: null });
+    assert.deepStrictEqual(seed.verify({ host, home }), { ok: false, detail: 'ui-component missing' });
+    STYLESEED.slice(0, -1).forEach((s) => skill(s));
+    assert.strictEqual(seed.detect({ host, home }).installed, false, 'ux-flow still missing');
+    skill('ux-flow', '');
+    assert.deepStrictEqual(seed.verify({ host, home }), { ok: false, detail: 'ux-flow missing' });
+    skill('ux-flow');
+    assert.deepStrictEqual(seed.detect({ host, home }), { installed: true, version: '0.1.0' });
+    assert.deepStrictEqual(seed.verify({ host, home }), { ok: true, detail: '0.1.0' });
+});
+
+test('styleseed install and update call host.installStyleseed and fail when it reports false', async () => {
+    const seed = pk.registry.find((p) => p.id === 'styleseed');
+    const home = mkHome();
+    const calls = [];
+    const host = { installStyleseed: () => { calls.push('install'); return true; }, styleseedSourceDir: () => home };
+    await seed.install({ host, home });
+    await seed.update({ host, home });
+    assert.deepStrictEqual(calls, ['install', 'install']);
+    await assert.rejects(seed.install({ host: { installStyleseed: () => false }, home }), /StyleSeed install reported a failure/);
+});
+
+test('styleseed skills are vendored, not in the default skills/ tree', () => {
+    const repo = path.join(__dirname, '..');
+    const dir = path.join(repo, 'vendor', 'styleseed', 'skills');
+    assert.deepStrictEqual(fs.readdirSync(dir).filter((d) => fs.existsSync(path.join(dir, d, 'SKILL.md'))).sort(), STYLESEED);
+    for (const name of STYLESEED) {
+        const fm = (fs.readFileSync(path.join(dir, name, 'SKILL.md'), 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
+        assert.strictEqual((fm.match(/^name:\s*(.+)$/m) || [])[1], name, `${name}: name`);
+        assert.match(fm, /^category:\s*design-ui-ux\s*$/m, `${name}: category`);
+    }
+    const inTree = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) if (e.isDirectory()) { if (STYLESEED.includes(e.name)) inTree.push(e.name); walk(path.join(d, e.name)); } };
+    walk(path.join(repo, 'skills'));
+    assert.deepStrictEqual(inTree, [], 'the default sync and the plugin manifest read skills/');
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(repo, 'vendor', 'styleseed', 'package.json'), 'utf8')).license, 'MIT');
+});
+
 test('A1: a failing harness or kernel step is shown as ✖ and update exits non-zero', async () => {
     const m = machine();
     m.host.quickUpdateHarnesses = () => ['install the Codex plugin: boom'];

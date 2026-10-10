@@ -144,11 +144,11 @@ Don't guess which pipeline to use. Follow these rules (source of truth: `CLAUDE.
 
 Use these skills for UI development, component architecture, and design taste.
 
-* **Top Picks:** `godmode-ui-ux`, `ui-component`, `senior-frontend`
+* **Top Picks:** `godmode-ui-ux`, `senior-frontend`, `shadcn`
 
 ### Overlap: The UI Cluster vs Senior Frontend
-* **`ui-component` / `ui-page` / `ui-pattern`**: Use these strictly when scaffolding new pieces in the **StyleSeed Toss** design system convention (enforcing tokens, spacing, and rhythm).
-* **`ui-review` / `ui-tokens`**: Use for reviewing code against StyleSeed or syncing its design tokens.
+* **`ui-component` / `ui-page` / `ui-pattern`** (only if the optional StyleSeed package is installed): Use these strictly when scaffolding new pieces in the **StyleSeed Toss** design system convention (enforcing tokens, spacing, and rhythm).
+* **`ui-review` / `ui-tokens`** (only if the StyleSeed package is installed): Use for reviewing code against StyleSeed or syncing its design tokens.
 * **`senior-frontend`**: Use for general React/Next.js/Tailwind development outside of strict StyleSeed scaffolding, or for reviewing general frontend code quality.
 * **`shadcn`**: Use specifically when adding or customizing shadcn/ui components.
 * **`tailwind-patterns`**: Use when managing CSS-first configurations, container queries, or Tailwind CSS v4 design token architectures.
@@ -166,9 +166,9 @@ Use these skills for UI development, component architecture, and design taste.
 * **`landing-page-generator`**: Specifically a high-converting marketing landing page (PAS/AIDA/BAB copy frameworks), not a general app page.
 
 ### Overlap: The UX Cluster
-* **`ux-flow`**: Designing user flows, progressive disclosure, hub-and-spoke navigation (StyleSeed patterns).
-* **`ux-audit`**: Auditing existing screens against Nielsen's heuristics and mobile UX best practices.
-* **`ux-feedback`**: Adding loading/empty/error/success feedback states to components.
+* **`ux-flow`** (if the StyleSeed package is installed): Designing user flows, progressive disclosure, hub-and-spoke navigation (StyleSeed patterns).
+* **`ux-audit`** (if the StyleSeed package is installed): Auditing existing screens against Nielsen's heuristics and mobile UX best practices.
+* **`ux-feedback`** (if the StyleSeed package is installed): Adding loading/empty/error/success feedback states to components.
 * **`ux-persuasion-engineer`**: Conversion/onboarding/checkout flows specifically — choice architecture, friction audits, commitment design.
 * **`ui-ux-pro-max`**: Broader design guide (color, typography, general UI review) when the task doesn't fit one of the narrower UX skills above.
 

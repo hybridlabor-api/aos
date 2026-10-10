@@ -64,7 +64,7 @@ hard requirement for the build nodes, validated to exist before anything
 else runs — this is how you make the pipeline use your own private skill
 that isn't part of `.agents/nodes.json`'s registry.
 
-`<name>` is the **exact skill directory name**, not a description — `ui-component`,
+`<name>` is the **exact skill directory name**, not a description — `senior-frontend`,
 not "the UI one". Two ways to find it without leaving the terminal:
 
 - `/ask-tim` — the routing skill; start there when you know the *job* but not the name

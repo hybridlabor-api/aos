@@ -251,7 +251,7 @@ Der Dispatcher-Graph kompiliert diese Agents, verfügbar als Claude Code Subagen
 <!-- count:skills -->269<!-- /count --> kuratierte Skills, von jedem Harness auffindbar:
 
 - **bdb-core** (30 Skills): Core AOS Infrastruktur, Pipelines, Tools und Utilities — `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agenttrail`, `plan-canvas`, `aos-doctor`, `aos-store`, `bdb-dev-os-skill` und mehr.
-- **design-ui-ux** (19 Skills): Frontend, UI Design, Barrierefreiheit, Tokens, Motion, Anti-Slop — `senior-frontend`, `ui-component`, `ui-review`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` und mehr.
+- **design-ui-ux** (19 Skills): Frontend, UI Design, Barrierefreiheit, Tokens, Motion, Anti-Slop — `senior-frontend`, `ui-ux-pro-max`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` und mehr.
 - **engineering-method** (46 Skills): Architektur, Testing, Debugging, CI/CD, Code-Qualität — `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `dockerfile-validator` und mehr.
 - **library** (98 Skills): Language/Framework-Spezifika — TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go und mehr.
 - **media-eventtech** (19 Skills): 3D, Video, Show Control, Spatial Design — `godmode-eventtech`, `synapse-integration-skill`, `threejs-skills`, `blender-expert` und mehr.

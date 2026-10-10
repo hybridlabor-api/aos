@@ -76,8 +76,6 @@ The **Reviewer** node executes adversarial verification of build-node outputs ag
     "writes": null,
     "optional": false,
     "skills": [
-      "ui-review",
-      "ux-audit",
       "architect-review",
       "systematic-debugging",
       "bdbresilience"

@@ -60,9 +60,7 @@
         "landing-page-generator",
         "shadcn",
         "tailwind-patterns",
-        "react-best-practices",
-        "ui-component",
-        "ui-tokens"
+        "react-best-practices"
       ],
       "instructions": "Implement the frontend per the plan: responsive UI, DTCG design tokens, Anti-Slop taste. Write production_artifacts/01_frontend_spec.md and the code."
     },
@@ -121,8 +119,6 @@
       "executor": "reviewer",
       "scope": "read-only",
       "skills": [
-        "ui-review",
-        "ux-audit",
         "architect-review",
         "systematic-debugging"
       ],

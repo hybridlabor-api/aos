@@ -204,7 +204,7 @@ resolves scalar boundaries and catches exactly this.
 
 | Task domain | Category | Examples |
 |---|---|---|
-| Frontend, UI, visual design | `design-ui-ux` | senior-frontend, ui-component, tailwind-patterns |
+| Frontend, UI, visual design | `design-ui-ux` | senior-frontend, shadcn, tailwind-patterns |
 | Backend, architecture, testing | `engineering-method` | software-architecture, test-driven-development, systematic-debugging |
 | Show control, media, 3D | `media-eventtech` | godmode-eventtech, threejs-skills, mcp-manage |
 | Pipeline and agent infrastructure | `bdb-core` | startcycle, startcycle-graph, startcycle-graph-user |

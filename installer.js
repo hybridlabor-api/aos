@@ -1703,17 +1703,16 @@ function registerTauriPilotMcp() {
     log.step('Registered the tauri-pilot MCP server (direct, not behind the gateway) in the harness MCP configs.');
 }
 
-function installRustauri(deps = {}) {
-    const skillsBase = path.join(srcDir, 'vendor', 'rustauri', 'skills');
+// Copies vendor/<pkg>/skills/* to ~/.agents/skills and every detected harness; true when ~/.agents/skills got them.
+function installVendorSkills(pkg, label) {
+    const skillsBase = path.join(srcDir, 'vendor', pkg, 'skills');
     if (!fs.existsSync(skillsBase)) {
-        log.warn(`Rust + Tauri skills not found at ${skillsBase}; skipping.`);
+        log.warn(`${label} skills not found at ${skillsBase}; skipping.`);
         return false;
     }
     const leaves = fs.readdirSync(skillsBase).filter((d) => fs.existsSync(path.join(skillsBase, d, 'SKILL.md')));
     if (DRY_RUN) {
-        log.step(`[dry-run] would copy Rust + Tauri skills (${leaves.join(', ')}) to ~/.agents/skills and each detected harness`);
-        log.step(`[dry-run] would run \`${TAURI_PILOT_INSTALL_CMD}\` when cargo is on PATH and tauri-pilot ${TAURI_PILOT_VERSION} is not installed`);
-        log.step('[dry-run] would register the tauri-pilot MCP server ({"command": "tauri-pilot", "args": ["mcp"]}) in every harness MCP config');
+        log.step(`[dry-run] would copy ${label} skills (${leaves.join(', ')}) to ~/.agents/skills and each detected harness`);
         return true;
     }
     const agentsSkills = path.join(homeDir, '.agents', 'skills');
@@ -1723,15 +1722,29 @@ function installRustauri(deps = {}) {
             fs.mkdirSync(dest, { recursive: true });
             for (const dir of leaves) syncSkillEntry(path.join(skillsBase, dir), dir, dest, []);
             if (dest === agentsSkills) agentsOk = true;
-            log.step(`Installed Rust + Tauri skills to ${dest}`);
+            log.step(`Installed ${label} skills to ${dest}`);
         } catch (e) {
-            log.warn(`Could not install Rust + Tauri skills to ${dest}: ${e.message}`);
+            log.warn(`Could not install ${label} skills to ${dest}: ${e.message}`);
         }
     }
-    if (!agentsOk) return false;
+    return agentsOk;
+}
+
+function installRustauri(deps = {}) {
+    if (!installVendorSkills('rustauri', 'Rust + Tauri')) return false;
+    if (DRY_RUN) {
+        log.step(`[dry-run] would run \`${TAURI_PILOT_INSTALL_CMD}\` when cargo is on PATH and tauri-pilot ${TAURI_PILOT_VERSION} is not installed`);
+        log.step('[dry-run] would register the tauri-pilot MCP server ({"command": "tauri-pilot", "args": ["mcp"]}) in every harness MCP config');
+        return true;
+    }
     ensureTauriPilotCli(deps);
     registerTauriPilotMcp();
     return true;
+}
+
+// StyleSeed (bitjaru/styleseed, MIT): the Toss design-language skills, opt-in since they assume that design system.
+function installStyleseed() {
+    return installVendorSkills('styleseed', 'StyleSeed');
 }
 
 function syncSkillsToGlobalHarnesses(excludeSkills = []) {
@@ -6305,6 +6318,7 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: installCreatorExtension },
         { id: 'hardware', name: 'BDB Hardware & PCB (KiCad + OpenSCAD Electrical/PCB Design)', fn: installHardwarePcb },
         { id: 'rustauri', name: 'Rust + Tauri (tauri-pilot + rust-pro skills, optional)', fn: installRustauri },
+        { id: 'styleseed', name: 'StyleSeed (Toss design-language UI/UX skills, optional)', fn: installStyleseed },
         { id: 'codebase-memory', name: 'Codebase Memory MCP (Code Knowledge Graph, Local SQLite)', fn: installCodebaseMemory },
         { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
     ]).filter((m) => !installExcluded.has(m.id));
@@ -8047,6 +8061,8 @@ module.exports = {
     TAURI_PILOT_VERSION,
     TAURI_PILOT_INSTALL_CMD,
     rustauriSourceDir: () => path.join(srcDir, 'vendor', 'rustauri'),
+    installStyleseed,
+    styleseedSourceDir: () => path.join(srcDir, 'vendor', 'styleseed'),
     installCodebaseMemory,
     installDevToolInstaller,
     installDeja,

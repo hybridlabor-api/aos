@@ -246,7 +246,8 @@ mirror at `AOS_PLAN_CANVAS_MERMAID_URL` for air-gapped use.
 
 - Markdown artifacts render in the built-in plan template (including Mermaid
   blocks); `.html` artifacts render as-is with the annotation layer injected.
-  For HTML authoring guidance use the `godmode-ui-ux` and `ui-component` skills.
+  For HTML authoring guidance use the `godmode-ui-ux` skill (plus `ui-component`
+  if the optional StyleSeed package is installed).
 - Edit the artifact file to revise — the canvas live-reloads on save. Never
   re-run `open` to refresh.
 - `{"status": "ended", "endedBy": "user"}` (or `sessionEnded: true` on a
