@@ -6332,6 +6332,8 @@ function buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }) {
     <dict>
         <key>AOS_PLAN_CANVAS_IDLE_MS</key>
         <string>0</string>
+        <key>AOS_SUPERVISED</key>
+        <string>1</string>
     </dict>
     <key>WorkingDirectory</key>
     <string>${home}</string>
@@ -6354,7 +6356,7 @@ function buildPlanCanvasWinFiles({ nodeBin, scriptPath, home, logDir, batPath })
     const out = path.join(logDir, 'plan-canvas.stdout.log');
     const err = path.join(logDir, 'plan-canvas.stderr.log');
     return {
-        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\n`,
+        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\nset AOS_SUPERVISED=1\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\n`,
         vbs: `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${home}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`,
     };
 }
@@ -6407,7 +6409,7 @@ function installPlanCanvasAutostart(overrides = {}) {
                 description: 'Plan Canvas',
                 execStart: [nodeBin, scriptPath, 'server'],
                 workingDirectory: home,
-                env: { AOS_PLAN_CANVAS_IDLE_MS: '0' },
+                env: { AOS_PLAN_CANVAS_IDLE_MS: '0', AOS_SUPERVISED: '1' },
                 restart: 'always',
                 logOut: path.join(logDir, 'plan-canvas.stdout.log'),
                 logErr: path.join(logDir, 'plan-canvas.stderr.log'),

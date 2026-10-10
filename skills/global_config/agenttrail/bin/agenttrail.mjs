@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import crypto from 'node:crypto'
 import { serveShared } from '../lib/shared-static.mjs'
+import { codeStampOf, watchCodeStamp } from '../lib/code-stamp.mjs'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
 import { parsePlan, lintPlan } from '../lib/plan.mjs'
 import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
@@ -870,6 +871,18 @@ async function fleetModel() {
 
 // ---------- http ----------
 const indexPath = path.join(__dirname, '..', 'public', 'index.html')
+// Self-refresh: after `aos update` replaces the files, this stale in-memory
+// router would 404 the new static assets; restart on the new code instead.
+const ownStamp = codeStampOf(fileURLToPath(import.meta.url), [
+  path.join(__dirname, '..', 'lib'),
+  path.join(__dirname, '..', 'public'),
+])
+watchCodeStamp({
+  entryFile: fileURLToPath(import.meta.url),
+  dirs: [path.join(__dirname, '..', 'lib'), path.join(__dirname, '..', 'public')],
+  stamp: ownStamp,
+  server: () => server, // declared below; read only when a restart happens
+})
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {

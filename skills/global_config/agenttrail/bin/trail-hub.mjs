@@ -17,6 +17,7 @@ import { createClick, ClickError } from '../lib/click.mjs'
 import { loadConfig } from '../lib/stale.mjs'
 import { STATE_DIR, loadRepos, registerRepo, loadState, setPinned } from '../lib/hub-state.mjs'
 import { serveShared } from '../lib/shared-static.mjs'
+import { codeStampOf, watchCodeStamp } from '../lib/code-stamp.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PUBLIC = path.join(__dirname, '..', 'public', 'hub')
@@ -341,6 +342,20 @@ server.on('error', async (e) => {
 server.listen(port, '127.0.0.1', () => {
   console.log(`agenttrail-hub · http://localhost:${port} · ${repos().length ? 'watching known repos' : 'waiting for events'}`)
   if (openBrowser) import('node:child_process').then((cp) => cp.spawn('open', [`http://localhost:${port}`], { stdio: 'ignore', shell: false }).unref()).catch(() => {})
+})
+
+// Self-refresh: after `aos update` replaces the files, this stale in-memory
+// router would 404 the new static assets; restart on the new code instead.
+const hubStamp = codeStampOf(fileURLToPath(import.meta.url), [
+  path.join(__dirname, '..', 'lib'),
+  path.join(__dirname, '..', 'public'),
+])
+watchCodeStamp({
+  entryFile: fileURLToPath(import.meta.url),
+  dirs: [path.join(__dirname, '..', 'lib'), path.join(__dirname, '..', 'public')],
+  stamp: hubStamp,
+  server,
+  log: (m) => console.error(m),
 })
 
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { clearInterval(tick); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 500).unref() })
