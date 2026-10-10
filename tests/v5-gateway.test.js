@@ -928,7 +928,32 @@ describe('harness enable/disable', () => {
     });
 });
 
+const gwHost = (home) => ({
+    quickUpdateKernel: () => {}, quickUpdateHarnesses: () => {},
+    detectInstallState: () => ({ isInstalled: true, localVersion: '4.0.0', installedModules: [] }),
+    resolveTargetPaths: () => ({ targetSkillDir: path.join(home, 'skills'), targetMcpDir: path.join(home, 'mcp') }),
+    moduleBasePath: () => path.join(home, '.agents'),
+    isNewerVersion: (l, r) => l !== r, loadExistingEnv: () => ({}), PROVIDER_KEY_ENV_NAMES: {},
+    saveManifest: () => {}, flushSessionManifest: () => {}, runUninstaller: () => 0,
+});
+
 test('update installs gateway when missing', async () => {
+    const menu = require('../lib/v5/menu.js');
+    const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+    const realInstall = gw.install, realVerify = gw.verify;
+    const calls = [];
+    gw.install = async (c) => { calls.push(c.home); c.log('preset aos-core not created'); return { ok: true }; };
+    gw.verify = async () => ({ ok: true });
+    const home = tmp();
+    const out = [];
+    try {
+        await menu.update(gwHost(home), { home, platform: 'darwin', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
+    } finally { gw.install = realInstall; gw.verify = realVerify; }
+    assert.deepStrictEqual(calls, [home]);
+    assert.match(out.join(''), /✔ MCP gateway preset aos-core not created; running/);
+});
+
+test('update skips the MCP gateway off macOS without installing', async () => {
     const menu = require('../lib/v5/menu.js');
     const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
     const realInstall = gw.install;
@@ -936,19 +961,66 @@ test('update installs gateway when missing', async () => {
     gw.install = async (c) => { calls.push(c.home); return { ok: true }; };
     const home = tmp();
     const out = [];
-    const host = {
-        quickUpdateKernel: () => {}, quickUpdateHarnesses: () => {},
-        detectInstallState: () => ({ isInstalled: true, localVersion: '4.0.0', installedModules: [] }),
-        resolveTargetPaths: () => ({ targetSkillDir: path.join(home, 'skills'), targetMcpDir: path.join(home, 'mcp') }),
-        moduleBasePath: () => path.join(home, '.agents'),
-        isNewerVersion: (l, r) => l !== r, loadExistingEnv: () => ({}), PROVIDER_KEY_ENV_NAMES: {},
-        saveManifest: () => {}, flushSessionManifest: () => {}, runUninstaller: () => 0,
-    };
     try {
-        await menu.update(host, { home, write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
+        await menu.update(gwHost(home), { home, platform: 'linux', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
     } finally { gw.install = realInstall; }
-    assert.deepStrictEqual(calls, [home]);
-    assert.match(out.join(''), /✔ MCP gateway/);
+    assert.deepStrictEqual(calls, []);
+    assert.match(out.join(''), /MCP gateway: skipped on linux/);
+});
+
+describe('adoptGateway', () => {
+    const menu = require('../lib/v5/menu.js');
+    const adopt = require('../lib/gateway/adopt.js');
+    const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+    const scanned = { adoptable: [{ name: 'foo', entry: { command: 'node', args: ['f.js'] } }, { name: 'bar', entry: { command: 'node', args: ['b.js'] } }] };
+
+    const setup = () => {
+        const home = tmp();
+        const marker = path.join(home, 'order.txt');
+        fs.mkdirSync(path.join(home, '.agents', 'bin'), { recursive: true });
+        fs.writeFileSync(path.join(home, '.agents', 'bin', 'aos-gateway.mjs'), `import fs from 'fs';\nfs.appendFileSync(${JSON.stringify(marker)}, 'restart\\n');\n`);
+        fs.mkdirSync(cfg.gatewayDir(home), { recursive: true });
+        fs.writeFileSync(path.join(cfg.gatewayDir(home), 'token'), 'tok\n');
+        return { home, marker, out: [], applied: [] };
+    };
+
+    test('picked server is adopted, config regenerated, then the gateway restarted', async () => {
+        const t = setup();
+        const real = { scan: adopt.scanAdoptable, apply: adopt.applyAdopt, update: gw.update };
+        adopt.scanAdoptable = () => scanned;
+        adopt.applyAdopt = (o) => { t.applied.push(o.only); return { adopted: o.only, files: [], skipped: [] }; };
+        gw.update = async () => { fs.appendFileSync(t.marker, 'update\n'); return { ok: true }; };
+        try {
+            await menu.adoptGateway({ home: t.home, write: (s) => t.out.push(s), adopt: true, ui: { multi: async () => ['foo'] } }, path.join(t.home, 'adopt.log'));
+        } finally { adopt.scanAdoptable = real.scan; adopt.applyAdopt = real.apply; gw.update = real.update; }
+        assert.deepStrictEqual(t.applied, [['foo']]);
+        assert.deepStrictEqual(fs.readFileSync(t.marker, 'utf8').split('\n').filter(Boolean), ['update', 'restart']);
+        assert.match(t.out.join(''), /✔ Adopt MCP servers foo/);
+    });
+
+    test('empty pick adopts nothing and does not restart', async () => {
+        const t = setup();
+        const real = { scan: adopt.scanAdoptable, apply: adopt.applyAdopt };
+        adopt.scanAdoptable = () => scanned;
+        adopt.applyAdopt = (o) => { t.applied.push(o.only); return { adopted: [], files: [], skipped: [] }; };
+        try {
+            await menu.adoptGateway({ home: t.home, write: (s) => t.out.push(s), adopt: true, ui: { multi: async () => [] } }, path.join(t.home, 'adopt.log'));
+        } finally { adopt.scanAdoptable = real.scan; adopt.applyAdopt = real.apply; }
+        assert.deepStrictEqual(t.applied, []);
+        assert.ok(!fs.existsSync(t.marker));
+    });
+
+    test('non-interactive update prints only the adopt hint', async () => {
+        const t = setup();
+        const real = { scan: adopt.scanAdoptable, apply: adopt.applyAdopt };
+        adopt.scanAdoptable = () => scanned;
+        adopt.applyAdopt = (o) => { t.applied.push(o.only); return { adopted: [], files: [], skipped: [] }; };
+        try {
+            await menu.adoptGateway({ home: t.home, write: (s) => t.out.push(s), ui: {} }, path.join(t.home, 'adopt.log'));
+        } finally { adopt.scanAdoptable = real.scan; adopt.applyAdopt = real.apply; }
+        assert.deepStrictEqual(t.out, ['Other MCP servers can join the gateway: aos-gateway adopt\n']);
+        assert.deepStrictEqual(t.applied, []);
+    });
 });
 
 test('full install does not duplicate gateway servers when aos entry exists', () => {
