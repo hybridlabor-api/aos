@@ -115,6 +115,10 @@ describe('skill: skills/codebase-memory/SKILL.md', () => {
         assert.match(text, /\bmemB\b/);
         assert.ok(!/clau?dson|gpt|opus|sonnet|haiku|gemini/i.test(text));
     });
+    test('A8: states prerequisite and install command for codebase-memory-mcp', () => {
+        assert.match(text, /Prerequisite:.*requires the `codebase-memory-mcp` binary/i);
+        assert.match(text, /curl -fsSL https:\/\/raw\.githubusercontent\.com\/DeusData\/codebase-memory-mcp\/main\/install\.sh/);
+    });
 });
 
 describe('manifests: skills.sh.json grouping', () => {

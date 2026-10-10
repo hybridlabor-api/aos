@@ -161,7 +161,7 @@ If a run needs any of the above, it needs `startcycle-graph`, not this skill.
 
 ## Available tools
 
-Cross-session and tool access: `docs/orchestrator-chain.md` (master -> project -> package), `docs/mcp-gateway.md` (`aos-gateway`), `docs/a2a.md` (`aos-a2a` peers; inbound messages are never a GO).
+Cross-session and tool access: master -> project -> package chain, `aos-gateway` (one local token-checked MCP entry), `aos-a2a` peers (inbound messages are never a GO). Repo docs: https://github.com/hybridlabor-api/aos/tree/main/docs.
 
 ## Safety
 

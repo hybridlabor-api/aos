@@ -4280,7 +4280,7 @@ function loadCommonSkills(dir = srcDir) {
 }
 
 function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
-    const blocks = content.split(/\n## /).slice(1);
+    const blocks = content.split(/\n## /).slice(1).map((b) => b.split(/\n(?:#{1,2} |---\s*$)/m)[0]);
     const agents = [];
     for (const raw of blocks) {
         const headingLine = raw.split('\n')[0];
@@ -4556,7 +4556,6 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
         const pinned = resolved.model;
 
         const instructions = [
-            a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
             a.mcpServers.length ? `**MCP servers used:** ${a.mcpServers.join(', ')}` : null,
             a.output ? `**Output artifact(s):** ${a.output}` : null,

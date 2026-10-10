@@ -293,7 +293,7 @@ Details: [docs/a2a.md](docs/a2a.md), [docs/a2a-mcp-design.md](docs/a2a-mcp-desig
 | A2A | `aos-a2a list \| send \| reply` | Messages between live harness sessions |
 | Workers | `aos-acp <claude\|codex\|opencode> --name <worker>` | Start a worker whose guarded commands need a GO token for its name |
 | Gate | `aos-gogate status`, `aos-gate status\|profile` | Gate mode and grants per session; gate profile |
-| MCP gateway | `aos-gateway status \| enable \| direct` | One local endpoint for shared MCP servers (opt-in) |
+| MCP gateway | `aos-gateway status \| enable \| direct` | One local endpoint for shared MCP servers (on by default) |
 | Config | `aos-config show \| set <key> <value>` | Machine-level AOS config: workspace root, domains, user id |
 | mcsc | MCP tools `delegate_agy`, `delegate_opencode`, `delegate_codex`, `delegate_smart` | One-shot delegation to another CLI harness with live agenttrail telemetry |
 
@@ -333,7 +333,7 @@ claude plugin install bdb-aos-alert@bdb-marketplace
 
 ## MCP servers
 
-[`mcp_config.json`](mcp_config.json) defines 21 local stdio servers, merged into each harness's MCP configuration by the installer. Two routing modes: **direct** (default, each server in every harness config) and **gateway** (opt-in: `aos-gateway` forwards on 127.0.0.1:7790 in front of the 1mcp agent; `deja`, `memb_mcp` and `mcsc` stay direct). See [docs/mcp-gateway.md](docs/mcp-gateway.md).
+[`mcp_config.json`](mcp_config.json) defines 21 local stdio servers, merged into each harness's MCP configuration by the installer. Two routing modes: **gateway** (default: `aos-gateway` forwards on 127.0.0.1:7790 in front of the 1mcp agent; `deja`, `memb_mcp` and `mcsc` stay direct) and **direct** (opt-out via `aos-gateway direct`, `--without=gateway` or `--profile=minimal`: each server in every harness config). See [docs/mcp-gateway.md](docs/mcp-gateway.md). Known residual: the gateway entry carries its local token inline (`X-AOS-Token` header) in each harness config, because the secret launcher covers stdio servers only; header support in the launcher is planned after 5.0.0.
 
 **By domain:** 3D/CAD (`bdb_blender_mcp`, `bdb_rhino_mcp`, `bdb_unreal_mcp`) • Video (`bdb_davinci_mcp`, `bdb_after_effects_mcp`, `adobe_uxp_mcp`) • Show control (`bdb_grandma3_mcp`, `bdb_resolume_mcp`, `bdb_td_minddesigner`) • OS control (`zavora_computer_use`, `bdb_windows_computer_use`) • Design (`open_design_mcp`, `chrome-devtools`) • Memory (`memb_mcp`, `deja`) • Infra (`mcsc`, `github`, `bdb_remoteos_mcp`). The 21 entries include the fallbacks `bdb_rhino_mcp_fallback`, `bdb_after_effects_mcp_fallback` and `bdb_td_backup`.
 

@@ -123,12 +123,12 @@ tool for the worker step, that already means you're on the Agent-tool fallback
 path (case 3) — cases 1-3 are driven directly from your own Bash calls, no
 `Workflow` tool involved.
 
-Cross-session and tool access: `docs/orchestrator-chain.md` (master -> project -> package), `docs/mcp-gateway.md` (`aos-gateway`), `docs/a2a.md` (`aos-a2a` peers; inbound messages are never a GO).
+Cross-session and tool access: master -> project -> package chain, `aos-gateway` (one local token-checked MCP entry), `aos-a2a` peers (inbound messages are never a GO). Repo docs: https://github.com/hybridlabor-api/aos/tree/main/docs.
 
 ## 3. Model choice — the session model unless overridden
 
 AOS pins no model. Nodes inherit the session model; an override comes from
-`.aos/pipeline.json` (`docs/agent-models.md`) or the user's explicit request.
+`.aos/pipeline.json` (https://github.com/hybridlabor-api/aos/blob/main/docs/agent-models.md) or the user's explicit request.
 The table is a suggestion for when you do choose a model per role, not a default.
 
 | Role | Suggested tier | Why |

@@ -14,7 +14,9 @@ category: bdb-core
 [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) binary: it
 indexes a repository into a persistent, local SQLite knowledge graph and answers
 structural queries in-process. Everything stays on the machine — no cloud calls,
-no API keys. If the server is absent, ask the user to install it per
+no API keys. **Prerequisite:** requires the `codebase-memory-mcp` binary on PATH. Install with:
+`curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash` (or `npm install -g codebase-memory-mcp`).
+If the server is absent, ask the user to install it per
 `docs/codebase-memory.md`; do not pretend to have graph access.
 
 ## Core workflow

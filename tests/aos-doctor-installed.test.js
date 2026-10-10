@@ -36,3 +36,17 @@ test('installed doctor with an AO checkout, a nested plugin cache and named agy 
         assert.ok(mcsc.ok && mcsc.detail.includes('mcp_config.json'), mcsc.detail);
     } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
+
+test('A6: doctor never prints rm -rf suggestions for retired modules or baks', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-doc-rm-'));
+    try {
+        fs.mkdirSync(path.join(home, 'dev', 'bdb-dev', 'bdb-os-agent-workspace'), { recursive: true });
+        const r = spawnSync(process.execPath, [path.join(REPO, 'bin', 'aos-doctor.mjs'), '--json'], { cwd: home, env: { HOME: home, USERPROFILE: home, PATH: process.env.PATH }, encoding: 'utf8' });
+        assert.ok(r.stdout, `doctor crashed: ${r.stderr}`);
+        assert.ok(!r.stdout.includes('rm -rf'), 'never prints rm -rf');
+        const res = JSON.parse(r.stdout).results;
+        const retired = res.find((x) => x.name === 'Retired AO module');
+        if (retired) assert.ok(!retired.fix.includes('rm -rf'), retired.fix);
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+

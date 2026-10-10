@@ -10,7 +10,7 @@ tools:
 
 # aos-gateway
 
-The gateway is a local token-checking forwarder (`127.0.0.1:7790`) in front of `@1mcp/agent` (`127.0.0.1:7791`). Harness MCP files get one `aos` entry instead of many servers. Full reference: `docs/mcp-gateway.md`.
+The gateway is a local token-checking forwarder (`127.0.0.1:7790`) in front of `@1mcp/agent` (`127.0.0.1:7791`). Harness MCP files get one `aos` entry instead of many servers. Full reference (repo, not installed): https://github.com/hybridlabor-api/aos/blob/main/docs/mcp-gateway.md.
 
 ## Commands
 

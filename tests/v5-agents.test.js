@@ -47,3 +47,18 @@ test('hostile agent names are rejected before anything is written', () => {
     assert.strictEqual(fs.existsSync(dir), false);
     assert.strictEqual(fs.existsSync(path.join(home, 'x')), false);
 });
+
+test('A1: Codex agent compiler drops duplicated role in developer_instructions and does not swallow next sections', () => {
+    const { compileCodexAgents } = require('../installer.js');
+    const codexDir = path.join(home, '.codex', 'agents');
+    const parsed = parseAgentsMd(fs.readFileSync(path.join(__dirname, '..', '.agents', 'AGENTS.md'), 'utf8'));
+    compileCodexAgents(parsed, codexDir);
+    const shippingToml = fs.readFileSync(path.join(codexDir, 'godmode-shipping.toml'), 'utf8');
+    assert.ok(!shippingToml.includes('Auxiliary agents'), 'does not swallow Auxiliary agents section');
+    const architectToml = fs.readFileSync(path.join(codexDir, 'architect.toml'), 'utf8');
+    const archAgent = parsed.find((a) => a.name === 'Architect');
+    if (archAgent) {
+        assert.ok(!architectToml.includes(`developer_instructions = """\n${archAgent.role}`), 'drops duplicated role at top of instructions');
+    }
+});
+

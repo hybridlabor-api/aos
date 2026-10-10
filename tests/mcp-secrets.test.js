@@ -90,6 +90,13 @@ describe('writers never emit an inline secret', () => {
         noToken(read(f), 'mirror');
         assert.match(JSON.parse(read(f)).mcpServers.memb_mcp.args[0], /aos-mcp-env\.mjs$/);
     });
+
+    test('A2: the shipped remoteos entry never carries the placeholder gateway URL; the launcher reads it', () => {
+        const entry = sec.shippedServers(ROOT).bdb_remoteos_mcp;
+        assert.ok(!JSON.stringify(entry).includes('yourdomain'));
+        const wrapped = sec.wrapServer('bdb_remoteos_mcp', entry, '/l/aos-mcp-env.mjs');
+        assert.ok(sec.unwrap(wrapped).vars.includes('REMOTEOS_GATEWAY_URL'));
+    });
 });
 
 describe('launcher', () => {

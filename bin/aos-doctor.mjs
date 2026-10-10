@@ -175,7 +175,7 @@ function checkAosCore() {
   if (retired) {
     add('aos-core', 'Retired AO module', false,
       `${tilde(retired)} — archived predecessor with known CDC loop bug`,
-      `Remove directory: rm -rf ${tilde(retired)} — AO is now bdb-agent-orchestrator.`);
+      `Move directory aside or review path: ${tilde(retired)} — AO is now bdb-agent-orchestrator.`);
   }
 }
 
@@ -207,7 +207,6 @@ function checkHarnesses() {
     { name: 'Claude Code', path: hc('skills') },
     { name: 'Gemini / Antigravity', path: firstExisting([h('.gemini', 'config', 'skills'), h('.gemini', 'antigravity-cli', 'skills')]) || h('.gemini', 'config', 'skills') },
     { name: 'Codex', path: h('.agents', 'skills') },
-    { name: 'Cursor', path: h('.cursor', 'skills') },
     { name: 'Roo Code', path: h('.roo', 'skills') },
   ];
 
@@ -345,7 +344,7 @@ function checkHooks() {
 // not installed, and the optional agy/Codex/sidecar/SDK pieces, stay warnings (same philosophy as the mcsc row).
 // Codex and agy are delegation targets, so they never carry a sidecar
 // SessionStart hook (fork-bomb rule); their row checks the pull/CLI pieces.
-function checkA2aMatrix() {
+async function checkA2aMatrix() {
   const area = 'a2a';
   const pkgBin = path.join(path.resolve(new URL(import.meta.url).pathname, '..'), 'a2a-inbox-mcp.mjs');
   // Where the hook and the OpenCode plugin find lib/a2a-inbox.mjs: ../../lib, else ~/.agents/lib.
@@ -412,9 +411,15 @@ function checkA2aMatrix() {
   for (const id of ['@a2a-js/sdk/package.json', '@a2a-js/sdk']) {
     try { req.resolve(id); sdkOk = true; break; } catch { /* try next */ }
   }
+  if (!sdkOk) {
+    try {
+      const { a2aImport } = req('../lib/a2a-sdk-resolve.mjs');
+      if (a2aImport) { await a2aImport('@a2a-js/sdk'); sdkOk = true; }
+    } catch { /* sdk missing */ }
+  }
   add(area, 'A2A SDK dependency', sdkOk,
     sdkOk ? '@a2a-js/sdk resolvable next to this doctor' : '@a2a-js/sdk not resolvable: `aos-a2a serve/send` will fail with a clear SDK-missing error',
-    'Reinstall the package: npx @hybridlabor-api/aos@latest (SDK ships as a dependency).', true);
+    'Install @a2a-js/sdk: npm install @a2a-js/sdk in the package root or re-run the AOS installer: npx @hybridlabor-api/aos@latest', true);
 }
 
 // mcsc delegates to agy; agy loading mcsc from its own config recurses into a fork bomb.
@@ -488,7 +493,7 @@ function checkInstallerBaks() {
   if (process.argv.includes('--list-baks')) { console.log(list.join('\n')); process.exit(0); }
   if (!list.length) return;
   add('installer', 'Old installer .bak files', false, `${list.length} backup file${list.length > 1 ? 's' : ''} from earlier installer runs, e.g. ${tilde(list[0])}`,
-    'Review: node bin/aos-doctor.mjs --list-baks. Remove (your call, nothing is deleted automatically): node bin/aos-doctor.mjs --list-baks | while IFS= read -r f; do rm -- "$f"; done', true);
+    'Review with: node bin/aos-doctor.mjs --list-baks. Move aside or clean up manually if no longer needed.', true);
 }
 
 // AOS Hub (on demand): reachability is informational, not a failure — the hub
@@ -589,7 +594,7 @@ async function checkDaemonsAndModules() {
       } else {
         add('daemons', 'codebase-memory-mcp (codebase-memory MCP)', false,
           `${codebaseMemory.cmbMissingMessage({ status })} — the codebase-memory MCP server is not registered`,
-          'install codebase-memory-mcp per docs/codebase-memory.md, then re-run the AOS installer', true);
+          'install codebase-memory-mcp: curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash (or npm install -g codebase-memory-mcp)', true);
       }
     }
   }
@@ -814,7 +819,7 @@ checkAgyMcsc();
 checkMcpSecrets();
 checkInstallerBaks();
 await checkHub();
-checkA2aMatrix();
+await checkA2aMatrix();
 await checkDaemonsAndModules();
 await checkGateway();
 report();

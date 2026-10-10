@@ -51,3 +51,9 @@ test('CLAUDE_CONFIG_DIR is honoured for the Claude skills check', () => {
     const plain = run((h) => write(path.join(h, 'cfg', 'skills', 'startcycle', 'SKILL.md'), '#'));
     assert.ok(!plain.by('Claude Code Skills').ok);
 });
+
+test('A7: Cursor is dropped from doctor checkHarnesses matrix', () => {
+    const { by } = run(() => {});
+    assert.equal(by('Cursor Skills'), undefined);
+});
+

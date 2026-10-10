@@ -106,7 +106,6 @@
         "bdb-remoteos-mcp"
       ],
       "env": {
-        "REMOTEOS_GATEWAY_URL": "https://gateway.yourdomain.com",
         "REMOTEOS_API_KEY": "${REMOTEOS_API_KEY}"
       }
     }

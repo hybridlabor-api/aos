@@ -125,6 +125,22 @@ test('agy commands are relative, unquoted, and observability hooks fail open', (
     for (const c of cmds.filter((x) => /go-gate|graph-gate|conventional|env-file/.test(x))) assert.ok(!c.includes('||'), c);
 });
 
+test('A10: trail-relay fails open fast with closed stdin or offline target port', () => {
+    const { spawnSync } = require('node:child_process');
+    const relay = path.join(__dirname, '..', '.claude', 'hooks', 'trail-relay.mjs');
+    const t0 = Date.now();
+    const r = spawnSync(process.execPath, [relay, '--agent', 'agy', '--event', 'PreToolUse'], {
+        input: JSON.stringify({ toolCall: { name: 'git log' } }),
+        env: { ...process.env, AGENTTRAIL_PORT: '59999' },
+        timeout: 3000,
+        encoding: 'utf8',
+    });
+    const duration = Date.now() - t0;
+    assert.strictEqual(r.status, 0);
+    assert.ok(duration < 2000, `trail-relay took too long: ${duration}ms`);
+});
+
+
 test('agyHookCommand rejects scripts outside the hooks.json folder or with unsafe paths', () => {
     assert.strictEqual(agyHookCommand('/a/b', '/a/b/hooks/x.mjs', ' --k v'), 'node hooks/x.mjs --k v');
     assert.throws(() => agyHookCommand('/a/b', '/a/c/x.mjs'));
