@@ -296,7 +296,7 @@ const SAFE_PUSH_OPT = /^(?:-u|--set-upstream|-q|--quiet|-v|--verbose|--no-verify
 // detached HEAD, which callers treat as the protected case.
 // Per-segment state handed to classify by scopesOf: the working directory (null = unknown) and
 // whether an earlier segment of the same command may have changed the repository state.
-let segCwd = "", segTaint = false, segFeed = "";
+let segCwd = "", segTaint = false, segFeed = "", segNoCd = false;
 // Git lookups are memoised for one hook invocation (setGateContext clears them), and every
 // analysis runs under a wall-clock budget: past it the command is unscoped (guarded, GO needed).
 let memo = new Map();
@@ -721,7 +721,7 @@ export function classify(seg, protectedFor = staticResolver) {
     if (sub === "commit" && (hookKey || gitEnv || commitBypass(r))) return null;
     return [];
   }
-  if (cmd === "docker") return dockerScopes(tok, seg, segTaint, segCwd);
+  if (cmd === "docker") return dockerScopes(tok, seg, segTaint, segNoCd ? gateCtx.cwd : "");
   // (H7f) the git programs behind the subcommands (`/usr/lib/git-core/git-push`, `git-subtree push`).
   if (/^git-(?:push|send-pack)$/.test(cmd) || (/^git-(?:subtree|lfs)$/.test(cmd) && tok.slice(1).some((t) => /^(?:push|split)$/.test(unq(t))))) return ["push-main"];
   if (PM.test(cmd) || cmd === "npx") {
@@ -1755,6 +1755,16 @@ export function analyzeDeletes(command, depth = 0, init = null) {
       if (f.module && /rm|remov|delet|rimraf|trash|clean|purge|wipe/i.test(f.module)) r.unscoped = true;
       if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""));
       else if (f.file) r.files.push({ h, file: f.file, cwd: st.cwd });
+      // V13 H2: node runs preloaded modules (-r/--require/--import/--loader) before the main file, so they are read like it.
+      if (/^node(?:js)?$/i.test(h)) {
+        const a = tok.slice(1).map(unqQ);
+        for (let i = 0; i < a.length; i++) {
+          const m = /^(?:-r|--require|--import|--loader|--experimental-loader)(?:=(.*))?$/.exec(a[i]);
+          if (!m) continue;
+          const v = m[1] ?? a[++i];
+          if (v) r.files.push({ h, file: v, cwd: st.cwd });
+        }
+      }
     }
   };
   for (const p of scanSplit(text)) {
@@ -1910,7 +1920,9 @@ function scopesOf(orig, protectedFor) {
   const marked = view.replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " ")).replace(/(?<!\$)\{([a-z_]+)\}/g, "\u0004$1\u0005");
   const st = { cwd: gateCtx.cwd || process.cwd(), taint: ENV_CHANGE.test(view) };
   const stack = [];
-  const outerCwd = segCwd, outerTaint = segTaint, outerFeed = segFeed;
+  const outerCwd = segCwd, outerTaint = segTaint, outerFeed = segFeed, outerNoCd = segNoCd;
+  // V13 H1: cd tracking cannot see `cd X | true`, `cd X &`, popd, a failing cd or CDPATH, so "$PWD" is only the session cwd when no cd appears at all.
+  segNoCd = !/(?:^|[\s;&|({])(?:cd|pushd|popd)(?=[\s;&|)}]|$)|CDPATH/.test(view);
   try {
     const parts = marked.split(SEG_SPLIT);
     for (let pi = 0; pi < parts.length; pi++) {
@@ -1945,7 +1957,7 @@ function scopesOf(orig, protectedFor) {
       if (!s.length && GUARDED_PATTERNS.some((r) => r.test(seg))) return null;
       s.forEach((x) => out.add(x));
     }
-  } finally { segCwd = outerCwd; segTaint = outerTaint; segFeed = outerFeed; }
+  } finally { segCwd = outerCwd; segTaint = outerTaint; segFeed = outerFeed; segNoCd = outerNoCd; }
   // The view blanks quoted text, so a GraphQL mutation that moves or merges a ref is read on the raw command.
   if (/\bgh\b[\s\S]*?\bapi\b[\s\S]*?\bgraphql\b/.test(orig) && /\b(?:updateRef|createRef|deleteRef|createCommitOnBranch|mergePullRequest|mergeBranch|updateBranchProtectionRule)\b/.test(orig)) { out.delete("github-write"); out.add("push-main"); }
   const a = analyzeDeletes(orig);

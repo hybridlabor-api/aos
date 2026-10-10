@@ -83,3 +83,19 @@ test("cooldown under work does not hide a release-class script: it is still judg
   utimesSync(f, later, later);
   assert.equal(run("bash rel.sh"), 2);
 });
+
+test("V13 H1: a cd the gate cannot follow (pipe, popd) means $PWD is not trusted", () => {
+  const { home, proj, run } = setup(WORK);
+  const body = "bash -c 'echo hi'";
+  assert.equal(run(`cd ${home}; cd ${proj} | true; docker run --rm -v "$PWD":/h:ro node:24 ${body}`), 2);
+  assert.equal(run(`pushd ${proj}; popd; docker run --rm -v "$PWD":/h:ro node:24 ${body}`), 2);
+  assert.equal(run(`CDPATH=${home} cd projects; docker run --rm -v "$PWD":/h:ro node:24 ${body}`), 2);
+});
+
+test("V13 H2: node preloads are read like the main file", () => {
+  const { proj, run } = setup(WORK);
+  writeFileSync(join(proj, "ok.js"), "console.log(1)\n");
+  writeFileSync(join(proj, "x.js"), `require("fs").r${"m"}Sync(require("os").homedir(), { recursive: true });\n`);
+  assert.equal(run("node ok.js"), 0);
+  for (const c of ["node -r ./x.js ok.js", "node --require ./x.js ok.js", "node --require=./x.js ok.js", "node --import ./x.js ok.js", "node --check --import ./x.js ok.js"]) assert.equal(run(c), 2, c);
+});
