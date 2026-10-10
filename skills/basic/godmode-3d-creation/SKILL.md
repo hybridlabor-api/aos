@@ -15,6 +15,8 @@ You are the Mastermind for all 3D generation, modeling, and CAD workflows within
 The core local 3D generation backends are hosted within the Creator Extension:
 `bdb-dev-creator-extension/engines/3d/`
 
+The installer places the extension in its module directory (`bdb-dev-creator-extension/` under the AOS module base). Every `engines/3d/...` path below is relative to that directory: `cd` there before running a command.
+
 ### Primary Engines & Local Modules:
 * **TripoSR** (`engines/3d/triposr`): Ultra-fast single-image 3D reconstruction for rapid mesh prototyping (under 0.5s on CUDA, CPU-capable).
 * **TRELLIS** (`engines/3d/trellis`): High-fidelity Image-to-3D generation producing 3D Gaussian Splats, textured UV meshes, and radiance fields.
@@ -95,7 +97,7 @@ Execute directly via verified fallback mechanisms when hardware constraints or s
 1. **CUDA Acceleration Unavailable (CPU-Only Environments):**
    - **TripoSR:** Run with `--device cpu`:
      `python engines/3d/triposr/run.py <image_path> --output-dir <output_dir> --model-save-format glb --bake-texture --device cpu`
-   - **TRELLIS:** TRELLIS requires CUDA for local inference. If CUDA is absent or VRAM is under 16GB, route to ComfyUI 3D diffusion workflow on port 8188 via `comfyui-mcp` or use an external cloud inference API endpoint.
+   - **TRELLIS:** TRELLIS requires CUDA for local inference. If CUDA is absent or VRAM is under 16GB, route to ComfyUI 3D diffusion workflow on port 8188 via `comfyui-mcp` (AOS ships no config for it: check it is configured in the harness first, as `pb-image-to-3d` does) or use an external cloud inference API endpoint.
 
 2. **Parametric CAD & Complex NURBS Modeling:**
    - **Primary Fallback:** If `build123d` is unsuitable for complex freeform surfaces, use **`bdb_rhino_mcp_fallback`** (Rhino Grasshopper solvers, NURBS surfaces, curves, boolean operations, STEP/IGES export).
