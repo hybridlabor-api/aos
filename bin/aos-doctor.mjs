@@ -11,6 +11,7 @@ import { connect } from 'node:net';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const req = createRequire(import.meta.url);
 const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
@@ -136,7 +137,7 @@ function checkAosCore() {
 
   // Check store index
   const storeIndexCandidates = [
-    path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'lib', 'ecc-store-index.json'),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'ecc-store-index.json'),
     h('.agents', 'lib', 'ecc-store-index.json'),
     h('dev', 'bdb-dev', 'bdb-dev-optimized-agent-skills', 'lib', 'ecc-store-index.json')
   ];
@@ -204,7 +205,7 @@ function checkOpencodeMcpNames() {
 // ---------------------------------------------------------------- 3. Harness Placement & Skills Sync
 // Skill names this package ships (skills/<group>/<name>/SKILL.md), or null when no package tree is reachable.
 function shippedSkillNames() {
-  const pkgRoots = [path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'), readJson(h('.agents', 'lib', '.aos-package-root.json'))?.packageRoot];
+  const pkgRoots = [path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), readJson(h('.agents', 'lib', '.aos-package-root.json'))?.packageRoot];
   // The name check keeps ~/.agents (installed copy's parent, has skills/ and maybe a legacy package.json) from counting as the package.
   const pkgRoot = pkgRoots.find((r) => typeof r === 'string' && readJson(path.join(r, 'package.json'))?.name === '@hybridlabor-api/aos' && existsSync(path.join(r, 'skills')));
   if (!pkgRoot) return null;
@@ -375,7 +376,7 @@ function checkHooks() {
 // SessionStart hook (fork-bomb rule); their row checks the pull/CLI pieces.
 async function checkA2aMatrix() {
   const area = 'a2a';
-  const pkgBin = path.join(path.resolve(new URL(import.meta.url).pathname, '..'), 'a2a-inbox-mcp.mjs');
+  const pkgBin = path.join(path.resolve(fileURLToPath(import.meta.url), '..'), 'a2a-inbox-mcp.mjs');
   // Where the hook and the OpenCode plugin find lib/a2a-inbox.mjs: ../../lib, else ~/.agents/lib.
   const inboxLib = firstExisting([h('.agents', 'lib', 'a2a-inbox.mjs'), path.join(hc('hooks'), '..', '..', 'lib', 'a2a-inbox.mjs')]);
 
@@ -404,7 +405,7 @@ async function checkA2aMatrix() {
   add(area, 'A2A OpenCode', ocOk, ocDetail, 'Run the AOS installer to install the OpenCode plugin.', !ocPlugin);
 
   // agy: pull-side MCP payload present (registration is a manual `agy mcp add`).
-  const agyMcp = firstExisting([h('.agents', 'bin', 'aos-a2a-mcp.mjs'), h('.agents', 'bin', 'a2a-inbox-mcp.mjs'), existsSync(path.join(path.resolve(new URL(import.meta.url).pathname, '..'), 'aos-a2a-mcp.mjs')) ? path.join(path.resolve(new URL(import.meta.url).pathname, '..'), 'aos-a2a-mcp.mjs') : null, existsSync(pkgBin) ? pkgBin : null]);
+  const agyMcp = firstExisting([h('.agents', 'bin', 'aos-a2a-mcp.mjs'), h('.agents', 'bin', 'a2a-inbox-mcp.mjs'), existsSync(path.join(path.resolve(fileURLToPath(import.meta.url), '..'), 'aos-a2a-mcp.mjs')) ? path.join(path.resolve(fileURLToPath(import.meta.url), '..'), 'aos-a2a-mcp.mjs') : null, existsSync(pkgBin) ? pkgBin : null]);
   add(area, 'A2A agy (Antigravity)', !!agyMcp,
     agyMcp ? `${tilde(agyMcp)} shipped · optional: agy mcp add aos-a2a node "${agyMcp}"` : 'aos-a2a-mcp.mjs missing (install AOS)',
     'Run the AOS installer; register with: agy mcp add aos-a2a node <path to aos-a2a-mcp.mjs>', true);
@@ -794,7 +795,7 @@ function checkPlugins() {
 // Format check only: no network, no provider lists. The installer passes these strings through verbatim.
 function checkAgentModels() {
   const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-  const agentsMd = firstExisting([path.join(path.dirname(new URL(import.meta.url).pathname), '..', '.agents', 'AGENTS.md'), h('.agents', 'AGENTS.md')]);
+  const agentsMd = firstExisting([path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.agents', 'AGENTS.md'), h('.agents', 'AGENTS.md')]);
   const slugs = agentsMd ? new Set([...readFileSync(agentsMd, 'utf8').split(/\n## /).slice(1)]
     .filter((b) => /-\s*\*\*Role\*\*:/.test(b))
     .map((b) => b.split('\n')[0].replace(/^[^\w]+/, '').trim().split(/\s+/)[0].toLowerCase().replace(/-/g, '_'))) : null;

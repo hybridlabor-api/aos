@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import cp from 'node:child_process'
 import crypto from 'node:crypto'
 import { norm, probePorts, gitRoots, listWorktrees, selectPlan, PROTOCOL, HUB_PORT, HUB_PROTOCOL, hubUrl } from './repoid.mjs'
@@ -34,7 +35,7 @@ async function registerWithHub(port, root, plan) {
   } catch { return false }
 }
 
-const hubBinary = () => new URL('./trail-hub.mjs', import.meta.url).pathname
+const hubBinary = () => fileURLToPath(new URL('./trail-hub.mjs', import.meta.url))
 
 function startHub(port) {
   const c = cp.spawn(process.execPath, [hubBinary(), '--port', String(port)], { detached: true, stdio: 'ignore' })
