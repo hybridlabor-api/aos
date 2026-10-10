@@ -257,6 +257,7 @@ describe('forwarder', () => {
 });
 
 describe('pkg-gateway', () => {
+    const harness = require('../lib/gateway/harness.js');
     const mkCtx = (home, extra = {}) => {
         const calls = [];
         const run = async (cmd, args) => { calls.push([cmd, ...args]); return { status: 0, stdout: '' }; };
@@ -435,7 +436,11 @@ describe('pkg-gateway', () => {
         const home = tmp();
         const { ctx, calls } = mkCtx(home);
         const base = ctx.run;
-        ctx.run = async (cmd, args) => (args[0] === 'preset' ? { status: 1, stderr: 'boom' } : base(cmd, args));
+        ctx.run = async (cmd, args) => {
+            if (args[0] !== 'preset') return base(cmd, args);
+            calls.push([cmd, ...args]);
+            return { status: 1, stderr: 'boom' };
+        };
         const say = [];
         ctx.log = (m) => say.push(m);
         const seen = [];
