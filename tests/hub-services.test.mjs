@@ -1,4 +1,4 @@
-import { test, before, after } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -46,8 +46,8 @@ before(() => { resetMetaCacheForTests(); resetWikiCacheForTests(); });
 after(() => { setA2aListForTests(null); });
 
 test('fixed service table has exactly the expected ids', () => {
-  assert.deepEqual(SERVICE_IDS, ['memb', 'synapse', 'openwiki', 'ao', 'remoteos', 'gateway', 'plan-canvas', 'a2a', 'agenttrail', 'hub']);
-  for (const id of ['memb', 'synapse', 'openwiki', 'ao', 'remoteos', 'gateway', 'plan-canvas', 'a2a', 'agenttrail', 'hub']) {
+  assert.deepEqual(SERVICE_IDS, ['memb', 'synapse', 'openwiki', 'ao', 'gateway', 'plan-canvas', 'a2a', 'agenttrail', 'hub']);
+  for (const id of ['memb', 'synapse', 'openwiki', 'ao', 'gateway', 'plan-canvas', 'a2a', 'agenttrail', 'hub']) {
     assert.ok(byId.has(id));
   }
 });
@@ -191,7 +191,7 @@ test('full hub: stop gateway without confirm -> 400; with confirm -> exact booto
     routes: [...planRoutes, ...servicesRoutes],
     ctx: {
       root: repo, platform: 'darwin', uid: '501', run: fakeRun, log: () => {},
-      portOverrides: { memb: 0, synapse: 0, ao: 0, remoteos: 0, 'plan-canvas': 0 },
+      portOverrides: { memb: 0, synapse: 0, ao: 0, 'plan-canvas': 0 },
     },
   });
   await hub.listen();
@@ -307,7 +307,7 @@ test('cli exit codes', async () => {
     const mac = {
       ...recordingCtx({ home: home4 }),
       log: () => {},
-      portOverrides: { memb: 0, synapse: 0, ao: 0, remoteos: 0, gateway: 0, 'plan-canvas': 0 },
+      portOverrides: { memb: 0, synapse: 0, ao: 0, gateway: 0, 'plan-canvas': 0 },
     };
     assert.equal(await cli(['stop', 'gateway', '--confirm', 'other'], mac), 2);
     assert.equal(await cli(['stop', 'gateway'], mac), 2);
@@ -366,4 +366,49 @@ test('redact: a 64 KB lowercase line without an URL scheme finishes under 500 ms
   const out = redact(`${line}\ntokentoadmin 64KB-fill ${line.slice(0, 16)}\n`);
   assert.ok(Date.now() - t0 < 500, `redact took ${Date.now() - t0} ms`);
   assert.match(out, /tokentoadmin/, 'normal content stays untouched');
+});
+
+// ------------------------------------------------------------ linux systemd
+describe('linux systemd control', () => {
+  test('restart of a row with a unit issues exactly `systemctl --user restart <unit>`', async () => {
+    calls.length = 0;
+    const res = await controlService(recordingCtx({ platform: 'linux' }), 'gateway', 'restart');
+    assert.equal(res.ok, true);
+    assert.deepEqual(calls.map((c) => [c.cmd, c.args]), [['systemctl', ['--user', 'restart', 'com.bdb.aos.gateway.service']]]);
+  });
+
+  test('a row without a unit throws the not-available error and spawns nothing', async () => {
+    calls.length = 0;
+    await assert.rejects(
+      () => controlService(recordingCtx({ platform: 'linux' }), 'memb', 'start'),
+      /not available on this platform/,
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  test('remoteos is an unknown id', async () => {
+    await assert.rejects(
+      () => controlService(recordingCtx({ platform: 'linux' }), 'remoteos', 'start'),
+      /unknown service/,
+    );
+  });
+
+  test('systemctl failure throws with stderr', async () => {
+    const ctx = {
+      ...recordingCtx({ platform: 'linux' }),
+      run: async () => ({ ok: false, code: 1, stdout: '', stderr: 'Failed to restart unit: not found' }),
+    };
+    await assert.rejects(() => controlService(ctx, 'gateway', 'restart'), /Failed to restart unit/);
+  });
+
+  test('effectiveControlFor: unit -> systemd, no unit -> observe; agentLoaded probes is-enabled', async () => {
+    const ctx = recordingCtx({ platform: 'linux' });
+    calls.length = 0;
+    const rows = await statusService(ctx);
+    assert.equal(rows.find((r) => r.id === 'gateway').control, 'systemd');
+    assert.equal(rows.find((r) => r.id === 'memb').control, 'observe');
+    const loadCall = calls.find((c) => c.cmd === 'systemctl' && c.args[0] === 'is-enabled');
+    assert.ok(loadCall, 'is-enabled was asked');
+    assert.deepEqual(loadCall.args, ['--user', 'is-enabled', 'com.bdb.aos.gateway.service']);
+  });
 });
