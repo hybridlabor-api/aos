@@ -48,7 +48,7 @@ const known = () => {
 function registerFromEvent(cwd) {
   if (!cwd || typeof cwd !== 'string') return
   const map = known()
-  if ([...map.keys()].some((r) => cwd === r || cwd.startsWith(`${r}/`))) return
+  if ([...map.keys()].some((r) => cwd === r || cwd.startsWith(r + path.sep))) return
   const dir = STATE_DIR()
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
   registerRepo(cwd, { dir })
@@ -285,7 +285,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req, res)
       if (!body.ok) return
       const root = body.value && body.value.root
-      if (!root || typeof root !== 'string' || !root.startsWith('/')) { res.writeHead(400).end(); return }
+      if (!root || typeof root !== 'string' || !path.isAbsolute(root)) { res.writeHead(400).end(); return }
       try { registerRepo(root, { planHint: body.value.planHint || null }); res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true })) } catch { res.writeHead(400).end() }
       return
     }

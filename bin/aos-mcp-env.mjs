@@ -6,6 +6,8 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 // A missing lib (e.g. ~/.agents/lib removed) must not keep the server from starting.
 let lib = null;
@@ -37,6 +39,15 @@ if (missing.length && !lib) {
 
 // npx, uv shims etc. are .cmd files on Windows and need cmd to be spawned.
 const win = process.platform === 'win32' && !/\.exe$/i.test(command);
+// cmd /c exits 1 for an unknown command and never emits 'error', so look the bare name up first (PATH x PATHEXT).
+if (win && !/[\\/]/.test(command)) {
+    const dirs = String(env.PATH || env.Path || '').split(';').filter(Boolean);
+    const exts = ['', ...String(env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';')];
+    if (!dirs.some((d) => exts.some((x) => existsSync(join(d, command + x))))) {
+        console.error(`aos-mcp-env: cannot start ${command}: ENOENT`);
+        process.exit(127);
+    }
+}
 const child = win ? spawn('cmd', ['/c', command, ...args], { stdio: 'inherit', env }) : spawn(command, args, { stdio: 'inherit', env });
 const forward = (sig) => () => { try { child.kill(sig); } catch { /* already gone */ } };
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, forward(sig));

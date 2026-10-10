@@ -159,6 +159,8 @@ function copyToClipboard(text) {
 if (ensureMode) {
   try { await (await import('./ensure.mjs')).ensure({ cwd: ensureCwd, plan: planArg, session: ensureSession, json: jsonOut, script: fileURLToPath(import.meta.url) }) }
   catch (e) { console.log(jsonOut ? JSON.stringify({ url: null, started: false, opened: false, reason: `error: ${String(e && e.message || e).slice(0, 80)}`, plan: null, hint: null }) : 'agenttrail: error') }
+  // Windows: process.exit() right after fetch() aborts node with a libuv UV_HANDLE_CLOSING assertion (exit 0xC0000409).
+  if (process.platform === 'win32') await new Promise(r => setTimeout(r, 100))
   process.exit(0)
 }
 if (cmd === 'init') { hooksOnly ? installHooks() : await init(); process.exit(0) }
@@ -518,7 +520,7 @@ function toolDetail(input = {}, root = repo) {
 function relToRepo(p, root = repo) {
   if (!p) return null
   const r = path.resolve(String(p))
-  return r === root ? '' : r.startsWith(root + path.sep) ? r.slice(root.length + 1) : null
+  return r === root ? '' : r.startsWith(root + path.sep) ? r.slice(root.length + 1).split(path.sep).join('/') : null
 }
 // AOS patch: native plan/todo tools across harnesses, normalized to the
 // {content, status} shape the frontend's run-todo rendering already expects.

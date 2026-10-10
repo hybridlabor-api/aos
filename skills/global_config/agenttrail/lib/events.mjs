@@ -2,6 +2,7 @@
 // Validation is strict about what it accepts and silent about what it drops: an
 // unknown field is removed, an unknown kind is refused.
 import http from 'node:http'
+import path from 'node:path'
 
 export const MAX_BODY_BYTES = 16 * 1024
 const MAX_SKEW_MS = 24 * 60 * 60 * 1000
@@ -31,7 +32,7 @@ export function validateEvent(input, { now = Date.now() } = {}) {
   if (!sessionId) return { ok: false, error: 'session.id is required' }
 
   const cwd = plain(input.cwd)
-  if (!cwd || !String(cwd).startsWith('/')) return { ok: false, error: 'cwd must be an absolute path' }
+  if (!cwd || !path.isAbsolute(String(cwd))) return { ok: false, error: 'cwd must be an absolute path' }
 
   let ts = now
   if (input.ts !== undefined) {
@@ -128,10 +129,10 @@ export function fromLegacyHook(payload, { now = Date.now() } = {}) {
       const file = input.file_path || input.notebook_path || input.path
       if (file) {
         const rel = String(file).startsWith(String(payload.cwd || ''))
-          ? String(file).slice(String(payload.cwd || '').length).replace(/^\/+/, '')
+          ? String(file).slice(String(payload.cwd || '').length).replace(/^[\\/]+/, '').replace(/\\/g, '/')
           : String(file)
         ev.tool.detail = rel.slice(0, 300)
-        if (rel && !rel.startsWith('/')) ev.file = rel.slice(0, 300)
+        if (rel && !path.isAbsolute(rel)) ev.file = rel.slice(0, 300)
       }
     }
     if (ev.kind === 'waiting' && payload.message) ev.message = String(payload.message).slice(0, 500)

@@ -70,6 +70,6 @@ export function selectPlan(root, explicit) {
   } catch {}
   // .agents/graph.md defines no plan path beyond production_artifacts/00_execution_plan.md, so nothing extra is accepted
   if (subs.length === 1) return { plan: subs[0] }
-  if (subs.length > 1) return { reason: 'several-plans', hint: `several plans, pass --plan: ${subs.map(f => path.relative(root, f)).join(', ')}` }
+  if (subs.length > 1) return { reason: 'several-plans', hint: `several plans, pass --plan: ${subs.map(f => path.relative(root, f).split(path.sep).join('/')).join(', ')}` }
   return { reason: 'no-plan' }
 }

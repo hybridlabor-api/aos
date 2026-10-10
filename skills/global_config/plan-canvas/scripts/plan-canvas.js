@@ -654,9 +654,11 @@ async function main(argv = process.argv.slice(2)) {
   }
   const command = args[0] && !args[0].startsWith('--') ? args.shift() : null;
   const stateDir = resolveStateDir();
-  // A running server may sit on a non-default port; trust its recorded info.
+  // A running server may sit on a non-default port; trust its recorded info only while it answers
+  // (a server killed hard, as SIGTERM is on Windows, never removes server.json).
   const recorded = readServerInfo(stateDir);
-  const context = { stateDir, port: (recorded && recorded.port) || resolvePort() };
+  const recordedLive = recorded && recorded.port && (await healthCheck(recorded.port));
+  const context = { stateDir, port: recordedLive ? recorded.port : resolvePort() };
   try {
     if (command === null) output(await cmdStatus(context));
     else if (command === 'modes') output(cmdModes());

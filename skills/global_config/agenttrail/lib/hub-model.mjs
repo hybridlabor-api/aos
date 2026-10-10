@@ -75,7 +75,7 @@ function activityFor(instances, sessionTable) {
   for (const inst of instances) {
     const mine = statSafe(inst.planPath)
     const ownerMtime = statSafe(instances.find((i) => i.isMain)?.planPath || inst.planPath)?.mtimeMs || 0
-    const sessions = sessionTable.all().filter((s) => s.cwd && inst.path && (s.cwd === inst.path || s.cwd.startsWith(`${inst.path}/`)))
+    const sessions = sessionTable.all().filter((s) => s.cwd && inst.path && (s.cwd === inst.path || s.cwd.startsWith(inst.path + path.sep)))
     const lastSession = sessions.reduce((max, s) => Math.max(max, s.lastEventAt || 0), 0)
     const own = (mine ? mine.mtimeMs > ownerMtime + 1 : false) || sessions.some((s) => s.state === 'working' || s.currentTask)
     activity[inst.path] = { at: Math.max(mine ? mine.mtimeMs : 0, lastSession), own }
@@ -137,7 +137,7 @@ export function buildModel({
 
       const mtime = statSafe(primary.planPath)?.mtimeMs || 0
       const commitAt = lastCommitAt(repoId, primary.planRel, primary.branch) || 0
-      const inPrimary = sessions.filter((s) => s.cwd && primary.path && (s.cwd === primary.path || s.cwd.startsWith(`${primary.path}/`)))
+      const inPrimary = sessions.filter((s) => s.cwd && primary.path && (s.cwd === primary.path || s.cwd.startsWith(primary.path + path.sep)))
       const lastActivity = Math.max(mtime, commitAt, inPrimary.reduce((max, s) => Math.max(max, s.lastEventAt || 0), 0))
 
       const runs = new Map()

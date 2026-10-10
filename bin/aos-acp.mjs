@@ -201,7 +201,8 @@ export class AcpClient {
     this.pending = new Map();
     this.nextId = 1;
     this.log = log;
-    this.child = spawn(cmd[0], cmd.slice(1), { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    const verbatim = process.platform === "win32" && /(^|[\\/])cmd(\.exe)?$/i.test(cmd[0]);
+    this.child = spawn(cmd[0], cmd.slice(1), { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsVerbatimArguments: verbatim });
     this.child.stderr.on("data", (d) => log("agent_stderr", { text: String(d).trimEnd() }));
     this.exited = new Promise((res) => this.child.on("exit", (code, sig) => {
       for (const p of this.pending.values()) p.reject(new Error(`agent exited (${code ?? sig})`));
@@ -271,7 +272,8 @@ export async function run(opts) {
 
   const adapter = ADAPTERS[opts.adapter];
   if (adapter?.print && !opts.cmd) return runPrint(opts, log, emitTrail, sandbox);
-  let cmd = opts.cmd ? ["sh", "-c", opts.cmd] : adapter?.cmd;
+  // No `sh` on a stock Windows PATH: run --cmd through cmd.exe, whose /s strips the outer quotes.
+  let cmd = opts.cmd ? (process.platform === "win32" ? [process.env.ComSpec || "cmd.exe", "/d", "/s", "/c", `"${opts.cmd}"`] : ["sh", "-c", opts.cmd]) : adapter?.cmd;
   if (!cmd) throw new Error(`unknown adapter "${opts.adapter}" (claude|codex|opencode|agy)`);
   if (adapter?.cwdFlag && !opts.cmd) cmd.push(adapter.cwdFlag, opts.cwd);
   if (sandbox) cmd = sandbox.wrap(cmd, { cwd: opts.cwd });

@@ -41,6 +41,7 @@ export function checkPrivateDir(dir) {
   let st;
   try { st = lstatSync(dir); } catch { return `${dir} does not exist`; }
   if (!st.isDirectory()) return `${dir} is not a real directory`;
+  if (process.platform === "win32") return null; // no POSIX uid/mode; the user profile ACL is the boundary
   if (st.uid !== process.getuid()) return `${dir} is not owned by the current user`;
   if (st.mode & 0o077) return `${dir} is accessible to others (mode ${(st.mode & 0o777).toString(8)})`;
   return null;
@@ -122,7 +123,7 @@ export function readInbox(name) {
     const file = join(p.inbox, f);
     try {
       const st = lstatSync(file);
-      if (!st.isFile() || st.uid !== process.getuid() || st.size > MAX_FILE) throw new Error("rejected");
+      if (!st.isFile() || (process.platform !== "win32" && st.uid !== process.getuid()) || st.size > MAX_FILE) throw new Error("rejected");
       const m = JSON.parse(readFileSync(file, "utf8"));
       if (typeof m?.text !== "string") throw new Error("rejected");
       const from = String(m.from ?? "").replace(/[\x00-\x1f\x7f\]]/g, "").slice(0, 64) || "unknown";

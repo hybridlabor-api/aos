@@ -265,7 +265,7 @@ const links = {
 };
 const badLinks = Object.entries(links).filter(([name, to]) => {
   const path = join(SUBDIR, name);
-  return !existsSync(path) || !lstatSync(path).isSymbolicLink() || readlinkSync(path) !== to;
+  return !existsSync(path) || !lstatSync(path).isSymbolicLink() || readlinkSync(path).replaceAll('\\', '/') !== to;
 });
 
 // `claude plugin tag` refuses to cut a release unless plugin.json and the
