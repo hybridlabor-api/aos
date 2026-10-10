@@ -18,10 +18,10 @@ let home, saved;
 beforeEach(() => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-oc-gogate-'));
     saved = { HOME: process.env.HOME, X: process.env.XDG_DATA_HOME, N: process.env.AOS_SESSION_NAME };
-    process.env.HOME = home; delete process.env.XDG_DATA_HOME; delete process.env.AOS_SESSION_NAME;
+    process.env.HOME = home; process.env.USERPROFILE = home; delete process.env.XDG_DATA_HOME; delete process.env.AOS_SESSION_NAME;
 });
 afterEach(() => {
-    process.env.HOME = saved.HOME;
+    process.env.HOME = saved.HOME; process.env.USERPROFILE = saved.HOME;
     for (const [k, v] of [['XDG_DATA_HOME', saved.X], ['AOS_SESSION_NAME', saved.N]]) if (v === undefined) delete process.env[k]; else process.env[k] = v;
     fs.rmSync(home, { recursive: true, force: true });
 });

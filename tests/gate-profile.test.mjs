@@ -11,7 +11,7 @@ import { setProfile, status, gateDir, touchId } from "../bin/aos-gate.mjs";
 const H = 3600000;
 const NOW = Date.parse("2026-10-09T12:00:00Z");
 const iso = (t) => new Date(t).toISOString();
-const uid = process.getuid();
+const uid = process.getuid?.() ?? 0; // no uid on Windows; the POSIX mode/owner cases still need a win32 skip
 const tmp = () => mkdtempSync(join(tmpdir(), "gate-profile-"));
 const cfg = (o = {}) => ({ version: 1, profile: "work", set_at: iso(NOW - H), expires_at: iso(NOW + H), set_by: { uid, method: "typed" }, ...o });
 

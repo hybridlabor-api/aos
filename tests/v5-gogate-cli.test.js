@@ -33,16 +33,16 @@ test('presets print the exact text to type', () => {
     hard: 'gogate hard',
     status: 'gogate status',
   };
-  for (const [name, text] of Object.entries(want)) assert.deepEqual(cli(['preset', name], { HOME: home }).out, text);
-  assert.equal(cli(['preset', 'nope'], { HOME: home }).status, 1);
-  assert.match(cli(['presets'], { HOME: home }).out, /release\s+gogate grant push-feature,github-write,merge,publish 2h/);
+  for (const [name, text] of Object.entries(want)) assert.deepEqual(cli(['preset', name], { HOME: home, USERPROFILE: home }).out, text);
+  assert.equal(cli(['preset', 'nope'], { HOME: home, USERPROFILE: home }).status, 1);
+  assert.match(cli(['presets'], { HOME: home, USERPROFILE: home }).out, /release\s+gogate grant push-feature,github-write,merge,publish 2h/);
 });
 
 test('status works with only a Codex hook dir installed (no ~/.claude)', () => {
   const home = tmp();
   fakeGrant(path.join(home, '.codex'));
   const before = tree(home);
-  const r = cli(['status'], { HOME: home });
+  const r = cli(['status'], { HOME: home, USERPROFILE: home });
   assert.equal(r.status, 7);
   assert.equal(r.out, 'FAKE:--status');
   assert.deepEqual(tree(home), before);
@@ -51,7 +51,7 @@ test('status works with only a Codex hook dir installed (no ~/.claude)', () => {
 test('status without go-gate installed exits 2 and writes nothing', () => {
   const home = tmp();
   const before = tree(home);
-  const r = cli(['status'], { HOME: home });
+  const r = cli(['status'], { HOME: home, USERPROFILE: home });
   assert.equal(r.status, 2);
   assert.match(r.err, /go-gate is not installed/);
   assert.deepEqual(tree(home), before);
@@ -61,25 +61,25 @@ test('status runs go-grant.mjs --status, forwards only --session, writes nothing
   const home = tmp();
   fakeGrant(path.join(home, '.claude'));
   const before = tree(home);
-  const r = cli(['status', '--session', 'abc', '--evil'], { HOME: home });
+  const r = cli(['status', '--session', 'abc', '--evil'], { HOME: home, USERPROFILE: home });
   assert.equal(r.status, 7);
   assert.equal(r.out, 'FAKE:--status|--session|abc');
-  assert.equal(cli(['status'], { HOME: home }).out, 'FAKE:--status');
+  assert.equal(cli(['status'], { HOME: home, USERPROFILE: home }).out, 'FAKE:--status');
   assert.deepEqual(tree(home), before);
 });
 
 test('--session needs a real id', () => {
   const home = tmp();
   fakeGrant(path.join(home, '.claude'));
-  assert.equal(cli(['status', '--session'], { HOME: home }).status, 1);
-  assert.equal(cli(['status', '--session', '--status'], { HOME: home }).status, 1);
+  assert.equal(cli(['status', '--session'], { HOME: home, USERPROFILE: home }).status, 1);
+  assert.equal(cli(['status', '--session', '--status'], { HOME: home, USERPROFILE: home }).status, 1);
 });
 
 test('CLAUDE_CONFIG_DIR wins over HOME', () => {
   const home = tmp();
   const config = tmp();
   fakeGrant(config);
-  assert.equal(cli(['status'], { HOME: home, CLAUDE_CONFIG_DIR: config }).out, 'FAKE:--status');
+  assert.equal(cli(['status'], { HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: config }).out, 'FAKE:--status');
 });
 
 test('help says the human types the text', () => {

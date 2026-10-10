@@ -29,7 +29,7 @@ beforeEach(() => {
     reqFile = path.join(gateDir, 'sess-req.req.json');
 });
 
-const env = () => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', XDG_CONFIG_HOME: path.join(home, '.config'), AOS_SESSION_NAME: 'worker-7', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '' });
+const env = () => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', XDG_CONFIG_HOME: path.join(home, '.config'), AOS_SESSION_NAME: 'worker-7', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '' });
 const runGate = (command) => spawnSync(process.execPath, [GATE], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, transcript_path: t, session_id: 'sess-req', cwd: work }), env: env(), encoding: 'utf8',
 });

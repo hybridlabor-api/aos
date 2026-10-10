@@ -45,8 +45,10 @@ export function readProfile({ file = defaultConfigFile(), now = Date.now(), uid 
   } finally {
     if (fd !== undefined) try { fs.closeSync(fd); } catch { /* ignore */ }
   }
-  if ((st.mode & 0o777) !== 0o600) return strict("wrong mode (need 0600)");
-  if (uid === undefined || st.uid !== uid) return strict("wrong owner");
+  if (process.platform !== "win32") {
+    if ((st.mode & 0o777) !== 0o600) return strict("wrong mode (need 0600)");
+    if (uid === undefined || st.uid !== uid) return strict("wrong owner");
+  }
   let c;
   try { c = JSON.parse(text); } catch { return strict("corrupt JSON"); }
   if (!c || typeof c !== "object" || Array.isArray(c) || c.version !== 1) return strict("bad schema");

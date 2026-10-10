@@ -36,7 +36,7 @@ afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
 process.env.AOS_TEST_SANDBOX = '1';
 process.env.GIT_CONFIG_NOSYSTEM = '1';
 for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
-const env = (extra = {}) => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '', ...extra });
+const env = (extra = {}) => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '', ...extra });
 const add = (e, file = t) => fs.appendFileSync(file, JSON.stringify(e) + '\n');
 const ts = (agoMs = 0) => new Date(Date.now() - agoMs).toISOString();
 const user = (text, extra = {}) => ({ type: 'user', uuid: `u${++n}`, timestamp: ts(), message: { role: 'user', content: text }, ...extra });

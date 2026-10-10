@@ -19,7 +19,7 @@ function run(command, cfg) {
     chmodSync(f, 0o600);
   }
   const input = JSON.stringify({ tool_name: "Bash", tool_input: { command }, transcript_path: join(home, "none.jsonl"), cwd: home });
-  return spawnSync("node", [HOOK], { input, env: { ...process.env, HOME: home }, encoding: "utf8" }).status;
+  return spawnSync("node", [HOOK], { input, env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: "utf8" }).status;
 }
 const exp = (h) => new Date(Date.now() + h * H).toISOString();
 const work = () => ({ profile: "work", expires_at: exp(3) });

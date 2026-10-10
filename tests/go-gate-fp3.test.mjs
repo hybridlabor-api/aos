@@ -27,7 +27,7 @@ function setup(cfg) {
   }
   const run = (command, cwd = proj) => {
     const input = JSON.stringify({ tool_name: "Bash", tool_input: { command }, transcript_path: join(home, "t.jsonl"), session_id: "s1", cwd });
-    return spawnSync("node", [HOOK], { input, env: { ...process.env, HOME: home, AOS_TEST_SANDBOX: "1", AOS_GATE_TEST_REALHOME: home }, encoding: "utf8" }).status;
+    return spawnSync("node", [HOOK], { input, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_SANDBOX: "1", AOS_GATE_TEST_REALHOME: home }, encoding: "utf8" }).status;
   };
   return { home, proj, run };
 }

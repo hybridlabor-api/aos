@@ -61,7 +61,7 @@ export async function setProfile({ dir, profile, forArg, env = process.env, stdi
   writeConfig(dir, {
     version: 1, profile, set_at: new Date(now).toISOString(),
     expires_at: ms === null ? null : new Date(now + ms).toISOString(),
-    set_by: { uid: process.getuid(), method: "typed" },
+    set_by: { uid: process.getuid?.() ?? null, method: "typed" },
   });
   stdout.write(`profile set: ${profile}\n`);
   return 0;

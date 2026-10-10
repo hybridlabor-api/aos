@@ -33,7 +33,7 @@ beforeEach(() => {
     g.setGateContext(ctx);
 });
 
-const env = () => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', CLAUDE_CONFIG_DIR: claudeDir });
+const env = () => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', CLAUDE_CONFIG_DIR: claudeDir });
 const add = (e) => fs.appendFileSync(t, JSON.stringify(e) + '\n');
 const user = (text, extra = {}) => ({ type: 'user', uuid: `u${++n}`, timestamp: new Date().toISOString(), message: { role: 'user', content: text }, ...extra });
 const human = (text) => user(text, { origin: { kind: 'human' }, promptSource: 'typed', turnOrigin: 'human' });

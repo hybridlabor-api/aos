@@ -34,7 +34,7 @@ beforeEach(() => {
 process.env.AOS_TEST_SANDBOX = '1';
 process.env.GIT_CONFIG_NOSYSTEM = '1';
 for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
-const env = () => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '' });
+const env = () => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '' });
 const add = (e, file = t) => fs.appendFileSync(file, JSON.stringify(e) + '\n');
 const user = (text, extra = {}) => ({ type: 'user', uuid: `u${++n}`, timestamp: new Date().toISOString(), message: { role: 'user', content: text }, ...extra });
 const human = (text, extra = {}) => user(text, { origin: { kind: 'human' }, promptSource: 'typed', turnOrigin: 'human', ...extra });
@@ -983,7 +983,7 @@ describe('cooldown marker and store guard', () => {
         fs.mkdirSync(path.join(home, '.aos', 'gate'), { recursive: true });
         fs.writeFileSync(path.join(home, '.aos', 'gate', 'fut.block'), JSON.stringify({ ts: Date.now() + 1e9 }));
         const saved = process.env.HOME;
-        process.env.HOME = home;
+        process.env.HOME = home; process.env.USERPROFILE = home;
         try { assert.ok(g.readBlockTs('fut') <= Date.now()); } finally { process.env.HOME = saved; }
     });
     test('cd into ~/.aos followed by a relative gate/ or go/ write is blocked, a read is not', () => {

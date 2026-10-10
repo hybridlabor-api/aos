@@ -161,7 +161,7 @@ test('installGoCheck places go-check, go-gate and the patterns, idempotently, an
 test('codexGateSnippet is the go-gate PreToolUse stanza and the notice mentions trust and UNVERIFIED', () => {
     const s = installer.codexGateSnippet('/h/hooks');
     assert.match(s, /^\[\[hooks\.PreToolUse\]\]\nmatcher = /);
-    assert.match(s, /command = "node \\"\/h\/hooks\/go-gate\.mjs\\""/);
+    assert.ok(s.includes('command = "node \\"' + require('path').join('/h/hooks', 'go-gate.mjs').split(String.fromCharCode(92)).join('\\\\') +'\\""'));
     assert.match(installer.CODEX_GATE_NOTICE, /trust/);
     assert.match(installer.CODEX_GATE_NOTICE, /UNVERIFIED/);
 });

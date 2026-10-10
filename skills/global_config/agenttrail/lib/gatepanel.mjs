@@ -58,6 +58,8 @@ export async function loadGate(modPath = process.env.AOS_GOGATE_PATH) {
 const safe = (fn, fallback) => { try { return fn() } catch { return fallback } }
 // Regular file only, no symlink, no blocking open: a planted FIFO/link must not stall the hub.
 const readSmall = (f, max) => {
+  // O_NOFOLLOW is undefined (a no-op) on Windows: refuse links explicitly there.
+  if (process.platform === 'win32' && fs.lstatSync(f).isSymbolicLink()) throw new Error('symlink')
   const fd = fs.openSync(f, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK)
   try {
     const st = fs.fstatSync(fd)

@@ -961,13 +961,23 @@ const DOCKER_READER = /^(?:tail|head|grep|wc|sort|uniq|cut)$/;
 // through symlinks (realpath), with plain characters only, no dot segment and not under ~/Library.
 // `/`, /etc, the docker socket dirs, /Volumes, other users and dotdirs are ordinary commands again.
 // Known limit: the container may still read files inside that project (e.g. a .env) and use the network.
+// Windows: `C:/dir:/src` has a drive colon, and realpath.native returns `\` paths. Work on `/` spellings, compare case-insensitively.
+const winSlash = (p) => (process.platform === "win32" ? p.replace(/\\/g, "/") : p);
+const splitMount = (v) => {
+  const s = unqQ(v), d = process.platform === "win32" ? /^([A-Za-z]:)(?=[\\/])/.exec(s) : null;
+  const p = (d ? s.slice(2) : s).split(":");
+  if (d) p[0] = d[1] + p[0];
+  return p;
+};
 const mountSource = (src, marker = false) => {
-  if (!/^\/[A-Za-z0-9._ /-]+$/.test(src) || /\/\/|(?:^|\/)\.{1,2}(?:\/|$)/.test(src)) return false;
+  src = winSlash(src);
+  if (!/^(?:[A-Za-z]:)?\/[A-Za-z0-9._ /-]+$/.test(src) || /\/\/|(?:^|\/)\.{1,2}(?:\/|$)/.test(src)) return false;
   const home = osHome();
   if (!home) return false;
   let real, realHome;
-  try { real = realpathSync.native(src); realHome = realpathSync.native(home); if (!statSync(real).isDirectory()) return false; } catch { return false; }
-  if (!real.startsWith(`${realHome}/`)) return false;
+  try { real = winSlash(realpathSync.native(src)); realHome = winSlash(realpathSync.native(home)); if (!statSync(real).isDirectory()) return false; } catch { return false; }
+  const ci = (x) => (process.platform === "win32" ? x.toLowerCase() : x);
+  if (!ci(real).startsWith(`${ci(realHome)}/`)) return false;
   const rel = real.slice(realHome.length + 1).split("/");
   if (!(rel.length >= 2 && !rel.some((s) => s.startsWith(".")) && rel[0] !== "Library")) return false;
   // container-test only (marker = true): a mount is a project, not a folder of projects or documents, so it holds a .git entry or a
@@ -975,7 +985,7 @@ const mountSource = (src, marker = false) => {
   return !marker || existsSync(join(real, ".git")) || existsSync(join(real, "package.json"));
 };
 const roMount = (v) => {
-  const p = unqQ(v).split(":");
+  const p = splitMount(v);
   if (p.length < 3 || !p.slice(2).join(":").split(",").includes("ro")) return false;
   return mountSource(p[0]);
 };
@@ -1111,7 +1121,7 @@ function dockerScopes(tok, seg, tainted = segTaint, pwd = "") {
     if (!eq && (flag === "-v" || flag === "--volume" || flag === "--network" || flag === "--net" || DOCKER_VALUE.test(flag)) && expands(tok[i + 1])) return null;
     if (flag === "-v" || flag === "--volume") {
       const isRo = roMount(val); // read-only project mounts keep rule 16's rule; only writable mounts need the project marker
-      if (!mountSource(unqQ(val).split(":")[0], !isRo)) return null;
+      if (!mountSource(splitMount(val)[0], !isRo)) return null;
       mounts++; allRo &&= isRo;
       if (!eq) i++;
       continue;
@@ -1242,7 +1252,7 @@ function blankData(text, keepCode = false) {
     // absolute aos-a2a.mjs inside an installed tool directory. Anything else keeps its quoted text as command text.
     const head0 = unq(rest[0] ?? ""), arg1 = unqQ(rest[1] ?? "");
     const a2aCli = !/(?:^|\s)PATH=/.test(p.t) &&
-      (head0 === "aos-a2a" || (/^node(?:js)?$/.test(head0) && arg1.startsWith("/") && base(arg1) === "aos-a2a.mjs" && trustedDirs().some((d) => arg1.startsWith(d + sep))));
+      (head0 === "aos-a2a" || (/^node(?:js)?$/.test(head0) && /^(?:[A-Za-z]:)?\//.test(winSlash(arg1)) && base(winSlash(arg1)) === "aos-a2a.mjs" && trustedDirs().some((d) => (process.platform === "win32" ? winSlash(arg1).toLowerCase().startsWith(winSlash(d + sep).toLowerCase()) : arg1.startsWith(d + sep)))));
     return ((DATA_HEAD.test(h) || sub === "grep" || a2aCli) && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
   }).join("");
 }
@@ -1594,7 +1604,7 @@ function insideWorkspace(ws, target) {
     let full = join(parent, abs.slice(dirname(abs).length + 1));
     try { full = realpathSync.native(full); } catch { /* the target does not exist yet */ }
     // strictly below the repo root (never the root itself) and never the repository's own .git (any segment, any case)
-    return full.startsWith(ws.root + sep) && !/(?:^|\/)\.git(?:\/|$)/i.test(full.slice(ws.root.length + 1));
+    return full.startsWith(ws.root + sep) && !/(?:^|[\\/])\.git(?:[\\/]|$)/i.test(full.slice(ws.root.length + 1));
   } catch { return false; }
 }
 
@@ -2694,7 +2704,9 @@ function readOwnedPrivate(f, max) {
   try {
     fd = openSync(f, FS.O_RDONLY | FS.O_NOFOLLOW | FS.O_NONBLOCK);
     const st = fstatSync(fd);
-    if (!st.isFile() || st.size > max || typeof process.getuid !== "function" || st.uid !== process.getuid() || (st.mode & 0o777) !== 0o600) return null;
+    if (!st.isFile() || st.size > max) return null;
+    // POSIX owner/mode only: Windows has no uid and reports 0666; the per-user profile ACL is the equivalent there.
+    if (process.platform !== "win32" && (typeof process.getuid !== "function" || st.uid !== process.getuid() || (st.mode & 0o777) !== 0o600)) return null;
     const buf = Buffer.alloc(st.size);
     let n = 0;
     while (n < st.size) { const k = readSync(fd, buf, n, st.size - n, n); if (!k) break; n += k; }

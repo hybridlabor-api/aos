@@ -30,7 +30,7 @@ before(async () => {
 let home, repo, t, auth, gdir, godir, seq = 0;
 beforeEach(() => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-click-'));
-    process.env.HOME = home; // in-process calls of the gate module resolve ~/.aos from here
+    process.env.HOME = home; process.env.USERPROFILE = home; // in-process calls of the gate module resolve ~/.aos from here
     gdir = path.join(home, '.aos', 'gate');
     godir = path.join(home, '.aos', 'go');
     fs.mkdirSync(gdir, { recursive: true, mode: 0o700 });
@@ -44,7 +44,7 @@ beforeEach(() => {
     auth = SA.createSoftAuth({ origin: ORIGIN });
 });
 
-const env = () => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', XDG_CONFIG_HOME: path.join(home, '.config'), AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '' });
+const env = () => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', XDG_CONFIG_HOME: path.join(home, '.config'), AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '' });
 const runGate = (command, { session = 's1' } = {}) => spawnSync(process.execPath, [GATE], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, transcript_path: t, session_id: session, cwd: repo }),
     env: env(), encoding: 'utf8', timeout: 20000,
