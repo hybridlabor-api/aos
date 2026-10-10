@@ -8,7 +8,7 @@ description: >-
 category: bdb-core
 kind: playbook
 trigger: ["new project", "start a new repo", "bootstrap a project"]
-inputs: [name, owner, local_folder, upstream_url?]
+inputs: [name, owner, local_folder, "upstream_url?"]
 requires:
   skills: [github, aos-project-init, pb-ci-fix, "gh (external)"]
   agents: []

@@ -9,7 +9,7 @@ description: >-
 category: media-eventtech
 kind: playbook
 trigger: ["moodboard to clip", "social clip from references", "look brief to video"]
-inputs: [brief, reference_images, project, comfy_workflow, cut_tool, formats?]
+inputs: [brief, reference_images, project, comfy_workflow, cut_tool, "formats?"]
 requires:
   skills: [bdbmediastorm, bdb-touchdesigner-mcp, bdb-davinci-mcp, remotion, "ffprobe (external)"]
   agents: []

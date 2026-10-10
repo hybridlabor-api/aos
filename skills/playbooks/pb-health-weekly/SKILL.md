@@ -8,7 +8,7 @@ description: >-
 category: saas-ops
 kind: playbook
 trigger: ["weekly health check", "ecosystem health", "are all repos green"]
-inputs: [repo_list?]
+inputs: ["repo_list?"]
 requires:
   skills: [pb-ci-fix, quick-recap, github, "bdb-ecosystem-health (external)", "gh (external)"]
   agents: []

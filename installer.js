@@ -4598,19 +4598,10 @@ function injectHarnessRules() {
             // Run from $HOME, these project files ARE the global files that the
             // manifest-tracked harness copy below writes; a second writer would
             // make every update see them as user-edited.
+            // F8: an install or update started inside a repo must not write into that repo (CLAUDE.md,
+            // .cursor/rules, .github, .codex-plugin, .roomodes); a repo gets files only via --project-harness.
             const cwdIsHome = path.resolve(currentDir) === path.resolve(homeDir);
-            const cursorRulesDir = path.join(currentDir, '.cursor', 'rules');
-            if (!cwdIsHome) installStep(`write the Cursor rules to ${cursorRulesDir}`, () => {
-                fs.mkdirSync(cursorRulesDir, { recursive: true });
-                fs.writeFileSync(path.join(cursorRulesDir, '000_global_rules.mdc'), `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
-                if (startcycleContent) {
-                    fs.writeFileSync(path.join(cursorRulesDir, 'startcycle.mdc'), `---\nname: startcycle\ndescription: Autonomous Multi-Agent Development Pipeline (/startcycle)\n---\n\n${startcycleContent}`);
-                }
-                if (agentsMdContent) {
-                    fs.writeFileSync(path.join(cursorRulesDir, 'bdb_agents.mdc'), `---\nname: bdb-agents\ndescription: BDB Multi-Agent Team Specifications\n---\n\n${agentsMdContent}`);
-                }
-                log.step(`Injected Cursor Rules to ${cursorRulesDir}`);
-            }, 'Cursor keeps its existing rules.');
+            if (!cwdIsHome) log.step(`Not run from the home directory: no rule files written into ${currentDir}`);
 
             installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
@@ -4651,7 +4642,7 @@ function injectHarnessRules() {
             }, 'Codex agents unchanged');
 
             const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
-            installStep(`sync ${claudeMdPath}`, () => {
+            if (cwdIsHome) installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
                 // A CLAUDE.md carrying this title is the short, hand-maintained
                 // form (see docs/sessions/audit-agents.md F-01): the GO gate lives in a hook,
@@ -4678,7 +4669,7 @@ function injectHarnessRules() {
             }, 'CLAUDE.md is unchanged.');
 
             const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');
-            if (fs.existsSync(path.dirname(copilotPath))) {
+            if (cwdIsHome && fs.existsSync(path.dirname(copilotPath))) {
                 installStep(`inject the global rules into ${copilotPath}`, () => {
                     const copilotContent = fs.existsSync(copilotPath) ? fs.readFileSync(copilotPath, 'utf8') : '';
                     let next = copilotContent;
@@ -4694,7 +4685,7 @@ function injectHarnessRules() {
             }
 
             const codexDirLocal = path.join(currentDir, '.codex-plugin');
-            installStep(`sync ${path.join(codexDirLocal, 'system.md')}`, () => {
+            if (cwdIsHome) installStep(`sync ${path.join(codexDirLocal, 'system.md')}`, () => {
                 fs.mkdirSync(codexDirLocal, { recursive: true });
                 const codexPath = path.join(codexDirLocal, 'system.md');
                 let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
@@ -4711,7 +4702,7 @@ function injectHarnessRules() {
         }
     }
 
-    if (fs.existsSync(agentsMdSrc)) {
+    if (fs.existsSync(agentsMdSrc) && path.resolve(currentDir) === path.resolve(homeDir)) {
         const rooModesPath = path.join(currentDir, '.roomodes');
         const rooModesData = {
             customModes: [
@@ -7213,6 +7204,14 @@ function initFullSession(installState) {
 
 async function main() {
     const args = process.argv.slice(2);
+    // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
+    // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
+    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'package'];
+    if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
+        console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
+        process.exitCode = 2;
+        return;
+    }
     applyInstallOptions();
     if (['status', 'update', 'repair'].includes(args[0])) {
         if (args[0] !== 'status') persistInstallOptions();

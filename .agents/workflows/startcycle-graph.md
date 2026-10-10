@@ -1,3 +1,7 @@
+---
+description: "Autonomous multi-agent build pipeline (/startcycle-graph), run after /bdbrainstorm or /grill-me."
+---
+
 # Autonomous Development Cycle Workflow (/startcycle-graph)
 
 This workflow defines the zero-prompting, multi-agent execution pipeline triggered after a `/bdbrainstorm` or `/grill-me` session.

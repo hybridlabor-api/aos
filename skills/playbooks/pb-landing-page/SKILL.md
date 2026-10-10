@@ -8,7 +8,7 @@ description: >-
 category: design-ui-ux
 kind: playbook
 trigger: ["landing page", "launch page for this product", "ship a one-pager"]
-inputs: [brief, brand_tokens, deploy_target, launch_video?]
+inputs: [brief, brand_tokens, deploy_target, "launch_video?"]
 requires:
   skills: [copywriting, landing-page-generator, godmode-ui-ux, ui-review, seo-audit, bdb-deploy, vercel-deployment, pb-launch-video]
   agents: []

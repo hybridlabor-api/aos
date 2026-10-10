@@ -117,6 +117,18 @@ test('installer: --hooks-only --no-hooks keeps the gate hooks (container only)',
     assert.strictEqual(p.readSettings(home).noHooks, true);
 });
 
+test('F8: an unknown command exits 2 and writes nothing, neither in HOME nor in the cwd repo (container only)', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-f8-home-'));
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-f8-repo-'));
+    const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'installer.js'), 'gateway', 'status'], {
+        cwd: repo, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_PLUGIN_CLI: 'off' }, encoding: 'utf8', timeout: 120000,
+    });
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /unknown command "gateway"/);
+    assert.deepStrictEqual(fs.readdirSync(repo), []);
+    assert.deepStrictEqual(fs.readdirSync(home), []);
+});
+
 test('installer: --hooks-only --no-hooks --dry-run writes nothing under HOME (container only)', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-opt-dry-'));
     const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'installer.js'), '--hooks-only', '--no-hooks', '--dry-run', '-y', '--no-intro'], {

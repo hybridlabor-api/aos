@@ -133,6 +133,10 @@ export function scanFrontmatter(text) {
                'Quote the value or fold it (>-); as written the frontmatter does not parse.',
         });
       }
+      // go-yaml (agy) rejects a plain item ending in "?" inside a flow list: `inputs: [repo, pr_numbers?]`.
+      if (/^\[.*[^\s",[]\?\s*[\],]/.test(restT)) {
+        issues.push({ code: 'E-YAML05', key, msg: `flow list \`${key}\` has an unquoted item ending in "?" — agy's YAML reader rejects it. Quote the item ("x?").` });
+      }
     }
 
     if (swallowed.length) {
@@ -546,6 +550,10 @@ function selftest() {
     'category: bdb-core', '---',
   ].join('\n'));
   assert.equal(quotedColon.issues.length, 0, 'quoting the value resolves E-YAML04');
+
+  const flowQ = (v) => scanFrontmatter(['---', 'name: pb-x', 'description: d', `inputs: ${v}`, '---'].join('\n')).issues.some((i) => i.code === 'E-YAML05');
+  assert.ok(flowQ('[repo, pr_numbers?]'), 'an unquoted "x?" flow item must be reported');
+  assert.ok(!flowQ('[repo, "pr_numbers?"]'), 'the quoted item is fine');
 
   assert.equal(scanFrontmatter('# no frontmatter').ok, false);
   assert.equal(scanFrontmatter('---\nname: x\n').reason, 'unterminated');

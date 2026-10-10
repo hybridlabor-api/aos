@@ -8,7 +8,7 @@ description: >-
 category: bdb-core
 kind: playbook
 trigger: ["master session", "supervise my sessions", "run several agents"]
-inputs: [plan?, workers?]
+inputs: ["plan?", "workers?"]
 requires:
   skills: [master-session, agenttrail, stay-within-limits, "claude (external)", "aos-acp (external)"]
   agents: []

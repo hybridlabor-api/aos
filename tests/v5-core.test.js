@@ -94,6 +94,36 @@ test('F3: openwiki verify probes `openwiki --help` (no --version), reads the ver
     assert.strictEqual(withPath(bin, () => pkg.verify({ host: m.host, home: m.home })).ok, true);
 });
 
+test('F5: an outdated OpenWiki upgrades its CLI once; the second update does no OpenWiki work', async () => {
+    const m = machine();
+    const bin = path.join(mkHome(), 'bin');
+    const log = path.join(bin, 'npm.log');
+    script(path.join(bin, 'openwiki'), 'echo "OpenWiki v0.5.0"');
+    // fake npm: records its args and "installs" the requested version
+    script(path.join(bin, 'npm'), `echo "$@" >> "${log}"\nv=\${3#openwiki@}\nprintf '#!/bin/sh\\necho "OpenWiki v%s"\\n' "$v" > "${path.join(bin, 'openwiki')}"`);
+    let refreshed = 0;
+    m.host.refreshOpenWikiSilently = async () => { refreshed++; return true; };
+    const npmView = async (name) => (name === 'openwiki' ? '0.7.2' : current(name));
+    await withPathAsync(`${bin}${path.delimiter}${process.env.PATH}`, async () => {
+        assert.strictEqual(await menu.update(m.host, m.opts({ npmView })), 0);
+        assert.strictEqual(fs.readFileSync(log, 'utf8').trim(), 'install -g openwiki@0.7.2');
+        assert.strictEqual(refreshed, 1);
+        assert.match(m.out.join(''), /✔ OpenWiki 0\.7\.2/);
+
+        m.out.length = 0;
+        assert.strictEqual(await menu.update(m.host, m.opts({ npmView })), 0);
+        assert.strictEqual(fs.readFileSync(log, 'utf8').trim().split('\n').length, 1, 'npm not run again');
+        assert.strictEqual(refreshed, 1, 'daemon not refreshed again');
+        assert.match(m.out.join(''), /Everything is current/);
+    });
+});
+
+test('F6: a token the Harnesses step moves out of an inline MCP config is never asked for', async () => {
+    const m = machine();
+    m.host.quickUpdateHarnesses = () => { fs.mkdirSync(path.join(m.home, '.aos'), { recursive: true }); fs.writeFileSync(secretsPath(m.home), `${PAT}="ghp_inline"\n`, { mode: 0o600 }); };
+    assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current, ui: { ask: async (k) => assert.fail(`asked ${k}`) } })), 0);
+});
+
 test('update without a TTY (no ui.ask) asks nothing and stores nothing', async () => {
     const m = machine();
     assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current })), 0);
@@ -488,7 +518,7 @@ test('C17: an Ollama OpenWiki provider is never asked for an API key', async () 
     m.host.loadExistingEnv = () => ({ OPENWIKI_PROVIDER: 'ollama' });
     m.host.PROVIDER_KEY_ENV_NAMES = { ollama: null };
     const bin = path.join(mkHome(), 'bin');
-    script(path.join(bin, 'openwiki'), 'echo 1.0.0');
+    script(path.join(bin, 'openwiki'), 'echo "OpenWiki v1.0.0"');
     const asked = [];
     const prev = process.env.PATH;
     process.env.PATH = `${bin}${path.delimiter}${prev}`;

@@ -8,7 +8,7 @@ description: >-
 category: engineering-method
 kind: playbook
 trigger: ["CI is red", "set up CI", "fix the GitHub Actions run"]
-inputs: [repo, failing_run_id?]
+inputs: [repo, "failing_run_id?"]
 requires:
   skills: [github, deja-memory, systematic-debugging, ci-pipeline, github-actions-generator, github-actions-validator, bdbresilience, verification-before-completion, "gh (external)"]
   agents: []

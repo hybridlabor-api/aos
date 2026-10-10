@@ -7,7 +7,7 @@ description: >-
 category: saas-ops
 kind: playbook
 trigger: ["deploy this to the fleet", "deploy the SaaS app", "deploy to the Incus instance"]
-inputs: [repo, target_instance, path, version_source?]
+inputs: [repo, target_instance, path, "version_source?"]
 requires:
   skills: [bdb-deploy, pb-ci-fix, "bdbsaashost (external)", "deploy-incus (external)"]
   agents: []

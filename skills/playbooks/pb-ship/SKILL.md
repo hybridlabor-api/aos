@@ -8,7 +8,7 @@ description: >-
 category: engineering-method
 kind: playbook
 trigger: ["ship it", "ship day", "merge the ready PRs"]
-inputs: [repo, pr_numbers?]
+inputs: [repo, "pr_numbers?"]
 requires:
   skills: [github, triage, git-pr-review, pr-recap, bdb-shipping-skill, godmode-shipping, quick-recap, "gh (external)"]
   agents: [reviewer]

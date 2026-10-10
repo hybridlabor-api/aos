@@ -9,7 +9,7 @@ description: >-
 category: media-eventtech
 kind: playbook
 trigger: ["social pack for the release", "posts and clips for this launch", "announce the release"]
-inputs: [recap, platforms, launch_video?, formats?]
+inputs: [recap, platforms, "launch_video?", "formats?"]
 requires:
   skills: [copywriting, quick-recap, pb-ship, pb-launch-video, "ffmpeg (external)", "ffprobe (external)"]
   agents: []

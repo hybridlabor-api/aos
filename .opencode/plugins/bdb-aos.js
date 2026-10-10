@@ -154,6 +154,17 @@ const isHumanText = isHumanPart;
 const isNonHuman = (p) => !!p && !!(p.synthetic || p.ignored || (p.metadata && typeof p.metadata === 'object' && Object.keys(p.metadata).some((k) => /loop|aos_/i.test(k))));
 const ocKey = (id) => sessionKey(`oc-${id}`);
 
+// OpenCode >= 1.18 validates a part before save: id must look like its own `prt_` ids and messageID like `msg_`,
+// otherwise every prompt dies (SchemaError). Same shape as OpenCode's ascending ids: 12 hex time digits + 14 base62.
+let partSeq = 0;
+const B62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const partId = () => `prt_${(Date.now() * 0x1000 + (partSeq++ % 0x1000)).toString(16).padStart(12, '0').slice(-12)}${Array.from({ length: 14 }, () => B62[Math.floor(Math.random() * 62)]).join('')}`;
+const injectText = (msgInput, msgOutput, text) => {
+  const messageID = msgInput.messageID || msgOutput.message?.id || (msgOutput.parts || []).find((p) => p && p.messageID)?.messageID;
+  if (!messageID) return; // nothing valid to attach to: skip the injection rather than break the prompt
+  msgOutput.parts.unshift({ id: partId(), sessionID: msgInput.sessionID, messageID, type: 'text', text, synthetic: true });
+};
+
 // Root of a session tree (grants live on the root, subagents may use them). null when unknown.
 async function rootSessionId(client, id, parentID) {
   for (let i = 0; i < 10 && id; i++) {
@@ -408,7 +419,7 @@ export default async function bdbAosPlugin(input) {
       // plain `gogate ...` message from the human in a root session: record it; the gate verifies it against opencode.db at use.
       try {
         const reply = s.parentID || OPENCODE_RUN ? null : applyGogate(fullText, { key: ocKey(msgInput.sessionID), source: `opencode:${msgInput.sessionID}`, uuid: msgInput.messageID || msgOutput.message?.id || null, opencode: true });
-        if (reply) msgOutput.parts.unshift({ id: `gogate-${Date.now()}`, sessionID: msgInput.sessionID, messageID: msgInput.messageID || '', type: 'text', text: reply, synthetic: true });
+        if (reply) injectText(msgInput, msgOutput, reply);
       } catch {}
 
       try {
@@ -416,32 +427,14 @@ export default async function bdbAosPlugin(input) {
         const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
         s.identitySent = true;
         const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
-        if (membContext) {
-          msgOutput.parts.unshift({
-            id: `memb-${Date.now()}`,
-            sessionID: msgInput.sessionID,
-            messageID: msgInput.messageID || '',
-            type: 'text',
-            text: membContext,
-            synthetic: true,
-          });
-        }
+        if (membContext) injectText(msgInput, msgOutput, membContext);
       } catch {}
 
       // Destructive-actions rules on every human message, so compaction cannot drop them.
       try {
         if (!contextHooks) throw 0; // profile without context hooks: no rules injection
         const rules = rulesText();
-        if (rules) {
-          msgOutput.parts.unshift({
-            id: `aos-rules-${Date.now()}`,
-            sessionID: msgInput.sessionID,
-            messageID: msgInput.messageID || '',
-            type: 'text',
-            text: rules,
-            synthetic: true,
-          });
-        }
+        if (rules) injectText(msgInput, msgOutput, rules);
       } catch {}
 
       // Recognize and wire the AOS pipeline group
@@ -458,14 +451,7 @@ export default async function bdbAosPlugin(input) {
           `Rule: Nodes never call each other. Dispatch each node turn in sequence, evaluate state.json, and enforce Reviewer & Shipping gates before completion.`
         ].join('\n');
 
-        msgOutput.parts.unshift({
-          id: `startcycle-${Date.now()}`,
-          sessionID: msgInput.sessionID,
-          messageID: msgInput.messageID || '',
-          type: 'text',
-          text: graphInstructions,
-          synthetic: true,
-        });
+        injectText(msgInput, msgOutput, graphInstructions);
       }
     },
 

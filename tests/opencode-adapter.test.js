@@ -118,6 +118,19 @@ describe('OpenCode adapter', () => {
         assert.equal((await parts('s2', 'hi')).length, 1);
     });
 
+    test('F9: injected parts carry OpenCode-valid ids (prt_ part, the message id), never a made-up one', async () => {
+        const { hooks } = await load();
+        const out = { parts: [{ type: 'text', text: 'hello' }] };
+        await hooks['chat.message']({ sessionID: 'sv', messageID: 'msg_abc' }, out);
+        const injected = out.parts.filter((p) => p.synthetic);
+        assert.ok(injected.length >= 1, 'rules block injected');
+        for (const p of injected) {
+            assert.match(p.id, /^prt_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
+            assert.equal(p.messageID, 'msg_abc');
+        }
+        assert.equal(new Set(injected.map((p) => p.id)).size, injected.length, 'ids unique');
+    });
+
     test('GO <name> mints an OpenCode token, never from an ACP worker', async () => {
         const { hooks } = await load();
         await say(hooks, 's1', 'GO worker-1', 'msg_1');
