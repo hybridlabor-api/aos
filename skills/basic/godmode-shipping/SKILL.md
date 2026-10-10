@@ -72,7 +72,7 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 | "I trust the cached agent registry instead of rescanning after a skill change." | Caches stale out quickly; explicit rescans prevent ghost failures. |
 
 ## Going live
-The release report is not a deployment. If the user wants the product live on their own accounts, point to the `golive` skill (it also handles the BDB fleet as a guided host); do not deploy from this skill.
+The release report is not a deployment. If the user wants the product live on their own accounts, point to the `golive` skill; for the BDB fleet (own backend) as a guided host, give it `references/golive-bdb-fleet.md` from this skill. Do not deploy from this skill, and never edit the vendored golive folder: its `release.json` pins every file's hash and the CLI refuses to start on any change.
 
 ## 5. Red Flags
 - Bypassing the verification step after a script execution.
