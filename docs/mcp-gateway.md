@@ -41,6 +41,8 @@ Only these shipped servers are shared through the gateway (`GATEWAY_SERVERS` in 
 
 ## Harness support tiers for `enable` (checked 2026-10-08)
 
+The harness table is driven by `lib/harnesses.json`; adding a harness = one row + one test.
+
 | Harness | Config file | Remote entry shape | Status |
 |---|---|---|---|
 | Claude, Cursor, OpenCode | see `harnessMcpFiles` | `type http` / `url` / `type remote` | enabled (earlier work) |

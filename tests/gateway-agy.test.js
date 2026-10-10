@@ -25,7 +25,7 @@ test('classify recognises Antigravity global and workspace files only', () => {
     const fx = fixture();
     assert.equal(harness.classify(fx.g, 'json'), 'agy');
     assert.equal(harness.classify(fx.p, 'json'), 'agy');
-    assert.equal(harness.classify(path.join(fx.home, '.gemini', 'antigravity-cli', 'mcp_config.json'), 'json'), 'other');
+    assert.equal(harness.classify(path.join(fx.home, '.gemini', 'antigravity-cli', 'mcp_config.json'), 'json'), 'agy-cli');
 });
 
 test('enable adds serverUrl aos, keeps unrelated content, backs up, is idempotent; disable restores', () => {
