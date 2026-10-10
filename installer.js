@@ -3042,13 +3042,31 @@ async function installHardwarePcb() {
 // stdio binary with a local SQLite DB and no install-time download from AOS. The MCP
 // entry is not written here; it comes from the one-MCP-per-app pick (mcp_picks.json,
 // candidate gated on the binary), so a machine without the binary gets nothing registered.
-function installCodebaseMemory() {
+// Picking the module (or --modules=codebase-memory) is an explicit "yes, coding": same path as --coding.
+async function installCodebaseMemory() {
+    await applyCodingModeStep({ flag: true });
     const status = codebaseMemory.cmbAppStatus();
-    if (!status.found) {
-        log.warn(`${codebaseMemory.cmbMissingMessage({ status })} — install codebase-memory-mcp as in docs/codebase-memory.md and re-run the AOS installer to enable it.`);
-        return;
+    if (status.found) log.step(`Codebase Memory MCP: binary at ${status.path}; the codebase_memory_mcp MCP entry is registered with the next harness MCP sync.`);
+}
+
+// "Do you use AOS for coding?" -- asked once (interactive only), stored as codingMode in v5-settings.json.
+// --coding / --no-coding set it; non-interactive runs never prompt. Never aborts the install.
+async function applyCodingModeStep({ flag } = {}) {
+    try {
+        await codebaseMemory.applyCodingMode({
+            settings: v5Profile.readSettings(homeDir),
+            save: (s) => { if (!DRY_RUN) v5Profile.writeSettings(homeDir, s); },
+            flag: flag !== undefined ? flag : codebaseMemory.parseCodingFlag(process.argv),
+            // stdin must be a TTY too, and CI never prompts (a pty-allocating runner is still CI).
+            interactive: !isAutoYes && Boolean(process.stdin.isTTY) && !process.env.CI,
+            ask: async (message) => { const a = await askConfirm({ message, initialValue: false }); return isCancel(a) ? undefined : Boolean(a); },
+            run: (cmd) => runNpmWithRetry(cmd, {}, 'install codebase-memory-mcp'),
+            warn: (m) => log.warn(m),
+            step: (m) => log.step(m),
+        });
+    } catch (e) {
+        log.warn(`Coding mode step skipped: ${e.message}`);
     }
-    log.step(`Codebase Memory MCP: binary at ${status.path}; the codebase_memory_mcp MCP entry is registered with the next harness MCP sync.`);
 }
 
 async function installOSRemoteGateway() {
@@ -7115,10 +7133,11 @@ async function runQuickUpdate(installState) {
         else if (subId === 'ao' && aoSupportedHere()) await installOSAgentWorkspace();
         else if (subId === 'creator') await installCreatorExtension();
         else if (subId === 'hardware') await installHardwarePcb();
-        else if (subId === 'codebase-memory') installCodebaseMemory();
+        else if (subId === 'codebase-memory') await installCodebaseMemory();
         else if (subId === 'installer') await installDevToolInstaller();
     }
 
+    await applyCodingModeStep();
     await promptOptionalModules(modulesToUpdate);
     // modulesToUpdate now covers both the modules updated in the loop above and any newly
     // chosen ones promptOptionalModules just installed (it mutates the same array) -- every
@@ -7314,6 +7333,14 @@ Options:
   --modules=LIST   With -y: also install these optional modules (comma list of synapse,
                    memb, remote, ao, creator, hardware, installer, or all), or set
                    AOS_MODULES. -y alone installs none. Ignored in interactive runs.
+  --coding, --no-coding
+                   Answer "Do you use AOS for coding?" up front. --coding enables the Codebase
+                   Memory MCP and installs the pinned npm package codebase-memory-mcp@0.11.0
+                   (npm install -g) if the binary is missing; --no-coding turns it off (nothing
+                   is uninstalled). The answer is saved in ~/.aos/v5-settings.json, so install
+                   and \`aos update\` ask only once, and only interactively. With -y or without
+                   a TTY nothing is asked and coding mode stays off unless --coding is given.
+                   Re-run with a flag to change it.
   --dry-run        Show what would change
   --opencode-optional=LIST
                    Opt in to OpenCode extras (comma list: ponytail, loop, rtk), or set
@@ -7719,7 +7746,8 @@ Options:
     else await installTokenSaver(primaryTarget.platformValue);
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];
-    const modulePlan = v5Profile.PROFILES[activeProfile].modules;
+    await applyCodingModeStep();
+    const modulePlan =v5Profile.PROFILES[activeProfile].modules;
     const explicitModules = parseModuleSelection();
     // Unlike runQuickUpdate, nothing here reinstalls modules already in installedModulesForPrompt
     // -- only promptOptionalModules's own return value (the ones it just chose-and-installed
@@ -7862,7 +7890,7 @@ module.exports = {
     isValidOpenWikiModelId,
     loadExistingEnv,
     // installer v5 host surface (lib/v5/*)
-    runQuickUpdate, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
+    runQuickUpdate, applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
     saveManifest, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, runUninstaller, PROVIDER_KEY_ENV_NAMES,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
