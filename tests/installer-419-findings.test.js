@@ -56,29 +56,20 @@ const runInstaller = (h, code) => {
 };
 const fresh = (n) => fs.mkdtempSync(path.join(home, `${n}-`));
 
-test('finding 4: resolveFileConflict backs up once, then reuses an identical .bak after the manifest is lost', () => {
+test('finding 4 (5.0.0 contract): unknown content is kept and the shipped copy lands as .new, also after a lost manifest', () => {
     const dir = fresh('bak');
     const target = path.join(dir, 'SKILL.md');
     const source = path.join(dir, 'src', 'SKILL.md');
     fs.mkdirSync(path.dirname(source), { recursive: true });
     fs.writeFileSync(target, 'foreign v1\n');
     fs.writeFileSync(source, 'shipped v2\n');
-    let manifest = {};
-    const r1 = installer.resolveFileConflict(source, target, manifest, new Set());
-    assert.strictEqual(r1, 'bak');
-    const baks1 = fs.readdirSync(dir).filter((f) => f.endsWith('.bak'));
-    assert.strictEqual(baks1.length, 1);
-    assert.match(baks1[0], /^SKILL\.md\.\d{8}_\d{6}\.bak$/);
-    assert.strictEqual(fs.readFileSync(path.join(dir, baks1[0]), 'utf8'), 'foreign v1\n');
-    assert.strictEqual(manifest[target].backup, path.join(dir, baks1[0]));
-    // Simulate a lost manifest and the same foreign content back on disk: the identical prior .bak is reused, no second backup.
-    fs.writeFileSync(target, 'foreign v1\n');
-    manifest = {};
-    const r2 = installer.resolveFileConflict(source, target, manifest, new Set());
-    assert.strictEqual(r2, 'bak');
-    const baks2 = fs.readdirSync(dir).filter((f) => f.endsWith('.bak'));
-    assert.strictEqual(baks2.length, 1);
-    assert.strictEqual(manifest[target].backup, path.join(dir, baks1[0]));
+    for (let run = 0; run < 2; run++) {
+        const manifest = {};
+        assert.strictEqual(installer.resolveFileConflict(source, target, manifest, new Set(), new Set()), 'kept');
+        assert.strictEqual(fs.readFileSync(target, 'utf8'), 'foreign v1\n');
+        assert.strictEqual(fs.readFileSync(`${target}.new`, 'utf8'), 'shipped v2\n');
+        assert.strictEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.bak')).length, 0);
+    }
 });
 
 test('finding 4: doctor lists installer .bak files, ignores *.notes.bak, deletes nothing', () => {

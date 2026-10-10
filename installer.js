@@ -777,7 +777,7 @@ const keptUserEdits = [];
 // Returns 'wrote' | 'bak' | 'kept' | 'skipped'.
 // knownSourceHashes: Set of sha256 hashes of all source files in the current
 // payload (used to identify files we recognise even before manifest entry).
-function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes) {
+function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes, shippedHashes = SHIPPED_HASHES) {
     const sourceHash = computeFileHash(sourcePath);
     if (!sourceHash) {
         // Every other branch of this function reports what it did; this one
@@ -800,6 +800,16 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
 
     const diskHash = computeFileHash(targetPath);
 
+    // Case: an older release of our own file. Its hash appears in the
+    // shipped-hashes list (built from every released payload), so it is
+    // AOS-owned even if no manifest entry survives -- overwrite directly,
+    // no .new, no .bak.
+    if (shippedHashes.has(diskHash)) {
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        return 'wrote';
+    }
+
     // Case: unrecognised content at a path this payload owns.
     //
     // This used to skip, on the reading that unknown content means a file the
@@ -812,24 +822,16 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     // across every update since, because bootstrap adoption only catches a file
     // that is byte-identical to the current payload.
     //
-    // So update it, and keep the protection where it belongs -- in the backup,
-    // not in refusing to write. A genuine local edit is recoverable from .bak
-    // rather than silently outvoting the shipped version forever.
+    // That old-release case is now covered by the shipped-hash check above, so
+    // what remains here is content we have no record of having ever shipped: a
+    // local edit of one of our files (recoverable via the .new copy) or a
+    // foreign file. Either way the disk version wins and the shipped copy
+    // lands beside it as <file>.new.
     if (!manifestEntry && !knownSourceHashes.has(diskHash)) {
-        // A backup of exactly this content already exists (an earlier run whose manifest was lost): reuse it.
-        const dir = path.dirname(targetPath);
-        const base = path.basename(targetPath);
-        const prior = fs.readdirSync(dir).find((f) => f.startsWith(`${base}.`) && f.endsWith('.bak') && computeFileHash(path.join(dir, f)) === diskHash);
-        const bakPath = prior ? path.join(dir, prior) : `${targetPath}.${timestamp}.bak`;
-        if (!prior) {
-            try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
-                log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
-            }
-        }
-        fs.copyFileSync(sourcePath, targetPath);
-        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString(), backup: bakPath };
-        if (!prior) log.warn(`[manifest] Unrecognised ${path.basename(targetPath)} backed up to ${bakPath}, shipped version written.`);
-        return 'bak';
+        const newPath = `${targetPath}.new`;
+        fs.copyFileSync(sourcePath, newPath);
+        keptUserEdits.push(targetPath);
+        return 'kept';
     }
 
     // Case: first-run bootstrap – disk hash matches source hash but no manifest entry.
@@ -860,6 +862,22 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
     return 'wrote';
 }
+
+// Hashes of every file shipped in ANY AOS release (built at pack time by
+// scripts/build-shipped-hashes.mjs into lib/shipped-hashes.json). A file on
+// disk matching one of these is AOS-owned regardless of which release placed
+// it, so the installer overwrites it without a .new. Missing or corrupt file
+// → empty Set: the installer then just falls back to the manifest policy.
+function loadShippedHashes() {
+    try {
+        const arr = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'shipped-hashes.json'), 'utf8'));
+        if (Array.isArray(arr)) return new Set(arr.filter((h) => typeof h === 'string'));
+    } catch (e) { /* missing or broken – treat as empty */ }
+    return new Set();
+}
+let SHIPPED_HASHES = loadShippedHashes();
+// Tests inject their own set; production keeps the pack-time list.
+function setShippedHashes(set) { SHIPPED_HASHES = set; }
 
 // Build a Set of all sha256 hashes for files under a source directory tree.
 // Used as the "known shipped hashes" set so we can bootstrap-adopt files that
@@ -4980,7 +4998,7 @@ function installOpencodeCommands(srcDirPath, destDirPath) {
         const dest = path.join(destDirPath, file);
         const srcHash = computeFileHash(src);
         const diskHash = fs.existsSync(dest) ? computeFileHash(dest) : null;
-        if (diskHash === null || diskHash === srcHash || diskHash === manifest[dest]?.sha256) {
+        if (diskHash === null || diskHash === srcHash || diskHash === manifest[dest]?.sha256 || SHIPPED_HASHES.has(diskHash)) {
             if (diskHash !== srcHash) { fs.copyFileSync(src, dest); wrote++; }
             manifest[dest] = { path: dest, sha256: srcHash, version: pkg.version, installedAt: new Date().toISOString() };
         } else {
@@ -7866,6 +7884,8 @@ module.exports = {
     saveInstallManifest,
     resolveFileConflict,
     buildKnownSourceHashes,
+    loadShippedHashes,
+    setShippedHashes,
     initSessionManifest,
     installTargetSkills,
     stableOpenWikiScripts,
