@@ -16,13 +16,14 @@
 // deleted; a file with no manifest entry was never ours and is not considered
 // at all.
 
-import { readFileSync, existsSync, rmSync, copyFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, rmSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const pm = createRequire(import.meta.url)('../lib/plugin-migration.js');
 const cn = createRequire(import.meta.url)('../lib/codenotch.js');
@@ -69,6 +70,13 @@ const AGENTS = [
 ];
 // Linux: the systemd user units the installer writes for the same services.
 const LINUX_UNITS = ['com.bdb.memb.webui.service', 'com.bdb.synapse.service', 'com.bdb.openwiki-visualize.service', 'com.bdb.plan-canvas.service'];
+// Windows: the installer starts these through a hidden .vbs in the user's
+// Startup folder that runs a .bat (names and dirs as written by installer.js).
+const WIN_STARTUP = [
+  { label: 'plan-canvas', vbsName: 'com.bdb.plan-canvas.vbs', batDir: '.agents', batName: 'run-plan-canvas.bat' },
+  { label: 'synapse', vbsName: 'com.bdb.synapse.vbs', batDir: '.synapse', batName: 'run-synapse.bat' },
+  { label: 'openwiki-visualizer', vbsName: 'com.bdb.openwiki-visualize.vbs', batDir: '.openwiki', batName: 'run-openwiki-visualize.bat' },
+];
 
 const MODULE_DIRS = ['memB', 'bdb-synapse', 'bdb-os-remote', 'bdb-dev-creator-extension',
   'bdb-hardware-pcb',
@@ -96,9 +104,11 @@ const sha256 = (file) => {
 };
 
 // --------------------------------------------------------------------- plan
-function plan() {
+function plan(opts = {}) {
+  const home = opts.home || HOME;
+  const platform = opts.platform || process.platform;
   const manifest = (() => {
-    try { return JSON.parse(readFileSync(MANIFEST, 'utf8')); } catch { return null; }
+    try { return JSON.parse(readFileSync(opts.manifestPath || MANIFEST, 'utf8')); } catch { return null; }
   })();
 
   const ours = [];      // matches its recorded hash — delete
@@ -117,6 +127,18 @@ function plan() {
     .map((label) => ({ label, plist: h('Library', 'LaunchAgents', `${label}.plist`) }))
     .filter((a) => existsSync(a.plist))
     .concat(LINUX_UNITS.map((label) => ({ label, unit: h('.config', 'systemd', 'user', label) })).filter((a) => existsSync(a.unit)));
+
+  // Windows Startup entries: same services, hidden .vbs -> .bat instead of
+  // launchd/systemd. Only pairs where both files are still there.
+  if (platform === 'win32') {
+    const startupDir = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'),
+      'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    for (const s of WIN_STARTUP) {
+      const vbs = path.join(startupDir, s.vbsName);
+      const bat = path.join(home, s.batDir, s.batName);
+      if (existsSync(vbs) && existsSync(bat)) agents.push({ label: s.label, vbs, bat });
+    }
+  }
 
   const modules = MODULE_DIRS.filter(existsSync);
   const legacy = LEGACY_MARKERS.filter(existsSync);
@@ -215,6 +237,20 @@ async function execute(p) {
   let removed = 0, backed = 0;
 
   for (const a of agents) {
+    if (a.vbs) {
+      // Windows: the .bat loops (`goto loop`), so kill the processes running it
+      // before anything else — delete the bat first, then the vbs, so a cmd
+      // between iterations finds no script to restart. Match the exact bat file
+      // name in the command line, never a generic word like "node".
+      try {
+        execFileSync('powershell', ['-NoProfile', '-Command',
+          `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${path.basename(a.bat)}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
+        ], { stdio: 'ignore' });
+      } catch { /* nothing running or powershell unavailable */ }
+      try { rmSync(a.bat); } catch { /* already gone */ }
+      try { rmSync(a.vbs); } catch { /* already gone */ }
+      continue;
+    }
     if (a.unit) {
       try { execFileSync('systemctl', ['--user', 'disable', '--now', a.label], { stdio: 'ignore' }); } catch { /* not loaded */ }
       try { rmSync(a.unit); } catch { /* already gone */ }
@@ -383,6 +419,10 @@ async function execute(p) {
 }
 
 // ---------------------------------------------------------------------- main
+// plan() is exported for tests; the CLI flow below only runs when this file is
+// the entry script.
+export { plan };
+
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const a = (await rl.question(q)).trim();
@@ -390,39 +430,47 @@ const ask = async (q) => {
   return a;
 };
 
-if (RESTORE) {
-  const r = pm.restorePluginBackups({ home: HOME });
-  if (!r.dirs.length) { console.log('Keine Plugin-Migrations-Sicherung gefunden.'); process.exit(1); }
-  console.log(`  ${r.files.length} Dateien aus ${r.dirs.length} Sicherung(en) wiederhergestellt, im Install-Manifest erfasst`);
-  console.log('Vorhandene Dateien wurden nicht überschrieben.');
-  if (r.deregistered) console.log('  bdb-aos Plugin-Registrierung entfernt, damit die Skills nicht doppelt geladen werden. Setze AOS_PLUGIN_MIGRATION=off, damit der Installer sie nicht erneut entfernt.');
-  else if (r.files.length && r.stillEnabled) console.log('  WARNUNG: das bdb-aos Plugin ist weiterhin aktiv, die Skills erscheinen doppelt. Plugin in Claude Code deaktivieren und AOS_PLUGIN_MIGRATION=off setzen.');
-  process.exit(0);
+// realpath: the npm bin shim is a symlink, and import.meta.url names the resolved file.
+const isEntry = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
+if (process.argv[1] && isEntry()) {
+  await main();
 }
 
-const p = plan();
-console.log(PURGE ? '\x1b[31mAOS UNINSTALL — PURGE\x1b[0m' : 'AOS Uninstall');
-if (!describe(p)) process.exit(1);
-
-if (DRY) {
-  console.log('\n[dry-run] Es wurde nichts verändert.');
-  process.exit(0);
-}
-
-if (!YES) {
-  if ((await ask('\nFortfahren? [ja/nein] ')).toLowerCase() !== 'ja') {
-    console.log('Abgebrochen. Nichts verändert.');
+async function main() {
+  if (RESTORE) {
+    const r = pm.restorePluginBackups({ home: HOME });
+    if (!r.dirs.length) { console.log('Keine Plugin-Migrations-Sicherung gefunden.'); process.exit(1); }
+    console.log(`  ${r.files.length} Dateien aus ${r.dirs.length} Sicherung(en) wiederhergestellt, im Install-Manifest erfasst`);
+    console.log('Vorhandene Dateien wurden nicht überschrieben.');
+    if (r.deregistered) console.log('  bdb-aos Plugin-Registrierung entfernt, damit die Skills nicht doppelt geladen werden. Setze AOS_PLUGIN_MIGRATION=off, damit der Installer sie nicht erneut entfernt.');
+    else if (r.files.length && r.stillEnabled) console.log('  WARNUNG: das bdb-aos Plugin ist weiterhin aktiv, die Skills erscheinen doppelt. Plugin in Claude Code deaktivieren und AOS_PLUGIN_MIGRATION=off setzen.');
     process.exit(0);
   }
-  if (PURGE) {
-    console.log('\n\x1b[31mDer zweite Schritt löscht das Gedächtnis und die Zugangsdaten unwiderruflich.\x1b[0m');
-    if ((await ask('Zum Bestätigen PURGE eingeben: ')).trim() !== 'PURGE') {
+
+  const p = plan();
+  console.log(PURGE ? '\x1b[31mAOS UNINSTALL — PURGE\x1b[0m' : 'AOS Uninstall');
+  if (!describe(p)) process.exit(1);
+
+  if (DRY) {
+    console.log('\n[dry-run] Es wurde nichts verändert.');
+    return;
+  }
+
+  if (!YES) {
+    if ((await ask('\nFortfahren? [ja/nein] ')).toLowerCase() !== 'ja') {
       console.log('Abgebrochen. Nichts verändert.');
-      process.exit(0);
+      return;
+    }
+    if (PURGE) {
+      console.log('\n\x1b[31mDer zweite Schritt löscht das Gedächtnis und die Zugangsdaten unwiderruflich.\x1b[0m');
+      if ((await ask('Zum Bestätigen PURGE eingeben: ')).trim() !== 'PURGE') {
+        console.log('Abgebrochen. Nichts verändert.');
+        return;
+      }
     }
   }
-}
 
-console.log('');
-await execute(p);
-console.log('\nFertig. Neu einrichten mit: npx -y @hybridlabor-api/aos@latest');
+  console.log('');
+  await execute(p);
+  console.log('\nFertig. Neu einrichten mit: npx -y @hybridlabor-api/aos@latest');
+}
