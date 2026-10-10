@@ -37,7 +37,7 @@ const { pruneRetiredSkills } = require('./lib/retired-skills');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock } = require('./lib/routing-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
-const { GATEWAY_SERVERS } = require('./lib/gateway/config');
+const { gatewayCovered } = require('./lib/gateway/config');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -3791,7 +3791,8 @@ function hasGatewayAos(file) {
 function withoutGatewayServers(servers, file) {
     if (!servers || typeof servers !== 'object' || !hasGatewayAos(file)) return servers;
     const out = { ...servers };
-    for (const n of GATEWAY_SERVERS) delete out[n];
+    // Alternates of a gateway server (the pick-group duplicates) count too: a duplicate upstream is a duplicate tool list.
+    for (const n of Object.keys(out)) if (gatewayCovered(n)) delete out[n];
     return out;
 }
 
@@ -4047,6 +4048,18 @@ async function installMcpsForTarget(paths, ctx) {
                 if (!built) log.warn(`${mcpFolder}: build failed -- its MCP config entry will be dropped if the expected output is missing.`);
             }
         }
+    }
+
+    // The fallback template runs the compiled binary, not `go run` (a cold Go
+    // build on every MCP launch). Built once here; on failure the template's
+    // `go run` shape stays and the missing binary is reported like any other.
+    if (selectedMcps.includes('ae-mcp') && hasExecutable('go') && !DRY_RUN) {
+        const aeDir = path.join(mcpCodeTarget, 'ae-mcp');
+        const aeOut = path.join(aeDir, 'bin', process.platform === 'win32' ? 'ae-mcp.exe' : 'ae-mcp');
+        installStep(`build the ae-mcp binary ${aeOut}`, () => {
+            fs.mkdirSync(path.dirname(aeOut), { recursive: true });
+            execFileSync('go', ['-C', aeDir, 'build', '-o', aeOut, './cmd/ae-mcp'], { stdio: 'ignore', timeout: 120000 });
+        }, 'ae-mcp keeps the `go run` fallback shape; rebuild manually with: go -C ' + aeDir + ' build -o ' + aeOut + ' ./cmd/ae-mcp');
     }
 
     if (selectedMcps.includes('davinci-resolve-mcp')) {
@@ -5719,8 +5732,8 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
             PreToolUse: [{ matcher: fileTools, hooks: [{ type: 'command', command: cmd(hooksDir, 'env-file-protection.mjs'), timeout: 10 }] }]
         },
         'aos-trail-relay': {
-            PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 2 }] }],
-            Stop: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 2 }]
+            PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 5 }] }],
+            Stop: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 5 }]
         },
         'aos-graph-gate': {
             Stop: [{ type: 'command', command: cmd(hooksDir, 'graph-gate.mjs'), timeout: 10 }]
@@ -6006,13 +6019,13 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '[[hooks.PreToolUse.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event PreToolUse`)}`,
-        'timeout = 2',
+        'timeout = 5',
         '',
         '[[hooks.Stop]]',
         '[[hooks.Stop.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event Stop`)}`,
-        'timeout = 2',
+        'timeout = 5',
         '# AOS:HOOKS:END'
     ].join('\n');
     // Blocks are blank-line separated; without context hooks only blocks naming a context script go.
@@ -6356,7 +6369,7 @@ function buildPlanCanvasWinFiles({ nodeBin, scriptPath, home, logDir, batPath })
     const out = path.join(logDir, 'plan-canvas.stdout.log');
     const err = path.join(logDir, 'plan-canvas.stderr.log');
     return {
-        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\nset AOS_SUPERVISED=1\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\n`,
+        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\n`,
         vbs: `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${home}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`,
     };
 }
