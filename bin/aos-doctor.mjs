@@ -202,6 +202,25 @@ function checkOpencodeMcpNames() {
 }
 
 // ---------------------------------------------------------------- 3. Harness Placement & Skills Sync
+// Skill names this package ships (skills/<group>/<name>/SKILL.md), or null when no package tree is reachable.
+function shippedSkillNames() {
+  const pkgRoots = [path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'), readJson(h('.agents', 'lib', '.aos-package-root.json'))?.packageRoot];
+  // The name check keeps ~/.agents (installed copy's parent, has skills/ and maybe a legacy package.json) from counting as the package.
+  const pkgRoot = pkgRoots.find((r) => typeof r === 'string' && readJson(path.join(r, 'package.json'))?.name === '@hybridlabor-api/aos' && existsSync(path.join(r, 'skills')));
+  if (!pkgRoot) return null;
+  const names = new Set();
+  const walk = (dir, depth) => {
+    for (const d of readdirSync(dir, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      const p = path.join(dir, d.name);
+      if (existsSync(path.join(p, 'SKILL.md'))) names.add(d.name);
+      else if (depth < 3) walk(p, depth + 1);
+    }
+  };
+  walk(path.join(pkgRoot, 'skills'), 1);
+  return names;
+}
+
 function checkHarnesses() {
   const harnesses = [
     { name: 'Claude Code', path: hc('skills') },
@@ -226,10 +245,20 @@ function checkHarnesses() {
   // Codex reads ~/.codex/skills AND ~/.agents/skills; AOS writes only the latter, so same-named copies in the former double-list.
   const codexRoot = h('.codex', 'skills');
   const doubled = existsSync(codexRoot) ? readdirSync(codexRoot, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !d.name.startsWith('.') && existsSync(path.join(codexRoot, d.name, 'SKILL.md')) && existsSync(path.join(h('.agents', 'skills'), d.name, 'SKILL.md'))).length : 0;
-  if (doubled) {
-    add('harnesses', 'Codex duplicate skills', false, `${doubled} skill(s) exist in both ${tilde(codexRoot)} and ~/.agents/skills, so Codex lists them twice`,
-      `Run 'npx @hybridlabor-api/aos@latest' once (it retires AOS copies from ${tilde(codexRoot)} with a backup) or move your own copies out.`, true);
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.') && existsSync(path.join(codexRoot, d.name, 'SKILL.md')) && existsSync(path.join(h('.agents', 'skills'), d.name, 'SKILL.md')))
+    .map((d) => d.name) : [];
+  if (doubled.length) {
+    const shipped = shippedSkillNames();
+    const preview = (names) => names.slice(0, 8).join(', ') + (names.length > 8 ? ', ...' : '');
+    const aosOwned = shipped ? doubled.filter((n) => shipped.has(n)) : [];
+    const foreign = shipped ? doubled.filter((n) => !shipped.has(n)) : doubled;
+    const fixes = [];
+    if (foreign.length) fixes.push(shipped
+      ? `Not installed by AOS (${preview(foreign)}): remove the copy in ${tilde(codexRoot)} or ~/.agents/skills yourself.`
+      : 'If these are not AOS skills, remove one of the two copies yourself.');
+    if (aosOwned.length) fixes.push(`Run 'npx @hybridlabor-api/aos@latest' once (it retires AOS copies from ${tilde(codexRoot)} with a backup).`);
+    add('harnesses', 'Codex duplicate skills', false, `${doubled.length} skill(s) exist in both ${tilde(codexRoot)} and ~/.agents/skills, so Codex lists them twice: ${preview(doubled)}`,
+      fixes.join(' '), true);
   }
 
   // The same AOS skill as a manifest-recorded loose copy in the Claude skills dir and in the bdb-aos plugin is listed twice.
