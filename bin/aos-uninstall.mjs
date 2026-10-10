@@ -36,6 +36,8 @@ const profile = createRequire(import.meta.url)('../lib/v5/profile.js');
 // installer's own removal code, which only ever touches AOS-owned entries and
 // backs the file up first.
 const installer = createRequire(import.meta.url)('../installer.js');
+const { stripDestructiveBlock } = createRequire(import.meta.url)('../lib/destructive-rules.js');
+const { stripRoutingBlock } = createRequire(import.meta.url)('../lib/routing-rules.js');
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -222,6 +224,20 @@ async function execute(p) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} Dateien entfernt, ${backed} vorher gesichert`);
+
+  const ruleFiles = [
+    h('CLAUDE.md'), h('AGENTS.md'), h('.github', 'copilot-instructions.md'),
+    h('.codex-plugin', 'system.md'), h('.gemini', 'RULES.md'), h('.gemini', 'GEMINI.md'),
+  ];
+  for (const f of ruleFiles.filter(existsSync)) {
+    try {
+      const text = readFileSync(f, 'utf8');
+      const stripped = stripRoutingBlock(stripDestructiveBlock(text));
+      if (stripped === text) continue;
+      writeFileSync(f, stripped);
+      console.log(`  Regelblöcke aus ${tilde(f)} entfernt`);
+    } catch { console.log(`  ${tilde(f)} nicht lesbar — Regelblöcke von Hand prüfen`); }
+  }
 
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
   if (modules.length) console.log(`  ${modules.length} Module entfernt`);

@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { START, END, BLOCK, upsertRoutingBlock } = require('../lib/routing-rules');
+const { START, END, BLOCK, upsertRoutingBlock, stripRoutingBlock } = require('../lib/routing-rules');
+const { upsertDestructiveBlock, stripDestructiveBlock } = require('../lib/destructive-rules');
 
 const root = path.join(__dirname, '..');
 const sources = [
@@ -85,4 +86,40 @@ test('installer wraps every destructive upsert with the routing upsert', () => {
     const all = src.match(/upsertDestructiveBlock\(/g).length;
     const wrapped = src.match(/upsertRoutingBlock\(upsertDestructiveBlock\(/g)?.length ?? 0;
     assert.equal(wrapped, all, 'every upsertDestructiveBlock call must be wrapped');
+});
+
+test('strip removes the routing block and restores the user file', () => {
+    const user = '# My rules\n\nKeep this.\n';
+    assert.equal(stripRoutingBlock(upsertRoutingBlock(user)), user);
+    assert.equal(stripRoutingBlock(upsertRoutingBlock('')), '');
+});
+
+test('strip is the identity on a file without markers', () => {
+    const user = '# Plain\n\n- no block here\n';
+    assert.equal(stripRoutingBlock(user), user);
+});
+
+test('strip keeps user text before and after the span', () => {
+    assert.equal(stripRoutingBlock(`before\n\n${BLOCK}\n\nafter\n`), 'before\n\nafter\n');
+});
+
+test('both blocks strip back to the user file in either order', () => {
+    const user = '# Mine\n\nText.\n';
+    const both = upsertRoutingBlock(upsertDestructiveBlock(user));
+    assert.equal(stripRoutingBlock(stripDestructiveBlock(both)), user);
+    assert.equal(stripDestructiveBlock(stripRoutingBlock(both)), user);
+});
+
+test('uninstaller strips both blocks and names the AGENTS.md target', () => {
+    const src = fs.readFileSync(path.join(root, 'bin', 'aos-uninstall.mjs'), 'utf8');
+    assert.ok(src.includes('stripDestructiveBlock'));
+    assert.ok(src.includes('stripRoutingBlock'));
+    assert.ok(src.includes("h('AGENTS.md')"));
+});
+
+test('strip keeps CRLF line endings at the seam', () => {
+    const { stripRoutingBlock: strip, BLOCK: B } = require('../lib/routing-rules');
+    const user = 'a\r\nb\r\n';
+    assert.equal(strip(`${user}\r\n${B}\r\n`), user);
+    assert.equal(strip(`a\r\n\r\n${B}\r\n\r\nz\r\n`), 'a\r\n\r\nz\r\n');
 });

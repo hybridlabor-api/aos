@@ -4719,6 +4719,20 @@ function injectHarnessRules() {
                 fs.writeFileSync(codexPath, codexContent);
                 log.step('Synced .codex-plugin/system.md with Global Rules and /startcycle workflow');
             }, '.codex-plugin/system.md is unchanged.');
+
+            const homeAgentsPath = path.join(homeDir, 'AGENTS.md');
+            if (cwdIsHome) installStep(`sync ${homeAgentsPath}`, () => {
+                if (!fs.existsSync(homeAgentsPath)) {
+                    log.step(`${homeAgentsPath} does not exist: not created, only existing files get the managed blocks.`);
+                    return;
+                }
+                const agentsContent = fs.readFileSync(homeAgentsPath, 'utf8');
+                const next = upsertRoutingBlock(upsertDestructiveBlock(agentsContent));
+                if (next !== agentsContent) {
+                    fs.writeFileSync(homeAgentsPath, next);
+                    log.step(`Synced managed blocks in ${homeAgentsPath}`);
+                }
+            }, '~/AGENTS.md is unchanged.');
         }
     }
 

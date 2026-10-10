@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { START, END, BLOCK, upsertDestructiveBlock } = require('../lib/destructive-rules');
+const { START, END, BLOCK, upsertDestructiveBlock, stripDestructiveBlock } = require('../lib/destructive-rules');
 
 const root = path.join(__dirname, '..');
 const sources = [
@@ -57,7 +57,33 @@ for (const rel of sources) {
     });
 }
 
-test('installer wires the helper into the CLAUDE.md, copilot and codex writers', () => {
+test('installer wires the helper into the CLAUDE.md, copilot, codex and ~/AGENTS.md writers', () => {
     const src = fs.readFileSync(path.join(root, 'installer.js'), 'utf8');
-    assert.equal(src.split('upsertDestructiveBlock(').length - 1, 4);
+    assert.equal(src.split('upsertDestructiveBlock(').length - 1, 5);
+});
+
+test('strip removes the block and restores the user file', () => {
+    const user = '# My rules\n\nKeep this.\n';
+    assert.equal(stripDestructiveBlock(upsertDestructiveBlock(user)), user);
+    assert.equal(stripDestructiveBlock(upsertDestructiveBlock('')), '');
+});
+
+test('strip is the identity on a file without markers', () => {
+    const user = '# Plain\n\n- no block here\n';
+    assert.equal(stripDestructiveBlock(user), user);
+});
+
+test('strip keeps user text before and after the span', () => {
+    const out = stripDestructiveBlock(`before\n\n${BLOCK}\n\nafter\n`);
+    assert.equal(out, 'before\n\nafter\n');
+});
+
+test('installer ~/AGENTS.md step targets homeDir/AGENTS.md, wraps both upserts, never uses globalRules', () => {
+    const src = fs.readFileSync(path.join(root, 'installer.js'), 'utf8');
+    const start = src.indexOf("const homeAgentsPath = path.join(homeDir, 'AGENTS.md');");
+    assert.ok(start > 0, 'homeDir AGENTS.md step missing');
+    const end = src.indexOf("'~/AGENTS.md is unchanged.'", start);
+    const step = src.slice(start, end);
+    assert.ok(step.includes('upsertRoutingBlock(upsertDestructiveBlock('), 'step must wrap both upserts');
+    assert.ok(!step.includes('globalRules'), 'step must not write globalRules');
 });
