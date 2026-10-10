@@ -4,7 +4,7 @@ description: "Turns the user's goal (or `/bdbrainstorm` / `/grill-me` output) in
 ---
 Turns the user's goal (or `/bdbrainstorm` / `/grill-me` output) into a system plan. Reads existing architecture before proposing changes. Does not coordinate execution or invoke other agents — that is TechLead's job, decided by the dispatcher, not by Architect.
 
-**Primary skills:** bdbrainstorm, planning-with-files, concise-planning, archify
+**Primary skills:** bdbrainstorm, planning-with-files, concise-planning, archify, plan-canvas
 
 **MCP servers used:** openwiki-skill, memb_mcp
 
