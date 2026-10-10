@@ -57,10 +57,10 @@ test('AOS-shaped match is a prefix on the gateway URL, for url and serverUrl', (
 test('template presets: exclusions become an AND NOT chain, "all" gets no preset, enable writes ?preset=<kind> only for exclusions', () => {
     const presets = JSON.parse(fs.readFileSync(path.join(ROOT, 'mcp_config.json'), 'utf8')).presets;
     const { presetFor } = require('../lib/gateway/config.js');
-    assert.equal(presetFor('agy', presets), 'NOT bdb_davinci_mcp');
+    assert.equal(presetFor('agy', presets), 'aos AND NOT bdb_davinci_mcp');
     assert.equal(presetFor('claude', presets), null);
     assert.equal(presetFor('unknown', presets), null);
-    assert.equal(presetFor('x', { x: ['a', 'b'] }), 'NOT a AND NOT b');
+    assert.equal(presetFor('x', { x: ['a', 'b'] }), 'aos AND NOT a AND NOT b');
 
     const fx = fixture();
     harness.enable({ home: fx.home, token: TOKEN, shipped, files: fx.files, presets, now: 1000 });

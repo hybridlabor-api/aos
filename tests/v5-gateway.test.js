@@ -295,7 +295,7 @@ describe('pkg-gateway', () => {
         assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
         const presetCalls = calls.filter((c) => c[1] === 'preset');
         assert.ok(presetCalls.every((c) => c[0] === path.join(dir, 'node_modules', '.bin', '1mcp') && c[2] === 'create'));
-        assert.deepEqual(presetCalls.map((c) => [c[3], c[5]]), [['agy', 'NOT bdb_davinci_mcp']]);
+        assert.deepEqual(presetCalls.map((c) => [c[3], c[5]]), [['agy', 'aos AND NOT bdb_davinci_mcp']]);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootout'), ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootstrap'), ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;

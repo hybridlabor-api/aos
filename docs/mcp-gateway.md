@@ -15,8 +15,8 @@ aos-gateway serve | start | stop | restart | status [--json] | enable | direct |
 - `status` exits 0 only when the gateway runs. Per-upstream health is the state of 1mcp as a whole, not per server (`upstreamsScope: global`).
 - `enable` points the harness MCP files at the gateway (one `aos` entry); `direct` reverses it and restores the entries it removed.
 
-**Presets.** Upstreams carry `tags` (the server name by default). Install creates one 1mcp preset per harness kind in the template's top-level `presets` object that has an exclusion list (`claude`, `agy`, `opencode`, `codex`, `roo`, `cursor`).
-- Value `"all"` = every gateway server, no preset: the kind uses the plain URL. An array = server names that kind must NOT see, e.g. `"agy": ["bdb_davinci_mcp"]` (162 tools) becomes the filter `NOT bdb_davinci_mcp`, and only that kind gets `?preset=agy`.
+**Presets.** Upstreams carry `tags` `['aos', <name>]` (common tag first, then the server name). Install creates one 1mcp preset per harness kind in the template's top-level `presets` object that has an exclusion list (`claude`, `agy`, `opencode`, `codex`, `roo`, `cursor`).
+- Value `"all"` = every gateway server, no preset: the kind uses the plain URL. An array = server names that kind must NOT see, e.g. `"agy": ["bdb_davinci_mcp"]` (162 tools) becomes the filter `aos AND NOT bdb_davinci_mcp`, and only that kind gets `?preset=agy`. A standalone `NOT x` is rejected by 1mcp ("Invalid filter expression"), so the `aos` term always leads. Untagged upstreams are excluded by any positive filter.
 - A preset that fails to create falls back to the plain URL for that kind (every upstream, no exclusions); install reports which kinds fell back.
 - Without a `presets` object no preset is created and every kind uses the plain URL.
 - `entryFor(kind, token, preset)` appends `?preset=<kind>` to the gateway URL, so each harness sees only its own preset's upstreams.
