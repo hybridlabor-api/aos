@@ -549,6 +549,15 @@ describe('pkg-gateway', () => {
         }
     });
 
+    test('update still switches harnesses when 1mcp answers only ~8 s after kickstart (F15)', async () => {
+        let n = 0;
+        const statusFn = async () => (++n <= 16 ? { running: true, port: cfg.GATEWAY_PORT, upstreams: [{ ok: false, error: 'ECONNREFUSED' }] } : { running: true, port: cfg.GATEWAY_PORT, upstreams: [{ ok: true }] });
+        const log = [];
+        const res = await pkg.update(mkCtx(tmp(), { platform: 'linux', statusFn, log: (m) => log.push(m) }).ctx);
+        assert.ok('harness' in res, 'harness.enable ran');
+        assert.ok(!log.some((m) => /harnesses left direct/.test(m)));
+    });
+
     test('retireNodeModules refuses anything but the gateway dir of this home and never deletes', () => {
         const home = tmp();
         const other = path.join(home, 'elsewhere');
@@ -1056,6 +1065,21 @@ test('update installs gateway when missing', async () => {
     assert.deepStrictEqual(calls, [home]);
     assert.match(out.join(''), /✔ MCP gateway preset aos-core not created; running/);
     assert.doesNotMatch(out.join(''), /Optional, not installed:.*\bgateway\b/, 'F12: installed in this run, not listed as optional');
+});
+
+test('update: gateway update messages reach the step line (F15)', async () => {
+    const menu = require('../lib/v5/menu.js');
+    const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+    const real = { detect: gw.detect, update: gw.update, verify: gw.verify };
+    gw.detect = () => ({ installed: true, version: '0.38.2' });
+    gw.update = async (c) => { c.log('harnesses left direct'); return { ok: true }; };
+    gw.verify = async () => ({ ok: true });
+    const home = tmp();
+    const out = [];
+    try {
+        await menu.update(gwHost(home), { home, platform: 'linux', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
+    } finally { Object.assign(gw, real); }
+    assert.match(out.join(''), /✔ MCP gateway[^\n]*0\.38\.2; harnesses left direct/);
 });
 
 test('update installs the MCP gateway on linux too', async () => {
