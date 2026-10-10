@@ -24,6 +24,10 @@ jobs:
       - name: Checkout Repository
         if: ${{ steps.release.outputs.release_created }}
         uses: actions/checkout@v4
+        with:
+          # prepack (scripts/build-shipped-hashes.mjs) needs every v* tag; a shallow clone has none.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Node.js
         if: ${{ steps.release.outputs.release_created }}
@@ -34,6 +38,12 @@ jobs:
 
       - name: Publish to NPM
         if: ${{ steps.release.outputs.release_created }}
-        run: npm publish --access public
+        # A prerelease (5.0.0-beta.1) goes to its own dist-tag (beta, rc), never to latest.
+        run: |
+          v=$(node -p "require('./package.json').version")
+          case "$v" in
+            *-*) npm publish --access public --tag "$(echo "$v" | sed -E 's/^[^-]+-([A-Za-z]+).*/\1/')" ;;
+            *) npm publish --access public ;;
+          esac
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
