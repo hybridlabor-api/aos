@@ -87,6 +87,16 @@ test('F11: the grandma3 entry of the template before 44fb54eb (--with mcp, port 
     assert.ok(!isAosOwned('bdb_grandma3_mcp', { ...old, args: old.args.map((a) => (a === '8080' ? '9999' : a)) }, null, shipped), 'a user port stays user-owned');
 });
 
+test('F14: verify fails when 1mcp is down behind a healthy forwarder, but not while 1mcp is busy', async () => {
+    const gw = require('../lib/v5/pkg-gateway.js');
+    const v = (upstreams) => gw.verify({ home: HOME, sleep: async () => {}, statusFn: async () => ({ running: true, port: 7790, upstreams }) });
+    const down = await v([{ name: 'github', ok: false, error: '1mcp not reachable on 7791 (ECONNREFUSED)' }]);
+    assert.strictEqual(down.ok, false);
+    assert.match(down.detail, /ECONNREFUSED/);
+    assert.strictEqual((await v([{ name: 'github', ok: false, busy: true, error: '1mcp busy' }])).ok, true);
+    assert.strictEqual((await v([{ name: 'github', ok: true }])).ok, true);
+});
+
 test('G: run from HOME, ~/.agents/mcp_config.json (the server template) is not a harness file', () => {
     const home = tmp('aos-f7g-');
     const fromHome = harnessMcpFiles(home, {}, 'linux', home).map((f) => f.file);

@@ -142,6 +142,19 @@ test('memB WebUI: a venv without fastapi fails verify and repair reruns installM
     assert.strictEqual(memb.verify(c).ok, true);
 });
 
+test('F13: a package with alwaysUpdate (the gateway) runs update on every update, even when not outdated', async () => {
+    const m = machine();
+    const runs = [];
+    const fake = { id: 'zz-always', name: 'ZZ always', alwaysUpdate: true, detect: () => ({ installed: true, version: null }), update: async () => { runs.push('update'); }, verify: () => ({ ok: true, detail: 'ok' }) };
+    pk.registry.push(fake);
+    try {
+        await menu.update(m.host, m.opts({ npmView: current }));
+        await menu.update(m.host, m.opts({ npmView: current }));
+    } finally { pk.registry.splice(pk.registry.indexOf(fake), 1); }
+    assert.deepStrictEqual(runs, ['update', 'update']);
+    assert.strictEqual(pk.registry.find((p) => p.id === 'gateway').alwaysUpdate, true);
+});
+
 test('update without a TTY (no ui.ask) asks nothing and stores nothing', async () => {
     const m = machine();
     assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current })), 0);

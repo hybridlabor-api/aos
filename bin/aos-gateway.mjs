@@ -53,11 +53,16 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
     const fw = await get(port, '/healthcheck');
     const running = fw.status === 200 && fw.headers['x-aos-gateway'] === '1';
     const inUse = !running && fw.error !== 'ECONNREFUSED';
-    const inner = running ? await get(upstreamPort, '/health') : null;
+    // 1mcp answers slowly while it rebuilds its capability catalog (uv upstreams take minutes): one longer retry,
+    // and a timeout after that is "busy", not "down" (F14). Refused or a non-200 answer stays a failure.
+    let inner = running ? await get(upstreamPort, '/health') : null;
+    if (inner && inner.error === 'ETIMEDOUT') inner = await get(upstreamPort, '/health', 10000);
+    const busy = !!inner && inner.error === 'ETIMEDOUT';
     const problem = inUse ? `port ${port} in use by another process` : !running ? 'gateway not running' : null;
     const upstreams = upstreamNames(dir).map((name) => {
         if (problem) return { name, ok: false, error: problem };
         if (inner.status === 200) return { name, ok: true };
+        if (busy) return { name, ok: false, busy: true, error: `1mcp busy on ${upstreamPort} (no answer in 12 s, likely a catalog refresh); check again in a minute` };
         return { name, ok: false, error: inner.error ? `1mcp not reachable on ${upstreamPort} (${inner.error})` : `1mcp health returned ${inner.status}` };
     });
     // Upstream values are the state of 1mcp as a whole, not per-server health.
@@ -235,7 +240,7 @@ async function main() {
         if (rest.includes('--json')) console.log(JSON.stringify(s));
         else {
             console.log(`gateway: ${s.running ? `running${s.pid ? ` (pid ${s.pid})` : ''}` : 'not running'} on 127.0.0.1:${s.port}${s.error ? ` - ${s.error}` : ''}`);
-            for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
+            for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
         process.exit(s.running ? 0 : 1);
