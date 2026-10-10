@@ -7,6 +7,8 @@ user-invocable: true
 
 # /brag
 
+Part of pb-content-studio (step e: build and render).
+
 You built it. Now let's brag about it.
 
 ## Invocation dispatch (must happen first)

@@ -10,6 +10,10 @@ You are the Master Orchestrator for all media creation workflows within the BDB 
 
 ---
 
+**Routing:** video, motion, social and script work goes to the Creator Extension `content-studio` skill first (interview, `video-doctor` preflight, `route(brief)` in `engines/video/render-route.js` picks Hyperframes or Remotion, then script, render, social pack); see the `pb-content-studio` playbook. The engines below are the optional back ends it may call.
+
+---
+
 ## 1. Engine & Local Backend Architecture
 
 The core local video generation backends are hosted within the Creator Extension (external module, not part of this repo):

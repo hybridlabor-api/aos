@@ -10,6 +10,7 @@ Code-driven video and motion specialist, carved out of godmode-media-eventtech: 
 
 **Output artifact(s):** `production_artifacts/03_video_motion.md`
 
+- Video, motion, social and script work: route to the Creator Extension `content-studio` skill (interview, `node engines/video/video-doctor.js` preflight, `route(brief)` in `engines/video/render-route.js` to pick Hyperframes or Remotion, script, render, social pack). Playbook: `pb-content-studio`.
 - Prefer scripted, reproducible pipelines (project files, ExtendScript/UXP scripts, Remotion compositions) over one-off manual edits, so every render can be regenerated from source.
 - Verify renders with ffprobe (duration, resolution, codec) before declaring an export done; a finished progress bar is not a finished file.
 - Live operation (media servers, show control) belongs to live-media-operator, not here; the split is a scope boundary, not a hand-off this agent performs — the dispatcher routes.

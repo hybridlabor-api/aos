@@ -2,7 +2,7 @@
 name = "godmode-ui-ux"
 description = "Lead Frontend Designer & UI Engineer. Enforces Anti-Slop principles, DTCG design tokens, high-agency frontend taste, and fluid motion dynamics."
 enabled = true
-# Components first from the BDB library (@bdb registry; version-pinned unpkg entry
-# https://unpkg.com/@hybridlabor-api/ui-motion-library@0.1.0/publish/registry/{name}.json
-# in components.json), then third-party registries.
+# Component lookup: the project's own design system and sources file first; the BDB
+# library (@bdb registry) only when the project opts in; then the verified registries
+# in the UI library's docs/sources.md.
 prompt_file = "godmode-ui-ux.md"

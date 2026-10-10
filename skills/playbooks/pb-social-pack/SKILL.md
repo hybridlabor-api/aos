@@ -23,6 +23,7 @@ est_time: 30-60 min
 ---
 
 # Release social pack
+Part of pb-content-studio (step f: social pack).
 What you get: posts per platform and clip cut-downs from your release recap, every claim traceable to a fact, handed off for publishing after your GO.
 
 ## Inputs

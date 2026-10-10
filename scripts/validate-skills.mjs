@@ -334,6 +334,24 @@ export function checkModelNames(text) {
   return out;
 }
 
+// W-BRAND01: shipped skills and agents must not hard-wire BDB brand tokens.
+// Product chrome (plan-canvas UI) and unrelated uses of the word (the Obsidian
+// notes app) are allowlisted by path.
+const BRAND_RE = /#9b30c4|\bObsidian\b|\bOrchid\b|BDB Master Branding/i;
+const BRAND_ALLOW = [/^skills\/global_config\/plan-canvas\//, /^skills\/global_config\/obsidian-markdown\//, /^skills\/global_config\/prompt-engineer\//];
+
+export function checkBrandTokens(text, rel) {
+  if (BRAND_ALLOW.some((re) => re.test(rel.split('\\').join('/')))) return [];
+  const out = [];
+  text.split(/\r?\n/).forEach((l, n) => {
+    if (BRAND_RE.test(l)) {
+      out.push({ level: 'warn', code: 'W-BRAND01', line: n + 1, file: rel,
+        msg: 'BDB brand token in a shipped skill/agent — assert or route by the project\'s own declared tokens instead' });
+    }
+  });
+  return out;
+}
+
 function validate() {
   const { skills, strays } = collect();
   const known = new Set(skills.map((f) => basename(dirname(f))));
@@ -411,6 +429,7 @@ function validate() {
     checkLocalRefs(text, dir, rel, findings);
     checkSkillRefs(text, rel, known, dirName, findings);
     for (const f of checkModelNames(text)) findings.push({ ...f, file: rel });
+    findings.push(...checkBrandTokens(text, rel));
 
     // A skill ships more than its SKILL.md, and a leaked path in a reference
     // file is just as published as one in the entry point.
@@ -418,12 +437,20 @@ function validate() {
       if (aux === file || !/\.(md|py|mjs|cjs|js|ts|sh|json|ya?ml)$/.test(aux)) continue;
       const auxText = readFileSync(aux, 'utf8');
       checkLeakedPaths(auxText, relative(REPO, aux), findings);
+      findings.push(...checkBrandTokens(auxText, relative(REPO, aux)));
       // The model-name lint covers docs-like aux files (references/, templates/)
       // but never runtime scripts: .py/.js/.mjs code legitimately keeps concrete
       // model IDs so existing installs keep working.
       if (/\.(md|ya?ml)$/.test(aux)) {
         for (const f of checkModelNames(auxText)) findings.push({ ...f, file: relative(REPO, aux) });
       }
+    }
+  }
+
+  const agentsDir = join(REPO, 'agents');
+  if (existsSync(agentsDir)) {
+    for (const f of readdirSync(agentsDir).filter((n) => n.endsWith('.md'))) {
+      findings.push(...checkBrandTokens(readFileSync(join(agentsDir, f), 'utf8'), `agents/${f}`));
     }
   }
 
@@ -632,6 +659,13 @@ function selftest() {
     checkModelNames('```\nplain fence keeps the check active: model="gpt-4o"\n```').length, 1,
     'a fence not marked anti-example is still checked',
   );
+
+  // W-BRAND01: BDB brand tokens flagged, allowlisted paths and neutral text not.
+  assert.equal(checkBrandTokens('accent #9B30C4 only', 'skills/x/SKILL.md')[0].code, 'W-BRAND01');
+  assert.equal(checkBrandTokens('use Obsidian Black', 'agents/a.md').length, 1);
+  assert.equal(checkBrandTokens('Vibrant Orchid', 'skills/x/SKILL.md').length, 1);
+  assert.deepEqual(checkBrandTokens('#9b30c4', 'skills/global_config/plan-canvas/ui.js'), []);
+  assert.deepEqual(checkBrandTokens('the project\'s declared accent token', 'skills/x/SKILL.md'), []);
 
   console.log('✓ selftest passed');
 }

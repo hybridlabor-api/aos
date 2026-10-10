@@ -306,6 +306,8 @@ Use these for 3D, motion, video and live show control.
 
 ### Which video route?
 
+For video, motion, social posts or scripts, start with the Creator Extension `content-studio` skill (playbook `pb-content-studio`): its `route(brief)` picks Hyperframes or Remotion. The table below is for the cases it does not cover.
+
 The choice is driven by where the pixels come from, not by the output format — all four end in a video file.
 
 | Source material | Route |

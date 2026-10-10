@@ -243,6 +243,7 @@
     "./skills/playbooks/pb-bug-fix",
     "./skills/playbooks/pb-ci-fix",
     "./skills/playbooks/pb-clip-from-moodboard",
+    "./skills/playbooks/pb-content-studio",
     "./skills/playbooks/pb-crew-call-sheet",
     "./skills/playbooks/pb-deploy-saas",
     "./skills/playbooks/pb-docs-site",
