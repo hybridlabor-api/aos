@@ -8,6 +8,10 @@ const harness = require('../lib/gateway/harness.js');
 const { shippedServers, harnessMcpFiles } = require('../lib/mcp-secrets.js');
 
 const ROOT = path.join(__dirname, '..');
+// installer.js fixes homeDir at require time: a temp HOME before the first require keeps every write out of the real home.
+const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-f7-home-'));
+process.env.HOME = HOME;
+process.env.USERPROFILE = HOME;
 const TOKEN = 'e'.repeat(64);
 const shipped = shippedServers(ROOT);
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
@@ -59,6 +63,21 @@ test('A/B: the gateway servers are dropped only for a target file that holds the
     assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, desktop)), ['github', 'memb_mcp']);
     assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, path.join(dir, 'missing.json'))), ['github', 'memb_mcp']);
     assert.deepStrictEqual(Object.keys(servers), ['github', 'memb_mcp'], 'the shared list itself is never stripped');
+});
+
+test('A/B end to end, platform 2: the mirror skips the gateway servers in ~/.claude.json (aos) and keeps them in the desktop file', () => {
+    const { mirrorMcpServersTo } = require('../installer.js');
+    const claudeJson = path.join(HOME, '.claude.json');
+    const desktop = path.join(HOME, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+    fs.mkdirSync(path.dirname(desktop), { recursive: true });
+    fs.writeFileSync(claudeJson, JSON.stringify({ mcpServers: { aos: harness.entryFor('claude', TOKEN) } }));
+    fs.writeFileSync(desktop, JSON.stringify({ mcpServers: {} }));
+    const generated = JSON.stringify({ mcpServers: { github: shipped.github, deja: { command: 'deja', args: ['mcp'] } } });
+    mirrorMcpServersTo([claudeJson, desktop], generated);
+    const cj = JSON.parse(fs.readFileSync(claudeJson, 'utf8')).mcpServers;
+    const dk = JSON.parse(fs.readFileSync(desktop, 'utf8')).mcpServers;
+    assert.ok(cj.aos && cj.deja && !cj.github, `~/.claude.json: ${Object.keys(cj)}`);
+    assert.ok(dk.github && dk.deja && !dk.aos, `desktop: ${Object.keys(dk)}`);
 });
 
 test('G: run from HOME, ~/.agents/mcp_config.json (the server template) is not a harness file', () => {

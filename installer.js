@@ -7709,6 +7709,7 @@ Options:
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
     withoutGatewayServers,
+    mirrorMcpServersTo,
     codexPluginInstall,
     newestDistTag,
     verifyEcosystemInstallation,
