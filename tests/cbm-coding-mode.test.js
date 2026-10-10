@@ -23,6 +23,7 @@ function harness({ stored, flag, interactive, answer = true, binary = false, run
         ask: async () => { calls.ask++; return answer; },
         run: (cmd) => { calls.run.push(cmd); if (runOk) present = true; return runOk; },
         status: () => ({ found: present }),
+        step: (m) => { calls.steps = (calls.steps || []).concat(m); },
     });
     return { home, calls, go, stored: () => profile.readSettings(home).codingMode };
 }
@@ -97,6 +98,20 @@ test('--no-coding overrides a stored true and stores false', async () => {
     await h.go();
     assert.equal(h.stored(), false);
     assert.equal(h.calls.ask, 0);
+});
+
+test('the three cases Tim named: TTY asks, no TTY prints how to opt in, answered stays quiet', async () => {
+    const tty = harness({ interactive: true, answer: true });
+    await tty.go();
+    assert.equal(tty.calls.ask, 1);
+    const noTty = harness({ interactive: false });
+    await noTty.go();
+    assert.equal(noTty.calls.ask, 0);
+    assert.ok((noTty.calls.steps || []).some((m) => m.includes('--coding')), 'no-TTY run must say how to enable it');
+    const answered = harness({ stored: false, interactive: true });
+    await answered.go();
+    assert.equal(answered.calls.ask, 0);
+    assert.ok(!(answered.calls.steps || []).some((m) => m.includes('--coding')));
 });
 
 test('install failure warns and does not throw', async () => {
