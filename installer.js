@@ -34,6 +34,7 @@ const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
+const { upsertRoutingBlock } = require('./lib/routing-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
 const { GATEWAY_SERVERS } = require('./lib/gateway/config');
 
@@ -4671,9 +4672,9 @@ function injectHarnessRules() {
                 // would silently undo that diet. Leave it alone.
                 const isManagedShortForm = claudeContent.includes('BDB Agent Skills — Global Instructions');
                 if (isManagedShortForm) {
-                    const withBlock = upsertDestructiveBlock(claudeContent);
+                    const withBlock = upsertRoutingBlock(upsertDestructiveBlock(claudeContent));
                     if (withBlock !== claudeContent) fs.writeFileSync(claudeMdPath, withBlock);
-                    log.step('CLAUDE.md already uses the short managed form -- only the destructive-actions block is managed.');
+                    log.step('CLAUDE.md already uses the short managed form -- only the destructive-actions and tool-routing blocks are managed.');
                 } else {
                     if (!claudeContent.includes("Global Agent Instructions") && !claudeContent.includes(DESTRUCTIVE_START)) {
                         claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
@@ -4681,7 +4682,7 @@ function injectHarnessRules() {
                     if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
                         claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
                     }
-                    claudeContent = upsertDestructiveBlock(claudeContent);
+                    claudeContent = upsertRoutingBlock(upsertDestructiveBlock(claudeContent));
                     fs.writeFileSync(claudeMdPath, claudeContent);
                     log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
                 }
@@ -4695,7 +4696,7 @@ function injectHarnessRules() {
                     if (!next.includes("Global Agent Instructions") && !next.includes(DESTRUCTIVE_START)) {
                         next = `${next}\n\n${globalRules}`;
                     }
-                    next = upsertDestructiveBlock(next);
+                    next = upsertRoutingBlock(upsertDestructiveBlock(next));
                     if (next !== copilotContent) {
                         fs.writeFileSync(copilotPath, next);
                         log.step(`Injected Global Rules to ${copilotPath}`);
@@ -4714,7 +4715,7 @@ function injectHarnessRules() {
                 if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
                     codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
                 }
-                codexContent = upsertDestructiveBlock(codexContent);
+                codexContent = upsertRoutingBlock(upsertDestructiveBlock(codexContent));
                 fs.writeFileSync(codexPath, codexContent);
                 log.step('Synced .codex-plugin/system.md with Global Rules and /startcycle workflow');
             }, '.codex-plugin/system.md is unchanged.');

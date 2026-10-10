@@ -1,6 +1,7 @@
 ---
 name: plan-canvas
 description: >-
+  Use when the user just says "plan", "planen" or "roadmap": offer a template via aos-plan-canvas templates.
   Open plans and HTML artifacts in a local browser canvas where the human
   annotates elements, chats, and approves or requests changes without leaving
   the page. Use for planning, whenever a user says "plan", "roadmap",

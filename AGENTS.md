@@ -37,6 +37,7 @@ these four files stopped agreeing with each other in the first place.
 Use these tools by yourself, from the situation. The user never has to say
 "use plan-canvas", "use agenttrail", "use subagents" or "run a startcycle".
 
+If the user says "plan", "Plan", "planen" or "roadmap" with nothing else: run `aos-plan-canvas templates`, offer the matching template, then `aos-plan-canvas new <id> <dir>` and `aos-plan-canvas open`.
 **plan-canvas** — open the browser review canvas for any plan. Check
 availability first with `aos-plan-canvas` (the bare command prints server
 status and sessions; the server starts itself when a command needs it). Start
