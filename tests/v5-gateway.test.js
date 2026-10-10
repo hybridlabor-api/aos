@@ -435,7 +435,7 @@ describe('pkg-gateway', () => {
         const home = tmp();
         const { ctx, calls } = mkCtx(home);
         const base = ctx.run;
-        ctx.run = async (cmd, args) => (args[1] === 'preset' ? { status: 1, stderr: 'boom' } : base(cmd, args));
+        ctx.run = async (cmd, args) => (args[0] === 'preset' ? { status: 1, stderr: 'boom' } : base(cmd, args));
         const say = [];
         ctx.log = (m) => say.push(m);
         const seen = [];
@@ -504,7 +504,7 @@ describe('pkg-gateway', () => {
         const unit = fs.readFileSync(path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.gateway.service'), 'utf8');
         assert.ok(unit.includes(`ExecStart="/opt/node/bin/node" "${path.join(ROOT, 'bin', 'aos-gateway.mjs')}" serve`));
         assert.ok(unit.includes('Restart=on-failure'));
-        assert.ok(unit.includes(`StandardOutput="append:${path.join(cfg.gatewayDir(home), 'gateway.log')}"`));
+        assert.ok(unit.includes(`StandardOutput=append:${path.join(cfg.gatewayDir(home), 'gateway.log')}`));
         assert.deepEqual(calls.filter((c) => c[0] === 'systemctl'), [
             ['systemctl', '--user', 'daemon-reload'],
             ['systemctl', '--user', 'enable', '--now', 'com.bdb.aos.gateway.service'],
