@@ -6430,12 +6430,14 @@ function buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }) {
 </plist>`;
 }
 
-// Same bat + hidden-vbs-in-Startup mechanism as the OpenWiki visualizer.
+// Same bat + hidden-vbs-in-Startup mechanism as the OpenWiki visualizer. Windows has no supervisor for a
+// Startup entry, so the bat loops: a crash or exit 3 (new code on disk, AOS_SUPERVISED) restarts in 5 s.
+// ponytail: also loops every 5 s while another canvas holds the port; a Task Scheduler task if that matters.
 function buildPlanCanvasWinFiles({ nodeBin, scriptPath, home, logDir, batPath }) {
     const out = path.join(logDir, 'plan-canvas.stdout.log');
     const err = path.join(logDir, 'plan-canvas.stderr.log');
     return {
-        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\n`,
+        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\nset AOS_SUPERVISED=1\r\n:loop\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\ntimeout /t 5 /nobreak >nul\r\ngoto loop\r\n`,
         vbs: `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${home}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`,
     };
 }

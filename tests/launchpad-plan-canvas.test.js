@@ -55,6 +55,8 @@ describe('Plan Canvas autostart', () => {
         const f = buildPlanCanvasWinFiles({ nodeBin: 'C:\\node.exe', scriptPath: 'C:\\pc.js', home: 'C:\\h', logDir: 'C:\\h\\logs', batPath: 'C:\\h\\run.bat' });
         assert.match(f.bat, /set AOS_PLAN_CANVAS_IDLE_MS=0/);
         assert.match(f.bat, /"C:\\node\.exe" "C:\\pc\.js" server/);
+        // No supervisor on Windows: the bat restarts the server after a crash or a code change (exit 3).
+        assert.match(f.bat, /set AOS_SUPERVISED=1\r\n:loop\r\n.*server.*\r\ntimeout \/t 5 \/nobreak >nul\r\ngoto loop/);
         assert.match(f.vbs, /"""C:\\h\\run\.bat""", 0, False/);
     });
 
