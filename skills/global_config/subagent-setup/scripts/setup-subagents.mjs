@@ -30,7 +30,8 @@ function loadInstaller() {
         path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', '@hybridlabor-api', 'aos', 'installer.js'),
     ].filter(Boolean);
     try { candidates.push(require.resolve('@hybridlabor-api/aos/installer.js')); } catch { /* not resolvable from here */ }
-    const found = candidates.find((c) => fs.existsSync(c));
+    // An explicit AOS_HOME is the user's choice: a wrong one must fail, not fall through to another copy.
+    const found = process.env.AOS_HOME ? (fs.existsSync(candidates[0]) ? candidates[0] : null) : candidates.find((c) => fs.existsSync(c));
     if (!found) {
         console.error(`setup-subagents: cannot find the AOS installer module (installer.js).\nSet AOS_HOME to the AOS package folder (the one containing installer.js), or install @hybridlabor-api/aos.\nTried:\n${candidates.map((c) => `  ${c}`).join('\n')}`);
         process.exit(2);

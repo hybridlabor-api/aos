@@ -207,7 +207,8 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       const cdxConfigFile = path.join(tmpDir, '.codex', 'config.toml');
 
       for (let i = 0; i < 3; i++) {
-        installer.mergeAntigravityHooks(agHooksFile, { projectLocal: true });
+        // The temp project has no hook scripts, so the real self-check would roll the file back.
+        installer.mergeAntigravityHooks(agHooksFile, { projectLocal: true, selfCheck: () => ({ status: 0, stderr: '' }) });
         installer.mergeCodexTomlHooks(cdxConfigFile, { projectLocal: true });
       }
 
