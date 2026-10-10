@@ -35,7 +35,12 @@ function loadInstaller() {
         console.error(`setup-subagents: cannot find the AOS installer module (installer.js).\nSet AOS_HOME to the AOS package folder (the one containing installer.js), or install @hybridlabor-api/aos.\nTried:\n${candidates.map((c) => `  ${c}`).join('\n')}`);
         process.exit(2);
     }
-    return require(found);
+    try {
+        return require(found);
+    } catch (err) {
+        console.error(`setup-subagents: found installer.js at ${found} but it failed to load: ${err.message}\nInstall the AOS package dependencies in ${path.dirname(found)} (npm install) and retry.`);
+        process.exit(2);
+    }
 }
 
 const installer = loadInstaller();

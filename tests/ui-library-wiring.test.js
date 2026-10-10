@@ -3,8 +3,9 @@
  *
  * Wiring the BDB component + motion-icon library (npm @hybridlabor-api/ui-motion-library,
  * shadcn namespace @bdb) into the UI skills and the godmode-ui-ux agent:
- * - the routing line ("Components first from the BDB library ... then third-party
- *   registries") is present in the three source files, with the version-pinned
+ * - the routing line (project design system first, then the BDB library, then the
+ *   verified registries in docs/sources.md; wording from 07b798dd) is present in the
+ *   three source files, with the version-pinned
  *   unpkg registry entry (never @latest: unpkg caches @latest)
  * - every version-pinned unpkg URL for the package in the repo uses the same version
  * - phantom-reference check (network) only when AOS_TEST_NETWORK=1: the pinned npm
@@ -36,8 +37,8 @@ test('the three UI skills/agent sources carry the routing line with the pinned U
         const text = readFile(file);
         assert.ok(text.includes(ENTRY), `${path.relative(ROOT, file)}: pinned unpkg entry present`);
         assert.ok(
-            /Components first from the BDB library/.test(text) &&
-                /then third-party registries/.test(text),
+            /project's own design system and sources file first/.test(text) &&
+                /docs\/sources\.md/.test(text),
             `${path.relative(ROOT, file)}: routing line present`
         );
         assert.ok(!new RegExp(PKG.replace(/[/@.]/g, (c) => `\\${c}`) + '@latest').test(text),
@@ -56,6 +57,9 @@ test('routing line is in sync across the agent persona copies', () => {
     for (const file of copies) {
         assert.ok(fs.existsSync(file), `${file} exists`);
         assert.ok(readFile(file).includes(ENTRY), `${path.relative(ROOT, file)}: pinned URL present`);
+        // The .toml is a metadata stub; its prompt is the .md beside it.
+        if (file.endsWith('.md')) assert.ok(/project's own design system and sources file first/.test(readFile(file)),
+            `${path.relative(ROOT, file)}: routing line present`);
     }
     assert.strictEqual(
         readFile(path.join(ROOT, 'agents', 'godmode-ui-ux.md')),

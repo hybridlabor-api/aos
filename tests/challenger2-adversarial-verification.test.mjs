@@ -93,6 +93,17 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
   // ==========================================================================
   // AREA 1: IDEMPOTENCE & ANTI-DUPLICATION
   // ==========================================================================
+  // agy hooks.json holds one named top-level key per AOS concern (aos-go-gate, aos-trail-relay, ...);
+  // foreign handlers stay under `hooks`. Collect every handler command wherever it sits.
+  const agyCommands = (v, out = []) => {
+    if (Array.isArray(v)) v.forEach((x) => agyCommands(x, out));
+    else if (v && typeof v === 'object') {
+      if (typeof v.command === 'string') out.push(v.command);
+      Object.values(v).forEach((x) => agyCommands(x, out));
+    }
+    return out;
+  };
+
   describe('Area 1: Idempotence Verification', () => {
     test('mergeAntigravityHooks: 10 consecutive passes produce strictly identical output without duplicating hooks', () => {
       const hooksFile = path.join(tmpDir, 'hooks.json');
@@ -120,18 +131,15 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual(parsed.name, 'user-antigravity-config', 'preserves top-level metadata');
       assert.strictEqual(parsed.hooks.CustomEvent.length, 1, 'preserves foreign custom event intact');
 
-      const preToolCommands = parsed.hooks.PreToolUse.flatMap(e => e.hooks.map(h => h.command));
-      assert.strictEqual(preToolCommands.filter(c => c.includes('go-gate.mjs')).length, 1, 'exactly 1 go-gate hook');
-      assert.strictEqual(preToolCommands.filter(c => c.includes('trail-relay.mjs')).length, 1, 'exactly 1 Antigravity trail relay hook');
-      assert.strictEqual(preToolCommands.filter(c => c.includes('custom-pre-tool')).length, 1, 'exactly 1 foreign tool hook');
+      const cmds = agyCommands(parsed);
+      assert.ok(JSON.stringify(parsed['aos-go-gate'] && parsed['aos-go-gate'].PreToolUse || '').includes('go-gate'), 'go-gate sits under aos-go-gate.PreToolUse');
+      assert.strictEqual(cmds.filter(c => c.includes('go-gate.mjs')).length, 1, 'exactly 1 go-gate hook');
+      assert.strictEqual(cmds.filter(c => c.includes('graph-gate.mjs')).length, 1, 'exactly 1 graph-gate hook');
+      assert.strictEqual(cmds.filter(c => c.includes('trail-relay.mjs')).length, 2, 'Antigravity trail relay on PreToolUse and Stop');
+      assert.strictEqual(cmds.filter(c => c.includes('custom-pre-tool')).length, 1, 'exactly 1 foreign tool hook');
 
-      const stopCommands = parsed.hooks.Stop.flatMap(e => e.hooks.map(h => h.command));
-      assert.strictEqual(stopCommands.filter(c => c.includes('graph-gate.mjs')).length, 1, 'exactly 1 graph-gate hook');
-      assert.strictEqual(stopCommands.filter(c => c.includes('trail-relay.mjs')).length, 1, 'exactly 1 Antigravity trail relay hook');
-
-      assert.strictEqual(parsed.hooks.PreInvocation.length, 1, 'PreInvocation has exactly 1 entry');
-      assert.strictEqual(parsed.hooks.PreInvocation[0].hooks.length, 2, 'PreInvocation has exactly 2 hooks');
-      const preInvocCmds = parsed.hooks.PreInvocation[0].hooks.map(h => h.command);
+      assert.strictEqual(parsed['aos-context'].PreInvocation.length, 3, 'aos-context PreInvocation has memb, rules, startcycle');
+      const preInvocCmds = parsed['aos-context'].PreInvocation.map(h => h.command);
       assert.strictEqual(preInvocCmds.filter(c => c.includes('memb-inject.mjs')).length, 1);
       assert.strictEqual(preInvocCmds.filter(c => c.includes('startcycle-dispatch.mjs')).length, 1);
 
@@ -204,9 +212,10 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       }
 
       const agContent = JSON.parse(fs.readFileSync(agHooksFile, 'utf8'));
-      assert.strictEqual(agContent.hooks.PreToolUse.length, 2);
-      assert.strictEqual(agContent.hooks.Stop.length, 2);
-      assert.strictEqual(agContent.hooks.PreInvocation.length, 1);
+      const agCmds = agyCommands(agContent);
+      assert.strictEqual(agCmds.filter(c => c.includes('go-gate.mjs')).length, 1);
+      assert.strictEqual(agCmds.filter(c => c.includes('trail-relay.mjs')).length, 2);
+      assert.strictEqual(agContent['aos-context'].PreInvocation.length, 3);
 
       const cdxContent = fs.readFileSync(cdxConfigFile, 'utf8');
       assert.strictEqual((cdxContent.match(/# AOS:HOOKS:START/g) || []).length, 1);
@@ -430,8 +439,15 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert(agHookCheck, 'doctor detects Antigravity harness');
       assert.strictEqual(agHookCheck.ok, false, 'reports missing hooks.json when absent');
 
-      // 2. Wire hooks.json via installer
+      // 1b. hooks.json present but only foreign hooks: still not wired
       const hooksFile = path.join(agDir, 'hooks.json');
+      fs.writeFileSync(hooksFile, JSON.stringify({ hooks: { PreToolUse: [{ command: 'echo foreign' }] } }));
+      res = runNode(DOCTOR_PATH, { args: ['--json'], env: { HOME: mockHome, ...DOCTOR_ENV } });
+      doc = JSON.parse(res.stdout);
+      agHookCheck = doc.results.find(r => r.area === 'hooks' && r.name.includes('Antigravity'));
+      assert.strictEqual(agHookCheck.ok, false, 'reports unwired hooks.json with only foreign hooks');
+
+      // 2. Wire hooks.json via installer
       installer.mergeAntigravityHooks(hooksFile, { selfCheck: () => ({ status: 0, stderr: '' }) });
 
       res = runNode(DOCTOR_PATH, {

@@ -221,7 +221,7 @@ function checkHooks() {
     const targetFile = agHooksCandidate || path.join(agDir, 'hooks.json');
     if (existsSync(targetFile)) {
       const agHooks = readJson(targetFile);
-      const agWired = JSON.stringify(agHooks?.hooks || {});
+      const agWired = JSON.stringify(agHooks || {});
       const hasMemb = agWired.includes('memb-inject.mjs');
       add('hooks', 'Antigravity hooks.json wired', hasMemb,
         hasMemb ? `wired in ${tilde(targetFile)}` : `memb-inject.mjs not wired in ${tilde(targetFile)}`,
