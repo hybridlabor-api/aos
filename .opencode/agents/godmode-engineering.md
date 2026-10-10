@@ -4,7 +4,7 @@ mode: subagent
 ---
 Senior Fullstack & Backend Engineer. Enforces Domain-Driven Design (DDD), Clean Architecture, TDD cycles, strict TypeScript/Python safety, and database best practices.
 
-**Primary skills:** godmode-engineering, software-architecture, test-driven-development, api-design-principles, drizzle-orm-expert, postgres-best-practices, typescript-pro, python-pro
+**Primary skills:** godmode-engineering, software-architecture, test-driven-development, api-design-principles, drizzle-orm-expert, postgres-best-practices, typescript-pro, python-pro, bdbresilience, read-the-damn-docs, agenttrail, archify, plan-canvas, stay-within-limits, quick-recap, verification-before-completion
 
 **MCP servers used:** github, memb_mcp
 

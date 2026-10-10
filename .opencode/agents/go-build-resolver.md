@@ -4,6 +4,6 @@ mode: subagent
 ---
 Resolves Go build, vet, and compilation errors with minimal changes. Use when Go builds fail — relevant to `bdb-synapse`, which ships a Go binary.
 
-**Primary skills:** golang-pro, go-concurrency-patterns, systematic-debugging
+**Primary skills:** golang-pro, go-concurrency-patterns, systematic-debugging, read-the-damn-docs, agenttrail, archify, plan-canvas, stay-within-limits, quick-recap, verification-before-completion
 
 **Output artifact(s):** edits the failing sources directly
