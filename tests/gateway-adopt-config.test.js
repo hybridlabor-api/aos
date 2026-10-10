@@ -44,6 +44,7 @@ describe('adopted upstreams', () => {
             cwd: '/work',
             env: { FOO: 'bar', PATH: pathEnv, HOME: h },
             inheritParentEnv: false,
+            tags: ['aos', 'mine'],
         });
         assert.deepEqual(Object.keys(out).sort(), ['github', 'mine']);
     });

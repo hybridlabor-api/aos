@@ -1,6 +1,6 @@
 # Declarative harness table (design only)
 
-Design only, no code changed (2026-10-10, F7 W5).
+Implemented in F7b: rows live in `lib/harnesses.json` (placeholders `URL` and `TOKEN`). The example rows below are superseded by that file.
 ## Current state (read-only)
 
 - `lib/gateway/harness.js`: `SUPPORTED` (l.9) is a fixed set of 4 kinds; `classify()` (l.14) maps file to kind by basename/dir; `entryFor()` (l.30) has one branch per kind.
