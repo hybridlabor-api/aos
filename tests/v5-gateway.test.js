@@ -951,6 +951,7 @@ test('update installs gateway when missing', async () => {
     } finally { gw.install = realInstall; gw.verify = realVerify; }
     assert.deepStrictEqual(calls, [home]);
     assert.match(out.join(''), /✔ MCP gateway preset aos-core not created; running/);
+    assert.doesNotMatch(out.join(''), /Optional, not installed:.*\bgateway\b/, 'F12: installed in this run, not listed as optional');
 });
 
 test('update skips the MCP gateway off macOS without installing', async () => {

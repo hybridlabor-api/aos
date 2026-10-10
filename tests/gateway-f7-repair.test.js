@@ -80,6 +80,13 @@ test('A/B end to end, platform 2: the mirror skips the gateway servers in ~/.cla
     assert.ok(dk.github && dk.deja && !dk.aos, `desktop: ${Object.keys(dk)}`);
 });
 
+test('F11: the grandma3 entry of the template before 44fb54eb (--with mcp, port 8080) is AOS-owned, so enable moves it', () => {
+    const { isAosOwned } = require('../lib/mcp-secrets.js');
+    const old = { command: '/Users/t/.local/bin/uv', args: ['run', '--with', 'mcp>=1.0.0,<2.0.0', '/Users/t/.gemini/config/mcps/grandma3_mcp.py', '--ip', '127.0.0.1', '--port', '8080', '--mode', 'webapi_only'] };
+    assert.ok(isAosOwned('bdb_grandma3_mcp', old, null, shipped));
+    assert.ok(!isAosOwned('bdb_grandma3_mcp', { ...old, args: old.args.map((a) => (a === '8080' ? '9999' : a)) }, null, shipped), 'a user port stays user-owned');
+});
+
 test('G: run from HOME, ~/.agents/mcp_config.json (the server template) is not a harness file', () => {
     const home = tmp('aos-f7g-');
     const fromHome = harnessMcpFiles(home, {}, 'linux', home).map((f) => f.file);
