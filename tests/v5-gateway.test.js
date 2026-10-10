@@ -293,8 +293,9 @@ describe('pkg-gateway', () => {
         assert.ok(plist.includes('<key>HOME</key>') && plist.includes('<key>PATH</key>'));
 
         assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
-        assert.deepEqual(calls[1], ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
-        assert.deepEqual(calls[2], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
+        assert.deepEqual(calls[1].slice(0, 4), [path.join(dir, 'node_modules', '.bin', '1mcp'), 'preset', 'create', 'aos-core']);
+        assert.deepEqual(calls[2], ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
+        assert.deepEqual(calls[3], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
         assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_unreal_mcp', 'github', 'open_design_mcp']);
     });
@@ -403,7 +404,7 @@ describe('pkg-gateway', () => {
         await pkg.update(second.ctx);
         assert.equal(fs.readFileSync(path.join(dir, 'token'), 'utf8'), token);
         assert.equal(fs.readFileSync(path.join(dir, 'gateway.json'), 'utf8'), '{"user":true}');
-        assert.deepEqual(second.calls[1], ['launchctl', 'kickstart', '-k', 'gui/501/com.bdb.aos.gateway']);
+        assert.deepEqual(second.calls[2], ['launchctl', 'kickstart', '-k', 'gui/501/com.bdb.aos.gateway']);
     });
 
     test('install fails loudly when npm fails', async () => {
@@ -728,9 +729,10 @@ describe('harness enable/disable', () => {
         assert.deepEqual(oc.mcp.aos, { type: 'remote', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN }, enabled: true });
         assert.equal(oc.$schema, 'x');
         assert.deepEqual(rep.find((r) => r.file === fx.f.cursor).kept, [{ name: 'github', reason: 'user-owned' }]);
-        assert.equal(fs.readFileSync(fx.f.codex, 'utf8'), before.codex, 'codex byte-identical');
+        assert.ok(fs.readFileSync(fx.f.codex, 'utf8').startsWith(before.codex), 'codex keeps its own tables');
+        assert.ok(/\[mcp_servers\.aos\]\nurl = "http:\/\/127\.0\.0\.1:7790\/mcp"/.test(fs.readFileSync(fx.f.codex, 'utf8')));
         assert.deepEqual(rj(fx.f.agy).mcpServers.aos, { serverUrl: harness.GATEWAY_URL, headers: { 'x-aos-token': TOKEN } });
-        assert.deepEqual(rep.filter((r) => r.skipped).map((r) => r.skipped), ['shape unverified']);
+        assert.deepEqual(rep.filter((r) => r.skipped).map((r) => r.skipped), []);
         // backups hold the pre-change bytes; migration.json holds originals and the aos marker, no token
         assert.equal(fs.readFileSync(rep.find((r) => r.file === fx.f.claude).backup, 'utf8'), before.claude);
         const mig = fs.readFileSync(harness.migrationPath(fx.home), 'utf8');
@@ -924,4 +926,42 @@ describe('harness enable/disable', () => {
         assert.ok(!fs.existsSync(tokenFile));
         assert.deepEqual(rj(fx.f.claude), JSON.parse(before.claude));
     });
+});
+
+test('update installs gateway when missing', async () => {
+    const menu = require('../lib/v5/menu.js');
+    const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+    const realInstall = gw.install;
+    const calls = [];
+    gw.install = async (c) => { calls.push(c.home); return { ok: true }; };
+    const home = tmp();
+    const out = [];
+    const host = {
+        quickUpdateKernel: () => {}, quickUpdateHarnesses: () => {},
+        detectInstallState: () => ({ isInstalled: true, localVersion: '4.0.0', installedModules: [] }),
+        resolveTargetPaths: () => ({ targetSkillDir: path.join(home, 'skills'), targetMcpDir: path.join(home, 'mcp') }),
+        moduleBasePath: () => path.join(home, '.agents'),
+        isNewerVersion: (l, r) => l !== r, loadExistingEnv: () => ({}), PROVIDER_KEY_ENV_NAMES: {},
+        saveManifest: () => {}, flushSessionManifest: () => {}, runUninstaller: () => 0,
+    };
+    try {
+        await menu.update(host, { home, write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
+    } finally { gw.install = realInstall; }
+    assert.deepStrictEqual(calls, [home]);
+    assert.match(out.join(''), /✔ MCP gateway/);
+});
+
+test('full install does not duplicate gateway servers when aos entry exists', () => {
+    const { spawnSync } = require('child_process');
+    const home = tmp();
+    const dir = path.join(home, 'mcp');
+    const file = path.join(home, 'mcp.json');
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp', headers: { 'X-AOS-Token': 'x' } } } }));
+    const code = `require(${JSON.stringify(path.join(ROOT, 'installer.js'))}).installMcpsForTarget({ targetMcpDir: process.argv[1], mcpConfigPath: process.argv[2], extraMcpConfigPaths: [] }, { selectedMcps: ['deja'], mode: 'merge', platformValue: '2', creds: {} });`;
+    const r = spawnSync(process.execPath, ['-e', code, dir, file], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 120000 });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const servers = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers;
+    assert.ok(servers.aos, 'gateway entry kept');
+    assert.ok(Object.keys(servers).length > 1, 'merge still wrote the direct servers');
+    assert.deepStrictEqual(cfg.GATEWAY_SERVERS.filter((n) => n in servers), []);
 });

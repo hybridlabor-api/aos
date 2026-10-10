@@ -34,6 +34,8 @@ const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
+const { isAosShaped } = require('./lib/gateway/harness');
+const { GATEWAY_SERVERS } = require('./lib/gateway/config');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -4092,6 +4094,15 @@ async function installMcpsForTarget(paths, ctx) {
         mcpConfigStr = JSON.stringify(parsed, null, 2);
     } catch (e) { logDebug(e, 'wrap MCP servers in the secrets launcher'); }
 
+    // The gateway's aos entry already serves these; writing the direct copies next to it would list each tool twice.
+    const gatewayAos = ((readJsonFile(paths.mcpConfigPath) || {}).mcpServers || {}).aos;
+    if (isAosShaped(gatewayAos)) {
+        try {
+            const parsed = JSON.parse(mcpConfigStr);
+            for (const n of GATEWAY_SERVERS) delete parsed.mcpServers[n];
+            mcpConfigStr = JSON.stringify(parsed, null, 2);
+        } catch (e) { logDebug(e, 'skip gateway servers next to the aos entry'); }
+    }
     try { lastGeneratedMcpServers = JSON.parse(mcpConfigStr).mcpServers || null; } catch (e) { lastGeneratedMcpServers = null; }
     if (isAgyMcpConfig(paths.mcpConfigPath)) {
         try {
@@ -7153,6 +7164,7 @@ function runUninstaller() {
 function v5Options(interactive) {
     const ui = interactive ? {
         select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
+        multi: async (message, options) => { const a = await multiselect({ message, options, required: false }); return isCancel(a) ? [] : a; },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};

@@ -31,6 +31,9 @@ function machine({ copyVersion = '2.4.0' } = {}) {
     const skills = path.join(home, 'skills');
     const mcp = path.join(home, 'gemini-config');
     fs.mkdirSync(path.join(skills, 'startcycle'), { recursive: true });
+    // The gateway step would run real npm and launchctl here: keep it off in these fixtures.
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway'] }));
     const memb = path.join(base, 'memB');
     pkgJson(memb, '2.4.0');
     fs.writeFileSync(path.join(memb, 'requirements.txt'), 'mcp\n');
@@ -594,7 +597,7 @@ test('R9: a throwing detect is shown in Status as "detect failed", not as not in
 test('R10: Update and Repair respect the Settings disabled list', async () => {
     const m = machine();
     fs.mkdirSync(path.join(m.home, '.aos'), { recursive: true });
-    fs.writeFileSync(path.join(m.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['fleet', 'fixable'] }));
+    fs.writeFileSync(path.join(m.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['fleet', 'fixable', 'gateway'] }));
     let repaired = 0;
     await withPackage({ id: 'fixable', name: 'Fixable', detect: () => ({ installed: true }), verify: () => ({ ok: false, detail: 'bad' }), repair: () => { repaired++; } }, async () => {
         await withPathAsync(fakeClaude(), async () => {

@@ -47,17 +47,25 @@ test('enable adds streamable-http aos, keeps unrelated content, backs up, is ide
     assert.ok(back.mcpServers.github);
 });
 
-test('Windsurf and Codex stay skipped', () => {
+test('Windsurf stays skipped', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-roo-'));
-    const files = [path.join(home, '.codeium', 'windsurf', 'mcp_config.json')].map((file) => {
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, '{"mcpServers":{}}');
-        return { file, kind: 'json' };
-    });
-    const toml = path.join(home, '.codex', 'config.toml');
-    fs.mkdirSync(path.dirname(toml), { recursive: true });
-    fs.writeFileSync(toml, '[mcp_servers.x]\ncommand = "a"\n');
-    files.push({ file: toml, kind: 'toml' });
-    const rep = harness.enable({ home, token: TOKEN, shipped, files, now: 1 });
-    assert.ok(rep.length === 2 && rep.every((r) => r.skipped === 'shape unverified'));
+    const file = path.join(home, '.codeium', 'windsurf', 'mcp_config.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{"mcpServers":{}}');
+    const rep = harness.enable({ home, token: TOKEN, shipped, files: [{ file, kind: 'json' }], now: 1 });
+    assert.ok(rep.length === 1 && rep[0].skipped === 'shape unverified');
+});
+
+test('a preset URL is AOS-shaped: enable replaces it, disable removes it', () => {
+    const fx = fixture();
+    const preset = harness.entryFor('roo', TOKEN, 'aos-core');
+    assert.equal(preset.url, `${harness.GATEWAY_URL}?preset=aos-core`);
+    assert.ok(harness.isAosShaped(preset));
+    fs.writeFileSync(fx.g, JSON.stringify({ mcpServers: { aos: preset } }));
+    const rep = harness.enable({ home: fx.home, token: TOKEN, shipped, files: fx.files, now: 1000 });
+    assert.equal(rep.find((r) => r.file === fx.g).conflict, undefined);
+    assert.deepEqual(JSON.parse(fs.readFileSync(fx.g, 'utf8')).mcpServers.aos, harness.entryFor('roo', TOKEN));
+    fs.writeFileSync(fx.g, JSON.stringify({ mcpServers: { aos: preset } }));
+    harness.disable({ home: fx.home, files: fx.files, now: 2000 });
+    assert.equal(JSON.parse(fs.readFileSync(fx.g, 'utf8')).mcpServers.aos, undefined);
 });

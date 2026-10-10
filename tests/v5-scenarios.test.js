@@ -35,6 +35,9 @@ function machine({ dangling = false, bare = false } = {}) {
     const mcp = path.join(home, 'gemini-config');
     fs.mkdirSync(path.join(skills, 'startcycle'), { recursive: true });
     fs.mkdirSync(base, { recursive: true });
+    // The gateway step would run real npm and launchctl here: keep it off in these fixtures.
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway'] }));
     const memb = path.join(base, 'memB');
     if (!bare) {
         pkgJson(memb, '2.4.0');
@@ -228,7 +231,7 @@ test('S6 disabled list is respected by Update and Repair', async () => {
         assert.ok(ctl.calls.includes('installMemB'), 'control: memB is updated when enabled');
 
         const m = machine({ dangling: true });
-        settings(m.home, ['memb']);
+        settings(m.home, ['memb', 'gateway']);
         let created = 0;
         const venv = { create: () => { created++; }, install: () => {} };
         await menu.update(m.host, m.opts({ npmView: membNewer, venv }));

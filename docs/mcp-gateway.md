@@ -14,6 +14,10 @@ aos-gateway serve | start | stop | restart | status [--json] | enable | direct |
 - `status` exits 0 only when the gateway runs. Per-upstream health is the state of 1mcp as a whole, not per server (`upstreamsScope: global`).
 - `enable` points the harness MCP files at the gateway (one `aos` entry); `direct` reverses it and restores the entries it removed.
 
+**Presets.** Upstreams carry `tags` (the server name by default). Install creates one preset `aos-core` via `1mcp preset create` over the `GATEWAY_SERVERS` filter.
+`entryFor(kind, token, preset)` appends `?preset=<name>` to the gateway URL, so the client sees only that preset's upstreams.
+`isAosShaped` accepts the URL with that query string.
+
 ## Allow list
 
 Only these shipped servers are shared through the gateway (`GATEWAY_SERVERS` in `lib/gateway/config.js`): `github`, `open_design_mcp`, `bdb_resolume_mcp`, `bdb_grandma3_mcp`, `bdb_blender_mcp`, `bdb_davinci_mcp`, `adobe_uxp_mcp`, `bdb_unreal_mcp`, `bdb_after_effects_mcp`. Everything else stays direct (`DIRECT_SERVERS`, e.g. `deja`, `memb_mcp`, `mcsc`, `openwiki`, `bdb_td_minddesigner`, the two official picks and the AE legacy entry). A shipped entry with `shared: false` also stays direct. `bdb_after_effects_mcp` needs Node >= 24; `serve` warns when it runs on an older Node.
@@ -38,7 +42,7 @@ Only these shipped servers are shared through the gateway (`GATEWAY_SERVERS` in 
 |---|---|---|---|
 | Claude, Cursor, OpenCode | see `harnessMcpFiles` | `type http` / `url` / `type remote` | enabled (earlier work) |
 | Roo | global `.../globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`, project `.roo/mcp.json` | `{type: "streamable-http", url, headers}` | **enabled**. Verified: vendor docs (https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo) and the real global file on this machine (top-level `mcpServers`, stdio entries). Remote shape from docs only. |
-| Codex | `~/.codex/config.toml` | `[mcp_servers.aos]` with `url`, `http_headers` (https://learn.chatgpt.com/docs/extend/mcp?surface=cli) | skipped: shape documented and `[mcp_servers.*]` confirmed locally, but `enable` has no TOML writer yet (JSON only). |
+| Codex | `~/.codex/config.toml` | `[mcp_servers.aos]` with `url`, `http_headers` (https://learn.chatgpt.com/docs/extend/mcp?surface=cli) | **enabled**. Written string-level by `harness.js` (`enableToml`), only the `[mcp_servers.aos]` table is touched. Known gap: shipped direct `[mcp_servers.<server>]` tables are not yet removed, so Codex may list github twice until the next round. |
 | Antigravity (agy) | `~/.gemini/config/mcp_config.json`, workspace `.agents/mcp_config.json` | `{serverUrl, headers}`; `url`/`httpUrl` not supported (https://antigravity.google/docs/mcp) | **enabled** (vendor-docs shape; no agy install on the test machine to confirm). Global file and `<cwd>/.agents/mcp_config.json`. |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `{serverUrl, headers}` (secondary guides; vendor docs moved to https://docs.devin.ai/desktop/cascade/mcp, which lists another path) | skipped: path and shape not confirmed from a vendor page or locally. |
 
