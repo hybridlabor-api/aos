@@ -1641,7 +1641,7 @@ function installRustauri() {
     }
     const agentsSkills = path.join(homeDir, '.agents', 'skills');
     let agentsOk = false;
-    for (const dest of globalSkillDestinations({ ignorePluginCoverage: true })) {
+    for (const { dir: dest } of globalSkillDestinations({ ignorePluginCoverage: true })) {
         try {
             fs.mkdirSync(dest, { recursive: true });
             for (const dir of leaves) syncSkillEntry(path.join(skillsBase, dir), dir, dest, []);
