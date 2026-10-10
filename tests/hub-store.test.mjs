@@ -524,6 +524,15 @@ test('static: store-shared.mjs and routes-store.mjs contain no destructive fs ca
   assert.doesNotMatch(readFileSync(join(ROOT, 'lib', 'hub', 'ui', 'store.js'), 'utf8'), /window\.prompt|rmSync|unlinkSync/);
 });
 
+test('B3: hub store UI has the inspector and reads /api/store/skill', () => {
+  const js = readFileSync(join(ROOT, 'lib', 'hub', 'ui', 'store.js'), 'utf8');
+  assert.match(js, /inspector/);
+  assert.match(js, /\/api\/store\/skill/);
+  const dry = js.slice(js.indexOf('const dryRun = async'), js.indexOf('const onKey'));
+  assert.ok(dry.includes("'/api/store/preview'"), 'dry run posts to /api/store/preview');
+  assert.ok(!dry.includes('/api/store/install'), 'dry run body never references /api/store/install');
+});
+
 test('GET /api/store/skill: same contract as /api/skill', async () => {
   const h = handler('/api/store/skill');
   const ok = await h({ url: new URL('/api/store/skill?name=startcycle', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });

@@ -34,22 +34,22 @@ main{padding:2.3rem 0 6rem}
 .rail{position:sticky;top:1rem;align-self:start;display:grid;gap:1rem}
 .rail .chips{flex-direction:column}.rail .chip{text-align:left;border-radius:.6rem;display:flex;justify-content:space-between}
 .rail h1{font-family:var(--serif);font-weight:500;font-size:2.4rem;letter-spacing:-.07em;line-height:.95;margin:0}
-.row{display:grid;grid-template-columns:1.1rem minmax(0,1.3fr) minmax(0,2fr) 6rem 6rem 8rem;gap:1rem;align-items:center;padding:.6rem .8rem;border-bottom:1px solid var(--line);font-size:.8rem}
-.row.head{position:sticky;top:0;background:var(--paper);z-index:2;color:var(--muted);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;font-weight:850}
-.row .n{font-family:var(--serif);font-size:1rem;letter-spacing:-.03em;overflow:hidden;text-overflow:ellipsis}
-.dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--line)}.dot.g{background:var(--green)}
-.rowwrap{background:var(--white);border-left:1px solid var(--line);border-right:1px solid var(--line)}
-.rowwrap .cmd{margin:0 .8rem .7rem}.rowwrap .cmdnote{margin:-.4rem .8rem .7rem}
-.cmd{display:flex;gap:.5rem;align-items:center;margin-top:.5rem;padding:.5rem .6rem;border-radius:.6rem;background:var(--ink);color:var(--white)}
-.cmd code{flex:1;font-size:.72rem;overflow-x:auto;white-space:nowrap}.cmd .button{min-height:1.8rem;padding:.2rem .7rem;background:var(--green);border-color:var(--green);color:var(--ink)}
-.cmdnote{font-size:.64rem;color:var(--muted);margin:.3rem 0 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.8rem}
+.card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--radius);background:var(--white);overflow:hidden}
+.card-body{display:flex;flex-direction:column;gap:.5rem;flex:1;min-width:0;padding:1rem 1rem .75rem;border:0;background:transparent;text-align:left;cursor:pointer}
+button.card-body:hover{background:var(--paper)}
+.card-name{font-family:var(--serif);font-size:1.15rem;letter-spacing:-.03em;line-height:1.2;overflow-wrap:anywhere}
+.card-meta{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+.card-desc{color:var(--muted);font-size:.8rem;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card-note{color:var(--muted);font-size:.64rem}
+.card-foot{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;justify-content:space-between;padding:.6rem 1rem;border-top:1px solid var(--line)}
+.tag{border:1px solid var(--line);border-radius:999px;padding:.05rem .5rem;color:var(--muted);font-size:.6rem;font-weight:850;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
 .empty{padding:3rem 1rem;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--radius)}
 .src{font-size:.65rem;font-weight:850}
-.detail{padding:.6rem .8rem;background:var(--white);border-left:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:.75rem;line-height:1.6;color:var(--muted)}
-@media(max-width:760px){.ledger{grid-template-columns:1fr}.rail{position:static}.row{grid-template-columns:1rem 1fr 6rem}.row .d,.row .c,.row .s{display:none}.row.head{display:none}}
+@media(max-width:760px){.ledger{grid-template-columns:1fr}.rail{position:static}}
 
 .scope{display:flex;gap:.4rem;align-items:center}
-.badge{display:inline-block;margin-left:.5rem;padding:.1rem .45rem;border:1px solid var(--line);border-radius:999px;background:var(--paper-2);color:var(--muted);font-size:.58rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;white-space:nowrap}
+.badge{display:inline-block;padding:.1rem .45rem;border:1px solid var(--line);border-radius:999px;background:var(--paper-2);color:var(--muted);font-size:.58rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
 dialog{width:min(40rem,calc(100% - 2rem));border:1px solid var(--ink);border-radius:var(--radius);background:var(--white);color:var(--ink);padding:1.4rem}
 dialog::backdrop{background:oklch(0.18 0.025 265/.4)}
 dialog h2{font-family:var(--serif);font-weight:500;margin:0 0 .6rem}
@@ -58,12 +58,33 @@ dialog .acts{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
 .err{color:oklch(0.5 0.2 25);font-size:.75rem}
 .badge.warn{border-color:oklch(0.5 0.2 25);color:oklch(0.5 0.2 25)}
 .warnbox{padding:.6rem .8rem;border:2px solid oklch(0.5 0.2 25);border-radius:.6rem;color:oklch(0.5 0.2 25);font-size:.78rem;font-weight:700}
+.cmdnote{font-size:.64rem;color:var(--muted);margin:.3rem 0 0}
+
+#inspector{position:fixed;top:0;right:0;bottom:0;z-index:30;display:flex;flex-direction:column;gap:.9rem;width:min(36rem,100%);padding:1.4rem 1.5rem;overflow-y:auto;background:var(--white);border-left:1px solid var(--ink);transform:translateX(100%);transition:transform .25s ease}
+#inspector.open{transform:none}
+@media(prefers-reduced-motion:reduce){#inspector{transition:none}}
+.insp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+#ins-name{font-family:var(--serif);font-weight:500;font-size:1.9rem;letter-spacing:-.05em;line-height:1.05;margin:0;overflow-wrap:anywhere}
+.insp-meta{display:flex;flex-wrap:wrap;gap:.35rem}
+.insp-body{display:grid;gap:.6rem}
+.insp-body p{margin:0;color:var(--muted);font-size:.85rem}
+.insp-body .kicker{margin:0;color:var(--green-deep)}
+.insp-body .err{color:oklch(0.5 0.2 25);font-size:.8rem}
+.insp-body pre,#ins-dry pre{margin:0;padding:.7rem;border-radius:.6rem;background:var(--ink);color:var(--white);font-size:.7rem;max-height:22rem;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.insp-dry{display:grid;gap:.5rem;border-top:1px solid var(--line);padding-top:1rem}
+#ins-dry{display:grid;gap:.5rem}
 </style></head><body>
 <div class="container"><main id="app"></main></div>
+<aside id="inspector" role="dialog" aria-modal="true" aria-label="Item inspector" inert>
+  <div class="insp-head"><div><p class="kicker" id="ins-kind" style="margin:0 0 .4rem"></p><h2 id="ins-name" tabindex="-1"></h2></div><button class="button secondary" id="ins-close" data-a="inspect-close">Close</button></div>
+  <div class="insp-meta" id="ins-meta"></div>
+  <div class="insp-body" id="ins-body"></div>
+  <div class="insp-dry"><div id="ins-dry-row"><button class="button" id="ins-dry-btn" data-a="dry-run">Dry run</button> <span class="cmdnote">Shows what would be written. Installs nothing.</span></div><div id="ins-dry" aria-live="polite"></div></div>
+</aside>
 <dialog id="dlg"></dialog>
 <script>
 const TOKEN='__TOKEN__';
-const S={tab:'skill',sub:'discover',scope:'global',q:'',cat:'',src:'',expanded:new Set(),data:null,busy:null,detail:{}};
+const S={tab:'skill',sub:'discover',scope:'global',q:'',cat:'',src:'',data:null,busy:null,detail:{},inspect:null,seq:0,dseq:0};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const key=i=>i.kind+':'+i.name;
 const find=k=>S.data.items.find(i=>key(i)===k);
@@ -72,6 +93,7 @@ const visible=()=>{const q=S.q.toLowerCase();return base().filter(i=>(S.sub==='i
 const uniq=f=>[...new Set(S.data.items.map(f))].sort();
 const count=(f,v)=>base().filter(i=>f(i)===v).length;
 const chip=(a,v,label,n)=>`<button class="chip" aria-pressed="${S[a]===v}" data-a="${a}" data-v="${esc(v)}">${esc(label)}<b>${n}</b></button>`;
+const el=(t,text,cls)=>{const n=document.createElement(t);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n};
 function strip(){const all=S.data.items;return `<div class="strip"><div><strong>${all.length}</strong><small>total</small></div>${uniq(i=>i.source).map(s=>`<div><strong>${all.filter(i=>i.source===s).length}</strong><small>${esc(s)}</small></div>`).join('')}</div>`}
 function tabs(){const n=base(),ic=n.filter(i=>i.installed).length,k=x=>S.data.items.filter(i=>i.kind===x).length;return `<div class="tabs">${chip('tab','skill','Skills',k('skill'))}${chip('tab','agent','Agents',k('agent'))}${chip('tab','playbook','Playbooks',S.data.playbooks.length)}${S.tab==='playbook'?'':`<span style="width:1rem"></span>${chip('sub','installed','Installed',ic)}${chip('sub','discover','Discover',n.length-ic)}`}</div>`}
 const scopeToggle=()=>`<div class="scope"><span class="kicker" style="margin:0">Scope</span>${chip('scope','global','Global','')}${chip('scope','project','Project','')}</div>`;
@@ -81,24 +103,28 @@ function act(i){
   if(S.busy===key(i)) return '<button class="button" disabled>Working...</button>';
   return `<button class="button secondary" data-a="add" data-v="${esc(key(i))}">+ Add</button>`;
 }
-function row(i){
-  const k=key(i),open=S.expanded.has(k);
-  const badge=(i.fileCount>1?`<span class="badge">${i.fileCount} files</span>`:'')+(i.execBridge?'<span class="badge warn">exec bridge</span>':'')+((i.requires||[]).length?`<span class="badge">+${i.requires.length} required</span>`:'');
-  let h=`<div class="rowwrap"><div class="row"><span class="dot ${i.installed?'g':''}"></span><span class="n" data-a="exp" data-v="${esc(k)}" style="cursor:pointer" title="Show description">${esc(i.name)}${badge}</span><span class="d" style="color:var(--muted)">${esc(i.description)}</span><span class="c cat">${esc(i.category)}</span><span class="s src">${esc(i.source)}</span><span style="text-align:right">${act(i)}</span></div>`;
-  if(open){const d=i.core?i.description:S.detail[k];h+=`<div class="detail">${d===undefined?'Loading...':esc(d)}</div>`}
-  return h+'</div>';
+function card(i){
+  const k=key(i);
+  const badges=(i.fileCount>1?`<span class="badge">${i.fileCount} files</span>`:'')
+    +(i.hasHooks?'<span class="badge">hooks</span>':'')
+    +(i.execBridge?'<span class="badge warn">exec bridge</span>':'')
+    +((i.requires||[]).length?`<span class="badge">+${i.requires.length} required</span>`:'')
+    +(i.license?`<span class="badge">${esc(i.license)}</span>`:'')
+    +(i.thirdParty?'<span class="badge">third-party</span>':'');
+  const dry=i.core?'':`<button class="button secondary" data-a="dry" data-v="${esc(k)}">Dry run</button>`;
+  return `<article class="card"><button class="card-body" data-a="open" data-v="${esc(k)}"><span class="card-name">${esc(i.name)}</span><span class="card-meta"><span class="tag">${esc(i.kind)}</span><span class="tag">${esc(i.category)}</span><span class="src">${esc(i.source)}</span></span><span class="card-desc">${esc(i.description)}</span><span class="card-meta">${badges}</span></button><div class="card-foot">${act(i)}${dry}</div></article>`;
 }
-function pbRow(p){return `<div class="rowwrap"><div class="row"><span class="dot g"></span><span class="n">${esc(p.name)}</span><span class="d" style="color:var(--muted)">${esc(p.description)}<br><small>Requires: ${esc(reqLabel(p.requires)||'nothing')}</small></span><span class="c cat">${esc(p.difficulty)}</span><span class="s src">${esc(p.est_time)}</span><span style="text-align:right"><span class="state">AOS Core</span></span></div></div>`}
 const reqLabel=r=>[...r.skills,...r.agents.map(a=>'agent:'+a),...r.mcps.map(m=>'mcp:'+m),...r.store.map(x=>'store:'+x)].join(', ');
+function pbCard(p){return `<article class="card"><div class="card-body"><span class="card-name">${esc(p.name)}</span><span class="card-meta"><span class="tag">${esc(p.difficulty)}</span><span class="src">${esc(p.est_time)}</span></span><span class="card-desc">${esc(p.description)}</span><span class="card-note">Requires: ${esc(reqLabel(p.requires)||'nothing')}</span></div><div class="card-foot"><span class="state">AOS Core</span></div></article>`}
 function renderPlaybooks(){
   const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,q=S.q.toLowerCase(),l=S.data.playbooks.filter(p=>!q||(p.name+' '+p.description+' '+p.difficulty).toLowerCase().includes(q));
-  document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><input class="search" id="q" type="search" placeholder="Search playbooks" value="${esc(S.q)}" aria-label="Search">${tabs()}<p class="cmdnote">Playbooks ship with AOS Core. Start one with /bdb-aos:playbooks.</p></aside><section><p class="kicker">${l.length} of ${S.data.playbooks.length} playbooks</p><div class="row head"><span></span><span>name</span><span class="d">description</span><span class="c">difficulty</span><span class="s">est. time</span><span></span></div>${l.length?l.map(pbRow).join(''):'<div class="empty">No matches.</div>'}</section></div>`;
+  document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><input class="search" id="q" type="search" placeholder="Search playbooks" value="${esc(S.q)}" aria-label="Search">${tabs()}<p class="cmdnote">Playbooks ship with AOS Core. Start one with /bdb-aos:playbooks.</p></aside><section><p class="kicker">${l.length} of ${S.data.playbooks.length} playbooks</p>${l.length?`<div class="grid">${l.map(pbCard).join('')}</div>`:'<div class="empty">No matches.</div>'}</section></div>`;
   if(fq){const e=document.getElementById('q');e.focus();e.setSelectionRange(pos,pos)}
 }
 function render(){
   if(S.tab==='playbook')return renderPlaybooks();
   const a=document.activeElement,fq=a&&a.id==='q',pos=fq?a.selectionStart:0,l=visible();
-  document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><p class="kicker" style="margin:0">Active scope: ${S.scope==='global'?'Global (harness roots in ~)':'Project ('+esc(S.data.cwd)+')'}</p>${scopeToggle()}<input class="search" id="q" type="search" placeholder="Search ${S.tab}s" value="${esc(S.q)}" aria-label="Search">${tabs()}<div><p class="kicker">Category</p><div class="chips">${chip('cat','','all',base().length)}${uniq(i=>i.category).map(c=>chip('cat',c,c,count(i=>i.category,c))).join('')}</div></div><div><p class="kicker">Source</p><div class="chips">${chip('src','','all',base().length)}${uniq(i=>i.source).map(s=>chip('src',s,s,count(i=>i.source,s))).join('')}</div></div></aside><section><p class="kicker">${l.length} of ${base().length} ${S.tab}s</p>${strip()}<div class="row head"><span></span><span>name</span><span class="d">description</span><span class="c">category</span><span class="s">source</span><span style="text-align:right">state</span></div>${l.length?l.map(row).join(''):`<div class="empty">${S.sub==='installed'?'Nothing installed yet.':'No matches.'}</div>`}</section></div>`;
+  document.getElementById('app').innerHTML=`<div class="ledger"><aside class="rail"><h1>AOS<br>Store</h1><p class="kicker" style="margin:0">Active scope: ${S.scope==='global'?'Global (harness roots in ~)':'Project ('+esc(S.data.cwd)+')'}</p>${scopeToggle()}<input class="search" id="q" type="search" placeholder="Search ${S.tab}s" value="${esc(S.q)}" aria-label="Search">${tabs()}<div><p class="kicker">Category</p><div class="chips">${chip('cat','','all',base().length)}${uniq(i=>i.category).map(c=>chip('cat',c,c,count(i=>i.category,c))).join('')}</div></div><div><p class="kicker">Source</p><div class="chips">${chip('src','','all',base().length)}${uniq(i=>i.source).map(s=>chip('src',s,s,count(i=>i.source,s))).join('')}</div></div></aside><section><p class="kicker">${l.length} of ${base().length} ${S.tab}s</p>${strip()}${l.length?`<div class="grid">${l.map(card).join('')}</div>`:`<div class="empty">${S.sub==='installed'?'Nothing installed yet.':'No matches.'}</div>`}</section></div>`;
   if(fq){const q=document.getElementById('q');q.focus();q.setSelectionRange(pos,pos)}
 }
 async function load(){
@@ -120,15 +146,15 @@ async function preview(k){
     const d=await post('/api/preview',i);
     const ok=d.ok&&d.targets.length;
     const m=d.meta||{};
-    const fc=m.fileCount||i.fileCount,tc=fc>0?Math.round(d.targets.length/fc):1;const size=m.totalSize>0?` = ${fc} file(s) \u00d7 ${tc} target(s), ${(m.totalSize/1024).toFixed(1)} KB each`:(i.totalSize!=null?` = ${i.fileCount} file(s) \u00d7 ${tc} target(s), ${(i.totalSize/1024).toFixed(1)} KB each`:'');
-    const warn=(i.hasHooks?'<p class="err">Includes hooks \u2014 copied only, NOT registered in your harness settings; the skill may need manual wiring.</p>':'')
-      +(m.execBridge?`<p class="warnbox">Warning: contains a script that executes code received over a local socket or file channel without authentication \u2014 install only if you use this bridge.<br><span style="font-weight:400">${esc((m.execBridgeFiles||[]).map(f=>f.skill+'/'+f.path).join(', '))}</span></p>`:(m.hasScripts?`<p class="cmdnote">Contains ${m.scriptCount} script file(s) that run on your machine when the skill is used. Review them before use.</p>`:''))
+    const fc=m.fileCount||i.fileCount,tc=fc>0?Math.round(d.targets.length/fc):1;const size=m.totalSize>0?` = ${fc} file(s) × ${tc} target(s), ${(m.totalSize/1024).toFixed(1)} KB each`:(i.totalSize!=null?` = ${i.fileCount} file(s) × ${tc} target(s), ${(i.totalSize/1024).toFixed(1)} KB each`:'');
+    const warn=(i.hasHooks?'<p class="err">Includes hooks — copied only, NOT registered in your harness settings; the skill may need manual wiring.</p>':'')
+      +(m.execBridge?`<p class="warnbox">Warning: contains a script that executes code received over a local socket or file channel without authentication — install only if you use this bridge.<br><span style="font-weight:400">${esc((m.execBridgeFiles||[]).map(f=>f.skill+'/'+f.path).join(', '))}</span></p>`:(m.hasScripts?`<p class="cmdnote">Contains ${m.scriptCount} script file(s) that run on your machine when the skill is used. Review them before use.</p>`:''))
       +(m.software&&m.software.length?`<p class="cmdnote">Needs third-party software that is not included: ${esc(m.software.join(', '))}.</p>`:'')
       +(m.requires&&m.requires.length?`<p class="cmdnote">Also installs required skill(s): ${esc(m.requires.join(', '))}.</p>`:'');
     const srcLabel=m.source||i.source,pin=(m.pinned_commit||S.data.pinned_commit).slice(0,10);
-    const lic=m.license?` \u2014 ${esc(m.license)}${m.copyright?', '+esc(m.copyright):''}`:'';
+    const lic=m.license?` — ${esc(m.license)}${m.copyright?', '+esc(m.copyright):''}`:'';
     const nfiles=m.fileCount||i.fileCount;
-    dlg.innerHTML=`<h2>Add ${esc(i.name)}</h2><p class="kicker">${scopeName()} scope \u2014 will write ${d.targets.length} file(s)${size}</p><p class="cmdnote">Source: ${esc(srcLabel)}${lic}${m.thirdParty?' (third-party content)':''}</p>${warn}<pre style="max-height:16rem;overflow:auto">${esc(ok?d.targets.join('\n'):(d.stdout+d.stderr).trim())}</pre><p class="cmdnote">Downloads ${nfiles>1?nfiles+' files':'the file'} from ${esc(srcLabel)} at ${esc(pin)}, each verified by SHA-256.</p><div id="res"></div><div class="acts"><button class="button secondary" data-a="close">Cancel</button>${ok?`<button class="button" data-a="confirm" data-v="${esc(k)}">Install to ${scopeName()}</button>`:''}</div>`;
+    dlg.innerHTML=`<h2>Add ${esc(i.name)}</h2><p class="kicker">${scopeName()} scope — will write ${d.targets.length} file(s)${size}</p><p class="cmdnote">Source: ${esc(srcLabel)}${lic}${m.thirdParty?' (third-party content)':''}</p>${warn}<pre style="max-height:16rem;overflow:auto">${esc(ok?d.targets.join('\n'):(d.stdout+d.stderr).trim())}</pre><p class="cmdnote">Downloads ${nfiles>1?nfiles+' files':'the file'} from ${esc(srcLabel)} at ${esc(pin)}, each verified by SHA-256.</p><div id="res"></div><div class="acts"><button class="button secondary" data-a="close">Cancel</button>${ok?`<button class="button" data-a="confirm" data-v="${esc(k)}">Install to ${scopeName()}</button>`:''}</div>`;
     dlg.showModal();
   }catch(e){alert('Preview failed: '+e.message)}
   finally{S.busy=null;render()}
@@ -143,23 +169,94 @@ async function confirmInstall(k,btn){
   }catch(e){res.innerHTML=`<p class="err">${esc(e.message)}</p>`;btn.disabled=false;btn.textContent='Retry'}
   render();
 }
-async function expand(k){
-  if(S.expanded.has(k)){S.expanded.delete(k);return}
-  S.expanded.add(k);
+async function ensureDetail(k){
   const i=find(k);
-  if(!i.core&&S.detail[k]===undefined){render();
-    try{const r=await fetch(`/api/detail?name=${encodeURIComponent(i.name)}&kind=${i.kind}`);const d=await r.json();if(!r.ok)throw new Error(d.error);S.detail[k]=d.description||i.description}
-    catch(e){S.detail[k]=i.description+' (full description unavailable: '+e.message+')'}}
+  if(i.core) return i.description;
+  if(S.detail[k]===undefined){
+    try{const r=await fetch(`/api/detail?name=${encodeURIComponent(i.name)}&kind=${encodeURIComponent(i.kind)}`);const d=await r.json();if(!r.ok)throw new Error(d.error);S.detail[k]=d.description||i.description}
+    catch(e){S.detail[k]=i.description+' (full description unavailable: '+e.message+')'}
+  }
+  return S.detail[k];
 }
+async function loadDoc(i){
+  const r=await fetch(`/api/skill?name=${encodeURIComponent(i.name)}&kind=${encodeURIComponent(i.kind)}`);
+  if(r.status===404) return null;
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error||r.status);
+  return d;
+}
+const insp=document.getElementById('inspector'),app=document.getElementById('app');
+async function fillBody(k,seq){
+  const i=find(k),kids=[];
+  let doc=null;
+  try{doc=await loadDoc(i)}catch(e){kids.push(el('p','SKILL.md unavailable: '+e.message,'err'))}
+  if(seq!==S.seq)return;
+  if(doc){
+    kids.push(el('p',i.description),el('p','Path: '+doc.path,'cmdnote'));
+    if(doc.truncated)kids.push(el('p','Truncated at 200 KB.','err'));
+    kids.push(el('p','Frontmatter','kicker'),el('pre',doc.frontmatter),el('p','SKILL.md','kicker'),el('pre',doc.body));
+  }else{
+    const text=await ensureDetail(k);
+    if(seq!==S.seq)return;
+    kids.push(el('p',text),el('p','Full SKILL.md is shown after install.','cmdnote'));
+  }
+  document.getElementById('ins-body').replaceChildren(...kids);
+}
+function openInspector(k){
+  const i=find(k),seq=++S.seq;
+  S.inspect=k;
+  document.getElementById('ins-kind').textContent=i.kind;
+  document.getElementById('ins-name').textContent=i.name;
+  document.getElementById('ins-meta').replaceChildren(...[i.kind,i.category,i.source,i.license,i.installed?'installed':'',i.execBridge?'exec bridge':'',i.hasHooks?'hooks':'',i.thirdParty?'third-party':''].filter(Boolean).map(t=>el('span',t,'tag')));
+  document.getElementById('ins-body').replaceChildren(el('p','Loading...'));
+  document.getElementById('ins-dry').replaceChildren();
+  document.getElementById('ins-dry-btn').dataset.v=k;
+  document.getElementById('ins-dry-row').hidden=!!i.core;
+  insp.inert=false;insp.classList.add('open');app.inert=true;
+  document.getElementById('ins-name').focus();
+  fillBody(k,seq);
+}
+function closeInspector(){
+  const k=S.inspect;if(!k)return;
+  S.inspect=null;S.seq++;S.dseq++;
+  insp.inert=true;app.inert=false;insp.classList.remove('open');
+  render();
+  [...document.querySelectorAll('button[data-a="open"]')].find(b=>b.dataset.v===k)?.focus();
+}
+async function dryRun(k){
+  const i=find(k),seq=++S.dseq,out=document.getElementById('ins-dry');
+  out.replaceChildren(el('p','Running dry run...','cmdnote'));
+  try{
+    const d=await post('/api/preview',i);
+    if(seq!==S.dseq)return;
+    const m=d.meta||{},ok=d.ok&&d.targets.length;
+    const nodes=[el('p',`Scope: ${scopeName()}. Dry run only: nothing was written.`,'cmdnote')];
+    nodes.push(ok?el('p',`Would write ${d.targets.length} file(s):`):el('p','Dry run reported a problem:','err'));
+    nodes.push(el('pre',ok?d.targets.join('\n'):(d.stdout+d.stderr).trim()));
+    nodes.push(el('p',`Source: ${m.source||i.source}${m.license?' — '+m.license:''}${m.copyright?', '+m.copyright:''}${m.pinned_commit?' @ '+m.pinned_commit.slice(0,10):''}`,'cmdnote'));
+    if(i.hasHooks)nodes.push(el('p','Includes hooks: copied only, NOT registered in your harness settings.','err'));
+    if(m.execBridge)nodes.push(el('p','Warning: contains a script that executes code received over a local socket or file channel without authentication.','warnbox'));
+    else if(m.hasScripts)nodes.push(el('p',`Contains ${m.scriptCount} script file(s) that run on your machine when the skill is used.`,'cmdnote'));
+    if(m.software&&m.software.length)nodes.push(el('p',`Needs third-party software that is not included: ${m.software.join(', ')}.`,'cmdnote'));
+    if(m.requires&&m.requires.length)nodes.push(el('p',`Would also install required skill(s): ${m.requires.join(', ')}.`,'cmdnote'));
+    out.replaceChildren(...nodes);
+  }catch(e){
+    if(seq===S.dseq)out.replaceChildren(el('p','Dry run failed: '+e.message,'err'));
+  }
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.inspect){e.preventDefault();closeInspector()}});
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-a]');if(!b||b.disabled)return;const a=b.dataset.a,v=b.dataset.v;
   if(a==='close')return dlg.close();
   if(a==='confirm')return confirmInstall(v,b);
   if(a==='add')return preview(v);
+  if(a==='open')return openInspector(v);
+  if(a==='inspect-close')return closeInspector();
+  if(a==='dry'){openInspector(v);return dryRun(v)}
+  if(a==='dry-run')return dryRun(b.dataset.v);
   if(a==='tab'){S.tab=v;S.cat='';S.src=''}
   else if(a==='sub'||a==='cat'||a==='src')S[a]=v;
   else if(a==='scope'){S.scope=v;await load()}
-  else if(a==='exp')await expand(v);
   render();
 });
 document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;render()}});

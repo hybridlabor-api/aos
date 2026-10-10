@@ -159,3 +159,14 @@ test('readLocalDoc: CRLF frontmatter split; symlink, directory and outside-root 
   assert.throws(() => readLocalDoc(dir, 'foo', 'agent'), (e) => e.status === 404);
   assert.throws(() => readLocalDoc(dir, '', 'skill'), (e) => e.status === 400);
 });
+
+test('B3: GET / serves the card UI with the inspector, /api/skill wiring and the token placeholder replaced', async () => {
+  const html = await (await fetch(base + '/')).text();
+  assert.match(html, /id="inspector"/);
+  assert.match(html, /\/api\/skill/);
+  assert.match(html, /const TOKEN='[0-9a-f]{48}'/);
+  assert.doesNotMatch(html, /__TOKEN__/);
+  const section = html.slice(html.indexOf('const insp='), html.indexOf("document.addEventListener('keydown'"));
+  assert.ok(section.includes("'/api/preview'"), 'inspector dry run posts to /api/preview');
+  assert.ok(!section.includes('/api/install'), 'inspector section never references /api/install');
+});
