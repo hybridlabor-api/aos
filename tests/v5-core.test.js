@@ -124,6 +124,21 @@ test('F6: a token the Harnesses step moves out of an inline MCP config is never 
     assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current, ui: { ask: async (k) => assert.fail(`asked ${k}`) } })), 0);
 });
 
+test('memB WebUI: a venv without fastapi fails verify and repair reruns installMemB', async () => {
+    const m = machine();
+    fs.mkdirSync(path.join(m.memb, 'src', 'backend'), { recursive: true });
+    fs.writeFileSync(path.join(m.memb, 'src', 'backend', 'server.py'), '');
+    const py = path.join(m.memb, '.venv', 'bin', 'python');
+    script(py, 'case "$2" in *fastapi*) exit 1;; esac\nexit 0');
+    const memb = pk.registry.find((p) => p.id === 'memb');
+    const c = { host: m.host, home: m.home, launchctl: () => ({ status: 1 }) };
+    assert.deepStrictEqual(memb.verify(c), { ok: false, detail: 'memB WebUI: fastapi/uvicorn missing in the memB venv' });
+    m.host.installMemB = async () => { m.calls.push('installMemB'); script(py); return true; };
+    await memb.repair(c);
+    assert.ok(m.calls.includes('installMemB'));
+    assert.strictEqual(memb.verify(c).ok, true);
+});
+
 test('update without a TTY (no ui.ask) asks nothing and stores nothing', async () => {
     const m = machine();
     assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current })), 0);
