@@ -626,3 +626,20 @@ Ported to `skills/global_config/agentic-harness-patterns/` (English variant only
 Not vendored: the AOS installer ships no upstream code or binary — it only references the
 upstream MCP server (opt-in registration in `mcp_picks.json`, gated on the binary being
 installed) and curates `skills/codebase-memory/SKILL.md` as original documentation of it.
+
+---
+
+## mpiton/tauri-pilot
+
+- **Upstream:** <https://github.com/mpiton/tauri-pilot> (commit ba5912ee6baf914b7e7362295ea6ddfb1f18b0e5)
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
+- **Copyright:** Copyright (c) 2026 Mathieu Piton
+
+What was carried: `SKILL.md` only, ported to `vendor/rustauri/skills/tauri-pilot/SKILL.md`.
+
+Changes made:
+
+- Frontmatter: `category`, `source`, and a one-line quoted `description`; the body is otherwise the upstream text.
+- Added a "Prerequisites and safety" section, built from the upstream `Cargo.toml`, `README.md`, `docs/src/content/docs/guides/plugin-setup.md` and `SECURITY.md`. The upstream "Safety" section is kept as "Operating rules".
+
+Not carried: `assets/` and `scripts/` from the upstream repository.

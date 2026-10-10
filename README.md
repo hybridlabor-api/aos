@@ -51,7 +51,7 @@ Built for people who already run **Claude Code, Google Antigravity, Codex CLI, O
 | **Commands** | 15 slash commands: `/plan`, `/graph`, `/playbooks`, `/setup`, `/init`, `/doctor`, `/store`, `/hub`, `/memb`, `/orchestrator`, `/mastersession`, `/brainstorm`, `/shipping`, `/startproject`, `/loop` |
 | **CLIs** | 20 `bin` entries in `package.json` (installer aliases, `aos-gate`, `aos-gogate`, `aos-a2a`, `aos-acp`, `aos-hub`, `aos-sessions`, `aos-doctor`, ...) |
 | **Tools** | Plan Canvas, agenttrail, archify, AOS Store, Launchpad, Doctor, MCP gateway, Codenotch |
-| **Modules** | Optional: Creator Extension, Hardware and PCB, AO, Synapse, Token Saver. See [Optional modules](#optional-modules) |
+| **Modules** | Optional: Creator Extension, Hardware and PCB, Rust + Tauri, AO, Synapse, Token Saver. See [Optional modules](#optional-modules) |
 
 ---
 
@@ -370,7 +370,7 @@ The ambient hook `memb-inject` is the only part that pushes memory into context 
 
 ## Optional modules
 
-Synapse, AO, Creator Extension and Hardware and PCB are published as their own npm packages; the module picker offers them and Quick Update keeps them current. AOS works standalone without any. Token Saver is vendored and part of the standard profile.
+Synapse, AO, Creator Extension and Hardware and PCB are published as their own npm packages; the module picker offers them and Quick Update keeps them current. AOS works standalone without any. Token Saver is vendored and part of the standard profile. Rust + Tauri is vendored under `vendor/rustauri` and opt-in.
 
 ### Creator Extension: image, 3D and video
 
@@ -379,6 +379,10 @@ Synapse, AO, Creator Extension and Hardware and PCB are published as their own n
 ### Hardware and PCB
 
 `@hybridlabor-api/bdb-hardware-pcb`: KiCad and OpenSCAD through two MCP servers, with an ERC/DRC exit code as the gate before any output (schematic capture as code, constraints, layout and routing, DFM audit, Gerber/BOM/CPL). Enable: `-y --modules=hardware`. Skills: `godmode-hardware-pcb` (core) plus `code-first-hardware-design`, `pcb-constraint-definition`, `pcb-layout-routing-automation`, `pcb-validation-dfm-signoff`, `schematic-datasheet-analysis`, `schematic-reverse-engineering`; playbook `pb-pcb-to-case`; agent `pcb-design-assistant`.
+
+### Rust + Tauri
+
+Ships inside the kernel under `vendor/rustauri`, no download. Skills: `tauri-pilot` (drive and test a running Tauri v2 app via CLI/MCP; MIT, adapted from mpiton/tauri-pilot) and `rust-pro`. Enable: `-y --modules=rustauri`.
 
 ### AO: Agent Orchestrator
 

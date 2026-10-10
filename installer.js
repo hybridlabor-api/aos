@@ -1604,10 +1604,8 @@ function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBa
     }
 }
 
-function syncSkillsToGlobalHarnesses(excludeSkills = []) {
-    const skillsBase = path.join(srcDir, 'skills');
-    if (!fs.existsSync(skillsBase)) return;
-    const pluginCovered = runPluginMigration().covered;
+function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
+    const pluginCovered = ignorePluginCoverage ? new Set() : runPluginMigration().covered;
 
     // Mirror only into harnesses that are actually present. This list used to
     // be unconditional, which both wrote skills nobody would read and planted
@@ -1621,13 +1619,45 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     // circularity the block comment above warns about, just one layer down.
     // A harness that stops being detected now simply stops receiving skill
     // updates instead of perpetuating a false positive.
-    const extraSkillDestinations = [
+    return [
         { dir: path.join(homeDir, '.agents', 'skills'), key: null },
         { dir: path.join(claudeConfigDir(homeDir), 'skills'), key: 'claudecode' },
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
         { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
+}
+
+function installRustauri() {
+    const skillsBase = path.join(srcDir, 'vendor', 'rustauri', 'skills');
+    if (!fs.existsSync(skillsBase)) {
+        log.warn(`Rust + Tauri skills not found at ${skillsBase}; skipping.`);
+        return false;
+    }
+    const leaves = fs.readdirSync(skillsBase).filter((d) => fs.existsSync(path.join(skillsBase, d, 'SKILL.md')));
+    if (DRY_RUN) {
+        log.step(`[dry-run] would copy Rust + Tauri skills (${leaves.join(', ')}) to ~/.agents/skills and each detected harness`);
+        return true;
+    }
+    const agentsSkills = path.join(homeDir, '.agents', 'skills');
+    let agentsOk = false;
+    for (const dest of globalSkillDestinations({ ignorePluginCoverage: true })) {
+        try {
+            fs.mkdirSync(dest, { recursive: true });
+            for (const dir of leaves) syncSkillEntry(path.join(skillsBase, dir), dir, dest, []);
+            if (dest === agentsSkills) agentsOk = true;
+            log.step(`Installed Rust + Tauri skills to ${dest}`);
+        } catch (e) {
+            log.warn(`Could not install Rust + Tauri skills to ${dest}: ${e.message}`);
+        }
+    }
+    return agentsOk;
+}
+
+function syncSkillsToGlobalHarnesses(excludeSkills = []) {
+    const skillsBase = path.join(srcDir, 'skills');
+    if (!fs.existsSync(skillsBase)) return;
+    const extraSkillDestinations = globalSkillDestinations();
 
     retireCodexSkillCopies(_sessionManifest);
     retireStaleCodexPluginDir(_sessionManifest);
@@ -6061,6 +6091,7 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
             : []),
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: installCreatorExtension },
         { id: 'hardware', name: 'BDB Hardware & PCB (KiCad + OpenSCAD Electrical/PCB Design)', fn: installHardwarePcb },
+        { id: 'rustauri', name: 'Rust + Tauri (tauri-pilot + rust-pro skills, optional)', fn: installRustauri },
         { id: 'codebase-memory', name: 'Codebase Memory MCP (Code Knowledge Graph, Local SQLite)', fn: installCodebaseMemory },
         { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
     ]).filter((m) => !installExcluded.has(m.id));
@@ -7734,6 +7765,8 @@ module.exports = {
     installOSAgentWorkspace,
     installCreatorExtension,
     installHardwarePcb,
+    installRustauri,
+    rustauriSourceDir: () => path.join(srcDir, 'vendor', 'rustauri'),
     installCodebaseMemory,
     installDevToolInstaller,
     installDeja,

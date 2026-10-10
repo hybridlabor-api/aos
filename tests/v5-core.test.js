@@ -359,6 +359,58 @@ test('token-saver verify checks CLI and hook registration', () => {
     }
 });
 
+test('rustauri detect: not installed without both SKILL.md files, installed with them', () => {
+    const rust = pk.registry.find((p) => p.id === 'rustauri');
+    const home = mkHome();
+    const src = path.join(home, 'vendor-rustauri');
+    pkgJson(src, '0.1.0');
+    const host = { rustauriSourceDir: () => src };
+    assert.deepStrictEqual(rust.detect({ host, home }), { installed: false, version: null });
+    const skill = (s) => { const d = path.join(home, '.agents', 'skills', s); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'SKILL.md'), 'x'); };
+    skill('tauri-pilot');
+    assert.strictEqual(rust.detect({ host, home }).installed, false, 'rust-pro still missing');
+    skill('rust-pro');
+    assert.deepStrictEqual(rust.detect({ host, home }), { installed: true, version: '0.1.0' });
+});
+
+test('rustauri verify: ok with both non-empty SKILL.md, names the missing one otherwise', () => {
+    const rust = pk.registry.find((p) => p.id === 'rustauri');
+    const home = mkHome();
+    const host = { rustauriSourceDir: () => home };
+    const skill = (s, body) => { const d = path.join(home, '.agents', 'skills', s); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'SKILL.md'), body); };
+    assert.deepStrictEqual(rust.verify({ host, home }), { ok: false, detail: 'tauri-pilot missing' });
+    skill('tauri-pilot', 'x');
+    skill('rust-pro', '');
+    assert.deepStrictEqual(rust.verify({ host, home }), { ok: false, detail: 'rust-pro missing' });
+    skill('rust-pro', 'x');
+    assert.strictEqual(rust.verify({ host, home }).ok, true);
+});
+
+test('rustauri install and update call host.installRustauri and fail when it reports false', async () => {
+    const rust = pk.registry.find((p) => p.id === 'rustauri');
+    const home = mkHome();
+    const calls = [];
+    const host = { installRustauri: () => { calls.push('install'); return true; }, rustauriSourceDir: () => home };
+    await rust.install({ host, home });
+    await rust.update({ host, home });
+    assert.deepStrictEqual(calls, ['install', 'install']);
+    await assert.rejects(rust.install({ host: { installRustauri: () => false }, home }), /Rust \+ Tauri install reported a failure/);
+});
+
+test('rustauri vendored skills: frontmatter name matches directory, description, category library, source line', () => {
+    const dir = path.join(__dirname, '..', 'vendor', 'rustauri', 'skills');
+    const names = fs.readdirSync(dir).filter((d) => fs.existsSync(path.join(dir, d, 'SKILL.md')));
+    assert.ok(names.includes('tauri-pilot'), 'tauri-pilot is vendored');
+    for (const name of names) {
+        const text = fs.readFileSync(path.join(dir, name, 'SKILL.md'), 'utf8');
+        const fm = (text.match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
+        assert.strictEqual((fm.match(/^name:\s*(.+)$/m) || [])[1], name, `${name}: name`);
+        assert.ok(((fm.match(/^description:\s*(.+)$/m) || [])[1] || '').trim().length > 0, `${name}: description`);
+        assert.match(fm, /^category:\s*library\s*$/m, `${name}: category`);
+        assert.match(fm, /^source:\s*\S/m, `${name}: source`);
+    }
+});
+
 test('A1: a failing harness or kernel step is shown as ✖ and update exits non-zero', async () => {
     const m = machine();
     m.host.quickUpdateHarnesses = () => ['install the Codex plugin: boom'];
