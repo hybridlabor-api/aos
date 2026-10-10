@@ -84,6 +84,23 @@
       ]
     },
     {
+      "group": "tauri_pilot",
+      "candidates": [
+        {
+          "name": "tauri-pilot",
+          "requires": {
+            "app": "rustauri"
+          },
+          "entry": {
+            "command": "tauri-pilot",
+            "args": [
+              "mcp"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "group": "codebase_memory",
       "candidates": [
         {

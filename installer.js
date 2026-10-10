@@ -1647,7 +1647,63 @@ function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 }
 
-function installRustauri() {
+const TAURI_PILOT_VERSION = '0.8.1';
+const TAURI_PILOT_CARGO_ARGS = ['install', 'tauri-pilot-cli', '--version', TAURI_PILOT_VERSION, '--locked'];
+const TAURI_PILOT_INSTALL_CMD = `cargo ${TAURI_PILOT_CARGO_ARGS.join(' ')}`;
+const TAURI_PILOT_MCP = 'tauri-pilot';
+
+// The tauri-pilot CLI is also the MCP server. A missing cargo or a failed build only warns: the skills stay usable.
+function ensureTauriPilotCli({ exec = execFileSync, has = hasExecutable } = {}) {
+    try {
+        const out = exec('tauri-pilot', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000 });
+        if ((String(out).match(/\d+\.\d+\.\d+/) || [])[0] === TAURI_PILOT_VERSION) {
+            log.step(`tauri-pilot ${TAURI_PILOT_VERSION} already installed.`);
+            return true;
+        }
+    } catch (e) { logDebug(e, 'tauri-pilot --version'); }
+    if (!has('cargo')) {
+        log.warn(`cargo not found on PATH: the tauri-pilot CLI and MCP server are not installed. Install Rust, then run: ${TAURI_PILOT_INSTALL_CMD}`);
+        return false;
+    }
+    log.step(`Installing the tauri-pilot CLI: ${TAURI_PILOT_INSTALL_CMD} (compiles from source, can take several minutes)`);
+    try {
+        exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000 });
+        return true;
+    } catch (e) {
+        log.warn(`tauri-pilot CLI install failed (${e.message}). Run it by hand: ${TAURI_PILOT_INSTALL_CMD}`);
+        return false;
+    }
+}
+
+// The full install's MCP sync writes this pick as well; `aos package install rustauri` runs no sync, so the
+// entry is merged here into every existing harness MCP config. Package removal retires it on the next sync.
+function registerTauriPilotMcp() {
+    mcpPickCache = null; // the pick depends on the skills installRustauri has just written
+    const entry = mcpPicks().servers[TAURI_PILOT_MCP];
+    if (!entry) { log.warn('tauri-pilot MCP entry not registered: the tauri-pilot skill is not in ~/.agents/skills.'); return; }
+    const master = { mcpServers: { [TAURI_PILOT_MCP]: entry } };
+    const retired = new Set(mcpPicks().retired);
+    const shipped = mcpShipped();
+    for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir, process.env, process.platform, homeDir)) {
+        if (!fs.existsSync(file)) continue;
+        if (kind === 'opencode') { syncOpencodeConfigFile(file, master); continue; }
+        if (kind !== 'toml') { syncMcpConfigFile(file, master); continue; }
+        // mergeCodexTomlMcpServers rewrites the whole AOS block from what it is given: hand it the AOS tables already there.
+        try {
+            const owned = {};
+            for (const [name, t] of Object.entries(mcpSecrets.parseCodexTables(readTextFile(file)))) {
+                const e = mcpSecrets.codexEntry(t);
+                if (!retired.has(name) && typeof e.command === 'string' && mcpSecrets.isAosOwned(name, e, null, shipped)) owned[name] = e;
+            }
+            mergeCodexTomlMcpServers(file, { ...owned, ...master.mcpServers });
+        } catch (e) {
+            log.warn(`Could not add the tauri-pilot MCP server to ${file}: ${e.message}`);
+        }
+    }
+    log.step('Registered the tauri-pilot MCP server (direct, not behind the gateway) in the harness MCP configs.');
+}
+
+function installRustauri(deps = {}) {
     const skillsBase = path.join(srcDir, 'vendor', 'rustauri', 'skills');
     if (!fs.existsSync(skillsBase)) {
         log.warn(`Rust + Tauri skills not found at ${skillsBase}; skipping.`);
@@ -1656,6 +1712,8 @@ function installRustauri() {
     const leaves = fs.readdirSync(skillsBase).filter((d) => fs.existsSync(path.join(skillsBase, d, 'SKILL.md')));
     if (DRY_RUN) {
         log.step(`[dry-run] would copy Rust + Tauri skills (${leaves.join(', ')}) to ~/.agents/skills and each detected harness`);
+        log.step(`[dry-run] would run \`${TAURI_PILOT_INSTALL_CMD}\` when cargo is on PATH and tauri-pilot ${TAURI_PILOT_VERSION} is not installed`);
+        log.step('[dry-run] would register the tauri-pilot MCP server ({"command": "tauri-pilot", "args": ["mcp"]}) in every harness MCP config');
         return true;
     }
     const agentsSkills = path.join(homeDir, '.agents', 'skills');
@@ -1670,7 +1728,10 @@ function installRustauri() {
             log.warn(`Could not install Rust + Tauri skills to ${dest}: ${e.message}`);
         }
     }
-    return agentsOk;
+    if (!agentsOk) return false;
+    ensureTauriPilotCli(deps);
+    registerTauriPilotMcp();
+    return true;
 }
 
 function syncSkillsToGlobalHarnesses(excludeSkills = []) {
@@ -3694,7 +3755,7 @@ let mcpPickDetect = null;
 let mcpPickCache = null;
 const mcpPicks = () => {
     if (!mcpPickCache) {
-        const detect = mcpPickDetect || require('./lib/mcp-pick').detectApps({ platform: process.platform, env: process.env });
+        const detect = mcpPickDetect || require('./lib/mcp-pick').detectApps({ platform: process.platform, env: process.env, home: homeDir });
         mcpPickCache = mcpSecrets.shippedPicks(srcDir, { detect, env: process.env });
     }
     return mcpPickCache;
@@ -6981,7 +7042,8 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
             // OpenCode provider APIs (e.g. OpenAI-compatible, Console) enforce tool name length limits
             // (e.g. max 64 chars) and context limits. Loading 20+ MCPs causes provider errors (e.g. 73-char tool names).
             // OpenCode uses a slim profile: only core servers (memb_mcp, zavora_computer_use) are enabled by default.
-            const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use', 'deja']);
+            // tauri-pilot is only in the master set when the opt-in Rust + Tauri package is installed.
+            const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use', 'deja', 'tauri-pilot']);
             const existingMcp = existing && existing.mcp ? existing.mcp : {};
             const hasExistingKeys = Object.keys(existingMcp).length > 0;
 
@@ -7962,6 +8024,8 @@ module.exports = {
     installCreatorExtension,
     installHardwarePcb,
     installRustauri,
+    TAURI_PILOT_VERSION,
+    TAURI_PILOT_INSTALL_CMD,
     rustauriSourceDir: () => path.join(srcDir, 'vendor', 'rustauri'),
     installCodebaseMemory,
     installDevToolInstaller,

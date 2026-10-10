@@ -277,12 +277,22 @@ async function execute(p) {
         writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
         console.log(`  deja-Eintrag aus ${tilde(f)} entfernt`);
       }
+      // Rust + Tauri package: only the entry AOS writes ({command: tauri-pilot, args: [mcp]}) leaves.
+      const tp = cfg.mcpServers && cfg.mcpServers['tauri-pilot'];
+      if (tp && tp.command === 'tauri-pilot' && JSON.stringify(tp.args) === '["mcp"]') {
+        delete cfg.mcpServers['tauri-pilot'];
+        writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
+        console.log(`  tauri-pilot-Eintrag aus ${tilde(f)} entfernt`);
+      }
     } catch { console.log(`  ${tilde(f)} nicht lesbar — von Hand prüfen`); }
   }
 
   const opencodeCfg = h('.config', 'opencode', 'opencode.jsonc');
   if (existsSync(opencodeCfg) && /"deja"\s*:/.test(readFileSync(opencodeCfg, 'utf8'))) {
     console.log(`  ${tilde(opencodeCfg)} enthält noch einen deja-Eintrag — von Hand entfernen (JSONC, wird nicht automatisch umgeschrieben)`);
+  }
+  if (existsSync(opencodeCfg) && /"tauri-pilot"\s*:/.test(readFileSync(opencodeCfg, 'utf8'))) {
+    console.log(`  ${tilde(opencodeCfg)} enthält noch einen tauri-pilot-Eintrag — von Hand entfernen (JSONC, wird nicht automatisch umgeschrieben)`);
   }
 
   const codexToml = h('.codex', 'config.toml');
