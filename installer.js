@@ -7316,7 +7316,7 @@ async function main() {
     const args = process.argv.slice(2);
     // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
     // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
-    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'package'];
+    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package'];
     if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
         console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
         process.exitCode = 2;
@@ -7343,6 +7343,8 @@ Commands:
   store            Browse and install skills
   hub              Open the AOS Hub (start|stop|status on 127.0.0.1:7900)
   services         Status or control of the local services (status|start|stop|restart)
+  restart <id>     Restart one local service (typed confirm; same as aos services restart)
+  dashboard        Run the AOS dashboard (--port N, --no-open)
   package          Install, update, repair or verify one v5 package by id
   doctor|checkup   Check the installation
 
@@ -7441,6 +7443,28 @@ Options:
         const { cli } = await import('./lib/hub/services.mjs');
         const code = await cli(process.argv.slice(3), {});
         process.exitCode = code ?? 0;
+        return;
+    }
+    if (process.argv[2] === 'restart') {
+        const rest = process.argv.slice(3);
+        const ci = rest.findIndex((a) => a === '--confirm' || a === '-c');
+        const id = rest.filter((a, i) => !a.startsWith('-') && (ci === -1 || i !== ci + 1))[0];
+        // TTY without --confirm: ask the user to type the id (the services CLI's own guard).
+        if (ci === -1 && process.stdin.isTTY && id) {
+            const answer = (await password({ message: `Type "${id}" to confirm the restart (Ctrl+C to abort):` })) || '';
+            if (answer !== id) { console.error(`aos restart: confirm did not match "${id}". Nothing was restarted.`); process.exitCode = 2; return; }
+            rest.push('--confirm', id);
+        }
+        const { cli } = await import('./lib/hub/services.mjs');
+        const code = await cli(['restart', ...rest], {});
+        process.exitCode = code ?? 0;
+        return;
+    }
+    if (process.argv[2] === 'dashboard') {
+        // Same spawn discipline as `hub`: ESM bin, current node, args array, shell:false.
+        const dashScript = path.join(srcDir, 'bin', 'aos-dashboard.mjs');
+        const result = spawnSync(process.execPath, [dashScript, ...process.argv.slice(3)], { stdio: 'inherit', shell: false });
+        process.exitCode = result.status == null ? 1 : result.status;
         return;
     }
     if (process.argv[2] === 'package') {
