@@ -5450,6 +5450,7 @@ function installGoCheck({ targetHome = homeDir } = {}) {
         [path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs'), 'gate-profile.mjs'],
         [path.join(srcDir, 'bin', 'guarded-patterns.json'), 'guarded-patterns.json'],
         [path.join(srcDir, 'mcps', 'mcsc', 'packages', 'core', 'src', 'trail.js'), 'trail.mjs'],
+        [path.join(srcDir, 'mcps', 'mcsc', 'packages', 'core', 'src', 'no-mcp.js'), 'no-mcp.mjs'],
         [path.join(srcDir, 'lib', 'a2a-permissions.mjs'), 'a2a-permissions.mjs'],
         [path.join(srcDir, 'lib', 'sandbox.mjs'), 'sandbox.mjs'],
     ];

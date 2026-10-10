@@ -13,6 +13,8 @@
 //           (--prompt "<text>" | --prompt-file <f>) [--allow-default deny|allow|scoped]
 //           [--go-wait <sec>] [--consume|--no-consume] [--log <file>]
 //           [--sandbox coop|wsl2] [--model <id>] [--timeout <sec>] [--print-timeout <sec>] [--cmd "<custom agent command>"]
+//           [--with-mcp]
+//   Workers start without MCP servers unless --with-mcp is given; see the MCP note above ADAPTERS.
 //   agy runs `agy --print` (no ACP server, no per-tool permission requests): see agyArgs.
 
 import { spawn } from "node:child_process";
@@ -51,7 +53,17 @@ const emitTrail = (await loadFrom([
   join(here, "..", "mcps", "mcsc", "packages", "core", "src", "trail.js"),
   join(homedir(), ".aos", "bin", "trail.mjs"),
 ]))?.emitTrail ?? (async () => {});
+const opencodeNoMcpEnv = (await loadFrom([
+  join(here, "..", "mcps", "mcsc", "packages", "core", "src", "no-mcp.js"),
+  join(homedir(), ".aos", "bin", "no-mcp.mjs"),
+]))?.opencodeNoMcpEnv ?? ((env) => env);
 
+// MCP servers per adapter (default off, --with-mcp keeps them):
+//   claude   session/new sends mcpServers: [] (unchanged); whether claude-agent-acp then also skips the
+//            user's own configured servers is unverified.
+//   codex    unchanged: codex-cli 0.162.1 has no verified way to start without MCP servers (see mcsc codex.js).
+//   opencode OPENCODE_CONFIG_CONTENT disables every server in the OpenCode config files (no-mcp.js).
+//   agy      unchanged: `agy --help` documents no per-run flag for it.
 export const ADAPTERS = {
   claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.86.0"], consume: false },
   codex: { cmd: ["npx", "-y", "@agentclientprotocol/codex-acp@2.1.1"], consume: true },
@@ -264,16 +276,17 @@ export async function run(opts) {
   if (adapter?.cwdFlag && !opts.cmd) cmd.push(adapter.cwdFlag, opts.cwd);
   if (sandbox) cmd = sandbox.wrap(cmd, { cwd: opts.cwd });
   const consume = opts.consume ?? adapter?.consume ?? true;
-  log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, model: opts.model || "adapter default", ...(opts.sandbox && { sandbox: opts.sandbox }) });
+  log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, mcp: !!opts.withMcp, model: opts.model || "adapter default", ...(opts.sandbox && { sandbox: opts.sandbox }) });
 
   const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `${opts.adapter}:${opts.name}` };
   const seenTools = new Map();
   emitTrail({ ...trail, hook_event_name: "SessionStart" });
   let sessionId;
   const out = opts.stdout || process.stdout;
+  const env = { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" };
   const client = new AcpClient(cmd, {
     cwd: opts.cwd,
-    env: { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" },
+    env: opts.adapter === "opencode" && !opts.withMcp ? opencodeNoMcpEnv(env, opts.cwd) : env,
     log,
     onNotify: (method, p) => {
       if (method !== "session/update") return log("notify", { method, params: p });
@@ -341,6 +354,7 @@ export function parseArgs(argv) {
     else if (a === "--sandbox") o.sandbox = v, i++;
     else if (a === "--consume") o.consume = true;
     else if (a === "--no-consume") o.consume = false;
+    else if (a === "--with-mcp") o.withMcp = true;
     else throw new Error(`unknown argument ${a}`);
   }
   if (!o.adapter || !o.name || !o.prompt) throw new Error(USAGE);
@@ -348,7 +362,7 @@ export function parseArgs(argv) {
   return o;
 }
 
-const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--sandbox coop|wsl2] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900]";
+const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--sandbox coop|wsl2] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900] [--with-mcp]";
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
   if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }

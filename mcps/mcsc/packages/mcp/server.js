@@ -270,6 +270,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           variant: {
             type: "string",
             description: "Optional model variant (reasoning effort, e.g. high/max/minimal)."
+          },
+          mcp: {
+            type: "boolean",
+            description: "Keep the worker's configured MCP servers. Default: the worker starts without them."
           }
         },
         required: ["prompt"]
@@ -342,6 +346,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     model: args.model,
     variant: args.variant,
     write: args.write === true,
+    mcp: args.mcp === true,
     signal
   };
 

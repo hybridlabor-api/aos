@@ -211,3 +211,49 @@ describe('OpenCode adapter', () => {
         await assert.rejects(hooks['tool.execute.before']({ tool: 'write', sessionID: 's1', callID: 'c' }, { args: { filePath: '/h/.aos/gate/x.json' } }), /go-gate store/);
     });
 });
+
+// mcsc's opencode adapter starts the worker without MCP servers unless req.mcp === true.
+describe('mcsc opencode adapter: MCP servers off by default', { skip: process.platform === 'win32' }, () => {
+    const ADAPTER = path.join(__dirname, '..', 'mcps', 'mcsc', 'packages', 'core', 'src', 'adapters', 'opencode.js');
+    const delegateWith = async (req, extraEnv = {}) => {
+        const bin = path.join(home, 'bin');
+        const out = path.join(home, 'oc-env.txt');
+        fs.mkdirSync(bin, { recursive: true });
+        fs.writeFileSync(path.join(bin, 'opencode'), `#!/bin/sh\nprintf '%s' "$OPENCODE_CONFIG_CONTENT" > ${JSON.stringify(out)}\n`, { mode: 0o755 });
+        const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}`, OPENCODE_CONFIG_CONTENT: '', ...extraEnv };
+        const prev = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+        Object.assign(process.env, env);
+        try {
+            const { delegate } = await import(`file://${ADAPTER}`);
+            const r = await delegate({ prompt: 'hi', cwd: path.join(home, 'proj'), ...req });
+            assert.equal(r.exit, 0, r.output);
+            return fs.readFileSync(out, 'utf8');
+        } finally {
+            for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+        }
+    };
+    beforeEach(() => {
+        const dir = path.join(home, '.config', 'opencode');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'opencode.jsonc'), '{ broken');
+        fs.writeFileSync(path.join(dir, 'opencode.json'), JSON.stringify({ mcp: { aos: { type: 'local' }, deja: { type: 'local' } } }));
+        fs.mkdirSync(path.join(home, 'proj'), { recursive: true });
+        fs.writeFileSync(path.join(home, 'proj', 'opencode.jsonc'), '// project\n{"mcp": {"memb_mcp": {"type": "local"},},}\n');
+    });
+
+    test('default: every server from the global and project files is disabled', async () => {
+        const cfg = JSON.parse(await delegateWith({}));
+        assert.deepEqual(cfg.mcp, { aos: { enabled: false }, deja: { enabled: false }, memb_mcp: { enabled: false } });
+    });
+
+    test('mcp: true leaves OPENCODE_CONFIG_CONTENT alone', async () => {
+        assert.equal(await delegateWith({ mcp: true }), '');
+    });
+
+    test('a caller-set OPENCODE_CONFIG_CONTENT is merged, its own fields win', async () => {
+        const cfg = JSON.parse(await delegateWith({}, { OPENCODE_CONFIG_CONTENT: '{"model":"m","mcp":{"deja":{"timeout":5}}}' }));
+        assert.equal(cfg.model, 'm');
+        assert.deepEqual(cfg.mcp.deja, { enabled: false, timeout: 5 });
+        assert.deepEqual(cfg.mcp.aos, { enabled: false });
+    });
+});

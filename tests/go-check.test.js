@@ -146,7 +146,7 @@ test('installGoCheck places go-check, go-gate and the patterns, idempotently, an
     const home = fs.mkdtempSync(path.join(tmpHome, 'inst-'));
     assert.equal(installer.installGoCheck({ targetHome: home }), true);
     const bin = path.join(home, '.aos', 'bin');
-    assert.deepEqual(fs.readdirSync(bin).sort(), ['a2a-permissions.mjs', 'gate-profile.mjs', 'go-check.mjs', 'go-gate.mjs', 'guarded-patterns.json', 'sandbox.mjs', 'trail.mjs']);
+    assert.deepEqual(fs.readdirSync(bin).sort(), ['a2a-permissions.mjs', 'gate-profile.mjs', 'go-check.mjs', 'go-gate.mjs', 'guarded-patterns.json', 'no-mcp.mjs', 'sandbox.mjs', 'trail.mjs']);
     const before = fs.readdirSync(bin).map((f) => fs.readFileSync(path.join(bin, f), 'utf8'));
     assert.equal(installer.installGoCheck({ targetHome: home }), true);
     assert.deepEqual(fs.readdirSync(bin).map((f) => fs.readFileSync(path.join(bin, f), 'utf8')), before);

@@ -35,6 +35,8 @@ export async function delegate(req) {
       req.prompt
     );
     
+    // MCP: unchanged. `agy --help` documents no per-run flag to skip MCP servers; `agy mcp disable`
+    // edits the persisted config for every session, so it is not used here.
     const env = childEnv('agy');
 
     const run = execFileAsync(
