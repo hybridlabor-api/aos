@@ -80,7 +80,7 @@ test('observe rows and installed:false rows are never restarted', async () => {
   ]);
   for (let i = 0; i < 5; i++) await w.tick();
   assert.equal(restarts.length, 0);
-  assert.equal(w.state.get('synapse').misses, 5); // tracked, but untouched
+  assert.equal(w.state.get('synapse').misses, 0); // listed in the status, never counted
 });
 
 test('overlapping tick calls cause only one status call', async () => {
