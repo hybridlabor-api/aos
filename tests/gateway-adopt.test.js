@@ -157,6 +157,16 @@ test('dryRun returns the scan, writes nothing', () => {
     assert.deepEqual(fx.files.map((f) => fs.readFileSync(f.file, 'utf8')), before);
 });
 
+test('only adopts just the listed names', () => {
+    const fx = fixture();
+    const rep = adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped, only: ['mine2'] });
+    assert.deepEqual(rep.adopted, ['mine2']);
+    assert.deepEqual(rj(fx.f.claude).mcpServers.mine, { command: 'node', args: ['mine.js'], cwd: '/w', env: { FOO: 'bar' } });
+    assert.equal(rj(fx.f.claude).mcpServers.aos, undefined, 'untouched file gets no aos entry');
+    assert.equal(rj(fx.f.oc).mcp.ocmine.command[0], 'node');
+    assert.deepEqual(Object.keys(rj(adopt.adoptedPath(fx.home)).servers), ['mine2']);
+});
+
 test('idempotent second run adopts nothing', () => {
     const fx = fixture();
     adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped, now: 1000 });

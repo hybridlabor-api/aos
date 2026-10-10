@@ -293,8 +293,9 @@ describe('pkg-gateway', () => {
         assert.ok(plist.includes('<key>HOME</key>') && plist.includes('<key>PATH</key>'));
 
         assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
-        assert.deepEqual(calls[1], ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
-        assert.deepEqual(calls[2], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
+        assert.deepEqual(calls[1].slice(0, 4), [path.join(dir, 'node_modules', '.bin', '1mcp'), 'preset', 'create', 'aos-core']);
+        assert.deepEqual(calls[2], ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
+        assert.deepEqual(calls[3], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
         assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_unreal_mcp', 'github', 'open_design_mcp']);
     });
@@ -403,7 +404,7 @@ describe('pkg-gateway', () => {
         await pkg.update(second.ctx);
         assert.equal(fs.readFileSync(path.join(dir, 'token'), 'utf8'), token);
         assert.equal(fs.readFileSync(path.join(dir, 'gateway.json'), 'utf8'), '{"user":true}');
-        assert.deepEqual(second.calls[1], ['launchctl', 'kickstart', '-k', 'gui/501/com.bdb.aos.gateway']);
+        assert.deepEqual(second.calls[2], ['launchctl', 'kickstart', '-k', 'gui/501/com.bdb.aos.gateway']);
     });
 
     test('install fails loudly when npm fails', async () => {
@@ -728,14 +729,16 @@ describe('harness enable/disable', () => {
         assert.deepEqual(oc.mcp.aos, { type: 'remote', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN }, enabled: true });
         assert.equal(oc.$schema, 'x');
         assert.deepEqual(rep.find((r) => r.file === fx.f.cursor).kept, [{ name: 'github', reason: 'user-owned' }]);
-        for (const k of ['codex', 'agy']) assert.equal(fs.readFileSync(fx.f[k], 'utf8'), before[k], `${k} byte-identical`);
-        assert.deepEqual(rep.filter((r) => r.skipped).map((r) => r.skipped), ['shape unverified', 'shape unverified']);
+        assert.ok(fs.readFileSync(fx.f.codex, 'utf8').startsWith(before.codex), 'codex keeps its own tables');
+        assert.ok(/\[mcp_servers\.aos\]\nurl = "http:\/\/127\.0\.0\.1:7790\/mcp"/.test(fs.readFileSync(fx.f.codex, 'utf8')));
+        assert.deepEqual(rj(fx.f.agy).mcpServers.aos, { serverUrl: harness.GATEWAY_URL, headers: { 'x-aos-token': TOKEN } });
+        assert.deepEqual(rep.filter((r) => r.skipped).map((r) => r.skipped), []);
         // backups hold the pre-change bytes; migration.json holds originals and the aos marker, no token
         assert.equal(fs.readFileSync(rep.find((r) => r.file === fx.f.claude).backup, 'utf8'), before.claude);
         const mig = fs.readFileSync(harness.migrationPath(fx.home), 'utf8');
         assert.ok(!mig.includes(TOKEN));
         const recs = JSON.parse(mig).records;
-        assert.equal(recs.filter((r) => r.added).length, 3);
+        assert.equal(recs.filter((r) => r.added).length, 5); // incl. the Codex [mcp_servers.aos] marker (review C)
         assert.deepEqual(recs.find((r) => r.key === 'github' && r.kind === 'claude').original, owned(fx.home, 'github'));
         if (posix) assert.equal(mode(harness.migrationPath(fx.home)), 0o600);
     });
@@ -819,10 +822,10 @@ describe('harness enable/disable', () => {
         const before = snap(fx.f);
         run(fx);
         const rep = harness.disable({ home: fx.home, files: fx.files, now: 3000 });
-        for (const k of ['claude', 'cursor', 'oc']) {
+        for (const k of ['claude', 'cursor', 'oc', 'agy']) {
             assert.deepEqual(rj(fx.f[k]), JSON.parse(before[k]), k);
         }
-        for (const k of ['codex', 'agy']) assert.equal(fs.readFileSync(fx.f[k], 'utf8'), before[k]);
+        assert.equal(fs.readFileSync(fx.f.codex, 'utf8'), before.codex);
         assert.ok(!fs.existsSync(harness.migrationPath(fx.home)));
         assert.ok(fs.existsSync(`${harness.migrationPath(fx.home)}.restored-3000`));
         assert.ok(rep.some((r) => r.removedAos));
@@ -923,4 +926,114 @@ describe('harness enable/disable', () => {
         assert.ok(!fs.existsSync(tokenFile));
         assert.deepEqual(rj(fx.f.claude), JSON.parse(before.claude));
     });
+});
+
+const gwHost = (home) => ({
+    quickUpdateKernel: () => {}, quickUpdateHarnesses: () => {},
+    detectInstallState: () => ({ isInstalled: true, localVersion: '4.0.0', installedModules: [] }),
+    resolveTargetPaths: () => ({ targetSkillDir: path.join(home, 'skills'), targetMcpDir: path.join(home, 'mcp') }),
+    moduleBasePath: () => path.join(home, '.agents'),
+    isNewerVersion: (l, r) => l !== r, loadExistingEnv: () => ({}), PROVIDER_KEY_ENV_NAMES: {},
+    saveManifest: () => {}, flushSessionManifest: () => {}, runUninstaller: () => 0,
+});
+
+test('update installs gateway when missing', async () => {
+    const menu = require('../lib/v5/menu.js');
+    const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+    const realInstall = gw.install, realVerify = gw.verify;
+    const calls = [];
+    gw.install = async (c) => { calls.push(c.home); c.log('preset aos-core not created'); return { ok: true }; };
+    gw.verify = async () => ({ ok: true });
+    const home = tmp();
+    const out = [];
+    try {
+        await menu.update(gwHost(home), { home, platform: 'darwin', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
+    } finally { gw.install = realInstall; gw.verify = realVerify; }
+    assert.deepStrictEqual(calls, [home]);
+    assert.match(out.join(''), /✔ MCP gateway preset aos-core not created; running/);
+});
+
+test('update skips the MCP gateway off macOS without installing', async () => {
+    const menu = require('../lib/v5/menu.js');
+    const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+    const realInstall = gw.install;
+    const calls = [];
+    gw.install = async (c) => { calls.push(c.home); return { ok: true }; };
+    const home = tmp();
+    const out = [];
+    try {
+        await menu.update(gwHost(home), { home, platform: 'linux', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
+    } finally { gw.install = realInstall; }
+    assert.deepStrictEqual(calls, []);
+    assert.match(out.join(''), /MCP gateway: skipped on linux/);
+});
+
+describe('adoptGateway', () => {
+    const menu = require('../lib/v5/menu.js');
+    const adopt = require('../lib/gateway/adopt.js');
+    const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+    const scanned = { adoptable: [{ name: 'foo', entry: { command: 'node', args: ['f.js'] } }, { name: 'bar', entry: { command: 'node', args: ['b.js'] } }] };
+
+    const setup = () => {
+        const home = tmp();
+        const marker = path.join(home, 'order.txt');
+        fs.mkdirSync(path.join(home, '.agents', 'bin'), { recursive: true });
+        fs.writeFileSync(path.join(home, '.agents', 'bin', 'aos-gateway.mjs'), `import fs from 'fs';\nfs.appendFileSync(${JSON.stringify(marker)}, 'restart\\n');\n`);
+        fs.mkdirSync(cfg.gatewayDir(home), { recursive: true });
+        fs.writeFileSync(path.join(cfg.gatewayDir(home), 'token'), 'tok\n');
+        return { home, marker, out: [], applied: [] };
+    };
+
+    test('picked server is adopted, config regenerated, then the gateway restarted', async () => {
+        const t = setup();
+        const real = { scan: adopt.scanAdoptable, apply: adopt.applyAdopt, update: gw.update };
+        adopt.scanAdoptable = () => scanned;
+        adopt.applyAdopt = (o) => { t.applied.push(o.only); return { adopted: o.only, files: [], skipped: [] }; };
+        gw.update = async () => { fs.appendFileSync(t.marker, 'update\n'); return { ok: true }; };
+        try {
+            await menu.adoptGateway({ home: t.home, write: (s) => t.out.push(s), adopt: true, ui: { multi: async () => ['foo'] } }, path.join(t.home, 'adopt.log'));
+        } finally { adopt.scanAdoptable = real.scan; adopt.applyAdopt = real.apply; gw.update = real.update; }
+        assert.deepStrictEqual(t.applied, [['foo']]);
+        assert.deepStrictEqual(fs.readFileSync(t.marker, 'utf8').split('\n').filter(Boolean), ['update', 'restart']);
+        assert.match(t.out.join(''), /✔ Adopt MCP servers foo/);
+    });
+
+    test('empty pick adopts nothing and does not restart', async () => {
+        const t = setup();
+        const real = { scan: adopt.scanAdoptable, apply: adopt.applyAdopt };
+        adopt.scanAdoptable = () => scanned;
+        adopt.applyAdopt = (o) => { t.applied.push(o.only); return { adopted: [], files: [], skipped: [] }; };
+        try {
+            await menu.adoptGateway({ home: t.home, write: (s) => t.out.push(s), adopt: true, ui: { multi: async () => [] } }, path.join(t.home, 'adopt.log'));
+        } finally { adopt.scanAdoptable = real.scan; adopt.applyAdopt = real.apply; }
+        assert.deepStrictEqual(t.applied, []);
+        assert.ok(!fs.existsSync(t.marker));
+    });
+
+    test('non-interactive update prints only the adopt hint', async () => {
+        const t = setup();
+        const real = { scan: adopt.scanAdoptable, apply: adopt.applyAdopt };
+        adopt.scanAdoptable = () => scanned;
+        adopt.applyAdopt = (o) => { t.applied.push(o.only); return { adopted: [], files: [], skipped: [] }; };
+        try {
+            await menu.adoptGateway({ home: t.home, write: (s) => t.out.push(s), ui: {} }, path.join(t.home, 'adopt.log'));
+        } finally { adopt.scanAdoptable = real.scan; adopt.applyAdopt = real.apply; }
+        assert.deepStrictEqual(t.out, ['Other MCP servers can join the gateway: aos-gateway adopt\n']);
+        assert.deepStrictEqual(t.applied, []);
+    });
+});
+
+test('full install does not duplicate gateway servers when aos entry exists', () => {
+    const { spawnSync } = require('child_process');
+    const home = tmp();
+    const dir = path.join(home, 'mcp');
+    const file = path.join(home, 'mcp.json');
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp', headers: { 'X-AOS-Token': 'x' } } } }));
+    const code = `require(${JSON.stringify(path.join(ROOT, 'installer.js'))}).installMcpsForTarget({ targetMcpDir: process.argv[1], mcpConfigPath: process.argv[2], extraMcpConfigPaths: [] }, { selectedMcps: ['deja'], mode: 'merge', platformValue: '2', creds: {} });`;
+    const r = spawnSync(process.execPath, ['-e', code, dir, file], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 120000 });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const servers = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers;
+    assert.ok(servers.aos, 'gateway entry kept');
+    assert.ok(Object.keys(servers).length > 1, 'merge still wrote the direct servers');
+    assert.deepStrictEqual(cfg.GATEWAY_SERVERS.filter((n) => n in servers), []);
 });

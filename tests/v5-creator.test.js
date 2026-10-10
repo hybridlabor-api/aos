@@ -26,7 +26,7 @@ function machine(installed) {
     fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: installed }));
     fs.writeFileSync(path.join(dir, 'installer.js'), '');
     fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['fleet'] }));
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['fleet', 'gateway'] }));
     const calls = [];
     const host = {
         calls,

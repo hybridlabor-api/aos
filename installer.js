@@ -34,6 +34,8 @@ const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
+const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
+const { GATEWAY_SERVERS } = require('./lib/gateway/config');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -3628,6 +3630,23 @@ function recordMcpConfigPath(file) {
     try { uninstallRecords.recordMcpConfig(homeDir, path.resolve(file)); } catch (e) { logDebug(e, 'record MCP config path'); }
 }
 
+// Decided per target file: a harness config that already points at the gateway (its aos entry or
+// [mcp_servers.aos] table) gets no direct copies of the servers the gateway serves, or every tool is listed twice.
+// Every other file keeps them, so harnesses the gateway does not wire never lose a server.
+function hasGatewayAos(file) {
+    try {
+        if (file.toLowerCase().endsWith('.toml')) return fs.existsSync(file) && tomlHasGateway(fs.readFileSync(file, 'utf8'));
+        const l = loadJsonConfig(file);
+        return l.state === 'ok' && [l.data.mcpServers, l.data.mcp].some((m) => m && typeof m === 'object' && isAosShaped(m.aos));
+    } catch (e) { logDebug(e, 'gateway aos check'); return false; }
+}
+function withoutGatewayServers(servers, file) {
+    if (!servers || typeof servers !== 'object' || !hasGatewayAos(file)) return servers;
+    const out = { ...servers };
+    for (const n of GATEWAY_SERVERS) delete out[n];
+    return out;
+}
+
 function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
     if (!Array.isArray(extraPaths) || extraPaths.length === 0) return;
 
@@ -3653,7 +3672,7 @@ function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
             data.mcpServers = data.mcpServers && typeof data.mcpServers === 'object' ? data.mcpServers : {};
             const before = JSON.stringify(data);
             const collector = mcpSecrets.createCollector();
-            mcpSecrets.mergeServers(data.mcpServers, JSON.parse(JSON.stringify(servers)), { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(target) });
+            mcpSecrets.mergeServers(data.mcpServers, JSON.parse(JSON.stringify(withoutGatewayServers(servers, target))), { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(target) });
             retireMcpServers(data.mcpServers);
             if (existing && JSON.stringify(data) === before) continue;
             if (!stashInlineSecrets(collector, target)) continue;
@@ -4153,7 +4172,7 @@ async function installMcpsForTarget(paths, ctx) {
                 }
                 const newConfig = JSON.parse(mcpConfigStr);
                 const oldServers = oldConfig.mcpServers && typeof oldConfig.mcpServers === 'object' ? oldConfig.mcpServers : {};
-                const newServers = newConfig.mcpServers || {};
+                const newServers = withoutGatewayServers(newConfig.mcpServers || {}, paths.mcpConfigPath);
                 const collector = mcpSecrets.createCollector();
                 mcpSecrets.mergeServers(oldServers, newServers, { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(paths.mcpConfigPath) });
                 retireMcpServers(oldServers);
@@ -5314,6 +5333,10 @@ function installGlobalBinaries() {
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
         copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(homeDir, '.agents', 'lib'));
+        // The gateway reads the shipped server list from ~/.agents (aosRoot); without these it serves nothing.
+        for (const f of ['mcp_config.json', 'mcp_picks.json']) {
+            if (fs.existsSync(path.join(srcDir, f))) copyDirRecursiveSync(path.join(srcDir, f), path.join(homeDir, '.agents', f));
+        }
         // lib/gate-profile.mjs is a re-export of the hook copy, which does not exist under ~/.agents: aos-gate needs the real file there.
         const profileSrc = path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs');
         if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(homeDir, '.agents', 'lib', 'gate-profile.mjs'));
@@ -5642,7 +5665,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
 // replacing the block on re-runs. A server the user already declared outside the
 // block is skipped: a second [mcp_servers.<name>] table would make the file invalid TOML.
 function mergeCodexTomlMcpServers(configTomlPath, servers) {
-    servers = mcpSecrets.wrapServers(servers, mcpLauncher());
+    servers = mcpSecrets.wrapServers(withoutGatewayServers(servers, configTomlPath), mcpLauncher());
     const shipped = mcpShipped();
     const tomlKey = (k) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k));
     const tomlValue = (v) => {
@@ -6727,7 +6750,7 @@ function syncMcpConfigFile(targetPath, masterMcpData) {
         const data = loaded.data;
         if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
         const collector = mcpSecrets.createCollector();
-        mcpSecrets.mergeServers(data.mcpServers, masterMcpData.mcpServers, { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(targetPath) });
+        mcpSecrets.mergeServers(data.mcpServers, withoutGatewayServers(masterMcpData.mcpServers, targetPath), { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(targetPath) });
         retireMcpServers(data.mcpServers);
         if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
         if (!stashInlineSecrets(collector, targetPath)) return;
@@ -6753,7 +6776,7 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
             const existingMcp = existing && existing.mcp ? existing.mcp : {};
             const hasExistingKeys = Object.keys(existingMcp).length > 0;
 
-            for (const [key, rawVal] of Object.entries(masterMcpData.mcpServers)) {
+            for (const [key, rawVal] of Object.entries(withoutGatewayServers(masterMcpData.mcpServers, targetPath))) {
                 const existingEntry = existingMcp[key];
                 const prevEnv = (existingEntry && existingEntry.environment) || {};
                 const val = mcpSecrets.wrapServer(key, rawVal, mcpLauncher(), Object.keys(prevEnv).filter((k) => mcpSecrets.secretKV(k, prevEnv[k])));
@@ -7153,6 +7176,7 @@ function runUninstaller() {
 function v5Options(interactive) {
     const ui = interactive ? {
         select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
+        multi: async (message, options) => { const a = await multiselect({ message, options, required: false }); return isCancel(a) ? [] : a; },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
@@ -7684,6 +7708,8 @@ Options:
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    withoutGatewayServers,
+    mirrorMcpServersTo,
     codexPluginInstall,
     newestDistTag,
     verifyEcosystemInstallation,
