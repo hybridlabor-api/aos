@@ -738,7 +738,7 @@ describe('harness enable/disable', () => {
         const mig = fs.readFileSync(harness.migrationPath(fx.home), 'utf8');
         assert.ok(!mig.includes(TOKEN));
         const recs = JSON.parse(mig).records;
-        assert.equal(recs.filter((r) => r.added).length, 4);
+        assert.equal(recs.filter((r) => r.added).length, 5); // incl. the Codex [mcp_servers.aos] marker (review C)
         assert.deepEqual(recs.find((r) => r.key === 'github' && r.kind === 'claude').original, owned(fx.home, 'github'));
         if (posix) assert.equal(mode(harness.migrationPath(fx.home)), 0o600);
     });
