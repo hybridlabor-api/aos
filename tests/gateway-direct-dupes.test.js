@@ -29,7 +29,7 @@ const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 test('alternates of a gateway server count as covered; unrelated names do not', () => {
     assert.ok(gatewayCovered('bdb_after_effects_mcp_fallback'));
     assert.ok(gatewayCovered('github'));
-    assert.ok(!gatewayCovered('deja'));
+    assert.ok(!gatewayCovered('mcsc'));
     assert.deepEqual(alternatesOf('github'), []);
 });
 

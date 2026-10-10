@@ -57,12 +57,12 @@ test('A/B: the gateway servers are dropped only for a target file that holds the
     fs.writeFileSync(withAos, JSON.stringify({ mcpServers: { aos: harness.entryFor('claude', TOKEN) } }));
     fs.writeFileSync(desktop, JSON.stringify({ mcpServers: {} }));
     fs.writeFileSync(toml, `[mcp_servers.aos]\nurl = "${harness.GATEWAY_URL}"\n`);
-    const servers = { github: { command: 'npx' }, memb_mcp: { command: 'x' } };
-    assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, withAos)), ['memb_mcp']);
-    assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, toml)), ['memb_mcp']);
-    assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, desktop)), ['github', 'memb_mcp']);
-    assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, path.join(dir, 'missing.json'))), ['github', 'memb_mcp']);
-    assert.deepStrictEqual(Object.keys(servers), ['github', 'memb_mcp'], 'the shared list itself is never stripped');
+    const servers = { github: { command: 'npx' }, mcsc: { command: 'x' } };
+    assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, withAos)), ['mcsc']);
+    assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, toml)), ['mcsc']);
+    assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, desktop)), ['github', 'mcsc']);
+    assert.deepStrictEqual(Object.keys(withoutGatewayServers(servers, path.join(dir, 'missing.json'))), ['github', 'mcsc']);
+    assert.deepStrictEqual(Object.keys(servers), ['github', 'mcsc'], 'the shared list itself is never stripped');
 });
 
 test('A/B end to end, platform 2: the mirror skips the gateway servers in ~/.claude.json (aos) and keeps them in the desktop file', () => {
