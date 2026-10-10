@@ -228,8 +228,8 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
 
     test('session lifecycle: initSessionManifest + copyDirRecursiveSync + flushSessionManifest writes to .bdb-install-manifest.json', () => {
         const { tmpBase, fakeHome, fakeSrc, manifestPath } = createIsolatedEnv();
-        const origHome = process.env.HOME;
-        process.env.HOME = fakeHome;
+        const origHome = process.env.HOME, origProfile = process.env.USERPROFILE; // Windows: os.homedir() reads USERPROFILE
+        process.env.HOME = process.env.USERPROFILE = fakeHome;
         try {
             const skillDir = path.join(fakeSrc, 'skills', 'session-skill');
             fs.mkdirSync(skillDir, { recursive: true });
@@ -257,7 +257,7 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
             assert.ok(saved[targetFile].version, 'version must be present');
             assert.ok(saved[targetFile].installedAt, 'installedAt must be present');
         } finally {
-            process.env.HOME = origHome;
+            process.env.HOME = origHome; if (origProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = origProfile;
             cleanup(tmpBase);
         }
     });

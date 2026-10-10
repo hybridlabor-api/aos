@@ -115,8 +115,8 @@ describe('Shipped-hash ownership rule', () => {
         const { tmpBase, fakeSrc } = createIsolatedEnv();
         try {
             // Route the manifest into the temp home so the real one is untouched.
-            const origHome = process.env.HOME;
-            process.env.HOME = path.join(tmpBase, 'home');
+            const origHome = process.env.HOME, origProfile = process.env.USERPROFILE; // Windows: os.homedir() reads USERPROFILE
+            process.env.HOME = process.env.USERPROFILE = path.join(tmpBase, 'home');
             try {
                 const srcDir = path.join(fakeSrc, 'opencode', 'command');
                 fs.mkdirSync(srcDir, { recursive: true });
@@ -139,7 +139,7 @@ describe('Shipped-hash ownership rule', () => {
                 assert.strictEqual(fs.readdirSync(destDir).filter((f) => f.endsWith('.new')).length, 0, 'no .new written');
                 assert.notStrictEqual(oldHash, computeFileHash(dest));
             } finally {
-                process.env.HOME = origHome;
+                process.env.HOME = origHome; if (origProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = origProfile;
             }
         } finally {
             cleanup(tmpBase);
@@ -156,15 +156,15 @@ describe('Shipped-hash ownership rule', () => {
 
     test('manifest round-trips through the temp home only', () => {
         const { tmpBase } = createIsolatedEnv();
-        const origHome = process.env.HOME;
-        process.env.HOME = path.join(tmpBase, 'home');
+        const origHome = process.env.HOME, origProfile = process.env.USERPROFILE; // Windows: os.homedir() reads USERPROFILE
+        process.env.HOME = process.env.USERPROFILE = path.join(tmpBase, 'home');
         try {
             const manifestPath = getInstallManifestPath();
             assert.ok(manifestPath.startsWith(tmpBase), 'manifest stays inside the test home');
             saveInstallManifest({ a: 1 }, manifestPath);
             assert.deepStrictEqual(loadInstallManifest(manifestPath), { a: 1 });
         } finally {
-            process.env.HOME = origHome;
+            process.env.HOME = origHome; if (origProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = origProfile;
             cleanup(tmpBase);
         }
     });

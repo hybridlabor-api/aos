@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createServer as createServer_fwd } from 'node:http';
 import { createHub } from '../lib/hub/server.mjs';
 import { routes as servicesRoutes } from '../lib/hub/routes-services.mjs';
@@ -15,7 +16,7 @@ import {
 import { redact } from '../lib/hub/redact.mjs';
 import { routes as planRoutes } from '../lib/hub/routes-plans.mjs';
 
-const repo = resolve(new URL('..', import.meta.url).pathname);
+const repo = resolve(fileURLToPath(new URL('..', import.meta.url))); // .pathname gives /C:/... on Windows
 const servicesSrc = readFileSync(join(repo, 'lib', 'hub', 'services.mjs'), 'utf8');
 
 // Never the real home: point the a2a registry at a temp dir too.
@@ -407,7 +408,7 @@ describe('linux systemd control', () => {
     const rows = await statusService(ctx);
     assert.equal(rows.find((r) => r.id === 'gateway').control, 'systemd');
     assert.equal(rows.find((r) => r.id === 'ao').control, 'observe');
-    const loadCall = calls.find((c) => c.cmd === 'systemctl' && c.args[1] === 'is-enabled');
+    const loadCall = calls.find((c) => c.cmd === 'systemctl' && c.args[1] === 'is-enabled' && c.args[2] === 'com.bdb.aos.gateway.service');
     assert.ok(loadCall, 'is-enabled was asked');
     assert.deepEqual(loadCall.args, ['--user', 'is-enabled', 'com.bdb.aos.gateway.service']);
   });
