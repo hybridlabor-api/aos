@@ -128,6 +128,7 @@ One backstop exists, and it is not an excuse to skip the above:
 - `kind: "annotation"` — feedback anchored to an element (`anchor.selector`,
   `anchor.snippet` show what they pointed at; `anchor.textRange.text` when
   they highlighted a passage).
+- `kind: "answer"` — the human answered a `<QuestionForm>` question: `{ question, selected: [labels] }`.
 - `kind: "verdict"` — `approve` means the plan is CONFIRMED: stop polling,
   end the session, and start implementing. `request-changes` means revise the
   artifact (the canvas live-reloads it) and keep the loop going.

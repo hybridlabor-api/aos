@@ -294,6 +294,10 @@ function canvasClientJs() {
     const validItem = msg.item && typeof msg.item === 'object' && msg.item.kind === 'annotation';
     if (msg.type === 'pc:queue' && validItem) addToQueue(msg.item);
     else if (msg.type === 'pc:queue-and-send' && validItem) { addToQueue(msg.item); send(); }
+    else if (msg.type === 'pc:answers' && Array.isArray(msg.items)) {
+      const answers = msg.items.filter(it => it && it.kind === 'answer');
+      if (answers.length) { answers.forEach(addToQueue); send(); }
+    }
     else if (msg.type === 'pc:scroll') lastScroll = { x: msg.x || 0, y: msg.y || 0 };
     else if (msg.type === 'pc:toggle-mode') setAnnotate(!annotate);
     else if (msg.type === 'pc:ready') {
@@ -328,7 +332,7 @@ function canvasClientJs() {
       }
       const txt = document.createElement('span');
       txt.className = 'txt';
-      txt.textContent = item.kind === 'verdict' ? (item.verdict === 'approve' ? 'Approve plan' : 'Request changes') + (item.text ? ': ' + item.text : '') : item.text;
+      txt.textContent = item.kind === 'answer' ? item.question + ': ' + (item.selected || []).join(', ') : item.kind === 'verdict' ? (item.verdict === 'approve' ? 'Approve plan' : 'Request changes') + (item.text ? ': ' + item.text : '') : item.text;
       body.appendChild(txt);
       const rm = document.createElement('button');
       rm.textContent = '\\u00D7';
