@@ -132,7 +132,7 @@ The most common use case — Spline scene behind all content.
       top: 0; left: 0;
       width: 100%; height: 100%;
       z-index: 0;
-      background: #0a0a0a; /* match your site's base color */
+      background: var(--background, #000); /* use the project's background token */
       display: none; /* hidden by default, shown via JS if needed */
     }
   </style>

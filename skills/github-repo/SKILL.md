@@ -18,7 +18,7 @@ The **`github-repo`** skill establishes strict standards for building, organizin
 - **Repository Initialization**: When creating a new repository or preparing an existing codebase for open-source publication.
 - **Pre-Push Sanitization Audit**: Before committing or pushing code, to ensure no absolute local paths, API keys, foreign repository names, or cloned user metadata are published.
 - **Workflow Setup**: Setting up automated testing (`ci.yml`), automated NPM releases (`publish.yml`), or `.gitignore` rules.
-- **README Overhaul**: Restructuring a project's `README.md` to conform to modern BDB DEV corporate open-source standards.
+- **README Overhaul**: Restructuring a project's `README.md` to conform to modern open-source README standards.
 
 ---
 

@@ -1,6 +1,6 @@
 # Motion Tokens & Physics Reference
 
-This reference details the spring physics presets, Framer Motion patterns, and performance rules defined in BDB UI/UX Godmode.
+This reference details the spring physics presets, Framer Motion patterns, and performance rules defined in UI/UX Godmode.
 
 ---
 

@@ -4,11 +4,15 @@ description: "Use when acting as the authoritative design lead for all frontend 
 category: design-ui-ux
 ---
 
-# BDB UI/UX Godmode
+# UI/UX Godmode
 
 This skill is the single source of truth for all design decisions. It replaces: design-taste-frontend, frontend-design.
 
 **Routing:** Component lookup order: the project's own design system and sources file first (its components, tokens, `DESIGN.md`); the BDB library (`@bdb` registry; version-pinned unpkg entry `https://unpkg.com/@hybridlabor-api/ui-motion-library@0.1.0/publish/registry/{name}.json` in `components.json`) only when the project opts in; then the verified registries listed in the UI library's `docs/sources.md` (link-only entries are documentation links, never code sources).
+
+## -1. Design Source Discovery (MANDATORY FIRST STEP)
+
+Look for the project's own design source first: design-tokens.json, tokens.css, the tailwind theme, brand.md or DESIGN.md. Use it if found. If none exists, ask the user; otherwise start from the neutral defaults in design-tokens.json.
 
 ## 0. Brand Discovery (MANDATORY FIRST STEP)
 

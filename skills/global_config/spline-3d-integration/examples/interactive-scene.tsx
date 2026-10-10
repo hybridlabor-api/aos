@@ -164,7 +164,8 @@ export default function InteractiveScene() {
           color: 'white',
           fontSize: 18,
           zIndex: 10,
-          background: '#0a0a0a',
+          // Use the project's background token instead of a hard-coded color
+          background: 'var(--background, #000)',
         }}>
           Loading scene...
         </div>

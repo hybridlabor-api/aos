@@ -34,7 +34,8 @@ function shouldLoadSpline(mobileBreakpoint: number): boolean {
 
 export default function SplineBackground({
   sceneUrl,
-  fallbackColor = '#0a0a0a',
+  // Use the project's background token instead of a hard-coded color
+  fallbackColor = 'var(--background, #000)',
   fallbackImageUrl,
   mobileBreakpoint = 768,
   className = '',
