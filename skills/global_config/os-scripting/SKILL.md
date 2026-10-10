@@ -427,6 +427,25 @@ Before completing workflow, verify:
 - `security-audit` - Security testing
 - `database` - Database operations
 
+## Bash Script Generation
+
+- Use when creating a new Bash or POSIX shell script: CLI utilities, automation from manual CLI steps, text-processing (`grep`/`awk`/`sed`), cron or CI helper scripts.
+- Capture requirements first: input/output format, error-handling behavior (fail-fast/retry/continue), security and performance constraints, and portability target (Bash vs POSIX `sh`).
+- Map every major design decision to a captured requirement ID; keep assumptions explicit and minimal.
+- Template-first is the default for single-purpose CLI utilities; custom generation for multi-command architecture or unusual control flow.
+- Standard script shape: shebang and strict mode, `usage()`, `parse_args()`, input validation and dependency checks, main workflow functions, predictable exit codes; logging to stderr, data to stdout.
+- Validate every generated script (see below) and iterate until clean.
+- Full guide: generator/GUIDE.md
+
+## Bash Script Validation (ShellCheck)
+
+- Use when checking an existing script: quality, linting, syntax checking, security issues, or shell portability work.
+- Run the layered validator: syntax check (`bash -n` / `sh -n`), ShellCheck static analysis (system binary or wrapper fallback), then custom security, portability and optimization checks.
+- Record the detected shell type, exit code (`0` clean, `1` warnings, `2` errors), and all issue lines with ShellCheck codes (`SC####`) when present.
+- Load reference docs only for the issue types actually reported; cite file, line, and root cause for each fix.
+- After each batch of fixes, rerun until no new errors appear; document any warnings accepted intentionally and always report the latest exit code.
+- Full guide: validator/GUIDE.md
+
 ## Limitations
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.

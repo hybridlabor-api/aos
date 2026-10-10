@@ -14,6 +14,7 @@
 
 ### Removed
 
+* Merged 18 skills into 4. Firecrawl: the seven CLI skills (`firecrawl-agent`, `-crawl`, `-download`, `-interact`, `-map`, `-scrape`, `-search`) are guides under `firecrawl/commands/`; the five `firecrawl-build*` skills are the new `firecrawl-sdk`. DevOps: `dockerfile-generator` + `dockerfile-validator` -> `docker-expert`, `bash-script-generator` + `bash-script-validator` -> `os-scripting`, `makefile-generator` + `makefile-validator` -> the new `makefile-pro`; each old body is kept as `generator/GUIDE.md` or `validator/GUIDE.md` with its scripts. Installed copies of the old names are retired on update.
 * Removed the foreign `agent-orchestrator` skill (not the AO product `bdb-agent-orchestrator`, nor `ao-orchestrator`). Installed copies are retired on update; edited or foreign files are backed up first.
 
 ### Security

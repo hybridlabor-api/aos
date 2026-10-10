@@ -77,8 +77,8 @@ Avoid Stack Overflow, old blog posts, random snippets, and memory as the
 primary source when official docs exist. Use community sources only to debug
 symptoms *after* the authoritative contract is known.
 
-**In this environment:** `firecrawl-search` and `firecrawl-scrape` are the
-installed tools for the web pass, and `deja-memory` / `memb_mcp` can surface
+**In this environment:** the `firecrawl` skill (search, scrape) is the
+installed tool for the web pass, and `deja-memory` / `memb_mcp` can surface
 prior project knowledge. Neither substitutes for a docs read.
 
 ---

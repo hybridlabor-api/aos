@@ -232,7 +232,7 @@ quoted verbatim from that file.
 | Upstream | Licence | Copyright | Skills in AOS |
 |---|---|---|---|
 | [bitjaru/styleseed](https://github.com/bitjaru/styleseed) | MIT | Copyright (c) 2026 StyleSeed Contributors | `ui-component`, `ui-page`, `ui-pattern`, `ui-review`, `ui-tokens`, `ux-audit`, `ux-feedback`, `ux-flow` |
-| [firecrawl/skills](https://github.com/firecrawl/skills) | ISC | Copyright (c) Firecrawl | `firecrawl-build-scrape`, `firecrawl-build-search`, `firecrawl-build-interact`, `firecrawl-build-onboarding` |
+| [firecrawl/skills](https://github.com/firecrawl/skills) | ISC | Copyright (c) Firecrawl | `firecrawl-sdk` (merged from `firecrawl-build`, `firecrawl-build-scrape`, `firecrawl-build-search`, `firecrawl-build-interact`, `firecrawl-build-onboarding` in 5.0.0) |
 | [Dimillian/Skills](https://github.com/Dimillian/Skills) | MIT | Copyright (c) 2026 Thomas Ricouard | `github`, `react-component-performance`, `simplify-code` |
 | [anthropics/skills](https://github.com/anthropics/skills) | Apache-2.0 (per-skill `LICENSE.txt`; the repo has no root licence) | Copyright 2026 Anthropic, PBC. | `webapp-testing`, `web-artifacts-builder` |
 | [AgriciDaniel/claude-seo](https://github.com/AgriciDaniel/claude-seo) | MIT | Copyright (c) 2026 agricidaniel | `seo`, `seo-technical` |
@@ -373,7 +373,7 @@ Per-skill adaptations:
 - **read-the-damn-docs** — AOS adds a Verification section, the `category:`
   key (Builder's own validator forbids one, AOS requires it), a
   division-of-labour note against the `AGENTS.md` *Zero guesswork* rule, and a
-  pointer to the installed `firecrawl-search` / `firecrawl-scrape` tools.
+  pointer to the installed `firecrawl` skill (search, scrape).
   Prose only — the upstream `agents/openai.yaml` and README were not carried
   over, and no executable from the repo is referenced.
 - **factory-collect, factory-lookback, factory-review-prs** (earlier ports) —
@@ -455,7 +455,12 @@ Four generator/validator pairs are vendored under `skills/global_config/`, each
 carried whole including its `references/`, `scripts/`, `examples/`, `docs/` and
 `test/` subtrees: `github-actions-generator` + `github-actions-validator`,
 `dockerfile-generator` + `dockerfile-validator`, `bash-script-generator` +
-`bash-script-validator`, `makefile-generator` + `makefile-validator`.
+`bash-script-validator`, `makefile-generator` + `makefile-validator`. In 5.0.0
+the last three pairs were merged: the Docker pair into
+`docker-expert/{generator,validator}/`, the Bash pair into
+`os-scripting/{generator,validator}/`, the Makefile pair into
+`makefile-pro/{generator,validator}/`, each upstream SKILL.md body kept as
+`GUIDE.md` with its subtrees unchanged.
 
 AOS modifications: `category:`, `source:` and `date_added:` added to the
 frontmatter; the `devops-skills:` namespace prefix stripped from cross-skill
