@@ -5532,7 +5532,9 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
         const tmpPath = `${settingsPath}.${process.pid}.tmp`;
         if (existing) {
-            fs.copyFileSync(settingsPath, `${settingsPath}.${process.hrtime.bigint()}.bak`);
+            // hrtime counts from boot: shortly after a boot it has fewer than 13 digits, which the prune
+            // regex below skipped (backups piled up). Fixed width also keeps the name sort chronological.
+            fs.copyFileSync(settingsPath, `${settingsPath}.${String(process.hrtime.bigint()).padStart(20, '0')}.bak`);
             const dir = path.dirname(settingsPath);
             const base = path.basename(settingsPath);
             const baks = fs.readdirSync(dir).filter((f) => f.startsWith(`${base}.`) && /\.\d{13,}\.bak$/.test(f)).sort();
