@@ -293,11 +293,11 @@ describe('pkg-gateway', () => {
         assert.ok(plist.includes('<key>HOME</key>') && plist.includes('<key>PATH</key>'));
 
         assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
-        const all = cfg.GATEWAY_SERVERS.join(',');
-        assert.ok(calls.slice(1, 7).every((c) => c[0] === path.join(dir, 'node_modules', '.bin', '1mcp') && c[1] === 'preset' && c[2] === 'create'));
-        assert.deepEqual(calls.slice(1, 7).map((c) => [c[3], c[5]]), [['claude', all], ['agy', 'NOT bdb_davinci_mcp'], ['opencode', all], ['codex', all], ['roo', all], ['cursor', all]]);
-        assert.deepEqual(calls[7], ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
-        assert.deepEqual(calls[8], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
+        const presetCalls = calls.filter((c) => c[1] === 'preset');
+        assert.ok(presetCalls.every((c) => c[0] === path.join(dir, 'node_modules', '.bin', '1mcp') && c[2] === 'create'));
+        assert.deepEqual(presetCalls.map((c) => [c[3], c[5]]), [['agy', 'NOT bdb_davinci_mcp']]);
+        assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootout'), ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
+        assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootstrap'), ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
         assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_unreal_mcp', 'github', 'open_design_mcp']);
     });
@@ -406,13 +406,54 @@ describe('pkg-gateway', () => {
         await pkg.update(second.ctx);
         assert.equal(fs.readFileSync(path.join(dir, 'token'), 'utf8'), token);
         assert.equal(fs.readFileSync(path.join(dir, 'gateway.json'), 'utf8'), '{"user":true}');
-        assert.deepEqual(second.calls[2], ['launchctl', 'kickstart', '-k', 'gui/501/com.bdb.aos.gateway']);
+        assert.deepEqual(second.calls.find((c) => c.includes('kickstart')), ['launchctl', 'kickstart', '-k', 'gui/501/com.bdb.aos.gateway']);
     });
 
     test('install fails loudly when npm fails', async () => {
         const home = tmp();
         const { ctx } = mkCtx(home, { run: async () => ({ status: 1 }) });
         await assert.rejects(pkg.install(ctx), /npm install/);
+    });
+
+    test('win32 update ends the running task before it runs it', async () => {
+        const { ctx, calls } = mkCtx(tmp(), { platform: 'win32' });
+        await pkg.update(ctx);
+        assert.deepEqual(calls.filter((c) => c[0] === 'schtasks').map((c) => c[1]), ['/Create', '/End', '/Run']);
+    });
+
+    test('a failing systemctl is reported with its first stderr line', async () => {
+        const m = mkCtx(tmp(), { platform: 'linux' });
+        const base = m.ctx.run;
+        const ctx = { ...m.ctx, run: async (cmd, args) => (cmd === 'systemctl' ? { status: 1, stderr: 'Failed to connect to bus\nmore' } : base(cmd, args)) };
+        const say = [];
+        ctx.log = (m) => say.push(m);
+        await pkg.install(ctx);
+        assert.ok(say.some((m) => m === 'systemctl failed: Failed to connect to bus; start it with aos-gateway serve'), say.join(' | '));
+    });
+
+    test('preset create failure falls back to plain URL for that kind', async () => {
+        const home = tmp();
+        const { ctx, calls } = mkCtx(home);
+        const base = ctx.run;
+        ctx.run = async (cmd, args) => (args[1] === 'preset' ? { status: 1, stderr: 'boom' } : base(cmd, args));
+        const say = [];
+        ctx.log = (m) => say.push(m);
+        const seen = [];
+        const real = harness.enable;
+        harness.enable = (o) => { seen.push(o); return real(o); };
+        try { await pkg.install(ctx); } finally { harness.enable = real; }
+        assert.ok(calls.some((c) => c[1] === 'preset' && c[3] === 'agy'));
+        assert.deepEqual(pkg.livePresets(cfg.gatewayDir(home), pkg.shippedPresets(ROOT)), {});
+        assert.ok(seen.filter((o) => !o.dryRun).every((o) => Object.keys(o.presets).length === 0));
+        assert.ok(say.some((m) => /presets not created: agy; these kinds fall back to the plain URL/.test(m)), say.join(' | '));
+    });
+
+    test('dry-run plan passes the template presets to harness.enable', async () => {
+        const seen = [];
+        const real = harness.enable;
+        harness.enable = (o) => { seen.push(o); return real(o); };
+        try { await pkg.install(mkCtx(tmp(), { dryRun: true }).ctx); } finally { harness.enable = real; }
+        assert.deepEqual(Object.keys(seen[0].presets), ['agy']);
     });
 
     test('dryRun writes and runs nothing', async () => {
@@ -463,6 +504,7 @@ describe('pkg-gateway', () => {
         const unit = fs.readFileSync(path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.gateway.service'), 'utf8');
         assert.ok(unit.includes(`ExecStart="/opt/node/bin/node" "${path.join(ROOT, 'bin', 'aos-gateway.mjs')}" serve`));
         assert.ok(unit.includes('Restart=on-failure'));
+        assert.ok(unit.includes(`StandardOutput="append:${path.join(cfg.gatewayDir(home), 'gateway.log')}"`));
         assert.deepEqual(calls.filter((c) => c[0] === 'systemctl'), [
             ['systemctl', '--user', 'daemon-reload'],
             ['systemctl', '--user', 'enable', '--now', 'com.bdb.aos.gateway.service'],
@@ -483,7 +525,7 @@ describe('pkg-gateway', () => {
         const unit = path.join(lin.ctx.home, '.config', 'systemd', 'user', 'com.bdb.aos.gateway.service');
         lin.calls.length = 0;
         await pkg.uninstall({ ...lin.ctx, now: 1700000000000 });
-        assert.deepEqual(lin.calls.filter((c) => c[0] === 'systemctl'), [['systemctl', '--user', 'disable', '--now', 'com.bdb.aos.gateway.service']]);
+        assert.deepEqual(lin.calls.filter((c) => c[0] === 'systemctl'), [['systemctl', '--user', 'disable', '--now', 'com.bdb.aos.gateway.service'], ['systemctl', '--user', 'daemon-reload']]);
         assert.ok(!fs.existsSync(unit));
         const win = mkCtx(tmp(), { platform: 'win32' });
         await pkg.install(win.ctx);
@@ -554,7 +596,7 @@ describe('pkg-gateway', () => {
         const home = tmp();
         const port = await freePort();
         const upstreamPort = await freePort();
-        const r = await pkg.verify(mkCtx(home, { run: async () => { throw new Error('verify must not spawn'); }, sleep: async () => {}, statusPorts: { port, upstreamPort } }).ctx);
+        const r = await pkg.verify(mkCtx(home, { run: async () => { throw new Error('verify must not spawn'); }, sleep: async () => {}, statusFn: undefined, statusPorts: { port, upstreamPort } }).ctx);
         assert.equal(r.ok, false);
         assert.equal(r.status.running, false);
     });
@@ -950,7 +992,7 @@ describe('harness enable/disable', () => {
     test('install enables harnesses by default, skips with harnesses:false; uninstall disables first, then unlinks the token', async () => {
         const mk = (home, extra) => {
             const run = async () => ({ status: 0, stdout: '' });
-            return { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/n/node', aosRoot: ROOT, uid: 501, env: {}, ...extra };
+            return { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/n/node', aosRoot: ROOT, uid: 501, env: {}, sleep: async () => {}, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), ...extra };
         };
         const fx = fixture();
         const before = snap(fx.f);
@@ -973,6 +1015,15 @@ describe('harness enable/disable', () => {
         assert.deepEqual(order, ['disable(token present)']);
         assert.ok(!fs.existsSync(tokenFile));
         assert.deepEqual(rj(fx.f.claude), JSON.parse(before.claude));
+    });
+
+    test('install without a running gateway leaves every harness direct', async () => {
+        const fx = fixture();
+        const before = snap(fx.f);
+        const notRunning = { run: async () => ({ status: 0, stdout: '' }), dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/n/node', aosRoot: ROOT, uid: 501, env: {}, sleep: async () => {}, statusFn: async () => ({ running: false, port: cfg.GATEWAY_PORT }), home: fx.home };
+        const res = await pkg.install(notRunning);
+        assert.equal('harness' in res, false);
+        assert.deepEqual(snap(fx.f), before);
     });
 });
 
@@ -1036,7 +1087,11 @@ for (const platform of ['linux', 'darwin']) {
             Object.defineProperty(process, 'platform', realPlatform);
         }
         const text = out.join('');
-        if (platform === 'darwin') assert.match(text, /✖ MCP gateway[^\n]*not running/);
+        if (platform === 'darwin') {
+            const logged = /✖ MCP gateway — see (\S+)/.exec(text);
+            assert.ok(logged, text);
+            assert.match(fs.readFileSync(logged[1], 'utf8'), /not running/);
+        }
         else {
             assert.match(text, /✔ MCP gateway[^\n]*service not confirmed on linux: harnesses left direct, run aos-gateway enable after aos-gateway status is green/);
             assert.doesNotMatch(text, /✖ MCP gateway/);

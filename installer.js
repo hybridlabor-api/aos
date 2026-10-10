@@ -4009,6 +4009,7 @@ async function installMcpsForTarget(paths, ctx) {
     const skippedMcpConfigKeys = resolveUnsupportedMcpConfigKeys();
     try {
         const parsedMcpConfig = JSON.parse(mcpConfigStr);
+        delete parsedMcpConfig.presets; // gateway template key, not a harness config key
         // One MCP per app: the pick's winners replace the template's servers (placeholders resolved below).
         const pickOnly = new Set(Object.keys(mcpPicks().servers).filter((n) => !(n in parsedMcpConfig.mcpServers)));
         parsedMcpConfig.mcpServers = { ...mcpPicks().servers };

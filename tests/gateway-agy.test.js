@@ -54,11 +54,11 @@ test('AOS-shaped match is a prefix on the gateway URL, for url and serverUrl', (
     assert.ok(!harness.isAosShaped({ serverUrl: 'http://example.com/mcp' }));
 });
 
-test('template presets: exclusions become an AND NOT chain, "all" is empty, enable writes ?preset=<kind>', () => {
+test('template presets: exclusions become an AND NOT chain, "all" gets no preset, enable writes ?preset=<kind> only for exclusions', () => {
     const presets = JSON.parse(fs.readFileSync(path.join(ROOT, 'mcp_config.json'), 'utf8')).presets;
     const { presetFor } = require('../lib/gateway/config.js');
     assert.equal(presetFor('agy', presets), 'NOT bdb_davinci_mcp');
-    assert.equal(presetFor('claude', presets), '');
+    assert.equal(presetFor('claude', presets), null);
     assert.equal(presetFor('unknown', presets), null);
     assert.equal(presetFor('x', { x: ['a', 'b'] }), 'NOT a AND NOT b');
 
@@ -70,5 +70,5 @@ test('template presets: exclusions become an AND NOT chain, "all" is empty, enab
     const claude = path.join(fx.home, '.claude.json');
     fs.writeFileSync(claude, JSON.stringify({ mcpServers: {} }));
     harness.enable({ home: fx.home, token: TOKEN, shipped, files: [{ file: claude, kind: 'json' }], presets, now: 2000 });
-    assert.equal(JSON.parse(fs.readFileSync(claude, 'utf8')).mcpServers.aos.url, `${harness.GATEWAY_URL}?preset=claude`);
+    assert.equal(JSON.parse(fs.readFileSync(claude, 'utf8')).mcpServers.aos.url, harness.GATEWAY_URL);
 });
