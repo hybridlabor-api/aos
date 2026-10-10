@@ -183,6 +183,11 @@ The grilling family and the domain-modeling discipline it composes with:
 | `skills/global_config/domain-modeling/` | `skills/engineering/domain-modeling/` (incl. `ADR-FORMAT.md`, `CONTEXT-FORMAT.md`) |
 | `skills/global_config/triage/` | `skills/engineering/triage/` |
 | `skills/global_config/prototype/` | `skills/engineering/prototype/` |
+| `skills/global_config/tdd/` | `skills/engineering/tdd/` (incl. `tests.md`, `mocking.md`) |
+| `skills/global_config/diagnosing-bugs/` | `skills/engineering/diagnosing-bugs/` (incl. `scripts/hitl-loop.template.sh`) |
+| `skills/global_config/code-review/` | `skills/engineering/code-review/` |
+| `skills/global_config/to-spec/` | `skills/engineering/to-spec/` |
+| `skills/global_config/wayfinder/` | `skills/engineering/wayfinder/` |
 
 `grilling`'s interview protocol and `domain-modeling` are carried over
 essentially verbatim; `grill-me` and `grill-with-docs` are rewritten to name AOS's
@@ -190,6 +195,14 @@ own pipelines in their hand-off sections, but keep upstream's composition — bo
 are thin wrappers that invoke the primitive rather than restating it. Upstream's
 `agents/openai.yaml` under `domain-modeling` is harness-specific to that project
 and was not carried over.
+
+`tdd`, `diagnosing-bugs`, `code-review`, `to-spec` and `wayfinder` were imported from upstream commit
+`49dd158d1076134a641b33efb035946536778336` (2026-10-09). Changes: `category` and `source` frontmatter added;
+`GLOSSARY.md` references became `CONTEXT.md`; `/setup-matt-pocock-skills` and the upstream issue-tracker setup were
+replaced by AOS defaults (markdown files under `production_artifacts/`, GitHub issues via `gh` only on request);
+`codebase-design` became `software-architecture` and `research` became `deep-research`; short pointers to AOS's
+`test-driven-development`, `systematic-debugging`, `requesting-code-review` and the `/startcycle` Architect step were
+added. Upstream's `agents/openai.yaml` files were not carried over.
 
 `skills/global_config/ask-tim/` is derived from upstream's `ask-matt` router. It
 is not a copy: the flow it maps is AOS's own, since most of the skills on

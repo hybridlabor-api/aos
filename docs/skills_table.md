@@ -175,6 +175,11 @@
 | `simplify-code` | Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes. |
 | `systematic-debugging` | Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes |
 | `triage` | Move issues and external PRs through a state machine of triage roles, categorise, verify, and write agent-ready briefs. |
+| `tdd` | Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests. |
+| `diagnosing-bugs` | Diagnosis loop for hard bugs and performance regressions. Use when the user says "diagnose"/"debug this", or reports something broken/throwing/failing/slow. |
+| `code-review` | Review the changes since a fixed point along two axes: Standards and Spec. Runs both reviews in parallel sub-agents and reports them side by side. |
+| `to-spec` | Turn the current conversation into a spec and save it (or publish it to the issue tracker): no interview, just synthesis of what you've already discussed. |
+| `wayfinder` | Plan a huge chunk of work as a shared map of decision tickets, and resolve them one at a time until the way to the destination is clear. |
 | `typescript-pro` | Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns. |
 
 #### 🔩 Engineering & Hardware
