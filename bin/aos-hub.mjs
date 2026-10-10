@@ -238,6 +238,13 @@ export async function cli(argv = process.argv.slice(2)) {
   return cmdStart(opts);
 }
 
+// Service mode: launchd/systemd/Task Scheduler start `--serve --watch` directly. Serve in this
+// process, so the service manager supervises the real server; a detached child (the `aos hub`
+// path) would leave the manager watching a parent that already exited (seen on Windows).
+if (process.argv[1] && resolve(process.argv[1]) === SELF && process.argv.includes('--serve') && process.argv.includes('--watch')) {
+  process.env.AOS_HUB_SERVE = '1';
+}
+
 // Child mode: serve until /api/shutdown (or a signal). The token comes from
 // the parent via env when spawned detached; otherwise it is fresh per process.
 if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
