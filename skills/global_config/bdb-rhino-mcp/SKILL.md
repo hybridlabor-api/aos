@@ -19,6 +19,15 @@ The **Rhino MCP Platform** and **GOLEM-3DMCP Server** connect AI agents to McNee
 
 ---
 
+### Which server
+
+| Server | Use for | Fallback when |
+| :--- | :--- | :--- |
+| `bdb_rhino_mcp` (McNeel router, default version 8) | Primary: Rhino 7/8 modelling and Grasshopper control through the McNeel bridge. | Undocumented. |
+| `bdb_rhino_mcp_fallback` (GOLEM-3DMCP, 105 tools) | Scene audit, geometry create/boolean/loft, Grasshopper open/set/recompute/bake, viewport capture, Python execution. | `bdb_rhino_mcp` is unavailable (pair labelled primary/fallback for redundancy; no other trigger documented). |
+
+---
+
 ## 2. System Instructions
 
 ### Workflow Priorities

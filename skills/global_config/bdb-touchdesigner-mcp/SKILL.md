@@ -20,6 +20,15 @@ The **TouchDesigner MCP (MindDesigner)** server enables AI models to programmati
 
 ---
 
+### Which server
+
+| Server | Use for | Fallback when |
+| :--- | :--- | :--- |
+| `bdb_td_minddesigner` (tdmcp, port 9980) | Primary: high-level creative generation and structured inspection/edit tools. | Undocumented. |
+| `bdb_td_backup` (touchdesigner-mcp, port 9981) | Atomic node CRUD and low-level scripting. | `bdb_td_minddesigner` is unavailable (pair labelled primary/fallback; no other trigger documented). |
+
+---
+
 ## 2. System Instructions
 
 ### Workflow Priorities

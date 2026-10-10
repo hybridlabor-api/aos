@@ -40,6 +40,19 @@ Only these shipped servers are shared through the gateway (`GATEWAY_SERVERS` in 
 | Resolume | `bdb_resolume_official_mcp` | Resolume Arena's `mcp/resolume_arena_mcp_server` binary found | `bdb_resolume_mcp` |
 | After Effects | `bdb_after_effects_mcp_legacy` | only with env `AOS_AE_MCP=legacy` | `bdb_after_effects_mcp` |
 
+## Which server (overlapping pairs)
+
+| Server | Use for | Fallback when |
+| :--- | :--- | :--- |
+| `bdb_td_minddesigner` (TouchDesigner, primary) | Creative generation and structured node edits (tdmcp, :9980). Direct, not gateway-shared. | Undocumented |
+| `bdb_td_backup` (TouchDesigner, fallback) | Atomic node CRUD and low-level scripting (touchdesigner-mcp, :9981). | Primary unavailable; no trigger documented |
+| `bdb_after_effects_mcp` (After Effects, primary) | Compositions, layers, keyframes, expressions via the Node bridge. Gateway-shared; needs Node >= 24. | Undocumented |
+| `bdb_after_effects_mcp_fallback` (After Effects, fallback) | Go `ae-mcp`: layer wrappers plus Manim equation renders. Needs `go`. | Primary unavailable; no trigger documented |
+| `bdb_rhino_mcp` (Rhino, primary) | Rhino 7/8 modelling and Grasshopper via the McNeel router (default v8). | Undocumented |
+| `bdb_rhino_mcp_fallback` (Rhino, fallback) | GOLEM-3DMCP, 105 tools: scene, geometry, Grasshopper, viewport, Python. | Primary unavailable; no trigger documented |
+
+Pair labels come from `README.de.md:303-309` ("Primär- und Fallback-Paare für Redundanz"). No file documents a switch condition.
+
 ## Harness support tiers for `enable` (checked 2026-10-08)
 
 The harness table is driven by `lib/harnesses.json`; adding a harness = one row + one test.
