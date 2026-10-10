@@ -5,7 +5,7 @@ description: >-
   matches, what differs and what has no offer. Nothing is paid or sent. Use
   for "check my invoices", "match invoices to offers", "does this invoice
   match the quote".
-category: bdb-core
+category: business-ops
 kind: playbook
 trigger: ["check my invoices", "match invoices to offers", "invoice check"]
 inputs: [invoices_folder, offers_folder]

@@ -40,7 +40,7 @@ Built for people who already run **Claude Code, Google Antigravity, Codex CLI, O
 
 | | |
 |---|---|
-| **Skills** | 269 curated skills in seven categories: bdb-core, design-ui-ux, engineering-method, engineering-hardware, media-eventtech, library, saas-ops. 34 of them are playbooks |
+| **Skills** | 269 curated skills in eight categories: bdb-core, design-ui-ux, engineering-method, engineering-hardware, media-eventtech, library, saas-ops, business-ops. 34 of them are playbooks |
 | **Subagents** | 29 agents: the seven pipeline nodes plus 22 auxiliary specialists, compiled into each harness's native format. See [Subagents](#subagents) |
 | **MCP servers** | 21 local servers for creative software, OS control, memory and cross-harness delegation. See [MCP servers](#mcp-servers) |
 | **Pipelines** | `/startcycle` (linear), `/startcycle-graph` (durable state), `/startcycle-graph-user` (throwaway fan-out), plus the [multi-session workflow](#multi-session-workflow) |
@@ -323,7 +323,7 @@ claude plugin install bdb-aos-alert@bdb-marketplace
 
 ## Skills
 
-269 skills. Every skill is a directory with a `SKILL.md` declaring `name`, `description` and one `category`. Counts by category (from the frontmatter): library 96, engineering-method 60, bdb-core 59, media-eventtech 26, design-ui-ux 24, engineering-hardware 2, saas-ops 2. Browse with `aos store list`, `/aos-store` or `npx skills add hybridlabor-api/aos`; recommendations: `ask-tim`. The generated [skills table](docs/skills_table.md) is partial.
+269 skills. Every skill is a directory with a `SKILL.md` declaring `name`, `description` and one `category`. Counts by category (from the frontmatter): library 96, engineering-method 60, bdb-core 57, media-eventtech 26, design-ui-ux 24, engineering-hardware 2, saas-ops 2, business-ops 2. Browse with `aos store list`, `/aos-store` or `npx skills add hybridlabor-api/aos`; recommendations: `ask-tim`. The generated [skills table](docs/skills_table.md) is partial.
 
 **Godmodes** map to the pipeline nodes: `godmode-engineering` (DDD, Clean Architecture, TypeScript), `godmode-ui-ux` (Anti-Slop, DTCG tokens, motion), `godmode-shipping` (quality gate, rollback), `godmode-eventtech` (show control, DMX, TouchDesigner); optional specialists `godmode-3d-creation`, `godmode-media-creation`, `godmode-hardware-pcb`.
 

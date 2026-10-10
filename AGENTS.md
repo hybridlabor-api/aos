@@ -193,7 +193,7 @@ is kept only where invocation by a model is harmful even with the gates:
 (posts to GitHub issues, which go-gate does not guard yet).
 
 `category:` must be exactly one of: `design-ui-ux`, `engineering-method`,
-`media-eventtech`, `bdb-core`, `saas-ops`, `library`, `engineering-hardware`.
+`media-eventtech`, `bdb-core`, `saas-ops`, `library`, `engineering-hardware`, `business-ops`.
 
 A multi-line `description:` that is not quoted or folded will swallow the
 `category:` line below it. The value still *looks* present to `grep`; it is not
@@ -209,6 +209,7 @@ resolves scalar boundaries and catches exactly this.
 | Show control, media, 3D | `media-eventtech` | godmode-eventtech, threejs-skills, mcp-manage |
 | Pipeline and agent infrastructure | `bdb-core` | startcycle, startcycle-graph, startcycle-graph-user |
 | Electrical, PCB, physical hardware design | `engineering-hardware` | godmode-hardware-pcb, code-first-hardware-design, pcb-layout-routing-automation |
+| Business operations, invoicing, offers, sales and GTM routines | `business-ops` | pb-invoice-check, pb-offer |
 | Language/framework specifics | `library` | typescript-pro, prisma-expert, nextjs-best-practices |
 
 Prefer the narrowest matching category. Do not pull a `library` skill for a task

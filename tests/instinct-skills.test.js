@@ -9,7 +9,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SKILLS = ['skill-create', 'instinct-status', 'instinct-export', 'instinct-import'];
 const CATEGORIES = new Set([
   'design-ui-ux', 'engineering-method', 'media-eventtech',
-  'bdb-core', 'saas-ops', 'library', 'engineering-hardware',
+  'bdb-core', 'saas-ops', 'library', 'engineering-hardware', 'business-ops',
 ]);
 
 const skillPath = (name) => join(ROOT, 'skills', 'basic', name, 'SKILL.md');
