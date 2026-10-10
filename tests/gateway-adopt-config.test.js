@@ -12,7 +12,7 @@ const home = '/home/u';
 const launcher = '/home/u/.agents/bin/aos-mcp-env.mjs';
 const shipped = {
     github: { command: 'npx', args: ['-y', 'pkg@1.0.0'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_x' } },
-    deja: { command: 'deja', args: ['mcp'] },
+    mcsc: { command: 'node', args: ['/m/mcsc/server.js'] },
 };
 const pathEnv = '/usr/bin:/bin';
 

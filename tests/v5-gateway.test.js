@@ -39,8 +39,8 @@ describe('config generator', () => {
         github: { command: 'npx', args: ['-y', 'pkg@1.0.0'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: SECRET } },
         bdb_resolume_mcp: { command: 'uv', args: ['run', '__MCPS_DIR__/resolume_mcp.py'] },
         bdb_blender_mcp: { command: 'node', args: ['{{HOME}}/x.js'], cwd: '/work/dir', env: { FOO: 'bar' } },
-        deja: { command: 'deja', args: ['mcp'] },
-        memb_mcp: { command: '__PYTHON_BIN__', args: ['run.py'] },
+        mcsc: { command: 'node', args: ['__MCPS_DIR__/mcsc/server.js'] },
+        zavora_computer_use: { command: 'npx', args: ['-y', 'z@1.0.0'] },
         unknown_new_server: { command: 'node', args: ['n.js'] },
         open_design_mcp: { command: 'node', args: ['p.js'], shared: false },
     };
@@ -48,7 +48,7 @@ describe('config generator', () => {
     test('splitServers: only allow-listed servers go to the gateway; shared:false forces direct', () => {
         const { gateway, direct } = cfg.splitServers(shipped);
         assert.deepEqual(Object.keys(gateway).sort(), ['bdb_blender_mcp', 'bdb_resolume_mcp', 'github']);
-        assert.deepEqual(Object.keys(direct).sort(), ['deja', 'memb_mcp', 'open_design_mcp', 'unknown_new_server']);
+        assert.deepEqual(Object.keys(direct).sort(), ['mcsc', 'open_design_mcp', 'unknown_new_server', 'zavora_computer_use']);
         for (const n of cfg.DIRECT_SERVERS) assert.ok(!cfg.GATEWAY_SERVERS.includes(n), n);
     });
 
@@ -97,7 +97,7 @@ describe('config generator', () => {
     test('the shipped template yields exactly the allow-listed gateway servers and no secret value', () => {
         const real = require('../lib/mcp-secrets.js').shippedServers(ROOT);
         const out = cfg.buildUpstreams({ shipped: real, home, launcher, pathEnv: 'p' });
-        assert.deepEqual(Object.keys(out).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_unreal_mcp', 'github', 'open_design_mcp']);
+        assert.deepEqual(Object.keys(out).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
         assert.ok(!('bdb_remoteos_mcp' in out));
         assert.ok(cfg.splitServers(real).direct.bdb_remoteos_mcp);
         for (const n of cfg.DIRECT_SERVERS) assert.ok(!(n in out), n);
@@ -282,7 +282,7 @@ describe('pkg-gateway', () => {
         }
         assert.match(fs.readFileSync(path.join(dir, 'token'), 'utf8'), /^[0-9a-f]{64}$/);
         const servers = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
-        assert.ok(servers.github && !servers.deja && !servers.memb_mcp);
+        assert.ok(servers.github && !servers.mcsc && !servers.zavora_computer_use);
 
         const plist = fs.readFileSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist'), 'utf8');
         assert.ok(plist.includes('<string>com.bdb.aos.gateway</string>'));
@@ -300,7 +300,7 @@ describe('pkg-gateway', () => {
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootout'), ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootstrap'), ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
-        assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_unreal_mcp', 'github', 'open_design_mcp']);
+        assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
     });
 
     const launchctlFails = (how) => async (cmd) => {
@@ -821,7 +821,7 @@ describe('harness enable/disable', () => {
             codex: path.join(home, '.codex', 'config.toml'),
             agy: path.join(home, '.gemini', 'config', 'mcp_config.json'),
         };
-        const common = (h) => ({ deja: shipped.deja, memb_mcp: shipped.memb_mcp, mine: { command: 'node', args: ['mine.js'] }, ...h });
+        const common = (h) => ({ mcsc: shipped.mcsc, zavora_computer_use: shipped.zavora_computer_use, mine: { command: 'node', args: ['mine.js'] }, ...h });
         wj(f.claude, { numStartups: 3, mcpServers: common({ github: owned(home, 'github'), open_design_mcp: owned(home, 'open_design_mcp') }), projects: { '/x': { mcpServers: { github: edited } } } });
         wj(f.cursor, { mcpServers: common({ github: edited, bdb_resolume_mcp: owned(home, 'bdb_resolume_mcp') }) });
         wj(f.oc, { $schema: 'x', mcp: { github: ownedOc(home, 'github'), mine: { type: 'local', command: ['node', 'm.js'] } }, ...extra });
@@ -846,7 +846,7 @@ describe('harness enable/disable', () => {
         const before = snap(fx.f);
         const rep = run(fx);
         const claude = rj(fx.f.claude);
-        assert.deepEqual(Object.keys(claude.mcpServers).sort(), ['aos', 'deja', 'memb_mcp', 'mine']);
+        assert.deepEqual(Object.keys(claude.mcpServers).sort(), ['aos', 'mcsc', 'mine', 'zavora_computer_use']);
         assert.deepEqual(claude.mcpServers.aos, { type: 'http', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } });
         assert.equal(claude.numStartups, 3);
         assert.deepEqual(claude.projects['/x'].mcpServers.github, edited, 'per-project servers untouched');
@@ -854,7 +854,7 @@ describe('harness enable/disable', () => {
         assert.deepEqual(cursor.mcpServers.github, edited, 'user-edited entry stays');
         assert.equal(cursor.mcpServers.bdb_resolume_mcp, undefined);
         assert.deepEqual(cursor.mcpServers.aos, { url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } });
-        assert.deepEqual(cursor.mcpServers.deja, shipped.deja);
+        assert.deepEqual(cursor.mcpServers.mcsc, shipped.mcsc);
         const oc = rj(fx.f.oc);
         assert.equal(oc.mcp.github, undefined);
         assert.ok(oc.mcp.mine);
