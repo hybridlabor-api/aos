@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const binary = path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'agenttrail.mjs');
-const { mainRoot, listWorktrees } = await import(path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'repoid.mjs'));
+const { mainRoot, listWorktrees } = await import(pathToFileURL(path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'repoid.mjs')).href);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PLAN = '# Plan\n\n## Thing {#thing}\nfiles: [src/**]\n\n- [ ] Do it {#do-it}\n';
 const GIT_ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };

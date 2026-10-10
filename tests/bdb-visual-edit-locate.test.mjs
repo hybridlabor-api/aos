@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const script = path.join(root, 'skills/global_config/bdb-visual-edit/scripts/locate-source.mjs');
-const { locateSource } = await import(script);
+const { locateSource } = await import(pathToFileURL(script).href);
 
 let base;
 let repo;

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -74,7 +75,7 @@ test("lazy SDK import: node bin/aos-a2a.mjs help/list work with SDK unresolvable
   const register = join(tmp, "sdk-block-register.mjs");
   writeFileSync(register, `import { register } from "node:module";\nregister(${JSON.stringify("file://" + hooks)});\n`);
   const env = { ...process.env, NODE_OPTIONS: `--import ${register}` };
-  const bin = new URL("../bin/aos-a2a.mjs", import.meta.url).pathname;
+  const bin = fileURLToPath(new URL("../bin/aos-a2a.mjs", import.meta.url));
 
   const help = await run(process.execPath, [bin, "--help"], env);
   assert.equal(help.code, 0, help.stderr);

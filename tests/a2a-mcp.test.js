@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -15,7 +16,7 @@ delete process.env.AOS_DELEGATE_DEPTH;
 delete process.env.MCSC_DEPTH;
 delete process.env.AOS_A2A_MAX_DEPTH;
 
-const repo = new URL("..", import.meta.url).pathname;
+const repo = fileURLToPath(new URL("..", import.meta.url));
 const sidecar = await import("../lib/a2a-sidecar.mjs");
 const registry = await import("../lib/a2a-registry.mjs");
 const { formatInjection } = await import("../lib/a2a-inbox.mjs");

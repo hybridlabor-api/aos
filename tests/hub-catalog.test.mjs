@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { localSkills, localAgents } from '../lib/store-shared.mjs';
 import { buildCatalog, frontmatter } from '../lib/hub/catalog.mjs';
 import { routes as catalogRoutes, catalogCacheReset } from '../lib/hub/routes-catalog.mjs';
 
-const ROOT = resolve(new URL('..', import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // Unique temp base, never deleted (rules forbid recursive deletes).
 const tmpBase = mkdtempSync(join(tmpdir(), 'aos-hub-catalog-'));
 

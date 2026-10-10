@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -11,7 +12,7 @@ process.env.AOS_BUS_ROOT = join(tmp, "bus");
 process.env.AOS_A2A_INBOX = join(tmp, "a2a-inbox");
 process.env.AOS_A2A_NAME = "agy-session";
 
-const repo = new URL("..", import.meta.url).pathname;
+const repo = fileURLToPath(new URL("..", import.meta.url));
 const inbox = await import("../lib/a2a-inbox.mjs");
 const { agyResumeExecutor, buildAgyArgs, agyMcpAddArgs } = await import("../lib/a2a-agy.mjs");
 

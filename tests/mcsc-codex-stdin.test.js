@@ -1,3 +1,4 @@
+const { pathToFileURL } = require('node:url');
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -15,7 +16,7 @@ test('codex adapter delegate() completes with stdin ignored (no TypeError on chi
     process.env.AGENTTRAIL_PORT = '1';
     try {
         process.env.PATH = `${dir}:${savedPath}`;
-        const { delegate } = await import(path.join(root, 'mcps', 'mcsc', 'packages', 'core', 'src', 'adapters', 'codex.js'));
+        const { delegate } = await import(pathToFileURL(path.join(root, 'mcps', 'mcsc', 'packages', 'core', 'src', 'adapters', 'codex.js')).href);
         const r = await delegate({ prompt: 'hello', cwd: dir });
         assert.equal(r.exit, 0, JSON.stringify(r));
         assert.equal(r.output, 'native ok');

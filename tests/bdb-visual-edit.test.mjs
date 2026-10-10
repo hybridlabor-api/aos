@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const skillDir = path.join(root, 'skills/global_config/bdb-visual-edit');
 const cli = path.join(skillDir, 'scripts/sanitize-element.mjs');
-const { sanitizeElement, toEnvelope, resolveSrcLoc, fromAnnotation, cleanSnippet, INSTRUCTIONS_FOR_AGENT } = await import(cli);
+const { sanitizeElement, toEnvelope, resolveSrcLoc, fromAnnotation, cleanSnippet, INSTRUCTIONS_FOR_AGENT } = await import(pathToFileURL(cli).href);
 
 const good = {
   tag: 'button',

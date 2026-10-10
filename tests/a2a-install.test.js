@@ -4,6 +4,7 @@
 // installer entry points called here copy files and merge JSON only; the one
 // network-touching doctor step (probe binaries, daemon ports) is skipped for
 // these assertions because the test only captures stdout of the doctor report.
+const { pathToFileURL } = require('node:url');
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -103,7 +104,7 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     // and on AOS_DELEGATE_DEPTH>0 -- that is the fork-bomb guard.
     process.env.HOME = home;
     delete process.env.AOS_SESSIONS_DIR;
-    const { ensureSidecar } = await import(path.join(REPO, 'lib', 'a2a-session.mjs'));
+    const { ensureSidecar } = await import(pathToFileURL(path.join(REPO, 'lib', 'a2a-session.mjs')).href);
     assert.equal(ensureSidecar({ harness: 'claude', sessionId: 's1', env: { AOS_A2A_SIDECAR: 'off' } }).skipped, 'off');
     assert.equal(ensureSidecar({ harness: 'claude', sessionId: 's1', env: { AOS_DELEGATE_DEPTH: '1' } }).skipped, 'depth');
     assert.ok(!fs.existsSync(path.join(os.homedir(), '.aos', 'bus')), 'sidecar must not have started (no session dirs)');

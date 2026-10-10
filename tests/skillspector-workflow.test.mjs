@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -15,7 +16,7 @@ const baseline = JSON.parse(
   readFileSync(join(here, '..', '.github', 'skillspector-baseline.json'), 'utf8'),
 );
 
-const { evaluate, render, validateBaseline, matchesBaseline } = await import(filterPath);
+const { evaluate, render, validateBaseline, matchesBaseline } = await import(pathToFileURL(filterPath).href);
 
 const wfLines = wf.split('\n');
 

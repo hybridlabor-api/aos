@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -12,7 +13,7 @@ import { rollbackInstall, appendInstallLog, fetchSkillFiles, installWithBackup, 
 
 const reqCjs = createRequire(import.meta.url);
 
-const ROOT = resolve(new URL('..', import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // Unique temp dirs, never deleted (rules forbid recursive deletes).
 const base = mkdtempSync(join(tmpdir(), 'hub-store-'));
 const proj = join(base, 'proj');

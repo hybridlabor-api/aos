@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { createStoreServer } from '../lib/store-ui/server.mjs';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const cli = join(root, 'bin', 'aos-store.mjs');
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const SC = 'b'.repeat(40);

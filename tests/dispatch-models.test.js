@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
+const { pathToFileURL } = require('node:url');
 
 const ROOT = path.join(__dirname, '..');
 const DISPATCH = path.join(ROOT, '.claude', 'workflows', 'startcycle-dispatch.mjs');
@@ -39,7 +40,7 @@ globalThis.agent = async (prompt, opts) => {
   if (opts.label.startsWith('architect')) return { planPath: 'p.md', needsMedia: false, deliverOk: true };
   throw new Error('stop');
 };
-await import(${JSON.stringify(DISPATCH)});
+await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
 process.stdout.write(JSON.stringify(calls));
 `);
     const r = spawnSync(process.execPath, [harness], {

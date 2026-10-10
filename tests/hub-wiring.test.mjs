@@ -1,9 +1,10 @@
+import { fileURLToPath } from 'node:url';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 
-const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(path.join(repo, p), 'utf8');
 const pkg = JSON.parse(read('package.json'));
 

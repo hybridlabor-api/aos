@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
@@ -7,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { createStoreServer } from '../lib/store-ui/server.mjs';
 import { readLocalDoc } from '../lib/store-shared.mjs';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'aos-store-ui-')));
 const home = join(tmp, 'home');
 const cwd = join(tmp, 'proj');

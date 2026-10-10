@@ -5,6 +5,7 @@
 // own go-gate consumes the real single-use token when the guarded command actually runs (the
 // tests simulate that consume by deleting the token file). Test (g) and the "no consume"
 // assertions hold that invariant end to end.
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -21,7 +22,7 @@ delete process.env.AOS_WORKER_PROXY_URL;
 process.env.AOS_A2A_MAX_DEPTH = "1";
 process.env.AOS_A2A_POLL_THRESHOLD_MS = "0"; // client.send always uses the non-blocking + poll path
 
-const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const a2aGo = await import("../lib/a2a-go.mjs");
 const { spawnExecutor, taskName } = await import("../lib/a2a-spawn.mjs");

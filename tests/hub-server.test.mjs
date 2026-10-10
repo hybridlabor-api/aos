@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
@@ -11,7 +12,7 @@ import { createHub } from '../lib/hub/server.mjs';
 import { routes as planRoutes, probeTrailPorts } from '../lib/hub/routes-plans.mjs';
 import { hubPaths, writeHubJson, readHubJson, killViaPs, parseArgv } from '../bin/aos-hub.mjs';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // Unique temp dir, never deleted (rules forbid recursive deletes).
 const tmp = join(tmpdir(), `aos-hub-test-${process.pid}-${Date.now()}`);
 const home = join(tmp, 'home');

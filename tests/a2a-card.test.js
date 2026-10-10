@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -57,7 +58,7 @@ test("loadProfile: explicit path, project file, missing", () => {
 });
 
 test("CLI: --help exits 0, card prints JSON", () => {
-  const bin = new URL("../bin/aos-a2a.mjs", import.meta.url).pathname;
+  const bin = fileURLToPath(new URL("../bin/aos-a2a.mjs", import.meta.url));
   assert.equal(spawnSync(process.execPath, [bin, "--help"]).status, 0);
   const dir = mkdtempSync(join(tmpdir(), "a2a-cli-"));
   const f = join(dir, "p.json");
