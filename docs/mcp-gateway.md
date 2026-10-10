@@ -10,12 +10,15 @@ A local token-checking forwarder on `127.0.0.1:7790` in front of `@1mcp/agent` o
 aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json]
 ```
 
-- `start`/`stop`/`restart` use launchd on macOS (label `com.bdb.aos.gateway`). The Windows path (`schtasks`, task "AOS MCP Gateway") is marked UNVERIFIED in the code; elsewhere use `aos-gateway serve`.
+- **Service.** `aos update` registers the gateway as a background service on every platform: launchd on macOS (label `com.bdb.aos.gateway`), a systemd user unit `~/.config/systemd/user/com.bdb.aos.gateway.service` on Linux (`Restart=on-failure`, `enable --now`), and the scheduled task "AOS MCP Gateway" on Windows (`schtasks /Create ... /SC ONLOGON /F`, then `/Run`). Uninstall removes each of them. `start`/`stop`/`restart` map to launchctl, `systemctl --user` or `schtasks`; `status` prints the systemd `is-active` state on Linux.
+- **UNVERIFIED on real Linux and Windows (Lenovo V12 pending).** The systemd unit and the scheduled task are covered only by fake-run tests. Harness configs switch to the gateway only when the gateway verifies as running; otherwise they stay direct and `aos-gateway enable` switches them after `aos-gateway status` is green.
 - `status` exits 0 only when the gateway runs. Per-upstream health is the state of 1mcp as a whole, not per server (`upstreamsScope: global`).
 - `enable` points the harness MCP files at the gateway (one `aos` entry); `direct` reverses it and restores the entries it removed.
 
-**Presets.** Upstreams carry `tags` (the server name by default). Install creates one preset `aos-core` via `1mcp preset create` over the `GATEWAY_SERVERS` filter.
-`entryFor(kind, token, preset)` appends `?preset=<name>` to the gateway URL, so the client sees only that preset's upstreams.
+**Presets.** Upstreams carry `tags` (the server name by default). Install creates one 1mcp preset per harness kind listed in the template's top-level `presets` object (`claude`, `agy`, `opencode`, `codex`, `roo`, `cursor`).
+- Value `"all"` = every gateway server; an array = server names that kind must NOT see, e.g. `"agy": ["bdb_davinci_mcp"]` (162 tools) becomes the filter `NOT bdb_davinci_mcp`.
+- Without a `presets` object the single `aos-core` preset over `GATEWAY_SERVERS` is created (old behaviour).
+- `entryFor(kind, token, preset)` appends `?preset=<kind>` to the gateway URL, so each harness sees only its own preset's upstreams.
 `isAosShaped` accepts the URL with that query string.
 
 ## Allow list

@@ -1,4 +1,12 @@
 {
+  "presets": {
+    "claude": "all",
+    "agy": ["bdb_davinci_mcp"],
+    "opencode": "all",
+    "codex": "all",
+    "roo": "all",
+    "cursor": "all"
+  },
   "mcpServers": {
     "github": {
       "command": "npx",

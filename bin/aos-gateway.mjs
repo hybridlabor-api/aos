@@ -208,8 +208,14 @@ function service(cmd) {
         const kicked = run('launchctl', ['kickstart', '-k', target]);
         return kicked === 0 ? 0 : run('launchctl', ['bootstrap', `gui/${uid}`, plist]);
     }
+    if (process.platform === 'linux') {
+        const unit = `${LABEL}.service`;
+        if (cmd === 'start') return run('systemctl', ['--user', 'start', unit]);
+        if (cmd === 'stop') return run('systemctl', ['--user', 'stop', unit]);
+        return run('systemctl', ['--user', 'restart', unit]);
+    }
     if (process.platform === 'win32') {
-        // UNVERIFIED: schtasks task "AOS MCP Gateway" is not created by the installer yet and not tested on Windows.
+        // UNVERIFIED: schtasks task "AOS MCP Gateway" is created by the installer since F7b; not tested on Windows.
         if (cmd === 'start') return run('schtasks', ['/Run', '/TN', WIN_TASK]);
         if (cmd === 'stop') return run('schtasks', ['/End', '/TN', WIN_TASK]);
         const stopped = run('schtasks', ['/End', '/TN', WIN_TASK]);
@@ -229,6 +235,7 @@ async function main() {
         else {
             console.log(`gateway: ${s.running ? `running${s.pid ? ` (pid ${s.pid})` : ''}` : 'not running'} on 127.0.0.1:${s.port}${s.error ? ` - ${s.error}` : ''}`);
             for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
+            if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
         process.exit(s.running ? 0 : 1);
     }

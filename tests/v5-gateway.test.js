@@ -260,7 +260,7 @@ describe('pkg-gateway', () => {
     const mkCtx = (home, extra = {}) => {
         const calls = [];
         const run = async (cmd, args) => { calls.push([cmd, ...args]); return { status: 0, stdout: '' }; };
-        return { calls, ctx: { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, ...extra } };
+        return { calls, ctx: { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), sleep: async () => {}, ...extra } };
     };
     const posix = process.platform !== 'win32';
 
@@ -293,9 +293,11 @@ describe('pkg-gateway', () => {
         assert.ok(plist.includes('<key>HOME</key>') && plist.includes('<key>PATH</key>'));
 
         assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
-        assert.deepEqual(calls[1].slice(0, 4), [path.join(dir, 'node_modules', '.bin', '1mcp'), 'preset', 'create', 'aos-core']);
-        assert.deepEqual(calls[2], ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
-        assert.deepEqual(calls[3], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
+        const all = cfg.GATEWAY_SERVERS.join(',');
+        assert.ok(calls.slice(1, 7).every((c) => c[0] === path.join(dir, 'node_modules', '.bin', '1mcp') && c[1] === 'preset' && c[2] === 'create'));
+        assert.deepEqual(calls.slice(1, 7).map((c) => [c[3], c[5]]), [['claude', all], ['agy', 'NOT bdb_davinci_mcp'], ['opencode', all], ['codex', all], ['roo', all], ['cursor', all]]);
+        assert.deepEqual(calls[7], ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
+        assert.deepEqual(calls[8], ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
         assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_unreal_mcp', 'github', 'open_design_mcp']);
     });
@@ -452,6 +454,52 @@ describe('pkg-gateway', () => {
         assert.ok(fs.existsSync(path.join(dir, 'node_modules.removed-1700000000000', 'x', 'f.js')), 'content is moved, not deleted');
         assert.equal(res.retired, path.join(dir, 'node_modules.removed-1700000000000'));
         assert.ok(!fs.existsSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')));
+    });
+
+    test('linux install writes the systemd user unit and enables it now', async () => {
+        const home = tmp();
+        const { ctx, calls } = mkCtx(home, { platform: 'linux' });
+        await pkg.install(ctx);
+        const unit = fs.readFileSync(path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.gateway.service'), 'utf8');
+        assert.ok(unit.includes(`ExecStart="/opt/node/bin/node" "${path.join(ROOT, 'bin', 'aos-gateway.mjs')}" serve`));
+        assert.ok(unit.includes('Restart=on-failure'));
+        assert.deepEqual(calls.filter((c) => c[0] === 'systemctl'), [
+            ['systemctl', '--user', 'daemon-reload'],
+            ['systemctl', '--user', 'enable', '--now', 'com.bdb.aos.gateway.service'],
+        ]);
+    });
+
+    test('win32 install creates the AOS MCP Gateway scheduled task and runs it', async () => {
+        const { ctx, calls } = mkCtx(tmp(), { platform: 'win32' });
+        await pkg.install(ctx);
+        const create = calls.find((c) => c[0] === 'schtasks' && c[1] === '/Create');
+        assert.deepEqual(create.slice(0, 9), ['schtasks', '/Create', '/TN', 'AOS MCP Gateway', '/SC', 'ONLOGON', '/TR', `"/opt/node/bin/node" "${path.join(ROOT, 'bin', 'aos-gateway.mjs')}" serve`, '/F']);
+        assert.deepEqual(calls.find((c) => c[0] === 'schtasks' && c[1] === '/Run'), ['schtasks', '/Run', '/TN', 'AOS MCP Gateway']);
+    });
+
+    test('uninstall removes the linux unit and the windows task', async () => {
+        const lin = mkCtx(tmp(), { platform: 'linux' });
+        await pkg.install(lin.ctx);
+        const unit = path.join(lin.ctx.home, '.config', 'systemd', 'user', 'com.bdb.aos.gateway.service');
+        lin.calls.length = 0;
+        await pkg.uninstall({ ...lin.ctx, now: 1700000000000 });
+        assert.deepEqual(lin.calls.filter((c) => c[0] === 'systemctl'), [['systemctl', '--user', 'disable', '--now', 'com.bdb.aos.gateway.service']]);
+        assert.ok(!fs.existsSync(unit));
+        const win = mkCtx(tmp(), { platform: 'win32' });
+        await pkg.install(win.ctx);
+        win.calls.length = 0;
+        await pkg.uninstall({ ...win.ctx, now: 1700000000000 });
+        assert.deepEqual(win.calls.filter((c) => c[0] === 'schtasks'), [['schtasks', '/Delete', '/TN', 'AOS MCP Gateway', '/F']]);
+    });
+
+    test('harnesses switch only when verify reports the gateway running', async () => {
+        for (const running of [true, false]) {
+            const log = [];
+            const { ctx } = mkCtx(tmp(), { platform: 'linux', log: (m) => log.push(m), statusFn: async () => ({ running, port: cfg.GATEWAY_PORT }) });
+            const res = await pkg.install(ctx);
+            assert.equal('harness' in res, running);
+            if (!running) assert.ok(log.some((m) => /service not confirmed on linux: harnesses left direct/.test(m)));
+        }
     });
 
     test('retireNodeModules refuses anything but the gateway dir of this home and never deletes', () => {
@@ -954,19 +1002,20 @@ test('update installs gateway when missing', async () => {
     assert.doesNotMatch(out.join(''), /Optional, not installed:.*\bgateway\b/, 'F12: installed in this run, not listed as optional');
 });
 
-test('update skips the MCP gateway off macOS without installing', async () => {
+test('update installs the MCP gateway on linux too', async () => {
     const menu = require('../lib/v5/menu.js');
     const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
-    const realInstall = gw.install;
+    const realInstall = gw.install, realVerify = gw.verify;
     const calls = [];
     gw.install = async (c) => { calls.push(c.home); return { ok: true }; };
+    gw.verify = async () => ({ ok: true });
     const home = tmp();
     const out = [];
     try {
         await menu.update(gwHost(home), { home, platform: 'linux', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
-    } finally { gw.install = realInstall; }
-    assert.deepStrictEqual(calls, []);
-    assert.match(out.join(''), /MCP gateway: skipped on linux/);
+    } finally { gw.install = realInstall; gw.verify = realVerify; }
+    assert.deepStrictEqual(calls, [home]);
+    assert.doesNotMatch(out.join(''), /skipped on linux/);
 });
 
 describe('adoptGateway', () => {
