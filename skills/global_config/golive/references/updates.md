@@ -1,0 +1,73 @@
+# Release integrity, installation ownership and updates
+
+Run `node <this-skill-dir>/scripts/golive.mjs version --json` when starting a new deployment run.
+It verifies the complete skill against `release.json`, including instructions, references and
+runtime. A missing/mixed/corrupt bundle stops before account access. Repair it using the same
+installation manager; do not download just a replacement script.
+
+Then run `node <this-skill-dir>/scripts/golive.mjs update-check --json`. This reads only public
+release metadata, uses a 24-hour cache and a bounded timeout, and never reads project credentials.
+An unavailable/offline result does not block deployment commands. Set `GOLIVE_UPDATE_CHECK=0` or
+pass `--offline` to skip the network check. Explain current/latest versions only when useful;
+do not repeatedly announce an unchanged result.
+
+## One manager per installed copy
+
+- Skills CLI owns installations it made. Use `npx skills update golive -p` for project scope or
+  `-g` for global scope, between runs. A pinned source stays pinned until explicitly changed.
+- Plugins use their plugin manager. Never edit plugin caches or lockfiles directly.
+- Manual copies are replaced as a complete verified bundle by the user.
+- The optional own installer manages only its own receipt-backed copies. Run
+  `node <this-skill-dir>/scripts/install-cli.mjs install-status --json` to inspect one. It reports
+  duplicates without deleting them. An external copy is never adopted or overwritten implicitly.
+
+## Own installer commands
+
+At a new run boundary, an owned installation can explicitly update to an immutable public tag:
+
+```bash
+node <this-skill-dir>/scripts/install-cli.mjs update --between-runs --ref v<version> --json
+node <this-skill-dir>/scripts/install-cli.mjs rollback --json
+node <this-skill-dir>/scripts/install-cli.mjs update-policy --auto on --json
+node <this-skill-dir>/scripts/install-cli.mjs update-policy --auto off --json
+```
+
+Automatic replacement is off by default. Only after the user opts in, when `update-check` reports
+`manager: owned`, `automaticInstall: true`, `status: available` and a valid `latest.source.ref`,
+the agent may invoke `update --auto --between-runs --ref <that-exact-tag> --json` at the start of a
+new run. Reload the entire skill and verify its new version afterward. This is startup-driven
+automation, not a background daemon. Pinned copies never auto-update.
+
+Updates stage the complete bundle, verify every file and run offline smoke checks — `help` and
+`menu --json` under a guard that denies the common network and subprocess entry points, including
+socket prototypes, DNS, dgram, HTTP/2, worker threads and cluster forks — before switching the active
+pointer. That guard is a sanity check for a broken or careless release, **not a sandbox**: it does not
+contain a deliberately hostile bundle, and the gate that matters is the human approving one explicit
+update to an immutable public tag. The previous version is retained for local rollback. A
+failed/stopped update keeps the prior active version; a stale lock requires the explicit
+`recover-lock` command after confirming the original process has stopped. Never remove installation
+metadata by hand to bypass a refusal. These operations do not change app config/state, credentials or
+cloud resources.
+Rolling back the skill does not roll back a deployment or database.
+
+## Approval and resume boundary
+
+Never install an update between `plan` → human approval → `apply`. Plans bind the verified release
+and schema versions. After any bundle change, discard the old approval, re-observe with `plan`,
+show the new plan and obtain a fresh approval. No old runtime is fetched to make approval pass.
+
+Compatible state keeps resource IDs, fingerprints and evidence. Identical completed operations
+remain completed. Changed, failed or ambiguous historical writes may require reconciliation;
+do not delete state or force replays to get past that guard. Two exemptions resume by themselves,
+because the step declares it: teardown's destruction steps (a deletion re-checks ownership and is
+idempotent) and any step whose risk declares `risk.replayable` (an idempotent write that re-observes
+the provider and golive's own recorded resource before acting, e.g. the auth test account's password
+rotation). Everything else stays blocked. Incompatible schemas stop safely.
+There is no general reconciliation command yet. Explain the blocked operation and prepare a
+separately reviewed recovery after inspecting the provider; do not promise automatic recovery.
+`golive status` states the same boundary: a step that failed under another (or an unknown) release
+appears as `release:step:<id>` with `action: human` when it declares neither exemption, and the item
+says there that re-running `apply` cannot succeed until that reconciliation has happened — including
+when the current plan no longer carries the step at all. A step this release recorded, or one that
+declares the exemption, keeps the plain re-run advice.
+Existing private golive deployments are not automatically migrated to a differently named product.

@@ -169,6 +169,16 @@ SOFTWARE.
 
 ---
 
+## mikehasa/golive-skill
+
+- **Upstream:** <https://github.com/mikehasa/golive-skill> (commit `7a55f26adb35d54c8b248e6f95e60092bd9e0707`, v0.1.0-alpha.8)
+- **License:** MIT, Copyright (c) 2026 The golive authors. The bundled runtime includes yaml 2.9.1 (ISC, Copyright Eemeli Aro).
+
+Vendored as `skills/global_config/golive/` (SKILL.md, `references/`, `scripts/`, `release.json`, its own LICENSE and
+THIRD_PARTY_NOTICES.md). Changes: `category: saas-ops` and a `source:` line added to the SKILL.md frontmatter; nothing else.
+
+---
+
 ## mattpocock/skills
 
 <https://github.com/mattpocock/skills> — MIT.

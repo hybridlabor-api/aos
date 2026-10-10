@@ -180,6 +180,7 @@
 | `code-review` | Review the changes since a fixed point along two axes: Standards and Spec. Runs both reviews in parallel sub-agents and reports them side by side. |
 | `to-spec` | Turn the current conversation into a spec and save it (or publish it to the issue tracker): no interview, just synthesis of what you've already discussed. |
 | `wayfinder` | Plan a huge chunk of work as a shared map of decision tickets, and resolve them one at a time until the way to the destination is clear. |
+| `golive` | Take an agent-written app from repo to live production on the user's own accounts, with providers they choose (hosting, database, auth, payments, email, domain/DNS). The human approves changes. |
 | `typescript-pro` | Master TypeScript with advanced types, generics, and strict type safety. Handles complex type systems, decorators, and enterprise-grade patterns. |
 
 #### 🔩 Engineering & Hardware
