@@ -558,6 +558,34 @@ describe('pkg-gateway', () => {
         assert.ok(!log.some((m) => /harnesses left direct/.test(m)));
     });
 
+    test('F15b: 1mcp refused for 90 s after restart: harnesses switch, verify BUSY inside the grace window, down after it', async () => {
+        const home = tmp();
+        const refused = async () => ({ running: true, port: cfg.GATEWAY_PORT, upstreams: [{ ok: false, error: '1mcp not reachable on 7791 (ECONNREFUSED)' }] });
+        const t0 = 1700000000000;
+        const res = await pkg.update(mkCtx(home, { platform: 'linux', statusFn: refused, now: t0 }).ctx);
+        assert.ok('harness' in res, 'switched on forwarder running');
+        const inGrace = await pkg.verify(mkCtx(home, { statusFn: refused, now: t0 + 90000 }).ctx);
+        assert.equal(inGrace.ok, true);
+        assert.equal(inGrace.busy, true);
+        assert.match(inGrace.detail, /BUSY/);
+        const after = await pkg.verify(mkCtx(home, { statusFn: refused, now: t0 + 181000 }).ctx);
+        assert.equal(after.ok, false);
+        assert.match(after.detail, /ECONNREFUSED/);
+    });
+
+    test('F15b: no grace without a restart stamp, with a future stamp, or when the service did not start', async () => {
+        const refused = async () => ({ running: true, port: cfg.GATEWAY_PORT, upstreams: [{ ok: false, error: '1mcp not reachable on 7791 (ECONNREFUSED)' }] });
+        const t0 = 1700000000000;
+        assert.equal((await pkg.verify(mkCtx(tmp(), { statusFn: refused, now: t0 }).ctx)).ok, false, 'no stamp');
+        const home = tmp();
+        fs.mkdirSync(cfg.gatewayDir(home), { recursive: true });
+        fs.writeFileSync(path.join(cfg.gatewayDir(home), 'restart.at'), String(t0 + 3600000));
+        assert.equal((await pkg.verify(mkCtx(home, { statusFn: refused, now: t0 }).ctx)).ok, false, 'future stamp');
+        const failed = tmp();
+        await pkg.update(mkCtx(failed, { platform: 'linux', run: async () => ({ status: 1, stdout: '' }), statusFn: refused, now: t0 }).ctx).catch(() => {});
+        assert.ok(!fs.existsSync(path.join(cfg.gatewayDir(failed), 'restart.at')), 'no stamp when systemctl failed');
+    });
+
     test('retireNodeModules refuses anything but the gateway dir of this home and never deletes', () => {
         const home = tmp();
         const other = path.join(home, 'elsewhere');
@@ -1080,6 +1108,23 @@ test('update: gateway update messages reach the step line (F15)', async () => {
         await menu.update(gwHost(home), { home, platform: 'linux', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
     } finally { Object.assign(gw, real); }
     assert.match(out.join(''), /✔ MCP gateway[^\n]*0\.38\.2; harnesses left direct/);
+});
+
+test('update: a failing gateway verify keeps the step messages in the error (F15b)', async () => {
+    const menu = require('../lib/v5/menu.js');
+    const gw = require('../lib/v5/packages.js').registry.find((p) => p.id === 'gateway');
+    const real = { detect: gw.detect, update: gw.update, verify: gw.verify };
+    gw.detect = () => ({ installed: true, version: '0.38.2' });
+    gw.update = async (c) => { c.log('harnesses left direct'); return { ok: true }; };
+    gw.verify = async () => ({ ok: false, detail: '1mcp not reachable on 7791 (ECONNREFUSED)' });
+    const home = tmp();
+    const out = [];
+    try {
+        await menu.update(gwHost(home), { home, platform: 'linux', write: (s) => out.push(s), ui: {}, npmView: async () => { throw new Error('offline'); } });
+    } finally { Object.assign(gw, real); }
+    const logged = /✖ MCP gateway — see (\S+)/.exec(out.join(''));
+    assert.ok(logged, out.join(''));
+    assert.match(fs.readFileSync(logged[1], 'utf8'), /ECONNREFUSED\); harnesses left direct/);
 });
 
 test('update installs the MCP gateway on linux too', async () => {
