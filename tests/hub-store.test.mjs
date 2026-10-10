@@ -524,6 +524,22 @@ test('static: store-shared.mjs and routes-store.mjs contain no destructive fs ca
   assert.doesNotMatch(readFileSync(join(ROOT, 'lib', 'hub', 'ui', 'store.js'), 'utf8'), /window\.prompt|rmSync|unlinkSync/);
 });
 
+test('GET /api/store/skill: same contract as /api/skill', async () => {
+  const h = handler('/api/store/skill');
+  const ok = await h({ url: new URL('/api/store/skill?name=startcycle', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.name, 'startcycle');
+  assert.match(ok.json.frontmatter, /name:/);
+  assert.ok(ok.json.body.length > 0);
+  assert.match(ok.json.path, /^(skills|agents|\.claude)\//);
+  const bad = await h({ url: new URL('/api/store/skill?name=a%2Fb', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
+  assert.equal(bad.status, 400);
+  const kind = await h({ url: new URL('/api/store/skill?name=startcycle&kind=foo', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
+  assert.equal(kind.status, 400);
+  const missing = await h({ url: new URL('/api/store/skill?name=no-such-skill-xyz', 'http://127.0.0.1'), params: [], body: undefined, ctx: storeCtx() });
+  assert.equal(missing.status, 404);
+});
+
 test('temp dirs are never deleted by the tests', () => {
   assert.ok(existsSync(base));
 });

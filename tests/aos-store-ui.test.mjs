@@ -1,10 +1,11 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, readFileSync, writeFileSync, symlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createStoreServer } from '../lib/store-ui/server.mjs';
+import { readLocalDoc } from '../lib/store-shared.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'aos-store-ui-')));
@@ -110,4 +111,51 @@ test('WP4: catalog/previewMeta are exported for the hub', async () => {
   const meta = mod.previewMeta('django-patterns', 'skill');
   assert.ok(meta.source && meta.pinned_commit, 'preview meta carries source + commit');
   assert.equal(typeof mod.catalog('global', cwd).items.length, 'number');
+});
+
+test('GET /api/skill: core skill doc, frontmatter + body, root-relative path', async () => {
+  const res = await fetch(base + '/api/skill?name=startcycle');
+  assert.equal(res.status, 200);
+  const d = await res.json();
+  assert.equal(d.name, 'startcycle');
+  assert.equal(d.kind, 'skill');
+  assert.match(d.frontmatter, /name:/);
+  assert.ok(d.body.length > 0);
+  assert.equal(d.truncated, false);
+  assert.match(d.path, /^(skills|agents|\.claude)\//);
+  assert.equal(d.path, 'skills/basic/startcycle/SKILL.md');
+});
+
+test('GET /api/skill: 400 for traversal, empty name and bad kind; 404 for unknown', async () => {
+  for (const q of ['name=a%2Fb', 'name=..', 'name=%2e%2e%2fetc', 'name=', '']) {
+    assert.equal((await fetch(`${base}/api/skill?${q}`)).status, 400, q);
+  }
+  assert.equal((await fetch(base + '/api/skill?name=startcycle&kind=foo')).status, 400);
+  assert.equal((await fetch(base + '/api/skill?name=no-such-skill-xyz')).status, 404);
+});
+
+test('GET /api/skill: kind=agent returns a real agent; unknown agent 404s', async () => {
+  const d = await (await fetch(base + '/api/skill?name=architect&kind=agent')).json();
+  assert.equal(d.kind, 'agent');
+  assert.match(d.path, /^(skills|agents|\.claude)\//);
+  assert.ok(d.body.length > 0);
+  assert.equal((await fetch(base + '/api/skill?name=no-such-agent-xyz&kind=agent')).status, 404);
+});
+
+test('readLocalDoc: CRLF frontmatter split; symlink, directory and outside-root cases 404', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'b2-doc-')));
+  const outside = realpathSync(mkdtempSync(join(tmpdir(), 'b2-out-')));
+  mkdirSync(join(dir, 'skills', 'x'), { recursive: true });
+  mkdirSync(join(dir, 'skills', 'link'), { recursive: true });
+  mkdirSync(join(dir, 'agents', 'foo'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'x', 'SKILL.md'), '---\r\nname: x\r\ndescription: y\r\n---\r\nBody line\r\n');
+  writeFileSync(join(outside, 'SKILL.md'), '---\nname: out\n---\nsecret\n');
+  symlinkSync(join(outside, 'SKILL.md'), join(dir, 'skills', 'link', 'SKILL.md'));
+  const doc = readLocalDoc(dir, 'x', 'skill');
+  assert.equal(doc.frontmatter, 'name: x\ndescription: y');
+  assert.equal(doc.body, 'Body line\n');
+  assert.equal(doc.path, 'skills/x/SKILL.md');
+  assert.throws(() => readLocalDoc(dir, 'link', 'skill'), (e) => e.status === 404);
+  assert.throws(() => readLocalDoc(dir, 'foo', 'agent'), (e) => e.status === 404);
+  assert.throws(() => readLocalDoc(dir, '', 'skill'), (e) => e.status === 400);
 });
