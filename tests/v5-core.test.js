@@ -78,6 +78,22 @@ test('second update with stored values never asks', async () => {
     assert.ok(m.out.join('').includes('Verify: all ok'));
 });
 
+test('F4: update prints the existing-install banner and a verified-OK summary', async () => {
+    const m = machine();
+    await menu.update(m.host, m.opts({ npmView: current, ui: { ask: async () => 'x' } }));
+    const text = m.out.join('');
+    assert.match(text, /Existing install detected: Update applies v5 hooks, gate profiles and mods/);
+    assert.match(text, /Verified OK: Kernel, Harnesses/);
+});
+
+test('F3: openwiki verify probes `openwiki --help` (no --version), reads the version from its banner', () => {
+    const m = machine();
+    const pkg = pk.registry.find((p) => p.id === 'openwiki');
+    const bin = path.join(mkHome(), 'bin');
+    script(path.join(bin, 'openwiki'), '[ "$1" = "--help" ] || exit 1\necho "OpenWiki v0.5.0"');
+    assert.strictEqual(withPath(bin, () => pkg.verify({ host: m.host, home: m.home })).ok, true);
+});
+
 test('update without a TTY (no ui.ask) asks nothing and stores nothing', async () => {
     const m = machine();
     assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current })), 0);

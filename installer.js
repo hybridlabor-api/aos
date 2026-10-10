@@ -2406,10 +2406,10 @@ async function installMemB(interactive) {
             let createdViaUv = false;
             if (!fs.existsSync(venvPython)) {
                 try {
-                    execSync(`"${uvBin()}" venv --seed .venv`, { cwd: membDir, stdio: 'ignore' });
+                    execSync(`"${uvBin()}" venv --clear --seed .venv`, { cwd: membDir, stdio: 'ignore' });
                     createdViaUv = true;
                 } catch (e1) {
-                    execSync(`${pythonCmd} -m venv .venv`, { cwd: membDir, stdio: 'ignore' });
+                    execSync(`${pythonCmd} -m venv --clear .venv`, { cwd: membDir, stdio: 'ignore' });
                 }
             }
 
@@ -3915,9 +3915,9 @@ async function installMcpsForTarget(paths, ctx) {
                     log.step(`[dry-run] would create the memb-mcp venv in ${membMcpFolder}`);
                 } else if (!fs.existsSync(venvPython)) {
                     try {
-                        execSync(`"${uvBin()}" venv --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        execSync(`"${uvBin()}" venv --clear --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
                     } catch (e1) {
-                        execSync(`${pythonCmd} -m venv .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        execSync(`${pythonCmd} -m venv --clear .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
                     }
                 }
 

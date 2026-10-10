@@ -149,7 +149,7 @@ test('S4 dangling memB venv: repair renames .venv, recreates it via uv, keeps th
         assert.strictEqual(broken.length, 1);
         assert.ok(fs.lstatSync(path.join(m.memb, broken[0], 'bin', 'python')).isSymbolicLink(), 'old venv kept');
         const lines = fs.readFileSync(log, 'utf8');
-        assert.match(lines, /uv venv --seed \.venv/);
+        assert.match(lines, /uv venv --clear --seed \.venv/);
         assert.match(lines, /uv pip install --python .*-r requirements\.txt/);
         assert.match(lines, /python .*import mcp/, 'dependency import check ran');
     });
