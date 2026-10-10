@@ -51,13 +51,12 @@ test('routing line is in sync across the agent persona copies', () => {
         path.join(ROOT, 'agents', 'godmode-ui-ux.md'),
         path.join(ROOT, '.claude', 'agents', 'godmode-ui-ux.md'),
         path.join(ROOT, '.opencode', 'agents', 'godmode-ui-ux.md'),
-        path.join(ROOT, '.codex', 'agents', 'godmode-ui-ux.md'),
         path.join(ROOT, '.codex', 'agents', 'godmode-ui-ux.toml'),
     ];
     for (const file of copies) {
         assert.ok(fs.existsSync(file), `${file} exists`);
         assert.ok(readFile(file).includes(ENTRY), `${path.relative(ROOT, file)}: pinned URL present`);
-        // The .toml is a metadata stub; its prompt is the .md beside it.
+        // The .toml carries the prompt inline (developer_instructions); the legacy .codex .md copy is gone.
         if (file.endsWith('.md')) assert.ok(/project's own design system and sources file first/.test(readFile(file)),
             `${path.relative(ROOT, file)}: routing line present`);
     }

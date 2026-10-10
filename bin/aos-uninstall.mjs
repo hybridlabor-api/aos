@@ -131,7 +131,7 @@ function plan(opts = {}) {
   // Windows Startup entries: same services, hidden .vbs -> .bat instead of
   // launchd/systemd. Only pairs where both files are still there.
   if (platform === 'win32') {
-    const startupDir = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'),
+    const startupDir = path.join(opts.appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming'),
       'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
     for (const s of WIN_STARTUP) {
       const vbs = path.join(startupDir, s.vbsName);

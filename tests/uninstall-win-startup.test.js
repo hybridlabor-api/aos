@@ -21,6 +21,7 @@ const PAIRS = [
 function winHome() {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-winun-'));
     const startup = path.join(home, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    fs.mkdirSync(startup, { recursive: true });
     for (const [vbs, dir, bat] of PAIRS) {
         fs.mkdirSync(path.join(home, dir), { recursive: true });
         fs.writeFileSync(path.join(home, dir, bat), '@echo off\r\ngoto loop\r\n');
@@ -32,7 +33,7 @@ function winHome() {
 test('plan() lists the Windows Startup vbs/bat pairs on win32', async () => {
     const plan = await importPlan();
     const home = winHome();
-    const p = plan({ platform: 'win32', home, manifestPath: path.join(home, 'no-manifest.json') });
+    const p = plan({ platform: 'win32', home, appData: path.join(home, 'AppData', 'Roaming'), manifestPath: path.join(home, 'no-manifest.json') });
     for (const [, dir, bat] of PAIRS) {
         const a = p.agents.find((x) => x.bat === path.join(home, dir, bat));
         assert.ok(a, `missing win startup entry for ${bat}`);
@@ -43,7 +44,7 @@ test('plan() lists the Windows Startup vbs/bat pairs on win32', async () => {
 test('plan() lists no Windows Startup entries on darwin', async () => {
     const plan = await importPlan();
     const home = winHome();
-    const p = plan({ platform: 'darwin', home, manifestPath: path.join(home, 'no-manifest.json') });
+    const p = plan({ platform: 'darwin', home, appData: path.join(home, 'AppData', 'Roaming'), manifestPath: path.join(home, 'no-manifest.json') });
     assert.strictEqual(p.agents.filter((a) => a.vbs).length, 0);
 });
 
@@ -53,7 +54,7 @@ test('plan() skips incomplete pairs and nonexistent files', async () => {
     // plan-canvas vbs gone, synapse bat gone, openwiki pair intact.
     fs.rmSync(path.join(home, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'com.bdb.plan-canvas.vbs'));
     fs.rmSync(path.join(home, '.synapse', 'run-synapse.bat'));
-    const p = plan({ platform: 'win32', home, manifestPath: path.join(home, 'no-manifest.json') });
+    const p = plan({ platform: 'win32', home, appData: path.join(home, 'AppData', 'Roaming'), manifestPath: path.join(home, 'no-manifest.json') });
     assert.strictEqual(p.agents.filter((a) => a.vbs).length, 1);
     assert.ok(p.agents.find((a) => a.bat === path.join(home, '.openwiki', 'run-openwiki-visualize.bat')));
 });
