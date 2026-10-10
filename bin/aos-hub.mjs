@@ -241,7 +241,20 @@ export async function cli(argv = process.argv.slice(2)) {
 // Service mode: launchd/systemd/Task Scheduler start `--serve --watch` directly. Serve in this
 // process, so the service manager supervises the real server; a detached child (the `aos hub`
 // path) would leave the manager watching a parent that already exited (seen on Windows).
-if (process.argv[1] && resolve(process.argv[1]) === SELF && process.argv.includes('--serve') && process.argv.includes('--watch')) {
+const serviceMode = process.argv[1] && resolve(process.argv[1]) === SELF && process.argv.includes('--serve') && process.argv.includes('--watch');
+// Windows: Task Scheduler's RestartOnFailure only covers a task that fails to start, not a server
+// that dies later (Lenovo: a killed hub stayed down). So the task process stays a small watchdog
+// and respawns the server; launchd and systemd restart the process themselves.
+if (serviceMode && process.platform === 'win32' && !process.env.AOS_HUB_WATCHDOG_CHILD) {
+  const runChild = () => {
+    const child = spawn(process.execPath, process.argv.slice(1), {
+      stdio: 'inherit', env: { ...process.env, AOS_HUB_WATCHDOG_CHILD: '1' }, shell: false, windowsHide: true,
+    });
+    // Exit 3 = the hub's code changed on disk: start the new code at once; a crash waits 5 s.
+    child.on('exit', (code) => setTimeout(runChild, code === 3 ? 0 : 5000));
+  };
+  runChild();
+} else if (serviceMode) {
   process.env.AOS_HUB_SERVE = '1';
 }
 
@@ -323,7 +336,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
 }
 
 const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === SELF;
-if (invokedDirectly && process.env.AOS_HUB_SERVE !== '1') {
+if (invokedDirectly && process.env.AOS_HUB_SERVE !== '1' && !serviceMode) {
   cli().then((code) => process.exit(code ?? 0)).catch((e) => {
     console.error(`hub: ${e.message}`);
     process.exit(2);
