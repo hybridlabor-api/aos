@@ -543,5 +543,6 @@ live site for those paths (a static site's own allowlist `.vercelignore` is the 
 - `references/plan-and-verify.md`: detect findings, plan steps and ordering, handoffs, what each
   check needs and why it skips, and what `status` compares.
 - `references/guided.md`: when the chosen provider isn't automated.
+- `references/bdb-fleet.md`: AOS addition, the BDB fleet (own backend) as a guided hosting provider.
 - `references/troubleshooting.md`: setup failures, CLI/PATH mismatches and resuming after a repair.
 - `references/<provider>.md`: `vercel`, `netlify`, `supabase`, `neon`, `stripe`, `resend`, `posthog`, `sentry`, `cloudflare-dns`, `godaddy`, `porkbun`.

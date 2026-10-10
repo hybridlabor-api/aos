@@ -71,6 +71,9 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 | "I'll let the /startcycle proceed without a defined rollback path." | Proceeding without a rollback path corrupts the workflow integrity and safety. |
 | "I trust the cached agent registry instead of rescanning after a skill change." | Caches stale out quickly; explicit rescans prevent ghost failures. |
 
+## Going live
+The release report is not a deployment. If the user wants the product live on their own accounts, point to the `golive` skill (it also handles the BDB fleet as a guided host); do not deploy from this skill.
+
 ## 5. Red Flags
 - Bypassing the verification step after a script execution.
 - Proceeding to the next pipeline stage without confirming the previous stage's side effects.

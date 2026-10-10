@@ -134,6 +134,8 @@ Run only the streams the goal actually needs. A plain backend feature does not n
 
 If the invoker isn't sure whether shipping applies, treat step 4 as the finish line and ask before running step 5.
 
+**Taking it live is a separate step after Shipping.** When the user wants the product online on their own accounts (hosting, database, auth, domain, email, payments), hand over to the `golive` skill; for our own fleet as the host, golive has a guided BDB-fleet path built on the `pb-deploy-saas` playbook. Neither runs without the user's explicit approval and the usual GO.
+
 ---
 
 ## Explicit non-goals
