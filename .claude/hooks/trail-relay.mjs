@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Relays a hook event to any running agenttrail live map (skills/global_config/agenttrail).
-// Best-effort telemetry: 1 s cap, errors swallowed, never blocks or fails the agent (the hook timeout is 5 s).
+// Best-effort telemetry: 500 ms fetch cap, 1.5 s safety exit, errors swallowed, never blocks or fails the agent (the hook timeout is 3 s).
 // Usage: node trail-relay.mjs --agent <claude|agy|codex> [--event <HookEventName>]
 
 // Fail-open safety timer: never let the hook linger or block the caller.
-const timer = setTimeout(() => process.exit(0), 4000);
+const timer = setTimeout(() => process.exit(0), 1500);
 if (timer.unref) timer.unref();
 
 process.on('uncaughtException', () => process.exit(0));
@@ -30,7 +30,7 @@ const legacy = process.env.AGENTTRAIL_LEGACY === '1';
 const legacyPorts = legacy ? Array.from({ length: 15 }, (_, i) => 5330 + i).filter((p) => p !== hubPort) : [];
 const targets = [{ url: `http://127.0.0.1:${hubPort}/hook`, body }, ...legacyPorts.map((p) => ({ url: `http://127.0.0.1:${p}/hook`, body }))];
 try {
-  await Promise.allSettled(targets.map((t) => fetch(t.url, { method: 'POST', body: t.body, signal: AbortSignal.timeout(1000) }).catch(() => {})));
+  await Promise.allSettled(targets.map((t) => fetch(t.url, { method: 'POST', body: t.body, signal: AbortSignal.timeout(500) }).catch(() => {})));
 } catch {}
 process.exit(0);
 

@@ -58,12 +58,12 @@ describe('S5-3: the gate hook fails closed', () => {
         const r = spawnSync('sh', ['-c', gateCmd.replace(/^node /, 'aos-no-such-node-binary ').replace(/\$\{CLAUDE_PROJECT_DIR\}/g, '/nonexistent')]);
         assert.equal(r.status, 2, 'a missing interpreter must block, not pass');
     });
-    test('S5-8: trail-relay hooks get 5 s and their own cap is shorter; the gate keeps no timeout', () => {
+    test('S5-8: trail-relay hooks get 3 s and the relay exits itself before that; the gate keeps no timeout', () => {
         const relay = settings.hooks.PreToolUse.concat(settings.hooks.Stop).flatMap((e) => e.hooks).filter((h) => h.command.includes('trail-relay.mjs'));
         assert.ok(relay.length > 0);
-        for (const h of relay) assert.ok(h.timeout >= 5, h.command);
+        for (const h of relay) assert.ok(h.timeout >= 3, h.command);
         const src = fs.readFileSync(path.join(path.dirname(GATE), 'trail-relay.mjs'), 'utf8');
-        assert.ok(/setTimeout\(\(\) => process\.exit\(0\), 4000\)/.test(src), 'the relay exits itself before the 5 s hook kill');
+        assert.ok(/setTimeout\(\(\) => process\.exit\(0\), 1500\)/.test(src), 'the relay exits itself before the 3 s hook kill');
     });
     test('a gate that exits 1 (crash) still blocks', () => {
         const r = spawnSync('sh', ['-c', 'sh -c "exit 1" || exit 2']);
