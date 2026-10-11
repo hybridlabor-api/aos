@@ -14,7 +14,7 @@ Question: does a `PreToolUse` hook fire (a) under `codex exec` and (b) under `ao
 
 ## Installer
 
-The default install already writes the go-gate `[[hooks.PreToolUse]]` stanza (matcher `^(Bash|run_command)$`) into the Codex `config.toml` block between `# AOS:HOOKS:START` and `# AOS:HOOKS:END`. `aos --codex-gate` prints exactly that stanza plus the trust note and exits without writing anything, so you can inspect or copy it. Codex asks you to trust new or changed hooks; approve the go-gate hook there or it stays inactive.
+The default install already writes the go-gate `[[hooks.PreToolUse]]` stanza (no matcher: Codex runs shell commands through its `exec`/`exec_command` tool, and the former matcher `^(Bash|run_command)$` never fired, so a `git push` from `codex exec` ran on Windows, Codex 0.162.1; the gate lets calls without a command through and also reads `tool_input.cmd`) into the Codex `config.toml` block between `# AOS:HOOKS:START` and `# AOS:HOOKS:END`. `aos --codex-gate` prints exactly that stanza plus the trust note and exits without writing anything, so you can inspect or copy it. Codex asks you to trust new or changed hooks; approve the go-gate hook there or it stays inactive.
 
 ## Procedure
 

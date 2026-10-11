@@ -3134,6 +3134,8 @@ function main() {
     input?.toolCall?.args?.CommandLine ||
     input?.toolCall?.args?.command ||
     input?.tool_input?.command ||
+    // Codex's exec_command tool names the shell line `cmd`.
+    input?.tool_input?.cmd ||
     input?.command ||
     "";
   // An argv array is joined like aos-acp does; any other non-string value is refused.

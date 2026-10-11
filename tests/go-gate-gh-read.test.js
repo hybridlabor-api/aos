@@ -44,6 +44,12 @@ test('aos-uninstall needs a plain GO unless it is a dry run', () => {
         assert.deepEqual(g.commandScopes(c), [], c);
 });
 
+test('Codex exec_command input (tool_input.cmd) reaches the gate and is blocked', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [GATE], { input: JSON.stringify({ tool_name: 'exec_command', tool_input: { cmd: 'git push origin main' } }), encoding: 'utf8', env: { ...process.env, AOS_TEST_SANDBOX: '1' } });
+    assert.equal(r.status, 2, r.stderr);
+});
+
 test('PowerShell and cmd wrappers are opened like bash -c (Codex on Windows, Lenovo P15)', () => {
     const PS = '"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"';
     for (const c of [`${PS} -NoProfile -Command "git push C:\\x\\y.git main"`, 'powershell.exe -Command "git push origin main"', 'pwsh -NoProfile -ExecutionPolicy Bypass -c "npm publish"', 'cmd /c "git push origin main"', 'cmd.exe /C git push origin main'])

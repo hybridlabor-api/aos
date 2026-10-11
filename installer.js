@@ -6125,12 +6125,12 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     return skipped;
 }
 
-// The go-gate PreToolUse stanza for Codex's config.toml. Whether it fires under `codex exec`
-// or under aos-acp is UNVERIFIED (docs/codex-gate-smoke.md).
+// The go-gate PreToolUse stanza for Codex's config.toml. No matcher: Codex runs shell commands
+// through its exec/exec_command tool, so `^(Bash|run_command)$` never fired and a git push ran
+// (Lenovo P15, Codex 0.162.1). The gate itself lets tool calls without a command through.
 function codexGateSnippet(hooksDir) {
     return [
         '[[hooks.PreToolUse]]',
-        'matcher = "^(Bash|run_command)$"',
         '[[hooks.PreToolUse.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(hooksDir, 'go-gate.mjs')}"`)}`,
