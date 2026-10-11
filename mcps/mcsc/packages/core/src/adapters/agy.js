@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { emitTrail } from '../trail.js';
 import { childEnv } from '../depth.js';
+import { agyChildEnv } from '../no-mcp.js';
 const execFileAsync = promisify(execFile);
 
 /**
@@ -35,9 +36,12 @@ export async function delegate(req) {
       req.prompt
     );
     
-    // MCP: unchanged. `agy --help` documents no per-run flag to skip MCP servers; `agy mcp disable`
-    // edits the persisted config for every session, so it is not used here.
-    const env = childEnv('agy');
+    // MCP servers are off unless `req.mcp === true`: agy has no per-run flag, so HOME points at a worker
+    // home whose mcp_config.json files are empty (../no-mcp.js). `agy mcp disable` would edit the persisted config.
+    const env = agyChildEnv(childEnv('agy'), {
+      withMcp: req.mcp === true,
+      warn: (m) => process.stderr.write(`mcsc: ${m}\n`),
+    });
 
     const run = execFileAsync(
       'agy',
