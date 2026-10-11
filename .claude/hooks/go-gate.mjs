@@ -307,10 +307,12 @@ const BUDGET = Symbol("budget");
 let deadline = 0, wallDeadline = 0;
 const cpuMs = () => { const u = process.cpuUsage(); return (u.user + u.system) / 1000; };
 const tick = () => { if (deadline && (cpuMs() > deadline || Date.now() > wallDeadline)) throw BUDGET; };
+// Windows: a cold process spends more CPU on its first analysis than the POSIX budget allows (measured: 500 ms suffices).
+export const defaultBudgetMs = (platform = process.platform) => (platform === "win32" ? 500 : 150);
 function withBudget(fn, onExceed) {
   const outer = deadline, outerWall = wallDeadline;
   if (!outer) {
-    const ms = gateCtx.budgetMs ?? 150;
+    const ms = gateCtx.budgetMs ?? defaultBudgetMs();
     deadline = cpuMs() + ms;
     wallDeadline = Date.now() + (ms <= 0 ? ms : Math.max(ms * 20, 3000));
   }

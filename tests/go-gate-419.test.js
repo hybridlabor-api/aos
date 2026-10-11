@@ -49,6 +49,18 @@ const put = (dir, name, body, ageMs) => {
     return f;
 };
 
+describe('S5-2: analysis budget default', () => {
+    test('win32 gets 500 ms, every other platform keeps 150 ms', () => {
+        assert.equal(g.defaultBudgetMs('win32'), 500);
+        assert.equal(g.defaultBudgetMs('darwin'), 150);
+        assert.equal(g.defaultBudgetMs('linux'), 150);
+    });
+    test('a destructive command stays guarded under the win32 budget', () => {
+        g.setGateContext({ budgetMs: g.defaultBudgetMs('win32') });
+        assert.deepEqual(sc('rm -rf build'), ['destructive']);
+    });
+});
+
 describe('installed tool scripts are not analysed as agent code', () => {
     const RM = 'import shutil\n\ndef uninstall(d):\n    shutil.rmtree(d)\n';
     const plugin = () => path.join(claudeDir, 'plugins', 'cache', 'token-saver', 'token-saver', '2.6.3', 'src');
