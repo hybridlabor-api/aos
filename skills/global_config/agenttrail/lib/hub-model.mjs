@@ -115,6 +115,19 @@ function liveTasksFor(primary, sessions, now, cfg) {
   return live
 }
 
+// A node a session released (Stop or SessionEnd) stays visible as touched, never done.
+function touchedFor(primary, sessions) {
+  const touched = new Map()
+  for (const s of sessions) {
+    for (const t of s.touched || []) {
+      if (!t.plan || path.resolve(primary.path, t.plan) !== primary.planPath) continue
+      const at = new Date(t.at || 0).toISOString()
+      if (!touched.has(t.id) || touched.get(t.id) < at) touched.set(t.id, at)
+    }
+  }
+  return touched
+}
+
 export function buildModel({
   now = Date.now(), port, sessionTable, gate = null, asks = [], repos = [], pinnedKeys = [], cfg = CONFIG_DEFAULTS,
   memo = freshMemo,
@@ -181,6 +194,7 @@ export function buildModel({
         ? (bsCache.has(primary.branch) ? bsCache.get(primary.branch) : bsCache.set(primary.branch, memo(`branch|${repoId}|${primary.branch}`, () => branchState(repoId, primary.branch, { defaultBranch: defBranch }), TTL.branch)).get(primary.branch))
         : 'open'
       const liveTasks = liveTasksFor(primary, sessions, now, cfg)
+      const touchedTasks = touchedFor(primary, sessions)
       const pinned = pinnedKeys.includes(group.planKey)
       // "live" means still reporting and not finished. A session that ended cannot keep a
 // merged branch on the main view; one that stopped and is waiting for Tim can.
@@ -199,7 +213,7 @@ const live = inPrimary.some((s) => now - (s.lastEventAt || 0) < cfg.liveMs && !s
         mirrors: mirrors.map((m) => ({ path: m.path, branch: m.branch })),
         divergent: divergent.map((m) => ({ path: m.path, branch: m.branch, tasks: differingTasks(m, primary) })),
         components: components.map((c) => ({ id: c.id, title: c.title, status: c.status, files: c.files, needs: c.needs, links: c.links, tech: c.tech })),
-        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, parent: t.parent, live: liveTasks.get(t.id) || null })),
+        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, parent: t.parent, live: liveTasks.get(t.id) || null, touchedAt: touchedTasks.get(t.id) || null })),
         progress: { done: tasks.filter((t) => t.status === 'done').length, total: tasks.length, stalled: stalled.size, live: tasks.filter((t) => liveTasks.has(t.id)).length },
         lastActivity: new Date(lastActivity).toISOString(),
       }

@@ -21,6 +21,10 @@ if (!ev || typeof ev !== 'object') process.exit(0);
 ev.agent = arg('--agent') || ev.agent || 'claude';
 ev.hook_event_name ||= arg('--event');
 ev.cwd ||= process.cwd();
+// A dispatcher sets AOS_TRAIL_NODE (+ AOS_TRAIL_PLAN) when it starts a worker: the node is live on the map.
+if (process.env.AOS_TRAIL_NODE && !ev.task) {
+  ev.task = { id: process.env.AOS_TRAIL_NODE, status: 'doing', ...(process.env.AOS_TRAIL_PLAN ? { plan: process.env.AOS_TRAIL_PLAN } : {}) };
+}
 const body = JSON.stringify(ev);
 
 // v2: the hub first, on one named port. The legacy per-repo range is only tried

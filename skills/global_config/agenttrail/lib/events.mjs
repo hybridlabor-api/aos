@@ -136,6 +136,8 @@ export function fromLegacyHook(payload, { now = Date.now() } = {}) {
       }
     }
     if (ev.kind === 'waiting' && payload.message) ev.message = String(payload.message).slice(0, 500)
+    // The trail relay stamps AOS_TRAIL_NODE / AOS_TRAIL_PLAN onto the payload as `task`.
+    if (payload.task?.id) ev.task = { id: String(payload.task.id).slice(0, 128), status: 'doing', ...(payload.task.plan ? { plan: String(payload.task.plan).slice(0, 300) } : {}) }
   } else {
     return null
   }
