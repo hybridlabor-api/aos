@@ -155,6 +155,17 @@ describe('8 OpenCode session driving is never grantable (C3)', () => {
 });
 
 describe('5 store guard forms (M1)', () => {
+    test('EXTRA: a mention of the store in a read-only search passes; every real write stays blocked', () => {
+        const S = '~/.aos/gate/k.json', D = '~/.aos/gate/';
+        for (const c of ['grep -rn "\\.aos/gate" docs/ README.md', 'git grep -n ".aos/gate" -- tests', `grep -c x ${S} 2>/dev/null`, `grep x ${S} &> /dev/null`]) {
+            assert.equal(g.gateStoreReason(c), null, c);
+        }
+        for (const c of [`echo x > ${S}`, `cp f ${D}`, `sed -i s/a/b/ ${S}`, `rm ${S}`, `mv ${S} /tmp/z`, `echo x | tee ${S}`,
+            `grep x ${S} > ${D}out`, `grep x ${S} --output=${D}out`, `cp /tmp/a ${D}k && grep -rn x docs`,
+            `node -e "require('fs').writeFileSync(require('path').join(process.env.HOME,'.aos','gate','k.json'),'{}')"`]) {
+            assert.ok(g.gateStoreReason(c), c);
+        }
+    });
     test('normalised, case-insensitive and single-& forms are blocked; read-only stays allowed', () => {
         for (const c of ['cp /tmp/x ~/.aos//gate/k.json', 'cp /tmp/x ~/.aos/./gate/k.json', 'cp /tmp/x "$HOME/.aos/ga""te/k.json"', 'cp /tmp/x ~/.aos/ga\\te/k.json',
             'D=gate; cp /tmp/x ~/.aos/$D/k.json', 'cp /tmp/x ~/.aos/gat?/k.json', 'cp /tmp/x ~/.aos/{gate,}/k.json', 'cp /tmp/x ~/.AOS/GATE/k.json',

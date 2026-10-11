@@ -2003,16 +2003,26 @@ export const isGuardedCommand = (command) =>
 // a forged store entry without a matching human entry is ignored.
 // ---------------------------------------------------------------------------
 const STORE_REF = /\.aos[/,\s+]+(?:\.[/]+)*(?:gate|go)(?![\w.-])|\.aos\/+[^\s/]*[$*?[{]/i;
+// Read-only heads: a store path given to one of these is a read or a mere mention, never a write.
+const STORE_READ = /^(?:cat|ls|grep|egrep|fgrep|head|tail|wc|stat|file|cd|git\s+(?:grep|status|blame|ls-files))(?=\s|$)/;
+const STORE_NULL_REDIR = /(?:\d?>>?|&>)\s*(?:\/dev\/null|&\d)/g;
 export function gateStoreReason(command) {
   if (typeof command !== "string") return null;
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
   // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
   const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
   if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
-  // `>` covers redirects and `>(`; `<(` and `$(`/backticks run commands of their own.
-  const readOnly = !/[>\x60]|\$\(|<\(/.test(norm) &&
-    norm.split(/&&|\|\||[;|&\n]/).every((s) => /^\s*(?:cat|ls|grep|head|tail|cd)\b/.test(s));
-  return readOnly ? null : "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail is allowed.";
+  const why = "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail/wc/stat/file, git grep/status/blame/ls-files and a redirect to /dev/null are allowed.";
+  // Command and process substitution run commands of their own.
+  if (/\$\(|\x60|<\(|>\(/.test(norm)) return why;
+  const plain = norm.replace(STORE_NULL_REDIR, "");
+  // Any other redirect or --output writes a file that may be the store.
+  if (/>/.test(plain) || /--output\b/.test(plain)) return why;
+  const readOnly = plain.split(/&&|\|\||[;|&\n]/).every((s) => {
+    const seg = s.trim().replace(/^(?:\w+=\S*\s+)+/, "");
+    return !seg || STORE_READ.test(seg);
+  });
+  return readOnly ? null : why;
 }
 
 // Unreadable stdin throws: safeMain denies (exit 2) instead of allowing with empty input.
