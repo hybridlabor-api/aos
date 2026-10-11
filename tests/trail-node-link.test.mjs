@@ -43,6 +43,17 @@ function planRepo(prefix) {
   return dir;
 }
 
+// A plan on the default branch is archived once no session is live (branch --merged main),
+// so the SessionEnd case needs its own unmerged branch to stay on the map.
+function openBranchRepo(prefix) {
+  const dir = planRepo(prefix);
+  git(dir, 'checkout', '-q', '-b', 'feat/cart');
+  fs.writeFileSync(path.join(dir, 'cart.txt'), 'wip');
+  git(dir, 'add', '.');
+  git(dir, 'commit', '-qm', 'wip');
+  return dir;
+}
+
 const withNode = { id: 'cart-wire', status: 'doing', plan: PLAN_REL };
 
 // The relay stamps the node onto the raw hook payload; /hook maps it through fromLegacyHook.
@@ -93,7 +104,7 @@ describe('relayed node link (hub)', () => {
   });
 
   test('SessionEnd clears the live node and keeps it touched', () => {
-    const repo = planRepo('trail-link-end-');
+    const repo = openBranchRepo('trail-link-end-');
     const t = new SessionTable();
     t.apply(hookEvent('PreToolUse', repo, withNode));
     t.apply(hookEvent('SessionEnd', repo, withNode));
