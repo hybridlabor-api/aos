@@ -49,13 +49,23 @@ const put = (dir, name, body, ageMs) => {
     return f;
 };
 
+// The fail-closed tests need a POSIX sh. On Windows it comes with Git for Windows but is usually not on PATH: look in the usual places.
+const SH = (() => {
+    if (!spawnSync('sh', ['-c', 'exit 0']).error) return 'sh';
+    for (const d of [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA && require('path').join(process.env.LOCALAPPDATA, 'Programs')]) {
+        for (const rel of ['Git' + '\\usr\\bin\\sh.exe', 'Git' + '\\bin\\sh.exe']) {
+            const f = d && require('path').join(d, rel); if (f && fs.existsSync(f)) return f;
+        }
+    }
+    return null;
+})();
 describe('S5-3: the gate hook fails closed', () => {
     const settings = JSON.parse(fs.readFileSync(path.join(path.dirname(GATE), '..', 'settings.json'), 'utf8'));
     const gateCmd = settings.hooks.PreToolUse.flatMap((e) => e.hooks).map((h) => h.command).find((c) => c.includes('go-gate.mjs'));
 
-    test('the wired command turns any node failure into exit 2', () => {
+    test('the wired command turns any node failure into exit 2', { skip: !SH && 'no sh found (Git for Windows: add Git/usr/bin to PATH)' }, () => {
         assert.ok(gateCmd.endsWith('|| exit 2'), gateCmd);
-        const r = spawnSync('sh', ['-c', gateCmd.replace(/^node /, 'aos-no-such-node-binary ').replace(/\$\{CLAUDE_PROJECT_DIR\}/g, '/nonexistent')]);
+        const r = spawnSync(SH, ['-c', gateCmd.replace(/^node /, 'aos-no-such-node-binary ').replace(/\$\{CLAUDE_PROJECT_DIR\}/g, '/nonexistent')]);
         assert.equal(r.status, 2, 'a missing interpreter must block, not pass');
     });
     test('S5-8: trail-relay hooks get 3 s and the relay exits itself before that; the gate keeps no timeout', () => {
@@ -65,8 +75,8 @@ describe('S5-3: the gate hook fails closed', () => {
         const src = fs.readFileSync(path.join(path.dirname(GATE), 'trail-relay.mjs'), 'utf8');
         assert.ok(/setTimeout\(\(\) => process\.exit\(0\), 1500\)/.test(src), 'the relay exits itself before the 3 s hook kill');
     });
-    test('a gate that exits 1 (crash) still blocks', () => {
-        const r = spawnSync('sh', ['-c', 'sh -c "exit 1" || exit 2']);
+    test('a gate that exits 1 (crash) still blocks', { skip: !SH && 'no sh found (Git for Windows: add Git/usr/bin to PATH)' }, () => {
+        const r = spawnSync(SH, ['-c', 'sh -c "exit 1" || exit 2']);
         assert.equal(r.status, 2);
     });
 });
