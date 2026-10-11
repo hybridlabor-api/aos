@@ -348,7 +348,7 @@ describe('uninstall', () => {
         assert.equal(s.github, undefined);
         assert.ok(s.mine && s.other, 'entries AOS does not own stay');
         assert.ok(fs.existsSync(sf), 'secrets file stays');
-        assert.ok(lines.some((l) => l.includes('secrets.env') && /bleibt erhalten/.test(l)));
+        assert.ok(lines.some((l) => l.includes('secrets.env') && /is kept/.test(l)));
         assert.equal(baks(f).length, 1);
     });
 

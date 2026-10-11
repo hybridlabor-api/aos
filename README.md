@@ -1577,7 +1577,7 @@ flowchart LR
 npx -y @hybridlabor-api/aos@latest
 ```
 
-**No `aos update` subcommand.** If you once ran `npm i -g @hybridlabor-api/aos`, a plain `aos` on your PATH runs that frozen copy and its version, not the latest; either update it (`npm i -g @hybridlabor-api/aos@latest`) or remove it and stay with `npx`. The installer prints the update command itself whenever a newer version exists; the `bdb-updater` skill wraps the same check for use from inside a session.
+**`aos update`.** The installer puts an `aos` launcher in `~/.local/bin` that runs `npx -y @hybridlabor-api/aos@<channel>` (`latest`, or `beta` when you installed a beta), so `aos update`, `aos status` and `aos repair` always run the newest release of your channel. If you once ran `npm i -g @hybridlabor-api/aos`, whichever `aos` comes first on your PATH wins: a global npm copy stays frozen at its version, so update it (`npm i -g @hybridlabor-api/aos@latest`) or remove it. The installer prints the update command itself whenever a newer version exists; the `bdb-updater` skill wraps the same check for use from inside a session.
 
 ---
 

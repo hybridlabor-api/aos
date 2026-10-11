@@ -73,19 +73,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
   if (cmd === 'show') {
     const c = load();
-    console.log(existsSync(CONFIG_PATH) ? CONFIG_PATH.replace(HOME, '~') : `${CONFIG_PATH.replace(HOME, '~')} (nicht vorhanden)`);
+    console.log(existsSync(CONFIG_PATH) ? CONFIG_PATH.replace(HOME, '~') : `${CONFIG_PATH.replace(HOME, '~')} (not found)`);
     console.log(JSON.stringify(c, null, 2));
-    console.log(isConfigured() ? '\nvollständig' : '\nunvollständig — /aos-setup führt durch die Einrichtung');
+    console.log(isConfigured() ? '\ncomplete' : '\nincomplete — /aos-setup walks you through it');
   } else if (cmd === 'propose') {
     console.log(JSON.stringify(propose(), null, 2));
   } else if (cmd === 'set' && key) {
     const c = load();
     if (key === 'domains') c.domains = value.split(',').map((s) => s.trim()).filter(Boolean);
     else if (key in DEFAULTS) c[key] = value || null;
-    else { console.error(`unbekannter Schlüssel: ${key}`); process.exit(1); }
-    console.log(`geschrieben: ${save(c).replace(HOME, '~')}`);
+    else { console.error(`unknown key: ${key}`); process.exit(1); }
+    console.log(`written: ${save(c).replace(HOME, '~')}`);
   } else {
-    console.error('aos-config show | propose | set <workspaceRoot|userId|domains> <wert>');
+    console.error('aos-config show | propose | set <workspaceRoot|userId|domains> <value>');
     process.exit(1);
   }
 }

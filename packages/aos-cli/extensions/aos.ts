@@ -313,7 +313,7 @@ export default function aosCommands(pi: ExtensionAPI) {
 			const commands: Record<string, string> = {
 				update: "aos",
 				install: "aos",
-				uninstall: "npx @hybridlabor-api/aos-uninstall",
+				uninstall: "npx -p @hybridlabor-api/aos aos-uninstall",
 			};
 			ctx.ui.notify(`Run this in a separate terminal:  ${commands[choice]}`, "info");
 		},
