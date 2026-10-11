@@ -1518,6 +1518,8 @@ function codeInto(r, text, lang = "", ws = null) {
 // own cwd (setGateContext) is the start. Block cooldown: see markBlock.
 let gateCtx = { cwd: "", blockTs: 0 };
 export const setGateContext = (c) => { gateCtx = { cwd: "", blockTs: 0, ...c }; memo = new Map(); };
+// Clock for the installed-script age check. Only the hook sets gateCtx (from the harness input, never from the command), so `now` is a test seam, not an input.
+const nowMs = () => (Number.isFinite(gateCtx.now) ? gateCtx.now : Date.now());
 export const COOLDOWN_MS = 10 * 60 * 1000;
 export const COOLDOWN_MESSAGE = "go-gate: blocked recently; a freshly written script after a block needs a GO; stop and report.";
 const FILE_HEAD = /^(?:python[\d.]*|node(?:js)?|bun|deno|ruby|perl|php|bash|sh|zsh|dash|ksh|pwsh|powershell|osascript)$/i;
@@ -1564,7 +1566,7 @@ function trustedDirs() {
   ];
 }
 function installedScript(path, changed) {
-  if (!(gateCtx.blockTs ? changed < gateCtx.blockTs : false) && Date.now() - changed <= COOLDOWN_MS) return false;
+  if (!(gateCtx.blockTs ? changed < gateCtx.blockTs : false) && nowMs() - changed <= COOLDOWN_MS) return false;
   let real;
   try { real = realpathSync(path); } catch { return false; }
   return trustedDirs().some((d) => {
@@ -1623,7 +1625,7 @@ function scriptInto(r, h, file, cwd) {
   // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
   // written before the block, or remove the marker through a path built at run time; the
   // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
-  if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
+  if (gateCtx.blockTs && nowMs() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
   const body = readSmallRegular(path, SCRIPT_MAX, true);
   if (typeof body !== "string") { r.unscoped = true; return; }

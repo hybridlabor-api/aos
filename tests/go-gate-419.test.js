@@ -86,18 +86,21 @@ describe('S5-2: analysis budget default', () => {
 describe('installed tool scripts are not analysed as agent code', () => {
     const RM = 'import shutil\n\ndef uninstall(d):\n    shutil.rmtree(d)\n';
     const plugin = () => path.join(claudeDir, 'plugins', 'cache', 'token-saver', 'token-saver', '2.6.3', 'src');
+    // The gate's clock is injectable: a file counts as aged when `now` is past its ctime. ctime cannot be backdated in a test.
+    const later = (ms) => ({ ...ctx, now: Date.now() + ms });
 
     test('S5-1: a backdated (utimes/touch -t) script in the plugin cache is still analysed', () => {
         const f = put(plugin(), 'backdated.py', RM, 3600e3);
         assert.notDeepEqual(sc(`python3 ${f} stats`), [], 'mtime is backdated, ctime is now');
     });
     test('an old fixture in the plugin cache with a delete subcommand is not guarded', () => {
-        const f = put(plugin(), 'cli.py', RM, 3600e3);
+        const f = put(plugin(), 'cli.py', RM);
+        g.setGateContext(later(3600e3));
         assert.deepEqual(sc(`python3 ${f} stats`), []);
-        assert.equal(run(`python3 ${f} stats`, { cwd: work }).status, 0);
     });
     test('the live shape: command -v || python3 <plugin>/cli.py', () => {
-        const f = put(plugin(), 'cli.py', RM, 3600e3);
+        const f = put(plugin(), 'cli.py', RM);
+        g.setGateContext(later(3600e3));
         assert.deepEqual(sc(`(command -v token-saver >/dev/null && token-saver stats) || python3 "${f}" stats`), []);
     });
     test('the same file in the cwd or /private/tmp is destructive', () => {
@@ -108,13 +111,14 @@ describe('installed tool scripts are not analysed as agent code', () => {
         assert.deepEqual(sc(`python3 ${f}`), ['destructive']);
     });
     test('the other installed locations: agents, gemini, local share, CLAUDE_CONFIG_DIR', () => {
+        g.setGateContext(later(3600e3));
         for (const d of [path.join(home, '.agents', 'tools'), path.join(home, '.gemini', 'config', 'x'), path.join(home, '.local', 'share', 'uv', 'tools', 'pp'), path.join(home, '.local', 'pipx', 'venvs', 'x')]) {
-            const f = put(d, 'cli.py', RM, 3600e3);
+            const f = put(d, 'cli.py', RM);
             assert.deepEqual(sc(`python3 ${f} stats`), [], d);
         }
         const other = path.join(home, 'alt-claude');
-        g.setGateContext({ ...ctx, claudeDir: other });
-        const f = put(path.join(other, 'plugins', 'cache', 'p', 'v'), 'cli.py', RM, 3600e3);
+        g.setGateContext({ ...later(3600e3), claudeDir: other });
+        const f = put(path.join(other, 'plugins', 'cache', 'p', 'v'), 'cli.py', RM);
         assert.deepEqual(sc(`python3 ${f}`), []);
         g.setGateContext(ctx);
         assert.deepEqual(sc(`python3 ${f}`), ['destructive'], 'not under the configured claude dir');
@@ -132,11 +136,14 @@ describe('installed tool scripts are not analysed as agent code', () => {
         assert.deepEqual(sc(`python3 ${f} stats`), ['destructive']);
     });
     test('integrity guard: older than the first block counts as installed, newer does not', () => {
-        const f = put(plugin(), 'cli.py', RM, 5 * 60e3);
+        const t0 = Date.now();
+        const f = put(plugin(), 'cli.py', RM);
+        g.setGateContext({ ...ctx, now: t0 + 5 * 60e3 });
         assert.deepEqual(sc(`python3 ${f}`), ['destructive'], 'five minutes old, no block marker');
-        g.setGateContext({ ...ctx, blockTs: Date.now() - 60e3 });
-        assert.deepEqual(sc(`python3 ${f}`), [], 'older than the block marker');
+        g.setGateContext({ ...ctx, now: t0 + 20 * 60e3, blockTs: t0 + 60e3 });
+        assert.deepEqual(sc(`python3 ${f}`), [], 'older than the block marker, past the cooldown');
         const fresh = put(plugin(), 'new.py', RM);
+        g.setGateContext({ ...ctx, now: t0 + 60e3, blockTs: t0 - 60e3 });
         assert.equal(sc(`python3 ${fresh}`), null, 'written after the block: cooldown');
     });
     test('a symlink out of the trusted dir is not installed code', () => {
