@@ -129,6 +129,13 @@ test('bin/aos-hub.mjs watchdog does not respawn a clean exit', () => {
     assert.match(src, /child\.on\('exit', \(code\) => \{ if \(code !== 0\)/);
 });
 
+// Regression (S3-5): `restart` is a real verb, not a fall-through to start.
+test('bin/aos-hub.mjs accepts the restart verb', async () => {
+    const { parseArgv } = await import('../bin/aos-hub.mjs');
+    assert.equal(parseArgv(['restart']).cmd, 'restart');
+    assert.equal(parseArgv(['restart', '--port', '7901']).port, 7901);
+});
+
 test('bin/aos-hub.mjs wraps every dynamic import in pathToFileURL', () => {
     const src = read('bin/aos-hub.mjs');
     assert.match(src, /pathToFileURL/);

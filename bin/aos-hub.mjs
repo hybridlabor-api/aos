@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // AOS Hub CLI: `aos-hub [start] [--port 7900] [--tab id] [--no-open]` |
-// `stop` | `status [--json]`. On demand: the start path probes /api/health;
+// `stop` | `restart` | `status [--json]`. On demand: the start path probes /api/health;
 // when up it only opens the browser, otherwise it spawns itself detached
 // (cwd = home) and records hub.json (mode 600, dir 700). `stop` prefers the
 // token-authed POST /api/shutdown and only falls back to ps+SIGTERM, failing
@@ -27,7 +27,7 @@ export function parseArgv(argv) {
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === 'start' || a === 'stop' || a === 'status') out.cmd = a;
+    if (a === 'start' || a === 'stop' || a === 'restart' || a === 'status') out.cmd = a;
     else if (a === '--port') out.port = Number(argv[++i]);
     else if (a.startsWith('--port=')) out.port = Number(a.split('=')[1]);
     else if (a === '--tab') out.tab = argv[++i];
@@ -239,9 +239,19 @@ async function cmdStatus(opts) {
   return 0;
 }
 
+// The old process answers /api/health until its shutdown finishes (up to ~2 s),
+// so wait for the port to go quiet before starting, or start would just reopen it.
+async function cmdRestart(opts) {
+  const code = await cmdStop();
+  if (code !== 0) return code;
+  for (let i = 0; i < 25 && await probeHealth(opts.port, 300); i++) await new Promise((ok) => setTimeout(ok, 200));
+  return cmdStart(opts);
+}
+
 export async function cli(argv = process.argv.slice(2)) {
   const opts = parseArgv(argv);
   if (opts.cmd === 'stop') return cmdStop();
+  if (opts.cmd === 'restart') return cmdRestart(opts);
   if (opts.cmd === 'status') return cmdStatus(opts);
   return cmdStart(opts);
 }
