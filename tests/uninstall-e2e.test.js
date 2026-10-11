@@ -150,3 +150,26 @@ test('a module folder is removed only when the install recorded it', () => {
         assert.ok(!fs.existsSync(path.join(home, '.agents', 'bdb-synapse')), 'recorded folder is removed');
     } finally { rm(home); }
 });
+
+test('the deja MCP entry is removed only when AOS recorded installing deja-vu', () => {
+    const home = sandbox();
+    try {
+        const claude = path.join(home, '.claude.json');
+        write(claude, JSON.stringify({ mcpServers: { deja: { command: 'deja', args: ['mcp'] } } }));
+        const stray = path.join(home, '.agents', 'x.txt');
+        const runUninstall = () => {
+            write(stray, 'x');
+            write(path.join(home, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [stray]: { sha256: require('node:crypto').createHash('sha256').update('x').digest('hex') } }));
+            const r = spawnSync(process.execPath, [path.join(REPO, 'bin', 'aos-uninstall.mjs'), '--yes'], { cwd: home, env: env(home), encoding: 'utf8' });
+            assert.strictEqual(r.status, 0, r.stderr);
+        };
+
+        runUninstall();
+        assert.ok(readJson(claude).mcpServers.deja, 'deja entry kept when AOS did not install deja-vu');
+
+        ur.recordNpmGlobal(home, '@vshulcz/deja-vu');
+        runUninstall();
+        assert.strictEqual(readJson(claude).mcpServers.deja, undefined, 'recorded deja entry removed');
+        assert.deepStrictEqual(ur.readRecords(home).npmGlobal, []);
+    } finally { rm(home); }
+});

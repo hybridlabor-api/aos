@@ -298,11 +298,16 @@ async function execute(p) {
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
   if (modules.length) console.log(`  ${modules.length} Module entfernt`);
 
-  try {
-    execFileSync('npm', ['uninstall', '-g', '@vshulcz/deja-vu'], { stdio: 'ignore', shell: process.platform === 'win32' });
-    console.log('  deja-vu (npm) entfernt');
-  } catch {
-    console.log('  deja-vu nicht per npm entfernt — von Hand entfernen: npm uninstall -g @vshulcz/deja-vu');
+  const DEJA_PKG = '@vshulcz/deja-vu';
+  const dejaByAos = (ur.readRecords(HOME).npmGlobal || []).includes(DEJA_PKG);
+  if (dejaByAos) {
+    try {
+      execFileSync('npm', ['uninstall', '-g', DEJA_PKG], { stdio: 'ignore', shell: process.platform === 'win32' });
+      ur.forgetNpmGlobal(HOME, DEJA_PKG);
+      console.log('  deja-vu (npm) entfernt');
+    } catch {
+      console.log(`  deja-vu nicht per npm entfernt — von Hand entfernen: npm uninstall -g ${DEJA_PKG}`);
+    }
   }
 
   const dejaMcpJson = [
@@ -320,7 +325,7 @@ async function execute(p) {
   for (const f of dejaMcpJson.filter(existsSync)) {
     try {
       const cfg = JSON.parse(readFileSync(f, 'utf8'));
-      if (cfg.mcpServers && cfg.mcpServers.deja) {
+      if (dejaByAos && cfg.mcpServers && cfg.mcpServers.deja) {
         delete cfg.mcpServers.deja;
         writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
         console.log(`  deja-Eintrag aus ${tilde(f)} entfernt`);

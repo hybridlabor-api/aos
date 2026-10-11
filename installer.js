@@ -2493,6 +2493,7 @@ async function installDeja() {
     try {
         log.step('Installing deja-vu session memory...');
         execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore' });
+        uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
     } catch (e) {
         log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
     }
