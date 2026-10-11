@@ -36,11 +36,13 @@ const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
 const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
 // Profile flag written by the installer (--no-hooks / minimal profile = contextHooks false). Fails open to true.
 // It switches off ONLY the context behaviours (memB inject, rules inject, trail telemetry/autostart); gates and A2A stay on.
+// memory: false = unified memory not installed (no memB engine), so memB injection is off as well.
 let contextHooks = true;
-try { if (JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8'))?.contextHooks === false) contextHooks = false; } catch {}
+let memory = true;
+try { const flag = JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8')); if (flag?.contextHooks === false) contextHooks = false; if (flag?.memory === false) memory = false; } catch {}
 const noContext = { buildMemoryBlock: async () => '', rulesText: () => '' };
 const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
-  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map((f) => (!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs') ? noContext : hook(f))));
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map((f) => ((!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs')) || (!memory && f === 'memb-inject.mjs') ? noContext : hook(f))));
 const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
 // ---------------------------------------------------------------------------
@@ -423,7 +425,7 @@ export default async function bdbAosPlugin(input) {
       } catch {}
 
       try {
-        if (!contextHooks) throw 0; // profile without context hooks: no memB injection
+        if (!contextHooks || !memory) throw 0; // no context hooks or no unified memory: no memB injection
         const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
         s.identitySent = true;
         const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
