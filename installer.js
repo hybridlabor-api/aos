@@ -30,6 +30,7 @@ const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const systemdUnits = require('./lib/systemd-units');
 const mcpSecrets = require('./lib/mcp-secrets');
+const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
@@ -470,7 +471,9 @@ function backupConfigFile(filePath) {
     if (DRY_RUN) { log.message(`[dry-run] backup: ${filePath}`); return true; }
     try {
         // created `wx` with 0600 at open time: no world-readable window
-        configBackups.push(mcpSecrets.safeBackup(filePath, `${filePath}.${timestamp}.bak`));
+        // an earlier writer's backup also counts: the plaintext-secrets notice must still name it
+        const bak = backupOnce(filePath, () => mcpSecrets.safeBackup(filePath, `${filePath}.${timestamp}.bak`)) || backupOf(filePath);
+        if (bak) configBackups.push(bak);
         return true;
     } catch (e) {
         log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
@@ -5174,7 +5177,7 @@ function applyOpencodePermission(data, configPath, wanted) {
             return;
         }
         const bak = `${configPath}.${timestamp}.bak`;
-        try { fs.copyFileSync(configPath, bak); } catch (e) {
+        try { backupOnce(configPath, () => { fs.copyFileSync(configPath, bak); return bak; }); } catch (e) {
             log.warn(`Could not back up ${configPath}, skipping permission.external_directory: ${e.message}`);
             return;
         }
@@ -5213,7 +5216,7 @@ function appendOptionalOpencodePlugins(data, configPath, optional) {
         if (data.plugin.some((p) => pluginPackageName(p) === pluginPackageName(pin))) continue;
         if (!backedUp && configPath && fs.existsSync(configPath)) {
             const bak = `${configPath}.${timestamp}.bak`;
-            try { fs.copyFileSync(configPath, bak); backedUp = true; } catch (e) {
+            try { backupOnce(configPath, () => { fs.copyFileSync(configPath, bak); return bak; }); backedUp = true; } catch (e) {
                 log.warn(`Could not back up ${configPath}, skipping optional ${name}: ${e.message}`);
                 continue;
             }
@@ -5388,7 +5391,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         const serialized = JSON.stringify(data, null, 2);
         if (beforeSerialized === serialized) return data;
         try {
-            if (fs.existsSync(configPath)) fs.copyFileSync(configPath, `${configPath}.${timestamp}.bak`);
+            if (fs.existsSync(configPath)) backupOnce(configPath, () => { const b = `${configPath}.${timestamp}.bak`; fs.copyFileSync(configPath, b); return b; });
             fs.mkdirSync(path.dirname(configPath), { recursive: true });
             fs.writeFileSync(configPath, serialized, { mode: 0o600 });
             try { fs.chmodSync(configPath, 0o600); } catch (e) { logDebug(e, 'chmod opencode config'); }
@@ -5640,7 +5643,7 @@ function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
         settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
         if (!Array.isArray(settings.hooks.SessionStart)) settings.hooks.SessionStart = [];
         settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/a2a-session.mjs"' }] });
-        if (fs.existsSync(settingsPath)) fs.copyFileSync(settingsPath, `${settingsPath}.${timestamp}.bak`);
+        if (fs.existsSync(settingsPath)) backupOnce(settingsPath, () => { const b = `${settingsPath}.${timestamp}.bak`; fs.copyFileSync(settingsPath, b); return b; });
         fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
         fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
         log.step('Registered a2a-session.mjs Claude SessionStart sidecar hook (skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0)');
@@ -5832,7 +5835,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         if (existing) {
             // hrtime counts from boot: shortly after a boot it has fewer than 13 digits, which the prune
             // regex below skipped (backups piled up). Fixed width also keeps the name sort chronological.
-            fs.copyFileSync(settingsPath, `${settingsPath}.${String(process.hrtime.bigint()).padStart(20, '0')}.bak`);
+            backupOnce(settingsPath, () => { const b = `${settingsPath}.${String(process.hrtime.bigint()).padStart(20, '0')}.bak`; fs.copyFileSync(settingsPath, b); return b; });
             const dir = path.dirname(settingsPath);
             const base = path.basename(settingsPath);
             const baks = fs.readdirSync(dir).filter((f) => f.startsWith(`${base}.`) && /\.\d{13,}\.bak$/.test(f)).sort();
