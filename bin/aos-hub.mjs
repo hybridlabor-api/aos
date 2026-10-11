@@ -9,7 +9,7 @@
 import { spawn } from 'node:child_process';
 import { connect as netConnect } from 'node:net';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readdirSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir as osHome } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -259,7 +259,9 @@ export async function cli(argv = process.argv.slice(2)) {
 // Service mode: launchd/systemd/Task Scheduler start `--serve --watch` directly. Serve in this
 // process, so the service manager supervises the real server; a detached child (the `aos hub`
 // path) would leave the manager watching a parent that already exited (seen on Windows).
-const serviceMode = process.argv[1] && resolve(process.argv[1]) === SELF && process.argv.includes('--serve') && process.argv.includes('--watch');
+// argv[1] may be an npm bin symlink; SELF is already the real path, so compare real paths.
+const mainPath = (() => { try { return realpathSync(process.argv[1] || ''); } catch { return ''; } })();
+const serviceMode = mainPath === SELF && process.argv.includes('--serve') && process.argv.includes('--watch');
 // Windows: Task Scheduler's RestartOnFailure only covers a task that fails to start, not a server
 // that dies later (Lenovo: a killed hub stayed down). So the task process stays a small watchdog
 // and respawns the server; launchd and systemd restart the process themselves.
@@ -354,7 +356,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   process.on('SIGTERM', bye);
 }
 
-const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === SELF;
+const invokedDirectly = mainPath === SELF;
 if (invokedDirectly && process.env.AOS_HUB_SERVE !== '1' && !serviceMode) {
   cli().then((code) => process.exit(code ?? 0)).catch((e) => {
     console.error(`hub: ${e.message}`);

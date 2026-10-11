@@ -136,6 +136,13 @@ test('bin/aos-hub.mjs accepts the restart verb', async () => {
     assert.equal(parseArgv(['restart', '--port', '7901']).port, 7901);
 });
 
+// Regression (S3-9): an npm bin symlink must still count as the main script.
+test('bin/aos-hub.mjs resolves symlinks on argv[1] for the main check', () => {
+    const src = read('bin/aos-hub.mjs');
+    assert.match(src, /realpathSync\(process\.argv\[1\]/);
+    assert.ok(!/resolve\(process\.argv\[1\]\) === SELF/.test(src), 'plain resolve() misses symlinked bins');
+});
+
 test('bin/aos-hub.mjs wraps every dynamic import in pathToFileURL', () => {
     const src = read('bin/aos-hub.mjs');
     assert.match(src, /pathToFileURL/);
