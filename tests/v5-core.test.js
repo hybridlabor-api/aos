@@ -679,9 +679,9 @@ test('R5: a JSONC settings.json is a warning on a green Harnesses step; harness 
     });
 });
 
-test('R7: aos-uninstall removes the fleet registration', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
+test('R7: aos-uninstall removes the fleet, sessions and alert registrations', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
     const home = mkHome();
-    putClaudeSettings(home, { model: 'x', enabledPlugins: { [KEY]: true } });
+    putClaudeSettings(home, { model: 'x', enabledPlugins: { [KEY]: true, 'bdb-aos-sessions@bdb-marketplace': true, 'bdb-aos-alert@bdb-marketplace': true, 'other@x': true } });
     const stray = path.join(home, '.agents', 'x.txt');
     fs.mkdirSync(path.dirname(stray), { recursive: true });
     fs.writeFileSync(stray, 'x');
@@ -690,7 +690,7 @@ test('R7: aos-uninstall removes the fleet registration', { skip: process.env.AOS
     assert.strictEqual(r.status, 0, r.stderr + r.stdout);
     const s = JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8'));
     assert.strictEqual(s.model, 'x');
-    assert.strictEqual(s.enabledPlugins[KEY], undefined);
+    assert.deepStrictEqual(s.enabledPlugins, { 'other@x': true });
 });
 
 test('R8: Settings -> Install fleet is ✖ when opted out or Claude Code is missing; a confirmed opt-out is cleared', { skip: SKIP_WIN }, async () => {
@@ -724,7 +724,7 @@ test('R9: a throwing detect is shown in Status as "detect failed", not as not in
 test('R10: Update and Repair respect the Settings disabled list', async () => {
     const m = machine();
     fs.mkdirSync(path.join(m.home, '.aos'), { recursive: true });
-    fs.writeFileSync(path.join(m.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['fleet', 'fixable', 'gateway'] }));
+    fs.writeFileSync(path.join(m.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['fleet', 'sessions', 'alert', 'fixable', 'gateway'] }));
     let repaired = 0;
     await withPackage({ id: 'fixable', name: 'Fixable', detect: () => ({ installed: true }), verify: () => ({ ok: false, detail: 'bad' }), repair: () => { repaired++; } }, async () => {
         await withPathAsync(fakeClaude(), async () => {
@@ -763,4 +763,80 @@ test('R13: token-saver detect honours CLAUDE_CONFIG_DIR', () => {
     fs.mkdirSync(cfg);
     fs.writeFileSync(path.join(cfg, 'settings.json'), JSON.stringify({ enabledPlugins: { 'token-saver@token-saver-marketplace': true } }));
     assert.strictEqual(ts.detect({ home: mkHome(), env: { PATH: noClaude(), CLAUDE_CONFIG_DIR: cfg } }).installed, true);
+});
+
+// ---- A1/A3: a fresh install adds the gateway, the hub service and the Claude Code mods ----
+const MOD_KEYS = { fleet: KEY, sessions: 'bdb-aos-sessions@bdb-marketplace', alert: 'bdb-aos-alert@bdb-marketplace' };
+const enabledOf = (home) => { try { return JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8')).enabledPlugins || {}; } catch { return {}; } };
+// Swaps a real registry entry (same id) for a fake one and puts the real one back.
+const withFake = async (entry, fn) => { const real = pk.registry.find((e) => e.id === entry.id); pk.register(entry); try { return await fn(); } finally { pk.register(real); } };
+const fakeSvc = (id, name, calls, { ok = true } = {}) => ({ id, name, detect: () => ({ installed: false }), install: async () => { calls.push(id); return { ok: true }; }, verify: async () => ({ ok, detail: ok ? 'up' : 'down' }) });
+
+test('B3-A3: -y enables all three Claude Code mods; gateway and hub excluded are not touched', { skip: SKIP_WIN }, async () => {
+    const m = machine();
+    const failed = await withPathAsync(fakeClaude(), () => menu.installDefaults(m.host, m.opts(), new Set(['gateway', 'hub'])));
+    assert.deepStrictEqual(failed, []);
+    const on = enabledOf(m.home);
+    for (const k of Object.values(MOD_KEYS)) assert.strictEqual(on[k], true, k);
+    assert.match(m.out.join(''), /✔ Claude Code mods/);
+});
+
+test('B3-A3: the interactive offer ticks all mods; an unticked one is saved as disabled and not enabled', { skip: SKIP_WIN }, async () => {
+    const m = machine();
+    const seen = [];
+    const ui = { multi: async (q, options, initial) => { seen.push(options.map((x) => x.value), initial); return ['fleet', 'alert']; } };
+    await withPathAsync(fakeClaude(), () => menu.installDefaults(m.host, m.opts({ ui }), new Set(['gateway', 'hub'])));
+    assert.deepStrictEqual(seen, [['fleet', 'sessions', 'alert'], ['fleet', 'sessions', 'alert']]);
+    const on = enabledOf(m.home);
+    assert.deepStrictEqual([on[MOD_KEYS.fleet], on[MOD_KEYS.sessions], on[MOD_KEYS.alert]], [true, undefined, true]);
+    assert.ok(require('../lib/v5/profile').readSettings(m.home).disabled.includes('sessions'));
+});
+
+test('B3-A3: without Claude Code nothing is offered or written; AOS_NO_FLEET and --without still win', { skip: SKIP_WIN }, async () => {
+    const m = machine();
+    const ui = { multi: async () => assert.fail('asked without Claude Code') };
+    await withPathAsync(noClaude(), () => menu.installDefaults(m.host, m.opts({ ui }), new Set(['gateway', 'hub'])));
+    assert.strictEqual(fs.existsSync(path.join(m.home, '.claude', 'settings.json')), false);
+
+    const n = machine();
+    const prev = process.env.AOS_NO_FLEET;
+    process.env.AOS_NO_FLEET = '1';
+    try { await withPathAsync(fakeClaude(), () => menu.installDefaults(n.host, n.opts(), new Set(['gateway', 'hub', 'alert']))); } finally { if (prev === undefined) delete process.env.AOS_NO_FLEET; else process.env.AOS_NO_FLEET = prev; }
+    assert.deepStrictEqual(enabledOf(n.home), { [MOD_KEYS.sessions]: true });
+});
+
+test('B3-A1: a fresh install runs the gateway and hub steps; minimal and dry run do not', { skip: SKIP_WIN }, async () => {
+    const m = machine();
+    const calls = [];
+    const failed = await withFake(fakeSvc('gateway', 'MCP gateway', calls), () => withFake(fakeSvc('hub', 'AOS Hub', calls), () =>
+        withPathAsync(noClaude(), () => menu.installDefaults(m.host, m.opts(), new Set())))) ;
+    assert.deepStrictEqual(calls, ['gateway', 'hub']);
+    assert.deepStrictEqual(failed, []);
+    assert.match(m.out.join(''), /✔ MCP gateway[\s\S]*✔ AOS Hub/);
+
+    const p = require('../lib/v5/profile');
+    const min = machine();
+    const none = [];
+    await withFake(fakeSvc('gateway', 'MCP gateway', none), () => withFake(fakeSvc('hub', 'AOS Hub', none), () =>
+        withPathAsync(fakeClaude(), () => menu.installDefaults(min.host, min.opts(), new Set(p.PROFILES.minimal.exclude)))));
+    assert.deepStrictEqual(none, []);
+    assert.strictEqual(fs.existsSync(path.join(min.home, '.claude', 'settings.json')), false);
+
+    const dry = machine();
+    await withFake(fakeSvc('gateway', 'MCP gateway', none), () => menu.installDefaults(dry.host, dry.opts({ dryRun: true }), new Set()));
+    assert.deepStrictEqual(none, []);
+    assert.match(dry.out.join(''), /DRY-RUN: would install gateway, hub, fleet, sessions, alert/);
+    assert.strictEqual(fs.existsSync(path.join(dry.home, '.aos', 'logs')), false);
+});
+
+test('B3-A1: a gateway that does not answer fails only on darwin; elsewhere harnesses stay direct', { skip: SKIP_WIN }, async () => {
+    const m = machine();
+    const calls = [];
+    const failed = await withFake(fakeSvc('gateway', 'MCP gateway', calls, { ok: false }), () =>
+        withPathAsync(noClaude(), () => menu.installDefaults(m.host, m.opts(), new Set(['hub']))));
+    if (process.platform === 'darwin') assert.deepStrictEqual(failed, ['MCP gateway']);
+    else {
+        assert.deepStrictEqual(failed, []);
+        assert.match(m.out.join(''), /harnesses left direct/);
+    }
 });

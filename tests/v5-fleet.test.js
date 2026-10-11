@@ -243,6 +243,40 @@ describe('fleet package step', () => {
     });
 });
 
+describe('sessions and alert mods', () => {
+    const byId = (id) => pkg.mods.find((m) => m.id === id);
+
+    test('mods are fleet, sessions and alert, each a plugin folder of its own', () => {
+        assert.deepEqual(pkg.mods.map((m) => [m.id, m.KEY]), [['fleet', KEY], ['sessions', 'bdb-aos-sessions@bdb-marketplace'], ['alert', 'bdb-aos-alert@bdb-marketplace']]);
+        for (const m of pkg.mods) assert.ok(fs.existsSync(path.join(ROOT, 'plugins', m.plugin, '.claude-plugin', 'plugin.json')), m.plugin);
+    });
+
+    test('install enables each key; AOS_NO_FLEET only opts out fleet; uninstall removes only its own key', async () => {
+        const home = mkHome();
+        const env = { AOS_NO_FLEET: '1' };
+        for (const m of pkg.mods) await m.install(ctxOf(home, { env }));
+        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-sessions@bdb-marketplace': true, 'bdb-aos-alert@bdb-marketplace': true });
+        assert.equal((await byId('fleet').detect(ctxOf(home, { env }))).envOptOut, true);
+        assert.equal((await byId('sessions').verify(ctxOf(home, { env }))).ok, true);
+        await byId('alert').uninstall(ctxOf(home));
+        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-sessions@bdb-marketplace': true });
+    });
+
+    test('same Claude Code version gate and per-key opt-out as fleet', async () => {
+        const home = mkHome();
+        assert.equal((await byId('alert').install(ctxOf(home, withVersion('2.1.200')))).skipped, true);
+        assert.equal(fs.existsSync(settingsOf(home)), false);
+        put(home, { enabledPlugins: { 'bdb-aos-sessions@bdb-marketplace': false } });
+        assert.equal((await byId('sessions').install(ctxOf(home))).optedOut, true);
+        assert.equal(read(home).enabledPlugins['bdb-aos-sessions@bdb-marketplace'], false);
+    });
+
+    test('the registry carries all three, so --without, Settings, update and uninstall know them', () => {
+        const ids = require('../lib/v5/packages').registry.filter((p) => p.claudeMod).map((p) => p.id);
+        assert.deepEqual(ids, ['fleet', 'sessions', 'alert']);
+    });
+});
+
 describe('marketplace.json', () => {
     test('lists bdb-aos-fleet pointing at a real plugin folder, version matches bdb-aos', () => {
         const m = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
