@@ -12,7 +12,11 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-recap-'));
 const repo = path.join(tmp, 'repo');
 const git = (...a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' });
 const HOSTILE = 'a<b>{c}`d`<Callout>.txt';
-const noNet = { ...process.env, HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', PATH: process.env.PATH.split(path.delimiter).filter((p) => !fs.existsSync(path.join(p, 'gh')) && !fs.existsSync(path.join(p, 'gh.exe'))).join(path.delimiter) };
+// A failing gh shim first on PATH: dropping gh's directory also drops git where both live in /usr/bin (GitHub runners).
+const shim = path.join(tmp, 'bin');
+fs.mkdirSync(shim);
+fs.writeFileSync(path.join(shim, 'gh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+const noNet = { ...process.env, HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', PATH: [shim, process.env.PATH].join(path.delimiter) };
 const recap = (...a) => spawnSync(process.execPath, [script, ...a], { cwd: repo, encoding: 'utf8', env: noNet });
 
 fs.mkdirSync(repo);
