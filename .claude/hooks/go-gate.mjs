@@ -92,6 +92,8 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})release\s+(?:edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})repo\s+(?:create|edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b`),
+  // A base64 PowerShell command cannot be read at all. No scope: a plain GO.
+  re(String.raw`(?:powershell|pwsh)(?:\.exe)?['"]?${S}\s-(?:e|ec|en|enc|enco|encodedcommand)\b`),
   // The AOS uninstaller deletes through Node's rmSync, which the rm analysis never sees. No scope: a plain GO.
   re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-uninstall(?:\.mjs)?\b(?!${S}\s--dry-run(?=\s|$))`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
@@ -1881,9 +1883,15 @@ const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|st
 // (C:\x\bin\aos-uninstall.cmd) and git.exe / GH.EXE / npm.cmd / aos-*.ps1 lose the suffix.
 // Without this, gh.exe pr merge, git.exe push and a full-path aos-uninstall.cmd were free.
 export function winNorm(command) {
-  return String(command)
+  let s = String(command)
     .replace(/(?<![\w\\])[A-Za-z]:\\[^\s;&|'"<>]*/g, (m) => m.replace(/\\/g, "/"))
     .replace(/\b(git|gh|npm|npx|pnpx|bunx|node|aos-[\w-]+)\.(?:exe|cmd|bat|ps1)\b/gi, (_, n) => n.toLowerCase());
+  // Codex on Windows wraps every command as `powershell.exe -NoProfile -Command "<cmd>"`; cmd /c does
+  // the same. Read both like `bash -c`, whose quoted body the classifier already opens (Lenovo P15).
+  // Only when the word is there: the path prefix would otherwise cost time on pathological input.
+  if (/powershell|pwsh/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:c|command)\b)[\w:]+(?:\s+(?!-)\w+)?){0,16})\s+-(?:c|command)(?=\s)/gi, "bash -c");
+  if (/\bcmd\b/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?\bcmd(?:\.exe)?"?\s+\/[ck](?=\s)/gi, "bash -c");
+  return s;
 }
 
 export function commandScopes(command, protectedFor = staticResolver) {

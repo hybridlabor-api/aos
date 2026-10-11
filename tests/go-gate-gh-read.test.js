@@ -44,6 +44,16 @@ test('aos-uninstall needs a plain GO unless it is a dry run', () => {
         assert.deepEqual(g.commandScopes(c), [], c);
 });
 
+test('PowerShell and cmd wrappers are opened like bash -c (Codex on Windows, Lenovo P15)', () => {
+    const PS = '"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"';
+    for (const c of [`${PS} -NoProfile -Command "git push C:\\x\\y.git main"`, 'powershell.exe -Command "git push origin main"', 'pwsh -NoProfile -ExecutionPolicy Bypass -c "npm publish"', 'cmd /c "git push origin main"', 'cmd.exe /C git push origin main'])
+        assert.ok(g.isGuardedCommand(c), c);
+    assert.equal(g.commandScopes(`${PS} -NoProfile -EncodedCommand ZwBpAHQAIABwAHUAcwBoAA==`), null);
+    // Known over-block (safe side): a jq pipe inside the wrapper body still needs a GO, as with bash -c.
+    for (const c of [`${PS} -NoProfile -Command "git status"`, 'powershell.exe -Command "gh pr view 1"', 'cmd /c dir'])
+        assert.deepEqual(g.commandScopes(c), [], c);
+});
+
 test('Windows spellings classify like their POSIX twins (Lenovo P15 findings)', () => {
     assert.deepEqual(g.commandScopes('gh.exe pr merge 1'), ['merge']);
     assert.deepEqual(g.commandScopes('GH.EXE pr merge 1'), ['merge']);
