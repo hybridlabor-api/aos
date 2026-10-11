@@ -56,7 +56,7 @@ import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID, createPublicKey, verify as cryptoVerify, timingSafeEqual } from "node:crypto";
 import { homedir, userInfo } from "node:os";
-import { join, resolve, dirname, sep } from "node:path";
+import { join, resolve, dirname, sep, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 // A missing sibling must read as strict, never crash the hook (a crash exits 1 and the harness runs the command).
 let profileFor = () => ({ profile: "strict" });
@@ -3094,6 +3094,138 @@ function indirectReleaseRisk(command) {
   });
 }
 
+// Codex code mode sends JS source (tool `exec`) that calls tools.exec_command({cmd}). Only literal cmd values are read;
+// anything else (variable, ${}, concatenation, alias, spread, computed key) marks the source opaque: fail closed.
+const JS_ESC = { n: "\n", t: "\t", r: "\r", b: "\b", f: "\f", v: "\v", 0: "\0" };
+function jsString(src, i) {
+  const q = src[i];
+  let out = "";
+  for (let j = i + 1; j < src.length; j++) {
+    const c = src[j];
+    if (c === q) return { value: out, end: j + 1 };
+    if (q === "`" && c === "$" && src[j + 1] === "{") return null;
+    if (c !== "\\") { out += c; continue; }
+    const d = src[++j];
+    if (d === "u") {
+      const m = /^\{([0-9a-fA-F]{1,6})\}|^([0-9a-fA-F]{4})/.exec(src.slice(j + 1, j + 9));
+      if (!m) return null;
+      out += String.fromCodePoint(parseInt(m[1] ?? m[2], 16));
+      j += m[0].length;
+    } else if (d === "x") {
+      const h = src.slice(j + 1, j + 3);
+      if (!/^[0-9a-fA-F]{2}$/.test(h)) return null;
+      out += String.fromCharCode(parseInt(h, 16));
+      j += 2;
+    } else if (d === "\r" || d === "\n") {
+      if (d === "\r" && src[j + 1] === "\n") j++;
+    } else if (d !== undefined) out += JS_ESC[d] ?? d;
+  }
+  return null;
+}
+function jsSkipWs(src, i) {
+  for (;;) {
+    while (i < src.length && /\s/.test(src[i])) i++;
+    if (src.startsWith("//", i)) { const e = src.indexOf("\n", i); i = e < 0 ? src.length : e; }
+    else if (src.startsWith("/*", i)) { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 2; }
+    else return i;
+  }
+}
+// Skips one property value; returns the index of the `,` or `}` that ends it, or -1.
+function jsSkipValue(src, i) {
+  let depth = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "'" || c === '"' || c === "`") {
+      const s = jsString(src, i);
+      if (!s) return -1;
+      i = s.end;
+      continue;
+    }
+    if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c)) { if (depth === 0) return c === "}" ? i : -1; depth--; }
+    else if (c === "," && depth === 0) return i;
+    i++;
+  }
+  return -1;
+}
+function jsCmdValue(src, i) {
+  i = jsSkipWs(src, i);
+  let value;
+  if (src[i] === "'" || src[i] === '"' || src[i] === "`") {
+    const s = jsString(src, i);
+    if (!s) return null;
+    value = s.value;
+    i = s.end;
+  } else if (src[i] === "[") {
+    const parts = [];
+    i = jsSkipWs(src, i + 1);
+    while (src[i] !== "]") {
+      if (!"'\"`".includes(src[i] ?? "x")) return null;
+      const s = jsString(src, i);
+      if (!s) return null;
+      parts.push(s.value);
+      i = jsSkipWs(src, s.end);
+      if (src[i] === ",") i = jsSkipWs(src, i + 1);
+      else if (src[i] !== "]") return null;
+    }
+    value = parts.join(" ");
+    i++;
+  } else return null;
+  i = jsSkipWs(src, i);
+  return src[i] === "," || src[i] === "}" ? { value, end: i } : null;
+}
+// Stands in for opaque Codex code in logs and messages; main() lets only a plain GO or a token through for it.
+export const CODEX_OPAQUE = 'eval "$AOS_CODEX_EXEC_OPAQUE"';
+export function codexExecCommands(src) {
+  src = String(src ?? "");
+  const cmds = [];
+  let opaque = false;
+  const all = src.matchAll(/exec_command/g);
+  for (const m of all) {
+    let i = jsSkipWs(src, m.index + m[0].length);
+    if (src[i] !== "(") { opaque = true; continue; }
+    i = jsSkipWs(src, i + 1);
+    if (src[i] !== "{") { opaque = true; continue; }
+    i++;
+    let found = false;
+    for (;;) {
+      i = jsSkipWs(src, i);
+      if (src[i] === "}") break;
+      let key;
+      if (src[i] === "'" || src[i] === '"') {
+        const s = jsString(src, i);
+        if (!s) { opaque = true; break; }
+        key = s.value;
+        i = s.end;
+      } else {
+        const k = /^[A-Za-z_$][\w$]*/.exec(src.slice(i, i + 256));
+        if (!k) { opaque = true; break; }
+        key = k[0];
+        i += key.length;
+      }
+      i = jsSkipWs(src, i);
+      if (src[i] !== ":") {
+        if (key === "cmd" || (src[i] !== "," && src[i] !== "}")) { opaque = true; break; }
+        if (src[i] === ",") i++;
+        continue;
+      }
+      if (key === "cmd") {
+        const v = jsCmdValue(src, i + 1);
+        if (!v) { opaque = true; break; }
+        cmds.push(v.value);
+        found = true;
+        i = v.end;
+      } else {
+        i = jsSkipValue(src, i + 1);
+        if (i < 0) { opaque = true; break; }
+      }
+      if (src[i] === ",") i++;
+    }
+    if (!found) opaque = true;
+  }
+  return { cmds, opaque };
+}
+
 // Shared by the Claude hook and the OpenCode plugin. Callers run it after hard blocks, the store check, cooldown and the length cap.
 // off allows; work allows unless a release scope shows. null scope = guarded but unreadable: free only without indirection.
 export function profileAllows(command) {
@@ -3107,6 +3239,11 @@ export function profileAllows(command) {
 function main() {
   hookDeadline = Date.now() + SCAN_MS;
   const rawInput = readStdin();
+  // Opt-in payload capture for harness debugging; never on by default, never fatal.
+  const dbg = process.env.AOS_GATE_DEBUG;
+  if (dbg && isAbsolute(dbg)) {
+    try { appendFileSync(dbg, `${maskSecrets(rawInput.replace(/\r?\n/g, " "))}\n`); } catch { /* debug only */ }
+  }
   let input = {};
   if (rawInput.trim()) {
     try {
@@ -3139,7 +3276,18 @@ function main() {
     input?.command ||
     "";
   // An argv array is joined like aos-acp does; any other non-string value is refused.
-  const command = Array.isArray(raw) ? raw.join(" ") : raw;
+  let command = Array.isArray(raw) ? raw.join(" ") : raw;
+  // Codex code mode (tool `exec`): JS source whose exec_command calls carry the shell lines.
+  let codexOpaque = false;
+  if (command === "") {
+    const ti = input?.tool_input;
+    const code = typeof ti === "string" ? ti : (ti?.code ?? ti?.input ?? ti?.source);
+    if (typeof code === "string" && code.includes("exec_command")) {
+      const ex = codexExecCommands(code);
+      codexOpaque = ex.opaque;
+      command = codexOpaque ? CODEX_OPAQUE : ex.cmds.join("\n");
+    }
+  }
   if (typeof command !== "string") {
     respond(isAgy, false, "command in hook input is not a string; the gate cannot read it (ask for GO)", "");
     return;
@@ -3170,7 +3318,7 @@ function main() {
       return;
     }
 
-    if (!isGuardedCommand(command)) {
+    if (!codexOpaque && !isGuardedCommand(command)) {
       respond(isAgy, true);
       return;
     }
@@ -3195,16 +3343,17 @@ function main() {
     reasons.unshift(`${COOLDOWN_MESSAGE} The block cooldown ends in about ${left} min; after that the same unchanged command may run once (rule 16).`);
   }
   if (tooLong) reasons.unshift(TOO_LONG_MESSAGE);
+  if (codexOpaque) reasons.unshift("Codex exec code with a non-literal exec_command; type GO");
 
   // Gate profile config: any doubt reads as strict. Hard blocks and the store check returned above.
-  if (!cooling && !tooLong) {
+  if (!cooling && !tooLong && !codexOpaque) {
     if (profileAllows(command)) return respond(isAgy, true, "", command);
     if (profileFor().profile === "work") reasons.push("profile work: this command is in the release class and needs a GO");
   }
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).
   const key = !isAgy && input.session_id ? sessionKey(input.session_id) : "";
-  if (key && !cooling && !tooLong) {
+  if (key && !cooling && !tooLong && !codexOpaque) {
     const eff = effectiveGate(key, { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
     for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
     if (eff.mode === "off") {
@@ -3222,7 +3371,7 @@ function main() {
   if (token.ok) return respond(isAgy, true, "", command);
   reasons.push(token.reason);
   // Last additive path (WP-9): a signed click receipt for exactly this command. Hard blocks and the store check returned above.
-  if (key && !tooLong && !cooling && clickReceiptCovers(command, key)) {
+  if (key && !tooLong && !cooling && !codexOpaque && clickReceiptCovers(command, key)) {
     gateLog(key, `click: allowed ${JSON.stringify(command.slice(0, 200))}`);
     return respond(isAgy, true, "", command);
   }

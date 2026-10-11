@@ -50,6 +50,31 @@ test('Codex exec_command input (tool_input.cmd) reaches the gate and is blocked'
     assert.equal(r.status, 2, r.stderr);
 });
 
+const CODEX_JS = 'const r = await tools.exec_command({cmd:"git push C:\\\\x\\\\target.git main",workdir:"C:\\\\x\\\\repo"}); text(r.output);';
+const runGate = (payload) => require('child_process').spawnSync(process.execPath, [GATE], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, AOS_TEST_SANDBOX: '1' } });
+
+test('Codex code mode (tool exec, JS source) is blocked like Bash', () => {
+    for (const tool_input of [CODEX_JS, { code: CODEX_JS }, { input: CODEX_JS }, { source: CODEX_JS },
+        'await tools.exec_command({cmd:"git status"}); await tools.exec_command({cmd: ["git", "push", "origin", "main"]});',
+        'const c = "x"; tools.exec_command({cmd: c})']) {
+        const r = runGate({ tool_name: 'exec', tool_input });
+        assert.equal(r.status, 2, `${JSON.stringify(tool_input)} ${r.stderr}`);
+    }
+});
+
+test('codexExecCommands reads literal cmd values and fails closed on anything else', () => {
+    assert.deepEqual(g.codexExecCommands(CODEX_JS), { cmds: ['git push C:\\x\\target.git main'], opaque: false });
+    assert.deepEqual(g.codexExecCommands("tools.exec_command({ workdir: 'x', cmd: 'a\\'b\\n\\u0041\\t' })"), { cmds: ["a'b\nA\t"], opaque: false });
+    assert.deepEqual(g.codexExecCommands('tools.exec_command({cmd: `git status`})'), { cmds: ['git status'], opaque: false });
+    const h = g.codexExecCommands('tools.exec_command({cmd:"git status"})');
+    assert.deepEqual(h, { cmds: ['git status'], opaque: false });
+    assert.deepEqual(g.commandScopes(h.cmds.join('\n')), []);
+    for (const src of ['const c = "x"; tools.exec_command({cmd: c})', 'tools.exec_command({cmd: `git ${x}`})', 'tools.exec_command({cmd: "git " + x})',
+        'tools.exec_command({workdir: "x"})', 'tools.exec_command({cmd})', 'tools.exec_command({...o})', 'tools.exec_command(o)',
+        'const f = tools.exec_command; f({cmd: "git push"})', 'tools["exec_command"]({cmd: "git push"})', 'tools.exec_command({["cmd"]: "git push"})'])
+        assert.equal(g.codexExecCommands(src).opaque, true, src);
+});
+
 test('PowerShell and cmd wrappers are opened like bash -c (Codex on Windows, Lenovo P15)', () => {
     const PS = '"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"';
     for (const c of [`${PS} -NoProfile -Command "git push C:\\x\\y.git main"`, 'powershell.exe -Command "git push origin main"', 'pwsh -NoProfile -ExecutionPolicy Bypass -c "npm publish"', 'cmd /c "git push origin main"', 'cmd.exe /C git push origin main'])
