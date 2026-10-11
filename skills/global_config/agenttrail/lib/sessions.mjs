@@ -42,6 +42,7 @@ export class SessionTable {
         state: 'working',
         currentTool: null,
         currentTask: null,
+        touched: [],
         lastFile: '',
         waiting: null,
         goClaim: null,
@@ -61,6 +62,9 @@ export class SessionTable {
     if (event.branch) s.branch = event.branch
     s.harness = s.harnesses[0]
     s.lastEventAt = Math.max(s.lastEventAt, at)
+
+    // A relayed node (AOS_TRAIL_NODE) rides on any event; task.update keeps its own path.
+    if (event.task?.plan && event.kind !== 'task.update' && event.kind !== 'session.stop' && event.kind !== 'session.end') s.currentTask = event.task
 
     switch (event.kind) {
       case 'session.start':
@@ -93,12 +97,14 @@ export class SessionTable {
         s.ended = true
         s.done = false
         s.currentTool = null
+        this.release(s, event.task || s.currentTask, at)
         s.state = 'waiting-for-you'
         break
       case 'session.end':
         s.ended = true
         s.done = true
         s.currentTool = null
+        this.release(s, event.task || s.currentTask, at)
         s.state = 'ended'
         break
       case 'waiting':
@@ -118,6 +124,13 @@ export class SessionTable {
 
     if (s.state !== 'ended' && s.state !== 'waiting-for-you' && this.now() - s.lastEventAt > this.idleMs) s.state = 'idle'
     return s
+  }
+
+  // Clears the live node and remembers it as touched. Never marks it done: the plan file decides that.
+  release(s, task, at) {
+    if (s.currentTask?.plan) s.currentTask = null
+    if (!task?.id || !task.plan) return
+    s.touched = s.touched.filter((t) => !(t.id === task.id && t.plan === (task.plan || ''))).concat({ id: task.id, plan: task.plan || '', at }).slice(-50)
   }
 }
 

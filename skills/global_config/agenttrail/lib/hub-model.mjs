@@ -52,12 +52,30 @@ const readSafe = (p) => { try { return fs.readFileSync(p, 'utf8') } catch { retu
 
 const git = (repo, args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', timeout: 2000 })
 
+// Git facts change on commits and branch moves, not per event. The hub passes a
+// ttlMemo so a rebuild reuses them; without one every lookup runs fresh.
+export const freshMemo = (_key, fn) => fn()
+
+export function ttlMemo(now = () => Date.now()) {
+  const store = new Map()
+  return (key, fn, ttlMs) => {
+    const hit = store.get(key)
+    if (hit && now() - hit.at < ttlMs) return hit.value
+    if (store.size > 5000) store.clear()
+    const value = fn()
+    store.set(key, { at: now(), value })
+    return value
+  }
+}
+
 function lastCommitAt(repo, planRel, branch) {
   if (!planRel) return null
   const r = git(repo, ['log', '-1', '--format=%ct', ...(branch ? [branch] : []), '--', planRel])
   const ts = Number((r.stdout || '').trim())
   return Number.isFinite(ts) && ts > 0 ? ts * 1000 : null
 }
+
+const TTL = { worktrees: 5000, defaultBranch: 60000, branch: 10000, commit: 10000 }
 
 const taskStatusSet = (plan) => new Set(plan.nodes.filter((n) => n.level === 'task').map((n) => `${n.id}:${n.status}`))
 
@@ -83,8 +101,36 @@ function activityFor(instances, sessionTable) {
   return activity
 }
 
+// A session's task.update names a plan node by id and points at its plan file.
+// Only the plan it names counts, so the same id in another plan stays untouched.
+function liveTasksFor(primary, sessions, now, cfg) {
+  const live = new Map()
+  for (const s of sessions) {
+    const task = s.currentTask
+    if (!task || !task.id || !task.plan || s.done) continue
+    if (now - (s.lastEventAt || 0) >= cfg.liveMs) continue
+    if (path.resolve(primary.path, task.plan) !== primary.planPath) continue
+    live.set(task.id, { status: task.status, harness: s.harness || '', name: s.name || '', at: new Date(s.lastEventAt || 0).toISOString() })
+  }
+  return live
+}
+
+// A node a session released (Stop or SessionEnd) stays visible as touched, never done.
+function touchedFor(primary, sessions) {
+  const touched = new Map()
+  for (const s of sessions) {
+    for (const t of s.touched || []) {
+      if (!t.plan || path.resolve(primary.path, t.plan) !== primary.planPath) continue
+      const at = new Date(t.at || 0).toISOString()
+      if (!touched.has(t.id) || touched.get(t.id) < at) touched.set(t.id, at)
+    }
+  }
+  return touched
+}
+
 export function buildModel({
   now = Date.now(), port, sessionTable, gate = null, asks = [], repos = [], pinnedKeys = [], cfg = CONFIG_DEFAULTS,
+  memo = freshMemo,
 } = {}) {
   const sessions = sessionTable.all()
   const outRepos = []
@@ -94,10 +140,10 @@ export function buildModel({
     const stat = statSafe(entry.root)
     if (!stat || !stat.isDirectory()) continue
     const repoId = repoIdOf(entry.root)
-    const worktrees = listWorktrees(repoId, 24)
+    const worktrees = memo(`wt|${repoId}`, () => listWorktrees(repoId, 24), TTL.worktrees)
     // One git call per repo for the default branch, then reuse it for every plan:
     // branchState spawns 2-3 processes, and a model build runs once per request.
-    const defBranch = defaultBranchOf(repoId)
+    const defBranch = memo(`def|${repoId}`, () => defaultBranchOf(repoId), TTL.defaultBranch)
     const bsCache = new Map()
 
     const instances = []
@@ -136,7 +182,7 @@ export function buildModel({
       const tasks = plan.nodes.filter((n) => n.level === 'task')
 
       const mtime = statSafe(primary.planPath)?.mtimeMs || 0
-      const commitAt = lastCommitAt(repoId, primary.planRel, primary.branch) || 0
+      const commitAt = memo(`commit|${repoId}|${primary.planRel}|${primary.branch}`, () => lastCommitAt(repoId, primary.planRel, primary.branch), TTL.commit) || 0
       const inPrimary = sessions.filter((s) => s.cwd && primary.path && (s.cwd === primary.path || s.cwd.startsWith(primary.path + path.sep)))
       const lastActivity = Math.max(mtime, commitAt, inPrimary.reduce((max, s) => Math.max(max, s.lastEventAt || 0), 0))
 
@@ -145,8 +191,10 @@ export function buildModel({
       const stalled = stalledTasks(tasks, runs, now, cfg)
 
       const bs = primary.branch && primary.branch !== '(detached)'
-        ? (bsCache.has(primary.branch) ? bsCache.get(primary.branch) : bsCache.set(primary.branch, branchState(repoId, primary.branch, { defaultBranch: defBranch })).get(primary.branch))
+        ? (bsCache.has(primary.branch) ? bsCache.get(primary.branch) : bsCache.set(primary.branch, memo(`branch|${repoId}|${primary.branch}`, () => branchState(repoId, primary.branch, { defaultBranch: defBranch }), TTL.branch)).get(primary.branch))
         : 'open'
+      const liveTasks = liveTasksFor(primary, sessions, now, cfg)
+      const touchedTasks = touchedFor(primary, sessions)
       const pinned = pinnedKeys.includes(group.planKey)
       // "live" means still reporting and not finished. A session that ended cannot keep a
 // merged branch on the main view; one that stopped and is waiting for Tim can.
@@ -165,8 +213,8 @@ const live = inPrimary.some((s) => now - (s.lastEventAt || 0) < cfg.liveMs && !s
         mirrors: mirrors.map((m) => ({ path: m.path, branch: m.branch })),
         divergent: divergent.map((m) => ({ path: m.path, branch: m.branch, tasks: differingTasks(m, primary) })),
         components: components.map((c) => ({ id: c.id, title: c.title, status: c.status, files: c.files, needs: c.needs, links: c.links, tech: c.tech })),
-        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, parent: t.parent })),
-        progress: { done: tasks.filter((t) => t.status === 'done').length, total: tasks.length, stalled: stalled.size },
+        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, parent: t.parent, live: liveTasks.get(t.id) || null, touchedAt: touchedTasks.get(t.id) || null })),
+        progress: { done: tasks.filter((t) => t.status === 'done').length, total: tasks.length, stalled: stalled.size, live: tasks.filter((t) => liveTasks.has(t.id)).length },
         lastActivity: new Date(lastActivity).toISOString(),
       }
 

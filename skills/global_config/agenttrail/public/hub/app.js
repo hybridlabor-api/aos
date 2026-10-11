@@ -187,13 +187,15 @@ function taskSection(plan) {
   const tasks = plan.tasks || []
   if (!tasks.length) return null
   const expanded = expandedCards.has(plan.planKey)
-  const shown = expanded ? tasks : visibleEntries(tasks)
+  const visible = new Set(visibleEntries(tasks))
+  const shown = expanded ? tasks : tasks.filter((t) => t.live || visible.has(t))
   const wrap = el('div', { class: 'tasks', 'data-cols': String(entryColumns(shown.length)) })
   for (const t of shown) {
-    wrap.appendChild(el('div', { class: `t ${t.status}` }, [
+    wrap.appendChild(el('div', { class: `t ${t.status}${t.live ? ' live' : ''}` }, [
       el('span', { class: 'id', text: `#${t.id}` }),
       el('span', { text: t.title || '' }),
-    ]))
+      t.live ? el('span', { class: 'tag', text: `live · ${t.live.harness || 'agent'}` }) : null,
+    ].filter(Boolean)))
   }
   const hidden = tasks.length - shown.length
   const btn = el('button', {
@@ -214,9 +216,9 @@ function planCard(repo, plan, opts) {
   card.appendChild(el('h3', { text: plan.name || plan.path || 'plan' }))
   card.appendChild(el('div', { class: 'sub', text: `${repo} · ${plan.owner?.branch || 'no branch'} · ${plan.lifecycle}` }))
 
-  const { done = 0, total = 0, stalled = 0 } = plan.progress || {}
+  const { done = 0, total = 0, stalled = 0, live = 0 } = plan.progress || {}
   card.appendChild(el('progress', { value: String(done), max: String(total || 1), 'aria-label': 'tasks done' }))
-  card.appendChild(el('div', { class: 'sub', text: `${done}/${total} tasks${stalled ? ` · ${stalled} stalled` : ''}` }))
+  card.appendChild(el('div', { class: 'sub', text: `${done}/${total} tasks${live ? ` · ${live} live` : ''}${stalled ? ` · ${stalled} stalled` : ''}` }))
 
   const comps = el('div', { class: 'sub' })
   for (const c of plan.components || []) {

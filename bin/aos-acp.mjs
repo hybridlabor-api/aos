@@ -100,16 +100,29 @@ export function agyArgs(opts) {
   return args;
 }
 
+// The plan node a worker is for: --trail-node/--trail-plan, else the dispatcher's AOS_TRAIL_* env.
+export function trailLink(opts, env = process.env) {
+  return { id: opts.trailNode || env.AOS_TRAIL_NODE || "", plan: opts.trailPlan || env.AOS_TRAIL_PLAN || "" };
+}
+export function trailEnv(opts, env = process.env) {
+  const { id, plan } = trailLink(opts, env);
+  return { ...(id && { AOS_TRAIL_NODE: id }), ...(plan && { AOS_TRAIL_PLAN: plan }) };
+}
+export function trailTask(opts, env = process.env) {
+  const { id, plan } = trailLink(opts, env);
+  return id ? { task: { id, status: "doing", ...(plan && { plan }) } } : {};
+}
+
 // agy reports status SUCCESS with an empty response when its own print timeout fires, and waits
 // forever on an open stdin, so: stdin is closed and success needs a non-empty response.
 async function runPrint(opts, log, emitTrail, sandbox) {
   const args = agyArgs(opts);
   log("start", { adapter: "agy", cmd: `agy ${args.slice(0, -1).join(" ")} <prompt>`, cwd: opts.cwd, allow_default: opts.allowDefault, model: opts.model || "adapter default", ...(opts.sandbox && { sandbox: opts.sandbox }) });
-  const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `agy:${opts.name}` };
+  const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `agy:${opts.name}`, ...trailTask(opts) };
   emitTrail({ ...trail, hook_event_name: "SessionStart" });
   const out = opts.stdout || process.stdout;
   const [bin, ...binArgs] = sandbox ? sandbox.wrap(["agy", ...args], { cwd: opts.cwd }) : ["agy", ...args];
-  const env = agyChildEnv({ ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" }, { withMcp: opts.withMcp, warn: (m) => process.stderr.write(`aos-acp: ${m}\n`) });
+  const env = agyChildEnv({ ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1", ...trailEnv(opts) }, { withMcp: opts.withMcp, warn: (m) => process.stderr.write(`aos-acp: ${m}\n`) });
   const child = spawn(bin, binArgs, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"], env });
   let stdout = "", stderr = "", timedOut = false;
   child.stdout.on("data", (d) => { stdout += d; });
@@ -301,7 +314,7 @@ export async function run(opts) {
   const consume = opts.consume ?? adapter?.consume ?? true;
   log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, mcp: !!opts.withMcp, model: opts.model || "adapter default", ...(opts.sandbox && { sandbox: opts.sandbox }) });
 
-  const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `${opts.adapter}:${opts.name}` };
+  const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `${opts.adapter}:${opts.name}`, ...trailTask(opts) };
   const seenTools = new Map();
   // Windows: killTree() below runs taskkill through spawnSync and blocks the event loop, so posts still in flight (300 ms timeout) would be aborted:
   // wait for them before killing anything.
@@ -310,7 +323,7 @@ export async function run(opts) {
   trailSend({ ...trail, hook_event_name: "SessionStart" });
   let sessionId;
   const out = opts.stdout || process.stdout;
-  const env = { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" };
+  const env = { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1", ...trailEnv(opts) };
   const client = new AcpClient(cmd, {
     cwd: opts.cwd,
     env: opts.withMcp ? env : opts.adapter === "opencode" ? opencodeNoMcpEnv(env, opts.cwd) : opts.adapter === "codex" ? codexNoMcpEnv(env) : env,
@@ -383,6 +396,8 @@ export function parseArgs(argv) {
     else if (a === "--consume") o.consume = true;
     else if (a === "--no-consume") o.consume = false;
     else if (a === "--with-mcp") o.withMcp = true;
+    else if (a === "--trail-node") o.trailNode = v, i++;
+    else if (a === "--trail-plan") o.trailPlan = v, i++;
     else throw new Error(`unknown argument ${a}`);
   }
   if (!o.adapter || !o.name || !o.prompt) throw new Error(USAGE);
@@ -390,7 +405,7 @@ export function parseArgs(argv) {
   return o;
 }
 
-const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--sandbox coop|wsl2] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900] [--with-mcp]";
+const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--sandbox coop|wsl2] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900] [--with-mcp] [--trail-node <id>] [--trail-plan <file>]";
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
   if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 import { validateEvent, fromLegacyHook, MAX_BODY_BYTES } from '../lib/events.mjs'
 import { SessionTable, readA2aRegistry } from '../lib/sessions.mjs'
-import { buildModel } from '../lib/hub-model.mjs'
+import { buildModel, ttlMemo } from '../lib/hub-model.mjs'
 import { panel as gatePanel, loadGate } from '../lib/gatepanel.mjs'
 import { csrfToken, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, MAX_BODY_BYTES as GATE_BODY_BYTES } from '../lib/httpguard.mjs'
 import { createClick, ClickError } from '../lib/click.mjs'
@@ -150,6 +150,8 @@ function readJson(req, res, { maxBytes = MAX_BODY_BYTES } = {}) {
 let modelCache = null
 let modelCacheAt = 0
 const MODEL_TTL_MS = 700
+const BROADCAST_MIN_MS = 1000
+const gitMemo = ttlMemo()
 
 async function buildNow() {
   const gateMod = await loadGate()
@@ -163,7 +165,7 @@ async function buildNow() {
       if (s) s.fromRegistry = true
     }
   }
-  return buildModel({ now: Date.now(), port, sessionTable, gate, asks: [], repos: [...known().values()], pinnedKeys: state.pinned, cfg })
+  return buildModel({ now: Date.now(), port, sessionTable, gate, asks: [], repos: [...known().values()], pinnedKeys: state.pinned, cfg, memo: gitMemo })
 }
 
 // A board is not a transaction: git and the gate store are re-read, not re-queried
@@ -176,11 +178,23 @@ async function currentModel({ fresh = false } = {}) {
   return modelCache
 }
 
+// Rebuilds are the hub's only real cost: git is spawned per worktree. So a build runs
+// only while an SSE client listens, and at most once per BROADCAST_MIN_MS, trailing.
+let broadcastTimer = null
+let lastBuildAt = 0
 function broadcast() {
-  currentModel({ fresh: true }).then((m) => {
-    const payload = `data: ${JSON.stringify(m)}\n\n`
-    for (const res of clients) { try { res.write(payload) } catch { clients.delete(res) } }
-  }).catch(() => { /* the model is rebuilt on the next tick */ })
+  modelCache = null
+  if (clients.size === 0 || broadcastTimer) return
+  const wait = Math.max(0, BROADCAST_MIN_MS - (Date.now() - lastBuildAt))
+  broadcastTimer = setTimeout(() => {
+    broadcastTimer = null
+    lastBuildAt = Date.now()
+    currentModel({ fresh: true }).then((m) => {
+      const payload = `data: ${JSON.stringify(m)}\n\n`
+      for (const res of clients) { try { res.write(payload) } catch { clients.delete(res) } }
+    }).catch(() => { /* the next event or tick rebuilds it */ })
+  }, wait)
+  broadcastTimer.unref()
 }
 
 const tick = setInterval(broadcast, 2000)
