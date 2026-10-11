@@ -43,9 +43,15 @@ const fakeSpawn = (code, { stderr = "" } = {}) => {
   return { calls, spawnImpl };
 };
 
-test("codexQueueArgs and codexResumeArgs build the exact arg arrays", () => {
-  assert.deepEqual(codexQueueArgs("sess-1", "hi"), ["queue", "--thread", "sess-1", "--message", "hi"]);
-  assert.deepEqual(codexResumeArgs("sess-1", "hi"), ["exec", "resume", "sess-1", "hi"]);
+test("codexQueueArgs pins the sandbox: read-only by default, workspace-write only for write jobs", () => {
+  assert.deepEqual(codexQueueArgs("sess-1", "hi"), ["queue", "--thread", "sess-1", "--sandbox", "read-only", "--message", "hi"]);
+  const w = codexQueueArgs("sess-1", "hi", true);
+  assert.deepEqual(w, ["queue", "--thread", "sess-1", "--sandbox", "workspace-write", "--message", "hi"]);
+  assert.ok(!w.includes("danger-full-access"));
+});
+
+test("codexResumeArgs puts -- before the prompt so a dash-led prompt stays positional", () => {
+  assert.deepEqual(codexResumeArgs("sess-1", "--help"), ["exec", "resume", "sess-1", "--", "--help"]);
 });
 
 test("successful spawn completes with the file reply; prompt carries prefix and never-GO line", async () => {

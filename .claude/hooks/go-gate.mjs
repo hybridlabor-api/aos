@@ -307,10 +307,12 @@ const BUDGET = Symbol("budget");
 let deadline = 0, wallDeadline = 0;
 const cpuMs = () => { const u = process.cpuUsage(); return (u.user + u.system) / 1000; };
 const tick = () => { if (deadline && (cpuMs() > deadline || Date.now() > wallDeadline)) throw BUDGET; };
+// Windows: a cold process spends more CPU on its first analysis than the POSIX budget allows (measured: 500 ms suffices).
+export const defaultBudgetMs = (platform = process.platform) => (platform === "win32" ? 500 : 150);
 function withBudget(fn, onExceed) {
   const outer = deadline, outerWall = wallDeadline;
   if (!outer) {
-    const ms = gateCtx.budgetMs ?? 150;
+    const ms = gateCtx.budgetMs ?? defaultBudgetMs();
     deadline = cpuMs() + ms;
     wallDeadline = Date.now() + (ms <= 0 ? ms : Math.max(ms * 20, 3000));
   }
@@ -1516,6 +1518,8 @@ function codeInto(r, text, lang = "", ws = null) {
 // own cwd (setGateContext) is the start. Block cooldown: see markBlock.
 let gateCtx = { cwd: "", blockTs: 0 };
 export const setGateContext = (c) => { gateCtx = { cwd: "", blockTs: 0, ...c }; memo = new Map(); };
+// Clock for the installed-script age check. Only the hook sets gateCtx (from the harness input, never from the command), so `now` is a test seam, not an input.
+const nowMs = () => (Number.isFinite(gateCtx.now) ? gateCtx.now : Date.now());
 export const COOLDOWN_MS = 10 * 60 * 1000;
 export const COOLDOWN_MESSAGE = "go-gate: blocked recently; a freshly written script after a block needs a GO; stop and report.";
 const FILE_HEAD = /^(?:python[\d.]*|node(?:js)?|bun|deno|ruby|perl|php|bash|sh|zsh|dash|ksh|pwsh|powershell|osascript)$/i;
@@ -1561,8 +1565,8 @@ function trustedDirs() {
     join(dirname(dirname(process.execPath)), "lib", "node_modules"), "/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules", "/opt/homebrew/Cellar", "/usr/local/Cellar",
   ];
 }
-function installedScript(path, mtime) {
-  if (!(gateCtx.blockTs ? mtime < gateCtx.blockTs : false) && Date.now() - mtime <= COOLDOWN_MS) return false;
+function installedScript(path, changed) {
+  if (!(gateCtx.blockTs ? changed < gateCtx.blockTs : false) && nowMs() - changed <= COOLDOWN_MS) return false;
   let real;
   try { real = realpathSync(path); } catch { return false; }
   return trustedDirs().some((d) => {
@@ -1612,19 +1616,20 @@ function insideWorkspace(ws, target) {
 
 function scriptInto(r, h, file, cwd) {
   const path = resolve(expandHome(cwd), expandHome(file));
-  let st, mtime;
-  try { st = statSync(path); mtime = Math.max(st.mtimeMs, lstatSync(path).mtimeMs); } catch { r.unscoped = true; return; }
+  let st, changed;
+  // ctime is included because `touch -t` can backdate mtime but never ctime.
+  try { const l = lstatSync(path); st = statSync(path); changed = Math.max(st.mtimeMs, l.mtimeMs, st.ctimeMs, l.ctimeMs); } catch { r.unscoped = true; return; }
   // Only a regular file is ever opened: a device (/dev/zero), FIFO, socket or directory is
   // unscoped and never read (a read could hang the hook). statSync follows a symlink.
   if (!st.isFile()) { r.unscoped = true; return; }
   // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
   // written before the block, or remove the marker through a path built at run time; the
   // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
-  if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && mtime > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
+  if (gateCtx.blockTs && nowMs() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
   const body = readSmallRegular(path, SCRIPT_MAX, true);
   if (typeof body !== "string") { r.unscoped = true; return; }
-  const t = installedScript(path, mtime) ? { destructive: false, workspace: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] } : r;
+  const t = installedScript(path, changed) ?{ destructive: false, workspace: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] } : r;
   if (/^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i.test(h)) t.cmds.push(body);
   else codeInto(t, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"), t === r ? workspaceFor(path, cwd) : null);
   if (t !== r) {
@@ -2000,16 +2005,37 @@ export const isGuardedCommand = (command) =>
 // a forged store entry without a matching human entry is ignored.
 // ---------------------------------------------------------------------------
 const STORE_REF = /\.aos[/,\s+]+(?:\.[/]+)*(?:gate|go)(?![\w.-])|\.aos\/+[^\s/]*[$*?[{]/i;
+// Read-only heads: a store path given to one of these is a read or a mere mention, never a write.
+const STORE_READ = /^(?:cat|ls|grep|egrep|fgrep|head|tail|wc|stat|cd)(?=\s|$)/;
+const STORE_NULL_REDIR = /(?:\d?>>?|&>)\s*(?:\/dev\/null|&\d)/g;
+// grep here is ugrep: --pager, -Q/--query, --config, ---, --filter run or save things. Only these options pass; any other is blocked.
+const GREP_SAFE_SHORT = /^[ivwxcnHhlLqsrRaEFGPzoUTbkyIABCefmdD0-9]+$/;
+const GREP_SAFE_LONG = new Set(["ignore-case", "no-ignore-case", "invert-match", "word-regexp", "line-regexp", "count", "line-number", "with-filename", "no-filename", "files-with-matches", "files-without-match", "quiet", "silent", "recursive", "dereference-recursive", "include", "exclude", "exclude-dir", "include-dir", "context", "after-context", "before-context", "max-count", "extended-regexp", "fixed-strings", "basic-regexp", "perl-regexp", "only-matching", "byte-offset", "text", "null", "null-data", "label", "color", "colour", "no-messages", "regexp", "file", "binary-files", "devices", "directories", "initial-tab", "line-buffered", "no-color", "no-colour"]);
+const grepArgsSafe = (args) => args.every((t) => {
+  if (t === "--" || !t.startsWith("-") || t === "-") return true;
+  if (t.startsWith("--")) return GREP_SAFE_LONG.has(t.slice(2).split("=")[0]);
+  return GREP_SAFE_SHORT.test(t.slice(1));
+});
+// The segment head decides; a store-touching command must be one of these with safe options.
+const storeReadSeg = (seg) => STORE_READ.test(seg) && (!/^(?:e|f)?grep(?=\s|$)/.test(seg) || grepArgsSafe(seg.split(/\s+/).slice(1)));
 export function gateStoreReason(command) {
   if (typeof command !== "string") return null;
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
   // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
   const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
   if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
-  // `>` covers redirects and `>(`; `<(` and `$(`/backticks run commands of their own.
-  const readOnly = !/[>\x60]|\$\(|<\(/.test(norm) &&
-    norm.split(/&&|\|\||[;|&\n]/).every((s) => /^\s*(?:cat|ls|grep|head|tail|cd)\b/.test(s));
-  return readOnly ? null : "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail is allowed.";
+  const why = "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail/wc/stat with plain options, and a redirect to /dev/null, are allowed.";
+  // Command and process substitution run commands of their own.
+  if (/\$\(|\x60|<\(|>\(/.test(norm)) return why;
+  const plain = norm.replace(STORE_NULL_REDIR, "");
+  // Any other redirect or --output writes a file that may be the store.
+  if (/>/.test(plain) || /--output\b/.test(plain)) return why;
+  // No env-assignment prefix is stripped: `PATH=/tmp/x cat ...` or `LD_PRELOAD=...` is not a read-only head and blocks.
+  const readOnly = plain.split(/&&|\|\||[;|&\n]/).every((s) => {
+    const seg = s.trim();
+    return !seg || storeReadSeg(seg);
+  });
+  return readOnly ? null : why;
 }
 
 // Unreadable stdin throws: safeMain denies (exit 2) instead of allowing with empty input.

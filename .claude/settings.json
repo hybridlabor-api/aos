@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs\" || exit 2"
           },
           {
             "type": "command",
@@ -38,7 +38,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -65,7 +65,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -76,7 +76,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -87,7 +87,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -98,7 +98,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       },
@@ -135,7 +135,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
