@@ -114,6 +114,35 @@ describe('WP5 hub wiring', () => {
 // Regression: a bare `import(join(ROOT, ...))` path fails on Windows (a
 // dynamic import needs a file:// URL); every hub dynamic import must be
 // wrapped in pathToFileURL.
+// Regression (S3-2): the stale-code stamp must include files in lib/hub subdirectories,
+// otherwise a code change there never restarts the hub.
+test('bin/aos-hub.mjs code stamp walks lib/hub subdirectories', () => {
+    const src = read('bin/aos-hub.mjs');
+    const stamp = src.slice(src.indexOf('const codeStamp'), src.indexOf('const packageVersion'));
+    assert.match(stamp, /isDirectory\(\)/);
+    assert.match(stamp, /visit\(join\(ROOT, 'lib', 'hub'\)\)/);
+});
+
+// Regression (S3-4): a clean exit (code 0) is a deliberate stop and must not be respawned.
+test('bin/aos-hub.mjs watchdog does not respawn a clean exit', () => {
+    const src = read('bin/aos-hub.mjs');
+    assert.match(src, /child\.on\('exit', \(code\) => \{ if \(code !== 0\)/);
+});
+
+// Regression (S3-5): `restart` is a real verb, not a fall-through to start.
+test('bin/aos-hub.mjs accepts the restart verb', async () => {
+    const { parseArgv } = await import('../bin/aos-hub.mjs');
+    assert.equal(parseArgv(['restart']).cmd, 'restart');
+    assert.equal(parseArgv(['restart', '--port', '7901']).port, 7901);
+});
+
+// Regression (S3-9): an npm bin symlink must still count as the main script.
+test('bin/aos-hub.mjs resolves symlinks on argv[1] for the main check', () => {
+    const src = read('bin/aos-hub.mjs');
+    assert.match(src, /realpathSync\(process\.argv\[1\]/);
+    assert.ok(!/resolve\(process\.argv\[1\]\) === SELF/.test(src), 'plain resolve() misses symlinked bins');
+});
+
 test('bin/aos-hub.mjs wraps every dynamic import in pathToFileURL', () => {
     const src = read('bin/aos-hub.mjs');
     assert.match(src, /pathToFileURL/);

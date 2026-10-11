@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // AOS Hub CLI: `aos-hub [start] [--port 7900] [--tab id] [--no-open]` |
-// `stop` | `status [--json]`. On demand: the start path probes /api/health;
+// `stop` | `restart` | `status [--json]`. On demand: the start path probes /api/health;
 // when up it only opens the browser, otherwise it spawns itself detached
 // (cwd = home) and records hub.json (mode 600, dir 700). `stop` prefers the
 // token-authed POST /api/shutdown and only falls back to ps+SIGTERM, failing
@@ -9,7 +9,7 @@
 import { spawn } from 'node:child_process';
 import { connect as netConnect } from 'node:net';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readdirSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir as osHome } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -27,7 +27,7 @@ export function parseArgv(argv) {
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === 'start' || a === 'stop' || a === 'status') out.cmd = a;
+    if (a === 'start' || a === 'stop' || a === 'restart' || a === 'status') out.cmd = a;
     else if (a === '--port') out.port = Number(argv[++i]);
     else if (a.startsWith('--port=')) out.port = Number(a.split('=')[1]);
     else if (a === '--tab') out.tab = argv[++i];
@@ -95,12 +95,20 @@ export const readHubJson = (home = homeDir()) => {
 };
 
 // The service runs from ~/.agents, which has no package.json, so "has my code
-// changed under me" is the newest mtime of this file and lib/hub/*.
+// changed under me" is the newest mtime of this file and every file under lib/hub/ (subdirectories included).
 const codeStamp = () => {
   let newest = 0;
-  const files = [SELF];
-  try { for (const f of readdirSync(join(ROOT, 'lib', 'hub'))) files.push(join(ROOT, 'lib', 'hub', f)); } catch { /* no lib/hub: SELF only */ }
-  for (const f of files) { try { newest = Math.max(newest, statSync(f).mtimeMs); } catch { /* raced with the update */ } }
+  const visit = (dir) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { visit(p); continue; }
+      try { newest = Math.max(newest, statSync(p).mtimeMs); } catch { /* raced with the update */ }
+    }
+  };
+  try { newest = statSync(SELF).mtimeMs; } catch { /* raced with the update */ }
+  visit(join(ROOT, 'lib', 'hub'));
   return newest;
 };
 
@@ -231,9 +239,19 @@ async function cmdStatus(opts) {
   return 0;
 }
 
+// The old process answers /api/health until its shutdown finishes (up to ~2 s),
+// so wait for the port to go quiet before starting, or start would just reopen it.
+async function cmdRestart(opts) {
+  const code = await cmdStop();
+  if (code !== 0) return code;
+  for (let i = 0; i < 25 && await probeHealth(opts.port, 300); i++) await new Promise((ok) => setTimeout(ok, 200));
+  return cmdStart(opts);
+}
+
 export async function cli(argv = process.argv.slice(2)) {
   const opts = parseArgv(argv);
   if (opts.cmd === 'stop') return cmdStop();
+  if (opts.cmd === 'restart') return cmdRestart(opts);
   if (opts.cmd === 'status') return cmdStatus(opts);
   return cmdStart(opts);
 }
@@ -241,7 +259,9 @@ export async function cli(argv = process.argv.slice(2)) {
 // Service mode: launchd/systemd/Task Scheduler start `--serve --watch` directly. Serve in this
 // process, so the service manager supervises the real server; a detached child (the `aos hub`
 // path) would leave the manager watching a parent that already exited (seen on Windows).
-const serviceMode = process.argv[1] && resolve(process.argv[1]) === SELF && process.argv.includes('--serve') && process.argv.includes('--watch');
+// argv[1] may be an npm bin symlink; SELF is already the real path, so compare real paths.
+const mainPath = (() => { try { return realpathSync(process.argv[1] || ''); } catch { return ''; } })();
+const serviceMode = mainPath === SELF && process.argv.includes('--serve') && process.argv.includes('--watch');
 // Windows: Task Scheduler's RestartOnFailure only covers a task that fails to start, not a server
 // that dies later (Lenovo: a killed hub stayed down). So the task process stays a small watchdog
 // and respawns the server; launchd and systemd restart the process themselves.
@@ -250,8 +270,9 @@ if (serviceMode && process.platform === 'win32' && !process.env.AOS_HUB_WATCHDOG
     const child = spawn(process.execPath, process.argv.slice(1), {
       stdio: 'inherit', env: { ...process.env, AOS_HUB_WATCHDOG_CHILD: '1' }, shell: false, windowsHide: true,
     });
-    // Exit 3 = the hub's code changed on disk: start the new code at once; a crash waits 5 s.
-    child.on('exit', (code) => setTimeout(runChild, code === 3 ? 0 : 5000));
+    // Exit 0 = deliberate stop (/api/shutdown or SIGTERM): do not revive it. Exit 3 = the hub's code
+    // changed on disk: start the new code at once; a crash waits 5 s.
+    child.on('exit', (code) => { if (code !== 0) setTimeout(runChild, code === 3 ? 0 : 5000); });
   };
   runChild();
 } else if (serviceMode) {
@@ -335,7 +356,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   process.on('SIGTERM', bye);
 }
 
-const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === SELF;
+const invokedDirectly = mainPath === SELF;
 if (invokedDirectly && process.env.AOS_HUB_SERVE !== '1' && !serviceMode) {
   cli().then((code) => process.exit(code ?? 0)).catch((e) => {
     console.error(`hub: ${e.message}`);

@@ -12,6 +12,7 @@ starts the hub on the same port.
 aos hub              # start on demand (default: start + open the browser)
 aos hub status       # check if it is running (also --json)
 aos hub stop         # stop it
+aos hub restart      # stop, then start again
 aos hub --no-open    # start without opening a browser
 ```
 
