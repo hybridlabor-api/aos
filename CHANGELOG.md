@@ -1,30 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Changed
-
-* The installer pins no model on any harness. Claude Code, OpenCode, Codex and Antigravity agent files carry no `model` and inherit the session model; the tier table (`CANONICAL_TIERS`) is gone. A model is written only when `.aos/pipeline.json` sets one for that role and harness (`models: { "<harness>": "<model>" }`, free-form string, verbatim). `aos-doctor` checks the format of those overrides and names file, role, harness and value. Unedited installed agent files that carried `model: opus|sonnet` are rewritten on update; edited ones are kept. See `docs/agent-models.md`.
-* Override semantics: a legacy `model` without `harness` applies to every harness; `models.<harness>` wins and never falls through to it; a malformed value (empty, whitespace, non-string, OpenCode without `provider/`) is skipped with a warning, never replaced. Config precedence is first file wins, no merge (`.aos/pipeline.json`, `.aos/project.json`, `~/.aos/pipeline.json`); an unparseable file is skipped and `aos-doctor` reports it. The doctor also warns on legacy `tier` and on role keys matching no agent, and errors on antigravity values other than `inherit|flash|pro`.
-* The installer applies a `claude` override from `pipeline.json` to the shipped agents in `~/.claude/agents` after the manifest copy and records the hash, so updates do not treat it as a user edit. `setup-subagents` role keys are the real agent slugs (old short keys still accepted). `- **Model**:` lines are gone from `.agents/AGENTS.md` and its copies and ignored by the parser.
-* `.agents/nodes.json` no longer pins a model and the `/startcycle-graph` dispatcher no longer hardcodes `haiku`. A node gets a model only from `pipeline.json` (role = agent slug or node id, harness `claude`), otherwise it inherits. Helper agents (`load_registry`, `merge_state`, `archify_verify`, `validate_skills`) are suggested `haiku` by `assets/pipeline.default.json`, which the installer writes to `~/.aos/pipeline.json` only when absent and never overwrites. `aos-doctor` accepts those keys and node ids. See `docs/agent-models.md`.
-* `aos-acp --model` no longer rejects Fable ids; the string is passed through to the adapter.
-
-* The five "Destructive Actions" rules are re-injected on every prompt (`.claude/hooks/rules-inject.mjs`: Claude Code and Codex `UserPromptSubmit`, Antigravity `PreInvocation`, OpenCode `chat.message`), so context compaction cannot drop them. The installer also adds home-level `rm` deny rules (`Bash(rm * ~)`, `Bash(rm * "$HOME")`, ...) to the Claude `permissions.deny`, records only what it added and removes only that on uninstall. `aos-doctor` reports both. See `docs/destructive-rules.md`.
-
-### Removed
-
-* Merged 18 skills into 4. Firecrawl: the seven CLI skills (`firecrawl-agent`, `-crawl`, `-download`, `-interact`, `-map`, `-scrape`, `-search`) are guides under `firecrawl/commands/`; the five `firecrawl-build*` skills are the new `firecrawl-sdk`. DevOps: `dockerfile-generator` + `dockerfile-validator` -> `docker-expert`, `bash-script-generator` + `bash-script-validator` -> `os-scripting`, `makefile-generator` + `makefile-validator` -> the new `makefile-pro`; each old body is kept as `generator/GUIDE.md` or `validator/GUIDE.md` with its scripts. Installed copies of the old names are retired on update.
-* Removed the foreign `agent-orchestrator` skill (not the AO product `bdb-agent-orchestrator`, nor `ao-orchestrator`). Installed copies are retired on update; edited or foreign files are backed up first.
-
-### Security
-
-* MCP secrets no longer sit inline in harness configs. `GITHUB_PERSONAL_ACCESS_TOKEN`, `GEMINI_API_KEY`, `REMOTEOS_API_KEY` and any other secret `env` value live in one `~/.aos/secrets.env` (mode 0600). Servers that need them are registered in every harness (Claude, Codex, agy, OpenCode, Cursor, Windsurf, Roo/Cline, Aider) as `node aos-mcp-env.mjs --vars NAME -- <command>`; the launcher reads the file (refuses anything but a private regular file), passes only the declared variables and forwards exit code and signals. See `docs/mcp-secrets.md`.
-* The installer overwrites an MCP entry only when AOS owns it (shipped name and AOS command); a same-named user entry is kept with one warning. Before, every writer replaced entries by key.
-* Update migrates AOS-owned entries with inline secrets: timestamped 0600 backup, values moved into the secrets file without overwriting a stored one, entry rewritten, idempotent. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honoured. Backups of configs are now 0600.
-* `aos-doctor` warns about inline secrets in harness MCP configs (file, server, variable; never the value) and about a secrets file that is not 0600. `aos-uninstall` removes the launcher entries AOS owns and leaves the secrets file, with a note.
-* MCP secrets review round: Codex single-quoted `env` values are migrated and tables the installer cannot parse completely are never rewritten (config.toml is backed up before every rewrite); legacy AOS entries (unpinned `npx`, older args) are recognised as owned; the launcher survives a missing lib and nothing is wrapped when it cannot be installed; backups are created 0600 at open time and named in one notice; uninstall removes only launcher entries that match the shipped template; project `.cursor/mcp.json` and recorded custom paths are covered; `settings.json` edits keep the file mode and are backed up.
-* Pinned the `@agentclientprotocol/claude-agent-acp` (0.86.0) and `codex-acp` (2.1.1) adapters launched by `aos-acp` instead of fetching the latest via `npx`.
 ## [4.19.0](https://github.com/hybridlabor-api/aos/compare/v4.18.1...v4.19.0) (2026-10-06)
 
 

@@ -3,6 +3,8 @@
   "packages": {
     ".": {
       "release-type": "node",
+      "prerelease": true,
+      "prerelease-type": "beta",
       "extra-files": [
         {
           "type": "json",
@@ -32,6 +34,21 @@
         {
           "type": "json",
           "path": "plugins/bdb-aos/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/bdb-aos-fleet/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/bdb-aos-sessions/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/bdb-aos-alert/.claude-plugin/plugin.json",
           "jsonpath": "$.version"
         },
         {

@@ -1484,6 +1484,8 @@ npx skills add hybridlabor-api/aos
 
 Ships inside the kernel under `vendor/rustauri`, nothing to download. Two skills: `tauri-pilot`, which drives and tests a running Tauri v2 app through the CLI or MCP (MIT, adapted from [mpiton/tauri-pilot](https://github.com/mpiton/tauri-pilot)), and `rust-pro`, written for this repo. Enable with `-y --modules=rustauri` or `aos package install rustauri`.
 
+The `tauri-pilot` MCP entry is registered in every harness even when the `tauri-pilot` CLI could not be installed (no cargo, or the build failed). The MCP server then fails at launch until the CLI is present; the install warning names the failed step.
+
 ### StyleSeed (`styleseed`)
 
 Ships inside the kernel under `vendor/styleseed`, nothing to download. Eight UI/UX skills in the StyleSeed Toss design language (MIT, from [bitjaru/styleseed](https://github.com/bitjaru/styleseed)): `ui-component`, `ui-page`, `ui-pattern`, `ui-review`, `ui-tokens`, `ux-audit`, `ux-feedback`, `ux-flow`. It is opt-in because the skills assume that design system; the agent personas, playbooks and docs refer to them only as "if the StyleSeed package is installed". Copies from earlier installs are kept, not deleted. Enable with `-y --modules=styleseed`.
