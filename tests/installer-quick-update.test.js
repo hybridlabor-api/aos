@@ -17,7 +17,7 @@ const {
     readGoBuildInfo, parseGoBuildInfo, decideAoInstall, checkAoWorkspace, installAoBinary,
     describeAoVersion, buildAoAnnouncementBanner, readAoDaemonIdentity, selectAoCandidate, agentsNotShippedAsFiles, parseAgentsMd,
     resolveFileConflict, buildKnownSourceHashes, computeFileHash, retireObsoleteLegacyDir,
-    runModuleInstalls, verifyEcosystemInstallation,
+    runModuleInstalls, verifyEcosystemInstallation, copyDirRecursiveSync,
 } = require('../installer.js');
 
 function tmpDir() {
@@ -389,4 +389,22 @@ test('a failed module install makes the verify step set a failing exit code', as
     } finally {
         process.exitCode = saved;
     }
+});
+
+test('linking a skill over a real user file moves that file aside instead of deleting it', () => {
+    const src = path.join(tmpDir(), 'src');
+    const dst = path.join(tmpDir(), 'dst');
+    const real = path.join(tmpDir(), 'real.md');
+    fs.mkdirSync(src, { recursive: true });
+    fs.mkdirSync(dst, { recursive: true });
+    fs.writeFileSync(real, 'shipped');
+    fs.symlinkSync(real, path.join(src, 'link.md'));
+    fs.writeFileSync(path.join(dst, 'link.md'), 'user work');
+    copyDirRecursiveSync(src, dst);
+    assert.ok(fs.lstatSync(path.join(dst, 'link.md')).isSymbolicLink());
+    const moved = fs.readdirSync(path.join(tmpHome, '.agents', 'backups'))
+        .filter((n) => n.startsWith('replaced-by-link-'))
+        .map((n) => path.join(tmpHome, '.agents', 'backups', n, 'link.md'))
+        .find(fs.existsSync);
+    assert.strictEqual(fs.readFileSync(moved, 'utf8'), 'user work');
 });

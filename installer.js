@@ -980,9 +980,7 @@ function retireObsoleteLegacyDir(targetLegacyDir) {
         return;
     }
     try {
-        const backupParent = path.join(homeDir, '.agents', 'backups');
-        fs.mkdirSync(backupParent, { recursive: true, mode: 0o700 });
-        const backupRoot = fs.mkdtempSync(path.join(backupParent, 'retired-legacy-'));
+        const backupRoot = fs.mkdtempSync(path.join(ensureBackupParent(), 'retired-legacy-'));
         fs.renameSync(targetLegacyDir, path.join(backupRoot, 'legacy'));
         log.step(`Moved retired legacy skill copies from ${targetLegacyDir} to ${backupRoot} (global_legacy has not shipped in a long time).`);
     } catch (e) {
@@ -1340,6 +1338,22 @@ function safeRmDirSync(dirPath, maxRetries = 5, retryDelay = 200) {
     }
 }
 
+// A symlink is only a pointer and is safe to replace; a real file or folder there may be the user's own and is moved aside.
+function clearLinkSlot(p) {
+    let st;
+    try { st = fs.lstatSync(p); } catch { return; }
+    if (st.isSymbolicLink()) { fs.unlinkSync(p); return; }
+    const backupRoot = fs.mkdtempSync(path.join(ensureBackupParent(), 'replaced-by-link-'));
+    fs.renameSync(p, path.join(backupRoot, path.basename(p)));
+    log.step(`Moved ${p} aside before linking it (backup: ${backupRoot}).`);
+}
+
+function ensureBackupParent() {
+    const dir = path.join(homeDir, '.agents', 'backups');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+}
+
 function copyDirRecursiveSync(source, target, excludeList = [], manifest = null, knownSourceHashes = null) {
     // Fall back to session-level state when no explicit manifest is passed.
     const mfst = manifest !== null ? manifest : _sessionManifest;
@@ -1387,7 +1401,7 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
                 try {
                     const linkTarget = fs.readlinkSync(curSource);
                     if (fs.existsSync(curSource)) {
-                        if (fs.existsSync(curTarget)) fs.unlinkSync(curTarget);
+                        clearLinkSlot(curTarget);
                         fs.symlinkSync(linkTarget, curTarget);
                     } else {
                         log.warn(`Skipping broken symlink ${curSource}`);
@@ -8072,6 +8086,7 @@ module.exports = {
     newestDistTag,
     verifyEcosystemInstallation,
     runModuleInstalls,
+    copyDirRecursiveSync,
     retireObsoleteLegacyDir,
     installBinaryAtomically,
     installOSRemoteGateway,
