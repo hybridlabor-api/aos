@@ -16,7 +16,7 @@ test.after(() => fs.rmSync(tmpHome, { recursive: true, force: true }));
 const {
     readGoBuildInfo, parseGoBuildInfo, decideAoInstall, checkAoWorkspace, installAoBinary,
     describeAoVersion, buildAoAnnouncementBanner, readAoDaemonIdentity, selectAoCandidate, agentsNotShippedAsFiles, parseAgentsMd,
-    resolveFileConflict, buildKnownSourceHashes, computeFileHash,
+    resolveFileConflict, buildKnownSourceHashes, computeFileHash, retireObsoleteLegacyDir,
 } = require('../installer.js');
 
 function tmpDir() {
@@ -365,4 +365,16 @@ test('release fallback never downloads into a git checkout', () => {
     const { deps, calls } = selectFixture({ releaseDir: dir });
     assert.strictEqual(selectAoCandidate(deps).bin, null);
     assert.deepStrictEqual(calls.download, []);
+});
+
+test('retiring the obsolete legacy skill dir moves it aside instead of deleting it', () => {
+    const legacy = path.join(tmpHome, 'retire-case', 'legacy');
+    fs.mkdirSync(legacy, { recursive: true });
+    fs.writeFileSync(path.join(legacy, 'my-own-skill.md'), 'keep me');
+    retireObsoleteLegacyDir(legacy);
+    assert.strictEqual(fs.existsSync(legacy), false);
+    const backups = fs.readdirSync(path.join(tmpHome, '.agents', 'backups')).filter((n) => n.startsWith('retired-legacy-'));
+    assert.ok(backups.length >= 1);
+    const kept = backups.map((b) => path.join(tmpHome, '.agents', 'backups', b, 'legacy', 'my-own-skill.md')).find(fs.existsSync);
+    assert.strictEqual(fs.readFileSync(kept, 'utf8'), 'keep me');
 });

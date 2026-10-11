@@ -980,8 +980,11 @@ function retireObsoleteLegacyDir(targetLegacyDir) {
         return;
     }
     try {
-        fs.rmSync(targetLegacyDir, { recursive: true, force: true });
-        log.step(`Removed retired legacy skill copies at ${targetLegacyDir} (global_legacy has not shipped in a long time).`);
+        const backupParent = path.join(homeDir, '.agents', 'backups');
+        fs.mkdirSync(backupParent, { recursive: true, mode: 0o700 });
+        const backupRoot = fs.mkdtempSync(path.join(backupParent, 'retired-legacy-'));
+        fs.renameSync(targetLegacyDir, path.join(backupRoot, 'legacy'));
+        log.step(`Moved retired legacy skill copies from ${targetLegacyDir} to ${backupRoot} (global_legacy has not shipped in a long time).`);
     } catch (e) {
         logDebug(e, 'retire legacy dir');
     }
@@ -8063,6 +8066,7 @@ module.exports = {
     codexPluginInstall,
     newestDistTag,
     verifyEcosystemInstallation,
+    retireObsoleteLegacyDir,
     installBinaryAtomically,
     installOSRemoteGateway,
     installOSAgentWorkspace,
