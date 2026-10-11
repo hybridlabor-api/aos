@@ -265,6 +265,7 @@ describe('S6 the other harness paths enforce the same block functionally', () =>
         fs.writeFileSync(older, 'print(1)');
         const past = new Date(Date.now() - 3600e3);
         fs.utimesSync(older, past, past);
+        sleep(30); // utimes sets ctime to now; the block must come strictly after it
         assert.equal((await acp.decidePermission(params('git push origin main'), acpOpts())).outcome.optionId, 'reject');
         sleep(30);
         const fresh = path.join(work, 'new.py');
