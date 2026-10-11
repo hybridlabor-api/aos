@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util';
 import { AGENT_CARD_PATH, TaskState, Role } from '@a2a-js/sdk';
 import { DefaultRequestHandler, InMemoryTaskStore, AgentEvent } from '@a2a-js/sdk/server';
 import { jsonRpcHandler, agentCardHandler, UserBuilder } from '@a2a-js/sdk/server/express';
-import { register, unregister, readToken } from '/Users/timrennings/dev/bdb-dev/aos-wt-zielc/lib/a2a-registry.mjs';
+import { register, unregister, readToken } from '<home>/dev/bdb-dev/aos-wt-zielc/lib/a2a-registry.mjs';
 
 const { values: o } = parseArgs({ options: {
   name: { type: 'string' }, harness: { type: 'string' }, host: { type: 'string', default: '127.0.0.1' },
@@ -53,7 +53,7 @@ const executor = {
 
     const logFile = path.join(RUN, 'acp.jsonl');
     const child = spawn('node', [
-      '/Users/timrennings/dev/bdb-dev/aos-wt-zielc/bin/aos-acp.mjs', 'opencode',
+      '<home>/dev/bdb-dev/aos-wt-zielc/bin/aos-acp.mjs', 'opencode',
       '--name', 'a2a-p1b-worker', '--cwd', TESTDIR, '--prompt-file', promptFile,
       ...(process.env.A2A_WORKER_MODEL ? ['--model', process.env.A2A_WORKER_MODEL] : []),
       '--allow-default', 'allow',

@@ -24,7 +24,7 @@ mkdir -p "$A2A_TESTDIR"
 
 # baseline snapshots
 CONFIG_SUM_BEFORE=$(find "$HOME/.config/opencode" -type f -not -path '*/node_modules/*' -exec shasum -a 256 {} + 2>/dev/null | sort)
-WT_STATUS_BEFORE=$(git -C /Users/timrennings/dev/bdb-dev/aos-wt-zielc status --porcelain)
+WT_STATUS_BEFORE=$(git -C <home>/dev/bdb-dev/aos-wt-zielc status --porcelain)
 
 node sidecar-worker.mjs --name opencode-w --harness opencode > run/logs/opencode-w.log 2>&1 & W=$!; PIDS+=("$W")
 wait_reg opencode-w && ok "opencode-w registered" || { bad "opencode-w did not register"; cat run/logs/opencode-w.log; exit 1; }
@@ -44,7 +44,7 @@ echo "$OUT"
 
 CONFIG_SUM_AFTER=$(find "$HOME/.config/opencode" -type f -not -path '*/node_modules/*' -exec shasum -a 256 {} + 2>/dev/null | sort)
 [ "$CONFIG_SUM_BEFORE" = "$CONFIG_SUM_AFTER" ] && ok "~/.config/opencode unchanged" || bad "~/.config/opencode changed"
-WT_STATUS_AFTER=$(git -C /Users/timrennings/dev/bdb-dev/aos-wt-zielc status --porcelain)
+WT_STATUS_AFTER=$(git -C <home>/dev/bdb-dev/aos-wt-zielc status --porcelain)
 [ "$WT_STATUS_BEFORE" = "$WT_STATUS_AFTER" ] && ok "aos-wt-zielc status unchanged" || bad "aos-wt-zielc status changed:
 $WT_STATUS_AFTER"
 

@@ -18,7 +18,7 @@ bad() { echo "FAIL: $1"; FAILS=$((FAILS+1)); }
 jget() { node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));const v=process.argv[1].split(".").reduce((a,k)=>a?.[k],j);console.log(typeof v==="object"?JSON.stringify(v):v)' "$1"; }
 wait_reg() { for _ in $(seq 1 100); do [ -s "$AOS_SESSIONS_DIR/$1.json" ] && return 0; sleep 0.1; done; return 1; }
 
-WT_STATUS_BEFORE=$(git -C /Users/timrennings/dev/bdb-dev/aos-wt-zielc status --porcelain)
+WT_STATUS_BEFORE=$(git -C <home>/dev/bdb-dev/aos-wt-zielc status --porcelain)
 MARKER="$D/run/marker.$$"
 touch "$MARKER"
 
@@ -60,7 +60,7 @@ echo "$GO_CTX" | grep -q "a2a from opencode-o" && echo "$GO_CTX" | grep -q "neve
 # drain/kill the pending GO claude message sidecar wait so trap cleanup works; kill live sidecar directly
 kill "$L" "$O" 2>/dev/null; wait "$L" 2>/dev/null; wait "$O" 2>/dev/null
 
-WT_STATUS_AFTER=$(git -C /Users/timrennings/dev/bdb-dev/aos-wt-zielc status --porcelain)
+WT_STATUS_AFTER=$(git -C <home>/dev/bdb-dev/aos-wt-zielc status --porcelain)
 [ "$WT_STATUS_BEFORE" = "$WT_STATUS_AFTER" ] && ok "aos-wt-zielc unchanged" || bad "aos-wt-zielc changed:
 $WT_STATUS_AFTER"
 

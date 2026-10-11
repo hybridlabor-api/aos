@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"/private/tmp/claude-501/-Users-timrennings/2f3aed09-052a-4360-86c5-4b1856c50064/scratchpad/a2a/p2b/hook-drain.mjs\""
+            "command": "node \"<scratchpad>/a2a/p2b/hook-drain.mjs\""
           }
         ]
       }
@@ -13,7 +13,7 @@
   },
   "permissions": {
     "allow": [
-      "Bash(node /private/tmp/claude-501/-Users-timrennings/2f3aed09-052a-4360-86c5-4b1856c50064/scratchpad/a2a/p2b/reply.mjs:*)"
+      "Bash(node <scratchpad>/a2a/p2b/reply.mjs:*)"
     ]
   }
 }

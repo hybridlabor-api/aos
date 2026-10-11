@@ -5,13 +5,13 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-const SPIKE = '/private/tmp/claude-501/-Users-timrennings/2f3aed09-052a-4360-86c5-4b1856c50064/scratchpad/a2a/spike0/node_modules';
+const SPIKE = '<scratchpad>/a2a/spike0/node_modules';
 const imp = (p) => import(pathToFileURL(path.join(SPIKE, p)).href);
 const { default: express } = await imp('express/index.js');
 const { AGENT_CARD_PATH, TaskState, Role } = await imp('@a2a-js/sdk/dist/index.js');
 const { DefaultRequestHandler, InMemoryTaskStore, AgentEvent } = await imp('@a2a-js/sdk/dist/server/index.js');
 const { jsonRpcHandler, agentCardHandler, UserBuilder } = await imp('@a2a-js/sdk/dist/server/express/index.js');
-const { register, unregister } = await import('/Users/timrennings/dev/bdb-dev/aos-wt-zielc/lib/a2a-registry.mjs');
+const { register, unregister } = await import('<home>/dev/bdb-dev/aos-wt-zielc/lib/a2a-registry.mjs');
 
 // Loopback only, never via a proxy.
 for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']) delete process.env[k];

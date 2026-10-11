@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { Role, TaskState } from '@a2a-js/sdk';
 import { ClientFactory } from '@a2a-js/sdk/client';
-import { readToken } from '/Users/timrennings/dev/bdb-dev/aos-wt-zielc/lib/a2a-registry.mjs';
+import { readToken } from '<home>/dev/bdb-dev/aos-wt-zielc/lib/a2a-registry.mjs';
 
 // A2A clients must never route loopback through a proxy.
 for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']) delete process.env[k];

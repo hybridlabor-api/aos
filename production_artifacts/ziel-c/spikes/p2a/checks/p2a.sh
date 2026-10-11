@@ -4,7 +4,7 @@
 set -u
 P="$(cd "$(dirname "$0")/.." && pwd)"
 RUN="$P/run-$$"
-BUSSRC=/Users/timrennings/dev/bdb-dev/aos-wt-bus-spike
+BUSSRC=<home>/dev/bdb-dev/aos-wt-bus-spike
 export AOS_SESSIONS_DIR="$RUN/sessions"
 export AOS_BUS_ROOT="$RUN/bus"
 export NO_PROXY='127.0.0.1,localhost,::1' no_proxy='127.0.0.1,localhost,::1'
