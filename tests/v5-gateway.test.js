@@ -396,6 +396,13 @@ describe('pkg-gateway', () => {
         assert.equal(s.bdb_resolume_mcp.command, '/opt/uv/uv');
     });
 
+    test('install applies the env-based picks: the retired After Effects entry is no upstream', async () => {
+        const home = tmp();
+        await pkg.install(mkCtx(home, { env: { AOS_AE_MCP: 'legacy' } }).ctx);
+        const s = JSON.parse(fs.readFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), 'utf8')).mcpServers;
+        assert.ok(!('bdb_after_effects_mcp' in s));
+    });
+
     test('update keeps the token and gateway.json, and kickstarts', async () => {
         const home = tmp();
         const first = mkCtx(home);
