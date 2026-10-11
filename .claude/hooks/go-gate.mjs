@@ -1561,8 +1561,8 @@ function trustedDirs() {
     join(dirname(dirname(process.execPath)), "lib", "node_modules"), "/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules", "/opt/homebrew/Cellar", "/usr/local/Cellar",
   ];
 }
-function installedScript(path, mtime) {
-  if (!(gateCtx.blockTs ? mtime < gateCtx.blockTs : false) && Date.now() - mtime <= COOLDOWN_MS) return false;
+function installedScript(path, changed) {
+  if (!(gateCtx.blockTs ? changed < gateCtx.blockTs : false) && Date.now() - changed <= COOLDOWN_MS) return false;
   let real;
   try { real = realpathSync(path); } catch { return false; }
   return trustedDirs().some((d) => {
@@ -1612,19 +1612,20 @@ function insideWorkspace(ws, target) {
 
 function scriptInto(r, h, file, cwd) {
   const path = resolve(expandHome(cwd), expandHome(file));
-  let st, mtime;
-  try { st = statSync(path); mtime = Math.max(st.mtimeMs, lstatSync(path).mtimeMs); } catch { r.unscoped = true; return; }
+  let st, changed;
+  // ctime is included because `touch -t` can backdate mtime but never ctime.
+  try { const l = lstatSync(path); st = statSync(path); changed = Math.max(st.mtimeMs, l.mtimeMs, st.ctimeMs, l.ctimeMs); } catch { r.unscoped = true; return; }
   // Only a regular file is ever opened: a device (/dev/zero), FIFO, socket or directory is
   // unscoped and never read (a read could hang the hook). statSync follows a symlink.
   if (!st.isFile()) { r.unscoped = true; return; }
   // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
   // written before the block, or remove the marker through a path built at run time; the
   // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
-  if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && mtime > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
+  if (gateCtx.blockTs && Date.now() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
   const body = readSmallRegular(path, SCRIPT_MAX, true);
   if (typeof body !== "string") { r.unscoped = true; return; }
-  const t = installedScript(path, mtime) ? { destructive: false, workspace: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] } : r;
+  const t = installedScript(path, changed) ?{ destructive: false, workspace: false, hard: null, unscoped: false, cooldown: false, cmds: [], files: [] } : r;
   if (/^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i.test(h)) t.cmds.push(body);
   else codeInto(t, body, h.toLowerCase().replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"), t === r ? workspaceFor(path, cwd) : null);
   if (t !== r) {

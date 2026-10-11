@@ -53,6 +53,10 @@ describe('installed tool scripts are not analysed as agent code', () => {
     const RM = 'import shutil\n\ndef uninstall(d):\n    shutil.rmtree(d)\n';
     const plugin = () => path.join(claudeDir, 'plugins', 'cache', 'token-saver', 'token-saver', '2.6.3', 'src');
 
+    test('S5-1: a backdated (utimes/touch -t) script in the plugin cache is still analysed', () => {
+        const f = put(plugin(), 'backdated.py', RM, 3600e3);
+        assert.notDeepEqual(sc(`python3 ${f} stats`), [], 'mtime is backdated, ctime is now');
+    });
     test('an old fixture in the plugin cache with a delete subcommand is not guarded', () => {
         const f = put(plugin(), 'cli.py', RM, 3600e3);
         assert.deepEqual(sc(`python3 ${f} stats`), []);
