@@ -287,6 +287,8 @@ describe('(9) process-hiding wrappers keep the command readable', () => {
 // ---------------------------------------------------------------------------
 describe('(10) catchAll stays linear on a five-thousand-word command', () => {
     test('fast and unchanged on a long benign docker echo', () => {
+        // The analysis runs under a CPU budget (gateCtx.budgetMs, default 150 ms); a cold first call on Windows needs more. This test is about linearity.
+        ctx.budgetMs = 1500;
         const c = `docker run --rm -v {P}:/src:ro node:24 echo ${Array(5000).fill('$a').join(' ')}`;
         const t0 = process.hrtime.bigint();
         const got = sc(c);

@@ -48,7 +48,7 @@ assert.equal(subOriginal, original, 'subfolder plugin.json must match the root m
 assert.equal(entry.source, './plugins/bdb-aos', 'marketplace entry must point at the subfolder plugin');
 for (const name of ['skills', 'agents']) {
   assert.ok(lstatSync(join(SUB, name)).isSymbolicLink(), `plugins/bdb-aos/${name} must be a symlink`);
-  assert.equal(readlinkSync(join(SUB, name)), `../../${name}`);
+  assert.equal(readlinkSync(join(SUB, name)).replace(/\\/g, '/'), `../../${name}`); // Windows readlink returns backslashes
 }
 assert.ok(readFileSync(join(SUB, manifest.skills[0], 'SKILL.md'), 'utf8').length > 0, 'skills resolve through the symlink');
 

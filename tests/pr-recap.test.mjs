@@ -57,7 +57,7 @@ test('diff maps to tree markers', () => {
   assert.doesNotMatch(m, /src\/keep\.js/);
 });
 
-test('hostile names and titles cannot inject tags or break the page', () => {
+test('hostile names and titles cannot inject tags or break the page', { skip: process.platform === 'win32' && 'Windows cannot create file names with < or >' }, () => {
   const m = mdx();
   assert.ok(!m.includes('<b>') && !m.includes('<Callout>.txt'), 'raw hostile text must not reach the MDX');
   assert.ok(m.includes('a\\u003cb\\u003e\\u007bc\\u007d'), 'file name is \\u-escaped in the JSX literal');
