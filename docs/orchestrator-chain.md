@@ -10,6 +10,14 @@
 
 The live sessions on this setup add a fourth role next to these: the **task manager**, who sequences shared resources (one Docker run at a time, worker caps, disk), keeps one blocker list and the human's single to-do file, and never grants GO. It is a convention like the others; the "package orchestrator" row above is what the live rules call a package worker. Role table and working agreements: `docs/master-session-portable.md`.
 
+Pipeline nodes map onto the chain as follows: `architect`, `techlead`, `reviewer` and `shipping` are project-orchestrator steps run by the dispatcher; `ui_ux`, `engineering` and `media_eventtech` are package-orchestrator build nodes. Machine-readable copy: `.agents/nodes.json` (`chain.node_hop`); edge table and contract: `.agents/graph.md`.
+
+## MCP and fleet at each level
+
+- **MCP tools go through one entry.** Agents at any level reach MCP servers through the single `aos` entry that `aos-gateway enable` writes into each harness config. The gateway is a token-checked forwarder on `127.0.0.1:7790` in front of `@1mcp/agent` on `127.0.0.1:7791`. Servers on the direct list (`memb_mcp`, `openwiki`, `mcsc`, `deja`, others) are not behind it. `docs/mcp-gateway.md`, `lib/gateway/config.js` (`GATEWAY_SERVERS`, `DIRECT_SERVERS`), `lib/v5/pkg-gateway.js`.
+- **Headless workers start without the MCP list.** AGENTS.md (Delegating to an external CLI, item 6) asks for workers to get only the servers their task needs; `aos-acp` and `mcsc` switch OpenCode MCP off by default.
+- **Fleet mod is a human view.** `plugins/bdb-aos-fleet` (`lib/v5/pkg-fleet.js` registers it in Claude Code `settings.json`; `AOS_NO_FLEET=1` opts out) renders which sessions work or wait for the human, with gate mode and GO counts. Its roles are `master`, `task-manager`, `orchestrator` and `worker` (`plugins/bdb-aos-fleet/hooks/register.tsx`, `aos-role` command). No node or dispatcher code reads it.
+
 ## Channels between levels
 
 - Spawn a worker that may need a GO: `aos-acp` (`docs/delegation-routing.md`, `skills/basic/master-session/SKILL.md`).
