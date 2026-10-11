@@ -5683,6 +5683,10 @@ function installGlobalBinaries() {
             // `aos` is a common name: never overwrite somebody else's file.
             try { if (fs.existsSync(shPath) && !fs.readFileSync(shPath, 'utf8').includes(LAUNCHER_MARKER)) continue; } catch { continue; }
             run = `npx -y ${AOS_NPX_SPEC}${aosDistTag(pkg.version)}`;
+        } else if (name === 'aos-uninstall') {
+            // aos-uninstall.mjs requires installer.js and lib/ next to it; ~/.agents/bin has neither
+            // (Lenovo P15: "Cannot find module '../installer.js'"). Run it from the package instead.
+            run = `npx -y -p ${AOS_NPX_SPEC}${aosDistTag(pkg.version)} aos-uninstall`;
         } else {
             const targetMjs = launcherTarget(homeDir, name);
             if (!fs.existsSync(targetMjs)) continue;

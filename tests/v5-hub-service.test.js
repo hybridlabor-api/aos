@@ -87,7 +87,9 @@ describe('install commands per platform', () => {
         assert.equal(r.ok, true);
         const xmlFile = calls.find((c) => c[0] === 'schtasks' && c[1] === '/Create')[3];
         assert.ok(fs.existsSync(xmlFile));
-        assert.ok(fs.readFileSync(xmlFile, 'utf8').includes('<RestartOnFailure>'));
+        const raw = fs.readFileSync(xmlFile);
+        assert.deepEqual([raw[0], raw[1]], [0xff, 0xfe], 'UTF-16LE BOM, as the XML header declares');
+        assert.ok(raw.toString('utf16le').includes('<RestartOnFailure>'));
         assert.deepEqual(calls.find((c) => c[0] === 'schtasks' && c[1] === '/Create'), ['schtasks', '/Create', '/XML', xmlFile, '/TN', 'AOS_Hub', '/F']);
         assert.deepEqual(calls.find((c) => c[0] === 'schtasks' && c[1] === '/Run'), ['schtasks', '/Run', '/TN', 'AOS_Hub']);
     });
