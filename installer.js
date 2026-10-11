@@ -4177,7 +4177,10 @@ async function installMcpsForTarget(paths, ctx) {
             const ok = runNpmWithRetry('npm install --no-audit --no-fund', { cwd: targetFolder }, `npm install for ${mcpFolder}`);
             if (ok && (fs.existsSync(path.join(targetFolder, 'tsconfig.json')) || fs.existsSync(path.join(targetFolder, 'tsconfig.build.json')))) {
                 log.step(`Compiling TypeScript for ${mcpFolder}...`);
-                const built = runNpmWithRetry('npm run build', { cwd: targetFolder }, `npm run build for ${mcpFolder}`);
+                // touchdesigner-mcp's build ends in build:mcpb (npx @anthropic-ai/mcpb pack), a Claude Desktop bundle the
+                // server does not need; without a TTY npx will not fetch it and the whole build failed (exit 127).
+                const buildCmd = mcpFolder === 'touchdesigner-mcp' ? 'npm run build:gen && npm run build:dist' : 'npm run build';
+                const built = runNpmWithRetry(buildCmd, { cwd: targetFolder }, `${buildCmd} for ${mcpFolder}`);
                 // runNpmWithRetry already warned with the failure detail; this
                 // just makes the consequence visible now instead of only later,
                 // when the config-entry check below finds the missing dist file.
@@ -5472,7 +5475,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
     }
-    mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'));
+    if (mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'))) codexHooksChanged = true;
 
     // 4. OpenCode CLI
     installOpencodePlugin({
@@ -6144,6 +6147,10 @@ function codexGateSnippet(hooksDir) {
     ].join('\n');
 }
 
+const CODEX_TRUST_REMINDER = 'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.';
+// Set when an install changed the AOS hook groups in ~/.codex/config.toml; printed as the last outro line.
+let codexHooksChanged = false;
+
 const CODEX_GATE_NOTICE = 'Codex asks you to trust new or changed hooks before it runs them; approve the go-gate hook in Codex, or it stays inactive. Firing under `codex exec` and under aos-acp is UNVERIFIED: run the smoke test in docs/codex-gate-smoke.md.';
 
 // Merge the BDB hooks into ChatGPT Codex CLI's config.toml (~/.codex/config.toml or
@@ -6244,15 +6251,27 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, eol + eol).trimEnd();
     content = `${body}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
 
+    const hookHash = uninstallRecords.codexAosHookHash(content);
+    const hooksChanged = hookHash !== uninstallRecords.codexAosHookHash(original);
     try {
         fs.mkdirSync(path.dirname(configTomlPath), { recursive: true });
         // Codex trusts a hook by its hash: an unchanged file is not rewritten.
         if (content !== original) fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
+        // The doctor compares Codex's trust entries against this snapshot to tell whether /hooks ran since.
+        if (hooksChanged && !projectLocal && !DRY_RUN && path.basename(baseDir) === '.codex') {
+            const record = path.join(path.dirname(baseDir), '.aos', 'codex-hooks.json');
+            try {
+                fs.mkdirSync(path.dirname(record), { recursive: true });
+                fs.writeFileSync(record, JSON.stringify({ hookHash, trustedHashes: uninstallRecords.codexTrustedHashes(content), changedAt: new Date().toISOString() }, null, 2) + '\n');
+            } catch (e) { logDebug(e, 'codex-hooks.json'); }
+        }
         // Hooks live in config.toml only; Codex warns when hooks.json holds them too.
         for (const line of uninstallRecords.migrateCodexHooksJson({ file: path.join(baseDir, 'hooks.json'), dryRun: DRY_RUN })) log.step(line);
     } catch (e) {
         log.warn(`Could not write ${configTomlPath}: ${e.message}`);
+        return false;
     }
+    return hooksChanged;
 }
 
 // Tier 9 (Local Project Harness): drop the dispatcher contract into the
@@ -8168,6 +8187,8 @@ Options:
     } else {
         outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
     }
+    // Last line on purpose: an earlier CODEX_GATE_NOTICE scrolled by unread and the gate stayed off.
+    if (codexHooksChanged) console.log(`⚠️  ${CODEX_TRUST_REMINDER}`);
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
@@ -8236,6 +8257,7 @@ module.exports = {
     localBinPathHint,
     codexGateSnippet,
     CODEX_GATE_NOTICE,
+    CODEX_TRUST_REMINDER,
     installOpencodePlugin,
     stripJsonc,
     syncMcpConfigFile,

@@ -94,6 +94,70 @@ test('the doctor source carries the one-time review notice and the both-files re
     assert.match(src, /hooks in both hooks\.json and config\.toml/);
 });
 
+test('merge reports a changed AOS hook stanza only when it changed, and snapshots it in ~/.aos', () => {
+    const home = mk();
+    const f = path.join(home, '.codex', 'config.toml');
+    const rec = path.join(home, '.aos', 'codex-hooks.json');
+    assert.strictEqual(mergeCodexTomlHooks(f), true, 'new stanza');
+    assert.match(JSON.parse(fs.readFileSync(rec, 'utf8')).hookHash, /^[0-9a-f]{64}$/);
+    fs.rmSync(rec);
+    assert.strictEqual(mergeCodexTomlHooks(f), false, 'unchanged stanza keeps its trust');
+    assert.strictEqual(fs.existsSync(rec), false, 'no snapshot when nothing changed');
+    // Codex drops the marker comments and adds its trust entries on rewrite: still unchanged.
+    const stripped = fs.readFileSync(f, 'utf8').replace(/^# AOS:HOOKS:(START|END)\n/gm, '');
+    fs.writeFileSync(f, `${stripped}\n[hooks.state]\n"pre_tool_use:0:0" = { trusted_hash = "sha256:aa11" }\n`);
+    assert.strictEqual(mergeCodexTomlHooks(f), false);
+    fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/(go-gate\.mjs[^\n]*\n)timeout = 30/, '$1timeout = 31'));
+    assert.strictEqual(mergeCodexTomlHooks(f), true, 'an edited go-gate stanza is rewritten, so it changed');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(rec, 'utf8')).trustedHashes, ['sha256:aa11']);
+});
+
+test('the trust reminder has the exact text and is printed after the outro, only when the stanza changed', () => {
+    const { CODEX_TRUST_REMINDER } = require('../installer.js');
+    assert.strictEqual(CODEX_TRUST_REMINDER, 'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
+    assert.match(src, /if \(mergeCodexTomlHooks\(path\.join\(targetHome, '\.codex', 'config\.toml'\)\)\) codexHooksChanged = true;/);
+    const print = src.indexOf('if (codexHooksChanged) console.log(');
+    assert.ok(print > src.indexOf('outro(`🎉 Installation complete!'));
+    assert.ok(print > src.indexOf('outro(`⚠️ Installation incomplete'));
+});
+
+function doctorReview(setup) {
+    const home = mk();
+    setup(home);
+    const r = spawnSync(process.execPath, [DOCTOR, '--json'], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 120000 });
+    assert.ok(r.stdout, `doctor crashed: ${r.stderr}`);
+    return JSON.parse(r.stdout).results.find((x) => x.name === 'Codex hook review');
+}
+const SPAWN = { skip: !CONTAINER && 'needs AOS_TEST_SANDBOX=container (spawns the doctor)' };
+
+test('doctor review row: no trust change since the hook change warns and names go-gate', SPAWN, () => {
+    const row = doctorReview((home) => mergeCodexTomlHooks(path.join(home, '.codex', 'config.toml')));
+    assert.ok(row && !row.ok && row.warningOnly, JSON.stringify(row));
+    assert.match(row.detail, /run \/hooks and trust the AOS go-gate hook/);
+});
+
+test('doctor review row: trust entries changed after the hook change is OK', SPAWN, () => {
+    const row = doctorReview((home) => {
+        const f = path.join(home, '.codex', 'config.toml');
+        mergeCodexTomlHooks(f);
+        fs.appendFileSync(f, '\n[hooks.state]\n"pre_tool_use:0:0" = { trusted_hash = "sha256:bb22" }\n');
+    });
+    assert.ok(row && row.ok, JSON.stringify(row));
+    assert.match(row.detail, /re-trusted after the last hook change/);
+});
+
+test('doctor review row: without an install snapshot it never claims trust', SPAWN, () => {
+    const row = doctorReview((home) => {
+        const f = path.join(home, '.codex', 'config.toml');
+        mergeCodexTomlHooks(f);
+        fs.rmSync(path.join(home, '.aos', 'codex-hooks.json'));
+        fs.appendFileSync(f, '\n[hooks.state]\n"pre_tool_use:0:0" = { trusted_hash = "sha256:cc33" }\n');
+    });
+    assert.ok(row && !row.ok && row.warningOnly, JSON.stringify(row));
+    assert.match(row.detail, /run \/hooks once after each AOS update that changed hooks/);
+});
+
 test('doctor warns about the /hooks review and about hooks in both files', { skip: !CONTAINER && 'needs AOS_TEST_SANDBOX=container (spawns the doctor)' }, () => {
     const home = mk();
     const dir = path.join(home, '.codex');

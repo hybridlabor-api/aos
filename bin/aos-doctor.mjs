@@ -18,6 +18,7 @@ const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
+const { codexAosHookHash, codexTrustedHashes } = req('../lib/uninstall-records.js');
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
@@ -359,8 +360,18 @@ function checkHooks() {
     'Run the AOS installer to wire Codex hooks.', true);
 
   if (codexWired) {
-    add('hooks', 'Codex hook review', false, 'Codex skips new or changed AOS hooks until you trust them once: open Codex and run /hooks',
-      'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.', true);
+    // Codex's hash algorithm is not reproduced here. Evidence of a re-trust is only that Codex's set of
+    // trust values changed after the install that last changed the AOS hooks (snapshot in ~/.aos/codex-hooks.json).
+    const rec = readJson(h('.aos', 'codex-hooks.json'));
+    const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.';
+    const gateWired = /^\s*command\s*=.*go-gate\.mjs/m.test(codexToml);
+    if (!gateWired || !rec || rec.hookHash !== codexAosHookHash(codexToml)) {
+      add('hooks', 'Codex hook review', false, 'Codex skips new or changed AOS hooks until you trust them once: run /hooks once after each AOS update that changed hooks', fix, true);
+    } else if (JSON.stringify(codexTrustedHashes(codexToml)) === JSON.stringify(rec.trustedHashes || [])) {
+      add('hooks', 'Codex hook review', false, `the AOS go-gate hook changed at the install of ${rec.changedAt || 'an unknown time'} and Codex has recorded no new trust since: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex`, fix, true);
+    } else {
+      add('hooks', 'Codex hook review', true, `Codex trust entries changed after the last AOS hook change (${rec.changedAt || 'time unknown'}): re-trusted after the last hook change`, fix, true);
+    }
   }
   let codexJson = '';
   try { codexJson = readFileSync(h('.codex', 'hooks.json'), 'utf8'); } catch {}
