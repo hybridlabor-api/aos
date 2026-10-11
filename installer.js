@@ -5647,19 +5647,26 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus', 'aos-gateway', 'aos-a2a', 'aos-gate'];
-    // aos-bus ships as a hook (it imports ./go-gate.mjs), so its launcher points into ~/.claude/hooks.
-    const binDirOf = (name) => (name === 'aos-bus' ? path.join(claudeConfigDir(homeDir), 'hooks') : globalAgentsBin);
+    const { LAUNCHERS, LAUNCHER_MARKER, AOS_NPX_SPEC, launcherTarget } = uninstallRecords;
     const wired = [];
 
-    for (const name of cliBins) {
-        const targetMjs = path.join(binDirOf(name), `${name}.mjs`);
-        if (!fs.existsSync(targetMjs)) continue;
+    for (const name of LAUNCHERS) {
+        let run;
+        if (name === 'aos') {
+            const shPath = path.join(localBinDir, name);
+            // `aos` is a common name: never overwrite somebody else's file.
+            try { if (fs.existsSync(shPath) && !fs.readFileSync(shPath, 'utf8').includes(LAUNCHER_MARKER)) continue; } catch { continue; }
+            run = `npx -y ${AOS_NPX_SPEC}${aosDistTag(pkg.version)}`;
+        } else {
+            const targetMjs = launcherTarget(homeDir, name);
+            if (!fs.existsSync(targetMjs)) continue;
+            run = `node "${targetMjs}"`;
+        }
 
         // Shell wrapper for Unix / Git Bash
         const shPath = path.join(localBinDir, name);
         wired.push(name);
-        const shContent = `#!/bin/sh\n# aos-launcher\nexec node "${targetMjs}" "$@"\n`;
+        const shContent = `#!/bin/sh\n${LAUNCHER_MARKER}\nexec ${run} "$@"\n`;
         try {
             fs.writeFileSync(shPath, shContent, { mode: 0o755 });
             try { fs.chmodSync(shPath, 0o755); } catch (e) { logDebug(e, `chmod ${shPath}`); }
@@ -5668,15 +5675,40 @@ function installGlobalBinaries() {
         // Windows CMD and PowerShell launchers
         if (isWin) {
             const cmdPath = path.join(localBinDir, `${name}.cmd`);
-            const cmdContent = `@echo off\r\nnode "${targetMjs}" %*\r\n`;
+            const cmdContent = `@echo off\r\nrem ${LAUNCHER_MARKER}\r\n${run} %*\r\n`;
             try { fs.writeFileSync(cmdPath, cmdContent); } catch (e) { logDebug(e, `write ${cmdPath}`); }
 
             const ps1Path = path.join(localBinDir, `${name}.ps1`);
-            const ps1Content = `node "${targetMjs}" $args\r\n`;
+            const ps1Content = `${LAUNCHER_MARKER}\r\n${run} $args\r\n`;
             try { fs.writeFileSync(ps1Path, ps1Content); } catch (e) { logDebug(e, `write ${ps1Path}`); }
         }
     }
     log.step(`Wired CLI launcher binaries (${wired.join(', ') || 'none'}) in ${localBinDir}`);
+    const hint = localBinPathHint(localBinDir);
+    if (hint) log.warn(hint);
+}
+
+// The npm dist-tag a version was published under (same rule as release-please.yml):
+// a prerelease goes to its own channel (5.0.0-beta.3 -> beta), everything else to latest.
+// A channel tag rather than the exact version, so `aos update` reaches the newest release.
+function aosDistTag(version) {
+    const m = /^[^-]+-([A-Za-z]+)/.exec(String(version));
+    return m ? m[1] : 'latest';
+}
+
+// One line telling the user how to put ~/.local/bin on PATH, or null when it already is.
+function localBinPathHint(localBinDir, { pathEnv = process.env.PATH || '', platform = process.platform, shell = process.env.SHELL || '' } = {}) {
+    const win = platform === 'win32';
+    const norm = (p) => (win ? p.replace(/\//g, '\\').toLowerCase() : p).replace(/[\\/]+$/, '');
+    const want = norm(localBinDir);
+    if (pathEnv.split(win ? ';' : ':').filter(Boolean).some((p) => norm(p) === want)) return null;
+    if (win) {
+        return `${localBinDir} is not on your PATH. Add it in PowerShell, then open a new terminal: [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ';${localBinDir}', 'User')`;
+    }
+    const sh = path.basename(shell) || (platform === 'darwin' ? 'zsh' : 'bash');
+    if (sh === 'fish') return `${localBinDir} is not on your PATH. Add it, then open a new terminal: fish_add_path ${localBinDir}`;
+    const rc = sh === 'zsh' ? '~/.zshrc' : '~/.bashrc';
+    return `${localBinDir} is not on your PATH. Add it, then open a new terminal: echo 'export PATH="$HOME/.local/bin:$PATH"' >> ${rc}`;
 }
 
 // Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --
@@ -7495,7 +7527,7 @@ function installBinaryAtomically(src, dest) {
 function runUninstaller() {
     const uninstallScript = path.join(srcDir, 'bin', 'aos-uninstall.mjs');
     if (!fs.existsSync(uninstallScript)) {
-        log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: npx @hybridlabor-api/aos-uninstall`);
+        log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: aos-uninstall (or npx -p @hybridlabor-api/aos aos-uninstall)`);
         return 1;
     }
     const r = spawnSync(process.execPath, [uninstallScript], { stdio: 'inherit' });
@@ -8139,6 +8171,8 @@ module.exports = {
     installClaudeA2aSessionHook,
     installGoCheck,
     installGlobalBinaries,
+    aosDistTag,
+    localBinPathHint,
     codexGateSnippet,
     CODEX_GATE_NOTICE,
     installOpencodePlugin,
