@@ -49,6 +49,21 @@ const put = (dir, name, body, ageMs) => {
     return f;
 };
 
+describe('S5-3: the gate hook fails closed', () => {
+    const settings = JSON.parse(fs.readFileSync(path.join(path.dirname(GATE), '..', 'settings.json'), 'utf8'));
+    const gateCmd = settings.hooks.PreToolUse.flatMap((e) => e.hooks).map((h) => h.command).find((c) => c.includes('go-gate.mjs'));
+
+    test('the wired command turns any node failure into exit 2', () => {
+        assert.ok(gateCmd.endsWith('|| exit 2'), gateCmd);
+        const r = spawnSync('sh', ['-c', gateCmd.replace(/^node /, 'aos-no-such-node-binary ').replace(/\$\{CLAUDE_PROJECT_DIR\}/g, '/nonexistent')]);
+        assert.equal(r.status, 2, 'a missing interpreter must block, not pass');
+    });
+    test('a gate that exits 1 (crash) still blocks', () => {
+        const r = spawnSync('sh', ['-c', 'sh -c "exit 1" || exit 2']);
+        assert.equal(r.status, 2);
+    });
+});
+
 describe('S5-2: analysis budget default', () => {
     test('win32 gets 500 ms, every other platform keeps 150 ms', () => {
         assert.equal(g.defaultBudgetMs('win32'), 500);
