@@ -4253,7 +4253,10 @@ async function installMcpsForTarget(paths, ctx) {
                         log.warn('memB MCP venv still cannot import FastMCP after the mcp install; memb-mcp will fail to start until it is repaired.');
                     }
                 }
-                const reconcile = reconcileMembVenv(membMcpFolder, { venvPython, entryImport: fastmcpImport });
+                // The FastMCP import alone passes right after the SDK pin above, so a fresh venv was
+                // stamped up to date without requirements.txt (no numpy: run.py died on start).
+                // `import run` is the server's real entry, the same check `aos package verify memb` runs.
+                const reconcile = reconcileMembVenv(membMcpFolder, { venvPython, entryImport: 'import run' });
                 if (reconcile.status === 'failed') log.warn('memB MCP requirements reconcile failed; inspect the venv before relying on memb-mcp.');
             } catch (e) {
                 log.warn(`Failed to set up Python virtual environment for memB: ${e.message}`);
