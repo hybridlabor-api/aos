@@ -278,10 +278,10 @@ describe('migration of an existing install', () => {
         const cfg = fresh();
         process.env.CLAUDE_CONFIG_DIR = cfg;
         const savedAppData = process.env.APPDATA;
-        if (process.platform === 'win32') process.env.APPDATA = path.join(HOME, 'AppData', 'Roaming'); // OpenCode config lives under %APPDATA%\opencode on win32
+        if (process.platform === 'win32') process.env.APPDATA = path.join(HOME, 'AppData', 'Roaming');
         try {
             const f = json(path.join(cfg, '.claude.json'), { mcpServers: { github: { command: 'npx', args: GH_ARGS, env: { GITHUB_PERSONAL_ACCESS_TOKEN: T.gh } } } });
-            const oc = json(path.join(process.platform === 'win32' ? process.env.APPDATA : path.join(HOME, '.config'), 'opencode', 'opencode.json'), { mcp: { memb_mcp: { type: 'local', enabled: true, command: ['/h/.gemini/config/mcps/memb-mcp/.venv/bin/python', '/h/.gemini/config/mcps/memb-mcp/run.py'], environment: { GEMINI_API_KEY: T.gem } } } });
+            const oc = json(path.join(HOME, '.config', 'opencode', 'opencode.json'), { mcp: { memb_mcp: { type: 'local', enabled: true, command: ['/h/.gemini/config/mcps/memb-mcp/.venv/bin/python', '/h/.gemini/config/mcps/memb-mcp/run.py'], environment: { GEMINI_API_KEY: T.gem } } } });
             quiet(() => installer.migrateMcpSecrets());
             noToken(read(f), 'CLAUDE_CONFIG_DIR config');
             noToken(read(oc), 'opencode.json');

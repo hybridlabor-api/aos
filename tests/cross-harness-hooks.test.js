@@ -299,7 +299,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             );
             assert.strictEqual(res.status, 0, `installGlobalHooks threw: ${res.stderr}`);
 
-            const ocDir = process.platform === 'win32' ? path.join(tmpDir, 'AppData', 'Roaming', 'opencode') : path.join(tmpDir, '.config', 'opencode');
+            const ocDir = path.join(tmpDir, '.config', 'opencode');
             const pluginFile = path.join(ocDir, 'plugins', 'bdb-aos.js');
             assert.ok(fs.existsSync(pluginFile), 'plugin must be copied to the OpenCode config dir plugins/');
 

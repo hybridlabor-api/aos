@@ -188,7 +188,7 @@ const { parseJsonc } = req('../lib/jsonc.js');
 const ZEN_TOOL_NAME_MAX = 64;
 
 function checkOpencodeMcpNames() {
-  const dirs = [process.platform === 'win32' ? path.join(process.env.APPDATA || HOME, 'opencode') : h('.config', 'opencode')];
+  const dirs = [h('.config', 'opencode')];
   const file = firstExisting(dirs.flatMap((d) => ['opencode.jsonc', 'opencode.json'].map((f) => path.join(d, f))));
   if (!file) return;
   const conf = parseJsonc(readFileSync(file, 'utf8'));
@@ -393,7 +393,7 @@ async function checkA2aMatrix() {
     'Run the AOS installer to wire the A2A inbox hooks and ship the lib.', !existsSync(claudeConfigDir(HOME)));
 
   // OpenCode: the plugin carries the sidecar init call and the inbox import.
-  const ocDirs = [process.platform === 'win32' && process.env.APPDATA ? path.join(process.env.APPDATA, 'opencode') : h('.config', 'opencode')];
+  const ocDirs = [h('.config', 'opencode')];
   const ocPlugin = firstExisting(ocDirs.map((d) => path.join(d, 'plugins', 'bdb-aos.js')));
   let ocOk = false, ocDetail = `${tilde(h('.config', 'opencode', 'plugins', 'bdb-aos.js'))} missing`;
   if (ocPlugin) {

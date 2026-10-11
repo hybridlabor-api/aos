@@ -1124,9 +1124,7 @@ function detectPlatforms() {
         },
         {
             key: 'opencode', name: 'OpenCode CLI',
-            path: process.platform === 'win32'
-                ? path.join(process.env.APPDATA || homeDir, 'opencode')
-                : path.join(homeDir, '.config', 'opencode'),
+            path: path.join(homeDir, '.config', 'opencode'),
             evidence: () => hasExecutable('opencode'),
         },
     ];
@@ -1660,7 +1658,7 @@ function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
         { dir: path.join(claudeConfigDir(homeDir), 'skills'), key: 'claudecode' },
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
-        { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
+        { dir: path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 }
 
@@ -5246,9 +5244,7 @@ function installOpencodeCommands(srcDirPath, destDirPath) {
 function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null, optional = parseOpencodeOptional(), permission = parseOpencodePermission() } = {}) {
     const opencodeDir = configPath
         ? path.dirname(configPath)
-        : (process.platform === 'win32'
-            ? path.join(process.env.APPDATA || targetHome, 'opencode')
-            : path.join(targetHome, '.config', 'opencode'));
+        : path.join(targetHome, '.config', 'opencode');
 
     const pluginSrc = path.join(srcDir, '.opencode', 'plugins', 'bdb-aos.js');
     let pluginInstalled = false;
@@ -5450,9 +5446,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     installOpencodePlugin({
         targetHome,
         configPath: path.join(
-            process.platform === 'win32'
-                ? path.join(process.env.APPDATA || targetHome, 'opencode')
-                : path.join(targetHome, '.config', 'opencode'),
+            path.join(targetHome, '.config', 'opencode'),
             'opencode.jsonc'
         ),
     });
