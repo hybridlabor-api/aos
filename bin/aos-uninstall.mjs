@@ -78,6 +78,8 @@ const WIN_STARTUP = [
   { label: 'plan-canvas', vbsName: 'com.bdb.plan-canvas.vbs', batDir: '.agents', batName: 'run-plan-canvas.bat' },
   { label: 'synapse', vbsName: 'com.bdb.synapse.vbs', batDir: '.synapse', batName: 'run-synapse.bat' },
   { label: 'openwiki-visualizer', vbsName: 'com.bdb.openwiki-visualize.vbs', batDir: '.openwiki', batName: 'run-openwiki-visualize.bat' },
+  // The memB WebUI .vbs starts python directly (no .bat); its process is matched by the server path.
+  { label: 'memb-webui', vbsName: 'com.bdb.memb.webui.vbs', match: '*memB*backend*server.py*' },
 ];
 
 // A module folder is removed only when the install recorded it: its id in installedModules
@@ -144,8 +146,8 @@ function plan(opts = {}) {
       'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
     for (const s of WIN_STARTUP) {
       const vbs = path.join(startupDir, s.vbsName);
-      const bat = path.join(home, s.batDir, s.batName);
-      if (existsSync(vbs) && existsSync(bat)) agents.push({ label: s.label, vbs, bat });
+      const bat = s.batName ? path.join(home, s.batDir, s.batName) : null;
+      if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${path.basename(bat)}*`) });
     }
   }
 
@@ -258,10 +260,10 @@ async function execute(p) {
       // name in the command line, never a generic word like "node".
       try {
         execFileSync('powershell', ['-NoProfile', '-Command',
-          `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${path.basename(a.bat)}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
+          `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '${a.match}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
         ], { stdio: 'ignore' });
       } catch { /* nothing running or powershell unavailable */ }
-      try { rmSync(a.bat); } catch { /* already gone */ }
+      if (a.bat) try { rmSync(a.bat); } catch { /* already gone */ }
       try { rmSync(a.vbs); } catch { /* already gone */ }
       continue;
     }
