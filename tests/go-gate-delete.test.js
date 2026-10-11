@@ -343,7 +343,8 @@ describe('perf and symlinks', () => {
         fs.writeFileSync(old, 'print(1)');
         const past = new Date(Date.now() - 3600e3);
         fs.utimesSync(old, past, past);
-        g.setGateContext({ cwd: work, blockTs: Date.now() - 1000 });
+        sleep(20);
+        g.setGateContext({ cwd: work, blockTs: Date.now() });
         sleep(20);
         fs.symlinkSync(old, path.join(work, 'newlink.py'));
         assert.equal(g.commandScopes('python3 older.py').length, 0);
