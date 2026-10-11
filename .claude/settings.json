@@ -38,7 +38,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 5
           }
         ]
       }
@@ -65,7 +65,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 5
           }
         ]
       }
@@ -76,7 +76,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 5
           }
         ]
       }
@@ -87,7 +87,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 5
           }
         ]
       }
@@ -98,7 +98,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 5
           }
         ]
       },
@@ -135,7 +135,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 5
           }
         ]
       }
