@@ -78,13 +78,20 @@ const WIN_STARTUP = [
   { label: 'openwiki-visualizer', vbsName: 'com.bdb.openwiki-visualize.vbs', batDir: '.openwiki', batName: 'run-openwiki-visualize.bat' },
 ];
 
-const MODULE_DIRS = ['memB', 'bdb-synapse', 'bdb-os-remote', 'bdb-dev-creator-extension',
-  'bdb-hardware-pcb',
-  'bdb-dev-tool-installer',
-  'bdb-agent-orchestrator',      // AO
-  'bdb-os-agent-workspace',      // AO's archived predecessor, if still lying around
-  'bdb-dev-optimized-agent-skills', // AOS's own core payload cache, when a "from source" or non-npx run left one behind
-].map((m) => h('.agents', m));
+// A module folder is removed only when the install recorded it: its id in installedModules
+// (.bdb-manifest.json) or files under it in the file manifest. Folders without an id are only
+// covered by the file manifest.
+const MODULE_DIRS = [
+  { dir: 'memB', id: 'memb' },
+  { dir: 'bdb-synapse', id: 'synapse' },
+  { dir: 'bdb-os-remote', id: 'remote' },
+  { dir: 'bdb-dev-creator-extension', id: 'creator' },
+  { dir: 'bdb-hardware-pcb', id: 'hardware' },
+  { dir: 'bdb-dev-tool-installer', id: 'installer' },
+  { dir: 'bdb-agent-orchestrator', id: 'ao' },
+  { dir: 'bdb-os-agent-workspace' },          // AO's archived predecessor, if still lying around
+  { dir: 'bdb-dev-optimized-agent-skills' },  // AOS core payload cache from a "from source" or non-npx run
+].map(({ dir, id }) => ({ path: h('.agents', dir), id }));
 
 // installer.js's detectInstallState() treats any of these as proof AOS is
 // still installed, independently of the manifest -- a leftover copy after
@@ -140,7 +147,12 @@ function plan(opts = {}) {
     }
   }
 
-  const modules = MODULE_DIRS.filter(existsSync);
+  let installedModules = [];
+  try { installedModules = JSON.parse(readFileSync(path.join(home, '.agents', '.bdb-manifest.json'), 'utf8')).installedModules || []; } catch { /* no record */ }
+  const manifestPaths = Object.keys(manifest || {});
+  const modules = MODULE_DIRS
+    .filter((m) => existsSync(m.path) && ((m.id && installedModules.includes(m.id)) || manifestPaths.some((p) => p.startsWith(m.path + path.sep))))
+    .map((m) => m.path);
   const legacy = LEGACY_MARKERS.filter(existsSync);
   const data = PURGE ? DATA_PATHS.filter((d) => existsSync(d.path)) : [];
 

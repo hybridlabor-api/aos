@@ -131,3 +131,22 @@ test('Claude plugin is uninstalled only when AOS recorded installing it', () => 
         assert.deepStrictEqual(notReal, []);
     } finally { rm(home); }
 });
+
+test('a module folder is removed only when the install recorded it', () => {
+    const home = sandbox();
+    try {
+        const unrecorded = path.join(home, '.agents', 'memB', 'package.json');
+        const recorded = path.join(home, '.agents', 'bdb-synapse', 'package.json');
+        write(unrecorded, '{}');
+        write(recorded, '{}');
+        write(path.join(home, '.agents', '.bdb-manifest.json'), JSON.stringify({ installedModules: ['synapse'] }));
+        const stray = path.join(home, '.agents', 'x.txt');
+        write(stray, 'x');
+        write(path.join(home, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [stray]: { sha256: require('node:crypto').createHash('sha256').update('x').digest('hex') } }));
+
+        const real = spawnSync(process.execPath, [path.join(REPO, 'bin', 'aos-uninstall.mjs'), '--yes'], { cwd: home, env: env(home), encoding: 'utf8' });
+        assert.strictEqual(real.status, 0, real.stderr);
+        assert.ok(fs.existsSync(unrecorded), 'folder without an install record is kept');
+        assert.ok(!fs.existsSync(path.join(home, '.agents', 'bdb-synapse')), 'recorded folder is removed');
+    } finally { rm(home); }
+});
