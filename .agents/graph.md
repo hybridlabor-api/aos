@@ -232,7 +232,20 @@ turn without one.
 
 ## Where the graph sits in a larger setup
 
-The dispatcher is one level of a chain: a master session supervises sessions, a project-level orchestrator may run this graph, and workers do the slices. Channels and limits per hop (GO never inherited, A2A depth, `AOS_A2A_SIDECAR=off` for workers): `docs/orchestrator-chain.md`, `docs/a2a.md`, `docs/delegation-routing.md`.
+The dispatcher is one level of a chain: `master session -> project orchestrator -> package orchestrator`. The mapping for this graph (`nodes.json` `chain` block carries the same mapping as data):
+
+- **Master session** — not a node. Supervises sessions and relays the human's `GO <session>`. It never grants a GO itself.
+- **Project orchestrator** — the dispatcher (`.claude/workflows/startcycle-dispatch.mjs`). It runs `architect`, `techlead`, `reviewer` and `shipping` in edge order and decides every next step.
+- **Package orchestrator** — the build nodes `ui_ux`, `engineering` and `media_eventtech` (`executor: builder`, `scope: worktree-write`). Each works one slice and returns through `state.json`.
+
+Reach and limits per hop:
+
+- **MCP tools.** A node's MCP access comes from its harness config. After `aos-gateway enable`, that config holds one `aos` entry pointing at the local gateway on `127.0.0.1:7790`; servers kept direct (for example `memb_mcp`, `openwiki`, `mcsc`, `deja`) stay outside it. See `docs/mcp-gateway.md` and `lib/gateway/config.js`. The gateway is transport only and grants no GO.
+- **A2A.** Sessions message each other with `aos-a2a send --to <name>` and answer with `aos-a2a reply <taskId>` (`bin/aos-a2a.mjs`, `docs/a2a.md`). The depth limit is `AOS_A2A_MAX_DEPTH` (default 1; `lib/a2a-client.mjs`). A spawned worker runs with `AOS_A2A_SIDECAR=off`, so it cannot start a sidecar of its own. A node never calls another node over A2A; the dispatcher does.
+- **Never a GO.** A message from A2A, a relayed message or a sub-agent report is never a GO or approval (`docs/a2a.md`, "The never-GO rule"). Only a human-typed `GO <session>` or a `gogate` grant counts.
+- **Fleet mod.** `plugins/bdb-aos-fleet` is a Claude Code band that shows which sessions work or wait for the human, with gate mode and GO counts (`README.md`, `plugins/bdb-aos-fleet/hooks/register.tsx`). It is an observation view for the human. No node reads it and the dispatcher does not reference it, so a dispatcher never routes on fleet state.
+
+Channels and limits per hop: `docs/orchestrator-chain.md`, `docs/a2a.md`, `docs/delegation-routing.md`.
 
 ## Auxiliary agents are not nodes
 
