@@ -31,6 +31,9 @@ const runTask = async (name, executor, text = "what is 2+3") => {
   } finally { s.stop(); }
 };
 
+// The prompt is the value after --message; its position moves with the --sandbox pair.
+const messageOf = (args) => args[args.indexOf("--message") + 1];
+
 const fakeSpawn = (code, { stderr = "" } = {}) => {
   const calls = [];
   const spawnImpl = (cmd, args, opts) => {
@@ -62,7 +65,7 @@ test("successful spawn completes with the file reply; prompt carries prefix and 
   // the fake "codex" answers like the real session would: it reads the taskId from the prompt and writes the reply file
   const spawnImpl = (cmd, args, opts) => {
     calls.push({ cmd, args, opts });
-    const taskId = /reply --name \S+ (\S+) "/.exec(args[4])[1];
+    const taskId = /reply --name \S+ (\S+) "/.exec(messageOf(args))[1];
     writeFileSync(join(inbox, `${taskId}.reply`), "5", { mode: 0o600 });
     return { stderr: null, on: (ev, cb) => { if (ev === "close") process.nextTick(() => cb(0)); } };
   };
@@ -74,10 +77,11 @@ test("successful spawn completes with the file reply; prompt carries prefix and 
   assert.ok(Array.isArray(calls[0].args));
   const args = calls[0].args;
   assert.deepEqual(args.slice(0, 3), ["queue", "--thread", "cx-thread"]);
-  assert.ok(args[4].startsWith("[a2a from tester]"), args[4]);
-  assert.match(args[4], /<<<A2A-MESSAGE\n> what is 2\+3\n<<<END-A2A-MESSAGE/);
-  assert.ok(args[4].includes(NEVER_GO));
-  assert.match(args[4], /Answer by running: (aos-a2a|node "[^"]*aos-a2a\.mjs") reply --name \S+ \S+ "<your answer>"/);
+  const msg = messageOf(args);
+  assert.ok(msg.startsWith("[a2a from tester]"), msg);
+  assert.match(msg, /<<<A2A-MESSAGE\n> what is 2\+3\n<<<END-A2A-MESSAGE/);
+  assert.ok(msg.includes(NEVER_GO));
+  assert.match(msg, /Answer by running: (aos-a2a|node "[^"]*aos-a2a\.mjs") reply --name \S+ \S+ "<your answer>"/);
   assert.ok(!args.includes("--dangerously-bypass-hook-trust"));
 });
 
