@@ -95,12 +95,20 @@ export const readHubJson = (home = homeDir()) => {
 };
 
 // The service runs from ~/.agents, which has no package.json, so "has my code
-// changed under me" is the newest mtime of this file and lib/hub/*.
+// changed under me" is the newest mtime of this file and every file under lib/hub/ (subdirectories included).
 const codeStamp = () => {
   let newest = 0;
-  const files = [SELF];
-  try { for (const f of readdirSync(join(ROOT, 'lib', 'hub'))) files.push(join(ROOT, 'lib', 'hub', f)); } catch { /* no lib/hub: SELF only */ }
-  for (const f of files) { try { newest = Math.max(newest, statSync(f).mtimeMs); } catch { /* raced with the update */ } }
+  const visit = (dir) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { visit(p); continue; }
+      try { newest = Math.max(newest, statSync(p).mtimeMs); } catch { /* raced with the update */ }
+    }
+  };
+  try { newest = statSync(SELF).mtimeMs; } catch { /* raced with the update */ }
+  visit(join(ROOT, 'lib', 'hub'));
   return newest;
 };
 

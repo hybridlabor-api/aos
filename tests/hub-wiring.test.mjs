@@ -114,6 +114,15 @@ describe('WP5 hub wiring', () => {
 // Regression: a bare `import(join(ROOT, ...))` path fails on Windows (a
 // dynamic import needs a file:// URL); every hub dynamic import must be
 // wrapped in pathToFileURL.
+// Regression (S3-2): the stale-code stamp must include files in lib/hub subdirectories,
+// otherwise a code change there never restarts the hub.
+test('bin/aos-hub.mjs code stamp walks lib/hub subdirectories', () => {
+    const src = read('bin/aos-hub.mjs');
+    const stamp = src.slice(src.indexOf('const codeStamp'), src.indexOf('const packageVersion'));
+    assert.match(stamp, /isDirectory\(\)/);
+    assert.match(stamp, /visit\(join\(ROOT, 'lib', 'hub'\)\)/);
+});
+
 test('bin/aos-hub.mjs wraps every dynamic import in pathToFileURL', () => {
     const src = read('bin/aos-hub.mjs');
     assert.match(src, /pathToFileURL/);
