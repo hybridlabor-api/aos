@@ -92,6 +92,8 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})release\s+(?:edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})repo\s+(?:create|edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b`),
+  // The AOS uninstaller deletes through Node's rmSync, which the rm analysis never sees. No scope: a plain GO.
+  re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-uninstall(?:\.mjs)?\b(?!${S}\s--dry-run\b)`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
   // `git -c alias.x=push x`: a one-off alias hides the subcommand (a persisted `git config alias` cannot be seen here).
   re(String.raw`git\s+(?:-[cC]\s*\S+\s+)*-c\s*['"]?alias\.`),
@@ -918,6 +920,21 @@ export const _catchAllInternals = {
 const SHELLISH = /(?:^|[\s;&|(])(?:sudo\s+)?(?:bash|sh|zsh|dash|ksh|fish|source|node|nodejs|bun|deno|python[\d.]*|ruby|perl|php|pwsh|powershell|lua|osascript|xargs|eval|ssh)(?=\s|$)/;
 const INTERP = /^(?:node(?:js)?|bun|deno|python[\d.]*|ruby|perl|php|pwsh|powershell|cmd(?:\.exe)?|lua|osascript)$/i;
 const DATA_HEAD = /^(?:echo|printf|grep|egrep|fgrep|rg|ag|jq|awk|gawk|sed)$/;
+// Read-only gh calls: their quoted words (--jq/-q filters, --search, --template) are data for gh, never shell.
+// Kept as command text, the segment split read `.[]|.x[0:8]` as a new command with a glob head (unscoped).
+const GH_READ_GROUP = /^(?:pr|run|release|issue|repo|workflow|label|cache|secret|variable|gist|ruleset|codespace)$/;
+const GH_READ_VERB = /^(?:view|list|checks|diff|status|watch)$/;
+function ghRead(rest) {
+  const a = rest.slice(1).map(unq);
+  let i = 0;
+  for (;;) {
+    if (/^(?:-R|--repo)$/.test(a[i] ?? "")) i += 2;
+    else if (/^--repo=/.test(a[i] ?? "")) i += 1;
+    else break;
+  }
+  const g = a[i] ?? "", v = a[i + 1] ?? "";
+  return /^(?:status|search|--version|--help)$/.test(g) || (GH_READ_GROUP.test(g) && GH_READ_VERB.test(v));
+}
 const unqQ = (t) => String(t ?? "").replace(/["']/g, "");
 
 // A command longer than this is not analysed at all: it is guarded without a scope (a GO
@@ -1257,7 +1274,7 @@ function blankData(text, keepCode = false) {
     const head0 = unq(rest[0] ?? ""), arg1 = unqQ(rest[1] ?? "");
     const a2aCli = !/(?:^|\s)PATH=/.test(p.t) &&
       (head0 === "aos-a2a" || (/^node(?:js)?$/.test(head0) && /^(?:[A-Za-z]:)?\//.test(winSlash(arg1)) && base(winSlash(arg1)) === "aos-a2a.mjs" && trustedDirs().some((d) => (process.platform === "win32" ? winSlash(arg1).toLowerCase().startsWith(winSlash(d + sep).toLowerCase()) : arg1.startsWith(d + sep)))));
-    return ((DATA_HEAD.test(h) || sub === "grep" || a2aCli) && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
+    return ((DATA_HEAD.test(h) || sub === "grep" || a2aCli || (h === "gh" && ghRead(rest))) && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
   }).join("");
 }
 
@@ -2017,7 +2034,10 @@ const grepArgsSafe = (args) => args.every((t) => {
   return GREP_SAFE_SHORT.test(t.slice(1));
 });
 // The segment head decides; a store-touching command must be one of these with safe options.
-const storeReadSeg = (seg) => STORE_READ.test(seg) && (!/^(?:e|f)?grep(?=\s|$)/.test(seg) || grepArgsSafe(seg.split(/\s+/).slice(1)));
+// Pure stdin filters after a pipe (`tail <store log> | cut -c1-200`). sort and uniq only without a file
+// argument: `sort -o f`, `uniq in out` write. cut, tr and nl have no output-file option.
+const STORE_FILTER = /^(?:cut|tr|nl)(?=\s|$)|^(?:sort|uniq)(?:\s+-(?!o)[\w=-]*)*\s*$/;
+const storeReadSeg = (seg) => STORE_FILTER.test(seg) || (STORE_READ.test(seg) && (!/^(?:e|f)?grep(?=\s|$)/.test(seg) || grepArgsSafe(seg.split(/\s+/).slice(1))));
 export function gateStoreReason(command) {
   if (typeof command !== "string") return null;
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
