@@ -5069,7 +5069,7 @@ async function maybeInstallCodenotch() {
         log: { info: (m) => log.info(m), warn: (m) => log.warn(m), success: (m) => log.success(m) },
     });
     const line = codenotch.codenotchSummaryLine(codenotchResult);
-    const failed = codenotchResult.status === 'error' || /FAILED/.test(line || '');
+    const failed = codenotchResult?.status === 'error' || /FAILED/.test(line || '');
     if (line) (failed ? log.warn : log.info)(line);
     return failed ? false : undefined;
 }
