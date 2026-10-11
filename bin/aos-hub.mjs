@@ -258,8 +258,9 @@ if (serviceMode && process.platform === 'win32' && !process.env.AOS_HUB_WATCHDOG
     const child = spawn(process.execPath, process.argv.slice(1), {
       stdio: 'inherit', env: { ...process.env, AOS_HUB_WATCHDOG_CHILD: '1' }, shell: false, windowsHide: true,
     });
-    // Exit 3 = the hub's code changed on disk: start the new code at once; a crash waits 5 s.
-    child.on('exit', (code) => setTimeout(runChild, code === 3 ? 0 : 5000));
+    // Exit 0 = deliberate stop (/api/shutdown or SIGTERM): do not revive it. Exit 3 = the hub's code
+    // changed on disk: start the new code at once; a crash waits 5 s.
+    child.on('exit', (code) => { if (code !== 0) setTimeout(runChild, code === 3 ? 0 : 5000); });
   };
   runChild();
 } else if (serviceMode) {

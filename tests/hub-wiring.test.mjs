@@ -123,6 +123,12 @@ test('bin/aos-hub.mjs code stamp walks lib/hub subdirectories', () => {
     assert.match(stamp, /visit\(join\(ROOT, 'lib', 'hub'\)\)/);
 });
 
+// Regression (S3-4): a clean exit (code 0) is a deliberate stop and must not be respawned.
+test('bin/aos-hub.mjs watchdog does not respawn a clean exit', () => {
+    const src = read('bin/aos-hub.mjs');
+    assert.match(src, /child\.on\('exit', \(code\) => \{ if \(code !== 0\)/);
+});
+
 test('bin/aos-hub.mjs wraps every dynamic import in pathToFileURL', () => {
     const src = read('bin/aos-hub.mjs');
     assert.match(src, /pathToFileURL/);
