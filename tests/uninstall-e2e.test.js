@@ -173,3 +173,31 @@ test('the deja MCP entry is removed only when AOS recorded installing deja-vu', 
         assert.deepStrictEqual(ur.readRecords(home).npmGlobal, []);
     } finally { rm(home); }
 });
+
+test('Rust + Tauri skill copies and the cargo-built CLI are removed only when AOS recorded them', () => {
+    const home = sandbox();
+    try {
+        const skill = path.join(home, '.agents', 'skills', 'tauri-pilot');
+        const own = path.join(home, '.agents', 'skills', 'my-own');
+        write(path.join(skill, 'SKILL.md'), 'shipped');
+        write(path.join(own, 'SKILL.md'), 'mine');
+        const cargo = [];
+        const runCargo = (crate) => { cargo.push(crate); return true; };
+
+        assert.deepStrictEqual(ur.reverseRustauri({ home, runCargo }).changed, false, 'nothing recorded, nothing removed');
+        assert.ok(fs.existsSync(skill));
+
+        ur.recordSkillCopies(home, 'rustauri', [skill]);
+        ur.recordCargoCrate(home, 'rustauri', 'tauri-pilot-cli');
+        assert.strictEqual(ur.reverseRustauri({ home, dryRun: true, runCargo }).changed, true);
+        assert.ok(fs.existsSync(skill) && cargo.length === 0, 'dry run deletes nothing');
+
+        write(path.join(skill, 'SKILL.md'), 'edited by the user');
+        const edited = ur.reverseRustauri({ home, runCargo });
+        assert.ok(edited.error.includes('edited'), edited.error);
+        assert.ok(fs.existsSync(skill), 'edited copy kept');
+        assert.deepStrictEqual(cargo, ['tauri-pilot-cli']);
+        assert.ok(fs.existsSync(own), 'user skill never recorded, kept');
+        assert.strictEqual(ur.readRecords(home).rustauri, undefined);
+    } finally { rm(home); }
+});

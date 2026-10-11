@@ -370,15 +370,15 @@ async function execute(p) {
 
   agyPlugin.uninstall({ home: HOME, dryRun: DRY });
 
-  // Fleet mod, MCP gateway and the hub service have their own registrations; gateway and hub only when installed.
-  for (const id of ['fleet', 'gateway', 'hub']) {
+  // Fleet mod, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
+  for (const id of ['fleet', 'gateway', 'hub', 'rustauri']) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
       const c = { home: HOME, dryRun: DRY };
-      if (id !== 'fleet' && !(await pkg.detect(c)).installed) continue;
+      if (!['fleet', 'rustauri'].includes(id) && !(await pkg.detect(c)).installed) continue;
       const r = await pkg.uninstall(c);
       if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
-      else if (r && (r.changed || id !== 'fleet')) console.log(`  ${pkg.name} entfernt`);
+      else if (r && (r.changed || !['fleet', 'rustauri'].includes(id))) console.log(`  ${pkg.name} entfernt`);
     } catch (e) { console.log(`  ${pkg.name}: ${e.message} — von Hand prüfen`); }
   }
 
