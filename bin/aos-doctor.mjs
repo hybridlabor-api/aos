@@ -679,10 +679,15 @@ async function checkDaemonsAndModules() {
     const build = readGoBuildInfo(aoBin);
     let head = null;
     try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
-    const same = !!(build && head && build.revision === head && !build.modified);
+    // Only backend/ builds the binary: commits elsewhere in the checkout (app, docs) do not make it stale.
+    let backendSame = false;
+    if (build && head && build.revision !== head) {
+      try { execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'diff', '--quiet', build.revision, head, '--', 'backend'], { stdio: 'ignore' }); backendSame = true; } catch {}
+    }
+    const same = !!(build && head && (build.revision === head || backendSame) && !build.modified);
     add('daemons', 'AO revision vs checkout', same,
       !build ? 'Installed ao has no readable build revision'
-        : `Installed ${build.revision.slice(0, 9)}${build.modified ? ' (dirty build)' : ''} · checkout HEAD ${head ? head.slice(0, 9) : 'unknown'}`,
+        : `Installed ${build.revision.slice(0, 9)}${build.modified ? ' (dirty build)' : ''} · checkout HEAD ${head ? head.slice(0, 9) : 'unknown'}${backendSame ? ' (backend/ unchanged)' : ''}`,
       `Rebuild from a clean checkout: cd ${tilde(path.join(aoCheckout, 'backend'))} && go build -ldflags='-s -w' -o ~/.local/bin/ao.new ./cmd/ao && mv ~/.local/bin/ao.new ~/.local/bin/ao && ao service install`, true);
   }
 

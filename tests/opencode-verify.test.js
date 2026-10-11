@@ -81,6 +81,8 @@ describe('opencode-verify', () => {
         r = check(cli({ mcp: { memb_mcp: { enabled: true }, comfyui: { enabled: true } } }));
         assert.equal(r['OpenCode MCP set'].ok, false);
         assert.match(r['OpenCode MCP set'].detail, /comfyui/);
+        r = check(cli({ mcp: { aos: { enabled: true }, memb_mcp: { enabled: true } } }));
+        assert.equal(r['OpenCode MCP set'].ok, true, 'the gateway entry `aos` is part of the lean set');
         r = check('not json');
         assert.equal(r['OpenCode CLI view'].ok, false);
         assert.equal(r['OpenCode MCP set'], undefined);
