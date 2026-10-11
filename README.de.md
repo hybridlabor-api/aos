@@ -1030,10 +1030,10 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>Skills (229)</b></summary>
+<summary><b>Skills (217)</b></summary>
 
 <details>
-<summary><b>library (98)</b></summary>
+<summary><b>library (85)</b></summary>
 
 | Skill | What it does |
 |---|---|
@@ -1056,18 +1056,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `documentation` | Documentation generation workflow covering API docs, architecture docs, README files, code comments, and technical writing. |
 | `drizzle-orm-expert` | Expert in Drizzle ORM for TypeScript: schema design, relational queries, migrations, and serverless database integration. |
 | `firecrawl` | Search, scrape, and interact with the web via the Firecrawl CLI. |
-| `firecrawl-agent` | AI-powered autonomous data extraction that navigates complex sites and returns structured JSON. |
-| `firecrawl-build` | Integrate Firecrawl into product code for web scraping, crawling, searching, and interaction. |
-| `firecrawl-build-interact` | Integrate Firecrawl `/interact` into product code for dynamic pages and browser actions after scraping. |
-| `firecrawl-build-onboarding` | Get Firecrawl credentials and SDK setup into a project. |
-| `firecrawl-build-scrape` | Integrate Firecrawl `/scrape` into product code for single-page extraction. |
-| `firecrawl-build-search` | Integrate Firecrawl `/search` into product code and agent workflows. |
-| `firecrawl-crawl` | Bulk extract content from an entire website or site section. |
-| `firecrawl-download` | Download an entire website as local files: markdown, screenshots, or multiple formats per page. |
-| `firecrawl-interact` | Control and interact with a live browser session on any scraped page. |
-| `firecrawl-map` | Discover and list all URLs on a website, with optional search filtering. |
-| `firecrawl-scrape` | Extract clean markdown from any URL, including JavaScript-rendered SPAs. |
-| `firecrawl-search` | Web search with full page content extraction. |
+| `firecrawl-sdk` | Integrate Firecrawl into product code: SDK setup and FIRECRAWL_API_KEY onboarding, /scrape, /search and /interact endpoints. |
 | `gemini-api-dev` | The Gemini API provides access to Google's most advanced AI models. |
 | `gemini-api-integration` | Use when integrating Google Gemini API into projects. |
 | `geo-fundamentals` | Generative Engine Optimization for AI search engines (ChatGPT, Claude, Perplexity). |
@@ -1097,7 +1086,6 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `neon-postgres` | Expert patterns for Neon serverless Postgres, branching, connection pooling, and Prisma/Drizzle integration. |
 | `nextjs-app-router-patterns` | Next.js 14+ App Router architecture, Server Components, and modern full-stack React development. |
 | `nextjs-best-practices` | Next.js App Router principles. |
-| `notion-automation` | Automate Notion tasks via Rube MCP (Composio): pages, databases, blocks, comments, users. |
 | `obsidian-markdown` | Create and edit Obsidian Flavored Markdown with wikilinks, embeds, callouts, and properties. |
 | `openapi-spec-generation` | Generate and maintain OpenAPI 3.1 specifications from code, design-first specs, and validation patterns. |
 | `os-scripting` | Operating system and shell scripting troubleshooting workflow for Linux, macOS, and Windows. |
@@ -1122,7 +1110,6 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `seo` | Run a broad SEO audit across technical SEO, on-page SEO, schema, sitemaps, content quality, AI search readiness, and GEO. |
 | `seo-audit` | Diagnose and audit SEO issues affecting crawlability, indexation, rankings, and organic performance. |
 | `seo-technical` | Audit technical SEO across crawlability, indexability, security, URLs, mobile, Core Web Vitals, and structured data. |
-| `slack-automation` | Automate Slack workspace operations including messaging, search, channel management, and reactions via Composio. |
 | `tanstack-query-expert` | Expert in TanStack Query (React Query), asynchronous state management. |
 | `tmux` | Expert tmux session, window, and pane management for terminal multiplexing and persistent remote workflows. |
 | `turborepo-caching` | Configure Turborepo for efficient monorepo builds with local and remote caching. |
@@ -1139,7 +1126,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>engineering-method (51)</b></summary>
+<summary><b>engineering-method (54)</b></summary>
 
 | Skill | What it does |
 |---|---|
@@ -1147,33 +1134,34 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `agentic-harness-patterns` | Harness patterns for coding agents: memory, permissions, context engineering, delegation, skills, hooks, bootstrap. |
 | `archify` | Validated architecture, workflow, sequence, data-flow, and state diagrams as explorable standalone HTML with inline SVG. |
 | `architect-review` | Master software architect specializing in modern architecture. |
-| `bash-script-generator` | Create, generate, write, or scaffold bash/shell scripts (.sh), automation, or CLI tools. |
-| `bash-script-validator` | Validate, lint, audit, or fix bash/shell/.sh scripts via ShellCheck. |
 | `bdb-computer-use-mcp` | Native Rust/Node and Python computer-use servers to control macOS, Windows, and Linux desktops. |
 | `bdb-security-audit` | Security auditing, diff analysis, defensive checklists, and vulnerability testing. |
 | `bdb-shipping-skill` | Problem-framing pre-flight, one-way/two-way door classification, ADR-lite decision logging, post-ship outcome loop. |
 | `ci-pipeline` | Set up a complete CI/CD pipeline for a project. |
 | `clean-code` | The principles of "Clean Code". |
 | `concise-planning` | Generate a clear, actionable, atomic checklist for a coding task. |
+| `diagnosing-bugs` | Diagnosis loop for hard bugs and performance regressions. |
 | `dispatching-parallel-agents` | Use when facing 2+ independent tasks that can be worked on without shared state. |
-| `dockerfile-generator` | Create, generate, or write Dockerfiles and multi-stage Docker images. |
-| `dockerfile-validator` | Validate, lint, audit, or scan a Dockerfile for security and best practices. |
 | `domain-modeling` | Build and sharpen a project's domain model. |
 | `executing-plans` | Execute a written implementation plan in a separate session with review checkpoints. |
+| `factory` | >- |
+| `factory-babysit-pr` | >- |
 | `factory-collect` | Experimental workflow for collecting and triaging product feedback, telemetry, runtime errors, and issue reports. |
 | `factory-lookback` | Experimental workflow for auditing recurring feedback, telemetry, and errors to find systemic fixes. |
+| `factory-recover` | >- |
 | `factory-review-prs` | Experimental workflow for reviewing configured repositories' pull requests. |
+| `factory-ship` | >- |
+| `factory-watchdog` | >- |
 | `finishing-a-development-branch` | Decide how to integrate finished work once implementation is complete and tests pass. |
 | `github-actions-generator` | Create, generate, or scaffold GitHub Actions workflows and CI/CD pipelines. |
 | `github-actions-validator` | Validate, lint, audit, fix GitHub Actions workflows. |
 | `github-repo` | Standards and workflows for writing, sanitizing, and publishing high-quality GitHub repositories. |
-| `godmode-engineering` | Strict Domain-Driven Design, TypeScript strictness, and Clean Architecture. |
-| `godmode-shipping` | The final gatekeeper for production releases. |
+| `godmode-engineering` | Senior Fullstack and Backend Engineer. |
+| `godmode-shipping` | Release Gatekeeper, QA and Verification Auditor. |
 | `grill-me` | A relentless interview to sharpen a plan or design. |
 | `grill-with-docs` | Like grill-me, and builds the project's domain model (glossary and ADRs) as it goes. |
 | `grilling` | Grill the user relentlessly about a plan, decision, or idea. |
-| `makefile-generator` | Create, generate, or scaffold Makefiles with .PHONY targets and build automation. |
-| `makefile-validator` | Validate, lint, audit, or check Makefiles and .mk files for errors. |
+| `makefile-pro` | Generate, scaffold, validate and lint Makefiles and .mk files: .PHONY targets, build automation, common mistakes. |
 | `planning-with-files` | Use persistent markdown files as working memory on disk. |
 | `pr-recap` | Visual recap page for a PR or git range: changed-files tree, per-file notes, Verified vs Not verified table, risks. |
 | `prompt-engineer` | Transforms prompts into optimized prompts using frameworks (RTF, RISEN, Chain of Thought, and more). |
@@ -1185,20 +1173,22 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `software-architecture` | Guide for quality-focused software architecture. |
 | `subagent-driven-development` | Execute implementation plans with independent tasks in the current session. |
 | `systematic-debugging` | Use on any bug, test failure, or unexpected behavior, before proposing fixes. |
-| `tdd-workflow` | Test-Driven Development workflow principles. |
+| `tdd` | Test-driven development. |
 | `test-driven-development` | Use when implementing any feature or bugfix, before writing implementation code. |
+| `to-spec` | Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed. |
 | `triage` | Move issues and external PRs through a state machine of triage roles and write agent-ready briefs. |
+| `two-axis-code-review` | Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding sta... |
 | `using-git-worktrees` | Ensure an isolated workspace for feature work and plan execution. |
 | `verification-before-completion` | Run verification commands and confirm output before claiming work is complete or passing. |
+| `wayfinder` | Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time un... |
 | `wcag-audit-patterns` | Audit web content against WCAG 2.2 with actionable remediation strategies. |
 | `webapp-testing` | Test local web applications with native Python Playwright scripts. |
 | `writing-plans` | Write a plan for a multi-step task from a spec, before touching code. |
-| `writing-plans-legacy` | Superseded AOS-era version of writing-plans, kept for its terse plan template. |
 
 </details>
 
 <details>
-<summary><b>bdb-core (40)</b></summary>
+<summary><b>bdb-core (45)</b></summary>
 
 | Skill | What it does |
 |---|---|
@@ -1220,10 +1210,14 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `bdbhtmlmanueldocs` | Design system, standalone HTML template and GitHub Pages hosting workflow for neutral developer documentation. |
 | `bdbrainstorm` | Multi-agent brainstorming, /grill-me and the Core Godmodes, ending in a hand-off to /startcycle-graph. |
 | `bdbresilience` | CI/CD error recovery, file-based locking, diagnostic triage, and two-phase GO gate resilience for multi-agent pipelines. |
+| `codebase-memory` | >- |
 | `deja-memory` | Use `deja fix` on an error, `deja wip` when resuming, `deja search` for past sessions. |
 | `design-control-loop` | Interview the user to design an agentic control loop tailored to their codebase, then build it. |
 | `factory-human-digest` | Experimental workflow for summarizing work that still needs human judgment. |
 | `gogate` | Show or explain the AOS go-gate mode (hard, soft, off) and the time-limited grants of this session. |
+| `instinct-export` | >- |
+| `instinct-import` | >- |
+| `instinct-status` | >- |
 | `loop-templates` | Repeat a task on a schedule or until a condition holds (CI until green, follow a PR to merge). |
 | `master-session` | One Claude Code session supervises several others: roster, status requests, GO board, idle notices, GO-token protocol. |
 | `mcsc` | Delegate a task to another installed CLI harness (agy, OpenCode, Codex) from inside an AOS repo. |
@@ -1234,6 +1228,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `plan-arbiter` | Compare, cross-review, merge, or arbitrate competing plans from multiple agents. |
 | `plan-canvas` | Open plans and HTML artifacts in a local browser canvas where the human annotates, chats, and approves. |
 | `quick-recap` | End each agent response with a red/yellow/green status line. |
+| `skill-create` | >- |
 | `startcycle` | Linear multi-agent build pipeline with file hand-offs in production_artifacts/. |
 | `startcycle-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
 | `startcycle-graph-user` | A small, throwaway multi-agent fan-out in any project. |
@@ -1242,34 +1237,6 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `synapse-integration-skill` | BDB Synapse (3D Codebase Visualizer) integration. |
 | `teamwork-preview` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |
 | `token-saver-config` | Context window output compression engine for CLI commands. |
-
-</details>
-
-<details>
-<summary><b>design-ui-ux (20)</b></summary>
-
-| Skill | What it does |
-|---|---|
-| `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app (plan-canvas route "visual-edit"). |
-| `bdbdesignpro` | Animation engine choice, motion tokens, scroll effects, micro-interactions, motion accessibility. |
-| `design-spells` | Curated micro-interactions, delightful animations, and subtle design details. |
-| `editable-design` | Fixed-canvas editable visual designs: posters, marketing graphics, covers, menus, banners, social cards. |
-| `frontend-dev-guidelines` | Senior frontend engineering under strict architectural and performance standards. |
-| `godmode-ui-ux` | Design lead for all frontend work: brand discovery, Anti-Slop rules, DTCG design tokens, fluid motion. |
-| `live-preview-canvas` | Local HTML mock with a built-in feedback layer for visual comments. |
-| `senior-frontend` | React components, Next.js performance, accessibility, frontend code quality. |
-| `shadcn` | Add, customize, and troubleshoot shadcn/ui components. |
-| `tailwind-patterns` | Tailwind CSS v4, CSS-first configuration, container queries, design token architecture. |
-| `ui-component` | Generate a UI component following StyleSeed Toss conventions. |
-| `ui-page` | Scaffold a mobile-first page using StyleSeed Toss layout patterns. |
-| `ui-pattern` | Reusable UI patterns: card sections, grids, lists, forms, chart wrappers. |
-| `ui-review` | Review UI code for design-system compliance, accessibility, mobile ergonomics. |
-| `ui-tokens` | List, add, and update design tokens, keeping JSON, CSS variables, and dark-mode values in sync. |
-| `ui-ux-pro-max` | Comprehensive design guide for web and mobile applications. |
-| `ux-audit` | Audit screens against Nielsen's heuristics and mobile UX best practices. |
-| `ux-feedback` | Loading, empty, error, and success feedback states. |
-| `ux-flow` | User flows, progressive disclosure, hub-and-spoke navigation. |
-| `ux-persuasion-engineer` | Behavioral UX: choice architecture, friction audits, commitment design, without coercion. |
 
 </details>
 
@@ -1301,6 +1268,26 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
+<summary><b>design-ui-ux (12)</b></summary>
+
+| Skill | What it does |
+|---|---|
+| `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app (plan-canvas route "visual-edit"). |
+| `bdbdesignpro` | Animation engine choice, motion tokens, scroll effects, micro-interactions, motion accessibility. |
+| `design-spells` | Curated micro-interactions, delightful animations, and subtle design details. |
+| `editable-design` | Fixed-canvas editable visual designs: posters, marketing graphics, covers, menus, banners, social cards. |
+| `frontend-dev-guidelines` | Senior frontend engineering under strict architectural and performance standards. |
+| `godmode-ui-ux` | Lead Frontend Designer and UI Engineer. |
+| `live-preview-canvas` | Local HTML mock with a built-in feedback layer for visual comments. |
+| `senior-frontend` | React components, Next.js performance, accessibility, frontend code quality. |
+| `shadcn` | Add, customize, and troubleshoot shadcn/ui components. |
+| `tailwind-patterns` | Tailwind CSS v4, CSS-first configuration, container queries, design token architecture. |
+| `ui-ux-pro-max` | Comprehensive design guide for web and mobile applications. |
+| `ux-persuasion-engineer` | Behavioral UX: choice architecture, friction audits, commitment design, without coercion. |
+
+</details>
+
+<details>
 <summary><b>engineering-hardware (1)</b></summary>
 
 | Skill | What it does |
@@ -1309,16 +1296,26 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 
 </details>
 
+<details>
+<summary><b>saas-ops (1)</b></summary>
+
+| Skill | What it does |
+|---|---|
+| `golive` | Take an agent-written app from repo to live production on the user's OWN accounts, with providers they choose (hosting, database, auth, payments, email, doma... |
+
+</details>
+
 </details>
 
 <details>
-<summary><b>Playbooks (34)</b></summary>
+<summary><b>Playbooks (35)</b></summary>
 
 | Playbook | What it does |
 |---|---|
 | `pb-bug-fix` | Turn a GitHub issue into a tested fix on a branch with an open PR. |
 | `pb-ci-fix` | Fix red CI or set up GitHub Actions end to end; push only after GO. |
 | `pb-clip-from-moodboard` | Turn a look brief and reference images into a finished social clip. |
+| `pb-content-studio` | >- |
 | `pb-crew-call-sheet` | Build a crew call sheet and a load-in / load-out plan for one show day. |
 | `pb-deploy-saas` | Deploy a SaaS app to the BDB fleet: preflight, guardrail plan, green CI, deploy after GO, health check. |
 | `pb-docs-site` | Publish a project's docs as a static HTML manual on GitHub Pages. |
@@ -1354,34 +1351,51 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>Subagents (21)</b></summary>
+<summary><b>Subagents (29)</b></summary>
 
 | Agent | What it does |
 |---|---|
 | `architect` | Turns the user's goal into a system plan. |
-| `techlead` | Reviews the plan for a capability map before any build node starts. |
-| `godmode-ui-ux` | Lead Frontend Designer and UI Engineer. |
+| `cpp-reviewer` | Independent read-only C++ code reviewer: memory safety, modern C++ idioms, concurrency, and performance for `.cpp`/`.hpp`/`.cc`/`.h` changes. |
+| `csharp-reviewer` | Independent read-only C#/.NET code reviewer: .NET conventions, async patterns, security, nullable reference types, EF Core. |
+| `database-reviewer` | PostgreSQL specialist for query optimization, schema design, security, and performance. |
+| `devils-advocate` | Argues against the plan or diff under review: hunts unstated assumptions, missing failure modes, and the case where the proposed approach is the wrong one. |
+| `event-manager-assistant` | Event production planning assistant: run of show, technical riders, crew plans, schedules and budgets, load-in planning, and vendor lists. |
+| `go-build-resolver` | Resolves Go build, vet, and compilation errors with minimal changes. |
+| `go-reviewer` | Independent read-only Go code reviewer: idiomatic Go, concurrency, error handling, and performance for `.go` changes. |
 | `godmode-engineering` | Senior Fullstack and Backend Engineer. |
 | `godmode-media-eventtech` | Creative-Tech and Show-Control Specialist. |
-| `reviewer` | Adversarial review of build-node output against the plan's contract. |
 | `godmode-shipping` | Release Gatekeeper, QA and Verification Auditor. |
-| `database-reviewer` | PostgreSQL specialist for query optimization, schema design, security, and performance. |
-| `security-reviewer` | Security vulnerability detection and remediation. |
-| `silent-failure-hunter` | Reviews code for silent failures, swallowed errors, bad fallbacks. |
-| `go-build-resolver` | Resolves Go build, vet, and compilation errors with minimal changes. |
+| `godmode-ui-ux` | Lead Frontend Designer and UI Engineer. |
+| `java-reviewer` | Independent read-only Java code reviewer for Spring Boot and Quarkus projects: layered architecture, JPA/Panache, security, concurrency, testing. |
+| `kotlin-reviewer` | Independent read-only Kotlin/Android/KMP code reviewer: idiomatic Kotlin, coroutine and Flow safety, Compose recomposition traps, clean architecture, Android... |
+| `live-media-operator` | Live show operator for grandMA3, media servers such as Resolume, and TouchDesigner networks. |
 | `opensource-forker` | Forks a project for open-sourcing: strips secrets and internal references. |
 | `opensource-sanitizer` | Verifies an open-source fork is fully sanitized before release. |
+| `pcb-design-assistant` | PCB design assistant for KiCad-centered hardware work: schematic and layout review, DRC/ERC clearance, stackup and impedance constraints, BOM checks, and man... |
+| `python-reviewer` | Independent read-only Python code reviewer: Pythonic idioms, PEP 8, type hints, security, and concurrency for `.py` changes. |
+| `reviewer` | Adversarial review of build-node output against the plan's contract. |
+| `reviewer-1` | Independent adversarial reviewer, correctness focus: logic errors, broken edge cases, mismatches between the plan's stated contract and the implementation, a... |
+| `reviewer-2` | Independent adversarial reviewer, security and operability focus: injection, leaked secrets, auth gaps, silent failures, and rollback/deployment hazards. |
+| `rust-reviewer` | Independent read-only Rust code reviewer: ownership, lifetimes, unsafe usage, error handling, and idiomatic patterns for `.rs` changes. |
+| `security-reviewer` | Security vulnerability detection and remediation. |
+| `silent-failure-hunter` | Reviews code for silent failures, swallowed errors, bad fallbacks. |
+| `spec-prd-creator` | Turns a raw idea into a spec/PRD: goals, non-goals, user stories, acceptance criteria, and open questions. |
+| `techlead` | Reviews the plan for a capability map before any build node starts. |
+| `typescript-reviewer` | Independent read-only TypeScript/JavaScript code reviewer: type safety, async correctness, Node/web security, and idiomatic patterns for `.ts`/`.tsx`/`.js`/`... |
+| `video-motion-assistant` | Code-driven video and motion specialist, carved out of godmode-media-eventtech: programmatic video generation and editing, After Effects and Premiere automat... |
 
 </details>
 
 <details>
-<summary><b>Slash commands (14)</b></summary>
+<summary><b>Slash commands (15)</b></summary>
 
 | Command | What it does |
 |---|---|
 | `/brainstorm` | Brainstorm a topic with the matching skill: bdbrainstorm, bdbmediastorm, grill-me. |
 | `/doctor` | Check the machine and project, and print suggested permissions.allow entries without writing settings. |
 | `/graph` | Run the startcycle-graph pipeline. |
+| `/hub` | Open the AOS Hub on 127.0.0.1:7900 (services, plan kits, store) or stop/status it. |
 | `/init` | Set up the current project folder for AOS. |
 | `/loop` | Run a prompt repeatedly on an interval. |
 | `/mastersession` | Supervise other Claude Code sessions: roster, status, GO board, idle notices. |
@@ -1395,6 +1409,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `/store` | Browse and preview AOS skills, agents and playbooks in the local store UI. |
 
 </details>
+
 
 <!-- END GENERATED CATALOG -->
 
