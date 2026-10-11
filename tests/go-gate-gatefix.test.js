@@ -41,7 +41,7 @@ beforeEach(() => {
     g.setGateContext(ctx);
 });
 
-const fill = (s) => s.split('{P}').join(work).split('{H}').join(home);
+const fill = (s) => s.split('{P}').join(work.replace(/\\/g, '/')).split('{H}').join(home.replace(/\\/g, '/'));
 const env = () => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '' });
 const ts = (agoMs = 0) => new Date(Date.now() - agoMs).toISOString();
 const add = (e) => fs.appendFileSync(t, JSON.stringify(e) + '\n');

@@ -43,7 +43,7 @@ beforeEach(() => {
 });
 
 // {P} project dir (2 levels inside home), {H} home, {L} symlink in projects/ that points at ~/.claude
-const fill = (s) => s.split('{P}').join(work).split('{H}').join(home).split('{L}').join(path.join(home, 'projects', 'linkclaude'));
+const fill = (s) => s.split('{P}').join(work.replace(/\\/g, '/')).split('{H}').join(home.replace(/\\/g, '/')).split('{L}').join(path.join(home, 'projects', 'linkclaude').replace(/\\/g, '/'));
 const env = () => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', AOS_GATE_PROTECTED_BRANCHES: '' });
 const ts = (agoMs = 0) => new Date(Date.now() - agoMs).toISOString();
 const add = (e) => fs.appendFileSync(t, JSON.stringify(e) + '\n');
@@ -468,7 +468,7 @@ describe('hardening: binary name, environment, readers, mount markers, commit ex
         n(`PATH=./bin ${RUNX}`); n(`export PATH=./bin:$PATH; ${RUNX}`);
     });
     test('a mount without a project marker (.git or package.json) is not covered', () => {
-        const flat2 = path.join(home, 'projects', 'nomarker');
+        const flat2 = path.join(home, 'projects', 'nomarker').replace(/\\/g, '/');
         fs.mkdirSync(flat2, { recursive: true });
         scopes(`docker run --rm -v ${flat2}:/src node:24 npm test`, null);
         fs.writeFileSync(path.join(flat2, 'package.json'), '{}');
@@ -522,7 +522,7 @@ describe('docker run: the container runs scripts, the host analysis does not rea
         ok(FULL());
     });
     test('a second worktree mount is covered the same way', () => {
-        const work2 = path.join(home, 'projects', 'work2');
+        const work2 = path.join(home, 'projects', 'work2').replace(/\\/g, '/');
         fs.mkdirSync(path.join(work2, '.git'), { recursive: true });
         seed(work2);
         typed('gogate grant container-test 2h');

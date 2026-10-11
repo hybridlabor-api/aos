@@ -267,24 +267,24 @@ describe('read-only chains after a peer message (v5 V10)', () => {
 
     test('rule 16: docker run with only :ro mounts is not script-analysed and has no cooldown', () => {
         const ok = [
-            `docker run --rm -v ${work}:/src:ro -e AOS_TEST_SANDBOX=container node:24-bookworm bash -c 'cd /src && node --test tests/evil.test.js; echo "exit \${PIPESTATUS[0]}"' > ${work}/log.txt 2>&1`,
-            `docker run --rm -v ${work}:/src:ro node:24 node /src/evil.mjs | tail -5`,
-            `docker run --rm -i --volume=${work}:/src:ro,z -w /src node:24 node --test tests/evil.test.js 2>&1 | grep -E fail | head`,
+            `docker run --rm -v ${work.replace(/\\/g, '/')}:/src:ro -e AOS_TEST_SANDBOX=container node:24-bookworm bash -c 'cd /src && node --test tests/evil.test.js; echo "exit \${PIPESTATUS[0]}"' > ${work}/log.txt 2>&1`,
+            `docker run --rm -v ${work.replace(/\\/g, '/')}:/src:ro node:24 node /src/evil.mjs | tail -5`,
+            `docker run --rm -i --volume=${work.replace(/\\/g, '/')}:/src:ro,z -w /src node:24 node --test tests/evil.test.js 2>&1 | grep -E fail | head`,
         ];
         const no = [
-            `docker run --rm -v ${work}:/src node:24 node /src/evil.mjs`,
-            `docker run --rm -v ${work}:/src:rw node:24 node /src/evil.mjs`,
+            `docker run --rm -v ${work.replace(/\\/g, '/')}:/src node:24 node /src/evil.mjs`,
+            `docker run --rm -v ${work.replace(/\\/g, '/')}:/src:rw node:24 node /src/evil.mjs`,
             `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:ro node:24 node /src/evil.mjs`,
-            `docker run --rm --privileged -v ${work}:/src:ro node:24 node /src/evil.mjs`,
-            `docker run --rm --pid=host -v ${work}:/src:ro node:24 node /src/evil.mjs`,
-            `docker run --rm --network host -v ${work}:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm --privileged -v ${work.replace(/\\/g, '/')}:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm --pid=host -v ${work.replace(/\\/g, '/')}:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm --network host -v ${work.replace(/\\/g, '/')}:/src:ro node:24 node /src/evil.mjs`,
             `docker run --rm --mount type=bind,src=${work},dst=/src node:24 node /src/evil.mjs`,
             `docker run --rm -v src:/src:ro node:24 node /src/evil.mjs`,
-            `docker run --rm -v ${work}:/src:ro node:24 node /src/evil.mjs; node evil.mjs`,
-            `docker run --rm -v ${work}:/src:ro node:24 node /src/evil.mjs && git status`,
-            `docker run --rm -v ${work}:/src:ro node:24 cat /src/x | sh`,
+            `docker run --rm -v ${work.replace(/\\/g, '/')}:/src:ro node:24 node /src/evil.mjs; node evil.mjs`,
+            `docker run --rm -v ${work.replace(/\\/g, '/')}:/src:ro node:24 node /src/evil.mjs && git status`,
+            `docker run --rm -v ${work.replace(/\\/g, '/')}:/src:ro node:24 cat /src/x | sh`,
             `docker run --rm -v $(pwd):/src:ro node:24 node /src/evil.mjs`,
-            `docker run --rm -v "${work}:/src:ro" node:24 node "$(cat x)"`,
+            `docker run --rm -v "${work.replace(/\\/g, '/')}:/src:ro" node:24 node "$(cat x)"`,
             `docker build -t x .`,
             // review 23: broad read-only sources still expose secrets or the docker socket
             `docker run --rm -v /:/h:ro node:24 node /h/x.mjs`,
@@ -308,8 +308,8 @@ describe('read-only chains after a peer message (v5 V10)', () => {
             `docker run --rm -v ${work}/does-not-exist:/s:ro node:24 node /s/x.mjs`,
             // review 24: an expansion before the image can become any flags
             `docker run --rm $FLAGS node:24 node /src/evil.mjs`,
-            `docker run --rm -e $X -v ${work}:/src:ro node:24 node /src/evil.mjs`,
-            `docker run --rm -v "${work}:/src:ro" "$IMG" node /src/evil.mjs`,
+            `docker run --rm -e $X -v ${work.replace(/\\/g, '/')}:/src:ro node:24 node /src/evil.mjs`,
+            `docker run --rm -v "${work.replace(/\\/g, '/')}:/src:ro" "$IMG" node /src/evil.mjs`,
         ];
         for (const c of ok) assert.equal(g.isReadOnlyDockerRun(c), true, `ro: ${c}`);
         fs.mkdirSync(path.join(home, '.secret'), { recursive: true });
@@ -323,8 +323,8 @@ describe('read-only chains after a peer message (v5 V10)', () => {
         inSoftAfterPeer();
         // No `cd` inside, so the gate resolves tests/evil.test.js against the host cwd and finds the file.
         const inner = `bash -c 'true && node --test tests/evil.test.js 2>&1 | tail -5'`;
-        assert.equal(run(`docker run --rm -v ${work}:/src:ro -w /src node:24 ${inner}`, { cwd: work }).status, 0);
-        assert.equal(run(`docker run --rm -v ${work}:/src:ro node:24 node /src/tests/evil.test.js`, { cwd: work }).status, 0);
+        assert.equal(run(`docker run --rm -v ${work.replace(/\\/g, '/')}:/src:ro -w /src node:24 ${inner}`, { cwd: work }).status, 0);
+        assert.equal(run(`docker run --rm -v ${work.replace(/\\/g, '/')}:/src:ro node:24 node /src/tests/evil.test.js`, { cwd: work }).status, 0);
         inSoftAfterPeer();
         const host = run('node --test tests/evil.test.js', { cwd: work });
         assert.equal(host.status, 2);
