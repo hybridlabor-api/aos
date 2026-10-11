@@ -23,6 +23,7 @@ Pipeline nodes map onto the chain as follows: `architect`, `techlead`, `reviewer
 - Spawn a worker that may need a GO: `aos-acp` (`docs/delegation-routing.md`, `skills/basic/master-session/SKILL.md`).
 - Message a live session of any harness: `aos-a2a send --to <name>`, answered with `aos-a2a reply <taskId>` (`docs/a2a.md`).
 - One-shot task for another harness: `mcsc`.
+- Live map link: a dispatcher that starts a worker sets `AOS_TRAIL_NODE` (and `AOS_TRAIL_PLAN`), or passes `aos-acp --trail-node <id> --trail-plan <file>`. The worker's trail events then light that plan node on the agenttrail map (`skills/global_config/agenttrail/SKILL.md`). The dispatcher still decides the edge; the node is never marked done automatically.
 - Inside a pipeline, nodes never call each other; the dispatcher decides every edge (`.agents/graph.md`).
 
 ## Rules that hold at every hop
