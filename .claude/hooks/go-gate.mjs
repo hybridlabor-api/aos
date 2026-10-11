@@ -2006,23 +2006,34 @@ export const isGuardedCommand = (command) =>
 // ---------------------------------------------------------------------------
 const STORE_REF = /\.aos[/,\s+]+(?:\.[/]+)*(?:gate|go)(?![\w.-])|\.aos\/+[^\s/]*[$*?[{]/i;
 // Read-only heads: a store path given to one of these is a read or a mere mention, never a write.
-const STORE_READ = /^(?:cat|ls|grep|egrep|fgrep|head|tail|wc|stat|file|cd|git\s+(?:grep|status|blame|ls-files))(?=\s|$)/;
+const STORE_READ = /^(?:cat|ls|grep|egrep|fgrep|head|tail|wc|stat|cd)(?=\s|$)/;
 const STORE_NULL_REDIR = /(?:\d?>>?|&>)\s*(?:\/dev\/null|&\d)/g;
+// grep here is ugrep: --pager, -Q/--query, --config, ---, --filter run or save things. Only these options pass; any other is blocked.
+const GREP_SAFE_SHORT = /^[ivwxcnHhlLqsrRaEFGPzoUTbkyIABCefmdD0-9]+$/;
+const GREP_SAFE_LONG = new Set(["ignore-case", "no-ignore-case", "invert-match", "word-regexp", "line-regexp", "count", "line-number", "with-filename", "no-filename", "files-with-matches", "files-without-match", "quiet", "silent", "recursive", "dereference-recursive", "include", "exclude", "exclude-dir", "include-dir", "context", "after-context", "before-context", "max-count", "extended-regexp", "fixed-strings", "basic-regexp", "perl-regexp", "only-matching", "byte-offset", "text", "null", "null-data", "label", "color", "colour", "no-messages", "regexp", "file", "binary-files", "devices", "directories", "initial-tab", "line-buffered", "no-color", "no-colour"]);
+const grepArgsSafe = (args) => args.every((t) => {
+  if (t === "--" || !t.startsWith("-") || t === "-") return true;
+  if (t.startsWith("--")) return GREP_SAFE_LONG.has(t.slice(2).split("=")[0]);
+  return GREP_SAFE_SHORT.test(t.slice(1));
+});
+// The segment head decides; a store-touching command must be one of these with safe options.
+const storeReadSeg = (seg) => STORE_READ.test(seg) && (!/^(?:e|f)?grep(?=\s|$)/.test(seg) || grepArgsSafe(seg.split(/\s+/).slice(1)));
 export function gateStoreReason(command) {
   if (typeof command !== "string") return null;
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
   // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
   const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
   if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
-  const why = "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail/wc/stat/file, git grep/status/blame/ls-files and a redirect to /dev/null are allowed.";
+  const why = "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail/wc/stat with plain options, and a redirect to /dev/null, are allowed.";
   // Command and process substitution run commands of their own.
   if (/\$\(|\x60|<\(|>\(/.test(norm)) return why;
   const plain = norm.replace(STORE_NULL_REDIR, "");
   // Any other redirect or --output writes a file that may be the store.
   if (/>/.test(plain) || /--output\b/.test(plain)) return why;
+  // No env-assignment prefix is stripped: `PATH=/tmp/x cat ...` or `LD_PRELOAD=...` is not a read-only head and blocks.
   const readOnly = plain.split(/&&|\|\||[;|&\n]/).every((s) => {
-    const seg = s.trim().replace(/^(?:\w+=\S*\s+)+/, "");
-    return !seg || STORE_READ.test(seg);
+    const seg = s.trim();
+    return !seg || storeReadSeg(seg);
   });
   return readOnly ? null : why;
 }

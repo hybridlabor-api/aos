@@ -157,8 +157,20 @@ describe('8 OpenCode session driving is never grantable (C3)', () => {
 describe('5 store guard forms (M1)', () => {
     test('EXTRA: a mention of the store in a read-only search passes; every real write stays blocked', () => {
         const S = '~/.aos/gate/k.json', D = '~/.aos/gate/';
-        for (const c of ['grep -rn "\\.aos/gate" docs/ README.md', 'git grep -n ".aos/gate" -- tests', `grep -c x ${S} 2>/dev/null`, `grep x ${S} &> /dev/null`]) {
+        for (const c of ['grep -rn "\\.aos/gate" docs/ README.md', `grep -c x ${S} 2>/dev/null`, `grep x ${S} &> /dev/null`]) {
             assert.equal(g.gateStoreReason(c), null, c);
+        }
+        // git and file are not read-only heads here: git grep -O runs a shell, file -C -m writes a magic file.
+        for (const c of [`git grep -O"cp /tmp/f ${D}k.json #" -e . -- README.md`, `git grep -n x ${S}`, `cd ${D} && file -C -m k`]) {
+            assert.ok(g.gateStoreReason(c), c);
+        }
+        // An env-assignment prefix is never stripped: it can choose the program that runs.
+        for (const c of [`PATH=/tmp/x cat ${S}`, `LD_PRELOAD=/tmp/x.so cat ${S}`, `DYLD_INSERT_LIBRARIES=/tmp/x.dylib grep x ${S}`, `GIT_CONFIG_COUNT=1 cat ${S}`]) {
+            assert.ok(g.gateStoreReason(c), c);
+        }
+        // grep is ugrep here: pager, query TUI, config and filter options run or save things.
+        for (const c of [`grep --pager=sh x ${S}`, `grep -Q x ${S}`, `grep --config=/tmp/c x ${S}`, `grep --filter="sh -c id" x ${S}`, `grep -O x ${S}`]) {
+            assert.ok(g.gateStoreReason(c), c);
         }
         for (const c of [`echo x > ${S}`, `cp f ${D}`, `sed -i s/a/b/ ${S}`, `rm ${S}`, `mv ${S} /tmp/z`, `echo x | tee ${S}`,
             `grep x ${S} > ${D}out`, `grep x ${S} --output=${D}out`, `cp /tmp/a ${D}k && grep -rn x docs`,
