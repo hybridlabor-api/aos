@@ -566,7 +566,7 @@ aos-gate profile strict               # não precisa de confirmação
 
 - **Classe de release** (ainda precisa de um GO com `work`): push para o branch por defeito, `main`/`master` ou `release/*`, `npm publish`, `npm version`, `npm dist-tag add/rm`, `gh pr merge`, `gh release create`, eliminação recursiva, mover em massa para fora do home e apagar fora do seu próprio worktree.
 - **Bloqueios duros mantêm-se em todos os perfis**: escritas no store do gate ou na sua configuração, caminhos de eliminação construídos a partir de HOME, `~` ou variáveis de ambiente, eliminação recursiva fora do seu próprio worktree, edições nos hooks do gate e nas settings que os registam.
-- **Falha fechada**: uma configuração em falta, ilegível, com symlink, demasiado grande, com dono errado ou modo errado (não 0600), um ficheiro corrompido ou expirado, ou um perfil `work`/`off` sem expiração leem-se todos como `strict`. Configuração: `GATE_CONFIG_PATH`.
+- **Falha fechada**: uma configuração em falta, ilegível, com symlink, demasiado grande, com dono errado ou modo errado (não 0600), um ficheiro corrompido ou expirado, ou um perfil `work`/`off` sem expiração leem-se todos como `strict`. Configuração: `~/.aos/gate/config.json`.
 - Alargar exige escrever de volta uma palavra aleatória no TTY.
 - Risco residual aceite: código a correr com o seu próprio utilizador pode escrever diretamente o ficheiro de perfil. Ver [docs/gate-residuals.md](docs/gate-residuals.md).
 
@@ -955,7 +955,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 
 - **bdb-core**: infraestrutura central do AOS, pipelines, ferramentas e utilitários: `startcycle`, `startcycle-graph`, `startcycle-graph-user`, `agenttrail`, `plan-canvas`, `aos-a2a`, `aos-gateway`, `aos-store`, `master-session`, `codebase-memory` e mais.
 - **design-ui-ux**: frontend, design de UI, acessibilidade, tokens, motion, anti-slop: `senior-frontend`, `ui-ux-pro-max`, `tailwind-patterns`, `shadcn`, `wcag-audit-patterns` e mais.
-- **engineering-method**: arquitetura, testes, debugging, CI/CD, qualidade de código: `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `dockerfile-generator`, `makefile-generator` e mais.
+- **engineering-method**: arquitetura, testes, debugging, CI/CD, qualidade de código: `software-architecture`, `test-driven-development`, `systematic-debugging`, `ci-pipeline`, `github-actions-generator`, `docker-expert`, `makefile-pro` e mais.
 - **library**: especificidades de linguagens e frameworks: TypeScript, Node.js, Python, React, Postgres, Prisma, Next.js, Drizzle ORM, Go e mais.
 - **media-eventtech**: 3D, vídeo, show control, design espacial: `godmode-eventtech`, `threejs-skills`, as skills MCP de software criativo e mais.
 - **engineering-hardware**: design de PCB e eletricidade: `godmode-hardware-pcb`.
@@ -1273,7 +1273,7 @@ O `aos-setup` leva uma máquina a um estado verificado para os quatro; o `aos-pr
 
 | Skill | What it does |
 |---|---|
-| `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app (plan-canvas route "visual-edit"). |
+| `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app. |
 | `bdbdesignpro` | Animation engine choice, motion tokens, scroll effects, micro-interactions, motion accessibility. |
 | `design-spells` | Curated micro-interactions, delightful animations, and subtle design details. |
 | `editable-design` | Fixed-canvas editable visual designs: posters, marketing graphics, covers, menus, banners, social cards. |
@@ -1440,7 +1440,7 @@ Todo o trabalho de UI/UX — a persona `godmode-ui-ux` e as skills de design por
 - **`bdbrainstorm`** e **`bdbmediastorm`**: sessões de ideias multi-agente que terminam num plano executável
 - **`teamwork-preview`**: elaboração de prompts, delegação de papéis, configuração de colaboração
 - **Família grilling**: `grill-me` (auditoria geral), `grill-with-docs` (ancorado em documentação), `triage` (priorização)
-- **CI/CD e geradores**: `ci-pipeline`, `github-actions-generator`, `dockerfile-generator`, `makefile-generator`
+- **CI/CD e geradores**: `ci-pipeline`, `github-actions-generator`, `docker-expert`, `makefile-pro`
 - **Qualidade de código**: `bdb-security-audit`, `systematic-debugging`, `silent-failure-hunter`, `bdbresilience`
 - **Especialistas de frameworks**: cobertura completa de TypeScript, React, Next.js, Drizzle ORM, Prisma, Python, Go e mais
 
