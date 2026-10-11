@@ -312,18 +312,17 @@ test('codenotch detect when not installed', () => {
     assert.ok(typeof d.installed === 'boolean');
 });
 
-test('T29: remote verify runs `remote --version` (fake binary fails on any other argument)', { skip: SKIP_WIN }, () => {
+test('T29: remote verify runs the module\'s bin/cli.js --version (no PATH binary needed)', () => {
     const m = machine();
     const pkg = pk.registry.find((p) => p.id === 'remote');
-    const bin = path.join(mkHome(), 'bin');
+    const assert0 = () => pkg.verify({ host: m.host, home: m.home }).ok;
+    assert.strictEqual(assert0(), false, 'module missing: verify fails');
+    const cli = path.join(m.host.moduleBasePath(), 'bdb-os-remote', 'bin', 'cli.js');
     const log = path.join(mkHome(), 'args.txt');
-    script(path.join(bin, 'remote'), `echo "$@" > "${log}"\n[ "$1" = "--version" ] || exit 1`);
-    assert.strictEqual(withPath(bin, () => pkg.verify({ host: m.host, home: m.home })).ok, true);
-    assert.strictEqual(fs.readFileSync(log, 'utf8').trim(), '--version');
-
-    const empty = path.join(mkHome(), 'empty');
-    fs.mkdirSync(empty);
-    assert.strictEqual(withPath(empty, () => pkg.verify({ host: m.host, home: m.home })).ok, false);
+    fs.mkdirSync(path.dirname(cli), { recursive: true });
+    fs.writeFileSync(cli, `require('fs').writeFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(' ')); process.exit(process.argv[2] === '--version' ? 0 : 1);\n`);
+    assert.strictEqual(assert0(), true);
+    assert.strictEqual(fs.readFileSync(log, 'utf8'), '--version');
 });
 
 test('memB verify detects import run failure in memb-mcp', { skip: SKIP_WIN }, () => {
