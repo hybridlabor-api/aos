@@ -46,14 +46,6 @@ describe('service definitions', () => {
         assert.ok(unit.includes(NODE));
         assert.ok(unit.includes('--serve --watch --port 7900'));
     });
-
-    test('win32 task XML has a logon trigger and RestartOnFailure', () => {
-        const x = pkg.buildWinTaskXml({ nodePath: 'C:\\node\\node.exe', aosRoot: 'C:\\aos', home: 'C:\\Users\\u' });
-        assert.ok(x.includes('<LogonTrigger>'));
-        assert.ok(x.includes('<RestartOnFailure>'));
-        assert.ok(x.includes('--serve --watch --port 7900'));
-        assert.ok(x.includes('AOS_Hub'));
-    });
 });
 
 describe('install commands per platform', () => {
@@ -80,18 +72,36 @@ describe('install commands per platform', () => {
         assert.deepEqual(calls.find((c) => c[0] === 'systemctl' && c[2] === 'enable'), ['systemctl', '--user', 'enable', '--now', 'com.bdb.aos.hub.service']);
     });
 
-    test('win32 writes the task XML and registers it with schtasks /Create /XML', async () => {
+    test('win32 migrates a beta.2 task to a Startup .vbs (no admin) and starts the vbs once', async () => {
         const home = tmp();
-        const { ctx, calls } = mkCtx(home, { platform: 'win32' });
-        const r = await pkg.install(ctx);
+        const appData = tmp();
+        const { ctx, calls } = mkCtx(home, { platform: 'win32', env: { APPDATA: appData } });
+        assert.equal(pkg.detect(ctx), false);
+        const legacyXml = path.join(home, '.aos', 'hub', 'aos-hub-task.xml');
+        fs.mkdirSync(path.dirname(legacyXml), { recursive: true });
+        fs.writeFileSync(legacyXml, 'old');
+        assert.equal(pkg.detect(ctx), true, 'a beta.2 task XML counts, so update migrates it');
+        const r = await pkg.update(ctx);
         assert.equal(r.ok, true);
-        const xmlFile = calls.find((c) => c[0] === 'schtasks' && c[1] === '/Create')[3];
-        assert.ok(fs.existsSync(xmlFile));
-        const raw = fs.readFileSync(xmlFile);
-        assert.deepEqual([raw[0], raw[1]], [0xff, 0xfe], 'UTF-16LE BOM, as the XML header declares');
-        assert.ok(raw.toString('utf16le').includes('<RestartOnFailure>'));
-        assert.deepEqual(calls.find((c) => c[0] === 'schtasks' && c[1] === '/Create'), ['schtasks', '/Create', '/XML', xmlFile, '/TN', 'AOS_Hub', '/F']);
-        assert.deepEqual(calls.find((c) => c[0] === 'schtasks' && c[1] === '/Run'), ['schtasks', '/Run', '/TN', 'AOS_Hub']);
+        assert.equal(r.started, true);
+        const vbs = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'com.bdb.aos.hub.vbs');
+        const text = fs.readFileSync(vbs, 'utf8');
+        assert.ok(text.includes(`""${NODE}"" ""${path.join(realAosRoot, 'bin', 'aos-hub.mjs')}"" ""--serve"" ""--watch"" ""--port"" ""7900""`), text);
+        assert.ok(text.includes(', 0, False'), 'hidden window, no wait');
+        assert.deepEqual(calls.filter((c) => c[0] === 'wscript.exe'), [['wscript.exe', vbs]]);
+        assert.deepEqual(calls.filter((c) => c[0] === 'schtasks').map((c) => c[1]), ['/End', '/Delete']);
+        assert.ok(!calls.some((c) => c[0] === 'schtasks' && c[1] === '/Create'), 'no schtasks /Create: it needs admin rights');
+        assert.ok(calls.find((c) => c[0] === 'powershell').join(' ').includes(path.join(realAosRoot, 'bin', 'aos-hub.mjs')));
+        assert.ok(!fs.existsSync(legacyXml), 'legacy task XML removed');
+        assert.equal(pkg.detect(ctx), true, 'the .vbs is the install record');
+    });
+
+    test('win32: a failing wscript is reported, not hidden', async () => {
+        const say = [];
+        const { ctx } = mkCtx(tmp(), { platform: 'win32', env: { APPDATA: tmp() }, log: (m) => say.push(m), run: async (cmd) => (cmd === 'wscript.exe' ? { status: 1, stderr: 'boom' } : { status: 0 }) });
+        const r = await pkg.install(ctx);
+        assert.equal(r.started, false);
+        assert.ok(say.some((m) => /wscript\.exe failed: boom/.test(m)), say.join(' | '));
     });
 });
 
@@ -105,14 +115,17 @@ describe('uninstall', () => {
                 ? path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.hub.plist')
                 : platform === 'linux'
                     ? path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.hub.service')
-                    : path.join(home, '.aos', 'hub', 'aos-hub-task.xml');
+                    : path.join(home, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'com.bdb.aos.hub.vbs');
             assert.ok(fs.existsSync(svcFile), `${platform}: service file should exist before uninstall`);
             await pkg.uninstall(ctx);
             assert.ok(!fs.existsSync(svcFile), `${platform}: service file should be gone`);
+            assert.equal(pkg.detect(ctx), false, `${platform}: not detected after uninstall`);
         }
         const { ctx, calls } = mkCtx(tmp(), { platform: 'win32' });
         await pkg.uninstall(ctx);
         assert.deepEqual(calls.find((c) => c[0] === 'schtasks' && c[1] === '/Delete'), ['schtasks', '/Delete', '/TN', 'AOS_Hub', '/F']);
+        const stop = calls.find((c) => c[0] === 'powershell');
+        assert.ok(stop && stop.join(' ').includes(path.join(realAosRoot, 'bin', 'aos-hub.mjs')) && stop.join(' ').includes('Stop-Process'), 'running hub stopped by its script path');
     });
 });
 

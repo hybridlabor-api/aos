@@ -17,7 +17,7 @@
 // at all.
 
 import { readFileSync, existsSync, rmSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import os from 'node:os';
@@ -385,7 +385,8 @@ async function execute(p) {
   for (const id of ['fleet', 'sessions', 'alert', 'gateway', 'hub', 'rustauri']) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
-      const c = { home: HOME, dryRun: DRY };
+      // run: gateway and hub stop their service through it (launchctl, systemctl, or the Windows Startup .vbs process).
+      const c = { home: HOME, dryRun: DRY, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 }) };
       if (!always.includes(id) && !(await pkg.detect(c)).installed) continue;
       const r = await pkg.uninstall(c);
       if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);

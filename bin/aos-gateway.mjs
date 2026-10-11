@@ -221,11 +221,16 @@ function service(cmd) {
         return run('systemctl', ['--user', 'restart', unit]);
     }
     if (process.platform === 'win32') {
-        // UNVERIFIED: schtasks task "AOS MCP Gateway" is created by the installer since F7b; not tested on Windows.
-        if (cmd === 'start') return run('schtasks', ['/Run', '/TN', WIN_TASK]);
-        if (cmd === 'stop') return run('schtasks', ['/End', '/TN', WIN_TASK]);
-        const stopped = run('schtasks', ['/End', '/TN', WIN_TASK]);
-        return stopped === 0 ? run('schtasks', ['/Run', '/TN', WIN_TASK]) : stopped;
+        // The installer registers a hidden Startup-folder .vbs (lib/v5/win-startup.js): schtasks needs admin rights.
+        // Inline on purpose: this file also runs from ~/.agents/bin, which has no lib/ next to it.
+        const vbs = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'com.bdb.aos.gateway.vbs');
+        const start = () => (fs.existsSync(vbs) ? run('wscript.exe', [vbs]) : (console.error(`aos-gateway start: ${vbs} missing; run the AOS installer or "aos-gateway serve"`), 1));
+        const stop = () => run('powershell', ['-NoProfile', '-Command',
+            "Get-CimInstance Win32_Process | Where-Object { $c = $_.CommandLine; $_.ProcessId -ne $PID -and $c -and $c.Contains('aos-gateway.mjs') -and $c.Contains(' serve') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"]);
+        if (cmd === 'start') return start();
+        if (cmd === 'stop') return stop();
+        stop();
+        return start();
     }
     console.error(`aos-gateway ${cmd}: no service manager support on ${process.platform}; use "aos-gateway serve"`);
     return 2;
