@@ -378,15 +378,16 @@ async function execute(p) {
     for (const k of wh.kept) console.log(`  ${tilde(k)} nicht von AOS angelegt, bleibt`);
   }
 
-  // Fleet mod, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
-  for (const id of ['fleet', 'gateway', 'hub', 'rustauri']) {
+  // Claude Code mods, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
+  const always = ['fleet', 'sessions', 'alert', 'rustauri'];
+  for (const id of ['fleet', 'sessions', 'alert', 'gateway', 'hub', 'rustauri']) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
       const c = { home: HOME, dryRun: DRY };
-      if (!['fleet', 'rustauri'].includes(id) && !(await pkg.detect(c)).installed) continue;
+      if (!always.includes(id) && !(await pkg.detect(c)).installed) continue;
       const r = await pkg.uninstall(c);
       if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
-      else if (r && (r.changed || !['fleet', 'rustauri'].includes(id))) console.log(`  ${pkg.name} entfernt`);
+      else if (r && (r.changed || !always.includes(id))) console.log(`  ${pkg.name} entfernt`);
     } catch (e) { console.log(`  ${pkg.name}: ${e.message} — von Hand prüfen`); }
   }
 

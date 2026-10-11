@@ -7506,7 +7506,7 @@ function runUninstaller() {
 function v5Options(interactive) {
     const ui = interactive ? {
         select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
-        multi: async (message, options) => { const a = await multiselect({ message, options, required: false }); return isCancel(a) ? [] : a; },
+        multi: async (message, options, initialValues) => { const a = await multiselect({ message, options, initialValues, required: false }); return isCancel(a) ? [] : a; },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
@@ -7633,9 +7633,9 @@ Options:
                    (also --profile minimal) Or AOS_PROFILE. standard (default) = today's
                    install. minimal = skills, agents and harness rules only: no
                    context-injection hooks, no OpenWiki, Token Saver, Codenotch, optional
-                   modules, gateway or fleet. full = standard plus all optional modules with
-                   -y. A --profile flag is saved, so \`aos update\` keeps it; AOS_PROFILE is
-                   not saved. Uninstall resets the saved profile.
+                   modules, gateway, hub service or Claude Code mods. full = standard plus
+                   all optional modules with -y. A --profile flag is saved, so \`aos update\`
+                   keeps it; AOS_PROFILE is not saved. Uninstall resets the saved profile.
   --no-hooks       Skip only the context-injection hooks (memb-inject, rules-inject, trail
                    relay/autostart) in the Claude, Antigravity and Codex configs. The go-gate,
                    graph-gate and safety hooks are ALWAYS installed; no profile or flag
@@ -7647,11 +7647,12 @@ Options:
                    status, update or repair.
   --without=ID,ID  (also --without ID,ID) Exclude packages by id (memb, synapse, openwiki,
                    remote, ao, creator, hardware, installer, deja, token-saver, codenotch,
-                   gateway, fleet); saved to the v5 disabled list. An unknown id is an error;
-                   kernel cannot be excluded. A fresh install only honours the ids it would
-                   install (memb, synapse, openwiki, remote, ao, creator, hardware, installer,
-                   token-saver, codenotch): gateway and fleet are never installed by it and
-                   deja comes with memb, so for those the list only affects update and repair.
+                   gateway, hub, fleet, sessions, alert); saved to the v5 disabled list. An
+                   unknown id is an error; kernel cannot be excluded. A fresh install installs
+                   the MCP gateway and the hub service, and enables the Claude Code mods
+                   (fleet, sessions, alert) when Claude Code is found (offered interactively,
+                   enabled with -y); deja comes with memb, so for it the list only affects
+                   update and repair.
   AOS_DISABLED_MCPS=a,b
                    Shipped MCP server names that are not written to the harness MCP configs
                    the installer writes (not the memB sync, OpenWiki or the gateway); not
@@ -8061,6 +8062,11 @@ Options:
 
     // After the skill sync, because AOS CLI is useless without ~/.agents.
     if (aosCliRequested) installAosCli();
+
+    // After every harness MCP config write above: the gateway switches those entries, and a later write would undo it.
+    for (const name of await require('./lib/v5/menu').installDefaults(module.exports, { ...v5Options(!isAutoYes), dryRun: DRY_RUN }, installExcluded)) {
+        moduleFailures.push({ id: name, name, reason: 'see the step line above and ~/.aos/logs' });
+    }
 
     console.log('');
     verifyEcosystemInstallation();
