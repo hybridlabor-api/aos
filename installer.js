@@ -980,8 +980,9 @@ function retireObsoleteLegacyDir(targetLegacyDir) {
         return;
     }
     try {
-        fs.rmSync(targetLegacyDir, { recursive: true, force: true });
-        log.step(`Removed retired legacy skill copies at ${targetLegacyDir} (global_legacy has not shipped in a long time).`);
+        const backupRoot = fs.mkdtempSync(path.join(ensureBackupParent(), 'retired-legacy-'));
+        fs.renameSync(targetLegacyDir, path.join(backupRoot, 'legacy'));
+        log.step(`Moved retired legacy skill copies from ${targetLegacyDir} to ${backupRoot} (global_legacy has not shipped in a long time).`);
     } catch (e) {
         logDebug(e, 'retire legacy dir');
     }
@@ -1337,6 +1338,22 @@ function safeRmDirSync(dirPath, maxRetries = 5, retryDelay = 200) {
     }
 }
 
+// A symlink is only a pointer and is safe to replace; a real file or folder there may be the user's own and is moved aside.
+function clearLinkSlot(p) {
+    let st;
+    try { st = fs.lstatSync(p); } catch { return; }
+    if (st.isSymbolicLink()) { fs.unlinkSync(p); return; }
+    const backupRoot = fs.mkdtempSync(path.join(ensureBackupParent(), 'replaced-by-link-'));
+    fs.renameSync(p, path.join(backupRoot, path.basename(p)));
+    log.step(`Moved ${p} aside before linking it (backup: ${backupRoot}).`);
+}
+
+function ensureBackupParent() {
+    const dir = path.join(homeDir, '.agents', 'backups');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+}
+
 function copyDirRecursiveSync(source, target, excludeList = [], manifest = null, knownSourceHashes = null) {
     // Fall back to session-level state when no explicit manifest is passed.
     const mfst = manifest !== null ? manifest : _sessionManifest;
@@ -1384,7 +1401,7 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
                 try {
                     const linkTarget = fs.readlinkSync(curSource);
                     if (fs.existsSync(curSource)) {
-                        if (fs.existsSync(curTarget)) fs.unlinkSync(curTarget);
+                        clearLinkSlot(curTarget);
                         fs.symlinkSync(linkTarget, curTarget);
                     } else {
                         log.warn(`Skipping broken symlink ${curSource}`);
@@ -1668,6 +1685,7 @@ function ensureTauriPilotCli({ exec = execFileSync, has = hasExecutable } = {}) 
     log.step(`Installing the tauri-pilot CLI: ${TAURI_PILOT_INSTALL_CMD} (compiles from source, can take several minutes)`);
     try {
         exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000 });
+        uninstallRecords.recordCargoCrate(homeDir, 'rustauri', 'tauri-pilot-cli');
         return true;
     } catch (e) {
         log.warn(`tauri-pilot CLI install failed (${e.message}). Run it by hand: ${TAURI_PILOT_INSTALL_CMD}`);
@@ -1721,6 +1739,7 @@ function installVendorSkills(pkg, label) {
         try {
             fs.mkdirSync(dest, { recursive: true });
             for (const dir of leaves) syncSkillEntry(path.join(skillsBase, dir), dir, dest, []);
+            if (pkg === 'rustauri') uninstallRecords.recordSkillCopies(homeDir, pkg, leaves.map((d) => path.join(dest, d)));
             if (dest === agentsSkills) agentsOk = true;
             log.step(`Installed ${label} skills to ${dest}`);
         } catch (e) {
@@ -2476,6 +2495,7 @@ async function installDeja() {
     try {
         log.step('Installing deja-vu session memory...');
         execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore' });
+        uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
     } catch (e) {
         log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
     }
@@ -3599,6 +3619,7 @@ function verifyEcosystemInstallation() {
     for (const f of moduleFailures) {
         console.log(`  • ${colors.bold}${f.name}${colors.reset} ➔ ${colors.yellow}❌ NOT installed: ${f.reason.split('\n')[0]}${colors.reset}`);
     }
+    if (moduleFailures.length) process.exitCode = 1;
     const modules = [
         { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', paths: [path.join(moduleBasePath(), 'bdb-synapse')] },
         { name: '2. memB', pkg: '@hybridlabor-api/memb', paths: [path.join(moduleBasePath(), 'memB'), path.join(geminiDir, 'config', 'mcps', 'memb-mcp')] },
@@ -8050,7 +8071,11 @@ Options:
     verifyEcosystemInstallation();
     if (!installExcluded.has('codenotch')) await maybeInstallCodenotch();
 
-    outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+    if (moduleFailures.length) {
+        outro(`⚠️ Installation incomplete: ${moduleFailures.length} module(s) not installed (see above).`);
+    } else {
+        outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+    }
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
@@ -8063,6 +8088,9 @@ module.exports = {
     codexPluginInstall,
     newestDistTag,
     verifyEcosystemInstallation,
+    runModuleInstalls,
+    copyDirRecursiveSync,
+    retireObsoleteLegacyDir,
     installBinaryAtomically,
     installOSRemoteGateway,
     installOSAgentWorkspace,

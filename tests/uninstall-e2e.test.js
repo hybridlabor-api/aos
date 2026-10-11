@@ -131,3 +131,73 @@ test('Claude plugin is uninstalled only when AOS recorded installing it', () => 
         assert.deepStrictEqual(notReal, []);
     } finally { rm(home); }
 });
+
+test('a module folder is removed only when the install recorded it', () => {
+    const home = sandbox();
+    try {
+        const unrecorded = path.join(home, '.agents', 'memB', 'package.json');
+        const recorded = path.join(home, '.agents', 'bdb-synapse', 'package.json');
+        write(unrecorded, '{}');
+        write(recorded, '{}');
+        write(path.join(home, '.agents', '.bdb-manifest.json'), JSON.stringify({ installedModules: ['synapse'] }));
+        const stray = path.join(home, '.agents', 'x.txt');
+        write(stray, 'x');
+        write(path.join(home, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [stray]: { sha256: require('node:crypto').createHash('sha256').update('x').digest('hex') } }));
+
+        const real = spawnSync(process.execPath, [path.join(REPO, 'bin', 'aos-uninstall.mjs'), '--yes'], { cwd: home, env: env(home), encoding: 'utf8' });
+        assert.strictEqual(real.status, 0, real.stderr);
+        assert.ok(fs.existsSync(unrecorded), 'folder without an install record is kept');
+        assert.ok(!fs.existsSync(path.join(home, '.agents', 'bdb-synapse')), 'recorded folder is removed');
+    } finally { rm(home); }
+});
+
+test('the deja MCP entry is removed only when AOS recorded installing deja-vu', () => {
+    const home = sandbox();
+    try {
+        const claude = path.join(home, '.claude.json');
+        write(claude, JSON.stringify({ mcpServers: { deja: { command: 'deja', args: ['mcp'] } } }));
+        const stray = path.join(home, '.agents', 'x.txt');
+        const runUninstall = () => {
+            write(stray, 'x');
+            write(path.join(home, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [stray]: { sha256: require('node:crypto').createHash('sha256').update('x').digest('hex') } }));
+            const r = spawnSync(process.execPath, [path.join(REPO, 'bin', 'aos-uninstall.mjs'), '--yes'], { cwd: home, env: env(home), encoding: 'utf8' });
+            assert.strictEqual(r.status, 0, r.stderr);
+        };
+
+        runUninstall();
+        assert.ok(readJson(claude).mcpServers.deja, 'deja entry kept when AOS did not install deja-vu');
+
+        ur.recordNpmGlobal(home, '@vshulcz/deja-vu');
+        runUninstall();
+        assert.strictEqual(readJson(claude).mcpServers.deja, undefined, 'recorded deja entry removed');
+        assert.deepStrictEqual(ur.readRecords(home).npmGlobal, []);
+    } finally { rm(home); }
+});
+
+test('Rust + Tauri skill copies and the cargo-built CLI are removed only when AOS recorded them', () => {
+    const home = sandbox();
+    try {
+        const skill = path.join(home, '.agents', 'skills', 'tauri-pilot');
+        const own = path.join(home, '.agents', 'skills', 'my-own');
+        write(path.join(skill, 'SKILL.md'), 'shipped');
+        write(path.join(own, 'SKILL.md'), 'mine');
+        const cargo = [];
+        const runCargo = (crate) => { cargo.push(crate); return true; };
+
+        assert.deepStrictEqual(ur.reverseRustauri({ home, runCargo }).changed, false, 'nothing recorded, nothing removed');
+        assert.ok(fs.existsSync(skill));
+
+        ur.recordSkillCopies(home, 'rustauri', [skill]);
+        ur.recordCargoCrate(home, 'rustauri', 'tauri-pilot-cli');
+        assert.strictEqual(ur.reverseRustauri({ home, dryRun: true, runCargo }).changed, true);
+        assert.ok(fs.existsSync(skill) && cargo.length === 0, 'dry run deletes nothing');
+
+        write(path.join(skill, 'SKILL.md'), 'edited by the user');
+        const edited = ur.reverseRustauri({ home, runCargo });
+        assert.ok(edited.error.includes('edited'), edited.error);
+        assert.ok(fs.existsSync(skill), 'edited copy kept');
+        assert.deepStrictEqual(cargo, ['tauri-pilot-cli']);
+        assert.ok(fs.existsSync(own), 'user skill never recorded, kept');
+        assert.strictEqual(ur.readRecords(home).rustauri, undefined);
+    } finally { rm(home); }
+});

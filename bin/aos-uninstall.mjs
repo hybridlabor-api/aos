@@ -78,13 +78,20 @@ const WIN_STARTUP = [
   { label: 'openwiki-visualizer', vbsName: 'com.bdb.openwiki-visualize.vbs', batDir: '.openwiki', batName: 'run-openwiki-visualize.bat' },
 ];
 
-const MODULE_DIRS = ['memB', 'bdb-synapse', 'bdb-os-remote', 'bdb-dev-creator-extension',
-  'bdb-hardware-pcb',
-  'bdb-dev-tool-installer',
-  'bdb-agent-orchestrator',      // AO
-  'bdb-os-agent-workspace',      // AO's archived predecessor, if still lying around
-  'bdb-dev-optimized-agent-skills', // AOS's own core payload cache, when a "from source" or non-npx run left one behind
-].map((m) => h('.agents', m));
+// A module folder is removed only when the install recorded it: its id in installedModules
+// (.bdb-manifest.json) or files under it in the file manifest. Folders without an id are only
+// covered by the file manifest.
+const MODULE_DIRS = [
+  { dir: 'memB', id: 'memb' },
+  { dir: 'bdb-synapse', id: 'synapse' },
+  { dir: 'bdb-os-remote', id: 'remote' },
+  { dir: 'bdb-dev-creator-extension', id: 'creator' },
+  { dir: 'bdb-hardware-pcb', id: 'hardware' },
+  { dir: 'bdb-dev-tool-installer', id: 'installer' },
+  { dir: 'bdb-agent-orchestrator', id: 'ao' },
+  { dir: 'bdb-os-agent-workspace' },          // AO's archived predecessor, if still lying around
+  { dir: 'bdb-dev-optimized-agent-skills' },  // AOS core payload cache from a "from source" or non-npx run
+].map(({ dir, id }) => ({ path: h('.agents', dir), id }));
 
 // installer.js's detectInstallState() treats any of these as proof AOS is
 // still installed, independently of the manifest -- a leftover copy after
@@ -140,7 +147,12 @@ function plan(opts = {}) {
     }
   }
 
-  const modules = MODULE_DIRS.filter(existsSync);
+  let installedModules = [];
+  try { installedModules = JSON.parse(readFileSync(path.join(home, '.agents', '.bdb-manifest.json'), 'utf8')).installedModules || []; } catch { /* no record */ }
+  const manifestPaths = Object.keys(manifest || {});
+  const modules = MODULE_DIRS
+    .filter((m) => existsSync(m.path) && ((m.id && installedModules.includes(m.id)) || manifestPaths.some((p) => p.startsWith(m.path + path.sep))))
+    .map((m) => m.path);
   const legacy = LEGACY_MARKERS.filter(existsSync);
   const data = PURGE ? DATA_PATHS.filter((d) => existsSync(d.path)) : [];
 
@@ -286,11 +298,16 @@ async function execute(p) {
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
   if (modules.length) console.log(`  ${modules.length} Module entfernt`);
 
-  try {
-    execFileSync('npm', ['uninstall', '-g', '@vshulcz/deja-vu'], { stdio: 'ignore', shell: process.platform === 'win32' });
-    console.log('  deja-vu (npm) entfernt');
-  } catch {
-    console.log('  deja-vu nicht per npm entfernt — von Hand entfernen: npm uninstall -g @vshulcz/deja-vu');
+  const DEJA_PKG = '@vshulcz/deja-vu';
+  const dejaByAos = (ur.readRecords(HOME).npmGlobal || []).includes(DEJA_PKG);
+  if (dejaByAos) {
+    try {
+      execFileSync('npm', ['uninstall', '-g', DEJA_PKG], { stdio: 'ignore', shell: process.platform === 'win32' });
+      ur.forgetNpmGlobal(HOME, DEJA_PKG);
+      console.log('  deja-vu (npm) entfernt');
+    } catch {
+      console.log(`  deja-vu nicht per npm entfernt — von Hand entfernen: npm uninstall -g ${DEJA_PKG}`);
+    }
   }
 
   const dejaMcpJson = [
@@ -308,7 +325,7 @@ async function execute(p) {
   for (const f of dejaMcpJson.filter(existsSync)) {
     try {
       const cfg = JSON.parse(readFileSync(f, 'utf8'));
-      if (cfg.mcpServers && cfg.mcpServers.deja) {
+      if (dejaByAos && cfg.mcpServers && cfg.mcpServers.deja) {
         delete cfg.mcpServers.deja;
         writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
         console.log(`  deja-Eintrag aus ${tilde(f)} entfernt`);
@@ -353,15 +370,15 @@ async function execute(p) {
 
   agyPlugin.uninstall({ home: HOME, dryRun: DRY });
 
-  // Fleet mod, MCP gateway and the hub service have their own registrations; gateway and hub only when installed.
-  for (const id of ['fleet', 'gateway', 'hub']) {
+  // Fleet mod, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
+  for (const id of ['fleet', 'gateway', 'hub', 'rustauri']) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
       const c = { home: HOME, dryRun: DRY };
-      if (id !== 'fleet' && !(await pkg.detect(c)).installed) continue;
+      if (!['fleet', 'rustauri'].includes(id) && !(await pkg.detect(c)).installed) continue;
       const r = await pkg.uninstall(c);
       if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
-      else if (r && (r.changed || id !== 'fleet')) console.log(`  ${pkg.name} entfernt`);
+      else if (r && (r.changed || !['fleet', 'rustauri'].includes(id))) console.log(`  ${pkg.name} entfernt`);
     } catch (e) { console.log(`  ${pkg.name}: ${e.message} — von Hand prüfen`); }
   }
 
