@@ -1,5 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
+const { pathToFileURL } = require('url');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -140,5 +141,18 @@ describe('--allow-default allow behaviour unchanged', () => {
         const { parseArgs } = await import(`file://${BIN}`);
         assert.equal(parseArgs(['codex', '--name', 'w', '--prompt', 'x', '--allow-default', 'scoped']).allowDefault, 'scoped');
         assert.throws(() => parseArgs(['codex', '--name', 'w', '--prompt', 'x', '--allow-default', 'sometimes']), /deny, allow or scoped/);
+    });
+});
+
+describe('S5-4: network writes from a worker shell are guarded', () => {
+    test('curl/wget/http writes need a GO; a plain GET and a local command still pass', async () => {
+        const { networkWrite, decide } = await import(pathToFileURL(LIB).href);
+        for (const c of ['curl -X POST https://x.test', 'curl -d a=b https://x.test', 'curl -o ~/.bashrc https://x.test', 'wget -O f https://x.test', 'http POST x.test']) {
+            assert.equal(networkWrite(c), true, c);
+            assert.equal(decide(execTool(c), { cwd: os.tmpdir() }).guarded, true, c);
+        }
+        assert.equal(networkWrite('curl -sSL https://x.test'), false);
+        assert.equal(decide(execTool('ls -la', os.tmpdir()), { cwd: os.tmpdir() }).allow, true);
+        assert.equal(decide(writeTool('/etc/hosts'), { cwd: os.tmpdir() }).allow, false, 'a file write outside the worktree stays denied');
     });
 });
