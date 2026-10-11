@@ -61,6 +61,10 @@ const codexNoMcpEnv = (await loadFrom([
   join(here, "..", "mcps", "mcsc", "packages", "core", "src", "no-mcp.js"),
   join(homedir(), ".aos", "bin", "no-mcp.mjs"),
 ]))?.codexNoMcpEnv ?? ((env) => env);
+const agyChildEnv = (await loadFrom([
+  join(here, "..", "mcps", "mcsc", "packages", "core", "src", "no-mcp.js"),
+  join(homedir(), ".aos", "bin", "no-mcp.mjs"),
+]))?.agyChildEnv ?? ((env) => env);
 
 // MCP servers per adapter (default off, --with-mcp keeps them):
 //   claude   session/new sends mcpServers: [] (unchanged); whether claude-agent-acp then also skips the
@@ -68,7 +72,9 @@ const codexNoMcpEnv = (await loadFrom([
 //   codex    CODEX_CONFIG env sets mcp_servers.<name>.enabled=false per configured server (no-mcp.js). codex-acp
 //            takes no -c flags, so the env is the only lever; the codex-acp path itself is not yet verified live.
 //   opencode OPENCODE_CONFIG_CONTENT disables every server in the OpenCode config files (no-mcp.js).
-//   agy      unchanged: `agy --help` documents no per-run flag for it.
+//   agy      no per-run flag exists, so HOME points at a worker home (~/.aos/agy-worker-home) that mirrors the real
+//            home but generates empty mcp_config.json files (no-mcp.js agyNoMcpEnv). Logins and dotfiles still
+//            resolve; if the worker home cannot be built, agy runs with its MCP servers and one line says so.
 export const ADAPTERS = {
   claude: { cmd: ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.86.0"], consume: false },
   codex: { cmd: ["npx", "-y", "@agentclientprotocol/codex-acp@2.1.1"], consume: true },
@@ -103,7 +109,8 @@ async function runPrint(opts, log, emitTrail, sandbox) {
   emitTrail({ ...trail, hook_event_name: "SessionStart" });
   const out = opts.stdout || process.stdout;
   const [bin, ...binArgs] = sandbox ? sandbox.wrap(["agy", ...args], { cwd: opts.cwd }) : ["agy", ...args];
-  const child = spawn(bin, binArgs, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" } });
+  const env = agyChildEnv({ ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" }, { withMcp: opts.withMcp, warn: (m) => process.stderr.write(`aos-acp: ${m}\n`) });
+  const child = spawn(bin, binArgs, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"], env });
   let stdout = "", stderr = "", timedOut = false;
   child.stdout.on("data", (d) => { stdout += d; });
   child.stderr.on("data", (d) => { stderr += d; });

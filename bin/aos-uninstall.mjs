@@ -39,6 +39,8 @@ const profile = createRequire(import.meta.url)('../lib/v5/profile.js');
 const installer = createRequire(import.meta.url)('../installer.js');
 const { stripDestructiveBlock } = createRequire(import.meta.url)('../lib/destructive-rules.js');
 const { stripRoutingBlock } = createRequire(import.meta.url)('../lib/routing-rules.js');
+// agy worker home (~/.aos/agy-worker-home) is built and removed by no-mcp.js; absent in a layout without mcps/.
+const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 
 const HOME = os.homedir();
 const h = (...p) => path.join(HOME, ...p);
@@ -369,6 +371,12 @@ async function execute(p) {
   }
 
   agyPlugin.uninstall({ home: HOME, dryRun: DRY });
+
+  if (noMcp) {
+    const wh = noMcp.removeAgyWorkerHome({ home: HOME, dryRun: DRY });
+    if (wh.removed.length) console.log(`  agy-Arbeitsverzeichnis ohne MCP-Server: ${wh.removed.length} Einträge ${DRY ? 'würden entfernt' : 'entfernt'}`);
+    for (const k of wh.kept) console.log(`  ${tilde(k)} nicht von AOS angelegt, bleibt`);
+  }
 
   // Fleet mod, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
   for (const id of ['fleet', 'gateway', 'hub', 'rustauri']) {

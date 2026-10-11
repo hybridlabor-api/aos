@@ -18,6 +18,7 @@ const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
+const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
@@ -452,6 +453,15 @@ async function checkA2aMatrix() {
     'Install @a2a-js/sdk: npm install @a2a-js/sdk in the package root or re-run the AOS installer: npx @hybridlabor-api/aos@latest', true);
 }
 
+// agy workers run without MCP servers through a worker home (no-mcp.js). Warning only: without it agy still works.
+function checkAgyWorkerHome() {
+  if (!noMcp || !which('agy')) return;
+  const wh = noMcp.ensureAgyWorkerHome({ home: HOME });
+  add('agy', 'agy worker home (workers without MCP servers)', !!wh,
+    wh ? `${tilde(wh)} built` : 'cannot be built: agy workers run with their MCP servers',
+    IS_WIN ? 'Enable Windows Developer Mode (file symlinks), then re-run aos-doctor; the AOS installer rebuilds it.' : 'Check that ~/.aos is writable, then re-run aos-doctor.', true);
+}
+
 // mcsc delegates to agy; agy loading mcsc from its own config recurses into a fork bomb.
 function checkAgyMcsc() {
   for (const f of [h('.gemini', 'config', 'mcp_config.json'), h('.gemini', 'antigravity-cli', 'mcp_config.json')]) {
@@ -851,6 +861,7 @@ checkAgentModels();
 checkHooks();
 checkPlugins();
 checkAgyMcsc();
+checkAgyWorkerHome();
 checkMcpSecrets();
 checkInstallerBaks();
 await checkHub();
