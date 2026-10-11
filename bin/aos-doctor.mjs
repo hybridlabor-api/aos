@@ -456,9 +456,12 @@ async function checkA2aMatrix() {
 // agy workers run without MCP servers through a worker home (no-mcp.js). Warning only: without it agy still works.
 function checkAgyWorkerHome() {
   if (!noMcp || !which('agy')) return;
-  const wh = noMcp.ensureAgyWorkerHome({ home: HOME });
-  add('agy', 'agy worker home (workers without MCP servers)', !!wh,
-    wh ? `${tilde(wh)} built` : 'cannot be built: agy workers run with their MCP servers',
+  // Read-only: the worker home is built on the first agy worker start, never by the doctor.
+  const wh = h('.aos', 'agy-worker-home');
+  const cfg = path.join(wh, '.gemini', 'config', 'mcp_config.json');
+  const ok = !existsSync(wh) || Object.keys(readJson(cfg)?.mcpServers ?? { x: 1 }).length === 0;
+  add('agy', 'agy worker home (workers without MCP servers)', ok,
+    !existsSync(wh) ? 'not built yet: the first agy worker start builds it' : ok ? `${tilde(wh)} present, empty MCP config` : `${tilde(cfg)} is missing or lists MCP servers: agy workers would run with them`,
     IS_WIN ? 'Enable Windows Developer Mode (file symlinks), then re-run aos-doctor; the AOS installer rebuilds it.' : 'Check that ~/.aos is writable, then re-run aos-doctor.', true);
 }
 
