@@ -38,6 +38,21 @@
         },
         {
           "type": "json",
+          "path": "plugins/bdb-aos-fleet/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/bdb-aos-sessions/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/bdb-aos-alert/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": ".claude-plugin/marketplace.json",
           "jsonpath": "$.plugins[0].version"
         }
