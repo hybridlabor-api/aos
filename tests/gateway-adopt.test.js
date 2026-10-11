@@ -40,12 +40,12 @@ function fixture(extra = {}) {
 test('stdio entry adopted, removed from harness file, aos added, adopted.json correct', () => {
     const fx = fixture();
     const rep = adopt.applyAdopt({ home: fx.home, token: TOKEN, files: fx.files, shipped, now: 1000 });
-    assert.deepEqual(rep.adopted, ['mine', 'mine2', 'ocmine']);
+    assert.deepEqual(rep.adopted, ['mine', 'keepme', 'mine2', 'ocmine']);
     const c = rj(fx.f.claude);
     assert.equal(c.mcpServers.mine, undefined);
     assert.deepEqual(c.mcpServers.aos, { type: 'http', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } });
     assert.equal(c.numStartups, 2);
-    assert.deepEqual(c.projects['/x'].mcpServers.keepme, { command: 'node', args: ['p.js'] }, 'project-level servers untouched');
+    assert.equal(c.projects['/x'].mcpServers.keepme, undefined, 'project-level server adopted');
     const cur = rj(fx.f.cursor);
     assert.deepEqual(cur.mcpServers.aos, { url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } });
     const oc = rj(fx.f.oc);
@@ -317,4 +317,31 @@ test('AD-4: positional arguments that look like tokens are skipped', () => {
     assert.ok(s.skipped.some((k) => k.name === 'ghtok' && /inline-secret/.test(k.reason)));
     assert.ok(s.skipped.some((k) => k.name === 'longtok' && /inline-secret/.test(k.reason)));
     assert.ok(s.adoptable.some((a) => a.name === 'pathy'), 'a plain path argument is still adoptable');
+});
+
+test('Codex config.toml: a user table is adopted with its args, aos table kept, disable restores the original text', () => {
+    const home = tmp();
+    const file = path.join(home, '.codex', 'config.toml');
+    const original = '[model]\nname = "x"\n\n[mcp_servers.mine] # my server\ncommand = "node"\nargs = [\n    "m.js",\n    "--x"\n]\n';
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, original);
+    const files = [{ file, kind: 'toml' }];
+    const rep = adopt.applyAdopt({ home, token: TOKEN, files, shipped, now: 1000 });
+    assert.deepEqual(rep.adopted, ['mine']);
+    const text = fs.readFileSync(file, 'utf8');
+    assert.ok(!text.includes('[mcp_servers.mine]'));
+    assert.ok(text.includes(`[mcp_servers.aos]\nurl = "${harness.GATEWAY_URL}"`));
+    assert.deepEqual(rj(adopt.adoptedPath(home)).servers.mine.args, ['m.js', '--x']);
+    harness.disable({ home, files, now: 3000 });
+    assert.equal(fs.readFileSync(file, 'utf8'), original);
+});
+
+test('Claude per-project mcpServers are adopted from their project and restored by disable', () => {
+    const fx = fixture();
+    const files = [{ file: fx.f.claude, kind: 'json' }];
+    const rep = adopt.applyAdopt({ home: fx.home, token: TOKEN, files, shipped, now: 1000 });
+    assert.deepEqual(rep.adopted, ['mine', 'keepme']);
+    assert.equal(rj(fx.f.claude).projects['/x'].mcpServers.keepme, undefined);
+    harness.disable({ home: fx.home, files, now: 3000 });
+    assert.deepEqual(rj(fx.f.claude).projects['/x'].mcpServers.keepme, { command: 'node', args: ['p.js'] });
 });

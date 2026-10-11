@@ -134,3 +134,16 @@ test('verify fails while AOS-owned duplicates sit next to a running gateway, pas
     const good = await pkg.verify(ctx, { tries: 1 });
     assert.equal(good.ok, true, good.detail);
 });
+
+test('doctor reports an adopted server that is still configured directly', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-dupes-adopted-'));
+    const file = path.join(home, '.claude.json');
+    const mine = { command: 'node', args: ['m.js'], env: {} };
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { aos: { type: 'http', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } }, mine: { command: 'node', args: ['m.js'] } } }));
+    fs.mkdirSync(path.join(home, '.agents', 'gateway'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.agents', 'gateway', 'adopted.json'), JSON.stringify({ version: 1, servers: { mine } }));
+    const row = doctor.gatewayChecks({ home, files: [{ file, kind: 'claude' }], shipped, platform: 'linux', nodeMajor: 24 })
+        .find((c) => c.name === `gateway duplicates in ${file}`);
+    assert.equal(row.ok, false);
+    assert.match(row.detail, /mine/);
+});
