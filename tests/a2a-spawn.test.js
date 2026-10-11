@@ -315,3 +315,12 @@ test("worktree creation round-trip via createJobWorktree", async () => {
 test("depth limit environment is honoured by childEnv", () => {
   assert.equal(childEnv(0).AOS_DELEGATE_DEPTH, "1");
 });
+
+test("S5-5: codex runs read-only unless write, with the prompt after --", async () => {
+  const { defaultBackends } = await import(new URL("../lib/a2a-spawn.mjs", import.meta.url).href);
+  const b = defaultBackends("/repo");
+  assert.deepEqual(b.codex({ prompt: "--help", write: false }).args, ["exec", "--sandbox", "read-only", "--", "--help"]);
+  const w = b.codex({ prompt: "fix it", write: true }).args;
+  assert.deepEqual(w, ["exec", "--sandbox", "workspace-write", "--", "fix it"]);
+  assert.ok(!w.includes("danger-full-access"));
+});
