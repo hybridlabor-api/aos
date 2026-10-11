@@ -7,6 +7,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { spawnSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { stopTrailHubs, portRange } from './_trail-hub-stop.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ensureBin = path.join(root, 'skills/global_config/agenttrail/bin/agenttrail.mjs');
@@ -125,6 +126,7 @@ before(async () => {
 after(async () => {
   for (const s of stubs) await s.stop().catch(() => {})
   for (const h of hubs) h.kill('SIGKILL')
+  stopTrailHubs([hubPort, ...portRange(lo, hi)])
 })
 
 describe('--ensure goes hub-first', () => {

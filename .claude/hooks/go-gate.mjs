@@ -1083,7 +1083,9 @@ export function isContainerTestRun(command) {
 // guarded without a scope (plain GO). The text after the image is read by scopesOf like any other command text.
 function dockerScopes(tok, seg, tainted = segTaint, pwd = "") {
   // A bare "$PWD" as a -v source is the shell's cwd (tracked through cd; "" = unknown), which mountSource then judges.
-  if (pwd && /^\/[A-Za-z0-9._ /-]+$/.test(pwd)) tok = tok.map((t, k) => (k > 1 && /^(?:-v|--volume)$/.test(unq(tok[k - 1])) ? t.replace(/^(?:"\$PWD"|"\$\{PWD\}"|\$PWD|\$\{PWD\})(?=:)/, pwd) : t));
+  // Windows: the hook gets a native cwd (C:\dir). Normalise it like a mount source and allow the drive letter.
+  const pwdW = winSlash(pwd);
+  if (pwdW && (process.platform === "win32" ? /^(?:[A-Za-z]:)?\/[A-Za-z0-9._ /-]+$/ : /^\/[A-Za-z0-9._ /-]+$/).test(pwdW)) tok = tok.map((t, k) => (k > 1 && /^(?:-v|--volume)$/.test(unq(tok[k - 1])) ? t.replace(/^(?:"\$PWD"|"\$\{PWD\}"|\$PWD|\$\{PWD\})(?=:)/, () => pwdW) : t));
   // Only the real `docker` word: a path-qualified or planted executable of that name is an ordinary command (GO only), and a
   // PATH or DOCKER_* assignment anywhere earlier in the command (taint, see ENV_CHANGE) could point the word at another program.
   if (unq(tok[0] ?? "") !== "docker") return base(tok[0] ?? "") === "docker" ? null : [];

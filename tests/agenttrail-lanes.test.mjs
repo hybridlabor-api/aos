@@ -8,6 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { stopTrailHubs, portRange } from './_trail-hub-stop.mjs';
 
 const root = process.env.TRAIL_TEST_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const binary = path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'agenttrail.mjs');
@@ -144,6 +145,7 @@ function hubPids() {
 async function stopHubs() {
   const keep = new Set([process.pid, ...children.map((c) => c.pid)]);
   for (const pid of hubPids()) { if (!keep.has(pid)) { try { process.kill(pid); } catch {} } }
+  stopTrailHubs(portRange(LO, HI));
   await sleep(300);
 }
 

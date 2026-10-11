@@ -7,6 +7,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { stopTrailHubs, portRange } from './_trail-hub-stop.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const binary = path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'agenttrail.mjs');
@@ -109,10 +110,7 @@ before(async () => {
 });
 after(async () => {
   for (const s of servers) await new Promise((r) => s.close(r));
-  for (let p = LO; p <= HI; p += 1) {
-    const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
-    for (const pid of (r.stdout || '').split('\n').filter(Boolean)) { try { process.kill(Number(pid)); } catch {} }
-  }
+  stopTrailHubs(portRange(LO, HI));
   await sleep(100);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
