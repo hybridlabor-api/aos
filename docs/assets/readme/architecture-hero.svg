@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 980" width="1600" height="980" role="img" aria-labelledby="t d">
+  <title id="t">AOS architecture: one install, nine harnesses, one kernel of skills, subagents, hooks and MCP servers</title>
+  <desc id="d">Nine coding-agent harnesses on top feed into the AOS kernel (264 skills, 21 subagents, gate hooks, 21 MCP servers), which drives three pipelines, session-to-session messaging and local tools. The GO gate sits in front of every release command.</desc>
+  <defs>
+    <style>
+      .bg { fill: #F7F4EC; }
+      .sans { font-family: Inter, "Helvetica Neue", Arial, sans-serif; }
+      .mono { font-family: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+      .ink { fill: #15171A; }
+      .muted { fill: #5B6168; }
+      .green { fill: #1A7F3C; }
+      .chip { fill: #FFFFFF; stroke: #15171A; stroke-width: 2; }
+      .chipText { font-size: 18px; font-weight: 600; }
+      .panel { fill: #FFFFFF; stroke: #15171A; stroke-width: 2.5; }
+      .panelSoft { fill: #FFFFFF; stroke: #B9B5AA; stroke-width: 2; }
+      .label { font-size: 14px; font-weight: 700; letter-spacing: 2px; }
+      .h2 { font-size: 24px; font-weight: 800; }
+      .big { font-size: 46px; font-weight: 800; }
+      .li { font-size: 16px; }
+      .arrow { stroke: #15171A; stroke-width: 2.5; fill: none; marker-end: url(#head); }
+      .arrowDash { stroke: #1A7F3C; stroke-width: 2.5; fill: none; stroke-dasharray: 8 7; marker-end: url(#headGreen); }
+      .gate { fill: #E6F4EA; stroke: #1A7F3C; stroke-width: 3; }
+    </style>
+    <marker id="head" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#15171A"/>
+    </marker>
+    <marker id="headGreen" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#1A7F3C"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1600" height="980" rx="24"/>
+
+  <!-- Title -->
+  <text class="label green sans" x="60" y="56">ONE INSTALL · NINE HARNESSES · ONE KERNEL</text>
+  <text class="big ink sans" x="60" y="108">How AOS fits together</text>
+  <text class="mono muted" x="1540" y="56" text-anchor="end" font-size="18">npx -y @hybridlabor-api/aos@latest</text>
+
+  <!-- Harness row -->
+  <text class="label muted sans" x="60" y="160">YOUR HARNESSES (detected, written to their native paths)</text>
+  <g class="sans chipText ink">
+    <rect class="chip" x="60"  y="176" width="170" height="44" rx="22"/><text x="145" y="205" text-anchor="middle">Claude Code</text>
+    <rect class="chip" x="242" y="176" width="150" height="44" rx="22"/><text x="317" y="205" text-anchor="middle">Antigravity</text>
+    <rect class="chip" x="404" y="176" width="140" height="44" rx="22"/><text x="474" y="205" text-anchor="middle">Codex CLI</text>
+    <rect class="chip" x="556" y="176" width="140" height="44" rx="22"/><text x="626" y="205" text-anchor="middle">OpenCode</text>
+    <rect class="chip" x="708" y="176" width="110" height="44" rx="22"/><text x="763" y="205" text-anchor="middle">Cursor</text>
+    <rect class="chip" x="830" y="176" width="126" height="44" rx="22"/><text x="893" y="205" text-anchor="middle">Windsurf</text>
+    <rect class="chip" x="968" y="176" width="172" height="44" rx="22"/><text x="1054" y="205" text-anchor="middle">Roo Code / Cline</text>
+    <rect class="chip" x="1152" y="176" width="100" height="44" rx="22"/><text x="1202" y="205" text-anchor="middle">Aider</text>
+    <rect class="chip" x="1264" y="176" width="120" height="44" rx="22"/><text x="1324" y="205" text-anchor="middle">AOS CLI</text>
+  </g>
+
+  <!-- Arrow harnesses -> kernel -->
+  <path class="arrow" d="M800,232 L800,268"/>
+  <text class="sans muted" x="820" y="258" font-size="15">skills, agents, hooks and MCP config merged per harness; existing entries kept</text>
+
+  <!-- Kernel -->
+  <rect class="panel" x="60" y="280" width="1480" height="250" rx="18"/>
+  <text class="label green sans" x="88" y="312">AOS KERNEL</text>
+  <text class="sans muted" x="1512" y="312" text-anchor="end" font-size="15">one source tree, compiled into each harness's own format</text>
+
+  <g class="sans">
+    <!-- Skills -->
+    <rect class="panelSoft" x="88" y="330" width="340" height="176" rx="12"/>
+    <text class="h2 ink" x="108" y="368">264 skills</text>
+    <text class="li muted" x="108" y="396">seven categories, each a &lt;name&gt;/SKILL.md</text>
+    <text class="li ink mono" x="108" y="424" font-size="12">bdb-core · design-ui-ux</text>
+    <text class="li ink mono" x="108" y="446" font-size="12">engineering-method · library</text>
+    <text class="li ink mono" x="108" y="468" font-size="12">media-eventtech · hardware</text>
+    <text class="li muted" x="108" y="494">+ 34 pb-* playbooks</text>
+
+    <!-- Agents -->
+    <rect class="panelSoft" x="448" y="330" width="340" height="176" rx="12"/>
+    <text class="h2 ink" x="468" y="368">21 subagents</text>
+    <text class="li muted" x="468" y="396">native agent files per harness</text>
+    <text class="li ink mono" x="468" y="424" font-size="12">architect · techlead · reviewer</text>
+    <text class="li ink mono" x="468" y="446" font-size="12">godmode-ui-ux · -engineering</text>
+    <text class="li ink mono" x="468" y="468" font-size="12">godmode-media-eventtech</text>
+    <text class="li muted" x="468" y="494">+ shipping, security, DB, silent-failure, OSS</text>
+
+    <!-- Hooks -->
+    <rect class="panelSoft" x="808" y="330" width="340" height="176" rx="12"/>
+    <text class="h2 ink" x="828" y="368">Gate hooks</text>
+    <text class="li muted" x="828" y="396">always installed, no profile removes them</text>
+    <text class="li ink mono" x="828" y="424" font-size="12">go-gate · go-token · go-grant</text>
+    <text class="li ink mono" x="828" y="446" font-size="12">graph-gate · env-file-protection</text>
+    <text class="li ink mono" x="828" y="468" font-size="12">conventional-commits</text>
+    <text class="li muted" x="828" y="494">a real hook in four harnesses</text>
+
+    <!-- MCPs -->
+    <rect class="panelSoft" x="1168" y="330" width="344" height="176" rx="12"/>
+    <text class="h2 ink" x="1188" y="368">21 MCP servers</text>
+    <text class="li muted" x="1188" y="396">creative software, OS control, memory</text>
+    <text class="li ink mono" x="1188" y="424" font-size="12">blender · resolume · grandma3</text>
+    <text class="li ink mono" x="1188" y="446" font-size="12">unreal · davinci · touchdesigner</text>
+    <text class="li ink mono" x="1188" y="468" font-size="12">after effects · memb · deja · mcsc</text>
+    <text class="li muted" x="1188" y="494">opt-in gateway: one local endpoint</text>
+  </g>
+
+  <!-- Arrows kernel -> outputs -->
+  <path class="arrow" d="M300,542 L300,586"/>
+  <path class="arrow" d="M800,542 L800,586"/>
+  <path class="arrow" d="M1300,542 L1300,586"/>
+
+  <!-- Outputs -->
+  <g class="sans">
+    <rect class="panel" x="60" y="598" width="470" height="210" rx="18"/>
+    <text class="label green" x="88" y="630">PIPELINES</text>
+    <text class="h2 ink" x="88" y="664">Build with a roster</text>
+    <text class="li ink mono" x="88" y="698" font-size="14">/startcycle          linear chain</text>
+    <text class="li ink mono" x="88" y="722" font-size="14">/startcycle-graph    durable state + repair loop</text>
+    <text class="li ink mono" x="88" y="746" font-size="14">/startcycle-graph-user  throwaway fan-out</text>
+    <text class="li muted" x="88" y="782">Nodes never invoke each other. A dispatcher routes.</text>
+
+    <rect class="panel" x="565" y="598" width="470" height="210" rx="18"/>
+    <text class="label green" x="593" y="630">SESSIONS</text>
+    <text class="h2 ink" x="593" y="664">Sessions that talk</text>
+    <text class="li ink mono" x="593" y="698" font-size="14">aos-a2a   live peers on 127.0.0.1</text>
+    <text class="li ink mono" x="593" y="722" font-size="14">aos-acp   workers that may need a GO</text>
+    <text class="li ink mono" x="593" y="746" font-size="14">mcsc      one-shot delegation</text>
+    <text class="li muted" x="593" y="782">An inbound message is never a GO.</text>
+
+    <rect class="panel" x="1070" y="598" width="470" height="210" rx="18"/>
+    <text class="label green" x="1098" y="630">TOOLS</text>
+    <text class="h2 ink" x="1098" y="664">See what agents do</text>
+    <text class="li ink mono" x="1098" y="698" font-size="14">Plan Canvas   annotate, approve</text>
+    <text class="li ink mono" x="1098" y="722" font-size="14">agenttrail    live build map</text>
+    <text class="li ink mono" x="1098" y="746" font-size="14">fleet band    gate, token-weather</text>
+    <text class="li muted" x="1098" y="782">+ Store, Launchpad, archify, aos doctor</text>
+  </g>
+
+  <!-- GO gate bar -->
+  <rect class="gate" x="60" y="846" width="1480" height="112" rx="16"/>
+  <text class="label green sans" x="88" y="876">GO GATE · PreToolUse HOOK</text>
+  <text class="sans ink" x="88" y="908" font-size="19">
+    <tspan class="mono" font-weight="700">git push</tspan> · <tspan class="mono" font-weight="700">npm publish</tspan> · <tspan class="mono" font-weight="700">npm version</tspan> · <tspan class="mono" font-weight="700">rm -rf</tspan>
+    <tspan class="muted">  are blocked unless your immediately preceding message is the literal word </tspan><tspan font-weight="800" class="green">GO</tspan>
+  </text>
+  <text class="sans muted" x="88" y="938" font-size="15">Read, test and build commands pass without a GO. A subagent never inherits its orchestrator's GO. An A2A message is never a GO.</text>
+  <path class="arrowDash" d="M300,812 L300,842"/>
+  <path class="arrowDash" d="M800,812 L800,842"/>
+  <path class="arrowDash" d="M1300,812 L1300,842"/>
+</svg>
