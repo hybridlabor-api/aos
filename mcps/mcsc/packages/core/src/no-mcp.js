@@ -4,6 +4,7 @@
 // {"mcp":{"<name>":{"enabled":false}}} per configured server (verified on OpenCode 1.18.30; AGENTS.md
 // "Delegating to an external CLI" item 6). `opencode mcp list` is not used: it would connect the servers.
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -49,4 +50,46 @@ export function opencodeNoMcpEnv(env, cwd) {
   const mcp = isObj(base.mcp) ? { ...base.mcp } : {};
   for (const n of names) mcp[n] = { enabled: false, ...(isObj(mcp[n]) ? mcp[n] : {}) };
   return { ...env, OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...base, mcp }) };
+}
+
+// Codex: `-c mcp_servers={}` merges instead of clearing the table (codex-cli 0.162.1), so each configured
+// server is disabled by name. Names come from `codex mcp list --json`; ~/.codex/config.toml is the fallback.
+const BARE_KEY = /^[A-Za-z0-9_-]+$/;
+
+export function codexServerNames({ list = listCodexMcp, readToml = readCodexToml } = {}) {
+  return list() ?? readToml();
+}
+
+function listCodexMcp() {
+  const r = spawnSync('codex', ['mcp', 'list', '--json'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+  if (r.error || r.status !== 0) return null;
+  try {
+    const j = JSON.parse(r.stdout);
+    return Array.isArray(j) ? j.map((o) => o?.name).filter((n) => typeof n === 'string' && n.length > 0) : null;
+  } catch { return null; }
+}
+
+function readCodexToml(file = join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'config.toml')) {
+  try {
+    return [...readFileSync(file, 'utf8').matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|([A-Za-z0-9_-]+))\]\s*$/gm)]
+      .map((m) => m[1] ?? m[2]);
+  } catch { return []; }
+}
+
+// `-c` keys are unquoted dotted paths, so a name outside BARE_KEY cannot be addressed here (none today).
+export function codexNoMcpArgs(names) {
+  return names.filter((n) => BARE_KEY.test(n)).flatMap((n) => ['-c', `mcp_servers.${n}.enabled=false`]);
+}
+
+// For the ACP adapter: codex-acp takes no -c flags and reads a JSON config object from CODEX_CONFIG.
+export function codexNoMcpEnv(env, names = codexServerNames()) {
+  if (names.length === 0) return env;
+  let base = {};
+  if (env.CODEX_CONFIG) {
+    try { base = JSON.parse(env.CODEX_CONFIG); } catch { return env; }
+    if (!isObj(base)) return env;
+  }
+  const mcp_servers = isObj(base.mcp_servers) ? { ...base.mcp_servers } : {};
+  for (const n of names) mcp_servers[n] = { enabled: false, ...(isObj(mcp_servers[n]) ? mcp_servers[n] : {}) };
+  return { ...env, CODEX_CONFIG: JSON.stringify({ ...base, mcp_servers }) };
 }

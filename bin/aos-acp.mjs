@@ -57,11 +57,16 @@ const opencodeNoMcpEnv = (await loadFrom([
   join(here, "..", "mcps", "mcsc", "packages", "core", "src", "no-mcp.js"),
   join(homedir(), ".aos", "bin", "no-mcp.mjs"),
 ]))?.opencodeNoMcpEnv ?? ((env) => env);
+const codexNoMcpEnv = (await loadFrom([
+  join(here, "..", "mcps", "mcsc", "packages", "core", "src", "no-mcp.js"),
+  join(homedir(), ".aos", "bin", "no-mcp.mjs"),
+]))?.codexNoMcpEnv ?? ((env) => env);
 
 // MCP servers per adapter (default off, --with-mcp keeps them):
 //   claude   session/new sends mcpServers: [] (unchanged); whether claude-agent-acp then also skips the
 //            user's own configured servers is unverified.
-//   codex    unchanged: codex-cli 0.162.1 has no verified way to start without MCP servers (see mcsc codex.js).
+//   codex    CODEX_CONFIG env sets mcp_servers.<name>.enabled=false per configured server (no-mcp.js). codex-acp
+//            takes no -c flags, so the env is the only lever; the codex-acp path itself is not yet verified live.
 //   opencode OPENCODE_CONFIG_CONTENT disables every server in the OpenCode config files (no-mcp.js).
 //   agy      unchanged: `agy --help` documents no per-run flag for it.
 export const ADAPTERS = {
@@ -301,7 +306,7 @@ export async function run(opts) {
   const env = { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" };
   const client = new AcpClient(cmd, {
     cwd: opts.cwd,
-    env: opts.adapter === "opencode" && !opts.withMcp ? opencodeNoMcpEnv(env, opts.cwd) : env,
+    env: opts.withMcp ? env : opts.adapter === "opencode" ? opencodeNoMcpEnv(env, opts.cwd) : opts.adapter === "codex" ? codexNoMcpEnv(env) : env,
     log,
     onNotify: (method, p) => {
       if (method !== "session/update") return log("notify", { method, params: p });
