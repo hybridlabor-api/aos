@@ -170,7 +170,7 @@ test('the deja MCP entry is removed only when AOS recorded installing deja-vu', 
         ur.recordNpmGlobal(home, '@vshulcz/deja-vu');
         runUninstall();
         assert.strictEqual(readJson(claude).mcpServers.deja, undefined, 'recorded deja entry removed');
-        assert.deepStrictEqual(ur.readRecords(home).npmGlobal, []);
+        assert.strictEqual(fs.existsSync(ur.recordsPath(home)), false, 'a finished uninstall retires its records');
     } finally { rm(home); }
 });
 
