@@ -3602,6 +3602,7 @@ function verifyEcosystemInstallation() {
     for (const f of moduleFailures) {
         console.log(`  • ${colors.bold}${f.name}${colors.reset} ➔ ${colors.yellow}❌ NOT installed: ${f.reason.split('\n')[0]}${colors.reset}`);
     }
+    if (moduleFailures.length) process.exitCode = 1;
     const modules = [
         { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', paths: [path.join(moduleBasePath(), 'bdb-synapse')] },
         { name: '2. memB', pkg: '@hybridlabor-api/memb', paths: [path.join(moduleBasePath(), 'memB'), path.join(geminiDir, 'config', 'mcps', 'memb-mcp')] },
@@ -8053,7 +8054,11 @@ Options:
     verifyEcosystemInstallation();
     if (!installExcluded.has('codenotch')) await maybeInstallCodenotch();
 
-    outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+    if (moduleFailures.length) {
+        outro(`⚠️ Installation incomplete: ${moduleFailures.length} module(s) not installed (see above).`);
+    } else {
+        outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+    }
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
@@ -8066,6 +8071,7 @@ module.exports = {
     codexPluginInstall,
     newestDistTag,
     verifyEcosystemInstallation,
+    runModuleInstalls,
     retireObsoleteLegacyDir,
     installBinaryAtomically,
     installOSRemoteGateway,

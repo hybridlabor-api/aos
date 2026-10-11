@@ -17,6 +17,7 @@ const {
     readGoBuildInfo, parseGoBuildInfo, decideAoInstall, checkAoWorkspace, installAoBinary,
     describeAoVersion, buildAoAnnouncementBanner, readAoDaemonIdentity, selectAoCandidate, agentsNotShippedAsFiles, parseAgentsMd,
     resolveFileConflict, buildKnownSourceHashes, computeFileHash, retireObsoleteLegacyDir,
+    runModuleInstalls, verifyEcosystemInstallation,
 } = require('../installer.js');
 
 function tmpDir() {
@@ -377,4 +378,15 @@ test('retiring the obsolete legacy skill dir moves it aside instead of deleting 
     assert.ok(backups.length >= 1);
     const kept = backups.map((b) => path.join(tmpHome, '.agents', 'backups', b, 'legacy', 'my-own-skill.md')).find(fs.existsSync);
     assert.strictEqual(fs.readFileSync(kept, 'utf8'), 'keep me');
+});
+
+test('a failed module install makes the verify step set a failing exit code', async () => {
+    const saved = process.exitCode;
+    try {
+        await runModuleInstalls([{ id: 'broken', name: 'Broken', fn: () => false }], ['broken'], []);
+        verifyEcosystemInstallation();
+        assert.strictEqual(process.exitCode, 1);
+    } finally {
+        process.exitCode = saved;
+    }
 });
