@@ -167,6 +167,10 @@ try {
 let contextHooksOn = true;
 let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
+// Unified memory (docs/unified-memory.md): off when memb is excluded; then no memb_mcp, deja MCP or memb-inject is wired.
+let memoryOn = true;
+const droppedHook = (cmd) => typeof cmd === 'string'
+    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && cmd.includes('memb-inject.mjs')));
 
 if (DRY_RUN) {
     const guardedFns = ['writeFileSync', 'mkdirSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'symlinkSync', 'appendFileSync', 'chmodSync', 'rmdirSync', 'rmSync'];
@@ -3274,6 +3278,28 @@ async function applyCodingModeStep({ flag } = {}) {
     }
 }
 
+// With unified memory, a coding tool on this machine (binary or app, never a config AOS wrote) answers
+// "Do you use AOS for coding?" with yes. --coding/--no-coding and an answer already stored win.
+function memoryCodingOptions() {
+    if (!memoryOn || codebaseMemory.parseCodingFlag(process.argv) !== undefined) return {};
+    if (typeof v5Profile.readSettings(homeDir).codingMode === 'boolean') return {};
+    const tools = detectPlatforms().filter((d) => !d.chosen && d.key !== 'claudedesktop');
+    return tools.length ? { flag: true } : {};
+}
+
+// The interactive "skip unified memory" answer is saved like --without=memory, so update, repair,
+// --hooks-only and the gateway keep memb_mcp, deja and memb-inject unwired too.
+function declineUnifiedMemory() {
+    for (const id of v5Profile.BUNDLES.memory) installExcluded.add(id);
+    if (DRY_RUN) return;
+    try {
+        const st = v5Profile.readSettings(homeDir);
+        v5Profile.writeSettings(homeDir, { ...st, disabled: [...new Set([...st.disabled, ...v5Profile.BUNDLES.memory])] });
+    } catch (e) {
+        log.warn(`Could not save the unified memory choice: ${e.message}`);
+    }
+}
+
 async function installOSRemoteGateway() {
     const remoteDir = path.join(moduleBasePath(), 'bdb-os-remote');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-os-remote', remoteDir, 'BDB OS Remote Gateway')) {
@@ -4301,13 +4327,15 @@ async function installMcpsForTarget(paths, ctx) {
         }
         // AOS_DISABLED_MCPS=a,b: shipped server names that no harness config gets (universal sync reuses this result).
         const dropped = v5Profile.filterMcpServers(parsedMcpConfig.mcpServers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS));
+        if (!memoryOn) dropped.servers = v5Profile.filterMcpServers(dropped.servers, v5Profile.MEMORY_MCPS).servers;
         parsedMcpConfig.mcpServers = dropped.servers;
         if (dropped.unknown.length && !warnedDisabledMcps) {
             warnedDisabledMcps = true;
             log.warn(`AOS_DISABLED_MCPS: unknown MCP name(s) ignored: ${dropped.unknown.join(', ')}. Shipped: ${Object.keys(mcpPicks().servers).join(', ')}`);
         }
         const finalMcpServers = {};
-        const availableFolders = fs.readdirSync(mcpSrcDir);
+        // memb-mcp comes from npm, not mcps/: listed here so its entry goes when it was not selected.
+        const availableFolders = [...fs.readdirSync(mcpSrcDir), CORE_MCP];
 
         // A node MCP's build can fail (see above) or simply never run for a
         // dist-based server that was skipped -- either way an entry pointing
@@ -4898,13 +4926,11 @@ function injectHarnessRules() {
         if (sources.ok) {
             const { globalRules, startcycleContent, agentsMdContent } = sources.value;
 
-            // Run from $HOME, these project files ARE the global files that the
-            // manifest-tracked harness copy below writes; a second writer would
-            // make every update see them as user-edited.
-            // F8: an install or update started inside a repo must not write into that repo (CLAUDE.md,
-            // .cursor/rules, .github, .codex-plugin, .roomodes); a repo gets files only via --project-harness.
+            // F8: an install or update started inside a repo must not write into that repo (.github,
+            // .codex-plugin, .roomodes); a repo gets files only via --project-harness.
+            // ~/CLAUDE.md and ~/AGENTS.md are home files and are synced from any working directory.
             const cwdIsHome = path.resolve(currentDir) === path.resolve(homeDir);
-            if (!cwdIsHome) log.step(`Not run from the home directory: no rule files written into ${currentDir}`);
+            if (!cwdIsHome) log.step(`Not run from the home directory: no project rule files written into ${currentDir}`);
 
             installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
@@ -4944,8 +4970,8 @@ function injectHarnessRules() {
                 }
             }, 'Codex agents unchanged');
 
-            const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
-            if (cwdIsHome) installStep(`sync ${claudeMdPath}`, () => {
+            const claudeMdPath = path.join(homeDir, 'CLAUDE.md');
+            installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
                 // A CLAUDE.md carrying this title is the short, hand-maintained
                 // form (see docs/sessions/audit-agents.md F-01): the GO gate lives in a hook,
@@ -5004,7 +5030,7 @@ function injectHarnessRules() {
             }, '.codex-plugin/system.md is unchanged.');
 
             const homeAgentsPath = path.join(homeDir, 'AGENTS.md');
-            if (cwdIsHome) installStep(`sync ${homeAgentsPath}`, () => {
+            installStep(`sync ${homeAgentsPath}`, () => {
                 if (!fs.existsSync(homeAgentsPath)) {
                     log.step(`${homeAgentsPath} does not exist: not created, only existing files get the managed blocks.`);
                     return;
@@ -5284,8 +5310,8 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     // Profile flag for the plugin (context behaviours only; gates and A2A are never switched off).
     if (pluginInstalled && !DRY_RUN) {
         try {
-            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn);
-            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}`);
+            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn, memoryOn);
+            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}, memory=${memoryOn}`);
             uninstallRecords.recordOpencodeProfile(targetHome, flag.file);
         } catch (e) {
             log.warn(`Could not write OpenCode plugin profile flag: ${e.message}`);
@@ -5763,7 +5789,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
                 .filter((e) => !isBdbEntry(e));
             // Only context-injection hooks can be dropped here (--no-hooks, minimal profile); the gates never are.
             const own = cloneBdbEntries(entries);
-            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn ? own : v5Profile.dropContextHooks(own))];
+            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn && memoryOn ? own : v5Profile.dropContextHooks(own, droppedHook))];
         }
         return merged;
     };
@@ -5907,10 +5933,8 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
     };
 
     const allHookNames = Object.keys(bdbHooks);
-    if (!contextHooksOn) {
-        delete bdbHooks['aos-trail-relay'];
-        bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !v5Profile.isContextCommand(h.command));
-    }
+    if (!contextHooksOn) delete bdbHooks['aos-trail-relay'];
+    bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command));
 
     // Earlier AOS versions wrote all handlers under one named hook called "hooks" (old wrapped shapes
     // included). Strip the BDB handlers out of it, keep foreign ones, and drop it when nothing is left.
@@ -6182,8 +6206,8 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '# AOS:HOOKS:END'
     ].join('\n');
     // Blocks are blank-line separated; without context hooks only blocks naming a context script go.
-    const tomlSnippet = contextHooksOn ? fullSnippet
-        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !v5Profile.isContextCommand(b)).join('\n\n')}\n# AOS:HOOKS:END`;
+    const tomlSnippet = contextHooksOn && memoryOn ? fullSnippet
+        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !droppedHook(b)).join('\n\n')}\n# AOS:HOOKS:END`;
 
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
     const original = content;
@@ -6311,7 +6335,7 @@ async function promptMcpSelection(tier) {
     } catch (e) { return []; }
 
     // memb-mcp ships via npm, not as a folder under mcps/, so readdir never lists it.
-    if (!availableMcps.includes(CORE_MCP)) availableMcps.push(CORE_MCP);
+    if (memoryOn && !availableMcps.includes(CORE_MCP)) availableMcps.push(CORE_MCP);
 
     if (tier === '2') {
         const basicMcps = ['memb-mcp', 'windows-computer-use-mcp'];
@@ -6336,10 +6360,11 @@ async function promptMcpSelection(tier) {
 
     const selectable = availableMcps.filter(m => m !== CORE_MCP);
 
-    if (selectable.length === 0) return [CORE_MCP];
+    const core = memoryOn ? [CORE_MCP] : [];
+    if (selectable.length === 0) return core;
 
     const chosen = await multiselectWithBack({
-        message: 'Select optional MCPs to install (memb-mcp core is always included):',
+        message: memoryOn ? 'Select optional MCPs to install (memb-mcp core is always included):' : 'Select optional MCPs to install:',
         options: selectable.map(m => ({ value: m, label: m, hint: existingInstalled.includes(m) ? 'currently installed' : undefined })),
         initialValues: existingInstalled.filter(m => selectable.includes(m)),
         allowEmpty: true
@@ -6347,7 +6372,7 @@ async function promptMcpSelection(tier) {
 
     if (chosen === BACK) return BACK;
 
-    return [CORE_MCP, ...chosen];
+    return [...core, ...chosen];
 }
 
 // Returns the module ids it actually installed this call (distinct from `installedModules`,
@@ -7433,7 +7458,7 @@ async function runQuickUpdate(installState) {
         else if (subId === 'installer') await installDevToolInstaller();
     }
 
-    await applyCodingModeStep();
+    await applyCodingModeStep(memoryCodingOptions());
     await promptOptionalModules(modulesToUpdate);
     // modulesToUpdate now covers both the modules updated in the loop above and any newly
     // chosen ones promptOptionalModules just installed (it mutates the same array) -- every
@@ -7551,6 +7576,7 @@ function applyInstallOptions(home = homeDir) {
     contextHooksOn = r.contextHooks;
     activeProfile = r.profile;
     installExcluded = r.excluded;
+    memoryOn = !installExcluded.has('memb');
     return r;
 }
 
@@ -7928,6 +7954,22 @@ Options:
             ctx.customPaths = { skillDir, legacyDir, workspaceDir: workDir, mcpConfigPath: mcpConf, mcpDir: path.dirname(mcpConf) };
         };
 
+        // Unified memory: one choice for memB + deja + OpenWiki (+ Codebase Memory when coding). Asked before the
+        // MCP step because memb-mcp is only offered with it. Not asked when memb is already excluded.
+        const stepMemory = async () => {
+            if (ctx.selectedPlatforms.includes('9') || installExcluded.has('memb')) return;
+            const v = await selectWithBack({
+                message: 'Unified memory (memB + deja + OpenWiki, plus Codebase Memory MCP when you code):',
+                options: [
+                    { value: 'on', label: 'Install unified memory', hint: 'Default' },
+                    { value: 'off', label: 'Skip: no memory engine, no memb_mcp/deja MCP, no memB hook' }
+                ],
+                initialValue: memoryOn ? 'on' : 'off'
+            });
+            if (v === BACK) return 'back';
+            memoryOn = v === 'on';
+        };
+
         const stepMcps = async () => {
             if (ctx.selectedPlatforms.includes('9')) return;
             const sel = await promptMcpSelection(ctx.tier);
@@ -7959,6 +8001,7 @@ Options:
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
+                `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
                 `MCPs:          ${(ctx.selectedMcps || []).join(', ') || '(none)'}`,
                 `LLM Provider:  ${ctx.creds ? ctx.creds.openwikiProvider : '-'}`,
                 `GitHub Token:  ${ctx.creds && ctx.creds.github ? maskApiKey(ctx.creds.github) : '(none)'}`,
@@ -7977,7 +8020,7 @@ Options:
             if (action === 'abort') return 'exit';
         };
 
-        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMcps, stepCredentials, stepReview];
+        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepMcps, stepCredentials, stepReview];
 
         let i = 0;
         while (i < steps.length) {
@@ -8011,6 +8054,7 @@ Options:
         return;
     }
     persistInstallOptions();
+    if (!memoryOn && !installExcluded.has('memb')) declineUnifiedMemory();
 
     // The backup directory is created on first use (moveIfExists, the MCP merge), never empty, 0700 because it can hold credential copies.
 
@@ -8067,7 +8111,11 @@ Options:
     else await installTokenSaver(primaryTarget.platformValue);
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];
-    await applyCodingModeStep();
+    // Unified memory is part of the default install, not an optional module: memB (with deja) goes in here.
+    const memoryInstalled = memoryOn && !installedModulesForPrompt.includes('memb')
+        ? (await runModuleInstalls([{ id: 'memb', name: 'memB Vector Engine (unified memory)', fn: () => installMemB(true) }], ['memb'], installedModulesForPrompt)).installed
+        : [];
+    await applyCodingModeStep(memoryCodingOptions());
     const modulePlan =v5Profile.PROFILES[activeProfile].modules;
     const explicitModules = parseModuleSelection();
     // Unlike runQuickUpdate, nothing here reinstalls modules already in installedModulesForPrompt
@@ -8078,6 +8126,7 @@ Options:
     const justInstalled = (modulePlan === 'none' && !explicitModules.length)
         ? []
         : await promptOptionalModules(installedModulesForPrompt, explicitModules.length || modulePlan !== 'all' ? explicitModules : ['all']) || [];
+    justInstalled.push(...memoryInstalled);
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
 
@@ -8165,6 +8214,8 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
     installGlobalHooks,
+    injectHarnessRules,
+    applyInstallOptions,
     installHarnessHookCopies,
     copyHookScripts,
     installA2aLibCopies,

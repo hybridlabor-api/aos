@@ -245,7 +245,7 @@ test('S3: uninstall moves the saved options aside and keeps foreign keys', () =>
 });
 
 test('S6: update and repair skip what the profile excludes, like disabled ids', async () => {
-    assert.deepStrictEqual([...p.excludedIds({ profile: 'minimal', disabled: ['synapse'] })].sort(), ['alert', 'codenotch', 'fleet', 'gateway', 'hub', 'openwiki', 'sessions', 'synapse', 'token-saver']);
+    assert.deepStrictEqual([...p.excludedIds({ profile: 'minimal', disabled: ['synapse'] })].sort(), ['alert', 'codenotch', 'deja', 'fleet', 'gateway', 'hub', 'memb', 'openwiki', 'sessions', 'synapse', 'token-saver']);
     assert.strictEqual(p.excludedIds(null).size, 0);
     assert.strictEqual(p.excludedIds({ profile: 'constructor' }).size, 0);
 

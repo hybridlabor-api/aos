@@ -61,7 +61,7 @@ test('installOpencodePlugin calls the flag writer and records it', () => {
     const body = src.slice(src.indexOf('function installOpencodePlugin('));
     const end = body.indexOf('\nfunction ', 10);
     const fn = body.slice(0, end);
-    assert.match(fn, /writeProfileFlag\(opencodeDir, contextHooksOn\)/);
+    assert.match(fn, /writeProfileFlag\(opencodeDir, contextHooksOn, memoryOn\)/);
     assert.match(fn, /recordOpencodeProfile\(targetHome/);
 });
 
