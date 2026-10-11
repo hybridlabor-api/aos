@@ -320,7 +320,7 @@ npx -y @hybridlabor-api/aos@latest
 | `--profile=full` | `standard` mais todos os módulos opcionais (igual a `--modules=all` com `-y`). |
 | `--no-hooks` | Salta apenas os hooks de injeção de contexto (`memb-inject`, `rules-inject`, `trail-relay`, `trail-autostart`). |
 | `--hooks-only` | Instala ou refresca os hooks e as suas entradas de settings e sai. Com `--no-hooks` refresca apenas os gates. |
-| `--without=id,id` | Exclui pacotes por id de registo (`memb, synapse, openwiki, remote, ao, creator, hardware, rustauri, styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, codebase-memory`). Guardado, para que updates e reparações os ignorem. |
+| `--without=id,id` | Exclui pacotes por id de registo (`memb, synapse, openwiki, remote, ao, creator, hardware, rustauri, styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, sessions, alert`) ou pelo bundle `memory` (memB, deja e OpenWiki: [memória unificada](docs/unified-memory.md)). Guardado, para que updates e reparações os ignorem. |
 | `--modules=id,id` | Inclui apenas os módulos opcionais nomeados numa execução não interativa (por exemplo `--modules=creator` ou `--modules=codebase-memory`); `all` pega em todos. Também definível por `AOS_MODULES`. |
 | `AOS_DISABLED_MCPS=a,b` | Mantém esses nomes de servidores MCP incluídos fora das configurações de harness que o instalador escreve. |
 | `--dry-run` | Imprime o que mudaria e não escreve nada. |
@@ -1463,6 +1463,8 @@ npx skills add hybridlabor-api/aos
 ### memB: memória vetorial local
 
 `@hybridlabor-api/memb`: memória vetorial offline e local com um servidor MCP, WebUI na porta 8088 e um hook ambiente que injeta memórias relevantes em sessões de Claude Code. Skills: `memb-skill`, `memb-ingest`, `bdb-memb-mcp`.
+
+O memB já não é um módulo opcional: faz parte da [memória unificada](docs/unified-memory.md) por defeito (memB, deja e OpenWiki, mais o Codebase Memory MCP quando programa), instalada com o perfil standard e com `-y`. Desative com `--without=memory` ou `--profile=minimal`; sem ela, nenhum harness recebe `memb_mcp`, `deja` nem o hook `memb-inject`.
 
 ### deja: indexação de transcrições
 

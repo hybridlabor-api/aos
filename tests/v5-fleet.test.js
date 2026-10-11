@@ -271,6 +271,26 @@ describe('sessions and alert mods', () => {
         assert.equal(read(home).enabledPlugins['bdb-aos-sessions@bdb-marketplace'], false);
     });
 
+    test('enable() turns on all three with one settings.json write', async () => {
+        const home = mkHome();
+        put(home, { model: 'opus' });
+        const rs = await pkg.enable(ctxOf(home), pkg.mods);
+        assert.deepEqual(rs.map((r) => [r.ok, r.changed]), [[true, true], [true, true], [true, true]]);
+        assert.deepEqual(Object.keys(read(home).enabledPlugins), pkg.mods.map((m) => m.KEY));
+        assert.equal(read(home).model, 'opus');
+        assert.equal(baks(home).length, 1);
+        assert.deepEqual((await pkg.enable(ctxOf(home), pkg.mods)).map((r) => r.changed), [false, false, false]);
+        assert.equal(baks(home).length, 1);
+    });
+
+    test('enable() keeps per-mod opt-outs and env opt-out', async () => {
+        const home = mkHome();
+        put(home, { enabledPlugins: { 'bdb-aos-alert@bdb-marketplace': false } });
+        const rs = await pkg.enable(ctxOf(home, { env: { AOS_NO_FLEET: '1' } }), pkg.mods);
+        assert.deepEqual(rs.map((r) => !!r.optedOut), [true, false, true]);
+        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-alert@bdb-marketplace': false, 'bdb-aos-sessions@bdb-marketplace': true });
+    });
+
     test('the registry carries all three, so --without, Settings, update and uninstall know them', () => {
         const ids = require('../lib/v5/packages').registry.filter((p) => p.claudeMod).map((p) => p.id);
         assert.deepEqual(ids, ['fleet', 'sessions', 'alert']);

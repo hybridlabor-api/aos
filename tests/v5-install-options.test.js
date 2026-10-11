@@ -258,13 +258,13 @@ test('S6: update and repair skip what the profile excludes, like disabled ids', 
     const fake = (id) => ({ id, name: id, detect: async () => ({ installed: true }), verify: async () => ({ ok: Boolean(repaired[id]) }), repair: async () => { repaired[id] = true; } });
     const saved = pk.registry.slice();
     try {
-        pk.registry.splice(0, pk.registry.length, ...['openwiki', 'synapse', 'memb'].map(fake));
+        pk.registry.splice(0, pk.registry.length, ...['openwiki', 'synapse', 'ao'].map(fake));
         const code = await menu.repair({ detectInstallState: () => ({}) }, { home, write: () => {}, logFile: path.join(home, 'repair.log') });
         assert.strictEqual(code, 0);
     } finally {
         pk.registry.splice(0, pk.registry.length, ...saved);
     }
-    assert.deepStrictEqual(Object.keys(repaired), ['memb'], 'openwiki (profile) and synapse (disabled) are left alone');
+    assert.deepStrictEqual(Object.keys(repaired), ['ao'], 'openwiki (profile) and synapse (disabled) are left alone');
 });
 
 test('R1: one hook list; the shipped Claude template is covered exactly once', () => {

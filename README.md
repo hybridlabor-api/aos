@@ -320,7 +320,7 @@ npx -y @hybridlabor-api/aos@latest
 | `--profile=full` | `standard` plus every optional module (same as `--modules=all` with `-y`). |
 | `--no-hooks` | Skips only the context-injection hooks (`memb-inject`, `rules-inject`, `trail-relay`, `trail-autostart`). |
 | `--hooks-only` | Installs or refreshes hooks and their settings entries, then exits. With `--no-hooks` it refreshes the gates only. |
-| `--without=id,id` | Excludes packages by registry id (`memb, synapse, openwiki, remote, ao, creator, hardware, rustauri, styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, codebase-memory`). Saved, so updates and repair skip them. |
+| `--without=id,id` | Excludes packages by registry id (`memb, synapse, openwiki, remote, ao, creator, hardware, rustauri, styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, sessions, alert`) or the bundle `memory` (memB, deja and OpenWiki: [unified memory](docs/unified-memory.md)). Saved, so updates and repair skip them. |
 | `--modules=id,id` | Includes only the named optional modules on an otherwise non-interactive run (for example `--modules=creator` or `--modules=codebase-memory`); `all` takes every module. Also settable through `AOS_MODULES`. |
 | `AOS_DISABLED_MCPS=a,b` | Keeps those shipped MCP server names out of the harness configs the installer writes. |
 | `--dry-run` | Prints what would change and writes nothing. |
@@ -1463,6 +1463,8 @@ npx skills add hybridlabor-api/aos
 ### memB: local vector memory
 
 `@hybridlabor-api/memb`: offline, local vector memory with an MCP server, WebUI on port 8088, and an ambient hook that injects relevant memories into Claude Code sessions. Skill: `memb-skill`, `memb-ingest`, `bdb-memb-mcp`.
+
+memB is not an optional module any more: it is part of the default [unified memory](docs/unified-memory.md) (memB, deja and OpenWiki, plus Codebase Memory MCP when you code), installed with the standard profile and with `-y`. Opt out with `--without=memory` or `--profile=minimal`; without it, no harness gets `memb_mcp`, `deja` or the `memb-inject` hook.
 
 ### deja: transcript indexing
 
