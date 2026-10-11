@@ -197,6 +197,18 @@ describe('BDB Plan Builder', () => {
     }
   });
 
+  test('QuestionForm renders answerable radio/checkbox inputs and one send button', () => {
+    const q = '<QuestionForm title="Q" questions={[{"title":"One?","mode":"single","options":[{"label":"a","recommended":true},{"label":"b"}]},{"title":"Many?","mode":"multi","options":[{"label":"x"},{"label":"y"}]}]} />';
+    const { html } = renderPlanSource({ plan: q });
+    assert.match(html, /type="radio" name="q0" data-opt="a" checked/);
+    assert.match(html, /type="radio" name="q0" data-opt="b" required>/);
+    assert.match(html, /type="checkbox" name="q1" data-opt="x">/);
+    assert.equal((html.match(/Send answers/g) || []).length, 1);
+    assert.ok(html.includes("kind: 'answer'"));
+    const untitled = renderPlanSource({ plan: '<QuestionForm questions={[{"mode":"single","options":[{"label":"a"}]}]} />' }).html;
+    assert.match(untitled, /data-q="Question 1"/);
+  });
+
   test('canvas.mdx artboards render instead of collapsing to unsupported', () => {
     const { html, warnings } = renderPlanSource({
       plan: '# T',

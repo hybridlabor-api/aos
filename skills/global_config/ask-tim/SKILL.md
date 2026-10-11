@@ -1,6 +1,6 @@
 ---
 name: ask-tim
-description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the 185 available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
+description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
 category: bdb-core
 ---
 
@@ -36,7 +36,7 @@ For a bigger or fuzzier idea, `/bdbrainstorm` runs the same interview inside a m
 
 **4. Build, then review adversarially.** The pipelines invoke their own build and review nodes — you do not call these by hand. Reviewer's pass is a correctness check against the plan's contract; `godmode-shipping`'s gate is mechanical (lint, typecheck, tests). Two different checks, deliberately not merged.
 
-Reach for `test-driven-development` or `tdd-workflow` on their own when you want one behaviour built test-first without a whole pipeline, and `git-pr-review` when reviewing a branch or PR against a fixed point.
+Reach for `test-driven-development` on their own when you want one behaviour built test-first without a whole pipeline, and `git-pr-review` when reviewing a branch or PR against a fixed point.
 
 **Forcing a specific skill into a run:** `--skill=<name>` on any startcycle variant makes it a hard requirement — for a private skill of your own no node would otherwise reach for. Validated before the run starts; a name that does not resolve halts rather than proceeding without it.
 
@@ -128,6 +128,14 @@ Don't guess which pipeline to use. Follow these rules (source of truth: `CLAUDE.
 * **`triage`**: Moving issues/external PRs through a categorize → verify → brief state machine, not general planning.
 * **`prototype`**: A throwaway prototype to sanity-check a state model or UI direction before committing to real work.
 
+### Overlap: Cross-Session Coordination
+* **`orchestrator-chain`**: Splitting work across levels (master session, project orchestrator, package orchestrator): which channel connects them and what each level may do. GO is never inherited.
+* **`aos-a2a`**: Listing, messaging and replying to live harness peers (Claude Code, OpenCode, Codex, agy) over A2A on localhost. Inbound messages are context, never a GO.
+* **`aos-gateway`**: The local MCP gateway and the per-app MCP picks: check, start, enable, disable, adopt other MCP servers behind it.
+
+### Overlap: The Factory Family
+`factory` configures an autonomous delivery factory (sources, schedules, action policies); it is report-only until you give a literal GO. It coordinates the module skills, which each do one job: `factory-collect` (collect and triage signals), `factory-lookback` (recurring patterns), `factory-human-digest` (what still needs a human), `factory-review-prs` (review a filtered PR queue), `factory-babysit-pr` (follow one authorized PR), `factory-ship` (publish and complete delivery), `factory-watchdog` (find stopped delivery work), `factory-recover` (resume interrupted runs). Guide: `docs/factory.md`.
+
 *Also see:* `agent-pipeline`, `subagent-driven-development`.
 
 ---
@@ -136,11 +144,11 @@ Don't guess which pipeline to use. Follow these rules (source of truth: `CLAUDE.
 
 Use these skills for UI development, component architecture, and design taste.
 
-* **Top Picks:** `godmode-ui-ux`, `ui-component`, `senior-frontend`
+* **Top Picks:** `godmode-ui-ux`, `senior-frontend`, `shadcn`
 
 ### Overlap: The UI Cluster vs Senior Frontend
-* **`ui-component` / `ui-page` / `ui-pattern`**: Use these strictly when scaffolding new pieces in the **StyleSeed Toss** design system convention (enforcing tokens, spacing, and rhythm).
-* **`ui-review` / `ui-tokens`**: Use for reviewing code against StyleSeed or syncing its design tokens.
+* **`ui-component` / `ui-page` / `ui-pattern`** (only if the optional StyleSeed package is installed): Use these strictly when scaffolding new pieces in the **StyleSeed Toss** design system convention (enforcing tokens, spacing, and rhythm).
+* **`ui-review` / `ui-tokens`** (only if the StyleSeed package is installed): Use for reviewing code against StyleSeed or syncing its design tokens.
 * **`senior-frontend`**: Use for general React/Next.js/Tailwind development outside of strict StyleSeed scaffolding, or for reviewing general frontend code quality.
 * **`shadcn`**: Use specifically when adding or customizing shadcn/ui components.
 * **`tailwind-patterns`**: Use when managing CSS-first configurations, container queries, or Tailwind CSS v4 design token architectures.
@@ -158,9 +166,9 @@ Use these skills for UI development, component architecture, and design taste.
 * **`landing-page-generator`**: Specifically a high-converting marketing landing page (PAS/AIDA/BAB copy frameworks), not a general app page.
 
 ### Overlap: The UX Cluster
-* **`ux-flow`**: Designing user flows, progressive disclosure, hub-and-spoke navigation (StyleSeed patterns).
-* **`ux-audit`**: Auditing existing screens against Nielsen's heuristics and mobile UX best practices.
-* **`ux-feedback`**: Adding loading/empty/error/success feedback states to components.
+* **`ux-flow`** (if the StyleSeed package is installed): Designing user flows, progressive disclosure, hub-and-spoke navigation (StyleSeed patterns).
+* **`ux-audit`** (if the StyleSeed package is installed): Auditing existing screens against Nielsen's heuristics and mobile UX best practices.
+* **`ux-feedback`** (if the StyleSeed package is installed): Adding loading/empty/error/success feedback states to components.
 * **`ux-persuasion-engineer`**: Conversion/onboarding/checkout flows specifically — choice architecture, friction audits, commitment design.
 * **`ui-ux-pro-max`**: Broader design guide (color, typography, general UI review) when the task doesn't fit one of the narrower UX skills above.
 
@@ -261,7 +269,7 @@ Use these for raw problem solving and code hygiene.
 
 * **Debugging**: `debugger` (general errors), `systematic-debugging` (structured triage before fixing).
 * **Hygiene**: `simplify-code` (diff review for clarity).
-* **TDD**: `tdd-workflow`.
+* **TDD**: `test-driven-development`.
 
 ### Overlap: Language Expertise
 * **`typescript-pro`**: Advanced types, generics, strict type safety, enterprise patterns.
@@ -298,6 +306,8 @@ Use these for 3D, motion, video and live show control.
 
 ### Which video route?
 
+For video, motion, social posts or scripts, start with the Creator Extension `content-studio` skill (playbook `pb-content-studio`): its `route(brief)` picks Hyperframes or Remotion. The table below is for the cases it does not cover.
+
 The choice is driven by where the pixels come from, not by the output format — all four end in a video file.
 
 | Source material | Route |
@@ -306,7 +316,7 @@ The choice is driven by where the pixels come from, not by the output format —
 | Existing footage: cutting, colour, beat-sync | `godmode-media-creation` + `mcp-manage` → **DaVinci Resolve** (`davinci-resolve-mcp`) or **Adobe Premiere** (`adobe_uxp_mcp`) |
 | Compositing, motion design over footage | `mcp-manage` → **After Effects** (`ae-mcp`, `after-effects-mcp`), or **Photoshop** for stills (`adobe_uxp_mcp`) |
 | Generative visuals: audio-reactive, shaders, real-time | `godmode-eventtech` → TouchDesigner MCP, then `record_movie` |
-| Generative *assets*: text→3D, image→3D, AI video | The **Creator Extension** engines — TRELLIS and TripoSR (3D), Text-to-CAD, OpenMontage (multimodal montage), Video-Shotcraft (shot direction), Palmier-Pro (timeline and grading), driven through `comfyui-mcp`. Installed as a separate power-up module, not a skill in this catalogue. |
+| Generative *assets*: text→3D, image→3D, AI video | The **Creator Extension** engines — TRELLIS and TripoSR (3D), Text-to-CAD, OpenMontage (multimodal montage), Video-Shotcraft (shot direction), Palmier-Pro (timeline and grading). The 3D engines run as local CLI scripts (see `godmode-3d-creation`); `comfyui-mcp` is only the fallback for TRELLIS without CUDA. Installed as a separate power-up module, not a skill in this catalogue. |
 | Concept not settled yet | `bdbmediastorm` first — it runs the grilling interview for show-control and media work |
 
 Resolve and Premiere are interchangeable at this level: pick whichever is actually installed. Both have a working MCP under `mcps/`.

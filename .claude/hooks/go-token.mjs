@@ -3,16 +3,23 @@
 // master session, record a single-use token that go-gate.mjs in <session-name>
 // accepts. Writes nothing else and never blocks the prompt.
 
-import { readFileSync, writeFileSync, mkdirSync, realpathSync, readdirSync, unlinkSync } from "node:fs";
+import { readFileSync, mkdirSync, realpathSync, readdirSync, unlinkSync, constants as FS } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { slug, TOKEN_TTL_MS } from "./go-gate.mjs";
+import { slug, TOKEN_TTL_MS, readSmallRegular, writeNoHang, fileLines } from "./go-gate.mjs";
+
+// Regular-file text or a throw: a planted FIFO/device must not hang the hook.
+function mustRead(f, max) {
+  const t = readSmallRegular(f, max, true);
+  if (typeof t !== "string") throw new Error("not a small regular file");
+  return t;
+}
 
 function sessionName(transcriptPath) {
   let name = "";
   try {
-    for (const line of readFileSync(transcriptPath, "utf8").split("\n")) {
+    for (const line of fileLines(transcriptPath)) {
       if (!line.includes('"agent-name"') && !line.includes('"custom-title"')) continue;
       try {
         const e = JSON.parse(line);
@@ -31,7 +38,7 @@ export function pruneExpiredTokens(dir, now = Date.now()) {
   let removed = 0;
   for (const f of files) {
     let age = NaN;
-    try { age = now - Date.parse(JSON.parse(readFileSync(join(dir, f), "utf8"))?.issued_at); } catch { /* unreadable: drop */ }
+    try { age = now - Date.parse(JSON.parse(mustRead(join(dir, f), 64 * 1024))?.issued_at); } catch { /* unreadable: drop */ }
     if (age >= 0 && age < TOKEN_TTL_MS) continue;
     try { unlinkSync(join(dir, f)); removed++; } catch { /* already gone */ }
   }
@@ -54,7 +61,7 @@ export function issueGoToken(prompt, { transcript_path, session_id, message_id }
     mkdirSync(dir, { recursive: true });
     pruneExpiredTokens(dir);
     const file = join(dir, `${target}.token`);
-    writeFileSync(file, JSON.stringify(tok));
+    writeNoHang(file, JSON.stringify(tok), FS.O_TRUNC);
     return file;
   } catch { return null; }
 }

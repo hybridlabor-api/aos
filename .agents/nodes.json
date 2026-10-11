@@ -1,17 +1,50 @@
 {
   "version": 1,
-  "description": "Declarative node registry for /startcycle-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher.",
+  "description": "Declarative node registry for /startcycle-graph. The dispatcher reads this instead of hardcoding BUILD_NODES and NODE_ENUM. Adding a build domain = adding an entry here, not editing the dispatcher. executor (harness/model class) and scope (read-only | worktree-write | none) are optional and enforced by the dispatcher (graph.md, Workers and scopes). No model is pinned here: a node's model comes only from pipeline.json (docs/agent-models.md).",
   "common": ["read-the-damn-docs", "agenttrail", "archify", "plan-canvas", "stay-within-limits", "quick-recap", "verification-before-completion"],
+  "chain": {
+    "hops": {
+      "master_session": "human-facing supervisor, not a node; relays the human's GO, never grants one (docs/orchestrator-chain.md)",
+      "project_orchestrator": "the dispatcher (.claude/workflows/startcycle-dispatch.mjs); decides every edge",
+      "package_orchestrator": "a build node or a worker slice (aos-acp / aos-a2a spawn)"
+    },
+    "node_hop": {
+      "architect": "project_orchestrator",
+      "techlead": "project_orchestrator",
+      "ui_ux": "package_orchestrator",
+      "engineering": "package_orchestrator",
+      "media_eventtech": "package_orchestrator",
+      "reviewer": "project_orchestrator",
+      "shipping": "project_orchestrator"
+    },
+    "mcp_gateway": {
+      "entry": "aos",
+      "endpoint": "127.0.0.1:7790",
+      "doc": "docs/mcp-gateway.md",
+      "code": "lib/gateway/, lib/v5/pkg-gateway.js"
+    },
+    "a2a": {
+      "cli": "bin/aos-a2a.mjs",
+      "doc": "docs/a2a.md",
+      "max_depth_env": "AOS_A2A_MAX_DEPTH",
+      "never_go": true
+    },
+    "fleet_mod": {
+      "path": "plugins/bdb-aos-fleet",
+      "read_by_dispatcher": false
+    }
+  },
   "nodes": {
     "architect": {
       "label": "Architect",
       "agentType": "architect",
       "personaFile": ".claude/agents/architect.md",
-      "model": "opus",
       "role": "plan",
       "artifactKey": "plan",
       "writes": null,
       "optional": false,
+      "executor": "planner",
+      "scope": "read-only",
       "skills": [
         "read-the-damn-docs",
         "bdbrainstorm",
@@ -26,11 +59,12 @@
       "label": "TechLead",
       "agentType": "techlead",
       "personaFile": ".claude/agents/techlead.md",
-      "model": "sonnet",
       "role": "approve",
       "artifactKey": null,
       "writes": null,
       "optional": false,
+      "executor": "planner",
+      "scope": "read-only",
       "skills": [
         "read-the-damn-docs",
         "startcycle-graph",
@@ -44,11 +78,12 @@
       "label": "Godmode_UI_UX",
       "agentType": "godmode-ui-ux",
       "personaFile": ".claude/agents/godmode-ui-ux.md",
-      "model": "sonnet",
       "role": "build",
       "artifactKey": "frontend",
       "writes": "production_artifacts/state.d/ui_ux.json",
       "optional": false,
+      "executor": "builder",
+      "scope": "worktree-write",
       "skills": [
         "godmode-ui-ux",
         "bdbdesignpro",
@@ -57,9 +92,7 @@
         "landing-page-generator",
         "shadcn",
         "tailwind-patterns",
-        "react-best-practices",
-        "ui-component",
-        "ui-tokens"
+        "react-best-practices"
       ],
       "instructions": "Implement the frontend per the plan: responsive UI, DTCG design tokens, Anti-Slop taste. Write production_artifacts/01_frontend_spec.md and the code."
     },
@@ -67,11 +100,12 @@
       "label": "Godmode_Engineering",
       "agentType": "godmode-engineering",
       "personaFile": ".claude/agents/godmode-engineering.md",
-      "model": "sonnet",
       "role": "build",
       "artifactKey": "backend",
       "writes": "production_artifacts/state.d/engineering.json",
       "optional": false,
+      "executor": "builder",
+      "scope": "worktree-write",
       "skills": [
         "godmode-engineering",
         "software-architecture",
@@ -89,11 +123,12 @@
       "label": "Godmode_Media_EventTech",
       "agentType": "godmode-media-eventtech",
       "personaFile": ".claude/agents/godmode-media-eventtech.md",
-      "model": "sonnet",
       "role": "build",
       "artifactKey": "media",
       "writes": "production_artifacts/state.d/media_eventtech.json",
       "optional": true,
+      "executor": "builder",
+      "scope": "worktree-write",
       "skills": [
         "godmode-eventtech",
         "godmode-media-creation",
@@ -109,14 +144,13 @@
       "label": "Reviewer",
       "agentType": "reviewer",
       "personaFile": ".claude/agents/reviewer.md",
-      "model": "sonnet",
       "role": "review",
       "artifactKey": "review",
       "writes": null,
       "optional": false,
+      "executor": "reviewer",
+      "scope": "read-only",
       "skills": [
-        "ui-review",
-        "ux-audit",
         "architect-review",
         "systematic-debugging"
       ],
@@ -126,11 +160,12 @@
       "label": "Godmode_Shipping",
       "agentType": "godmode-shipping",
       "personaFile": ".claude/agents/godmode-shipping.md",
-      "model": "sonnet",
       "role": "gate",
       "artifactKey": "report",
       "writes": null,
       "optional": false,
+      "executor": "gate",
+      "scope": "none",
       "skills": [
         "godmode-shipping",
         "brag",

@@ -268,7 +268,9 @@ function createAnnotateHandler({ store, version = '0.0.0', onQueued = () => {}, 
       if (res.headersSent) return res.end();
       if (error instanceof HttpError) {
         sendJson(res, error.status, { error: error.message, code: error.code }, error.headers);
-        if (error.status === 413) res.once('finish', () => req.destroy());
+        // Delay the drop: destroying a socket that still holds unread request bytes resets it on
+        // Windows and the client loses the 413 it just received.
+        if (error.status === 413) res.once('finish', () => setTimeout(() => req.destroy(), 200).unref());
         return undefined;
       }
       log(`[plan-canvas] annotate error: ${error && error.message}`);

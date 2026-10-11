@@ -4,7 +4,7 @@ description: >-
   Draft a client offer with line items priced only from your price list, and
   send it only after your GO. Use for "write an offer", "quote for this
   client", "draft a quote", "price this job".
-category: bdb-core
+category: business-ops
 kind: playbook
 trigger: ["write an offer", "quote for this client", "draft a quote"]
 inputs: [client_brief, price_list]

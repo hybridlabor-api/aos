@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const binary = path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'agenttrail.mjs');
-const { mainRoot, listWorktrees } = await import(path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'repoid.mjs'));
+const { mainRoot, listWorktrees } = await import(pathToFileURL(path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'repoid.mjs')).href);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PLAN = '# Plan\n\n## Thing {#thing}\nfiles: [src/**]\n\n- [ ] Do it {#do-it}\n';
 const GIT_ENV = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
@@ -67,7 +68,7 @@ function exec(args, env, input) {
 }
 
 function baseEnv(extra = {}) {
-  const e = { ...process.env, ...GIT_ENV, HOME: path.join(tmp, 'home'), TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0', CI: '1' };
+  const e = { ...process.env, ...GIT_ENV, HOME: path.join(tmp, 'home'), USERPROFILE: path.join(tmp, 'home'), TMPDIR: tmp, TEMP: tmp, TMP: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0', CI: '1' };
   for (const k of ['SSH_CONNECTION', 'SSH_TTY', 'AO_BROWSER_CAPABILITY', 'AOS_TRAIL_OPENER', 'CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'AGENTTRAIL_PORT']) delete e[k];
   return { ...e, ...extra };
 }
@@ -76,6 +77,26 @@ async function ensure(cwd) {
   const r = await exec(['--ensure', '--json', '--cwd', cwd], baseEnv());
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout);
+}
+
+// v2: --ensure now starts the hub, whose /whoami and /model have no per-repo lanes.
+// The lane semantics belong to the legacy per-repo daemon, which stays selectable,
+// so these tests start it directly instead of going through --ensure.
+const children = [];
+function startLegacy(repo, port, planRel = 'production_artifacts/00_execution_plan.md') {
+  const c = spawn(process.execPath, [binary, repo, '--plan', planRel, '--port', String(port), '--no-open'], { env: baseEnv(), stdio: ['ignore', 'ignore', 'pipe'] });
+  children.push(c);
+  const url = `http://127.0.0.1:${port}`;
+  return (async () => {
+    for (let i = 0; i < 80; i += 1) {
+      try {
+        const w = await fetch(`${url}/whoami`).then((r) => r.json());
+        if (w && w.protocol === 2) return { url, repoPath: w.repoPath };
+      } catch { /* not up yet */ }
+      await sleep(100);
+    }
+    throw new Error(`legacy daemon did not start on :${port}`);
+  })();
 }
 
 const getJson = (url) => fetch(url).then((r) => r.json());
@@ -90,6 +111,7 @@ before(async () => {
 });
 
 after(async () => {
+  for (const c of children) { try { c.kill(); } catch {} }
   for (const s of servers) await new Promise((r) => { s.close(r); s.closeAllConnections?.(); });
   for (let p = LO; p <= HI; p += 1) {
     const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
@@ -121,19 +143,16 @@ describe('one map per repo', () => {
     const wt1 = path.join(tmp, 'one-wt1');
     git(main, 'worktree', 'add', '-q', '-b', 'feat/one', wt1);
     write(path.join(wt1, 'production_artifacts', '00_execution_plan.md'), PLAN.replace('- [ ] Do it', '- [~] Do it'));
-    const a = await ensure(wt1);
-    assert.equal(a.started, true, JSON.stringify(a));
-    const b = await ensure(main);
-    assert.deepEqual([b.started, b.url], [false, a.url]);
+    const { url: a } = await startLegacy(main, LO + 1);
 
-    const who = await getJson(`${a.url}/whoami`);
+    const who = await getJson(`${a}/whoami`);
     assert.equal(who.repoPath, main);
     assert.deepEqual(who.worktrees.map((w) => [w.path, w.main]), [[main, true], [fs.realpathSync(wt1), false]]);
 
-    await hook(a.url, edit('s-main', main, path.join(main, 'src', 'a.js')));
-    await hook(a.url, edit('s-wt1', wt1, path.join(wt1, 'src', 'a.js')));
-    await hook(a.url, edit('s-other', os.tmpdir(), path.join(os.tmpdir(), 'x.js')));
-    const m = await getJson(`${a.url}/model`);
+    await hook(a, edit('s-main', main, path.join(main, 'src', 'a.js')));
+    await hook(a, edit('s-wt1', wt1, path.join(wt1, 'src', 'a.js')));
+    await hook(a, edit('s-other', os.tmpdir(), path.join(os.tmpdir(), 'x.js')));
+    const m = await getJson(`${a}/model`);
     const laneKey = m.lanes.find((l) => !l.main).key;
     assert.deepEqual(m.lanes.map((l) => l.label), ['main · one', 'feat/one · one-wt1']);
     assert.deepEqual(m.plan.filter((n) => n.level === 'component').map((n) => [n.id, n.laneLabel]),
@@ -148,8 +167,8 @@ describe('one map per repo', () => {
 
     const wt2 = path.join(tmp, 'one-wt2');
     git(main, 'worktree', 'add', '-q', '-b', 'feat/two', wt2);
-    await hook(a.url, edit('s-wt2', wt2, path.join(wt2, 'src', 'a.js')));
-    const m2 = await getJson(`${a.url}/model`);
+    await hook(a, edit('s-wt2', wt2, path.join(wt2, 'src', 'a.js')));
+    const m2 = await getJson(`${a}/model`);
     assert.equal(m2.lanes.length, 3);
     assert.equal(m2.runs.find((r) => r.id === 's-wt2').lane, m2.lanes[2].key);
   });
@@ -158,12 +177,11 @@ describe('one map per repo', () => {
     const dir = path.join(tmp, 'plain');
     write(path.join(dir, 'production_artifacts', '00_execution_plan.md'), PLAN);
     const real = fs.realpathSync(dir);
-    const a = await ensure(real);
-    assert.equal(a.started, true, JSON.stringify(a));
-    const who = await getJson(`${a.url}/whoami`);
+    const { url: a } = await startLegacy(real, LO + 2);
+    const who = await getJson(`${a}/whoami`);
     assert.equal(who.repoPath, real);
     assert.equal(who.worktrees.length, 1);
-    const m = await getJson(`${a.url}/model`);
+    const m = await getJson(`${a}/model`);
     assert.equal(m.lanes, undefined);
     assert.deepEqual(m.plan.filter((n) => n.level === 'component').map((n) => [n.id, n.lane]), [['thing', undefined]]);
   });
@@ -171,7 +189,8 @@ describe('one map per repo', () => {
   test('AGENTTRAIL_PORT wins over the probed range for hook relay', async () => {
     const got = [];
     const mk = (port) => new Promise((resolve) => {
-      const s = http.createServer((req, res) => { got.push(port); req.resume(); res.end(); });
+      // only the relayed hook counts: the legacy daemons started above also probe every port with GET /whoami
+      const s = http.createServer((req, res) => { if (req.method === 'POST' && req.url === '/hook') got.push(port); req.resume(); res.end(); });
       servers.push(s);
       s.listen(port, '127.0.0.1', resolve);
     });

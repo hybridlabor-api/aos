@@ -1,0 +1,10 @@
+{
+  "_comment": "AOS default suggestions, written once to ~/.aos/pipeline.json if absent and never overwritten. Edit or delete any entry (no entry = inherit the session model). A project .aos/pipeline.json replaces this file whole. See docs/agent-models.md.",
+  "version": 1,
+  "pipeline": {
+    "load_registry": { "models": { "claude": "haiku" } },
+    "merge_state": { "models": { "claude": "haiku" } },
+    "archify_verify": { "models": { "claude": "haiku" } },
+    "validate_skills": { "models": { "claude": "haiku" } }
+  }
+}

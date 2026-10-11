@@ -12,10 +12,10 @@ let home, savedHome, savedName;
 beforeEach(() => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-oc-token-'));
     savedHome = process.env.HOME; savedName = process.env.AOS_SESSION_NAME;
-    process.env.HOME = home; delete process.env.AOS_SESSION_NAME;
+    process.env.HOME = home; process.env.USERPROFILE = home; delete process.env.AOS_SESSION_NAME;
 });
 afterEach(() => {
-    process.env.HOME = savedHome;
+    process.env.HOME = savedHome; process.env.USERPROFILE = savedHome;
     if (savedName === undefined) delete process.env.AOS_SESSION_NAME; else process.env.AOS_SESSION_NAME = savedName;
     fs.rmSync(home, { recursive: true, force: true });
 });

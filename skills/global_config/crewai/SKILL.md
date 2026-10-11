@@ -184,6 +184,7 @@ Manager agent delegates to workers
 
 **When to use**: Complex tasks needing coordination
 
+import os
 from crewai import Crew, Process
 
 # Define specialized agents
@@ -210,7 +211,7 @@ crew = Crew(
     agents=[researcher, analyst, writer],
     tasks=[research_task, analysis_task, writing_task],
     process=Process.hierarchical,
-    manager_llm=ChatOpenAI(model="gpt-4o"),  # Manager model
+    manager_llm=ChatOpenAI(model=os.environ["MODEL"]),  # Manager model
     verbose=True
 )
 
@@ -227,6 +228,7 @@ Generate execution plan before running
 
 **When to use**: Complex workflows needing structure
 
+import os
 from crewai import Crew, Process
 
 # Enable planning
@@ -235,7 +237,7 @@ crew = Crew(
     tasks=[research, write, review],
     process=Process.sequential,
     planning=True,  # Enable planning
-    planning_llm=ChatOpenAI(model="gpt-4o")  # Planner model
+    planning_llm=ChatOpenAI(model=os.environ["MODEL"])  # Planner model
 )
 
 # With planning enabled:
@@ -284,7 +286,7 @@ crew = Crew(
     ),
     embedder={
         "provider": "openai",
-        "config": {"model": "text-embedding-3-small"}
+        "config": {"model": "<embedding-model-id>"}
     }
 )
 

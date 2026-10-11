@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { emitTrail } from '../trail.js';
 import { childEnv } from '../depth.js';
+import { codexNoMcpArgs, codexServerNames } from '../no-mcp.js';
 
 const MAX_OUTPUT = 1024 * 1024 * 50; // 50MB, mirrors the old execFile maxBuffer
 
@@ -40,8 +41,11 @@ export async function delegate(req) {
   };
   emitTrail({ ...trailEvent, hook_event_name: 'SessionStart' });
 
+  // MCP servers are disabled unless `req.mcp === true`: `-c mcp_servers.<name>.enabled=false` per server
+  // (verified on codex-cli 0.162.1 via `mcp list`; `-c mcp_servers={}` merges and does not clear).
   const env = childEnv('codex');
   const args = ['exec', '--json', '--skip-git-repo-check'];
+  if (req.mcp !== true) args.push(...codexNoMcpArgs(codexServerNames()));
   if (req.model) args.push('-m', req.model);
   args.push(req.prompt);
 
@@ -174,7 +178,7 @@ export async function delegate(req) {
       finalize({ exit: 1, output: (lastAgentMessage || stderrBuf || `codex exited with code ${code}`).trim() });
     });
 
-    // An open stdin pipe makes the CLI wait for input forever.
-    child.stdin.end();
+    // stdin is spawned as 'ignore' (child.stdin is null), which already stops the CLI from waiting for input.
+    child.stdin?.end();
   });
 }

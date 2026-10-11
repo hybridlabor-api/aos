@@ -8,7 +8,7 @@ description: >-
 category: bdb-core
 kind: playbook
 trigger: ["plan my week", "sort my to-dos", "weekly plan"]
-inputs: [todo_folders, calendar_file?]
+inputs: [todo_folders, "calendar_file?"]
 requires:
   skills: [memb-skill, github, concise-planning, "gh (external)"]
   agents: []

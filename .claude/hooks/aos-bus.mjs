@@ -1,15 +1,25 @@
 #!/usr/bin/env node
-// aos-bus spike: master -> running OpenCode session via per-session inbox files.
+// aos-bus: master -> running OpenCode session via per-session inbox files.
 // Library + CLI. The receiver (OpenCode plugin) injects each message as a synthetic + ignored part pair.
 
 import {
-  chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, utimesSync, writeFileSync,
+  chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, utimesSync, writeFileSync,
 } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { slug } from "./go-gate.mjs";
+
+// Checkout layout (../../lib), else the machine-wide ~/.agents/lib copy — the same resolution
+// the a2a hooks use: the installed hook lives in ~/.claude/hooks, where ../../lib does not exist.
+const inboxLib = [
+  fileURLToPath(new URL("../../lib/a2a-inbox.mjs", import.meta.url)),
+  join(homedir(), ".agents", "lib", "a2a-inbox.mjs"),
+].find((p) => existsSync(p)) ?? null;
+const { inboxRoot } = inboxLib
+  ? await import(pathToFileURL(inboxLib).href)
+  : { inboxRoot() { throw new Error("lib/a2a-inbox.mjs not found (checkout ../../lib or ~/.agents/lib)"); } };
 
 const MAX_SEND = 8 * 1024;
 const MAX_FILE = 16 * 1024;
@@ -17,7 +27,7 @@ const MAX_FILE = 16 * 1024;
 export function busPaths(name) {
   const n = slug(String(name ?? ""));
   if (!n || n.startsWith(".")) throw new Error("invalid session name");
-  const root = join(homedir(), ".aos", "bus");
+  const root = inboxRoot();
   return { name: n, root, sessions: join(root, "sessions"), reg: join(root, "sessions", `${n}.json`), inbox: join(root, "inbox", n) };
 }
 
@@ -31,6 +41,7 @@ export function checkPrivateDir(dir) {
   let st;
   try { st = lstatSync(dir); } catch { return `${dir} does not exist`; }
   if (!st.isDirectory()) return `${dir} is not a real directory`;
+  if (process.platform === "win32") return null; // no POSIX uid/mode; the user profile ACL is the boundary
   if (st.uid !== process.getuid()) return `${dir} is not owned by the current user`;
   if (st.mode & 0o077) return `${dir} is accessible to others (mode ${(st.mode & 0o777).toString(8)})`;
   return null;
@@ -70,7 +81,7 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { 
 
 // prune: also delete registrations that are dead, stale or corrupt (registration files only, never inboxes).
 export function listSessions({ prune = false } = {}) {
-  const dir = join(homedir(), ".aos", "bus", "sessions");
+  const dir = join(inboxRoot(), "sessions");
   const out = [];
   let files = [];
   try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch { /* none */ }
@@ -112,7 +123,7 @@ export function readInbox(name) {
     const file = join(p.inbox, f);
     try {
       const st = lstatSync(file);
-      if (!st.isFile() || st.uid !== process.getuid() || st.size > MAX_FILE) throw new Error("rejected");
+      if (!st.isFile() || (process.platform !== "win32" && st.uid !== process.getuid()) || st.size > MAX_FILE) throw new Error("rejected");
       const m = JSON.parse(readFileSync(file, "utf8"));
       if (typeof m?.text !== "string") throw new Error("rejected");
       const from = String(m.from ?? "").replace(/[\x00-\x1f\x7f\]]/g, "").slice(0, 64) || "unknown";

@@ -9,7 +9,7 @@ const http = require('http');
 const { DatabaseSync } = require('node:sqlite');
 
 const PLUGIN = path.join(__dirname, '..', '.opencode', 'plugins', 'bdb-aos.js');
-const ENV_KEYS = ['HOME', 'AOS_SESSION_NAME', 'AOS_ACP_CLIENT', 'XDG_DATA_HOME', 'AGENTTRAIL_PORT'];
+const ENV_KEYS = ['HOME', 'USERPROFILE', 'AOS_SESSION_NAME', 'AOS_ACP_CLIENT', 'XDG_DATA_HOME', 'AGENTTRAIL_PORT'];
 
 let home, saved, server, trail;
 beforeEach(async () => {
@@ -17,6 +17,7 @@ beforeEach(async () => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-oc-adapter-'));
     for (const k of ENV_KEYS.slice(1)) delete process.env[k];
     process.env.HOME = home;
+    process.env.USERPROFILE = home;
     trail = [];
     server = http.createServer((req, res) => {
         let b = '';
@@ -118,6 +119,19 @@ describe('OpenCode adapter', () => {
         assert.equal((await parts('s2', 'hi')).length, 1);
     });
 
+    test('F9: injected parts carry OpenCode-valid ids (prt_ part, the message id), never a made-up one', async () => {
+        const { hooks } = await load();
+        const out = { parts: [{ type: 'text', text: 'hello' }] };
+        await hooks['chat.message']({ sessionID: 'sv', messageID: 'msg_abc' }, out);
+        const injected = out.parts.filter((p) => p.synthetic);
+        assert.ok(injected.length >= 1, 'rules block injected');
+        for (const p of injected) {
+            assert.match(p.id, /^prt_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
+            assert.equal(p.messageID, 'msg_abc');
+        }
+        assert.equal(new Set(injected.map((p) => p.id)).size, injected.length, 'ids unique');
+    });
+
     test('GO <name> mints an OpenCode token, never from an ACP worker', async () => {
         const { hooks } = await load();
         await say(hooks, 's1', 'GO worker-1', 'msg_1');
@@ -186,5 +200,61 @@ describe('OpenCode adapter', () => {
         const { hooks } = await load();
         const patch = (patchText) => hooks['tool.execute.before']({ tool: 'apply_patch', sessionID: 's1', callID: 'c' }, { args: { patchText } });
         await assert.rejects(patch('*** Update File: a.js\n*** Move to: /srv/app/.env'), /env-file-protection/);
+    });
+
+    test('patch Delete File and indented lines, and the go-gate store, are protected (WP-9b)', async () => {
+        const { hooks } = await load();
+        const patch = (patchText) => hooks['tool.execute.before']({ tool: 'apply_patch', sessionID: 's1', callID: 'c' }, { args: { patchText } });
+        await assert.rejects(patch('*** Begin Patch\n*** Delete File: /srv/app/.env\n*** End Patch'), /env-file-protection/);
+        await assert.rejects(patch('*** Begin Patch\n  *** Add File: /h/.aos/gate/trail-credential.json\n*** End Patch'), /go-gate store/);
+        await assert.rejects(patch('*** Begin Patch\n*** Delete File: /h/.aos/go/s1.click-x.json\n*** End Patch'), /go-gate store/);
+        await patch('*** Begin Patch\n*** Delete File: /srv/app/a.js\n*** End Patch');
+        await assert.rejects(hooks['tool.execute.before']({ tool: 'write', sessionID: 's1', callID: 'c' }, { args: { filePath: '/h/.aos/gate/x.json' } }), /go-gate store/);
+    });
+});
+
+// mcsc's opencode adapter starts the worker without MCP servers unless req.mcp === true.
+describe('mcsc opencode adapter: MCP servers off by default', { skip: process.platform === 'win32' }, () => {
+    const ADAPTER = path.join(__dirname, '..', 'mcps', 'mcsc', 'packages', 'core', 'src', 'adapters', 'opencode.js');
+    const delegateWith = async (req, extraEnv = {}) => {
+        const bin = path.join(home, 'bin');
+        const out = path.join(home, 'oc-env.txt');
+        fs.mkdirSync(bin, { recursive: true });
+        fs.writeFileSync(path.join(bin, 'opencode'), `#!/bin/sh\nprintf '%s' "$OPENCODE_CONFIG_CONTENT" > ${JSON.stringify(out)}\n`, { mode: 0o755 });
+        const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}`, OPENCODE_CONFIG_CONTENT: '', ...extraEnv };
+        const prev = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+        Object.assign(process.env, env);
+        try {
+            const { delegate } = await import(`file://${ADAPTER}`);
+            const r = await delegate({ prompt: 'hi', cwd: path.join(home, 'proj'), ...req });
+            assert.equal(r.exit, 0, r.output);
+            return fs.readFileSync(out, 'utf8');
+        } finally {
+            for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+        }
+    };
+    beforeEach(() => {
+        const dir = path.join(home, '.config', 'opencode');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'opencode.jsonc'), '{ broken');
+        fs.writeFileSync(path.join(dir, 'opencode.json'), JSON.stringify({ mcp: { aos: { type: 'local' }, deja: { type: 'local' } } }));
+        fs.mkdirSync(path.join(home, 'proj'), { recursive: true });
+        fs.writeFileSync(path.join(home, 'proj', 'opencode.jsonc'), '// project\n{"mcp": {"memb_mcp": {"type": "local"},},}\n');
+    });
+
+    test('default: every server from the global and project files is disabled', async () => {
+        const cfg = JSON.parse(await delegateWith({}));
+        assert.deepEqual(cfg.mcp, { aos: { enabled: false }, deja: { enabled: false }, memb_mcp: { enabled: false } });
+    });
+
+    test('mcp: true leaves OPENCODE_CONFIG_CONTENT alone', async () => {
+        assert.equal(await delegateWith({ mcp: true }), '');
+    });
+
+    test('a caller-set OPENCODE_CONFIG_CONTENT is merged, its own fields win', async () => {
+        const cfg = JSON.parse(await delegateWith({}, { OPENCODE_CONFIG_CONTENT: '{"model":"m","mcp":{"deja":{"timeout":5}}}' }));
+        assert.equal(cfg.model, 'm');
+        assert.deepEqual(cfg.mcp.deja, { enabled: false, timeout: 5 });
+        assert.deepEqual(cfg.mcp.aos, { enabled: false });
     });
 });

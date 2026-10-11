@@ -36,7 +36,7 @@ function fixture(t, rows) {
 function run(home, input, env = {}) {
   return spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify(input), encoding: 'utf8',
-    env: { HOME: home, PATH: '', MEMB_USER_ID: 'ann', ...env },
+    env: { HOME: home, USERPROFILE: home, ...(process.env.SystemRoot && { SystemRoot: process.env.SystemRoot }), PATH: '', MEMB_USER_ID: 'ann', ...env },
   });
 }
 

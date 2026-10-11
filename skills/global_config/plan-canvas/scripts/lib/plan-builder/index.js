@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * BDB Plan Builder — turn an Agent-Native-style plan folder into ONE
- * self-contained HTML file in the BDB look, which `aos-plan-canvas` then opens
+ * Plan Builder — turn an Agent-Native-style plan folder into ONE
+ * self-contained HTML file in a dark theme with one purple accent, which `aos-plan-canvas` then opens
  * through the normal `.html` artifact path (annotation, chat and verdict all
  * already work for HTML).
  *

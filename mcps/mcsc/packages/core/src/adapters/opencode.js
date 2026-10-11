@@ -2,12 +2,14 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { emitTrail } from '../trail.js';
 import { childEnv } from '../depth.js';
+import { opencodeNoMcpEnv } from '../no-mcp.js';
 
 const MAX_OUTPUT = 1024 * 1024 * 50; // 50MB, mirrors the old execFile maxBuffer
 
 /**
  * CliAdapter shelling out to `opencode run --auto --format json [--model <model>] <prompt>`.
  * Optional `req.variant` is passed through as `--variant <variant>` (model reasoning effort).
+ * MCP servers are disabled unless `req.mcp === true` (see ../no-mcp.js).
  * Reads stdout line by line: assistant text parts are collected and joined as
  * `output`; tool events are forwarded to the live map as PreToolUse/PostToolUse.
  *
@@ -26,7 +28,7 @@ export async function delegate(req) {
   };
   emitTrail({ ...trailEvent, hook_event_name: 'SessionStart' });
 
-  const env = childEnv('opencode');
+  const env = req.mcp === true ? childEnv('opencode') : opencodeNoMcpEnv(childEnv('opencode'), cwd);
   const args = ['run', '--auto', '--format', 'json'];
   if (req.model) args.push('--model', req.model);
   if (req.variant) args.push('--variant', String(req.variant));

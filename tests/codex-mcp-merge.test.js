@@ -29,7 +29,8 @@ describe('mergeCodexTomlMcpServers', () => {
         assert.ok(afterFirst.includes('[mcp_servers.memb_mcp]'));
         assert.ok(afterFirst.includes('# AOS:MCP:START'));
         assert.ok(afterFirst.includes('# AOS:MCP:END'));
-        assert.ok(afterFirst.includes('env = { GEMINI_API_KEY = "" }'));
+        assert.ok(!afterFirst.includes('env = { GEMINI_API_KEY'), 'secret variables are declared to the launcher, not written as env');
+        assert.ok(afterFirst.includes('"--vars", "GEMINI_API_KEY"'));
 
         mergeCodexTomlMcpServers(file, servers);
         const afterSecond = fs.readFileSync(file, 'utf8');

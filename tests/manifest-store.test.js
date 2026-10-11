@@ -77,12 +77,10 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
         }
     });
 
-    // Contract changed deliberately: unrecognised content at a path the payload
-    // owns is now updated with a .bak, not skipped. Skipping meant a skill
-    // installed before manifest tracking -- whose content no longer matches the
-    // current payload, so bootstrap adoption never catches it -- stayed frozen
-    // through every future update. The protection moved into the backup.
-    test('(b) unrecognised content at an owned path is updated, with a backup', () => {
+    // Contract (5.0.0): older releases of our own files are recognised through
+    // lib/shipped-hashes.json and overwritten (tests/installer-shipped-hashes.test.js).
+    // Content AOS never shipped is kept, and the shipped copy lands as <file>.new.
+    test('(b) unrecognised content at an owned path is kept, shipped copy as .new', () => {
         const { tmpBase, fakeHome, fakeSrc, manifestPath } = createIsolatedEnv();
         try {
             // Setup target with an existing foreign file (not in manifest, not in known hashes)
@@ -112,19 +110,9 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
                 console.warn = origWarn;
             }
 
-            // The shipped version must win...
-            assert.strictEqual(
-                fs.readFileSync(foreignFile, 'utf8'),
-                'Shipped file trying to overwrite custom.txt',
-                'shipped content must replace the unrecognised file',
-            );
-            assert.notStrictEqual(computeFileHash(foreignFile), foreignHashBefore, 'file must actually change');
-            assert.ok(manifest[foreignFile], 'the file is now tracked, so the next update is a clean overwrite');
-
-            // ...and nothing may be lost doing it.
-            const backup = findBackup(foreignFile);
-            assert.ok(backup, 'previous content must be backed up');
-            assert.strictEqual(fs.readFileSync(backup, 'utf8'), foreignContent, 'backup must hold the original bytes');
+            assert.strictEqual(fs.readFileSync(foreignFile, 'utf8'), foreignContent, 'the unrecognised file stays as it was');
+            assert.strictEqual(fs.readFileSync(foreignFile + '.new', 'utf8'), 'Shipped file trying to overwrite custom.txt', 'shipped copy lands as .new');
+            assert.strictEqual(findBackup(foreignFile), null, 'nothing is overwritten, so no .bak');
             // Not asserted here: that the user is told. log.warn() goes through
             // clack to stdout, which this console.warn intercept cannot see.
         } finally {
@@ -240,8 +228,8 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
 
     test('session lifecycle: initSessionManifest + copyDirRecursiveSync + flushSessionManifest writes to .bdb-install-manifest.json', () => {
         const { tmpBase, fakeHome, fakeSrc, manifestPath } = createIsolatedEnv();
-        const origHome = process.env.HOME;
-        process.env.HOME = fakeHome;
+        const origHome = process.env.HOME, origProfile = process.env.USERPROFILE; // Windows: os.homedir() reads USERPROFILE
+        process.env.HOME = process.env.USERPROFILE = fakeHome;
         try {
             const skillDir = path.join(fakeSrc, 'skills', 'session-skill');
             fs.mkdirSync(skillDir, { recursive: true });
@@ -269,7 +257,7 @@ describe('BDB Install Manifest & Conflict Resolution', () => {
             assert.ok(saved[targetFile].version, 'version must be present');
             assert.ok(saved[targetFile].installedAt, 'installedAt must be present');
         } finally {
-            process.env.HOME = origHome;
+            process.env.HOME = origHome; if (origProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = origProfile;
             cleanup(tmpBase);
         }
     });

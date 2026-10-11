@@ -1,6 +1,14 @@
 ---
 name: startcycle-graph-user
-description: Use when a task needs a small, throwaway multi-agent fan-out (a couple of parallel workers plus a review pass) in ANY project, without the full /startcycle-graph contract — no .agents/graph.md bootstrap, no state.json schema, no persistent files. Model-tiered by role (opus plan, sonnet review, haiku or an external CLI for workers) and portable across machines that may not have Antigravity/OpenCode/Codex installed.
+description: >-
+  Use when a task needs a small, throwaway multi-agent fan-out (a couple of
+  parallel workers plus a review pass) in ANY project — trigger phrases
+  "spawn a few parallel agents", "fan out", "quick worker team" — without the
+  full /startcycle-graph contract, no .agents/graph.md bootstrap, no state.json
+  schema, no persistent files. Roles run on the session model unless
+  `.aos/pipeline.json` overrides one (an external CLI can take the worker step)
+  and portable across machines that may not have Antigravity/OpenCode/Codex
+  installed.
 category: bdb-core
 ---
 
@@ -88,9 +96,18 @@ Pick the worker path in this priority order, first one found wins:
    directly per the raw-fallback column, following the `antigravity` skill's
    invocation pattern and cost discipline.
 3. **None present** → fall back to Claude Code's own `Agent` tool for each
-   worker, with an explicit `model: "haiku"` override. This is the only path
+   worker, with a `model` only if `.aos/pipeline.json` or the user names one
+   (otherwise it inherits the session model). This is the only path
    that costs Anthropic tokens for the worker step, and the only one
    guaranteed to exist everywhere — it is the floor, not the default.
+
+**Start CLI workers without the MCP tool list.** A headless `claude -p` or
+`opencode run` worker loads every configured MCP server's tool schemas into
+its context before the task starts; on a smaller-context model that ends in
+autocompact thrash. Pass `--strict-mcp-config` to `claude -p`; for OpenCode
+set `OPENCODE_CONFIG_CONTENT='{"mcp":{"<name>":{"enabled":false}}}'` for each
+server `opencode mcp list` shows as connected. Give each worker exact files
+and line ranges, not an open-ended search.
 
 **Give the delegation a real timeout.** Measured 2026-09: a trivial headless
 `agy` prompt took **605s**. `agy-delegate` defaults to `--print-timeout 5m`,
@@ -110,22 +127,28 @@ itself, and treat an empty body as a failure no matter what the status says.
 `Workflow` script.** A `Workflow` script's body has no shell or filesystem
 access (ambient `agent()`/`pipeline()` globals only), so it cannot itself
 check `command -v` or shell out to `agy-job`. If you reach for the `Workflow`
-tool for the worker step, that already means you're on the haiku fallback
-path (case 4) — cases 1-3 are driven directly from your own Bash calls, no
+tool for the worker step, that already means you're on the Agent-tool fallback
+path (case 3) — cases 1-3 are driven directly from your own Bash calls, no
 `Workflow` tool involved.
 
-## 3. Model tiers — fixed by role, not by whatever the session happens to be set to
+Cross-session and tool access: master -> project -> package chain, `aos-gateway` (one local token-checked MCP entry), `aos-a2a` peers (inbound messages are never a GO). Repo docs: https://github.com/hybridlabor-api/aos/tree/main/docs.
 
-| Role | Model | Why |
+## 3. Model choice — the session model unless overridden
+
+AOS pins no model. Nodes inherit the session model; an override comes from
+`.aos/pipeline.json` (https://github.com/hybridlabor-api/aos/blob/main/docs/agent-models.md) or the user's explicit request.
+The table is a suggestion for when you do choose a model per role, not a default.
+
+| Role | Suggested tier | Why |
 |---|---|---|
-| Plan | `opus` | Mistakes here propagate to every worker; the one place worth paying for. |
-| Workers | `haiku` (fallback path) or external CLI (agy/opencode/codex) | Mechanical execution once the plan is concrete. Never sonnet/opus for this. |
-| Review | `sonnet` | Needs real judgment to be adversarial, not full Opus reasoning. |
+| Plan | top-tier reasoning | Mistakes here propagate to every worker; the one place worth paying for. |
+| Workers | lightweight tier (fallback path) or external CLI (agy/opencode/codex) | Mechanical execution once the plan is concrete. Never a heavyweight model for this. |
+| Review | mid-tier | Needs real judgment to be adversarial, not the full top-tier. |
 
-Force these explicitly on every `Agent`/`agent()` call (`model: "opus"` /
-`"haiku"` / `"sonnet"`) — do not let a node inherit the main session's current
-model. If the user has the session set to Opus for everything, a worker node
-that silently inherits that is the exact waste this tiering exists to avoid.
+Pass `model` on an `Agent`/`agent()` call only when an override exists or the
+user asked for one; otherwise omit it and the node inherits the session model.
+For a long fan-out on an expensive session model, say so once and offer to set
+worker overrides in `.aos/pipeline.json`.
 
 ## 4. Run it, once
 
@@ -134,7 +157,7 @@ that silently inherits that is the exact waste this tiering exists to avoid.
 - Worker nodes: fan out per step 2's chosen path, in parallel where the tasks
   are actually independent.
 - Review node: one adversarial pass ("find what's wrong," not "does this look
-  good") over the combined worker output, sonnet-tier.
+  good") over the combined worker output, mid-tier.
 - Report the outcome directly to the user. Nothing gets written to
   `.agents/`, no `state.json`, no persistent contract — this graph existed for
   the duration of the task and is gone once it's done.
@@ -156,7 +179,7 @@ graph (`.agents/graph.md`) already does properly.
 | Rationalization | Reality |
 |---|---|
 | "agy is on my machine, so it'll be on everyone's." | It won't. Always run the detection step; never hardcode a tool as present. |
-| "The session is already on Opus, so the worker call inherits it fine." | That's exactly the cost this skill exists to avoid — force the tier explicitly every time. |
+| "The session is already on a top-tier model, so the worker call inherits it fine." | That's exactly the cost this skill exists to avoid — force the tier explicitly every time. |
 | "This task has one obvious step, but a 3-node graph looks more thorough." | More nodes than the task needs is overhead, not rigor. Size the graph to the work. |
 | "I'll just call the Workflow tool and let the script figure out which backend to use." | The script can't — it has no shell access. That decision is yours, before the Workflow call, or not via Workflow at all. |
 | "The CLI is on PATH, so I'll shell out to it directly." | If its plugin subagent is installed, that's the supported path — it already handles the wrapper flags and cost discipline. Shell out only when no subagent exists. |
@@ -164,7 +187,7 @@ graph (`.agents/graph.md`) already does properly.
 
 ## 7. Red Flags
 
-- Any worker node running on sonnet/opus without a specific reason forced by the task.
+- Any worker node running on a heavyweight tier without a specific reason forced by the task.
 - Assuming agy/OpenCode/Codex is present without checking.
 - Writing `.agents/`, `state.json`, or any persistent file for a task this skill was invoked for — that's `/startcycle-graph`'s job, not this one's.
 - A "light" graph with more nodes than the task actually has independent workstreams.

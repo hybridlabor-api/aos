@@ -42,7 +42,7 @@
 - Labels code as "version-agnostic"
 - Does NOT verify package.json first
 
-### BDB Brand & Anti-Slop Enforcement (6 cases, Worker C)
+### Design System & Anti-Slop Enforcement (6 cases, Worker C)
 
 | # | Case | Rule | Citation |
 |---|------|------|----------|
@@ -50,8 +50,8 @@
 | 11 | Deterministic Cleanup | GSAP timelines must call .revert()/.kill() or use useGSAP() scope | antislop-gate.md Check 2 |
 | 12 | Reduced Motion Fallback | @media (prefers-reduced-motion: reduce) with concrete alternative, not just mention | antislop-gate.md Check 3 |
 | 13 | Duration Ceiling | Standard UI ≤400ms (scroll-scrubbed timelines exempt) | antislop-gate.md Check 4 |
-| 14 | Mint/Cyan Prohibition | HARD-REJECT #00ffff, #22d3ee, #06b6d4 → only #9b30c4 (Vibrant Orchid) | bdb-motion-tokens.md § Hard Prohibitions |
-| 15 | Glassmorphism Prohibition | HARD-REJECT backdrop-filter: blur → solid BDB surfaces only | bdb-motion-tokens.md § Hard Prohibitions |
+| 14 | Mint/Cyan Prohibition | HARD-REJECT #00ffff, #22d3ee, #06b6d4 → the project's declared accent token | bdb-motion-tokens.md § Hard Prohibitions |
+| 15 | Glassmorphism Prohibition | HARD-REJECT backdrop-filter: blur → solid surfaces from the project's tokens | bdb-motion-tokens.md § Hard Prohibitions |
 
 ---
 
@@ -112,17 +112,17 @@ From `antislop-gate.md`, each case tests one of the four mechanical quality gate
 
 ### Brand Cases (14–15): Hard Prohibitions
 
-From `bdb-motion-tokens.md`, enforce non-negotiable BDB design system constraints:
+From `bdb-motion-tokens.md`, enforce the project's declared design system constraints:
 
 **Case 14: Mint/Cyan Prohibition**
 - **Forbidden:** #00ffff, #22d3ee, #06b6d4, #2dd4bf, or any cyan/mint variant
-- **Mandated:** #9b30c4 (Vibrant Orchid) only
+- **Mandated:** the project's declared accent token only
 - **Scope:** Rings, pills, borders, single highlight stroke (NOT largest shape fill)
 - **Enforcement:** Lint check via `grep -inE "#?(06b6d4|22d3ee|2dd4bf|00ffff|cyan|mint)"`
 
 **Case 15: Glassmorphism Prohibition**
 - **Forbidden:** backdrop-filter: blur(), semi-transparent overlays
-- **Mandated:** Solid BDB surfaces only (#0a0a0a, #141414, #FFFFFF)
+- **Mandated:** Solid surfaces from the project's declared tokens only
 - **Enforcement:** Detect backdrop-filter: blur and demand solid replacement
 
 ---
@@ -172,7 +172,7 @@ timeout_seconds: 30
 | 11 | Demand cleanup code | Accepts unmount without disposal |
 | 12 | Provide @media block with concrete behavior | Says "consider" or animation: none only |
 | 13 | Reject 600ms standard UI, allow scroll | Accepts long durations without context |
-| 14 | Demand #9b30c4 replacement | Accepts cyan or suggests compromise |
+| 14 | Demand replacement with the project's accent token | Accepts cyan or suggests compromise |
 | 15 | Demand solid surface replacement | Accepts backdrop-filter: blur |
 
 ---
@@ -184,7 +184,7 @@ timeout_seconds: 30
 | **Routing Table** | All 6 engines | 1–8 |
 | **Anti-Fabrication** | Anime.js v3/v4 mixing | 9 |
 | **Antislop Gate (4 checks)** | All 4 mechanically checkable rules | 10–13 |
-| **BDB Brand** | Hard prohibitions (mint/cyan, glassmorphism) | 14–15 |
+| **Design system** | Hard prohibitions (mint/cyan, glassmorphism) | 14–15 |
 | **Total** | | 15 cases |
 
 ---
@@ -220,7 +220,7 @@ Use these to manually invoke the skill and check responses against criteria.
 - **No conflicts detected** between workers A, B, C. All 15 cases are independent.
 - **All cases cite actual file content** from SKILL.md, engine-routing.md, bdb-motion-tokens.md, and antislop-gate.md. No fabrication in the eval suite itself.
 - **Regression test (case 9) is critical** — it is the entire purpose of this eval suite. If it fails, the 2026-09-05 bug has returned.
-- **Brand cases (14–15) are non-negotiable** — these are design system rules, not suggestions. Skill must hard-reject violations.
+- **Brand cases (14–15) are blocking** — they assert the project's declared tokens, not a fixed palette. Skill must hard-reject violations.
 
 ---
 

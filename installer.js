@@ -25,10 +25,19 @@ const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
 const { claudeConfigDir } = require('./lib/plugin-evidence');
+const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
+const systemdUnits = require('./lib/systemd-units');
+const mcpSecrets = require('./lib/mcp-secrets');
+const codebaseMemory = require('./lib/codebase-memory');
+const hardwareApps = require('./lib/hardware-apps');
+const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
-const { START: DESTRUCTIVE_START, upsertDestructiveBlock } = require('./lib/destructive-rules');
+const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
+const { upsertRoutingBlock } = require('./lib/routing-rules');
+const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
+const { gatewayCovered } = require('./lib/gateway/config');
 
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
@@ -54,16 +63,12 @@ const {
     intro,
     outro,
     note,
-    text,
-    password,
-    select,
-    multiselect,
-    confirm: askConfirm,
     spinner,
     isCancel,
     cancel,
     log
 } = clack;
+const { text, password, select, multiselect, confirm: askConfirm } = require('./lib/v5/noprompt')(clack);
 
 // Defensive alias: @clack/prompts provides log.success, not log.ok.
 // Ensure any legacy or third-party call to log.ok safely routes to log.success.
@@ -148,6 +153,20 @@ if (platformsArgRaw) {
         PLATFORMS_ARG = requested;
     }
 }
+
+// --profile, --no-hooks, --hooks-only, --without (docs/install-options.md). Parsed once; main() resolves them
+// against the persisted v5 settings before anything installs.
+const v5Profile = require('./lib/v5/profile');
+let INSTALL_OPTS;
+try {
+    INSTALL_OPTS = v5Profile.parseOptions(process.argv, process.env, () => require('./lib/v5/packages').registry.map((p) => p.id));
+} catch (e) {
+    console.error(`${colors.red} -> ${e.message}${colors.reset}`);
+    process.exit(1);
+}
+let contextHooksOn = true;
+let activeProfile = v5Profile.DEFAULT_PROFILE;
+let installExcluded = new Set();
 
 if (DRY_RUN) {
     const guardedFns = ['writeFileSync', 'mkdirSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'symlinkSync', 'appendFileSync', 'chmodSync', 'rmdirSync', 'rmSync'];
@@ -312,6 +331,59 @@ function verifyPythonImports(pythonPath, cwd, importCode) {
     return !result.error && result.status === 0;
 }
 
+// Reconcile a memB venv against its requirements.txt on every run -- not only on a
+// version bump. A changed requirements hash, or a failing import of a required
+// module (mcp, when the venv's requirements list it), forces a reinstall with the
+// venv's pip or `uv pip install -r`. requirements.txt without mcp is a note, not an error.
+function reconcileMembVenv(membDir, opts = {}) {
+    const venvPython = opts.venvPython || (process.platform === 'win32'
+        ? path.join(membDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(membDir, '.venv', 'bin', 'python'));
+    const reqPath = opts.requirementsPath || path.join(membDir, 'requirements.txt');
+    let reqText;
+    try { reqText = fs.readFileSync(reqPath, 'utf8'); } catch { return { status: 'no-requirements' }; }
+    const hash = computeFileHash(reqPath);
+    const stampPath = path.join(membDir, '.venv', '.aos-requirements.sha256');
+    let stamped = null;
+    try { stamped = fs.readFileSync(stampPath, 'utf8').trim(); } catch { /* none yet */ }
+    const hasMcp = /(^|\n)\s*mcp\s*([<>=!~;\[]|$)/.test(reqText);
+    const verify = opts.verifyImports || ((code) => verifyPythonImports(venvPython, membDir, code));
+    if (!hasMcp) log.step('[memb] requirements.txt does not list mcp; import check skipped (note only)');
+    // entryImport must mirror what the server's entry file actually imports. The memb-mcp
+    // copy's run.py resolves FastMCP from `mcp` first, `fastmcp` second; neither module is
+    // reliably listed in requirements.txt, so the default `import mcp` check cannot see that
+    // break. A caller proves the real entry by passing its import statement here.
+    const entryImport = opts.entryImport || (hasMcp ? 'import mcp' : null);
+    let importFailed = false;
+    if (entryImport) {
+        if (verify(entryImport)) {
+            // The entry's imports resolve on the installed venv: that is the actual
+            // up-to-date proof, even when the stamp is absent or stale. Requirements
+            // without mcp are notes; a verified entry outranks a hash mismatch.
+            try { fs.mkdirSync(path.dirname(stampPath), { recursive: true }); fs.writeFileSync(stampPath, hash); } catch { /* ignore */ }
+            return { status: 'up-to-date' };
+        }
+        // entry import fails -> straight to reinstall below (import check outranks the stamp)
+        importFailed = true;
+    }
+    if (hash === stamped && !importFailed) {
+        try { fs.mkdirSync(path.dirname(stampPath), { recursive: true }); fs.writeFileSync(stampPath, hash); } catch { /* ignore */ }
+        return { status: 'up-to-date' };
+    }
+    const install = opts.runInstall || (() => {
+        const hasUv = (opts.hasUv !== undefined) ? opts.hasUv : (() => { try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore' }); return true; } catch { return false; } })();
+        const cmd = hasUv
+            ? `"${uvBin()}" pip install --python "${venvPython}" -r requirements.txt`
+            : `"${venvPython}" -m pip install -r requirements.txt --timeout 30 --no-input`;
+        return runPipWithRetry(cmd, { cwd: membDir, stdio: 'inherit' }, 'memB requirements reconcile', 2, 900000);
+    });
+    const ok = install();
+    if (ok) {
+        try { fs.mkdirSync(path.dirname(stampPath), { recursive: true }); fs.writeFileSync(stampPath, hash); } catch { /* ignore */ }
+    }
+    return { status: ok ? 'reinstalled' : 'failed' };
+}
+
 function resolveUnsupportedMcpConfigKeys() {
     const keys = unsupportedMcpConfigKeys.slice();
     conditionalMcpConfigKeys.forEach(entry => {
@@ -364,21 +436,70 @@ function warnUnparseable(filePath, what, loaded) {
     log.warn(`Could not parse ${filePath} (${loaded.error}); left untouched, ${what} skipped. Fix or remove the file and run the installer again.`);
 }
 
-// Writes `data` over an existing config only when it changed (`before` = JSON.stringify of the parsed original, null for none), after a backup.
+// Backup name collision (hardening): the backup is `<file>.<fsStr>.bak` where fsStr has one-second
+// granularity, so a second write to the same file within the same run would otherwise overwrite the
+// first backup and LOSE the original. backupConfigPath is the generic copyFileSync(COPYFILE_EXCL)
+// primitive (never overwrites; EEXIST -> counter suffix .1, .2, … up to a cap). The config writer
+// uses backupConfigFile instead, which delegates to mcpSecrets.safeBackup: created `wx` with 0600
+// at open time (no world-readable window, the file can hold credentials), EEXIST handled the same
+// way, dry-run aware.
+function backupConfigPath(src, fsStr) {
+    const base = `${src}.${fsStr}.bak`;
+    try { fs.copyFileSync(src, base, fs.constants.COPYFILE_EXCL); return base; }
+    catch (e) {
+        if (e && e.code !== 'EEXIST') throw e;
+        for (let n = 1; ; n++) {
+            const dest = `${base}.${n}`;
+            try { fs.copyFileSync(src, dest, fs.constants.COPYFILE_EXCL); return dest; }
+            catch (e2) {
+                if (e2 && e2.code !== 'EEXIST') throw e2;
+                if (n >= 1000) throw new Error(`no free backup name for ${src} after 1000 attempts`);
+            }
+        }
+    }
+}
+
+// Timestamped copy next to the config; it can hold credentials, so 0600. True when none was needed or it was made.
+const configBackups = [];
+function backupConfigFile(filePath) {
+    if (!fs.existsSync(filePath)) return true;
+    if (DRY_RUN) { log.message(`[dry-run] backup: ${filePath}`); return true; }
+    try {
+        // created `wx` with 0600 at open time: no world-readable window
+        configBackups.push(mcpSecrets.safeBackup(filePath, `${filePath}.${timestamp}.bak`));
+        return true;
+    } catch (e) {
+        log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
+        return false;
+    }
+}
+
+// Writes `data` over an existing config only when it changed (`before` = JSON.stringify of the
+// parsed original, null for none), after a non-destructive exclusive backup. The write is atomic:
+// the temp file `<file>.tmp-<pid>` is written in the same directory with mode 0600 and renamed
+// over the target; a failed rename leaves the backup and the original intact, and no temp file
+// survives either path.
 function writeConfigWithBackup(filePath, data, before) {
     const serialized = JSON.stringify(data, null, 2);
     if (before !== null && before === JSON.stringify(data)) {
         try { fs.chmodSync(filePath, 0o600); } catch (e) { logDebug(e, 'chmod config'); }
         return false;
     }
-    if (fs.existsSync(filePath)) {
-        try { fs.copyFileSync(filePath, `${filePath}.${timestamp}.bak`); } catch (e) {
-            log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
-            return false;
+    // Backup first (0600, dry-run aware), then the atomic tmp-rename write.
+    if (!backupConfigFile(filePath)) return false;
+    const tmp = `${filePath}.tmp-${process.pid}`;
+    try {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(tmp, serialized, { mode: 0o600 });
+        try { fs.chmodSync(tmp, 0o600); } catch (e) { logDebug(e, 'chmod config tmp'); }
+        try { fs.renameSync(tmp, filePath); } catch (e) {
+            try { fs.unlinkSync(tmp); } catch (e2) { logDebug(e2, 'unlink config tmp'); }
+            throw e;
         }
+    } catch (e) {
+        log.warn(`Could not write ${filePath}, not rewriting it: ${e.message}`);
+        return false;
     }
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, serialized, { mode: 0o600 });
     try { fs.chmodSync(filePath, 0o600); } catch (e) { logDebug(e, 'chmod config'); }
     return true;
 }
@@ -657,7 +778,7 @@ const keptUserEdits = [];
 // Returns 'wrote' | 'bak' | 'kept' | 'skipped'.
 // knownSourceHashes: Set of sha256 hashes of all source files in the current
 // payload (used to identify files we recognise even before manifest entry).
-function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes) {
+function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes, shippedHashes = SHIPPED_HASHES) {
     const sourceHash = computeFileHash(sourcePath);
     if (!sourceHash) {
         // Every other branch of this function reports what it did; this one
@@ -680,6 +801,16 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
 
     const diskHash = computeFileHash(targetPath);
 
+    // Case: an older release of our own file. Its hash appears in the
+    // shipped-hashes list (built from every released payload), so it is
+    // AOS-owned even if no manifest entry survives -- overwrite directly,
+    // no .new, no .bak.
+    if (shippedHashes.has(diskHash)) {
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        return 'wrote';
+    }
+
     // Case: unrecognised content at a path this payload owns.
     //
     // This used to skip, on the reading that unknown content means a file the
@@ -692,18 +823,16 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     // across every update since, because bootstrap adoption only catches a file
     // that is byte-identical to the current payload.
     //
-    // So update it, and keep the protection where it belongs -- in the backup,
-    // not in refusing to write. A genuine local edit is recoverable from .bak
-    // rather than silently outvoting the shipped version forever.
+    // That old-release case is now covered by the shipped-hash check above, so
+    // what remains here is content we have no record of having ever shipped: a
+    // local edit of one of our files (recoverable via the .new copy) or a
+    // foreign file. Either way the disk version wins and the shipped copy
+    // lands beside it as <file>.new.
     if (!manifestEntry && !knownSourceHashes.has(diskHash)) {
-        const bakPath = `${targetPath}.${timestamp}.bak`;
-        try { fs.copyFileSync(targetPath, bakPath); } catch (e) {
-            log.warn(`[manifest] Could not create backup ${bakPath}: ${e.message}`);
-        }
-        fs.copyFileSync(sourcePath, targetPath);
-        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
-        log.warn(`[manifest] Unrecognised ${path.basename(targetPath)} backed up to ${bakPath}, shipped version written.`);
-        return 'bak';
+        const newPath = `${targetPath}.new`;
+        fs.copyFileSync(sourcePath, newPath);
+        keptUserEdits.push(targetPath);
+        return 'kept';
     }
 
     // Case: first-run bootstrap – disk hash matches source hash but no manifest entry.
@@ -734,6 +863,22 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
     return 'wrote';
 }
+
+// Hashes of every file shipped in ANY AOS release (built at pack time by
+// scripts/build-shipped-hashes.mjs into lib/shipped-hashes.json). A file on
+// disk matching one of these is AOS-owned regardless of which release placed
+// it, so the installer overwrites it without a .new. Missing or corrupt file
+// → empty Set: the installer then just falls back to the manifest policy.
+function loadShippedHashes() {
+    try {
+        const arr = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'shipped-hashes.json'), 'utf8'));
+        if (Array.isArray(arr)) return new Set(arr.filter((h) => typeof h === 'string'));
+    } catch (e) { /* missing or broken – treat as empty */ }
+    return new Set();
+}
+let SHIPPED_HASHES = loadShippedHashes();
+// Tests inject their own set; production keeps the pack-time list.
+function setShippedHashes(set) { SHIPPED_HASHES = set; }
 
 // Build a Set of all sha256 hashes for files under a source directory tree.
 // Used as the "known shipped hashes" set so we can bootstrap-adopt files that
@@ -835,8 +980,9 @@ function retireObsoleteLegacyDir(targetLegacyDir) {
         return;
     }
     try {
-        fs.rmSync(targetLegacyDir, { recursive: true, force: true });
-        log.step(`Removed retired legacy skill copies at ${targetLegacyDir} (global_legacy has not shipped in a long time).`);
+        const backupRoot = fs.mkdtempSync(path.join(ensureBackupParent(), 'retired-legacy-'));
+        fs.renameSync(targetLegacyDir, path.join(backupRoot, 'legacy'));
+        log.step(`Moved retired legacy skill copies from ${targetLegacyDir} to ${backupRoot} (global_legacy has not shipped in a long time).`);
     } catch (e) {
         logDebug(e, 'retire legacy dir');
     }
@@ -1065,6 +1211,11 @@ function detectInstallState() {
         }
     }
 
+    // No module directory: Codebase Memory is opted into by the binary itself.
+    if (codebaseMemory.cmbAppStatus().found && !installedModules.includes('codebase-memory')) {
+        installedModules.push('codebase-memory');
+    }
+
     const currentVersion = pkg.version || '3.9.6';
     // Was a bare !== -- any version string difference counted as "update
     // available", downgrade included. A real Windows session ran `@latest`
@@ -1187,6 +1338,22 @@ function safeRmDirSync(dirPath, maxRetries = 5, retryDelay = 200) {
     }
 }
 
+// A symlink is only a pointer and is safe to replace; a real file or folder there may be the user's own and is moved aside.
+function clearLinkSlot(p) {
+    let st;
+    try { st = fs.lstatSync(p); } catch { return; }
+    if (st.isSymbolicLink()) { fs.unlinkSync(p); return; }
+    const backupRoot = fs.mkdtempSync(path.join(ensureBackupParent(), 'replaced-by-link-'));
+    fs.renameSync(p, path.join(backupRoot, path.basename(p)));
+    log.step(`Moved ${p} aside before linking it (backup: ${backupRoot}).`);
+}
+
+function ensureBackupParent() {
+    const dir = path.join(homeDir, '.agents', 'backups');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+}
+
 function copyDirRecursiveSync(source, target, excludeList = [], manifest = null, knownSourceHashes = null) {
     // Fall back to session-level state when no explicit manifest is passed.
     const mfst = manifest !== null ? manifest : _sessionManifest;
@@ -1234,7 +1401,7 @@ function copyDirRecursiveSync(source, target, excludeList = [], manifest = null,
                 try {
                     const linkTarget = fs.readlinkSync(curSource);
                     if (fs.existsSync(curSource)) {
-                        if (fs.existsSync(curTarget)) fs.unlinkSync(curTarget);
+                        clearLinkSlot(curTarget);
                         fs.symlinkSync(linkTarget, curTarget);
                     } else {
                         log.warn(`Skipping broken symlink ${curSource}`);
@@ -1352,9 +1519,11 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
         result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, announce: (m) => log.step(m), cli: uninstallRecords.recordingCli(targetHome, pluginCli !== undefined ? pluginCli : useCli ? pluginMigration.defaultCliRunner : null), ...(registrars ? { registrars } : {}) });
     } catch (e) {
         log.warn(`Plugin migration skipped: ${e.message}`);
-        result = { covered: new Set(), lines: [] };
+        result = { covered: new Set(), lines: [], error: e.message };
     }
     for (const line of result.lines) log.step(line);
+    const regFailed = result.lines.filter((l) => /plugin registration failed/.test(l));
+    if (regFailed.length && !result.error) result.error = regFailed.join('; ');
     if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
     if (targetHome === homeDir) _pluginMigration = result;
     return result;
@@ -1363,12 +1532,13 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
 // Antigravity and Codex plugin steps, shared by the full install and Quick Update so the default
 // update path installs the same plugins. Order: Claude (runPluginMigration), agy, Codex.
 function runAgyPluginStep() {
-    try { require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log }); }
-    catch (e) { log.warn(`agy plugin skipped: ${e.message}`); }
+    try { require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log }); return null; }
+    catch (e) { log.warn(`agy plugin skipped: ${e.message}`); return e.message; }
 }
 function runCodexPluginStep() {
     const r = codexPluginInstall.installCodexPlugin({ home: homeDir, pkgRoot: srcDir, version: require('./package.json').version, mode: pluginMigrationMode(), announce: (m) => log.step(m) });
     for (const line of r.lines) log.step(line);
+    if (r.ok === false) throw new Error(r.lines.filter((l) => /FAILED/.test(l)).join('; ') || 'Codex plugin install failed');
 }
 
 // Measured with codex 0.154.0: Codex loads BOTH ~/.agents/skills and ~/.codex/skills, so AOS copies
@@ -1470,10 +1640,8 @@ function installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBa
     }
 }
 
-function syncSkillsToGlobalHarnesses(excludeSkills = []) {
-    const skillsBase = path.join(srcDir, 'skills');
-    if (!fs.existsSync(skillsBase)) return;
-    const pluginCovered = runPluginMigration().covered;
+function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
+    const pluginCovered = ignorePluginCoverage ? new Set() : runPluginMigration().covered;
 
     // Mirror only into harnesses that are actually present. This list used to
     // be unconditional, which both wrote skills nobody would read and planted
@@ -1487,13 +1655,121 @@ function syncSkillsToGlobalHarnesses(excludeSkills = []) {
     // circularity the block comment above warns about, just one layer down.
     // A harness that stops being detected now simply stops receiving skill
     // updates instead of perpetuating a false positive.
-    const extraSkillDestinations = [
+    return [
         { dir: path.join(homeDir, '.agents', 'skills'), key: null },
         { dir: path.join(claudeConfigDir(homeDir), 'skills'), key: 'claudecode' },
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
         { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
+}
+
+const TAURI_PILOT_VERSION = '0.8.1';
+const TAURI_PILOT_CARGO_ARGS = ['install', 'tauri-pilot-cli', '--version', TAURI_PILOT_VERSION, '--locked'];
+const TAURI_PILOT_INSTALL_CMD = `cargo ${TAURI_PILOT_CARGO_ARGS.join(' ')}`;
+const TAURI_PILOT_MCP = 'tauri-pilot';
+
+// The tauri-pilot CLI is also the MCP server. A missing cargo or a failed build only warns: the skills stay usable.
+function ensureTauriPilotCli({ exec = execFileSync, has = hasExecutable } = {}) {
+    try {
+        const out = exec('tauri-pilot', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000 });
+        if ((String(out).match(/\d+\.\d+\.\d+/) || [])[0] === TAURI_PILOT_VERSION) {
+            log.step(`tauri-pilot ${TAURI_PILOT_VERSION} already installed.`);
+            return true;
+        }
+    } catch (e) { logDebug(e, 'tauri-pilot --version'); }
+    if (!has('cargo')) {
+        log.warn(`cargo not found on PATH: the tauri-pilot CLI and MCP server are not installed. Install Rust, then run: ${TAURI_PILOT_INSTALL_CMD}`);
+        return false;
+    }
+    log.step(`Installing the tauri-pilot CLI: ${TAURI_PILOT_INSTALL_CMD} (compiles from source, can take several minutes)`);
+    try {
+        exec('cargo', TAURI_PILOT_CARGO_ARGS, { stdio: 'inherit', timeout: 30 * 60 * 1000 });
+        uninstallRecords.recordCargoCrate(homeDir, 'rustauri', 'tauri-pilot-cli');
+        return true;
+    } catch (e) {
+        log.warn(`tauri-pilot CLI install failed (${e.message}). Run it by hand: ${TAURI_PILOT_INSTALL_CMD}`);
+        return false;
+    }
+}
+
+// The full install's MCP sync writes this pick as well; `aos package install rustauri` runs no sync, so the
+// entry is merged here into every existing harness MCP config. Package removal retires it on the next sync.
+function registerTauriPilotMcp() {
+    mcpPickCache = null; // the pick depends on the skills installRustauri has just written
+    const entry = mcpPicks().servers[TAURI_PILOT_MCP];
+    if (!entry) { log.warn('tauri-pilot MCP entry not registered: the tauri-pilot skill is not in ~/.agents/skills.'); return; }
+    const master = { mcpServers: { [TAURI_PILOT_MCP]: entry } };
+    const retired = new Set(mcpPicks().retired);
+    const shipped = mcpShipped();
+    for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir, process.env, process.platform, homeDir)) {
+        if (!fs.existsSync(file)) continue;
+        if (kind === 'opencode') { syncOpencodeConfigFile(file, master); continue; }
+        if (kind !== 'toml') { syncMcpConfigFile(file, master); continue; }
+        // mergeCodexTomlMcpServers rewrites the whole AOS block from what it is given: hand it the AOS tables already there.
+        try {
+            const owned = {};
+            for (const [name, t] of Object.entries(mcpSecrets.parseCodexTables(readTextFile(file)))) {
+                const e = mcpSecrets.codexEntry(t);
+                if (!retired.has(name) && typeof e.command === 'string' && mcpSecrets.isAosOwned(name, e, null, shipped)) owned[name] = e;
+            }
+            mergeCodexTomlMcpServers(file, { ...owned, ...master.mcpServers });
+        } catch (e) {
+            log.warn(`Could not add the tauri-pilot MCP server to ${file}: ${e.message}`);
+        }
+    }
+    log.step('Registered the tauri-pilot MCP server (direct, not behind the gateway) in the harness MCP configs.');
+}
+
+// Copies vendor/<pkg>/skills/* to ~/.agents/skills and every detected harness; true when ~/.agents/skills got them.
+function installVendorSkills(pkg, label) {
+    const skillsBase = path.join(srcDir, 'vendor', pkg, 'skills');
+    if (!fs.existsSync(skillsBase)) {
+        log.warn(`${label} skills not found at ${skillsBase}; skipping.`);
+        return false;
+    }
+    const leaves = fs.readdirSync(skillsBase).filter((d) => fs.existsSync(path.join(skillsBase, d, 'SKILL.md')));
+    if (DRY_RUN) {
+        log.step(`[dry-run] would copy ${label} skills (${leaves.join(', ')}) to ~/.agents/skills and each detected harness`);
+        return true;
+    }
+    const agentsSkills = path.join(homeDir, '.agents', 'skills');
+    let agentsOk = false;
+    for (const { dir: dest } of globalSkillDestinations({ ignorePluginCoverage: true })) {
+        try {
+            fs.mkdirSync(dest, { recursive: true });
+            for (const dir of leaves) syncSkillEntry(path.join(skillsBase, dir), dir, dest, []);
+            if (pkg === 'rustauri') uninstallRecords.recordSkillCopies(homeDir, pkg, leaves.map((d) => path.join(dest, d)));
+            if (dest === agentsSkills) agentsOk = true;
+            log.step(`Installed ${label} skills to ${dest}`);
+        } catch (e) {
+            log.warn(`Could not install ${label} skills to ${dest}: ${e.message}`);
+        }
+    }
+    return agentsOk;
+}
+
+function installRustauri(deps = {}) {
+    if (!installVendorSkills('rustauri', 'Rust + Tauri')) return false;
+    if (DRY_RUN) {
+        log.step(`[dry-run] would run \`${TAURI_PILOT_INSTALL_CMD}\` when cargo is on PATH and tauri-pilot ${TAURI_PILOT_VERSION} is not installed`);
+        log.step('[dry-run] would register the tauri-pilot MCP server ({"command": "tauri-pilot", "args": ["mcp"]}) in every harness MCP config');
+        return true;
+    }
+    ensureTauriPilotCli(deps);
+    registerTauriPilotMcp();
+    return true;
+}
+
+// StyleSeed (bitjaru/styleseed, MIT): the Toss design-language skills, opt-in since they assume that design system.
+function installStyleseed() {
+    return installVendorSkills('styleseed', 'StyleSeed');
+}
+
+function syncSkillsToGlobalHarnesses(excludeSkills = []) {
+    const skillsBase = path.join(srcDir, 'skills');
+    if (!fs.existsSync(skillsBase)) return;
+    const extraSkillDestinations = globalSkillDestinations();
 
     retireCodexSkillCopies(_sessionManifest);
     retireStaleCodexPluginDir(_sessionManifest);
@@ -1548,6 +1824,26 @@ function loadExistingEnv(targetMcpDir) {
         }
     }
 
+    // The secrets file has its own quoting rules, so it is read with its own parser (private files only).
+    const stored = mcpSecrets.readSecretsFile(mcpSecrets.secretsPath(homeDir));
+    for (const [k, v] of Object.entries(stored.vars)) if (v && !envData[k]) envData[k] = v;
+
+    // ~/.openwiki/.env speaks the openwiki CLI's provider names; translate them back to AOS's.
+    let ow = {};
+    try { ow = mcpSecrets.parseEnvText(fs.readFileSync(path.join(homeDir, '.openwiki', '.env'), 'utf8')); } catch (e) { if (e.code !== 'ENOENT') logDebug(e, 'operation'); }
+    const base = ow.OPENAI_COMPATIBLE_BASE_URL;
+    const aosProvider = ow.OPENWIKI_PROVIDER === 'gemini' ? 'google'
+        : ow.OPENWIKI_PROVIDER === 'openai-compatible' ? (Object.keys(OPENWIKI_CLI_PROVIDERS).find((p) => OPENWIKI_CLI_PROVIDERS[p].baseUrl && OPENWIKI_CLI_PROVIDERS[p].baseUrl === base) || 'custom')
+            : ow.OPENWIKI_PROVIDER;
+    if (aosProvider && OPENWIKI_CLI_PROVIDERS[aosProvider] && !envData.OPENWIKI_PROVIDER) {
+        envData.OPENWIKI_PROVIDER = aosProvider;
+        if (ow.OPENWIKI_MODEL_ID && !envData.OPENWIKI_MODEL_ID) envData.OPENWIKI_MODEL_ID = ow.OPENWIKI_MODEL_ID;
+        if (base && !envData.OPENWIKI_BASE_URL) envData.OPENWIKI_BASE_URL = base;
+        const keyName = PROVIDER_KEY_ENV_NAMES[aosProvider];
+        const key = ow[OPENWIKI_CLI_PROVIDERS[aosProvider].key];
+        if (keyName && key && !envData[keyName]) envData[keyName] = key;
+    }
+
     for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GITHUB_PERSONAL_ACCESS_TOKEN', 'GROQ_API_KEY', 'XAI_API_KEY', 'NVIDIA_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY']) {
         if (process.env[k] && !envData[k]) {
             envData[k] = process.env[k];
@@ -1600,78 +1896,70 @@ async function promptCredentials(referenceMcpDir) {
         return { gemini: "", github: existingGithub, openwikiProvider: "nvidia", openwikiModel: "nvidia/llama-3.1-nemotron-70b-instruct", openwikiBaseUrl: "https://integrate.api.nvidia.com/v1", keyEnvName: 'NVIDIA_API_KEY' };
     }
 
-    const hasKeys = Boolean(existingGemini || existingGithub);
-
-    if (hasKeys) {
-        log.info('Integrations & Credentials');
-        if (existingGemini) log.message(`GEMINI/OpenWiki Key: ${maskApiKey(existingGemini)}`);
-        if (existingGithub) log.message(`GitHub MCP Token:    ${maskApiKey(existingGithub)}`);
-
-        const credAction = await selectWithBack({
-            message: 'Credentials Setup:',
-            options: [
-                { value: 'keep', label: 'Keep existing credentials & LLM provider settings (Recommended)' },
-                { value: 'update', label: 'Re-configure API keys / LLM provider wizard' }
-            ],
-            initialValue: 'keep'
+    // Stored values are reused, never asked again; only what is missing is prompted for.
+    const haveOpenWiki = Boolean(existingGemini) || existingProvider === 'ollama';
+    const stored = { gemini: existingGemini, github: existingGithub, openwikiProvider: existingProvider, openwikiModel: existingModel, openwikiBaseUrl: existingBaseUrl, keyEnvName: existingKeyEnvName };
+    if (haveOpenWiki || existingGithub) {
+        log.info('Integrations & Credentials (reusing stored values)');
+        if (existingGemini) log.message(`${existingKeyEnvName}: ${maskApiKey(existingGemini)}`);
+        if (existingGithub) log.message(`GITHUB_PERSONAL_ACCESS_TOKEN: ${maskApiKey(existingGithub)}`);
+        log.message('To change a stored key or the provider, use `aos-config`.');
+    }
+    // Asked once per key ever: a blank answer is remembered (AOS_SKIPPED_KEYS), a value is stored at once.
+    const askSecret = async (key, message) => {
+        let backed = false;
+        const r = await v5Secrets.need([key], {
+            home: homeDir, legacy: existingEnv,
+            ask: async () => { const v = await passwordWithBack({ message }); if (v === BACK) { backed = true; return null; } return String(v || ''); },
         });
-
-        if (credAction === BACK) return BACK;
-
-        if (credAction === 'keep') {
-            return {
-                gemini: existingGemini,
-                github: existingGithub,
-                openwikiProvider: existingProvider,
-                openwikiModel: existingModel,
-                openwikiBaseUrl: existingBaseUrl,
-                keyEnvName: existingKeyEnvName
-            };
-        }
+        return backed ? BACK : r[key];
+    };
+    const ghMessage = 'GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP (leave blank to skip) (< = back):';
+    if (haveOpenWiki && existingGithub) return stored;
+    if (haveOpenWiki) {
+        const gh = await askSecret('GITHUB_PERSONAL_ACCESS_TOKEN', ghMessage);
+        if (gh === BACK) return BACK;
+        return { ...stored, github: gh };
     }
 
+    // Model names change faster than this installer: no per-provider model lists, the model is free text.
     const provOptions = [
-        { value: '1', label: 'Google AI Studio / Gemini – gemma-4-26b-a4b-it, gemini-2.5-pro, gemini-3.5-flash' },
-        { value: '2', label: 'Groq – llama-3.3-70b-versatile, llama-3.1-8b-instant' },
-        { value: '3', label: 'Grok / xAI – grok-2-latest, grok-3' },
-        { value: '4', label: 'NVIDIA NIM – meta/llama-3.3-70b-instruct, nvidia/llama-3.1-nemotron-70b-instruct' },
-        { value: '5', label: 'OpenRouter – anthropic/claude-3.5-sonnet, openai/gpt-4o' },
-        { value: '6', label: 'OpenAI – gpt-4o-mini, gpt-4o, o1' },
+        { value: '1', label: 'Google AI Studio / Gemini' },
+        { value: '2', label: 'Groq' },
+        { value: '3', label: 'Grok / xAI' },
+        { value: '4', label: 'NVIDIA NIM' },
+        { value: '5', label: 'OpenRouter' },
+        { value: '6', label: 'OpenAI' },
         { value: '7', label: 'Ollama / LM Studio – Local LLM (no API key, no cost)' },
         { value: '8', label: 'Custom OpenAI API / Base URL + API Key + Model' }
     ];
 
     const defaultsFor = (c) => {
-        let provider = "google", model = "", baseUrl = "", keyEnvName = "GEMINI_API_KEY";
+        let provider = "google", baseUrl = "", keyEnvName = "GEMINI_API_KEY";
         const v = (c || '1').trim();
-        if (v === "2")      { provider = "groq";       model = "llama-3.3-70b-versatile";     keyEnvName = "GROQ_API_KEY"; }
-        else if (v === "3") { provider = "grok";       model = "grok-2-latest";               keyEnvName = "XAI_API_KEY"; }
-        else if (v === "4") { provider = "nvidia";     model = "meta/llama-3.3-70b-instruct"; keyEnvName = "NVIDIA_API_KEY"; baseUrl = "https://integrate.api.nvidia.com/v1"; }
-        else if (v === "5") { provider = "openrouter"; model = "anthropic/claude-3.5-sonnet"; keyEnvName = "OPENROUTER_API_KEY"; }
-        else if (v === "6") { provider = "openai";     model = "gpt-4o-mini";                 keyEnvName = "OPENAI_API_KEY"; }
-        else if (v === "7") { provider = "ollama";     model = "llama3";                      baseUrl = "http://localhost:11434/v1"; }
+        if (v === "2")      { provider = "groq";       keyEnvName = "GROQ_API_KEY"; }
+        else if (v === "3") { provider = "grok";       keyEnvName = "XAI_API_KEY"; }
+        else if (v === "4") { provider = "nvidia";     keyEnvName = "NVIDIA_API_KEY"; baseUrl = "https://integrate.api.nvidia.com/v1"; }
+        else if (v === "5") { provider = "openrouter"; keyEnvName = "OPENROUTER_API_KEY"; }
+        else if (v === "6") { provider = "openai";     keyEnvName = "OPENAI_API_KEY"; }
+        else if (v === "7") { provider = "ollama";     baseUrl = "http://localhost:11434/v1"; }
         else if (v === "8") { provider = "custom";     keyEnvName = "OPENWIKI_API_KEY"; }
-        return { provider, model, baseUrl, keyEnvName };
+        return { provider, baseUrl, keyEnvName };
     };
-
-    const defaultModelFor = (provider) => provider === "google"
-        ? "gemma-4-26b-a4b-it"
-        : provider === "groq"
-            ? "llama-3.3-70b-versatile"
-            : provider === "grok"
-                ? "grok-2-latest"
-                : provider === "nvidia"
-                    ? "meta/llama-3.3-70b-instruct"
-                    : provider === "openai"
-                        ? "gpt-4o-mini"
-                        : provider === "ollama"
-                            ? "llama3"
-                            : "gpt-4o-mini";
 
     let sub = 0;
     let choice = '1';
     let d = defaultsFor('1');
     let enteredModel = '', customBaseUrl = '', apiKey = '', github = '';
+    // A provider is already stored but its key is missing: ask for the key only.
+    const storedChoice = { google: '1', groq: '2', grok: '3', nvidia: '4', openrouter: '5', openai: '6' }[existingEnv['OPENWIKI_PROVIDER']];
+    if (storedChoice) {
+        choice = storedChoice;
+        d = defaultsFor(choice);
+        enteredModel = existingModel;
+        customBaseUrl = existingBaseUrl;
+        sub = 2;
+    }
 
     while (true) {
         if (sub === 0) {
@@ -1697,10 +1985,8 @@ async function promptCredentials(referenceMcpDir) {
                 if (((u || '') + '').trim()) customBaseUrl = ((u || '') + '').trim();
             }
 
-            const fallbackModel = d.model || defaultModelFor(d.provider);
             const m = await textWithBack({
-                message: `Model name [default: ${fallbackModel}] (< = back):`,
-                placeholder: fallbackModel
+                message: `Model name (free text; blank = the OpenWiki daemon's own default) (< = back):`
             });
             if (m === BACK) { sub = 0; continue; }
             enteredModel = ((m || '') + '').trim();
@@ -1711,11 +1997,9 @@ async function promptCredentials(referenceMcpDir) {
         if (sub === 2) {
             if (d.provider !== "ollama") {
                 const existingKey = existingEnv[d.keyEnvName] || existingEnv['GEMINI_API_KEY'] || '';
-                const entered = await passwordWithBack({
-                    message: `${d.keyEnvName} for OpenWiki${existingKey ? ` (existing detected: ${maskApiKey(existingKey)}, leave blank to keep)` : ' (leave blank to skip)'} (< = back):`
-                });
+                const entered = await askSecret(d.keyEnvName, `${d.keyEnvName} for OpenWiki${existingKey ? ` (existing detected: ${maskApiKey(existingKey)}, leave blank to keep)` : ' (leave blank to skip)'} (< = back):`);
                 if (entered === BACK) { sub = 1; continue; }
-                apiKey = ((entered || '') + '').trim() || existingKey;
+                apiKey = entered || existingKey;
             } else {
                 apiKey = '';
             }
@@ -1724,11 +2008,10 @@ async function promptCredentials(referenceMcpDir) {
         }
 
         const ghExisting = existingEnv['GITHUB_PERSONAL_ACCESS_TOKEN'] || existingEnv['GITHUB_TOKEN'] || '';
-        const enteredGithub = await passwordWithBack({
-            message: `GITHUB_PERSONAL_ACCESS_TOKEN for GitHub MCP${ghExisting ? ` (existing detected: ${maskApiKey(ghExisting)}, leave blank to keep)` : ' (leave blank to skip)'} (< = back):`
-        });
+        if (ghExisting) { github = ghExisting; break; }
+        const enteredGithub = await askSecret('GITHUB_PERSONAL_ACCESS_TOKEN', ghMessage);
         if (enteredGithub === BACK) { sub = 2; continue; }
-        github = ((enteredGithub || '') + '').trim() || ghExisting;
+        github = enteredGithub || ghExisting;
         break;
     }
 
@@ -1736,7 +2019,7 @@ async function promptCredentials(referenceMcpDir) {
         gemini: apiKey.trim(),
         github: github.trim(),
         openwikiProvider: d.provider,
-        openwikiModel: enteredModel || d.model || defaultModelFor(d.provider),
+        openwikiModel: enteredModel,
         openwikiBaseUrl: customBaseUrl || d.baseUrl,
         keyEnvName: d.keyEnvName
     };
@@ -1980,7 +2263,7 @@ async function runTopologyAnimation(backgroundTask, label) {
 
 async function installTokenSaver(platformTarget) {
     const tokenSaverDir = path.join(srcDir, 'vendor', 'token-saver');
-    if (!fs.existsSync(tokenSaverDir)) return;
+    if (!fs.existsSync(tokenSaverDir)) return false;
     if (DRY_RUN) {
         log.step('[dry-run] would run Heimdall Token Saver setup (--target all)');
         return;
@@ -2002,6 +2285,7 @@ async function installTokenSaver(platformTarget) {
     } catch (err) {
         log.warn(`Heimdall Token Saver skipped/failed: ${err.message}`);
         logDebug(err, 'Token Saver install');
+        return false;
     }
 }
 
@@ -2036,6 +2320,36 @@ function checkModuleUpdate(pkgName, targetDir) {
     } catch (e) {
         return { installed: true, updateAvailable: false, localVer: null, remoteVer: null, checkFailed: true };
     }
+}
+
+// Anything a module generated in place -- venvs, caches, local state -- is not in its tarball and must
+// survive the staging swap in downloadOrUpdateModule.
+const MODULE_PRESERVE = ['.venv', 'venv', 'node_modules', '.env', 'data', 'logs'];
+// Move preserved entries from one tree to another; an entry that already exists there stays put.
+function movePreserved(fromDir, toDir) {
+    for (const keep of MODULE_PRESERVE) {
+        const from = path.join(fromDir, keep);
+        if (!fs.existsSync(from) || fs.existsSync(path.join(toDir, keep))) continue;
+        try { fs.renameSync(from, path.join(toDir, keep)); } catch (moveErr) { logDebug(moveErr, `preserve ${keep}`); }
+    }
+}
+// Stale .incoming-*/.previous-* dirs of an interrupted swap may hold the preserved .env/data/logs (or the
+// whole old tree): move those into targetDir, newest first, before the dirs are deleted (S1-1).
+function recoverStaleSwaps(targetDir) {
+    try {
+        const parentDir = path.dirname(targetDir);
+        const baseName = path.basename(targetDir);
+        if (!fs.existsSync(parentDir)) return;
+        fs.mkdirSync(targetDir, { recursive: true });
+        const stamp = (item) => item.slice(item.lastIndexOf('-') + 1);
+        const stale = fs.readdirSync(parentDir)
+            .filter((item) => item.startsWith(`${baseName}.incoming-`) || item.startsWith(`${baseName}.previous-`))
+            .sort((a, b) => stamp(b).localeCompare(stamp(a)));
+        for (const item of stale) {
+            movePreserved(path.join(parentDir, item), targetDir);
+            safeRmDirSync(path.join(parentDir, item));
+        }
+    } catch (_) {}
 }
 
 function downloadOrUpdateModule(pkgName, targetDir, displayName) {
@@ -2083,37 +2397,14 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
         const stagingDir = `${targetDir}.incoming-${timestamp}`;
         const retiredDir = `${targetDir}.previous-${timestamp}`;
 
-        // Clean up any stale staging or retired directories left behind by earlier interrupted runs
-        try {
-            const parentDir = path.dirname(targetDir);
-            const baseName = path.basename(targetDir);
-            if (fs.existsSync(parentDir)) {
-                for (const item of fs.readdirSync(parentDir)) {
-                    if (item.startsWith(`${baseName}.incoming-`) || item.startsWith(`${baseName}.previous-`)) {
-                        safeRmDirSync(path.join(parentDir, item));
-                    }
-                }
-            }
-        } catch (_) {}
+        recoverStaleSwaps(targetDir);
 
         safeRmDirSync(stagingDir);
         fs.mkdirSync(stagingDir, { recursive: true });
         execSync(`tar -xzf "${path.join(targetDir, tarball)}" --strip-components=1 -C "${stagingDir}"`, { stdio: 'ignore' });
         fs.unlinkSync(path.join(targetDir, tarball));
 
-        // Anything the module generated in place -- venvs, caches, local state
-        // -- is not in the tarball and must survive the swap.
-        const PRESERVE = ['.venv', 'venv', 'node_modules', '.env', 'data', 'logs'];
-        for (const keep of PRESERVE) {
-            const from = path.join(targetDir, keep);
-            if (fs.existsSync(from) && !fs.existsSync(path.join(stagingDir, keep))) {
-                try {
-                    fs.renameSync(from, path.join(stagingDir, keep));
-                } catch (preserveErr) {
-                    logDebug(preserveErr, `preserve ${keep}`);
-                }
-            }
-        }
+        movePreserved(targetDir, stagingDir);
 
         // Phase 1: retire the live tree. On Windows a running daemon holds open
         // file handles into targetDir — retry with brief backoff before failing.
@@ -2136,6 +2427,8 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
                     } catch (_) {}
                     continue;
                 }
+                // The live tree stayed in place: give it its preserved entries back before staging goes.
+                movePreserved(stagingDir, targetDir);
                 safeRmDirSync(stagingDir);
                 throw retireError;
             }
@@ -2147,7 +2440,12 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
             fs.renameSync(stagingDir, targetDir);
         } catch (promoteError) {
             try { fs.renameSync(retiredDir, targetDir); } catch (_) {}
-            safeRmDirSync(stagingDir);
+            // Only delete staging once the preserved entries are back; if the old tree could not be
+            // restored either, keep staging so the next run's sweep can recover them.
+            if (fs.existsSync(targetDir)) {
+                movePreserved(stagingDir, targetDir);
+                safeRmDirSync(stagingDir);
+            }
             throw promoteError;
         }
 
@@ -2156,7 +2454,9 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
         // new version in place, failure to clean up retiredDir must be non-fatal.
         safeRmDirSync(retiredDir);
 
-        s.stop(`${displayName} ready (v${status.remoteVer || 'latest'})`);
+        let installedVer = '';
+        try { installedVer = JSON.parse(fs.readFileSync(path.join(targetDir, 'package.json'), 'utf8')).version || ''; } catch { /* shown without a version */ }
+        s.stop(installedVer ? `${displayName} ready (v${installedVer})` : `${displayName} ready`);
         return true;
     } catch (e) {
         s.stop(`Failed downloading ${displayName}: ${e.message}`);
@@ -2195,10 +2495,12 @@ async function installDeja() {
     try {
         log.step('Installing deja-vu session memory...');
         execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore' });
+        uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
     } catch (e) {
         log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
     }
-    if (!hasExecutable('deja')) {
+    const dejaOnPath = hasExecutable('deja');
+    if (!dejaOnPath) {
         log.warn('deja is not on PATH. Install it with: npm install -g @vshulcz/deja-vu@0.21.1');
     }
     const base = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
@@ -2210,6 +2512,7 @@ async function installDeja() {
     } catch (e) {
         log.warn(`Could not update the deja exclude list at ${excludePath}: ${e.message}. Add the line 'secret' to it by hand.`);
     }
+    return dejaOnPath ? undefined : false;
 }
 
 async function installMemB(interactive) {
@@ -2263,10 +2566,10 @@ async function installMemB(interactive) {
             let createdViaUv = false;
             if (!fs.existsSync(venvPython)) {
                 try {
-                    execSync(`"${uvBin()}" venv --seed .venv`, { cwd: membDir, stdio: 'ignore' });
+                    execSync(`"${uvBin()}" venv --clear --seed .venv`, { cwd: membDir, stdio: 'ignore' });
                     createdViaUv = true;
                 } catch (e1) {
-                    execSync(`${pythonCmd} -m venv .venv`, { cwd: membDir, stdio: 'ignore' });
+                    execSync(`${pythonCmd} -m venv --clear .venv`, { cwd: membDir, stdio: 'ignore' });
                 }
             }
 
@@ -2296,7 +2599,8 @@ async function installMemB(interactive) {
             const installCmd = (pkgsArg) => hasUv ? uvInstall(pkgsArg) : pipInstall(pkgsArg);
 
             runPipWithRetry(installCmd('--upgrade setuptools'), { cwd: membDir, stdio: 'ignore' }, 'pip setuptools for memB standalone', 2, 120000);
-            runPipWithRetry(installCmd('-r requirements.txt'), { cwd: membDir, stdio: 'inherit' }, 'pip install for memB standalone', 2, 900000);
+            const reconcile = reconcileMembVenv(membDir, { venvPython, hasUv });
+            if (reconcile.status === 'failed') log.warn('memB requirements reconcile failed; inspect the venv before starting the daemon.');
 
             if (installWebUI && fs.existsSync(serverPy)) {
                 runPipWithRetry(installCmd('fastapi uvicorn'), { cwd: membDir, stdio: 'ignore' }, 'pip fastapi+uvicorn for memB WebUI', 2, 120000);
@@ -2371,6 +2675,33 @@ async function installMemB(interactive) {
                     log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
                 }
             } catch (e) { logDebug(e, 'operation'); }
+        } else if (process.platform === 'linux') {
+            // Same program, working dir and logs as the launchd plist above.
+            const venvPython = path.join(membDir, '.venv', 'bin', 'python');
+            const unitName = 'com.bdb.memb.webui.service';
+            try {
+                fs.mkdirSync(path.join(homeDir, '.memb'), { recursive: true });
+                const unitFile = systemdUnits.unitPath(homeDir, unitName);
+                fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+                fs.writeFileSync(unitFile, systemdUnits.buildUserUnit({
+                    description: 'memB WebUI',
+                    execStart: [venvPython, serverPy],
+                    workingDirectory: path.join(membDir, 'src', 'backend'),
+                    restart: 'always',
+                    logOut: path.join(homeDir, '.memb', 'webui.stdout.log'),
+                    logErr: path.join(homeDir, '.memb', 'webui.stderr.log'),
+                }));
+                await systemdUnits.enableUnit(async (cmd, args) => {
+                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    return { ok: true };
+                }, unitName);
+                const isListening = await verifyDaemonListening(8088, 'memB WebUI');
+                if (isListening) {
+                    log.success('memB WebUI systemd user unit active (Port 8088)');
+                } else {
+                    log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                }
+            } catch (e) { logDebug(e, 'linux memb unit'); }
         } else if (process.platform === 'win32') {
             const venvPython = path.join(membDir, '.venv', 'Scripts', 'python.exe');
             const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
@@ -2487,6 +2818,32 @@ async function installSynapse() {
                     log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
                 }
             } catch (e) { logDebug(e, 'synapse plist setup'); }
+        } else if (process.platform === 'linux') {
+            // Same program, args, working dir and logs as the launchd plist above.
+            const unitName = 'com.bdb.synapse.service';
+            try {
+                fs.mkdirSync(path.join(homeDir, '.synapse'), { recursive: true });
+                const unitFile = systemdUnits.unitPath(homeDir, unitName);
+                fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+                fs.writeFileSync(unitFile, systemdUnits.buildUserUnit({
+                    description: 'Synapse 3D',
+                    execStart: binaryPath.endsWith('.js') ? [process.execPath, binaryPath, 'serve', '--port', '7781'] : [binaryPath, 'serve', '--port', '7781'],
+                    workingDirectory: synapseDir,
+                    restart: 'always',
+                    logOut: path.join(homeDir, '.synapse', 'daemon.stdout.log'),
+                    logErr: path.join(homeDir, '.synapse', 'daemon.stderr.log'),
+                }));
+                await systemdUnits.enableUnit(async (cmd, args) => {
+                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    return { ok: true };
+                }, unitName);
+                const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
+                if (isListening) {
+                    log.success('Synapse 3D systemd user unit active (Port 7781)');
+                } else {
+                    log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                }
+            } catch (e) { logDebug(e, 'linux synapse unit'); }
         } else if (process.platform === 'win32') {
             const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
             fs.mkdirSync(startupDir, { recursive: true });
@@ -2692,6 +3049,33 @@ async function installOpenWikiVisualizer() {
                 log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
             }
         } catch (e) { logDebug(e, 'openwiki visualizer plist setup'); }
+    } else if (process.platform === 'linux') {
+        // Same program, args, working dir and logs as the launchd plist above (com.bdb.openwiki-visualize).
+        const unitName = 'com.bdb.openwiki-visualize.service';
+        try {
+            fs.mkdirSync(path.join(homeDir, '.openwiki'), { recursive: true });
+            const unitFile = systemdUnits.unitPath(homeDir, unitName);
+            fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+            const unit = systemdUnits.buildUserUnit({
+                description: 'OpenWiki Visualizer',
+                execStart: wikiPath ? [nodeBin, openwikiBin, 'visualize', wikiPath, '--port', '4321', '--no-open'] : [nodeBin, openwikiBin, 'visualize', '--port', '4321', '--no-open'],
+                workingDirectory: homeDir,
+                restart: 'always',
+                logOut: path.join(homeDir, '.openwiki', 'visualize.stdout.log'),
+                logErr: path.join(homeDir, '.openwiki', 'visualize.stderr.log'),
+            });
+            fs.writeFileSync(unitFile, unit);
+            await systemdUnits.enableUnit(async (cmd, args) => {
+                execFileSync(cmd, args, { stdio: 'ignore' });
+                return { ok: true };
+            }, unitName);
+            const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
+            if (isListening) {
+                log.success('OpenWiki Visualizer systemd user unit active (Port 4321)');
+            } else {
+                log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+            }
+        } catch (e) { logDebug(e, 'linux openwiki visualizer unit'); }
     } else if (process.platform === 'win32') {
         const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
         fs.mkdirSync(startupDir, { recursive: true });
@@ -2735,12 +3119,85 @@ async function installCreatorExtension() {
     if (fs.existsSync(installerScript)) {
         const setupResult = DRY_RUN
             ? { status: 0 }
-            : spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: creatorDir });
+            : spawnSync('node', [installerScript, '--auto'], { stdio: 'pipe', cwd: creatorDir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+        // Piped, then written through process.stdout/stderr: the v5 update step redirects those into its log file.
+        if (setupResult.stdout) process.stdout.write(setupResult.stdout);
+        if (setupResult.stderr) process.stderr.write(setupResult.stderr);
         if (setupResult.status !== 0) {
             log.warn(`Creator Extension setup note: exit code ${setupResult.status}`);
             return false;
         }
     }
+}
+
+// Removes kicad/openscad entries the hardware module registered in harness configs whose
+// backing app is absent. The module's installer.js always registers both; this is the
+// AOS-side gate, so an entry never points at a launcher that cannot start. Idempotent:
+// an entry that is not there makes no change. Works like retireMcpServers: only entries
+// AOS ships/registered are removed — a same-named user entry (a command that is not one of
+// the hardware module's runner scripts and is not a shipped template shape) survives and
+// triggers warnUserMcpEntry. Returns the removed [file, name] pairs.
+function stripHwMcpEntries(serverNames, { home = homeDir } = {}) {
+    const removed = [];
+    const warnUser = (file) => warnUserMcpEntry(file);
+    // The plain shipped template does not list the hw servers; they live in the module's own
+    // install dir (bdb-hardware-pcb/scripts/run_*_mcp.*). isAosOwned covers them if a template
+    // ever does; the runner-script match is the ownership rule that matters today.
+    const shipped = mcpShipped();
+    const hwOwned = (name, entry) => {
+        if (!entry || typeof entry !== 'object') return false;
+        if (mcpSecrets.isAosOwned(name, entry, null, shipped)) return true;
+        const u = mcpSecrets.unwrap(entry);
+        return typeof u.command === 'string'
+            && /(^|[\\/])bdb-hardware-pcb([\\/]|$)/.test(u.command)
+            && /(^|[\\/])run_(kicad|openscad)_mcp/.test(u.command);
+    };
+    const removeJson = (file, warnTag = file) => {
+        if (!fs.existsSync(file)) return;
+        try {
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            let changed = false;
+            for (const name of serverNames) {
+                if (data && data.mcpServers && typeof data.mcpServers === 'object' && data.mcpServers[name]) {
+                    if (!hwOwned(name, data.mcpServers[name])) { warnUser(warnTag)(name); continue; }
+                    delete data.mcpServers[name];
+                    removed.push([file, name]);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                // Temp file in the same directory + rename: a crash mid-write cannot destroy the config.
+                writeFileAtomic(file, JSON.stringify(data, null, 2) + '\n');
+            }
+        } catch (e) { logDebug(e, `strip hw entry (${path.basename(file)})`); }
+    };
+    removeJson(path.join(home, '.claude.json'));
+    // agy keeps one config; the antigravity-cli variant is a link on the same inode.
+    removeJson(path.join(home, '.gemini', 'config', 'mcp_config.json'), 'agy-mcp_config');
+    // Codex keeps its own entries where the user put them: drop these two by table name, but
+    // only when the table's command/args say AOS (or the hw module) wrote them.
+    const codexToml = path.join(home, '.codex', 'config.toml');
+    if (fs.existsSync(codexToml)) {
+        try {
+            const lines = fs.readFileSync(codexToml, 'utf8').split(/\r?\n/);
+            const want = new Set(serverNames.map(String));
+            const droppedNames = [];
+            const drop = (name, sec) => {
+                if (!want.has(name)) return false;
+                const t = mcpSecrets.parseCodexTables(sec.join('\n'))[name];
+                const entry = t && { command: t.fields.command, args: t.fields.args };
+                if (!entry || !hwOwned(name, entry)) { warnUser(codexToml)(name); return false; }
+                droppedNames.push(name);
+                return true;
+            };
+            const stripped = uninstallRecords.dropMcpTables(lines, drop);
+            if (stripped.length !== lines.length) {
+                fs.writeFileSync(codexToml, stripped.join('\n'));
+                for (const name of serverNames) if (droppedNames.includes(name)) removed.push([codexToml, name]);
+            }
+        } catch (e) { logDebug(e, 'strip hw entry (config.toml)'); }
+    }
+    return removed;
 }
 
 async function installHardwarePcb() {
@@ -2753,6 +3210,19 @@ async function installHardwarePcb() {
         log.step('[dry-run] would run BDB Hardware & PCB setup');
         return;
     }
+    // The published package once shipped prebuilt .venv trees whose interpreter
+    // shebang points at a python that does not exist on this machine ("bad
+    // interpreter"). A venv dir with a dangling `bin/python` link must not stand
+    // between the launcher and its dependency install: run `uv sync` per server
+    // dir before the module installer registers the launchers.
+    const needsSync = hardwareApps.hwServerDirsNeedingSync(hwDir);
+    for (const serverDir of needsSync) {
+        log.step(`Hardware & PCB: venv python missing in ${path.basename(serverDir)} — running uv sync (explicit uv path: ${uvBin()}).`);
+        const res = spawnSync(uvBin(), ['sync'], { cwd: serverDir, stdio: 'ignore', timeout: 600000 });
+        if (res.error || res.status !== 0) {
+            log.warn(`uv sync failed for ${path.basename(serverDir)}${res.error ? ` (${res.error.message})` : ` (exit ${res.status})`}. The MCP launcher may fall back to 'uv run', which needs uv on the harness's PATH.`);
+        }
+    }
     const installerScript = path.join(hwDir, 'installer.js');
     if (fs.existsSync(installerScript)) {
         const setupResult = spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: hwDir });
@@ -2760,6 +3230,49 @@ async function installHardwarePcb() {
             log.warn(`Hardware & PCB setup note: exit code ${setupResult.status}`);
             return false;
         }
+    }
+    // Gate: the module registered both servers; undo the registrations whose app
+    // is absent, with a plain notice. Kept after the module run because the
+    // module itself offers no skip switch.
+    const statuses = { kicad: hardwareApps.hwAppStatus('kicad'), openscad: hardwareApps.hwAppStatus('openscad') };
+    const gate = hardwareApps.hwAppGate(statuses);
+    if (gate.skip.length) {
+        for (const appId of gate.skip) {
+            log.warn(`${hardwareApps.appMissingMessage(appId)} — the '${appId}' MCP server is not registered (install the app and re-run the AOS installer to enable it).`);
+        }
+        const removed = stripHwMcpEntries(gate.skip);
+        if (removed.length && !DRY_RUN) log.step(`Removed ${gate.skip.join(' and ')} MCP entries from ${[...new Set(removed.map(([f]) => path.basename(f)))].join(', ')}.`);
+    }
+}
+
+// Codebase Memory MCP is third-party (DeusData/codebase-memory-mcp): a self-contained
+// stdio binary with a local SQLite DB and no install-time download from AOS. The MCP
+// entry is not written here; it comes from the one-MCP-per-app pick (mcp_picks.json,
+// candidate gated on the binary), so a machine without the binary gets nothing registered.
+// Picking the module (or --modules=codebase-memory) is an explicit "yes, coding": same path as --coding.
+async function installCodebaseMemory() {
+    await applyCodingModeStep({ flag: true });
+    const status = codebaseMemory.cmbAppStatus();
+    if (status.found) log.step(`Codebase Memory MCP: binary at ${status.path}; the codebase_memory_mcp MCP entry is registered with the next harness MCP sync.`);
+}
+
+// "Do you use AOS for coding?" -- asked once (interactive only), stored as codingMode in v5-settings.json.
+// --coding / --no-coding set it; non-interactive runs never prompt. Never aborts the install.
+async function applyCodingModeStep({ flag } = {}) {
+    try {
+        await codebaseMemory.applyCodingMode({
+            settings: v5Profile.readSettings(homeDir),
+            save: (s) => { if (!DRY_RUN) v5Profile.writeSettings(homeDir, s); },
+            flag: flag !== undefined ? flag : codebaseMemory.parseCodingFlag(process.argv),
+            // stdin must be a TTY too, and CI never prompts (a pty-allocating runner is still CI).
+            interactive: !isAutoYes && Boolean(process.stdin.isTTY) && !process.env.CI,
+            ask: async (message) => { const a = await askConfirm({ message, initialValue: false }); return isCancel(a) ? undefined : Boolean(a); },
+            run: (cmd) => runNpmWithRetry(cmd, {}, 'install codebase-memory-mcp'),
+            warn: (m) => log.warn(m),
+            step: (m) => log.step(m),
+        });
+    } catch (e) {
+        log.warn(`Coding mode step skipped: ${e.message}`);
     }
 }
 
@@ -2936,9 +3449,9 @@ function aoPlatformBinaries(dir) {
     return [b('bin', `ao-${plat}-${arch}`), b('ao-daemon'), b('bin', 'ao'), b('ao')];
 }
 
-// Picks the binary this run may install. A local checkout counts only when it
-// is a release source (clean, HEAD on a tag) or AOS_AO_DEV_BUILD=1 opts in;
-// otherwise the published release package is used, never the dev checkout.
+// Picks the binary this run may install. A local checkout is looked at only
+// when AOS_AO_DEV_BUILD=1 opts in; otherwise the published release package is
+// used silently, never the dev checkout.
 function selectAoCandidate({
     checkoutDir, isLocalGitRepo, releaseDir,
     devOptIn = process.env.AOS_AO_DEV_BUILD === '1',
@@ -2948,7 +3461,7 @@ function selectAoCandidate({
     build = buildAoFromSource,
     candidatesIn = aoPlatformBinaries,
 }) {
-    if (isLocalGitRepo) {
+    if (isLocalGitRepo && devOptIn) {
         const ws = checkWorkspace(checkoutDir);
         if (ws.ok) {
             if (dryRun) return { bin: null, source: 'dry-run' };
@@ -2959,12 +3472,9 @@ function selectAoCandidate({
             });
             return { bin: prebuilt || build(checkoutDir), source: 'checkout' };
         }
-        if (devOptIn) {
-            log.warn(`AOS_AO_DEV_BUILD=1: building ao from ${checkoutDir} HEAD although ${ws.reason}; a downgrade is still refused.`);
-            if (dryRun) return { bin: null, source: 'dry-run' };
-            return { bin: build(checkoutDir), source: 'dev', allowDirty: true };
-        }
-        log.warn(`The AO checkout ${checkoutDir} is not a release source (${ws.reason}; Go also counts untracked files as uncommitted), so the published release is used. To build from the checkout instead, rerun with AOS_AO_DEV_BUILD=1.`);
+        log.warn(`AOS_AO_DEV_BUILD=1: building ao from ${checkoutDir} HEAD although ${ws.reason}; a downgrade is still refused.`);
+        if (dryRun) return { bin: null, source: 'dry-run' };
+        return { bin: build(checkoutDir), source: 'dev', allowDirty: true };
     }
     if (fs.existsSync(path.join(releaseDir, '.git'))) {
         log.warn(`${releaseDir} is a git checkout; not downloading the release over it. Keeping the installed ao.`);
@@ -2992,7 +3502,7 @@ async function installOSAgentWorkspace() {
         path.join(homeDir, 'dev', 'agents', 'bdb-agent-orchestrator'),
         path.join(homeDir, 'dev', 'bdb-dev', 'bdb-agent-orchestrator'),
     ].find((d) => fs.existsSync(path.join(d, '.git')));
-    if (checkoutDir) log.step(`Found a local AO checkout: ${checkoutDir}`);
+    if (checkoutDir && process.env.AOS_AO_DEV_BUILD === '1') log.step(`Found a local AO checkout: ${checkoutDir}`);
 
     const pick = selectAoCandidate({ checkoutDir, isLocalGitRepo: !!checkoutDir, releaseDir });
     if (DRY_RUN) {
@@ -3109,6 +3619,7 @@ function verifyEcosystemInstallation() {
     for (const f of moduleFailures) {
         console.log(`  • ${colors.bold}${f.name}${colors.reset} ➔ ${colors.yellow}❌ NOT installed: ${f.reason.split('\n')[0]}${colors.reset}`);
     }
+    if (moduleFailures.length) process.exitCode = 1;
     const modules = [
         { name: '1. bdb-synapse', pkg: '@hybridlabor-api/bdb-synapse', paths: [path.join(moduleBasePath(), 'bdb-synapse')] },
         { name: '2. memB', pkg: '@hybridlabor-api/memb', paths: [path.join(moduleBasePath(), 'memB'), path.join(geminiDir, 'config', 'mcps', 'memb-mcp')] },
@@ -3281,16 +3792,117 @@ function getTierExcludeSkills(tier) {
 // primary write above owns its file wholesale, but a secondary store belongs
 // to another product and is very likely to already hold the user's own
 // servers -- so this merges per server key and never replaces the file.
-// An unattended run has no credentials of its own (empty strings); those must never
-// replace a value the user already has in a server's env block.
-function keepExistingEnvValues(incomingServers, previousServers) {
-    for (const [key, incoming] of Object.entries(incomingServers || {})) {
-        const prevEnv = previousServers && previousServers[key] && previousServers[key].env;
-        if (!incoming || typeof incoming !== 'object' || !incoming.env || !prevEnv || typeof prevEnv !== 'object') continue;
-        for (const [k, v] of Object.entries(incoming.env)) {
-            if (v === '' && typeof prevEnv[k] === 'string' && prevEnv[k] !== '') incoming.env[k] = prevEnv[k];
-        }
+//
+// Secrets never go into a harness config: every server that needs one is written in launcher form
+// (lib/mcp-secrets.js, bin/aos-mcp-env.mjs) and the values live in ~/.aos/secrets.env (0600).
+// Ownership is judged against every shipped definition (both candidates of an app group), so a picked
+// official entry is still AOS-owned for update and uninstall.
+const mcpShipped = () => mcpSecrets.shippedAll(srcDir);
+// App-aware pick, once per process: winners are written, `retired` (losing candidates) are removed again.
+let mcpPickDetect = null;
+let mcpPickCache = null;
+const mcpPicks = () => {
+    if (!mcpPickCache) {
+        const detect = mcpPickDetect || require('./lib/mcp-pick').detectApps({ platform: process.platform, env: process.env, home: homeDir });
+        mcpPickCache = mcpSecrets.shippedPicks(srcDir, { detect, env: process.env });
     }
+    return mcpPickCache;
+};
+// Test hook: inject detect results (null restores real detection).
+function setMcpPickDetect(fn) { mcpPickDetect = typeof fn === 'function' ? fn : null; mcpPickCache = null; }
+// Drops AOS-owned entries of losing candidates from a harness server map (OpenCode shape with opencode=true).
+// A user's own same-name entry, http entries and entries holding inline secrets stay.
+function retireMcpServers(map, opencode = false) {
+    if (!map || typeof map !== 'object') return false;
+    const shipped = mcpShipped();
+    let changed = false;
+    for (const name of mcpPicks().retired) {
+        if (map[name] === undefined) continue;
+        const canon = opencode ? mcpSecrets.fromOpencode(map[name]) : map[name];
+        if (!canon || canon.url || mcpSecrets.inlineSecrets(canon.env).length || !mcpSecrets.isAosOwned(name, canon, null, shipped)) continue;
+        delete map[name];
+        changed = true;
+    }
+    return changed;
+}
+// null once the launcher or its lib could not be installed: nothing is then wrapped and no inline value is moved.
+let mcpLauncherFailed = false;
+const mcpLauncher = () => (mcpLauncherFailed ? null : mcpSecrets.launcherPath(homeDir));
+const secretBackups = new Set();
+// One line per run naming the backups of configs whose inline secrets were moved; they hold plaintext secrets.
+function noticeSecretBackups() {
+    if (!secretBackups.size) return;
+    log.warn(`Backups of the configs changed above contain the old plaintext secrets: ${[...secretBackups].join(', ')}. Delete them once you no longer need them.`);
+    secretBackups.clear();
+}
+const warnedUserMcp = new Set();
+const warnUserMcpEntry = (file) => (name) => {
+    if (warnedUserMcp.has(`${file}\0${name}`)) return;
+    warnedUserMcp.add(`${file}\0${name}`);
+    log.warn(`${file}: your own "${name}" MCP entry differs from the AOS one and was left untouched.`);
+};
+
+// Backup of `file` first, then the collected inline values into the secrets file (never replacing a
+// stored value). False means: do not rewrite `file`, its inline values are the only copy.
+function stashInlineSecrets(collector, file) {
+    if (!collector || !collector.size()) return true;
+    if (DRY_RUN) return true;
+    const before = configBackups.length;
+    if (!backupConfigFile(file)) return false;
+    configBackups.slice(before).forEach((b) => secretBackups.add(b));
+    try {
+        const res = mcpSecrets.storeSecrets(mcpSecrets.secretsPath(homeDir), collector.values);
+        if (res.added.length) log.step(`Moved ${res.added.join(', ')} from ${file} into ${mcpSecrets.secretsPath(homeDir)}`);
+        const differs = [...new Set([...res.kept, ...collector.conflicts])];
+        if (differs.length) log.warn(`${file} held a different inline value for ${differs.join(', ')} than the secrets file; kept the stored value (neither is printed).`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not write ${mcpSecrets.secretsPath(homeDir)} (${e.message}); ${file} left unchanged.`);
+        return false;
+    }
+}
+
+// The launcher and the two lib files it needs; entries point at them, so they go in before any entry.
+function installMcpLauncher() {
+    if (DRY_RUN) return true;
+    const pairs = [
+        [path.join(srcDir, 'bin', mcpSecrets.LAUNCHER_FILE), mcpSecrets.launcherPath(homeDir)],
+        [path.join(srcDir, 'lib', 'mcp-secrets.js'), path.join(homeDir, '.agents', 'lib', 'mcp-secrets.js')],
+        [path.join(srcDir, 'lib', 'jsonc.js'), path.join(homeDir, '.agents', 'lib', 'jsonc.js')],
+        [path.join(srcDir, 'lib', 'mcp-pick.js'), path.join(homeDir, '.agents', 'lib', 'mcp-pick.js')],
+    ];
+    let ok = true;
+    for (const [src, dest] of pairs) {
+        try { copyDirRecursiveSync(src, dest); } catch (e) { log.warn(`Could not install ${path.basename(dest)}: ${e.message}`); }
+        if (!fs.existsSync(dest)) ok = false;
+    }
+    mcpLauncherFailed = !ok;
+    if (!ok) log.warn('The MCP secrets launcher could not be installed: MCP entries are not rewritten and inline secrets stay where they are. Fix the error above and re-run the installer.');
+    return ok;
+}
+
+// Custom and project-local MCP configs are recorded so migration, doctor and uninstall can find them later.
+function recordMcpConfigPath(file) {
+    if (DRY_RUN || !file || !fs.existsSync(file)) return;
+    try { uninstallRecords.recordMcpConfig(homeDir, path.resolve(file)); } catch (e) { logDebug(e, 'record MCP config path'); }
+}
+
+// Decided per target file: a harness config that already points at the gateway (its aos entry or
+// [mcp_servers.aos] table) gets no direct copies of the servers the gateway serves, or every tool is listed twice.
+// Every other file keeps them, so harnesses the gateway does not wire never lose a server.
+function hasGatewayAos(file) {
+    try {
+        if (file.toLowerCase().endsWith('.toml')) return fs.existsSync(file) && tomlHasGateway(fs.readFileSync(file, 'utf8'));
+        const l = loadJsonConfig(file);
+        return l.state === 'ok' && [l.data.mcpServers, l.data.mcp].some((m) => m && typeof m === 'object' && isAosShaped(m.aos));
+    } catch (e) { logDebug(e, 'gateway aos check'); return false; }
+}
+function withoutGatewayServers(servers, file) {
+    if (!servers || typeof servers !== 'object' || !hasGatewayAos(file)) return servers;
+    const out = { ...servers };
+    // Alternates of a gateway server (the pick-group duplicates) count too: a duplicate upstream is a duplicate tool list.
+    for (const n of Object.keys(out)) if (gatewayCovered(n)) delete out[n];
+    return out;
 }
 
 function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
@@ -3316,13 +3928,16 @@ function mirrorMcpServersTo(extraPaths, mcpConfigStr) {
             }
             const data = existing || {};
             data.mcpServers = data.mcpServers && typeof data.mcpServers === 'object' ? data.mcpServers : {};
-            const mirrored = JSON.parse(JSON.stringify(servers));
-            keepExistingEnvValues(mirrored, data.mcpServers);
-            for (const [key, val] of Object.entries(mirrored)) data.mcpServers[key] = val;
+            const before = JSON.stringify(data);
+            const collector = mcpSecrets.createCollector();
+            mcpSecrets.mergeServers(data.mcpServers, JSON.parse(JSON.stringify(withoutGatewayServers(servers, target))), { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(target) });
+            retireMcpServers(data.mcpServers);
+            if (existing && JSON.stringify(data) === before) continue;
+            if (!stashInlineSecrets(collector, target)) continue;
             fs.mkdirSync(path.dirname(target), { recursive: true });
-            // Carries injected API keys, same as the primary config. The `mode`
-            // option only applies when writeFileSync CREATES the file -- an
+            // The `mode` option only applies when writeFileSync CREATES the file -- an
             // existing 0644 file keeps its old mode -- so chmod explicitly.
+            if (existing && !backupConfigFile(target)) continue;
             fs.writeFileSync(target, JSON.stringify(data, null, 2), { mode: 0o600 });
             try { fs.chmodSync(target, 0o600); } catch (e) { logDebug(e, 'chmod mirrored mcp config'); }
             log.step(`Mirrored MCP servers into ${target}`);
@@ -3358,6 +3973,129 @@ function removeAosMcscFromAgyConfigs(home = homeDir) {
     if (removed.length) log.step(`Removed the AOS mcsc entry from ${removed.join(', ')} (it recurses when registered for agy)`);
     return removed;
 }
+
+let warnedDisabledMcps = false;
+
+// A2A MCP server entry detection, registration and cleanup for agy and Cursor.
+const isAosA2aEntry = (e) => !!e && typeof e === 'object'
+    && /(^|[\\/])node(\.exe)?$/i.test(String(e.command || ''))
+    && Array.isArray(e.args)
+    && /[\\/](aos-a2a-mcp|a2a-inbox-mcp)\.mjs$/i.test(String(e.args[0] || ''));
+
+// A2A MCP session names follow lib/a2a-registry.mjs validName rules (same alphabet the
+// registry files use, so a name can never alias another file). The ESM module is loaded by
+// require(esm) when the Node supports it; the identical pattern is kept inline as a fallback
+// for a Node that cannot require() an .mjs yet.
+function validA2aMcpSessionName(name) {
+    let mod = null;
+    try { mod = require('./lib/a2a-registry.mjs'); } catch { /* older Node, no require(esm) */ }
+    if (mod) { try { return mod.validName(name); } catch { return null; } }
+    const n = String(name ?? '');
+    if (!n || n.length > 64 || n.startsWith('.') || n.startsWith('-') || n.endsWith('-') || !/^[a-z0-9._-]+$/.test(n)) return null;
+    return n;
+}
+
+// Every A2A MCP registration name goes through the validName rules: invalid or empty
+// becomes a warning plus the fixed default for that harness (never a silently invented
+// name, never AOS_A2A_NAME from the installer's own environment).
+function resolveAosA2aMcpName(raw, fallback, where) {
+    const validated = raw == null ? null : validA2aMcpSessionName(String(raw));
+    if (validated) return validated;
+    // An unset override (raw == null) simply takes the fixed default — not a warning (B5):
+    // only an override that was actually SET and is invalid gets the loud fallback message.
+    if (raw == null) return fallback;
+    log.warn(`${where} MCP session name ${JSON.stringify(raw)} is not a valid A2A session name (use [a-z0-9._-], no leading dot/dash, max 64); using "${fallback}"`);
+    return fallback;
+}
+
+function makeAosA2aMcpEntry(sessionName, home = homeDir) {
+    const cleanName = validA2aMcpSessionName(String(sessionName ?? ''));
+    if (!cleanName) {
+        throw new Error('AOS_A2A_NAME is required: session identity must be specified');
+    }
+    const scriptPath = path.join(home, '.agents', 'bin', 'aos-a2a-mcp.mjs');
+    return {
+        command: 'node',
+        args: [scriptPath],
+        env: {
+            AOS_A2A_NAME: cleanName
+        }
+    };
+}
+
+// Defaults are fixed and distinct per harness (never AOS_A2A_NAME of the installer's own
+// session): overriding happens ONLY via the explicit AOS_A2A_MCP_NAME_CURSOR /
+// AOS_A2A_MCP_NAME_AGY env vars, and every name pressure-validates through validName.
+const A2A_MCP_DEFAULT_NAME_CURSOR = 'cursor-mcp';
+const A2A_MCP_DEFAULT_NAME_AGY = 'agy-mcp';
+
+function registerA2aMcpCursor({ targetHome = homeDir, name = A2A_MCP_DEFAULT_NAME_CURSOR } = {}) {
+    const sessionName = resolveAosA2aMcpName(name, A2A_MCP_DEFAULT_NAME_CURSOR, 'Cursor');
+    const cursorMcpPath = path.join(targetHome, '.cursor', 'mcp.json');
+    const loaded = loadJsonConfig(cursorMcpPath);
+    // An unparseable config is never rewritten: the user's file stays untouched (B2).
+    if (loaded.state === 'invalid') { warnUnparseable(cursorMcpPath, 'the Cursor A2A MCP registration', loaded); return cursorMcpPath; }
+    const data = loaded.data;
+    if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
+    // A foreign "aos-a2a" entry (not one of ours) is never overwritten (B3).
+    if (data.mcpServers['aos-a2a'] != null && !isAosA2aEntry(data.mcpServers['aos-a2a'])) {
+        log.warn(`${cursorMcpPath} already has its own "aos-a2a" entry that was not written by AOS; it was left untouched. Rename or remove that entry and run the installer again to register the A2A MCP.`);
+        return cursorMcpPath;
+    }
+    const before = JSON.stringify(data);
+    data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(sessionName, targetHome);
+    fs.mkdirSync(path.dirname(cursorMcpPath), { recursive: true });
+    writeConfigWithBackup(cursorMcpPath, data, before);
+    return cursorMcpPath;
+}
+
+function registerA2aMcpAgy({ targetHome = homeDir, name = A2A_MCP_DEFAULT_NAME_AGY } = {}) {
+    const sessionName = resolveAosA2aMcpName(name, A2A_MCP_DEFAULT_NAME_AGY, 'agy');
+    const registered = [];
+    for (const f of agyMcpConfigPaths(targetHome)) {
+        const loaded = loadJsonConfig(f);
+        if (loaded.state === 'invalid') { warnUnparseable(f, 'the agy A2A MCP registration', loaded); continue; }
+        const data = loaded.data;
+        if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
+        if (data.mcpServers['aos-a2a'] != null && !isAosA2aEntry(data.mcpServers['aos-a2a'])) {
+            log.warn(`${f} already has its own "aos-a2a" entry that was not written by AOS; it was left untouched. Rename or remove that entry and run the installer again to register the A2A MCP.`);
+            continue;
+        }
+        const before = JSON.stringify(data);
+        data.mcpServers['aos-a2a'] = makeAosA2aMcpEntry(sessionName, targetHome);
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        writeConfigWithBackup(f, data, before);
+        registered.push(f);
+    }
+    return registered;
+}
+
+function removeAosA2aEntries({ targetHome = homeDir } = {}) {
+    const targets = [
+        path.join(targetHome, '.cursor', 'mcp.json'),
+        ...agyMcpConfigPaths(targetHome)
+    ];
+    const cleaned = [];
+    for (const f of targets) {
+        if (!fs.existsSync(f)) continue;
+        const loaded = loadJsonConfig(f);
+        if (loaded.state !== 'ok' || !loaded.data.mcpServers) continue;
+        const before = JSON.stringify(loaded.data);
+        let modified = false;
+        for (const [k, v] of Object.entries(loaded.data.mcpServers)) {
+            if ((k === 'aos-a2a' || k === 'aos-a2a-mcp' || k === 'aos-a2a-inbox') && isAosA2aEntry(v)) {
+                delete loaded.data.mcpServers[k];
+                modified = true;
+            }
+        }
+        if (modified) {
+            writeConfigWithBackup(f, loaded.data, before);
+            cleaned.push(f);
+        }
+    }
+    return cleaned;
+}
+
 
 async function installMcpsForTarget(paths, ctx) {
     const { selectedMcps, mode, platformValue, creds } = ctx;
@@ -3421,6 +4159,18 @@ async function installMcpsForTarget(paths, ctx) {
         }
     }
 
+    // The fallback runs the compiled binary, not `go run` (a cold Go build on
+    // every MCP launch). Built once here; on failure the template's `go run`
+    // shape is written instead (see the rewrite before __MCPS_DIR__ substitution).
+    if (selectedMcps.includes('ae-mcp') && hasExecutable('go') && !DRY_RUN) {
+        const aeDir = path.join(mcpCodeTarget, 'ae-mcp');
+        const aeOut = path.join(aeDir, 'bin', process.platform === 'win32' ? 'ae-mcp.exe' : 'ae-mcp');
+        installStep(`build the ae-mcp binary ${aeOut}`, () => {
+            fs.mkdirSync(path.dirname(aeOut), { recursive: true });
+            execFileSync('go', ['-C', aeDir, 'build', '-o', aeOut, './cmd/ae-mcp'], { stdio: 'ignore', timeout: 120000 });
+        }, 'ae-mcp keeps the `go run` fallback shape; rebuild manually with: go -C ' + aeDir + ' build -o ' + aeOut + ' ./cmd/ae-mcp');
+    }
+
     if (selectedMcps.includes('davinci-resolve-mcp')) {
         const davinciFolder = path.join(mcpCodeTarget, 'davinci-resolve-mcp');
         if (fs.existsSync(davinciFolder)) {
@@ -3454,15 +4204,33 @@ async function installMcpsForTarget(paths, ctx) {
                     log.step(`[dry-run] would create the memb-mcp venv in ${membMcpFolder}`);
                 } else if (!fs.existsSync(venvPython)) {
                     try {
-                        execSync(`"${uvBin()}" venv --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        execSync(`"${uvBin()}" venv --clear --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
                     } catch (e1) {
-                        execSync(`${pythonCmd} -m venv .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
+                        execSync(`${pythonCmd} -m venv --clear .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
                     }
                 }
 
                 const pipViaPython = `"${venvPython}" -m pip`;
                 runPipWithRetry(`${pipViaPython} install --upgrade setuptools --timeout 30 --no-input`, { cwd: membMcpFolder, stdio: 'ignore' }, 'pip setuptools upgrade for memB MCP', 2, 120000);
-                runPipWithRetry(`${pipViaPython} install -r requirements.txt --timeout 30 --no-input`, { cwd: membMcpFolder, stdio: 'inherit' }, 'pip install for memB MCP', 2, 900000);
+                // run.py resolves FastMCP as `try: from mcp.server.fastmcp import FastMCP
+                // except ImportError: from fastmcp import FastMCP`. requirements.txt does not
+                // list `mcp`, so a reconcile whose hash stamp still matches leaves the venv
+                // without the MCP SDK and run.py dies on import far from the real cause.
+                const fastmcpImport = 'try:\n    from mcp.server.fastmcp import FastMCP\nexcept ImportError:\n    from fastmcp import FastMCP';
+                if (!verifyPythonImports(venvPython, membMcpFolder, fastmcpImport)) {
+                    log.step('[memb] mcp/fastmcp SDK missing from the memb-mcp venv; installing the MCP SDK pin.');
+                    let hasUvSdk = false;
+                    try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore' }); hasUvSdk = true; } catch (e) { logDebug(e, 'uv lookup for memb-mcp'); }
+                    const sdkCmd = hasUvSdk
+                        ? `"${uvBin()}" pip install --python "${venvPython}" "mcp>=1.0.0,<2.0.0" --no-input`
+                        : `"${venvPython}" -m pip install "mcp>=1.0.0,<2.0.0" --timeout 30 --no-input`;
+                    runPipWithRetry(sdkCmd, { cwd: membMcpFolder, stdio: 'ignore' }, 'mcp SDK for memB MCP', 2, 300000);
+                    if (!verifyPythonImports(venvPython, membMcpFolder, fastmcpImport)) {
+                        log.warn('memB MCP venv still cannot import FastMCP after the mcp install; memb-mcp will fail to start until it is repaired.');
+                    }
+                }
+                const reconcile = reconcileMembVenv(membMcpFolder, { venvPython, entryImport: fastmcpImport });
+                if (reconcile.status === 'failed') log.warn('memB MCP requirements reconcile failed; inspect the venv before relying on memb-mcp.');
             } catch (e) {
                 log.warn(`Failed to set up Python virtual environment for memB: ${e.message}`);
             }
@@ -3511,12 +4279,34 @@ async function installMcpsForTarget(paths, ctx) {
     const skippedMcpConfigKeys = resolveUnsupportedMcpConfigKeys();
     try {
         const parsedMcpConfig = JSON.parse(mcpConfigStr);
+        delete parsedMcpConfig.presets; // gateway template key, not a harness config key
+        // One MCP per app: the pick's winners replace the template's servers (placeholders resolved below).
+        const pickOnly = new Set(Object.keys(mcpPicks().servers).filter((n) => !(n in parsedMcpConfig.mcpServers)));
+        parsedMcpConfig.mcpServers = { ...mcpPicks().servers };
         // npm's Windows shim is deja.cmd, which Node refuses to spawn without
         // a shell (EINVAL since the CVE-2024-27980 fix) -- wrap the command in
         // cmd /c here so every generated config, the Codex TOML block and the
         // ~/.claude.json mirror get the launchable form.
         if (process.platform === 'win32' && parsedMcpConfig.mcpServers.deja) {
             parsedMcpConfig.mcpServers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+        }
+        // Direct mode spawns ONE plugin per harness session; the UXP plugins (Photoshop / Premiere)
+        // hard-code ws://localhost:8080 (mcps/adobe_uxp_mcp/plugins/*/index.js:3), so a free-port
+        // pick would leave them disconnected: direct mode therefore pins the FIXED default port
+        // 8080 (only one direct instance per machine is supported). Gateway mode shares ONE
+        // instance built from the shipped template, which keeps the default 8080 (or whatever
+        // AOS_UXP_PORT the gateway process carries); a user-set AOS_UXP_PORT in this env block
+        // is never overwritten.
+        const uxpEntry = parsedMcpConfig.mcpServers.adobe_uxp_mcp;
+        if (uxpEntry && !(uxpEntry.env && uxpEntry.env.AOS_UXP_PORT)) {
+            parsedMcpConfig.mcpServers.adobe_uxp_mcp = { ...uxpEntry, env: { ...(uxpEntry.env || {}), AOS_UXP_PORT: '8080' } };
+        }
+        // AOS_DISABLED_MCPS=a,b: shipped server names that no harness config gets (universal sync reuses this result).
+        const dropped = v5Profile.filterMcpServers(parsedMcpConfig.mcpServers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS));
+        parsedMcpConfig.mcpServers = dropped.servers;
+        if (dropped.unknown.length && !warnedDisabledMcps) {
+            warnedDisabledMcps = true;
+            log.warn(`AOS_DISABLED_MCPS: unknown MCP name(s) ignored: ${dropped.unknown.join(', ')}. Shipped: ${Object.keys(mcpPicks().servers).join(', ')}`);
         }
         const finalMcpServers = {};
         const availableFolders = fs.readdirSync(mcpSrcDir);
@@ -3544,13 +4334,19 @@ async function installMcpsForTarget(paths, ctx) {
 
         for (const [key, val] of Object.entries(parsedMcpConfig.mcpServers)) {
             let keep = !skippedMcpConfigKeys.includes(key);
-            for (const available of availableFolders) {
+            // An official pick runs outside mcps/; its package name may still contain a folder name.
+            for (const available of (pickOnly.has(key) && !JSON.stringify(val).includes('__MCPS_DIR__') ? [] : availableFolders)) {
                 if (!selectedMcps.includes(available) && JSON.stringify(val).includes(available)) {
                     keep = false;
                     break;
                 }
             }
             if (keep) finalMcpServers[key] = val;
+        }
+        // The ae fallback runs the binary built above when it exists; otherwise the template's `go run` stays.
+        const aeBin = `ae-mcp/bin/ae-mcp${process.platform === 'win32' ? '.exe' : ''}`;
+        if (finalMcpServers.bdb_after_effects_mcp_fallback && fs.existsSync(path.join(mcpCodeTarget, aeBin))) {
+            finalMcpServers.bdb_after_effects_mcp_fallback = { command: `__MCPS_DIR__/${aeBin}`, args: [] };
         }
         parsedMcpConfig.mcpServers = finalMcpServers;
         mcpConfigStr = JSON.stringify(parsedMcpConfig, null, 2);
@@ -3568,27 +4364,28 @@ async function installMcpsForTarget(paths, ctx) {
             ? path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'Scripts', 'python.exe')
             : path.join(mcpCodeTarget, 'memb-mcp', '.venv', 'bin', 'python');
         const pythonBinValue = pythonBinPath.split('\\').join('/');
-        const geminiKeyValue = (creds.keyEnvName === 'GEMINI_API_KEY' ? creds.gemini : '') || process.env.GEMINI_API_KEY || '';
         mcpConfigStr = mcpConfigStr.replace(/__PYTHON_BIN__/g, () => JSON.stringify(pythonBinValue).slice(1, -1));
-        mcpConfigStr = mcpConfigStr.replace(/__GEMINI_API_KEY__/g, () => JSON.stringify(geminiKeyValue).slice(1, -1));
     }
 
-    const githubToken = (creds.github || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || '').trim();
-    if (githubToken) {
+    // Credentials from the prompts go to the secrets file; the entries only name the variables.
+    const geminiKeyValue = (creds.keyEnvName === 'GEMINI_API_KEY' ? creds.gemini : '') || '';
+    const githubToken = (creds.github || '').trim();
+    const promptSecrets = Object.fromEntries(Object.entries({ GEMINI_API_KEY: geminiKeyValue, GITHUB_PERSONAL_ACCESS_TOKEN: githubToken }).filter(([, v]) => v && !/[\r\n]/.test(v)));
+    if (Object.keys(promptSecrets).length && !DRY_RUN) {
         try {
-            const tokenizedConfig = JSON.parse(mcpConfigStr);
-            if (tokenizedConfig.mcpServers && tokenizedConfig.mcpServers.github) {
-                tokenizedConfig.mcpServers.github.env = Object.assign(
-                    {},
-                    tokenizedConfig.mcpServers.github.env,
-                    { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken }
-                );
-                mcpConfigStr = JSON.stringify(tokenizedConfig, null, 2);
-            }
+            const res = mcpSecrets.storeSecrets(mcpSecrets.secretsPath(homeDir), promptSecrets);
+            if (res.added.length) log.step(`Saved ${res.added.join(', ')} to ${mcpSecrets.secretsPath(homeDir)}`);
+            if (res.kept.length) log.warn(`${mcpSecrets.secretsPath(homeDir)} already holds ${res.kept.join(', ')} with another value; kept it. Edit the file to change it.`);
         } catch (e) {
-            log.warn(`Could not attach GitHub token to the github MCP entry: ${e.message}`);
+            log.warn(`Could not write ${mcpSecrets.secretsPath(homeDir)}: ${e.message}. Add the credentials there yourself (KEY=value, chmod 600).`);
         }
     }
+    installMcpLauncher();
+    try {
+        const parsed = JSON.parse(mcpConfigStr);
+        parsed.mcpServers = mcpSecrets.wrapServers(parsed.mcpServers, mcpLauncher());
+        mcpConfigStr = JSON.stringify(parsed, null, 2);
+    } catch (e) { logDebug(e, 'wrap MCP servers in the secrets launcher'); }
 
     try { lastGeneratedMcpServers = JSON.parse(mcpConfigStr).mcpServers || null; } catch (e) { lastGeneratedMcpServers = null; }
     if (isAgyMcpConfig(paths.mcpConfigPath)) {
@@ -3650,25 +4447,23 @@ async function installMcpsForTarget(paths, ctx) {
                     unsupportedMcpConfigKeys.forEach(key => delete oldConfig.mcpServers[key]);
                 }
                 const newConfig = JSON.parse(mcpConfigStr);
-                const oldServers = oldConfig.mcpServers || {};
-                const newServers = newConfig.mcpServers || {};
-                Object.keys(newServers).forEach(key => {
-                    const previous = oldServers[key];
-                    const incoming = newServers[key];
-                    if (!previous || typeof previous !== 'object') return;
-                    if (!incoming || typeof incoming !== 'object') return;
-                    if (!incoming.env && previous.env) incoming.env = previous.env;
-                });
-                keepExistingEnvValues(newServers, oldServers);
-                oldConfig.mcpServers = Object.assign({}, oldServers, newServers);
+                const oldServers = oldConfig.mcpServers && typeof oldConfig.mcpServers === 'object' ? oldConfig.mcpServers : {};
+                const newServers = withoutGatewayServers(newConfig.mcpServers || {}, paths.mcpConfigPath);
+                const collector = mcpSecrets.createCollector();
+                mcpSecrets.mergeServers(oldServers, newServers, { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(paths.mcpConfigPath) });
+                retireMcpServers(oldServers);
+                oldConfig.mcpServers = oldServers;
                 // The backup can hold credentials: only made (0600) when the merge really changes the content.
                 if (JSON.stringify(oldConfig) === beforeMerge) {
                     log.step(`${configName} already has the BDB MCPs; nothing changed`);
                 } else {
                     try {
                         fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
-                        fs.writeFileSync(path.join(backupDir, 'mcp_config_backup.json'), rawBefore, { mode: 0o600 });
+                        const mcpBackup = path.join(backupDir, 'mcp_config_backup.json');
+                        fs.writeFileSync(mcpBackup, rawBefore, { mode: 0o600, flag: 'wx' });
+                        if (collector.size()) secretBackups.add(mcpBackup);
                     } catch (e) { log.warn(`Could not create the backup copy: ${e.message}`); }
+                    if (!stashInlineSecrets(collector, paths.mcpConfigPath)) throw new Error('inline secrets could not be moved');
                     fs.writeFileSync(paths.mcpConfigPath, JSON.stringify(oldConfig, null, 2), { mode: 0o600 });
                     try { fs.chmodSync(paths.mcpConfigPath, 0o600); } catch (e) { logDebug(e, 'chmod mcpConfigPath'); }
                     log.step(`Merged BDB MCPs into existing ${configName}`);
@@ -3698,6 +4493,8 @@ async function installMcpsForTarget(paths, ctx) {
 
     removeAosMcscFromAgyConfigs();
     mirrorMcpServersTo(paths.extraMcpConfigPaths, mcpConfigStr);
+    for (const p of [paths.mcpConfigPath, ...(paths.extraMcpConfigPaths || [])]) recordMcpConfigPath(p);
+    noticeSecretBackups();
 
     if (creds.gemini || creds.github || creds.keyEnvName) {
         const envPath = path.join(paths.targetMcpDir, '.env');
@@ -3758,7 +4555,7 @@ function loadCommonSkills(dir = srcDir) {
 }
 
 function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
-    const blocks = content.split(/\n## /).slice(1);
+    const blocks = content.split(/\n## /).slice(1).map((b) => b.split(/\n(?:#{1,2} |---\s*$)/m)[0]);
     const agents = [];
     for (const raw of blocks) {
         const headingLine = raw.split('\n')[0];
@@ -3768,7 +4565,7 @@ function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
         const roleMatch = raw.match(/-\s*\*\*Role\*\*:\s*(.+)/);
         if (!roleMatch) continue; // not an agent block
 
-        const modelMatch = raw.match(/-\s*\*\*Model\*\*:\s*(.+)/);
+        // A legacy "- **Model**: x" line is ignored: AOS pins no model (docs/agent-models.md).
         const outputMatch = raw.match(/-\s*\*\*Output Artifacts?\*\*:\s*(.+)/);
 
         const extractListAfter = (label) => {
@@ -3786,11 +4583,10 @@ function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
         agents.push({
             name,
             role: roleMatch[1].trim(),
-            model: modelMatch ? modelMatch[1].trim() : null,
             skills: [...new Set([...extractListAfter('Primary Skills'), ...commonSkills])],
             mcpServers: extractListAfter('MCP Servers'),
             output: outputMatch ? outputMatch[1].trim() : null,
-            systemPrompt: raw.trim(),
+            systemPrompt: raw.replace(/^[ \t]*-\s*\*\*Model\*\*:.*\n?/gm, '').trim(),
         });
     }
     return agents;
@@ -3806,24 +4602,8 @@ function yamlQuote(str) {
     return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
 }
 
-// Canonical model tiers mapped to verified provider-specific model IDs for each harness.
-// Protects against vendor model churn and provides seamless cross-harness defaults.
-const CANONICAL_TIERS = {
-    reasoning_max: {
-        claude: 'opus',
-        antigravity: 'gemini-3.1-pro-high'
-    },
-    standard_fast: {
-        claude: 'sonnet',
-        antigravity: 'gemini-3.8-flash-high'
-    },
-    trivial_low: {
-        claude: 'haiku',
-        antigravity: 'gemini-3.8-flash-low'
-    }
-};
-// Codex and OpenCode have no tier entries on purpose: an agent file's model overrides the session model
-// and an unknown id fails instead of falling back, so those harnesses inherit unless the user pins a model.
+// No harness gets a model from the installer: agent files carry none and inherit the session model.
+// A model is written only when .aos/pipeline.json pins one for that role and harness (docs/agent-models.md).
 
 // Loads .aos/pipeline.json or .aos/project.json containing role-to-model/harness mappings.
 function loadPipelineConfig(projectDir = currentDir) {
@@ -3843,43 +4623,50 @@ function loadPipelineConfig(projectDir = currentDir) {
     return null;
 }
 
-// Resolves model ID, tier, and enabled status for a given agent role and target harness.
+// Resolves the pinned model (or null) and enabled status for an agent role and harness.
+// Shape: pipeline[role] = { models: { <harness>: "<model>" }, model, harness, enabled }.
+// `models[harness]` wins; the legacy `model` applies when `harness` is absent or equal. Strings are verbatim.
+// An override that fails the format check (empty, whitespace, non-string, bad OpenCode form) is
+// warned about and dropped: never written, never replaced by another model.
 function resolveAgentConfig(agentSlug, harness, pipelineConfig = null) {
     const normSlug = agentSlug.toLowerCase().replace(/-/g, '_');
     const roleCfg = pipelineConfig ? (pipelineConfig[normSlug] || pipelineConfig[agentSlug]) : null;
-    // A role's model/harness describes where AO runs that role; only valid for that harness.
-    const ownHarness = !!roleCfg && (!roleCfg.harness || roleCfg.harness === harness);
-    if (roleCfg && ownHarness && roleCfg.model) {
-        return {
-            model: roleCfg.model,
-            tier: roleCfg.tier || 'custom',
-            enabled: roleCfg.enabled !== false,
-            harness
-        };
+    let model = null;
+    if (roleCfg && typeof roleCfg === 'object') {
+        const models = roleCfg.models && typeof roleCfg.models === 'object' ? roleCfg.models : {};
+        const field = Object.prototype.hasOwnProperty.call(models, harness) ? `models.${harness}`
+            : (roleCfg.model !== undefined && (!roleCfg.harness || roleCfg.harness === harness)) ? 'model' : null;
+        if (field) {
+            const value = field === 'model' ? roleCfg.model : models[harness];
+            const problem = modelProblem(harness, value);
+            if (problem) log.warn(`Ignoring ${field} = ${JSON.stringify(value)} for ${agentSlug} on ${harness}: ${problem}. The agent inherits the session model.`);
+            else model = value;
+        }
     }
-    if (roleCfg && roleCfg.tier && CANONICAL_TIERS[roleCfg.tier] && CANONICAL_TIERS[roleCfg.tier][harness]) {
-        return {
-            model: CANONICAL_TIERS[roleCfg.tier][harness],
-            tier: roleCfg.tier,
-            enabled: roleCfg.enabled !== false,
-            harness
-        };
-    }
-    const defaultTier = (normSlug === 'architect' || normSlug === 'reviewer') ? 'reasoning_max' : 'standard_fast';
-    const fallbackModel = (CANONICAL_TIERS[defaultTier] && CANONICAL_TIERS[defaultTier][harness]) || 'inherit';
-    return { model: fallbackModel, tier: defaultTier, enabled: !(roleCfg && roleCfg.model && roleCfg.enabled === false), harness };
+    return { model, enabled: !roleCfg || roleCfg.enabled !== false, harness };
+}
+
+// Ships the suggested helper-agent models (assets/pipeline.default.json) as a normal, user-editable
+// ~/.aos/pipeline.json. Written only when absent ('wx'): an existing file is never touched.
+function installPipelineDefault({ targetHome = homeDir } = {}) {
+    const src = path.join(srcDir, 'assets', 'pipeline.default.json');
+    const dest = path.join(targetHome, '.aos', 'pipeline.json');
+    if (!fs.existsSync(src) || fs.existsSync(dest)) return false;
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, fs.readFileSync(src), { flag: 'wx' });
+    log.step(`Wrote default model suggestions to ${dest} (edit freely; never overwritten)`);
+    return true;
 }
 
 // Generates .claude/agents/<name>.md — Claude Code's native subagent format.
 // Only frontmatter fields confirmed against code.claude.com/docs/en/sub-agents
-// are emitted (name, description, model).
+// are emitted (name, description, model). `model` is optional and omitting it inherits the
+// session model, so it is written only for a pipeline.json override, verbatim.
 function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
-        const resolved = resolveAgentConfig(slug, 'claude', pipelineConfig);
-        let model = (resolved && resolved.model) ? resolved.model.toLowerCase() : (a.model ? a.model.toLowerCase() : 'inherit');
-        if (!/^(opus|sonnet|haiku|inherit|claude-.+)$/.test(model)) model = CANONICAL_TIERS[resolved.tier in CANONICAL_TIERS ? resolved.tier : 'standard_fast'].claude;
+        const { model } = resolveAgentConfig(slug, 'claude', pipelineConfig);
         const body = [
             a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
@@ -3891,10 +4678,10 @@ function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
             '---',
             `name: ${slug}`,
             `description: ${yamlQuote(a.role)}`,
-            `model: ${model}`,
+            model ? `model: ${model}` : null,
             '---',
             '',
-        ].join('\n');
+        ].filter((l) => l !== null).join('\n');
 
         fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
     }
@@ -3908,14 +4695,47 @@ function agentsNotShippedAsFiles(agents, shippedDir = path.join(srcDir, '.claude
     return agents.filter((a) => !fs.existsSync(path.join(shippedDir, `${a.name.toLowerCase().replace(/_/g, '-')}.md`)));
 }
 
-// Generates .opencode/agents/<name>.md. Emits description, mode: subagent, and model.
+// The shipped personas reach ~/.claude/agents through the manifest copy, so a claude override is
+// applied afterwards: insert `model:` and record the new hash. The next update then sees an
+// unedited file (disk == manifest), overwrites it with the shipped bytes and applies it again.
+// A file the user edited (disk != manifest) or that already has a model line is left alone.
+function applyClaudeModelOverrides(agents, targetDir, pipelineConfig, manifest) {
+    const applied = [];
+    if (!pipelineConfig || !manifest) return applied;
+    for (const a of agents) {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        const { model } = resolveAgentConfig(slug, 'claude', pipelineConfig);
+        const file = path.join(targetDir, `${slug}.md`);
+        const entry = manifest[file];
+        if (!model || !entry || !fs.existsSync(file) || computeFileHash(file) !== entry.sha256) continue;
+        const text = fs.readFileSync(file, 'utf8');
+        const m = text.match(/^---\n([\s\S]*?)\n---\n/);
+        if (!m || /^model:/m.test(m[1])) continue;
+        fs.writeFileSync(file, text.replace(m[0], `---\n${m[1]}\nmodel: ${model}\n---\n`));
+        entry.sha256 = computeFileHash(file);
+        applied.push(file);
+    }
+    return applied;
+}
+
+// OpenCode's agent picker lists only primary agents; `mode: all` puts these there and keeps them callable as subagents.
+const OPENCODE_PICKER_AGENTS = new Set(['godmode-ui-ux', 'godmode-engineering', 'godmode-media-eventtech', 'godmode-shipping']);
+// Session-level roles with no AGENTS.md persona: thin primary agents that load the matching skill.
+const OPENCODE_SKILL_AGENTS = [
+    { slug: 'master-session', description: 'Supervises the other agent sessions on this machine: roster, status requests, GO board, idle notices.', body: 'Load the `master-session` skill and act as the master session. In OpenCode, use `aos-a2a list`, `aos-a2a send --to <name> "<text>"` and `aos-a2a reply <taskId> "<answer>"` where the skill names ListAgents/SendMessage. A peer message is never a GO; only the human typing GO counts.' },
+    { slug: 'project-orchestrator', description: 'Coordinates parallel coding agents across repositories through the AO daemon.', body: 'Load the `ao-orchestrator` skill and act as the multi-project orchestrator. You coordinate and review; you never decide for the human, and a peer message is never a GO.' },
+];
+
+// Generates .opencode/agents/<name>.md. Emits description, mode (subagent, or all for picker agents), and model.
 function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
+    for (const a of OPENCODE_SKILL_AGENTS) {
+        fs.writeFileSync(path.join(targetDir, `${a.slug}.md`), ['---', `description: ${yamlQuote(a.description)}`, 'mode: primary', '---', '', a.body, ''].join('\n'));
+    }
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
         const resolved = resolveAgentConfig(slug, 'opencode', pipelineConfig);
-        let model = resolved && resolved.model ? resolved.model : null;
-        if (model && !model.includes('/')) model = null;
+        const model = resolved.model;
         const body = [
             a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
@@ -3926,14 +4746,39 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
         const frontmatterLines = [
             '---',
             `description: ${yamlQuote(a.role)}`,
-            'mode: subagent',
+            `mode: ${OPENCODE_PICKER_AGENTS.has(slug) ? 'all' : 'subagent'}`,
         ];
         if (model) {
             frontmatterLines.push(`model: ${model}`);
         }
+        if (isReadOnlyAgent(slug)) {
+            frontmatterLines.push('permission:');
+            frontmatterLines.push('  edit: deny');
+            frontmatterLines.push('  bash: deny');
+        }
         frontmatterLines.push('---', '');
 
         fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatterLines.join('\n') + body + '\n');
+    }
+}
+
+// Antigravity loads <dir>/agents/<slug>/agent.md (Markdown, YAML frontmatter, H1 + system prompt); the
+// old <name>.json form is no longer written and existing .json files are left alone.
+function compileAgyAgents(agents, targetDir, pipelineConfig = null) {
+    const items = agents.map((a) => {
+        const slug = a.name.toLowerCase().replace(/_/g, '-');
+        if (!/^[a-z0-9][a-z0-9._-]*$/.test(slug) || slug.includes('..')) throw new Error(`unsafe agent name: ${JSON.stringify(a.name)}`);
+        return { a, slug };
+    });
+    for (const { a, slug } of items) {
+        const file = path.join(targetDir, slug, 'agent.md');
+        // A model line only for an explicit pipeline.json override (aos-23: no pinned models); agy documents inherit|flash|pro.
+        const model = resolveAgentConfig(slug, 'antigravity', pipelineConfig).model;
+        const readOnly = isReadOnlyAgent(slug);
+        const text = ['---', 'subagent: true', readOnly ? 'inheritMcp: false' : 'inheritMcp: true', ...(model ? [`model: ${model}`] : []), '---', '', `# ${a.name}`, '', a.systemPrompt, ''].join('\n');
+        if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) continue;
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, text);
     }
 }
 
@@ -3943,7 +4788,38 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
 // session model) unless the user pinned one for Codex in .aos/pipeline.json.
 const CODEX_AGENT_MARKER = '# aos-managed: generated by the AOS installer, rewritten on update';
 const CODEX_LEGACY_MARKER = /^# Codex subagent configuration for /;
-const codexSandboxMode = (slug) => (/review|explor|security|sanitiz|hunter/.test(slug) ? 'read-only' : 'workspace-write');
+// Read-only enforcement slugs. This is an explicit allowlist, not a regex, so
+// behavior changes only when a slug is added here on purpose. Kept in one place
+// and used by the Codex, OpenCode and Antigravity compilers below. The set
+// matches the slugs the old regex
+// (/review|explor|security|sanitiz|hunter|advocate/) matched among existing
+// agents -- reviewer, database-reviewer, security-reviewer,
+// silent-failure-hunter, opensource-sanitizer, devils-advocate -- plus the new
+// reviewer-1/reviewer-2; Codex behavior for existing agents is unchanged, and
+// these additionally get OpenCode deny permissions and agy no-MCP inheritance.
+const READ_ONLY_AGENT_SLUGS = new Set([
+    'reviewer',
+    'reviewer-1',
+    'reviewer-2',
+    'security-reviewer',
+    'database-reviewer',
+    'silent-failure-hunter',
+    'devils-advocate',
+    'opensource-sanitizer',
+    // ECC language reviewers (v5/ecc-reviewers): strictly read-only by
+    // frontmatter tools and by allowlist enforcement here.
+    'go-reviewer',
+    'python-reviewer',
+    'rust-reviewer',
+    'typescript-reviewer',
+    'java-reviewer',
+    'kotlin-reviewer',
+    'cpp-reviewer',
+    'csharp-reviewer',
+]);
+const isReadOnlyAgent = (slug) => READ_ONLY_AGENT_SLUGS.has(slug);
+
+const codexSandboxMode = (slug) => (isReadOnlyAgent(slug) ? 'read-only' : 'workspace-write');
 
 // Ours = carries the current marker or the pre-4.18.2 header; anything else is a user's agent file.
 function isAosCodexAgentFile(file) {
@@ -3963,10 +4839,9 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
             continue;
         }
         const resolved = resolveAgentConfig(slug, 'codex', pipelineConfig);
-        const pinned = resolved.model && resolved.model !== 'inherit' ? resolved.model : null;
+        const pinned = resolved.model;
 
         const instructions = [
-            a.role,
             a.skills.length ? `**Primary skills:** ${a.skills.join(', ')}` : null,
             a.mcpServers.length ? `**MCP servers used:** ${a.mcpServers.join(', ')}` : null,
             a.output ? `**Output artifact(s):** ${a.output}` : null,
@@ -4028,43 +4903,15 @@ function injectHarnessRules() {
             // Run from $HOME, these project files ARE the global files that the
             // manifest-tracked harness copy below writes; a second writer would
             // make every update see them as user-edited.
+            // F8: an install or update started inside a repo must not write into that repo (CLAUDE.md,
+            // .cursor/rules, .github, .codex-plugin, .roomodes); a repo gets files only via --project-harness.
             const cwdIsHome = path.resolve(currentDir) === path.resolve(homeDir);
-            const cursorRulesDir = path.join(currentDir, '.cursor', 'rules');
-            if (!cwdIsHome) installStep(`write the Cursor rules to ${cursorRulesDir}`, () => {
-                fs.mkdirSync(cursorRulesDir, { recursive: true });
-                fs.writeFileSync(path.join(cursorRulesDir, '000_global_rules.mdc'), `---\nname: global-rules\ndescription: Global BDB Agent Rules\n---\n\n${globalRules}`);
-                if (startcycleContent) {
-                    fs.writeFileSync(path.join(cursorRulesDir, 'startcycle.mdc'), `---\nname: startcycle\ndescription: Autonomous Multi-Agent Development Pipeline (/startcycle)\n---\n\n${startcycleContent}`);
-                }
-                if (agentsMdContent) {
-                    fs.writeFileSync(path.join(cursorRulesDir, 'bdb_agents.mdc'), `---\nname: bdb-agents\ndescription: BDB Multi-Agent Team Specifications\n---\n\n${agentsMdContent}`);
-                }
-                log.step(`Injected Cursor Rules to ${cursorRulesDir}`);
-            }, 'Cursor keeps its existing rules.');
+            if (!cwdIsHome) log.step(`Not run from the home directory: no rule files written into ${currentDir}`);
 
             installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
-                    if (!fs.existsSync(agyAgentsDir)) fs.mkdirSync(agyAgentsDir, { recursive: true });
-
-                    const pipelineConfig = loadPipelineConfig();
-                    const agents = parseAgentsMd(agentsMdContent);
-                    for (const a of agents) {
-                        const slug = a.name.toLowerCase().replace(/_/g, '-');
-                        const resolved = resolveAgentConfig(slug, 'antigravity', pipelineConfig);
-                        const agentConfig = {
-                            name: a.name,
-                            description: a.role,
-                            model: resolved.model,
-                            model_tier: resolved.tier,
-                            enable_write_tools: true,
-                            enable_subagent_tools: true,
-                            enable_mcp_tools: true,
-                            system_prompt: a.systemPrompt,
-                            _comment: "Auto-compiled from AGENTS.md by installer.js"
-                        };
-                        fs.writeFileSync(path.join(agyAgentsDir, `${a.name}.json`), JSON.stringify(agentConfig, null, 2));
-                    }
+                    compileAgyAgents(parseAgentsMd(agentsMdContent), agyAgentsDir, loadPipelineConfig());
                     log.step(`Compiled AGENTS.md to native Antigravity subagents in ${agyAgentsDir}`);
                 }
             }, 'Antigravity agents unchanged');
@@ -4083,7 +4930,7 @@ function injectHarnessRules() {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
-                    const opencodeAgentsDir = path.join(homeDir, '.opencode', 'agents');
+                    const opencodeAgentsDir = path.join(homeDir, '.config', 'opencode', 'agents');
                     compileOpenCodeAgents(agents, opencodeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to OpenCode subagents in ${opencodeAgentsDir}`);
                 }
@@ -4100,7 +4947,7 @@ function injectHarnessRules() {
             }, 'Codex agents unchanged');
 
             const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
-            installStep(`sync ${claudeMdPath}`, () => {
+            if (cwdIsHome) installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
                 // A CLAUDE.md carrying this title is the short, hand-maintained
                 // form (see docs/sessions/audit-agents.md F-01): the GO gate lives in a hook,
@@ -4110,9 +4957,9 @@ function injectHarnessRules() {
                 // would silently undo that diet. Leave it alone.
                 const isManagedShortForm = claudeContent.includes('BDB Agent Skills — Global Instructions');
                 if (isManagedShortForm) {
-                    const withBlock = upsertDestructiveBlock(claudeContent);
+                    const withBlock = upsertRoutingBlock(upsertDestructiveBlock(claudeContent));
                     if (withBlock !== claudeContent) fs.writeFileSync(claudeMdPath, withBlock);
-                    log.step('CLAUDE.md already uses the short managed form -- only the destructive-actions block is managed.');
+                    log.step('CLAUDE.md already uses the short managed form -- only the destructive-actions and tool-routing blocks are managed.');
                 } else {
                     if (!claudeContent.includes("Global Agent Instructions") && !claudeContent.includes(DESTRUCTIVE_START)) {
                         claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
@@ -4120,21 +4967,21 @@ function injectHarnessRules() {
                     if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
                         claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
                     }
-                    claudeContent = upsertDestructiveBlock(claudeContent);
+                    claudeContent = upsertRoutingBlock(upsertDestructiveBlock(claudeContent));
                     fs.writeFileSync(claudeMdPath, claudeContent);
                     log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
                 }
             }, 'CLAUDE.md is unchanged.');
 
             const copilotPath = path.join(currentDir, '.github', 'copilot-instructions.md');
-            if (fs.existsSync(path.dirname(copilotPath))) {
+            if (cwdIsHome && fs.existsSync(path.dirname(copilotPath))) {
                 installStep(`inject the global rules into ${copilotPath}`, () => {
                     const copilotContent = fs.existsSync(copilotPath) ? fs.readFileSync(copilotPath, 'utf8') : '';
                     let next = copilotContent;
                     if (!next.includes("Global Agent Instructions") && !next.includes(DESTRUCTIVE_START)) {
                         next = `${next}\n\n${globalRules}`;
                     }
-                    next = upsertDestructiveBlock(next);
+                    next = upsertRoutingBlock(upsertDestructiveBlock(next));
                     if (next !== copilotContent) {
                         fs.writeFileSync(copilotPath, next);
                         log.step(`Injected Global Rules to ${copilotPath}`);
@@ -4143,7 +4990,7 @@ function injectHarnessRules() {
             }
 
             const codexDirLocal = path.join(currentDir, '.codex-plugin');
-            installStep(`sync ${path.join(codexDirLocal, 'system.md')}`, () => {
+            if (cwdIsHome) installStep(`sync ${path.join(codexDirLocal, 'system.md')}`, () => {
                 fs.mkdirSync(codexDirLocal, { recursive: true });
                 const codexPath = path.join(codexDirLocal, 'system.md');
                 let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
@@ -4153,14 +5000,28 @@ function injectHarnessRules() {
                 if (startcycleContent && !codexContent.includes("Autonomous Development Cycle Workflow")) {
                     codexContent = `${codexContent}\n\n---\n\n${startcycleContent}`.trim();
                 }
-                codexContent = upsertDestructiveBlock(codexContent);
+                codexContent = upsertRoutingBlock(upsertDestructiveBlock(codexContent));
                 fs.writeFileSync(codexPath, codexContent);
                 log.step('Synced .codex-plugin/system.md with Global Rules and /startcycle workflow');
             }, '.codex-plugin/system.md is unchanged.');
+
+            const homeAgentsPath = path.join(homeDir, 'AGENTS.md');
+            if (cwdIsHome) installStep(`sync ${homeAgentsPath}`, () => {
+                if (!fs.existsSync(homeAgentsPath)) {
+                    log.step(`${homeAgentsPath} does not exist: not created, only existing files get the managed blocks.`);
+                    return;
+                }
+                const agentsContent = fs.readFileSync(homeAgentsPath, 'utf8');
+                const next = upsertRoutingBlock(upsertDestructiveBlock(agentsContent));
+                if (next !== agentsContent) {
+                    fs.writeFileSync(homeAgentsPath, next);
+                    log.step(`Synced managed blocks in ${homeAgentsPath}`);
+                }
+            }, '~/AGENTS.md is unchanged.');
         }
     }
 
-    if (fs.existsSync(agentsMdSrc)) {
+    if (fs.existsSync(agentsMdSrc) && path.resolve(currentDir) === path.resolve(homeDir)) {
         const rooModesPath = path.join(currentDir, '.roomodes');
         const rooModesData = {
             customModes: [
@@ -4186,13 +5047,24 @@ function injectHarnessRules() {
                     const targetPath = path.join(homeDir, dir);
                     // settings.json is merged separately below: a wholesale
                     // copy would clobber user-owned keys like enabledPlugins.
-                    const exclude = dir === '.claude' ? ['settings.json'] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    // hooks: installGlobalHooks delivers only what each harness wires.
+                    const exclude = dir === '.claude' ? ['settings.json', 'hooks'] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
             });
             installGlobalHooks();
         }, '');
+
+        installStep('write the default ~/.aos/pipeline.json', () => {
+            if (!DRY_RUN) installPipelineDefault();
+        }, 'Helper agents of /startcycle-graph then inherit the session model.');
+
+        installStep('apply Claude model overrides to the shipped agents', () => {
+            if (DRY_RUN || !_sessionManifest) return;
+            const applied = applyClaudeModelOverrides(parseAgentsMd(fs.readFileSync(agentsMdSrc, 'utf8')), path.join(claudeConfigDir(homeDir), 'agents'), loadPipelineConfig(), _sessionManifest);
+            if (applied.length) log.step(`Applied pipeline.json model overrides to ${applied.length} Claude agent file(s)`);
+        }, 'Shipped Claude agents keep inheriting the session model.');
 
         installStep('sync global .agents/', () => {
             const globalAgentsDir = path.join(os.homedir(), '.agents');
@@ -4229,7 +5101,9 @@ async function maybeInstallCodenotch() {
         log: { info: (m) => log.info(m), warn: (m) => log.warn(m), success: (m) => log.success(m) },
     });
     const line = codenotch.codenotchSummaryLine(codenotchResult);
-    if (line) (codenotchResult.status === 'error' || /FAILED/.test(line) ? log.warn : log.info)(line);
+    const failed = codenotchResult?.status === 'error' || /FAILED/.test(line || '');
+    if (line) (failed ? log.warn : log.info)(line);
+    return failed ? false : undefined;
 }
 
 function parseOpencodeOptional(argv = process.argv, env = process.env) {
@@ -4343,7 +5217,7 @@ function installOpencodeCommands(srcDirPath, destDirPath) {
         const dest = path.join(destDirPath, file);
         const srcHash = computeFileHash(src);
         const diskHash = fs.existsSync(dest) ? computeFileHash(dest) : null;
-        if (diskHash === null || diskHash === srcHash || diskHash === manifest[dest]?.sha256) {
+        if (diskHash === null || diskHash === srcHash || diskHash === manifest[dest]?.sha256 || SHIPPED_HASHES.has(diskHash)) {
             if (diskHash !== srcHash) { fs.copyFileSync(src, dest); wrote++; }
             manifest[dest] = { path: dest, sha256: srcHash, version: pkg.version, installedAt: new Date().toISOString() };
         } else {
@@ -4355,7 +5229,7 @@ function installOpencodeCommands(srcDirPath, destDirPath) {
         saveInstallManifest(manifest);
         reportKeptUserEdits();
     }
-    log.step(`OpenCode commands in ${destDirPath}: ${wrote} written`);
+    if (wrote) log.step(`OpenCode commands in ${destDirPath}: ${wrote} written`);
 }
 
 // Copy the OpenCode plugin + command payload and register both in
@@ -4380,12 +5254,16 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     if (fs.existsSync(pluginSrc)) {
         const pluginDest = path.join(opencodeDir, 'plugins', 'bdb-aos.js');
         try {
-            fs.mkdirSync(path.dirname(pluginDest), { recursive: true });
-            fs.copyFileSync(pluginSrc, pluginDest);
-            try { fs.chmodSync(pluginDest, 0o644); } catch (e) { logDebug(e, 'chmod opencode plugin'); }
+            // Only when the plugin is missing or differs from the shipped one; an identical copy is left alone, silently.
+            const upToDate = fs.existsSync(pluginDest) && computeFileHash(pluginDest) === computeFileHash(pluginSrc);
+            if (!upToDate) {
+                fs.mkdirSync(path.dirname(pluginDest), { recursive: true });
+                fs.copyFileSync(pluginSrc, pluginDest);
+                try { fs.chmodSync(pluginDest, 0o644); } catch (e) { logDebug(e, 'chmod opencode plugin'); }
+                log.step(`Installed OpenCode plugin to ${pluginDest}`);
+            }
             pluginInstalled = true;
             uninstallRecords.recordOpencodePlugin(targetHome, pluginDest);
-            log.step(`Installed OpenCode plugin to ${pluginDest}`);
         } catch (e) {
             log.warn(`Could not install OpenCode plugin: ${e.message}`);
         }
@@ -4405,6 +5283,22 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     if (fs.existsSync(trailLibSrc)) {
         try { copyDirRecursiveSync(trailLibSrc, path.join(opencodeDir, 'plugins', 'lib')); } catch (e) { log.warn(`Could not install OpenCode plugin lib: ${e.message}`); }
     }
+
+    // Profile flag for the plugin (context behaviours only; gates and A2A are never switched off).
+    if (pluginInstalled && !DRY_RUN) {
+        try {
+            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn);
+            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}`);
+            uninstallRecords.recordOpencodeProfile(targetHome, flag.file);
+        } catch (e) {
+            log.warn(`Could not write OpenCode plugin profile flag: ${e.message}`);
+        }
+    }
+
+    // The plugin imports ../../lib/a2a-inbox.mjs and ../../lib/a2a-session.mjs
+    // directly; two levels above plugins/ is the opencode config dir's parent,
+    // so the a2a lib must land there or the plugin fails to load.
+    installA2aLibCopies({ targetHome, opencodeDir });
 
     // Slash-command payloads (/startcycle-graph and the generated /bdb-aos-<cmd> files).
     const commandsSrc = path.join(srcDir, '.opencode', 'commands');
@@ -4487,51 +5381,65 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 // what happened to memb-inject.mjs in v4.4.0, on the machines that needed it
 // most (a fresh install got it; every machine that already had AOS did not).
 function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } = {}) {
-    const hooksSrc = path.join(srcDir, '.claude', 'hooks');
     const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
 
+    // Every harness gets only the scripts it wires (lib/v5/profile.js HARNESS_HOOKS), before any merge or self-check runs.
+    installHarnessHookCopies({ targetHome, targetGemini });
+
     // 1. Claude Code
-    if (fs.existsSync(hooksSrc)) {
-        copyDirRecursiveSync(hooksSrc, path.join(claudeConfigDir(targetHome), 'hooks'));
-        log.step(`Installed hooks to ${path.join(claudeConfigDir(targetHome), 'hooks')}`);
-    }
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(targetHome), 'workflows'));
     }
-    mergeBdbSettingsHooks(path.join(claudeConfigDir(targetHome), 'settings.json'));
+    // rules-inject.mjs reads the rules text from here when it does not run from a checkout.
+    const rulesLib = path.join(srcDir, 'lib', 'destructive-rules.js');
+    if (fs.existsSync(rulesLib)) copyDirRecursiveSync(rulesLib, path.join(targetHome, '.agents', 'lib', 'destructive-rules.js'));
+    const claudeSettings = path.join(claudeConfigDir(targetHome), 'settings.json');
+    mergeBdbSettingsHooks(claudeSettings);
+    const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });
+    if (deny.length) log.step(`Added ${deny.length} permissions.deny rule(s) for home-level deletes to ${claudeSettings}`);
+    // a2a-inbox.mjs (drain + stop) ships inside the hooks dir copy above and is
+    // wired by mergeBdbSettingsHooks from the shipped settings template. The
+    // optional SessionStart sidecar hook registers only when the hook file is
+    // actually shipped in the package.
+    installClaudeA2aSessionHook({ targetHome });
+    installA2aLibCopies({ targetHome, targetGemini });
 
     // 2. Google Antigravity
-    const agyHooksDir = path.join(targetGemini, 'config', 'hooks');
     const agyWorkflowsDir = path.join(targetGemini, 'config', 'workflows');
-    if (fs.existsSync(hooksSrc)) {
-        copyDirRecursiveSync(hooksSrc, agyHooksDir);
-        log.step(`Installed hooks to ${agyHooksDir}`);
-    }
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, agyWorkflowsDir);
     }
     mergeAntigravityHooks(path.join(targetGemini, 'config', 'hooks.json'));
     const agyCliDir = path.join(targetGemini, 'antigravity-cli');
     if (fs.existsSync(agyCliDir)) {
-        const agyCliHooksDir = path.join(agyCliDir, 'hooks');
         const agyCliWorkflowsDir = path.join(agyCliDir, 'workflows');
-        if (fs.existsSync(hooksSrc)) {
-            copyDirRecursiveSync(hooksSrc, agyCliHooksDir);
-            log.step(`Installed hooks to ${agyCliHooksDir}`);
-        }
         if (fs.existsSync(workflowsSrc)) {
             copyDirRecursiveSync(workflowsSrc, agyCliWorkflowsDir);
         }
         mergeAntigravityHooks(path.join(agyCliDir, 'hooks.json'));
     }
 
-    // 3. OpenAI Codex CLI
-    const codexHooksDir = path.join(targetHome, '.codex', 'hooks');
-    const codexWorkflowsDir = path.join(targetHome, '.codex', 'workflows');
-    if (fs.existsSync(hooksSrc)) {
-        copyDirRecursiveSync(hooksSrc, codexHooksDir);
-        log.step(`Installed hooks to ${codexHooksDir}`);
+    // A2A inbox MCP for agy is print-only: the installer never runs agy (WP-INSTALL
+    // fact 3 / fork-bomb rule), and agy is a delegation target, so it must never
+    // carry a sidecar hook either. The registry-style mcp add args mirror
+    // agyMcpAddArgs in lib/a2a-agy.mjs (kept inline here: installer is CJS, the
+    // a2a lib is ESM).
+    const agyA2aMcpSrc = path.join(srcDir, 'bin', 'aos-a2a-mcp.mjs');
+    if (fs.existsSync(agyA2aMcpSrc) || fs.existsSync(path.join(srcDir, 'bin', 'a2a-inbox-mcp.mjs'))) {
+        const agyMcpInstalled = path.join(homeDir, '.agents', 'bin', 'aos-a2a-mcp.mjs');
+        log.message(`A2A MCP for agy and Cursor: node "${agyMcpInstalled}" (opt-in registration: AOS_A2A_MCP=on)`);
     }
+    if (process.env.AOS_A2A_MCP === 'on' || process.env.AOS_A2A_MCP === '1') {
+        // Fixed, distinct defaults; the installer's own AOS_A2A_NAME is deliberately NOT used here
+        // (running from inside a session would impersonate that session), and the override env vars
+        // are validated through validName (invalid -> warning + default).
+        registerA2aMcpAgy({ targetHome, name: resolveAosA2aMcpName(process.env.AOS_A2A_MCP_NAME_AGY, A2A_MCP_DEFAULT_NAME_AGY, 'agy') });
+        registerA2aMcpCursor({ targetHome, name: resolveAosA2aMcpName(process.env.AOS_A2A_MCP_NAME_CURSOR, A2A_MCP_DEFAULT_NAME_CURSOR, 'Cursor') });
+    }
+
+
+    // 3. OpenAI Codex CLI
+    const codexWorkflowsDir = path.join(targetHome, '.codex', 'workflows');
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
     }
@@ -4555,6 +5463,41 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     installGoCheck({ targetHome });
 }
 
+// Copies only the named hook scripts (never the whole dir). Scripts an older install left behind stay untouched.
+function copyHookScripts(hooksSrc, destDir, names) {
+    for (const name of names) copyDirRecursiveSync(path.join(hooksSrc, name), path.join(destDir, name));
+}
+
+// Each harness dir gets its own list (lib/v5/profile.js HARNESS_HOOKS: wired scripts plus what they import).
+// agy's antigravity-cli dir only when agy created it, as before.
+function installHarnessHookCopies({ targetHome = homeDir, targetGemini = geminiDir } = {}) {
+    const hooksSrc = path.join(srcDir, '.claude', 'hooks');
+    if (!fs.existsSync(hooksSrc)) return [];
+    const { claude, agy, codex } = v5Profile.HARNESS_HOOKS;
+    // The agy A2A inbox hook is an agy-only variant; its source ships in agy-hooks/, not .claude/hooks.
+    const agyA2aSrc = path.join(srcDir, 'agy-hooks', 'a2a-inbox.mjs');
+    const agyNames = agy.filter((n) => n !== 'a2a-inbox.mjs');
+    const agyCliDir = path.join(targetGemini, 'antigravity-cli');
+    const agyDirs = [path.join(targetGemini, 'config', 'hooks'), ...(fs.existsSync(agyCliDir) ? [path.join(agyCliDir, 'hooks')] : [])];
+    const targets = [
+        [path.join(claudeConfigDir(targetHome), 'hooks'), claude],
+        [agyDirs[0], agyNames],
+        ...(agyDirs.length > 1 ? [[agyDirs[1], agyNames]] : []),
+        [path.join(targetHome, '.codex', 'hooks'), codex],
+    ];
+    for (const [dir, names] of targets) {
+        copyHookScripts(hooksSrc, dir, names);
+        log.step(`Installed hooks to ${dir}`);
+    }
+    if (fs.existsSync(agyA2aSrc)) {
+        for (const dir of agyDirs) {
+            copyDirRecursiveSync(agyA2aSrc, path.join(dir, 'a2a-inbox.mjs'));
+            log.step(`Installed the agy A2A inbox hook to ${dir}`);
+        }
+    }
+    return targets.map(([dir]) => dir);
+}
+
 // go-check.mjs is the fixed-path GO check for callers that are not a harness hook (AO).
 // It imports go-gate.mjs from its own directory, so both land in ~/.aos/bin, together with
 // the guarded patterns as JSON. Same conflict/backup rules as every other installed file.
@@ -4563,14 +5506,125 @@ function installGoCheck({ targetHome = homeDir } = {}) {
     const files = [
         [path.join(srcDir, 'bin', 'go-check.mjs'), 'go-check.mjs'],
         [path.join(srcDir, '.claude', 'hooks', 'go-gate.mjs'), 'go-gate.mjs'],
+        [path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs'), 'gate-profile.mjs'],
         [path.join(srcDir, 'bin', 'guarded-patterns.json'), 'guarded-patterns.json'],
         [path.join(srcDir, 'mcps', 'mcsc', 'packages', 'core', 'src', 'trail.js'), 'trail.mjs'],
+        [path.join(srcDir, 'mcps', 'mcsc', 'packages', 'core', 'src', 'no-mcp.js'), 'no-mcp.mjs'],
+        [path.join(srcDir, 'lib', 'a2a-permissions.mjs'), 'a2a-permissions.mjs'],
+        [path.join(srcDir, 'lib', 'sandbox.mjs'), 'sandbox.mjs'],
     ];
     if (!files.every(([src]) => fs.existsSync(src))) return false;
     fs.mkdirSync(dest, { recursive: true });
     for (const [src, name] of files) copyDirRecursiveSync(src, path.join(dest, name));
     log.step(`Installed go-check to ${dest}`);
     return true;
+}
+
+// WP-INSTALL: the a2a hooks (Claude .claude/hooks/a2a-inbox.mjs + optional
+// a2a-session.mjs, also copied into per-harness hook dirs) and the OpenCode
+// plugin (.opencode/plugins/bdb-aos.js) import their shared logic from
+// ../../lib/a2a-*.mjs. Inside the package checkout that resolves to lib/; in
+// the installed layout those files are scattered across harness dirs under the
+// home dir, so a lib copy must land two directory levels above each of them or
+// every A2A hook dies with MODULE_NOT_FOUND. Copies are additive and owned
+// (same files as the running package). go-gate solves the same problem by
+// being blob-copied; the a2a lib keeps its import-path contract instead.
+function a2aLibFiles() {
+    const libDir = path.join(srcDir, 'lib');
+    if (!fs.existsSync(libDir)) return [];
+    let names = [];
+    // The sidecar and client import @a2a-js/sdk / express, which do not resolve from ~/.agents/lib: hooks never need them.
+    try { names = fs.readdirSync(libDir).filter((f) => /^a2a-.+\.mjs$/.test(f) && !/^a2a-(sidecar|client)\.mjs$/.test(f)); } catch (e) { logDebug(e, 'list a2a lib'); }
+    return names.map((f) => path.join(libDir, f));
+}
+
+// The A2A sidecar and client resolve @a2a-js/sdk and express (package.json deps) from the
+// package dir, not from the ~/.agents copies — lib/a2a-sdk-resolve.mjs reads the recorded
+// package root beside the copies. The record is registered with the a2a lib copies, so the
+// uninstall path removes it symmetrically with them. Returns the written path or null.
+function writeA2aPackageRootRecord({ targetHome = homeDir } = {}) {
+    const dir = path.join(targetHome, '.agents', 'lib');
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, '.aos-package-root.json');
+        fs.writeFileSync(file, JSON.stringify({ packageRoot: srcDir }, null, 2) + '\n');
+        uninstallRecords.recordA2aLibCopies(targetHome, [file]);
+        return file;
+    } catch (e) {
+        logDebug(e, 'write a2a packageRoot record');
+        return null;
+    }
+}
+
+// The hooks and the OpenCode plugin fall back to ~/.agents/lib when ../../lib is absent, so the
+// copies live under that one AOS-owned dir, never in the bare $HOME/lib or $HOME/.gemini/lib.
+// Each copy is in the install manifest (copyDirRecursiveSync) and in the uninstall records.
+function installA2aLibCopies({ targetHome = homeDir } = {}) {
+    const files = a2aLibFiles();
+    if (!files.length || DRY_RUN) return false;
+    const dir = path.join(targetHome, '.agents', 'lib');
+    const copied = [];
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        for (const src of files) {
+            const dest = path.join(dir, path.basename(src));
+            copyDirRecursiveSync(src, dest);
+            copied.push(dest);
+        }
+    } catch (e) {
+        log.warn(`Could not install A2A lib copies to ${dir}: ${e.message}`);
+    }
+    const record = writeA2aPackageRootRecord({ targetHome });
+    if (record) copied.push(record);
+    uninstallRecords.recordA2aLibCopies(targetHome, copied);
+    if (copied.length) log.step(`Installed A2A lib copies (a2a-*.mjs) to ${dir} (${copied.length} files)`);
+    return copied.length > 0;
+}
+
+// The sidecar SessionStart hook is registered here for Claude Code, and only
+// when the hook file ships inside this package (a package without it installs
+// fine). Codex gets the same hook from mergeCodexTomlHooks (SessionStart); agy
+// has no session-start event, so it gets none. The installer itself never starts a
+// sidecar. At runtime the hook delegates to ensureSidecar
+// (lib/a2a-session.mjs), which skips on AOS_A2A_SIDECAR=off (the off switch)
+// and on AOS_DELEGATE_DEPTH>0 (delegated workers), so no harness that a
+// delegator spawns can ever fork another sidecar.
+function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
+    const hookSrc = path.join(srcDir, '.claude', 'hooks', 'a2a-session.mjs');
+    if (!fs.existsSync(hookSrc)) {
+        log.step('a2a-session.mjs hook is not shipped in this package: Claude A2A session-start sidecar hook not registered (safe to ignore)');
+        return false;
+    }
+    if (DRY_RUN) {
+        log.message('[dry-run] would register the a2a-session.mjs Claude SessionStart sidecar hook');
+        return false;
+    }
+    const claudeHome = claudeConfigDir(targetHome);
+    const hooksDir = path.join(claudeHome, 'hooks');
+    try {
+        fs.mkdirSync(hooksDir, { recursive: true });
+        copyDirRecursiveSync(hookSrc, path.join(hooksDir, 'a2a-session.mjs'));
+    } catch (e) {
+        log.warn(`Could not install a2a-session.mjs hook: ${e.message}`);
+        return false;
+    }
+    const settingsPath = path.join(claudeHome, 'settings.json');
+    try {
+        let settings = readJsonFile(settingsPath);
+        if (!settings || typeof settings !== 'object' || Array.isArray(settings)) settings = {};
+        if (JSON.stringify(settings).includes('a2a-session.mjs')) return true; // already wired
+        settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
+        if (!Array.isArray(settings.hooks.SessionStart)) settings.hooks.SessionStart = [];
+        settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/a2a-session.mjs"' }] });
+        if (fs.existsSync(settingsPath)) fs.copyFileSync(settingsPath, `${settingsPath}.${timestamp}.bak`);
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+        log.step('Registered a2a-session.mjs Claude SessionStart sidecar hook (skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0)');
+        return true;
+    } catch (e) {
+        log.warn(`Could not wire the a2a-session hook into settings.json: ${e.message}`);
+        return false;
+    }
 }
 
 function installGlobalBinaries() {
@@ -4581,6 +5635,15 @@ function installGlobalBinaries() {
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
         copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(homeDir, '.agents', 'lib'));
+        // The gateway reads the shipped server list from ~/.agents (aosRoot); without these it serves nothing.
+        for (const f of ['mcp_config.json', 'mcp_picks.json']) {
+            if (fs.existsSync(path.join(srcDir, f))) copyDirRecursiveSync(path.join(srcDir, f), path.join(homeDir, '.agents', f));
+        }
+        // lib/gate-profile.mjs is a re-export of the hook copy, which does not exist under ~/.agents: aos-gate needs the real file there.
+        const profileSrc = path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs');
+        if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(homeDir, '.agents', 'lib', 'gate-profile.mjs'));
+        // lib/a2a-sdk-resolve.mjs in the copy above needs the package root (deps are package deps).
+        writeA2aPackageRootRecord();
     }
 
     const localBinDir = path.join(homeDir, '.local', 'bin');
@@ -4589,7 +5652,7 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus'];
+    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus', 'aos-gateway', 'aos-a2a', 'aos-gate'];
     // aos-bus ships as a hook (it imports ./go-gate.mjs), so its launcher points into ~/.claude/hooks.
     const binDirOf = (name) => (name === 'aos-bus' ? path.join(claudeConfigDir(homeDir), 'hooks') : globalAgentsBin);
     const wired = [];
@@ -4636,14 +5699,16 @@ function installGlobalBinaries() {
 // merged result goes to a .bdb-new.json sidecar -- the same recovery pattern
 // the MCP config merge in installMcpsForTarget uses.
 function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = v5Profile.CLAUDE_MERGE_HOOKS;
+    // The template wires a2a-session.mjs (SessionStart) too, so it is in CLAUDE_MERGE_HOOKS: replaced, not cloned, on every run;
+    // installClaudeA2aSessionHook then only copies the script (it skips the settings write when already wired).
     // memb-inject reads the machine-global memB store under $HOME and is
     // installed once per machine, so it stays $HOME-anchored even inside a
     // project harness -- unlike the two gate hooks, which are per-checkout by
     // design. Pointing it at $CLAUDE_PROJECT_DIR would make it fail on every
     // prompt in any project the harness was never installed into. trail-relay
     // talks to machine-global live-map daemons, so it is anchored the same way.
-    const machineGlobalHooks = ['memb-inject.mjs', 'trail-relay.mjs', 'trail-autostart.mjs'];
+    const machineGlobalHooks = v5Profile.CONTEXT_HOOKS;
     const isBdbEntry = (entry) => {
         const cmds = (entry && Array.isArray(entry.hooks) ? entry.hooks : [])
             .map((h) => (h && typeof h.command === 'string' ? h.command : ''))
@@ -4669,7 +5734,9 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
             if (!Array.isArray(entries)) continue;
             const foreignEntries = (Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [])
                 .filter((e) => !isBdbEntry(e));
-            merged.hooks[event] = [...foreignEntries, ...cloneBdbEntries(entries)];
+            // Only context-injection hooks can be dropped here (--no-hooks, minimal profile); the gates never are.
+            const own = cloneBdbEntries(entries);
+            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn ? own : v5Profile.dropContextHooks(own))];
         }
         return merged;
     };
@@ -4703,7 +5770,9 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
         const tmpPath = `${settingsPath}.${process.pid}.tmp`;
         if (existing) {
-            fs.copyFileSync(settingsPath, `${settingsPath}.${process.hrtime.bigint()}.bak`);
+            // hrtime counts from boot: shortly after a boot it has fewer than 13 digits, which the prune
+            // regex below skipped (backups piled up). Fixed width also keeps the name sort chronological.
+            fs.copyFileSync(settingsPath, `${settingsPath}.${String(process.hrtime.bigint()).padStart(20, '0')}.bak`);
             const dir = path.dirname(settingsPath);
             const base = path.basename(settingsPath);
             const baks = fs.readdirSync(dir).filter((f) => f.startsWith(`${base}.`) && /\.\d{13,}\.bak$/.test(f)).sort();
@@ -4729,7 +5798,7 @@ function agyHookCommand(hooksJsonDir, scriptPath, args = '') {
 // Runs every AOS command of a hooks.json once with `{}` on stdin, the way agy does.
 // Returns [{ command, reason }] for each failure; `spawn` is injectable for tests.
 function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
-    const bdbScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbScripts = v5Profile.HOOK_SCRIPTS;
     const data = readJsonFile(hooksPath);
     const commands = [];
     const walk = (v) => {
@@ -4761,7 +5830,7 @@ function selfCheckAgyHooks(hooksPath, spawn = spawnSync) {
 // Merge the BDB hooks into Google Antigravity's hooks.json (.agents/hooks.json or
 // ~/.gemini/config/hooks.json), preserving user-defined foreign hooks.
 function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = spawnSync } = {}) {
-    const bdbHookScripts = ['go-gate.mjs', 'graph-gate.mjs', 'memb-inject.mjs', 'startcycle-dispatch.mjs', 'trail-relay.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs'];
+    const bdbHookScripts = v5Profile.HOOK_SCRIPTS;
     const isBdbHandler = (h) => typeof h?.command === 'string' && bdbHookScripts.some((name) => h.command.includes(name));
 
     const baseDir = path.dirname(hooksPath);
@@ -4789,8 +5858,8 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
             PreToolUse: [{ matcher: fileTools, hooks: [{ type: 'command', command: cmd(hooksDir, 'env-file-protection.mjs'), timeout: 10 }] }]
         },
         'aos-trail-relay': {
-            PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 2 }] }],
-            Stop: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 2 }]
+            PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event PreToolUse'), timeout: 5 }] }],
+            Stop: [{ type: 'command', command: obs(globalHooksDir, 'trail-relay.mjs', ' --agent agy --event Stop'), timeout: 5 }]
         },
         'aos-graph-gate': {
             Stop: [{ type: 'command', command: cmd(hooksDir, 'graph-gate.mjs'), timeout: 10 }]
@@ -4798,10 +5867,23 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
         'aos-context': {
             PreInvocation: [
                 { type: 'command', command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
+                { type: 'command', command: obs(globalHooksDir, 'rules-inject.mjs'), timeout: 3 },
                 { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
             ]
+        },
+        'aos-a2a-inbox': {
+            // Interactive-session A2A inbox (agy PreInvocation): delivers pending messages only on the
+            // first model call of a turn. Not a context hook, so --no-hooks and minimal keep it; the
+            // hook fails open itself, but stay fail-safe around it as well.
+            PreInvocation: [{ type: 'command', command: obs(globalHooksDir, 'a2a-inbox.mjs'), timeout: 5 }]
         }
     };
+
+    const allHookNames = Object.keys(bdbHooks);
+    if (!contextHooksOn) {
+        delete bdbHooks['aos-trail-relay'];
+        bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !v5Profile.isContextCommand(h.command));
+    }
 
     // Earlier AOS versions wrote all handlers under one named hook called "hooks" (old wrapped shapes
     // included). Strip the BDB handlers out of it, keep foreign ones, and drop it when nothing is left.
@@ -4831,7 +5913,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
             const hasEvents = rest && typeof rest === 'object' && Object.keys(rest).some((k) => Array.isArray(rest[k]));
             if (hasEvents) merged.hooks = rest; else delete merged.hooks;
         }
-        for (const name of Object.keys(bdbHooks)) delete merged[name];
+        for (const name of allHookNames) delete merged[name];
         return { ...merged, ...bdbHooks };
     };
 
@@ -4887,6 +5969,8 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
 // replacing the block on re-runs. A server the user already declared outside the
 // block is skipped: a second [mcp_servers.<name>] table would make the file invalid TOML.
 function mergeCodexTomlMcpServers(configTomlPath, servers) {
+    servers = mcpSecrets.wrapServers(withoutGatewayServers(servers, configTomlPath), mcpLauncher());
+    const shipped = mcpShipped();
     const tomlKey = (k) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k));
     const tomlValue = (v) => {
         if (Array.isArray(v)) return `[${v.map(tomlValue).join(', ')}]`;
@@ -4904,28 +5988,67 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     const rows = (name, cfg) => [`[mcp_servers.${tomlKey(name)}]`, ...Object.entries(cfg || {}).map(([k, v]) => `${tomlKey(k)} = ${tomlValue(v)}`)];
     // Codex drops marker comments on rewrite: AOS tables left without markers are recognised by name plus
     // the exact command AOS writes, replaced into the single block, and orphan markers are removed.
+    // A table is AOS's when its name is shipped and command/args are what AOS writes (launcher form or
+    // not); a table whose args this reader cannot parse is judged by its command line alone, as before.
+    const ownedNames = new Set();
+    // A table with anything this reader does not fully understand (or inline secrets while there is no
+    // launcher to take them) is never rewritten: it stays exactly as it is and the AOS entry of that name is skipped.
+    const priorTables = mcpSecrets.parseCodexTables(content);
+    const refused = new Set(Object.entries(priorTables)
+        .filter(([, t]) => t.unparsed.length || (!mcpLauncher() && mcpSecrets.inlineSecrets(t.env).length))
+        .map(([n]) => n));
+    // Losing pick candidates (no incoming entry): dropped only when the table is AOS-shaped and holds no inline secret.
+    const retired = new Set(mcpPicks().retired);
     const owns = (name, sec) => {
         const cfg = (servers || {})[name];
-        return !!cfg && sec.some((l) => l.trim() === `command = ${tomlValue((cfg || {}).command)}`);
+        const gone = !cfg && retired.has(name);
+        if ((!cfg && !gone) || refused.has(name)) return false;
+        const t = mcpSecrets.parseCodexTables(sec.join('\n'))[name];
+        const command = t && t.fields.command;
+        if (typeof command !== 'string') return false;
+        let ok;
+        if (gone) ok = Array.isArray(t.fields.args) && !mcpSecrets.inlineSecrets(t.env).length && mcpSecrets.isAosOwned(name, { command, args: t.fields.args }, null, shipped);
+        else {
+            const inc = mcpSecrets.unwrap(cfg);
+            ok = Array.isArray(t.fields.args)
+                ? mcpSecrets.isAosOwned(name, { command, args: t.fields.args }, cfg, shipped)
+                : [cfg.command, inc.command].includes(command);
+            if (ok) ownedNames.add(name);
+        }
+        return ok;
     };
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
     // Codex may insert a user's own [mcp_servers.x] table between the markers. Regenerating the
     // block replaces its content, so tables AOS does not ship are moved behind the block, not lost.
     let foreign = '';
+    const original = content;
     if (hadBlock) {
         const aosNames = new Set([...uninstallRecords.aosMcpNames(), ...Object.keys(servers || {})]);
         const inner = content.match(blockRegex)[0].split(/\r?\n/).filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
-        foreign = uninstallRecords.dropMcpTables(inner, (n) => aosNames.has(n)).join('\n').trim();
+        foreign = uninstallRecords.dropMcpTables(inner, (n) => aosNames.has(n) && !refused.has(n)).join('\n').trim();
+        Object.keys(mcpSecrets.parseCodexTables(inner.join('\n'))).filter((n) => aosNames.has(n) && !refused.has(n)).forEach((n) => ownedNames.add(n));
     }
     const stripped = content.replace(blockRegex, `${PLACEHOLDER}\n`).split(/\r?\n/)
         .filter((l) => !/^\s*# AOS:MCP:(START|END)\s*$/.test(l));
     const outsideLines = uninstallRecords.dropMcpTables(stripped, owns);
     const outside = outsideLines.join('\n');
+    // Inline secrets of the tables AOS replaces: collected for the secrets file, their names stay declared.
+    const collector = mcpSecrets.createCollector();
+    for (const n of ownedNames) {
+        const env = priorTables[n] && priorTables[n].env;
+        for (const [k, v] of mcpSecrets.inlineSecrets(env)) collector.add(k, v);
+        if (servers[n]) servers[n] = mcpSecrets.wrapServer(n, servers[n], mcpLauncher(), Object.keys(env || {}).filter((k) => mcpSecrets.secretKV(k, env[k])));
+    }
     const tables = [];
     const skipped = [];
     Object.entries(servers || {}).forEach(([name, cfg]) => {
         const header = `[mcp_servers.${tomlKey(name)}]`;
         const headerRegex = new RegExp(`^${header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm');
+        if (refused.has(name)) {
+            skipped.push(name);
+            log.warn(`${configTomlPath}: table "${name}" has content this installer cannot rewrite safely; kept as it is.`);
+            return;
+        }
         if (headerRegex.test(outside)) { skipped.push(name); return; }
         tables.push(rows(name, cfg).join('\n'));
     });
@@ -4939,6 +6062,9 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     }
     content = content.replace(/\n{3,}/g, '\n\n');
     if (eol === '\r\n') content = content.replace(/\n/g, '\r\n');
+    if (content === original) return skipped;
+    if (!backupConfigFile(configTomlPath)) throw new Error('config.toml could not be backed up');
+    if (!stashInlineSecrets(collector, configTomlPath)) throw new Error('inline secrets could not be moved');
     fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
     try { fs.chmodSync(configTomlPath, 0o600); } catch (e) { logDebug(e, 'chmod configTomlPath'); }
     return skipped;
@@ -4968,7 +6094,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     const workflowsDir = projectLocal ? path.join(currentDir, '.codex', 'workflows') : path.join(baseDir, 'workflows');
     const globalHooksDir = projectLocal ? path.join(homeDir, '.codex', 'hooks') : hooksDir;
 
-    const tomlSnippet = [
+    const fullSnippet = [
         '# AOS:HOOKS:START',
         codexGateSnippet(hooksDir),
         '',
@@ -4984,11 +6110,30 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`)}`,
         'timeout = 30',
         '',
+        '[[hooks.UserPromptSubmit]]',
+        '[[hooks.UserPromptSubmit.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'rules-inject.mjs')}"`)}`,
+        'timeout = 10',
+        '',
         '[[hooks.SessionStart]]',
         '[[hooks.SessionStart.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'memb-inject.mjs')}"`)}`,
         'timeout = 30',
+        '',
+        '[[hooks.SessionStart]]',
+        '[[hooks.SessionStart.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'aos-session-hint.mjs')}"`)}`,
+        'timeout = 3',
+        '',
+        // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints nothing; skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
+        '[[hooks.SessionStart]]',
+        '[[hooks.SessionStart.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'a2a-session.mjs')}" --harness codex`)}`,
+        'timeout = 10',
         '',
         '[[hooks.UserPromptSubmit]]',
         '[[hooks.UserPromptSubmit.hooks]]',
@@ -5000,17 +6145,21 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '[[hooks.PreToolUse.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event PreToolUse`)}`,
-        'timeout = 2',
+        'timeout = 5',
         '',
         '[[hooks.Stop]]',
         '[[hooks.Stop.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event Stop`)}`,
-        'timeout = 2',
+        'timeout = 5',
         '# AOS:HOOKS:END'
     ].join('\n');
+    // Blocks are blank-line separated; without context hooks only blocks naming a context script go.
+    const tomlSnippet = contextHooksOn ? fullSnippet
+        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !v5Profile.isContextCommand(b)).join('\n\n')}\n# AOS:HOOKS:END`;
 
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
+    const original = content;
 
     // Ensure [features] hooks = true
     // Only the [features] table counts: `hooks = true` in another table does not enable hooks, and
@@ -5030,11 +6179,16 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     const isAosMarker = (l) => /^\s*# AOS:HOOKS:(START|END)\s*$/.test(l);
     const eol = content.includes('\r\n') ? '\r\n' : '\n';
     const kept = (uninstallRecords.dropAosHookGroups(content.split(/\r?\n/).filter((l) => !isAosMarker(l))));
-    content = `${kept.join(eol).trimEnd()}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
+    // Blank lines left where AOS groups sat are collapsed, so a block that is not last in the file does not grow on every run.
+    const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, eol + eol).trimEnd();
+    content = `${body}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
 
     try {
         fs.mkdirSync(path.dirname(configTomlPath), { recursive: true });
-        fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
+        // Codex trusts a hook by its hash: an unchanged file is not rewritten.
+        if (content !== original) fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
+        // Hooks live in config.toml only; Codex warns when hooks.json holds them too.
+        for (const line of uninstallRecords.migrateCodexHooksJson({ file: path.join(baseDir, 'hooks.json'), dryRun: DRY_RUN })) log.step(line);
     } catch (e) {
         log.warn(`Could not write ${configTomlPath}: ${e.message}`);
     }
@@ -5081,9 +6235,13 @@ function installProjectHarness() {
     installStep('copy hooks into project', () => {
         const hooksSrc = path.join(srcDir, '.claude', 'hooks');
         if (fs.existsSync(hooksSrc)) {
-            copyDirRecursiveSync(hooksSrc, path.join(projectClaudeDir, 'hooks'));
-            copyDirRecursiveSync(hooksSrc, path.join(projectAgentsDir, 'hooks'));
-            copyDirRecursiveSync(hooksSrc, path.join(projectCodexDir, 'hooks'));
+            const { claude, agy, codex } = v5Profile.HARNESS_HOOKS;
+            const agyA2aSrc = path.join(srcDir, 'agy-hooks', 'a2a-inbox.mjs');
+            const agyNames = agy.filter((n) => n !== 'a2a-inbox.mjs');
+            copyHookScripts(hooksSrc, path.join(projectClaudeDir, 'hooks'), claude);
+            copyHookScripts(hooksSrc, path.join(projectAgentsDir, 'hooks'), agyNames);
+            if (fs.existsSync(agyA2aSrc)) copyDirRecursiveSync(agyA2aSrc, path.join(projectAgentsDir, 'hooks', 'a2a-inbox.mjs'));
+            copyHookScripts(hooksSrc, path.join(projectCodexDir, 'hooks'), codex);
             log.step(`Copied hooks to project harnesses`);
         }
     }, 'go-gate / graph-gate enforcement stays inactive in this project.');
@@ -5178,7 +6336,7 @@ function parseModuleSelection(argv = process.argv, env = process.env) {
 }
 
 async function promptOptionalModules(installedModules, requested = parseModuleSelection(), modulesOverride = null) {
-    const allModules = modulesOverride || [
+    const allModules = (modulesOverride || [
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: installSynapse },
         { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: () => installMemB(true) },
         { id: 'remote', name: 'BDB OS Remote Gateway (Zero-Trust Tailscale Multiplexer)', fn: installOSRemoteGateway },
@@ -5191,8 +6349,11 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
             : []),
         { id: 'creator', name: 'BDB Creator Extension (Generative 3D, Video & ComfyUI)', fn: installCreatorExtension },
         { id: 'hardware', name: 'BDB Hardware & PCB (KiCad + OpenSCAD Electrical/PCB Design)', fn: installHardwarePcb },
+        { id: 'rustauri', name: 'Rust + Tauri (tauri-pilot + rust-pro skills, optional)', fn: installRustauri },
+        { id: 'styleseed', name: 'StyleSeed (Toss design-language UI/UX skills, optional)', fn: installStyleseed },
+        { id: 'codebase-memory', name: 'Codebase Memory MCP (Code Knowledge Graph, Local SQLite)', fn: installCodebaseMemory },
         { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
-    ];
+    ]).filter((m) => !installExcluded.has(m.id));
 
     const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
     if (isAutoYes) {
@@ -5244,6 +6405,11 @@ async function runModuleInstalls(allModules, chosen, installedModules) {
 // Module ids whose daemons ship a web interface or background service worth
 // surfacing in the launchpad (each has a card in the generated HTML below).
 const LAUNCHPAD_WEB_MODULES = ['memb', 'synapse', 'openwiki', 'ao', 'remote'];
+// The hub is a core, on-demand service (started with `aos hub`, same as the
+// store UI), not an optional daemon module — but its launchpad card belongs on
+// the page. Registered after the literal so the constant itself keeps its
+// documented daemon-module shape.
+LAUNCHPAD_WEB_MODULES.push('hub');
 
 // Explicit opt-in flags that open the launchpad even outside a dev checkout.
 const LAUNCHPAD_OPEN_FLAGS = ['--launchpad', '--dashboard', '--open', '--dev'];
@@ -5306,6 +6472,8 @@ function buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }) {
     <dict>
         <key>AOS_PLAN_CANVAS_IDLE_MS</key>
         <string>0</string>
+        <key>AOS_SUPERVISED</key>
+        <string>1</string>
     </dict>
     <key>WorkingDirectory</key>
     <string>${home}</string>
@@ -5323,12 +6491,14 @@ function buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }) {
 </plist>`;
 }
 
-// Same bat + hidden-vbs-in-Startup mechanism as the OpenWiki visualizer.
+// Same bat + hidden-vbs-in-Startup mechanism as the OpenWiki visualizer. Windows has no supervisor for a
+// Startup entry, so the bat loops: a crash or exit 3 (new code on disk, AOS_SUPERVISED) restarts in 5 s.
+// ponytail: also loops every 5 s while another canvas holds the port; a Task Scheduler task if that matters.
 function buildPlanCanvasWinFiles({ nodeBin, scriptPath, home, logDir, batPath }) {
     const out = path.join(logDir, 'plan-canvas.stdout.log');
     const err = path.join(logDir, 'plan-canvas.stderr.log');
     return {
-        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\n`,
+        bat: `@echo off\r\ncd /d "${home}"\r\nset AOS_PLAN_CANVAS_IDLE_MS=0\r\nset AOS_SUPERVISED=1\r\n:loop\r\n"${nodeBin}" "${scriptPath}" server >> "${out}" 2>> "${err}"\r\ntimeout /t 5 /nobreak >nul\r\ngoto loop\r\n`,
         vbs: `Set WshShell = CreateObject("WScript.Shell")\r\nWshShell.CurrentDirectory = "${home}"\r\nWshShell.Run """${batPath}""", 0, False\r\n`,
     };
 }
@@ -5372,8 +6542,31 @@ function installPlanCanvasAutostart(overrides = {}) {
             fs.writeFileSync(vbsPath, files.vbs, 'utf-8');
             if (!overrides.skipLaunchctl) spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
             log.success('Plan Canvas Startup entry registered (Port 4519)');
+        } else if (platform === 'linux') {
+            // Same program, env and logs as the launchd plist above.
+            const unitName = 'com.bdb.plan-canvas.service';
+            const unitFile = systemdUnits.unitPath(home, unitName);
+            fs.mkdirSync(path.dirname(unitFile), { recursive: true });
+            fs.writeFileSync(unitFile, systemdUnits.buildUserUnit({
+                description: 'Plan Canvas',
+                execStart: [nodeBin, scriptPath, 'server'],
+                workingDirectory: home,
+                env: { AOS_PLAN_CANVAS_IDLE_MS: '0', AOS_SUPERVISED: '1' },
+                restart: 'always',
+                logOut: path.join(logDir, 'plan-canvas.stdout.log'),
+                logErr: path.join(logDir, 'plan-canvas.stderr.log'),
+            }));
+            if (!overrides.skipLaunchctl) {
+                // This install path stays synchronous (its return value is asserted
+                // in tests), so the enable result is reported outside the try.
+                systemdUnits.enableUnit(async (cmd, args) => {
+                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    return { ok: true };
+                }, unitName).catch((e) => logDebug(e, 'plan canvas linux unit'));
+            }
+            log.success('Plan Canvas systemd user unit registered (Port 4519)');
         } else {
-            log.step('Plan Canvas autostart is only wired for macOS and Windows. Start it with: aos-plan-canvas server');
+            log.step('Plan Canvas autostart is not wired for this platform. Start it with: aos-plan-canvas server');
             return false;
         }
         return true;
@@ -5734,6 +6927,28 @@ function generateAndOpenLaunchpad(installedModules = []) {
           <span class="status-dot" id="dot-plancanvas" title="Checking..."></span>
         </div>
       </a>
+      <a class="card" href="http://127.0.0.1:7900/" target="_blank">
+        <div class="card-content">
+          <div class="card-icon"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="grad-hub" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#9b30c4"/></linearGradient></defs>
+            <circle cx="50" cy="50" r="34" fill="url(#grad-hub)" opacity="0.85"/>
+            <circle cx="50" cy="50" r="9" fill="#0a0a0a"/>
+            <circle cx="50" cy="18" r="4" fill="#FFFFFF"/><circle cx="79" cy="65" r="4" fill="#FFFFFF"/><circle cx="21" cy="65" r="4" fill="#FFFFFF"/>
+            <line x1="50" y1="50" x2="50" y2="18" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+            <line x1="50" y1="50" x2="79" y2="65" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+            <line x1="50" y1="50" x2="21" y2="65" stroke="#FFFFFF" stroke-width="1.5" opacity="0.6"/>
+          </svg></div>
+          <div class="card-info">
+            <h2>AOS Hub</h2>
+            <p>Services, plan kits and the store in one page</p>
+            <div class="card-hint">on demand — run: <code data-copy="aos hub" title="Click to copy">aos hub</code></div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <span class="port-pill">:7900</span>
+          <span class="status-dot" id="dot-hub" title="Checking..."></span>
+        </div>
+      </a>
     </div>
     <div class="footer">
       <span>Autostart Daemons • 127.0.0.1</span>
@@ -5762,6 +6977,7 @@ function generateAndOpenLaunchpad(installedModules = []) {
       checkHealth('http://127.0.0.1:4321', 'dot-openwiki');
       checkHealth('http://127.0.0.1:4322', 'dot-store');
       checkHealth('http://127.0.0.1:4519', 'dot-plancanvas');
+      checkHealth('http://127.0.0.1:7900', 'dot-hub');
     }
     document.addEventListener('click', (ev) => {
       const el = ev.target.closest && ev.target.closest('[data-copy]');
@@ -5866,12 +7082,12 @@ function syncMcpConfigFile(targetPath, masterMcpData) {
         const before = loaded.state === 'ok' ? JSON.stringify(loaded.data) : null;
         const data = loaded.data;
         if (!data.mcpServers || typeof data.mcpServers !== 'object') data.mcpServers = {};
-        if (masterMcpData.mcpServers) {
-            for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
-                data.mcpServers[key] = val;
-            }
-        }
-        writeConfigWithBackup(targetPath, data, before);
+        const collector = mcpSecrets.createCollector();
+        mcpSecrets.mergeServers(data.mcpServers, withoutGatewayServers(masterMcpData.mcpServers, targetPath), { shipped: mcpShipped(), collector, launcher: mcpLauncher(), onSkip: warnUserMcpEntry(targetPath) });
+        retireMcpServers(data.mcpServers);
+        if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
+        if (!stashInlineSecrets(collector, targetPath)) return;
+        if (writeConfigWithBackup(targetPath, data, before)) recordMcpConfigPath(targetPath);
     } catch (e) {
         log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
     }
@@ -5884,15 +7100,20 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
         const existing = loaded.state === 'ok' ? loaded.data : null;
         const before = existing ? JSON.stringify(existing) : null;
         const data = existing && existing.mcp ? existing : Object.assign({}, existing || {}, { mcp: {} });
+        const collector = mcpSecrets.createCollector();
         if (masterMcpData.mcpServers) {
             // OpenCode provider APIs (e.g. OpenAI-compatible, Console) enforce tool name length limits
             // (e.g. max 64 chars) and context limits. Loading 20+ MCPs causes provider errors (e.g. 73-char tool names).
             // OpenCode uses a slim profile: only core servers (memb_mcp, zavora_computer_use) are enabled by default.
-            const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use', 'deja']);
+            // tauri-pilot is only in the master set when the opt-in Rust + Tauri package is installed.
+            const OPENCODE_DEFAULT_SLIM = new Set(['memb_mcp', 'zavora_computer_use', 'deja', 'tauri-pilot']);
             const existingMcp = existing && existing.mcp ? existing.mcp : {};
             const hasExistingKeys = Object.keys(existingMcp).length > 0;
 
-            for (const [key, val] of Object.entries(masterMcpData.mcpServers)) {
+            for (const [key, rawVal] of Object.entries(withoutGatewayServers(masterMcpData.mcpServers, targetPath))) {
+                const existingEntry = existingMcp[key];
+                const prevEnv = (existingEntry && existingEntry.environment) || {};
+                const val = mcpSecrets.wrapServer(key, rawVal, mcpLauncher(), Object.keys(prevEnv).filter((k) => mcpSecrets.secretKV(k, prevEnv[k])));
                 const rawCmd = Array.isArray(val.command) ? val.command : [val.command];
                 const rawArgs = Array.isArray(val.args) ? val.args : [];
                 const fullCmd = [...rawCmd, ...rawArgs].map(c => {
@@ -5904,7 +7125,11 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
                     return c;
                 });
 
-                const existingEntry = existingMcp[key];
+                // A same-named entry the user wrote with another command is not ours to replace.
+                if (existingEntry && !mcpSecrets.isAosOwned(key, mcpSecrets.fromOpencode(existingEntry), { command: val.command, args: val.args }, mcpShipped())) {
+                    warnUserMcpEntry(targetPath)(key);
+                    continue;
+                }
 
                 // If existing config is intentionally slimmed (has keys, but omitted this one), don't resurrect unless in slim set
                 if (hasExistingKeys && !existingEntry && !OPENCODE_DEFAULT_SLIM.has(key)) {
@@ -5916,38 +7141,92 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
                     ? existingEntry.enabled
                     : OPENCODE_DEFAULT_SLIM.has(key);
 
-                let envObj = val.environment || val.env;
-                if (envObj) {
-                    envObj = Object.assign({}, envObj);
-                    for (const [eKey, eVal] of Object.entries(envObj)) {
-                        if (eVal === '__GEMINI_API_KEY__') {
-                            envObj[eKey] = '${GEMINI_API_KEY}';
-                        }
-                    }
-                }
+                for (const [k, v] of mcpSecrets.inlineSecrets(prevEnv)) collector.add(k, v);
+                const envObj = val.environment || val.env;
 
                 data.mcp[key] = {
                     type: "local",
                     command: fullCmd,
                     enabled: isEnabled,
-                    ...(envObj ? { environment: envObj } : {})
+                    ...(envObj && Object.keys(envObj).length ? { environment: envObj } : {})
                 };
             }
         }
+
+        retireMcpServers(data.mcp, true);
 
         // Wire BDB AOS Plugin for OpenCode. `data` is handed in because this
         // function owns the write -- it merges MCP servers in the same pass.
         // homeDir matches how the opencode harness entry builds its path.
         installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
 
+        if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
+        if (!stashInlineSecrets(collector, targetPath)) return;
         writeConfigWithBackup(targetPath, data, before);
     } catch (e) {
         log.warn(`Failed to sync MCP to ${targetPath}: ${e.message}`);
     }
 }
 
+// Update-time migration: AOS-owned entries in every known harness config (CLAUDE_CONFIG_DIR and CODEX_HOME
+// honoured) that still carry inline secrets are rewritten to the launcher form. Backup first, values go into
+// the secrets file unless it already holds that variable, user entries stay untouched. Idempotent.
+function migrateMcpSecrets() {
+    const shipped = mcpShipped();
+    const moved = [];
+    installMcpLauncher();
+    const launcher = mcpLauncher();
+    if (!launcher) return moved;
+    for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir)) {
+        if (!fs.existsSync(file)) continue;
+        try {
+            if (kind === 'toml') {
+                const tables = mcpSecrets.parseCodexTables(readTextFile(file));
+                const owned = {};
+                let blocked = null;
+                for (const [name, t] of Object.entries(tables)) {
+                    if (!shipped[name]) continue;
+                    const entry = mcpSecrets.codexEntry(t);
+                    if (typeof entry.command !== 'string' || !mcpSecrets.isAosOwned(name, entry, null, shipped)) continue;
+                    if (t.unparsed.length) blocked = name;
+                    owned[name] = entry;
+                }
+                if (blocked) { log.warn(`${file}: table "${blocked}" has fields this installer cannot rewrite safely; its inline secrets (if any) were left in place.`); continue; }
+                if (!Object.keys(owned).length || JSON.stringify(mcpSecrets.wrapServers(owned, launcher)) === JSON.stringify(owned)) continue;
+                mergeCodexTomlMcpServers(file, owned);
+                moved.push(file);
+                continue;
+            }
+            const loaded = loadJsonConfig(file);
+            if (loaded.state === 'invalid') { warnUnparseable(file, 'secret migration', loaded); continue; }
+            if (loaded.state !== 'ok') continue;
+            const map = loaded.data[kind === 'opencode' ? 'mcp' : 'mcpServers'];
+            if (!map || typeof map !== 'object') continue;
+            const before = JSON.stringify(loaded.data);
+            const collector = mcpSecrets.createCollector();
+            for (const [name, entry] of Object.entries(map)) {
+                const canon = kind === 'opencode' ? mcpSecrets.fromOpencode(entry) : entry;
+                if (!canon || !mcpSecrets.isAosOwned(name, canon, null, shipped)) continue;
+                const env = (canon.env && typeof canon.env === 'object') ? canon.env : {};
+                for (const [k, v] of mcpSecrets.inlineSecrets(env)) collector.add(k, v);
+                const wrapped = mcpSecrets.wrapServer(name, canon, launcher);
+                map[name] = kind === 'opencode' ? mcpSecrets.toOpencode(entry, wrapped) : wrapped;
+            }
+            if (JSON.stringify(loaded.data) === before) continue;
+            if (!stashInlineSecrets(collector, file)) continue;
+            if (writeConfigWithBackup(file, loaded.data, before)) moved.push(file);
+        } catch (e) {
+            log.warn(`Could not migrate MCP secrets in ${file}: ${e.message}`);
+        }
+    }
+    if (moved.length) log.step(`MCP entries now use the secrets launcher in: ${moved.join(', ')}`);
+    noticeSecretBackups();
+    return moved;
+}
+
 async function universalHarnessSync(primaryMcpConfigPath, installedModules = []) {
     log.info('Universal Agent Harness Sync...');
+    installMcpLauncher();
     const detections = detectPlatforms();
     let masterMcpData = {};
     try { masterMcpData = JSON.parse(fs.readFileSync(primaryMcpConfigPath, 'utf8')); } catch (e) { logDebug(e, 'operation'); }
@@ -5994,12 +7273,14 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
             }
         }
     }
+    noticeSecretBackups();
     log.success('Universal Sync Complete!');
     generateAndOpenLaunchpad(installedModules);
     installPlanCanvasAutostart();
 }
 
-async function runQuickUpdate(installState) {
+// Kernel = skills, plugin migration; Harnesses = rules/hooks/MCP secrets. v5 runs them as separate steps.
+function quickUpdateKernel(installState) {
     const s = spinner();
     s.start('Quick Update: refreshing skills & syncing installed submodules...');
 
@@ -6046,9 +7327,16 @@ async function runQuickUpdate(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     s.stop('Skills refreshed');
-    runPluginMigration();
-    runAgyPluginStep();
+    const failures = [];
+    const migration = runPluginMigration();
+    if (migration.error) failures.push(`plugin migration: ${migration.error}`);
+    const agy = runAgyPluginStep();
+    if (agy) failures.push(`agy plugin: ${agy}`);
+    return failures;
+}
 
+// Returns the list of failed steps (empty = all ok); v5 turns a non-empty list into a failed step.
+function quickUpdateHarnesses() {
     // Everything injectHarnessRules() delivers -- RULES.md, the dispatcher
     // workflows the skills point at, the compiled subagent definitions, the
     // harness rule files and the gate + memory hooks -- used to be
@@ -6056,11 +7344,34 @@ async function runQuickUpdate(installState) {
     // Update; the rest stayed behind, so a machine that only ever quick-updates
     // kept running first-install agent definitions and dispatcher scripts
     // forever. Same defect as the hook, one layer up. Run the whole thing.
-    installStep('refresh harness rules, workflows, agents and hooks', () => {
-        injectHarnessRules();
-    }, 'Harness files keep whatever version this machine already had.');
-    installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.');
-    runCodexPluginStep();
+    const steps = [
+        ['refresh harness rules, workflows, agents and hooks', installStep('refresh harness rules, workflows, agents and hooks', () => {
+            injectHarnessRules();
+        }, 'Harness files keep whatever version this machine already had.')],
+        ['remove the AOS mcsc entry from agy configs', installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.')],
+        ['move inline MCP secrets into the secrets file', installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`)],
+        ['install the Codex plugin', installStep('install the Codex plugin', () => { runCodexPluginStep(); })],
+    ];
+    return steps.filter(([, r]) => !r.ok).map(([what, r]) => `${what}: ${r.error.message}`);
+}
+
+// No prompt: only refreshes when a key (or ollama) is already configured. Returns false when there is nothing to refresh.
+async function refreshOpenWikiSilently({ key: given } = {}) {
+    const paths = resolveTargetPaths('1', null);
+    const env = loadExistingEnv(paths.targetMcpDir);
+    const provider = env['OPENWIKI_PROVIDER'] || 'google';
+    const keyName = PROVIDER_KEY_ENV_NAMES[provider] || 'GEMINI_API_KEY';
+    const key = given || env[keyName] || env['GEMINI_API_KEY'] || env['GOOGLE_API_KEY'] || env['OPENWIKI_API_KEY'] || '';
+    if (!key && provider !== 'ollama') return false;
+    await installOpenWikiDaemon(key, paths.targetSkillDir, { provider, model: env['OPENWIKI_MODEL_ID'] || env['OPENWIKI_MODEL'] || '', baseUrl: env['OPENWIKI_BASE_URL'] || '' });
+    await installOpenWikiVisualizer();
+    return true;
+}
+
+async function runQuickUpdate(installState) {
+    quickUpdateKernel(installState);
+    quickUpdateHarnesses();
+    const paths = resolveTargetPaths('1', null);
 
     // OpenWiki: if already configured, refresh the daemon silently (no prompt).
     // Only ask when there is no key yet — i.e. a first-time offer or a machine
@@ -6091,9 +7402,11 @@ async function runQuickUpdate(installState) {
         else if (subId === 'ao' && aoSupportedHere()) await installOSAgentWorkspace();
         else if (subId === 'creator') await installCreatorExtension();
         else if (subId === 'hardware') await installHardwarePcb();
+        else if (subId === 'codebase-memory') await installCodebaseMemory();
         else if (subId === 'installer') await installDevToolInstaller();
     }
 
+    await applyCodingModeStep();
     await promptOptionalModules(modulesToUpdate);
     // modulesToUpdate now covers both the modules updated in the loop above and any newly
     // chosen ones promptOptionalModules just installed (it mutates the same array) -- every
@@ -6183,8 +7496,87 @@ function installBinaryAtomically(src, dest) {
     }
 }
 
+// aos-uninstall.mjs is ESM and drives its own confirmation prompt, so it runs as a child process.
+function runUninstaller() {
+    const uninstallScript = path.join(srcDir, 'bin', 'aos-uninstall.mjs');
+    if (!fs.existsSync(uninstallScript)) {
+        log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: npx @hybridlabor-api/aos-uninstall`);
+        return 1;
+    }
+    const r = spawnSync(process.execPath, [uninstallScript], { stdio: 'inherit' });
+    return r.status == null ? 1 : r.status;
+}
+
+// Prompts exist only in a TTY; `aos update` without one passes ui = {} and nothing is ever asked.
+function v5Options(interactive) {
+    const ui = interactive ? {
+        select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
+        multi: async (message, options) => { const a = await multiselect({ message, options, required: false }); return isCancel(a) ? [] : a; },
+        ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
+        confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
+    } : {};
+    return { home: homeDir, write: (s) => process.stdout.write(s), ui };
+}
+
+// Flags/env win over the persisted v5 settings for this run. Writes nothing: see persistInstallOptions.
+function applyInstallOptions(home = homeDir) {
+    const r = v5Profile.resolve(INSTALL_OPTS, v5Profile.readSettings(home));
+    contextHooksOn = r.contextHooks;
+    activeProfile = r.profile;
+    installExcluded = r.excluded;
+    return r;
+}
+
+// Saved so `aos update` keeps it. Called only where a real install or update starts (never for help, version,
+// --dry-run, status or uninstall). A flag on the command line is saved; AOS_PROFILE is not.
+function persistInstallOptions(home = homeDir) {
+    const o = INSTALL_OPTS;
+    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length)) return false;
+    try {
+        const st = v5Profile.readSettings(home);
+        const next = { ...st, disabled: [...new Set([...st.disabled, ...o.without])] };
+        if (o.profileFromFlag) { next.profile = o.profile; next.noHooks = o.noHooks; } else if (o.noHooks) next.noHooks = true;
+        v5Profile.writeSettings(home, next);
+        return true;
+    } catch (e) {
+        log.warn(`Could not save the install profile: ${e.message}`);
+        return false;
+    }
+}
+
+// The file-manifest session of a full install; --hooks-only needs the same one so its copies are tracked alike.
+function initFullSession(installState) {
+    initSessionManifest(installState.installManifest, [
+        path.join(srcDir, 'skills'),
+        path.join(srcDir, 'mcps'),
+        path.join(srcDir, '.agents'),
+        path.join(srcDir, '.claude'),
+        path.join(srcDir, '.cursor'),
+        path.join(srcDir, '.github'),
+        path.join(srcDir, '.codex-plugin'),
+        path.join(srcDir, 'RULES.md'),
+        path.join(srcDir, 'AGENTS.md'),
+        path.join(srcDir, 'CLAUDE.md'),
+        path.join(srcDir, 'CODEX.md'),
+    ]);
+}
+
 async function main() {
     const args = process.argv.slice(2);
+    // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
+    // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
+    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package'];
+    if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
+        console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
+        process.exitCode = 2;
+        return;
+    }
+    applyInstallOptions();
+    if (['status', 'update', 'repair'].includes(args[0])) {
+        if (args[0] !== 'status') persistInstallOptions();
+        process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
+        return;
+    }
     if (args.includes('--version') || args.includes('-V') || args[0] === 'version') {
         console.log(pkg.version);
         return;
@@ -6198,6 +7590,11 @@ async function main() {
 
 Commands:
   store            Browse and install skills
+  hub              Open the AOS Hub (start|stop|status on 127.0.0.1:7900)
+  services         Status or control of the local services (status|start|stop|restart)
+  restart <id>     Restart one local service (typed confirm; same as aos services restart)
+  dashboard        Run the AOS dashboard (--port N, --no-open)
+  package          Install, update, repair or verify one v5 package by id
   doctor|checkup   Check the installation
 
 Options:
@@ -6207,6 +7604,14 @@ Options:
   --modules=LIST   With -y: also install these optional modules (comma list of synapse,
                    memb, remote, ao, creator, hardware, installer, or all), or set
                    AOS_MODULES. -y alone installs none. Ignored in interactive runs.
+  --coding, --no-coding
+                   Answer "Do you use AOS for coding?" up front. --coding enables the Codebase
+                   Memory MCP and installs the pinned npm package codebase-memory-mcp@0.11.0
+                   (npm install -g) if the binary is missing; --no-coding turns it off (nothing
+                   is uninstalled). The answer is saved in ~/.aos/v5-settings.json, so install
+                   and \`aos update\` ask only once, and only interactively. With -y or without
+                   a TTY nothing is asked and coding mode stays off unless --coding is given.
+                   Re-run with a flag to change it.
   --dry-run        Show what would change
   --opencode-optional=LIST
                    Opt in to OpenCode extras (comma list: ponytail, loop, rtk), or set
@@ -6229,6 +7634,33 @@ Options:
                    Skip (off) or only report (check) the bdb-aos plugin registration and
                    removal of AOS's own loose skill copies; same as AOS_PLUGIN_MIGRATION.
                    --dry-run implies check. Default: on.
+  --profile=minimal|standard|full
+                   (also --profile minimal) Or AOS_PROFILE. standard (default) = today's
+                   install. minimal = skills, agents and harness rules only: no
+                   context-injection hooks, no OpenWiki, Token Saver, Codenotch, optional
+                   modules, gateway or fleet. full = standard plus all optional modules with
+                   -y. A --profile flag is saved, so \`aos update\` keeps it; AOS_PROFILE is
+                   not saved. Uninstall resets the saved profile.
+  --no-hooks       Skip only the context-injection hooks (memb-inject, rules-inject, trail
+                   relay/autostart) in the Claude, Antigravity and Codex configs. The go-gate,
+                   graph-gate and safety hooks are ALWAYS installed; no profile or flag
+                   removes them. Takes no value. It also rewrites hook entries of yours whose
+                   command only names a bdb script. The OpenCode plugin bdb-aos.js still
+                   injects memB and rules and autostarts the trail under --no-hooks and minimal.
+  --hooks-only     Install or refresh only the hooks and their settings entries, then exit.
+                   Combine with --no-hooks only: not with --profile or --without, and not with
+                   status, update or repair.
+  --without=ID,ID  (also --without ID,ID) Exclude packages by id (memb, synapse, openwiki,
+                   remote, ao, creator, hardware, installer, deja, token-saver, codenotch,
+                   gateway, fleet); saved to the v5 disabled list. An unknown id is an error;
+                   kernel cannot be excluded. A fresh install only honours the ids it would
+                   install (memb, synapse, openwiki, remote, ao, creator, hardware, installer,
+                   token-saver, codenotch): gateway and fleet are never installed by it and
+                   deja comes with memb, so for those the list only affects update and repair.
+  AOS_DISABLED_MCPS=a,b
+                   Shipped MCP server names that are not written to the harness MCP configs
+                   the installer writes (not the memB sync, OpenWiki or the gateway); not
+                   saved; unknown names are ignored with one warning.
   --verbose, -v    Verbose output
   -V, --version    Print the version and exit
   -h, --help       Print this help and exit`);
@@ -6245,6 +7677,59 @@ Options:
         const doctorArgs = process.argv.slice(process.argv[2] === 'doctor' || process.argv[2] === 'checkup' ? 3 : 2).filter(a => a !== '--doctor');
         const result = spawnSync(process.execPath, [doctorScript, ...doctorArgs], { stdio: 'inherit' });
         process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
+    if (process.argv[2] === 'hub') {
+        // bin/aos-hub.mjs is ESM: run it with the current node binary and an
+        // args array, shell:false, so no value from argv can become a command.
+        const hubScript = path.join(srcDir, 'bin', 'aos-hub.mjs');
+        const hubArgs = process.argv.slice(3);
+        const result = spawnSync(process.execPath, [hubScript, ...hubArgs], { stdio: 'inherit', shell: false });
+        process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
+    if (process.argv[2] === 'services') {
+        const { cli } = await import('./lib/hub/services.mjs');
+        const code = await cli(process.argv.slice(3), {});
+        process.exitCode = code ?? 0;
+        return;
+    }
+    if (process.argv[2] === 'restart') {
+        const rest = process.argv.slice(3);
+        const ci = rest.findIndex((a) => a === '--confirm' || a === '-c');
+        const id = rest.filter((a, i) => !a.startsWith('-') && (ci === -1 || i !== ci + 1))[0];
+        // TTY without --confirm: ask the user to type the id (the services CLI's own guard).
+        if (ci === -1 && process.stdin.isTTY && id) {
+            const answer = (await password({ message: `Type "${id}" to confirm the restart (Ctrl+C to abort):` })) || '';
+            if (answer !== id) { console.error(`aos restart: confirm did not match "${id}". Nothing was restarted.`); process.exitCode = 2; return; }
+            rest.push('--confirm', id);
+        }
+        const { cli } = await import('./lib/hub/services.mjs');
+        const code = await cli(['restart', ...rest], {});
+        process.exitCode = code ?? 0;
+        return;
+    }
+    if (process.argv[2] === 'dashboard') {
+        // Same spawn discipline as `hub`: ESM bin, current node, args array, shell:false.
+        const dashScript = path.join(srcDir, 'bin', 'aos-dashboard.mjs');
+        const result = spawnSync(process.execPath, [dashScript, ...process.argv.slice(3)], { stdio: 'inherit', shell: false });
+        process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
+    if (process.argv[2] === 'package') {
+        // WP4 store handler: `aos package <install|update|repair|verify> <id>`
+        // and `aos package mcp <name> --target <harness>`. Never prompts.
+        process.exitCode = await require('./lib/v5/menu').packageCommand(module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)), process.argv.slice(3));
+        return;
+    }
+    // Before the intro, the telemetry card and the update check: refreshing hooks needs none of them.
+    if (INSTALL_OPTS.hooksOnly && !PROJECT_HARNESS_ARG) {
+        if (DRY_RUN) log.warn('DRY-RUN MODE active - nothing AOS owns is written.');
+        initFullSession(detectInstallState());
+        persistInstallOptions();
+        installGlobalHooks();
+        flushSessionManifest();
+        console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
         return;
     }
     const skipIntro = isAutoYes || process.argv.includes('--no-intro') || process.argv.includes('--no-animation');
@@ -6283,19 +7768,7 @@ Options:
 
     // Initialize session manifest – all copyDirRecursiveSync calls from here
     // forward will use manifest-aware writes automatically.
-    initSessionManifest(installState.installManifest, [
-        path.join(srcDir, 'skills'),
-        path.join(srcDir, 'mcps'),
-        path.join(srcDir, '.agents'),
-        path.join(srcDir, '.claude'),
-        path.join(srcDir, '.cursor'),
-        path.join(srcDir, '.github'),
-        path.join(srcDir, '.codex-plugin'),
-        path.join(srcDir, 'RULES.md'),
-        path.join(srcDir, 'AGENTS.md'),
-        path.join(srcDir, 'CLAUDE.md'),
-        path.join(srcDir, 'CODEX.md'),
-    ]);
+    initFullSession(installState);
 
     if (PROJECT_HARNESS_ARG) {
         installProjectHarness();
@@ -6304,63 +7777,9 @@ Options:
     }
 
     if (installState.isInstalled && !isAutoYes) {
-        const options = installState.updateAvailable
-            ? [
-                { value: 'quick', label: `⚡ Quick Update (v${installState.localVersion} ➔ v${installState.currentVersion})`, hint: 'refresh skills, templates & daemons' },
-                { value: 'doctor', label: '🩺 Run System Checkup / Doctor', hint: 'verify environment, placement, daemons & AO' },
-                { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
-                { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'change targets, tier or options' },
-                { value: 'uninstall', label: '🗑️ Uninstall AOS', hint: 'remove what this installer placed; your data stays' },
-                { value: 'cancel', label: '❌ Exit' }
-              ]
-            : [
-                { value: 'doctor', label: '🩺 Run System Checkup / Doctor', hint: 'verify environment, placement, daemons & AO' },
-                { value: 'project', label: '📁 Drop Local Project Harness', hint: 'copy dispatcher contract to cwd' },
-                { value: 'quick', label: '🔄 Verify & Refresh All Skills', hint: 're-sync and health check' },
-                { value: 'reconfigure', label: '🛠️ Reconfigure System', hint: 'switch tier or targets' },
-                { value: 'uninstall', label: '🗑️ Uninstall AOS', hint: 'remove what this installer placed; your data stays' },
-                { value: 'cancel', label: '❌ Exit' }
-              ];
-
-        const action = pick(await select({
-            message: 'Select an operation:',
-            options,
-            initialValue: options[0].value
-        }));
-
-        if (action === 'cancel') {
-            outro('Cancelled.');
-            return;
-        }
-        if (action === 'doctor') {
-            const doctorScript = path.join(srcDir, 'bin', 'aos-doctor.mjs');
-            spawnSync(process.execPath, [doctorScript], { stdio: 'inherit' });
-            outro('System Checkup complete.');
-            return;
-        }
-        if (action === 'project') {
-            installProjectHarness();
-            outro('Project harness installation complete.');
-            return;
-        }
-        if (action === 'quick') {
-            await runQuickUpdate(installState);
-            outro('Quick Update complete.');
-            return;
-        }
-        if (action === 'uninstall') {
-            // aos-uninstall.mjs is its own script, not a function of this file --
-            // it is ESM (installer.js is CommonJS) and drives its own readline
-            // confirmation prompt, so it runs as a real child process with
-            // inherited stdio rather than being imported in-process.
-            const uninstallScript = path.join(srcDir, 'bin', 'aos-uninstall.mjs');
-            if (!fs.existsSync(uninstallScript)) {
-                log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: npx @hybridlabor-api/aos-uninstall`);
-                return;
-            }
-            spawnSync('node', [uninstallScript], { stdio: 'inherit' });
-            return;
-        }
+        persistInstallOptions();
+        process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true));
+        return;
     }
 
     const detectedNames = detections.map(d => d.name).join(', ');
@@ -6563,6 +7982,7 @@ Options:
         outro('Project harness installation complete.');
         return;
     }
+    persistInstallOptions();
 
     // The backup directory is created on first use (moveIfExists, the MCP merge), never empty, 0700 because it can hold credential copies.
 
@@ -6602,24 +8022,34 @@ Options:
     injectHarnessRules();
 
     // Codex plugin via the real `codex plugin` CLI (best effort, see lib/codex-plugin-install.js)
-    runCodexPluginStep();
+    try { runCodexPluginStep(); } catch (e) { log.warn(`Codex plugin: ${e.message}`); }
 
     const primaryTarget = targets[0];
     for (const t of targets) {
         await installMcpsForTarget(t, { selectedMcps, mode, platformValue: t.value, creds });
     }
+    migrateMcpSecrets();
 
-    await installOpenWikiDaemon(creds.gemini, primaryTarget.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
-    await installOpenWikiVisualizer();
-    await installTokenSaver(primaryTarget.platformValue);
+    if (installExcluded.has('openwiki')) log.step('OpenWiki skipped (profile or --without).');
+    else {
+        await installOpenWikiDaemon(creds.gemini, primaryTarget.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
+        await installOpenWikiVisualizer();
+    }
+    if (installExcluded.has('token-saver')) log.step('Token Saver skipped (profile or --without).');
+    else await installTokenSaver(primaryTarget.platformValue);
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];
+    await applyCodingModeStep();
+    const modulePlan =v5Profile.PROFILES[activeProfile].modules;
+    const explicitModules = parseModuleSelection();
     // Unlike runQuickUpdate, nothing here reinstalls modules already in installedModulesForPrompt
     // -- only promptOptionalModules's own return value (the ones it just chose-and-installed
     // this call) actually ran an install-and-verify pass this run. Anything already in the
     // array before this call was untouched here and must still get its normal reloadDaemons()
     // check, not be skipped.
-    const justInstalled = await promptOptionalModules(installedModulesForPrompt) || [];
+    const justInstalled = (modulePlan === 'none' && !explicitModules.length)
+        ? []
+        : await promptOptionalModules(installedModulesForPrompt, explicitModules.length || modulePlan !== 'all' ? explicitModules : ['all']) || [];
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
 
@@ -6639,22 +8069,43 @@ Options:
 
     console.log('');
     verifyEcosystemInstallation();
-    await maybeInstallCodenotch();
+    if (!installExcluded.has('codenotch')) await maybeInstallCodenotch();
 
-    outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
-}
-
-if (require.main === module) {
-    main().catch(e => reportFatal('the beta installer run', e));
+    if (moduleFailures.length) {
+        outro(`⚠️ Installation incomplete: ${moduleFailures.length} module(s) not installed (see above).`);
+    } else {
+        outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+    }
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    movePreserved,
+    recoverStaleSwaps,
+    MODULE_PRESERVE,
+    withoutGatewayServers,
+    mirrorMcpServersTo,
     codexPluginInstall,
     newestDistTag,
     verifyEcosystemInstallation,
+    runModuleInstalls,
+    copyDirRecursiveSync,
+    retireObsoleteLegacyDir,
     installBinaryAtomically,
+    installOSRemoteGateway,
     installOSAgentWorkspace,
+    installCreatorExtension,
+    installHardwarePcb,
+    installRustauri,
+    TAURI_PILOT_VERSION,
+    TAURI_PILOT_INSTALL_CMD,
+    rustauriSourceDir: () => path.join(srcDir, 'vendor', 'rustauri'),
+    installStyleseed,
+    styleseedSourceDir: () => path.join(srcDir, 'vendor', 'styleseed'),
+    installCodebaseMemory,
+    installDevToolInstaller,
+    installDeja,
+    installTokenSaver,
     readGoBuildInfo,
     parseGoBuildInfo,
     decideAoInstall,
@@ -6670,7 +8121,9 @@ module.exports = {
     markPlatformsExplicit,
     runModuleInstalls,
     describeExecError,
-    keepExistingEnvValues,
+    migrateMcpSecrets,
+    installMcpLauncher,
+    installMcpsForTarget,
     mergeBdbSettingsHooks,
     mergeAntigravityHooks,
     agyHookCommand,
@@ -6679,6 +8132,10 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
     installGlobalHooks,
+    installHarnessHookCopies,
+    copyHookScripts,
+    installA2aLibCopies,
+    installClaudeA2aSessionHook,
     installGoCheck,
     installGlobalBinaries,
     codexGateSnippet,
@@ -6692,6 +8149,7 @@ module.exports = {
     parseOpencodeOptional,
     maybeInstallCodenotch,
     pluginMigrationMode,
+    prompts: { text, password, select, multiselect, confirm: askConfirm },
     runPluginMigration,
     runAgyPluginStep,
     runCodexPluginStep,
@@ -6703,14 +8161,18 @@ module.exports = {
     installProjectHarness,
     promptMcpSelection,
     mirrorMcpServersTo,
+    setMcpPickDetect,
     ensureDejaExclude,
     // Manifest store (exported for verification tests)
     computeFileHash,
+    reconcileMembVenv,
     getInstallManifestPath,
     loadInstallManifest,
     saveInstallManifest,
     resolveFileConflict,
     buildKnownSourceHashes,
+    loadShippedHashes,
+    setShippedHashes,
     initSessionManifest,
     installTargetSkills,
     stableOpenWikiScripts,
@@ -6718,12 +8180,27 @@ module.exports = {
     removeAosMcscFromAgyConfigs,
     isAosMcscEntry,
     isAgyMcpConfig,
+    makeAosA2aMcpEntry,
+    registerA2aMcpCursor,
+    registerA2aMcpAgy,
+    removeAosA2aEntries,
+    isAosA2aEntry,
+    resolveAosA2aMcpName,
+    backupConfigPath,
+    writeConfigWithBackup,
+
     findUv,
+    stripHwMcpEntries,
+    hardwareApps,
     parseModuleSelection,
     promptOptionalModules,
     findSynapseBinary,
     describeMissingSynapseBinary,
     isValidOpenWikiModelId,
+    loadExistingEnv,
+    // installer v5 host surface (lib/v5/*)
+    runQuickUpdate, applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
+    saveManifest, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, runUninstaller, PROVIDER_KEY_ENV_NAMES,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
@@ -6734,9 +8211,11 @@ module.exports = {
     compileClaudeAgents,
     compileOpenCodeAgents,
     compileCodexAgents,
+    compileAgyAgents,
+    applyClaudeModelOverrides,
     loadPipelineConfig,
     resolveAgentConfig,
-    CANONICAL_TIERS,
+    installPipelineDefault,
     // Launchpad lifecycle (exported for regression tests)
     generateAndOpenLaunchpad,
     shouldOpenLaunchpad,
@@ -6749,3 +8228,8 @@ module.exports = {
     LAUNCHPAD_WEB_MODULES,
     LAUNCHPAD_OPEN_FLAGS,
 };
+
+// After module.exports: the v5 menu receives it as its host and main() runs before the first await.
+if (require.main === module) {
+    main().catch(e => reportFatal('the beta installer run', e));
+}

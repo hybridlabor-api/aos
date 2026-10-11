@@ -8,7 +8,7 @@ date_added: "2026-08-18"
 
 # 🌐 BDB HTML Manual & Live Documentation System (`bdbhtmlmanueldocs`)
 
-This skill codifies the complete specification for building and deploying **neutral, enterprise-grade developer documentation and bilingual user manuals** in the official Google Antigravity / BDB OS aesthetic, complete with automated GitHub Pages live hosting.
+This skill codifies the complete specification for building and deploying **neutral, enterprise-grade developer documentation and bilingual user manuals**. The Google Antigravity / BDB OS look described below is one example aesthetic; the project's own tokens or style sheet override it. Includes automated GitHub Pages live hosting.
 
 ---
 

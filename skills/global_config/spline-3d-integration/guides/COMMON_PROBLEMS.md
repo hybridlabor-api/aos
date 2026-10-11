@@ -224,9 +224,10 @@ Note: CSS-based hiding may break with Spline updates. The paid plan is the relia
 import dynamic from 'next/dynamic';
 
 // ssr: false tells Next.js not to render this on the server
+// Use the project's background token instead of a hard-coded color
 const Spline = dynamic(() => import('@splinetool/react-spline/next'), {
   ssr: false,
-  loading: () => <div style={{ background: '#0a0a0a', height: '100vh' }} />
+  loading: () => <div style={{ background: 'var(--background, #000)', height: '100vh' }} />
 });
 ```
 

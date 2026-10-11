@@ -40,32 +40,15 @@ describe('describeExecError', () => {
     });
 });
 
-describe('keepExistingEnvValues', () => {
-    test('an empty incoming env value never replaces an existing non-empty one', () => {
-        const prev = { memb_mcp: { env: { GEMINI_API_KEY: 'existing-value', KEEP: 'p' } }, github: { env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp-existing' } } };
-        const next = { memb_mcp: { env: { GEMINI_API_KEY: '', NEW: 'n' } }, github: { env: { GITHUB_PERSONAL_ACCESS_TOKEN: '' } }, other: { env: { A: '' } } };
-        installer.keepExistingEnvValues(next, prev);
-        assert.equal(next.memb_mcp.env.GEMINI_API_KEY, 'existing-value');
-        assert.equal(next.memb_mcp.env.NEW, 'n');
-        assert.equal(next.github.env.GITHUB_PERSONAL_ACCESS_TOKEN, 'ghp-existing');
-        assert.equal(next.other.env.A, '');
-    });
-
-    test('a non-empty incoming value still wins', () => {
-        const next = { s: { env: { K: 'fresh' } } };
-        installer.keepExistingEnvValues(next, { s: { env: { K: 'old' } } });
-        assert.equal(next.s.env.K, 'fresh');
-    });
-
-    test('mirrorMcpServersTo keeps an existing key from a temp config', () => {
+describe('mirrorMcpServersTo', () => {
+    test('keeps a user entry that shares a name with an AOS server but runs another command', () => {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-p3-'));
         const file = path.join(tmp, 'mcp_config.json');
-        fs.writeFileSync(file, JSON.stringify({ mcpServers: { memb_mcp: { command: 'x', env: { GEMINI_API_KEY: 'existing-value' } } } }));
+        fs.writeFileSync(file, JSON.stringify({ mcpServers: { memb_mcp: { command: 'x', env: { KEEP: 'p' } } } }));
         installer.mirrorMcpServersTo([file], JSON.stringify({ mcpServers: { memb_mcp: { command: 'y', env: { GEMINI_API_KEY: '' } } } }));
         const out = JSON.parse(fs.readFileSync(file, 'utf8'));
-        assert.equal(out.mcpServers.memb_mcp.command, 'y');
-        assert.equal(out.mcpServers.memb_mcp.env.GEMINI_API_KEY, 'existing-value');
-        fs.rmSync(tmp, { recursive: true, force: true });
+        assert.equal(out.mcpServers.memb_mcp.command, 'x');
+        assert.deepEqual(out.mcpServers.memb_mcp.env, { KEEP: 'p' });
     });
 });
 

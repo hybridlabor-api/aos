@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs\" || exit 2"
           },
           {
             "type": "command",
@@ -15,7 +15,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -38,7 +38,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -56,8 +56,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs\" stop"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -68,7 +76,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -79,7 +87,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -90,7 +98,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       },
@@ -101,6 +109,24 @@
             "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/aos-session-hint.mjs\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-session.mjs\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SubagentStop": [
@@ -109,7 +135,7 @@
           {
             "type": "command",
             "command": "node \"$HOME/.claude/hooks/trail-relay.mjs\" --agent claude",
-            "timeout": 2
+            "timeout": 3
           }
         ]
       }
@@ -138,7 +164,30 @@
             "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/rules-inject.mjs\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs\" drain"
+          }
+        ]
       }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(aos-a2a reply:*)",
+      "Bash(aos-a2a send:*)"
     ]
   }
 }

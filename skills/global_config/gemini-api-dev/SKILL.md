@@ -20,15 +20,17 @@ The Gemini API provides access to Google's most advanced AI models. Key capabili
 - **Context caching** - Cache large contexts for efficiency
 - **Embeddings** - Generate text embeddings for semantic search
 
-## Current Gemini Models
+## Models
 
-- `gemini-3-pro-preview`: 1M tokens, complex reasoning, coding, research
-- `gemini-3-flash-preview`: 1M tokens, fast, balanced performance, multimodal
-- `gemini-3-pro-image-preview`: 65k / 32k tokens, image generation and editing
+**Do not rely on your training knowledge of model names or IDs — they change frequently.** Before choosing a model, look up the current model list in the provider docs at the time of use ([Models](https://ai.google.dev/gemini-api/docs/models.md.txt) via the `llms.txt` index below).
 
+Capability tiers to pick between:
 
-> [!IMPORTANT]
-> Models like `gemini-2.5-*`, `gemini-2.0-*`, `gemini-1.5-*` are legacy and deprecated. Use the new models above. Your knowledge is outdated.
+- **A flagship reasoning-tier model**: complex reasoning, coding, research
+- **A fast balanced model**: quick turnarounds, everyday multimodal tasks
+- **A dedicated image-generation model**: image generation and editing
+
+Choose the current model ID for each tier from the official documentation, never from memory.
 
 ## SDKs
 
@@ -45,9 +47,11 @@ The Gemini API provides access to Google's most advanced AI models. Key capabili
 ```python
 from google import genai
 
+import os
 client = genai.Client()
+MODEL = os.environ["GEMINI_MODEL"]  # current model ID from the provider docs
 response = client.models.generate_content(
-    model="gemini-3-flash-preview",
+    model=MODEL,
     contents="Explain quantum computing"
 )
 print(response.text)
@@ -58,8 +62,9 @@ print(response.text)
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({});
+const MODEL = process.env.GEMINI_MODEL ?? '<model-id>'; // current model ID from the provider docs
 const response = await ai.models.generateContent({
-  model: "gemini-3-flash-preview",
+  model: MODEL,
   contents: "Explain quantum computing"
 });
 console.log(response.text);
@@ -73,6 +78,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"google.golang.org/genai"
 )
 
@@ -83,7 +89,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	resp, err := client.Models.GenerateContent(ctx, "gemini-3-flash-preview", genai.Text("Explain quantum computing"), nil)
+	modelName := os.Getenv("GEMINI_MODEL") // current model ID from the provider docs
+	resp, err := client.Models.GenerateContent(ctx, modelName, genai.Text("Explain quantum computing"), nil)
 	if err != nil {
 		log.Fatal(err)
 	}

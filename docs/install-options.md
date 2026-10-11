@@ -37,6 +37,12 @@ uninstall: unknown profile names, a `disabled` that is not a list of known packa
   `go-gate`, `go-token`, `go-grant`, `graph-gate`, `conventional-commits`, `env-file-protection`.
   (Claude Code gets all six. Antigravity wires go-gate, graph-gate, conventional-commits and
   env-file-protection; Codex wires go-gate and graph-gate.)
+- `gate-profile.mjs` is not a hook entry but `go-gate.mjs` imports it, so it is copied next to
+  `go-gate.mjs` in every hook dir (Claude, Antigravity, Codex; `HOOK_IMPORTS` in `lib/v5/profile.js`)
+  and into `~/.aos/bin`. It is installed with the gate hooks and is not affected by `--no-hooks`
+  or any profile. The `aos-gate` CLI (`status`, `profile strict|work|off [--for 4h]`) is the
+  `aos-gate` entry in `package.json` `bin`; the installer writes no `~/.local/bin` launcher for
+  it. See `docs/gate-profile.md`.
 - A later install with `--no-hooks` removes already wired context entries from those configs.
   It also rewrites hook entries of yours whose command only names a bdb script (the match is on
   the script name inside the command).

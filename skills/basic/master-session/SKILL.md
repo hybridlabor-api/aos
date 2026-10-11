@@ -17,7 +17,7 @@ One session is the **master**: it keeps the overview, asks workers for status, a
 - **Spawn** — start the workers yourself. AO is optional; without it:
   - Claude: `claude --bg --name <name> --permission-mode auto "<prompt>"`, or over ACP as below.
   - Codex / OpenCode / Claude over ACP: `aos-acp <codex|opencode|claude> --name <name> --cwd <worktree> --prompt "<task>" --go-wait 600 &` (one process per worker; run it in the background and read its log). Details: `docs/master-session-acp.md`.
-  - agy: no sanctioned ACP adapter (`antigravity-acp` breaches Google's Antigravity terms). Adopt agy sessions or delegate via the `mcsc` skill.
+  - agy: `aos-acp agy ...` runs the vendor's `agy --print` (no ACP server, so no per-tool GO requests; `--allow-default` maps to agy's modes, see `docs/delegation-routing.md`). The third-party `antigravity-acp` shim is not used. Running agy sessions are adopted, not spawned.
   - If AO is installed, `ao-orchestrator` may run the same workers; it adds nothing the token protocol needs.
 
 ### Routing: which channel for which job
@@ -33,7 +33,7 @@ Details and limits (`opencode run --auto` auto-approves tool calls, a GO is neve
 
 ### `aos-acp` in one paragraph
 
-`bin/aos-acp.mjs` is a zero-dependency ACP client: it spawns the adapter (`npx -y @agentclientprotocol/codex-acp`, `opencode acp`, `npx -y @agentclientprotocol/claude-agent-acp`), runs `initialize` → `session/new` → `session/prompt`, streams the worker's text to stdout and logs every event to `~/.aos/acp/<name>.jsonl`. A `session/request_permission` for a guarded command (the go-gate list) is answered `allow_once` only with a valid GO token for `<name>`; with `--go-wait <sec>` the request is parked (log event `permission_pending`, show it as `GO needed`) until the token appears or the wait ends. Everything else follows `--allow-default deny|allow` (deny by default). `--model <id>` is sent as ACP `session/set_config_option` (`configId: "model"`, id is adapter-specific, e.g. `sonnet`, `provider/model`); `fable` ids are rejected (workers run opus, sonnet or haiku), default is the adapter default and is logged. ACP workers are not in `ListAgents`: the roster lists them from the logs.
+`bin/aos-acp.mjs` is a zero-dependency ACP client: it spawns the adapter (`npx -y @agentclientprotocol/codex-acp`, `opencode acp`, `npx -y @agentclientprotocol/claude-agent-acp`), runs `initialize` → `session/new` → `session/prompt`, streams the worker's text to stdout and logs every event to `~/.aos/acp/<name>.jsonl`. A `session/request_permission` for a guarded command (the go-gate list) is answered `allow_once` only with a valid GO token for `<name>`; with `--go-wait <sec>` the request is parked (log event `permission_pending`, show it as `GO needed`) until the token appears or the wait ends. Everything else follows `--allow-default deny|allow` (deny by default). `--model <id>` is sent as ACP `session/set_config_option` (`configId: "model"`, id is adapter-specific, e.g. `<model-id>`, `provider/model`); the string is passed through verbatim (no allow-list; an id the adapter does not know fails there), default is the adapter default and is logged. ACP workers are not in `ListAgents`: the roster lists them from the logs.
 
 ## Step 1 — Roster
 
@@ -65,6 +65,10 @@ Collate replies into one block per session and show it to the human:
 ```
 
 The human answers per session. Items under `GO needed` are the human's to decide; list them verbatim, never summarised into something softer.
+
+## Portable mode (no Claude Code)
+
+Without `ListAgents`/`SendMessage` the same steps run from a shell: roster = `aos-a2a list`, status request = `aos-a2a send --to <name> "<block>"` (read later with `aos-a2a status --to <name> <taskId>`), idle check = `aos-a2a watch <name> --once`. Limits: agy is pull-only, and only a Claude Code or OpenCode master can issue `GO <session>` tokens, so any other master tells the human to type `GO` in the worker's own window. Details and the role convention (master, task manager, project orchestrator, package worker): `docs/master-session-portable.md`.
 
 ## Idle notices
 

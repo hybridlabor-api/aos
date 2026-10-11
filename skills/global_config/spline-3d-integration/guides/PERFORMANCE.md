@@ -52,7 +52,7 @@ Never leave users staring at a blank space. Always render a background color or 
 
 ```css
 .spline-wrapper {
-  background: #0a0a0a; /* your site's bg color — shows instantly */
+  background: var(--background, #000); /* use the project's background token — shows instantly */
   width: 100%;
   height: 100vh;
 }

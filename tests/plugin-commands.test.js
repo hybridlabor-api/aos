@@ -8,7 +8,7 @@ const { join } = require('node:path');
 const ROOT = join(__dirname, '..');
 const SCRIPT = join(ROOT, 'scripts', 'build-plugin-manifest.mjs');
 const EXPECTED = ['setup', 'init', 'doctor', 'store', 'mastersession', 'orchestrator', 'plan', 'brainstorm',
-  'startproject', 'graph', 'shipping', 'memb', 'playbooks', 'loop'];
+  'startproject', 'graph', 'shipping', 'memb', 'playbooks', 'loop', 'hub'];
 const source = JSON.parse(readFileSync(join(ROOT, 'plugin-commands.json'), 'utf8'));
 
 const check = (file) => execFileSync('node', [SCRIPT, '--check'], {

@@ -26,7 +26,7 @@ From `schema/v1/schema.json` + `meta.json` of agentclientprotocol/agent-client-p
 | codex | `npx -y @agentclientprotocol/codex-acp` (Apache-2.0, v2.1.0) | handshake **[verified]**; `session/new` → `-32000 Authentication required` (no `OPENAI_API_KEY`/ChatGPT login on this machine) **[open]** | none | `aos-acp` |
 | agy | — | — | go-gate via `hooks.json` (name from `AOS_SESSION_NAME`) | — |
 
-agy: the only adapter is third-party `shubzkothekar/antigravity-acp` (MIT). Its README quotes Google's Antigravity terms ("using third party software ... to access the Service ... is a breach") and warns of account suspension **[verified]**. Not shipped; `aos-acp agy` exits 2 and points to the `mcsc` skill. Revisit if Google ships an official ACP endpoint.
+agy: no ACP server exists. The only ACP wrapper is third-party `shubzkothekar/antigravity-acp` (MIT); its README quotes Google's Antigravity terms ("using third party software ... to access the Service ... is a breach") **[verified]**, so it is not used. `aos-acp agy` instead runs the vendor's own `agy --print` and maps `--allow-default` onto agy's modes (details and limits: `docs/delegation-routing.md`). The terms question for this path was decided by the project owner; the official CLI is the only thing aos calls.
 
 ## Permission requests and the GO gate
 

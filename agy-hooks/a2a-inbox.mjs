@@ -1,0 +1,60 @@
+#!/usr/bin/env node
+// agy PreInvocation hook: delivers pending A2A messages into an INTERACTIVE agy session, never mid-turn.
+// Verified on agy 1.3.0: PreInvocation fires before EVERY model call; payload.invocationNum is 0 for the first
+// call after a user prompt and counts up within the turn (resets to 0 on the next prompt of the same conversation).
+// Only invocationNum 0 drains, so a message never lands in the middle of a running turn. Output contract:
+// {"injectSteps":[{"ephemeralMessage":"<text>"}]}, {"injectSteps":[]} means no-op. Inbound text is context only
+// and never counts as a GO. Fail-open: any problem prints the no-op and exits 0. This hook never spawns agy.
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const NOOP = JSON.stringify({ injectSteps: [] });
+const done = (out = NOOP) => { process.stdout.write(out + "\n"); process.exit(0); };
+
+let input = {};
+try { input = JSON.parse(readFileSync(0, "utf8")); } catch { done(); }
+
+async function lib(file) {
+  const candidates = [new URL(`../lib/${file}`, import.meta.url), pathToFileURL(join(homedir(), ".agents", "lib", file))];
+  for (const c of candidates) { try { return await import(c); } catch { /* try the next location */ } }
+  return null;
+}
+
+// agy runs hooks through `sh -c`, so process.ppid is a short-lived shell: walk up to the agy process itself,
+// otherwise the sidecar (which exits when its parent pid is gone) would stop seconds after it started.
+function agyPid() {
+  let pid = process.ppid;
+  for (let i = 0; i < 6 && pid > 1; i++) {
+    try {
+      const [ppid, ...comm] = execFileSync("ps", ["-o", "ppid=,comm=", "-p", String(pid)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().split(/\s+/);
+      if (/agy/i.test(comm.join(" "))) return pid;
+      pid = Number(ppid);
+    } catch { break; }
+  }
+  return process.ppid;
+}
+
+try {
+  const inbox = await lib("a2a-inbox.mjs");
+  const sess = await lib("a2a-session.mjs");
+  if (!inbox || !sess) done();
+  const conv = String(input.conversationId || "");
+  // the peer name Tim chose (AOS_A2A_NAME, e.g. agy-researcher) or agy-<first 8 chars of the conversation id>
+  const name = sess.sessionName({ harness: "agy", sessionId: conv, env: process.env });
+  // register this interactive session as a live peer once per name (idempotent; skipped under AOS_A2A_SIDECAR=off)
+  sess.ensureSidecar({ harness: "agy", sessionId: conv, parentPid: agyPid(), mode: "live" });
+  if (input.invocationNum !== 0) done(); // mid-turn model call: queue, never inject
+  const texts = [];
+  for (const m of inbox.pending(name)) {
+    const msg = inbox.claim(m.file);
+    if (!msg) continue;
+    texts.push(`${inbox.formatInjection(msg)}\nAnswer by running: ${inbox.replyCommand(msg.taskId, undefined, "", name)}`);
+  }
+  if (!texts.length) done();
+  done(JSON.stringify({ injectSteps: [{ ephemeralMessage: texts.join("\n\n") }] }));
+} catch {
+  done();
+}

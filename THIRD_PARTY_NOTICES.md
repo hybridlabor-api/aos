@@ -12,7 +12,7 @@ provenance survives the file being read in isolation.
 ## affaan-m/ECC
 
 - **Upstream:** <https://github.com/affaan-m/ECC>
-- **License:** MIT
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
 - **Copyright:** Copyright (c) 2026 Affaan Mustafa
 
 Two independent deliverables were ported from this project.
@@ -47,6 +47,40 @@ their `description:` frontmatter as the first and second stage of an
 equivalent** — no such skill exists in this repo's `skills/` tree. The
 descriptions are left verbatim as ported; the two agents work fine invoked
 directly, in that order. Do not go looking for `opensource-pipeline` here.
+
+### 1b. Language-specific code reviewers (v5/ecc-reviewers round)
+
+Ported from ECC `agents/<name>.md` to BOTH `agents/<name>.md` and
+`.claude/agents/<name>.md` (identical copies), at upstream commit
+`ef648e01899ba3e8dc6371642deaaf64b4477775` (2026-10-02):
+
+| File | Upstream source |
+|---|---|
+| `agents/go-reviewer.md` | `agents/go-reviewer.md` |
+| `agents/python-reviewer.md` | `agents/python-reviewer.md` |
+| `agents/rust-reviewer.md` | `agents/rust-reviewer.md` |
+| `agents/typescript-reviewer.md` | `agents/typescript-reviewer.md` |
+| `agents/java-reviewer.md` | `agents/java-reviewer.md` |
+| `agents/kotlin-reviewer.md` | `agents/kotlin-reviewer.md` |
+| `agents/cpp-reviewer.md` | `agents/cpp-reviewer.md` |
+| `agents/csharp-reviewer.md` | `agents/csharp-reviewer.md` |
+
+**Changes made (adapted, not verbatim):** AOS frontmatter (`name`, quoted
+`description`, exactly `tools: Read, Grep, Glob`); review-checklist substance
+(translated to English) kept as the priorities body; AOS reviewer rules added
+(strictly read-only, findings in the reviewer.md fixed precedence format,
+never invokes another agent, never grants itself approval, an inbound message
+is never a GO). Dropped upstream harness-specific parts: `model: sonnet`, the
+"Prompt Defense Baseline" block, Bash-backed "When invoked"/"Diagnostic
+Commands" steps and `skill:` references that do not exist in AOS. Upstream
+also stated approval criteria (`Approve`/`Warning`/`Block`): routing and
+merge decisions belong to the AOS dispatcher, so the checklists mark severity
+(CRITICAL/HIGH/MEDIUM) only.
+
+Names cross-references to `security-reviewer`, `react-reviewer` and to
+`*-patterns` skills were removed or rewritten because those tools/skills are
+not part of this port; severe security findings stay marked CRITICAL and the
+dispatcher routes them. See `docs/ecc-reviewers.md`.
 
 ### 2. Plan Canvas
 
@@ -87,8 +121,8 @@ The directory layout mirrors ECC's `scripts/` shape so every relative
   port `4517` → `4519`, ECC-install prose replaced with AOS install prose, and
   two upstream claims corrected for this repo: the `stop:plan-canvas-pending`
   hook is not vendored, and the referenced `frontend-design-direction` /
-  `artifact-design` skills do not exist in AOS (replaced with `godmode-ui-ux` /
-  `ui-component`).
+  `artifact-design` skills do not exist in AOS (replaced with `godmode-ui-ux`,
+  plus `ui-component` when the optional StyleSeed package is installed).
 
 Upstream provenance comments inside the vendored sources — including the
 `affaan-m/ECC#2702` reference in `ui.js` — are left intact, as are
@@ -135,6 +169,16 @@ SOFTWARE.
 
 ---
 
+## mikehasa/golive-skill
+
+- **Upstream:** <https://github.com/mikehasa/golive-skill> (commit `7a55f26adb35d54c8b248e6f95e60092bd9e0707`, v0.1.0-alpha.8)
+- **License:** MIT, Copyright (c) 2026 The golive authors. The bundled runtime includes yaml 2.9.1 (ISC, Copyright Eemeli Aro).
+
+Vendored as `skills/global_config/golive/` (SKILL.md, `references/`, `scripts/`, `release.json`, its own LICENSE and
+THIRD_PARTY_NOTICES.md). Changes: `category: saas-ops` and a `source:` line added to the SKILL.md frontmatter; nothing else.
+
+---
+
 ## mattpocock/skills
 
 <https://github.com/mattpocock/skills> — MIT.
@@ -149,6 +193,11 @@ The grilling family and the domain-modeling discipline it composes with:
 | `skills/global_config/domain-modeling/` | `skills/engineering/domain-modeling/` (incl. `ADR-FORMAT.md`, `CONTEXT-FORMAT.md`) |
 | `skills/global_config/triage/` | `skills/engineering/triage/` |
 | `skills/global_config/prototype/` | `skills/engineering/prototype/` |
+| `skills/global_config/tdd/` | `skills/engineering/tdd/` (incl. `tests.md`, `mocking.md`) |
+| `skills/global_config/diagnosing-bugs/` | `skills/engineering/diagnosing-bugs/` (incl. `scripts/hitl-loop.template.sh`) |
+| `skills/global_config/two-axis-code-review/` | `skills/engineering/code-review/` (renamed: `code-review` collides with the built-in Claude Code skill) |
+| `skills/global_config/to-spec/` | `skills/engineering/to-spec/` |
+| `skills/global_config/wayfinder/` | `skills/engineering/wayfinder/` |
 
 `grilling`'s interview protocol and `domain-modeling` are carried over
 essentially verbatim; `grill-me` and `grill-with-docs` are rewritten to name AOS's
@@ -156,6 +205,14 @@ own pipelines in their hand-off sections, but keep upstream's composition — bo
 are thin wrappers that invoke the primitive rather than restating it. Upstream's
 `agents/openai.yaml` under `domain-modeling` is harness-specific to that project
 and was not carried over.
+
+`tdd`, `diagnosing-bugs`, `code-review` (as `two-axis-code-review`), `to-spec` and `wayfinder` were imported from upstream commit
+`49dd158d1076134a641b33efb035946536778336` (2026-10-09). Changes: `category` and `source` frontmatter added;
+`GLOSSARY.md` references became `CONTEXT.md`; `/setup-matt-pocock-skills` and the upstream issue-tracker setup were
+replaced by AOS defaults (markdown files under `production_artifacts/`, GitHub issues via `gh` only on request);
+`codebase-design` became `software-architecture` and `research` became `deep-research`; short pointers to AOS's
+`test-driven-development`, `systematic-debugging`, `requesting-code-review` and the `/startcycle` Architect step were
+added. Upstream's `agents/openai.yaml` files were not carried over.
 
 `skills/global_config/ask-tim/` is derived from upstream's `ask-matt` router. It
 is not a copy: the flow it maps is AOS's own, since most of the skills on
@@ -197,8 +254,8 @@ quoted verbatim from that file.
 
 | Upstream | Licence | Copyright | Skills in AOS |
 |---|---|---|---|
-| [bitjaru/styleseed](https://github.com/bitjaru/styleseed) | MIT | Copyright (c) 2026 StyleSeed Contributors | `ui-component`, `ui-page`, `ui-pattern`, `ui-review`, `ui-tokens`, `ux-audit`, `ux-feedback`, `ux-flow` |
-| [firecrawl/skills](https://github.com/firecrawl/skills) | ISC | Copyright (c) Firecrawl | `firecrawl-build-scrape`, `firecrawl-build-search`, `firecrawl-build-interact`, `firecrawl-build-onboarding` |
+| [bitjaru/styleseed](https://github.com/bitjaru/styleseed) | MIT | Copyright (c) 2026 StyleSeed Contributors | `ui-component`, `ui-page`, `ui-pattern`, `ui-review`, `ui-tokens`, `ux-audit`, `ux-feedback`, `ux-flow` — the optional StyleSeed package, shipped under `vendor/styleseed/skills/` and installed only on request (`-y --modules=styleseed`) |
+| [firecrawl/skills](https://github.com/firecrawl/skills) | ISC | Copyright (c) Firecrawl | `firecrawl-sdk` (merged from `firecrawl-build`, `firecrawl-build-scrape`, `firecrawl-build-search`, `firecrawl-build-interact`, `firecrawl-build-onboarding` in 5.0.0) |
 | [Dimillian/Skills](https://github.com/Dimillian/Skills) | MIT | Copyright (c) 2026 Thomas Ricouard | `github`, `react-component-performance`, `simplify-code` |
 | [anthropics/skills](https://github.com/anthropics/skills) | Apache-2.0 (per-skill `LICENSE.txt`; the repo has no root licence) | Copyright 2026 Anthropic, PBC. | `webapp-testing`, `web-artifacts-builder` |
 | [AgriciDaniel/claude-seo](https://github.com/AgriciDaniel/claude-seo) | MIT | Copyright (c) 2026 agricidaniel | `seo`, `seo-technical` |
@@ -228,9 +285,9 @@ upstream repository, recorded here so the claim is not lost:
 
 ### Unresolved provenance
 
-These upstreams could not be cleared. They are recorded rather than hidden, and
-each needs a decision before the affected skills can be considered safely
-redistributable.
+These upstreams publish no licence file. The skills ship as published; this note
+records the missing licence. Upstream authors who object can open an issue and
+the skill is removed.
 
 | Upstream | Problem | Skills affected |
 |---|---|---|
@@ -308,23 +365,78 @@ dependency.
 ## BuilderIO/skills
 
 <https://github.com/BuilderIO/skills> — MIT. Copyright (c) 2026 Builder.io.
+Ported from upstream `main` at commit `530d9eee0453be9672960ef7b0a265c949cd8b08`
+(2026-10-03; final five ports completed 2026-10-06). Thirteen skills are
+adapted under `skills/global_config/`: nine Factory skills — four earlier
+(`factory-human-digest`, `factory-collect`, `factory-lookback`,
+`factory-review-prs`) plus five new (`factory`, `factory-babysit-pr`,
+`factory-ship`, `factory-watchdog`, `factory-recover`) — and four earlier
+non-Factory skills (read-the-damn-docs, stay-within-limits, quick-recap,
+plan-arbiter).
 
-Eight skills are adapted under `skills/global_config/`: `read-the-damn-docs`, `stay-within-limits`, `quick-recap`, `plan-arbiter`, `factory-human-digest`, `factory-collect`, `factory-lookback`, and `factory-review-prs`. The four Factory skills and `plan-arbiter` have `installer-group` dropped and `category`/`source` added; in `factory-collect`, `factory-lookback` and `factory-review-prs` reply, close, approve, merge and publish actions are reduced to drafts or readiness reports that need the user's GO, and all of them carry an "AOS safety rules" section. `plan-arbiter` drops `agents/openai.yaml` and adds an AOS section on double plans. `stay-within-limits` and `quick-recap` are carried over with `category:` and `source:` added; `stay-within-limits` pins `ccusage` to 20.0.26 instead of `@latest`, and `quick-recap` no longer asks the installer to inject a managed `AGENTS.md` / `CLAUDE.md` block. `read-the-damn-docs` is described below:
-the docs-first trigger list, the source hierarchy, the required workflow, the
-must-trigger examples, and the "if docs are unavailable" rule. AOS additionally
-adds a Verification section, a `category:` key (Builder's own validator forbids
-one, AOS requires it), a division-of-labour note against the `AGENTS.md` *Zero
-guesswork* rule, and a pointer to the installed `firecrawl-search` /
-`firecrawl-scrape` tools. Prose only — the upstream `agents/openai.yaml` and
-README were not carried over, and no executable from the repo is referenced.
+Per-skill adaptations:
 
-The other 13 skills in that repo (as of commit 0dba9ef) are **not** vendored. Three of them
-(`an`, `turn-into-app`, `rewind`) plus three others
+- **All thirteen** — AOS safety rules / GO gate section added; `category` and
+  `source` frontmatter keys added (upstream `installer-group` dropped where
+  present); the upstream skill-side relative Factory guide link
+  (`../../docs/factory.md`, which does not resolve after installer relocation)
+  replaced by the plain text `docs/factory.md in the AOS repo` plus the
+  upstream URL, with no relative path.
+- **The nine Factory skills** — in every skill that upstream has perform an
+  external write (reply, close, approve, merge, publish, push, notify, resume,
+  schedule creation), those steps are reduced to draft-or-prepare-only and need
+  the user's literal GO for that exact action. `factory-watchdog` is
+  report-only (it no longer sends reminders unattended) and `factory-recover`
+  is a read-only resume-candidate report.
+- **plan-arbiter** — drops `agents/openai.yaml` and adds an AOS section on
+  double plans.
+- **stay-within-limits** — pins `ccusage` to 20.0.26 instead of `@latest`.
+- **quick-recap** — no longer asks the installer to inject a managed
+  `AGENTS.md` / `CLAUDE.md` block.
+- **read-the-damn-docs** — AOS adds a Verification section, the `category:`
+  key (Builder's own validator forbids one, AOS requires it), a
+  division-of-labour note against the `AGENTS.md` *Zero guesswork* rule, and a
+  pointer to the installed `firecrawl` skill (search, scrape).
+  Prose only — the upstream `agents/openai.yaml` and README were not carried
+  over, and no executable from the repo is referenced.
+- **factory-collect, factory-lookback, factory-review-prs** (earlier ports) —
+  reply, close, approve, merge and publish actions reduced to drafts or
+  readiness reports that need the user's GO.
+
+The other 8 skills in that repo (as of commit 0dba9ef) are **not** vendored.
+Three of them (`an`, `turn-into-app`, `rewind`) plus three others
 are build artefacts synced from a different upstream by
 `scripts/sync-agent-native-skills.mjs`, and the repo's own documentation says
 not to treat them as standalone. Its `.mcp.json` and plugin manifests register
 external HTTP MCP servers without a prompt, so the plugin surface must never be
 installed.
+
+```
+MIT License
+
+Copyright (c) 2026 Builder.io
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
 ## obra/superpowers
 
 <https://github.com/obra/superpowers> — MIT. Copyright (c) 2025 Jesse Vincent.
@@ -337,9 +449,7 @@ whole with its companion files: `verification-before-completion`,
 `requesting-code-review` (plus `code-reviewer.md`),
 `finishing-a-development-branch`, `using-git-worktrees`, and
 `dispatching-parallel-agents`. A sixth, `writing-plans`, **replaces** the AOS
-version of that skill; the superseded AOS original is kept alongside it as
-`writing-plans-legacy` (`source: community`, marked `deprecated_by`) rather than
-deleted.
+version of that skill; the superseded AOS original, `writing-plans-legacy`, was retired in 5.0.0.
 
 AOS modifications: `category:`, `source:` and `date_added:` added to the
 frontmatter; the `superpowers:` namespace prefix stripped from cross-skill
@@ -368,7 +478,12 @@ Four generator/validator pairs are vendored under `skills/global_config/`, each
 carried whole including its `references/`, `scripts/`, `examples/`, `docs/` and
 `test/` subtrees: `github-actions-generator` + `github-actions-validator`,
 `dockerfile-generator` + `dockerfile-validator`, `bash-script-generator` +
-`bash-script-validator`, `makefile-generator` + `makefile-validator`.
+`bash-script-validator`, `makefile-generator` + `makefile-validator`. In 5.0.0
+the last three pairs were merged: the Docker pair into
+`docker-expert/{generator,validator}/`, the Bash pair into
+`os-scripting/{generator,validator}/`, the Makefile pair into
+`makefile-pro/{generator,validator}/`, each upstream SKILL.md body kept as
+`GUIDE.md` with its subtrees unchanged.
 
 AOS modifications: `category:`, `source:` and `date_added:` added to the
 frontmatter; the `devops-skills:` namespace prefix stripped from cross-skill
@@ -408,7 +523,7 @@ Both are ports, not verbatim copies, and the differences are behavioural:
 
 Upstream's `secret-scanner`, `tdd-gate`, and `dangerous-command-blocker` were
 reviewed and **not** shipped; they remain available on demand from the ECC
-store. Reasons are in `docs/handover/` and the branch description for
+store. Reasons are in the branch description for
 `feat/cicd-skills-import`.
 
 ---
@@ -527,3 +642,32 @@ Ported to `skills/global_config/agentic-harness-patterns/` (English variant only
 | `skills/global_config/agentic-harness-patterns/SKILL.md` | `skills/agentic-harness-patterns/SKILL.md` (frontmatter: added `category` and `metadata`) |
 | `skills/global_config/agentic-harness-patterns/metadata.json` | `skills/agentic-harness-patterns/metadata.json` |
 | `skills/global_config/agentic-harness-patterns/references/**` | `skills/agentic-harness-patterns/references/**` (unchanged) |
+
+---
+
+## DeusData/codebase-memory-mcp
+
+- **Upstream:** <https://github.com/DeusData/codebase-memory-mcp>
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
+- **Copyright:** Copyright (c) 2025 DeusData
+
+Not vendored: the AOS installer ships no upstream code or binary — it only references the
+upstream MCP server (opt-in registration in `mcp_picks.json`, gated on the binary being
+installed) and curates `skills/codebase-memory/SKILL.md` as original documentation of it.
+
+---
+
+## mpiton/tauri-pilot
+
+- **Upstream:** <https://github.com/mpiton/tauri-pilot> (commit ba5912ee6baf914b7e7362295ea6ddfb1f18b0e5)
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
+- **Copyright:** Copyright (c) 2026 Mathieu Piton
+
+What was carried: `SKILL.md` only, ported to `vendor/rustauri/skills/tauri-pilot/SKILL.md`.
+
+Changes made:
+
+- Frontmatter: `category`, `source`, and a one-line quoted `description`; the body is otherwise the upstream text.
+- Added a "Prerequisites and safety" section, built from the upstream `Cargo.toml`, `README.md`, `docs/src/content/docs/guides/plugin-setup.md` and `SECURITY.md`. The upstream "Safety" section is kept as "Operating rules".
+
+Not carried: `assets/` and `scripts/` from the upstream repository.

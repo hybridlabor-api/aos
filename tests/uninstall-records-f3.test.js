@@ -57,9 +57,9 @@ test('OpenCode uninstall removes only the plugin[] entry textually; comments sur
         const dir = path.join(home, '.config', 'opencode');
         const plugin = path.join(dir, 'plugins', 'bdb-aos.js');
         const f = path.join(dir, 'opencode.jsonc');
-        const text = `{\n  // my theme\n  "theme": "dark", /* keep */\n  "plugin": [\n    "other-plugin", // mine\n    "file://${plugin}",\n    "third"\n  ]\n}\n`;
+        const text = `{\n  // my theme\n  "theme": "dark", /* keep */\n  "plugin": [\n    "other-plugin", // mine\n    "${require('node:url').pathToFileURL(plugin).href}",\n    "third"\n  ]\n}\n`;
         write(f, text);
-        ur.reverseRegistrations({ home });
+        ur.reverseRegistrations({ home, env: { APPDATA: path.join(home, 'AppData', 'Roaming') } });
         const out = fs.readFileSync(f, 'utf8');
         assert.ok(out.includes('// my theme') && out.includes('/* keep */') && out.includes('// mine'), out);
         assert.deepStrictEqual(parseJsonc(out).plugin, ['other-plugin', 'third']);

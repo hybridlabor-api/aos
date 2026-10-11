@@ -1,6 +1,6 @@
 ---
 name: subagent-setup
-description: Configure and synchronize multi-harness subagents (Claude Code, Google Antigravity, OpenCode, ChatGPT Codex CLI) with canonical model tiers and single source of truth in .aos/pipeline.json.
+description: Configure and synchronize multi-harness subagents (Claude Code, Google Antigravity, OpenCode, ChatGPT Codex CLI) with optional per-harness model overrides and single source of truth in .aos/pipeline.json.
 category: bdb-core
 risk: low
 source: bdb
@@ -19,17 +19,9 @@ Single Source of Truth: **`.aos/pipeline.json`** (compatible with AO Orchestrato
 
 ---
 
-## 1. Canonical Model Tiers (Resilience against Model Churn)
+## 1. Models
 
-To prevent breaking configurations when providers update model names, roles map to canonical tiers:
-
-| Tier | Description | Claude Code | Antigravity | OpenCode | Codex CLI |
-|---|---|---|---|---|---|
-| `reasoning_max` | Deep reasoning, planning, adversarial review | `opus` | `gemini-3.1-pro-high` | `opencode/muse-spark-1.3-contributor-free` | `o3-mini` |
-| `standard_fast` | Fast coding, frontend/backend engineering | `sonnet` | `gemini-3.8-flash-high` | `opencode/muse-spark-1.3-contributor-free` | `gpt-4o` |
-| `trivial_low` | Mechanical tasks, summaries | `haiku` | `gemini-3.8-flash-low` | `opencode/muse-spark-1.3-contributor-free` | `gpt-4o-mini` |
-
-*Note:* Custom model IDs can also be set directly per role and harness.
+AOS pins no model. Agents inherit the session model on every harness. A model is written only when `.aos/pipeline.json` sets one for that role and harness, as a free-form string passed through verbatim. Shape, per-harness examples and the `aos-doctor` format check: `docs/agent-models.md`.
 
 ---
 
@@ -47,16 +39,17 @@ node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --init-defa
 
 ### Update a Specific Role
 ```bash
-# Example: Set Reviewer to Codex with o3-mini
+# Example: Set Reviewer to an external CLI harness with a lightweight model
 node skills/global_config/subagent-setup/scripts/setup-subagents.mjs \
-  --set-role reviewer --harness codex --model o3-mini --tier reasoning_max
+  --set-role reviewer --harness codex --model <model-id>
 
 # Example: Set Shipping to OpenCode with Free Tier
 node skills/global_config/subagent-setup/scripts/setup-subagents.mjs \
-  --set-role shipping --harness opencode --model opencode/muse-spark-1.3-contributor-free
+  --set-role godmode_shipping --harness opencode --model <model-id>
 
 # Example: Enable or Disable a Role
-node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --set-role media_eventtech --enable
+node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --set-role godmode_media_eventtech --enable
+# Role keys are the agent slugs with "-" as "_"; the old short keys (shipping, ui_ux, ...) are still accepted and rewritten.
 ```
 
 ### Synchronize to All Harnesses
@@ -68,7 +61,7 @@ node skills/global_config/subagent-setup/scripts/setup-subagents.mjs --sync
 
 ## 3. Integration with `aos-project-init` & AO Orchestrator
 - **AO Orchestrator (Port 3101)**: The Pipeline Wizard (Schritt 3 von 4: Agenten & Rollen) directly reads and writes `.aos/pipeline.json`.
-- **`aos-project-init`**: Offers subagent configuration during project interview, defaulting to the canonical tier matrix.
+- **`aos-project-init`**: Offers subagent configuration during project interview, with no model pinned by default.
 
 ---
 

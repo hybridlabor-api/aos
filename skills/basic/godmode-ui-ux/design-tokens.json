@@ -1,72 +1,72 @@
 {
   "color": {
     "primary": {
-      "$value": "oklch(0.55 0.20 285)",
+      "$value": "oklch(0.55 0 0)",
       "$type": "color",
-      "$description": "BDB Purple primary brand color"
+      "$description": "Neutral placeholder primary; replace with the project brand color from its own tokens."
     },
     "primary-light": {
-      "$value": "oklch(0.75 0.14 285)",
+      "$value": "oklch(0.75 0 0)",
       "$type": "color",
-      "$description": "Lighter variant of BDB Purple primary color"
+      "$description": "Lighter variant of the primary color"
     },
     "secondary": {
-      "$value": "oklch(0.60 0.05 285)",
+      "$value": "oklch(0.60 0 0)",
       "$type": "color",
-      "$description": "Neutral purple-tinted complement for secondary elements"
+      "$description": "Neutral complement for secondary elements"
     },
     "surface": {
-      "$value": "oklch(0.99 0.005 285)",
+      "$value": "oklch(0.99 0 0)",
       "$type": "color",
       "$description": "Very light near-white background surface color"
     },
     "surface-elevated": {
-      "$value": "oklch(0.97 0.008 285)",
+      "$value": "oklch(0.97 0 0)",
       "$type": "color",
       "$description": "Slightly off-white background surface color for elevated cards"
     },
     "neutral-900": {
-      "$value": "oklch(0.20 0.01 285)",
+      "$value": "oklch(0.20 0 0)",
       "$type": "color",
       "$description": "Neutral scale 900 - darkest text and high-contrast elements"
     },
     "neutral-800": {
-      "$value": "oklch(0.30 0.01 285)",
+      "$value": "oklch(0.30 0 0)",
       "$type": "color",
       "$description": "Neutral scale 800 - primary body text"
     },
     "neutral-700": {
-      "$value": "oklch(0.40 0.01 285)",
+      "$value": "oklch(0.40 0 0)",
       "$type": "color",
       "$description": "Neutral scale 700 - secondary text"
     },
     "neutral-600": {
-      "$value": "oklch(0.50 0.01 285)",
+      "$value": "oklch(0.50 0 0)",
       "$type": "color",
       "$description": "Neutral scale 600 - muted text and icons"
     },
     "neutral-500": {
-      "$value": "oklch(0.60 0.01 285)",
+      "$value": "oklch(0.60 0 0)",
       "$type": "color",
       "$description": "Neutral scale 500 - borders and division lines"
     },
     "neutral-400": {
-      "$value": "oklch(0.70 0.01 285)",
+      "$value": "oklch(0.70 0 0)",
       "$type": "color",
       "$description": "Neutral scale 400 - subtle borders and disabled states"
     },
     "neutral-300": {
-      "$value": "oklch(0.80 0.01 285)",
+      "$value": "oklch(0.80 0 0)",
       "$type": "color",
       "$description": "Neutral scale 300 - hover states for neutral components"
     },
     "neutral-200": {
-      "$value": "oklch(0.90 0.005 285)",
+      "$value": "oklch(0.90 0 0)",
       "$type": "color",
       "$description": "Neutral scale 200 - background fill for subtle elements"
     },
     "neutral-100": {
-      "$value": "oklch(0.96 0.005 285)",
+      "$value": "oklch(0.96 0 0)",
       "$type": "color",
       "$description": "Neutral scale 100 - lightest background tint"
     },
@@ -292,14 +292,14 @@
     "sm": {
       "$value": [
         {
-          "color": "oklch(0.20 0.01 285 / 0.04)",
+          "color": "oklch(0.20 0 0 / 0.04)",
           "offsetX": "0px",
           "offsetY": "1px",
           "blur": "2px",
           "spread": "0px"
         },
         {
-          "color": "oklch(0.20 0.01 285 / 0.04)",
+          "color": "oklch(0.20 0 0 / 0.04)",
           "offsetX": "0px",
           "offsetY": "2px",
           "blur": "4px",
@@ -312,14 +312,14 @@
     "md": {
       "$value": [
         {
-          "color": "oklch(0.20 0.01 285 / 0.06)",
+          "color": "oklch(0.20 0 0 / 0.06)",
           "offsetX": "0px",
           "offsetY": "4px",
           "blur": "8px",
           "spread": "-1px"
         },
         {
-          "color": "oklch(0.20 0.01 285 / 0.04)",
+          "color": "oklch(0.20 0 0 / 0.04)",
           "offsetX": "0px",
           "offsetY": "2px",
           "blur": "4px",
@@ -332,14 +332,14 @@
     "lg": {
       "$value": [
         {
-          "color": "oklch(0.20 0.01 285 / 0.08)",
+          "color": "oklch(0.20 0 0 / 0.08)",
           "offsetX": "0px",
           "offsetY": "12px",
           "blur": "24px",
           "spread": "-4px"
         },
         {
-          "color": "oklch(0.20 0.01 285 / 0.04)",
+          "color": "oklch(0.20 0 0 / 0.04)",
           "offsetX": "0px",
           "offsetY": "4px",
           "blur": "8px",

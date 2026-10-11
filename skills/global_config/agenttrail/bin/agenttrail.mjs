@@ -8,7 +8,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import crypto from 'node:crypto'
+import { serveShared } from '../lib/shared-static.mjs'
+import { codeStampOf, watchCodeStamp } from '../lib/code-stamp.mjs'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
+import { parsePlan, lintPlan } from '../lib/plan.mjs'
+import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
+import { enrolRefusal, createEnrolCode } from '../lib/click.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -37,17 +42,42 @@ let ensureMode = false
 let ensureCwd = null
 let ensureSession = null
 let jsonOut = false
+// AOS v2: `emit <kind> ...` — the harness-agnostic event contract (see docs/trail-events.md)
+let emitKind = null
+let emitSession = null
+let emitName = null
+let emitDetail = null
+let emitTask = null
+let emitStatus = null
+let emitFile = null
+let emitMessage = null
+let emitStdin = false
+// AOS v2: `enroll [--replace] [--no-open]` registers the platform authenticator for GO clicks
+let replaceFlag = false
+let portArg = null
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
   else if (a === 'hook') cmd = 'hook'
   // AOS patch: ask engine CLI — asks the human a question via the map
   else if (a === 'ask') cmd = 'ask'
+  else if (a === 'emit') cmd = 'emit'
+  else if (a === 'enroll' && cmd === null) cmd = 'enroll'
+  else if (a === '--replace') replaceFlag = true
   else if (a === '--ensure') ensureMode = true
   else if (a === '--cwd') ensureCwd = argv[++i]
-  else if (a === '--session') ensureSession = argv[++i]
+  else if (a === '--session') { ensureSession = argv[++i]; if (cmd === 'emit') emitSession = ensureSession }
+  // AOS v2: emit flags. `--json -` reads one event from stdin.
+  else if (a === '--name') emitName = argv[++i]
+  else if (a === '--detail') emitDetail = argv[++i]
+  else if (a === '--task') emitTask = argv[++i]
+  else if (a === '--status') emitStatus = argv[++i]
+  else if (a === '--file') emitFile = argv[++i]
+  else if (a === '--message') emitMessage = argv[++i]
+  else if (cmd === 'emit' && a === '--json') emitStdin = true
+  else if (cmd === 'emit' && emitKind === null && !a.startsWith('-')) emitKind = a
   else if (a === '--json') jsonOut = true
-  else if (a === '--port') port = parseInt(argv[++i], 10)
+  else if (a === '--port') { port = parseInt(argv[++i], 10); portArg = port }
   else if (a === '--open') openBrowser = true
   else if (a === '--no-open') { noOpen = true; openBrowser = false }
   else if (a === '--yes' || a === '-y') assumeYes = true
@@ -129,14 +159,64 @@ function copyToClipboard(text) {
 if (ensureMode) {
   try { await (await import('./ensure.mjs')).ensure({ cwd: ensureCwd, plan: planArg, session: ensureSession, json: jsonOut, script: fileURLToPath(import.meta.url) }) }
   catch (e) { console.log(jsonOut ? JSON.stringify({ url: null, started: false, opened: false, reason: `error: ${String(e && e.message || e).slice(0, 80)}`, plan: null, hint: null }) : 'agenttrail: error') }
+  // Windows: process.exit() right after a fetch() with an AbortSignal.timeout() can abort node with a libuv UV_HANDLE_CLOSING assertion (exit 0xC0000409).
+  // 100 ms was not enough (17 of 30 runs crashed); 500 ms: 30 of 30 runs exit 0. An unsettled top-level await instead ends with exit 13 on Node 24.16, so do not park.
+  if (process.platform === 'win32') { process.exitCode = 0; await new Promise(r => setTimeout(r, 500)) }
   process.exit(0)
 }
 if (cmd === 'init') { hooksOnly ? installHooks() : await init(); process.exit(0) }
 if (cmd === 'up') { await upAll(); process.exit(0) }
 if (cmd === 'autostart') { autostart(); process.exit(0) }
 if (cmd === 'hook') { await relayHook(); process.exit(0) }
+// AOS v2: one-time enrolment. Runs only in the user's own terminal; the code is printed
+// here and never travels over HTTP.
+if (cmd === 'enroll') { process.exit(await enrollFlow()) }
+// AOS v2: report one event to the hub. Always exits 0 — a reporting hook never fails a tool call.
+if (cmd === 'emit') { await emitFlow(); process.exit(0) }
 // AOS patch: ask engine CLI — blocks until the map answers; exit 0 = go, 1 = deny/timeout
 if (cmd === 'ask') { process.exit(await askFlow()) }
+
+async function enrollFlow() {
+  const refusal = enrolRefusal({ stdinTTY: process.stdin.isTTY, stdoutTTY: process.stdout.isTTY, env: process.env })
+  if (refusal) { console.error(`aos-trail enroll: ${refusal}`); return 1 }
+  let made
+  try { made = createEnrolCode({ replace: replaceFlag }) } catch (e) {
+    console.error(e && e.code === 'already-enrolled' ? 'aos-trail enroll: a credential is already enrolled; pass --replace to swap it' : `aos-trail enroll: ${String((e && e.message) || e).slice(0, 120)}`)
+    return 1
+  }
+  const url = `http://localhost:${portArg || Number(process.env.AGENTTRAIL_PORT) || 5350}/enroll`
+  console.log(`enrolment code: ${made.code}  (valid 5 min, 3 tries)\nopen ${url} and enter the code`)
+  if (!noOpen) {
+    const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
+    try { (await import('node:child_process')).spawn(opener, [url], { stdio: 'ignore', shell: false }).unref() } catch { /* the URL is printed above */ }
+  }
+  return 0
+}
+
+// AOS v2: build one event and hand it to the hub. Errors are swallowed on purpose:
+// a hook that cannot reach the board must not disturb the agent that called it.
+async function emitFlow() {
+  let event
+  if (emitStdin) {
+    try { event = JSON.parse(fs.readFileSync(0, 'utf8')) } catch { return }
+  } else {
+    event = buildEvent({
+      kind: emitKind,
+      agent: agentArg,
+      session: emitSession,
+      name: emitName,
+      cwd: ensureCwd ? path.resolve(ensureCwd) : process.cwd(),
+      tool: null,
+      detail: emitDetail,
+      task: emitTask,
+      status: emitStatus,
+      plan: planArg,
+      file: emitFile,
+      message: emitMessage,
+    }, { cwd: ensureCwd ? path.resolve(ensureCwd) : process.cwd(), env: process.env })
+  }
+  await emitEvent(event, { port: Number(process.env.AGENTTRAIL_PORT) || 5350, timeoutMs: 300 })
+}
 
 // reads a claude code hook payload on stdin and fans it out to local daemons;
 // each daemon keeps only events whose cwd lives inside its repo. Never blocks
@@ -227,71 +307,6 @@ async function askFlow() {
     if (st && st.ask && st.ask.status !== 'pending') return st.ask.status === 'go' ? 0 : 1
   }
   return 1 // deny by default: timeout, daemon gone, or answer never came
-}
-
-// ---------- PLAN.md parser (convention v2: components, owner-first names) ----------
-// `## Plain-language name {#id}` = a component of the system, not a phase.
-// `tech:` under a component or task carries the engineer phrasing.
-// `needs: [id]` = directed sequencing edge; `links: [id]` = undirected coupling.
-const NODE_RE = /^##\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
-const TASK_RE = /^\s*[-*]\s+\[( |x|~|!)\]\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
-const NEEDS_RE = /^needs:\s*\[([^\]]*)\]\s*$/i
-const LINKS_RE = /^links:\s*\[([^\]]*)\]\s*$/i
-const FILES_RE = /^files:\s*\[([^\]]*)\]\s*$/i
-const TECH_RE = /^\s*tech:\s*(.+?)\s*$/i
-const BY_RE = /^\s*by:\s*(.+?)\s*$/i
-const FROM_RE = /^\s*(?:from|horizon):\s*(agent|roadmap|now|backlog)\s*$/i
-const KIND_RE = /^\s*kind:\s*([a-z][a-z-]*)\s*$/i
-const URL_RE = /^\s*url:\s*(\S+)\s*$/i
-const DECISIONS_RE = /^##\s+decisions\s*$/i
-const idList = s => s.split(',').map(x => x.trim()).filter(Boolean)
-
-function parsePlan(text) {
-  const nodes = [] // ordered
-  const decisions = []
-  let title = ''
-  let curComponent = null
-  let lastNode = null // tech: lines attach to the most recent component or task
-  let inDecisions = false
-  for (const raw of text.split('\n')) {
-    const line = raw.trimEnd()
-    if (!title && /^#\s+/.test(line)) { title = line.replace(/^#\s+/, ''); continue }
-    if (DECISIONS_RE.test(line)) { inDecisions = true; curComponent = null; lastNode = null; continue }
-    let m
-    if ((m = line.match(NODE_RE))) {
-      inDecisions = false
-      curComponent = { id: m[2], title: m[1], level: 'component', parent: null, needs: [], links: [], files: [], tech: '', by: '', kind: '', url: '', status: 'pending' }
-      lastNode = curComponent
-      nodes.push(curComponent)
-      continue
-    }
-    if (inDecisions) {
-      if (/^\s*[-*]\s+/.test(line)) decisions.push(line.replace(/^\s*[-*]\s+/, ''))
-      continue
-    }
-    if ((m = line.match(TASK_RE))) {
-      const status = m[1] === 'x' ? 'done' : m[1] === '~' ? 'active' : m[1] === '!' ? 'blocked' : 'pending'
-      lastNode = { id: m[3], title: m[2], level: 'task', parent: curComponent ? curComponent.id : null, needs: [], links: [], tech: '', by: '', src: '', status }
-      nodes.push(lastNode)
-      continue
-    }
-    if ((m = line.match(TECH_RE))) { if (lastNode) lastNode.tech = m[1]; continue }
-    if ((m = line.match(KIND_RE))) { if (curComponent) curComponent.kind = m[1].toLowerCase(); continue }
-    if ((m = line.match(URL_RE))) { if (curComponent) curComponent.url = m[1]; continue }
-    if ((m = line.match(BY_RE))) { if (lastNode) lastNode.by = m[1]; continue }
-    if ((m = line.match(FROM_RE))) { if (lastNode) { const v = m[1].toLowerCase(); lastNode.src = v === 'now' ? 'agent' : v === 'backlog' ? 'roadmap' : v } continue }
-    if ((m = line.match(NEEDS_RE))) { if (curComponent) curComponent.needs = idList(m[1]); continue }
-    if ((m = line.match(LINKS_RE))) { if (curComponent) curComponent.links = idList(m[1]); continue }
-    if ((m = line.match(FILES_RE))) { if (curComponent) curComponent.files = idList(m[1]); continue }
-  }
-  // derive component status from its tasks — blocked wins (it demands attention)
-  for (const c of nodes.filter(n => n.level === 'component')) {
-    const kids = nodes.filter(n => n.parent === c.id)
-    if (kids.some(k => k.status === 'blocked')) c.status = 'blocked'
-    else if (kids.some(k => k.status === 'active')) c.status = 'active'
-    else if (kids.length && kids.every(k => k.status === 'done')) c.status = 'done'
-  }
-  return { nodes, decisions, title }
 }
 
 // ---------- live state ----------
@@ -506,7 +521,7 @@ function toolDetail(input = {}, root = repo) {
 function relToRepo(p, root = repo) {
   if (!p) return null
   const r = path.resolve(String(p))
-  return r === root ? '' : r.startsWith(root + path.sep) ? r.slice(root.length + 1) : null
+  return r === root ? '' : r.startsWith(root + path.sep) ? r.slice(root.length + 1).split(path.sep).join('/') : null
 }
 // AOS patch: native plan/todo tools across harnesses, normalized to the
 // {content, status} shape the frontend's run-todo rendering already expects.
@@ -714,22 +729,6 @@ function hotFiles() {
   for (const [f, at] of Object.entries(fileHeat)) if (now - at < 60000) out[f] = at
   return out
 }
-function lintPlan() {
-  const out = []
-  const comps = parsed.nodes.filter(n => n.level === 'component')
-  const tasks = parsed.nodes.filter(n => n.level === 'task')
-  if (!planText.length || (comps.length === 1 && tasks.length <= 1)) return out
-  const ids = new Set()
-  for (const n of parsed.nodes) { if (ids.has(n.id)) out.push(`duplicate id {#${n.id}}`); ids.add(n.id) }
-  const compIds = new Set(comps.map(c => c.id))
-  for (const c of comps) {
-    for (const e of [...c.needs, ...c.links]) if (!compIds.has(e)) out.push(`${c.id}: edge to unknown component "${e}"`)
-    if (!c.files.length) out.push(`${c.id}: no files: globs — the live layer can't pin work to it`)
-  }
-  for (const t of tasks) if (t.status === 'done' && !t.tech) out.push(`[x] "${t.title}" cites no evidence (tech: line)`)
-  if (comps.length > 9) out.push(`${comps.length} components — over the 5–9 governor, consider merging`)
-  return out.slice(0, 12)
-}
 let hooksInstalledCache = { at: 0, val: false }
 function hooksInstalled() {
   if (Date.now() - hooksInstalledCache.at < 30000) return hooksInstalledCache.val
@@ -781,7 +780,7 @@ function model() {
     hasPlan: planText.length > 0, treeTruncated,
     lanes: lanes.size > 1 || hasOther() ? [...laneList(), ...(hasOther() ? [otherLane(null)] : [])].map(l => ({ key: l.key, label: l.label, branch: l.branch, root: l.root, main: !l.key, other: l.other || undefined })) : undefined,
     activity, recentActivity, planMtime, handoffs, asks, hotFiles: hotFiles(), cycles, // AOS patch: asks ride along so the open map updates live
-    planStale: planStaleness(), lints: lintPlan(), hooksInstalled: hooksInstalled(),
+    planStale: planStaleness(), lints: lintPlan(parsed, planText), hooksInstalled: hooksInstalled(),
     planFile, aosPlan,
     now: Date.now(),
   }
@@ -875,10 +874,24 @@ async function fleetModel() {
 
 // ---------- http ----------
 const indexPath = path.join(__dirname, '..', 'public', 'index.html')
+// Self-refresh: after `aos update` replaces the files, this stale in-memory
+// router would 404 the new static assets; restart on the new code instead.
+const ownStamp = codeStampOf(fileURLToPath(import.meta.url), [
+  path.join(__dirname, '..', 'lib'),
+  path.join(__dirname, '..', 'public'),
+])
+watchCodeStamp({
+  entryFile: fileURLToPath(import.meta.url),
+  dirs: [path.join(__dirname, '..', 'lib'), path.join(__dirname, '..', 'public')],
+  stamp: ownStamp,
+  server: () => server, // declared below; read only when a restart happens
+})
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
+  } else if (req.method === 'GET' && u.pathname.startsWith('/shared/')) {
+    serveShared(u.pathname, res)
   } else if (u.pathname.startsWith('/production_artifacts/')) {
     // AOS patch: serve pipeline artifacts so a card's relative `url:` (e.g. an archify diagram) opens
     let root

@@ -94,14 +94,14 @@ VECTOR_DB_OPTIONS = {
     }
 }
 
-# Embedding model selection
+# Embedding model selection — resolve the current model IDs in the provider docs at the time of use
 EMBEDDING_MODELS = {
-    "openai/text-embedding-3-small": {
+    "small": {
         "dimensions": 1536,
         "cost": "$0.02/1M tokens",
         "quality": "Good for most use cases"
     },
-    "openai/text-embedding-3-large": {
+    "large": {
         "dimensions": 3072,
         "cost": "$0.13/1M tokens",
         "quality": "Best for complex queries"
@@ -734,10 +734,12 @@ class LLMWithFallback:
 
         raise AllModelsFailedError("All models exhausted")
 
-# Usage
+# Usage — configured via environment, not hard-coded model names
+# (model IDs change frequently; look them up in each provider's docs)
 llm_client = LLMWithFallback(
-    primary="gpt-4-turbo",
-    fallbacks=["gpt-3.5-turbo", "claude-3-sonnet"]
+    primary=os.environ["PRIMARY_MODEL"],          # e.g. a premium reasoning-tier model
+    fallbacks=[os.environ["FALLBACK_MODEL_1"],     # e.g. a fast/small-tier model
+               os.environ["FALLBACK_MODEL_2"]]     # e.g. a different provider's mid-tier model
 )
 ```
 

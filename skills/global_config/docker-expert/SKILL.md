@@ -416,3 +416,21 @@ This skill is applicable to execute the workflow or actions described in the ove
 - Use this skill only when the task clearly matches the scope described above.
 - Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
 - Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+
+## Dockerfile Generation
+
+- Use when creating a Dockerfile from scratch or converting an existing one to best practices (Node.js, Python, Go, Java, and other languages).
+- Gather requirements first: language and version, entrypoint, exposed ports, package manager, health endpoint, and build vs. runtime dependencies.
+- Generate both the `Dockerfile` and a matching `.dockerignore`.
+- Built-in defaults: multi-stage builds for image-size reduction, non-root user, minimal base images, no secrets in layers, dependency-install layers separated from source copies for cache efficiency.
+- Validate the result after generation and iterate on fixes: stop at zero validation errors, or after 3 iterations emit an intentional-deviation report.
+- Full guide: generator/GUIDE.md
+
+## Dockerfile Validation
+
+- Use when reviewing an existing Dockerfile: syntax/lint, security and secrets checks, hardening, and build-performance review before CI or production.
+- Run the validator script `validator/scripts/dockerfile-validate.sh` against the target Dockerfile path.
+- Findings are classified by severity: Critical (hardcoded secrets, root runtime), High (hardening failures, unsafe `USER`), Medium (`:latest` tags, cache inefficiency), Low (style and optimization suggestions).
+- Fast path: if validation passes with no actionable findings, return a pass summary — do not load references or generate diffs.
+- Load reference docs only for the finding types actually reported, then fix and rerun.
+- Full guide: validator/GUIDE.md

@@ -3,7 +3,7 @@
 /**
  * skills/global_config/subagent-setup/scripts/setup-subagents.mjs
  *
- * Interactive & CLI tool to configure subagent roles and model tiers across:
+ * CLI tool to configure subagent roles and optional per-harness model overrides across:
  * - Claude Code (.claude/agents/*.md)
  * - Google Antigravity (~/.gemini/config/agents/*.json)
  * - OpenCode (.opencode/agents/*.md)
@@ -30,18 +30,23 @@ function loadInstaller() {
         path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', '@hybridlabor-api', 'aos', 'installer.js'),
     ].filter(Boolean);
     try { candidates.push(require.resolve('@hybridlabor-api/aos/installer.js')); } catch { /* not resolvable from here */ }
-    const found = candidates.find((c) => fs.existsSync(c));
+    // An explicit AOS_HOME is the user's choice: a wrong one must fail, not fall through to another copy.
+    const found = process.env.AOS_HOME ? (fs.existsSync(candidates[0]) ? candidates[0] : null) : candidates.find((c) => fs.existsSync(c));
     if (!found) {
         console.error(`setup-subagents: cannot find the AOS installer module (installer.js).\nSet AOS_HOME to the AOS package folder (the one containing installer.js), or install @hybridlabor-api/aos.\nTried:\n${candidates.map((c) => `  ${c}`).join('\n')}`);
         process.exit(2);
     }
-    return require(found);
+    try {
+        return require(found);
+    } catch (err) {
+        console.error(`setup-subagents: found installer.js at ${found} but it failed to load: ${err.message}\nInstall the AOS package dependencies in ${path.dirname(found)} (npm install) and retry.`);
+        process.exit(2);
+    }
 }
 
 const installer = loadInstaller();
 
 const {
-    CANONICAL_TIERS,
     loadPipelineConfig,
     resolveAgentConfig,
     parseAgentsMd,
@@ -51,14 +56,17 @@ const {
 } = installer;
 
 const ROLES = [
-    { key: 'architect', label: 'Architect', defaultTier: 'reasoning_max', defaultHarness: 'claude' },
-    { key: 'techlead', label: 'TechLead', defaultTier: 'standard_fast', defaultHarness: 'antigravity' },
-    { key: 'ui_ux', label: 'Godmode_UI_UX', defaultTier: 'standard_fast', defaultHarness: 'claude' },
-    { key: 'engineering', label: 'Godmode_Engineering', defaultTier: 'standard_fast', defaultHarness: 'claude' },
-    { key: 'media_eventtech', label: 'Godmode_Media_EventTech', defaultTier: 'standard_fast', defaultHarness: 'antigravity', defaultEnabled: false },
-    { key: 'reviewer', label: 'Reviewer', defaultTier: 'reasoning_max', defaultHarness: 'codex' },
-    { key: 'shipping', label: 'Godmode_Shipping', defaultTier: 'standard_fast', defaultHarness: 'opencode' }
+    { key: 'architect', label: 'Architect', defaultHarness: 'claude' },
+    { key: 'techlead', label: 'TechLead', defaultHarness: 'antigravity' },
+    { key: 'godmode_ui_ux', label: 'Godmode_UI_UX', defaultHarness: 'claude' },
+    { key: 'godmode_engineering', label: 'Godmode_Engineering', defaultHarness: 'claude' },
+    { key: 'godmode_media_eventtech', label: 'Godmode_Media_EventTech', defaultHarness: 'antigravity', defaultEnabled: false },
+    { key: 'reviewer', label: 'Reviewer', defaultHarness: 'codex' },
+    { key: 'godmode_shipping', label: 'Godmode_Shipping', defaultHarness: 'opencode' }
 ];
+
+// Short keys older docs and pipelines used; accepted on input, the real agent slug is written.
+const ROLE_ALIASES = { ui_ux: 'godmode_ui_ux', engineering: 'godmode_engineering', media_eventtech: 'godmode_media_eventtech', shipping: 'godmode_shipping' };
 
 function printPipeline(pipeline) {
     console.log('\n=== AOS Multi-Harness Subagent Pipeline ===\n');
@@ -66,7 +74,6 @@ function printPipeline(pipeline) {
         'Role'.padEnd(20) +
         'Status'.padEnd(10) +
         'Harness'.padEnd(15) +
-        'Tier'.padEnd(18) +
         'Model'
     );
     console.log('-'.repeat(80));
@@ -75,14 +82,12 @@ function printPipeline(pipeline) {
         const cfg = pipeline[r.key] || {};
         const enabled = cfg.enabled !== false;
         const harness = cfg.harness || r.defaultHarness;
-        const tier = cfg.tier || r.defaultTier;
-        const model = cfg.model || (CANONICAL_TIERS[tier] ? CANONICAL_TIERS[tier][harness] : 'inherit');
+        const model = resolveAgentConfig(r.key, harness, pipeline).model || 'inherit (session model)';
 
         console.log(
             r.label.padEnd(20) +
             (enabled ? '✔ ON' : '✖ OFF').padEnd(10) +
             harness.padEnd(15) +
-            tier.padEnd(18) +
             model
         );
     }
@@ -92,14 +97,9 @@ function printPipeline(pipeline) {
 function getDefaultPipeline() {
     const pipeline = {};
     for (const r of ROLES) {
-        const harness = r.defaultHarness;
-        const tier = r.defaultTier;
-        const model = CANONICAL_TIERS[tier] ? CANONICAL_TIERS[tier][harness] : 'inherit';
         pipeline[r.key] = {
             enabled: r.defaultEnabled !== false,
-            harness,
-            tier,
-            model
+            harness: r.defaultHarness
         };
     }
     return pipeline;
@@ -164,10 +164,11 @@ async function main() {
 
     const setRoleIdx = args.indexOf('--set-role');
     if (setRoleIdx !== -1 && args[setRoleIdx + 1]) {
-        const role = args[setRoleIdx + 1].toLowerCase().replace(/-/g, '_');
+        const given = args[setRoleIdx + 1].toLowerCase().replace(/-/g, '_');
+        const role = ROLE_ALIASES[given] || given;
+        if (pipeline[given] && role !== given && !pipeline[role]) { pipeline[role] = pipeline[given]; delete pipeline[given]; }
         const harnessIdx = args.indexOf('--harness');
         const modelIdx = args.indexOf('--model');
-        const tierIdx = args.indexOf('--tier');
         const disableFlag = args.includes('--disable');
         const enableFlag = args.includes('--enable');
 
@@ -176,8 +177,11 @@ async function main() {
         }
 
         if (harnessIdx !== -1 && args[harnessIdx + 1]) pipeline[role].harness = args[harnessIdx + 1];
-        if (modelIdx !== -1 && args[modelIdx + 1]) pipeline[role].model = args[modelIdx + 1];
-        if (tierIdx !== -1 && args[tierIdx + 1]) pipeline[role].tier = args[tierIdx + 1];
+        if (modelIdx !== -1 && args[modelIdx + 1]) {
+            const h = pipeline[role].harness;
+            if (!h) { console.error('--model needs --harness (or a role that already has one).'); process.exit(2); }
+            pipeline[role].models = { ...pipeline[role].models, [h]: args[modelIdx + 1] };
+        }
         if (disableFlag) pipeline[role].enabled = false;
         if (enableFlag) pipeline[role].enabled = true;
 
@@ -195,7 +199,7 @@ async function main() {
     console.log('  node setup-subagents.mjs --show');
     console.log('  node setup-subagents.mjs --init-default');
     console.log('  node setup-subagents.mjs --sync');
-    console.log('  node setup-subagents.mjs --set-role <role> --harness <claude|antigravity|opencode|codex> --model <model> [--tier <tier>]');
+    console.log('  node setup-subagents.mjs --set-role <role> --harness <claude|antigravity|opencode|codex> --model <model>');
 }
 
 main().catch(err => {

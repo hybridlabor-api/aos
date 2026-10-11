@@ -34,6 +34,46 @@ const DEFAULT_PORT = 4519;
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
+
+// Newest mtime of the entry file plus every file in the given folders
+// (non-recursive): "has my code changed under me" for the self-refresh check.
+function codeStampOf(entryFile, dirs) {
+  let newest = 0;
+  const files = [entryFile];
+  for (const dir of dirs) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { /* folder missing: entry only */ }
+    for (const name of names) files.push(path.join(dir, name));
+  }
+  for (const file of files) { try { newest = Math.max(newest, fs.statSync(file).mtimeMs); } catch { /* raced with the update */ } }
+  return newest;
+}
+
+// After `aos update` replaces the files, this stale in-memory process would
+// serve new static assets with old routes; restart on the new code instead.
+// Supervised (launchd/systemd/Task Scheduler) -> exit 3, the manager starts
+// it again. Otherwise re-spawn detached after closing the server (the child
+// binds the same port because the old one released it).
+function watchCodeStamp({ entryFile, dirs, stamp, server, log = () => {} }) {
+  const timer = setInterval(() => {
+    if (codeStampOf(entryFile, dirs) <= stamp) return;
+    if (process.env.AOS_SUPERVISED === '1') {
+      log('plan-canvas: its code changed on disk; exiting so the service manager restarts it on the new code');
+      process.exit(3);
+    }
+    log('plan-canvas: its code changed on disk; restarting on the new code');
+    clearInterval(timer);
+    // Open SSE streams keep close() pending forever: drop them, and give up waiting after 2 s.
+    if (server && server.closeAllConnections) server.closeAllConnections();
+    const closeDone = server ? new Promise(resolve => server.close(() => resolve())) : Promise.resolve();
+    Promise.race([closeDone, new Promise(resolve => setTimeout(resolve, 2000))]).then(() => {
+      require('child_process').spawn(process.execPath, process.argv.slice(1), { cwd: process.cwd(), env: process.env, detached: true, stdio: 'ignore' }).unref();
+      process.exit(0);
+    });
+  }, 30000);
+  timer.unref();
+  return timer;
+}
 // How long the "agent is thinking" indicator survives without the agent
 // checking back in, before presence decays to the honest queued/waiting.
 const DEFAULT_THINKING_STALE_MS = 90 * 1000;
@@ -134,6 +174,7 @@ function sendHtml(res, statusCode, html, { csp = true } = {}) {
 }
 
 const STATIC_READ_PATH = /^\/(sdk\.js|artifact\/[a-f0-9]{12}\/.*)$/;
+const PAGE_PATH = /^\/canvas\/[a-f0-9]{12}$/;
 
 function skillDescription(file) {
   try {
@@ -634,7 +675,14 @@ function createPlanCanvasServer({
     // and asset loads arrive as Sec-Fetch-Site: cross-site. Only those read-only
     // static paths may skip the fetch-site check; everything else keeps it.
     const isStaticRead = req.method === 'GET' && STATIC_READ_PATH.test(pathname);
-    if (!isStaticRead && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
+    // A top-level link from another loopback port (the Launchpad) arrives as same-site/cross-site.
+    // Rendering the home page or a canvas page is read-only and the linking page cannot read it,
+    // so a document navigation may skip the fetch-site check; fetch()/XHR and writes never do.
+    const isPageNavigation = req.method === 'GET'
+      && (pathname === '/' || PAGE_PATH.test(pathname))
+      && req.headers['sec-fetch-mode'] === 'navigate'
+      && req.headers['sec-fetch-dest'] === 'document';
+    if (!isStaticRead && !isPageNavigation && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
       return sendJson(res, 403, { error: 'forbidden fetch site' });
     }
 
@@ -729,7 +777,9 @@ module.exports = {
   DEFAULT_PORT,
   DEFAULT_THINKING_STALE_MS,
   DEFAULT_TYPING_EXPIRY_MS,
+  codeStampOf,
   createPlanCanvasServer,
   resolveIdleTimeoutMs,
-  resolvePort
+  resolvePort,
+  watchCodeStamp
 };

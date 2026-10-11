@@ -32,7 +32,7 @@ hits clear limits. | Examples: Good: Company docs in vector store, retrieved at 
 Show progress. Pre-compute when possible. Cache aggressively. | Examples: Good: Streaming response with typing indicator, cached embeddings | Bad: Spinner for 15 seconds, then wall of text appears
 - Cost is a feature | Description: LLM API costs add up fast. At scale, inefficient prompts bankrupt you.
 Measure cost per query. Use smaller models where possible. Cache
-everything cacheable. | Examples: Good: GPT-4 for complex tasks, GPT-3.5 for simple ones, cached embeddings | Bad: GPT-4 for everything, no caching, verbose prompts
+everything cacheable. | Examples: Good: a premium reasoning-tier model for complex tasks, a fast-tier model for simple ones, cached embeddings | Bad: the flagship model for everything, no caching, verbose prompts
 
 ## Patterns
 
@@ -50,8 +50,10 @@ const schema = z.object({
   summary: z.string().max(200)
 });
 
+const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
+
 const response = await openai.chat.completions.create({
-  model: 'gpt-4',
+  model: MODEL,
   messages: [{ role: 'user', content: prompt }],
   response_format: { type: 'json_object' }
 });
@@ -64,8 +66,10 @@ Stream LLM responses to show progress and reduce perceived latency
 
 **When to use**: User-facing chat or generation features
 
+const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
+
 const stream = await openai.chat.completions.create({
-  model: 'gpt-4',
+  model: MODEL,
   messages,
   stream: true
 });
@@ -109,7 +113,7 @@ let embedding = await cache.get(cacheKey);
 
 if (!embedding) {
   embedding = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
+    model: process.env.EMBEDDING_MODEL ?? '<embedding-model-id>',
     input: text
   });
   await cache.set(cacheKey, embedding, '30d');
@@ -188,9 +192,11 @@ const ResponseSchema = z.object({
   sources: z.array(z.string()).optional(),
 });
 
+const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
+
 async function queryLLM(prompt: string) {
   const response = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: MODEL,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
   });
@@ -278,7 +284,8 @@ Recommended fix:
 ```typescript
 import { encoding_for_model } from 'tiktoken';
 
-const enc = encoding_for_model('gpt-4');
+// Tokenize against the current model family's tokenizer; update the identifier when you switch models
+const enc = encoding_for_model(process.env.TOKENIZER_MODEL ?? '<model-id>');
 
 function countTokens(text: string): number {
   return enc.encode(text).length;
@@ -331,9 +338,10 @@ import { OpenAIStream, StreamingTextResponse } from 'ai';
 
 export async function POST(req: Request) {
   const { messages } = await req.json();
+  const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: MODEL,
     messages,
     stream: true,
   });
@@ -368,7 +376,9 @@ Symptoms:
 - No rate limiting per user
 
 Why this breaks:
-LLM costs add up fast. GPT-4 is $30-60 per million tokens. Without
+LLM costs add up fast. A premium flagship model can easily cost tens of
+dollars per million tokens (check the provider's current pricing page —
+prices change constantly). Without
 tracking, you won't know until the bill arrives. At scale, this is
 existential.
 
@@ -378,12 +388,13 @@ Recommended fix:
 
 ```typescript
 async function queryWithCostTracking(prompt: string, userId: string) {
+  const MODEL = process.env.MODEL ?? '<model-id>'; // current model ID from the provider docs
   const response = await openai.chat.completions.create({...});
 
   const usage = response.usage;
   await db.llmUsage.create({
     userId,
-    model: 'gpt-4',
+    model: MODEL,
     inputTokens: usage.prompt_tokens,
     outputTokens: usage.completion_tokens,
     cost: calculateCost(usage),

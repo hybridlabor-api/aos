@@ -7,7 +7,7 @@ description: >-
 category: bdb-core
 kind: playbook
 trigger: ["add a to-do", "put this on my list", "quick task"]
-inputs: [sentence, lists_folder?]
+inputs: [sentence, "lists_folder?"]
 requires:
   skills: [memb-skill]
   agents: []

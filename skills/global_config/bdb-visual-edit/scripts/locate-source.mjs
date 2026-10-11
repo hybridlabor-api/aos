@@ -76,7 +76,7 @@ export function locateSource(input, { root, maxFiles = MAX_FILES } = {}) {
   const exactFile = input && input.srcLoc ? resolveSrcLoc(input.srcLoc, realRoot) : null;
   if (exactFile) {
     const line = Number(input.srcLoc.match(/:(\d+)/)[1]);
-    return { ...none, confidence: 'exact', candidates: [{ file: path.relative(realRoot, exactFile), line, score: 0, why: 'data-aos-src' }] };
+    return { ...none, confidence: 'exact', candidates: [{ file: path.relative(realRoot, exactFile).split(path.sep).join('/'), line, score: 0, why: 'data-aos-src' }] };
   }
   const anchor = (input && input.anchor) || {};
   const tag = typeof anchor.tag === 'string' ? sanitizeElement({ tag: anchor.tag })?.tag : null;

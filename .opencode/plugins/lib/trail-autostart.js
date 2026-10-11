@@ -21,7 +21,9 @@ export function trailEnsure({ spawnSync = realSpawnSync, env = process.env, cwd,
     if (cwd) args.push('--cwd', String(cwd));
     if (sessionId) args.push('--session', String(sessionId));
     args.push('--json');
-    const res = spawnSync(env.AOS_TRAIL_BIN || 'aos-trail', args, {
+    const bin = env.AOS_TRAIL_BIN || 'aos-trail';
+    const viaNode = /\.(?:mjs|cjs|js)$/i.test(bin); // a #! script is not spawnable on Windows
+    const res = spawnSync(viaNode ? process.execPath : bin, viaNode ? [bin, ...args] : args, {
       encoding: 'utf8',
       timeout: TRAIL_TIMEOUT_MS,
       killSignal: 'SIGKILL',

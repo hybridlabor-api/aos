@@ -4,6 +4,7 @@
  * @property {string} prompt
  * @property {string} model
  * @property {string} cwd
+ * @property {boolean} [mcp] true keeps the worker's configured MCP servers; default false starts it without them (OpenCode only so far).
  * @property {string} [variant] Optional model variant (reasoning effort) passed to `opencode run --variant`.
  */
 

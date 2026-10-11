@@ -129,8 +129,8 @@ describe('approve over HTTP', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pc-trail-http-'));
     stateDir = path.join(tmp, 'state');
     argvLog = path.join(tmp, 'argv.log');
-    const bin = path.join(tmp, 'fake-trail.sh');
-    fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> "${argvLog}"\n`, { mode: 0o755 });
+    const bin = path.join(tmp, 'fake-trail.cjs');
+    fs.writeFileSync(bin, `require('fs').appendFileSync(${JSON.stringify(argvLog)}, process.argv.slice(2).join(' ') + '\\n');\n`);
     process.env.AOS_PLAN_CANVAS_TRAIL_BIN = bin;
     process.env.AOS_PLAN_CANVAS_STATE_DIR = stateDir;
     file = path.join(tmp, 'plan.md');

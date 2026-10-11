@@ -33,9 +33,11 @@ const {
 } = require('./lib/plan-canvas/sessions');
 const {
   DEFAULT_HOST,
+  codeStampOf,
   createPlanCanvasServer,
   resolveIdleTimeoutMs,
-  resolvePort
+  resolvePort,
+  watchCodeStamp
 } = require('./lib/plan-canvas/server');
 
 const VERSION = '1.1.0';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
@@ -592,6 +594,9 @@ async function cmdServer(args, { stateDir, port }) {
   }
   process.on('SIGINT', () => shutdown(0));
   process.on('SIGTERM', () => shutdown(0));
+  // After `aos update` this process would keep old routes next to new assets: restart on the new code.
+  const codeDirs = ['plan-canvas', 'plan-builder'].map(d => path.join(__dirname, 'lib', d));
+  watchCodeStamp({ entryFile: __filename, dirs: codeDirs, stamp: codeStampOf(__filename, codeDirs), server: canvas.server, log: line => process.stderr.write(`${line}\n`) });
   process.stderr.write(`[plan-canvas] serving on http://${bound.host}:${bound.port}\n`);
   return new Promise(() => {}); // run until a signal or idle shutdown
 }
@@ -649,9 +654,11 @@ async function main(argv = process.argv.slice(2)) {
   }
   const command = args[0] && !args[0].startsWith('--') ? args.shift() : null;
   const stateDir = resolveStateDir();
-  // A running server may sit on a non-default port; trust its recorded info.
+  // A running server may sit on a non-default port; trust its recorded info only while it answers
+  // (a server killed hard, as SIGTERM is on Windows, never removes server.json).
   const recorded = readServerInfo(stateDir);
-  const context = { stateDir, port: (recorded && recorded.port) || resolvePort() };
+  const recordedLive = recorded && recorded.port && (await healthCheck(recorded.port));
+  const context = { stateDir, port: recordedLive ? recorded.port : resolvePort() };
   try {
     if (command === null) output(await cmdStatus(context));
     else if (command === 'modes') output(cmdModes());

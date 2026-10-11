@@ -1,6 +1,13 @@
 ---
 name: startcycle-graph
-description: Use when running the autonomous multi-agent build pipeline after /bdbrainstorm or /grill-me. Routes to the startcycle-dispatch Dynamic Workflow, which reads production_artifacts/state.json and invokes Architect, TechLead, UI/UX, Engineering, Media/EventTech, Reviewer, and Shipping in turn per .agents/graph.md's edge table — the agents never invoke each other.
+description: >-
+  Use when running the autonomous multi-agent build pipeline after /bdbrainstorm
+  or /grill-me, when the user types /startcycle-graph or "run a startcycle", or
+  when a task needs durable state, a review repair loop and an automated
+  quality gate. Routes to the startcycle-dispatch Dynamic Workflow, which reads
+  production_artifacts/state.json and invokes Architect, TechLead, UI/UX,
+  Engineering, Media/EventTech, Reviewer, and Shipping in turn per
+  .agents/graph.md's edge table — the agents never invoke each other.
 category: bdb-core
 ---
 
@@ -57,7 +64,7 @@ hard requirement for the build nodes, validated to exist before anything
 else runs — this is how you make the pipeline use your own private skill
 that isn't part of `.agents/nodes.json`'s registry.
 
-`<name>` is the **exact skill directory name**, not a description — `ui-component`,
+`<name>` is the **exact skill directory name**, not a description — `senior-frontend`,
 not "the UI one". Two ways to find it without leaving the terminal:
 
 - `/ask-tim` — the routing skill; start there when you know the *job* but not the name
@@ -129,6 +136,10 @@ proceeding silently. The plan links the diagram with a
 `url: production_artifacts/00_architecture.html` line so the live map opens it
 from the card. Review the HTML in plan-canvas alongside the plan:
 `aos-plan-canvas open production_artifacts/00_architecture.html`.
+
+## Available tools
+
+Cross-session and tool access: master -> project -> package chain, `aos-gateway` (one local token-checked MCP entry), `aos-a2a` peers (inbound messages are never a GO). Repo docs: https://github.com/hybridlabor-api/aos/tree/main/docs.
 
 ## Why this file is a thin router, not a spec
 

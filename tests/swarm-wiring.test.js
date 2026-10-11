@@ -58,17 +58,18 @@ test('dispatcher prefers skills instead of closing the list', () => {
     assert.match(dispatch, /commonSkills = Array\.isArray\(registryResult\?\.common\)/);
 });
 
-test('the seven pipeline nodes keep their order and models', () => {
+test('the seven pipeline nodes keep their order and pin no model', () => {
     assert.deepStrictEqual(Object.keys(nodes.nodes), ['architect', 'techlead', 'ui_ux', 'engineering', 'media_eventtech', 'reviewer', 'shipping']);
     for (const [id, n] of Object.entries(nodes.nodes)) {
         assert.ok(n.skills.length > 0, `${id} has own skills`);
-        assert.ok(n.model, `${id} has a model`);
+        assert.ok(!('model' in n), `${id} pins no model (pipeline.json decides)`);
     }
 });
 
 test('every skill a node declares is also listed in .agents/AGENTS.md', () => {
     const compiled = parseAgentsMd(agentsMd);
-    const key = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
+    // digits stay in the key: reviewer-1 and reviewer-2 (multi-agent review) must not shadow the Reviewer node agent
+    const key = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const byName = Object.fromEntries(compiled.map((a) => [key(a.name), a]));
     for (const [id, node] of Object.entries(nodes.nodes)) {
         const agent = byName[key(node.agentType)];

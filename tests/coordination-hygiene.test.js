@@ -20,7 +20,7 @@ const putToken = (name, issued) => {
     fs.writeFileSync(path.join(goDir(), `${name}.token`), typeof issued === 'string' && issued.startsWith('{') ? issued : JSON.stringify({ target: name, issued_at: issued }));
 };
 const run = (file, args, input, env = {}) => spawnSync(process.execPath, [file, ...args], {
-    input, env: { ...process.env, HOME: home, XDG_DATA_HOME: '', ...env }, encoding: 'utf8',
+    input, env: { ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', ...env }, encoding: 'utf8',
 });
 
 test('go-token deletes expired and unreadable tokens when it writes a new one, keeps fresh ones', () => {

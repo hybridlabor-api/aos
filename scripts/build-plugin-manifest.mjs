@@ -68,7 +68,7 @@ const agentNames = existsSync(agentSrc)
   ? readdirSync(agentSrc).filter((name) => name.endsWith('.md')).sort()
   : [];
 
-// The personas are the same 13 files the repo loads via .claude/agents/. They are
+// The personas are the same files the repo loads via .claude/agents/. They are
 // copied rather than symlinked because validate --strict (the release gate)
 // refuses a symlinked component directory, and a symlink is fragile once the
 // plugin is cloned or downloaded on a platform that does not create them.
@@ -151,9 +151,9 @@ const manifest = {
   name: 'bdb-aos',
   version: pkg.version,
   description:
-    'Full BDB Agent OS suite: 200+ curated skills, 13 subagents and the startcycle pipelines for Claude Code. ' +
+    'Full BDB Agent OS suite: 200+ curated skills, 29 subagents and the startcycle pipelines for Claude Code. ' +
     'Gate hooks and MCP servers are installed by the AOS installer.',
-  author: { name: 'Tim Rennings / Hybridlabor Global LLC', email: 'hybridlabor@gmail.com' },
+  author: { name: 'Tim Rennings / Hybridlabor Global LLC' },
   homepage: repoUrl,
   repository: repoUrl,
   license: 'Apache-2.0',
@@ -265,7 +265,7 @@ const links = {
 };
 const badLinks = Object.entries(links).filter(([name, to]) => {
   const path = join(SUBDIR, name);
-  return !existsSync(path) || !lstatSync(path).isSymbolicLink() || readlinkSync(path) !== to;
+  return !existsSync(path) || !lstatSync(path).isSymbolicLink() || readlinkSync(path).replaceAll('\\', '/') !== to;
 });
 
 // `claude plugin tag` refuses to cut a release unless plugin.json and the

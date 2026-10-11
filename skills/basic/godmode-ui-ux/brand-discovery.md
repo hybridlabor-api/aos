@@ -1,6 +1,8 @@
 # Brand Discovery Framework & DESIGN.md Template
 
-The Brand Discovery phase is **Step 0 (Mandatory)** before initiating any frontend design or coding work in the BDB ecosystem.
+The Brand Discovery phase is **Step 0 (Mandatory)** before initiating any frontend design or coding work in any project.
+
+**First step:** Look for the project's own design source: design-tokens.json, tokens.css, the tailwind theme, brand.md or DESIGN.md. Use it if found. If none exists, ask the user; otherwise start from the neutral defaults in design-tokens.json.
 
 Never assume brand colors, typography, or visual direction. Always ask the customer or inspect the workspace for existing design system files.
 

@@ -8,9 +8,9 @@ description: >-
 category: design-ui-ux
 kind: playbook
 trigger: ["landing page", "launch page for this product", "ship a one-pager"]
-inputs: [brief, brand_tokens, deploy_target, launch_video?]
+inputs: [brief, brand_tokens, deploy_target, "launch_video?"]
 requires:
-  skills: [copywriting, landing-page-generator, godmode-ui-ux, ui-review, seo-audit, bdb-deploy, vercel-deployment, pb-launch-video]
+  skills: [copywriting, landing-page-generator, godmode-ui-ux, ui-ux-pro-max, seo-audit, bdb-deploy, vercel-deployment, pb-launch-video]
   agents: []
   mcps: [chrome-devtools]
   store: []
@@ -34,7 +34,7 @@ What you get: a live landing page with checked copy, SEO basics and, if you have
 1. Ask — brief, brand_tokens, deploy_target, launch_video → run log — all answered; token path exists; `chrome-devtools` is optional, if its tools are not loaded the screenshot in step 3 is skipped and logged
 2. copywriting — brief → confirmed brief, then page copy in the run folder — brief confirmed by the human, no claim without a source in the brief (no fabricated numbers, logos or quotes) — stops for approval
 3. landing-page-generator + godmode-ui-ux — approved copy, brand_tokens, launch_video → page source in the project — page opens locally; `puppeteer_navigate` and `puppeteer_screenshot` of the local page attached to the run log when chrome-devtools is available
-4. ui-review + seo-audit — page → findings table in the run log — no open blocking finding; fixes applied and rechecked before step 5
+4. ui-ux-pro-max (ui-review instead if the optional StyleSeed package is installed) + seo-audit — page → findings table in the run log — no open blocking finding; fixes applied and rechecked before step 5
 5. [GO] deploy — via bdb-deploy (rsync) or vercel-deployment (`vercel deploy`), target host or project and the file list named in the WAITING FOR GO line. The run stops here until the human types GO. Neither command is hook-guarded, so this GO is the only guard. One GO = one deploy.
 6. Live check — `curl -sI <url>` and seo-audit on the live URL → run log — status 200 and zero blocking items; otherwise stop and report, no redeploy without a fresh GO at step 5
 

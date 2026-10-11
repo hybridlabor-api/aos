@@ -70,8 +70,9 @@ jobs:
             const { Anthropic } = require('@anthropic-ai/sdk');
             const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+            // Keep the model ID in configuration; look it up in the provider docs at the time of use
             const response = await client.messages.create({
-              model: "claude-3-sonnet-20240229",
+              model: process.env.ANTHROPIC_MODEL ?? '<model-id>',
               max_tokens: 4096,
               messages: [{
                 role: "user",

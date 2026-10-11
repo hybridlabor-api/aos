@@ -57,4 +57,5 @@ Four mechanically-checkable gates, with grep commands: [antislop-gate.md](./refe
 
 * **In `/bdbrainstorm`:** runs the Interaction Thesis Interview during Pillar 5 before architectural sign-off. See [bdbrainstorm-hook.md](./integrations/bdbrainstorm-hook.md).
 * **In `/startcycle`:** feeds motion tokens, engine choice, and a11y fallback into `01_frontend_spec.md`; Reviewer applies `antislop-gate.md`'s four checks. See [startcycle-hook.md](./integrations/startcycle-hook.md).
+* **Component routing:** The project's own design system and sources file first (its components, tokens, `DESIGN.md`); the BDB library (`@bdb` registry; version-pinned unpkg entry `https://unpkg.com/@hybridlabor-api/ui-motion-library@0.1.0/publish/registry/{name}.json` in `components.json`) only when the project opts in; then the verified registries listed in the UI library's `docs/sources.md` (link-only entries are documentation links, never code sources).
 * **Agent wiring:** listed in `godmode-ui-ux`'s `skills:` — verify this is still true after any agent-roster change; an unwired skill is a stale claim, not a feature.

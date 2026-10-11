@@ -44,8 +44,7 @@
           "severity": { "type": "string", "enum": ["blocking", "advisory"] },
           "node": {
             "type": "string",
-            "enum": ["ui_ux", "engineering", "media_eventtech"],
-            "description": "Which build node owns fixing this finding."
+            "description": "Which build node owns fixing this finding. Default pipeline values are ui_ux, engineering, media_eventtech; a domain profile (--profile) may use its own build node ids."
           },
           "status": { "type": "string", "enum": ["open", "fixed", "wont_fix"] },
           "summary": { "type": "string" }
@@ -55,7 +54,7 @@
     },
     "gate": {
       "type": "object",
-      "description": "Shipping's quality-gate results. Any 'fail' here, with iteration < max_iterations, is what the Stop hook (.claude/hooks/graph-gate.mjs) blocks on.",
+      "description": "Shipping's quality-gate results. Default keys are lint/typecheck/tests/a11y/seo/security; a domain profile (--profile) replaces them with its own gate keys (e.g. erc/drc/constraints). Any 'fail' here, with iteration < max_iterations, is what the Stop hook (.claude/hooks/graph-gate.mjs) blocks on -- that predicate matches any failing value regardless of key name, so profile keys need no hook change.",
       "properties": {
         "lint": { "type": "string", "enum": ["pass", "fail", "skip"] },
         "typecheck": { "type": "string", "enum": ["pass", "fail", "skip"] },
@@ -64,7 +63,7 @@
         "seo": { "type": "string", "enum": ["pass", "fail", "skip"] },
         "security": { "type": "string", "enum": ["pass", "fail", "skip"] }
       },
-      "additionalProperties": false
+      "additionalProperties": { "type": "string", "enum": ["pass", "fail", "skip"] }
     },
     "iteration": {
       "type": "integer",
@@ -129,7 +128,7 @@
   "additionalProperties": false,
   "$defs": {
     "stateFragment": {
-      "description": "Shape of one production_artifacts/state.d/<nodeId>.json file. During a parallel pipeline() fan-out (the build nodes, or a gate-fix repair round), each participating node writes ONLY this fragment for itself -- never production_artifacts/state.json directly, since two concurrently-running nodes writing the same file would race and the last writer would silently drop the other's update. Immediately after the pipeline() call returns, one dedicated haiku merge agent reads every production_artifacts/state.d/*.json fragment and folds it into production_artifacts/state.json (per the top-level schema above) before the workflow run continues or returns -- this is what .claude/hooks/graph-gate.mjs ends up reading, so the merge must happen inside the run, never deferred. Sequential nodes (architect, techlead, reviewer, shipping) are not part of this race and keep writing state.json directly.",
+      "description": "Shape of one production_artifacts/state.d/<nodeId>.json file. During a parallel pipeline() fan-out (the build nodes, or a gate-fix repair round), each participating node writes ONLY this fragment for itself -- never production_artifacts/state.json directly, since two concurrently-running nodes writing the same file would race and the last writer would silently drop the other's update. Immediately after the pipeline() call returns, one dedicated merge agent (role merge_state; its model comes only from pipeline.json, haiku in the shipped default) reads every production_artifacts/state.d/*.json fragment and folds it into production_artifacts/state.json (per the top-level schema above) before the workflow run continues or returns -- this is what .claude/hooks/graph-gate.mjs ends up reading, so the merge must happen inside the run, never deferred. Sequential nodes (architect, techlead, reviewer, shipping) are not part of this race and keep writing state.json directly.",
       "type": "object",
       "required": ["node"],
       "properties": {

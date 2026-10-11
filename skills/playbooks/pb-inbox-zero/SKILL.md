@@ -7,7 +7,7 @@ description: >-
 category: bdb-core
 kind: playbook
 trigger: ["inbox zero", "sort my mail", "email backlog"]
-inputs: [mail_export_folder, connector?]
+inputs: [mail_export_folder, "connector?"]
 requires:
   skills: [memb-skill]
   agents: []

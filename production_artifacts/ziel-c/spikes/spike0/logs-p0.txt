@@ -1,0 +1,33 @@
+PASS: both sidecars registered (pids 67965 67966)
+PASS: claude-a registry mode 0600
+PASS: claude-a card served, name matches
+PASS: claude-a card has bearer scheme
+PASS: claude-a card has echo skill
+PASS: opencode-b registry mode 0600
+PASS: opencode-b card served, name matches
+PASS: opencode-b card has bearer scheme
+PASS: opencode-b card has echo skill
+{
+  "taskId": "25a1221e-d507-442e-a437-a2284f744279",
+  "contextId": "4e5e0b24-1449-4a54-96e8-4e4d295a5675",
+  "state": "TASK_STATE_COMPLETED",
+  "artifacts": [
+    {
+      "name": "echo",
+      "text": "[a2a echo from opencode-b/opencode] hello from claude-a"
+    }
+  ],
+  "statusMessage": "[a2a echo from opencode-b/opencode] hello from claude-a"
+}
+PASS: task state completed
+PASS: artifact present with echoed text
+PASS: wrong token -> 401
+PASS: no token -> 401
+PASS: raw SendMessage with right token -> result
+PASS: non-loopback bind refused (rc 2)
+PASS: opencode-b registry file removed after SIGTERM
+{"error":"no registry entry for opencode-b"}
+PASS: send to dead peer fails cleanly (rc 1)
+PASS: claude-a stopped, registry removed
+PASS: no sidecar processes left
+failures: 0

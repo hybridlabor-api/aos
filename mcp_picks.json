@@ -1,0 +1,119 @@
+{
+  "groups": [
+    {
+      "group": "blender",
+      "candidates": [
+        {
+          "name": "bdb_blender_official_mcp",
+          "requires": {
+            "app": "blender",
+            "minVersion": "5.1"
+          },
+          "entry": {
+            "command": "uvx",
+            "args": [
+              "--from",
+              "git+https://projects.blender.org/lab/blender_mcp.git@ff54e4d8f6b09502f2f466189cca0e52b4a91643#subdirectory=mcp",
+              "blender-mcp"
+            ]
+          }
+        },
+        {
+          "name": "bdb_blender_mcp"
+        }
+      ]
+    },
+    {
+      "group": "resolume",
+      "candidates": [
+        {
+          "name": "bdb_resolume_official_mcp",
+          "requires": {
+            "app": "resolume"
+          },
+          "entry": {
+            "command": "__RESOLUME_MCP__",
+            "args": []
+          }
+        },
+        {
+          "name": "bdb_resolume_mcp"
+        }
+      ]
+    },
+    {
+      "group": "after_effects",
+      "candidates": [
+        {
+          "name": "bdb_after_effects_mcp_legacy",
+          "requires": {
+            "env": {
+              "AOS_AE_MCP": "legacy"
+            }
+          },
+          "entry": {
+            "command": "node",
+            "args": [
+              "__MCPS_DIR__/after-effects-mcp/build/index.js"
+            ]
+          }
+        },
+        {
+          "name": "bdb_after_effects_mcp"
+        }
+      ]
+    },
+    {
+      "group": "firecrawl",
+      "candidates": [
+        {
+          "name": "firecrawl_mcp",
+          "requires": {
+            "env": {
+              "AOS_FIRECRAWL_MCP": "on"
+            }
+          },
+          "entry": {
+            "command": "npx",
+            "args": [
+              "-y",
+              "firecrawl-mcp@3.28.2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "group": "tauri_pilot",
+      "candidates": [
+        {
+          "name": "tauri-pilot",
+          "requires": {
+            "app": "rustauri"
+          },
+          "entry": {
+            "command": "tauri-pilot",
+            "args": [
+              "mcp"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "group": "codebase_memory",
+      "candidates": [
+        {
+          "name": "codebase_memory_mcp",
+          "requires": {
+            "app": "codebase-memory"
+          },
+          "entry": {
+            "command": "codebase-memory-mcp",
+            "args": []
+          }
+        }
+      ]
+    }
+  ]
+}

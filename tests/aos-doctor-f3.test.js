@@ -37,9 +37,24 @@ test('AOS copies in both Codex roots warn, never fail', () => {
     assert.ok(d && !d.ok && d.warningOnly, JSON.stringify(d));
 });
 
+test('Codex duplicate skills names the doubled skills and splits AOS-shipped from foreign', () => {
+    const { by } = run((h) => {
+        for (const r of ['.agents', '.codex']) {
+            write(path.join(h, r, 'skills', 'startcycle', 'SKILL.md'), '#');
+            write(path.join(h, r, 'skills', 'code-first-hardware-design', 'SKILL.md'), '#');
+        }
+    });
+    const d = by('Codex duplicate skills');
+    assert.ok(d && d.detail.includes('startcycle') && d.detail.includes('code-first-hardware-design'), JSON.stringify(d));
+    assert.match(d.fix, /Not installed by AOS \(code-first-hardware-design\)/);
+    assert.match(d.fix, /npx @hybridlabor-api\/aos@latest/);
+});
+
 test('a real ao in ~/.local/bin is executed (absolute path, no ~ expansion) and a missing AO is only a warning', () => {
-    const withAo = run((h) => write(path.join(h, '.local', 'bin', 'ao'), '#!/bin/sh\necho "ao 9.9.9"\n', 0o755));
-    assert.match(withAo.by('AO Agent Orchestrator').detail, /9\.9\.9/);
+    if (process.platform !== 'win32') { // a #!/bin/sh stub cannot be executed by execFileSync on Windows
+        const withAo = run((h) => write(path.join(h, '.local', 'bin', 'ao'), '#!/bin/sh\necho "ao 9.9.9"\n', 0o755));
+        assert.match(withAo.by('AO Agent Orchestrator').detail, /9\.9\.9/);
+    }
     const noAo = run(() => {});
     const ao = noAo.by('AO Agent Orchestrator');
     assert.ok(!ao.ok && ao.warningOnly);
@@ -51,3 +66,9 @@ test('CLAUDE_CONFIG_DIR is honoured for the Claude skills check', () => {
     const plain = run((h) => write(path.join(h, 'cfg', 'skills', 'startcycle', 'SKILL.md'), '#'));
     assert.ok(!plain.by('Claude Code Skills').ok);
 });
+
+test('A7: Cursor is dropped from doctor checkHarnesses matrix', () => {
+    const { by } = run(() => {});
+    assert.equal(by('Cursor Skills'), undefined);
+});
+

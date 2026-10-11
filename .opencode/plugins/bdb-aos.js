@@ -16,8 +16,17 @@
  */
 
 import { existsSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-
+import { homedir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+// A2A libs: checkout layout (../../lib), else ~/.agents/lib. Missing libs make A2A a no-op, never a load failure.
+const a2aLib = async (f) => {
+  const local = new URL(`../../lib/${f}`, import.meta.url);
+  try { return await import((existsSync(local) ? local : pathToFileURL(path.join(homedir(), '.agents', 'lib', f))).href); } catch { return {}; }
+};
+const { deliverA2a = async () => {} } = await a2aLib('a2a-oc.mjs');
+const { ensureSidecar = () => ({ skipped: 'lib' }), sessionName = () => null } = await a2aLib('a2a-session.mjs');
 // Decision logic lives in the shared hooks: installed copy next to this file
 // (plugins/aos-hooks), else the repo's .claude/hooks. existsSync, not try/catch,
 // so a broken installed hook fails loudly instead of silently falling back.
@@ -25,8 +34,13 @@ const HOOKS = existsSync(new URL('./aos-hooks/go-gate.mjs', import.meta.url)) ? 
 const hook = (f) => import(new URL(HOOKS + f, import.meta.url).href);
 // `opencode run "..."` is scriptable by an agent, so it never sets gogate modes or grants
 const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
-const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason }, { buildMemoryBlock }, bus, { applyGogate }] =
-  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs'].map(hook));
+// Profile flag written by the installer (--no-hooks / minimal profile = contextHooks false). Fails open to true.
+// It switches off ONLY the context behaviours (memB inject, rules inject, trail telemetry/autostart); gates and A2A stay on.
+let contextHooks = true;
+try { if (JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8'))?.contextHooks === false) contextHooks = false; } catch {}
+const noContext = { buildMemoryBlock: async () => '', rulesText: () => '' };
+const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map((f) => (!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs') ? noContext : hook(f))));
 const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
 // ---------------------------------------------------------------------------
@@ -140,6 +154,17 @@ const isHumanText = isHumanPart;
 const isNonHuman = (p) => !!p && !!(p.synthetic || p.ignored || (p.metadata && typeof p.metadata === 'object' && Object.keys(p.metadata).some((k) => /loop|aos_/i.test(k))));
 const ocKey = (id) => sessionKey(`oc-${id}`);
 
+// OpenCode >= 1.18 validates a part before save: id must look like its own `prt_` ids and messageID like `msg_`,
+// otherwise every prompt dies (SchemaError). Same shape as OpenCode's ascending ids: 12 hex time digits + 14 base62.
+let partSeq = 0;
+const B62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const partId = () => `prt_${(Date.now() * 0x1000 + (partSeq++ % 0x1000)).toString(16).padStart(12, '0').slice(-12)}${Array.from({ length: 14 }, () => B62[Math.floor(Math.random() * 62)]).join('')}`;
+const injectText = (msgInput, msgOutput, text) => {
+  const messageID = msgInput.messageID || msgOutput.message?.id || (msgOutput.parts || []).find((p) => p && p.messageID)?.messageID;
+  if (!messageID) return; // nothing valid to attach to: skip the injection rather than break the prompt
+  msgOutput.parts.unshift({ id: partId(), sessionID: msgInput.sessionID, messageID, type: 'text', text, synthetic: true });
+};
+
 // Root of a session tree (grants live on the root, subagents may use them). null when unknown.
 async function rootSessionId(client, id, parentID) {
   for (let i = 0; i < 10 && id; i++) {
@@ -225,7 +250,7 @@ export default async function bdbAosPlugin(input) {
   // ponytail: entries live for the process lifetime (a few bytes per session); add cleanup if sessions ever pile up.
   const sessions = new Map();
   const sess = (id) => {
-    if (!sessions.has(id)) sessions.set(id, { prompt: '', parentID: null, identitySent: false });
+    if (!sessions.has(id)) sessions.set(id, { prompt: '', parentID: null, identitySent: false, a2aName: null });
     return sessions.get(id);
   };
   // aos-bus: bus name -> sessionID of the root session that owns it.
@@ -249,6 +274,12 @@ export default async function bdbAosPlugin(input) {
       }
       if (parentID) return;
       const name = bus.registerSession({ name: process.env.AOS_SESSION_NAME || id, sessionID: id, cwd: directory });
+      // L3: the A2A sidecar and deliverA2a must use the SAME name (sessionName of lib/a2a-session.mjs),
+      // not the aos-bus name — otherwise messages written for the sidecar name never reach OpenCode.
+      try {
+        s.a2aName = sessionName({ harness: 'opencode', sessionId: id, env: process.env });
+        ensureSidecar({ harness: 'opencode', sessionId: id, parentPid: process.pid, env: process.env });
+      } catch {}
       busNames.set(name, id);
     } catch (e) {
       console.error(`[aos-bus] registration failed: ${e?.message}`);
@@ -312,12 +343,15 @@ export default async function bdbAosPlugin(input) {
             try { renameSync(claim, `${m.file}${e?.timedOut ? '.timeout' : '.failed'}`); } catch {}
           }
         }
+        sess(sessionID).prompt = '';
+        const a2aName = sess(sessionID).a2aName;
+        if (a2aName) { try { await deliverA2a(input.client, sessionID, a2aName, directory); } catch {} }
       }
     } catch {} finally { polling = false; }
   // ponytail: 1 s poll; fs.watch if latency matters. A wake turn is awaited, so it delays later messages until it ends.
   });
   const trail = (hook_event_name, session_id, extra = {}) =>
-    void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
+    contextHooks && void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
 
   return {
     // W-6 loop-keeper. Fires whenever a session goes idle. Reads the graph
@@ -385,23 +419,22 @@ export default async function bdbAosPlugin(input) {
       // plain `gogate ...` message from the human in a root session: record it; the gate verifies it against opencode.db at use.
       try {
         const reply = s.parentID || OPENCODE_RUN ? null : applyGogate(fullText, { key: ocKey(msgInput.sessionID), source: `opencode:${msgInput.sessionID}`, uuid: msgInput.messageID || msgOutput.message?.id || null, opencode: true });
-        if (reply) msgOutput.parts.unshift({ id: `gogate-${Date.now()}`, sessionID: msgInput.sessionID, messageID: msgInput.messageID || '', type: 'text', text: reply, synthetic: true });
+        if (reply) injectText(msgInput, msgOutput, reply);
       } catch {}
 
       try {
+        if (!contextHooks) throw 0; // profile without context hooks: no memB injection
         const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
         s.identitySent = true;
         const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
-        if (membContext) {
-          msgOutput.parts.unshift({
-            id: `memb-${Date.now()}`,
-            sessionID: msgInput.sessionID,
-            messageID: msgInput.messageID || '',
-            type: 'text',
-            text: membContext,
-            synthetic: true,
-          });
-        }
+        if (membContext) injectText(msgInput, msgOutput, membContext);
+      } catch {}
+
+      // Destructive-actions rules on every human message, so compaction cannot drop them.
+      try {
+        if (!contextHooks) throw 0; // profile without context hooks: no rules injection
+        const rules = rulesText();
+        if (rules) injectText(msgInput, msgOutput, rules);
       } catch {}
 
       // Recognize and wire the AOS pipeline group
@@ -418,26 +451,20 @@ export default async function bdbAosPlugin(input) {
           `Rule: Nodes never call each other. Dispatch each node turn in sequence, evaluate state.json, and enforce Reviewer & Shipping gates before completion.`
         ].join('\n');
 
-        msgOutput.parts.unshift({
-          id: `startcycle-${Date.now()}`,
-          sessionID: msgInput.sessionID,
-          messageID: msgInput.messageID || '',
-          type: 'text',
-          text: graphInstructions,
-          synthetic: true,
-        });
+        injectText(msgInput, msgOutput, graphInstructions);
       }
     },
 
     'tool.execute.before': async (toolInput, toolOutput) => {
       // Live-map telemetry first; must never affect the go-gate logic below.
       try {
+        if (!contextHooks) throw 0;
         const tool_name = mapTrailToolName(toolInput.tool);
         const tool_input = mapTrailToolInput(toolOutput?.args, directory);
         pendingArgs.set(toolInput.callID, tool_input);
         trail('PreToolUse', toolInput.sessionID, { tool_name, tool_input });
       } catch {}
-      await trailAutostart(toolInput, directory, input.client);
+      if (contextHooks) await trailAutostart(toolInput, directory, input.client);
       const toolName = (toolInput.tool || '').toLowerCase();
       // Intercept bash, terminal, or command execution tools
       if (toolName === 'bash' || toolName === 'terminal' || toolName === 'shell' || toolName === 'exec' || toolName === 'run_command') {
@@ -504,6 +531,9 @@ export default async function bdbAosPlugin(input) {
             }
           }
 
+          // Gate profile (shared with the Claude hook): hard blocks and the store check returned above.
+          if (!authorized && !cooling && !tooLong && typeof gate.profileAllows === 'function') authorized = gate.profileAllows(cmd);
+
           if (!authorized) {
             authorized = tokenGrantsGo(await ownSessionName(input.client, toolInput.sessionID)).ok;
           }
@@ -518,8 +548,8 @@ export default async function bdbAosPlugin(input) {
         if (reason) throw new Error(reason);
       } else if (['write', 'edit', 'multiedit', 'patch', 'apply_patch'].includes(toolName)) {
         const args = toolOutput?.args || {};
-        const paths = [args.filePath ?? ''];
-        for (const m of String(args.patchText ?? '').matchAll(/^\*\*\* (?:(?:Add|Update) File|Move to): (.+)$/gm)) paths.push(m[1].trim());
+        // One path extractor for all harnesses (every path key, apply_patch Add/Update/Delete/Move lines, no caps).
+        const paths = typeof targetsOf === 'function' ? targetsOf({ args }) : [args.filePath ?? '', ...[...String(args.patchText ?? '').matchAll(/^[ \t]*\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm)].map((m) => m[1].trim())];
         for (const f of paths) {
           const reason = envFileReason(f);
           if (reason) throw new Error(reason);
@@ -529,6 +559,7 @@ export default async function bdbAosPlugin(input) {
 
     'tool.execute.after': async (toolInput) => {
       try {
+        if (!contextHooks) throw 0;
         const tool_input = pendingArgs.get(toolInput.callID);
         pendingArgs.delete(toolInput.callID);
         trail('PostToolUse', toolInput.sessionID, { tool_name: mapTrailToolName(toolInput.tool), tool_input });

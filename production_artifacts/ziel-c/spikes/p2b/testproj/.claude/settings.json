@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"<scratchpad>/a2a/p2b/hook-drain.mjs\""
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(node <scratchpad>/a2a/p2b/reply.mjs:*)"
+    ]
+  }
+}

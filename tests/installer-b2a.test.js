@@ -23,7 +23,7 @@ test('openwiki: writes ~/.openwiki/.env with OPENWIKI_MODEL_ID, mode 600, no OPE
     assert.match(txt, /^OPENWIKI_MODEL_ID=gpt-5\.5$/m);
     assert.match(txt, /^OPENWIKI_PROVIDER=openai$/m);
     assert.ok(!/^OPENWIKI_MODEL=/m.test(txt));
-    assert.strictEqual(fs.statSync(f).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.strictEqual(fs.statSync(f).mode & 0o777, 0o600);
 });
 
 test('openwiki: existing user keys are never overwritten, secrets we do not have are never written', () => {

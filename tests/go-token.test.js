@@ -31,11 +31,11 @@ const writeToken = (session, data) => {
 
 const runToken = (prompt, transcript, env = {}) => spawnSync(process.execPath, [TOKEN], {
     input: JSON.stringify({ prompt, transcript_path: transcript }),
-    env: { ...process.env, HOME: home, XDG_DATA_HOME: '', ...env }, encoding: 'utf8',
+    env: { ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', ...env }, encoding: 'utf8',
 });
 const runGate = (transcript, env = {}) => spawnSync(process.execPath, [GATE], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push origin x' }, transcript_path: transcript }),
-    env: { ...process.env, HOME: home, XDG_DATA_HOME: '', ...env }, encoding: 'utf8',
+    env: { ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', ...env }, encoding: 'utf8',
 });
 
 describe('go-token.mjs (UserPromptSubmit)', () => {
@@ -68,10 +68,11 @@ describe('go-token.mjs (UserPromptSubmit)', () => {
 
 const hookUrl = (f) => pathToFileURL(path.join(REPO, '.claude', 'hooks', f)).href;
 const withHome = async (fn) => {
-    const saved = { HOME: process.env.HOME, X: process.env.XDG_DATA_HOME, A: process.env.AOS_ACP_CLIENT };
-    process.env.HOME = home; delete process.env.XDG_DATA_HOME; delete process.env.AOS_ACP_CLIENT;
+    const saved = { HOME: process.env.HOME, UP: process.env.USERPROFILE, X: process.env.XDG_DATA_HOME, A: process.env.AOS_ACP_CLIENT };
+    process.env.HOME = home; process.env.USERPROFILE = home; delete process.env.XDG_DATA_HOME; delete process.env.AOS_ACP_CLIENT;
     try { return await fn(); } finally {
         process.env.HOME = saved.HOME;
+        if (saved.UP === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = saved.UP;
         if (saved.X === undefined) delete process.env.XDG_DATA_HOME; else process.env.XDG_DATA_HOME = saved.X;
         if (saved.A === undefined) delete process.env.AOS_ACP_CLIENT; else process.env.AOS_ACP_CLIENT = saved.A;
     }

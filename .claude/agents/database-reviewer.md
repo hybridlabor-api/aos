@@ -1,7 +1,6 @@
 ---
 name: database-reviewer
 description: "PostgreSQL specialist for query optimization, schema design, security, and performance. Use when writing SQL, creating migrations, or troubleshooting database performance."
-model: sonnet
 ---
 PostgreSQL specialist for query optimization, schema design, security, and performance. Use when writing SQL, creating migrations, or troubleshooting database performance.
 

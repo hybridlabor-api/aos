@@ -27,7 +27,7 @@ const writeToken = (name, over = {}) => {
 const readLog = (name) => fs.readFileSync(path.join(home, '.aos', 'acp', `${name}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 
 const run = (args, env = {}) => spawnSync(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, ...args], {
-    env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', ...env }, encoding: 'utf8', timeout: 20000,
+    env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1', ...env }, encoding: 'utf8', timeout: 20000,
 });
 
 describe('aos-acp with a fake ACP agent', () => {
@@ -54,10 +54,10 @@ describe('aos-acp with a fake ACP agent', () => {
         assert.ok(!readLog('w2').some((e) => e.params?.configId));
     });
 
-    test('fable model ids are rejected before the agent starts', () => {
-        const r = run(['--name', 'w1', '--prompt', 'hi', '--model', 'claude-fable-5']);
-        assert.equal(r.status, 2);
-        assert.match(r.stderr, /opus, sonnet or haiku only/);
+    test('--model is a free string: a fable id reaches session/set_config_option', () => {
+        assert.equal(run(['--name', 'w1', '--prompt', 'hi', '--model', 'claude-fable-5-1']).status, 0);
+        const set = readLog('w1').find((e) => e.event === 'send' && e.params.configId);
+        assert.deepEqual(set.params, { sessionId: 'sess-1', configId: 'model', value: 'claude-fable-5-1' });
     });
 
     test('guarded command denied without token', () => {
@@ -105,7 +105,7 @@ describe('aos-acp with a fake ACP agent', () => {
     test('--go-wait parks the request until the token appears', async () => {
         const { spawn } = require('child_process');
         const child = spawn(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, '--name', 'w1', '--prompt', 'push', '--go-wait', '10'],
-            { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', FAKE_CMD: 'git push' } });
+            { env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1', FAKE_CMD: 'git push' } });
         let out = '';
         child.stdout.on('data', (d) => { out += d; });
         await new Promise((r) => setTimeout(r, 1500));
@@ -116,11 +116,8 @@ describe('aos-acp with a fake ACP agent', () => {
         assert.match(out, /decision=yes-once/);
     });
 
-    test('agy adapter is refused with a pointer to mcsc; unknown adapter errors', () => {
-        const r = spawnSync(process.execPath, [BIN, 'agy', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' });
-        assert.equal(r.status, 2);
-        assert.match(r.stderr, /mcsc/);
-        assert.equal(spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' }).status, 2);
+    test('unknown adapter errors (agy is covered in aos-acp-agy.test.js)', () => {
+        assert.equal(spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1' }, encoding: 'utf8' }).status, 2);
     });
 
     test('workers emit mcsc-protocol events to agenttrail (fake receiver)', async () => {
@@ -135,7 +132,7 @@ describe('aos-acp with a fake ACP agent', () => {
         await new Promise((r) => srv.listen(0, '127.0.0.1', r));
         try {
             const child = spawn(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, '--name', 'w1', '--prompt', 'hi'],
-                { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: String(srv.address().port), FAKE_TOOL: '1' } });
+                { env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: String(srv.address().port), FAKE_TOOL: '1' } });
             child.stdout.resume();
             assert.equal(await new Promise((r) => child.on('exit', r)), 0);
             const names = events.map((e) => e.hook_event_name + (e.tool_name ? `:${e.tool_name}` : ''));
@@ -154,5 +151,52 @@ describe('aos-acp with a fake ACP agent', () => {
         for (const c of ['git push', 'npm publish', 'npm version patch', 'gh pr merge 1', 'gh release create v1', 'git reset --hard', 'git clean -df', 'rm -rf x']) assert.ok(mod.isGuarded(c), c);
         for (const c of ['git status', 'npm test', 'rm x']) assert.ok(!mod.isGuarded(c), c);
         assert.equal(mod.commandOf({ rawInput: { command: ['git', 'push'] } }), 'git push');
+    });
+});
+
+// opencode workers start without MCP servers; --with-mcp keeps them (bin/aos-acp.mjs, mcsc no-mcp.js).
+describe('aos-acp opencode: MCP servers off by default', { skip: process.platform === 'win32' }, () => {
+    beforeEach(() => {
+        const dir = path.join(home, '.config', 'opencode');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'opencode.jsonc'), '{ broken');
+        fs.writeFileSync(path.join(dir, 'opencode.json'), JSON.stringify({ mcp: { aos: { type: 'local' }, deja: { type: 'local' } } }));
+        fs.mkdirSync(path.join(home, 'proj'), { recursive: true });
+        fs.writeFileSync(path.join(home, 'proj', 'opencode.jsonc'), '// project\n{"mcp": {"memb_mcp": {"type": "local"},},}\n');
+    });
+    const ocRun = (extra, env = {}) => {
+        const out = path.join(home, 'oc-env.txt');
+        const cmd = `printf '%s' "$OPENCODE_CONFIG_CONTENT" > ${JSON.stringify(out)}; exec ${FAKE}`;
+        const r = spawnSync(process.execPath, [BIN, 'opencode', '--cmd', cmd, '--cwd', path.join(home, 'proj'), '--name', 'w1', '--prompt', 'hi', ...extra], {
+            env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1', OPENCODE_CONFIG_CONTENT: '', ...env }, encoding: 'utf8', timeout: 20000,
+        });
+        assert.equal(r.status, 0, r.stderr);
+        return fs.readFileSync(out, 'utf8');
+    };
+
+    test('default: every configured server is disabled, start log says mcp false', () => {
+        assert.deepEqual(JSON.parse(ocRun([])).mcp, { aos: { enabled: false }, deja: { enabled: false }, memb_mcp: { enabled: false } });
+        assert.equal(readLog('w1').find((e) => e.event === 'start').mcp, false);
+    });
+
+    test('--with-mcp leaves the env alone', () => {
+        assert.equal(ocRun(['--with-mcp']), '');
+        assert.equal(readLog('w1').find((e) => e.event === 'start').mcp, true);
+    });
+
+    test('a caller-set OPENCODE_CONFIG_CONTENT is merged', () => {
+        const cfg = JSON.parse(ocRun([], { OPENCODE_CONFIG_CONTENT: '{"model":"m","mcp":{"deja":{"timeout":5}}}' }));
+        assert.equal(cfg.model, 'm');
+        assert.deepEqual(cfg.mcp.deja, { enabled: false, timeout: 5 });
+    });
+
+    test('codex keeps its env (no verified mechanism)', () => {
+        const out = path.join(home, 'cx-env.txt');
+        const cmd = `printf '%s' "$OPENCODE_CONFIG_CONTENT" > ${JSON.stringify(out)}; exec ${FAKE}`;
+        const r = spawnSync(process.execPath, [BIN, 'codex', '--cmd', cmd, '--cwd', path.join(home, 'proj'), '--name', 'w1', '--prompt', 'hi'], {
+            env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1', OPENCODE_CONFIG_CONTENT: '' }, encoding: 'utf8', timeout: 20000,
+        });
+        assert.equal(r.status, 0, r.stderr);
+        assert.equal(fs.readFileSync(out, 'utf8'), '');
     });
 });

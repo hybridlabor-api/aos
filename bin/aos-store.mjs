@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchSkillFiles, fileTargets, findItem, installPlan, loadSources, localAgents, localSkills, planSkillFiles, planSummary, targetsFor as sharedTargetsFor, validateFiles, writePlan } from '../lib/store-shared.mjs';
+import { MAX_BYTES, fetchSkillFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sources = loadSources(ROOT);
@@ -39,7 +39,28 @@ async function download(src, upstreamPath) {
   const url = `${src.raw_base}/${src.pinned_commit}/${upstreamPath}`;
   const response = await fetch(url, { headers: { 'user-agent': 'aos-store' } });
   if (!response.ok) throw new Error(`Download failed (${response.status}): ${url}`);
-  return Buffer.from(await response.arrayBuffer());
+  // Reject an oversized transfer BEFORE any body bytes are buffered.
+  const declared = Number(response.headers.get('content-length') || 0);
+  if (declared > MAX_BYTES) throw new Error(`Download too large (${declared} > ${MAX_BYTES} bytes): ${url}`);
+  if (response.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > MAX_BYTES) {
+        try { reader.cancel(); } catch { /* already closed */ }
+        throw new Error(`Item too large (> ${MAX_BYTES} bytes): ${url}`);
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks);
+  }
+  const content = Buffer.from(await response.arrayBuffer());
+  if (content.length > MAX_BYTES) throw new Error(`Item too large (> ${MAX_BYTES} bytes): ${url}`);
+  return content;
 }
 
 const targetsFor = (type, name) => sharedTargetsFor(type, name, { project });
@@ -84,23 +105,43 @@ async function install(name) {
       files = await fetchSkillFiles(pSrc.raw_base, pSrc.pinned_commit, dirname(p.item.upstream_path), p.item.files);
     } else {
       const content = await download(pSrc, p.item.upstream_path);
+      if (content.length > MAX_BYTES) throw new Error(`Item too large (> ${MAX_BYTES} bytes)`);
       const digest = createHash('sha256').update(content).digest('hex');
       if (digest !== p.item.sha256) throw new Error(`SHA-256 mismatch for ${p.name}: expected ${p.item.sha256}, got ${digest}`);
       files = null;
-      for (const target of targetsFor(p.type, p.name)) writes.push({ name: p.name, single: { target, content } });
+      for (const target of targetsFor(p.type, p.name)) writes.push({ type: 'file', target, data: content });
     }
-    if (files) for (const target of targetsFor(p.type, p.name)) writes.push({ name: p.name, target, plan: planSkillFiles(target, files) });
+    if (files) for (const target of targetsFor(p.type, p.name)) writes.push({ type: 'dir', target, plan: planSkillFiles(target, files) });
   }
   for (const note of notes) console.log(note);
+  const home = homedir();
+  const written = installWithBackup({ writes, home });
+  const kind = found.type === 'skills' ? 'skill' : 'agent';
+  appendInstallLog(home, {
+    ts: new Date().toISOString(),
+    name,
+    kind,
+    source: found.src.id,
+    commit: found.src.pinned_commit,
+    scope: project ? 'project' : 'global',
+    targets: written.targets,
+    disks: written.disks,
+    backups: written.backups,
+  });
   for (const w of writes) {
-    if (w.single) {
-      mkdirSync(dirname(w.single.target), { recursive: true });
-      writeFileSync(w.single.target, w.single.content);
-      console.log(`Installed ${w.name} -> ${w.single.target}`);
+    if (w.type === 'file') {
+      console.log(`Installed ${name} -> ${w.target}`);
     } else {
-      console.log(`Installed ${w.name} (${writePlan(w.plan).length} files) -> ${dirname(w.target)}`);
+      console.log(`Installed ${name} (${w.plan.length} files) -> ${dirname(w.target)}`);
     }
   }
+}
+
+function rollback(name) {
+  if (!name) throw new Error('Rollback requires a store item name.');
+  const res = rollbackInstall({ name, home: homedir(), project, cwd: process.cwd() });
+  console.log(`Rolled back ${res.name}: ${res.restored} target(s) restored from .aos-bak-* backups.`);
+  for (const p of res.parked) console.log(`Previous state parked (not deleted): ${p}`);
 }
 
 function usage() {
@@ -108,6 +149,7 @@ function usage() {
   console.log('  aos store list [--type=skills|agents]');
   console.log('  aos store search <query>');
   console.log('  aos store install <name> [--project] [--dry-run] [--net]');
+  console.log('  aos store rollback <name> [--project]');
   console.log('  aos store ui [--port=N] [--no-open]');
 }
 
@@ -132,6 +174,10 @@ async function main() {
   if (command === 'install') {
     if (!positional[1]) throw new Error('Install requires a store item name.');
     await install(positional[1]);
+    return;
+  }
+  if (command === 'rollback') {
+    rollback(positional[1]);
     return;
   }
   usage();

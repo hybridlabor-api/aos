@@ -37,7 +37,7 @@ describe('opencode-verify', () => {
     test('COMMANDS equals the shipped /bdb-aos-* files', () => {
         const shipped = fs.readdirSync(path.join(REPO, '.opencode', 'commands')).filter((f) => f.startsWith('bdb-aos-')).sort();
         assert.deepEqual([...COMMANDS].sort(), shipped);
-        assert.equal(COMMANDS.length, 14);
+        assert.equal(COMMANDS.length, 15);
     });
 
     test('nothing installed and no CLI: no results', () => {
@@ -81,6 +81,8 @@ describe('opencode-verify', () => {
         r = check(cli({ mcp: { memb_mcp: { enabled: true }, comfyui: { enabled: true } } }));
         assert.equal(r['OpenCode MCP set'].ok, false);
         assert.match(r['OpenCode MCP set'].detail, /comfyui/);
+        r = check(cli({ mcp: { aos: { enabled: true }, memb_mcp: { enabled: true } } }));
+        assert.equal(r['OpenCode MCP set'].ok, true, 'the gateway entry `aos` is part of the lean set');
         r = check('not json');
         assert.equal(r['OpenCode CLI view'].ok, false);
         assert.equal(r['OpenCode MCP set'], undefined);
@@ -98,7 +100,7 @@ describe('opencode-verify', () => {
         let r = byName(checkAcpAndGoCheck({ home, env: { PATH: binDir } }));
         assert.equal(r['aos-acp'].ok, false);
         assert.equal(r['go-check'].ok, false);
-        put('.local/bin/aos-acp');
+        put(`.local/bin/${process.platform === 'win32' ? 'aos-acp.cmd' : 'aos-acp'}`);
         r = byName(checkAcpAndGoCheck({ home, env: { PATH: binDir } }));
         assert.match(r['aos-acp'].detail, /not on PATH/);
         const withBin = { PATH: `${path.join(home, '.local', 'bin')}${path.delimiter}${binDir}` };
@@ -122,27 +124,33 @@ describe('opencode-verify', () => {
 });
 
 describe('installed layout', () => {
-    const nodeEnv = { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, AGENTTRAIL_PORT: '1' };
+    const WIN = process.platform === 'win32';
+    const sysDirs = WIN ? [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')] : ['/usr/bin', '/bin'];
+    const nodeEnv = { PATH: [path.dirname(process.execPath), ...sysDirs].join(path.delimiter), AGENTTRAIL_PORT: '1', ...(WIN ? { SystemRoot: process.env.SystemRoot } : {}) };
+    // The sh launcher cannot be spawned on Windows: run the installed .mjs with node there.
+    const launch = (name, args, opts) => (WIN
+        ? spawnSync(process.execPath, [path.join(home, '.agents', 'bin', `${name}.mjs`), ...args], opts)
+        : spawnSync(path.join(home, '.local', 'bin', name), args, opts));
 
     test('installGlobalHooks wires aos-acp, lib and trail.mjs; the installed aos-acp and aos-doctor start', () => {
         const proj = path.join(home, 'proj');
         fs.mkdirSync(proj);
         const script = `const i=require(${JSON.stringify(path.join(REPO, 'installer.js'))});` +
             `i.installGlobalHooks({targetHome:process.env.HOME,targetGemini:process.env.HOME+'/.gemini'});`;
-        const inst = spawnSync(process.execPath, ['-e', script], { cwd: proj, env: { ...nodeEnv, HOME: home }, encoding: 'utf8', timeout: 120000 });
+        const inst = spawnSync(process.execPath, ['-e', script], { cwd: proj, env: { ...nodeEnv, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 120000 });
         assert.equal(inst.status, 0, inst.stderr);
         for (const f of ['.local/bin/aos-acp', '.agents/bin/aos-acp.mjs', '.agents/lib/plugin-migration.js', '.aos/bin/trail.mjs', '.aos/bin/go-gate.mjs']) {
             assert.ok(fs.existsSync(path.join(home, f)), `missing ${f}`);
         }
-        const env = { ...nodeEnv, HOME: home };
-        const help = spawnSync(path.join(home, '.local/bin/aos-acp'), ['--help'], { env, encoding: 'utf8' });
+        const env = { ...nodeEnv, HOME: home, USERPROFILE: home };
+        const help = launch('aos-acp', ['--help'], { env, encoding: 'utf8' });
         assert.equal(help.status, 0, help.stderr);
         assert.match(help.stdout, /usage: aos-acp/);
         const fake = `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(__dirname, 'fixtures', 'fake-acp-agent.mjs'))}`;
-        const dry = spawnSync(path.join(home, '.local/bin/aos-acp'), ['codex', '--cmd', fake, '--name', 'w1', '--prompt', 'hi', '--cwd', proj], { env, encoding: 'utf8', timeout: 30000 });
+        const dry = launch('aos-acp', ['codex', '--cmd', fake, '--name', 'w1', '--prompt', 'hi', '--cwd', proj], { env, encoding: 'utf8', timeout: 30000 });
         assert.equal(dry.status, 0, dry.stderr);
         assert.equal(dry.stdout, 'hello world\n');
-        const doc = spawnSync(path.join(home, '.local/bin/aos-doctor'), ['--json'], { env: { ...env, PATH: `${path.join(home, '.local/bin')}:${env.PATH}` }, encoding: 'utf8', timeout: 60000 });
+        const doc = launch('aos-doctor', ['--json'], { env: { ...env, PATH: `${path.join(home, '.local/bin')}${path.delimiter}${env.PATH}` }, encoding: 'utf8', timeout: 60000 });
         const parsed = JSON.parse(doc.stdout);
         const names = parsed.results.map((r) => r.name);
         assert.ok(names.includes('aos-acp') && names.includes('go-check'), names.join());
@@ -151,7 +159,7 @@ describe('installed layout', () => {
         assert.equal(row('go-check').ok, true, row('go-check').detail);
     });
 
-    test('real opencode CLI sees one plugin and 14 commands (AOS_E2E_CLI=1)', { skip: process.env.AOS_E2E_CLI !== '1' }, () => {
+    test('real opencode CLI sees one plugin and 15 commands (AOS_E2E_CLI=1)', { skip: process.env.AOS_E2E_CLI !== '1' }, () => {
         const proj = path.join(home, 'proj');
         fs.mkdirSync(proj);
         const script = `const i=require(${JSON.stringify(path.join(REPO, 'installer.js'))});` +
@@ -161,7 +169,7 @@ describe('installed layout', () => {
         assert.equal(inst.status, 0, inst.stderr);
         const r = byName(checkOpencode({ home, env, cwd: proj }));
         for (const [n, v] of Object.entries(r)) assert.ok(v.ok, `${n}: ${v.detail}`);
-        assert.match(r['OpenCode CLI view'].detail, /14 \/bdb-aos-\* commands, 1 bdb-aos\.js entry/);
+        assert.match(r['OpenCode CLI view'].detail, /15 \/bdb-aos-\* commands, 1 bdb-aos\.js entry/);
     });
 });
 

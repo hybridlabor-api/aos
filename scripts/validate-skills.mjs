@@ -13,7 +13,7 @@ const SKILLS = join(REPO, 'skills');
 
 const CATEGORIES = new Set([
   'design-ui-ux', 'engineering-method', 'media-eventtech',
-  'bdb-core', 'saas-ops', 'library', 'engineering-hardware',
+  'bdb-core', 'saas-ops', 'library', 'engineering-hardware', 'business-ops',
 ]);
 const REQUIRED = ['name', 'description', 'category'];
 
@@ -132,6 +132,10 @@ export function scanFrontmatter(text) {
           msg: `plain value of \`${key}\` contains ":" — YAML reads the rest as a nested mapping, not text. ` +
                'Quote the value or fold it (>-); as written the frontmatter does not parse.',
         });
+      }
+      // go-yaml (agy) rejects a plain item ending in "?" inside a flow list: `inputs: [repo, pr_numbers?]`.
+      if (/^\[.*[^\s",[]\?\s*[\],]/.test(restT)) {
+        issues.push({ code: 'E-YAML05', key, msg: `flow list \`${key}\` has an unquoted item ending in "?" — agy's YAML reader rejects it. Quote the item ("x?").` });
       }
     }
 
@@ -296,6 +300,58 @@ export function checkInvocation(name, byKey) {
   return [{ level: 'error', code: 'E-DMI01', line: dmi.line, msg: `\`${name}\` is a pipeline/role skill and must stay model-invocable — remove \`disable-model-invocation: true\` (go-gate guards its side effects)` }];
 }
 
+// Tim's policy: model names change weekly, so a skill must never hard-code a
+// current model ID as a concrete value. Capability tiers, placeholders
+// (`<model-id>`) or environment variables keep the teaching value without
+// pinning the text to a model that ships next week.
+// Conservative by design: `llama.cpp` (no digit), `claude-code`, `gemma.md`
+// tool names without a digit, the words sonnet/opus/haiku alone in prose and
+// `o1-lookups`-style anchors do not. Case-insensitive, word-bounded, linear.
+const MODEL_NAME_RE = /\bgpt[-_ ]?\d(?!all\b)|\bclaude[-_ ]?\d|\bclaude-(?:opus|sonnet|haiku)|\bgemini-\d|\bllama[-_ ]?\d|\bo[134]-(?:mini|preview)|\btext-embedding-\d|\bmixtral\b|\bqwen\d|\bgemma[-_ ]?\d|(?<![-\w])--model\s+(?:opus|sonnet|haiku)\b/i;
+
+// A skill that documents a forbidden pattern may show a counter-example:
+// a fenced block whose opening fence line says "anti-example" is one.
+const ANTI_EXAMPLE = /anti[-_ ]?example/i;
+
+export function checkModelNames(text) {
+  const out = [];
+  const lines = text.split(/\r?\n/);
+  let fence = null;
+  for (let n = 0; n < lines.length; n++) {
+    const trimmed = lines[n].trim();
+    if (/^(```|~~~)/.test(trimmed)) {
+      fence = fence === null ? (ANTI_EXAMPLE.test(trimmed) ? 'anti' : 'plain') : null;
+      continue;
+    }
+    if (fence === 'anti') continue;
+    if (MODEL_NAME_RE.test(lines[n])) {
+      out.push({
+        level: 'warn', code: 'W-MODEL01', line: n + 1,
+        msg: 'fixed model name in a skill — use a capability tier, a placeholder (`<model-id>`) or an environment variable instead',
+      });
+    }
+  }
+  return out;
+}
+
+// W-BRAND01: shipped skills and agents must not hard-wire BDB brand tokens.
+// Product chrome (plan-canvas UI) and unrelated uses of the word (the Obsidian
+// notes app) are allowlisted by path.
+const BRAND_RE = /#9b30c4|\bObsidian\b|\bOrchid\b|BDB Master Branding/i;
+const BRAND_ALLOW = [/^skills\/global_config\/plan-canvas\//, /^skills\/global_config\/obsidian-markdown\//, /^skills\/global_config\/prompt-engineer\//];
+
+export function checkBrandTokens(text, rel) {
+  if (BRAND_ALLOW.some((re) => re.test(rel.split('\\').join('/')))) return [];
+  const out = [];
+  text.split(/\r?\n/).forEach((l, n) => {
+    if (BRAND_RE.test(l)) {
+      out.push({ level: 'warn', code: 'W-BRAND01', line: n + 1, file: rel,
+        msg: 'BDB brand token in a shipped skill/agent — assert or route by the project\'s own declared tokens instead' });
+    }
+  });
+  return out;
+}
+
 function validate() {
   const { skills, strays } = collect();
   const known = new Set(skills.map((f) => basename(dirname(f))));
@@ -372,12 +428,29 @@ function validate() {
     checkLeakedPaths(text, rel, findings);
     checkLocalRefs(text, dir, rel, findings);
     checkSkillRefs(text, rel, known, dirName, findings);
+    for (const f of checkModelNames(text)) findings.push({ ...f, file: rel });
+    findings.push(...checkBrandTokens(text, rel));
 
     // A skill ships more than its SKILL.md, and a leaked path in a reference
     // file is just as published as one in the entry point.
     for (const aux of walk(dir)) {
       if (aux === file || !/\.(md|py|mjs|cjs|js|ts|sh|json|ya?ml)$/.test(aux)) continue;
-      checkLeakedPaths(readFileSync(aux, 'utf8'), relative(REPO, aux), findings);
+      const auxText = readFileSync(aux, 'utf8');
+      checkLeakedPaths(auxText, relative(REPO, aux), findings);
+      findings.push(...checkBrandTokens(auxText, relative(REPO, aux)));
+      // The model-name lint covers docs-like aux files (references/, templates/)
+      // but never runtime scripts: .py/.js/.mjs code legitimately keeps concrete
+      // model IDs so existing installs keep working.
+      if (/\.(md|ya?ml)$/.test(aux)) {
+        for (const f of checkModelNames(auxText)) findings.push({ ...f, file: relative(REPO, aux) });
+      }
+    }
+  }
+
+  const agentsDir = join(REPO, 'agents');
+  if (existsSync(agentsDir)) {
+    for (const f of readdirSync(agentsDir).filter((n) => n.endsWith('.md'))) {
+      findings.push(...checkBrandTokens(readFileSync(join(agentsDir, f), 'utf8'), `agents/${f}`));
     }
   }
 
@@ -505,6 +578,10 @@ function selftest() {
   ].join('\n'));
   assert.equal(quotedColon.issues.length, 0, 'quoting the value resolves E-YAML04');
 
+  const flowQ = (v) => scanFrontmatter(['---', 'name: pb-x', 'description: d', `inputs: ${v}`, '---'].join('\n')).issues.some((i) => i.code === 'E-YAML05');
+  assert.ok(flowQ('[repo, pr_numbers?]'), 'an unquoted "x?" flow item must be reported');
+  assert.ok(!flowQ('[repo, "pr_numbers?"]'), 'the quoted item is fine');
+
   assert.equal(scanFrontmatter('# no frontmatter').ok, false);
   assert.equal(scanFrontmatter('---\nname: x\n').reason, 'unterminated');
 
@@ -560,17 +637,54 @@ function selftest() {
     'quoted item and trailing comma survive',
   );
 
+  // W-MODEL01: fixed model names are warnings, tiers are not, and an
+  // anti-example fence is deliberate.
+  const modelHit = checkModelNames('Use gpt-4o for extraction.');
+  assert.equal(modelHit.length, 1);
+  assert.equal(modelHit[0].code, 'W-MODEL01');
+  assert.ok(!MODEL_NAME_RE.test('Run it through llama.cpp or Ollama.'));
+  assert.ok(MODEL_NAME_RE.test('GPT-4'), 'uppercase GPT-4 is still a fixed model name');
+  assert.ok(MODEL_NAME_RE.test('Llama 3'), 'spaced llama is a fixed model name');
+  assert.ok(MODEL_NAME_RE.test('--model sonnet'), '`--model sonnet` pins a tier alias');
+  assert.ok(MODEL_NAME_RE.test('text-embedding-3-small'));
+  assert.ok(MODEL_NAME_RE.test('Mixtral 8x7B'));
+  assert.ok(MODEL_NAME_RE.test('Qwen2'));
+  assert.ok(MODEL_NAME_RE.test('gemma-4-26b-a4b-it'));
+  assert.ok(!MODEL_NAME_RE.test('Claude Code'), 'the CLI name `Claude Code` is not a model');
+  assert.ok(!MODEL_NAME_RE.test('the words opus and sonnet alone in prose are fine'));
+  assert.ok(!MODEL_NAME_RE.test('codebase-graph'));
+  assert.deepEqual(checkModelNames('Use a reasoning-capable model via process.env.MODEL.'), []);
+  assert.deepEqual(checkModelNames('``` anti-example\ndeliberately shows the forbidden model="gpt-4o" literal\n```'), []);
+  assert.equal(
+    checkModelNames('```\nplain fence keeps the check active: model="gpt-4o"\n```').length, 1,
+    'a fence not marked anti-example is still checked',
+  );
+
+  // W-BRAND01: BDB brand tokens flagged, allowlisted paths and neutral text not.
+  assert.equal(checkBrandTokens('accent #9B30C4 only', 'skills/x/SKILL.md')[0].code, 'W-BRAND01');
+  assert.equal(checkBrandTokens('use Obsidian Black', 'agents/a.md').length, 1);
+  assert.equal(checkBrandTokens('Vibrant Orchid', 'skills/x/SKILL.md').length, 1);
+  assert.deepEqual(checkBrandTokens('#9b30c4', 'skills/global_config/plan-canvas/ui.js'), []);
+  assert.deepEqual(checkBrandTokens('the project\'s declared accent token', 'skills/x/SKILL.md'), []);
+
   console.log('✓ selftest passed');
 }
 
 // ------------------------------------------------------------------------ main
 
-const argv = process.argv.slice(2);
-if (argv.includes('--selftest')) { selftest(); process.exit(0); }
+// Guarded so tests can import the exported check functions without the CLI
+// run (and its process.exit) firing on import.
+const runningAsMain =
+  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-const { findings, counts } = validate();
-process.exit(report(findings, counts, {
-  json: argv.includes('--json'),
-  quiet: argv.includes('--quiet'),
-  strict: argv.includes('--strict'),
-}));
+if (runningAsMain) {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--selftest')) { selftest(); process.exit(0); }
+
+  const { findings, counts } = validate();
+  process.exit(report(findings, counts, {
+    json: argv.includes('--json'),
+    quiet: argv.includes('--quiet'),
+    strict: argv.includes('--strict'),
+  }));
+}

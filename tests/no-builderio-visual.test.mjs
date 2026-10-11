@@ -6,7 +6,21 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tracked = (...args) => execFileSync('git', ['ls-files', '-z', ...args], { cwd: root, encoding: 'utf8' }).split('\0').filter((f) => f && fs.existsSync(path.join(root, f)));
+const walkFiles = (dir = '') => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
+  if (e.name === 'node_modules' || e.name === '.git') return [];
+  const rel = dir ? `${dir}/${e.name}` : e.name;
+  return e.isDirectory() ? walkFiles(rel) : [rel];
+});
+const tracked = (...args) => {
+  let files;
+  try {
+    if (!fs.existsSync(path.join(root, '.git'))) throw new Error('no .git');
+    files = execFileSync('git', ['ls-files', '-z', ...args], { cwd: root, encoding: 'utf8' }).split('\0');
+  } catch {
+    files = walkFiles().filter((f) => !args.length || args.some((a) => f === a || f.startsWith(`${a.replace(/\/$/, '')}/`)));
+  }
+  return files.filter((f) => f && fs.existsSync(path.join(root, f)));
+};
 const readText = (f) => { if (!fs.statSync(path.join(root, f)).isFile()) return ''; const b = fs.readFileSync(path.join(root, f)); return b.includes(0) ? '' : b.toString('utf8'); };
 
 // Exclusions: CHANGELOG.md is release history; installer.js, lib/retired-skills.js and this test
@@ -18,6 +32,12 @@ const SKILL_NAME_EXCLUDED = new Set(['CHANGELOG.md', 'installer.js', 'lib/retire
   'skills/global_config/bdb-visual-edit/scripts/sanitize-element.mjs', 'skills/global_config/plan-canvas/SKILL.md',
   'skills/global_config/plan-canvas/scripts/plan-canvas.js', 'skills/global_config/plan-canvas/scripts/lib/plan-canvas/route.js']);
 const ARTIFACT_EXCLUDED = (f) => f.startsWith('production_artifacts/canvas-dispatcher/') || f.startsWith('production_artifacts/harness-audit/');
+
+test('the file list is real, not vacuously empty', () => {
+  const files = tracked();
+  assert.ok(files.length > 50, `only ${files.length} files listed`);
+  assert.ok(files.includes('package.json'));
+});
 
 test('no tracked file references agent-native.com', () => {
   const hits = tracked().filter((f) => f !== 'CHANGELOG.md' && !ARTIFACT_EXCLUDED(f) && f !== 'tests/no-builderio-visual.test.mjs')

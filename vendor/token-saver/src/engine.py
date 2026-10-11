@@ -4,8 +4,26 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import re
+
 from . import config
 from .processors import discover_processors
+
+# Machine-consumed output must never be altered: piping, redirection,
+# command/process substitution, or curl -o/--output mean a program or file
+# (not a human) consumes the bytes. Curl output may be JSON, so curl is
+# never compressed at all.
+_PASSTHROUGH_RE = re.compile(
+    r"\||(?<!-)-(o\b|output\b)|--output\b|\$\(|`|<\(|(?<![-=])>"
+)
+_CURL_RE = re.compile(r"(^|[\s;&|])curl\b")
+
+
+def should_passthrough(command: str) -> bool:
+    """Return True when output may be machine-consumed and must pass through."""
+    if _CURL_RE.search(command):
+        return True
+    return bool(_PASSTHROUGH_RE.search(command))
 
 if TYPE_CHECKING:
     from .processors.base import Processor
@@ -60,6 +78,9 @@ class CompressionEngine:
         """
         self.last_event = {}
         if not config.get("enabled"):
+            return output, "none", False
+
+        if should_passthrough(command):
             return output, "none", False
 
         min_len = config.get("min_input_length")

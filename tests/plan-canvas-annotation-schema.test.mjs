@@ -209,6 +209,16 @@ describe('normalizeFeedbackItem with origin context', () => {
     assert.match(item.at, /^\d{4}-\d\d-\d\dT/);
   });
 
+  test('answer items: valid accepted, malformed and app origin rejected', () => {
+    const item = normalizeFeedbackItem({ kind: 'answer', question: 'Which queue?', selected: ['redis', 'sqs'] }, 4);
+    assert.equal(item.kind, 'answer');
+    assert.equal(item.question, 'Which queue?');
+    assert.deepEqual(item.selected, ['redis', 'sqs']);
+    assert.equal(normalizeFeedbackItem({ kind: 'answer', question: 'Q', selected: [] }, 1), null);
+    assert.equal(normalizeFeedbackItem({ kind: 'answer', selected: ['a'] }, 1), null);
+    assert.equal(normalizeFeedbackItem({ kind: 'answer', question: 'Q', selected: ['a'] }, 1, { origin: 'app', boundOrigin: APP }), null);
+  });
+
   test('canvas origin keeps chat and verdict behaviour', () => {
     assert.equal(normalizeFeedbackItem({ kind: 'chat', text: 'hi' }, 1).text, 'hi');
     assert.equal(normalizeFeedbackItem({ kind: 'verdict', verdict: 'approve' }, 2).verdict, 'approve');

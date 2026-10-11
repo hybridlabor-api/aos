@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { createStoreServer } from '../lib/store-ui/server.mjs';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const cli = join(root, 'bin', 'aos-store.mjs');
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const SC = 'b'.repeat(40);
@@ -59,7 +60,7 @@ async function withEnv(fn, { scenario, eccSkills } = {}) {
     const cwd = join(tmp, 'proj');
     mkdirSync(cwd);
     mkdirSync(join(tmp, 'home'));
-    const env = { ...process.env, HOME: join(tmp, 'home'), AOS_STORE_INDEX: join(tmp, 'ecc.json'), AOS_STORE_RAW_BASE: base, AOS_STORE_INDEX_SCENARIO: join(tmp, 'scenario.json'), AOS_STORE_RAW_BASE_SCENARIO: base };
+    const env = { ...process.env, HOME: join(tmp, 'home'), USERPROFILE: join(tmp, 'home'), AOS_STORE_TEST_OVERRIDES: '1', AOS_STORE_INDEX: join(tmp, 'ecc.json'), AOS_STORE_RAW_BASE: base, AOS_STORE_INDEX_SCENARIO: join(tmp, 'scenario.json'), AOS_STORE_RAW_BASE_SCENARIO: base };
     const run = (args, e = env) => new Promise((ok) => execFile(process.execPath, [cli, ...args], { cwd, env: e }, (error, stdout, stderr) => ok({ code: error ? error.code : 0, stdout, stderr })));
     await fn({ run, cwd, env, store, tmp });
   } finally {
@@ -111,7 +112,7 @@ test('install pulls the required skill first from the Scenario base and pin', as
     for (const [name, map] of [['fx-lead', LEAD], ['fx-child', CHILD]]) {
       for (const [p, data] of Object.entries(map)) assert.equal(readFileSync(join(cwd, 'skills', name, p), 'utf8'), data);
     }
-    assert.equal(statSync(join(cwd, 'skills', 'fx-lead', 'scripts', 'bridge.py')).mode & 0o777, 0o755);
+    if (process.platform !== 'win32') assert.equal(statSync(join(cwd, 'skills', 'fx-lead', 'scripts', 'bridge.py')).mode & 0o777, 0o755);
     assert.ok(r.stdout.indexOf('Installed fx-lead') < r.stdout.indexOf('Installed fx-child'));
     assert.match(r.stdout, /WARNING: contains a script that executes code received over a local socket or file channel without authentication/);
   });
@@ -168,7 +169,7 @@ test('dry-run lists the files of the required skill too and warns', async () => 
 test('UI catalog shows both sources; preview carries license, requires and exec-bridge warning flags', async () => {
   await withEnv(async ({ cwd, env }) => {
     const saved = {};
-    for (const k of ['HOME', 'AOS_STORE_INDEX', 'AOS_STORE_RAW_BASE', 'AOS_STORE_INDEX_SCENARIO', 'AOS_STORE_RAW_BASE_SCENARIO']) { saved[k] = process.env[k]; process.env[k] = env[k]; }
+    for (const k of ['HOME', 'USERPROFILE', 'AOS_STORE_TEST_OVERRIDES', 'AOS_STORE_INDEX', 'AOS_STORE_RAW_BASE', 'AOS_STORE_INDEX_SCENARIO', 'AOS_STORE_RAW_BASE_SCENARIO']) { saved[k] = process.env[k]; process.env[k] = env[k]; }
     const server = createStoreServer({ cwd });
     await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
     try {

@@ -51,7 +51,7 @@ const brokenOld = {
     },
     other: { Stop: [foreign] }
 };
-const NAMES = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
+const NAMES = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox'];
 
 test('fresh output is valid per agy hook format: one named, non-empty hook per concern', () => {
     const p = path.join(tmp(), 'hooks.json');
@@ -62,7 +62,7 @@ test('fresh output is valid per agy hook format: one named, non-empty hook per c
     assert.strictEqual(data['aos-go-gate'].PreToolUse[0].matcher, 'run_command|Bash');
     assert.strictEqual(data['aos-go-gate'].PreToolUse[0].hooks[0].command, 'node hooks/go-gate.mjs');
     assert.ok(data['aos-trail-relay'].PreToolUse[0].hooks[0].command.includes('trail-relay.mjs'));
-    assert.ok(data['aos-context'].PreInvocation.length === 2);
+    assert.ok(data['aos-context'].PreInvocation.length === 3);
 });
 
 test('named format has no top-level "hooks" key and wires every AOS hook script', () => {
@@ -124,6 +124,22 @@ test('agy commands are relative, unquoted, and observability hooks fail open', (
     assert.ok(cmds.includes('node workflows/startcycle-dispatch.mjs'));
     for (const c of cmds.filter((x) => /go-gate|graph-gate|conventional|env-file/.test(x))) assert.ok(!c.includes('||'), c);
 });
+
+test('A10: trail-relay fails open fast with closed stdin or offline target port', () => {
+    const { spawnSync } = require('node:child_process');
+    const relay = path.join(__dirname, '..', '.claude', 'hooks', 'trail-relay.mjs');
+    const t0 = Date.now();
+    const r = spawnSync(process.execPath, [relay, '--agent', 'agy', '--event', 'PreToolUse'], {
+        input: JSON.stringify({ toolCall: { name: 'git log' } }),
+        env: { ...process.env, AGENTTRAIL_PORT: '59999' },
+        timeout: 3000,
+        encoding: 'utf8',
+    });
+    const duration = Date.now() - t0;
+    assert.strictEqual(r.status, 0);
+    assert.ok(duration < 2000, `trail-relay took too long: ${duration}ms`);
+});
+
 
 test('agyHookCommand rejects scripts outside the hooks.json folder or with unsafe paths', () => {
     assert.strictEqual(agyHookCommand('/a/b', '/a/b/hooks/x.mjs', ' --k v'), 'node hooks/x.mjs --k v');

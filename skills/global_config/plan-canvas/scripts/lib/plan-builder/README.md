@@ -1,7 +1,7 @@
-# BDB Plan Builder
+# Plan Builder
 
 Renders an Agent-Native-style **plan folder** (local-files format) into ONE
-self-contained HTML file in the BDB look, which `aos-plan-canvas` then opens
+self-contained HTML file in a dark theme with one purple accent, which `aos-plan-canvas` then opens
 through its normal `.html` artifact path — so annotation, chat and verdict
 already work with no canvas changes.
 
@@ -100,7 +100,7 @@ becomes a warning and the raw text is kept.
 
 A `<Screen>` (or `<FrameScreen>`) without an `html` prop whose children are tags
 renders the kit below as plain markup in the page (no iframe). Low-fi look:
-muted greys on dark, 1px borders, the BDB accent only for `active`/`primary`/done
+muted greys on dark, 1px borders, the purple accent only for `active`/`primary`/done
 states, and the same UI font stack as plan-canvas and the AOS store (no handwriting font). An empty `<Screen>` renders an empty frame.
 
 | Tag | Props | Renders |
@@ -277,7 +277,7 @@ The left section list has a "Hide sections" toggle in the top bar; the choice is
 | `render.js` | block → HTML, flow and absolute boards, recap header, Mermaid loader, page shell |
 | `kit.js` | wireframe kit tags → markup |
 | `board-client.js` | pan/zoom + arrow routing, inlined only when a board exists |
-| `theme.css` | BDB CI theme, inlined into the output |
+| `theme.css` | dark theme with one purple accent, inlined into the output |
 | `examples/demo-plan/` | richer demo: plan.mdx + canvas.mdx |
 | `examples/signup-storyboard/`, `examples/recap-demo/` | kit storyboard and recap demos |
 

@@ -43,7 +43,8 @@ function fakeBin(dir, name, body) {
     fs.writeFileSync(f, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
 }
 
-test('agy and opencode adapters hand their child depth+1; agy gets --mode accept-edits only for write', async () => {
+const WIN_SKIP = process.platform === 'win32' && 'POSIX shell stubs on PATH cannot run on Windows; the adapters would start a real agy/opencode instead and hold the temp dir (EPERM on rm)';
+test('agy and opencode adapters hand their child depth+1; agy gets --mode accept-edits only for write', { skip: WIN_SKIP }, async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcsc-depth-'));
     const saved = { PATH: process.env.PATH, AGENTTRAIL_PORT: process.env.AGENTTRAIL_PORT, MCSC_DEPTH: process.env.MCSC_DEPTH };
     try {

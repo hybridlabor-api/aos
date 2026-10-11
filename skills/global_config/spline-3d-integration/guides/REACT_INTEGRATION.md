@@ -61,9 +61,10 @@ import { lazy, Suspense } from 'react';
 
 const Spline = lazy(() => import('@splinetool/react-spline'));
 
+// Use the project's background token instead of a hard-coded color
 export default function Hero() {
   return (
-    <Suspense fallback={<div style={{ background: '#0a0a0a', width: '100%', height: '100vh' }} />}>
+    <Suspense fallback={<div style={{ background: 'var(--background, #000)', width: '100%', height: '100vh' }} />}>
       <Spline scene="https://prod.spline.design/REPLACE_ME/scene.splinecode" />
     </Suspense>
   );
@@ -94,9 +95,10 @@ export default function Page() {
 ```jsx
 import dynamic from 'next/dynamic';
 
+// Use the project's background token instead of a hard-coded color
 const Spline = dynamic(() => import('@splinetool/react-spline/next'), {
   ssr: false,
-  loading: () => <div style={{ background: '#0a0a0a', width: '100%', height: '100vh' }} />
+  loading: () => <div style={{ background: 'var(--background, #000)', width: '100%', height: '100vh' }} />
 });
 
 export default function Page() {
@@ -158,10 +160,10 @@ export default function HeroSection() {
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh' }}>
 
-      {/* Fallback background — always rendered, hidden once Spline loads */}
+      {/* Fallback background — always rendered, hidden once Spline loads. Use the project's background token */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: '#0a0a0a',
+        background: 'var(--background, #000)',
         zIndex: 0,
         opacity: loaded ? 0 : 1,
         transition: 'opacity 0.5s ease'

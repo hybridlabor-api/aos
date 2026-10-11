@@ -24,7 +24,7 @@
          Spline's generated code tries to add this — it will break page scroll.
          If it appears anywhere in your CSS, remove it. */
       overflow: auto;
-      background: #0a0a0a;
+      background: var(--background, #000); /* use the project's background token */
     }
 
     /* Spline background wrapper */
@@ -56,7 +56,7 @@
       width: 100%;
       height: 100%;
       z-index: 0;
-      background: #0a0a0a;
+      background: var(--background, #000); /* use the project's background token */
       /* Optional: background image fallback
       background: url('fallback.jpg') center/cover no-repeat;
       */

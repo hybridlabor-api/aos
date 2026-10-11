@@ -5,6 +5,7 @@
 ```
 ~/.aos/bin/go-check.mjs          the CLI
 ~/.aos/bin/go-gate.mjs           copy it imports (same directory)
+~/.aos/bin/gate-profile.mjs      imported by go-gate.mjs (gate profile read side)
 ~/.aos/bin/guarded-patterns.json the guarded patterns, for reference
 ```
 

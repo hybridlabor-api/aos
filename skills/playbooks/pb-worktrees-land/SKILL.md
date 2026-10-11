@@ -8,7 +8,7 @@ description: >-
 category: bdb-core
 kind: playbook
 trigger: ["clean up worktrees", "land my worktrees", "prune worktrees"]
-inputs: [repos?]
+inputs: ["repos?"]
 requires:
   skills: [using-git-worktrees, github, pr-recap, pb-ship, "gh (external)"]
   agents: []

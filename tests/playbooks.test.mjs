@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -5,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { listPlaybooks, requiresLabel } from '../skills/bdb-aos/scripts/list-playbooks.mjs';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const script = join(root, 'skills', 'bdb-aos', 'scripts', 'list-playbooks.mjs');
 const commands = JSON.parse(readFileSync(join(root, 'plugin-commands.json'), 'utf8')).commands;
 const pbDirs = readdirSync(join(root, 'skills', 'playbooks')).filter((n) => n.startsWith('pb-')).sort();

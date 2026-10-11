@@ -41,7 +41,7 @@ const setRepo = (head, config) => {
 process.env.AOS_TEST_SANDBOX = '1';
 process.env.GIT_CONFIG_NOSYSTEM = '1';
 for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
-const env = (extra = {}) => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', ...extra });
+const env = (extra = {}) => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', ...extra });
 const ts = (agoMs = 0) => new Date(Date.now() - agoMs).toISOString();
 const add = (e) => fs.appendFileSync(t, JSON.stringify(e) + '\n');
 const user = (text, extra = {}) => ({ type: 'user', uuid: `u${++n}`, timestamp: ts(), message: { role: 'user', content: text }, ...extra });
@@ -487,7 +487,8 @@ describe('registration', () => {
         assert.equal(cmds.filter((c) => c.includes('go-grant.mjs')).length, 1);
         assert.equal(cmds.filter((c) => c.includes('go-token.mjs')).length, 1);
         const uninstall = fs.readFileSync(path.join(REPO, 'bin', 'aos-uninstall.mjs'), 'utf8');
-        const list = /const bdb = \[([^\]]*)\]/.exec(uninstall)[1];
-        for (const f of ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs']) assert.ok(list.includes(`'${f}'`), f);
+        assert.match(uninstall, /const bdb = profile\.HOOK_SCRIPTS;/);
+        const { HOOK_SCRIPTS } = require('../lib/v5/profile.js');
+        for (const f of ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs']) assert.ok(HOOK_SCRIPTS.includes(f), f);
     });
 });

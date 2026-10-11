@@ -12,7 +12,11 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-recap-'));
 const repo = path.join(tmp, 'repo');
 const git = (...a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' });
 const HOSTILE = 'a<b>{c}`d`<Callout>.txt';
-const noNet = { ...process.env, HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', PATH: process.env.PATH.split(path.delimiter).filter((p) => !fs.existsSync(path.join(p, 'gh'))).join(path.delimiter) };
+// A failing gh shim first on PATH: dropping gh's directory also drops git where both live in /usr/bin (GitHub runners).
+const shim = path.join(tmp, 'bin');
+fs.mkdirSync(shim);
+fs.writeFileSync(path.join(shim, 'gh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+const noNet = { ...process.env, HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', PATH: [shim, process.env.PATH].join(path.delimiter) };
 const recap = (...a) => spawnSync(process.execPath, [script, ...a], { cwd: repo, encoding: 'utf8', env: noNet });
 
 fs.mkdirSync(repo);
@@ -26,9 +30,15 @@ fs.writeFileSync(path.join(repo, 'src/edit.js'), '1\n');
 git('add', '.'); git('commit', '-qm', 'base');
 fs.writeFileSync(path.join(repo, 'src/edit.js'), '1\n2\n');
 fs.writeFileSync(path.join(repo, 'src/new.js'), 'n\n');
-fs.writeFileSync(path.join(repo, HOSTILE), 'h\n');
+const ntfs = process.platform === 'win32';
+if (!ntfs) fs.writeFileSync(path.join(repo, HOSTILE), 'h\n');
 fs.unlinkSync(path.join(repo, 'src/gone.js'));
-git('add', '-A'); git('commit', '-qm', 'change <script>alert(1)</script>');
+git('add', '-A');
+if (ntfs) { // NTFS rejects < and > in file names: put the entry into the index directly
+  const blob = spawnSync('git', ['hash-object', '-w', '--stdin'], { cwd: repo, input: 'h\n', encoding: 'utf8' }).stdout.trim();
+  git('update-index', '--add', '--cacheinfo', `100644,${blob},${HOSTILE}`);
+}
+git('commit', '-qm', 'change <script>alert(1)</script>');
 
 const out = path.join(tmp, 'out');
 const ver = path.join(tmp, 'v.json');
@@ -51,7 +61,7 @@ test('diff maps to tree markers', () => {
   assert.doesNotMatch(m, /src\/keep\.js/);
 });
 
-test('hostile names and titles cannot inject tags or break the page', () => {
+test('hostile names and titles cannot inject tags or break the page', { skip: process.platform === 'win32' && 'Windows cannot create file names with < or >' }, () => {
   const m = mdx();
   assert.ok(!m.includes('<b>') && !m.includes('<Callout>.txt'), 'raw hostile text must not reach the MDX');
   assert.ok(m.includes('a\\u003cb\\u003e\\u007bc\\u007d'), 'file name is \\u-escaped in the JSX literal');

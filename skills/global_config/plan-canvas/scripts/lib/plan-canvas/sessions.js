@@ -17,7 +17,8 @@ const path = require('path');
 
 const { normalizeAnnotation } = require('./annotation-schema');
 
-const FEEDBACK_KINDS = new Set(['chat', 'annotation', 'verdict']);
+const FEEDBACK_KINDS = new Set(['chat', 'annotation', 'verdict', 'answer']);
+const MAX_SELECTED = 20;
 const VERDICTS = new Set(['approve', 'request-changes']);
 
 function resolveStateDir(env = process.env) {
@@ -75,6 +76,15 @@ function normalizeFeedbackItem(raw, counter, { origin = 'canvas', boundOrigin = 
     Object.assign(item, fields);
   }
   if (kind === 'chat' && !item.text) return null;
+  if (kind === 'answer') {
+    const question = sanitizeText(raw.question);
+    const selected = Array.isArray(raw.selected)
+      ? raw.selected.slice(0, MAX_SELECTED).map(v => sanitizeText(v, 500)).filter(Boolean)
+      : [];
+    if (!question || !selected.length) return null;
+    item.question = question;
+    item.selected = selected;
+  }
   return item;
 }
 
@@ -298,6 +308,7 @@ function chatLineFor(item) {
     const types = item.shapes ? [...new Set(item.shapes.map(shape => shape.type))] : [];
     return `${app}[${where}] ${item.text}${types.length ? ` (${types.join(', ')})` : ''}`;
   }
+  if (item.kind === 'answer') return `${item.question}: ${item.selected.join(', ')}`;
   return item.text;
 }
 

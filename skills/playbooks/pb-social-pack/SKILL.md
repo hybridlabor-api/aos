@@ -9,7 +9,7 @@ description: >-
 category: media-eventtech
 kind: playbook
 trigger: ["social pack for the release", "posts and clips for this launch", "announce the release"]
-inputs: [recap, platforms, launch_video?, formats?]
+inputs: [recap, platforms, "launch_video?", "formats?"]
 requires:
   skills: [copywriting, quick-recap, pb-ship, pb-launch-video, "ffmpeg (external)", "ffprobe (external)"]
   agents: []
@@ -23,6 +23,7 @@ est_time: 30-60 min
 ---
 
 # Release social pack
+Part of pb-content-studio (step f: social pack).
 What you get: posts per platform and clip cut-downs from your release recap, every claim traceable to a fact, handed off for publishing after your GO.
 
 ## Inputs
@@ -40,6 +41,13 @@ What you get: posts per platform and clip cut-downs from your release recap, eve
 6. [GO] publish — platforms, post texts and the full clip list shown. The run stops here until the human types GO. No publish MCP exists, so the GO releases the hand-off: posts, clips and captions in `social/<slug>/publish.md`; upload is manual unless the human named a tool in step 2 — hand-off file written
 
 Run log: `production_artifacts/pb-social-pack-<date>.md` in the start directory, never committed
+
+## Optional silence-cut step: auto-editor
+
+- **auto-editor** (https://github.com/WyattBlue/auto-editor) cuts silent sections from a clip automatically — useful before scale/crop when the launch video is a talking-head recording.
+- **Preflight probe:** `auto-editor --version`. If the binary is missing or errors, log "auto-editor not installed: silence-cut skipped" and continue — the step never fails the run.
+- **Usage when present:** `auto-editor <launch_video> -o <out.mp4>` before the ffmpeg cut-downs in step 5; the cut-downs then take the silence-cut file as input.
+- Installing auto-editor (`pip install auto-editor`) is a manual opt-in step for the user — never pip-install it as part of this playbook.
 
 Rules
 - Anything other than the literal GO (case-insensitive) is not a GO; a GO covers only that one step, one time.

@@ -80,13 +80,16 @@ import os from 'node:os';
 function doctorWithOpencodeConfig(configText, name = 'opencode.jsonc') {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-doctor-oc-'));
   try {
+    // aos-doctor reads %APPDATA%\opencode on win32 (installer.js uses the same dir), ~/.config/opencode elsewhere.
+    const appData = path.join(home, 'AppData', 'Roaming');
+    const ocDir = process.platform === 'win32' ? path.join(appData, 'opencode') : path.join(home, '.config', 'opencode');
     if (configText !== null) {
-      fs.mkdirSync(path.join(home, '.config', 'opencode'), { recursive: true });
-      fs.writeFileSync(path.join(home, '.config', 'opencode', name), configText);
+      fs.mkdirSync(ocDir, { recursive: true });
+      fs.writeFileSync(path.join(ocDir, name), configText);
     }
     let stdout;
     try {
-      stdout = execFileSync(process.execPath, [doctorScript, '--json'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home } });
+      stdout = execFileSync(process.execPath, [doctorScript, '--json'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, APPDATA: appData } });
     } catch (err) { stdout = err.stdout; }
     return JSON.parse(stdout).results.find((r) => r.name === 'OpenCode MCP names');
   } finally { fs.rmSync(home, { recursive: true, force: true }); }

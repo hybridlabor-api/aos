@@ -8,7 +8,7 @@ description: >-
 category: bdb-core
 kind: playbook
 trigger: ["master session", "supervise my sessions", "run several agents"]
-inputs: [plan?, workers?]
+inputs: ["plan?", "workers?"]
 requires:
   skills: [master-session, agenttrail, stay-within-limits, "claude (external)", "aos-acp (external)"]
   agents: []
@@ -34,7 +34,7 @@ Availability: works in any harness that can run shell: Claude workers need the `
 2. master-session (Roster) — `ListAgents` minus self when that Claude tool exists, else the aos-acp logs `ls -t ~/.aos/acp/*.jsonl` (log event `start` carries `name`, `cwd`, `adapter`; the last line carries `ts` and `event`: `done`/`error` = finished; `timeout` = finishing, cancel follows; anything else = running or parked on `permission_pending`; last `ts` older than 10 min with no terminal event = suspect stale, verify the process before treating it as running) plus any sessions the human names → roster table (name, repo@branch or cwd, adopted or spawned) in the run log — stops for approval (the human confirms scope)
 3. agenttrail — plan given → `aos-trail . --plan <plan> --no-open` → board URL in the run log; no plan → `aos-trail . --no-open` (file activity only), logged — URL printed (output says "already running" → log it as "existing map", its plan is unchanged); runs before any worker is spawned, so no spawn line exists in the run log before the board URL line
 4. [GO] spawn — worker list (name, cwd or worktree, model, prompt) shown in full, then one line per worker:
-   - Claude (skip when claude is missing): `(cd <cwd> && claude --bg --name <n> --permission-mode auto --model <opus|sonnet|haiku> "<prompt>")` (`claude` has no cwd flag; prompt before any `--disallowedTools`)
+   - Claude (skip when claude is missing): `(cd <cwd> && claude --bg --name <n> --permission-mode auto --model <model-id> "<prompt>")` (`claude` has no cwd flag; prompt before any `--disallowedTools`)
    - Codex or OpenCode: `aos-acp <codex|opencode> --name <n> --cwd <worktree> --prompt "<task>" --go-wait 600` in the background, log `~/.aos/acp/<slug(n)>.jsonl` (slug: lowercase, runs of characters outside `a-z0-9._-` become `-`, edge dashes trimmed; a custom `--log` path is not found by the roster)
    - agy: adopt-only (an already running session, no spawn); never `aos-acp agy`, the adapter is third-party and unverified (`bin/aos-acp.mjs` lines 26+)
    - Never `aos-acp claude` (no model flag), never `--model fable`, never omit `--model`

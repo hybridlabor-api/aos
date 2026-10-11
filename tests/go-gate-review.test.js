@@ -33,7 +33,7 @@ afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
 process.env.AOS_TEST_SANDBOX = '1';
 process.env.GIT_CONFIG_NOSYSTEM = '1';
 for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
-const env = (extra = {}) => ({ ...process.env, AOS_GATE_TEST_REALHOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', ...extra });
+const env = (extra = {}) => ({ ...process.env, AOS_GATE_TEST_REALHOME: home, XDG_CONFIG_HOME: path.join(home, '.config'), HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '', ...extra });
 const add = (e, file = t) => fs.appendFileSync(file, JSON.stringify(e) + '\n');
 const user = (text, extra = {}) => ({ type: 'user', uuid: `u${++n}`, timestamp: new Date().toISOString(), message: { role: 'user', content: text }, ...extra });
 const human = (text, extra = {}) => user(text, { origin: { kind: 'human' }, promptSource: 'typed', turnOrigin: 'human', ...extra });
@@ -155,6 +155,29 @@ describe('8 OpenCode session driving is never grantable (C3)', () => {
 });
 
 describe('5 store guard forms (M1)', () => {
+    test('EXTRA: a mention of the store in a read-only search passes; every real write stays blocked', () => {
+        const S = '~/.aos/gate/k.json', D = '~/.aos/gate/';
+        for (const c of ['grep -rn "\\.aos/gate" docs/ README.md', `grep -c x ${S} 2>/dev/null`, `grep x ${S} &> /dev/null`]) {
+            assert.equal(g.gateStoreReason(c), null, c);
+        }
+        // git and file are not read-only heads here: git grep -O runs a shell, file -C -m writes a magic file.
+        for (const c of [`git grep -O"cp /tmp/f ${D}k.json #" -e . -- README.md`, `git grep -n x ${S}`, `cd ${D} && file -C -m k`]) {
+            assert.ok(g.gateStoreReason(c), c);
+        }
+        // An env-assignment prefix is never stripped: it can choose the program that runs.
+        for (const c of [`PATH=/tmp/x cat ${S}`, `LD_PRELOAD=/tmp/x.so cat ${S}`, `DYLD_INSERT_LIBRARIES=/tmp/x.dylib grep x ${S}`, `GIT_CONFIG_COUNT=1 cat ${S}`]) {
+            assert.ok(g.gateStoreReason(c), c);
+        }
+        // grep is ugrep here: pager, query TUI, config and filter options run or save things.
+        for (const c of [`grep --pager=sh x ${S}`, `grep -Q x ${S}`, `grep --config=/tmp/c x ${S}`, `grep --filter="sh -c id" x ${S}`, `grep -O x ${S}`]) {
+            assert.ok(g.gateStoreReason(c), c);
+        }
+        for (const c of [`echo x > ${S}`, `cp f ${D}`, `sed -i s/a/b/ ${S}`, `rm ${S}`, `mv ${S} /tmp/z`, `echo x | tee ${S}`,
+            `grep x ${S} > ${D}out`, `grep x ${S} --output=${D}out`, `cp /tmp/a ${D}k && grep -rn x docs`,
+            `node -e "require('fs').writeFileSync(require('path').join(process.env.HOME,'.aos','gate','k.json'),'{}')"`]) {
+            assert.ok(g.gateStoreReason(c), c);
+        }
+    });
     test('normalised, case-insensitive and single-& forms are blocked; read-only stays allowed', () => {
         for (const c of ['cp /tmp/x ~/.aos//gate/k.json', 'cp /tmp/x ~/.aos/./gate/k.json', 'cp /tmp/x "$HOME/.aos/ga""te/k.json"', 'cp /tmp/x ~/.aos/ga\\te/k.json',
             'D=gate; cp /tmp/x ~/.aos/$D/k.json', 'cp /tmp/x ~/.aos/gat?/k.json', 'cp /tmp/x ~/.aos/{gate,}/k.json', 'cp /tmp/x ~/.AOS/GATE/k.json',
@@ -219,7 +242,7 @@ describe('9 low findings', () => {
     });
     test('the gate log is capped', async () => {
         const saved = process.env.HOME;
-        process.env.HOME = home;
+        process.env.HOME = home; process.env.USERPROFILE = home;
         try {
             for (let i = 0; i < 1500; i++) g.gateLog('cap', `line ${i} ${'x'.repeat(300)}`);
         } finally { process.env.HOME = saved; }

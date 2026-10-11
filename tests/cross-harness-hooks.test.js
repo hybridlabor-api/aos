@@ -118,7 +118,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 execFileSync(
                     process.execPath,
                     ['-e', `const i = require(${JSON.stringify(INSTALLER_PATH)}); if (i.mergeAntigravityHooks) i.mergeAntigravityHooks(${JSON.stringify(hooksPath)}, { projectLocal: true });`],
-                    { env: { ...process.env, HOME: tmpDir }, stdio: 'pipe' }
+                    { env: { ...process.env, HOME: tmpDir, USERPROFILE: tmpDir }, stdio: 'pipe' }
                 );
             }
 
@@ -157,7 +157,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 execFileSync(
                     process.execPath,
                     ['-e', `const i = require(${JSON.stringify(INSTALLER_PATH)}); if (i.mergeAntigravityHooks) i.mergeAntigravityHooks(${JSON.stringify(hooksPath)});`],
-                    { env: { ...process.env, HOME: tmpDir }, stdio: 'pipe' }
+                    { env: { ...process.env, HOME: tmpDir, USERPROFILE: tmpDir }, stdio: 'pipe' }
                 );
             }
 
@@ -178,7 +178,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 execFileSync(
                     process.execPath,
                     ['-e', `const i = require(${JSON.stringify(INSTALLER_PATH)}); const fn = i.mergeCodexTomlHooks || i.mergeCodexHooks; if (fn) fn(${JSON.stringify(configPath)}, { projectLocal: true });`],
-                    { env: { ...process.env, HOME: tmpDir }, stdio: 'pipe' }
+                    { env: { ...process.env, HOME: tmpDir, USERPROFILE: tmpDir }, stdio: 'pipe' }
                 );
             }
 
@@ -214,7 +214,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
                 execFileSync(
                     process.execPath,
                     ['-e', `const i = require(${JSON.stringify(INSTALLER_PATH)}); const fn = i.mergeCodexTomlHooks || i.mergeCodexHooks; if (fn) fn(${JSON.stringify(configPath)});`],
-                    { env: { ...process.env, HOME: tmpDir }, stdio: 'pipe' }
+                    { env: { ...process.env, HOME: tmpDir, USERPROFILE: tmpDir }, stdio: 'pipe' }
                 );
             }
 
@@ -281,7 +281,9 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
         });
 
         function run(args) {
-            return spawnSync(process.execPath, ['-e', args], { encoding: 'utf8', timeout: 20000 });
+            // installGlobalHooks() resolves the home dir and, on win32, the OpenCode dir (%APPDATA%) from the environment.
+            const env = { ...process.env, HOME: tmpDir, USERPROFILE: tmpDir, APPDATA: path.join(tmpDir, 'AppData', 'Roaming') };
+            return spawnSync(process.execPath, ['-e', args], { encoding: 'utf8', timeout: 20000, env });
         }
 
         const CALL = (configPath) =>
@@ -297,10 +299,11 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
             );
             assert.strictEqual(res.status, 0, `installGlobalHooks threw: ${res.stderr}`);
 
-            const pluginFile = path.join(tmpDir, '.config', 'opencode', 'plugins', 'bdb-aos.js');
-            assert.ok(fs.existsSync(pluginFile), 'plugin must be copied to ~/.config/opencode/plugins/');
+            const ocDir = process.platform === 'win32' ? path.join(tmpDir, 'AppData', 'Roaming', 'opencode') : path.join(tmpDir, '.config', 'opencode');
+            const pluginFile = path.join(ocDir, 'plugins', 'bdb-aos.js');
+            assert.ok(fs.existsSync(pluginFile), 'plugin must be copied to the OpenCode config dir plugins/');
 
-            const cfgPath = path.join(tmpDir, '.config', 'opencode', 'opencode.jsonc');
+            const cfgPath = path.join(ocDir, 'opencode.jsonc');
             assert.ok(fs.existsSync(cfgPath), 'opencode.jsonc must be written by the Quick Update path');
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
             assert.ok(Array.isArray(cfg.plugin), 'plugin must be an array');
@@ -478,7 +481,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
 
             const res = runNodeScript(MEMB_INJECT_SRC, {
                 input: payload,
-                env: { HOME: tmpDir, MEMB_USER_ID: 'test_dev' }
+                env: { HOME: tmpDir, USERPROFILE: tmpDir, MEMB_USER_ID: 'test_dev' }
             });
 
             assert.equal(res.status, 0, `Exit code should be 0, stderr: ${res.stderr}`);
@@ -503,7 +506,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
 
             const res = runNodeScript(MEMB_INJECT_SRC, {
                 input: payload,
-                env: { HOME: tmpDir, MEMB_USER_ID: 'test_dev' },
+                env: { HOME: tmpDir, USERPROFILE: tmpDir, MEMB_USER_ID: 'test_dev' },
                 cwd: deepSubdir
             });
 
@@ -524,7 +527,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
 
             const res = runNodeScript(MEMB_INJECT_SRC, {
                 input: payload,
-                env: { HOME: tmpDir }
+                env: { HOME: tmpDir, USERPROFILE: tmpDir }
             });
 
             assert.equal(res.status, 0);
@@ -547,7 +550,7 @@ describe('Tier 1: Feature Coverage (R1 - R4)', () => {
 
             const res = runNodeScript(MEMB_INJECT_SRC, {
                 input: payload,
-                env: { HOME: tmpDir, MEMB_USER_ID: 'test_dev' }
+                env: { HOME: tmpDir, USERPROFILE: tmpDir, MEMB_USER_ID: 'test_dev' }
             });
 
             assert.equal(res.status, 0);
@@ -609,7 +612,7 @@ describe('Tier 2: Boundary & Corner Cases', () => {
     test('memb-inject.mjs fails open (exit 0) on completely empty stdin', () => {
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: '',
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         assert.equal(res.status, 0, 'Empty stdin must exit 0 (fail-open)');
         assert.equal(res.stdout, '', 'Empty stdin should produce no stdout');
@@ -618,7 +621,7 @@ describe('Tier 2: Boundary & Corner Cases', () => {
     test('memb-inject.mjs fails open on whitespace-only stdin', () => {
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: '   \n\t  \n',
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         assert.equal(res.status, 0);
         assert.equal(res.stdout, '');
@@ -627,7 +630,7 @@ describe('Tier 2: Boundary & Corner Cases', () => {
     test('memb-inject.mjs fails open on corrupt non-JSON stdin', () => {
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: '<<<MALFORMED_INPUT_NOT_JSON>>>',
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         assert.equal(res.status, 0);
     });
@@ -636,7 +639,7 @@ describe('Tier 2: Boundary & Corner Cases', () => {
         // tmpDir has no .MemBDB folder
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: JSON.stringify({ prompt: 'test query', cwd: tmpDir }),
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         assert.equal(res.status, 0, 'Missing DB must exit 0 without blocking prompt');
     });
@@ -648,13 +651,13 @@ describe('Tier 2: Boundary & Corner Cases', () => {
 
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: JSON.stringify({ prompt: 'test query', cwd: tmpDir }),
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         assert.equal(res.status, 0, 'Corrupt DB must fail open gracefully');
     });
 
     test('memb-inject.mjs handles missing environment variables (no USER, no MEMB_USER_ID)', () => {
-        const strippedEnv = { ...process.env, HOME: tmpDir };
+        const strippedEnv = { ...process.env, HOME: tmpDir, USERPROFILE: tmpDir };
         delete strippedEnv.USER;
         delete strippedEnv.LOGNAME;
         delete strippedEnv.MEMB_USER_ID;
@@ -718,7 +721,7 @@ describe('Tier 3: Cross-Feature Interactions & Idempotency', () => {
         execFileSync(
             process.execPath,
             ['-e', `const i = require(${JSON.stringify(INSTALLER_PATH)}); i.installGlobalHooks();`],
-            { env: { ...process.env, HOME: homeDir }, stdio: 'pipe' }
+            { env: { ...process.env, HOME: homeDir, USERPROFILE: homeDir, APPDATA: path.join(homeDir, 'AppData', 'Roaming') }, stdio: 'pipe' }
         );
 
         // 1. Claude Code
@@ -743,7 +746,7 @@ describe('Tier 3: Cross-Feature Interactions & Idempotency', () => {
         const runInstall = () => execFileSync(
             process.execPath,
             ['-e', `const i = require(${JSON.stringify(INSTALLER_PATH)}); i.installGlobalHooks();`],
-            { env: { ...process.env, HOME: homeDir }, stdio: 'pipe' }
+            { env: { ...process.env, HOME: homeDir, USERPROFILE: homeDir, APPDATA: path.join(homeDir, 'AppData', 'Roaming') }, stdio: 'pipe' }
         );
 
         runInstall();
@@ -775,13 +778,13 @@ describe('Tier 3: Cross-Feature Interactions & Idempotency', () => {
         execFileSync(
             process.execPath,
             ['-e', `const i = require(${JSON.stringify(INSTALLER_PATH)}); i.installGlobalHooks();`],
-            { env: { ...process.env, HOME: homeDir }, stdio: 'pipe' }
+            { env: { ...process.env, HOME: homeDir, USERPROFILE: homeDir, APPDATA: path.join(homeDir, 'AppData', 'Roaming') }, stdio: 'pipe' }
         );
 
         // 2. Run aos-doctor in JSON mode
         const docRes = runNodeScript(DOCTOR_SRC, {
             args: ['--json'],
-            env: { HOME: homeDir },
+            env: { HOME: homeDir, USERPROFILE: homeDir, APPDATA: path.join(homeDir, 'AppData', 'Roaming') },
             timeout: 30000,
         });
 
@@ -840,7 +843,7 @@ describe('Tier 4: Real-World Multi-Harness Simulations', () => {
 
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: payload,
-            env: { HOME: tmpDir, MEMB_USER_ID: 'alice' }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir, MEMB_USER_ID: 'alice' }
         });
 
         assert.equal(res.status, 0);
@@ -864,7 +867,7 @@ describe('Tier 4: Real-World Multi-Harness Simulations', () => {
 
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: payload,
-            env: { HOME: tmpDir, MEMB_USER_ID: 'alice' }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir, MEMB_USER_ID: 'alice' }
         });
 
         assert.equal(res.status, 0);
@@ -888,7 +891,7 @@ describe('Tier 4: Real-World Multi-Harness Simulations', () => {
 
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: payload,
-            env: { HOME: tmpDir, MEMB_USER_ID: 'alice' }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir, MEMB_USER_ID: 'alice' }
         });
 
         assert.equal(res.status, 0);
@@ -920,7 +923,7 @@ describe('Tier 5: Adversarial Stress & Integrity', () => {
         const maliciousPrompt = 'Refactor; rm -rf /; $(whoami); `id`; "injection" \'single\' \\ \n \r \0';
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: JSON.stringify({ prompt: maliciousPrompt, cwd: tmpDir }),
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         assert.equal(res.status, 0, 'Must safely handle shell metacharacters without executing or crashing');
     });
@@ -928,7 +931,7 @@ describe('Tier 5: Adversarial Stress & Integrity', () => {
     test('Path Traversal: rejects or bounds upward traversal when cwd is / or /tmp', () => {
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: JSON.stringify({ prompt: 'test', cwd: '/' }),
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         assert.equal(res.status, 0, 'Traversal from / must not hang or crash');
     });
@@ -939,7 +942,7 @@ describe('Tier 5: Adversarial Stress & Integrity', () => {
 
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: JSON.stringify({ prompt: '¿Cómo funciona el código? 🔍', cwd: unicodeProj }),
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         assert.equal(res.status, 0, 'Must handle Unicode and emoji cleanly');
     });
@@ -949,7 +952,7 @@ describe('Tier 5: Adversarial Stress & Integrity', () => {
         const start = Date.now();
         const res = runNodeScript(MEMB_INJECT_SRC, {
             input: JSON.stringify({ prompt: largePrompt, cwd: tmpDir }),
-            env: { HOME: tmpDir }
+            env: { HOME: tmpDir, USERPROFILE: tmpDir }
         });
         const duration = Date.now() - start;
         assert.equal(res.status, 0);

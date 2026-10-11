@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const skillDir = path.join(root, 'skills/global_config/bdb-visual-edit');
 const cli = path.join(skillDir, 'scripts/sanitize-element.mjs');
-const { sanitizeElement, toEnvelope, resolveSrcLoc, fromAnnotation, cleanSnippet, INSTRUCTIONS_FOR_AGENT } = await import(cli);
+const { sanitizeElement, toEnvelope, resolveSrcLoc, fromAnnotation, cleanSnippet, INSTRUCTIONS_FOR_AGENT } = await import(pathToFileURL(cli).href);
 
 const good = {
   tag: 'button',
@@ -306,15 +307,19 @@ describe('docs and skill shape', () => {
     assert.match(doc, /grep -rq "data-aos-src" dist\//);
   });
 
-  test('the dist CI one-liner fails when the attribute shipped and passes when clean', () => {
+  // A stock Windows PATH has no sh; Git for Windows ships one.
+  const SH = spawnSync('sh', ['-c', 'exit 0']).status === 0 ? 'sh'
+    : [`${process.env.ProgramFiles}\\Git\\bin\\sh.exe`, `${process.env.ProgramFiles}\\Git\\usr\\bin\\sh.exe`].find((p) => fs.existsSync(p));
+
+  test('the dist CI one-liner fails when the attribute shipped and passes when clean', { skip: !SH && 'no sh available' }, () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vedit-dist-'));
     try {
       const check = 'cd "$1" && ! grep -rq "data-aos-src" dist/';
       fs.mkdirSync(path.join(dir, 'dist'));
       fs.writeFileSync(path.join(dir, 'dist/index.html'), '<div class="a"></div>');
-      assert.equal(spawnSync('sh', ['-c', check, 'sh', dir]).status, 0);
+      assert.equal(spawnSync(SH, ['-c', check, 'sh', dir]).status, 0);
       fs.writeFileSync(path.join(dir, 'dist/app.js'), 'h("div",{"data-aos-src":"src/a.tsx:1"})');
-      assert.equal(spawnSync('sh', ['-c', check, 'sh', dir]).status, 1);
+      assert.equal(spawnSync(SH, ['-c', check, 'sh', dir]).status, 1);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -11,7 +11,7 @@ description: >-
 
 # BDB Agent OS
 
-The full AOS suite: 200+ skills, 13 subagents, and the startcycle pipelines.
+The full AOS suite: 200+ skills, 29 subagents, and the startcycle pipelines.
 
 ## Where things live
 
@@ -39,7 +39,7 @@ never inside an agent's prompt.
 ## Skill categories
 
 `design-ui-ux`, `engineering-method`, `media-eventtech`, `bdb-core`, `library`,
-`engineering-hardware`. Pick the narrowest match; a `library` skill should never
+`engineering-hardware`, `business-ops`. Pick the narrowest match; a `library` skill should never
 be pulled for a task a domain skill already covers.
 
 The harness contract for every skill — required frontmatter, attribution,

@@ -275,18 +275,27 @@ function renderDataModel(block) {
 function renderQuestionForm(block) {
   const questions = asArray(block.props.questions);
   if (!questions.length) return card(text(block.props.title, 'open questions'), '<div class="note">no questions</div>');
-  const items = questions.map((q) => {
+  let answerable = false;
+  const items = questions.map((q, qi) => {
     if (!q || typeof q !== 'object') return `<div class="question"><div class="q">${esc(asText(q))}</div></div>`;
+    const qTitle = asText(q.title || q.label || q.id) || `Question ${qi + 1}`;
+    const input = q.mode === 'single' ? 'radio' : q.mode === 'multi' ? 'checkbox' : '';
+    if (input) answerable = true;
     const options = asArray(q.options).map((opt) => {
       const o = opt && typeof opt === 'object' ? opt : { label: asText(opt) };
       const rec = o.recommended ? ' rec' : '';
-      return `<li class="${rec}">${esc(asText(o.label))}${o.detail ? ` <span class="detail">${esc(asText(o.detail))}</span>` : ''}${o.recommended ? ' <span class="badge">recommended</span>' : ''}</li>`;
+      const label = asText(o.label);
+      const body = `${esc(label)}${o.detail ? ` <span class="detail">${esc(asText(o.detail))}</span>` : ''}${o.recommended ? ' <span class="badge">recommended</span>' : ''}`;
+      if (!input) return `<li class="${rec}">${body}</li>`;
+      return `<li class="${rec}"><label><input type="${input}" name="q${qi}" data-opt="${esc(label)}"${o.recommended ? ' checked' : ''}${input === 'radio' ? ' required' : ''}> ${body}</label></li>`;
     }).join('');
-    return `<div class="question"><div class="q">${esc(asText(q.title || q.label || q.id))}<span class="mode">${esc(text(q.mode, 'open'))}</span></div>` +
+    return `<div class="question"${input ? ` data-q="${esc(qTitle)}"` : ''}><div class="q">${esc(qTitle)}<span class="mode">${esc(text(q.mode, 'open'))}</span></div>` +
       (q.description ? `<div class="prose"><p>${esc(asText(q.description))}</p></div>` : '') +
       (options ? `<ul>${options}</ul>` : '') + '</div>';
   }).join('');
-  return card(text(block.props.title || block.props.label, 'open questions'), items);
+  const label = text(block.props.title || block.props.label, 'open questions');
+  if (!answerable) return card(label, items);
+  return card(label, `<form data-qform>${items}<button type="submit" class="send-answers">Send answers</button></form>`);
 }
 
 function renderColumns(block, ctx) {
@@ -1210,6 +1219,20 @@ function boardScript() {
   return `<script>\n${fs.readFileSync(path.join(__dirname, 'board-client.js'), 'utf8')}</script>`;
 }
 
+const ANSWERS_SCRIPT = `<script>
+document.querySelectorAll('form[data-qform]').forEach(function (form) {
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var items = [];
+    form.querySelectorAll('[data-q]').forEach(function (q) {
+      var selected = Array.prototype.map.call(q.querySelectorAll('input:checked'), function (i) { return i.getAttribute('data-opt'); });
+      if (selected.length) items.push({ kind: 'answer', question: q.getAttribute('data-q'), selected: selected });
+    });
+    if (items.length && window.parent !== window) window.parent.postMessage({ type: 'pc:answers', items: items }, '*');
+  });
+});
+</script>`;
+
 const NAV_TOGGLE_SCRIPT = `<script>
 (function () {
   var K = 'bdb-plan-builder:nav-hidden', b = document.querySelector('.nav-toggle');
@@ -1283,6 +1306,7 @@ ${recap ? recapHeader(title, recap) : `<h1 class="doc-title">${esc(title)}</h1>`
 </div>
 ${hasMermaid ? mermaidLoaderScript(mermaidUrl()) : ''}
 ${hasBoard ? boardScript() : ''}
+${body.includes('data-qform') ? ANSWERS_SCRIPT : ''}
 ${NAV_TOGGLE_SCRIPT}
 </body>
 </html>`;

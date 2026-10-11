@@ -150,6 +150,25 @@ describe('Plan-Canvas request provenance', () => {
     assert.equal((await rawRequest(port, { method: 'POST', pathName: '/sdk.js', headers: cross })).status, 403);
   });
 
+  test('a top-level link from another site (Launchpad) can open the home page and a canvas page', async () => {
+    for (const site of ['same-site', 'cross-site']) {
+      const nav = { 'sec-fetch-site': site, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' };
+      assert.equal((await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: nav })).status, 200, `${site} home`);
+      assert.notEqual((await rawRequest(port, { method: 'GET', pathName: '/canvas/aaaaaaaaaaaa', body: '', headers: nav })).status, 403, `${site} canvas page`);
+    }
+  });
+
+  test('navigation headers do not open the API, other paths or writes', async () => {
+    const nav = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' };
+    assert.equal((await rawRequest(port, { method: 'GET', pathName: '/api/sessions', body: '', headers: nav })).status, 403);
+    assert.equal((await rawRequest(port, { method: 'POST', pathName: '/', headers: nav })).status, 403);
+    assert.equal((await rawRequest(port, { method: 'POST', pathName: '/api/end', headers: nav })).status, 403);
+    const fetchMode = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
+    assert.equal((await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: fetchMode })).status, 403, 'fetch() from another site stays refused');
+    const iframe = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'iframe' };
+    assert.equal((await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: iframe })).status, 403, 'framing by another site stays refused');
+  });
+
   test('shutdown and feedback endpoints are covered by the same gate', async () => {
     const other = { origin: `http://localhost:${port + 1}` };
     assert.equal((await rawRequest(port, { pathName: '/shutdown', headers: other })).status, 403);

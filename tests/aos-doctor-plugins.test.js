@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 
 const DOCTOR = path.resolve(__dirname, '..', 'bin', 'aos-doctor.mjs');
 const write = (p, text) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); };
-const NAMES = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
+const NAMES = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox'];
 
 function run(setup) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-docpl-'));
@@ -50,6 +50,20 @@ test('plugin check: Claude settings registered + cache present passes, missing w
         write(path.join(root, 'skills', 'startcycle', 'SKILL.md'), '#');
     })('Claude Code bdb-aos plugin');
     assert.ok(good.ok, good.detail);
+});
+
+test('Claude duplicate skills: a manifest-recorded loose copy of a plugin skill warns; an unrecorded one does not', () => {
+    const setup = (recordLoose) => (h) => {
+        const root = path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', '1.0.0');
+        write(path.join(root, 'plugin.json'), JSON.stringify({ skills: ['./skills'] }));
+        write(path.join(root, 'skills', 'startcycle', 'SKILL.md'), '#');
+        write(path.join(h, '.claude', 'skills', 'startcycle', 'SKILL.md'), '#');
+        write(path.join(h, '.agents', '.bdb-install-manifest.json'), JSON.stringify(recordLoose ? { [path.join(h, '.claude', 'skills', 'startcycle', 'SKILL.md')]: { sha256: 'x' } } : {}));
+    };
+    const d = run(setup(true))('Claude duplicate skills');
+    assert.ok(d && !d.ok && d.warningOnly, JSON.stringify(d));
+    assert.match(d.fix, /run the AOS installer again; it backs up and retires the loose copies \(aos-uninstall --restore-plugin-backup restores them\)/i);
+    assert.equal(run(setup(false))('Claude duplicate skills'), undefined);
 });
 
 test('plugin check: opt-out is not a failure; Codex and agy are checked by their plugin dirs', () => {

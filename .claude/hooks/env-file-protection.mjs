@@ -14,13 +14,14 @@
 // Write and block all file creation. Implemented as a script with the path
 // check in code, so one implementation behaves correctly on both.
 //
-// Deliberately fails OPEN. A hook that cannot read its input must not wedge
+// Deliberately fails OPEN for the .env check. A hook that cannot read its input must not wedge
 // every write in the session; missing a protection is recoverable, freezing
-// the agent is not.
+// the agent is not. The go-gate store check is the exception: unparseable input that names the
+// store is denied.
 
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, lstatSync, readlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 
 // Templates are committed on purpose and hold no live secret. Blocking them
 // would contradict this hook's own advice below ("write it to .env.example").
@@ -74,18 +75,46 @@ function reasonFor(filePath) {
 // worthless without the matching human transcript entry the gate re-verifies.
 // /i: APFS and NTFS are case-insensitive, so ~/.AOS/Gate is the same directory.
 const GATE_STORE = /(?:^|[\\/])\.aos[\\/](?:gate|go)(?:[\\/]|$)/i;
-function gateStoreTarget(filePath) {
-  const abs = resolve(filePath.replace(/^~(?=\/|$)/, process.env.HOME || "~"));
-  let real = abs;
-  try { real = `${realpathSync(dirname(abs))}/${basename(abs)}`; } catch { /* parent missing: string check only */ }
-  let realFile = "";
-  try { realFile = realpathSync(abs); } catch { /* file does not exist yet */ } // a symlinked FILE pointing into the store
-  return GATE_STORE.test(abs) || GATE_STORE.test(real) || GATE_STORE.test(`${abs}/`) || (!!realFile && GATE_STORE.test(realFile));
+
+// Where a write to `p` would really land: the realpath of the deepest existing ancestor (so a symlinked directory
+// anywhere up the chain counts, also when the leaf and some parents do not exist yet) plus the missing tail; a dangling
+// symlink is followed to its target. Bounded: 40 link hops; beyond that (a real loop, or an absurd chain) it fails
+// closed by answering with a path inside the store.
+const HOP_LIMIT = 40;
+// `p` is NOT normalized by the caller or here: `link/../x` means "the parent of what link points to", which only the OS
+// (realpath.native) resolves correctly, so `..` is never collapsed textually before the existing prefix is resolved.
+function landing(p, hops = 0) {
+  const tail = [];
+  let cur = p;
+  for (;;) {
+    try { return resolve(realpathSync.native(cur), ...tail); } catch { /* not resolvable here */ }
+    let link = false;
+    try { link = lstatSync(cur).isSymbolicLink(); } catch { /* not a link either */ }
+    if (link) {
+      if (hops >= HOP_LIMIT) return "/.aos/gate/symlink-hop-limit";
+      try {
+        const t = readlinkSync(cur);
+        return landing((isAbsolute(t) ? t : `${dirname(cur)}/${t}`) + (tail.length ? `/${tail.join("/")}` : ""), hops + 1);
+      } catch { return "/.aos/gate/symlink-unreadable"; }
+    }
+    const parent = dirname(cur);
+    if (parent === cur) return p;
+    tail.unshift(basename(cur));
+    cur = parent;
+  }
 }
 
-export function envFileReason(filePath) {
+function gateStoreTarget(filePath, cwd = "") {
+  const expanded = filePath.replace(/^~(?=\/|$)/, process.env.HOME || "~");
+  const base = resolve(cwd || process.cwd());
+  const raw = isAbsolute(expanded) ? expanded : `${base}/${expanded}`; // un-normalized: see landing()
+  const abs = resolve(base, expanded);
+  return GATE_STORE.test(abs) || GATE_STORE.test(landing(raw)) || GATE_STORE.test(landing(abs)) || GATE_STORE.test(`${abs}/`);
+}
+
+export function envFileReason(filePath, cwd = "") {
   if (typeof filePath !== "string" || !filePath.trim()) return null;
-  if (gateStoreTarget(filePath)) {
+  if (gateStoreTarget(filePath, cwd)) {
     return `Blocked by env-file-protection hook: ${filePath} is in the AOS go-gate store. Modes and grants are set only by the human typing a plain "gogate ..." message; agents may read the status, never write it.`;
   }
   // basename(), so a path like /srv/app/.env matches but /srv/app/env-notes.md does not.
@@ -102,21 +131,49 @@ function main() {
     try {
       input = JSON.parse(rawInput);
     } catch {
+      // Not decidable, but not blind either: input that names the go-gate store anywhere (JSON escapes `\/` and
+      // `\\` included) is denied; any other unparseable input still passes so the hook cannot wedge every write.
+      if (GATE_STORE.test(rawInput.replace(/\\+\//g, "/").replace(/\\{2,}/g, "\\"))) {
+        const reason = "Blocked by env-file-protection hook: unreadable hook input that names the AOS go-gate store.";
+        console.log(JSON.stringify({ decision: "deny", reason }));
+        process.stderr.write(`${reason}\n`);
+        process.exit(2);
+      }
       process.exit(0);
     }
   }
+  if (!input || typeof input !== "object") input = {};
 
   const isAgy = !!(input?.toolCall || input?.conversationId || input?.artifactDirectoryPath || input?.workspacePaths);
+  const cwd = typeof input.cwd === "string" ? input.cwd : "";
 
-  const filePath =
-    input?.toolCall?.args?.filePath ||
-    input?.toolCall?.args?.file_path ||
-    input?.tool_input?.file_path ||
-    input?.file_path ||
-    "";
+  for (const filePath of targetsOf(input)) {
+    const reason = envFileReason(filePath, cwd);
+    if (reason) return respond(isAgy, false, reason);
+  }
+  respond(isAgy, true);
+}
 
-  const reason = envFileReason(filePath);
-  respond(isAgy, !reason, reason || "");
+// Every path-like argument a file tool may carry, across harnesses: Claude Code (file_path, notebook_path), OpenCode
+// (filePath, patchText of apply_patch), agy (toolCall.args). The agy/OpenCode extra key names are best-effort and
+// deny-only: reading more keys can add a block, never remove one.
+// No caps on count, path length or patch size (a cap would be a way to hide a path). [ \t]* cannot cross a line, so the
+// patch regex is linear even on huge input.
+const PATH_KEYS = ["file_path", "filePath", "notebook_path", "path", "target_file", "TargetFile", "AbsolutePath"];
+const PATCH_KEYS = ["patchText", "patch", "input"];
+const PATCH_FILE = /^[ \t]*\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm;
+export function targetsOf(input) {
+  const out = [];
+  if (!input || typeof input !== "object") return out;
+  for (const src of [input.tool_input, input.toolCall?.args, input.args, input]) {
+    if (!src || typeof src !== "object") continue;
+    for (const k of PATH_KEYS) if (typeof src[k] === "string" && src[k]) out.push(src[k]);
+    for (const k of PATCH_KEYS) {
+      if (typeof src[k] !== "string") continue;
+      for (const m of src[k].matchAll(PATCH_FILE)) out.push(m[1].trim());
+    }
+  }
+  return out;
 }
 
 if (isMain()) main();

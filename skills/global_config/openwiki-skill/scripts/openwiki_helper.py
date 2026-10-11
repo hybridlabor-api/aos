@@ -108,7 +108,7 @@ def main():
     parser.add_argument("--command", required=True, choices=["collect", "pre-snapshot", "post-snapshot", "commit"])
     parser.add_argument("--cwd", default=os.getcwd())
     parser.add_argument("--pre-hash", default=None)
-    parser.add_argument("--model", default="gemini-3.5-flash")
+    parser.add_argument("--model", default=os.environ.get("OPENWIKI_MODEL", ""))  # set the current model ID via OPENWIKI_MODEL
     parser.add_argument("--run-type", default="update", choices=["init", "update"])
     args = parser.parse_args()
 

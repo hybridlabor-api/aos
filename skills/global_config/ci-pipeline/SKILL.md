@@ -65,14 +65,14 @@ Invoke `github-actions-generator` with the detected stack.
 ### 2. Dockerfile
 
 Only if no `Dockerfile` exists, or the user asked for one. Invoke
-`dockerfile-generator`.
+`docker-expert` (section Dockerfile Generation).
 
-- **Validator:** `dockerfile-validator` — must pass before continuing.
+- **Validator:** `docker-expert` (section Dockerfile Validation) — must pass before continuing.
 - **Output:** `Dockerfile`, `.dockerignore`.
 
 ### 3. Makefile
 
-Only if no `Makefile` exists. Invoke `makefile-generator`.
+Only if no `Makefile` exists. Invoke `makefile-pro`.
 
 - **Output:** `Makefile` with the targets `build`, `test`, `lint`,
   `docker-build`, `clean`.
@@ -104,7 +104,7 @@ unavailable validator is not a passing validator.
 Verify before calling this done:
 
 - [ ] `.github/workflows/ci.yml` exists and passes `github-actions-validator`
-- [ ] `Dockerfile` exists (if applicable) and passes `dockerfile-validator`
+- [ ] `Dockerfile` exists (if applicable) and passes the `docker-expert` validator
 - [ ] `Makefile` exists and `make test` runs locally
 - [ ] Every validator ran at least once, and its result is reported — passed,
       failed, or skipped-with-reason
@@ -128,7 +128,7 @@ Verify before calling this done:
 
 ## Related
 
-- `bash-script-generator` / `bash-script-validator` — helper scripts the
+- `os-scripting` (Bash script generation and ShellCheck validation) — helper scripts the
   pipeline calls, when the workflow needs more than a Makefile target
 - `github-actions-templates` — superseded, kept for its existing patterns
 - `vercel-deployment` — deployment specifics for Vercel targets

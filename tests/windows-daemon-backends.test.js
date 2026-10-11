@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const repo = path.resolve(__dirname, '..');
-const dashboard = fs.readFileSync(path.join(repo, 'bin', 'aos-dashboard.mjs'), 'utf8');
+// WP2: the dashboard's backing logic lives in lib/hub/services.mjs now.
+const dashboard = fs.readFileSync(path.join(repo, 'lib', 'hub', 'services.mjs'), 'utf8');
 const installer = fs.readFileSync(path.join(repo, 'installer.js'), 'utf8');
 
 describe('Windows daemon support', () => {

@@ -28,11 +28,14 @@ function shim(name, body) {
 
 test('Quick Update runs the same three plugin steps, in the full-install order', () => {
   const src = fs.readFileSync(path.join(ROOT, 'installer.js'), 'utf8');
-  const body = (name) => { const i = src.indexOf(`async function ${name}(`); return src.slice(i, src.indexOf('\n}\n', i)); };
-  for (const fn of ['runQuickUpdate']) {
-    const b = body(fn);
+  const body = (name) => { const i = src.indexOf(`function ${name}(`); return src.slice(i, src.indexOf('\n}\n', i)); };
+  // v5 split Quick Update into kernel + harnesses steps; runQuickUpdate runs them in that order.
+  const quick = body('runQuickUpdate');
+  assert.ok(quick.indexOf('quickUpdateKernel(') >= 0 && quick.indexOf('quickUpdateKernel(') < quick.indexOf('quickUpdateHarnesses('));
+  {
+    const b = `${body('quickUpdateKernel')}\n${body('quickUpdateHarnesses')}`;
     const order = ['runPluginMigration()', 'runAgyPluginStep()', 'injectHarnessRules()', 'runCodexPluginStep()'].map((k) => b.indexOf(k));
-    assert.ok(order.every((x) => x >= 0), `${fn} misses a plugin step: ${order}`);
+    assert.ok(order.every((x) => x >= 0), `Quick Update misses a plugin step: ${order}`);
     assert.deepEqual([...order].sort((a, b2) => a - b2), order);
   }
   const full = body('main');
@@ -41,12 +44,14 @@ test('Quick Update runs the same three plugin steps, in the full-install order',
 
 test('codex step reaches a Codex that is only an npm .cmd-style shim on PATH (no shell string), logs one line when absent', () => {
   const calls = path.join(tmp, 'codex-calls');
-  shim('codex', `echo "$@" >> "${calls}"\ncase "$2" in list) echo '{"installed":[],"available":[]}';; esac\nexit 0`);
+  const WIN = process.platform === 'win32';
+  if (WIN) fs.writeFileSync(path.join(bin, 'codex.cmd'), `@echo off\r\necho %* >> "${calls}"\r\necho %* | findstr /c:"list" >nul && echo {"installed":[],"available":[]}\r\nexit /b 0\r\n`);
+  else shim('codex', `echo "$@" >> "${calls}"\ncase "$2" in list) echo '{"installed":[],"available":[]}';; esac\nexit 0`);
   const old = process.env.PATH;
-  process.env.PATH = `${bin}:/usr/bin:/bin`;
+  process.env.PATH = [bin, ...(WIN ? [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')] : ['/usr/bin', '/bin'])].join(path.delimiter);
   try {
-    inst.runCodexPluginStep();
-    const got = fs.readFileSync(calls, 'utf8');
+    try { inst.runCodexPluginStep(); } catch { /* the shim never lists the plugin as installed, so the step now reports FAILED */ }
+    const got = fs.readFileSync(calls, 'utf8').replace(/"/g, ''); // the cmd.exe path quotes every argument
     assert.match(got, /plugin list --json/);
     assert.match(got, /plugin marketplace add .*/);
   } finally { process.env.PATH = old; }

@@ -10,7 +10,7 @@ from src.processors.base import Processor
 class BdbTouchdesignerProcessor(Processor):
     """Processor for BDB TouchDesigner MCP outputs (bdb_td_* / mcp_td_*)."""
 
-    priority = 15
+    priority = 9
     name = "bdb_touchdesigner"
     hook_patterns = [r"bdb_td_\w+", r"get_td_\w+", r"mcp_td_\w+"]
 
@@ -81,7 +81,7 @@ class BdbTouchdesignerProcessor(Processor):
 class BdbUnrealProcessor(Processor):
     """Processor for BDB Unreal Engine MCP outputs (bdb_unreal_* / mcp_unreal_*)."""
 
-    priority = 15
+    priority = 10
     name = "bdb_unreal"
     hook_patterns = [r"bdb_unreal_\w+", r"unreal_\w+", r"mcp_unreal_\w+"]
 
@@ -143,7 +143,7 @@ class BdbUnrealProcessor(Processor):
 class BdbAfterEffectsProcessor(Processor):
     """Processor for BDB After Effects MCP outputs (bdb_after_effects_* / ae-mcp)."""
 
-    priority = 15
+    priority = 11
     name = "bdb_after_effects"
     hook_patterns = [r"bdb_after_effects_\w+", r"ae-mcp", r"after_effects_\w+"]
 
@@ -189,7 +189,7 @@ class BdbAfterEffectsProcessor(Processor):
 class BdbDavinciProcessor(Processor):
     """Processor for BDB DaVinci Resolve MCP outputs (bdb_davinci_* / resolve_mcp)."""
 
-    priority = 15
+    priority = 12
     name = "bdb_davinci"
     hook_patterns = [r"bdb_davinci_\w+", r"resolve_mcp\w*"]
 
@@ -230,7 +230,7 @@ class BdbDavinciProcessor(Processor):
 class BdbCreativeSuiteProcessor(Processor):
     """Processor for Resolume, Rhino 3D, and Adobe UXP Plugin outputs."""
 
-    priority = 15
+    priority = 13
     name = "bdb_creative_suite"
     hook_patterns = [r"bdb_resolume_\w+", r"bdb_rhino_\w+", r"adobe_uxp_\w+"]
 
@@ -261,7 +261,7 @@ class BdbCreativeSuiteProcessor(Processor):
 class BdbMembProcessor(Processor):
     """Processor for BDB memB Semantic Memory outputs (memb_mcp / memb-skill)."""
 
-    priority = 15
+    priority = 14
     name = "bdb_memb"
     hook_patterns = [r"memb_\w+", r"search_memory", r"add_memory"]
 

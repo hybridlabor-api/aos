@@ -5,16 +5,20 @@
 //   aos doctor
 //   node bin/aos-doctor.mjs [--json] [--net]
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { connect } from 'node:net';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const req = createRequire(import.meta.url);
 const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
+const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
+const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
+const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');
@@ -134,7 +138,7 @@ function checkAosCore() {
 
   // Check store index
   const storeIndexCandidates = [
-    path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'lib', 'ecc-store-index.json'),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'ecc-store-index.json'),
     h('.agents', 'lib', 'ecc-store-index.json'),
     h('dev', 'bdb-dev', 'bdb-dev-optimized-agent-skills', 'lib', 'ecc-store-index.json')
   ];
@@ -173,7 +177,7 @@ function checkAosCore() {
   if (retired) {
     add('aos-core', 'Retired AO module', false,
       `${tilde(retired)} — archived predecessor with known CDC loop bug`,
-      `Remove directory: rm -rf ${tilde(retired)} — AO is now bdb-agent-orchestrator.`);
+      `Move directory aside or review path: ${tilde(retired)} — AO is now bdb-agent-orchestrator.`);
   }
 }
 
@@ -200,12 +204,30 @@ function checkOpencodeMcpNames() {
 }
 
 // ---------------------------------------------------------------- 3. Harness Placement & Skills Sync
+// Skill names this package ships (skills/<group>/<name>/SKILL.md), or null when no package tree is reachable.
+function shippedSkillNames() {
+  const pkgRoots = [path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), readJson(h('.agents', 'lib', '.aos-package-root.json'))?.packageRoot];
+  // The name check keeps ~/.agents (installed copy's parent, has skills/ and maybe a legacy package.json) from counting as the package.
+  const pkgRoot = pkgRoots.find((r) => typeof r === 'string' && readJson(path.join(r, 'package.json'))?.name === '@hybridlabor-api/aos' && existsSync(path.join(r, 'skills')));
+  if (!pkgRoot) return null;
+  const names = new Set();
+  const walk = (dir, depth) => {
+    for (const d of readdirSync(dir, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      const p = path.join(dir, d.name);
+      if (existsSync(path.join(p, 'SKILL.md'))) names.add(d.name);
+      else if (depth < 3) walk(p, depth + 1);
+    }
+  };
+  walk(path.join(pkgRoot, 'skills'), 1);
+  return names;
+}
+
 function checkHarnesses() {
   const harnesses = [
     { name: 'Claude Code', path: hc('skills') },
     { name: 'Gemini / Antigravity', path: firstExisting([h('.gemini', 'config', 'skills'), h('.gemini', 'antigravity-cli', 'skills')]) || h('.gemini', 'config', 'skills') },
     { name: 'Codex', path: h('.agents', 'skills') },
-    { name: 'Cursor', path: h('.cursor', 'skills') },
     { name: 'Roo Code', path: h('.roo', 'skills') },
   ];
 
@@ -225,10 +247,31 @@ function checkHarnesses() {
   // Codex reads ~/.codex/skills AND ~/.agents/skills; AOS writes only the latter, so same-named copies in the former double-list.
   const codexRoot = h('.codex', 'skills');
   const doubled = existsSync(codexRoot) ? readdirSync(codexRoot, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !d.name.startsWith('.') && existsSync(path.join(codexRoot, d.name, 'SKILL.md')) && existsSync(path.join(h('.agents', 'skills'), d.name, 'SKILL.md'))).length : 0;
-  if (doubled) {
-    add('harnesses', 'Codex duplicate skills', false, `${doubled} skill(s) exist in both ${tilde(codexRoot)} and ~/.agents/skills, so Codex lists them twice`,
-      `Run 'npx @hybridlabor-api/aos@latest' once (it retires AOS copies from ${tilde(codexRoot)} with a backup) or move your own copies out.`, true);
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.') && existsSync(path.join(codexRoot, d.name, 'SKILL.md')) && existsSync(path.join(h('.agents', 'skills'), d.name, 'SKILL.md')))
+    .map((d) => d.name) : [];
+  if (doubled.length) {
+    const shipped = shippedSkillNames();
+    const preview = (names) => names.slice(0, 8).join(', ') + (names.length > 8 ? ', ...' : '');
+    const aosOwned = shipped ? doubled.filter((n) => shipped.has(n)) : [];
+    const foreign = shipped ? doubled.filter((n) => !shipped.has(n)) : doubled;
+    const fixes = [];
+    if (foreign.length) fixes.push(shipped
+      ? `Not installed by AOS (${preview(foreign)}): remove the copy in ${tilde(codexRoot)} or ~/.agents/skills yourself.`
+      : 'If these are not AOS skills, remove one of the two copies yourself.');
+    if (aosOwned.length) fixes.push(`Run 'npx @hybridlabor-api/aos@latest' once (it retires AOS copies from ${tilde(codexRoot)} with a backup).`);
+    add('harnesses', 'Codex duplicate skills', false, `${doubled.length} skill(s) exist in both ${tilde(codexRoot)} and ~/.agents/skills, so Codex lists them twice: ${preview(doubled)}`,
+      fixes.join(' '), true);
+  }
+
+  // The same AOS skill as a manifest-recorded loose copy in the Claude skills dir and in the bdb-aos plugin is listed twice.
+  const looseRoot = hc('skills');
+  const claudePlugin = pluginSkills(HOME);
+  const installManifest = readJson(h('.agents', '.bdb-install-manifest.json')) || {};
+  const recorded = new Set(Object.keys(installManifest).filter((k) => k.startsWith(looseRoot + path.sep)).map((k) => k.slice(looseRoot.length + 1).split(path.sep)[0]));
+  const twice = claudePlugin ? [...claudePlugin.skills].filter((n) => recorded.has(n) && existsSync(path.join(looseRoot, n, 'SKILL.md'))) : [];
+  if (twice.length) {
+    add('harnesses', 'Claude duplicate skills', false, `${twice.length} AOS skill(s) exist both as loose copies in ${tilde(looseRoot)} and in the bdb-aos plugin, so Claude lists them twice`,
+      'Run the AOS installer again; it backs up and retires the loose copies (aos-uninstall --restore-plugin-backup restores them).', true);
   }
 
   const ov = req('../lib/opencode-verify.js');
@@ -271,6 +314,22 @@ function checkHooks() {
     claudeWiredOk ? 'PreToolUse & UserPromptSubmit registered' : 'Hooks not fully registered in ~/.claude/settings.json',
     'Run the AOS installer to wire hooks in settings.json.');
 
+  // Destructive-actions rules re-injected per prompt, and the home-level permissions.deny rules.
+  const injectFile = path.join(claudeHooksDir, 'rules-inject.mjs');
+  const injectWired = JSON.stringify(claudeSettings?.hooks?.UserPromptSubmit || []).includes('rules-inject.mjs');
+  add('hooks', 'Destructive rules re-injection (rules-inject)', existsSync(injectFile) && injectWired,
+    existsSync(injectFile) ? (injectWired ? `${tilde(injectFile)}, UserPromptSubmit registered` : `${tilde(injectFile)} present but not registered in settings.json`) : `${tilde(injectFile)} missing`,
+    'Run the AOS installer to install and register rules-inject.mjs.', true);
+  let denyRules = [];
+  try { denyRules = req('../lib/destructive-rules.js').CLAUDE_DENY_RULES; } catch {}
+  if (denyRules.length) {
+    const have = Array.isArray(claudeSettings?.permissions?.deny) ? claudeSettings.permissions.deny : [];
+    const missingDeny = denyRules.filter((r) => !have.includes(r));
+    add('hooks', 'Claude permissions.deny (home-level rm)', missingDeny.length === 0,
+      missingDeny.length === 0 ? `${denyRules.length}/${denyRules.length} AOS deny rules in ${tilde(hc('settings.json'))}` : `${missingDeny.length}/${denyRules.length} AOS deny rules missing from ${tilde(hc('settings.json'))}`,
+      'Run the AOS installer to add the deny rules (it never touches your own rules).', true);
+  }
+
   // Antigravity hooks
   const agHooksFile = firstExisting([
     h('.gemini', 'antigravity-cli', 'hooks.json'),
@@ -279,7 +338,7 @@ function checkHooks() {
   ]);
   const agHooks = agHooksFile ? readJson(agHooksFile) : null;
   // New format: one named hook per concern at the top level; legacy: all handlers under "hooks".
-  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context'];
+  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox'];
   const namedWired = AG_NAMED.filter((n) => agHooks && agHooks[n]);
   const legacyWired = JSON.stringify(agHooks?.hooks || {}).includes('memb-inject.mjs');
   const missingNamed = AG_NAMED.filter((n) => !(agHooks && agHooks[n]));
@@ -298,9 +357,114 @@ function checkHooks() {
   add('hooks', 'Codex config.toml hooks', codexWired,
     existsSync(codexConf) ? `${tilde(codexConf)} (${codexWired ? 'AOS hook commands wired' : 'no AOS hook commands'})` : `${tilde(codexConf)} missing`,
     'Run the AOS installer to wire Codex hooks.', true);
+
+  if (codexWired) {
+    add('hooks', 'Codex hook review', false, 'Codex skips new or changed AOS hooks until you trust them once: open Codex and run /hooks',
+      'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.', true);
+  }
+  let codexJson = '';
+  try { codexJson = readFileSync(h('.codex', 'hooks.json'), 'utf8'); } catch {}
+  if (codexWired && HOOK_SCRIPTS.some((n) => codexJson.includes(n))) {
+    add('hooks', 'Codex hooks in two files', false, `hooks in both hooks.json and config.toml (${tilde(h('.codex', 'hooks.json'))} and ${tilde(codexConf)}); Codex merges them and warns at startup`,
+      'Run the AOS installer: it moves its hooks out of hooks.json (original kept as hooks.json.aos-bak-<time>).', true);
+  }
 }
 
-// ---------------------------------------------------------------- 5. Daemons & Ecosystem Modules (Including AO)
+// ---------------------------------------------------------------- 5b. A2A capability matrix (WP-INSTALL)
+// A harness that is installed but whose A2A wiring is broken fails the doctor; a harness that is
+// not installed, and the optional agy/Codex/sidecar/SDK pieces, stay warnings (same philosophy as the mcsc row).
+// Codex and agy are delegation targets, so they never carry a sidecar
+// SessionStart hook (fork-bomb rule); their row checks the pull/CLI pieces.
+async function checkA2aMatrix() {
+  const area = 'a2a';
+  const pkgBin = path.join(path.resolve(fileURLToPath(import.meta.url), '..'), 'a2a-inbox-mcp.mjs');
+  // Where the hook and the OpenCode plugin find lib/a2a-inbox.mjs: ../../lib, else ~/.agents/lib.
+  const inboxLib = firstExisting([h('.agents', 'lib', 'a2a-inbox.mjs'), path.join(hc('hooks'), '..', '..', 'lib', 'a2a-inbox.mjs')]);
+
+  // Claude Code: drain + stop hooks wired in settings.json, and the lib they import resolvable.
+  const claudeSettings = readJson(hc('settings.json'));
+  const claudeWired = JSON.stringify(claudeSettings?.hooks || {}).includes('a2a-inbox.mjs');
+  const claudeOk = claudeWired && !!inboxLib;
+  const sidecarShipped = existsSync(hc('hooks', 'a2a-session.mjs'));
+  add(area, 'A2A Claude Code', claudeOk,
+    !claudeWired ? 'a2a-inbox.mjs not wired in ~/.claude/settings.json'
+      : !inboxLib ? 'a2a-inbox.mjs wired, but lib/a2a-inbox.mjs is not under ~/.agents/lib (the hook would be a no-op)'
+        : `a2a-inbox.mjs drain + stop wired in ${tilde(hc('settings.json'))}`,
+    'Run the AOS installer to wire the A2A inbox hooks and ship the lib.', !existsSync(claudeConfigDir(HOME)));
+
+  // OpenCode: the plugin carries the sidecar init call and the inbox import.
+  const ocDirs = [process.platform === 'win32' && process.env.APPDATA ? path.join(process.env.APPDATA, 'opencode') : h('.config', 'opencode')];
+  const ocPlugin = firstExisting(ocDirs.map((d) => path.join(d, 'plugins', 'bdb-aos.js')));
+  let ocOk = false, ocDetail = `${tilde(h('.config', 'opencode', 'plugins', 'bdb-aos.js'))} missing`;
+  if (ocPlugin) {
+    let src = '';
+    try { src = readFileSync(ocPlugin, 'utf8'); } catch {}
+    ocOk = src.includes('a2a-oc.mjs') && src.includes('ensureSidecar') && !!inboxLib;
+    ocDetail = ocOk ? `${tilde(ocPlugin)} delivers A2A injections + sidecar init`
+      : `${tilde(ocPlugin)} lacks the A2A sidecar init call or lib/a2a-inbox.mjs is missing under ~/.agents/lib`;
+  }
+  add(area, 'A2A OpenCode', ocOk, ocDetail, 'Run the AOS installer to install the OpenCode plugin.', !ocPlugin);
+
+  // agy: pull-side MCP payload present (registration is a manual `agy mcp add`).
+  const agyMcp = firstExisting([h('.agents', 'bin', 'aos-a2a-mcp.mjs'), h('.agents', 'bin', 'a2a-inbox-mcp.mjs'), existsSync(path.join(path.resolve(fileURLToPath(import.meta.url), '..'), 'aos-a2a-mcp.mjs')) ? path.join(path.resolve(fileURLToPath(import.meta.url), '..'), 'aos-a2a-mcp.mjs') : null, existsSync(pkgBin) ? pkgBin : null]);
+  add(area, 'A2A agy (Antigravity)', !!agyMcp,
+    agyMcp ? `${tilde(agyMcp)} shipped · optional: agy mcp add aos-a2a node "${agyMcp}"` : 'aos-a2a-mcp.mjs missing (install AOS)',
+    'Run the AOS installer; register with: agy mcp add aos-a2a node <path to aos-a2a-mcp.mjs>', true);
+
+  // Cursor: check ~/.cursor/mcp.json for aos-a2a with AOS_A2A_NAME
+  const cursorMcpFile = h('.cursor', 'mcp.json');
+  const cursorCfg = readJson(cursorMcpFile);
+  const cursorEntry = cursorCfg?.mcpServers?.['aos-a2a'] || cursorCfg?.mcpServers?.['aos-a2a-mcp'];
+  if (cursorEntry) {
+    const cursorHasName = Boolean(cursorEntry?.env?.AOS_A2A_NAME);
+    add(area, 'A2A Cursor MCP', cursorHasName,
+      cursorHasName ? `registered in ${tilde(cursorMcpFile)} with AOS_A2A_NAME="${cursorEntry.env.AOS_A2A_NAME}"`
+        : `registered in ${tilde(cursorMcpFile)} but lacks AOS_A2A_NAME in env`,
+      'Set AOS_A2A_NAME in ~/.cursor/mcp.json env', true);
+  }
+
+
+  // Codex: live through the shared CLI/lib (no sidecar hook — delegation target).
+  const codexLib = firstExisting([h('.agents', 'lib', 'a2a-codex.mjs')]);
+  add(area, 'A2A Codex', !!codexLib,
+    codexLib ? `${tilde(codexLib)} + a2a-inbox.mjs shipped (live via aos-a2a; no sidecar hook — delegation target)` : `~/.agents/lib/a2a-codex.mjs missing (install AOS)`,
+    'Run the AOS installer to ship the A2A Codex lib.', true);
+
+  // Sidecar: who starts `aos-a2a serve`, and the off switch that keeps it a no-op
+  // when a session is itself a delegated worker.
+  add(area, 'A2A sidecar guard', true,
+    sidecarShipped ? 'a2a-session.mjs hook shipped; skipped under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0'
+      : 'SessionStart hook not shipped in this package; sidecar starts only from the OpenCode plugin init (also skipped under AOS_A2A_SIDECAR=off)',
+    '', true);
+
+  // Dependency the sidecar itself needs.
+  let sdkOk = false;
+  for (const id of ['@a2a-js/sdk/package.json', '@a2a-js/sdk']) {
+    try { req.resolve(id); sdkOk = true; break; } catch { /* try next */ }
+  }
+  if (!sdkOk) {
+    try {
+      const { a2aImport } = req('../lib/a2a-sdk-resolve.mjs');
+      if (a2aImport) { await a2aImport('@a2a-js/sdk'); sdkOk = true; }
+    } catch { /* sdk missing */ }
+  }
+  add(area, 'A2A SDK dependency', sdkOk,
+    sdkOk ? '@a2a-js/sdk resolvable next to this doctor' : '@a2a-js/sdk not resolvable: `aos-a2a serve/send` will fail with a clear SDK-missing error',
+    'Install @a2a-js/sdk: npm install @a2a-js/sdk in the package root or re-run the AOS installer: npx @hybridlabor-api/aos@latest', true);
+}
+
+// agy workers run without MCP servers through a worker home (no-mcp.js). Warning only: without it agy still works.
+function checkAgyWorkerHome() {
+  if (!noMcp || !which('agy')) return;
+  // Read-only: the worker home is built on the first agy worker start, never by the doctor.
+  const wh = h('.aos', 'agy-worker-home');
+  const cfg = path.join(wh, '.gemini', 'config', 'mcp_config.json');
+  const ok = !existsSync(wh) || Object.keys(readJson(cfg)?.mcpServers ?? { x: 1 }).length === 0;
+  add('agy', 'agy worker home (workers without MCP servers)', ok,
+    !existsSync(wh) ? 'not built yet: the first agy worker start builds it' : ok ? `${tilde(wh)} present, empty MCP config` : `${tilde(cfg)} is missing or lists MCP servers: agy workers would run with them`,
+    IS_WIN ? 'Enable Windows Developer Mode (file symlinks), then re-run aos-doctor; the AOS installer rebuilds it.' : 'Check that ~/.aos is writable, then re-run aos-doctor.', true);
+}
+
 // mcsc delegates to agy; agy loading mcsc from its own config recurses into a fork bomb.
 function checkAgyMcsc() {
   for (const f of [h('.gemini', 'config', 'mcp_config.json'), h('.gemini', 'antigravity-cli', 'mcp_config.json')]) {
@@ -310,7 +474,174 @@ function checkAgyMcsc() {
   }
 }
 
+// Secrets belong in ~/.aos/secrets.env (0600), never inline in a harness MCP config. Names only, never values.
+function checkMcpSecrets() {
+  const { findInlineSecrets, secretsPath, readSecretsFile, firecrawlDoctorHint } = req('../lib/mcp-secrets.js');
+  // Opt-in firecrawl pick: warn names-only when it is enabled without a key (see docs/firecrawl-mcp.md).
+  const firecrawlHint = firecrawlDoctorHint(process.env, readSecretsFile(secretsPath(HOME)).vars);
+  if (firecrawlHint) add('mcp-secrets', 'Firecrawl MCP key', false, firecrawlHint,
+    'Add FIRECRAWL_API_KEY=value to the MCP secrets file, or unset AOS_FIRECRAWL_MCP to keep the pick off (docs/firecrawl-mcp.md).', true);
+  const byEntry = new Map();
+  for (const f of findInlineSecrets(HOME, process.env)) {
+    const k = `${f.file}\0${f.server}`;
+    byEntry.set(k, { ...f, variables: [...(byEntry.get(k)?.variables || []), f.variable] });
+  }
+  for (const f of byEntry.values()) {
+    add('mcp-secrets', 'MCP inline secret', false, `${tilde(f.file)} · server "${f.server}" · ${f.variables.join(', ')}`,
+      `Run the AOS installer or Quick Update (moves the value into ${tilde(secretsPath(HOME))} and rewrites the entry), or move it there by hand.`, true);
+  }
+  const file = secretsPath(HOME);
+  let st;
+  try { st = statSync(file); } catch { return; }
+  const loose = !IS_WIN && (st.mode & 0o077) !== 0;
+  add('mcp-secrets', 'MCP secrets file', st.isFile() && !loose,
+    !st.isFile() ? `${tilde(file)} is not a regular file` : loose ? `${tilde(file)} has mode ${(st.mode & 0o777).toString(8)}, must be 600` : `${tilde(file)} (mode 600)`,
+    `chmod 600 ${tilde(file)}`, true);
+}
+
+// .bak files the installer left next to files it manages (<file>.<YYYYMMDD_HHMMSS>.bak, <file> in its manifest).
+// Listed only; deleting is the user's call.
+function installerBakFiles() {
+  const manifest = readJson(h('.agents', '.bdb-install-manifest.json')) || {};
+  const managed = new Set(Object.keys(manifest));
+  const found = [];
+  for (const dir of new Set([...managed].map((f) => path.dirname(f)))) {
+    let names;
+    try { names = readdirSync(dir); } catch { continue; }
+    for (const n of names) {
+      const m = /^(.+)\.\d{8}_\d{6}\.bak$/.exec(n);
+      if (m && managed.has(path.join(dir, m[1]))) found.push(path.join(dir, n));
+    }
+  }
+  return found.sort();
+}
+
+// MCP gateway (opt-in): every check is a warning until the gateway is installed.
+async function checkGateway() {
+  try {
+    const home = os.homedir();
+    const { gatewayChecks } = req('../lib/gateway/doctor.js');
+    const { gatewayDir } = req('../lib/gateway/config.js');
+    const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
+    let status;
+    try { status = await (await import('./aos-gateway.mjs')).gatewayStatus({ dir: gatewayDir(home) }); } catch { /* reported as not running */ }
+    for (const c of gatewayChecks({ home, files: harnessMcpFiles(home, process.env, process.platform, home), status, shipped: shippedServers() })) add(c.area, c.name, c.ok, c.detail, c.fix, c.warningOnly);
+  } catch (e) {
+    add('gateway', 'gateway checks', false, `could not run: ${e.message}`, '', true);
+  }
+}
+
+function checkInstallerBaks() {
+  const list = installerBakFiles();
+  if (process.argv.includes('--list-baks')) { console.log(list.join('\n')); process.exit(0); }
+  if (!list.length) return;
+  add('installer', 'Old installer .bak files', false, `${list.length} backup file${list.length > 1 ? 's' : ''} from earlier installer runs, e.g. ${tilde(list[0])}`,
+    'Review with: node bin/aos-doctor.mjs --list-baks. Move aside or clean up manually if no longer needed.', true);
+}
+
+// AOS Hub (on demand): reachability is informational, not a failure — the hub
+// starts only when `aos hub` or a browser opens it. hub.json holds a pid+token
+// and must stay 0600. Leftover store backup parked dirs are listed only.
+async function checkHub() {
+  const hubFile = h('.aos', 'hub', 'hub.json');
+  const hubRecord = readJson(hubFile);
+  const hubPort = Number(hubRecord?.port) || 7900;
+  const hubReachable = await portOpen(hubPort);
+  add('hub', 'AOS Hub (:7900)', hubReachable,
+    hubReachable ? 'Running on http://127.0.0.1:7900' : 'Not running — the hub starts on demand (`aos hub`); never failed here',
+    'aos hub', true);
+
+  if (existsSync(hubFile)) {
+    let modeLoose = !IS_WIN && (statSync(hubFile).mode & 0o077) !== 0;
+    add('hub', 'Hub state file permissions', !modeLoose,
+      modeLoose ? `${tilde(hubFile)} has mode ${(statSync(hubFile).mode & 0o777).toString(8)}, must be 600` : `${tilde(hubFile)} exists (mode 600 ok)`,
+      `chmod 600 ${tilde(hubFile)}`, true);
+  } else {
+    add('hub', 'Hub state file permissions', true,
+      `${tilde(hubFile)} not present (nothing written yet)`, '', true);
+  }
+
+  const backupRoots = [h('.aos', 'store')];
+  try {
+    const storeDir = h('.aos', 'store');
+    const parked = [];
+    for (const dir of backupRoots) {
+      let names;
+      try { names = readdirSync(dir); } catch { continue; }
+      for (const n of names) {
+        if (/\.(aos-bak-|aos-failed-)/.test(n)) parked.push(path.join(dir, n));
+      }
+    }
+    if (parked.length) {
+      add('hub', 'Store backup leftovers', false, `${parked.length} parked backup(s), e.g. ${tilde(parked[0])}`,
+        'Rollback or restore first (`aos store rollback`); leftover backups are only removed on a successful rollback or reinstall. Nothing is deleted here.', true);
+    }
+  } catch { /* informational; never fails the doctor */ }
+}
+
 async function checkDaemonsAndModules() {
+  // memB venv entry-module import check (10 s timeout)
+  {
+    const membMcp = firstExisting([h('.gemini', 'config', 'mcps', 'memb-mcp'), ...MODULE_BASES.map((b) => path.join(b, 'memb-mcp')), ...MODULE_BASES.map((b) => path.join(b, 'memB'))]);
+    const venvPython = membMcp && !IS_WIN ? path.join(membMcp, '.venv', 'bin', 'python') : membMcp ? path.join(membMcp, '.venv', 'Scripts', 'python.exe') : null;
+    if (!membMcp) {
+      add('daemons', 'memB MCP venv', true, 'memb-mcp not installed', undefined, true);
+    } else if (!venvPython || !existsSync(venvPython)) {
+      add('daemons', 'memB MCP venv', false, `no venv python at ${tilde(venvPython || '')}`, 're-run the AOS installer to create the venv', true);
+    } else {
+      const r = spawnSync(venvPython, ['-c', 'import memb; import run as memb_run'], { cwd: membMcp, timeout: 10000, encoding: 'utf8' });
+      if (r.error || r.status !== 0) {
+        const why = r.error && r.error.code === 'ETIMEDOUT' ? 'timed out after 10s' : (r.stderr || '').trim().split('\n').slice(-3).join(' | ') || `exit ${r.status}`;
+        add('daemons', 'memB MCP venv', false, `entry import failed: ${why}`, 'reinstall the venv: re-run the AOS installer (requirements reconcile) or delete the .venv and re-run', true);
+      } else {
+        add('daemons', 'memB MCP venv', true, `entry module imports OK (${tilde(venvPython)})`);
+      }
+    }
+  }
+
+  // Hardware & PCB module: KiCad / OpenSCAD app presence. The module registers both MCP
+  // servers unconditionally; when the app is absent the installer skips the registration,
+  // so the doctor labels it app missing (warning only — installing the app re-enables it).
+  {
+    const hwDir = findModule('bdb-hardware-pcb');
+    if (hwDir) {
+      let hardwareApps = null;
+      try { hardwareApps = req('../lib/hardware-apps.js'); } catch { /* check skipped, never fatal */ }
+      if (hardwareApps) {
+        for (const appId of ['kicad', 'openscad']) {
+          const status = hardwareApps.hwAppStatus(appId);
+          if (status.found) {
+            add('daemons', `${hardwareApps.HW_APPS[appId].label} (${appId} MCP)`, true,
+              `present: ${tilde(status.path || '')} · shipped launcher: ${path.join(hwDir, 'scripts', appId === 'kicad' ? 'run_kicad_mcp.sh' : 'run_openscad_mcp.sh')}`);
+          } else {
+            add('daemons', `${hardwareApps.HW_APPS[appId].label} (${appId} MCP)`, false,
+              `${hardwareApps.appMissingMessage(appId)} — the ${appId} MCP server was not registered`, 'install KiCad/OpenSCAD, then re-run the AOS installer', true);
+          }
+        }
+      }
+    }
+  }
+
+  // Codebase Memory MCP: third-party stdio binary, not an @hybridlabor-api module. Nothing
+  // is registered without the binary, so the doctor reports presence/'app missing' in the
+  // same style as the kicad/openscad check above (warning only — installing the binary
+  // re-enables it; docs/codebase-memory.md has the exact install commands).
+  {
+    let codebaseMemory = null;
+    try { codebaseMemory = req('../lib/codebase-memory.js'); } catch { /* check skipped, never fatal */ }
+    if (codebaseMemory) {
+      const status = codebaseMemory.cmbAppStatus();
+      if (status.found) {
+        add('daemons', 'codebase-memory-mcp (codebase-memory MCP)', true,
+          `present: ${tilde(status.path)} · stdio binary, local SQLite at ~/.cache/codebase-memory-mcp (no cloud calls)`);
+      } else {
+        add('daemons', 'codebase-memory-mcp (codebase-memory MCP)', false,
+          `${codebaseMemory.cmbMissingMessage({ status })} — the codebase-memory MCP server is not registered`,
+          'install codebase-memory-mcp: curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash (or npm install -g codebase-memory-mcp)', true);
+      }
+    }
+  }
+
   // memB
   const membDir = findModule('memB');
   const membListening = await portOpen(8088);
@@ -361,10 +692,15 @@ async function checkDaemonsAndModules() {
     const build = readGoBuildInfo(aoBin);
     let head = null;
     try { head = execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
-    const same = !!(build && head && build.revision === head && !build.modified);
+    // Only backend/ builds the binary: commits elsewhere in the checkout (app, docs) do not make it stale.
+    let backendSame = false;
+    if (build && head && build.revision !== head) {
+      try { execFileSync('git', ['--no-optional-locks', '-C', aoCheckout, 'diff', '--quiet', build.revision, head, '--', 'backend'], { stdio: 'ignore' }); backendSame = true; } catch {}
+    }
+    const same = !!(build && head && (build.revision === head || backendSame) && !build.modified);
     add('daemons', 'AO revision vs checkout', same,
       !build ? 'Installed ao has no readable build revision'
-        : `Installed ${build.revision.slice(0, 9)}${build.modified ? ' (dirty build)' : ''} · checkout HEAD ${head ? head.slice(0, 9) : 'unknown'}`,
+        : `Installed ${build.revision.slice(0, 9)}${build.modified ? ' (dirty build)' : ''} · checkout HEAD ${head ? head.slice(0, 9) : 'unknown'}${backendSame ? ' (backend/ unchanged)' : ''}`,
       `Rebuild from a clean checkout: cd ${tilde(path.join(aoCheckout, 'backend'))} && go build -ldflags='-s -w' -o ~/.local/bin/ao.new ./cmd/ao && mv ~/.local/bin/ao.new ~/.local/bin/ao && ao service install`, true);
   }
 
@@ -473,11 +809,68 @@ function checkPlugins() {
   }
 }
 
+// ---------------------------------------------------------------- 4c. agent model overrides (docs/agent-models.md)
+// Format check only: no network, no provider lists. The installer passes these strings through verbatim.
+function checkAgentModels() {
+  const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const agentsMd = firstExisting([path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.agents', 'AGENTS.md'), h('.agents', 'AGENTS.md')]);
+  const slugs = agentsMd ? new Set([...readFileSync(agentsMd, 'utf8').split(/\n## /).slice(1)]
+    .filter((b) => /-\s*\*\*Role\*\*:/.test(b))
+    .map((b) => b.split('\n')[0].replace(/^[^\w]+/, '').trim().split(/\s+/)[0].toLowerCase().replace(/-/g, '_'))) : null;
+  // Node ids and the /startcycle-graph helper agents are valid role keys too (docs/agent-models.md).
+  if (slugs) for (const k of ['ui_ux', 'engineering', 'media_eventtech', 'shipping', 'load_registry', 'merge_state', 'archify_verify', 'validate_skills']) slugs.add(k);
+  const files = [
+    path.join(process.cwd(), '.aos', 'pipeline.json'),
+    path.join(process.cwd(), '.aos', 'project.json'),
+    h('.aos', 'pipeline.json'),
+  ].filter(existsSync).map((f) => realpathSync(f)).filter((f, i, a) => a.indexOf(f) === i);
+  for (const file of files) {
+    const data = readJson(file);
+    if (data === null) {
+      if (!/project\.json$/.test(file)) add('agents', `Agent models ${tilde(file)}`, false, `${tilde(file)} is not valid JSON; its model overrides are ignored`, 'Fix the JSON or delete the file.');
+      continue;
+    }
+    for (const [role, cfg] of Object.entries(data.pipeline || {})) {
+      if (!isObject(cfg)) continue;
+      if (slugs && !slugs.has(role.toLowerCase().replace(/-/g, '_'))) {
+        add('agents', `Agent role ${role}`, false, `${tilde(file)}: role "${role}" matches no agent in AGENTS.md; its overrides are inert`,
+          `Use a real agent slug with "-" as "_" (${[...slugs].join(', ')}).`, true);
+      }
+      if (cfg.tier !== undefined) {
+        add('agents', `Agent tier ${role}`, false, `${tilde(file)}: role "${role}" has "tier" = ${JSON.stringify(cfg.tier)}; tiers are legacy and ignored`,
+          `Remove "tier" from role "${role}"; a model is set only through models.<harness> (docs/agent-models.md).`, true);
+      }
+      const entries = [];
+      if (cfg.models !== undefined && !isObject(cfg.models)) {
+        add('agents', `Agent models ${role}`, false, `${tilde(file)}: role "${role}", models must be an object of harness to model`, `Fix or remove "models" for role "${role}" in ${tilde(file)}.`);
+      } else {
+        for (const [harness, value] of Object.entries(cfg.models || {})) entries.push([harness, value, `models.${harness}`]);
+      }
+      if (cfg.model !== undefined) {
+        for (const harness of cfg.harness ? [cfg.harness] : HARNESSES) entries.push([harness, cfg.model, 'model']);
+      }
+      for (const [harness, value, field] of entries) {
+        const problem = modelProblem(harness, value, { strictAgy: true });
+        if (problem) add('agents', `Agent model ${role}/${harness}`, false,
+          `${tilde(file)}: role "${role}", harness "${harness}", ${field} = ${JSON.stringify(value)}: ${problem}`,
+          `Correct or remove ${field} for role "${role}" in ${tilde(file)}; AOS never substitutes another model.`);
+      }
+    }
+  }
+}
+
 checkHarnesses();
+checkAgentModels();
 checkHooks();
 checkPlugins();
 checkAgyMcsc();
+checkAgyWorkerHome();
+checkMcpSecrets();
+checkInstallerBaks();
+await checkHub();
+await checkA2aMatrix();
 await checkDaemonsAndModules();
+await checkGateway();
 report();
 
 const hasCriticalFails = results.some(r => !r.ok && !r.warningOnly);

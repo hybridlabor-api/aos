@@ -19,6 +19,10 @@ let prevDirs;
 
 const get = async (p) => (await fetch(`${base}${p}`, { signal: AbortSignal.timeout(3000) })).text();
 
+const win = process.platform === 'win32'; // NTFS rejects < and > in file names
+const EVIL = win ? 'a&b.md' : '<script>alert(1).md';
+const EVIL_ESCAPED = win ? 'a&amp;b.md' : '&lt;script&gt;alert(1).md';
+
 describe('Plan Canvas home and shell', () => {
   before(async () => {
     workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-canvas-home-'));
@@ -27,13 +31,13 @@ describe('Plan Canvas home and shell', () => {
     fs.writeFileSync(path.join(skills, 'archify', 'SKILL.md'), `---\nname: archify\ndescription: ${'Diagram <b>things</b> '.repeat(15)}\n---\nbody`);
     prevDirs = process.env.AOS_PLAN_CANVAS_SKILL_DIRS;
     process.env.AOS_PLAN_CANVAS_SKILL_DIRS = skills;
-    fs.writeFileSync(path.join(workspace, '<script>alert(1).md'), '# evil');
+    fs.writeFileSync(path.join(workspace, EVIL), '# evil');
     fs.writeFileSync(path.join(workspace, 'plan.builder.html'), '<html></html>');
     const store = createSessionStore({ stateDir: path.join(workspace, '.state') });
     server = createPlanCanvasServer({ store, workspaceRoot: workspace, idleTimeoutMs: 0 });
     const bound = await server.listen(0);
     base = `http://127.0.0.1:${bound.port}`;
-    for (const f of ['<script>alert(1).md', 'plan.builder.html']) {
+    for (const f of [EVIL, 'plan.builder.html']) {
       const r = await fetch(`${base}/api/sessions`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -59,7 +63,7 @@ describe('Plan Canvas home and shell', () => {
     }
     assert.ok(html.includes('includes a design canvas with screens and arrows'));
     assert.ok(!html.includes('<script>alert(1)'));
-    assert.ok(html.includes('&lt;script&gt;alert(1).md'));
+    assert.ok(html.includes(EVIL_ESCAPED));
     assert.ok(html.includes('Standard markdown'));
     assert.ok(html.includes('BDB Plan Builder'));
     assert.ok(!/<script/i.test(html), 'home page needs no scripts');

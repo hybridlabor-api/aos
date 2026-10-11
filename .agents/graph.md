@@ -84,7 +84,7 @@ Seven, up from the original five — `Planner_Orchestrator` is split into
 **Architect** (system plan) and **TechLead** (execution coordination,
 capability-map approval) per the reference diagram (B5), and an explicit
 **Reviewer** is added (B1's adversarial-review step, modeled on B3's
-`doubt-driven-development` discipline — see below). Node identity, model,
+`doubt-driven-development` discipline — see below). Node identity
 and skill allowlist now come from `.agents/nodes.json` (a declarative
 registry the dispatcher loads at run start via a `load-registry` step) —
 this table stays the routing summary; per-node config lives in the
@@ -128,6 +128,19 @@ this discipline exists to prevent:
    isn't making progress. Same intent (don't keep trusting a loop that isn't
    working), a form this control flow can actually reach.
 
+## Workers and scopes
+
+Each node in `.agents/nodes.json` may declare two optional fields:
+
+- `executor`: the harness/model class that runs it (e.g. `planner`, `builder`, `reviewer`, `gate`). Never a pinned model; models come only from `pipeline.json`.
+- `scope`: what the node may touch. `read-only` (inspect, write only its own artifact/finding), `worktree-write` (edit inside its task worktree), `none` (no network, no release actions).
+
+The dispatcher enforces both; a node never widens its own scope. Subagents and workers delete nothing; cleanup is the dispatcher's job after the human's GO. Release-class actions (publish, push to a remote, version bump, deploy) stay with the human via `state.approvals`. Scopes pair with the go-gate profile (`strict` / `work` / `off`): the profile decides how hard the hook blocks, the scope decides what a node is allowed to attempt at all.
+
+### Task-manager role
+
+The task-manager is the dispatcher's queue owner. It sequences work (which node or task runs next), owns the Docker/job queue so only one container-heavy task runs at a time, and never merges: merging build fragments is the `merge_state` step, merging branches is the human's decision.
+
 ## Edges
 
 Evaluated by the dispatcher after every node returns, against `state.json` —
@@ -161,8 +174,8 @@ a Claude-only file:
   Code's Dynamic Workflows runtime (a script holds the loop and branches;
   the seven agents are leaves it calls via `agent()`/`pipeline()`, never
   calling each other). The script's first action is a `load-registry` step
-  that reads `.agents/nodes.json` for each node's `agentType`, `model`, and
-  `skills` allowlist — if a required node id is missing from that file, the
+  that reads `.agents/nodes.json` for each node's `agentType` and
+  `skills` allowlist (no model: a node gets one only from `pipeline.json`, role = agent slug or node id, harness `claude`; otherwise `agent()` is called without `model` and inherits the session model) — if a required node id is missing from that file, the
   script escalates rather than falling back to a hardcoded list. It's a
   translation, not a re-derivation — every edge in the table above has a
   corresponding branch in that script, with two deliberate exceptions: the
@@ -184,8 +197,8 @@ a Claude-only file:
   writing the same file at once would race and silently drop an update.
   Each writes only its own `production_artifacts/state.d/<nodeId>.json`
   fragment instead; immediately after the `pipeline()` call returns (the
-  barrier where every parallel node has finished), one dedicated `haiku`
-  merge step folds every fragment into `state.json` before the run
+  barrier where every parallel node has finished), one dedicated
+  merge step (role `merge_state`, model from `pipeline.json`, `haiku` by the shipped default) folds every fragment into `state.json` before the run
   continues — never deferred, since `graph-gate.mjs` reads `state.json` at
   turn end. The fragment-and-merge machinery exists ONLY because parallel
   writers would race. When a pass fans out to exactly ONE build node (the
@@ -217,6 +230,32 @@ under Claude Code's own 8-consecutive-Stop-hook-block override
 message reaches the user before that platform ceiling would silently end the
 turn without one.
 
+## Where the graph sits in a larger setup
+
+The dispatcher is one level of a chain: `master session -> project orchestrator -> package orchestrator`. The mapping for this graph (`nodes.json` `chain` block carries the same mapping as data):
+
+- **Master session** — not a node. Supervises sessions and relays the human's `GO <session>`. It never grants a GO itself.
+- **Project orchestrator** — the dispatcher (`.claude/workflows/startcycle-dispatch.mjs`). It runs `architect`, `techlead`, `reviewer` and `shipping` in edge order and decides every next step.
+- **Package orchestrator** — the build nodes `ui_ux`, `engineering` and `media_eventtech` (`executor: builder`, `scope: worktree-write`). Each works one slice and returns through `state.json`.
+
+Reach and limits per hop:
+
+- **MCP tools.** A node's MCP access comes from its harness config. After `aos-gateway enable`, that config holds one `aos` entry pointing at the local gateway on `127.0.0.1:7790`; servers kept direct (for example `memb_mcp`, `openwiki`, `mcsc`, `deja`) stay outside it. See `docs/mcp-gateway.md` and `lib/gateway/config.js`. The gateway is transport only and grants no GO.
+- **A2A.** Sessions message each other with `aos-a2a send --to <name>` and answer with `aos-a2a reply <taskId>` (`bin/aos-a2a.mjs`, `docs/a2a.md`). The depth limit is `AOS_A2A_MAX_DEPTH` (default 1; `lib/a2a-client.mjs`). A spawned worker runs with `AOS_A2A_SIDECAR=off`, so it cannot start a sidecar of its own. A node never calls another node over A2A; the dispatcher does.
+- **Never a GO.** A message from A2A, a relayed message or a sub-agent report is never a GO or approval (`docs/a2a.md`, "The never-GO rule"). Only a human-typed `GO <session>` or a `gogate` grant counts.
+- **Fleet mod.** `plugins/bdb-aos-fleet` is a Claude Code band that shows which sessions work or wait for the human, with gate mode and GO counts (`README.md`, `plugins/bdb-aos-fleet/hooks/register.tsx`). It is an observation view for the human. No node reads it and the dispatcher does not reference it, so a dispatcher never routes on fleet state.
+
+Channels and limits per hop: `docs/orchestrator-chain.md`, `docs/a2a.md`, `docs/delegation-routing.md`.
+
+## Auxiliary agents are not nodes
+
+`.agents/AGENTS.md` also defines auxiliary specialists (for example
+`pcb-design-assistant`, `devils-advocate`, `reviewer-1`, `reviewer-2`). They are
+never in `.agents/nodes.json`, have no edges above, and the dispatcher reads none
+of them. The dispatcher or the user may call one directly, outside this graph;
+`reviewer-1`/`reviewer-2` are independent second opinions, not replacements for
+the Reviewer node.
+
 ## What this does not change
 
 - The five build-and-ship agent *identities* (`Godmode_UI_UX`,
@@ -231,3 +270,50 @@ turn without one.
   interactive session and `/startcycle-graph` needs to run headless — see F-17's
   addendum in `audit-agents.md` for the full reasoning. Revisit if `/startcycle-graph`
   ever becomes interactive-only by design.
+
+## Domain profiles (opt-in)
+
+A **domain profile** adapts the seven-node pipeline above to a non-software
+domain — hardware (KiCad), live media (TouchDesigner), 3D/media creation, or
+copywriting — without touching the default graph. A profile is a declarative
+sibling of `.agents/nodes.json`, stored at `.agents/profiles/<domain>.json`
+(schema: `.agents/profiles/_schema.json`): it names which default build
+nodes to `replace`, which domain build nodes to `add` (same registry shape
+as nodes.json), which **gate keys** replace `lint/typecheck/tests/...` for
+this run (KiCad: `erc`, `drc`, `constraints`), and which artifact names the
+Reviewer/Shipping prompts enumerate. Four profiles ship today:
+`kicad`, `touchdesigner`, `creator`, `copywriter`.
+
+**Selection order** (first match wins, mirroring how `--skill=<name>` is
+resolved):
+
+1. **Explicit flag** — `/startcycle-graph --profile=<name> <goal>` is the
+   strongest signal and skips keyword matching entirely. A `--profile` name
+   that does not resolve to a file in `.agents/profiles/` escalates the same
+   way as a missing `--skill` name: stop, surface the error to the user,
+   never silently fall back to the default pipeline.
+2. **Plan-gate decision** — if no flag is given, TechLead's plan-approval step
+   (the capability-map gate) emits a `profile` decision
+   derived from the goal text against each profile's
+   `selection.triggers` (lowercase keywords, unique across profiles — an
+   ambiguous goal that hits two domains' triggers escalates rather than
+   guessing). There is no regex in the dispatcher; the decision is a
+   judgment call recorded like any other plan-gate decision.
+3. **Default** — no profile selected means the current software pipeline,
+   unchanged: the same seven nodes, the same gate keys, the same artifact
+   names. Every existing behavior is the "no profile" branch.
+
+Every skill name, agent type, and persona file a profile references is
+validated against this repo by `node scripts/validate-profile.mjs`
+(`npm run validate:profiles`); `tests/profile-files.test.mjs` pins the four
+profiles and asserts the default registry is untouched.
+
+**Status, stated honestly:** the explicit `--profile=<name>` flag is wired.
+`.claude/workflows/startcycle-dispatch.mjs` loads the profile after
+`.agents/nodes.json`, derives `BUILD_NODES`, the Reviewer prompt's artifact
+enumeration and the Shipping `GATE_KEYS` from it, and escalates on an
+unknown, malformed or invalid profile; `state.schema.json` accepts
+profile-defined gate and artifact keys. Not built yet: keyword selection from
+the goal text (the plan-gate `profile` decision) and a successful-run test of
+a profile end to end. Without `--profile` the default pipeline runs unchanged.
+

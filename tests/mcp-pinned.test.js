@@ -23,7 +23,8 @@ test('installer.js and lib/: no unpinned npx MCP definitions', () => {
   const files = ['installer.js', ...fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => f.endsWith('.js')).map((f) => 'lib/' + f)];
   const re = /(?:command\s*:\s*|\[\s*)['"]npx['"]\s*,?([^\]}\n]*)/g;
   for (const f of files) {
-    const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    // LEGACY_SHAPES lists what older releases wrote (to recognise them as AOS-owned), not what AOS writes now.
+    const src = fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/const LEGACY_SHAPES = \{[\s\S]*?\n\};/, '');
     for (const m of src.matchAll(re)) {
       const args = [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1]);
       const pkg = pkgOf(args);

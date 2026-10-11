@@ -9,7 +9,7 @@ import { trailEnsure, isSpawnTool } from '../.opencode/plugins/lib/trail-autosta
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'trail-ac-'));
 const fake = (name, body) => {
-  const p = path.join(tmp, name);
+  const p = path.join(tmp, `${name}.cjs`); // run through node: a #! script is not spawnable on Windows
   fs.writeFileSync(p, `#!/usr/bin/env node\n${body}\n`, { mode: 0o755 });
   return p;
 };

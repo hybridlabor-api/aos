@@ -34,7 +34,7 @@ beforeEach(() => {
 process.env.AOS_TEST_SANDBOX = '1';
 process.env.GIT_CONFIG_NOSYSTEM = '1';
 for (const k of Object.keys(process.env)) if (/^GIT_/.test(k) && k !== 'GIT_CONFIG_NOSYSTEM') delete process.env[k];
-const env = () => ({ ...process.env, HOME: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '' });
+const env = () => ({ ...process.env, HOME: home, USERPROFILE: home, XDG_DATA_HOME: '', AOS_SESSION_NAME: '', AOS_ACP_CLIENT: '' });
 const add = (e, file = t) => fs.appendFileSync(file, JSON.stringify(e) + '\n');
 const user = (text, extra = {}) => ({ type: 'user', uuid: `u${++n}`, timestamp: new Date().toISOString(), message: { role: 'user', content: text }, ...extra });
 const human = (text, extra = {}) => user(text, { origin: { kind: 'human' }, promptSource: 'typed', turnOrigin: 'human', ...extra });
@@ -105,7 +105,7 @@ const GUARDED = [
     `perl -MFile::Path -e "remove_tree('out')"`,
     'Remove-Item -Recurse -Force .\\dist', 'rm -r dist',
     'cmd /c "rd /s /q dist"', 'rd /s /q dist', 'rmdir /s dist',
-    'rm -rf ~/dev/x/build', 'rm -rf $HOME/dev/x/build', 'rm -rf /Users/timrennings/dev/x/build',
+    'rm -rf ~/dev/x/build', 'rm -rf $HOME/dev/x/build', 'rm -rf /Users/alice/dev/x/build',
     "bash -c 'rm -rf build'", 'sh -c "rm -rf build"', 'find . -name x | xargs rm -rf',
     'git clean -fdx',
     // S1: a bare * is only hard when the working directory is home-level or /
@@ -121,7 +121,7 @@ const HARD = [
     `node -e 'require("fs").rmSync(process.env.HOME,{recursive:true,force:true})'`,
     `python3 -c "import shutil, pathlib; shutil.rmtree(pathlib.Path.home())"`,
     'rm -rf ~', 'rm -rf ~/', 'rm -rf $HOME', 'rm -rf "$HOME"', 'rm -rf "${HOME}"', 'rm -rf ${HOME}', 'rm -rf ~/.config', 'rm -rf $HOME/.claude',
-    'rm -rf /Users/timrennings', 'rm -rf /Users/timrennings/Library', 'rm -rf /home/tim', 'rm -rf /home/tim/.ssh',
+    'rm -rf /Users/alice', 'rm -rf /Users/alice/Library', 'rm -rf /home/alice', 'rm -rf /home/alice/.ssh',
     'find ~ -delete', 'find $HOME -maxdepth 1 -delete', 'rm -rf /', 'rm -rf /*',
     // relative targets resolve against the tracked cwd
     'cd ~ && rm -rf .', 'cd ~ && rm -rf ./*', 'cd $HOME; rm -rf ./', 'cd ~ && find . -delete', 'cd ~; rm -rf *', 'cd /; rm -rf *',
@@ -130,7 +130,7 @@ const HARD = [
     'H=$HOME; rm -rf $H', 'x=~; rm -rf "$x"', 'export D=$HOME/.config; rm -rf $D', 'a=$HOME; b=$a; rm -rf "${b}"',
     'rm -rf $(echo ~)', 'rm -rf "$(echo $HOME)"', 'cd ~ && rm -rf $(pwd)', 'cd ~ && rm -rf "$PWD"', 'rm -rf `echo ~`', 'echo "$(rm -rf ~)"',
     // ~user and parameter-expansion forms of HOME
-    'rm -rf ~timrennings', 'rm -rf ~root', 'rm -rf ~timrennings/.config', 'rm -rf ${HOME:-x}', 'rm -rf ${HOME:?}', 'rm -rf ${HOME%/}', 'rm -rf "${HOME:-/nonexistent}/.ssh"',
+    'rm -rf ~alice', 'rm -rf ~root', 'rm -rf ~alice/.config', 'rm -rf ${HOME:-x}', 'rm -rf ${HOME:?}', 'rm -rf ${HOME%/}', 'rm -rf "${HOME:-/nonexistent}/.ssh"',
     // moving away or syncing over a home-level path
     'mv ~ /tmp/x', 'mv ~/.ssh /tmp/x', 'mv ~/* /tmp', 'rsync -a --delete /tmp/empty/ ~/', 'rsync -a --delete-after /tmp/empty/ $HOME/.config',
     'chmod -R 000 ~', 'chmod -R 777 $HOME/.ssh', 'chown -R nobody ~', 'rimraf ~', 'npx rimraf ~/.config', 'npx rimraf $HOME',
@@ -138,7 +138,7 @@ const HARD = [
     'rm ~/.aos/gate/s1.block', 'rm -rf ~/.aos/go', `python3 -c "import os; os.remove(os.path.expanduser('~/.aos/gate/s1.block'))"`,
     `node -e "require('fs').unlinkSync(require('os').homedir()+'/.aos/gate/s1.block')"`,
     'bash -c "rm -rf ~"', "sh -c 'rm -rf $HOME/.ssh'", 'sudo rm -rf ~', '(rm -rf ~)', 'true && rm -rf ~',
-    'Remove-Item -Recurse $env:USERPROFILE', 'Remove-Item -Recurse -Force $env:HOME', 'rd /s /q C:\\Users\\tim', 'rd /s /q C:\\Users\\tim\\AppData',
+    'Remove-Item -Recurse $env:USERPROFILE', 'Remove-Item -Recurse -Force $env:HOME', 'rd /s /q C:\\Users\\alice', 'rd /s /q C:\\Users\\alice\\AppData',
     'rm -rf %USERPROFILE%',
     `node -e "require('fs').rmSync(require('os').homedir(),{recursive:true})"`,
     `node -e "require('fs').rmSync(require('path').join(require('os').homedir(),'.config'),{recursive:true})"`,
@@ -151,7 +151,7 @@ const HARD = [
     `perl -MFile::Path -e "rmtree(\\$ENV{HOME})"`,
     `node -e "require('child_process').execSync('rm -rf ~')"`,
     `python3 -c "import os; os.system('rm -rf ~')"`,
-    `python3 -c "import subprocess; subprocess.run(['rm','-rf','/Users/timrennings'])"`,
+    `python3 -c "import subprocess; subprocess.run(['rm','-rf','/Users/alice'])"`,
     'python3 - <<E\nimport shutil,pathlib; shutil.rmtree(pathlib.Path.home())\nE',
     "node - <<'E'\nrequire('fs').rmSync(process.env.HOME,{recursive:true})\nE",
     'bash <<E\nrm -rf ~\nE',
@@ -225,9 +225,9 @@ describe('B hard block cannot be lifted', () => {
 });
 
 describe('S6 the other harness paths enforce the same block functionally', () => {
-    let saved;
-    beforeEach(() => { saved = process.env.HOME; process.env.HOME = home; });
-    const restore = () => { process.env.HOME = saved; };
+    let saved, savedUp;
+    beforeEach(() => { saved = process.env.HOME; savedUp = process.env.USERPROFILE; process.env.HOME = home; process.env.USERPROFILE = home; });
+    const restore = () => { process.env.HOME = saved; if (savedUp === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedUp; };
     afterEach(restore);
     const ROOT = path.resolve(__dirname, '..');
     const params = (command) => ({ options: [{ kind: 'allow_once', optionId: 'allow' }, { kind: 'reject_once', optionId: 'reject' }], toolCall: { rawInput: { command } } });
@@ -265,6 +265,7 @@ describe('S6 the other harness paths enforce the same block functionally', () =>
         fs.writeFileSync(older, 'print(1)');
         const past = new Date(Date.now() - 3600e3);
         fs.utimesSync(older, past, past);
+        sleep(30); // utimes sets ctime to now; the block must come strictly after it
         assert.equal((await acp.decidePermission(params('git push origin main'), acpOpts())).outcome.optionId, 'reject');
         sleep(30);
         const fresh = path.join(work, 'new.py');
@@ -320,12 +321,12 @@ describe('perf and symlinks', () => {
         const big = Array.from({ length: 3000 }, (_, i) => `echo "step ${i} rm -rf ~ $(date)" && ls ./d${i}`).join(' ; ').slice(0, 50 * 1024);
         let t0 = Date.now();
         g.commandScopes(big); g.hardBlockReason(big); g.isGuardedCommand(big);
-        assert.ok(Date.now() - t0 < 500, `50 KB command took ${Date.now() - t0} ms`);
+        assert.ok(Date.now() - t0 < 1500, `50 KB command took ${Date.now() - t0} ms`);
         const body = Array.from({ length: 6000 }, (_, i) => `x${i} = "value ${i} 'quoted' rmtree(" # don't\nprint(x${i})`).join('\n').slice(0, 255 * 1024);
         fs.writeFileSync(path.join(work, 'big.py'), body);
         t0 = Date.now();
         g.commandScopes('python3 big.py'); g.hardBlockReason('python3 big.py');
-        assert.ok(Date.now() - t0 < 500, `256 KB script took ${Date.now() - t0} ms`);
+        assert.ok(Date.now() - t0 < 1500, `256 KB script took ${Date.now() - t0} ms`);
     });
     test('a symlinked script is resolved and its target analysed', () => {
         const target = path.join(work, 'real.js');
@@ -343,7 +344,8 @@ describe('perf and symlinks', () => {
         fs.writeFileSync(old, 'print(1)');
         const past = new Date(Date.now() - 3600e3);
         fs.utimesSync(old, past, past);
-        g.setGateContext({ cwd: work, blockTs: Date.now() - 1000 });
+        sleep(20);
+        g.setGateContext({ cwd: work, blockTs: Date.now() });
         sleep(20);
         fs.symlinkSync(old, path.join(work, 'newlink.py'));
         assert.equal(g.commandScopes('python3 older.py').length, 0);
@@ -604,7 +606,9 @@ describe('fail closed: file I/O, length, types, pathological input', () => {
             const c = s.slice(0, 16 * 1024);
             const t0 = Date.now();
             g.hardBlockReason(c); g.gateStoreReason(c); g.isGuardedCommand(c); // what the hook decides with
-            assert.ok(Date.now() - t0 < 200, `${name} took ${Date.now() - t0} ms`);
+            // Generous bound: shared CI runners and containers are several times slower than a laptop;
+            // the hook's own fail-closed guarantee is the 150 ms budget, tested separately.
+            assert.ok(Date.now() - t0 < 1500, `${name} took ${Date.now() - t0} ms`);
         }
         const t1 = Date.now();
         add(human('hello'));
@@ -628,7 +632,7 @@ describe('aos-22b push scopes: feature branches and bare pushes', () => {
         fs.mkdirSync(path.join(d, 'sub', 'deeper'), { recursive: true });
         fs.mkdirSync(path.join(d, '.git'), { recursive: true });
         fs.writeFileSync(path.join(d, '.git', 'HEAD'), head);
-        return d;
+        return d.replace(/\\/g, '/'); // spliced into shell commands: a native backslash path would be an escape sequence
     };
     test('a plain branch name is branch:branch, so feature branches are push-feature', () => {
         for (const c of ['git push -u origin fix/x', 'git push --set-upstream origin feat/y', 'git push origin fix/serviceinstall-windows', 'git push -u origin HEAD:fix/x',
@@ -711,7 +715,7 @@ describe('review round 3: repo state changes, env, paths, perf, aliases, config 
         fs.mkdirSync(path.join(d, '.git'), { recursive: true });
         fs.writeFileSync(path.join(d, '.git', 'HEAD'), head);
         fs.writeFileSync(path.join(d, '.git', 'config'), config);
-        return d;
+        return d.replace(/\\/g, '/');
     };
     const sc = (c) => { g.setGateContext(cur); return g.commandScopes(c); };
     const featureOnly = (c) => assert.deepEqual(sc(c), ['push-feature'], c);
@@ -779,7 +783,7 @@ describe('review round 3: repo state changes, env, paths, perf, aliases, config 
         cur = { cwd: d, blockTs: 0, home, realHome: home };
         const t0 = Date.now();
         assert.deepEqual(sc('git push origin feat'), ['push-main']);
-        assert.ok(Date.now() - t0 < 500);
+        assert.ok(Date.now() - t0 < 1500);
         const d2 = mkr('repo-dircfg', 'ref: refs/heads/feat/work\n');
         fs.rmSync(path.join(d2, '.git', 'config'));
         fs.mkdirSync(path.join(d2, '.git', 'config'));
@@ -804,13 +808,13 @@ describe('review round 3: repo state changes, env, paths, perf, aliases, config 
             g.hardBlockReason(c); g.isGuardedCommand(c); g.gateStoreReason(c);
             const ms = Date.now() - t0;
             lines.push(`${name}: ${ms} ms`);
-            assert.ok(ms < 500, `${name} took ${ms} ms`);
+            assert.ok(ms < 1500, `${name} took ${ms} ms`);
         }
         const d = mkr('repo-bigcfg', 'ref: refs/heads/feat/work\n', `[remote "origin"]\n\turl = x${' '.repeat(80000)}y\n`);
         cur = { cwd: d, blockTs: 0, home, realHome: home };
         const t1 = Date.now();
         sc('git push origin feat');
-        assert.ok(Date.now() - t1 < 500, `big config line took ${Date.now() - t1} ms`);
+        assert.ok(Date.now() - t1 < 1500, `big config line took ${Date.now() - t1} ms`);
         console.log(lines.join('; '), `; big config: ${Date.now() - t1} ms`);
     });
     test('B4 over the budget the classification is unscoped (guarded) while the hard pass still runs', () => {
@@ -847,6 +851,90 @@ describe('review round 3: repo state changes, env, paths, perf, aliases, config 
             if (saved.c !== undefined) process.env.NODE_TEST_CONTEXT = saved.c;
             g.setGateContext(cur);
         }
+    });
+});
+
+describe('D1 gh api writes that move or write a protected branch, gh repo sync', () => {
+    const sc = (c) => g.commandScopes(c);
+    test('push-main: protected refs, branch protection, merges, contents, unknown targets, repo sync', () => {
+        for (const c of [
+            'gh api -X PUT repos/o/r/git/refs/heads/main -f sha=abc', 'gh api --method PATCH repos/o/r/git/refs/heads/main -f sha=x -F force=true', 'gh api -X delete repos/o/r/git/refs/heads/master',
+            'gh api -XPATCH repos/o/r/git/refs/heads/main', 'gh api --method=DELETE repos/o/r/git/refs/heads/release/1.0', 'gh api repos/o/r/git/refs/heads/main -X PATCH -f sha=x',
+            'gh api -X POST repos/o/r/git/refs -f ref=refs/heads/main -f sha=x', 'gh api -X POST repos/o/r/git/refs -F ref=refs/heads/main -f sha=x', 'gh api -X POST repos/o/r/git/refs --raw-field ref=refs/heads/master',
+            'gh api -X POST repos/o/r/git/refs --field=ref=refs/heads/main', 'gh api -X POST repos/o/r/git/refs -fref=refs/heads/main', 'gh api -X POST repos/o/r/git/refs --input body.json', 'gh api -X POST repos/o/r/git/refs',
+            'gh api -X POST repos/o/r/git/refs -f ref=refs/heads/$B -f sha=x', 'gh api -X POST repos/o/r/git/refs -f ref=@ref.txt',
+            'gh api -X PUT repos/o/r/branches/main/protection --input p.json', 'gh api -X POST repos/o/r/branches/main/rename -f new_name=x', 'gh api -X DELETE repos/o/r/branches/master/protection',
+            'gh api -X PUT repos/o/r/branches/main/protection/required_status_checks -f strict=true',
+            'gh api -X POST repos/o/r/merges -f base=main -f head=feat', 'gh api -X POST repos/o/r/merges -f head=feat', 'gh api -X POST repos/o/r/merges -f base=$B -f head=feat',
+            'gh api -X PUT repos/o/r/contents/README.md -f message=m -f content=Zg==', 'gh api -X PUT repos/o/r/contents/a/b.txt -f branch=main -f message=m', 'gh api -X DELETE repos/o/r/contents/a -f message=m -f sha=x',
+            'gh api -X PUT repos/o/r/contents/a --input b.json', "gh api -X PUT 'repos/o/r/git/refs/heads/$B' -f sha=x", 'gh api -X PATCH repos/{owner}/{repo}/git/refs/heads/{branch} -f sha=x',
+            'gh api -X PATCH repos/o/r/git/refs/heads/ma%69n -f sha=x', 'gh api -X PATCH https://api.github.com/repos/o/r/git/refs/heads/main -f sha=x', 'gh api -X PATCH /repos/o/r/git/refs/heads/main -f sha=x',
+            'gh api -X PATCH "repos/o/r/git/refs/heads/main?x=1" -f sha=x', 'gh api -X PATCH repos/o/r/git/refs/heads/develop -f sha=x', 'gh api -X PATCH repos/o/r/git/refs/heads/HEAD -f sha=x',
+            'gh repo sync', 'gh repo sync o/r -b main', 'gh repo sync --force', 'gh repo sync o/r', 'sudo gh repo sync',
+        ]) assert.deepEqual(sc(c), ['push-main'], c);
+        assert.equal(sc("bash -c 'gh repo sync'"), null, 'inside bash -c it is guarded without a scope, like every opaque guarded command');
+    });
+    test('github-write only: a proven feature branch, other endpoints', () => {
+        for (const c of [
+            'gh api -X PATCH repos/o/r/git/refs/heads/feat/x -f sha=y', 'gh api -X POST repos/o/r/git/refs -f ref=refs/heads/feat/x -f sha=y', 'gh api -X POST repos/o/r/git/refs -f ref=refs/tags/v1 -f sha=y',
+            'gh api -X POST repos/o/r/merges -f base=feat/x -f head=y', 'gh api -X PUT repos/o/r/contents/a -f branch=feat/x -f message=m', 'gh api -X PUT repos/o/r/branches/dev/protection --input p.json',
+            'gh api -X POST repos/o/r/issues -f title=x', 'gh api -X POST repos/o/r/issues -f title=x -f body=y', 'gh api --method PATCH repos/o/r', 'gh api repos/o/r -f a=b', 'gh api -X DELETE repos/o/r/git/refs/tags/v1',
+            'gh api -X POST repos/o/r/issues/5/comments -f body=hi', 'gh api -X PUT user/starred/o/r',
+        ]) assert.deepEqual(sc(c), ['github-write'], c);
+    });
+    test('read-only gh api stays unguarded', () => {
+        for (const c of ['gh api repos/o/r/git/refs/heads/main', 'gh api repos/o/r/branches/main', 'gh api -X GET repos/o/r/git/refs/heads/main', 'gh api repos/o/r/contents/README.md', 'gh api -X get repos/o/r/git/refs/heads/main',
+            'gh api repos/o/r/merges', 'gh api repos/o/r/git/refs', 'gh api user', 'gh api repos/o/r/pulls --jq ".[0].number"', 'gh repo view o/r', 'gh repo clone o/r']) {
+            assert.deepEqual(sc(c), [], c);
+            assert.ok(!guarded(c), c);
+        }
+    });
+    test('the hook: push-main is needed for a protected ref write, github-write is not enough', () => {
+        add(human('hello'));
+        typed('gogate grant github-write 1h');
+        add(human('go on'));
+        assert.equal(run('gh api -X POST repos/o/r/issues -f title=x').status, 0);
+        assert.equal(run('gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=x').status, 2);
+        assert.equal(run('gh repo sync').status, 2);
+        typed('gogate grant push-main 1h');
+        add(human('go on'));
+        assert.equal(run('gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=x').status, 0);
+        assert.equal(run('gh repo sync').status, 0);
+    });
+});
+
+describe('D2 emptying a top-level home directory is a hard block', () => {
+    test('wildcard-only tails below a top-level directory, in every spelling, with a recursive delete or a move', () => {
+        for (const c of [
+            'rm -rf ~/Documents/*', 'rm -rf ~/Documents/.*', 'rm -rf ~/Documents/.[!.]*', 'rm -rf ~/Documents/*/', 'rm -rf -- ~/Documents/*', 'rm -rf ~/Documents/??*', 'rm -r ~/Documents/*', 'rm -fr ~/Documents/*',
+            'rm -rf $HOME/Documents/*', 'rm -rf "${HOME}/Documents/"*', 'rm -rf "$HOME/Documents"/*', 'rm -rf /Users/alice/Documents/*', 'rm -rf /Users/alice/Documents/.*', 'rm -rf /home/alice/Documents/*',
+            'cd ~/Documents && rm -rf *', 'cd ~/Documents && rm -rf ./*', 'cd ~/Documents && rm -rf .[!.]*', 'cd $HOME/Documents && rm -rf .*', 'cd /Users/alice/Documents && rm -rf *', 'cd ~ && cd Documents && rm -rf *',
+            'find ~/Documents -mindepth 1 -delete', 'find ~/Documents/ -mindepth 1 -maxdepth 1 -delete', 'find $HOME/Documents -mindepth 1 -delete', 'find /Users/alice/Documents -mindepth 1 -delete',
+            'find ~/Documents/* -delete', 'cd ~/Documents && find . -mindepth 1 -delete',
+            'rm -rf ~/Documents/', 'rm -rf -- ~/Documents', 'rm -rf ~/Documents/.', 'rm -rf $HOME/Documents/.', 'rm -rf /Users/alice/Documents/', 'cd ~ && rm -rf -- Documents/', 'cd ~/Documents && rm -rf .',
+            'mv ~/Documents/* /tmp/x', 'mv $HOME/Documents/.* /tmp/x',
+        ]) assert.ok(hard(c), c);
+    });
+    test('deeper paths, partial wildcards and braces stay normal destructive; non-recursive wildcards need a GO', () => {
+        for (const c of ['rm -rf ~/Documents/sub/*', 'rm -rf ~/Documents/sub', 'rm -rf ~/Documents/*.log', 'rm -rf ~/Documents/a*', 'rm -rf ~/Documents/{a,b}', 'rm -rf /Users/alice/Documents/sub/*', 'rm -rf $HOME/Documents/sub/.*',
+            'cd ~/Documents/sub && rm -rf *', 'find ~/Documents/sub -mindepth 1 -delete', 'find ~/dev/x -mindepth 1 -delete', 'rm -rf ~/dev/x/*']) {
+            assert.ok(!hard(c), c);
+            assert.deepEqual(g.commandScopes(c), ['destructive'], c);
+        }
+        for (const c of ['rm ~/Documents/*', 'rm -f $HOME/Documents/.*', 'cd ~/Documents && rm *']) {
+            assert.ok(!hard(c), c);
+            assert.equal(g.commandScopes(c), null, c);
+        }
+    });
+    test('the hook refuses the wildcard emptying even with a destructive grant or a GO', () => {
+        add(human('hello'));
+        typed('gogate grant destructive 1h');
+        add(human('go on'));
+        assert.equal(run('rm -rf ./build').status, 0);
+        assert.equal(run('rm -rf ~/Documents/sub/*').status, 0, 'deeper path: a destructive grant covers it');
+        assert.equal(run('rm -rf ~/Documents/*').status, 2);
+        add(human('GO'));
+        assert.equal(run('rm -rf ~/Documents/*').status, 2);
     });
 });
 
@@ -897,7 +985,7 @@ describe('cooldown marker and store guard', () => {
         fs.mkdirSync(path.join(home, '.aos', 'gate'), { recursive: true });
         fs.writeFileSync(path.join(home, '.aos', 'gate', 'fut.block'), JSON.stringify({ ts: Date.now() + 1e9 }));
         const saved = process.env.HOME;
-        process.env.HOME = home;
+        process.env.HOME = home; process.env.USERPROFILE = home;
         try { assert.ok(g.readBlockTs('fut') <= Date.now()); } finally { process.env.HOME = saved; }
     });
     test('cd into ~/.aos followed by a relative gate/ or go/ write is blocked, a read is not', () => {

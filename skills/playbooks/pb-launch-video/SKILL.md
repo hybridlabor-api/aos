@@ -22,6 +22,7 @@ est_time: 30-90 min
 ---
 
 # Launch video of a shipped app
+Part of pb-content-studio (step e: build and render).
 What you get: a short launch video per format, checked with ffprobe, handed off for publishing after your GO.
 Availability: hyperframes is optional (not shipped); without it the render falls back to the remotion skill.
 

@@ -7,6 +7,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { stopTrailHubs, portRange } from './_trail-hub-stop.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const binary = path.join(root, 'skills', 'global_config', 'agenttrail', 'bin', 'agenttrail.mjs');
@@ -49,9 +50,23 @@ function repoWithPlan(plan = PLAN) {
   return fs.realpathSync(dir);
 }
 
-function fakeMap(port, repoPath) {
-  const s = http.createServer((req, res) => res.end(JSON.stringify({ protocol: 2, project: 'x', port, repoPath })));
+// v2: --ensure probes a HUB by name (protocol 3) on AGENTTRAIL_PORT and starts one
+// when it is missing. The legacy per-repo daemons (protocol 2) are only scanned to
+// be retired through their own /shutdown, never reused.
+function fakeHub(port) {
+  const s = http.createServer((req, res) => res.end(JSON.stringify({ name: 'agenttrail-hub', protocol: 3, port })));
   servers.push(s);
+  return new Promise((resolve) => s.listen(port, '127.0.0.1', () => resolve(s)));
+}
+
+function fakeLegacy(port, repoPath) {
+  const state = { shutdowns: 0 };
+  const s = http.createServer((req, res) => {
+    if (req.url === '/shutdown' && req.method === 'POST') { state.shutdowns += 1; req.resume(); res.writeHead(500).end('no'); return }
+    res.end(JSON.stringify({ protocol: 2, project: 'x', port, repoPath }));
+  });
+  servers.push(s);
+  s.state = state;
   return new Promise((resolve) => s.listen(port, '127.0.0.1', () => resolve(s)));
 }
 
@@ -63,6 +78,19 @@ function recorder(name) {
   fs.chmodSync(script, 0o755);
   return { bin, script, log, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []) };
 }
+
+// Windows has no lsof; listening sockets are the rows whose foreign address is 0.0.0.0:0 (the state word is localised).
+function listenerPids(lo, hi) {
+  if (process.platform === 'win32') {
+    const r = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8' });
+    return (r.stdout || '').split(/\r?\n/).map((l) => /^\s*TCP\s+\S+:(\d+)\s+0\.0\.0\.0:0\s+\S+\s+(\d+)\s*$/.exec(l)).filter((m) => m && +m[1] >= lo && +m[1] <= hi).map((m) => m[2]);
+  }
+  const pids = [];
+  for (let p = lo; p <= hi; p += 1) pids.push(...(spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).stdout || '').split('\n').filter(Boolean));
+  return pids;
+}
+
+const noShStub = process.platform === 'win32' && 'the stub is a #! shell script, which Windows cannot spawn';
 
 function exec(args, env) {
   return new Promise((resolve) => {
@@ -76,7 +104,7 @@ function exec(args, env) {
 }
 
 function baseEnv(extra = {}) {
-  const e = { ...process.env, HOME: path.join(tmp, 'home'), TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0' };
+  const e = { ...process.env, HOME: path.join(tmp, 'home'), USERPROFILE: path.join(tmp, 'home'), TMPDIR: tmp, TEMP: tmp, TMP: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0' };
   for (const k of ['CI', 'SSH_CONNECTION', 'SSH_TTY', 'AO_BROWSER_CAPABILITY', 'AOS_TRAIL_OPENER', 'CLAUDE_SESSION_ID', 'CODEX_SESSION_ID']) delete e[k];
   return { ...e, ...extra };
 }
@@ -95,10 +123,7 @@ before(async () => {
 });
 after(async () => {
   for (const s of servers) await new Promise((r) => s.close(r));
-  for (let p = LO; p <= HI; p += 1) {
-    const r = spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
-    for (const pid of (r.stdout || '').split('\n').filter(Boolean)) { try { process.kill(Number(pid)); } catch {} }
-  }
+  stopTrailHubs(portRange(LO, HI));
   await sleep(100);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
@@ -131,11 +156,11 @@ describe('aos-trail --ensure', () => {
     assert.match(out.hint, /a\/00_execution_plan\.md.*b\/00_execution_plan\.md/);
   });
 
-  test('reuses a running map for the repo, opens once per session via the opener', async () => {
+  test('reuses a running hub, opens once per session via the opener', { skip: noShStub }, async () => {
     const repo = repoWithPlan();
-    await fakeMap(LO + 1, repo);
+    await fakeHub(LO + 1);
     const rec = recorder('opener');
-    const env = { AOS_TRAIL_OPENER: rec.script };
+    const env = { AOS_TRAIL_OPENER: rec.script, AGENTTRAIL_PORT: String(LO + 1) };
     const a = await run(['--cwd', repo, '--session', 'sess/1'], env);
     assert.deepEqual([a.started, a.opened, a.url, a.reason], [false, true, `http://127.0.0.1:${LO + 1}`, null]);
     for (let i = 0; i < 40 && rec.calls().length < 1; i++) await sleep(100);
@@ -148,20 +173,22 @@ describe('aos-trail --ensure', () => {
     assert.equal((await run(['--cwd', repo, '--session', 'sess/2'], env)).opened, true);
   });
 
-  test('a map of another repo is not reused', async () => {
+  test('a legacy daemon of another repo is not reused and not retired', async () => {
     const repo = repoWithPlan();
-    await fakeMap(LO + 3, mk('elsewhere'));
-    const out = await run(['--cwd', repo, '--session', 'other'], { AOS_TRAIL_PORTS: `${LO + 3}-${LO + 4}`, CI: '1' });
+    const foreign = await fakeLegacy(LO + 3, mk('elsewhere'));
+    const out = await run(['--cwd', repo, '--session', 'other'], { AOS_TRAIL_PORTS: `${LO + 3}-${LO + 4}`, CI: '1', AGENTTRAIL_PORT: String(LO + 4) });
     assert.equal(out.started, true);
     assert.notEqual(out.url, `http://127.0.0.1:${LO + 3}`);
+    await sleep(300);
+    assert.equal(foreign.state.shutdowns, 0, 'a daemon for another repo must not be retired');
   });
 
   test('CI, SSH and headless Linux never open', async () => {
     const repo = repoWithPlan();
-    await fakeMap(LO + 1, repo);
+    await fakeHub(LO + 1);
     const rec = recorder('noopen');
     for (const [i, extra] of [{ CI: '1' }, { SSH_TTY: '/dev/pts/1' }].entries()) {
-      const out = await run(['--cwd', repo, '--session', `no${i}`], { AOS_TRAIL_OPENER: rec.script, ...extra });
+      const out = await run(['--cwd', repo, '--session', `no${i}`], { AOS_TRAIL_OPENER: rec.script, AGENTTRAIL_PORT: String(LO + 1), ...extra });
       assert.equal(out.opened, false);
       assert.equal(out.url, `http://127.0.0.1:${LO + 1}`);
     }
@@ -169,27 +196,27 @@ describe('aos-trail --ensure', () => {
     assert.deepEqual(rec.calls(), []);
   });
 
-  test('AO_BROWSER_CAPABILITY runs `ao preview <url>`', async () => {
+  test('AO_BROWSER_CAPABILITY runs `ao preview <url>`', { skip: noShStub }, async () => {
     const repo = repoWithPlan();
-    await fakeMap(LO + 1, repo);
+    await fakeHub(LO + 1);
     const ao = recorder('ao');
     fs.renameSync(ao.script, path.join(ao.bin, 'ao'));
-    const out = await run(['--cwd', repo, '--session', 'ao'], { AO_BROWSER_CAPABILITY: '1', PATH: `${ao.bin}${path.delimiter}${process.env.PATH}`, AOS_TRAIL_OPENER: '/nonexistent' });
+    const out = await run(['--cwd', repo, '--session', 'ao'], { AO_BROWSER_CAPABILITY: '1', PATH: `${ao.bin}${path.delimiter}${process.env.PATH}`, AOS_TRAIL_OPENER: '/nonexistent', AGENTTRAIL_PORT: String(LO + 1) });
     assert.equal(out.opened, true);
     for (let i = 0; i < 40 && ao.calls().length < 1; i++) await sleep(100);
     assert.deepEqual(ao.calls(), [`preview http://127.0.0.1:${LO + 1}`]);
   });
 
-  test('starts one detached map, a second call reuses it; loopback URL; non-JSON output', async () => {
+  test('starts one detached hub, a second call reuses it; loopback URL; non-JSON output', async () => {
     const repo = repoWithPlan();
-    const env = { CI: '1' };
+    const env = { CI: '1', AGENTTRAIL_PORT: String(LO) };
     const a = await run(['--cwd', repo], env);
     assert.equal(a.started, true, JSON.stringify(a));
     assert.equal(a.opened, false);
     assert.match(a.url, /^http:\/\/127\.0\.0\.1:\d+$/);
     const b = await run(['--cwd', repo], env);
     assert.deepEqual([b.started, b.url], [false, a.url]);
-    const line = await exec(['--ensure', '--cwd', repo], baseEnv({ CI: '1' }));
+    const line = await exec(['--ensure', '--cwd', repo], baseEnv({ CI: '1', AGENTTRAIL_PORT: String(LO) }));
     assert.equal(line.status, 0);
     assert.equal(line.stdout.trim(), `agenttrail: ${a.url}`);
   });
