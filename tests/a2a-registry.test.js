@@ -13,9 +13,11 @@ const mode = (f) => statSync(f).mode & 0o777;
 test("register writes 0600 json + separate 0600 token in a 0700 dir", () => {
   reg.register({ name: "w1", harness: "claude", url: "http://127.0.0.1:1/a2a", cardUrl: "http://127.0.0.1:1/c", cwd: "/x", token: "sekret" });
   const dir = process.env.AOS_SESSIONS_DIR;
-  assert.equal(mode(dir), 0o700);
-  assert.equal(mode(join(dir, "w1.json")), 0o600);
-  assert.equal(mode(join(dir, "w1.token")), 0o600);
+  if (process.platform !== "win32") { // NTFS reports 0o666 for every file and directory
+    assert.equal(mode(dir), 0o700);
+    assert.equal(mode(join(dir, "w1.json")), 0o600);
+    assert.equal(mode(join(dir, "w1.token")), 0o600);
+  }
   const e = JSON.parse(readFileSync(join(dir, "w1.json"), "utf8"));
   assert.ok(e.started && e.ts && e.pid === process.pid);
   assert.ok(!JSON.stringify(e).includes("sekret"));

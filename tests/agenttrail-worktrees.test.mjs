@@ -68,7 +68,7 @@ function exec(args, env, input) {
 }
 
 function baseEnv(extra = {}) {
-  const e = { ...process.env, ...GIT_ENV, HOME: path.join(tmp, 'home'), TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0', CI: '1' };
+  const e = { ...process.env, ...GIT_ENV, HOME: path.join(tmp, 'home'), USERPROFILE: path.join(tmp, 'home'), TMPDIR: tmp, TEMP: tmp, TMP: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0', CI: '1' };
   for (const k of ['SSH_CONNECTION', 'SSH_TTY', 'AO_BROWSER_CAPABILITY', 'AOS_TRAIL_OPENER', 'CLAUDE_SESSION_ID', 'CODEX_SESSION_ID', 'AGENTTRAIL_PORT']) delete e[k];
   return { ...e, ...extra };
 }
@@ -189,7 +189,8 @@ describe('one map per repo', () => {
   test('AGENTTRAIL_PORT wins over the probed range for hook relay', async () => {
     const got = [];
     const mk = (port) => new Promise((resolve) => {
-      const s = http.createServer((req, res) => { got.push(port); req.resume(); res.end(); });
+      // only the relayed hook counts: the legacy daemons started above also probe every port with GET /whoami
+      const s = http.createServer((req, res) => { if (req.method === 'POST' && req.url === '/hook') got.push(port); req.resume(); res.end(); });
       servers.push(s);
       s.listen(port, '127.0.0.1', resolve);
     });

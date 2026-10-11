@@ -159,8 +159,9 @@ function copyToClipboard(text) {
 if (ensureMode) {
   try { await (await import('./ensure.mjs')).ensure({ cwd: ensureCwd, plan: planArg, session: ensureSession, json: jsonOut, script: fileURLToPath(import.meta.url) }) }
   catch (e) { console.log(jsonOut ? JSON.stringify({ url: null, started: false, opened: false, reason: `error: ${String(e && e.message || e).slice(0, 80)}`, plan: null, hint: null }) : 'agenttrail: error') }
-  // Windows: process.exit() right after fetch() aborts node with a libuv UV_HANDLE_CLOSING assertion (exit 0xC0000409).
-  if (process.platform === 'win32') await new Promise(r => setTimeout(r, 100))
+  // Windows: process.exit() right after a fetch() with an AbortSignal.timeout() can abort node with a libuv UV_HANDLE_CLOSING assertion (exit 0xC0000409).
+  // 100 ms was not enough (17 of 30 runs crashed); 500 ms: 30 of 30 runs exit 0. An unsettled top-level await instead ends with exit 13 on Node 24.16, so do not park.
+  if (process.platform === 'win32') { process.exitCode = 0; await new Promise(r => setTimeout(r, 500)) }
   process.exit(0)
 }
 if (cmd === 'init') { hooksOnly ? installHooks() : await init(); process.exit(0) }

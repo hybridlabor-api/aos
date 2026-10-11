@@ -25,7 +25,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = path.join(root, 'skills/global_config/plan-canvas/scripts/plan-canvas.js');
 const LOCATE = path.join(root, 'skills/global_config/bdb-visual-edit/scripts/locate-source.mjs');
 const FIXTURE = path.join(root, 'tests/fixtures/vite-react-app');
-const SAFE_PATH = '/opt/homebrew/bin:/usr/bin:/bin';
+const WIN = process.platform === 'win32';
+const SAFE_PATH = WIN ? process.env.PATH : '/opt/homebrew/bin:/usr/bin:/bin'; // a ':' path list cannot work with drive letters
+const winEnv = () => (WIN ? { SystemRoot: process.env.SystemRoot, TEMP: os.tmpdir(), TMP: os.tmpdir(), USERPROFILE: home } : {});
 
 if (process.env.AOS_E2E_BROWSER === '1') {
   console.log([
@@ -49,9 +51,9 @@ const freePort = () => new Promise((resolve, reject) => {
 });
 
 const env = () => ({
-  PATH: SAFE_PATH, HOME: home,
+  PATH: SAFE_PATH, HOME: home, ...winEnv(),
   AOS_PLAN_CANVAS_PORT: String(canvasPort), AOS_PLAN_CANVAS_STATE_DIR: stateDir,
-  AOS_PLAN_CANVAS_TRAIL_BIN: path.join(tmp, 'fake-trail.sh'), AOS_FAKE_TRAIL_OUT: trailLog
+  AOS_PLAN_CANVAS_TRAIL_BIN: path.join(tmp, 'fake-trail.cjs'), AOS_FAKE_TRAIL_OUT: trailLog
 });
 
 function cli(...args) {
@@ -109,7 +111,7 @@ const canvasPost = (k, items) =>
 const awaitPlan = () => cli('await', plan, '--timeout-ms', '300');
 
 function git(...args) {
-  const r = spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { PATH: SAFE_PATH, HOME: home } });
+  const r = spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { PATH: SAFE_PATH, HOME: home, ...winEnv() } });
   assert.equal(r.status, 0, r.stderr);
   return r.stdout;
 }
@@ -126,7 +128,7 @@ describe('canvas dispatcher e2e (app annotation)', () => {
     fs.mkdirSync(path.join(repo, 'docs'));
     plan = path.join(repo, 'docs', 'plan.md');
     fs.writeFileSync(plan, '# Plan\n\n## Backend {#backend}\n\nwork\n\n## UI {#ui}\nneeds: [backend]\n');
-    fs.writeFileSync(path.join(tmp, 'fake-trail.sh'), '#!/bin/sh\necho "$*" >> "$AOS_FAKE_TRAIL_OUT"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(tmp, 'fake-trail.cjs'), "require('fs').appendFileSync(process.env.AOS_FAKE_TRAIL_OUT, process.argv.slice(2).join(' ') + '\\n');\n");
     git('init', '-q');
     git('-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '.');
     git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'fixture');
@@ -193,7 +195,7 @@ describe('canvas dispatcher e2e (app annotation)', () => {
 
   test('locate-source finds src/App.jsx with the line, edit handler contract holds', () => {
     const it = pick;
-    const r = spawnSync(process.execPath, [LOCATE, '--root', repo], { input: JSON.stringify(it), encoding: 'utf8', env: { PATH: SAFE_PATH, HOME: home } });
+    const r = spawnSync(process.execPath, [LOCATE, '--root', repo], { input: JSON.stringify(it), encoding: 'utf8', env: { PATH: SAFE_PATH, HOME: home, ...winEnv() } });
     assert.equal(r.status, 0, r.stderr);
     const found = JSON.parse(r.stdout);
     assert.ok(['exact', 'likely'].includes(found.confidence), found.confidence);

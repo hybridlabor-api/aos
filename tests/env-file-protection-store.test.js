@@ -168,7 +168,7 @@ describe('round 2: no caps, patch forms, symlink limits', () => {
         assert.ok(Date.now() - started < 15000);
     });
 
-    test('.. after a symlinked directory is resolved by the OS, not collapsed textually', () => {
+    test('.. after a symlinked directory is resolved by the OS, not collapsed textually', { skip: process.platform === 'win32' && 'Windows collapses .. textually before it follows a symlink, so the POSIX behaviour under test does not exist' }, () => {
         fs.symlinkSync(path.join(home, '.aos', 'gate'), path.join(home, 'work', 's'));
         fs.symlinkSync('s/../gate/n.json', path.join(home, 'work', 'd')); // s/.. is ~/.aos, so this lands in ~/.aos/gate
         blocked(path.join(home, 'work', 'd'));

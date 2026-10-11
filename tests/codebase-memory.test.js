@@ -12,7 +12,8 @@ const installer = require('../installer.js');
 const { applyPicks } = require('../lib/mcp-pick');
 
 // fsImpl stub whose existsSync answers from a set of existing absolute paths.
-const fsFrom = (existing) => ({ existsSync: (p) => existing.includes(String(p)) });
+const slash = (p) => String(p).replace(/\\/g, '/'); // the product joins with the host `path`
+const fsFrom = (existing) => ({ existsSync: (p) => existing.map(slash).includes(slash(p)) });
 
 describe('cmbAppStatus (binary-presence probe)', () => {
     test('on PATH (darwin, no extra dirs)', () => {
@@ -21,7 +22,7 @@ describe('cmbAppStatus (binary-presence probe)', () => {
             fsImpl: fsFrom(['/usr/bin/codebase-memory-mcp']),
         });
         assert.equal(status.found, true);
-        assert.equal(status.path, '/usr/bin/codebase-memory-mcp');
+        assert.equal(slash(status.path), '/usr/bin/codebase-memory-mcp');
         assert.equal(status.label, 'codebase-memory-mcp');
     });
     test('absent everywhere -> found false, path null', () => {

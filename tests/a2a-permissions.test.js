@@ -29,6 +29,7 @@ let home, work, outside;
 test('setup worktree, outside directory and test HOME', () => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'a2a-perm-home-'));
     process.env.HOME = home;
+    process.env.USERPROFILE = home; // Windows os.homedir() reads USERPROFILE, not HOME
     work = fs.mkdtempSync(path.join(os.tmpdir(), 'a2a-perm-work-'));
     outside = fs.mkdtempSync(path.join(os.tmpdir(), 'a2a-perm-out-'));
 });

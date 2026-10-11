@@ -15,6 +15,7 @@ const GATE = path.join(REPO, '.claude', 'hooks', 'go-gate.mjs');
 const ORIGIN = 'http://localhost:5350';
 const CMD = 'gh pr merge 5';
 const MIN = 60 * 1000;
+const WIN = process.platform === 'win32'; // no POSIX mode/owner bits and no mkfifo there
 
 process.env.AOS_TEST_SANDBOX = '1';
 process.env.GIT_CONFIG_NOSYSTEM = '1';
@@ -267,18 +268,18 @@ describe('click receipt, files and credential', () => {
         denied(CMD);
     });
 
-    test('receipt with mode 0644 is denied', () => {
+    test('receipt with mode 0644 is denied', { skip: WIN && 'no POSIX file modes on Windows' }, () => {
         receipt({}, { mode: 0o644 });
         denied(CMD);
     });
 
-    test('receipt with mode 0640 or 0660 is denied', () => {
+    test('receipt with mode 0640 or 0660 is denied', { skip: WIN && 'no POSIX file modes on Windows' }, () => {
         receipt({}, { mode: 0o640 });
         receipt({}, { mode: 0o660 });
         denied(CMD);
     });
 
-    test('receipt owned by another user is denied', { skip: typeof process.getuid === 'function' && process.getuid() !== 0 ? 'needs root to chown' : false }, () => {
+    test('receipt owned by another user is denied', { skip: WIN || (typeof process.getuid === 'function' && process.getuid() !== 0 ? 'needs root to chown' : false) }, () => {
         const { f } = receipt();
         fs.chownSync(f, 12345, 12345);
         denied(CMD);
@@ -290,7 +291,7 @@ describe('click receipt, files and credential', () => {
         denied(CMD);
     });
 
-    test('credential file with mode 0644 is denied', () => {
+    test('credential file with mode 0644 is denied', { skip: WIN && 'no POSIX file modes on Windows' }, () => {
         const p = goPayload();
         enrol({}, 0o644);
         write(p);
@@ -315,7 +316,7 @@ describe('click receipt, files and credential', () => {
         denied(CMD);
     });
 
-    test('a FIFO planted as receipt does not hang the gate', () => {
+    test('a FIFO planted as receipt does not hang the gate', { skip: WIN && 'no mkfifo on Windows' }, () => {
         enrol();
         const m = spawnSync('mkfifo', [path.join(godir, 's1.click-fifo1.json')]);
         assert.equal(m.status, 0);
@@ -324,7 +325,7 @@ describe('click receipt, files and credential', () => {
         allowed(CMD);
     });
 
-    test('a FIFO planted as credential does not hang the gate', () => {
+    test('a FIFO planted as credential does not hang the gate', { skip: WIN && 'no mkfifo on Windows' }, () => {
         const p = goPayload();
         write(p);
         const m = spawnSync('mkfifo', [path.join(gdir, 'trail-credential.json')]);
@@ -332,7 +333,7 @@ describe('click receipt, files and credential', () => {
         denied(CMD);
     });
 
-    test('a FIFO planted as revoke file does not hang the gate and revokes', () => {
+    test('a FIFO planted as revoke file does not hang the gate and revokes', { skip: WIN && 'no mkfifo on Windows' }, () => {
         receipt();
         const m = spawnSync('mkfifo', [path.join(gdir, 's1.revoke.json')]);
         assert.equal(m.status, 0);
@@ -481,7 +482,7 @@ describe('click grant receipts', () => {
         grant({}, { tamper: (b) => { b.payload.scopes = ['merge', 'publish']; } });
         grant({}, { sign: { key: auth.otherKey() } });
         grant({}, { sign: { flags: SA.FLAG_UP } });
-        grant({}, { mode: 0o644 });
+        if (!WIN) grant({}, { mode: 0o644 });
         denied(CMD);
     });
 

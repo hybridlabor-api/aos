@@ -272,7 +272,7 @@ test("prompt file (default aos-acp backend) is 0600, carries the [a2a from] pref
     const acpIdx = args.indexOf("--prompt-file");
     assert.ok(acpIdx >= 0, `no --prompt-file in ${args.join(" ")}`);
     const pf = args[acpIdx + 1];
-    assert.equal((statSync(pf).mode & 0o777), 0o600);
+    if (process.platform !== "win32") assert.equal((statSync(pf).mode & 0o777), 0o600);
     const prompt = readFileSync(pf, "utf8");
     assert.ok(prompt.startsWith("[a2a from caller]"), prompt);
     assert.ok(prompt.includes(NEVER_GO));

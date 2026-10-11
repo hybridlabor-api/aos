@@ -8,6 +8,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { spawnSync, execFileSync } = require('child_process');
+const { pathToFileURL } = require('url');
 
 const GATE = path.resolve(__dirname, '..', '.claude', 'hooks', 'go-gate.mjs');
 
@@ -93,7 +94,7 @@ describe('go-gate request records (WP-8)', () => {
         runGate('git push origin main');
         const st = fs.lstatSync(reqFile);
         assert.ok(st.isFile());
-        assert.equal(st.mode & 0o777, 0o600);
+        if (process.platform !== 'win32') assert.equal(st.mode & 0o777, 0o600); // Windows reports 0666
         assert.deepEqual(fs.readdirSync(gateDir).filter((f) => f.endsWith('.tmp')), []);
     });
 
@@ -142,7 +143,7 @@ describe('go-gate request records (WP-8)', () => {
     test('listStateKeys skips *.req.json', async () => {
         runGate('git push origin main');
         fs.writeFileSync(path.join(gateDir, 'other.json'), '{}');
-        const out = spawnSync(process.execPath, ['--input-type=module', '-e', `import('${GATE}').then(m => console.log(JSON.stringify(m.listStateKeys())))`], { env: env(), encoding: 'utf8' });
+        const out = spawnSync(process.execPath, ['--input-type=module', '-e', `import('${pathToFileURL(GATE).href}').then(m => console.log(JSON.stringify(m.listStateKeys())))`], { env: env(), encoding: 'utf8' });
         const keys = JSON.parse(out.stdout.trim().split('\n').pop());
         assert.ok(keys.includes('other'));
         assert.ok(!keys.some((k) => k.includes('req')));
@@ -181,7 +182,7 @@ describe('go-gate request records (WP-8)', () => {
     });
 
     test('sessionKey remaps .req/.revoke suffixes and trail-credential', () => {
-        const out = spawnSync(process.execPath, ['--input-type=module', '-e', `import('${GATE}').then(m => console.log(JSON.stringify(['foo.req', 'foo.revoke', 'trail-credential', 'foo'].map(m.sessionKey))))`], { env: env(), encoding: 'utf8' });
+        const out = spawnSync(process.execPath, ['--input-type=module', '-e', `import('${pathToFileURL(GATE).href}').then(m => console.log(JSON.stringify(['foo.req', 'foo.revoke', 'trail-credential', 'foo'].map(m.sessionKey))))`], { env: env(), encoding: 'utf8' });
         const [a, b, c, d] = JSON.parse(out.stdout.trim().split('\n').pop());
         for (const [raw, k] of [['foo.req', a], ['foo.revoke', b], ['trail-credential', c]]) {
             assert.notEqual(k, raw);

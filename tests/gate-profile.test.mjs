@@ -47,7 +47,7 @@ const bad = [
   ["directory", (d) => d, /regular|unreadable/],
 ];
 for (const [name, mk, re, opts] of bad) {
-  test(`fail closed: ${name}`, () => {
+  test(`fail closed: ${name}`, { skip: process.platform === "win32" && /^wrong (mode|uid)$/.test(name) && "no POSIX mode/owner on Windows" }, () => {
     const r = read(mk(tmp()), opts);
     assert.equal(r.profile, "strict");
     assert.match(r.reason, re);
@@ -104,7 +104,7 @@ test("CLI: strict needs no confirmation, writes 0600", async () => {
   const d = tmp();
   const r = await run(d, { profile: "strict", ask: async () => { throw new Error("asked"); } });
   assert.equal(r.code, 0);
-  assert.equal(statSync(join(d, "config.json")).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal(statSync(join(d, "config.json")).mode & 0o777, 0o600);
   assert.equal(readdirSync(d).length, 1);
 });
 
@@ -114,7 +114,7 @@ test("CLI: right phrase loosens with default expiry, 0600", async () => {
   const c = JSON.parse(readFileSync(join(d, "config.json"), "utf8"));
   assert.equal(c.profile, "work");
   assert.equal(Date.parse(c.expires_at) - NOW, 4 * H);
-  assert.equal(statSync(join(d, "config.json")).mode & 0o777, 0o600);
+  if (process.platform !== "win32") assert.equal(statSync(join(d, "config.json")).mode & 0o777, 0o600);
   assert.equal(readProfile({ file: join(d, "config.json"), now: NOW, uid }).profile, "work");
 });
 
@@ -145,7 +145,7 @@ test("CLI: status is read-only", () => {
 test("gateDir honours AOS_GATE_DIR only in sandbox or with test flag", () => {
   assert.equal(gateDir({ AOS_GATE_DIR: "/x", AOS_TEST_SANDBOX: "container" }), "/x");
   assert.equal(gateDir({ AOS_GATE_DIR: "/x" }, true), "/x");
-  assert.match(gateDir({ AOS_GATE_DIR: "/x" }), /\.aos\/gate$/);
+  assert.match(gateDir({ AOS_GATE_DIR: "/x" }), /\.aos[\\/]gate$/);
 });
 
 test("Touch ID path is a stub", () => {

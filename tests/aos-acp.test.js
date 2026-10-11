@@ -27,7 +27,7 @@ const writeToken = (name, over = {}) => {
 const readLog = (name) => fs.readFileSync(path.join(home, '.aos', 'acp', `${name}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 
 const run = (args, env = {}) => spawnSync(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, ...args], {
-    env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', ...env }, encoding: 'utf8', timeout: 20000,
+    env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1', ...env }, encoding: 'utf8', timeout: 20000,
 });
 
 describe('aos-acp with a fake ACP agent', () => {
@@ -105,7 +105,7 @@ describe('aos-acp with a fake ACP agent', () => {
     test('--go-wait parks the request until the token appears', async () => {
         const { spawn } = require('child_process');
         const child = spawn(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, '--name', 'w1', '--prompt', 'push', '--go-wait', '10'],
-            { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', FAKE_CMD: 'git push' } });
+            { env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1', FAKE_CMD: 'git push' } });
         let out = '';
         child.stdout.on('data', (d) => { out += d; });
         await new Promise((r) => setTimeout(r, 1500));
@@ -117,7 +117,7 @@ describe('aos-acp with a fake ACP agent', () => {
     });
 
     test('unknown adapter errors (agy is covered in aos-acp-agy.test.js)', () => {
-        assert.equal(spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' }).status, 2);
+        assert.equal(spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1' }, encoding: 'utf8' }).status, 2);
     });
 
     test('workers emit mcsc-protocol events to agenttrail (fake receiver)', async () => {
@@ -132,7 +132,7 @@ describe('aos-acp with a fake ACP agent', () => {
         await new Promise((r) => srv.listen(0, '127.0.0.1', r));
         try {
             const child = spawn(process.execPath, [BIN, 'codex', '--cmd', FAKE, '--cwd', home, '--name', 'w1', '--prompt', 'hi'],
-                { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: String(srv.address().port), FAKE_TOOL: '1' } });
+                { env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: String(srv.address().port), FAKE_TOOL: '1' } });
             child.stdout.resume();
             assert.equal(await new Promise((r) => child.on('exit', r)), 0);
             const names = events.map((e) => e.hook_event_name + (e.tool_name ? `:${e.tool_name}` : ''));
@@ -168,7 +168,7 @@ describe('aos-acp opencode: MCP servers off by default', { skip: process.platfor
         const out = path.join(home, 'oc-env.txt');
         const cmd = `printf '%s' "$OPENCODE_CONFIG_CONTENT" > ${JSON.stringify(out)}; exec ${FAKE}`;
         const r = spawnSync(process.execPath, [BIN, 'opencode', '--cmd', cmd, '--cwd', path.join(home, 'proj'), '--name', 'w1', '--prompt', 'hi', ...extra], {
-            env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', OPENCODE_CONFIG_CONTENT: '', ...env }, encoding: 'utf8', timeout: 20000,
+            env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1', OPENCODE_CONFIG_CONTENT: '', ...env }, encoding: 'utf8', timeout: 20000,
         });
         assert.equal(r.status, 0, r.stderr);
         return fs.readFileSync(out, 'utf8');
@@ -194,7 +194,7 @@ describe('aos-acp opencode: MCP servers off by default', { skip: process.platfor
         const out = path.join(home, 'cx-env.txt');
         const cmd = `printf '%s' "$OPENCODE_CONFIG_CONTENT" > ${JSON.stringify(out)}; exec ${FAKE}`;
         const r = spawnSync(process.execPath, [BIN, 'codex', '--cmd', cmd, '--cwd', path.join(home, 'proj'), '--name', 'w1', '--prompt', 'hi'], {
-            env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', OPENCODE_CONFIG_CONTENT: '' }, encoding: 'utf8', timeout: 20000,
+            env: { ...process.env, HOME: home, USERPROFILE: home,AGENTTRAIL_PORT: '1', OPENCODE_CONFIG_CONTENT: '' }, encoding: 'utf8', timeout: 20000,
         });
         assert.equal(r.status, 0, r.stderr);
         assert.equal(fs.readFileSync(out, 'utf8'), '');

@@ -16,7 +16,7 @@ function makeTempHome() {
 }
 
 function childEnv(home) {
-  const env = { ...process.env, HOME: home };
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
   delete env.CLAUDE_CONFIG_DIR;
   return env;
 }

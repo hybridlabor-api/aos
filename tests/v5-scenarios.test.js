@@ -16,6 +16,7 @@ const noprompt = require('../lib/v5/noprompt');
 
 const PAT = 'GITHUB_PERSONAL_ACCESS_TOKEN';
 const CONTAINER = process.env.AOS_TEST_SANDBOX === 'container';
+const SKIP_WIN = process.platform === 'win32' && 'machine() needs a #!/bin/sh stub as .venv/bin/python; Windows verify runs .venv/Scripts/python.exe';
 let n = 0;
 const mkHome = () => fs.mkdtempSync(path.join(root, `s${n++}-`));
 const script = (file, body = 'exit 0') => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, `#!/bin/sh\n${body}\n`, { mode: 0o755 }); };
@@ -97,7 +98,7 @@ test('S1 fresh install: Status lists no installed package and exits as designed'
     });
 });
 
-test('S2 second Update with unchanged versions: zero prompts, zero installer calls', async () => {
+test('S2 second Update with unchanged versions: zero prompts, zero installer calls', { skip: SKIP_WIN }, async () => {
     await withIsolatedPath(async () => {
         const m = machine();
         assert.strictEqual(await menu.update(m.host, m.opts({ ui: { ask: async () => 'ghp_x' } })), 0);
@@ -111,7 +112,7 @@ test('S2 second Update with unchanged versions: zero prompts, zero installer cal
     });
 });
 
-test('S3 outdated module: Status shows "1 update available", Update updates only that package once', async () => {
+test('S3 outdated module: Status shows "1 update available", Update updates only that package once', { skip: SKIP_WIN }, async () => {
     await withIsolatedPath(async () => {
         const m = machine();
         assert.strictEqual(await menu.status(m.host, m.opts({ npmView: membNewer })), 0);
@@ -201,7 +202,7 @@ test('S4d verify reports an opencode.jsonc pointing at a missing memb-mcp venv p
     });
 });
 
-test('S5 blank PAT: stored as skipped, second Update does not ask, only Settings re-asks', async () => {
+test('S5 blank PAT: stored as skipped, second Update does not ask, only Settings re-asks', { skip: SKIP_WIN }, async () => {
     await withIsolatedPath(async () => {
         const m = machine();
         const asked = [];

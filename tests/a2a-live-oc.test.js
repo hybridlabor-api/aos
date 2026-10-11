@@ -48,7 +48,7 @@ test('replySourceFor returns the matching assistant text only once completed', a
   await deliverA2a(c, 'sid2', 'peer2', root);
   const f = join(process.env.AOS_A2A_INBOX, 'peer2', 't2.reply');
   assert.equal(readFileSync(f, 'utf8'), 'part\nial');
-  assert.equal(statSync(f).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(statSync(f).mode & 0o777, 0o600);
 });
 
 test('a claimed message is not injected twice', async () => {

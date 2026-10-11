@@ -12,7 +12,9 @@ try {
     if (typeof input.cwd === 'string' && input.cwd) args.push('--cwd', input.cwd);
     if (typeof input.session_id === 'string' && input.session_id) args.push('--session', input.session_id);
     args.push('--json');
-    const r = spawnSync(process.env.AOS_TRAIL_BIN || 'aos-trail', args, {
+    const bin = process.env.AOS_TRAIL_BIN || 'aos-trail';
+    const viaNode = /\.(?:mjs|cjs|js)$/i.test(bin); // a #! script is not spawnable on Windows
+    const r = spawnSync(viaNode ? process.execPath : bin, viaNode ? [bin, ...args] : args, {
       encoding: 'utf8', timeout: 1800, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'ignore'],
     });
     const out = r.error || r.status !== 0 ? null : JSON.parse(r.stdout);

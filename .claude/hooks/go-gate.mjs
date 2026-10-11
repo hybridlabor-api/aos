@@ -1963,7 +1963,7 @@ function scopesOf(orig, protectedFor) {
       } else if (/^(?:cd|pushd)$/.test(h)) {
         const arg = tk.slice(1).find((x) => !/^-[LPe@]+$/.test(unq(x)));
         st.cwd = arg === undefined ? (gateCtx.home || homedir()) : resolveDir(st.cwd, arg);
-        if (st.cwd === null || /(?:^|\/)\.git(?:\/|$)/.test(st.cwd)) st.taint = true;
+        if (st.cwd === null || /(?:^|\/)\.git(?:\/|$)/.test(winSlash(st.cwd))) st.taint = true;
       } else if (!READONLY_HEADS.test(h) && tk.some((x) => /(?:^|\/)\.git(?:\/|$)/.test(unqQ(x)))) st.taint = true;
       if (s === null) return null;
       if (!s.length && GUARDED_PATTERNS.some((r) => r.test(seg))) return null;
@@ -2704,10 +2704,12 @@ function b64uDecode(v, max) {
 function readOwnedPrivate(f, max) {
   let fd;
   try {
+    if (process.platform === "win32" && lstatSync(f).isSymbolicLink()) return null; // O_NOFOLLOW is a no-op on Windows
     fd = openSync(f, FS.O_RDONLY | FS.O_NOFOLLOW | FS.O_NONBLOCK);
     const st = fstatSync(fd);
     if (!st.isFile() || st.size > max) return null;
     // POSIX owner/mode only: Windows has no uid and reports 0666; the per-user profile ACL is the equivalent there.
+    // ponytail: win32 trusts the profile ACL; an icacls/SID check (cached by mtime) is the 5.1 upgrade if that matters.
     if (process.platform !== "win32" && (typeof process.getuid !== "function" || st.uid !== process.getuid() || (st.mode & 0o777) !== 0o600)) return null;
     const buf = Buffer.alloc(st.size);
     let n = 0;

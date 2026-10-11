@@ -9,7 +9,7 @@ const http = require('http');
 const { DatabaseSync } = require('node:sqlite');
 
 const PLUGIN = path.join(__dirname, '..', '.opencode', 'plugins', 'bdb-aos.js');
-const ENV_KEYS = ['HOME', 'AOS_SESSION_NAME', 'AOS_ACP_CLIENT', 'XDG_DATA_HOME', 'AGENTTRAIL_PORT'];
+const ENV_KEYS = ['HOME', 'USERPROFILE', 'AOS_SESSION_NAME', 'AOS_ACP_CLIENT', 'XDG_DATA_HOME', 'AGENTTRAIL_PORT'];
 
 let home, saved, server, trail;
 beforeEach(async () => {
@@ -17,6 +17,7 @@ beforeEach(async () => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-oc-adapter-'));
     for (const k of ENV_KEYS.slice(1)) delete process.env[k];
     process.env.HOME = home;
+    process.env.USERPROFILE = home;
     trail = [];
     server = http.createServer((req, res) => {
         let b = '';

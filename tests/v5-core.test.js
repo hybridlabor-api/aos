@@ -19,6 +19,7 @@ const pk = require('../lib/v5/packages');
 
 const PAT = 'GITHUB_PERSONAL_ACCESS_TOKEN';
 const newer = (l, r) => l !== r;
+const SKIP_WIN = process.platform === 'win32' && 'fixtures are #!/bin/sh stubs (venv python, openwiki, deja, remote, token-saver, claude) that Windows cannot execute';
 let n = 0;
 const mkHome = () => fs.mkdtempSync(path.join(root, `h${n++}-`));
 const script = (file, body = 'exit 0') => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, `#!/bin/sh\n${body}\n`, { mode: 0o755 }); };
@@ -66,7 +67,7 @@ function machine({ copyVersion = '2.4.0' } = {}) {
 }
 const current = async (name) => ({ '@hybridlabor-api/aos': '4.0.0', '@hybridlabor-api/memb': '2.4.0' }[name] || '1.0.0');
 
-test('second update with stored values never asks', async () => {
+test('second update with stored values never asks', { skip: SKIP_WIN }, async () => {
     const m = machine();
     const asked = [];
     const first = await menu.update(m.host, m.opts({ npmView: current, ui: { ask: async (k) => { asked.push(k); return 'ghp_secret'; } } }));
@@ -89,7 +90,7 @@ test('F4: update prints the existing-install banner and a verified-OK summary', 
     assert.match(text, /Verified OK: Kernel, Harnesses/);
 });
 
-test('F3: openwiki verify probes `openwiki --help` (no --version), reads the version from its banner', () => {
+test('F3: openwiki verify probes `openwiki --help` (no --version), reads the version from its banner', { skip: SKIP_WIN }, () => {
     const m = machine();
     const pkg = pk.registry.find((p) => p.id === 'openwiki');
     const bin = path.join(mkHome(), 'bin');
@@ -97,7 +98,7 @@ test('F3: openwiki verify probes `openwiki --help` (no --version), reads the ver
     assert.strictEqual(withPath(bin, () => pkg.verify({ host: m.host, home: m.home })).ok, true);
 });
 
-test('F5: an outdated OpenWiki upgrades its CLI once; the second update does no OpenWiki work', async () => {
+test('F5: an outdated OpenWiki upgrades its CLI once; the second update does no OpenWiki work', { skip: SKIP_WIN }, async () => {
     const m = machine();
     const bin = path.join(mkHome(), 'bin');
     const log = path.join(bin, 'npm.log');
@@ -121,13 +122,13 @@ test('F5: an outdated OpenWiki upgrades its CLI once; the second update does no 
     });
 });
 
-test('F6: a token the Harnesses step moves out of an inline MCP config is never asked for', async () => {
+test('F6: a token the Harnesses step moves out of an inline MCP config is never asked for', { skip: SKIP_WIN }, async () => {
     const m = machine();
     m.host.quickUpdateHarnesses = () => { fs.mkdirSync(path.join(m.home, '.aos'), { recursive: true }); fs.writeFileSync(secretsPath(m.home), `${PAT}="ghp_inline"\n`, { mode: 0o600 }); };
     assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current, ui: { ask: async (k) => assert.fail(`asked ${k}`) } })), 0);
 });
 
-test('memB WebUI: a venv without fastapi fails verify and repair reruns installMemB', async () => {
+test('memB WebUI: a venv without fastapi fails verify and repair reruns installMemB', { skip: SKIP_WIN }, async () => {
     const m = machine();
     fs.mkdirSync(path.join(m.memb, 'src', 'backend'), { recursive: true });
     fs.writeFileSync(path.join(m.memb, 'src', 'backend', 'server.py'), '');
@@ -155,7 +156,7 @@ test('F13: a package with alwaysUpdate (the gateway) runs update on every update
     assert.strictEqual(pk.registry.find((p) => p.id === 'gateway').alwaysUpdate, true);
 });
 
-test('update without a TTY (no ui.ask) asks nothing and stores nothing', async () => {
+test('update without a TTY (no ui.ask) asks nothing and stores nothing', { skip: SKIP_WIN }, async () => {
     const m = machine();
     assert.strictEqual(await menu.update(m.host, m.opts({ npmView: current })), 0);
     assert.ok(!fs.existsSync(secretsPath(m.home)));
@@ -170,7 +171,7 @@ test('blank PAT is remembered as skipped; reask asks again', async () => {
     assert.strictEqual(r.state, 'ok');
     assert.strictEqual(r.vars.AOS_SKIPPED_KEYS, PAT);
     assert.ok(!(PAT in r.vars), 'no placeholder value');
-    assert.strictEqual(fs.statSync(secretsPath(home)).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.strictEqual(fs.statSync(secretsPath(home)).mode & 0o777, 0o600);
 
     await secrets.need([PAT], { home, ask });
     assert.strictEqual(asked, 1, 'not asked on the next run');
@@ -204,7 +205,7 @@ test('versions: outdated detected, Update is the default menu entry', async () =
     assert.strictEqual(initial, 'status');
 });
 
-test('versions: outdated memB is updated then verified; offline stays unknown and never throws', async () => {
+test('versions: outdated memB is updated then verified; offline stays unknown and never throws', { skip: SKIP_WIN }, async () => {
     const m = machine();
     const code = await menu.update(m.host, m.opts({ npmView: async (name) => (name.endsWith('/memb') ? '2.5.0' : '4.0.0') }));
     assert.strictEqual(code, 0);
@@ -225,7 +226,7 @@ test('versions: 24 h cache', async () => {
     assert.strictEqual((await versions.checkAll(pkgs, { home, now: 1000 + 25 * 3600 * 1000, npmView: dead, isNewer: newer }))[0].remote, 'unknown');
 });
 
-test('memB with a dangling venv python: verify fails, repair renames, recreates, syncs the MCP copy', async () => {
+test('memB with a dangling venv python: verify fails, repair renames, recreates, syncs the MCP copy', { skip: SKIP_WIN }, async () => {
     const m = machine({ copyVersion: '2.3.3' });
     const py = path.join(m.memb, '.venv', 'bin', 'python');
     fs.rmSync(py);
@@ -244,7 +245,7 @@ test('memB with a dangling venv python: verify fails, repair renames, recreates,
     assert.strictEqual(JSON.parse(fs.readFileSync(path.join(m.mcp, 'mcps', 'memb-mcp', 'package.json'), 'utf8')).version, '2.4.0');
 });
 
-test('memB copy out of sync is reported by verify and fixed by the Harnesses step', async () => {
+test('memB copy out of sync is reported by verify and fixed by the Harnesses step', { skip: SKIP_WIN }, async () => {
     const m = machine({ copyVersion: '2.3.3' });
     const memb = pk.registry.find((p) => p.id === 'memb');
     assert.match(memb.verify({ host: m.host, home: m.home }).detail, /memb-mcp copy 2\.3\.3 != memB 2\.4\.0/);
@@ -289,7 +290,7 @@ test('package adapters detect when not installed', () => {
 
 const withPath = (dir, fn) => { const prev = process.env.PATH; process.env.PATH = dir; try { return fn(); } finally { process.env.PATH = prev; } };
 
-test('T30: deja detect is PATH-isolated (passes on a machine that has deja)', () => {
+test('T30: deja detect is PATH-isolated (passes on a machine that has deja)', { skip: SKIP_WIN }, () => {
     const deja = pk.registry.find((p) => p.id === 'deja');
     const empty = path.join(mkHome(), 'empty');
     fs.mkdirSync(empty);
@@ -311,7 +312,7 @@ test('codenotch detect when not installed', () => {
     assert.ok(typeof d.installed === 'boolean');
 });
 
-test('T29: remote verify runs `remote --version` (fake binary fails on any other argument)', () => {
+test('T29: remote verify runs `remote --version` (fake binary fails on any other argument)', { skip: SKIP_WIN }, () => {
     const m = machine();
     const pkg = pk.registry.find((p) => p.id === 'remote');
     const bin = path.join(mkHome(), 'bin');
@@ -325,7 +326,7 @@ test('T29: remote verify runs `remote --version` (fake binary fails on any other
     assert.strictEqual(withPath(empty, () => pkg.verify({ host: m.host, home: m.home })).ok, false);
 });
 
-test('memB verify detects import run failure in memb-mcp', () => {
+test('memB verify detects import run failure in memb-mcp', { skip: SKIP_WIN }, () => {
     const m = machine();
     const memb = pk.registry.find((p) => p.id === 'memb');
     // Create a memb-mcp directory with a working python but missing run module
@@ -337,7 +338,7 @@ test('memB verify detects import run failure in memb-mcp', () => {
     assert.match(result.detail, /import run fails/);
 });
 
-test('token-saver verify checks CLI and hook registration', () => {
+test('token-saver verify checks CLI and hook registration', { skip: SKIP_WIN }, () => {
     const pkg = pk.registry.find((p) => p.id === 'token-saver');
     const cases = [
         { name: 'ok', cli: 'exit 0', hook: true, ok: true },
@@ -501,7 +502,7 @@ test('B11: step() disables prompts and restores the previous value', async () =>
     assert.deepStrictEqual(calls, ['confirm'], 'prompts work again outside step');
 });
 
-test('A3: memB WebUI LaunchAgent exit status is parsed from real `launchctl list <label>` text', () => {
+test('A3: memB WebUI LaunchAgent exit status is parsed from real `launchctl list <label>` text', { skip: SKIP_WIN }, () => {
     const m = machine();
     const memb = pk.registry.find((p) => p.id === 'memb');
     const sample = (status) => `{\n\t"LimitLoadToSessionType" = "Aqua";\n\t"Label" = "com.bdb.memb.webui";\n\t"OnDemand" = false;\n\t"LastExitStatus" = ${status};\n\t"PID" = 4242;\n\t"Program" = "/usr/bin/python3";\n};\n`;
@@ -512,7 +513,7 @@ test('A3: memB WebUI LaunchAgent exit status is parsed from real `launchctl list
     assert.strictEqual(memb.verify({ host: m.host, home: m.home, launchctl: () => ({ status: 113, stdout: '' }) }).ok, true, 'agent not loaded is not a failure here');
 });
 
-test('A4: memB repair reinstalls requirements when a runnable venv fails `import mcp`', async () => {
+test('A4: memB repair reinstalls requirements when a runnable venv fails `import mcp`', { skip: SKIP_WIN }, async () => {
     const m = machine();
     const flag = path.join(m.home, 'mcp-installed');
     script(path.join(m.memb, '.venv', 'bin', 'python'), `[ "$2" = "import mcp" ] && [ ! -f "${flag}" ] && exit 1\nexit 0`);
@@ -526,7 +527,7 @@ test('A4: memB repair reinstalls requirements when a runnable venv fails `import
     assert.strictEqual(fs.readdirSync(m.memb).filter((f) => f.startsWith('.venv.broken-')).length, 0);
 });
 
-test('A5: a package without repair gets one retry via update() when verify fails', async () => {
+test('A5: a package without repair gets one retry via update() when verify fails', { skip: SKIP_WIN }, async () => {
     const m = machine();
     let fixed = false;
     let updates = 0;
@@ -664,7 +665,7 @@ const noClaude = () => { const d = path.join(mkHome(), 'empty'); fs.mkdirSync(d)
 const putClaudeSettings = (home, text) => { fs.mkdirSync(path.join(home, '.claude'), { recursive: true }); fs.writeFileSync(path.join(home, '.claude', 'settings.json'), typeof text === 'string' ? text : JSON.stringify(text)); };
 const withPackage = async (entry, fn) => { pk.register(entry); try { return await fn(); } finally { pk.registry.splice(pk.registry.findIndex((e) => e.id === entry.id), 1); } };
 
-test('R5: a JSONC settings.json is a warning on a green Harnesses step; harness failures stay ✖', async () => {
+test('R5: a JSONC settings.json is a warning on a green Harnesses step; harness failures stay ✖', { skip: SKIP_WIN }, async () => {
     const m = machine();
     putClaudeSettings(m.home, '{ // mine\n "model": "x" }');
     await withPathAsync(fakeClaude(), async () => {
@@ -693,7 +694,7 @@ test('R7: aos-uninstall removes the fleet registration', { skip: process.env.AOS
     assert.strictEqual(s.enabledPlugins[KEY], undefined);
 });
 
-test('R8: Settings -> Install fleet is ✖ when opted out or Claude Code is missing; a confirmed opt-out is cleared', async () => {
+test('R8: Settings -> Install fleet is ✖ when opted out or Claude Code is missing; a confirmed opt-out is cleared', { skip: SKIP_WIN }, async () => {
     const ui = (confirm) => ({ select: async () => 'pkg:fleet', ...(confirm ? { confirm } : {}) });
     const off = machine();
     putClaudeSettings(off.home, { enabledPlugins: { [KEY]: false } });

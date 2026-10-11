@@ -25,7 +25,7 @@ function makeTempHome() {
 }
 
 function childEnv(home) {
-  const env = { ...process.env, HOME: home };
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
   delete env.CLAUDE_CONFIG_DIR;
   return env;
 }
@@ -103,6 +103,7 @@ describe('WP-INSTALL (Ziel C A2A)', () => {
     // the plugin both funnel through it, and it must skip on AOS_A2A_SIDECAR=off
     // and on AOS_DELEGATE_DEPTH>0 -- that is the fork-bomb guard.
     process.env.HOME = home;
+    process.env.USERPROFILE = home; // Windows os.homedir() reads USERPROFILE, not HOME
     delete process.env.AOS_SESSIONS_DIR;
     const { ensureSidecar } = await import(pathToFileURL(path.join(REPO, 'lib', 'a2a-session.mjs')).href);
     assert.equal(ensureSidecar({ harness: 'claude', sessionId: 's1', env: { AOS_A2A_SIDECAR: 'off' } }).skipped, 'off');

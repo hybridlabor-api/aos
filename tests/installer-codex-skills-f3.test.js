@@ -16,8 +16,9 @@ process.env.USERPROFILE = home;
 delete process.env.CLAUDE_CONFIG_DIR;
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 assert.equal(os.homedir(), home);
-fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-process.env.PATH = `${bin}:/usr/bin:/bin`;
+const WIN = process.platform === 'win32';
+fs.writeFileSync(path.join(bin, WIN ? 'codex.cmd' : 'codex'), WIN ? '@echo off\r\nexit /b 0\r\n' : '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+process.env.PATH = [bin, ...(WIN ? [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')] : ['/usr/bin', '/bin'])].join(path.delimiter);
 
 const inst = require('../installer.js');
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');

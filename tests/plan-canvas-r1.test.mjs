@@ -36,8 +36,10 @@ const freePort = () => new Promise((resolve, reject) => {
   s.on('error', reject);
 });
 
+const WIN = process.platform === 'win32';
 const cliEnv = port => ({
-  PATH: '/opt/homebrew/bin:/usr/bin:/bin', HOME: home, AOS_PLAN_CANVAS_PORT: String(port),
+  PATH: WIN ? process.env.PATH : '/opt/homebrew/bin:/usr/bin:/bin', HOME: home, AOS_PLAN_CANVAS_PORT: String(port),
+  ...(WIN ? { SystemRoot: process.env.SystemRoot, TEMP: os.tmpdir(), TMP: os.tmpdir(), USERPROFILE: home } : {}),
   AOS_PLAN_CANVAS_STATE_DIR: stateDir, AOS_PLAN_CANVAS_TRAIL_BIN: fakeTrail
 });
 
@@ -93,8 +95,8 @@ describe('plan-canvas R1 repairs', () => {
     stateDir = path.join(tmp, 'state');
     fs.mkdirSync(workspace);
     fs.mkdirSync(home);
-    fakeTrail = path.join(tmp, 'fake-trail.sh');
-    fs.writeFileSync(fakeTrail, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    fakeTrail = path.join(tmp, 'fake-trail.cjs');
+    fs.writeFileSync(fakeTrail, 'process.exit(0);\n');
     process.env.AOS_PLAN_CANVAS_STATE_DIR = stateDir;
   });
   after(() => fs.rmSync(tmp, { recursive: true, force: true }));

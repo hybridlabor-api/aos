@@ -72,7 +72,7 @@ function install(home, { optional = [], argv = [], env = {} } = {}) {
     `i.installOpencodePlugin({ targetHome: ${JSON.stringify(home)}, configPath: ${JSON.stringify(cfg)}, optional: ${optional === null ? 'undefined' : `new Set(${JSON.stringify(optional)})`} });`;
   const res = spawnSync(process.execPath, ['-e', code, '--', ...argv], {
     encoding: 'utf8', timeout: 30000,
-    env: { PATH: process.env.PATH, HOME: home, ...env },
+    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, ...env },
   });
   assert.equal(res.status, 0, res.stderr);
   return { out: res.stdout + res.stderr, cfg, cmdDir: path.join(home, '.config', 'opencode', 'commands') };

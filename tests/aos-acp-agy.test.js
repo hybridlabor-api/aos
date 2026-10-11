@@ -9,6 +9,8 @@ const os = require('os');
 const { spawnSync } = require('child_process');
 
 const BIN = path.join(__dirname, '..', 'bin', 'aos-acp.mjs');
+// A #! script is not spawnable on Windows, and spawn('agy') would then find a real agy.exe on PATH and run it.
+const noFakeAgy = process.platform === 'win32' && 'the fake agy is a #! script';
 
 const FAKE_AGY = `#!${process.execPath}
 const fs = require('fs');
@@ -41,7 +43,7 @@ beforeEach(() => {
 });
 
 const run = (args, env = {}, { withAgy = true } = {}) => spawnSync(process.execPath, [BIN, 'agy', '--name', 'w1', '--cwd', home, '--prompt', 'do the thing', ...args], {
-  env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1', FAKE_AGY_ARGV: path.join(home, 'argv.json'), PATH: withAgy ? `${binDir}:${process.env.PATH}` : path.dirname(process.execPath), ...env },
+  env: { ...process.env, HOME: home, USERPROFILE: home, AGENTTRAIL_PORT: '1', FAKE_AGY_ARGV: path.join(home, 'argv.json'), PATH: withAgy ? `${binDir}:${process.env.PATH}` : path.dirname(process.execPath), ...env },
   encoding: 'utf8',
   timeout: 20000,
 });
@@ -49,7 +51,7 @@ const argv = () => JSON.parse(fs.readFileSync(path.join(home, 'argv.json'), 'utf
 const readLog = () => fs.readFileSync(path.join(home, '.aos', 'acp', 'w1.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 
 describe('aos-acp agy', () => {
-  test('default (deny) runs read-only plan mode, prints the answer, logs start/text/done, closes stdin', () => {
+  test('default (deny) runs read-only plan mode, prints the answer, logs start/text/done, closes stdin', { skip: noFakeAgy }, () => {
     const r = run(['--model', 'gemini-3.8-flash-medium']);
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /FAKE-ANSWER/);
@@ -66,14 +68,14 @@ describe('aos-acp agy', () => {
     assert.equal(readLog().find((e) => e.event === 'done').stopReason, 'end_turn');
   });
 
-  test('--print-timeout sets the unit-suffixed agy flag', () => {
+  test('--print-timeout sets the unit-suffixed agy flag', { skip: noFakeAgy }, () => {
     const r = run(['--print-timeout', '120']);
     assert.equal(r.status, 0, r.stderr);
     const a = argv();
     assert.equal(a[a.indexOf('--print-timeout') + 1], '120s');
   });
 
-  test('scoped maps to accept-edits with the sandbox; allow maps to skip-permissions; neither is the default', () => {
+  test('scoped maps to accept-edits with the sandbox; allow maps to skip-permissions; neither is the default', { skip: noFakeAgy }, () => {
     assert.equal(run(['--allow-default', 'scoped']).status, 0);
     let a = argv();
     assert.equal(a[a.indexOf('--mode') + 1], 'accept-edits');
@@ -85,7 +87,7 @@ describe('aos-acp agy', () => {
     assert.ok(!a.includes('--mode'));
   });
 
-  test('an agy print timeout is a failure even though agy reports status SUCCESS with an empty response', () => {
+  test('an agy print timeout is a failure even though agy reports status SUCCESS with an empty response', { skip: noFakeAgy }, () => {
     const r = run([], { FAKE_AGY_MODE: 'timeout' });
     assert.equal(r.status, 1);
     assert.equal(readLog().find((e) => e.event === 'done').stopReason, 'timeout');
@@ -94,7 +96,7 @@ describe('aos-acp agy', () => {
     assert.match(r.stderr, /auth/);
   });
 
-  test('non-JSON output and a non-zero exit are failures', () => {
+  test('non-JSON output and a non-zero exit are failures', { skip: noFakeAgy }, () => {
     assert.equal(run([], { FAKE_AGY_MODE: 'nojson' }).status, 1);
     assert.equal(run([], { FAKE_AGY_MODE: 'fail' }).status, 1);
     assert.equal(readLog().find((e) => e.event === 'done').stopReason, 'error');
@@ -107,7 +109,7 @@ describe('aos-acp agy', () => {
   });
 
   test('an unknown adapter is still an error and the usage names agy', () => {
-    const r = spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [BIN, 'nope', '--name', 'a', '--prompt', 'x'], { env: { ...process.env, HOME: home, USERPROFILE: home, AGENTTRAIL_PORT: '1' }, encoding: 'utf8' });
     assert.equal(r.status, 2);
     assert.match(r.stderr, /claude\|codex\|opencode\|agy/);
   });

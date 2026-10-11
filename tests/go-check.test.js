@@ -150,7 +150,7 @@ test('installGoCheck places go-check, go-gate and the patterns, idempotently, an
     const before = fs.readdirSync(bin).map((f) => fs.readFileSync(path.join(bin, f), 'utf8'));
     assert.equal(installer.installGoCheck({ targetHome: home }), true);
     assert.deepEqual(fs.readdirSync(bin).map((f) => fs.readFileSync(path.join(bin, f), 'utf8')), before);
-    assert.equal(fs.readdirSync(bin).length, 8,'no backup files on an unchanged re-run');
+    assert.equal(fs.readdirSync(bin).length, before.length, 'no backup files on an unchanged re-run');
     assert.equal(fs.readFileSync(path.join(bin, 'guarded-patterns.json'), 'utf8'), fs.readFileSync(path.join(REPO, 'bin', 'guarded-patterns.json'), 'utf8'));
     const r = check(['--session', 'w1', '--command', 'git push'], { HOME: home }, path.join(bin, 'go-check.mjs'));
     assert.equal(r.code, 1);

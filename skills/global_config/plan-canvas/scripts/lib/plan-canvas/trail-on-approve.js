@@ -39,7 +39,9 @@ function repoRoot(dir, spawnSyncImpl) {
 }
 
 function resolveBinary(env) {
-  if (env.AOS_PLAN_CANVAS_TRAIL_BIN) return { cmd: env.AOS_PLAN_CANVAS_TRAIL_BIN, pre: [] };
+  const override = env.AOS_PLAN_CANVAS_TRAIL_BIN;
+  // a JS override runs under node: a #! script is not spawnable on Windows
+  if (override) return /\.(?:mjs|cjs|js)$/i.test(override) ? { cmd: process.execPath, pre: [override] } : { cmd: override, pre: [] };
   const script = path.resolve(__dirname, '../../../../agenttrail/bin/agenttrail.mjs');
   if (fs.existsSync(script)) return { cmd: process.execPath, pre: [script] };
   if (process.platform !== 'win32') return { cmd: 'aos-trail', pre: [] };

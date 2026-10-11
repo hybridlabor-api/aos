@@ -1,4 +1,4 @@
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -59,7 +59,7 @@ test("send to unknown name errors quickly", async () => {
 test("reply() writes 0600 file and rejects > 8 KiB", () => {
   const out = client.reply({ name: "agent1", taskId: "t1", text: "the answer" });
   const mode = statSync(out.path).mode & 0o777;
-  assert.equal(mode, 0o600);
+  if (process.platform !== "win32") assert.equal(mode, 0o600);
   assert.throws(() => client.reply({ name: "agent1", taskId: "t2", text: "x".repeat(9000) }), /8 KiB/);
 });
 
@@ -73,8 +73,8 @@ test("lazy SDK import: node bin/aos-a2a.mjs help/list work with SDK unresolvable
   return next(specifier, context);
 }\n`);
   const register = join(tmp, "sdk-block-register.mjs");
-  writeFileSync(register, `import { register } from "node:module";\nregister(${JSON.stringify("file://" + hooks)});\n`);
-  const env = { ...process.env, NODE_OPTIONS: `--import ${register}` };
+  writeFileSync(register, `import { register } from "node:module";\nregister(${JSON.stringify(pathToFileURL(hooks).href)});\n`);
+  const env = { ...process.env, NODE_OPTIONS: `--import ${pathToFileURL(register).href}` };
   const bin = fileURLToPath(new URL("../bin/aos-a2a.mjs", import.meta.url));
 
   const help = await run(process.execPath, [bin, "--help"], env);

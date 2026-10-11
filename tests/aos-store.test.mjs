@@ -67,7 +67,7 @@ async function withFixture(mutate, fn) {
     writeFileSync(indexPath, JSON.stringify({ version: '1.0.0', pinned_commit: COMMIT, skills: { 'fixture-multi': item }, subagents: { x: item } }));
     const cwd = join(tmp, 'proj');
     mkdirSync(cwd);
-    const env = { ...process.env, HOME: join(tmp, 'home'), AOS_STORE_TEST_OVERRIDES: '1', AOS_STORE_INDEX: indexPath, AOS_STORE_RAW_BASE: `http://127.0.0.1:${srv.address().port}` };
+    const env = { ...process.env, HOME: join(tmp, 'home'), USERPROFILE: join(tmp, 'home'), AOS_STORE_TEST_OVERRIDES: '1', AOS_STORE_INDEX: indexPath, AOS_STORE_RAW_BASE: `http://127.0.0.1:${srv.address().port}` };
     const cli2 = (args) => new Promise((ok) => execFile(process.execPath, [cli, ...args], { cwd, env }, (error, stdout, stderr) => ok({ code: error ? error.code : 0, stdout, stderr })));
     await fn({ cli: cli2, cwd, item });
   } finally {
@@ -84,7 +84,7 @@ test('multi-file install writes every file and sets the exec bit', async () => {
     assert.equal(r.code, 0, r.stderr);
     const dir = join(cwd, 'skills', 'fixture-multi');
     for (const [p, f] of Object.entries(FIXTURE)) assert.equal(readFileSync(join(dir, p), 'utf8'), f.data);
-    assert.equal(statSync(join(dir, 'scripts', 'run.sh')).mode & 0o777, 0o755);
+    if (process.platform !== 'win32') assert.equal(statSync(join(dir, 'scripts', 'run.sh')).mode & 0o777, 0o755);
     assert.notEqual(statSync(join(dir, 'references', 'a.md')).mode & 0o111, 0o111);
   });
 });

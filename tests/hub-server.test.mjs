@@ -268,8 +268,10 @@ test('request targets: //x and absolute-form rejected 400; backslash/dots/NUL ->
 test('hub.json written 0600 in a 0700 dir (atomic tmp+rename)', () => {
   const { dir, file } = hubPaths(home);
   assert.ok(existsSync(file));
-  assert.equal(statSync(dir).mode & 0o777, 0o700);
-  assert.equal(statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(dir).mode & 0o777, 0o700);
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+  }
 });
 
 // ---- finding 8: anchored RegExp routes + capture validation ----

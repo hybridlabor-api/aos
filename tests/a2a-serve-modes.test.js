@@ -2,11 +2,11 @@
 // sidecar per mode, with FAKE `agy` and `codex` executables put first on PATH.
 // The real agy and codex binaries are never needed, looked up past the fakes,
 // or run by this test.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { spawn } from "node:child_process";
 
 // tmp env FIRST (before importing anything from the repo, whose modules read env)
@@ -41,9 +41,21 @@ writeFileSync(join(binDir, "agy"), FAKE_AGY, { mode: 0o755 });
 writeFileSync(join(binDir, "codex"), FAKE_CODEX, { mode: 0o755 });
 chmodSync(join(binDir, "agy"), 0o755);
 chmodSync(join(binDir, "codex"), 0o755);
-process.env.PATH = `${binDir}:${process.env.PATH}`;
+process.env.PATH = `${binDir}${delimiter}${process.env.PATH}`;
 
+// spawn("agy") / spawn("codex") without a shell cannot run the extensionless sh fakes (nor a .cmd) on Windows.
+const SKIP_FAKES = process.platform === "win32" && "fake agy/codex are POSIX sh scripts; Windows spawn() cannot run them";
+
+// A failed assert must never leave a sidecar behind: its piped stdio would keep this process alive until the watchdog.
 const children = [];
+after(() => {
+  for (const c of children) {
+    try { c.kill(); } catch { /* already gone */ }
+    c.stdout?.destroy();
+    c.stderr?.destroy();
+    c.unref();
+  }
+});
 const waitForRegistry = async (name, timeoutMs = 15000) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -64,30 +76,36 @@ const startServe = async (args) => {
   return { child, stderr: () => err };
 };
 
-test("serve --mode agy resumes via the agy executor and completes with its stdout", async () => {
+test("serve --mode agy resumes via the agy executor and completes with its stdout", { skip: SKIP_FAKES }, async () => {
   const name = "serve-agy-ok";
   const { child, stderr } = await startServe([
     "--name", name, "--harness", "agy", "--mode", "agy", "--parent-pid", String(process.pid),
   ]);
-  assert.ok(await waitForRegistry(name), `sidecar did not register: ${stderr()}`);
-  const res = await send({ to: name, from: "tester", text: "produce the word fakery", timeoutMs: 30000 });
-  assert.equal(res.state, "TASK_STATE_COMPLETED", JSON.stringify(res));
-  assert.match(res.artifacts?.[0]?.text ?? "", /FAKY-AGY-ANSWER/);
-  child.kill();
+  try {
+    assert.ok(await waitForRegistry(name), `sidecar did not register: ${stderr()}`);
+    const res = await send({ to: name, from: "tester", text: "produce the word fakery", timeoutMs: 30000 });
+    assert.equal(res.state, "TASK_STATE_COMPLETED", JSON.stringify(res));
+    assert.match(res.artifacts?.[0]?.text ?? "", /FAKY-AGY-ANSWER/);
+  } finally {
+    child.kill();
+  }
   await new Promise((r) => setTimeout(r, 200));
 });
 
-test("serve --mode codex (queue, default) completes via the file reply", async () => {
+test("serve --mode codex (queue, default) completes via the file reply", { skip: SKIP_FAKES }, async () => {
   const name = "serve-codex-ok";
   const { child, stderr } = await startServe([
     "--name", name, "--harness", "codex", "--mode", "codex", "--thread", "thread-a",
     "--parent-pid", String(process.pid),
   ]);
-  assert.ok(await waitForRegistry(name), `sidecar did not register: ${stderr()}`);
-  const res = await send({ to: name, from: "tester", text: "produce the word fakery", timeoutMs: 30000 });
-  assert.equal(res.state, "TASK_STATE_COMPLETED", JSON.stringify(res));
-  assert.match(res.artifacts?.[0]?.text ?? "", /FAKX-CODEX-ANSWER/);
-  child.kill();
+  try {
+    assert.ok(await waitForRegistry(name), `sidecar did not register: ${stderr()}`);
+    const res = await send({ to: name, from: "tester", text: "produce the word fakery", timeoutMs: 30000 });
+    assert.equal(res.state, "TASK_STATE_COMPLETED", JSON.stringify(res));
+    assert.match(res.artifacts?.[0]?.text ?? "", /FAKX-CODEX-ANSWER/);
+  } finally {
+    child.kill();
+  }
   await new Promise((r) => setTimeout(r, 200));
 });
 

@@ -32,6 +32,7 @@ export function readProfile({ file = defaultConfigFile(), now = Date.now(), uid 
   let text;
   let st;
   try {
+    if (process.platform === "win32" && fs.lstatSync(file).isSymbolicLink()) return strict("config is a symlink"); // O_NOFOLLOW is a no-op on Windows
     fd = fs.openSync(file, C.O_RDONLY | C.O_NONBLOCK | C.O_NOFOLLOW);
     st = fs.fstatSync(fd);
     if (!st.isFile()) return strict("not a regular file");

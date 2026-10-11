@@ -61,7 +61,7 @@ function exec(args, env) {
   });
 }
 function baseEnv(extra = {}) {
-  const e = { ...process.env, ...GIT_ENV, HOME: path.join(tmp, 'home'), TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, AGENTTRAIL_PORT: String(LO), DISPLAY: ':0', CI: '1' };
+  const e = { ...process.env, ...GIT_ENV, HOME: path.join(tmp, 'home'), USERPROFILE: path.join(tmp, 'home'), TMPDIR: tmp, TEMP: tmp, TMP: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, AGENTTRAIL_PORT: String(LO), DISPLAY: ':0', CI: '1' };
   for (const k of ['SSH_CONNECTION', 'SSH_TTY', 'AO_BROWSER_CAPABILITY', 'AOS_TRAIL_OPENER', 'CLAUDE_SESSION_ID', 'CODEX_SESSION_ID']) delete e[k];
   return { ...e, ...extra };
 }
@@ -125,6 +125,14 @@ function fakeDaemon(port, repoPath, { shutdown = false } = {}) {
 
 function hubPids() {
   const pids = new Set();
+  if (process.platform === 'win32') { // no /proc or lsof; listening sockets are the rows whose foreign address is 0.0.0.0:0 (the state word is localised)
+    const r = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8' });
+    for (const l of (r.stdout || '').split(/\r?\n/)) {
+      const m = /^\s*TCP\s+\S+:(\d+)\s+0\.0\.0\.0:0\s+\S+\s+(\d+)\s*$/.exec(l);
+      if (m && +m[1] >= LO && +m[1] <= HI) pids.add(Number(m[2]));
+    }
+    return pids;
+  }
   try {
     for (const d of fs.readdirSync('/proc')) {
       if (!/^\d+$/.test(d)) continue;
@@ -154,7 +162,7 @@ before(async () => {
   fs.mkdirSync(path.join(tmp, 'home'));
   LO = await freeRange(8);
   HI = LO + 7;
-  realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
+  realGit = (spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', ['git'], { encoding: 'utf8' }).stdout || '').split(/\r?\n/)[0].trim() || 'git';
 });
 
 after(async () => {
@@ -166,7 +174,7 @@ after(async () => {
 });
 
 describe('lane cap', () => {
-  test('a worktree beyond the cap lands in the other lane and costs git once, not per event', async () => {
+  test('a worktree beyond the cap lands in the other lane and costs git once, not per event', { skip: process.platform === 'win32' && 'the git shim is a #! shell script on a ":"-joined PATH' }, async () => {
     const main = gitRepo('many');
     const wts = [];
     for (let i = 0; i < 13; i += 1) {

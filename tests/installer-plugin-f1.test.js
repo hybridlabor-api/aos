@@ -44,12 +44,14 @@ test('Quick Update runs the same three plugin steps, in the full-install order',
 
 test('codex step reaches a Codex that is only an npm .cmd-style shim on PATH (no shell string), logs one line when absent', () => {
   const calls = path.join(tmp, 'codex-calls');
-  shim('codex', `echo "$@" >> "${calls}"\ncase "$2" in list) echo '{"installed":[],"available":[]}';; esac\nexit 0`);
+  const WIN = process.platform === 'win32';
+  if (WIN) fs.writeFileSync(path.join(bin, 'codex.cmd'), `@echo off\r\necho %* >> "${calls}"\r\nif "%~2"=="list" echo {"installed":[],"available":[]}\r\nexit /b 0\r\n`);
+  else shim('codex', `echo "$@" >> "${calls}"\ncase "$2" in list) echo '{"installed":[],"available":[]}';; esac\nexit 0`);
   const old = process.env.PATH;
-  process.env.PATH = `${bin}:/usr/bin:/bin`;
+  process.env.PATH = [bin, ...(WIN ? [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')] : ['/usr/bin', '/bin'])].join(path.delimiter);
   try {
     try { inst.runCodexPluginStep(); } catch { /* the shim never lists the plugin as installed, so the step now reports FAILED */ }
-    const got = fs.readFileSync(calls, 'utf8');
+    const got = fs.readFileSync(calls, 'utf8').replace(/"/g, ''); // the cmd.exe path quotes every argument
     assert.match(got, /plugin list --json/);
     assert.match(got, /plugin marketplace add .*/);
   } finally { process.env.PATH = old; }

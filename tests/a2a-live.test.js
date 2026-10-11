@@ -62,8 +62,10 @@ test("injection carries the caller prefix and the never-GO line", () => {
 
 test("inbox files are 0600 in a 0700 dir; text over 8 KiB throws", () => {
   const file = inbox.writeMessage("perm1", { taskId: "t1", contextId: "c1", from: "x", text: "hi" });
-  assert.equal(statSync(file).mode & 0o777, 0o600);
-  assert.equal(statSync(join(file, "..")).mode & 0o777, 0o700);
+  if (process.platform !== "win32") {
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+    assert.equal(statSync(join(file, "..")).mode & 0o777, 0o700);
+  }
   assert.throws(() => inbox.writeMessage("perm1", { taskId: "t2", contextId: "c1", from: "x", text: "a".repeat(8 * 1024 + 1) }), /too large/);
 });
 

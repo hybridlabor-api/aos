@@ -14,12 +14,13 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'trail-autostart-'));
 const LOG = path.join(tmp, 'calls.log');
 const SECRET = 'HOSTILE-$(touch pwned)-prompt-text';
 
+// The stubs are node scripts (the hook runs *.cjs through node): a #! shell script is not spawnable on Windows.
 function fake(name, body) {
-  const f = path.join(tmp, name);
-  fs.writeFileSync(f, `#!/bin/sh\necho "$@" >> "${LOG}"\n${body}\n`, { mode: 0o755 });
+  const f = path.join(tmp, `${name}.cjs`);
+  fs.writeFileSync(f, `require('fs').appendFileSync(${JSON.stringify(LOG)}, process.argv.slice(2).join(' ') + '\\n');\n${body}\n`);
   return f;
 }
-const json = (o) => `echo '${JSON.stringify(o)}'`;
+const json = (o) => `console.log(${JSON.stringify(JSON.stringify(o))});`;
 const ok = fake('ok', json({ url: 'http://localhost:5334', started: true, opened: false, reason: null, plan: 'p', hint: null }));
 const second = fake('second', json({ url: 'http://localhost:5334', started: false, opened: false, reason: null, plan: 'p', hint: null }));
 
@@ -79,9 +80,9 @@ test('url null and no hint prints nothing', () => {
 
 test('failures are silent, exit 0, and fast', () => {
   const cases = {
-    exit1: fake('bad1', 'exit 1'),
-    hang: fake('hang', 'exec sleep 30'),
-    garbage: fake('garbage', 'echo not-json'),
+    exit1: fake('bad1', 'process.exit(1);'),
+    hang: fake('hang', 'setInterval(() => {}, 1000);'),
+    garbage: fake('garbage', "console.log('not-json');"),
     missing: path.join(tmp, 'does-not-exist'),
   };
   for (const [name, bin] of Object.entries(cases)) {

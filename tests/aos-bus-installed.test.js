@@ -23,7 +23,7 @@ test('installed aos-bus copy runs on the ~/.agents/lib fallback (no ERR_MODULE_N
   ];
   for (const a of fsActions) a();
 
-  const env = { ...process.env, HOME: home };
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
   delete env.CLAUDE_CONFIG_DIR;
   // `list` is the cheapest CLI path that resolves the LIB (inboxRoot) and exits 0 on an empty bus.
   const run = spawnSync(process.execPath, [path.join(hooksDir, 'aos-bus.mjs'), 'list'], { env, encoding: 'utf8' });
@@ -37,7 +37,7 @@ test('without any lib beside or under ~/.agents/lib the hook fails cleanly, neve
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-bus-nolib-'));
   fs.copyFileSync(path.join(ROOT, '.claude', 'hooks', 'aos-bus.mjs'), path.join(dir, 'aos-bus.mjs'));
   fs.copyFileSync(path.join(ROOT, '.claude', 'hooks', 'go-gate.mjs'), path.join(dir, 'go-gate.mjs'));
-  const env = { ...process.env, HOME: dir };
+  const env = { ...process.env, HOME: dir, USERPROFILE: dir };
   delete env.CLAUDE_CONFIG_DIR;
   const run = spawnSync(process.execPath, [path.join(dir, 'aos-bus.mjs'), 'list'], { env, encoding: 'utf8' });
   const err = `${run.stderr || ''}`;

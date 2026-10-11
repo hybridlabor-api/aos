@@ -20,7 +20,7 @@ const cliBin = path.join(root, 'skills/global_config/agenttrail/bin/agenttrail.m
 
 const code = (c) => (e) => { assert.equal(e.code, c, `expected ${c}, got ${e.code || e.message}`); return true; };
 const mkHome = () => fs.mkdtempSync(path.join(os.tmpdir(), 'trail-click-'));
-const mode = (f) => fs.statSync(f).mode & 0o777;
+const mode = (f) => (process.platform === 'win32' ? 0o600 : fs.statSync(f).mode & 0o777); // NTFS reports 0666 whatever was asked; the profile ACL is the boundary
 const files = (dir) => { try { return fs.readdirSync(dir).sort(); } catch { return []; } };
 
 // ---------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ describe('enrolment (library)', () => {
 
   test('the CLI refuses without a TTY and writes nothing', () => {
     const home = mkHome();
-    const r = spawnSync(process.execPath, [cliBin, 'enroll', '--no-open'], { env: { ...process.env, HOME: home }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const r = spawnSync(process.execPath, [cliBin, 'enroll', '--no-open'], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     assert.equal(r.status, 1);
     assert.match(r.stderr, /TTY/);
     assert.deepEqual(files(stores(home).gate), []);
@@ -395,7 +395,7 @@ describe('hub click endpoints', () => {
     port = await freePort();
     auth = createSoftAuth({ origin: `http://localhost:${port}` });
     child = spawn(process.execPath, [hubBin, '--port', String(port)], {
-      env: { ...process.env, HOME: home, AOS_TRAIL_STATE_DIR: path.join(home, '.aos', 'trail'), AOS_GOGATE_PATH: path.join(home, 'stub-gate.mjs') },
+      env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TRAIL_STATE_DIR: path.join(home, '.aos', 'trail'), AOS_GOGATE_PATH: path.join(home, 'stub-gate.mjs') },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     child.stdout.on('data', (d) => { output += d; });

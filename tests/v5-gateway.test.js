@@ -507,9 +507,9 @@ describe('pkg-gateway', () => {
         const { ctx, calls } = mkCtx(home, { platform: 'linux' });
         await pkg.install(ctx);
         const unit = fs.readFileSync(path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.gateway.service'), 'utf8');
-        assert.ok(unit.includes(`ExecStart="/opt/node/bin/node" "${path.join(ROOT, 'bin', 'aos-gateway.mjs')}" serve`));
+        assert.ok(unit.includes(`ExecStart="/opt/node/bin/node" "${path.join(ROOT, 'bin', 'aos-gateway.mjs').replace(/["\\]/g, '\\$&')}" serve`));
         assert.ok(unit.includes('Restart=on-failure'));
-        assert.ok(unit.includes(`StandardOutput=append:${path.join(cfg.gatewayDir(home), 'gateway.log')}`));
+        assert.ok(unit.includes(`StandardOutput=append:${cfg.gatewayDir(home)}/gateway.log`));
         assert.deepEqual(calls.filter((c) => c[0] === 'systemctl'), [
             ['systemctl', '--user', 'daemon-reload'],
             ['systemctl', '--user', 'enable', '--now', 'com.bdb.aos.gateway.service'],
@@ -990,7 +990,7 @@ describe('harness enable/disable', () => {
         const plist = path.join(fx.home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist');
         fs.mkdirSync(path.dirname(plist), { recursive: true });
         fs.writeFileSync(plist, '');
-        const check = (o = {}) => gatewayChecks({ home: fx.home, files: fx.files, shipped, platform: 'darwin', status: { running: true, port: 7790 }, ...o });
+        const check = (o = {}) => gatewayChecks({ home: fx.home, files: fx.files, shipped, platform: process.platform === 'win32' ? 'win32' : 'darwin', nodeMajor: 24, status: { running: true, port: 7790 }, ...o });
         const bad = (cs) => cs.filter((c) => !c.ok);
 
         let cs = check();

@@ -206,14 +206,20 @@ test('finding 8: default import check uses the venv python (fake python)', () =>
 test('finding 8: doctor reports memB MCP venv entry-import status', () => {
     const h = fresh('membdoc');
     const dir = path.join(h, '.gemini', 'config', 'mcps', 'memb-mcp');
-    fs.mkdirSync(path.join(dir, '.venv', 'bin'), { recursive: true });
-    const fakePython = path.join(dir, '.venv', 'bin', 'python');
-    fs.writeFileSync(fakePython, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
-    fs.chmodSync(fakePython, 0o755);
+    const win = process.platform === 'win32';
+    const venvBin = win ? 'Scripts' : 'bin';
+    fs.mkdirSync(path.join(dir, '.venv', venvBin), { recursive: true });
+    const fakePython = path.join(dir, '.venv', venvBin, win ? 'python.exe' : 'python');
+    if (win) fs.copyFileSync(process.execPath, fakePython); // `node.exe -c "<not a file>"` exits 1, like a python that cannot import
+    else {
+        fs.writeFileSync(fakePython, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+        fs.chmodSync(fakePython, 0o755);
+    }
     const r = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--json'], { env: { HOME: h, USERPROFILE: h, PATH: process.env.PATH }, encoding: 'utf8' });
     const res = JSON.parse(r.stdout).results;
     const entry = res.find((x) => x.name === 'memB MCP venv');
     assert.ok(entry && entry.ok === false && /entry import failed/.test(entry.detail), JSON.stringify(entry));
+    if (win) return; // no Windows executable that exits 0 for any argv without a compiler
     fs.writeFileSync(fakePython, '#!/bin/sh\nexit 0\n');
     const r2 = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--json'], { env: { HOME: h, USERPROFILE: h, PATH: process.env.PATH }, encoding: 'utf8' });
     const entry2 = JSON.parse(r2.stdout).results.find((x) => x.name === 'memB MCP venv');

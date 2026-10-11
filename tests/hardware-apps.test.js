@@ -11,21 +11,28 @@ const ROOT = path.resolve(__dirname, '..');
 const hardwareApps = require('../lib/hardware-apps');
 const installer = require('../installer.js');
 
-const fsFrom = (map, existing = []) => ({
-    existsSync: (p) => map.has(String(p)) ? map.get(String(p)) : existing.includes(String(p)),
-    readdirSync: (p) => { if (map.has(String(p))) return map.get(String(p)); throw new Error('ENOENT'); },
-    statSync: (p) => {
-        const v = map.get(String(p));
-        if (v !== undefined) return { isDirectory: () => Array.isArray(v) || v === true };
-        if (existing.includes(String(p))) return { isDirectory: () => true };
-        throw new Error('ENOENT');
-    },
-});
+// The product joins paths with the host `path`; compare in one separator so POSIX fixtures work on Windows.
+const slash = (p) => String(p).replace(/\\/g, '/');
+const fsFrom = (map0, existing0 = []) => {
+    const map = new Map([...map0].map(([k, v]) => [slash(k), v]));
+    const existing = existing0.map(slash);
+    return {
+        existsSync: (p) => map.has(slash(p)) ? map.get(slash(p)) : existing.includes(slash(p)),
+        readdirSync: (p) => { if (map.has(slash(p))) return map.get(slash(p)); throw new Error('ENOENT'); },
+        statSync: (p) => {
+            const v = map.get(slash(p));
+            if (v !== undefined) return { isDirectory: () => Array.isArray(v) || v === true };
+            if (existing.includes(slash(p))) return { isDirectory: () => true };
+            throw new Error('ENOENT');
+        },
+    };
+};
 
 describe('hwAppStatus (app-detection gate)', () => {
     test('darwin KiCad.app present', () => {
         const f = fsFrom(new Map(), ['/Applications/KiCad/KiCad.app']);
-        assert.deepEqual(hardwareApps.hwAppStatus('kicad', { platform: 'darwin', fsImpl: f }),
+        const status = hardwareApps.hwAppStatus('kicad', { platform: 'darwin', fsImpl: f });
+        assert.deepEqual({ ...status, path: slash(status.path) },
             { found: true, path: '/Applications/KiCad/KiCad.app', label: 'KiCad.app' });
     });
     test('darwin KiCad.app absent, kicad-cli on PATH', () => {
@@ -104,7 +111,7 @@ describe('hwServerDirsNeedingSync (shipped prebuilt venvs)', () => {
     test('python missing (dangling interpreter link) needs uv sync', () => {
         const f = mkHw(['kicad-mcp-server'], []);
         const dirs = hardwareApps.hwServerDirsNeedingSync('/hardware', { fsImpl: f });
-        assert.deepEqual(dirs, ['/hardware/mcp_servers/kicad-mcp-server']);
+        assert.deepEqual(dirs.map(slash), ['/hardware/mcp_servers/kicad-mcp-server']);
     });
     test('runnable venv (bin/python exists) needs no sync', () => {
         const f = mkHw(['kicad-mcp-server'], ['/hardware/mcp_servers/kicad-mcp-server/.venv/bin/python']);
@@ -113,7 +120,7 @@ describe('hwServerDirsNeedingSync (shipped prebuilt venvs)', () => {
     test('win32 checks Scripts/python.exe', () => {
         const f = mkHw(['openscad-mcp-server'], []);
         const dirs = hardwareApps.hwServerDirsNeedingSync('/hardware', { fsImpl: f, platform: 'win32' });
-        assert.deepEqual(dirs, ['/hardware/mcp_servers/openscad-mcp-server']);
+        assert.deepEqual(dirs.map(slash), ['/hardware/mcp_servers/openscad-mcp-server']);
     });
     test('dir without pyproject.toml is skipped', () => {
         const f = fsFrom(new Map([

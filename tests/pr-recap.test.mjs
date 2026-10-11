@@ -12,7 +12,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-recap-'));
 const repo = path.join(tmp, 'repo');
 const git = (...a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' });
 const HOSTILE = 'a<b>{c}`d`<Callout>.txt';
-const noNet = { ...process.env, HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', PATH: process.env.PATH.split(path.delimiter).filter((p) => !fs.existsSync(path.join(p, 'gh'))).join(path.delimiter) };
+const noNet = { ...process.env, HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', PATH: process.env.PATH.split(path.delimiter).filter((p) => !fs.existsSync(path.join(p, 'gh')) && !fs.existsSync(path.join(p, 'gh.exe'))).join(path.delimiter) };
 const recap = (...a) => spawnSync(process.execPath, [script, ...a], { cwd: repo, encoding: 'utf8', env: noNet });
 
 fs.mkdirSync(repo);
@@ -26,9 +26,15 @@ fs.writeFileSync(path.join(repo, 'src/edit.js'), '1\n');
 git('add', '.'); git('commit', '-qm', 'base');
 fs.writeFileSync(path.join(repo, 'src/edit.js'), '1\n2\n');
 fs.writeFileSync(path.join(repo, 'src/new.js'), 'n\n');
-fs.writeFileSync(path.join(repo, HOSTILE), 'h\n');
+const ntfs = process.platform === 'win32';
+if (!ntfs) fs.writeFileSync(path.join(repo, HOSTILE), 'h\n');
 fs.unlinkSync(path.join(repo, 'src/gone.js'));
-git('add', '-A'); git('commit', '-qm', 'change <script>alert(1)</script>');
+git('add', '-A');
+if (ntfs) { // NTFS rejects < and > in file names: put the entry into the index directly
+  const blob = spawnSync('git', ['hash-object', '-w', '--stdin'], { cwd: repo, input: 'h\n', encoding: 'utf8' }).stdout.trim();
+  git('update-index', '--add', '--cacheinfo', `100644,${blob},${HOSTILE}`);
+}
+git('commit', '-qm', 'change <script>alert(1)</script>');
 
 const out = path.join(tmp, 'out');
 const ver = path.join(tmp, 'v.json');

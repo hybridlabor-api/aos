@@ -15,10 +15,12 @@ const cwd = join(tmp, 'proj');
 mkdirSync(home);
 mkdirSync(cwd);
 const realHome = process.env.HOME;
+const realProfile = process.env.USERPROFILE;
 let server, base, token;
 
 before(async () => {
   process.env.HOME = home;
+  process.env.USERPROFILE = home;
   server = createStoreServer({ cwd });
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -27,6 +29,7 @@ before(async () => {
 after(() => {
   server.close();
   process.env.HOME = realHome;
+  if (realProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = realProfile;
   // The temp dir is deliberately never deleted (rules forbid recursive deletes).
 });
 

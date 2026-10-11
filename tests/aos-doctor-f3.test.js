@@ -51,8 +51,10 @@ test('Codex duplicate skills names the doubled skills and splits AOS-shipped fro
 });
 
 test('a real ao in ~/.local/bin is executed (absolute path, no ~ expansion) and a missing AO is only a warning', () => {
-    const withAo = run((h) => write(path.join(h, '.local', 'bin', 'ao'), '#!/bin/sh\necho "ao 9.9.9"\n', 0o755));
-    assert.match(withAo.by('AO Agent Orchestrator').detail, /9\.9\.9/);
+    if (process.platform !== 'win32') { // a #!/bin/sh stub cannot be executed by execFileSync on Windows
+        const withAo = run((h) => write(path.join(h, '.local', 'bin', 'ao'), '#!/bin/sh\necho "ao 9.9.9"\n', 0o755));
+        assert.match(withAo.by('AO Agent Orchestrator').detail, /9\.9\.9/);
+    }
     const noAo = run(() => {});
     const ao = noAo.by('AO Agent Orchestrator');
     assert.ok(!ao.ok && ao.warningOnly);

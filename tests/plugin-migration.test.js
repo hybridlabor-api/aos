@@ -168,7 +168,7 @@ test('harness not detected is left alone', () => {
 function viaInstaller(h, env, argv = []) {
   const code = `const i = require(${JSON.stringify(path.join(ROOT, 'installer.js'))});` +
     `const r = i.runPluginMigration({ detected: ['claudecode'] }); console.log(JSON.stringify([...r.covered]));`;
-  return spawnSync(process.execPath, ['-e', code, '--', ...argv], { encoding: 'utf8', timeout: 30000, env: { PATH: process.env.PATH, HOME: h, ...env } });
+  return spawnSync(process.execPath, ['-e', code, '--', ...argv], { encoding: 'utf8', timeout: 30000, env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h, ...env } });
 }
 
 test('installer: default on, AOS_PLUGIN_MIGRATION=off and check leave everything alone', () => {
@@ -205,11 +205,11 @@ test('uninstall: deregisters what was registered, restores the external marketpl
   const skill = path.join(h, '.claude', 'skills', 'a', 'SKILL.md');
   assert.ok(!fs.existsSync(skill));
 
-  const res = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-uninstall.mjs'), '--restore-plugin-backup'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h } });
+  const res = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-uninstall.mjs'), '--restore-plugin-backup'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h } });
   assert.equal(res.status, 0, res.stderr);
   assert.equal(fs.readFileSync(skill, 'utf8'), 'A');
   fs.writeFileSync(skill, 'changed');
-  spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-uninstall.mjs'), '--restore-plugin-backup'], { env: { PATH: process.env.PATH, HOME: h } });
+  spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-uninstall.mjs'), '--restore-plugin-backup'], { env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h } });
   assert.equal(fs.readFileSync(skill, 'utf8'), 'changed', 'restore never overwrites');
 
   assert.deepEqual(readSettings(h), { theme: 'dark', extraKnownMarketplaces: { bdb: ext }, enabledPlugins: { 'bdb-aos@bdb-marketplace': false } }, 'restore deregisters and persists the opt-out');
@@ -227,7 +227,7 @@ test('restore still finds the backups after uninstall retired the state or remov
   assert.equal(pm.readState(h).backups.length, 1, 'backup index survives');
   fs.rmSync(pm.statePath(h));
   assert.equal(pm.listBackups(h).length, 1, 'found by scanning ~/.agents/backups');
-  const res = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-uninstall.mjs'), '--restore-plugin-backup'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h } });
+  const res = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-uninstall.mjs'), '--restore-plugin-backup'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h } });
   assert.equal(res.status, 0, res.stderr);
   assert.equal(fs.readFileSync(skill, 'utf8'), 'A');
 });
@@ -437,7 +437,7 @@ const viaTargets = (h, env = {}) => {
     `const c = ${JSON.stringify(path.join(h, '.claude'))};` +
     `i.installTargetSkills([{ value: '2', targetSkillDir: c + '/skills', targetLegacyDir: c + '/skills/legacy', targetWorkspaceDir: ${JSON.stringify(path.join(h, '.agents', 'workspace_skills'))} }],` +
     ` { mode: 'merge', backupDir: ${JSON.stringify(path.join(h, 'bk'))}, excludeSkills: [], skillsBase: ${JSON.stringify(skills)} });`;
-  const res = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 30000, env: { PATH: process.env.PATH, HOME: h, ...env } });
+  const res = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 30000, env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h, ...env } });
   assert.equal(res.status, 0, res.stderr);
 };
 const tree = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).sort().join('|') : '');
@@ -474,7 +474,7 @@ test('M-3: the project harness copy leaves .agents/plugins (the Codex marketplac
   fs.mkdirSync(proj);
   assert.deepEqual(require('../installer.js').AGENTS_COPY_EXCLUDE, ['plugins']);
   const code = `require(${JSON.stringify(path.join(ROOT, 'installer.js'))}).installProjectHarness();`;
-  const res = spawnSync(process.execPath, ['-e', code], { cwd: proj, encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH, HOME: h } });
+  const res = spawnSync(process.execPath, ['-e', code], { cwd: proj, encoding: 'utf8', timeout: 60000, env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h } });
   assert.equal(res.status, 0, res.stderr);
   assert.ok(fs.existsSync(path.join(proj, '.agents', 'graph.md')));
   assert.ok(!fs.existsSync(path.join(proj, '.agents', 'plugins')));
@@ -511,7 +511,7 @@ test('H-A: the scripts of openwiki-skill stay and the daemon installs from a sta
   assert.ok(fs.existsSync(path.join(scripts, 'openwiki_daemon.py')), 'daemon scripts never retired');
   assert.ok(!fs.existsSync(path.join(h, '.claude', 'skills', 'a')));
   const code = `const i = require(${JSON.stringify(path.join(ROOT, 'installer.js'))}); console.log(i.stableOpenWikiScripts());`;
-  const res = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h } });
+  const res = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h } });
   assert.equal(res.status, 0, res.stderr);
   const dir = res.stdout.trim().split('\n').pop();
   assert.equal(dir, path.join(h, '.agents', 'skills', 'openwiki-skill', 'scripts'));
@@ -537,10 +537,10 @@ test('L-A: a held lock keeps the migration out, a stale lock is taken over, a va
 test('L-C: aos-doctor accepts the plugin evidence as Claude having the skills', () => {
   const h = home();
   seedInstalled(h);
-  const res = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--json'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h } });
+  const res = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--json'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h } });
   const row = JSON.parse(res.stdout).results.find((x) => x.name === 'Claude Code Skills');
   assert.equal(row.ok, true, res.stdout.slice(0, 400));
   const bare = home();
-  const res2 = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--json'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: bare } });
+  const res2 = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-doctor.mjs'), '--json'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: bare, USERPROFILE: bare } });
   assert.equal(JSON.parse(res2.stdout).results.find((x) => x.name === 'Claude Code Skills').ok, false);
 });

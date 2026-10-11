@@ -22,6 +22,8 @@ function winHome() {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-winun-'));
     const startup = path.join(home, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
     fs.mkdirSync(startup, { recursive: true });
+    // plan() reads %APPDATA% before falling back to <home>AppDataRoaming, so point it at the fixture.
+    process.env.APPDATA = path.join(home, 'AppData', 'Roaming');
     for (const [vbs, dir, bat] of PAIRS) {
         fs.mkdirSync(path.join(home, dir), { recursive: true });
         fs.writeFileSync(path.join(home, dir, bat), '@echo off\r\ngoto loop\r\n');

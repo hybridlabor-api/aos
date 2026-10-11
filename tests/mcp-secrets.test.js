@@ -29,7 +29,7 @@ const fresh = () => { const d = path.join(HOME, `case${++n}`); fs.mkdirSync(d, {
 const write = (p, text, mode) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text, mode ? { mode } : undefined); fs.chmodSync(p, mode || 0o644); return p; };
 const json = (p, o) => write(p, JSON.stringify(o, null, 2));
 const read = (p) => fs.readFileSync(p, 'utf8');
-const mode = (p) => fs.statSync(p).mode & 0o777;
+const mode = (p) => (process.platform === 'win32' ? 0o600 : fs.statSync(p).mode & 0o777); // Windows has no POSIX mode bits; the product skips these checks there
 const noToken = (text, label) => { for (const v of Object.values(T)) assert.ok(!text.includes(v), `${label} must not contain a token value`); };
 const baks = (file) => fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith(`${path.basename(file)}.`) && f.endsWith('.bak'));
 const SECRETS = sec.secretsPath(HOME);
@@ -114,7 +114,7 @@ describe('launcher', () => {
         assert.ok(!r.stderr.includes('fake-'));
     });
 
-    test('refuses a group/world-readable file but still starts the server', () => {
+    test('refuses a group/world-readable file but still starts the server', { skip: process.platform === 'win32' && 'mode bits do not exist on Windows (lib/mcp-secrets.js skips the check)' }, () => {
         const h = fresh();
         write(path.join(h, '.aos', 'secrets.env'), 'A_TOK=fake-a\n', 0o644);
         const r = run(h, 'A_TOK', probe);
@@ -277,9 +277,11 @@ describe('migration of an existing install', () => {
         reset();
         const cfg = fresh();
         process.env.CLAUDE_CONFIG_DIR = cfg;
+        const savedAppData = process.env.APPDATA;
+        if (process.platform === 'win32') process.env.APPDATA = path.join(HOME, 'AppData', 'Roaming'); // OpenCode config lives under %APPDATA%\opencode on win32
         try {
             const f = json(path.join(cfg, '.claude.json'), { mcpServers: { github: { command: 'npx', args: GH_ARGS, env: { GITHUB_PERSONAL_ACCESS_TOKEN: T.gh } } } });
-            const oc = json(path.join(HOME, '.config', 'opencode', 'opencode.json'), { mcp: { memb_mcp: { type: 'local', enabled: true, command: ['/h/.gemini/config/mcps/memb-mcp/.venv/bin/python', '/h/.gemini/config/mcps/memb-mcp/run.py'], environment: { GEMINI_API_KEY: T.gem } } } });
+            const oc = json(path.join(process.platform === 'win32' ? process.env.APPDATA : path.join(HOME, '.config'), 'opencode', 'opencode.json'), { mcp: { memb_mcp: { type: 'local', enabled: true, command: ['/h/.gemini/config/mcps/memb-mcp/.venv/bin/python', '/h/.gemini/config/mcps/memb-mcp/run.py'], environment: { GEMINI_API_KEY: T.gem } } } });
             quiet(() => installer.migrateMcpSecrets());
             noToken(read(f), 'CLAUDE_CONFIG_DIR config');
             noToken(read(oc), 'opencode.json');
@@ -291,7 +293,7 @@ describe('migration of an existing install', () => {
             const stored = sec.parseEnvText(read(SECRETS));
             assert.equal(stored.GITHUB_PERSONAL_ACCESS_TOKEN, T.gh);
             assert.equal(stored.GEMINI_API_KEY, T.gem);
-        } finally { delete process.env.CLAUDE_CONFIG_DIR; }
+        } finally { delete process.env.CLAUDE_CONFIG_DIR; if (savedAppData === undefined) delete process.env.APPDATA; else process.env.APPDATA = savedAppData; }
     });
 });
 
@@ -319,7 +321,7 @@ describe('aos-doctor', () => {
         assert.ok(inline.find((r) => r.detail.includes('"tokenlike"') && r.detail.includes('WHATEVER')));
         assert.ok(!inline.some((r) => r.detail.includes('"clean"')));
         const file = res.find((r) => r.name === 'MCP secrets file');
-        assert.ok(!file.ok && file.warningOnly && /mode 644/.test(file.detail));
+        if (process.platform !== 'win32') assert.ok(!file.ok && file.warningOnly && /mode 644/.test(file.detail));
     });
 
     test('a clean setup with a 0600 file reports no inline secret and an ok secrets file', () => {

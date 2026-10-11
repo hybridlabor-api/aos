@@ -13,7 +13,7 @@ const mk = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-v35a-'));
 const sorted = (xs) => [...xs].sort();
 const ls = (dir) => sorted(fs.readdirSync(dir));
 // agy writes `node hooks/x.mjs` (relative to hooks.json), Claude and Codex write `<dir>/hooks/x.mjs`.
-const wiredIn = (text) => new Set([...text.matchAll(/(?:^|[\s"'\\/])hooks[\\/]([\w.-]+\.mjs)/g)].map((m) => m[1]));
+const wiredIn = (text) => new Set([...text.matchAll(/(?:^|[\s"'\\/])hooks(?:\\\\|[\\/])([\w.-]+\.mjs)/g)].map((m) => m[1]));
 
 function install() {
     const home = mk();

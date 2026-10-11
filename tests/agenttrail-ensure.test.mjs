@@ -79,6 +79,19 @@ function recorder(name) {
   return { bin, script, log, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []) };
 }
 
+// Windows has no lsof; listening sockets are the rows whose foreign address is 0.0.0.0:0 (the state word is localised).
+function listenerPids(lo, hi) {
+  if (process.platform === 'win32') {
+    const r = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8' });
+    return (r.stdout || '').split(/\r?\n/).map((l) => /^\s*TCP\s+\S+:(\d+)\s+0\.0\.0\.0:0\s+\S+\s+(\d+)\s*$/.exec(l)).filter((m) => m && +m[1] >= lo && +m[1] <= hi).map((m) => m[2]);
+  }
+  const pids = [];
+  for (let p = lo; p <= hi; p += 1) pids.push(...(spawnSync('lsof', ['-ti', `tcp:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).stdout || '').split('\n').filter(Boolean));
+  return pids;
+}
+
+const noShStub = process.platform === 'win32' && 'the stub is a #! shell script, which Windows cannot spawn';
+
 function exec(args, env) {
   return new Promise((resolve) => {
     const c = spawn(process.execPath, [binary, ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -91,7 +104,7 @@ function exec(args, env) {
 }
 
 function baseEnv(extra = {}) {
-  const e = { ...process.env, HOME: path.join(tmp, 'home'), TMPDIR: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0' };
+  const e = { ...process.env, HOME: path.join(tmp, 'home'), USERPROFILE: path.join(tmp, 'home'), TMPDIR: tmp, TEMP: tmp, TMP: tmp, AOS_TRAIL_PORTS: `${LO}-${HI}`, DISPLAY: ':0' };
   for (const k of ['CI', 'SSH_CONNECTION', 'SSH_TTY', 'AO_BROWSER_CAPABILITY', 'AOS_TRAIL_OPENER', 'CLAUDE_SESSION_ID', 'CODEX_SESSION_ID']) delete e[k];
   return { ...e, ...extra };
 }
@@ -143,7 +156,7 @@ describe('aos-trail --ensure', () => {
     assert.match(out.hint, /a\/00_execution_plan\.md.*b\/00_execution_plan\.md/);
   });
 
-  test('reuses a running hub, opens once per session via the opener', async () => {
+  test('reuses a running hub, opens once per session via the opener', { skip: noShStub }, async () => {
     const repo = repoWithPlan();
     await fakeHub(LO + 1);
     const rec = recorder('opener');
@@ -183,7 +196,7 @@ describe('aos-trail --ensure', () => {
     assert.deepEqual(rec.calls(), []);
   });
 
-  test('AO_BROWSER_CAPABILITY runs `ao preview <url>`', async () => {
+  test('AO_BROWSER_CAPABILITY runs `ao preview <url>`', { skip: noShStub }, async () => {
     const repo = repoWithPlan();
     await fakeHub(LO + 1);
     const ao = recorder('ao');

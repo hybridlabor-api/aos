@@ -9,15 +9,18 @@ const ROOT = path.join(__dirname, '..');
 const PLUGIN = path.join(ROOT, '.opencode', 'plugins', 'bdb-aos.js');
 const BUS = path.join(ROOT, '.claude', 'hooks', 'aos-bus.mjs');
 
-let home, savedHome, savedName, lib;
+const WIN = process.platform === 'win32';
+const UID = typeof process.getuid === 'function' ? process.getuid() : 0; // the bus records st.uid, which Windows reports as 0
+let home, savedHome, savedProfile, savedName, lib;
 beforeEach(async () => {
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-bus-'));
-    savedHome = process.env.HOME; savedName = process.env.AOS_SESSION_NAME;
-    process.env.HOME = home; delete process.env.AOS_SESSION_NAME;
+    savedHome = process.env.HOME; savedProfile = process.env.USERPROFILE; savedName = process.env.AOS_SESSION_NAME;
+    process.env.HOME = home; process.env.USERPROFILE = home; delete process.env.AOS_SESSION_NAME;
     lib = await import(`file://${BUS}`);
 });
 afterEach(() => {
     process.env.HOME = savedHome;
+    if (savedProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedProfile;
     if (savedName === undefined) delete process.env.AOS_SESSION_NAME; else process.env.AOS_SESSION_NAME = savedName;
     fs.rmSync(home, { recursive: true, force: true });
 });
@@ -34,10 +37,10 @@ describe('aos-bus library', () => {
         lib.registerSession({ name: 'm1', sessionID: 's', cwd: home });
         lib.sendMessage('m1', 'hello', { from: 'master' });
         const [msg] = lib.readInbox('m1');
-        assert.deepEqual([msg.from, msg.text, msg.wake, msg.uid], ['master', 'hello', false, process.getuid()]);
+        assert.deepEqual([msg.from, msg.text, msg.wake, msg.uid], ['master', 'hello', false, UID]);
     });
 
-    test('refused: unregistered, dead pid, 0755 inbox, symlinked inbox, oversize text', () => {
+    test('refused: unregistered, dead pid, 0755 inbox, symlinked inbox, oversize text', { skip: WIN && 'POSIX modes and uids; checkPrivateDir returns early on win32' }, () => {
         assert.throws(() => lib.sendMessage('nope', 'x'), /not registered/);
         lib.registerSession({ name: 'm1', sessionID: 's', cwd: home });
         const reg = lib.busPaths('m1').reg;
@@ -302,7 +305,7 @@ describe('bus text never acts as GO', () => {
     test('gate: only a plain human GO unlocks; synthetic, ignored, aos_bus and the bus pair do not', async () => {
         const messages = [];
         const { hooks, id } = await boot({ messages });
-        const meta = { aos_bus: { from: 'master', uid: process.getuid(), ts: 1 } };
+        const meta = { aos_bus: { from: 'master', uid: UID, ts: 1 } };
         const say = async (parts, n) => {
             messages.push({ info: { role: 'user' }, parts });
             await hooks['chat.message']({ sessionID: id, messageID: `g${n}` }, { parts: parts.map((p) => ({ ...p })) });

@@ -225,9 +225,9 @@ describe('B hard block cannot be lifted', () => {
 });
 
 describe('S6 the other harness paths enforce the same block functionally', () => {
-    let saved;
-    beforeEach(() => { saved = process.env.HOME; process.env.HOME = home; });
-    const restore = () => { process.env.HOME = saved; };
+    let saved, savedUp;
+    beforeEach(() => { saved = process.env.HOME; savedUp = process.env.USERPROFILE; process.env.HOME = home; process.env.USERPROFILE = home; });
+    const restore = () => { process.env.HOME = saved; if (savedUp === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedUp; };
     afterEach(restore);
     const ROOT = path.resolve(__dirname, '..');
     const params = (command) => ({ options: [{ kind: 'allow_once', optionId: 'allow' }, { kind: 'reject_once', optionId: 'reject' }], toolCall: { rawInput: { command } } });
@@ -630,7 +630,7 @@ describe('aos-22b push scopes: feature branches and bare pushes', () => {
         fs.mkdirSync(path.join(d, 'sub', 'deeper'), { recursive: true });
         fs.mkdirSync(path.join(d, '.git'), { recursive: true });
         fs.writeFileSync(path.join(d, '.git', 'HEAD'), head);
-        return d;
+        return d.replace(/\\/g, '/'); // spliced into shell commands: a native backslash path would be an escape sequence
     };
     test('a plain branch name is branch:branch, so feature branches are push-feature', () => {
         for (const c of ['git push -u origin fix/x', 'git push --set-upstream origin feat/y', 'git push origin fix/serviceinstall-windows', 'git push -u origin HEAD:fix/x',
@@ -713,7 +713,7 @@ describe('review round 3: repo state changes, env, paths, perf, aliases, config 
         fs.mkdirSync(path.join(d, '.git'), { recursive: true });
         fs.writeFileSync(path.join(d, '.git', 'HEAD'), head);
         fs.writeFileSync(path.join(d, '.git', 'config'), config);
-        return d;
+        return d.replace(/\\/g, '/');
     };
     const sc = (c) => { g.setGateContext(cur); return g.commandScopes(c); };
     const featureOnly = (c) => assert.deepEqual(sc(c), ['push-feature'], c);

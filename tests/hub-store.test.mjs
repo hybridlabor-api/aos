@@ -85,6 +85,7 @@ writeFileSync(join(base, 'index.json'), JSON.stringify({
 const env = (overrides = {}) => ({
   ...process.env,
   HOME: projHome,
+  USERPROFILE: projHome,
   AOS_STORE_TEST_OVERRIDES: '1',
   AOS_STORE_INDEX: join(base, 'index.json'),
   AOS_STORE_RAW_BASE: `http://127.0.0.1:${rawPort}`,

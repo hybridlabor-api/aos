@@ -290,7 +290,7 @@ test("a2a_reply: writes the 0600 reply file, rejects a name argument and invalid
     const ok = await rpc(child, io, 2, "tools/call", { name: "a2a_reply", arguments: { taskId: "task-mcp-reply", text: "answer 99" } });
     assert.equal(ok.result.isError, false, JSON.stringify(ok));
     const replyFile = join(process.env.AOS_A2A_INBOX, "mcp-client", "task-mcp-reply.reply");
-    assert.equal(statSync(replyFile).mode & 0o777, 0o600, "reply file must be mode 0600");
+    if (process.platform !== "win32") assert.equal(statSync(replyFile).mode & 0o777, 0o600, "reply file must be mode 0600");
     // B7: `name` is not in the schema any more — the reply always goes under AOS_A2A_NAME,
     // so a model can never write the reply file of another session.
     for (const [id, badArgs, re] of [

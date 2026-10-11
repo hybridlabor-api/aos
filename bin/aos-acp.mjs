@@ -17,7 +17,7 @@
 //   Workers start without MCP servers unless --with-mcp is given; see the MCP note above ADAPTERS.
 //   agy runs `agy --print` (no ACP server, no per-tool permission requests): see agyArgs.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -262,6 +262,15 @@ function textOf(block) {
   return block && block.type === "text" ? block.text : "";
 }
 
+// Windows: kill() ends only the cmd.exe/npx wrapper; the agent below it keeps its pipes and its cwd.
+function killTree(child) {
+  if (process.platform === "win32" && child.pid) {
+    try { spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }); } catch { /* already gone */ }
+    return;
+  }
+  child.kill();
+}
+
 export async function run(opts) {
   const sandbox = opts.sandbox ? (opts.resolveSandbox || (await loadSandbox()).resolveSandbox)(opts.sandbox) : null;
   const logFile = opts.log || join(homedir(), ".aos", "acp", `${slug(opts.name)}.jsonl`);
@@ -333,7 +342,7 @@ export async function run(opts) {
     throw e;
   } finally {
     if (timer) clearTimeout(timer);
-    client.child.kill();
+    killTree(client.child);
     await emitTrail({ ...trail, hook_event_name: "SessionEnd" });
   }
 }
@@ -368,6 +377,13 @@ const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prom
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
   if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }
+  // Windows: process.exit() right after a completed fetch() can abort node (libuv UV_HANDLE_CLOSING assertion,
+  // exit 0xC0000409), so let the loop drain there; the unref'd timer is only a backstop.
+  const finish = (code) => {
+    if (process.platform !== "win32") process.exit(code);
+    process.exitCode = code;
+    setTimeout(() => process.exit(code), 3000).unref();
+  };
   Promise.resolve().then(() => run(parseArgs(process.argv.slice(2))))
-    .then((code) => process.exit(code), (e) => { console.error(`aos-acp: ${e.message}`); process.exit(2); });
+    .then(finish, (e) => { console.error(`aos-acp: ${e.message}`); finish(2); });
 }
