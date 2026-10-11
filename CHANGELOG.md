@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.0.0-beta.2](https://github.com/hybridlabor-api/aos/compare/v5.0.0-beta.1...v5.0.0-beta.2) (2026-10-11)
+
+
+### Bug Fixes
+
+* **agy:** stage real copies on Windows instead of junctions ([29ea505](https://github.com/hybridlabor-api/aos/commit/29ea5057b269e1d974c25f47263b33e7c87784db))
+* **installer:** wire gate hooks and deny rules from any working directory ([f5894e0](https://github.com/hybridlabor-api/aos/commit/f5894e0dce13474c22f5573dd3893777a662e536))
+* **rhino-mcp:** drop the git-lfs rules whose objects were never pushed ([2a0063d](https://github.com/hybridlabor-api/aos/commit/2a0063d67dd8d897a7879bb4361e8f542639aee1))
+
+
+### Miscellaneous Chores
+
+* release 5.0.0-beta.2 ([431e70d](https://github.com/hybridlabor-api/aos/commit/431e70dfa2f2f127b86ff16fadc9c46d8b775868))
+
 ## [5.0.0-beta.1](https://github.com/hybridlabor-api/aos/compare/v4.19.0...v5.0.0-beta.1) (2026-10-11)
 
 
