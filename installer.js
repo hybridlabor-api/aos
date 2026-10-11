@@ -5021,7 +5021,8 @@ function injectHarnessRules() {
         }
     }
 
-    if (fs.existsSync(agentsMdSrc) && path.resolve(currentDir) === path.resolve(homeDir)) {
+    // Only .roomodes lands in the working directory; hooks, deny rules and harness dirs go to home from any cwd.
+    if (fs.existsSync(agentsMdSrc)) {
         const rooModesPath = path.join(currentDir, '.roomodes');
         const rooModesData = {
             customModes: [
@@ -5034,7 +5035,7 @@ function injectHarnessRules() {
                 { slug: "godmode-shipping", name: "Godmode Shipping", roleDefinition: "Release Gatekeeper & Quality Auditor.", groups: ["read", "command"] }
             ]
         };
-        installStep(`write ${rooModesPath}`, () => {
+        if (path.resolve(currentDir) === path.resolve(homeDir)) installStep(`write ${rooModesPath}`, () => {
             fs.writeFileSync(rooModesPath, JSON.stringify(rooModesData, null, 2));
             log.step(`Synced Roo Code custom modes to ${rooModesPath}`);
         }, 'Roo Code keeps its existing custom modes.');
