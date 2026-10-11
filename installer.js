@@ -4898,13 +4898,11 @@ function injectHarnessRules() {
         if (sources.ok) {
             const { globalRules, startcycleContent, agentsMdContent } = sources.value;
 
-            // Run from $HOME, these project files ARE the global files that the
-            // manifest-tracked harness copy below writes; a second writer would
-            // make every update see them as user-edited.
-            // F8: an install or update started inside a repo must not write into that repo (CLAUDE.md,
-            // .cursor/rules, .github, .codex-plugin, .roomodes); a repo gets files only via --project-harness.
+            // F8: an install or update started inside a repo must not write into that repo (.github,
+            // .codex-plugin, .roomodes); a repo gets files only via --project-harness.
+            // ~/CLAUDE.md and ~/AGENTS.md are home files and are synced from any working directory.
             const cwdIsHome = path.resolve(currentDir) === path.resolve(homeDir);
-            if (!cwdIsHome) log.step(`Not run from the home directory: no rule files written into ${currentDir}`);
+            if (!cwdIsHome) log.step(`Not run from the home directory: no project rule files written into ${currentDir}`);
 
             installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
@@ -4944,8 +4942,8 @@ function injectHarnessRules() {
                 }
             }, 'Codex agents unchanged');
 
-            const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
-            if (cwdIsHome) installStep(`sync ${claudeMdPath}`, () => {
+            const claudeMdPath = path.join(homeDir, 'CLAUDE.md');
+            installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
                 // A CLAUDE.md carrying this title is the short, hand-maintained
                 // form (see docs/sessions/audit-agents.md F-01): the GO gate lives in a hook,
@@ -5004,7 +5002,7 @@ function injectHarnessRules() {
             }, '.codex-plugin/system.md is unchanged.');
 
             const homeAgentsPath = path.join(homeDir, 'AGENTS.md');
-            if (cwdIsHome) installStep(`sync ${homeAgentsPath}`, () => {
+            installStep(`sync ${homeAgentsPath}`, () => {
                 if (!fs.existsSync(homeAgentsPath)) {
                     log.step(`${homeAgentsPath} does not exist: not created, only existing files get the managed blocks.`);
                     return;
@@ -8127,6 +8125,7 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
     installGlobalHooks,
+    injectHarnessRules,
     installHarnessHookCopies,
     copyHookScripts,
     installA2aLibCopies,
