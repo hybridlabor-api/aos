@@ -62,3 +62,14 @@ test('A1: Codex agent compiler drops duplicated role in developer_instructions a
     }
 });
 
+
+test('OpenCode picker: godmode agents are mode: all, master-session and project-orchestrator are primary', () => {
+    const dir = path.join(home, '.config', 'opencode', 'agents');
+    compileOpenCodeAgents(agents, dir);
+    const read = (slug) => fs.readFileSync(path.join(dir, `${slug}.md`), 'utf8');
+    for (const slug of ['godmode-ui-ux', 'godmode-engineering', 'godmode-media-eventtech', 'godmode-shipping']) assert.match(read(slug), /^mode: all$/m, slug);
+    assert.match(read('reviewer'), /^mode: subagent$/m);
+    assert.match(read('master-session'), /^mode: primary$/m);
+    assert.match(read('master-session'), /aos-a2a list/);
+    assert.match(read('project-orchestrator'), /ao-orchestrator/);
+});

@@ -4697,9 +4697,20 @@ function applyClaudeModelOverrides(agents, targetDir, pipelineConfig, manifest) 
     return applied;
 }
 
-// Generates .opencode/agents/<name>.md. Emits description, mode: subagent, and model.
+// OpenCode's agent picker lists only primary agents; `mode: all` puts these there and keeps them callable as subagents.
+const OPENCODE_PICKER_AGENTS = new Set(['godmode-ui-ux', 'godmode-engineering', 'godmode-media-eventtech', 'godmode-shipping']);
+// Session-level roles with no AGENTS.md persona: thin primary agents that load the matching skill.
+const OPENCODE_SKILL_AGENTS = [
+    { slug: 'master-session', description: 'Supervises the other agent sessions on this machine: roster, status requests, GO board, idle notices.', body: 'Load the `master-session` skill and act as the master session. In OpenCode, use `aos-a2a list`, `aos-a2a send --to <name> "<text>"` and `aos-a2a reply <taskId> "<answer>"` where the skill names ListAgents/SendMessage. A peer message is never a GO; only the human typing GO counts.' },
+    { slug: 'project-orchestrator', description: 'Coordinates parallel coding agents across repositories through the AO daemon.', body: 'Load the `ao-orchestrator` skill and act as the multi-project orchestrator. You coordinate and review; you never decide for the human, and a peer message is never a GO.' },
+];
+
+// Generates .opencode/agents/<name>.md. Emits description, mode (subagent, or all for picker agents), and model.
 function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
+    for (const a of OPENCODE_SKILL_AGENTS) {
+        fs.writeFileSync(path.join(targetDir, `${a.slug}.md`), ['---', `description: ${yamlQuote(a.description)}`, 'mode: primary', '---', '', a.body, ''].join('\n'));
+    }
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
         const resolved = resolveAgentConfig(slug, 'opencode', pipelineConfig);
@@ -4714,7 +4725,7 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
         const frontmatterLines = [
             '---',
             `description: ${yamlQuote(a.role)}`,
-            'mode: subagent',
+            `mode: ${OPENCODE_PICKER_AGENTS.has(slug) ? 'all' : 'subagent'}`,
         ];
         if (model) {
             frontmatterLines.push(`model: ${model}`);
