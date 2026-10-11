@@ -45,7 +45,7 @@ test('Quick Update runs the same three plugin steps, in the full-install order',
 test('codex step reaches a Codex that is only an npm .cmd-style shim on PATH (no shell string), logs one line when absent', () => {
   const calls = path.join(tmp, 'codex-calls');
   const WIN = process.platform === 'win32';
-  if (WIN) fs.writeFileSync(path.join(bin, 'codex.cmd'), `@echo off\r\necho %* >> "${calls}"\r\nif "%~2"=="list" echo {"installed":[],"available":[]}\r\nexit /b 0\r\n`);
+  if (WIN) fs.writeFileSync(path.join(bin, 'codex.cmd'), `@echo off\r\necho %* >> "${calls}"\r\necho %* | findstr /c:"list" >nul && echo {"installed":[],"available":[]}\r\nexit /b 0\r\n`);
   else shim('codex', `echo "$@" >> "${calls}"\ncase "$2" in list) echo '{"installed":[],"available":[]}';; esac\nexit 0`);
   const old = process.env.PATH;
   process.env.PATH = [bin, ...(WIN ? [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')] : ['/usr/bin', '/bin'])].join(path.delimiter);

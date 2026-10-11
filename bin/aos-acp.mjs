@@ -291,7 +291,11 @@ export async function run(opts) {
 
   const trail = { session_id: `aos-acp-${process.pid}-${Date.now()}`, cwd: opts.cwd, agent: `${opts.adapter}:${opts.name}` };
   const seenTools = new Map();
-  emitTrail({ ...trail, hook_event_name: "SessionStart" });
+  // Windows: killTree() below runs taskkill through spawnSync and blocks the event loop, so posts still in flight (300 ms timeout) would be aborted:
+  // wait for them before killing anything.
+  const trailPending = new Set();
+  const trailSend = (ev) => { const p = emitTrail(ev); trailPending.add(p); p.finally(() => trailPending.delete(p)); return p; };
+  trailSend({ ...trail, hook_event_name: "SessionStart" });
   let sessionId;
   const out = opts.stdout || process.stdout;
   const env = { ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1" };
@@ -308,7 +312,7 @@ export async function run(opts) {
       } else if (u.sessionUpdate === "tool_call" || u.sessionUpdate === "tool_call_update") {
         log(u.sessionUpdate, { id: u.toolCallId, title: u.title, kind: u.kind, status: u.status, command: commandOf(u) || undefined });
         const ev = trailToolEvent(u, seenTools, opts.cwd);
-        if (ev) emitTrail({ ...trail, ...ev });
+        if (ev) trailSend({ ...trail, ...ev });
       } else log("update", { kind: u.sessionUpdate });
     },
     onRequest: (method, p) => {
@@ -342,6 +346,7 @@ export async function run(opts) {
     throw e;
   } finally {
     if (timer) clearTimeout(timer);
+    await Promise.allSettled([...trailPending]);
     killTree(client.child);
     await emitTrail({ ...trail, hook_event_name: "SessionEnd" });
   }
