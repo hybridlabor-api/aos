@@ -2034,7 +2034,7 @@ export const isGuardedCommand = (command) =>
 // ---------------------------------------------------------------------------
 const STORE_REF = /\.aos[/,\s+]+(?:\.[/]+)*(?:gate|go)(?![\w.-])|\.aos\/+[^\s/]*[$*?[{]/i;
 // Read-only heads: a store path given to one of these is a read or a mere mention, never a write.
-const STORE_READ = /^(?:cat|ls|grep|egrep|fgrep|head|tail|wc|stat|cd)(?=\s|$)/;
+const STORE_READ = /^(?:cat|ls|grep|egrep|fgrep|head|tail|wc|stat|cd|type|get-content|gc)(?=\s|$)/i;
 const STORE_NULL_REDIR = /(?:\d?>>?|&>)\s*(?:\/dev\/null|&\d)/g;
 // grep here is ugrep: --pager, -Q/--query, --config, ---, --filter run or save things. Only these options pass; any other is blocked.
 const GREP_SAFE_SHORT = /^[ivwxcnHhlLqsrRaEFGPzoUTbkyIABCefmdD0-9]+$/;

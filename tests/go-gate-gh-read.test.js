@@ -57,7 +57,7 @@ test('Windows spellings classify like their POSIX twins (Lenovo P15 findings)', 
     const W = 'C:\\Users\\x\\.aos\\gate\\s.json';
     for (const c of [`del ${W}`, `echo x > ${W}`, `Set-Content ${W} x`, `tail ${W} | tee ${W}`, `tail ${W} | sort -o ${W}`])
         assert.ok(g.gateStoreReason(c), c);
-    for (const c of [`tail -40 ${W} | cut -c1-200`, `cat ${W}`])
+    for (const c of [`tail -40 ${W} | cut -c1-200`, `cat ${W}`, `type ${W} | sort`, `Get-Content ${W} | sort`])
         assert.equal(g.gateStoreReason(c), null, c);
 });
 
