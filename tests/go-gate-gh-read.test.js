@@ -44,6 +44,31 @@ test('aos-uninstall needs a plain GO unless it is a dry run', () => {
         assert.deepEqual(g.commandScopes(c), [], c);
 });
 
+test('Windows spellings classify like their POSIX twins (Lenovo P15 findings)', () => {
+    assert.deepEqual(g.commandScopes('gh.exe pr merge 1'), ['merge']);
+    assert.deepEqual(g.commandScopes('GH.EXE pr merge 1'), ['merge']);
+    assert.ok(g.isGuardedCommand('gh.exe pr create --title x --body y'));
+    assert.ok(g.isGuardedCommand('gh.exe release create v1'));
+    assert.ok(g.isGuardedCommand('git.exe push origin main'));
+    assert.deepEqual(g.commandScopes("gh.exe pr list -q '.[]|.x[0:8]'"), []);
+    for (const c of ['C:\\Users\\x\\.local\\bin\\aos-uninstall.cmd --yes', '"C:\\Users\\x\\.local\\bin\\aos-uninstall.cmd" --yes', '& "C:\\Users\\x\\.local\\bin\\aos-uninstall.cmd" --yes', 'aos-uninstall.ps1 --yes'])
+        assert.equal(g.commandScopes(c), null, c);
+    assert.deepEqual(g.commandScopes('C:\\Users\\x\\.local\\bin\\aos-uninstall.cmd --dry-run'), []);
+    const W = 'C:\\Users\\x\\.aos\\gate\\s.json';
+    for (const c of [`del ${W}`, `echo x > ${W}`, `Set-Content ${W} x`, `tail ${W} | tee ${W}`, `tail ${W} | sort -o ${W}`])
+        assert.ok(g.gateStoreReason(c), c);
+    for (const c of [`tail -40 ${W} | cut -c1-200`, `cat ${W}`])
+        assert.equal(g.gateStoreReason(c), null, c);
+});
+
+test('regressions: --dry-run=false is not a dry run; inline spawn of a non-literal command needs a GO', () => {
+    assert.equal(g.commandScopes('aos-uninstall --dry-run=false'), null);
+    assert.equal(g.commandScopes(`node -e "require('child_process').execSync(process.argv[1])" "git push origin main"`), null);
+    assert.equal(g.commandScopes(`node -e "const {execSync}=require('child_process'); execSync(cmd)"`), null);
+    assert.deepEqual(g.commandScopes(`node -e "require('child_process').execSync('git status')"`), []);
+    assert.deepEqual(g.commandScopes(`node -e "console.log(require('fs').readFileSync('x','utf8'))"`), []);
+});
+
 test('store logs can be read through pure stdin filters; writes stay blocked', () => {
     const LOG = '/Users/x/.aos/gate/s.log';
     for (const c of [`tail -40 ${LOG} | cut -c1-260`, `cat ${LOG} | sort | uniq -c`, `grep -c deny ${LOG} | tr -d ' '`, 'ls -la ~/.aos/gate/ | head -20'])

@@ -93,7 +93,7 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})repo\s+(?:create|edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b`),
   // The AOS uninstaller deletes through Node's rmSync, which the rm analysis never sees. No scope: a plain GO.
-  re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-uninstall(?:\.mjs)?\b(?!${S}\s--dry-run\b)`),
+  re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-uninstall(?:\.mjs)?\b(?!${S}\s--dry-run(?=\s|$))`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
   // `git -c alias.x=push x`: a one-off alias hides the subcommand (a persisted `git config alias` cannot be seen here).
   re(String.raw`git\s+(?:-[cC]\s*\S+\s+)*-c\s*['"]?alias\.`),
@@ -1305,7 +1305,7 @@ function prepText(s) {
 const unprep = (s) => String(s).replace(/\u0001/g, "`").replace(/\$\u0002/g, "$(");
 
 export function commandView(command, keepCode = false) {
-  const { text, code } = stripHeredocs(command);
+  const { text, code } = stripHeredocs(winNorm(command));
   return { text: blankData(prepText(text), keepCode), code };
 }
 
@@ -1505,7 +1505,7 @@ function execCommand(src, name) {
 // r.unscoped and pushes spawned command texts to r.cmds (the caller classifies those).
 // ws = { root, cwd } for a script that lives in the session's own repo: a recursive delete whose literal target resolves inside
 // that root is recorded as r.workspace (scope `workspace`) instead of r.destructive. Anything else stays destructive.
-function codeInto(r, text, lang = "", ws = null) {
+function codeInto(r, text, lang = "", ws = null, inline = false) {
   text = unprep(text);
   // A script that changes its own working directory makes relative targets unjudgeable: no workspace scope then.
   if (ws && /\bchdir\s*\(|\bcd\s*\(|process\.chdir|os\.chdir|Dir\.chdir|\bchdir\b/.test(maskStrings(text))) ws = null;
@@ -1525,6 +1525,8 @@ function codeInto(r, text, lang = "", ws = null) {
   for (const m of masked.matchAll(EXEC_CALL)) {
     const c = execCommand(text.slice(m.index + m[0].length), m[0].replace(/\s*\(?\s*$/, ""));
     if (c) r.cmds.push(c);
+    // Inline code only: a spawn whose command is not a literal (process.argv[1], a variable) hides what runs.
+    else if (inline) r.unscoped = true;
   }
   if (/^(?:ruby|perl)$/.test(lang)) {
     for (const m of text.matchAll(/`([^`\n]*)`|%x[({[]([^)}\]]*)|\bqx[({[]([^)}\]]*)/g)) r.cmds.push(m[1] ?? m[2] ?? m[3]);
@@ -1787,7 +1789,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     if (!ro && FILE_HEAD.test(h) && (!opaque || /^(?:bash|sh|zsh|dash|ksh)$/.test(h))) {
       const f = scriptFile(h, tok.slice(1).map(unqQ));
       if (f.module && /rm|remov|delet|rimraf|trash|clean|purge|wipe/i.test(f.module)) r.unscoped = true;
-      if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""));
+      if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""), null, true);
       else if (f.file) r.files.push({ h, file: f.file, cwd: st.cwd });
       // V13 H2: node runs preloaded modules (-r/--require/--import/--loader) before the main file, so they are read like it.
       if (/^node(?:js)?$/i.test(h)) {
@@ -1806,7 +1808,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     if (p.sep === "(") stack.push(st.cwd);
     else if (p.sep === ")" && stack.length) st.cwd = stack.pop();
   }
-  if (!ro) for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
+  if (!ro) for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"), null, true);
   const subs = substitutions(text);
   if (subs.length > 64) r.unscoped = true; // too many to read within the budget
   for (const s of subs.slice(0, 64)) merge(analyzeDeletes(unprep(s), depth + 1, snap()));
@@ -1875,10 +1877,19 @@ const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|PATH|PWD|OLDPWD|DOCKE
 const TAINT_SUBS = /^(?:checkout|switch|branch|reset|symbolic-ref|update-ref|worktree|remote|config|stash|rebase|merge|pull|fetch|restore|clone|init|am|cherry-pick|revert)$/;
 const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|stat|file|test|\[|diff|cmp|realpath|dirname|basename|echo|printf)$/;
 // null = guarded but at least one guarded part maps to no scope (never covered by a grant).
+// Windows spellings read like their POSIX twins: a drive path's backslashes become slashes
+// (C:\x\bin\aos-uninstall.cmd) and git.exe / GH.EXE / npm.cmd / aos-*.ps1 lose the suffix.
+// Without this, gh.exe pr merge, git.exe push and a full-path aos-uninstall.cmd were free.
+export function winNorm(command) {
+  return String(command)
+    .replace(/(?<![\w\\])[A-Za-z]:\\[^\s;&|'"<>]*/g, (m) => m.replace(/\\/g, "/"))
+    .replace(/\b(git|gh|npm|npx|pnpx|bunx|node|aos-[\w-]+)\.(?:exe|cmd|bat|ps1)\b/gi, (_, n) => n.toLowerCase());
+}
+
 export function commandScopes(command, protectedFor = staticResolver) {
   if (nest > 3) return null;
   nest++;
-  try { return withBudget(() => scopesOf(command, protectedFor), null); } finally { nest--; }
+  try { return withBudget(() => scopesOf(winNorm(command), protectedFor), null); } finally { nest--; }
 }
 
 function scopesOf(orig, protectedFor) {
@@ -2040,7 +2051,10 @@ const STORE_FILTER = /^(?:cut|tr|nl)(?=\s|$)|^(?:sort|uniq)(?:\s+-(?!o)[\w=-]*)*
 const storeReadSeg = (seg) => STORE_FILTER.test(seg) || (STORE_READ.test(seg) && (!/^(?:e|f)?grep(?=\s|$)/.test(seg) || grepArgsSafe(seg.split(/\s+/).slice(1))));
 export function gateStoreReason(command) {
   if (typeof command !== "string") return null;
+  // Backslashes are tried both ways: stripped (escape tricks like ~/\.aos/gate) and as path separators (C:\x\.aos\gate).
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
+  const slashed = command.replace(/\\/g, "/");
+  if (slashed !== command && !STORE_REF.test(norm) && STORE_REF.test(slashed.replace(/["']/g, "").replace(/\/(?:\.?\/)+/g, "/"))) return gateStoreReason(slashed);
   // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
   const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
   if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
