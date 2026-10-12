@@ -246,12 +246,12 @@ describe('global settings merge (P1)', () => {
         }
     });
 
-    test('write is atomic (no tmp left), backs up valid file, keeps last 3 backups, preserves mode', () => {
+    test('write is atomic (no tmp left), backs up the valid file once per run, preserves mode', () => {
         const p = path.join(home, 'settings.json');
         fs.writeFileSync(p, JSON.stringify({ theme: 'dark' }), { mode: 0o600 });
         for (let i = 0; i < 5; i++) mergeBdbSettingsHooks(p);
         const files = fs.readdirSync(home);
-        assert.equal(files.filter((f) => f.endsWith('.bak')).length, 3);
+        assert.equal(files.filter((f) => f.endsWith('.bak')).length, 1, 'one backup per file per process, holding the original');
         assert.equal(files.filter((f) => f.endsWith('.tmp')).length, 0);
         assert.equal(fs.statSync(p).mode & 0o777, 0o600);
         const bak = files.filter((f) => f.endsWith('.bak')).sort()[0];
