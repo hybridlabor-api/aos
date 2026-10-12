@@ -131,10 +131,10 @@ function doctorReview(setup) {
 }
 const SPAWN = { skip: !CONTAINER && 'needs AOS_TEST_SANDBOX=container (spawns the doctor)' };
 
-test('doctor review row: no trust change since the hook change warns and names go-gate', SPAWN, () => {
+test('doctor review row: no trust change since the hook change is informational, never a false warning', SPAWN, () => {
     const row = doctorReview((home) => mergeCodexTomlHooks(path.join(home, '.codex', 'config.toml')));
-    assert.ok(row && !row.ok && row.warningOnly, JSON.stringify(row));
-    assert.match(row.detail, /run \/hooks and trust the AOS go-gate hook/);
+    assert.ok(row && row.ok, JSON.stringify(row));
+    assert.match(row.detail, /trust state is not readable from here.*run \/hooks and trust the AOS go-gate hook/);
 });
 
 test('doctor review row: trust entries changed after the hook change is OK', SPAWN, () => {
@@ -154,8 +154,8 @@ test('doctor review row: without an install snapshot it never claims trust', SPA
         fs.rmSync(path.join(home, '.aos', 'codex-hooks.json'));
         fs.appendFileSync(f, '\n[hooks.state]\n"pre_tool_use:0:0" = { trusted_hash = "sha256:cc33" }\n');
     });
-    assert.ok(row && !row.ok && row.warningOnly, JSON.stringify(row));
-    assert.match(row.detail, /run \/hooks once after each AOS update that changed hooks/);
+    assert.ok(row && row.ok, JSON.stringify(row));
+    assert.doesNotMatch(row.detail, /re-trusted/, 'without a snapshot the doctor must not claim a re-trust');
 });
 
 test('doctor warns about the /hooks review and about hooks in both files', { skip: !CONTAINER && 'needs AOS_TEST_SANDBOX=container (spawns the doctor)' }, () => {
@@ -167,6 +167,6 @@ test('doctor warns about the /hooks review and about hooks in both files', { ski
     const rows = JSON.parse(r.stdout).results;
     const review = rows.find((x) => x.name === 'Codex hook review');
     const both = rows.find((x) => x.name === 'Codex hooks in two files');
-    assert.ok(review && review.warningOnly && /\/hooks/.test(review.detail));
+    assert.ok(review && review.ok && /\/hooks/.test(review.detail));
     assert.ok(both && both.warningOnly && /hooks in both hooks\.json and config\.toml/.test(both.detail));
 });

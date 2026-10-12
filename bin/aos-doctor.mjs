@@ -365,13 +365,14 @@ function checkHooks() {
     const rec = readJson(h('.aos', 'codex-hooks.json'));
     const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.';
     const gateWired = /^\s*command\s*=.*go-gate\.mjs/m.test(codexToml);
-    if (!gateWired || !rec || rec.hookHash !== codexAosHookHash(codexToml)) {
-      add('hooks', 'Codex hook review', false, 'Codex skips new or changed AOS hooks until you trust them once: run /hooks once after each AOS update that changed hooks', fix, true);
-    } else if (JSON.stringify(codexTrustedHashes(codexToml)) === JSON.stringify(rec.trustedHashes || [])) {
-      add('hooks', 'Codex hook review', false, `the AOS go-gate hook changed at the install of ${rec.changedAt || 'an unknown time'} and Codex has recorded no new trust since: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex`, fix, true);
-    } else {
-      add('hooks', 'Codex hook review', true, `Codex trust entries changed after the last AOS hook change (${rec.changedAt || 'time unknown'}): re-trusted after the last hook change`, fix, true);
-    }
+    // Informational only: our hook hash is more sensitive than Codex's own, so "no new trust entry" is not proof of an
+    // untrusted hook (Lenovo P15 saw a false warning while /hooks showed Active 2/2). Codex says "Hooks need review"
+    // itself, and the enforced layer in Codex is aos-gate.rules, not the hook.
+    const retrusted = gateWired && rec && rec.hookHash === codexAosHookHash(codexToml)
+      && JSON.stringify(codexTrustedHashes(codexToml)) !== JSON.stringify(rec.trustedHashes || []);
+    add('hooks', 'Codex hook review', true, retrusted
+      ? `Codex trust entries changed after the last AOS hook change (${rec.changedAt || 'time unknown'}): re-trusted after the last hook change`
+      : 'trust state is not readable from here: if Codex shows "Hooks need review", run /hooks and trust the AOS go-gate hook (Codex enforces AOS rules through aos-gate.rules either way)', fix, true);
   }
   if (existsSync(h('.codex'))) {
     const rulesFile = h('.codex', 'rules', 'aos-gate.rules');
