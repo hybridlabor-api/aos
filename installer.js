@@ -5476,6 +5476,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
         copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
     }
     if (mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'))) codexHooksChanged = true;
+    installCodexRules({ targetHome });
 
     // 4. OpenCode CLI
     installOpencodePlugin({
@@ -6147,7 +6148,65 @@ function codexGateSnippet(hooksDir) {
     ].join('\n');
 }
 
-const CODEX_TRUST_REMINDER = 'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.';
+// Codex ignores hook denials in `codex exec` / bypass modes, but its execution-policy rules enforce.
+// One prefix_rule per irreversible command the go-gate guards. Matching is by command prefix: flags
+// between the program and the subcommand (git -C x push, gh -R o/r pr merge) are not matched; the hook
+// still covers those where Codex honours hooks. Match examples are validated by Codex at load time.
+const CODEX_RULE_SPECS = [
+    [['git', 'push'], 'git push origin main', 'git status'],
+    [['npm', 'publish'], 'npm publish', 'npm view left-pad'],
+    [['npm', 'version'], 'npm version patch', 'npm view left-pad'],
+    [['gh', 'release', 'create'], 'gh release create v1.0.0', 'gh release list'],
+    [['gh', 'pr', 'merge'], 'gh pr merge 12', 'gh pr view 12'],
+    [['gh', 'repo', 'delete'], 'gh repo delete o/r', 'gh repo view o/r'],
+    [['git', 'reset', '--hard'], 'git reset --hard HEAD', 'git reset --soft HEAD'],
+    [['git', 'clean', '-f'], 'git clean -f', 'git clean -n'],
+    [['git', 'clean', '-fd'], 'git clean -fd', 'git clean -n'],
+    [['git', 'clean', '-fdx'], 'git clean -fdx', 'git clean -n'],
+    [['rm', '-rf'], 'rm -rf build', 'rm file.txt'],
+    [['rm', '-fr'], 'rm -fr build', 'rm file.txt'],
+    [['rm', '-r'], 'rm -r build', 'rm file.txt'],
+    [['rm', '-R'], 'rm -R build', 'rm file.txt'],
+];
+
+function codexGateRules() {
+    const q = JSON.stringify;
+    const rules = CODEX_RULE_SPECS.map(([pattern, match, notMatch]) => `prefix_rule(pattern = ${q(pattern)}, decision = "prompt", justification = "AOS go-gate: needs a human GO (type GO, or approve interactively)", match = [${q(match)}], not_match = [${q(notMatch)}])`);
+    return [
+        uninstallRecords.CODEX_RULES_HEADER,
+        '# Prefix matching only: flags between program and subcommand (git -C x push, gh -R o/r pr merge) are not matched;',
+        '# the go-gate hook still covers those where Codex honours hooks.',
+        '',
+        ...rules,
+        '',
+    ].join('\n');
+}
+
+// Writes <codex home>/rules/aos-gate.rules. A file at that path without the AOS-OWNED header is the user's: warn, never overwrite.
+function installCodexRules({ targetHome = homeDir } = {}) {
+    const dir = path.join(targetHome, '.codex', 'rules');
+    const file = path.join(dir, 'aos-gate.rules');
+    const want = codexGateRules();
+    try {
+        const have = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+        if (have === want) return false;
+        if (have !== null && !have.startsWith(uninstallRecords.CODEX_RULES_HEADER)) {
+            log.warn(`${file} exists and is not from AOS; kept. The Codex go-gate rules backstop is not installed.`);
+            return false;
+        }
+        const dirCreated = !fs.existsSync(dir);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(file, want, { mode: 0o644 });
+        uninstallRecords.recordCodexRules(targetHome, { dirCreated });
+        log.step(`Installed Codex go-gate rules to ${file}`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not write ${file}: ${e.message}`);
+        return false;
+    }
+}
+
+const CODEX_TRUST_REMINDER ='Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.';
 // Set when an install changed the AOS hook groups in ~/.codex/config.toml; printed as the last outro line.
 let codexHooksChanged = false;
 
@@ -8256,6 +8315,8 @@ module.exports = {
     aosDistTag,
     localBinPathHint,
     codexGateSnippet,
+    codexGateRules,
+    installCodexRules,
     CODEX_GATE_NOTICE,
     CODEX_TRUST_REMINDER,
     installOpencodePlugin,

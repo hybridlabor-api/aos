@@ -18,7 +18,7 @@ const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
-const { codexAosHookHash, codexTrustedHashes } = req('../lib/uninstall-records.js');
+const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } =req('../lib/uninstall-records.js');
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
@@ -373,8 +373,17 @@ function checkHooks() {
       add('hooks', 'Codex hook review', true, `Codex trust entries changed after the last AOS hook change (${rec.changedAt || 'time unknown'}): re-trusted after the last hook change`, fix, true);
     }
   }
+  if (existsSync(h('.codex'))) {
+    const rulesFile = h('.codex', 'rules', 'aos-gate.rules');
+    let rulesText = '';
+    try { rulesText = readFileSync(rulesFile, 'utf8'); } catch {}
+    const rulesOk = rulesText.startsWith(CODEX_RULES_HEADER);
+    add('hooks', 'Codex rules backstop', rulesOk,
+      rulesOk ? `${tilde(rulesFile)} present` : `Codex ignores hook denials in codex exec / bypass modes; the AOS rules file ${tilde(rulesFile)} is missing — run aos update`,
+      'Run aos update to write the AOS Codex rules file.', true);
+  }
   let codexJson = '';
-  try { codexJson = readFileSync(h('.codex', 'hooks.json'), 'utf8'); } catch {}
+  try { codexJson =readFileSync(h('.codex', 'hooks.json'), 'utf8'); } catch {}
   if (codexWired && HOOK_SCRIPTS.some((n) => codexJson.includes(n))) {
     add('hooks', 'Codex hooks in two files', false, `hooks in both hooks.json and config.toml (${tilde(h('.codex', 'hooks.json'))} and ${tilde(codexConf)}); Codex merges them and warns at startup`,
       'Run the AOS installer: it moves its hooks out of hooks.json (original kept as hooks.json.aos-bak-<time>).', true);
