@@ -5425,6 +5425,9 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     // rules-inject.mjs reads the rules text from here when it does not run from a checkout.
     const rulesLib = path.join(srcDir, 'lib', 'destructive-rules.js');
     if (fs.existsSync(rulesLib)) copyDirRecursiveSync(rulesLib, path.join(targetHome, '.agents', 'lib', 'destructive-rules.js'));
+    // aos-acp (installed in ~/.agents/bin) loads ../lib/cli-spawn.js to start npx/opencode .cmd shims on Windows.
+    const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
+    if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));
     const claudeSettings = path.join(claudeConfigDir(targetHome), 'settings.json');
     mergeBdbSettingsHooks(claudeSettings);
     const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });

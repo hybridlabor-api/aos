@@ -32,14 +32,22 @@ const { values: o, positionals } = parseArgs({
   },
 });
 
+// Windows/Node 24: process.exit() while fetch/undici handles are closing aborts with a libuv
+// UV_HANDLE_CLOSING assertion (exit 9). Let the loop drain there; the unref'd timer is a backstop.
+function exitAfterDrain(code) {
+  if (process.platform !== "win32") process.exit(code);
+  process.exitCode = code;
+  setTimeout(() => process.exit(code), 3000).unref();
+}
+
 if (o.help || !positionals.length) { console.log(USAGE); process.exit(o.help ? 0 : 2); }
 
 try {
   const [cmd] = positionals;
   if (cmd === "list") {
-    const sessions = list({ prune: o.prune });
+    const sessions = list({ prune: o.prune, includeStale: true });
     if (o.json) console.log(JSON.stringify(sessions, null, 2));
-    else for (const s of sessions) console.log(`${s.name}\t${s.harness}\tpid ${s.pid}\t${s.url ?? "-"}\t${s.cwd ?? ""}`);
+    else for (const s of sessions) console.log(`${s.name}\t${s.harness}\tpid ${s.pid}${s.stale ? " stale" : ""}\t${s.url ?? "-"}\t${s.cwd ?? ""}`);
   } else if (cmd === "book") {
     console.log(JSON.stringify(book(), null, 2));
     process.exit(0);
@@ -94,7 +102,7 @@ try {
       timeoutMs: o.timeout ? Number(o.timeout) * 1000 : undefined, background: !!o.background,
     });
     console.log(JSON.stringify(result, null, 2));
-    process.exit(result.state === "TASK_STATE_COMPLETED" || o.background ? 0 : 1);
+    exitAfterDrain(result.state === "TASK_STATE_COMPLETED" || o.background ? 0 : 1);
   } else if (cmd === "status") {
     if (!o.to || positionals.length < 2) throw new Error("usage: aos-a2a status --to <name> <taskId>");
     const { status } = await import("../lib/a2a-client.mjs");

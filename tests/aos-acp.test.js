@@ -154,6 +154,34 @@ describe('aos-acp with a fake ACP agent', () => {
     });
 });
 
+describe('aos-acp resolveWinCmd (win32 .cmd shims)', () => {
+    const cli = require('../lib/cli-spawn.js');
+    const dir = 'C:\\npm';
+    const files = new Set([`${dir}\\npx.cmd`, `${dir}\\opencode.cmd`].map((f) => f.toLowerCase()));
+    const fsStub = {
+        // NTFS is case-insensitive and PATHEXT is upper case (.CMD), so the stub compares lower-cased paths.
+        statSync: (f) => { if (!files.has(f.toLowerCase())) throw new Error('ENOENT'); return { isFile: () => true }; },
+        accessSync: () => {},
+        readFileSync: () => '@echo off\r\nnode "%~dp0\\x.js" %*',
+    };
+    const env = { PATH: dir, PATHEXT: '.COM;.EXE;.BAT;.CMD', ComSpec: 'C:\\Windows\\System32\\cmd.exe', SystemRoot: 'C:\\Windows' };
+    const call = async (cmd, platform) => (await import(`file://${BIN}`)).resolveWinCmd(cmd, { platform, cli, env, fs: fsStub });
+
+    test('npx and opencode go through cmd.exe /d /s /c on win32', async () => {
+        for (const cmd of [['npx', '-y', '@agentclientprotocol/claude-agent-acp@0.86.0'], ['opencode', 'acp', '--cwd', 'C:\\w']]) {
+            const out = await call(cmd, 'win32');
+            assert.equal(out[0], 'C:\\Windows\\System32\\cmd.exe');
+            assert.deepEqual(out.slice(1, 4), ['/d', '/s', '/c']);
+            assert.ok(out[4].toLowerCase().includes(`${dir}\\${cmd[0]}.cmd`.toLowerCase()), out[4]);
+        }
+    });
+    test('unresolved command and non-win32 are returned unchanged', async () => {
+        const c = ['npx', '-y', 'x'];
+        assert.deepEqual(await call(['nope', 'a'], 'win32'), ['nope', 'a']);
+        assert.equal(await call(c, 'linux'), c);
+    });
+});
+
 // opencode workers start without MCP servers; --with-mcp keeps them (bin/aos-acp.mjs, mcsc no-mcp.js).
 describe('aos-acp opencode: MCP servers off by default', { skip: process.platform === 'win32' }, () => {
     beforeEach(() => {
