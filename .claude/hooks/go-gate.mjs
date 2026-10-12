@@ -2161,6 +2161,31 @@ export function maskSecrets(text) {
     .replace(/(authorization[:=]\s*)(?!\*\*\*)[^\s"']+(\s+[^\s"']+)?/gi, "$1***");
 }
 
+// Codex PreToolUse payloads carry turn_id plus a .codex transcript or a permission_mode.
+export function isCodexPayload(input) {
+  return !!input && typeof input === "object" && !!input.turn_id &&
+    ((typeof input.transcript_path === "string" && input.transcript_path.includes(".codex")) || typeof input.permission_mode === "string");
+}
+let codexMode = false;
+let toolNameSeen = "";
+
+// Single exit: opt-in decision log (AOS_GATE_DEBUG, absolute path) at the moment of exit.
+function leave(code, decision, reason = "") {
+  const dbg = process.env.AOS_GATE_DEBUG;
+  if (dbg && isAbsolute(dbg)) {
+    try { appendFileSync(dbg, `${JSON.stringify({ ts: new Date().toISOString(), tool_name: toolNameSeen, decision, exit: code, ...(reason ? { reason: maskSecrets(reason).slice(0, 500) } : {}) })}\n`); } catch { /* debug only */ }
+  }
+  process.exit(code);
+}
+
+// Codex honours exactly this deny shape (plus exit 2 + stderr); any other stdout field marks the hook failed and the tool call runs.
+function codexDeny(reason) {
+  const out = `${JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } })}\n`;
+  try { writeFileSync(1, out); } catch { process.stdout.write(out); }
+  process.stderr.write(`${reason}\n`);
+  leave(2, "deny", reason);
+}
+
 function respond(isAgy, allowed, reason = "", command = "", hard = false) {
   if (!allowed) markBlock(blockKey);
   if (!allowed && !hard && TEST_RUN.test(command)) reason = `${reason} ${TEST_HINT}`.trim();
@@ -2171,10 +2196,15 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
     gateLog(blockKey, `deny${hard ? " hard" : ""} ${why} ${JSON.stringify(maskSecrets(command).slice(0, 200))} :: ${maskSecrets(reason).slice(0, 120)}`);
     recordRequest(blockKey, command, sc, hard);
   }
+  const claudeText = `Blocked by go-gate hook: command "${command.slice(0, 80)}" requires a fresh, literal "GO" as your last message. ${reason}`;
+  if (codexMode && !isAgy) {
+    if (allowed) leave(0, "allow");
+    codexDeny(hard ? `[MECHANICAL GO-GATE BLOCKED] ${reason}` : claudeText);
+  }
   if (hard) {
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
     process.stderr.write(`${reason}\n`);
-    process.exit(isAgy ? 0 : 2);
+    leave(isAgy ? 0 : 2, "deny", reason);
   }
   if (isAgy) {
     if (allowed) {
@@ -2185,16 +2215,14 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
         reason: `[MECHANICAL GO-GATE BLOCKED] Der Befehl "${command.slice(0, 100)}" wurde blockiert. Er erfordert ein frisches, isoliertes "GO" als letzte Benutzereingabe. ${reason}`
       }));
     }
-    process.exit(0);
+    leave(0, allowed ? "allow" : "deny", reason);
   } else {
     // Claude Code harness
     if (allowed) {
-      process.exit(0);
+      leave(0, "allow");
     } else {
-      process.stderr.write(
-        `Blocked by go-gate hook: command "${command.slice(0, 80)}" requires a fresh, literal "GO" as your last message. ${reason}\n`
-      );
-      process.exit(2);
+      process.stderr.write(`${claudeText}\n`);
+      leave(2, "deny", reason);
     }
   }
 }
@@ -3253,10 +3281,12 @@ function main() {
       const reason = `could not parse hook input: ${e.message}`;
       console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
       process.stderr.write(`Blocked by go-gate hook: ${reason}\n`);
-      process.exit(2);
+      leave(2, "deny", reason);
     }
   }
   if (!input || typeof input !== "object") input = {};
+  codexMode = isCodexPayload(input);
+  toolNameSeen = String(input.tool_name ?? "");
 
   // Detect harness
   const isAgy = !!(input?.toolCall || input?.conversationId || input?.artifactDirectoryPath || input?.workspacePaths);
@@ -3384,9 +3414,10 @@ function safeMain() {
     main();
   } catch (e) {
     const reason = `go-gate internal error, failing closed: ${String(e?.message || e).slice(0, 200)}`;
+    if (codexMode) codexDeny(`[MECHANICAL GO-GATE BLOCKED] ${reason}`);
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
     process.stderr.write(`Blocked by go-gate hook: ${reason}\n`);
-    process.exit(2);
+    leave(2, "deny", reason);
   }
 }
 

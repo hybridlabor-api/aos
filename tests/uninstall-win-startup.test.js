@@ -50,6 +50,28 @@ test('plan() lists no Windows Startup entries on darwin', async () => {
     assert.strictEqual(p.agents.filter((a) => a.vbs).length, 0);
 });
 
+test('v5 gateway/hub Startup vbs are planned on win32 and removed with one stop each', async () => {
+    const mod = await import(pathToFileURL(path.join(__dirname, '..', 'bin', 'aos-uninstall.mjs')).href);
+    const home = winHome();
+    const appData = path.join(home, 'AppData', 'Roaming');
+    const startup = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    const vbsFiles = ['com.bdb.aos.gateway.vbs', 'com.bdb.aos.hub.vbs'].map((n) => path.join(startup, n));
+    vbsFiles.forEach((f) => fs.writeFileSync(f, "'launcher\r\n"));
+    const opts = { home, appData, manifestPath: path.join(home, 'no-manifest.json') };
+
+    assert.deepStrictEqual(mod.plan({ ...opts, platform: 'win32' }).winSvc.map((s) => s.vbs), vbsFiles);
+    assert.deepStrictEqual(mod.plan({ ...opts, platform: 'darwin' }).winSvc, []);
+
+    const calls = [];
+    const p = mod.plan({ ...opts, platform: 'win32' });
+    mod.removeWinServices(p.winSvc, (cmd, args) => calls.push([cmd, args.join(' ')]));
+    mod.removeWinServices(p.winSvc, () => {}); // idempotent: files already gone
+    assert.strictEqual(calls.length, 2);
+    assert.match(calls[0][1], /aos-gateway\.mjs/);
+    assert.match(calls[1][1], /aos-hub\.mjs/);
+    vbsFiles.forEach((f) => assert.strictEqual(fs.existsSync(f), false));
+});
+
 test('plan() skips incomplete pairs and nonexistent files', async () => {
     const plan = await importPlan();
     const home = winHome();

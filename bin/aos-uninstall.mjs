@@ -32,6 +32,7 @@ const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js')
 const ur = createRequire(import.meta.url)('../lib/uninstall-records.js');
 const pk = createRequire(import.meta.url)('../lib/v5/packages.js');
 const profile = createRequire(import.meta.url)('../lib/v5/profile.js');
+const winStartup = createRequire(import.meta.url)('../lib/v5/win-startup.js');
 // A2A MCP registrations (agy + Cursor) live inside harness configs that this
 // manifest-based uninstall otherwise leaves alone; the removal is done by the
 // installer's own removal code, which only ever touches AOS-owned entries and
@@ -80,6 +81,12 @@ const WIN_STARTUP = [
   { label: 'openwiki-visualizer', vbsName: 'com.bdb.openwiki-visualize.vbs', batDir: '.openwiki', batName: 'run-openwiki-visualize.bat' },
   // The memB WebUI .vbs starts python directly (no .bat); its process is matched by the server path.
   { label: 'memb-webui', vbsName: 'com.bdb.memb.webui.vbs', match: '*memB*backend*server.py*' },
+];
+
+// v5 services: Startup .vbs written by pkg-gateway / pkg-hub; processes matched by their script path.
+const WIN_V5 = [
+  { label: 'com.bdb.aos.gateway', script: path.join('bin', 'aos-gateway.mjs') },
+  { label: 'com.bdb.aos.hub', script: path.join('bin', 'aos-hub.mjs') },
 ];
 
 // A module folder is removed only when the install recorded it: its id in installedModules
@@ -151,6 +158,10 @@ function plan(opts = {}) {
     }
   }
 
+  // v5 gateway/hub autostart: removed by their own step after the package loop, not through WIN_STARTUP.
+  const winSvc = platform !== 'win32' ? [] : WIN_V5.map((s) => ({ ...s, vbs: winStartup.vbsPath({ home, env: { APPDATA: opts.appData || process.env.APPDATA } }, s.label) }))
+    .filter((s) => existsSync(s.vbs));
+
   let installedModules = [];
   try { installedModules = JSON.parse(readFileSync(path.join(home, '.agents', '.bdb-manifest.json'), 'utf8')).installedModules || []; } catch { /* no record */ }
   const manifestPaths = Object.keys(manifest || {});
@@ -162,7 +173,7 @@ function plan(opts = {}) {
 
   const codenotch = cn.planCodenotchUninstall({ stateFile: cn.stateFilePath(HOME) });
 
-  return { manifest, ours, edited, gone, agents, modules, legacy, data, codenotch, keptCommands };
+  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, codenotch, keptCommands };
 }
 
 function describe(p) {
@@ -194,6 +205,7 @@ function describe(p) {
   if (agents.length) {
     console.log(`\nBackground services (${agents.length}): ${agents.map((a) => a.label).join(', ')}`);
   }
+  for (const s of p.winSvc || []) console.log(`\nWindows Startup entry ${tilde(s.vbs)} is removed; processes running ${s.script} are stopped`);
   if (modules.length) {
     console.log('\nModules:');
     for (const m of modules) console.log(`    ${tilde(m)}`);
@@ -247,6 +259,14 @@ function dirSize(p) {
 }
 
 // ------------------------------------------------------------------ execute
+// Stop by script path first (a running node would restart nothing, but holds the port), then drop the .vbs.
+function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 })) {
+  for (const s of list || []) {
+    try { run('powershell', winStartup.stopArgs([s.script])); } catch { /* powershell unavailable */ }
+    try { rmSync(s.vbs, { force: true }); } catch { /* already gone */ }
+  }
+}
+
 async function execute(p) {
   const { ours, edited, agents, modules, legacy, data, codenotch } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
@@ -394,6 +414,9 @@ async function execute(p) {
     } catch (e) { console.log(`  ${pkg.name}: ${e.message} — check by hand`); }
   }
 
+  // The package loop skips gateway/hub when detect() is false; the Startup .vbs must still go, or both autostart again.
+  removeWinServices(p.winSvc);
+
   // A2A MCP entries (agy + Cursor): only the AOS-owned ones leave the harness
   // configs, each file backed up first (writeConfigWithBackup inside).
   try {
@@ -450,7 +473,7 @@ async function execute(p) {
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan };
+export { plan, removeWinServices };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });

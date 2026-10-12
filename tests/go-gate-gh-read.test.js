@@ -50,7 +50,50 @@ test('Codex exec_command input (tool_input.cmd) reaches the gate and is blocked'
     assert.equal(r.status, 2, r.stderr);
 });
 
-const CODEX_JS = 'const r = await tools.exec_command({cmd:"git push C:\\\\x\\\\target.git main",workdir:"C:\\\\x\\\\repo"}); text(r.output);';
+const CODEX_PAYLOAD = (command) => ({ session_id: 's', turn_id: 't', transcript_path: 'C:\\Users\\x\\.codex\\sessions\\rollout-1.jsonl', cwd: process.cwd(), hook_event_name: 'PreToolUse', model: 'm', permission_mode: 'bypassPermissions', tool_name: 'Bash', tool_input: { command }, tool_use_id: 'exec-1' });
+
+test('isCodexPayload needs turn_id plus a .codex transcript or a permission_mode string', () => {
+    assert.equal(g.isCodexPayload(CODEX_PAYLOAD('x')), true);
+    assert.equal(g.isCodexPayload({ turn_id: 't', permission_mode: 'default' }), true);
+    assert.equal(g.isCodexPayload({ turn_id: 't', transcript_path: '/h/.claude/p.jsonl' }), false);
+    assert.equal(g.isCodexPayload({ transcript_path: '/h/.codex/s.jsonl', permission_mode: 'x' }), false);
+    assert.equal(g.isCodexPayload(null), false);
+});
+
+test('Codex payload: deny is exactly the hookSpecificOutput JSON, stderr and exit 2; allow prints nothing', () => {
+    const d = runGate(CODEX_PAYLOAD('git push origin main'));
+    assert.equal(d.status, 2);
+    const out = JSON.parse(d.stdout);
+    assert.deepEqual(Object.keys(out), ['hookSpecificOutput']);
+    assert.deepEqual(Object.keys(out.hookSpecificOutput).sort(), ['hookEventName', 'permissionDecision', 'permissionDecisionReason']);
+    assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');
+    assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
+    assert.ok(out.hookSpecificOutput.permissionDecisionReason.length > 0);
+    assert.equal(d.stderr.trim(), out.hookSpecificOutput.permissionDecisionReason);
+    const a = runGate(CODEX_PAYLOAD('git status'));
+    assert.equal(a.status, 0);
+    assert.equal(a.stdout, '');
+});
+
+test('non-Codex payload keeps the Claude output: empty stdout, stderr, exit 2', () => {
+    const r = runGate({ tool_name: 'Bash', tool_input: { command: 'git push origin main' } });
+    assert.equal(r.status, 2);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /Blocked by go-gate hook/);
+});
+
+test('AOS_GATE_DEBUG appends one decision line per exit', () => {
+    const fs = require('fs'), os = require('os');
+    const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gate-dbg-')), 'gate.log');
+    require('child_process').spawnSync(process.execPath, [GATE], { input: JSON.stringify(CODEX_PAYLOAD('git push origin main')), encoding: 'utf8', env: { ...process.env, AOS_TEST_SANDBOX: '1', AOS_GATE_DEBUG: log } });
+    const rec = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((x) => x.decision);
+    assert.equal(rec.decision, 'deny');
+    assert.equal(rec.exit, 2);
+    assert.equal(rec.tool_name, 'Bash');
+    assert.ok(rec.reason);
+});
+
+const CODEX_JS ='const r = await tools.exec_command({cmd:"git push C:\\\\x\\\\target.git main",workdir:"C:\\\\x\\\\repo"}); text(r.output);';
 const runGate = (payload) => require('child_process').spawnSync(process.execPath, [GATE], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, AOS_TEST_SANDBOX: '1' } });
 
 test('Codex code mode (tool exec, JS source) is blocked like Bash', () => {
