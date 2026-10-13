@@ -816,6 +816,17 @@ function checkPlugins() {
       flag === false ? 'disabled by the user' : `settings.json ${flag === true ? 'enables' : 'does not enable'} ${PLUGIN_ID}, marketplace ${marketplace ? 'known' : 'missing'}, plugin cache ${installed ? 'present' : 'missing'}`,
       flag === false ? optOut : 'Run the AOS installer (registers settings.json), then: claude plugin marketplace add hybridlabor-api/aos && claude plugin install bdb-aos@bdb-marketplace', true);
   }
+  const claudeBin = which('claude');
+  if (claudeBin) {
+    const MODS = ['fleet', 'sessions', 'alert'];
+    const enabled = MODS.filter((m) => settings?.enabledPlugins?.[`bdb-aos-${m}@bdb-marketplace`] === true);
+    const off = MODS.filter((m) => !enabled.includes(m));
+    let ver = null;
+    try { ver = /(\d+\.\d+\.\d+)/.exec(execFileSync(claudeBin, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))?.[1] || null; } catch { /* version unknown */ }
+    add('plugins', 'Claude Code mods', off.length === 0,
+      `enabled: ${enabled.join(', ') || 'none'}; not enabled: ${off.join(', ') || 'none'}; Claude Code in PATH is ${ver || 'of unknown version'}`,
+      `Mods need Claude Code >= 2.1.287 (the doctor checks the CLI in PATH). Run \`claude update\`, then \`aos package install ${off.join('|')}\`.`, true);
+  }
   if (existsSync(h('.codex'))) {
     const dir = h('.codex', 'plugins', 'cache', 'bdb-aos', 'bdb-aos');
     const ok = existsSync(dir);

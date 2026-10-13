@@ -129,7 +129,25 @@ export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destruc
 const UNIFS = /\$\{IFS\}|\$IFS/g;
 const unIFS = (s) => String(s).replace(UNIFS, " ");
 const REDIR = /\d*>&\d+|&>>?\s*[^\s(;&|]+|\d*>>?\s*[^\s(;&|]+/g;
-const segments = (cmd) => unIFS(commandView(cmd).text).replace(REDIR, " ").split(/&&|\|\||\$\(|[;&|\n(){}\x60]/).map((s) => s.trim()).filter(Boolean);
+// A lone `&` inside quotes or after a backslash (`cd "/tmp/a & b"`, `a\&b`) is text, not a control operator.
+const AMP = "\u000e";
+function maskQuotedAmp(s) {
+  let out = "", q = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\" && q !== "'") { const n = s[i + 1] ?? ""; out += c + (n === "&" ? AMP : n); i++; continue; }
+    if (q) {
+      if (c === q) q = "";
+      out += c === "&" && s[i - 1] !== "&" && s[i + 1] !== "&" && s[i - 1] !== ">" && s[i + 1] !== ">" ? AMP : c;
+      continue;
+    }
+    if (c === "'" || c === '"') q = c;
+    out += c;
+  }
+  return out;
+}
+const unmaskAmp = (s) => s.replaceAll(AMP, "&");
+const segments = (cmd) => maskQuotedAmp(unIFS(commandView(cmd).text)).replace(REDIR, " ").split(/&&|\|\||\$\(|[;&|\n(){}\x60]/).map((s) => unmaskAmp(s.trim())).filter(Boolean);
 // Tokens keep quoted parts glued to their word; unq() gives the shell value (quotes and
 // backslashes removed: `g\it`, `'git'`, `"push"` are git and push to the shell too).
 const tokens = (s) => s.match(/(?:"[^"]*"|'[^']*'|[^\s"']+)+/g) || [];
@@ -1985,7 +2003,7 @@ function scopesOf(orig, protectedFor) {
   // plain-name push is push-main; an explicit src:dst is still read on its own.
   const view = unIFS(commandView(orig).text);
   // gh's {owner}/{repo}/{branch} placeholders must not be cut at the braces (a placeholder is an unknown name)
-  const marked = view.replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " ")).replace(/(?<!\$)\{([a-z_]+)\}/g, "\u0004$1\u0005");
+  const marked = maskQuotedAmp(view).replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " ")).replace(/(?<!\$)\{([a-z_]+)\}/g, "\u0004$1\u0005");
   const st = { cwd: gateCtx.cwd || process.cwd(), taint: ENV_CHANGE.test(view) };
   const stack = [];
   const outerCwd = segCwd, outerTaint = segTaint, outerFeed = segFeed, outerNoCd = segNoCd;
@@ -2000,7 +2018,7 @@ function scopesOf(orig, protectedFor) {
         else if (parts[pi] === ")" && stack.length) st.cwd = stack.pop();
         continue;
       }
-      const seg = parts[pi].trim();
+      const seg = unmaskAmp(parts[pi].trim());
       if (!seg) continue;
       segCwd = st.cwd; segTaint = st.taint;
       segFeed = parts[pi - 1] === "|" ? base(stripPrefix(tokens((parts[pi - 2] ?? "").trim())).rest[0] ?? "") : "";
