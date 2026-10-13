@@ -291,6 +291,12 @@ function findUv(home = homeDir, platform = process.platform) {
            path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'Programs', 'uv'),
            path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'uv', 'bin')]
         : [path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'), '/opt/homebrew/bin', '/usr/local/bin'];
+    if (!win) {
+        try {
+            const base = path.join(home, 'Library', 'Python');
+            for (const v of fs.readdirSync(base)) dirs.push(path.join(base, v, 'bin'));
+        } catch (e) { /* no user Python dir */ }
+    }
     for (const d of dirs) {
         const candidate = path.join(d, win ? 'uv.exe' : 'uv');
         if (fs.existsSync(candidate)) return candidate;
@@ -299,6 +305,72 @@ function findUv(home = homeDir, platform = process.platform) {
 }
 let _uvBin;
 const uvBin = () => (_uvBin === undefined ? (_uvBin = findUv()) : _uvBin) || 'uv';
+
+const MEMB_MIN_PYTHON = [3, 10];
+const MEMB_PYTHON_FIX = 'memB needs Python >= 3.10; install uv (https://docs.astral.sh/uv/) or python 3.12, then run: aos package install memb';
+const parsePyVersion = (s) => { const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(String(s || '')); return m ? [Number(m[1]), Number(m[2])] : null; };
+const pyAtLeast = (v, min) => Boolean(v) && (v[0] > min[0] || (v[0] === min[0] && v[1] >= min[1]));
+
+// First interpreter that is >= min: versioned names (newest first) before plain python3, PATH before the usual install dirs.
+// opts.run(cmd, args) -> stdout (throws if the command is missing) is a test seam.
+function pickPython(min = MEMB_MIN_PYTHON, opts = {}) {
+    const home = opts.home || homeDir;
+    const win = (opts.platform || process.platform) === 'win32';
+    const run = opts.run || ((cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000 }));
+    const names = win ? ['python'] : ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3'];
+    const dirs = win ? [] : ['/opt/homebrew/bin', '/usr/local/bin', path.join(home, '.local', 'bin')];
+    if (!win) {
+        try {
+            const base = path.join(home, 'Library', 'Python');
+            for (const v of fs.readdirSync(base)) dirs.push(path.join(base, v, 'bin'));
+        } catch (e) { /* no user Python dir */ }
+    }
+    for (const name of names) {
+        for (const cmd of [name, ...dirs.map((d) => path.join(d, name))]) {
+            try {
+                const v = parsePyVersion(run(cmd, ['--version']));
+                if (pyAtLeast(v, min)) return { cmd, version: v };
+            } catch (e) { /* not there */ }
+        }
+    }
+    return null;
+}
+
+// Interpreter version recorded by venv/uv in pyvenv.cfg (`version = 3.9.6` or `version_info = ...`), null if unreadable.
+function venvPyVersion(dir) {
+    try { return parsePyVersion((/^version(?:_info)?\s*=\s*(.+)$/m.exec(fs.readFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'utf8')) || [])[1]); } catch (e) { return null; }
+}
+
+// Creates dir/.venv with a Python >= 3.10, or throws MEMB_PYTHON_FIX without leaving an empty venv behind.
+// A venv built on an older Python is rebuilt (--clear). opts.pick / opts.hasUv / opts.run are test seams.
+function ensurePythonVenv(dir, opts = {}) {
+    const win = process.platform === 'win32';
+    const venvPy = win ? path.join(dir, '.venv', 'Scripts', 'python.exe') : path.join(dir, '.venv', 'bin', 'python');
+    if (fs.existsSync(venvPy)) {
+        const v = venvPyVersion(dir);
+        if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
+        log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
+    }
+    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: 'ignore', cwd: dir, ...o }));
+    const hasUv = opts.hasUv !== undefined ? opts.hasUv : (() => { try { execFileSync(uvBin(), ['--version'], { stdio: 'ignore' }); return true; } catch (e) { return false; } })();
+    const sys = (opts.pick || pickPython)(MEMB_MIN_PYTHON);
+    if (!sys && !hasUv) {
+        log.warn(MEMB_PYTHON_FIX);
+        throw new Error(MEMB_PYTHON_FIX);
+    }
+    if (hasUv) {
+        const target = sys ? sys.cmd : '3.12';
+        try {
+            if (!sys) run(uvBin(), ['python', 'install', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
+            run(uvBin(), ['venv', '--clear', '--seed', '--python', target, '.venv']);
+            return { created: true, viaUv: true };
+        } catch (e) {
+            if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
+        }
+    }
+    run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
+    return { created: true, viaUv: false };
+}
 
 // Windows installers launched from an existing terminal can inherit a stale
 // PATH after Go was installed through winget or the official installer. The
@@ -1147,6 +1219,34 @@ function detectPlatforms() {
     return detections;
 }
 
+const HARNESS_LABELS = {
+    antigravity: 'Antigravity', codex: 'Codex', claudecode: 'Claude Code', claudedesktop: 'Claude Desktop',
+    cursor: 'Cursor', windsurf: 'Windsurf', vscode: 'Roo/Cline/VS Code', aider: 'Aider', opencode: 'OpenCode',
+};
+// Menu option value of the primary target per harness, in preference order.
+const PRIMARY_TARGET_ORDER = [['antigravity', '1'], ['claudecode', '2'], ['codex', '5'], ['vscode', '7'], ['windsurf', '6'], ['aider', '8'], ['cursor', '3']];
+
+// Harnesses that receive files this run: detected or explicitly chosen. Nothing found means Claude Code only.
+function activeHarnessKeys() {
+    const keys = new Set(detectPlatforms().map((d) => d.key));
+    if (keys.size === 0) keys.add('claudecode');
+    return keys;
+}
+
+// What "Universal" or -y installs into as its primary target; never Antigravity unless it is active.
+function defaultPlatformValue() {
+    const keys = activeHarnessKeys();
+    const hit = PRIMARY_TARGET_ORDER.find(([k]) => keys.has(k));
+    return hit ? hit[1] : '2';
+}
+
+function harnessSummaryLine() {
+    const keys = new Set(detectPlatforms().map((d) => d.key));
+    if (keys.size === 0) keys.add('claudecode');
+    const names = (want) => Object.keys(HARNESS_LABELS).filter((k) => keys.has(k) === want).map((k) => HARNESS_LABELS[k]).join(', ') || '-';
+    return `Installed for: ${names(true)}  Skipped (not found): ${names(false)}`;
+}
+
 function detectInstallState() {
     const manifestPath = path.join(homeDir, '.agents', '.bdb-manifest.json');
     let isInstalled = false;
@@ -1537,10 +1637,12 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
 // Antigravity and Codex plugin steps, shared by the full install and Quick Update so the default
 // update path installs the same plugins. Order: Claude (runPluginMigration), agy, Codex.
 function runAgyPluginStep() {
+    if (!activeHarnessKeys().has('antigravity')) { log.step('Antigravity not found: agy plugin skipped.'); return null; }
     try { require('./lib/agy-plugin-install').run({ srcDir, home: homeDir, mode: pluginMigrationMode(), log }); return null; }
     catch (e) { log.warn(`agy plugin skipped: ${e.message}`); return e.message; }
 }
 function runCodexPluginStep() {
+    if (!activeHarnessKeys().has('codex')) { log.step('Codex not found: Codex plugin skipped.'); return; }
     const r = codexPluginInstall.installCodexPlugin({ home: homeDir, pkgRoot: srcDir, version: require('./package.json').version, mode: pluginMigrationMode(), announce: (m) => log.step(m) });
     for (const line of r.lines) log.step(line);
     if (r.ok === false) throw new Error(r.lines.filter((l) => /FAILED/.test(l)).join('; ') || 'Codex plugin install failed');
@@ -2570,15 +2672,7 @@ async function installMemB(interactive) {
                 ? path.join(membDir, '.venv', 'Scripts', 'python.exe')
                 : path.join(membDir, '.venv', 'bin', 'python');
 
-            let createdViaUv = false;
-            if (!fs.existsSync(venvPython)) {
-                try {
-                    execSync(`"${uvBin()}" venv --clear --seed .venv`, { cwd: membDir, stdio: 'ignore' });
-                    createdViaUv = true;
-                } catch (e1) {
-                    execSync(`${pythonCmd} -m venv --clear .venv`, { cwd: membDir, stdio: 'ignore' });
-                }
-            }
+            const createdViaUv = Boolean(ensurePythonVenv(membDir).viaUv);
 
             // `uv venv --seed` is supposed to seed pip/setuptools/wheel into the venv, but
             // this has been observed to silently under-deliver (venv created, pip missing) --
@@ -4234,12 +4328,8 @@ async function installMcpsForTarget(paths, ctx) {
                 // child processes are not -- these two would really create a venv.
                 if (DRY_RUN) {
                     log.step(`[dry-run] would create the memb-mcp venv in ${membMcpFolder}`);
-                } else if (!fs.existsSync(venvPython)) {
-                    try {
-                        execSync(`"${uvBin()}" venv --clear --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
-                    } catch (e1) {
-                        execSync(`${pythonCmd} -m venv --clear .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
-                    }
+                } else {
+                    ensurePythonVenv(membMcpFolder);
                 }
 
                 const pipViaPython = `"${venvPython}" -m pip`;
@@ -4266,8 +4356,14 @@ async function installMcpsForTarget(paths, ctx) {
                 // `import run` is the server's real entry, the same check `aos package verify memb` runs.
                 const reconcile = reconcileMembVenv(membMcpFolder, { venvPython, entryImport: 'import run' });
                 if (reconcile.status === 'failed') log.warn('memB MCP requirements reconcile failed; inspect the venv before relying on memb-mcp.');
+                if (!DRY_RUN && !verifyPythonImports(venvPython, membMcpFolder, 'import mcp, pydantic')) {
+                    const reason = `the memb-mcp venv cannot import mcp and pydantic. ${MEMB_PYTHON_FIX}`;
+                    log.warn(reason);
+                    moduleFailures.push({ id: 'memb-mcp', name: 'memB MCP', reason });
+                }
             } catch (e) {
                 log.warn(`Failed to set up Python virtual environment for memB: ${e.message}`);
+                moduleFailures.push({ id: 'memb-mcp', name: 'memB MCP', reason: e.message });
             }
         }
     }
@@ -4901,9 +4997,10 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
 function injectHarnessRules() {
     const rulesMdSrc = path.join(srcDir, 'RULES.md');
     const agentsMdSrc = path.join(srcDir, '.agents', 'AGENTS.md');
+    const active = activeHarnessKeys();
 
     if (fs.existsSync(rulesMdSrc)) {
-        installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
+        if (active.has('antigravity')) installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
             copyDirRecursiveSync(rulesMdSrc, path.join(geminiDir, 'RULES.md'));
             // Keep GEMINI.md in sync for backwards compatibility with Antigravity CLI harnesses
             try {
@@ -4919,7 +5016,7 @@ function injectHarnessRules() {
         // copies them into a *project*, which only helps a project that opted into
         // the local harness -- on a plain global install those paths did not exist
         // at all, so the skill pointed at a file that was never delivered.
-        installStep(`install dispatcher workflows to ${path.join(claudeConfigDir(homeDir), 'workflows')}`, () => {
+        if (active.has('claudecode')) installStep(`install dispatcher workflows to ${path.join(claudeConfigDir(homeDir), 'workflows')}`, () => {
             const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
             if (fs.existsSync(workflowsSrc)) {
                 copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(homeDir), 'workflows'));
@@ -4943,7 +5040,7 @@ function injectHarnessRules() {
             const cwdIsHome = path.resolve(currentDir) === path.resolve(homeDir);
             if (!cwdIsHome) log.step(`Not run from the home directory: no project rule files written into ${currentDir}`);
 
-            installStep('compile Antigravity subagents', () => {
+            if (active.has('antigravity')) installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
                     compileAgyAgents(parseAgentsMd(agentsMdContent), agyAgentsDir, loadPipelineConfig());
@@ -4951,7 +5048,7 @@ function injectHarnessRules() {
                 }
             }, 'Antigravity agents unchanged');
 
-            installStep('compile Claude Code subagents', () => {
+            if (active.has('claudecode')) installStep('compile Claude Code subagents', () => {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = agentsNotShippedAsFiles(parseAgentsMd(agentsMdContent));
@@ -4961,7 +5058,7 @@ function injectHarnessRules() {
                 }
             }, 'Claude Code agents unchanged');
 
-            installStep('compile OpenCode subagents', () => {
+            if (active.has('opencode')) installStep('compile OpenCode subagents', () => {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
@@ -4971,7 +5068,7 @@ function injectHarnessRules() {
                 }
             }, 'OpenCode agents unchanged');
 
-            installStep('compile Codex subagents', () => {
+            if (active.has('codex')) installStep('compile Codex subagents', () => {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
@@ -5025,7 +5122,7 @@ function injectHarnessRules() {
             }
 
             const codexDirLocal = path.join(currentDir, '.codex-plugin');
-            if (cwdIsHome) installStep(`sync ${path.join(codexDirLocal, 'system.md')}`, () => {
+            if (cwdIsHome && active.has('codex')) installStep(`sync ${path.join(codexDirLocal, 'system.md')}`, () => {
                 fs.mkdirSync(codexDirLocal, { recursive: true });
                 const codexPath = path.join(codexDirLocal, 'system.md');
                 let codexContent = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
@@ -5070,13 +5167,14 @@ function injectHarnessRules() {
                 { slug: "godmode-shipping", name: "Godmode Shipping", roleDefinition: "Release Gatekeeper & Quality Auditor.", groups: ["read", "command"] }
             ]
         };
-        if (path.resolve(currentDir) === path.resolve(homeDir)) installStep(`write ${rooModesPath}`, () => {
+        if (path.resolve(currentDir) === path.resolve(homeDir) && active.has('vscode')) installStep(`write ${rooModesPath}`, () => {
             fs.writeFileSync(rooModesPath, JSON.stringify(rooModesData, null, 2));
             log.step(`Synced Roo Code custom modes to ${rooModesPath}`);
         }, 'Roo Code keeps its existing custom modes.');
 
         installStep('copy harness directories', () => {
-            const harnessDirs = ['.agents', '.cursor/rules', '.claude', '.github'];
+            const harnessKey = { '.cursor/rules': 'cursor', '.claude': 'claudecode', '.github': 'vscode' };
+            const harnessDirs = ['.agents', '.cursor/rules', '.claude', '.github'].filter((d) => !harnessKey[d] || active.has(harnessKey[d]));
             harnessDirs.forEach(dir => {
                 const sourcePath = path.join(srcDir, dir);
                 if (fs.existsSync(sourcePath)) {
@@ -5089,7 +5187,7 @@ function injectHarnessRules() {
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
             });
-            installGlobalHooks();
+            installGlobalHooks({ harnesses: active });
         }, '');
 
         installStep('write the default ~/.aos/pipeline.json', () => {
@@ -5097,7 +5195,7 @@ function injectHarnessRules() {
         }, 'Helper agents of /startcycle-graph then inherit the session model.');
 
         installStep('apply Claude model overrides to the shipped agents', () => {
-            if (DRY_RUN || !_sessionManifest) return;
+            if (DRY_RUN || !_sessionManifest || !active.has('claudecode')) return;
             const applied = applyClaudeModelOverrides(parseAgentsMd(fs.readFileSync(agentsMdSrc, 'utf8')), path.join(claudeConfigDir(homeDir), 'agents'), loadPipelineConfig(), _sessionManifest);
             if (applied.length) log.step(`Applied pipeline.json model overrides to ${applied.length} Claude agent file(s)`);
         }, 'Shipped Claude agents keep inheriting the session model.');
@@ -5414,14 +5512,16 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 // that adds or changes a hook silently never received it -- which is exactly
 // what happened to memb-inject.mjs in v4.4.0, on the machines that needed it
 // most (a fresh install got it; every machine that already had AOS did not).
-function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } = {}) {
+// harnesses: Set of harness keys to write for; null (tests, direct callers) means all of them.
+function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, harnesses = null } = {}) {
+    const on = (k) => !harnesses || harnesses.has(k);
     const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
 
     // Every harness gets only the scripts it wires (lib/v5/profile.js HARNESS_HOOKS), before any merge or self-check runs.
-    installHarnessHookCopies({ targetHome, targetGemini });
+    installHarnessHookCopies({ targetHome, targetGemini, harnesses });
 
     // 1. Claude Code
-    if (fs.existsSync(workflowsSrc)) {
+    if (on('claudecode') && fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, path.join(claudeConfigDir(targetHome), 'workflows'));
     }
     // rules-inject.mjs reads the rules text from here when it does not run from a checkout.
@@ -5431,24 +5531,26 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
     if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));
     const claudeSettings = path.join(claudeConfigDir(targetHome), 'settings.json');
-    mergeBdbSettingsHooks(claudeSettings);
-    const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });
-    if (deny.length) log.step(`Added ${deny.length} permissions.deny rule(s) for home-level deletes to ${claudeSettings}`);
+    if (on('claudecode')) {
+        mergeBdbSettingsHooks(claudeSettings);
+        const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });
+        if (deny.length) log.step(`Added ${deny.length} permissions.deny rule(s) for home-level deletes to ${claudeSettings}`);
+    }
     // a2a-inbox.mjs (drain + stop) ships inside the hooks dir copy above and is
     // wired by mergeBdbSettingsHooks from the shipped settings template. The
     // optional SessionStart sidecar hook registers only when the hook file is
     // actually shipped in the package.
-    installClaudeA2aSessionHook({ targetHome });
+    if (on('claudecode')) installClaudeA2aSessionHook({ targetHome });
     installA2aLibCopies({ targetHome, targetGemini });
 
     // 2. Google Antigravity
     const agyWorkflowsDir = path.join(targetGemini, 'config', 'workflows');
-    if (fs.existsSync(workflowsSrc)) {
+    if (on('antigravity') && fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, agyWorkflowsDir);
     }
-    mergeAntigravityHooks(path.join(targetGemini, 'config', 'hooks.json'));
+    if (on('antigravity')) mergeAntigravityHooks(path.join(targetGemini, 'config', 'hooks.json'));
     const agyCliDir = path.join(targetGemini, 'antigravity-cli');
-    if (fs.existsSync(agyCliDir)) {
+    if (on('antigravity') && fs.existsSync(agyCliDir)) {
         const agyCliWorkflowsDir = path.join(agyCliDir, 'workflows');
         if (fs.existsSync(workflowsSrc)) {
             copyDirRecursiveSync(workflowsSrc, agyCliWorkflowsDir);
@@ -5477,14 +5579,16 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
 
     // 3. OpenAI Codex CLI
     const codexWorkflowsDir = path.join(targetHome, '.codex', 'workflows');
-    if (fs.existsSync(workflowsSrc)) {
+    if (on('codex') && fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
     }
-    if (mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'))) codexHooksChanged = true;
-    installCodexRules({ targetHome });
+    if (on('codex')) {
+        if (mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'))) codexHooksChanged = true;
+        installCodexRules({ targetHome });
+    }
 
     // 4. OpenCode CLI
-    installOpencodePlugin({
+    if (on('opencode')) installOpencodePlugin({
         targetHome,
         configPath: path.join(
             path.join(targetHome, '.config', 'opencode'),
@@ -5506,7 +5610,8 @@ function copyHookScripts(hooksSrc, destDir, names) {
 
 // Each harness dir gets its own list (lib/v5/profile.js HARNESS_HOOKS: wired scripts plus what they import).
 // agy's antigravity-cli dir only when agy created it, as before.
-function installHarnessHookCopies({ targetHome = homeDir, targetGemini = geminiDir } = {}) {
+function installHarnessHookCopies({ targetHome = homeDir, targetGemini = geminiDir, harnesses = null } = {}) {
+    const on = (k) => !harnesses || harnesses.has(k);
     const hooksSrc = path.join(srcDir, '.claude', 'hooks');
     if (!fs.existsSync(hooksSrc)) return [];
     const { claude, agy, codex } = v5Profile.HARNESS_HOOKS;
@@ -5516,16 +5621,16 @@ function installHarnessHookCopies({ targetHome = homeDir, targetGemini = geminiD
     const agyCliDir = path.join(targetGemini, 'antigravity-cli');
     const agyDirs = [path.join(targetGemini, 'config', 'hooks'), ...(fs.existsSync(agyCliDir) ? [path.join(agyCliDir, 'hooks')] : [])];
     const targets = [
-        [path.join(claudeConfigDir(targetHome), 'hooks'), claude],
-        [agyDirs[0], agyNames],
-        ...(agyDirs.length > 1 ? [[agyDirs[1], agyNames]] : []),
-        [path.join(targetHome, '.codex', 'hooks'), codex],
+        ...(on('claudecode') ? [[path.join(claudeConfigDir(targetHome), 'hooks'), claude]] : []),
+        ...(on('antigravity') ? [[agyDirs[0], agyNames]] : []),
+        ...(on('antigravity') && agyDirs.length > 1 ? [[agyDirs[1], agyNames]] : []),
+        ...(on('codex') ? [[path.join(targetHome, '.codex', 'hooks'), codex]] : []),
     ];
     for (const [dir, names] of targets) {
         copyHookScripts(hooksSrc, dir, names);
         log.step(`Installed hooks to ${dir}`);
     }
-    if (fs.existsSync(agyA2aSrc)) {
+    if (on('antigravity') && fs.existsSync(agyA2aSrc)) {
         for (const dir of agyDirs) {
             copyDirRecursiveSync(agyA2aSrc, path.join(dir, 'a2a-inbox.mjs'));
             log.step(`Installed the agy A2A inbox hook to ${dir}`);
@@ -7430,7 +7535,7 @@ function quickUpdateKernel(installState) {
     s.start('Quick Update: refreshing skills & syncing installed submodules...');
 
     const excludeSkills = getTierExcludeSkills('1');
-    const paths = resolveTargetPaths('1', null);
+    const paths = resolveTargetPaths(defaultPlatformValue(), null);
 
     fs.mkdirSync(paths.targetSkillDir, { recursive: true });
     retireObsoleteLegacyDir(paths.targetLegacyDir);
@@ -7874,7 +7979,9 @@ Options:
         if (DRY_RUN) log.warn('DRY-RUN MODE active - nothing AOS owns is written.');
         initFullSession(detectInstallState());
         persistInstallOptions();
-        installGlobalHooks();
+        // --platforms is parsed above but only marked explicit further down the full flow; hooks-only exits before that.
+        markPlatformsExplicit(PLATFORMS_ARG || []);
+        installGlobalHooks({ harnesses: activeHarnessKeys() });
         flushSessionManifest();
         console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
         return;
@@ -7950,9 +8057,11 @@ Options:
     let creds = null;
     let selectedMcps = null;
     let wantsUniversal = true;
-    let specificPlatforms = ['1'];
-
     markPlatformsExplicit(PLATFORMS_ARG || []);
+    let specificPlatforms = [defaultPlatformValue()];
+    if (detections.length === 0 && !PLATFORMS_ARG) {
+        log.warn('No supported harness was detected; installing for Claude Code only. Add one with --platforms=<n[,n]> (e.g. 1 Antigravity, 5 Codex, 7 Roo/Cline).');
+    }
 
     if (PLATFORMS_ARG) {
         // Explicit targets win over both the menu and the auto-yes default.
@@ -7961,7 +8070,7 @@ Options:
         // Claude only would still push servers into every detected harness.
         wantsUniversal = PLATFORMS_ARG.includes('0');
         specificPlatforms = wantsUniversal
-            ? ['1']
+            ? [defaultPlatformValue()]
             : PLATFORMS_ARG;
     }
 
@@ -8081,7 +8190,7 @@ Options:
         const stepCredentials = async () => {
             if (ctx.selectedPlatforms.includes('9')) return;
             const specNow = ctx.selectedPlatforms.filter(p => p !== '0');
-            const ref = specNow[0] === '4' && ctx.customPaths ? ctx.customPaths.mcpDir : resolveTargetPaths(specNow[0] || '1', ctx.customPaths).targetMcpDir;
+            const ref = specNow[0] === '4' && ctx.customPaths ? ctx.customPaths.mcpDir : resolveTargetPaths(specNow[0] || defaultPlatformValue(), ctx.customPaths).targetMcpDir;
             const c = await promptCredentials(ref);
             if (c === BACK) return 'back';
             ctx.creds = c;
@@ -8089,7 +8198,7 @@ Options:
 
         const stepReview = async () => {
             const specNow = ctx.selectedPlatforms.filter(p => p !== '0');
-            if (specNow.length === 0 && ctx.selectedPlatforms.includes('0')) specNow.push('1');
+            if (specNow.length === 0 && ctx.selectedPlatforms.includes('0')) specNow.push(defaultPlatformValue());
             const lines = [
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
@@ -8130,7 +8239,7 @@ Options:
         selectedMcps = ctx.selectedMcps;
         wantsUniversal = ctx.selectedPlatforms.includes('0');
         specificPlatforms = ctx.selectedPlatforms.filter(p => p !== '0');
-        if (specificPlatforms.length === 0 && wantsUniversal) specificPlatforms.push('1');
+        if (specificPlatforms.length === 0 && wantsUniversal) specificPlatforms.push(defaultPlatformValue());
     }
 
     // Tier 9 is project-only and must run BEFORE any global install step --
@@ -8163,7 +8272,7 @@ Options:
         // AOS CLI alone would have no skills to load, and an empty target list
         // leaves primaryTarget undefined for everything downstream of it.
         log.warn('AOS CLI was the only target -- adding the universal skill target so it has something to load.');
-        dirPlatforms.push('1');
+        dirPlatforms.push(defaultPlatformValue());
     }
 
     const targets = dirPlatforms.map(p => ({
@@ -8243,6 +8352,7 @@ Options:
     }
 
     console.log('');
+    console.log(harnessSummaryLine());
     verifyEcosystemInstallation();
     if (!installExcluded.has('codenotch')) await maybeInstallCodenotch();
 
@@ -8310,6 +8420,9 @@ module.exports = {
     mergeCodexTomlMcpServers,
     installGlobalHooks,
     injectHarnessRules,
+    activeHarnessKeys,
+    defaultPlatformValue,
+    harnessSummaryLine,
     applyInstallOptions,
     installHarnessHookCopies,
     copyHookScripts,
@@ -8350,6 +8463,8 @@ module.exports = {
     // Manifest store (exported for verification tests)
     computeFileHash,
     reconcileMembVenv,
+    pickPython,
+    ensurePythonVenv,
     getInstallManifestPath,
     loadInstallManifest,
     saveInstallManifest,

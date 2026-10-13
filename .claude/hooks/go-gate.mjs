@@ -129,7 +129,25 @@ export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destruc
 const UNIFS = /\$\{IFS\}|\$IFS/g;
 const unIFS = (s) => String(s).replace(UNIFS, " ");
 const REDIR = /\d*>&\d+|&>>?\s*[^\s(;&|]+|\d*>>?\s*[^\s(;&|]+/g;
-const segments = (cmd) => unIFS(commandView(cmd).text).replace(REDIR, " ").split(/&&|\|\||\$\(|[;&|\n(){}\x60]/).map((s) => s.trim()).filter(Boolean);
+// A lone `&` inside quotes or after a backslash (`cd "/tmp/a & b"`, `a\&b`) is text, not a control operator.
+const AMP = "\u000e";
+function maskQuotedAmp(s) {
+  let out = "", q = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\" && q !== "'") { const n = s[i + 1] ?? ""; out += c + (n === "&" ? AMP : n); i++; continue; }
+    if (q) {
+      if (c === q) q = "";
+      out += c === "&" && s[i - 1] !== "&" && s[i + 1] !== "&" && s[i - 1] !== ">" && s[i + 1] !== ">" ? AMP : c;
+      continue;
+    }
+    if (c === "'" || c === '"') q = c;
+    out += c;
+  }
+  return out;
+}
+const unmaskAmp = (s) => s.replaceAll(AMP, "&");
+const segments = (cmd) => maskQuotedAmp(unIFS(commandView(cmd).text)).replace(REDIR, " ").split(/&&|\|\||\$\(|[;&|\n(){}\x60]/).map((s) => unmaskAmp(s.trim())).filter(Boolean);
 // Tokens keep quoted parts glued to their word; unq() gives the shell value (quotes and
 // backslashes removed: `g\it`, `'git'`, `"push"` are git and push to the shell too).
 const tokens = (s) => s.match(/(?:"[^"]*"|'[^']*'|[^\s"']+)+/g) || [];
@@ -1586,7 +1604,22 @@ function trustedDirs() {
     join(dirname(dirname(process.execPath)), "lib", "node_modules"), "/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules", "/opt/homebrew/Cellar", "/usr/local/Cellar",
   ];
 }
+// The three memB entry scripts the memb-ingest skill runs right after an install or update. Exempt from the
+// cooldown by exact basename and exact directory (real paths), never by content: any other script stays analysed.
+// Limit: an agent able to write into the memB dir could replace one of these three files.
+const MEMB_SCRIPTS = new Set(["memb_ingest.py", "memb_auto_inject.py", "run.py"]);
+function membScript(path) {
+  try {
+    const real = realpathSync(path);
+    if (!MEMB_SCRIPTS.has(real.slice(dirname(real).length + 1))) return false;
+    const home = gateCtx.home || homedir();
+    return [join(home, ".gemini", "config", "mcps", "memb-mcp"), join(home, ".agents", "memB")].some((d) => {
+      try { return dirname(real) === realpathSync(d); } catch { return false; }
+    });
+  } catch { return false; }
+}
 function installedScript(path, changed) {
+  if (membScript(path)) return true;
   if (!(gateCtx.blockTs ? changed < gateCtx.blockTs : false) && nowMs() - changed <= COOLDOWN_MS) return false;
   let real;
   try { real = realpathSync(path); } catch { return false; }
@@ -1646,7 +1679,7 @@ function scriptInto(r, h, file, cwd) {
   // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
   // written before the block, or remove the marker through a path built at run time; the
   // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
-  if (gateCtx.blockTs && nowMs() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
+  if (gateCtx.blockTs && nowMs() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs && !membScript(path)) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
   const body = readSmallRegular(path, SCRIPT_MAX, true);
   if (typeof body !== "string") { r.unscoped = true; return; }
@@ -1970,7 +2003,7 @@ function scopesOf(orig, protectedFor) {
   // plain-name push is push-main; an explicit src:dst is still read on its own.
   const view = unIFS(commandView(orig).text);
   // gh's {owner}/{repo}/{branch} placeholders must not be cut at the braces (a placeholder is an unknown name)
-  const marked = view.replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " ")).replace(/(?<!\$)\{([a-z_]+)\}/g, "\u0004$1\u0005");
+  const marked = maskQuotedAmp(view).replace(REDIR, (m) => (/\.git(?:\/|$)/.test(m) ? " \u0003 " : " ")).replace(/(?<!\$)\{([a-z_]+)\}/g, "\u0004$1\u0005");
   const st = { cwd: gateCtx.cwd || process.cwd(), taint: ENV_CHANGE.test(view) };
   const stack = [];
   const outerCwd = segCwd, outerTaint = segTaint, outerFeed = segFeed, outerNoCd = segNoCd;
@@ -1985,7 +2018,7 @@ function scopesOf(orig, protectedFor) {
         else if (parts[pi] === ")" && stack.length) st.cwd = stack.pop();
         continue;
       }
-      const seg = parts[pi].trim();
+      const seg = unmaskAmp(parts[pi].trim());
       if (!seg) continue;
       segCwd = st.cwd; segTaint = st.taint;
       segFeed = parts[pi - 1] === "|" ? base(stripPrefix(tokens((parts[pi - 2] ?? "").trim())).rest[0] ?? "") : "";

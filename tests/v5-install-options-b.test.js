@@ -16,7 +16,10 @@ const INSTALLER = path.join(__dirname, '..', 'installer.js');
 function run(args, { env = {}, timeout = 180000, home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-opt-run-')) } = {}) {
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-opt-npm-'));
     const { CLAUDE_CONFIG_DIR, CODEX_HOME, AOS_PROFILE, AOS_DISABLED_MCPS, ...clean } = process.env;
-    const r = spawnSync(process.execPath, [INSTALLER, ...args], {
+    // No harness is installed in the container; the installer writes only for detected or explicitly chosen ones
+    // (1 Antigravity, 2 Claude Code, 5 Codex), so the tests that look at all three name them.
+    const withPlatforms = args.some((a) => a.startsWith('--platforms')) ? args : [...args, '--platforms=1,2,5'];
+    const r = spawnSync(process.execPath, [INSTALLER, ...withPlatforms], {
         env: { ...clean, HOME: home, USERPROFILE: home, AOS_PLUGIN_CLI: 'off', npm_config_cache: cache, ...env },
         encoding: 'utf8', timeout,
     });
