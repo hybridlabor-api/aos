@@ -8,10 +8,11 @@ import { cardFromProfile, loadProfile } from "../lib/a2a-card.mjs";
 const USAGE = `usage:
   aos-a2a list [--json] [--prune]
   aos-a2a book
+  aos-a2a label [--name <name>] <text>
   aos-a2a card --profile <file> --name <n> --harness <h> [--model <m>] [--url <u>]
   aos-a2a serve --name <n> --harness <h> [--profile <file>] [--mode echo|live|agy|codex|spawn] [--parent-pid <pid>]
-                [--write] [--repo <path>] [--thread <codex thread name or uuid>] [--codex-transport queue|resume]
-  aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background]
+                [--label <text>] [--write] [--repo <path>] [--thread <codex thread name or uuid>] [--codex-transport queue|resume]
+  aos-a2a send (--to <name|label> | --role <role>) [--from <name>] [--timeout <s>] [--background]
                [--task <taskId> --go-ref <ref>] "<text>"
   aos-a2a status --to <name> <taskId>
   aos-a2a cancel --to <name> <taskId>
@@ -29,6 +30,7 @@ const { values: o, positionals } = parseArgs({
     task: { type: "string" }, "go-ref": { type: "string" },
     timeout: { type: "string" },     background: { type: "boolean" },
     once: { type: "boolean" },
+    label: { type: "string" },
   },
 });
 
@@ -40,21 +42,47 @@ function exitAfterDrain(code) {
   setTimeout(() => process.exit(code), 3000).unref();
 }
 
+function formatAge(ms) {
+  if (ms == null || !Number.isFinite(ms)) return "-";
+  if (ms < 0) ms = 0;
+  if (ms < 60000) return `${Math.floor(ms / 1000)}s`;
+  if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
+  return `${Math.floor(ms / 3600000)}h`;
+}
+
 if (o.help || !positionals.length) { console.log(USAGE); process.exit(o.help ? 0 : 2); }
 
 try {
   const [cmd] = positionals;
   if (cmd === "list") {
-    const sessions = list({ prune: o.prune, includeStale: true });
+    const prune = o.prune !== false;
+    const sessions = list({ prune, includeStale: !prune });
     if (o.json) console.log(JSON.stringify(sessions, null, 2));
-    else for (const s of sessions) console.log(`${s.name}\t${s.harness}\tpid ${s.pid}${s.stale ? " stale" : ""}\t${s.url ?? "-"}\t${s.cwd ?? ""}`);
+    else {
+      for (const s of sessions) {
+        const label = s.label || s.name;
+        const status = s.stale ? "stale" : (s.status ?? "idle");
+        const ts = typeof s.ts === "number" ? s.ts : Date.parse(s.ts ?? "");
+        const age = formatAge(Date.now() - (Number.isFinite(ts) ? ts : Date.now()));
+        console.log(`${label}\t${s.harness}\t${s.cwd ?? ""}\t${status}\t${age}`);
+      }
+    }
   } else if (cmd === "book") {
     console.log(JSON.stringify(book(), null, 2));
     process.exit(0);
+  } else if (cmd === "label") {
+    if (positionals.length < 2) throw new Error("usage: aos-a2a label [--name <name>] <text>");
+    const name = o.name || process.env.AOS_A2A_NAME;
+    if (!name) throw new Error("label needs --name <name> or env AOS_A2A_NAME");
+    const { setLabel } = await import("../lib/a2a-registry.mjs");
+    const text = positionals.slice(1).join(" ");
+    const updated = setLabel(name, text);
+    console.log(JSON.stringify({ name: updated.name, label: updated.label }));
   } else if (cmd === "card") {
     if (!o.name || !o.harness) throw new Error("card needs --name and --harness");
     console.log(JSON.stringify(cardFromProfile(loadProfile({ profile: o.profile }), { name: o.name, harness: o.harness, model: o.model, url: o.url }), null, 2));
   } else if (cmd === "serve") {
+    if (o.label) process.env.AOS_A2A_LABEL = o.label;
     if (!o.name || !o.harness) throw new Error("serve needs --name and --harness");
     const modes = ["echo", "live", "agy", "codex", "spawn"];
     if (o.mode && !modes.includes(o.mode)) throw new Error(`unknown --mode ${o.mode} (echo, live, agy, codex or spawn)`);
@@ -91,7 +119,7 @@ try {
     const s = await startSidecar({ name: o.name, harness: o.harness, profile, parentPid, asCli: true, executor });
     console.log(JSON.stringify({ name: o.name, url: s.url, cardUrl: s.cardUrl, pid: process.pid }));
   } else if (cmd === "send") {
-    if ((!o.to && !o.role) || positionals.length < 2) throw new Error('usage: aos-a2a send (--to <name> | --role <role>) [--from <name>] [--timeout <s>] [--background] [--task <taskId> --go-ref <ref>] "<text>"');
+    if ((!o.to && !o.role) || positionals.length < 2) throw new Error('usage: aos-a2a send (--to <name|label> | --role <role>) [--from <name>] [--timeout <s>] [--background] [--task <taskId> --go-ref <ref>] "<text>"');
     const { send } = await import("../lib/a2a-client.mjs");
     const result = await send({
       to: o.to, role: o.role, from: o.from, text: positionals.slice(1).join(" "),
