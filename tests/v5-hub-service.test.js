@@ -92,7 +92,9 @@ describe('install commands per platform', () => {
         assert.deepEqual(calls.filter((c) => c[0] === 'wscript.exe'), [['wscript.exe', vbs]]);
         assert.deepEqual(calls.filter((c) => c[0] === 'schtasks').map((c) => c[1]), ['/End', '/Delete']);
         assert.ok(!calls.some((c) => c[0] === 'schtasks' && c[1] === '/Create'), 'no schtasks /Create: it needs admin rights');
-        assert.ok(calls.find((c) => c[0] === 'powershell').join(' ').includes(path.join(realAosRoot, 'bin', 'aos-hub.mjs')));
+        // stopArgs lower-cases and uses backslashes on both sides of the match.
+        const lcWin = (s) => s.toLowerCase().replace(/\//g, '\\');
+        assert.ok(lcWin(calls.find((c) => c[0] === 'powershell').join(' ')).includes(lcWin(path.join(realAosRoot, 'bin', 'aos-hub.mjs'))));
         assert.ok(!fs.existsSync(legacyXml), 'legacy task XML removed');
         assert.equal(pkg.detect(ctx), true, 'the .vbs is the install record');
         assert.equal(pkg.needsMigration(ctx), false);
@@ -137,7 +139,8 @@ describe('uninstall', () => {
         await pkg.uninstall(ctx);
         assert.deepEqual(calls.find((c) => c[0] === 'schtasks' && c[1] === '/Delete'), ['schtasks', '/Delete', '/TN', 'AOS_Hub', '/F']);
         const stop = calls.find((c) => c[0] === 'powershell');
-        assert.ok(stop && stop.join(' ').includes(path.join(realAosRoot, 'bin', 'aos-hub.mjs')) && stop.join(' ').includes('Stop-Process'), 'running hub stopped by its script path');
+        const lcWin = (s) => s.toLowerCase().replace(/\//g, '\\');
+        assert.ok(stop && lcWin(stop.join(' ')).includes(lcWin(path.join(realAosRoot, 'bin', 'aos-hub.mjs'))) && stop.join(' ').includes('Stop-Process'), 'running hub stopped by its script path');
     });
 });
 

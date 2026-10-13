@@ -30,7 +30,7 @@ const IS_ARM64 = process.arch === 'arm64';
 const h = (...p) => path.join(HOME, ...p);
 const hc = (...p) => path.join(claudeConfigDir(HOME), ...p);
 const tilde = (p) => (p || '').replace(HOME, '~');
-const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
+const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
 
 const firstExisting = (candidates) => candidates.find((c) => existsSync(c)) || null;
 

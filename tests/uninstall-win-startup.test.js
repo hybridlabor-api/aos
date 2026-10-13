@@ -72,6 +72,31 @@ test('v5 gateway/hub Startup vbs are planned on win32 and removed with one stop 
     vbsFiles.forEach((f) => assert.strictEqual(fs.existsSync(f), false));
 });
 
+test('removeWinServices matches only the full path under this home and only this user\'s processes', async () => {
+    const mod = await import(pathToFileURL(path.join(__dirname, '..', 'bin', 'aos-uninstall.mjs')).href);
+    const ws = require('../lib/v5/win-startup.js');
+    const home = winHome();
+    const appData = path.join(home, 'AppData', 'Roaming');
+    const startup = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    fs.writeFileSync(path.join(startup, 'com.bdb.aos.gateway.vbs'), "'launcher\r\n");
+    const p = mod.plan({ home, appData, platform: 'win32', manifestPath: path.join(home, 'no-manifest.json') });
+    const calls = [];
+    mod.removeWinServices(p.winSvc, (cmd, args) => calls.push(args.join(' ')));
+    const want = ws.norm(path.join(home, '.agents', 'bin', 'aos-gateway.mjs'));
+    assert.ok(calls[0].includes(want), 'stop call carries the lower-cased full profile path');
+    assert.ok(calls[0].includes('GetOwner') && calls[0].includes('$env:USERNAME'), 'owner filter present');
+    assert.ok(calls[0].includes('$PID'), 'self exclusion kept');
+    assert.ok(!calls[0].includes("Contains('bin\\aos-gateway.mjs')"), 'bare suffix is gone');
+});
+
+test('matchesCmd: own profile path matches, another profile does not (case and separators ignored)', () => {
+    const ws = require('../lib/v5/win-startup.js');
+    const mine = 'C:\\Users\\api\\.agents\\bin\\aos-gateway.mjs';
+    assert.ok(ws.matchesCmd('"C:\\Program Files\\nodejs\\node.exe" "c:/users/API/.agents/bin/aos-gateway.mjs" serve', [mine]));
+    assert.ok(!ws.matchesCmd('"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\Yola\\.agents\\bin\\aos-gateway.mjs" serve', [mine]));
+    assert.ok(!ws.matchesCmd(null, [mine]));
+});
+
 test('plan() skips incomplete pairs and nonexistent files', async () => {
     const plan = await importPlan();
     const home = winHome();

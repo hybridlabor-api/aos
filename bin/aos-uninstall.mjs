@@ -126,7 +126,7 @@ function plan(opts = {}) {
   const home = opts.home || HOME;
   const platform = opts.platform || process.platform;
   const manifest = (() => {
-    try { return JSON.parse(readFileSync(opts.manifestPath || MANIFEST, 'utf8')); } catch { return null; }
+    try { return JSON.parse(readFileSync(opts.manifestPath || MANIFEST, 'utf8').replace(/^﻿/, '')); } catch { return null; }
   })();
 
   const ours = [];      // matches its recorded hash — delete
@@ -154,16 +154,16 @@ function plan(opts = {}) {
     for (const s of WIN_STARTUP) {
       const vbs = path.join(startupDir, s.vbsName);
       const bat = s.batName ? path.join(home, s.batDir, s.batName) : null;
-      if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${path.basename(bat)}*`) });
+      if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${bat}*`) });
     }
   }
 
   // v5 gateway/hub autostart: removed by their own step after the package loop, not through WIN_STARTUP.
-  const winSvc = platform !== 'win32' ? [] : WIN_V5.map((s) => ({ ...s, vbs: winStartup.vbsPath({ home, env: { APPDATA: opts.appData || process.env.APPDATA } }, s.label) }))
+  const winSvc = platform !== 'win32' ? [] : WIN_V5.map((s) => ({ ...s, full: path.join(home, '.agents', s.script), vbs: winStartup.vbsPath({ home, env: { APPDATA: opts.appData || process.env.APPDATA } }, s.label) }))
     .filter((s) => existsSync(s.vbs));
 
   let installedModules = [];
-  try { installedModules = JSON.parse(readFileSync(path.join(home, '.agents', '.bdb-manifest.json'), 'utf8')).installedModules || []; } catch { /* no record */ }
+  try { installedModules = JSON.parse(readFileSync(path.join(home, '.agents', '.bdb-manifest.json'), 'utf8').replace(/^﻿/, '')).installedModules || []; } catch { /* no record */ }
   const manifestPaths = Object.keys(manifest || {});
   const modules = MODULE_DIRS
     .filter((m) => existsSync(m.path) && ((m.id && installedModules.includes(m.id)) || manifestPaths.some((p) => p.startsWith(m.path + path.sep))))
@@ -205,7 +205,7 @@ function describe(p) {
   if (agents.length) {
     console.log(`\nBackground services (${agents.length}): ${agents.map((a) => a.label).join(', ')}`);
   }
-  for (const s of p.winSvc || []) console.log(`\nWindows Startup entry ${tilde(s.vbs)} is removed; processes running ${s.script} are stopped`);
+  for (const s of p.winSvc || []) console.log(`\nWindows Startup entry ${tilde(s.vbs)} is removed; processes running ${tilde(s.full)} are stopped`);
   if (modules.length) {
     console.log('\nModules:');
     for (const m of modules) console.log(`    ${tilde(m)}`);
@@ -262,7 +262,8 @@ function dirSize(p) {
 // Stop by script path first (a running node would restart nothing, but holds the port), then drop the .vbs.
 function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 })) {
   for (const s of list || []) {
-    try { run('powershell', winStartup.stopArgs([s.script])); } catch { /* powershell unavailable */ }
+    // Full path under this profile's home only: the bare suffix also matches other Windows users' services.
+    if (s.full) try { run('powershell', winStartup.stopArgs([s.full])); } catch { /* powershell unavailable */ }
     try { rmSync(s.vbs, { force: true }); } catch { /* already gone */ }
   }
 }
@@ -279,9 +280,7 @@ async function execute(p) {
       // between iterations finds no script to restart. Match the exact bat file
       // name in the command line, never a generic word like "node".
       try {
-        execFileSync('powershell', ['-NoProfile', '-Command',
-          `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '${a.match}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
-        ], { stdio: 'ignore' });
+        execFileSync('powershell', winStartup.stopLikeArgs(a.match), { stdio: 'ignore' });
       } catch { /* nothing running or powershell unavailable */ }
       if (a.bat) try { rmSync(a.bat); } catch { /* already gone */ }
       try { rmSync(a.vbs); } catch { /* already gone */ }
@@ -348,7 +347,7 @@ async function execute(p) {
   ];
   for (const f of dejaMcpJson.filter(existsSync)) {
     try {
-      const cfg = JSON.parse(readFileSync(f, 'utf8'));
+      const cfg = JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, ''));
       if (dejaByAos && cfg.mcpServers && cfg.mcpServers.deja) {
         delete cfg.mcpServers.deja;
         writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
@@ -443,7 +442,7 @@ async function execute(p) {
   const settings = path.join(pm.claudeDir(HOME), 'settings.json');
   if (existsSync(settings)) {
     try {
-      const s = JSON.parse(readFileSync(settings, 'utf8'));
+      const s = JSON.parse(readFileSync(settings, 'utf8').replace(/^﻿/, ''));
       const bdb = profile.HOOK_SCRIPTS;
       let touched = false;
       for (const [event, entries] of Object.entries(s.hooks || {})) {

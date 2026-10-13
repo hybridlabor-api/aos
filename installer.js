@@ -2539,7 +2539,9 @@ async function installMemB(interactive) {
                 'powershell -NoProfile -Command "' +
                 'Get-NetTCPConnection -LocalPort 8088 -ErrorAction SilentlyContinue |' +
                 ' Select-Object -ExpandProperty OwningProcess |' +
-                ' ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"',
+                ' ForEach-Object { $p = Get-CimInstance Win32_Process -Filter (\'ProcessId=\' + $_);' +
+                ' $o = Invoke-CimMethod -InputObject $p -MethodName GetOwner -ErrorAction SilentlyContinue;' +
+                ' if ($o -and $o.User -and ($o.Domain + \'\\\' + $o.User) -eq ($env:USERDOMAIN + \'\\\' + $env:USERNAME)) { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }"',
                 { stdio: 'ignore' }
             );
         } catch (_) {}
