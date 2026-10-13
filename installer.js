@@ -5756,7 +5756,7 @@ function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
         if (JSON.stringify(settings).includes('a2a-session.mjs')) return true; // already wired
         settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
         if (!Array.isArray(settings.hooks.SessionStart)) settings.hooks.SessionStart = [];
-        settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/a2a-session.mjs"' }] });
+        settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/a2a-session.mjs"', timeout: 5 }] });
         if (fs.existsSync(settingsPath)) backupOnce(settingsPath, () => { const b = `${settingsPath}.${timestamp}.bak`; fs.copyFileSync(settingsPath, b); return b; });
         fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
         fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
@@ -5897,10 +5897,37 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     const localize = (cmd) => (projectLocal
         ? (machineGlobalHooks.some((n) => cmd.includes(n)) ? cmd : cmd.split('${HOME}').join('${CLAUDE_PROJECT_DIR}').replace(/\$CLAUDE_PROJECT_DIR\b/g, '${CLAUDE_PROJECT_DIR}'))
         : cmd.replace(/\$\{?CLAUDE_PROJECT_DIR\}?\/\.claude\/hooks\//g, '$HOME/.claude/hooks/').split('$HOME/.claude/hooks/').join(process.env.CLAUDE_CONFIG_DIR ? '${CLAUDE_CONFIG_DIR}/hooks/' : '$HOME/.claude/hooks/'));
+    const DEFAULT_HOOK_TIMEOUTS = {
+        'go-gate.mjs': 10,
+        'conventional-commits.mjs': 10,
+        'env-file-protection.mjs': 10,
+        'graph-gate.mjs': 10,
+        'memb-inject.mjs': 10,
+        'a2a-inbox.mjs': 5,
+        'a2a-session.mjs': 5,
+        'go-token.mjs': 5,
+        'go-grant.mjs': 5,
+        'rules-inject.mjs': 3,
+        'trail-relay.mjs': 3,
+        'trail-autostart.mjs': 3,
+        'aos-session-hint.mjs': 3,
+    };
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
             ...e,
-            hooks: (e.hooks || []).map((h) => (typeof h.command === 'string' ? { ...h, command: localize(h.command) } : h)),
+            hooks: (e.hooks || []).map((h) => {
+                if (!h || typeof h.command !== 'string') return h;
+                const updated = { ...h, command: localize(h.command) };
+                if (typeof updated.timeout !== 'number' || updated.timeout <= 0) {
+                    for (const [script, to] of Object.entries(DEFAULT_HOOK_TIMEOUTS)) {
+                        if (updated.command.includes(script)) {
+                            updated.timeout = to;
+                            break;
+                        }
+                    }
+                }
+                return updated;
+            }),
         }));
 
     const buildMerged = (existing) => {

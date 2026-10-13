@@ -6,11 +6,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs\" || exit 2"
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-gate.mjs\" || exit 2",
+            "timeout": 10
           },
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/conventional-commits.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/conventional-commits.mjs\"",
+            "timeout": 10
           }
         ]
       },
@@ -19,7 +21,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/env-file-protection.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/env-file-protection.mjs\"",
+            "timeout": 10
           }
         ]
       },
@@ -48,7 +51,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/graph-gate.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/graph-gate.mjs\"",
+            "timeout": 10
           }
         ]
       },
@@ -56,7 +60,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs\" stop"
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs\" stop",
+            "timeout": 5
           }
         ]
       },
@@ -106,7 +111,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\""
+            "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\"",
+            "timeout": 10
           }
         ]
       },
@@ -145,7 +151,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-token.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-token.mjs\"",
+            "timeout": 5
           }
         ]
       },
@@ -153,7 +160,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-grant.mjs\""
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/go-grant.mjs\"",
+            "timeout": 5
           }
         ]
       },
@@ -161,7 +169,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\""
+            "command": "node \"$HOME/.claude/hooks/memb-inject.mjs\"",
+            "timeout": 10
           }
         ]
       },
@@ -178,7 +187,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs\" drain"
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/a2a-inbox.mjs\" drain",
+            "timeout": 5
           }
         ]
       }
