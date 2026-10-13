@@ -752,7 +752,12 @@ test('R14: a failed Codex plugin install and a failed plugin registration are fa
     const codex = require('../lib/codex-plugin-install');
     const real = codex.installCodexPlugin;
     codex.installCodexPlugin = () => ({ ok: false, lines: ['Codex plugin: plugin install FAILED (boom)'] });
-    try { assert.throws(() => host.runCodexPluginStep(), /FAILED \(boom\)/); } finally { codex.installCodexPlugin = real; }
+    // The step only runs when Codex is found; put a stub `codex` on PATH for this assertion.
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-codex-'));
+    fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${bin}${path.delimiter}${oldPath}`;
+    try { assert.throws(() => host.runCodexPluginStep(), /FAILED \(boom\)/); } finally { process.env.PATH = oldPath; codex.installCodexPlugin = real; }
     const r = host.runPluginMigration({ targetHome: mkHome(), detected: ['claudecode'], mode: 'on', cli: null, registrars: { claudecode: () => ({ ok: false, error: 'nope' }) } });
     assert.match(r.error, /claudecode: plugin registration failed \(nope\)/);
 });
