@@ -291,6 +291,12 @@ function findUv(home = homeDir, platform = process.platform) {
            path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'Programs', 'uv'),
            path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'uv', 'bin')]
         : [path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'), '/opt/homebrew/bin', '/usr/local/bin'];
+    if (!win) {
+        try {
+            const base = path.join(home, 'Library', 'Python');
+            for (const v of fs.readdirSync(base)) dirs.push(path.join(base, v, 'bin'));
+        } catch (e) { /* no user Python dir */ }
+    }
     for (const d of dirs) {
         const candidate = path.join(d, win ? 'uv.exe' : 'uv');
         if (fs.existsSync(candidate)) return candidate;
@@ -299,6 +305,72 @@ function findUv(home = homeDir, platform = process.platform) {
 }
 let _uvBin;
 const uvBin = () => (_uvBin === undefined ? (_uvBin = findUv()) : _uvBin) || 'uv';
+
+const MEMB_MIN_PYTHON = [3, 10];
+const MEMB_PYTHON_FIX = 'memB needs Python >= 3.10; install uv (https://docs.astral.sh/uv/) or python 3.12, then run: aos package install memb';
+const parsePyVersion = (s) => { const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(String(s || '')); return m ? [Number(m[1]), Number(m[2])] : null; };
+const pyAtLeast = (v, min) => Boolean(v) && (v[0] > min[0] || (v[0] === min[0] && v[1] >= min[1]));
+
+// First interpreter that is >= min: versioned names (newest first) before plain python3, PATH before the usual install dirs.
+// opts.run(cmd, args) -> stdout (throws if the command is missing) is a test seam.
+function pickPython(min = MEMB_MIN_PYTHON, opts = {}) {
+    const home = opts.home || homeDir;
+    const win = (opts.platform || process.platform) === 'win32';
+    const run = opts.run || ((cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000 }));
+    const names = win ? ['python'] : ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3'];
+    const dirs = win ? [] : ['/opt/homebrew/bin', '/usr/local/bin', path.join(home, '.local', 'bin')];
+    if (!win) {
+        try {
+            const base = path.join(home, 'Library', 'Python');
+            for (const v of fs.readdirSync(base)) dirs.push(path.join(base, v, 'bin'));
+        } catch (e) { /* no user Python dir */ }
+    }
+    for (const name of names) {
+        for (const cmd of [name, ...dirs.map((d) => path.join(d, name))]) {
+            try {
+                const v = parsePyVersion(run(cmd, ['--version']));
+                if (pyAtLeast(v, min)) return { cmd, version: v };
+            } catch (e) { /* not there */ }
+        }
+    }
+    return null;
+}
+
+// Interpreter version recorded by venv/uv in pyvenv.cfg (`version = 3.9.6` or `version_info = ...`), null if unreadable.
+function venvPyVersion(dir) {
+    try { return parsePyVersion((/^version(?:_info)?\s*=\s*(.+)$/m.exec(fs.readFileSync(path.join(dir, '.venv', 'pyvenv.cfg'), 'utf8')) || [])[1]); } catch (e) { return null; }
+}
+
+// Creates dir/.venv with a Python >= 3.10, or throws MEMB_PYTHON_FIX without leaving an empty venv behind.
+// A venv built on an older Python is rebuilt (--clear). opts.pick / opts.hasUv / opts.run are test seams.
+function ensurePythonVenv(dir, opts = {}) {
+    const win = process.platform === 'win32';
+    const venvPy = win ? path.join(dir, '.venv', 'Scripts', 'python.exe') : path.join(dir, '.venv', 'bin', 'python');
+    if (fs.existsSync(venvPy)) {
+        const v = venvPyVersion(dir);
+        if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
+        log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
+    }
+    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: 'ignore', cwd: dir, ...o }));
+    const hasUv = opts.hasUv !== undefined ? opts.hasUv : (() => { try { execFileSync(uvBin(), ['--version'], { stdio: 'ignore' }); return true; } catch (e) { return false; } })();
+    const sys = (opts.pick || pickPython)(MEMB_MIN_PYTHON);
+    if (!sys && !hasUv) {
+        log.warn(MEMB_PYTHON_FIX);
+        throw new Error(MEMB_PYTHON_FIX);
+    }
+    if (hasUv) {
+        const target = sys ? sys.cmd : '3.12';
+        try {
+            if (!sys) run(uvBin(), ['python', 'install', '3.12'], { timeout: 300000, env: { ...process.env, UV_NO_PROGRESS: '1' } });
+            run(uvBin(), ['venv', '--clear', '--seed', '--python', target, '.venv']);
+            return { created: true, viaUv: true };
+        } catch (e) {
+            if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
+        }
+    }
+    run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
+    return { created: true, viaUv: false };
+}
 
 // Windows installers launched from an existing terminal can inherit a stale
 // PATH after Go was installed through winget or the official installer. The
@@ -2600,15 +2672,7 @@ async function installMemB(interactive) {
                 ? path.join(membDir, '.venv', 'Scripts', 'python.exe')
                 : path.join(membDir, '.venv', 'bin', 'python');
 
-            let createdViaUv = false;
-            if (!fs.existsSync(venvPython)) {
-                try {
-                    execSync(`"${uvBin()}" venv --clear --seed .venv`, { cwd: membDir, stdio: 'ignore' });
-                    createdViaUv = true;
-                } catch (e1) {
-                    execSync(`${pythonCmd} -m venv --clear .venv`, { cwd: membDir, stdio: 'ignore' });
-                }
-            }
+            const createdViaUv = Boolean(ensurePythonVenv(membDir).viaUv);
 
             // `uv venv --seed` is supposed to seed pip/setuptools/wheel into the venv, but
             // this has been observed to silently under-deliver (venv created, pip missing) --
@@ -4264,12 +4328,8 @@ async function installMcpsForTarget(paths, ctx) {
                 // child processes are not -- these two would really create a venv.
                 if (DRY_RUN) {
                     log.step(`[dry-run] would create the memb-mcp venv in ${membMcpFolder}`);
-                } else if (!fs.existsSync(venvPython)) {
-                    try {
-                        execSync(`"${uvBin()}" venv --clear --seed .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
-                    } catch (e1) {
-                        execSync(`${pythonCmd} -m venv --clear .venv`, { cwd: membMcpFolder, stdio: 'ignore' });
-                    }
+                } else {
+                    ensurePythonVenv(membMcpFolder);
                 }
 
                 const pipViaPython = `"${venvPython}" -m pip`;
@@ -4296,8 +4356,14 @@ async function installMcpsForTarget(paths, ctx) {
                 // `import run` is the server's real entry, the same check `aos package verify memb` runs.
                 const reconcile = reconcileMembVenv(membMcpFolder, { venvPython, entryImport: 'import run' });
                 if (reconcile.status === 'failed') log.warn('memB MCP requirements reconcile failed; inspect the venv before relying on memb-mcp.');
+                if (!DRY_RUN && !verifyPythonImports(venvPython, membMcpFolder, 'import mcp, pydantic')) {
+                    const reason = `the memb-mcp venv cannot import mcp and pydantic. ${MEMB_PYTHON_FIX}`;
+                    log.warn(reason);
+                    moduleFailures.push({ id: 'memb-mcp', name: 'memB MCP', reason });
+                }
             } catch (e) {
                 log.warn(`Failed to set up Python virtual environment for memB: ${e.message}`);
+                moduleFailures.push({ id: 'memb-mcp', name: 'memB MCP', reason: e.message });
             }
         }
     }
@@ -8395,6 +8461,8 @@ module.exports = {
     // Manifest store (exported for verification tests)
     computeFileHash,
     reconcileMembVenv,
+    pickPython,
+    ensurePythonVenv,
     getInstallManifestPath,
     loadInstallManifest,
     saveInstallManifest,
