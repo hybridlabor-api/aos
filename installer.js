@@ -1648,21 +1648,172 @@ function runCodexPluginStep() {
     if (r.ok === false) throw new Error(r.lines.filter((l) => /FAILED/.test(l)).join('; ') || 'Codex plugin install failed');
 }
 
+function collectSkillFiles(dir) {
+    const files = [];
+    let unsafe = false;
+    function walk(sub) {
+        const fullDir = sub ? path.join(dir, sub) : dir;
+        let items;
+        try { items = fs.readdirSync(fullDir, { withFileTypes: true }); } catch (_) { unsafe = true; return; }
+        for (const item of items) {
+            if (item.name === '.DS_Store') continue;
+            const rel = sub ? `${sub}/${item.name}` : item.name;
+            const full = path.join(dir, rel);
+            let st;
+            try { st = fs.lstatSync(full); } catch (_) { unsafe = true; continue; }
+            if (st.isSymbolicLink()) {
+                unsafe = true;
+            } else if (st.isDirectory()) {
+                walk(rel);
+            } else if (st.isFile()) {
+                files.push(rel);
+            } else {
+                unsafe = true;
+            }
+        }
+    }
+    walk('');
+    return { files: files.sort(), unsafe };
+}
+
+function cleanEmptySkillDirs(dir) {
+    let items;
+    try { items = fs.readdirSync(dir); } catch (_) { return; }
+    for (const item of items) {
+        const full = path.join(dir, item);
+        try {
+            if (item === '.DS_Store') {
+                fs.unlinkSync(full);
+            } else if (fs.statSync(full).isDirectory()) {
+                cleanEmptySkillDirs(full);
+            }
+        } catch (_) {}
+    }
+    try { fs.rmdirSync(dir); } catch (_) {}
+}
+
 // Measured with codex 0.154.0: Codex loads BOTH ~/.agents/skills and ~/.codex/skills, so AOS copies
 // in both double the list (366 entries, descriptions squeezed out, cut off after pb-ship). AOS writes
 // only ~/.agents/skills; copies it wrote earlier into ~/.codex/skills (manifest hash still matches) are
-// backed up and removed, all-or-nothing (edited files stop the removal and are reported).
-function retireCodexSkillCopies(manifest) {
-    if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return;
-    const root = path.join(homeDir, '.codex', 'skills');
-    if (!fs.existsSync(root)) return;
-    const backup = path.join(homeDir, '.agents', 'backups', `plugin-migration-codex-skills-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
+// backed up and removed, all-or-nothing (edited files stop the removal and are reported). Legacy module
+// skills (e.g. hardware-pcb) also present in ~/.agents/skills are backed up and retired when file
+// hashes match; edited copies stay and are reported.
+function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir } = {}) {
+    if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return { removed: [], leftover: [] };
+    const targetHome = home || homeDir;
+    const root = path.join(targetHome, '.codex', 'skills');
+    if (!fs.existsSync(root)) return { removed: [], leftover: [] };
+    let rootStat;
+    try { rootStat = fs.lstatSync(root); } catch { return { removed: [], leftover: [] }; }
+    if (rootStat.isSymbolicLink()) {
+        log.warn(`Codex skills: ${root} is a symlink; not touched, Codex will list those skills twice.`);
+        return { removed: [], leftover: [], refused: `${root} is a symlink` };
+    }
+    const backup = path.join(targetHome, '.agents', 'backups', `plugin-migration-codex-skills-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
+    let r = { removed: [], leftover: [], refused: null };
     try {
-        const r = pluginMigration.removeLooseCopies({ home: homeDir, root, manifest, backupDir: backup });
-        if (r.refused) log.warn(`Codex skills: ${r.refused}; not touched, Codex will list those skills twice.`);
-        else if (r.leftover.length) log.warn(`Codex skills: ${r.leftover.length} edited or unsafe copies in ${root} (${r.leftover.slice(0, 5).join(', ')}) stay, so Codex lists skills twice (it also reads ~/.agents/skills). Move your edits out and re-run to retire them.`);
-        else if (r.removed.length) log.step(`Codex reads ~/.agents/skills, so ${r.removed.length} AOS copies were removed from ${root} (backup: ${backup}).`);
-    } catch (e) { log.warn(`Codex skill cleanup skipped: ${e.message}`); }
+        r = pluginMigration.removeLooseCopies({ home: targetHome, root, manifest: manifest || {}, backupDir: backup });
+        if (r.refused) {
+            log.warn(`Codex skills: ${r.refused}; not touched, Codex will list those skills twice.`);
+            return { removed: [], leftover: [], refused: r.refused };
+        }
+    } catch (e) {
+        log.warn(`Codex skill cleanup skipped: ${e.message}`);
+    }
+
+    const removedFiles = [...(r.removed || [])];
+    const leftoverSkills = new Set(r.leftover || []);
+
+    const agentsSkillsDir = path.join(targetHome, '.agents', 'skills');
+    if (fs.existsSync(agentsSkillsDir)) {
+        const prefix = path.resolve(root) + path.sep;
+        let realPrefix = null;
+        try { realPrefix = fs.realpathSync(root) + path.sep; } catch (_) {}
+
+        let entries = [];
+        try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (_) { entries = []; }
+        for (const entry of entries) {
+            if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+            const skillName = entry.name;
+            if (leftoverSkills.has(skillName)) continue;
+            const codexSkillDir = path.join(root, skillName);
+            const agentsSkillDir = path.join(agentsSkillsDir, skillName);
+            let agentsStat;
+            try { agentsStat = fs.statSync(agentsSkillDir); } catch (_) { continue; }
+            if (!agentsStat.isDirectory()) continue;
+
+            const codexScan = collectSkillFiles(codexSkillDir);
+            const agentsScan = collectSkillFiles(agentsSkillDir);
+
+            if (codexScan.unsafe || agentsScan.unsafe || codexScan.files.length === 0 || codexScan.files.length !== agentsScan.files.length) {
+                leftoverSkills.add(skillName);
+                continue;
+            }
+
+            let matches = true;
+            for (let i = 0; i < codexScan.files.length; i++) {
+                if (codexScan.files[i] !== agentsScan.files[i]) {
+                    matches = false;
+                    break;
+                }
+                const rel = codexScan.files[i];
+                const fileA = path.join(codexSkillDir, rel);
+                const fileB = path.join(agentsSkillDir, rel);
+                const hashA = computeFileHash(fileA);
+                const hashB = computeFileHash(fileB);
+                if (!hashA || hashA !== hashB) {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if (!matches) {
+                leftoverSkills.add(skillName);
+                continue;
+            }
+
+            // Verify paths are safely within root before moving
+            let pathsSafe = true;
+            for (const rel of codexScan.files) {
+                const abs = path.resolve(path.join(codexSkillDir, rel));
+                let realAbs = null;
+                try { realAbs = fs.realpathSync(abs); } catch (_) {}
+                if (!abs.startsWith(prefix) || !realAbs || (realPrefix && !realAbs.startsWith(realPrefix))) {
+                    pathsSafe = false;
+                    break;
+                }
+            }
+            if (!pathsSafe) {
+                leftoverSkills.add(skillName);
+                continue;
+            }
+
+            // All file hashes match the ~/.agents copy: back up and retire.
+            for (const rel of codexScan.files) {
+                const abs = path.join(codexSkillDir, rel);
+                try {
+                    const dest = path.join(backup, path.relative(targetHome, abs));
+                    fs.mkdirSync(path.dirname(dest), { recursive: true });
+                    fs.copyFileSync(abs, dest);
+                    fs.unlinkSync(abs);
+                    if (manifest && manifest[abs]) delete manifest[abs];
+                    removedFiles.push(abs);
+                } catch (e) {
+                    logDebug(e, `Codex retire module skill: ${abs}`);
+                }
+            }
+            cleanEmptySkillDirs(codexSkillDir);
+        }
+    }
+
+    if (leftoverSkills.size) {
+        const leftoverArr = [...leftoverSkills].sort();
+        log.warn(`Codex skills: ${leftoverArr.length} edited or unsafe copies in ${root} (${leftoverArr.slice(0, 5).join(', ')}) stay, so Codex lists skills twice (it also reads ~/.agents/skills). Move your edits out and re-run to retire them.`);
+    }
+    if (removedFiles.length) {
+        log.step(`Codex reads ~/.agents/skills, so ${removedFiles.length} AOS copies were removed from ${root} (backup: ${backup}).`);
+    }
+    return { removed: removedFiles, leftover: [...leftoverSkills].sort() };
 }
 
 // ~/.codex-plugin/plugin.json in HOME made Codex rename every skill, even OpenAI's, to bdb-aos:<name>.
