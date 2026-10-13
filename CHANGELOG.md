@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.0.2](https://github.com/hybridlabor-api/aos/compare/v5.0.1...v5.0.2) (2026-10-13)
+
+
+### Bug Fixes
+
+* AOS 5.0.2 — write only for detected harnesses, memB Python &gt;= 3.10, mods skip reasons, quoted & in go-gate ([9eee847](https://github.com/hybridlabor-api/aos/commit/9eee84761d6f5c78900545db7f6e698686505a37))
+* **installer:** --hooks-only honours --platforms; tests name the harnesses they look at ([e6bf45f](https://github.com/hybridlabor-api/aos/commit/e6bf45fb369e7e44517df964be0eed1ae31bf08c))
+* **installer:** write only for detected harnesses; -y installs for what is found, not for Antigravity ([8ac91e4](https://github.com/hybridlabor-api/aos/commit/8ac91e4156f4f9d0ebb4ed7a55a228acefb53177))
+* **kernel:** verify the skills of the primary target the install really wrote ([085f962](https://github.com/hybridlabor-api/aos/commit/085f962a2a9a8b2134e9457dec35d0eb33b33cef))
+* **memb:** pick Python &gt;= 3.10, bootstrap it with uv or fail loudly; exempt the memB scripts from the fresh-script cooldown ([39d4839](https://github.com/hybridlabor-api/aos/commit/39d4839921bc1aeca9c4b521bf55f77dbb86ce31))
+* **mods,gate:** say why a Claude mod was skipped and add a doctor row; a quoted & does not split a command ([bd71c23](https://github.com/hybridlabor-api/aos/commit/bd71c23bbbdc0466ce4c2759956be47e810df436))
+
 ## [5.0.1](https://github.com/hybridlabor-api/aos/compare/v5.0.0...v5.0.1) (2026-10-13)
 
 
