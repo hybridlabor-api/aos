@@ -1586,7 +1586,22 @@ function trustedDirs() {
     join(dirname(dirname(process.execPath)), "lib", "node_modules"), "/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules", "/opt/homebrew/Cellar", "/usr/local/Cellar",
   ];
 }
+// The three memB entry scripts the memb-ingest skill runs right after an install or update. Exempt from the
+// cooldown by exact basename and exact directory (real paths), never by content: any other script stays analysed.
+// Limit: an agent able to write into the memB dir could replace one of these three files.
+const MEMB_SCRIPTS = new Set(["memb_ingest.py", "memb_auto_inject.py", "run.py"]);
+function membScript(path) {
+  try {
+    const real = realpathSync(path);
+    if (!MEMB_SCRIPTS.has(real.slice(dirname(real).length + 1))) return false;
+    const home = gateCtx.home || homedir();
+    return [join(home, ".gemini", "config", "mcps", "memb-mcp"), join(home, ".agents", "memB")].some((d) => {
+      try { return dirname(real) === realpathSync(d); } catch { return false; }
+    });
+  } catch { return false; }
+}
 function installedScript(path, changed) {
+  if (membScript(path)) return true;
   if (!(gateCtx.blockTs ? changed < gateCtx.blockTs : false) && nowMs() - changed <= COOLDOWN_MS) return false;
   let real;
   try { real = realpathSync(path); } catch { return false; }
@@ -1646,7 +1661,7 @@ function scriptInto(r, h, file, cwd) {
   // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
   // written before the block, or remove the marker through a path built at run time; the
   // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
-  if (gateCtx.blockTs && nowMs() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs) { r.unscoped = true; r.cooldown = true; return; }
+  if (gateCtx.blockTs && nowMs() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs && !membScript(path)) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
   const body = readSmallRegular(path, SCRIPT_MAX, true);
   if (typeof body !== "string") { r.unscoped = true; return; }
