@@ -66,6 +66,32 @@ test('Claude duplicate skills: a manifest-recorded loose copy of a plugin skill 
     assert.equal(run(setup(false))('Claude duplicate skills'), undefined);
 });
 
+function modsRow(settings, withClaude = true) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-docmods-'));
+    try {
+        if (settings) write(path.join(home, '.claude', 'settings.json'), JSON.stringify(settings));
+        const bin = path.join(home, 'bin');
+        if (withClaude) { write(path.join(bin, 'claude'), '#!/bin/sh\necho "2.1.162 (Claude Code)"\n'); fs.chmodSync(path.join(bin, 'claude'), 0o755); }
+        const env = { HOME: home, USERPROFILE: home, AOS_TEST_SANDBOX: 'container', PATH: `${bin}:/usr/bin:/bin` };
+        const r = spawnSync(process.execPath, [DOCTOR, '--json'], { cwd: home, env, encoding: 'utf8' });
+        assert.ok(r.stdout, `doctor crashed: ${r.stderr}`);
+        return JSON.parse(r.stdout).results.find((x) => x.name === 'Claude Code mods');
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+}
+
+test('Claude Code mods row: warns with the fix when claude is installed and a mod is not enabled', () => {
+    const d = modsRow({ enabledPlugins: { 'bdb-aos-fleet@bdb-marketplace': true } });
+    assert.ok(!d.ok && d.warningOnly, JSON.stringify(d));
+    assert.match(d.detail, /enabled: fleet; not enabled: sessions, alert; Claude Code in PATH is 2\.1\.162/);
+    assert.match(d.fix, /claude update.*aos package install sessions\|alert/);
+});
+
+test('Claude Code mods row: passes when all three are enabled, absent without claude', () => {
+    const all = Object.fromEntries(['fleet', 'sessions', 'alert'].map((m) => [`bdb-aos-${m}@bdb-marketplace`, true]));
+    assert.ok(modsRow({ enabledPlugins: all }).ok);
+    assert.equal(modsRow({}, false), undefined);
+});
+
 test('plugin check: opt-out is not a failure; Codex and agy are checked by their plugin dirs', () => {
     const by = run((h) => {
         write(path.join(h, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'bdb-aos@bdb-marketplace': false } }));

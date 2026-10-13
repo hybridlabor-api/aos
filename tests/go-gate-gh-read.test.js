@@ -153,6 +153,17 @@ test('regressions: --dry-run=false is not a dry run; inline spawn of a non-liter
     assert.deepEqual(g.commandScopes(`node -e "console.log(require('fs').readFileSync('x','utf8'))"`), []);
 });
 
+test('a quoted or escaped & is text, not a control operator (#155)', () => {
+    for (const c of ['cd "/tmp/a & b" && ls -la && wc -l x', "cd '/tmp/a & b' && ls -la && wc -l x ; sed -n '1,5p' x", 'cd /tmp/a\\ \\&\\ b && cat x | head -3 && tail -2 x && grep -n y x'])
+        assert.deepEqual(g.commandScopes(c), [], c);
+    assert.equal(runGate({ tool_name: 'Bash', tool_input: { command: 'cd "/tmp/a & b" && ls -la && wc -l x' } }).status, 0);
+    const push = runGate({ tool_name: 'Bash', tool_input: { command: 'cd "/tmp/a & b" && git push origin main' } });
+    assert.equal(push.status, 2, push.stderr);
+    assert.ok(g.isGuardedCommand('cd "/tmp/a & b" && git push origin main'));
+    assert.ok(g.isGuardedCommand('echo "a & b" && git push origin main'));
+    assert.ok(g.isGuardedCommand("sh -c 'sleep 1 & git push origin main'"));
+});
+
 test('store logs can be read through pure stdin filters; writes stay blocked', () => {
     const LOG = '/Users/x/.aos/gate/s.log';
     for (const c of [`tail -40 ${LOG} | cut -c1-260`, `cat ${LOG} | sort | uniq -c`, `grep -c deny ${LOG} | tr -d ' '`, 'ls -la ~/.aos/gate/ | head -20'])

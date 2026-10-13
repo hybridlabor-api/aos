@@ -69,6 +69,11 @@ describe('fleet package step', () => {
         assert.equal((await pkg.install(ctxOf(home, withVersion('2.1.287')))).changed, true);
     });
 
+    test('too-old Claude Code: the result names the found version and the exact fix', async () => {
+        const r = await pkg.install(ctxOf(mkHome(), withVersion('2.1.162')));
+        assert.equal(r.hint, 'Claude Code in PATH is 2.1.162, mods need >= 2.1.287: run `claude update`, then `aos package install fleet|sessions|alert`');
+    });
+
     test('missing claude is skipped, thrown or failing run alike', async () => {
         for (const run of [async () => { throw new Error('ENOENT'); }, async () => ({ status: 127, stdout: '' })]) {
             const home = mkHome();
