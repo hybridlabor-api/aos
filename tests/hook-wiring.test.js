@@ -92,6 +92,28 @@ describe('mergeBdbSettingsHooks', () => {
         assert.equal(fs.readFileSync(p, 'utf8'), '{ this is not json');
         assert.ok(fs.existsSync(`${p}.bdb-new.json`), 'merged result goes to a sidecar');
     });
+
+    test('every hook wired into settings.json gets an explicit positive timeout', () => {
+        const p = settingsPath('timeouts.json');
+        mergeBdbSettingsHooks(p);
+        const s = readSettings(p);
+
+        const allHooks = Object.values(s.hooks).flat().flatMap((e) => e.hooks);
+        assert.ok(allHooks.length > 0);
+        for (const h of allHooks) {
+            assert.equal(typeof h.timeout, 'number', `hook ${h.command} missing numeric timeout`);
+            assert.ok(h.timeout > 0, `hook ${h.command} timeout must be > 0`);
+        }
+
+        const checkedScripts = ['go-gate.mjs', 'go-token.mjs', 'go-grant.mjs', 'graph-gate.mjs', 'a2a-inbox.mjs', 'memb-inject.mjs'];
+        for (const script of checkedScripts) {
+            const matches = allHooks.filter((h) => h.command.includes(script));
+            assert.ok(matches.length > 0, `expected at least one entry for ${script}`);
+            for (const m of matches) {
+                assert.ok(typeof m.timeout === 'number' && m.timeout > 0, `expected positive timeout for ${script}`);
+            }
+        }
+    });
 });
 
 // installGlobalHooks() writes to $HOME, which installer.js resolves once at
