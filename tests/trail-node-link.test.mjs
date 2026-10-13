@@ -141,6 +141,8 @@ describe('trail relay hook: AOS_TRAIL_NODE / AOS_TRAIL_PLAN', () => {
         child.on('exit', resolve);
         child.stdin.end(JSON.stringify({ session_id: 'w1', cwd: '/abs/repo', hook_event_name: 'PreToolUse', tool_name: 'Edit' }));
       });
+      // the relay posts from a detached worker after the hook has exited
+      for (let i = 0; i < 100 && !bodies.length; i++) await new Promise((r) => setTimeout(r, 20));
     } finally {
       server.close();
     }
