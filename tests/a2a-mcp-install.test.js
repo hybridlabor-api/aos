@@ -223,7 +223,7 @@ describe('A2A MCP Installer Hardening (WP-A2A-MCP-4)', () => {
     assert.match(seen2, /not a valid A2A session name/, 'a set invalid override must still warn');
   });
 
-  test('hardening: two writes to one config in one process keep two distinct backups, the first holding the ORIGINAL content', () => {
+  test('hardening: two writes to one config in one process keep ONE backup (once per file per run), holding the ORIGINAL content', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'a2a-bak-'));
     const file = path.join(dir, 'mcp.json');
     fs.writeFileSync(file, JSON.stringify({ mcpServers: { mine: { command: 'echo' } } }, null, 2));
@@ -235,12 +235,9 @@ describe('A2A MCP Installer Hardening (WP-A2A-MCP-4)', () => {
     const backups = fs.readdirSync(dir)
       .filter((f) => /\.bak(\.\d+)?$/.test(f))
       .map((f) => ({ f, suffixed: /\.bak\.\d+$/.test(f), content: fs.readFileSync(path.join(dir, f), 'utf8') }));
-    assert.equal(backups.length, 2, `two distinct backups expected (${JSON.stringify(backups.map((x) => x.f))})`);
-    assert.equal(new Set(backups.map((x) => x.f)).size, 2, 'backup names must be distinct');
-    const first = JSON.parse(fs.readFileSync(path.join(dir, backups.find((x) => !x.suffixed).f), 'utf8'));
-    const second = JSON.parse(fs.readFileSync(path.join(dir, backups.find((x) => x.suffixed).f), 'utf8'));
-    assert.deepEqual(first, { mcpServers: { mine: { command: 'echo' } } }, 'the FIRST backup must still hold the ORIGINAL content');
-    assert.deepEqual(second, { mcpServers: { aos_stuff: 1 } }, 'the second backup must hold the post-first-write content');
+    assert.equal(backups.length, 1, `one backup expected (${JSON.stringify(backups.map((x) => x.f))})`);
+    const first = JSON.parse(fs.readFileSync(path.join(dir, backups[0].f), 'utf8'));
+    assert.deepEqual(first, { mcpServers: { mine: { command: 'echo' } } }, 'the backup must hold the ORIGINAL content, not an intermediate write');
   });
 
   test('hardening: a failing rename between tmp write and replace leaves the original config intact with no temp leftovers', () => {

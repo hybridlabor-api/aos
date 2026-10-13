@@ -4,6 +4,13 @@ Question: does a `PreToolUse` hook fire (a) under `codex exec` and (b) under `ao
 
 **Status: nothing here has been run.** Codex calls a paid API, so the test needs a working login and your knowledge. Everything below that says UNVERIFIED stays that way until `scripts/codex-gate-smoke.mjs --run` was executed and the result is written in the table at the end.
 
+## Rules file: the enforced layer (verified on Windows, Codex 0.162.1)
+
+- Hooks are a guardrail only: under `codex exec` (approval never, bypassPermissions) Codex 0.162.1 ignores a PreToolUse deny and runs the command anyway.
+- Codex execution-policy rules do enforce, also through the `powershell.exe -Command` wrapper. AOS writes `~/.codex/rules/aos-gate.rules` (removed by `aos-uninstall`, checked by `aos-doctor` as "Codex rules backstop"). Every rule is `decision = "prompt"`: interactive Codex asks the human, and with approval never the command is rejected (fail closed).
+- Limits: rules match by command prefix. Flags between program and subcommand (`git -C x push`, `gh -R o/r pr merge`) are not matched; there the hook still applies where Codex honours it.
+- Test with a real probe, for example `codex exec "run: git push --dry-run"` in a scratch repo, and check that the command is rejected or prompts. `codex execpolicy check` does not unwrap shell wrappers, so it proves nothing about `powershell.exe -Command`.
+
 ## What is known (codex-cli 0.154.0, from the plan's section 9b)
 
 - `codex features list` shows `hooks stable true`; events include PreToolUse, PermissionRequest, PostToolUse, SessionStart, UserPromptSubmit, Stop.
@@ -14,7 +21,7 @@ Question: does a `PreToolUse` hook fire (a) under `codex exec` and (b) under `ao
 
 ## Installer
 
-The default install already writes the go-gate `[[hooks.PreToolUse]]` stanza (matcher `^(Bash|run_command)$`) into the Codex `config.toml` block between `# AOS:HOOKS:START` and `# AOS:HOOKS:END`. `aos --codex-gate` prints exactly that stanza plus the trust note and exits without writing anything, so you can inspect or copy it. Codex asks you to trust new or changed hooks; approve the go-gate hook there or it stays inactive.
+The default install already writes the go-gate `[[hooks.PreToolUse]]` stanza (no matcher: Codex runs shell commands through its `exec`/`exec_command` tool, and the former matcher `^(Bash|run_command)$` never fired, so a `git push` from `codex exec` ran on Windows, Codex 0.162.1; the gate lets calls without a command through and also reads `tool_input.cmd`) into the Codex `config.toml` block between `# AOS:HOOKS:START` and `# AOS:HOOKS:END`. `aos --codex-gate` prints exactly that stanza plus the trust note and exits without writing anything, so you can inspect or copy it. Codex asks you to trust new or changed hooks; approve the go-gate hook there or it stays inactive.
 
 ## Procedure
 

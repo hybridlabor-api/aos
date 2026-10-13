@@ -320,7 +320,7 @@ npx -y @hybridlabor-api/aos@latest
 | `--profile=full` | `standard` plus jedes optionale Modul (gleich wie `--modules=all` mit `-y`). |
 | `--no-hooks` | Überspringt nur die Context-Injection-Hooks (`memb-inject`, `rules-inject`, `trail-relay`, `trail-autostart`). |
 | `--hooks-only` | Installiert oder aktualisiert Hooks und ihre Settings-Einträge und beendet sich dann. Mit `--no-hooks` frischt es nur die Gates auf. |
-| `--without=id,id` | Schließt Packages nach Registry-Id aus (`memb, synapse, openwiki, remote, ao, creator, hardware, rustauri, styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, codebase-memory`). Wird gespeichert, damit Updates und Reparatur sie überspringen. |
+| `--without=id,id` | Schließt Packages nach Registry-Id aus (`memb, synapse, openwiki, remote, ao, creator, hardware, rustauri, styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, sessions, alert`) oder das Bundle `memory` (memB, deja und OpenWiki: [Unified Memory](docs/unified-memory.md)). Wird gespeichert, damit Updates und Reparatur sie überspringen. |
 | `--modules=id,id` | Nimmt in einem sonst nicht-interaktiven Lauf nur die genannten optionalen Module auf (zum Beispiel `--modules=creator` oder `--modules=codebase-memory`); `all` nimmt jedes Modul. Auch über `AOS_MODULES` setzbar. |
 | `AOS_DISABLED_MCPS=a,b` | Hält diese mitgelieferten MCP-Server-Namen aus den Harness-Konfigurationen heraus, die der Installer schreibt. |
 | `--dry-run` | Gibt aus, was sich ändern würde, und schreibt nichts. |
@@ -892,7 +892,7 @@ flowchart LR
 | Antigravity (agy) | `agy plugin install <lokales Plugin-Verzeichnis>` — der npm-Installer macht das für dich | den npm-Installer erneut ausführen |
 | OpenCode | lokales Plugin `.opencode/plugins/bdb-aos.js`, vom Installer kopiert; kein Marketplace | die Plugin-Datei überschreiben |
 
-Der Claude-Marketplace `bdb-marketplace` bietet vier Plugins: `bdb-aos` (Skills und Subagents), `bdb-aos-fleet`, `bdb-aos-sessions` und `bdb-aos-alert`. Den Fleet-Mod registriert der Installer selbst; die anderen beiden aktivierst du mit `claude plugin install bdb-aos-sessions@bdb-marketplace` und `claude plugin install bdb-aos-alert@bdb-marketplace`. Der npm-Installer führt die Plugin-Registrierung jedes Harness weiterhin nach bestem Wissen aus; die CLI-Befehle oben sind die manuellen Entsprechungen. Der Marketplace-Weg trägt nur Skills und Subagents — der npm-Installer ist der empfohlene Weg, weil er auch Gate-Hooks und MCP-Server aufsetzt.
+Der Claude-Marketplace `bdb-marketplace` bietet vier Plugins: `bdb-aos` (Skills und Subagents), `bdb-aos-fleet`, `bdb-aos-sessions` und `bdb-aos-alert`. Findet der Installer Claude Code, bietet er die drei Mods an (`-y` aktiviert sie) und registriert sie selbst in `~/.claude/settings.json`; `--without=fleet,sessions,alert` oder `--profile=minimal` überspringt sie, Uninstall entfernt sie. Der npm-Installer führt die Plugin-Registrierung jedes Harness weiterhin nach bestem Wissen aus; die CLI-Befehle oben sind die manuellen Entsprechungen. Der Marketplace-Weg trägt nur Skills und Subagents — der npm-Installer ist der empfohlene Weg, weil er auch Gate-Hooks und MCP-Server aufsetzt.
 
 **Skills-Discovery.** Jeder Harness findet Skills in seinem nativen Verzeichnis (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.roo/skills` usw.). Um nach der Installation weitere Skills zu stöbern und zu installieren:
 
@@ -1462,6 +1462,8 @@ npx skills add hybridlabor-api/aos
 ### memB: lokales Vektorgedächtnis
 
 `@hybridlabor-api/memb`: offline, lokales Vektorgedächtnis mit MCP-Server, WebUI auf Port 8088 und einem Ambient-Hook, der relevante Memories in Claude-Code-Sessions injiziert. Skills: `memb-skill`, `memb-ingest`, `bdb-memb-mcp`.
+
+memB ist kein optionales Modul mehr: Es gehört zur standardmäßigen [Unified Memory](docs/unified-memory.md) (memB, deja und OpenWiki, plus Codebase Memory MCP, wenn du programmierst) und wird mit dem Profil standard und mit `-y` installiert. Abwählen mit `--without=memory` oder `--profile=minimal`; ohne sie bekommt kein Harness `memb_mcp`, `deja` oder den `memb-inject`-Hook.
 
 ### deja: Transkript-Indexierung
 

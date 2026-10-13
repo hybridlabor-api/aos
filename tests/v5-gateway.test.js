@@ -423,10 +423,10 @@ describe('pkg-gateway', () => {
         await assert.rejects(pkg.install(ctx), /npm install/);
     });
 
-    test('win32 update ends the running task before it runs it', async () => {
-        const { ctx, calls } = mkCtx(tmp(), { platform: 'win32' });
+    test('win32 update drops the legacy task and stops the running gateway before it starts the vbs', async () => {
+        const { ctx, calls } = mkCtx(tmp(), { platform: 'win32', env: { APPDATA: tmp() } });
         await pkg.update(ctx);
-        assert.deepEqual(calls.filter((c) => c[0] === 'schtasks').map((c) => c[1]), ['/Create', '/End', '/Run']);
+        assert.deepEqual(calls.filter((c) => ['schtasks', 'powershell', 'wscript.exe'].includes(c[0])).map((c) => c.slice(0, 2).join(' ')), ['schtasks /Delete', 'powershell -NoProfile', `wscript.exe ${path.join(ctx.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'com.bdb.aos.gateway.vbs')}`]);
     });
 
     test('a failing systemctl is reported with its first stderr line', async () => {
@@ -523,15 +523,36 @@ describe('pkg-gateway', () => {
         ]);
     });
 
-    test('win32 install creates the AOS MCP Gateway scheduled task and runs it', async () => {
-        const { ctx, calls } = mkCtx(tmp(), { platform: 'win32' });
+    test('win32 install writes a Startup .vbs (no admin) and starts it once; the vbs is the detect record', async () => {
+        const home = tmp();
+        const { ctx, calls } = mkCtx(home, { platform: 'win32', env: { APPDATA: tmp() } });
         await pkg.install(ctx);
-        const create = calls.find((c) => c[0] === 'schtasks' && c[1] === '/Create');
-        assert.deepEqual(create.slice(0, 9), ['schtasks', '/Create', '/TN', 'AOS MCP Gateway', '/SC', 'ONLOGON', '/TR', `"/opt/node/bin/node" "${path.join(ROOT, 'bin', 'aos-gateway.mjs')}" serve`, '/F']);
-        assert.deepEqual(calls.find((c) => c[0] === 'schtasks' && c[1] === '/Run'), ['schtasks', '/Run', '/TN', 'AOS MCP Gateway']);
+        const vbs = path.join(ctx.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'com.bdb.aos.gateway.vbs');
+        const text = fs.readFileSync(vbs, 'utf8');
+        assert.ok(text.includes(`WshShell.CurrentDirectory = "${home}"`), text);
+        assert.ok(text.includes(`WshShell.Run """/opt/node/bin/node"" ""${path.join(ROOT, 'bin', 'aos-gateway.mjs')}"" ""serve""", 0, False`), text);
+        assert.deepEqual(calls.filter((c) => c[0] === 'wscript.exe'), [['wscript.exe', vbs]]);
+        assert.deepEqual(calls.filter((c) => c[0] === 'schtasks'), [['schtasks', '/Delete', '/TN', 'AOS MCP Gateway', '/F']], 'only the best-effort legacy cleanup, no /Create');
+        assert.ok(fs.existsSync(path.join(cfg.gatewayDir(home), 'restart.at')), 'started: restart stamp written');
+        assert.equal(pkg.detect(ctx), false, 'no 1mcp yet');
+        const bin = path.join(cfg.gatewayDir(home), 'node_modules', '.bin', '1mcp.cmd');
+        fs.mkdirSync(path.dirname(bin), { recursive: true });
+        fs.writeFileSync(bin, '');
+        assert.equal(pkg.detect(ctx), true);
+        fs.unlinkSync(vbs);
+        assert.equal(pkg.detect(ctx), false, 'without the vbs it is not installed');
     });
 
-    test('uninstall removes the linux unit and the windows task', async () => {
+    test('win32: a failing wscript is reported and writes no restart stamp', async () => {
+        const home = tmp();
+        const say = [];
+        const { ctx } = mkCtx(home, { platform: 'win32', env: { APPDATA: tmp() }, log: (m) => say.push(m), run: async (cmd) => (cmd === 'wscript.exe' ? { status: 1, stderr: 'boom' } : { status: 0, stdout: '' }) });
+        await pkg.install(ctx);
+        assert.ok(say.includes('wscript.exe failed: boom; start it with aos-gateway serve'), say.join(' | '));
+        assert.ok(!fs.existsSync(path.join(cfg.gatewayDir(home), 'restart.at')));
+    });
+
+    test('uninstall removes the linux unit and the windows startup vbs', async () => {
         const lin = mkCtx(tmp(), { platform: 'linux' });
         await pkg.install(lin.ctx);
         const unit = path.join(lin.ctx.home, '.config', 'systemd', 'user', 'com.bdb.aos.gateway.service');
@@ -539,11 +560,17 @@ describe('pkg-gateway', () => {
         await pkg.uninstall({ ...lin.ctx, now: 1700000000000 });
         assert.deepEqual(lin.calls.filter((c) => c[0] === 'systemctl'), [['systemctl', '--user', 'disable', '--now', 'com.bdb.aos.gateway.service'], ['systemctl', '--user', 'daemon-reload']]);
         assert.ok(!fs.existsSync(unit));
-        const win = mkCtx(tmp(), { platform: 'win32' });
+        const win = mkCtx(tmp(), { platform: 'win32', env: { APPDATA: tmp() } });
         await pkg.install(win.ctx);
+        const vbs = path.join(win.ctx.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'com.bdb.aos.gateway.vbs');
+        assert.ok(fs.existsSync(vbs));
         win.calls.length = 0;
         await pkg.uninstall({ ...win.ctx, now: 1700000000000 });
         assert.deepEqual(win.calls.filter((c) => c[0] === 'schtasks'), [['schtasks', '/Delete', '/TN', 'AOS MCP Gateway', '/F']]);
+        const stop = win.calls.find((c) => c[0] === 'powershell').join(' ');
+        assert.ok(stop.includes(path.join(ROOT, 'bin', 'aos-gateway.mjs')) && stop.includes(path.join(cfg.gatewayDir(win.ctx.home), 'node_modules')) && stop.includes('Stop-Process'), stop);
+        assert.ok(!win.calls.some((c) => c[0] === 'wscript.exe'), 'uninstall starts nothing');
+        assert.ok(!fs.existsSync(vbs));
     });
 
     test('harnesses switch only when verify reports the gateway running', async () => {

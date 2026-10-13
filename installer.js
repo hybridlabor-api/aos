@@ -30,6 +30,7 @@ const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
 const systemdUnits = require('./lib/systemd-units');
 const mcpSecrets = require('./lib/mcp-secrets');
+const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
@@ -167,6 +168,10 @@ try {
 let contextHooksOn = true;
 let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
+// Unified memory (docs/unified-memory.md): off when memb is excluded; then no memb_mcp, deja MCP or memb-inject is wired.
+let memoryOn = true;
+const droppedHook = (cmd) => typeof cmd === 'string'
+    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && cmd.includes('memb-inject.mjs')));
 
 if (DRY_RUN) {
     const guardedFns = ['writeFileSync', 'mkdirSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'symlinkSync', 'appendFileSync', 'chmodSync', 'rmdirSync', 'rmSync'];
@@ -466,7 +471,9 @@ function backupConfigFile(filePath) {
     if (DRY_RUN) { log.message(`[dry-run] backup: ${filePath}`); return true; }
     try {
         // created `wx` with 0600 at open time: no world-readable window
-        configBackups.push(mcpSecrets.safeBackup(filePath, `${filePath}.${timestamp}.bak`));
+        // an earlier writer's backup also counts: the plaintext-secrets notice must still name it
+        const bak = backupOnce(filePath, () => mcpSecrets.safeBackup(filePath, `${filePath}.${timestamp}.bak`)) || backupOf(filePath);
+        if (bak) configBackups.push(bak);
         return true;
     } catch (e) {
         log.warn(`Could not back up ${filePath}, not rewriting it: ${e.message}`);
@@ -1124,9 +1131,7 @@ function detectPlatforms() {
         },
         {
             key: 'opencode', name: 'OpenCode CLI',
-            path: process.platform === 'win32'
-                ? path.join(process.env.APPDATA || homeDir, 'opencode')
-                : path.join(homeDir, '.config', 'opencode'),
+            path: path.join(homeDir, '.config', 'opencode'),
             evidence: () => hasExecutable('opencode'),
         },
     ];
@@ -1660,7 +1665,7 @@ function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
         { dir: path.join(claudeConfigDir(homeDir), 'skills'), key: 'claudecode' },
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
-        { dir: process.platform === 'win32' ? path.join(process.env.APPDATA || homeDir, 'opencode', 'skills') : path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
+        { dir: path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 }
 
@@ -3276,6 +3281,28 @@ async function applyCodingModeStep({ flag } = {}) {
     }
 }
 
+// With unified memory, a coding tool on this machine (binary or app, never a config AOS wrote) answers
+// "Do you use AOS for coding?" with yes. --coding/--no-coding and an answer already stored win.
+function memoryCodingOptions() {
+    if (!memoryOn || codebaseMemory.parseCodingFlag(process.argv) !== undefined) return {};
+    if (typeof v5Profile.readSettings(homeDir).codingMode === 'boolean') return {};
+    const tools = detectPlatforms().filter((d) => !d.chosen && d.key !== 'claudedesktop');
+    return tools.length ? { flag: true } : {};
+}
+
+// The interactive "skip unified memory" answer is saved like --without=memory, so update, repair,
+// --hooks-only and the gateway keep memb_mcp, deja and memb-inject unwired too.
+function declineUnifiedMemory() {
+    for (const id of v5Profile.BUNDLES.memory) installExcluded.add(id);
+    if (DRY_RUN) return;
+    try {
+        const st = v5Profile.readSettings(homeDir);
+        v5Profile.writeSettings(homeDir, { ...st, disabled: [...new Set([...st.disabled, ...v5Profile.BUNDLES.memory])] });
+    } catch (e) {
+        log.warn(`Could not save the unified memory choice: ${e.message}`);
+    }
+}
+
 async function installOSRemoteGateway() {
     const remoteDir = path.join(moduleBasePath(), 'bdb-os-remote');
     if (!downloadOrUpdateModule('@hybridlabor-api/bdb-os-remote', remoteDir, 'BDB OS Remote Gateway')) {
@@ -4150,7 +4177,10 @@ async function installMcpsForTarget(paths, ctx) {
             const ok = runNpmWithRetry('npm install --no-audit --no-fund', { cwd: targetFolder }, `npm install for ${mcpFolder}`);
             if (ok && (fs.existsSync(path.join(targetFolder, 'tsconfig.json')) || fs.existsSync(path.join(targetFolder, 'tsconfig.build.json')))) {
                 log.step(`Compiling TypeScript for ${mcpFolder}...`);
-                const built = runNpmWithRetry('npm run build', { cwd: targetFolder }, `npm run build for ${mcpFolder}`);
+                // touchdesigner-mcp's build ends in build:mcpb (npx @anthropic-ai/mcpb pack), a Claude Desktop bundle the
+                // server does not need; without a TTY npx will not fetch it and the whole build failed (exit 127).
+                const buildCmd = mcpFolder === 'touchdesigner-mcp' ? 'npm run build:gen && npm run build:dist' : 'npm run build';
+                const built = runNpmWithRetry(buildCmd, { cwd: targetFolder }, `${buildCmd} for ${mcpFolder}`);
                 // runNpmWithRetry already warned with the failure detail; this
                 // just makes the consequence visible now instead of only later,
                 // when the config-entry check below finds the missing dist file.
@@ -4229,7 +4259,10 @@ async function installMcpsForTarget(paths, ctx) {
                         log.warn('memB MCP venv still cannot import FastMCP after the mcp install; memb-mcp will fail to start until it is repaired.');
                     }
                 }
-                const reconcile = reconcileMembVenv(membMcpFolder, { venvPython, entryImport: fastmcpImport });
+                // The FastMCP import alone passes right after the SDK pin above, so a fresh venv was
+                // stamped up to date without requirements.txt (no numpy: run.py died on start).
+                // `import run` is the server's real entry, the same check `aos package verify memb` runs.
+                const reconcile = reconcileMembVenv(membMcpFolder, { venvPython, entryImport: 'import run' });
                 if (reconcile.status === 'failed') log.warn('memB MCP requirements reconcile failed; inspect the venv before relying on memb-mcp.');
             } catch (e) {
                 log.warn(`Failed to set up Python virtual environment for memB: ${e.message}`);
@@ -4303,13 +4336,15 @@ async function installMcpsForTarget(paths, ctx) {
         }
         // AOS_DISABLED_MCPS=a,b: shipped server names that no harness config gets (universal sync reuses this result).
         const dropped = v5Profile.filterMcpServers(parsedMcpConfig.mcpServers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS));
+        if (!memoryOn) dropped.servers = v5Profile.filterMcpServers(dropped.servers, v5Profile.MEMORY_MCPS).servers;
         parsedMcpConfig.mcpServers = dropped.servers;
         if (dropped.unknown.length && !warnedDisabledMcps) {
             warnedDisabledMcps = true;
             log.warn(`AOS_DISABLED_MCPS: unknown MCP name(s) ignored: ${dropped.unknown.join(', ')}. Shipped: ${Object.keys(mcpPicks().servers).join(', ')}`);
         }
         const finalMcpServers = {};
-        const availableFolders = fs.readdirSync(mcpSrcDir);
+        // memb-mcp comes from npm, not mcps/: listed here so its entry goes when it was not selected.
+        const availableFolders = [...fs.readdirSync(mcpSrcDir), CORE_MCP];
 
         // A node MCP's build can fail (see above) or simply never run for a
         // dist-based server that was skipped -- either way an entry pointing
@@ -4900,13 +4935,11 @@ function injectHarnessRules() {
         if (sources.ok) {
             const { globalRules, startcycleContent, agentsMdContent } = sources.value;
 
-            // Run from $HOME, these project files ARE the global files that the
-            // manifest-tracked harness copy below writes; a second writer would
-            // make every update see them as user-edited.
-            // F8: an install or update started inside a repo must not write into that repo (CLAUDE.md,
-            // .cursor/rules, .github, .codex-plugin, .roomodes); a repo gets files only via --project-harness.
+            // F8: an install or update started inside a repo must not write into that repo (.github,
+            // .codex-plugin, .roomodes); a repo gets files only via --project-harness.
+            // ~/CLAUDE.md and ~/AGENTS.md are home files and are synced from any working directory.
             const cwdIsHome = path.resolve(currentDir) === path.resolve(homeDir);
-            if (!cwdIsHome) log.step(`Not run from the home directory: no rule files written into ${currentDir}`);
+            if (!cwdIsHome) log.step(`Not run from the home directory: no project rule files written into ${currentDir}`);
 
             installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
@@ -4946,8 +4979,8 @@ function injectHarnessRules() {
                 }
             }, 'Codex agents unchanged');
 
-            const claudeMdPath = path.join(currentDir, 'CLAUDE.md');
-            if (cwdIsHome) installStep(`sync ${claudeMdPath}`, () => {
+            const claudeMdPath = path.join(homeDir, 'CLAUDE.md');
+            installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
                 // A CLAUDE.md carrying this title is the short, hand-maintained
                 // form (see docs/sessions/audit-agents.md F-01): the GO gate lives in a hook,
@@ -5006,7 +5039,7 @@ function injectHarnessRules() {
             }, '.codex-plugin/system.md is unchanged.');
 
             const homeAgentsPath = path.join(homeDir, 'AGENTS.md');
-            if (cwdIsHome) installStep(`sync ${homeAgentsPath}`, () => {
+            installStep(`sync ${homeAgentsPath}`, () => {
                 if (!fs.existsSync(homeAgentsPath)) {
                     log.step(`${homeAgentsPath} does not exist: not created, only existing files get the managed blocks.`);
                     return;
@@ -5147,7 +5180,7 @@ function applyOpencodePermission(data, configPath, wanted) {
             return;
         }
         const bak = `${configPath}.${timestamp}.bak`;
-        try { fs.copyFileSync(configPath, bak); } catch (e) {
+        try { backupOnce(configPath, () => { fs.copyFileSync(configPath, bak); return bak; }); } catch (e) {
             log.warn(`Could not back up ${configPath}, skipping permission.external_directory: ${e.message}`);
             return;
         }
@@ -5186,7 +5219,7 @@ function appendOptionalOpencodePlugins(data, configPath, optional) {
         if (data.plugin.some((p) => pluginPackageName(p) === pluginPackageName(pin))) continue;
         if (!backedUp && configPath && fs.existsSync(configPath)) {
             const bak = `${configPath}.${timestamp}.bak`;
-            try { fs.copyFileSync(configPath, bak); backedUp = true; } catch (e) {
+            try { backupOnce(configPath, () => { fs.copyFileSync(configPath, bak); return bak; }); backedUp = true; } catch (e) {
                 log.warn(`Could not back up ${configPath}, skipping optional ${name}: ${e.message}`);
                 continue;
             }
@@ -5246,9 +5279,7 @@ function installOpencodeCommands(srcDirPath, destDirPath) {
 function installOpencodePlugin({ targetHome = homeDir, configPath = null, data = null, optional = parseOpencodeOptional(), permission = parseOpencodePermission() } = {}) {
     const opencodeDir = configPath
         ? path.dirname(configPath)
-        : (process.platform === 'win32'
-            ? path.join(process.env.APPDATA || targetHome, 'opencode')
-            : path.join(targetHome, '.config', 'opencode'));
+        : path.join(targetHome, '.config', 'opencode');
 
     const pluginSrc = path.join(srcDir, '.opencode', 'plugins', 'bdb-aos.js');
     let pluginInstalled = false;
@@ -5288,8 +5319,8 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     // Profile flag for the plugin (context behaviours only; gates and A2A are never switched off).
     if (pluginInstalled && !DRY_RUN) {
         try {
-            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn);
-            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}`);
+            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn, memoryOn);
+            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}, memory=${memoryOn}`);
             uninstallRecords.recordOpencodeProfile(targetHome, flag.file);
         } catch (e) {
             log.warn(`Could not write OpenCode plugin profile flag: ${e.message}`);
@@ -5363,7 +5394,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         const serialized = JSON.stringify(data, null, 2);
         if (beforeSerialized === serialized) return data;
         try {
-            if (fs.existsSync(configPath)) fs.copyFileSync(configPath, `${configPath}.${timestamp}.bak`);
+            if (fs.existsSync(configPath)) backupOnce(configPath, () => { const b = `${configPath}.${timestamp}.bak`; fs.copyFileSync(configPath, b); return b; });
             fs.mkdirSync(path.dirname(configPath), { recursive: true });
             fs.writeFileSync(configPath, serialized, { mode: 0o600 });
             try { fs.chmodSync(configPath, 0o600); } catch (e) { logDebug(e, 'chmod opencode config'); }
@@ -5394,6 +5425,9 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     // rules-inject.mjs reads the rules text from here when it does not run from a checkout.
     const rulesLib = path.join(srcDir, 'lib', 'destructive-rules.js');
     if (fs.existsSync(rulesLib)) copyDirRecursiveSync(rulesLib, path.join(targetHome, '.agents', 'lib', 'destructive-rules.js'));
+    // aos-acp (installed in ~/.agents/bin) loads ../lib/cli-spawn.js to start npx/opencode .cmd shims on Windows.
+    const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
+    if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));
     const claudeSettings = path.join(claudeConfigDir(targetHome), 'settings.json');
     mergeBdbSettingsHooks(claudeSettings);
     const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });
@@ -5444,15 +5478,14 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir } =
     if (fs.existsSync(workflowsSrc)) {
         copyDirRecursiveSync(workflowsSrc, codexWorkflowsDir);
     }
-    mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'));
+    if (mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'))) codexHooksChanged = true;
+    installCodexRules({ targetHome });
 
     // 4. OpenCode CLI
     installOpencodePlugin({
         targetHome,
         configPath: path.join(
-            process.platform === 'win32'
-                ? path.join(process.env.APPDATA || targetHome, 'opencode')
-                : path.join(targetHome, '.config', 'opencode'),
+            path.join(targetHome, '.config', 'opencode'),
             'opencode.jsonc'
         ),
     });
@@ -5617,7 +5650,7 @@ function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
         settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
         if (!Array.isArray(settings.hooks.SessionStart)) settings.hooks.SessionStart = [];
         settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/a2a-session.mjs"' }] });
-        if (fs.existsSync(settingsPath)) fs.copyFileSync(settingsPath, `${settingsPath}.${timestamp}.bak`);
+        if (fs.existsSync(settingsPath)) backupOnce(settingsPath, () => { const b = `${settingsPath}.${timestamp}.bak`; fs.copyFileSync(settingsPath, b); return b; });
         fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
         fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
         log.step('Registered a2a-session.mjs Claude SessionStart sidecar hook (skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0)');
@@ -5653,19 +5686,30 @@ function installGlobalBinaries() {
     }
 
     const isWin = process.platform === 'win32';
-    const cliBins = ['aos-config', 'aos-dashboard', 'aos-uninstall', 'aos-store', 'aos-doctor', 'aos-acp', 'aos-bus', 'aos-gateway', 'aos-a2a', 'aos-gate'];
-    // aos-bus ships as a hook (it imports ./go-gate.mjs), so its launcher points into ~/.claude/hooks.
-    const binDirOf = (name) => (name === 'aos-bus' ? path.join(claudeConfigDir(homeDir), 'hooks') : globalAgentsBin);
+    const { LAUNCHERS, LAUNCHER_MARKER, AOS_NPX_SPEC, launcherTarget } = uninstallRecords;
     const wired = [];
 
-    for (const name of cliBins) {
-        const targetMjs = path.join(binDirOf(name), `${name}.mjs`);
-        if (!fs.existsSync(targetMjs)) continue;
+    for (const name of LAUNCHERS) {
+        let run;
+        if (name === 'aos') {
+            const shPath = path.join(localBinDir, name);
+            // `aos` is a common name: never overwrite somebody else's file.
+            try { if (fs.existsSync(shPath) && !fs.readFileSync(shPath, 'utf8').includes(LAUNCHER_MARKER)) continue; } catch { continue; }
+            run = `npx -y ${AOS_NPX_SPEC}${aosDistTag(pkg.version)}`;
+        } else if (name === 'aos-uninstall') {
+            // aos-uninstall.mjs requires installer.js and lib/ next to it; ~/.agents/bin has neither
+            // (Lenovo P15: "Cannot find module '../installer.js'"). Run it from the package instead.
+            run = `npx -y -p ${AOS_NPX_SPEC}${aosDistTag(pkg.version)} aos-uninstall`;
+        } else {
+            const targetMjs = launcherTarget(homeDir, name);
+            if (!fs.existsSync(targetMjs)) continue;
+            run = `node "${targetMjs}"`;
+        }
 
         // Shell wrapper for Unix / Git Bash
         const shPath = path.join(localBinDir, name);
         wired.push(name);
-        const shContent = `#!/bin/sh\n# aos-launcher\nexec node "${targetMjs}" "$@"\n`;
+        const shContent = `#!/bin/sh\n${LAUNCHER_MARKER}\nexec ${run} "$@"\n`;
         try {
             fs.writeFileSync(shPath, shContent, { mode: 0o755 });
             try { fs.chmodSync(shPath, 0o755); } catch (e) { logDebug(e, `chmod ${shPath}`); }
@@ -5674,15 +5718,40 @@ function installGlobalBinaries() {
         // Windows CMD and PowerShell launchers
         if (isWin) {
             const cmdPath = path.join(localBinDir, `${name}.cmd`);
-            const cmdContent = `@echo off\r\nnode "${targetMjs}" %*\r\n`;
+            const cmdContent = `@echo off\r\nrem ${LAUNCHER_MARKER}\r\n${run} %*\r\n`;
             try { fs.writeFileSync(cmdPath, cmdContent); } catch (e) { logDebug(e, `write ${cmdPath}`); }
 
             const ps1Path = path.join(localBinDir, `${name}.ps1`);
-            const ps1Content = `node "${targetMjs}" $args\r\n`;
+            const ps1Content = `${LAUNCHER_MARKER}\r\n${run} $args\r\n`;
             try { fs.writeFileSync(ps1Path, ps1Content); } catch (e) { logDebug(e, `write ${ps1Path}`); }
         }
     }
     log.step(`Wired CLI launcher binaries (${wired.join(', ') || 'none'}) in ${localBinDir}`);
+    const hint = localBinPathHint(localBinDir);
+    if (hint) log.warn(hint);
+}
+
+// The npm dist-tag a version was published under (same rule as release-please.yml):
+// a prerelease goes to its own channel (5.0.0-beta.3 -> beta), everything else to latest.
+// A channel tag rather than the exact version, so `aos update` reaches the newest release.
+function aosDistTag(version) {
+    const m = /^[^-]+-([A-Za-z]+)/.exec(String(version));
+    return m ? m[1] : 'latest';
+}
+
+// One line telling the user how to put ~/.local/bin on PATH, or null when it already is.
+function localBinPathHint(localBinDir, { pathEnv = process.env.PATH || '', platform = process.platform, shell = process.env.SHELL || '' } = {}) {
+    const win = platform === 'win32';
+    const norm = (p) => (win ? p.replace(/\//g, '\\').toLowerCase() : p).replace(/[\\/]+$/, '');
+    const want = norm(localBinDir);
+    if (pathEnv.split(win ? ';' : ':').filter(Boolean).some((p) => norm(p) === want)) return null;
+    if (win) {
+        return `${localBinDir} is not on your PATH. Add it in PowerShell, then open a new terminal: [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ';${localBinDir}', 'User')`;
+    }
+    const sh = path.basename(shell) || (platform === 'darwin' ? 'zsh' : 'bash');
+    if (sh === 'fish') return `${localBinDir} is not on your PATH. Add it, then open a new terminal: fish_add_path ${localBinDir}`;
+    const rc = sh === 'zsh' ? '~/.zshrc' : '~/.bashrc';
+    return `${localBinDir} is not on your PATH. Add it, then open a new terminal: echo 'export PATH="$HOME/.local/bin:$PATH"' >> ${rc}`;
 }
 
 // Merge the BDB hooks -- the two gates plus the memB ambient-memory hook --
@@ -5737,7 +5806,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
                 .filter((e) => !isBdbEntry(e));
             // Only context-injection hooks can be dropped here (--no-hooks, minimal profile); the gates never are.
             const own = cloneBdbEntries(entries);
-            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn ? own : v5Profile.dropContextHooks(own))];
+            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn && memoryOn ? own : v5Profile.dropContextHooks(own, droppedHook))];
         }
         return merged;
     };
@@ -5773,7 +5842,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         if (existing) {
             // hrtime counts from boot: shortly after a boot it has fewer than 13 digits, which the prune
             // regex below skipped (backups piled up). Fixed width also keeps the name sort chronological.
-            fs.copyFileSync(settingsPath, `${settingsPath}.${String(process.hrtime.bigint()).padStart(20, '0')}.bak`);
+            backupOnce(settingsPath, () => { const b = `${settingsPath}.${String(process.hrtime.bigint()).padStart(20, '0')}.bak`; fs.copyFileSync(settingsPath, b); return b; });
             const dir = path.dirname(settingsPath);
             const base = path.basename(settingsPath);
             const baks = fs.readdirSync(dir).filter((f) => f.startsWith(`${base}.`) && /\.\d{13,}\.bak$/.test(f)).sort();
@@ -5881,10 +5950,8 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
     };
 
     const allHookNames = Object.keys(bdbHooks);
-    if (!contextHooksOn) {
-        delete bdbHooks['aos-trail-relay'];
-        bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !v5Profile.isContextCommand(h.command));
-    }
+    if (!contextHooksOn) delete bdbHooks['aos-trail-relay'];
+    bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command));
 
     // Earlier AOS versions wrote all handlers under one named hook called "hooks" (old wrapped shapes
     // included). Strip the BDB handlers out of it, keep foreign ones, and drop it when nothing is left.
@@ -6071,18 +6138,80 @@ function mergeCodexTomlMcpServers(configTomlPath, servers) {
     return skipped;
 }
 
-// The go-gate PreToolUse stanza for Codex's config.toml. Whether it fires under `codex exec`
-// or under aos-acp is UNVERIFIED (docs/codex-gate-smoke.md).
+// The go-gate PreToolUse stanza for Codex's config.toml. No matcher: Codex runs shell commands
+// through its exec/exec_command tool, so `^(Bash|run_command)$` never fired and a git push ran
+// (Lenovo P15, Codex 0.162.1). The gate itself lets tool calls without a command through.
 function codexGateSnippet(hooksDir) {
     return [
         '[[hooks.PreToolUse]]',
-        'matcher = "^(Bash|run_command)$"',
         '[[hooks.PreToolUse.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(hooksDir, 'go-gate.mjs')}"`)}`,
         'timeout = 30',
     ].join('\n');
 }
+
+// Codex ignores hook denials in `codex exec` / bypass modes, but its execution-policy rules enforce.
+// One prefix_rule per irreversible command the go-gate guards. Matching is by command prefix: flags
+// between the program and the subcommand (git -C x push, gh -R o/r pr merge) are not matched; the hook
+// still covers those where Codex honours hooks. Match examples are validated by Codex at load time.
+const CODEX_RULE_SPECS = [
+    [['git', 'push'], 'git push origin main', 'git status'],
+    [['npm', 'publish'], 'npm publish', 'npm view left-pad'],
+    [['npm', 'version'], 'npm version patch', 'npm view left-pad'],
+    [['gh', 'release', 'create'], 'gh release create v1.0.0', 'gh release list'],
+    [['gh', 'pr', 'merge'], 'gh pr merge 12', 'gh pr view 12'],
+    [['gh', 'repo', 'delete'], 'gh repo delete o/r', 'gh repo view o/r'],
+    [['git', 'reset', '--hard'], 'git reset --hard HEAD', 'git reset --soft HEAD'],
+    [['git', 'clean', '-f'], 'git clean -f', 'git clean -n'],
+    [['git', 'clean', '-fd'], 'git clean -fd', 'git clean -n'],
+    [['git', 'clean', '-fdx'], 'git clean -fdx', 'git clean -n'],
+    [['rm', '-rf'], 'rm -rf build', 'rm file.txt'],
+    [['rm', '-fr'], 'rm -fr build', 'rm file.txt'],
+    [['rm', '-r'], 'rm -r build', 'rm file.txt'],
+    [['rm', '-R'], 'rm -R build', 'rm file.txt'],
+];
+
+function codexGateRules() {
+    const q = JSON.stringify;
+    const rules = CODEX_RULE_SPECS.map(([pattern, match, notMatch]) => `prefix_rule(pattern = ${q(pattern)}, decision = "prompt", justification = "AOS go-gate: needs a human GO (type GO, or approve interactively)", match = [${q(match)}], not_match = [${q(notMatch)}])`);
+    return [
+        uninstallRecords.CODEX_RULES_HEADER,
+        '# Prefix matching only: flags between program and subcommand (git -C x push, gh -R o/r pr merge) are not matched;',
+        '# the go-gate hook still covers those where Codex honours hooks.',
+        '',
+        ...rules,
+        '',
+    ].join('\n');
+}
+
+// Writes <codex home>/rules/aos-gate.rules. A file at that path without the AOS-OWNED header is the user's: warn, never overwrite.
+function installCodexRules({ targetHome = homeDir } = {}) {
+    const dir = path.join(targetHome, '.codex', 'rules');
+    const file = path.join(dir, 'aos-gate.rules');
+    const want = codexGateRules();
+    try {
+        const have = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+        if (have === want) return false;
+        if (have !== null && !have.startsWith(uninstallRecords.CODEX_RULES_HEADER)) {
+            log.warn(`${file} exists and is not from AOS; kept. The Codex go-gate rules backstop is not installed.`);
+            return false;
+        }
+        const dirCreated = !fs.existsSync(dir);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(file, want, { mode: 0o644 });
+        uninstallRecords.recordCodexRules(targetHome, { dirCreated });
+        log.step(`Installed Codex go-gate rules to ${file}`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not write ${file}: ${e.message}`);
+        return false;
+    }
+}
+
+const CODEX_TRUST_REMINDER ='Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.';
+// Set when an install changed the AOS hook groups in ~/.codex/config.toml; printed as the last outro line.
+let codexHooksChanged = false;
 
 const CODEX_GATE_NOTICE = 'Codex asks you to trust new or changed hooks before it runs them; approve the go-gate hook in Codex, or it stays inactive. Firing under `codex exec` and under aos-acp is UNVERIFIED: run the smoke test in docs/codex-gate-smoke.md.';
 
@@ -6156,8 +6285,8 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '# AOS:HOOKS:END'
     ].join('\n');
     // Blocks are blank-line separated; without context hooks only blocks naming a context script go.
-    const tomlSnippet = contextHooksOn ? fullSnippet
-        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !v5Profile.isContextCommand(b)).join('\n\n')}\n# AOS:HOOKS:END`;
+    const tomlSnippet = contextHooksOn && memoryOn ? fullSnippet
+        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !droppedHook(b)).join('\n\n')}\n# AOS:HOOKS:END`;
 
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
     const original = content;
@@ -6184,15 +6313,27 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
     const body = kept.join(eol).replace(/(?:\r?\n){3,}/g, eol + eol).trimEnd();
     content = `${body}${eol}${eol}${tomlSnippet.split('\n').join(eol)}${eol}`;
 
+    const hookHash = uninstallRecords.codexAosHookHash(content);
+    const hooksChanged = hookHash !== uninstallRecords.codexAosHookHash(original);
     try {
         fs.mkdirSync(path.dirname(configTomlPath), { recursive: true });
         // Codex trusts a hook by its hash: an unchanged file is not rewritten.
         if (content !== original) fs.writeFileSync(configTomlPath, content, { mode: 0o600 });
+        // The doctor compares Codex's trust entries against this snapshot to tell whether /hooks ran since.
+        if (hooksChanged && !projectLocal && !DRY_RUN && path.basename(baseDir) === '.codex') {
+            const record = path.join(path.dirname(baseDir), '.aos', 'codex-hooks.json');
+            try {
+                fs.mkdirSync(path.dirname(record), { recursive: true });
+                fs.writeFileSync(record, JSON.stringify({ hookHash, trustedHashes: uninstallRecords.codexTrustedHashes(content), changedAt: new Date().toISOString() }, null, 2) + '\n');
+            } catch (e) { logDebug(e, 'codex-hooks.json'); }
+        }
         // Hooks live in config.toml only; Codex warns when hooks.json holds them too.
         for (const line of uninstallRecords.migrateCodexHooksJson({ file: path.join(baseDir, 'hooks.json'), dryRun: DRY_RUN })) log.step(line);
     } catch (e) {
         log.warn(`Could not write ${configTomlPath}: ${e.message}`);
+        return false;
     }
+    return hooksChanged;
 }
 
 // Tier 9 (Local Project Harness): drop the dispatcher contract into the
@@ -6285,7 +6426,7 @@ async function promptMcpSelection(tier) {
     } catch (e) { return []; }
 
     // memb-mcp ships via npm, not as a folder under mcps/, so readdir never lists it.
-    if (!availableMcps.includes(CORE_MCP)) availableMcps.push(CORE_MCP);
+    if (memoryOn && !availableMcps.includes(CORE_MCP)) availableMcps.push(CORE_MCP);
 
     if (tier === '2') {
         const basicMcps = ['memb-mcp', 'windows-computer-use-mcp'];
@@ -6310,10 +6451,11 @@ async function promptMcpSelection(tier) {
 
     const selectable = availableMcps.filter(m => m !== CORE_MCP);
 
-    if (selectable.length === 0) return [CORE_MCP];
+    const core = memoryOn ? [CORE_MCP] : [];
+    if (selectable.length === 0) return core;
 
     const chosen = await multiselectWithBack({
-        message: 'Select optional MCPs to install (memb-mcp core is always included):',
+        message: memoryOn ? 'Select optional MCPs to install (memb-mcp core is always included):' : 'Select optional MCPs to install:',
         options: selectable.map(m => ({ value: m, label: m, hint: existingInstalled.includes(m) ? 'currently installed' : undefined })),
         initialValues: existingInstalled.filter(m => selectable.includes(m)),
         allowEmpty: true
@@ -6321,7 +6463,7 @@ async function promptMcpSelection(tier) {
 
     if (chosen === BACK) return BACK;
 
-    return [CORE_MCP, ...chosen];
+    return [...core, ...chosen];
 }
 
 // Returns the module ids it actually installed this call (distinct from `installedModules`,
@@ -7407,7 +7549,7 @@ async function runQuickUpdate(installState) {
         else if (subId === 'installer') await installDevToolInstaller();
     }
 
-    await applyCodingModeStep();
+    await applyCodingModeStep(memoryCodingOptions());
     await promptOptionalModules(modulesToUpdate);
     // modulesToUpdate now covers both the modules updated in the loop above and any newly
     // chosen ones promptOptionalModules just installed (it mutates the same array) -- every
@@ -7501,7 +7643,7 @@ function installBinaryAtomically(src, dest) {
 function runUninstaller() {
     const uninstallScript = path.join(srcDir, 'bin', 'aos-uninstall.mjs');
     if (!fs.existsSync(uninstallScript)) {
-        log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: npx @hybridlabor-api/aos-uninstall`);
+        log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: aos-uninstall (or npx -p @hybridlabor-api/aos aos-uninstall)`);
         return 1;
     }
     const r = spawnSync(process.execPath, [uninstallScript], { stdio: 'inherit' });
@@ -7512,7 +7654,7 @@ function runUninstaller() {
 function v5Options(interactive) {
     const ui = interactive ? {
         select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
-        multi: async (message, options) => { const a = await multiselect({ message, options, required: false }); return isCancel(a) ? [] : a; },
+        multi: async (message, options, initialValues) => { const a = await multiselect({ message, options, initialValues, required: false }); return isCancel(a) ? [] : a; },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
@@ -7525,6 +7667,7 @@ function applyInstallOptions(home = homeDir) {
     contextHooksOn = r.contextHooks;
     activeProfile = r.profile;
     installExcluded = r.excluded;
+    memoryOn = !installExcluded.has('memb');
     return r;
 }
 
@@ -7639,9 +7782,9 @@ Options:
                    (also --profile minimal) Or AOS_PROFILE. standard (default) = today's
                    install. minimal = skills, agents and harness rules only: no
                    context-injection hooks, no OpenWiki, Token Saver, Codenotch, optional
-                   modules, gateway or fleet. full = standard plus all optional modules with
-                   -y. A --profile flag is saved, so \`aos update\` keeps it; AOS_PROFILE is
-                   not saved. Uninstall resets the saved profile.
+                   modules, gateway, hub service or Claude Code mods. full = standard plus
+                   all optional modules with -y. A --profile flag is saved, so \`aos update\`
+                   keeps it; AOS_PROFILE is not saved. Uninstall resets the saved profile.
   --no-hooks       Skip only the context-injection hooks (memb-inject, rules-inject, trail
                    relay/autostart) in the Claude, Antigravity and Codex configs. The go-gate,
                    graph-gate and safety hooks are ALWAYS installed; no profile or flag
@@ -7653,11 +7796,12 @@ Options:
                    status, update or repair.
   --without=ID,ID  (also --without ID,ID) Exclude packages by id (memb, synapse, openwiki,
                    remote, ao, creator, hardware, installer, deja, token-saver, codenotch,
-                   gateway, fleet); saved to the v5 disabled list. An unknown id is an error;
-                   kernel cannot be excluded. A fresh install only honours the ids it would
-                   install (memb, synapse, openwiki, remote, ao, creator, hardware, installer,
-                   token-saver, codenotch): gateway and fleet are never installed by it and
-                   deja comes with memb, so for those the list only affects update and repair.
+                   gateway, hub, fleet, sessions, alert); saved to the v5 disabled list. An
+                   unknown id is an error; kernel cannot be excluded. A fresh install installs
+                   the MCP gateway and the hub service, and enables the Claude Code mods
+                   (fleet, sessions, alert) when Claude Code is found (offered interactively,
+                   enabled with -y); deja comes with memb, so for it the list only affects
+                   update and repair.
   AOS_DISABLED_MCPS=a,b
                    Shipped MCP server names that are not written to the harness MCP configs
                    the installer writes (not the memB sync, OpenWiki or the gateway); not
@@ -7901,6 +8045,22 @@ Options:
             ctx.customPaths = { skillDir, legacyDir, workspaceDir: workDir, mcpConfigPath: mcpConf, mcpDir: path.dirname(mcpConf) };
         };
 
+        // Unified memory: one choice for memB + deja + OpenWiki (+ Codebase Memory when coding). Asked before the
+        // MCP step because memb-mcp is only offered with it. Not asked when memb is already excluded.
+        const stepMemory = async () => {
+            if (ctx.selectedPlatforms.includes('9') || installExcluded.has('memb')) return;
+            const v = await selectWithBack({
+                message: 'Unified memory (memB + deja + OpenWiki, plus Codebase Memory MCP when you code):',
+                options: [
+                    { value: 'on', label: 'Install unified memory', hint: 'Default' },
+                    { value: 'off', label: 'Skip: no memory engine, no memb_mcp/deja MCP, no memB hook' }
+                ],
+                initialValue: memoryOn ? 'on' : 'off'
+            });
+            if (v === BACK) return 'back';
+            memoryOn = v === 'on';
+        };
+
         const stepMcps = async () => {
             if (ctx.selectedPlatforms.includes('9')) return;
             const sel = await promptMcpSelection(ctx.tier);
@@ -7932,6 +8092,7 @@ Options:
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
+                `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
                 `MCPs:          ${(ctx.selectedMcps || []).join(', ') || '(none)'}`,
                 `LLM Provider:  ${ctx.creds ? ctx.creds.openwikiProvider : '-'}`,
                 `GitHub Token:  ${ctx.creds && ctx.creds.github ? maskApiKey(ctx.creds.github) : '(none)'}`,
@@ -7950,7 +8111,7 @@ Options:
             if (action === 'abort') return 'exit';
         };
 
-        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMcps, stepCredentials, stepReview];
+        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepMcps, stepCredentials, stepReview];
 
         let i = 0;
         while (i < steps.length) {
@@ -7984,6 +8145,7 @@ Options:
         return;
     }
     persistInstallOptions();
+    if (!memoryOn && !installExcluded.has('memb')) declineUnifiedMemory();
 
     // The backup directory is created on first use (moveIfExists, the MCP merge), never empty, 0700 because it can hold credential copies.
 
@@ -8040,7 +8202,11 @@ Options:
     else await installTokenSaver(primaryTarget.platformValue);
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];
-    await applyCodingModeStep();
+    // Unified memory is part of the default install, not an optional module: memB (with deja) goes in here.
+    const memoryInstalled = memoryOn && !installedModulesForPrompt.includes('memb')
+        ? (await runModuleInstalls([{ id: 'memb', name: 'memB Vector Engine (unified memory)', fn: () => installMemB(true) }], ['memb'], installedModulesForPrompt)).installed
+        : [];
+    await applyCodingModeStep(memoryCodingOptions());
     const modulePlan =v5Profile.PROFILES[activeProfile].modules;
     const explicitModules = parseModuleSelection();
     // Unlike runQuickUpdate, nothing here reinstalls modules already in installedModulesForPrompt
@@ -8051,6 +8217,7 @@ Options:
     const justInstalled = (modulePlan === 'none' && !explicitModules.length)
         ? []
         : await promptOptionalModules(installedModulesForPrompt, explicitModules.length || modulePlan !== 'all' ? explicitModules : ['all']) || [];
+    justInstalled.push(...memoryInstalled);
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
 
@@ -8068,6 +8235,11 @@ Options:
     // After the skill sync, because AOS CLI is useless without ~/.agents.
     if (aosCliRequested) installAosCli();
 
+    // After every harness MCP config write above: the gateway switches those entries, and a later write would undo it.
+    for (const name of await require('./lib/v5/menu').installDefaults(module.exports, { ...v5Options(!isAutoYes), dryRun: DRY_RUN }, installExcluded)) {
+        moduleFailures.push({ id: name, name, reason: 'see the step line above and ~/.aos/logs' });
+    }
+
     console.log('');
     verifyEcosystemInstallation();
     if (!installExcluded.has('codenotch')) await maybeInstallCodenotch();
@@ -8077,6 +8249,8 @@ Options:
     } else {
         outro(`🎉 Installation complete! Targets: ${targets.map(t => t.value).join(', ')}${aosCliRequested ? ' + AOS CLI' : ''} · Tier: ${tier === '1' ? 'Pro MEDIA' : 'Basic'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
     }
+    // Last line on purpose: an earlier CODEX_GATE_NOTICE scrolled by unread and the gate stayed off.
+    if (codexHooksChanged) console.log(`⚠️  ${CODEX_TRUST_REMINDER}`);
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
@@ -8133,14 +8307,21 @@ module.exports = {
     mergeCodexHooks: mergeCodexTomlHooks,
     mergeCodexTomlMcpServers,
     installGlobalHooks,
+    injectHarnessRules,
+    applyInstallOptions,
     installHarnessHookCopies,
     copyHookScripts,
     installA2aLibCopies,
     installClaudeA2aSessionHook,
     installGoCheck,
     installGlobalBinaries,
+    aosDistTag,
+    localBinPathHint,
     codexGateSnippet,
+    codexGateRules,
+    installCodexRules,
     CODEX_GATE_NOTICE,
+    CODEX_TRUST_REMINDER,
     installOpencodePlugin,
     stripJsonc,
     syncMcpConfigFile,

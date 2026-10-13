@@ -18,6 +18,7 @@ const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
+const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } =req('../lib/uninstall-records.js');
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
@@ -188,7 +189,7 @@ const { parseJsonc } = req('../lib/jsonc.js');
 const ZEN_TOOL_NAME_MAX = 64;
 
 function checkOpencodeMcpNames() {
-  const dirs = [process.platform === 'win32' ? path.join(process.env.APPDATA || HOME, 'opencode') : h('.config', 'opencode')];
+  const dirs = [h('.config', 'opencode')];
   const file = firstExisting(dirs.flatMap((d) => ['opencode.jsonc', 'opencode.json'].map((f) => path.join(d, f))));
   if (!file) return;
   const conf = parseJsonc(readFileSync(file, 'utf8'));
@@ -359,11 +360,31 @@ function checkHooks() {
     'Run the AOS installer to wire Codex hooks.', true);
 
   if (codexWired) {
-    add('hooks', 'Codex hook review', false, 'Codex skips new or changed AOS hooks until you trust them once: open Codex and run /hooks',
-      'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.', true);
+    // Codex's hash algorithm is not reproduced here. Evidence of a re-trust is only that Codex's set of
+    // trust values changed after the install that last changed the AOS hooks (snapshot in ~/.aos/codex-hooks.json).
+    const rec = readJson(h('.aos', 'codex-hooks.json'));
+    const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.';
+    const gateWired = /^\s*command\s*=.*go-gate\.mjs/m.test(codexToml);
+    // Informational only: our hook hash is more sensitive than Codex's own, so "no new trust entry" is not proof of an
+    // untrusted hook (Lenovo P15 saw a false warning while /hooks showed Active 2/2). Codex says "Hooks need review"
+    // itself, and the enforced layer in Codex is aos-gate.rules, not the hook.
+    const retrusted = gateWired && rec && rec.hookHash === codexAosHookHash(codexToml)
+      && JSON.stringify(codexTrustedHashes(codexToml)) !== JSON.stringify(rec.trustedHashes || []);
+    add('hooks', 'Codex hook review', true, retrusted
+      ? `Codex trust entries changed after the last AOS hook change (${rec.changedAt || 'time unknown'}): re-trusted after the last hook change`
+      : 'trust state is not readable from here: if Codex shows "Hooks need review", run /hooks and trust the AOS go-gate hook (Codex enforces AOS rules through aos-gate.rules either way)', fix, true);
+  }
+  if (existsSync(h('.codex'))) {
+    const rulesFile = h('.codex', 'rules', 'aos-gate.rules');
+    let rulesText = '';
+    try { rulesText = readFileSync(rulesFile, 'utf8'); } catch {}
+    const rulesOk = rulesText.startsWith(CODEX_RULES_HEADER);
+    add('hooks', 'Codex rules backstop', rulesOk,
+      rulesOk ? `${tilde(rulesFile)} present` : `Codex ignores hook denials in codex exec / bypass modes; the AOS rules file ${tilde(rulesFile)} is missing — run aos update`,
+      'Run aos update to write the AOS Codex rules file.', true);
   }
   let codexJson = '';
-  try { codexJson = readFileSync(h('.codex', 'hooks.json'), 'utf8'); } catch {}
+  try { codexJson =readFileSync(h('.codex', 'hooks.json'), 'utf8'); } catch {}
   if (codexWired && HOOK_SCRIPTS.some((n) => codexJson.includes(n))) {
     add('hooks', 'Codex hooks in two files', false, `hooks in both hooks.json and config.toml (${tilde(h('.codex', 'hooks.json'))} and ${tilde(codexConf)}); Codex merges them and warns at startup`,
       'Run the AOS installer: it moves its hooks out of hooks.json (original kept as hooks.json.aos-bak-<time>).', true);
@@ -393,7 +414,7 @@ async function checkA2aMatrix() {
     'Run the AOS installer to wire the A2A inbox hooks and ship the lib.', !existsSync(claudeConfigDir(HOME)));
 
   // OpenCode: the plugin carries the sidecar init call and the inbox import.
-  const ocDirs = [process.platform === 'win32' && process.env.APPDATA ? path.join(process.env.APPDATA, 'opencode') : h('.config', 'opencode')];
+  const ocDirs = [h('.config', 'opencode')];
   const ocPlugin = firstExisting(ocDirs.map((d) => path.join(d, 'plugins', 'bdb-aos.js')));
   let ocOk = false, ocDetail = `${tilde(h('.config', 'opencode', 'plugins', 'bdb-aos.js'))} missing`;
   if (ocPlugin) {

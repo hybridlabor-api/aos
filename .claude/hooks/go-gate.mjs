@@ -56,7 +56,7 @@ import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID, createPublicKey, verify as cryptoVerify, timingSafeEqual } from "node:crypto";
 import { homedir, userInfo } from "node:os";
-import { join, resolve, dirname, sep } from "node:path";
+import { join, resolve, dirname, sep, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 // A missing sibling must read as strict, never crash the hook (a crash exits 1 and the harness runs the command).
 let profileFor = () => ({ profile: "strict" });
@@ -92,6 +92,10 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})release\s+(?:edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})repo\s+(?:create|edit|delete)\b`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-X\s*|--method[\s=]+)(?:POST|PATCH|PUT|DELETE)\b`),
+  // A base64 PowerShell command cannot be read at all. No scope: a plain GO.
+  re(String.raw`(?:powershell|pwsh)(?:\.exe)?['"]?${S}\s-(?:e|ec|en|enc|enco|encodedcommand)\b`),
+  // The AOS uninstaller deletes through Node's rmSync, which the rm analysis never sees. No scope: a plain GO.
+  re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-uninstall(?:\.mjs)?\b(?!${S}\s--dry-run(?=\s|$))`),
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
   // `git -c alias.x=push x`: a one-off alias hides the subcommand (a persisted `git config alias` cannot be seen here).
   re(String.raw`git\s+(?:-[cC]\s*\S+\s+)*-c\s*['"]?alias\.`),
@@ -918,6 +922,21 @@ export const _catchAllInternals = {
 const SHELLISH = /(?:^|[\s;&|(])(?:sudo\s+)?(?:bash|sh|zsh|dash|ksh|fish|source|node|nodejs|bun|deno|python[\d.]*|ruby|perl|php|pwsh|powershell|lua|osascript|xargs|eval|ssh)(?=\s|$)/;
 const INTERP = /^(?:node(?:js)?|bun|deno|python[\d.]*|ruby|perl|php|pwsh|powershell|cmd(?:\.exe)?|lua|osascript)$/i;
 const DATA_HEAD = /^(?:echo|printf|grep|egrep|fgrep|rg|ag|jq|awk|gawk|sed)$/;
+// Read-only gh calls: their quoted words (--jq/-q filters, --search, --template) are data for gh, never shell.
+// Kept as command text, the segment split read `.[]|.x[0:8]` as a new command with a glob head (unscoped).
+const GH_READ_GROUP = /^(?:pr|run|release|issue|repo|workflow|label|cache|secret|variable|gist|ruleset|codespace)$/;
+const GH_READ_VERB = /^(?:view|list|checks|diff|status|watch)$/;
+function ghRead(rest) {
+  const a = rest.slice(1).map(unq);
+  let i = 0;
+  for (;;) {
+    if (/^(?:-R|--repo)$/.test(a[i] ?? "")) i += 2;
+    else if (/^--repo=/.test(a[i] ?? "")) i += 1;
+    else break;
+  }
+  const g = a[i] ?? "", v = a[i + 1] ?? "";
+  return /^(?:status|search|--version|--help)$/.test(g) || (GH_READ_GROUP.test(g) && GH_READ_VERB.test(v));
+}
 const unqQ = (t) => String(t ?? "").replace(/["']/g, "");
 
 // A command longer than this is not analysed at all: it is guarded without a scope (a GO
@@ -1257,7 +1276,7 @@ function blankData(text, keepCode = false) {
     const head0 = unq(rest[0] ?? ""), arg1 = unqQ(rest[1] ?? "");
     const a2aCli = !/(?:^|\s)PATH=/.test(p.t) &&
       (head0 === "aos-a2a" || (/^node(?:js)?$/.test(head0) && /^(?:[A-Za-z]:)?\//.test(winSlash(arg1)) && base(winSlash(arg1)) === "aos-a2a.mjs" && trustedDirs().some((d) => (process.platform === "win32" ? winSlash(arg1).toLowerCase().startsWith(winSlash(d + sep).toLowerCase()) : arg1.startsWith(d + sep)))));
-    return ((DATA_HEAD.test(h) || sub === "grep" || a2aCli) && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
+    return ((DATA_HEAD.test(h) || sub === "grep" || a2aCli || (h === "gh" && ghRead(rest))) && !opaque && !executes && !feeds[k] ? blankQuotes(p.t) : p.t) + p.sep;
   }).join("");
 }
 
@@ -1288,7 +1307,7 @@ function prepText(s) {
 const unprep = (s) => String(s).replace(/\u0001/g, "`").replace(/\$\u0002/g, "$(");
 
 export function commandView(command, keepCode = false) {
-  const { text, code } = stripHeredocs(command);
+  const { text, code } = stripHeredocs(winNorm(command));
   return { text: blankData(prepText(text), keepCode), code };
 }
 
@@ -1488,7 +1507,7 @@ function execCommand(src, name) {
 // r.unscoped and pushes spawned command texts to r.cmds (the caller classifies those).
 // ws = { root, cwd } for a script that lives in the session's own repo: a recursive delete whose literal target resolves inside
 // that root is recorded as r.workspace (scope `workspace`) instead of r.destructive. Anything else stays destructive.
-function codeInto(r, text, lang = "", ws = null) {
+function codeInto(r, text, lang = "", ws = null, inline = false) {
   text = unprep(text);
   // A script that changes its own working directory makes relative targets unjudgeable: no workspace scope then.
   if (ws && /\bchdir\s*\(|\bcd\s*\(|process\.chdir|os\.chdir|Dir\.chdir|\bchdir\b/.test(maskStrings(text))) ws = null;
@@ -1508,6 +1527,8 @@ function codeInto(r, text, lang = "", ws = null) {
   for (const m of masked.matchAll(EXEC_CALL)) {
     const c = execCommand(text.slice(m.index + m[0].length), m[0].replace(/\s*\(?\s*$/, ""));
     if (c) r.cmds.push(c);
+    // Inline code only: a spawn whose command is not a literal (process.argv[1], a variable) hides what runs.
+    else if (inline) r.unscoped = true;
   }
   if (/^(?:ruby|perl)$/.test(lang)) {
     for (const m of text.matchAll(/`([^`\n]*)`|%x[({[]([^)}\]]*)|\bqx[({[]([^)}\]]*)/g)) r.cmds.push(m[1] ?? m[2] ?? m[3]);
@@ -1770,7 +1791,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     if (!ro && FILE_HEAD.test(h) && (!opaque || /^(?:bash|sh|zsh|dash|ksh)$/.test(h))) {
       const f = scriptFile(h, tok.slice(1).map(unqQ));
       if (f.module && /rm|remov|delet|rimraf|trash|clean|purge|wipe/i.test(f.module)) r.unscoped = true;
-      if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""));
+      if (f.inline && INTERP.test(h) && !/^(?:pwsh|powershell)$/i.test(h)) codeInto(r, tok.slice(1).map(un).join(" "), h.toLowerCase().replace(/[\d.]+$/, ""), null, true);
       else if (f.file) r.files.push({ h, file: f.file, cwd: st.cwd });
       // V13 H2: node runs preloaded modules (-r/--require/--import/--loader) before the main file, so they are read like it.
       if (/^node(?:js)?$/i.test(h)) {
@@ -1789,7 +1810,7 @@ export function analyzeDeletes(command, depth = 0, init = null) {
     if (p.sep === "(") stack.push(st.cwd);
     else if (p.sep === ")" && stack.length) st.cwd = stack.pop();
   }
-  if (!ro) for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"));
+  if (!ro) for (const c of code) codeInto(r, c.body, c.lang.replace(/[\d.]+$/, "").replace(/^nodejs$/, "node"), null, true);
   const subs = substitutions(text);
   if (subs.length > 64) r.unscoped = true; // too many to read within the budget
   for (const s of subs.slice(0, 64)) merge(analyzeDeletes(unprep(s), depth + 1, snap()));
@@ -1858,10 +1879,25 @@ const ENV_CHANGE = /(?:^|[\s;&|({])(?:HOME|XDG_CONFIG_HOME|PATH|PWD|OLDPWD|DOCKE
 const TAINT_SUBS = /^(?:checkout|switch|branch|reset|symbolic-ref|update-ref|worktree|remote|config|stash|rebase|merge|pull|fetch|restore|clone|init|am|cherry-pick|revert)$/;
 const READONLY_HEADS = /^(?:cat|ls|grep|egrep|fgrep|rg|head|tail|less|more|wc|stat|file|test|\[|diff|cmp|realpath|dirname|basename|echo|printf)$/;
 // null = guarded but at least one guarded part maps to no scope (never covered by a grant).
+// Windows spellings read like their POSIX twins: a drive path's backslashes become slashes
+// (C:\x\bin\aos-uninstall.cmd) and git.exe / GH.EXE / npm.cmd / aos-*.ps1 lose the suffix.
+// Without this, gh.exe pr merge, git.exe push and a full-path aos-uninstall.cmd were free.
+export function winNorm(command) {
+  let s = String(command)
+    .replace(/(?<![\w\\])[A-Za-z]:\\[^\s;&|'"<>]*/g, (m) => m.replace(/\\/g, "/"))
+    .replace(/\b(git|gh|npm|npx|pnpx|bunx|node|aos-[\w-]+)\.(?:exe|cmd|bat|ps1)\b/gi, (_, n) => n.toLowerCase());
+  // Codex on Windows wraps every command as `powershell.exe -NoProfile -Command "<cmd>"`; cmd /c does
+  // the same. Read both like `bash -c`, whose quoted body the classifier already opens (Lenovo P15).
+  // Only when the word is there: the path prefix would otherwise cost time on pathological input.
+  if (/powershell|pwsh/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?(?:powershell|pwsh)(?:\.exe)?"?((?:\s+-(?!(?:c|command)\b)[\w:]+(?:\s+(?!-)\w+)?){0,16})\s+-(?:c|command)(?=\s)/gi, "bash -c");
+  if (/\bcmd\b/i.test(s)) s = s.replace(/(?:"?[^\s"]{0,256}\/)?\bcmd(?:\.exe)?"?\s+\/[ck](?=\s)/gi, "bash -c");
+  return s;
+}
+
 export function commandScopes(command, protectedFor = staticResolver) {
   if (nest > 3) return null;
   nest++;
-  try { return withBudget(() => scopesOf(command, protectedFor), null); } finally { nest--; }
+  try { return withBudget(() => scopesOf(winNorm(command), protectedFor), null); } finally { nest--; }
 }
 
 function scopesOf(orig, protectedFor) {
@@ -2006,7 +2042,7 @@ export const isGuardedCommand = (command) =>
 // ---------------------------------------------------------------------------
 const STORE_REF = /\.aos[/,\s+]+(?:\.[/]+)*(?:gate|go)(?![\w.-])|\.aos\/+[^\s/]*[$*?[{]/i;
 // Read-only heads: a store path given to one of these is a read or a mere mention, never a write.
-const STORE_READ = /^(?:cat|ls|grep|egrep|fgrep|head|tail|wc|stat|cd)(?=\s|$)/;
+const STORE_READ = /^(?:cat|ls|grep|egrep|fgrep|head|tail|wc|stat|cd|type|get-content|gc)(?=\s|$)/i;
 const STORE_NULL_REDIR = /(?:\d?>>?|&>)\s*(?:\/dev\/null|&\d)/g;
 // grep here is ugrep: --pager, -Q/--query, --config, ---, --filter run or save things. Only these options pass; any other is blocked.
 const GREP_SAFE_SHORT = /^[ivwxcnHhlLqsrRaEFGPzoUTbkyIABCefmdD0-9]+$/;
@@ -2017,10 +2053,16 @@ const grepArgsSafe = (args) => args.every((t) => {
   return GREP_SAFE_SHORT.test(t.slice(1));
 });
 // The segment head decides; a store-touching command must be one of these with safe options.
-const storeReadSeg = (seg) => STORE_READ.test(seg) && (!/^(?:e|f)?grep(?=\s|$)/.test(seg) || grepArgsSafe(seg.split(/\s+/).slice(1)));
+// Pure stdin filters after a pipe (`tail <store log> | cut -c1-200`). sort and uniq only without a file
+// argument: `sort -o f`, `uniq in out` write. cut, tr and nl have no output-file option.
+const STORE_FILTER = /^(?:cut|tr|nl)(?=\s|$)|^(?:sort|uniq)(?:\s+-(?!o)[\w=-]*)*\s*$/;
+const storeReadSeg = (seg) => STORE_FILTER.test(seg) || (STORE_READ.test(seg) && (!/^(?:e|f)?grep(?=\s|$)/.test(seg) || grepArgsSafe(seg.split(/\s+/).slice(1))));
 export function gateStoreReason(command) {
   if (typeof command !== "string") return null;
+  // Backslashes are tried both ways: stripped (escape tricks like ~/\.aos/gate) and as path separators (C:\x\.aos\gate).
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
+  const slashed = command.replace(/\\/g, "/");
+  if (slashed !== command && !STORE_REF.test(norm) && STORE_REF.test(slashed.replace(/["']/g, "").replace(/\/(?:\.?\/)+/g, "/"))) return gateStoreReason(slashed);
   // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
   const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
   if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
@@ -2119,6 +2161,31 @@ export function maskSecrets(text) {
     .replace(/(authorization[:=]\s*)(?!\*\*\*)[^\s"']+(\s+[^\s"']+)?/gi, "$1***");
 }
 
+// Codex PreToolUse payloads carry turn_id plus a .codex transcript or a permission_mode.
+export function isCodexPayload(input) {
+  return !!input && typeof input === "object" && !!input.turn_id &&
+    ((typeof input.transcript_path === "string" && input.transcript_path.includes(".codex")) || typeof input.permission_mode === "string");
+}
+let codexMode = false;
+let toolNameSeen = "";
+
+// Single exit: opt-in decision log (AOS_GATE_DEBUG, absolute path) at the moment of exit.
+function leave(code, decision, reason = "") {
+  const dbg = process.env.AOS_GATE_DEBUG;
+  if (dbg && isAbsolute(dbg)) {
+    try { appendFileSync(dbg, `${JSON.stringify({ ts: new Date().toISOString(), tool_name: toolNameSeen, decision, exit: code, ...(reason ? { reason: maskSecrets(reason).slice(0, 500) } : {}) })}\n`); } catch { /* debug only */ }
+  }
+  process.exit(code);
+}
+
+// Codex honours exactly this deny shape (plus exit 2 + stderr); any other stdout field marks the hook failed and the tool call runs.
+function codexDeny(reason) {
+  const out = `${JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } })}\n`;
+  try { writeFileSync(1, out); } catch { process.stdout.write(out); }
+  process.stderr.write(`${reason}\n`);
+  leave(2, "deny", reason);
+}
+
 function respond(isAgy, allowed, reason = "", command = "", hard = false) {
   if (!allowed) markBlock(blockKey);
   if (!allowed && !hard && TEST_RUN.test(command)) reason = `${reason} ${TEST_HINT}`.trim();
@@ -2129,10 +2196,15 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
     gateLog(blockKey, `deny${hard ? " hard" : ""} ${why} ${JSON.stringify(maskSecrets(command).slice(0, 200))} :: ${maskSecrets(reason).slice(0, 120)}`);
     recordRequest(blockKey, command, sc, hard);
   }
+  const claudeText = `Blocked by go-gate hook: command "${command.slice(0, 80)}" requires a fresh, literal "GO" as your last message. ${reason}`;
+  if (codexMode && !isAgy) {
+    if (allowed) leave(0, "allow");
+    codexDeny(hard ? `[MECHANICAL GO-GATE BLOCKED] ${reason}` : claudeText);
+  }
   if (hard) {
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
     process.stderr.write(`${reason}\n`);
-    process.exit(isAgy ? 0 : 2);
+    leave(isAgy ? 0 : 2, "deny", reason);
   }
   if (isAgy) {
     if (allowed) {
@@ -2143,16 +2215,14 @@ function respond(isAgy, allowed, reason = "", command = "", hard = false) {
         reason: `[MECHANICAL GO-GATE BLOCKED] Der Befehl "${command.slice(0, 100)}" wurde blockiert. Er erfordert ein frisches, isoliertes "GO" als letzte Benutzereingabe. ${reason}`
       }));
     }
-    process.exit(0);
+    leave(0, allowed ? "allow" : "deny", reason);
   } else {
     // Claude Code harness
     if (allowed) {
-      process.exit(0);
+      leave(0, "allow");
     } else {
-      process.stderr.write(
-        `Blocked by go-gate hook: command "${command.slice(0, 80)}" requires a fresh, literal "GO" as your last message. ${reason}\n`
-      );
-      process.exit(2);
+      process.stderr.write(`${claudeText}\n`);
+      leave(2, "deny", reason);
     }
   }
 }
@@ -3052,6 +3122,138 @@ function indirectReleaseRisk(command) {
   });
 }
 
+// Codex code mode sends JS source (tool `exec`) that calls tools.exec_command({cmd}). Only literal cmd values are read;
+// anything else (variable, ${}, concatenation, alias, spread, computed key) marks the source opaque: fail closed.
+const JS_ESC = { n: "\n", t: "\t", r: "\r", b: "\b", f: "\f", v: "\v", 0: "\0" };
+function jsString(src, i) {
+  const q = src[i];
+  let out = "";
+  for (let j = i + 1; j < src.length; j++) {
+    const c = src[j];
+    if (c === q) return { value: out, end: j + 1 };
+    if (q === "`" && c === "$" && src[j + 1] === "{") return null;
+    if (c !== "\\") { out += c; continue; }
+    const d = src[++j];
+    if (d === "u") {
+      const m = /^\{([0-9a-fA-F]{1,6})\}|^([0-9a-fA-F]{4})/.exec(src.slice(j + 1, j + 9));
+      if (!m) return null;
+      out += String.fromCodePoint(parseInt(m[1] ?? m[2], 16));
+      j += m[0].length;
+    } else if (d === "x") {
+      const h = src.slice(j + 1, j + 3);
+      if (!/^[0-9a-fA-F]{2}$/.test(h)) return null;
+      out += String.fromCharCode(parseInt(h, 16));
+      j += 2;
+    } else if (d === "\r" || d === "\n") {
+      if (d === "\r" && src[j + 1] === "\n") j++;
+    } else if (d !== undefined) out += JS_ESC[d] ?? d;
+  }
+  return null;
+}
+function jsSkipWs(src, i) {
+  for (;;) {
+    while (i < src.length && /\s/.test(src[i])) i++;
+    if (src.startsWith("//", i)) { const e = src.indexOf("\n", i); i = e < 0 ? src.length : e; }
+    else if (src.startsWith("/*", i)) { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 2; }
+    else return i;
+  }
+}
+// Skips one property value; returns the index of the `,` or `}` that ends it, or -1.
+function jsSkipValue(src, i) {
+  let depth = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "'" || c === '"' || c === "`") {
+      const s = jsString(src, i);
+      if (!s) return -1;
+      i = s.end;
+      continue;
+    }
+    if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c)) { if (depth === 0) return c === "}" ? i : -1; depth--; }
+    else if (c === "," && depth === 0) return i;
+    i++;
+  }
+  return -1;
+}
+function jsCmdValue(src, i) {
+  i = jsSkipWs(src, i);
+  let value;
+  if (src[i] === "'" || src[i] === '"' || src[i] === "`") {
+    const s = jsString(src, i);
+    if (!s) return null;
+    value = s.value;
+    i = s.end;
+  } else if (src[i] === "[") {
+    const parts = [];
+    i = jsSkipWs(src, i + 1);
+    while (src[i] !== "]") {
+      if (!"'\"`".includes(src[i] ?? "x")) return null;
+      const s = jsString(src, i);
+      if (!s) return null;
+      parts.push(s.value);
+      i = jsSkipWs(src, s.end);
+      if (src[i] === ",") i = jsSkipWs(src, i + 1);
+      else if (src[i] !== "]") return null;
+    }
+    value = parts.join(" ");
+    i++;
+  } else return null;
+  i = jsSkipWs(src, i);
+  return src[i] === "," || src[i] === "}" ? { value, end: i } : null;
+}
+// Stands in for opaque Codex code in logs and messages; main() lets only a plain GO or a token through for it.
+export const CODEX_OPAQUE = 'eval "$AOS_CODEX_EXEC_OPAQUE"';
+export function codexExecCommands(src) {
+  src = String(src ?? "");
+  const cmds = [];
+  let opaque = false;
+  const all = src.matchAll(/exec_command/g);
+  for (const m of all) {
+    let i = jsSkipWs(src, m.index + m[0].length);
+    if (src[i] !== "(") { opaque = true; continue; }
+    i = jsSkipWs(src, i + 1);
+    if (src[i] !== "{") { opaque = true; continue; }
+    i++;
+    let found = false;
+    for (;;) {
+      i = jsSkipWs(src, i);
+      if (src[i] === "}") break;
+      let key;
+      if (src[i] === "'" || src[i] === '"') {
+        const s = jsString(src, i);
+        if (!s) { opaque = true; break; }
+        key = s.value;
+        i = s.end;
+      } else {
+        const k = /^[A-Za-z_$][\w$]*/.exec(src.slice(i, i + 256));
+        if (!k) { opaque = true; break; }
+        key = k[0];
+        i += key.length;
+      }
+      i = jsSkipWs(src, i);
+      if (src[i] !== ":") {
+        if (key === "cmd" || (src[i] !== "," && src[i] !== "}")) { opaque = true; break; }
+        if (src[i] === ",") i++;
+        continue;
+      }
+      if (key === "cmd") {
+        const v = jsCmdValue(src, i + 1);
+        if (!v) { opaque = true; break; }
+        cmds.push(v.value);
+        found = true;
+        i = v.end;
+      } else {
+        i = jsSkipValue(src, i + 1);
+        if (i < 0) { opaque = true; break; }
+      }
+      if (src[i] === ",") i++;
+    }
+    if (!found) opaque = true;
+  }
+  return { cmds, opaque };
+}
+
 // Shared by the Claude hook and the OpenCode plugin. Callers run it after hard blocks, the store check, cooldown and the length cap.
 // off allows; work allows unless a release scope shows. null scope = guarded but unreadable: free only without indirection.
 export function profileAllows(command) {
@@ -3065,6 +3267,11 @@ export function profileAllows(command) {
 function main() {
   hookDeadline = Date.now() + SCAN_MS;
   const rawInput = readStdin();
+  // Opt-in payload capture for harness debugging; never on by default, never fatal.
+  const dbg = process.env.AOS_GATE_DEBUG;
+  if (dbg && isAbsolute(dbg)) {
+    try { appendFileSync(dbg, `${maskSecrets(rawInput.replace(/\r?\n/g, " "))}\n`); } catch { /* debug only */ }
+  }
   let input = {};
   if (rawInput.trim()) {
     try {
@@ -3074,10 +3281,12 @@ function main() {
       const reason = `could not parse hook input: ${e.message}`;
       console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
       process.stderr.write(`Blocked by go-gate hook: ${reason}\n`);
-      process.exit(2);
+      leave(2, "deny", reason);
     }
   }
   if (!input || typeof input !== "object") input = {};
+  codexMode = isCodexPayload(input);
+  toolNameSeen = String(input.tool_name ?? "");
 
   // Detect harness
   const isAgy = !!(input?.toolCall || input?.conversationId || input?.artifactDirectoryPath || input?.workspacePaths);
@@ -3092,10 +3301,23 @@ function main() {
     input?.toolCall?.args?.CommandLine ||
     input?.toolCall?.args?.command ||
     input?.tool_input?.command ||
+    // Codex's exec_command tool names the shell line `cmd`.
+    input?.tool_input?.cmd ||
     input?.command ||
     "";
   // An argv array is joined like aos-acp does; any other non-string value is refused.
-  const command = Array.isArray(raw) ? raw.join(" ") : raw;
+  let command = Array.isArray(raw) ? raw.join(" ") : raw;
+  // Codex code mode (tool `exec`): JS source whose exec_command calls carry the shell lines.
+  let codexOpaque = false;
+  if (command === "") {
+    const ti = input?.tool_input;
+    const code = typeof ti === "string" ? ti : (ti?.code ?? ti?.input ?? ti?.source);
+    if (typeof code === "string" && code.includes("exec_command")) {
+      const ex = codexExecCommands(code);
+      codexOpaque = ex.opaque;
+      command = codexOpaque ? CODEX_OPAQUE : ex.cmds.join("\n");
+    }
+  }
   if (typeof command !== "string") {
     respond(isAgy, false, "command in hook input is not a string; the gate cannot read it (ask for GO)", "");
     return;
@@ -3126,7 +3348,7 @@ function main() {
       return;
     }
 
-    if (!isGuardedCommand(command)) {
+    if (!codexOpaque && !isGuardedCommand(command)) {
       respond(isAgy, true);
       return;
     }
@@ -3151,16 +3373,17 @@ function main() {
     reasons.unshift(`${COOLDOWN_MESSAGE} The block cooldown ends in about ${left} min; after that the same unchanged command may run once (rule 16).`);
   }
   if (tooLong) reasons.unshift(TOO_LONG_MESSAGE);
+  if (codexOpaque) reasons.unshift("Codex exec code with a non-literal exec_command; type GO");
 
   // Gate profile config: any doubt reads as strict. Hard blocks and the store check returned above.
-  if (!cooling && !tooLong) {
+  if (!cooling && !tooLong && !codexOpaque) {
     if (profileAllows(command)) return respond(isAgy, true, "", command);
     if (profileFor().profile === "work") reasons.push("profile work: this command is in the release class and needs a GO");
   }
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).
   const key = !isAgy && input.session_id ? sessionKey(input.session_id) : "";
-  if (key && !cooling && !tooLong) {
+  if (key && !cooling && !tooLong && !codexOpaque) {
     const eff = effectiveGate(key, { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
     for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
     if (eff.mode === "off") {
@@ -3178,7 +3401,7 @@ function main() {
   if (token.ok) return respond(isAgy, true, "", command);
   reasons.push(token.reason);
   // Last additive path (WP-9): a signed click receipt for exactly this command. Hard blocks and the store check returned above.
-  if (key && !tooLong && !cooling && clickReceiptCovers(command, key)) {
+  if (key && !tooLong && !cooling && !codexOpaque && clickReceiptCovers(command, key)) {
     gateLog(key, `click: allowed ${JSON.stringify(command.slice(0, 200))}`);
     return respond(isAgy, true, "", command);
   }
@@ -3191,9 +3414,10 @@ function safeMain() {
     main();
   } catch (e) {
     const reason = `go-gate internal error, failing closed: ${String(e?.message || e).slice(0, 200)}`;
+    if (codexMode) codexDeny(`[MECHANICAL GO-GATE BLOCKED] ${reason}`);
     console.log(JSON.stringify({ decision: "deny", reason: `[MECHANICAL GO-GATE BLOCKED] ${reason}` }));
     process.stderr.write(`Blocked by go-gate hook: ${reason}\n`);
-    process.exit(2);
+    leave(2, "deny", reason);
   }
 }
 

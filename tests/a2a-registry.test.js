@@ -36,6 +36,18 @@ test("list returns live entries; prune removes only stale entry's two files", ()
   assert.ok(existsSync(join(dir, "keep.txt")) && existsSync(join(dir, "w1.json")));
 });
 
+test("list({ includeStale }) marks dead pids stale and deletes nothing", () => {
+  const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+  reg.register({ name: "dead2", harness: "agy", pid: dead, token: "t" });
+  const dir = process.env.AOS_SESSIONS_DIR;
+  const all = reg.list({ includeStale: true });
+  assert.equal(all.find((s) => s.name === "dead2").stale, true);
+  assert.ok(!all.find((s) => s.name === "w1").stale);
+  assert.ok(!reg.list().some((s) => s.name === "dead2"));
+  assert.ok(existsSync(join(dir, "dead2.json")) && existsSync(join(dir, "dead2.token")));
+  reg.unregister("dead2");
+});
+
 test("pid reuse: live pid whose process started after registration is stale", () => {
   const dir = process.env.AOS_SESSIONS_DIR;
   reg.register({ name: "reused", harness: "claude", pid: process.pid });

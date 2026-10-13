@@ -320,7 +320,7 @@ npx -y @hybridlabor-api/aos@latest
 | `--profile=full` | `standard` mais todos os módulos opcionais (igual a `--modules=all` com `-y`). |
 | `--no-hooks` | Salta apenas os hooks de injeção de contexto (`memb-inject`, `rules-inject`, `trail-relay`, `trail-autostart`). |
 | `--hooks-only` | Instala ou refresca os hooks e as suas entradas de settings e sai. Com `--no-hooks` refresca apenas os gates. |
-| `--without=id,id` | Exclui pacotes por id de registo (`memb, synapse, openwiki, remote, ao, creator, hardware, rustauri, styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, codebase-memory`). Guardado, para que updates e reparações os ignorem. |
+| `--without=id,id` | Exclui pacotes por id de registo (`memb, synapse, openwiki, remote, ao, creator, hardware, rustauri, styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, sessions, alert`) ou pelo bundle `memory` (memB, deja e OpenWiki: [memória unificada](docs/unified-memory.md)). Guardado, para que updates e reparações os ignorem. |
 | `--modules=id,id` | Inclui apenas os módulos opcionais nomeados numa execução não interativa (por exemplo `--modules=creator` ou `--modules=codebase-memory`); `all` pega em todos. Também definível por `AOS_MODULES`. |
 | `AOS_DISABLED_MCPS=a,b` | Mantém esses nomes de servidores MCP incluídos fora das configurações de harness que o instalador escreve. |
 | `--dry-run` | Imprime o que mudaria e não escreve nada. |
@@ -893,7 +893,7 @@ flowchart LR
 | Antigravity (agy) | `agy plugin install <diretório de plugin local>` — o instalador npm faz isto por si | voltar a correr o instalador npm |
 | OpenCode | plugin local `.opencode/plugins/bdb-aos.js`, copiado pelo instalador; sem marketplace | sobrescrever o ficheiro do plugin |
 
-O marketplace do Claude `bdb-marketplace` oferece quatro plugins: `bdb-aos` (skills e subagents), `bdb-aos-fleet`, `bdb-aos-sessions` e `bdb-aos-alert`. O instalador regista o fleet mod sozinho; active os outros dois com `claude plugin install bdb-aos-sessions@bdb-marketplace` e `claude plugin install bdb-aos-alert@bdb-marketplace`. O instalador npm continua a fazer o registo de plugins de cada harness na medida do possível; os comandos CLI acima são os equivalentes manuais. O caminho do marketplace transporta apenas skills e subagents — o instalador npm é o caminho recomendado porque também configura os gate hooks e os servidores MCP.
+O marketplace do Claude `bdb-marketplace` oferece quatro plugins: `bdb-aos` (skills e subagents), `bdb-aos-fleet`, `bdb-aos-sessions` e `bdb-aos-alert`. Quando encontra o Claude Code, o instalador oferece os três mods (`-y` ativa-os) e regista-os ele próprio em `~/.claude/settings.json`; `--without=fleet,sessions,alert` ou `--profile=minimal` salta-os, e o Uninstall remove-os. O instalador npm continua a fazer o registo de plugins de cada harness na medida do possível; os comandos CLI acima são os equivalentes manuais. O caminho do marketplace transporta apenas skills e subagents — o instalador npm é o caminho recomendado porque também configura os gate hooks e os servidores MCP.
 
 **Descoberta de skills.** Cada harness encontra skills no seu diretório nativo (`~/.claude/skills`, `~/.agents/skills`, `~/.codex/skills`, `~/.roo/skills`, etc.). Para procurar e instalar skills adicionais após a instalação:
 
@@ -1463,6 +1463,8 @@ npx skills add hybridlabor-api/aos
 ### memB: memória vetorial local
 
 `@hybridlabor-api/memb`: memória vetorial offline e local com um servidor MCP, WebUI na porta 8088 e um hook ambiente que injeta memórias relevantes em sessões de Claude Code. Skills: `memb-skill`, `memb-ingest`, `bdb-memb-mcp`.
+
+O memB já não é um módulo opcional: faz parte da [memória unificada](docs/unified-memory.md) por defeito (memB, deja e OpenWiki, mais o Codebase Memory MCP quando programa), instalada com o perfil standard e com `-y`. Desative com `--without=memory` ou `--profile=minimal`; sem ela, nenhum harness recebe `memb_mcp`, `deja` nem o hook `memb-inject`.
 
 ### deja: indexação de transcrições
 

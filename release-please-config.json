@@ -3,8 +3,6 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "prerelease": true,
-      "prerelease-type": "beta",
       "extra-files": [
         {
           "type": "json",

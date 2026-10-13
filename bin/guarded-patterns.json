@@ -77,6 +77,14 @@
       "flags": "i"
     },
     {
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/|=)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:=|[^\\s;&|()'\"]{0,128}\\/)?(?:powershell|pwsh)(?:\\.exe)?['\"]?[^;&|\\n]*\\s-(?:e|ec|en|enc|enco|encodedcommand)\\b",
+      "flags": "i"
+    },
+    {
+      "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/|=)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:=|[^\\s;&|()'\"]{0,128}\\/)?(?:(?:npx|bunx|pnpx)\\s+(?:-{1,2}[\\w-]+(?:[\\s=]+\\S+)?\\s+)*|node(?:js)?\\s+)?(?:\\S*\\/)?aos-uninstall(?:\\.mjs)?\\b(?![^;&|\\n]*\\s--dry-run(?=\\s|$))",
+      "flags": "i"
+    },
+    {
       "source": "(?:^|[;&|\\n({\\x60])\\s*(?:(?:sudo|env|command|builtin|exec|nohup|time|xargs|eval|then|do|else|until|while|if|elif)(?:\\s+-{1,2}[\\w-]+(?:=\\S*)?(?:\\s+(?![-'\"])(?!(?:\\S*\\/|=)?(?:git|gh|npm|rm|opencode|curl|wget)\\b)[^\\s;&|'\"]+)?)*\\s+|(?:bash|sh|zsh|dash|ksh)(?:\\s+-\\w+)*\\s+-c\\s+|\\w+=\\S*\\s+)*['\"]?(?:=|[^\\s;&|()'\"]{0,128}\\/)?(?:gh\\s+|gh(?:\\s+(?:-R|--repo)(?:\\s+|=)\\S+)+\\s+)api\\b[^;&|\\n]*\\s(?:-[fF]|--field|--raw-field|--input)",
       "flags": ""
     },

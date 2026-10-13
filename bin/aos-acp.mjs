@@ -66,6 +66,21 @@ const agyChildEnv = (await loadFrom([
   join(homedir(), ".aos", "bin", "no-mcp.mjs"),
 ]))?.agyChildEnv ?? ((env) => env);
 
+// Windows only: npx/opencode are .cmd shims that Node cannot spawn directly (ENOENT).
+const cliSpawnMod = process.platform === "win32"
+  ? await loadFrom([join(here, "..", "lib", "cli-spawn.js"), join(homedir(), ".aos", "bin", "cli-spawn.js")])
+  : null;
+
+// Routes cmd through lib/cli-spawn.js (PATH/PATHEXT resolve + cmd.exe wrapper for shims) on win32; identity elsewhere.
+export function resolveWinCmd(cmd, { platform = process.platform, cli = cliSpawnMod?.default ?? cliSpawnMod, env = process.env, fs } = {}) {
+  if (platform !== "win32" || !cli) return cmd;
+  const o = { platform, env, ...(fs && { fs }) };
+  const file = cli.resolveCommand(cmd[0], o);
+  if (!file) return cmd;
+  const inv = cli.buildInvocation(file, cmd.slice(1), o);
+  return [inv.file, ...inv.args];
+}
+
 // MCP servers per adapter (default off, --with-mcp keeps them):
 //   claude   session/new sends mcpServers: [] (unchanged); whether claude-agent-acp then also skips the
 //            user's own configured servers is unverified.
@@ -311,6 +326,7 @@ export async function run(opts) {
   if (!cmd) throw new Error(`unknown adapter "${opts.adapter}" (claude|codex|opencode|agy)`);
   if (adapter?.cwdFlag && !opts.cmd) cmd.push(adapter.cwdFlag, opts.cwd);
   if (sandbox) cmd = sandbox.wrap(cmd, { cwd: opts.cwd });
+  else if (!opts.cmd) cmd = resolveWinCmd(cmd);
   const consume = opts.consume ?? adapter?.consume ?? true;
   log("start", { adapter: opts.adapter, cmd: cmd.join(" "), cwd: opts.cwd, allow_default: opts.allowDefault, consume, mcp: !!opts.withMcp, model: opts.model || "adapter default", ...(opts.sandbox && { sandbox: opts.sandbox }) });
 

@@ -18,8 +18,8 @@ disabled in Settings.
 
 | Profile | What you get |
 |---|---|
-| `standard` (default) | Today's install: skills, agents, rules, all hooks, MCPs, OpenWiki, Token Saver, fleet. |
-| `minimal` | Skills, agents and harness rules. No context-injection hooks, no OpenWiki, Token Saver, Codenotch, optional modules, gateway or fleet. |
+| `standard` (default) | Today's install: skills, agents, rules, all hooks, MCPs, unified memory (memB, deja, OpenWiki), Token Saver, the MCP gateway, the AOS Hub service and, when Claude Code is found, the Claude Code mods (fleet, sessions, alert). |
+| `minimal` | Skills, agents and harness rules. No context-injection hooks, no unified memory (memB, deja, OpenWiki), Token Saver, Codenotch, optional modules, gateway, hub service or Claude Code mods. |
 | `full` | `standard` plus every optional module when run with `-y` (same as `--modules=all`). |
 
 An explicit `--modules=` still wins over the profile.
@@ -61,12 +61,23 @@ uninstall: unknown profile names, a `disabled` that is not a list of known packa
 
 - `--without=id,id` (or `--without id,id`) adds ids to the v5 `disabled` list (saved; `aos update`
   and `aos repair` skip them).
-  Ids are the registry ids: `memb, synapse, openwiki, remote, ao, creator, hardware, installer,
-  deja, token-saver, codenotch, gateway, fleet`. An unknown id is an error; `kernel` cannot be excluded.
-  A fresh install honours the ids it would install: OpenWiki, Token Saver, Codenotch and the optional
-  modules (memb, synapse, remote, ao, creator, hardware, installer). `gateway` and `fleet` are never
-  installed by a fresh install, and `deja` comes with `memb`, so for those three the list only changes
-  update and repair.
+  Ids are the registry ids: `memb, synapse, openwiki, remote, ao, creator, hardware, rustauri,
+  styleseed, installer, deja, token-saver, codenotch, gateway, hub, fleet, sessions, alert`, plus
+  the bundle `memory` (= `memb,deja,openwiki`). An unknown id is an error;
+  `kernel` cannot be excluded. A fresh install honours the ids it would install: OpenWiki, Token Saver,
+  Codenotch, the optional modules (memb, synapse, remote, ao, creator, hardware, installer), `gateway`,
+  `hub` and the Claude Code mods `fleet`, `sessions` and `alert`. `deja` comes with `memb`, so for it
+  the list only changes update and repair.
+- **Unified memory** (memB, deja, OpenWiki, plus Codebase Memory MCP in coding mode) is on by
+  default in the standard profile and with `-y`; an interactive install asks in a "Unified memory"
+  step (default on, "Skip" is saved like `--without=memory`). `--without=memory` or
+  `--profile=minimal` turn it off; then no harness gets `memb_mcp`, `deja` or `memb-inject`.
+  Details: [unified-memory.md](unified-memory.md).
+- The Claude Code mods are enabled only when Claude Code is found (and at least 2.1.287). An
+  interactive install offers them, all ticked; an unticked mod is added to the `disabled` list. With
+  `-y` all three are enabled. `AOS_NO_FLEET=1` and an `enabledPlugins` entry set to `false` still win.
+- On Linux and Windows the gateway and the hub service are installed, but harnesses switch to the
+  gateway only after its verify is green; until then they stay direct.
 - `AOS_DISABLED_MCPS=a,b` keeps those shipped MCP server names out of the harness MCP configs the
   installer writes (`installMcpsForTarget` and the universal sync that reuses its result). It does
   not touch the memB sync, OpenWiki or the gateway, is not saved, and unknown names are ignored with

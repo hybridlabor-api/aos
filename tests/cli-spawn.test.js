@@ -106,3 +106,13 @@ test('F3: carets are doubled only for a batch file that forwards %*', () => {
   assert.doesNotMatch(line('@echo off\r\necho hi\r\n'), /\^\^\^&/);
   assert.match(line('@echo off\r\necho hi\r\n'), /\^&/);
 });
+
+test('withLongPaths adds core.longpaths for the child on win32 only, after existing GIT_CONFIG entries', () => {
+  assert.deepEqual(cs.withLongPaths({ A: '1' }, 'darwin'), { A: '1' });
+  assert.deepEqual(cs.withLongPaths({}, 'win32'), { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.longpaths', GIT_CONFIG_VALUE_0: 'true' });
+  const e = cs.withLongPaths({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'x.y', GIT_CONFIG_VALUE_0: 'z' }, 'win32');
+  assert.deepEqual([e.GIT_CONFIG_COUNT, e.GIT_CONFIG_KEY_0, e.GIT_CONFIG_KEY_1, e.GIT_CONFIG_VALUE_1], ['2', 'x.y', 'core.longpaths', 'true']);
+  let seen;
+  cs.run('x', [], { platform: 'win32', env: { PATH: 'C:\\b', PATHEXT: '.EXE' }, fs: { existsSync: () => true, statSync: () => ({ isFile: () => true }) }, spawn: (f, a, o) => { seen = o.env; return { status: 0 }; } });
+  assert.equal(seen && seen.GIT_CONFIG_KEY_0, 'core.longpaths');
+});

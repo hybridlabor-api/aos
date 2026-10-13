@@ -17,7 +17,7 @@
 // at all.
 
 import { readFileSync, existsSync, rmSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import os from 'node:os';
@@ -32,6 +32,7 @@ const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js')
 const ur = createRequire(import.meta.url)('../lib/uninstall-records.js');
 const pk = createRequire(import.meta.url)('../lib/v5/packages.js');
 const profile = createRequire(import.meta.url)('../lib/v5/profile.js');
+const winStartup = createRequire(import.meta.url)('../lib/v5/win-startup.js');
 // A2A MCP registrations (agy + Cursor) live inside harness configs that this
 // manifest-based uninstall otherwise leaves alone; the removal is done by the
 // installer's own removal code, which only ever touches AOS-owned entries and
@@ -62,8 +63,8 @@ const DATA_PATHS = [
   { path: h('.synapse'), what: 'Synapse logs and reports' },
   { path: h('.memb'), what: 'memB WebUI logs' },
   { path: h('.ao'), what: 'AO Orchestrator logs' },
-  { path: h('.cache', 'deja'), what: 'deja-vu Index — alle indizierten Agenten-Sessions' },
-  { path: h('.config', 'deja'), what: 'deja-vu Privacy-Config — Ausschlussliste und Tombstones' },
+  { path: h('.cache', 'deja'), what: 'deja-vu index — every indexed agent session' },
+  { path: h('.config', 'deja'), what: 'deja-vu privacy config — exclusion list and tombstones' },
 ];
 
 const AGENTS = [
@@ -78,6 +79,14 @@ const WIN_STARTUP = [
   { label: 'plan-canvas', vbsName: 'com.bdb.plan-canvas.vbs', batDir: '.agents', batName: 'run-plan-canvas.bat' },
   { label: 'synapse', vbsName: 'com.bdb.synapse.vbs', batDir: '.synapse', batName: 'run-synapse.bat' },
   { label: 'openwiki-visualizer', vbsName: 'com.bdb.openwiki-visualize.vbs', batDir: '.openwiki', batName: 'run-openwiki-visualize.bat' },
+  // The memB WebUI .vbs starts python directly (no .bat); its process is matched by the server path.
+  { label: 'memb-webui', vbsName: 'com.bdb.memb.webui.vbs', match: '*memB*backend*server.py*' },
+];
+
+// v5 services: Startup .vbs written by pkg-gateway / pkg-hub; processes matched by their script path.
+const WIN_V5 = [
+  { label: 'com.bdb.aos.gateway', script: path.join('bin', 'aos-gateway.mjs') },
+  { label: 'com.bdb.aos.hub', script: path.join('bin', 'aos-hub.mjs') },
 ];
 
 // A module folder is removed only when the install recorded it: its id in installedModules
@@ -144,10 +153,14 @@ function plan(opts = {}) {
       'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
     for (const s of WIN_STARTUP) {
       const vbs = path.join(startupDir, s.vbsName);
-      const bat = path.join(home, s.batDir, s.batName);
-      if (existsSync(vbs) && existsSync(bat)) agents.push({ label: s.label, vbs, bat });
+      const bat = s.batName ? path.join(home, s.batDir, s.batName) : null;
+      if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${path.basename(bat)}*`) });
     }
   }
+
+  // v5 gateway/hub autostart: removed by their own step after the package loop, not through WIN_STARTUP.
+  const winSvc = platform !== 'win32' ? [] : WIN_V5.map((s) => ({ ...s, vbs: winStartup.vbsPath({ home, env: { APPDATA: opts.appData || process.env.APPDATA } }, s.label) }))
+    .filter((s) => existsSync(s.vbs));
 
   let installedModules = [];
   try { installedModules = JSON.parse(readFileSync(path.join(home, '.agents', '.bdb-manifest.json'), 'utf8')).installedModules || []; } catch { /* no record */ }
@@ -160,45 +173,46 @@ function plan(opts = {}) {
 
   const codenotch = cn.planCodenotchUninstall({ stateFile: cn.stateFilePath(HOME) });
 
-  return { manifest, ours, edited, gone, agents, modules, legacy, data, codenotch, keptCommands };
+  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, codenotch, keptCommands };
 }
 
 function describe(p) {
   const { manifest, ours, edited, gone, agents, modules, legacy, data } = p;
 
   if (!manifest) {
-    console.log('Kein Installations-Manifest unter ' + tilde(MANIFEST) + '.');
-    console.log('Ohne das lässt sich nicht sagen, welche Datei von AOS stammt — es wird nichts gelöscht.');
-    console.log('Betroffen wären sonst: ~/.claude/skills, ~/.gemini/config/skills, ~/.codex/skills, ~/.agents/');
+    console.log('No install manifest at ' + tilde(MANIFEST) + '.');
+    console.log('Without it there is no telling which file came from AOS — nothing is deleted.');
+    console.log('Otherwise affected: ~/.claude/skills, ~/.gemini/config/skills, ~/.codex/skills, ~/.agents/');
     return false;
   }
 
-  console.log(`\nManifest: ${Object.keys(manifest).length} Dateien erfasst`);
-  console.log(`  ${String(ours.length).padStart(5)}  unverändert seit der Installation → werden entfernt`);
-  console.log(`  ${String(edited.length).padStart(5)}  nach der Installation bearbeitet → erst .bak, dann entfernt`);
-  console.log(`  ${String(gone.length).padStart(5)}  bereits nicht mehr vorhanden`);
+  console.log(`\nManifest: ${Object.keys(manifest).length} files recorded`);
+  console.log(`  ${String(ours.length).padStart(5)}  unchanged since install → removed`);
+  console.log(`  ${String(edited.length).padStart(5)}  edited after install → .bak first, then removed`);
+  console.log(`  ${String(gone.length).padStart(5)}  already gone`);
 
   if (edited.length) {
-    console.log('\n  bearbeitet:');
+    console.log('\n  edited:');
     for (const f of edited.slice(0, 8)) console.log(`    ${tilde(f)}`);
-    if (edited.length > 8) console.log(`    … und ${edited.length - 8} weitere`);
+    if (edited.length > 8) console.log(`    … and ${edited.length - 8} more`);
   }
 
   if (p.keptCommands.length) {
-    console.log(`\nOpenCode-Commands, die nach der Installation bearbeitet wurden, bleiben (${p.keptCommands.length}):`);
+    console.log(`\nOpenCode commands edited after install are kept (${p.keptCommands.length}):`);
     for (const f of p.keptCommands) console.log(`    ${tilde(f)}`);
   }
 
   if (agents.length) {
-    console.log(`\nHintergrunddienste (${agents.length}): ${agents.map((a) => a.label).join(', ')}`);
+    console.log(`\nBackground services (${agents.length}): ${agents.map((a) => a.label).join(', ')}`);
   }
+  for (const s of p.winSvc || []) console.log(`\nWindows Startup entry ${tilde(s.vbs)} is removed; processes running ${s.script} are stopped`);
   if (modules.length) {
-    console.log('\nModule:');
+    console.log('\nModules:');
     for (const m of modules) console.log(`    ${tilde(m)}`);
   }
   if (legacy.length) {
-    console.log(`\nInstallations-Marker (${legacy.length}) -- ohne diese hält die nächste`);
-    console.log('  Installation AOS für bereits aktuell installiert:');
+    console.log(`\nInstall markers (${legacy.length}) -- without removing them the next`);
+    console.log('  install takes AOS for already installed and current:');
     for (const l of legacy) console.log(`    ${tilde(l)}`);
   }
 
@@ -213,16 +227,16 @@ function describe(p) {
   const agyLines = [];
   agyPlugin.uninstall({ home: HOME, dryRun: true, log: { step: (m) => agyLines.push(m), warn: (m) => agyLines.push(m) } });
   if (regLines.length || cxLines.length || agyLines.length) {
-    console.log('\nRegistrierungen, die auf AOS-Skripte zeigen:');
+    console.log('\nRegistrations that point at AOS scripts:');
     for (const l of [...regLines, ...cxLines, ...agyLines]) console.log(`    ${l}`);
   }
 
-  console.log('\nBleibt erhalten:');
+  console.log('\nKept:');
   if (!PURGE) for (const d of DATA_PATHS.filter((d) => existsSync(d.path))) console.log(`    ${tilde(d.path).padEnd(18)} ${d.what}`);
-  console.log('    jede Datei ohne Manifest-Eintrag — eigene Skills, fremde Hooks, alles Selbstgeschriebene');
+  console.log('    every file without a manifest entry — your own skills, foreign hooks, anything you wrote');
 
   if (data.length) {
-    console.log('\n\x1b[31mWIRD GELÖSCHT (--purge):\x1b[0m');
+    console.log('\n\x1b[31mWILL BE DELETED (--purge):\x1b[0m');
     for (const d of data) {
       let size = '';
       try { size = ` (${(dirSize(d.path) / 1e6).toFixed(1)} MB)`; } catch { /* unreadable */ }
@@ -245,6 +259,14 @@ function dirSize(p) {
 }
 
 // ------------------------------------------------------------------ execute
+// Stop by script path first (a running node would restart nothing, but holds the port), then drop the .vbs.
+function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 })) {
+  for (const s of list || []) {
+    try { run('powershell', winStartup.stopArgs([s.script])); } catch { /* powershell unavailable */ }
+    try { rmSync(s.vbs, { force: true }); } catch { /* already gone */ }
+  }
+}
+
 async function execute(p) {
   const { ours, edited, agents, modules, legacy, data, codenotch } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
@@ -258,10 +280,10 @@ async function execute(p) {
       // name in the command line, never a generic word like "node".
       try {
         execFileSync('powershell', ['-NoProfile', '-Command',
-          `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${path.basename(a.bat)}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
+          `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '${a.match}' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`,
         ], { stdio: 'ignore' });
       } catch { /* nothing running or powershell unavailable */ }
-      try { rmSync(a.bat); } catch { /* already gone */ }
+      if (a.bat) try { rmSync(a.bat); } catch { /* already gone */ }
       try { rmSync(a.vbs); } catch { /* already gone */ }
       continue;
     }
@@ -273,7 +295,7 @@ async function execute(p) {
     try { execFileSync('launchctl', ['unload', a.plist], { stdio: 'ignore' }); } catch { /* not loaded */ }
     try { rmSync(a.plist); } catch { /* already gone */ }
   }
-  if (agents.length) console.log(`  ${agents.length} Dienste gestoppt und entfernt`);
+  if (agents.length) console.log(`  ${agents.length} services stopped and removed`);
 
   for (const f of edited) {
     try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch { /* unreadable */ }
@@ -281,7 +303,7 @@ async function execute(p) {
   for (const f of [...ours, ...edited]) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
-  console.log(`  ${removed} Dateien entfernt, ${backed} vorher gesichert`);
+  console.log(`  ${removed} files removed, ${backed} backed up first`);
 
   const ruleFiles = [
     h('CLAUDE.md'), h('AGENTS.md'), h('.github', 'copilot-instructions.md'),
@@ -293,12 +315,12 @@ async function execute(p) {
       const stripped = stripRoutingBlock(stripDestructiveBlock(text));
       if (stripped === text) continue;
       writeFileSync(f, stripped);
-      console.log(`  Regelblöcke aus ${tilde(f)} entfernt`);
-    } catch { console.log(`  ${tilde(f)} nicht lesbar — Regelblöcke von Hand prüfen`); }
+      console.log(`  Rule blocks removed from ${tilde(f)}`);
+    } catch { console.log(`  ${tilde(f)} unreadable — check the rule blocks by hand`); }
   }
 
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
-  if (modules.length) console.log(`  ${modules.length} Module entfernt`);
+  if (modules.length) console.log(`  ${modules.length} modules removed`);
 
   const DEJA_PKG = '@vshulcz/deja-vu';
   const dejaByAos = (ur.readRecords(HOME).npmGlobal || []).includes(DEJA_PKG);
@@ -306,9 +328,9 @@ async function execute(p) {
     try {
       execFileSync('npm', ['uninstall', '-g', DEJA_PKG], { stdio: 'ignore', shell: process.platform === 'win32' });
       ur.forgetNpmGlobal(HOME, DEJA_PKG);
-      console.log('  deja-vu (npm) entfernt');
+      console.log('  deja-vu (npm) removed');
     } catch {
-      console.log(`  deja-vu nicht per npm entfernt — von Hand entfernen: npm uninstall -g ${DEJA_PKG}`);
+      console.log(`  deja-vu not removed via npm — remove it by hand: npm uninstall -g ${DEJA_PKG}`);
     }
   }
 
@@ -330,24 +352,24 @@ async function execute(p) {
       if (dejaByAos && cfg.mcpServers && cfg.mcpServers.deja) {
         delete cfg.mcpServers.deja;
         writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
-        console.log(`  deja-Eintrag aus ${tilde(f)} entfernt`);
+        console.log(`  deja entry removed from ${tilde(f)}`);
       }
       // Rust + Tauri package: only the entry AOS writes ({command: tauri-pilot, args: [mcp]}) leaves.
       const tp = cfg.mcpServers && cfg.mcpServers['tauri-pilot'];
       if (tp && tp.command === 'tauri-pilot' && JSON.stringify(tp.args) === '["mcp"]') {
         delete cfg.mcpServers['tauri-pilot'];
         writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
-        console.log(`  tauri-pilot-Eintrag aus ${tilde(f)} entfernt`);
+        console.log(`  tauri-pilot entry removed from ${tilde(f)}`);
       }
-    } catch { console.log(`  ${tilde(f)} nicht lesbar — von Hand prüfen`); }
+    } catch { console.log(`  ${tilde(f)} unreadable — check by hand`); }
   }
 
   const opencodeCfg = h('.config', 'opencode', 'opencode.jsonc');
   if (existsSync(opencodeCfg) && /"deja"\s*:/.test(readFileSync(opencodeCfg, 'utf8'))) {
-    console.log(`  ${tilde(opencodeCfg)} enthält noch einen deja-Eintrag — von Hand entfernen (JSONC, wird nicht automatisch umgeschrieben)`);
+    console.log(`  ${tilde(opencodeCfg)} still has a deja entry — remove it by hand (JSONC, not rewritten automatically)`);
   }
   if (existsSync(opencodeCfg) && /"tauri-pilot"\s*:/.test(readFileSync(opencodeCfg, 'utf8'))) {
-    console.log(`  ${tilde(opencodeCfg)} enthält noch einen tauri-pilot-Eintrag — von Hand entfernen (JSONC, wird nicht automatisch umgeschrieben)`);
+    console.log(`  ${tilde(opencodeCfg)} still has a tauri-pilot entry — remove it by hand (JSONC, not rewritten automatically)`);
   }
 
   const codexToml = h('.codex', 'config.toml');
@@ -360,9 +382,9 @@ async function execute(p) {
       const kept = ur.dropMcpTables(lines, (n, sec) => n === 'deja' && sec.some((l) => l.trim() === 'command = "deja"'));
       if (kept.length !== lines.length) {
         writeFileSync(codexToml, kept.join(eol));
-        console.log(`  deja-Tabelle aus ${tilde(codexToml)} entfernt`);
+        console.log(`  deja table removed from ${tilde(codexToml)}`);
       }
-    } catch { console.log(`  ${tilde(codexToml)} nicht lesbar — von Hand prüfen`); }
+    } catch { console.log(`  ${tilde(codexToml)} unreadable — check by hand`); }
   }
 
   if (codenotch) {
@@ -374,38 +396,43 @@ async function execute(p) {
 
   if (noMcp) {
     const wh = noMcp.removeAgyWorkerHome({ home: HOME, dryRun: DRY });
-    if (wh.removed.length) console.log(`  agy-Arbeitsverzeichnis ohne MCP-Server: ${wh.removed.length} Einträge ${DRY ? 'würden entfernt' : 'entfernt'}`);
-    for (const k of wh.kept) console.log(`  ${tilde(k)} nicht von AOS angelegt, bleibt`);
+    if (wh.removed.length) console.log(`  agy worker home without MCP servers: ${wh.removed.length} entries ${DRY ? 'would be removed' : 'removed'}`);
+    for (const k of wh.kept) console.log(`  ${tilde(k)} not created by AOS, kept`);
   }
 
-  // Fleet mod, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
-  for (const id of ['fleet', 'gateway', 'hub', 'rustauri']) {
+  // Claude Code mods, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
+  const always = ['fleet', 'sessions', 'alert', 'rustauri'];
+  for (const id of ['fleet', 'sessions', 'alert', 'gateway', 'hub', 'rustauri']) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
-      const c = { home: HOME, dryRun: DRY };
-      if (!['fleet', 'rustauri'].includes(id) && !(await pkg.detect(c)).installed) continue;
+      // run: gateway and hub stop their service through it (launchctl, systemctl, or the Windows Startup .vbs process).
+      const c = { home: HOME, dryRun: DRY, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 }) };
+      if (!always.includes(id) && !(await pkg.detect(c)).installed) continue;
       const r = await pkg.uninstall(c);
       if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
-      else if (r && (r.changed || !['fleet', 'rustauri'].includes(id))) console.log(`  ${pkg.name} entfernt`);
-    } catch (e) { console.log(`  ${pkg.name}: ${e.message} — von Hand prüfen`); }
+      else if (r && (r.changed || !always.includes(id))) console.log(`  ${pkg.name} removed`);
+    } catch (e) { console.log(`  ${pkg.name}: ${e.message} — check by hand`); }
   }
+
+  // The package loop skips gateway/hub when detect() is false; the Startup .vbs must still go, or both autostart again.
+  removeWinServices(p.winSvc);
 
   // A2A MCP entries (agy + Cursor): only the AOS-owned ones leave the harness
   // configs, each file backed up first (writeConfigWithBackup inside).
   try {
     const cleanedA2a = installer.removeAosA2aEntries({ targetHome: HOME });
-    for (const f of cleanedA2a) console.log(`  A2A-MCP-Eintrag aus ${tilde(f)} entfernt`);
-  } catch (e) { console.log(`  A2A-MCP-Einträge konnten nicht geprüft werden: ${e.message}`); }
+    for (const f of cleanedA2a) console.log(`  A2A MCP entry removed from ${tilde(f)}`);
+  } catch (e) { console.log(`  A2A MCP entries could not be checked: ${e.message}`); }
 
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
-  if (legacy.length) console.log(`  ${legacy.length} Installations-Marker entfernt`);
+  if (legacy.length) console.log(`  ${legacy.length} install markers removed`);
 
   for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner })) console.log(`  ${l}`);
 
   const reg = pm.readState(HOME).registered.claudecode;
   if (reg) {
     const r = pm.deregisterClaude({ home: HOME, record: reg });
-    if (r.changed) console.log(`  bdb-aos Plugin-Registrierung aus settings.json entfernt${reg.replaced ? ` (externer Marketplace ${reg.replaced.key} wiederhergestellt)` : ''}`);
+    if (r.changed) console.log(`  bdb-aos plugin registration removed from settings.json${reg.replaced ? ` (external marketplace ${reg.replaced.key} restored)` : ''}`);
   }
 
   const cx = cp.uninstallCodexPlugin({ home: HOME });
@@ -426,14 +453,14 @@ async function execute(p) {
       }
       if (touched) {
         writeFileSync(settings, JSON.stringify(s, null, 2) + '\n');
-        console.log('  BDB-Hooks aus settings.json entfernt, alles andere unverändert');
+        console.log('  BDB hooks removed from settings.json, everything else unchanged');
       }
-    } catch { console.log('  settings.json nicht lesbar — von Hand prüfen'); }
+    } catch { console.log('  settings.json unreadable — check by hand'); }
   }
 
   for (const d of data) {
-    try { rmSync(d.path, { recursive: true, force: true }); console.log(`  \x1b[31mgelöscht:\x1b[0m ${tilde(d.path)}`); }
-    catch (e) { console.log(`  konnte ${tilde(d.path)} nicht löschen: ${e.message}`); }
+    try { rmSync(d.path, { recursive: true, force: true }); console.log(`  \x1b[31mdeleted:\x1b[0m ${tilde(d.path)}`); }
+    catch (e) { console.log(`  could not delete ${tilde(d.path)}: ${e.message}`); }
   }
 
   for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
@@ -446,7 +473,7 @@ async function execute(p) {
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan };
+export { plan, removeWinServices };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -464,11 +491,11 @@ if (process.argv[1] && isEntry()) {
 async function main() {
   if (RESTORE) {
     const r = pm.restorePluginBackups({ home: HOME });
-    if (!r.dirs.length) { console.log('Keine Plugin-Migrations-Sicherung gefunden.'); process.exit(1); }
-    console.log(`  ${r.files.length} Dateien aus ${r.dirs.length} Sicherung(en) wiederhergestellt, im Install-Manifest erfasst`);
-    console.log('Vorhandene Dateien wurden nicht überschrieben.');
-    if (r.deregistered) console.log('  bdb-aos Plugin-Registrierung entfernt, damit die Skills nicht doppelt geladen werden. Setze AOS_PLUGIN_MIGRATION=off, damit der Installer sie nicht erneut entfernt.');
-    else if (r.files.length && r.stillEnabled) console.log('  WARNUNG: das bdb-aos Plugin ist weiterhin aktiv, die Skills erscheinen doppelt. Plugin in Claude Code deaktivieren und AOS_PLUGIN_MIGRATION=off setzen.');
+    if (!r.dirs.length) { console.log('No plugin-migration backup found.'); process.exit(1); }
+    console.log(`  ${r.files.length} files restored from ${r.dirs.length} backup(s), recorded in the install manifest`);
+    console.log('Existing files were not overwritten.');
+    if (r.deregistered) console.log('  bdb-aos plugin registration removed so the skills do not load twice. Set AOS_PLUGIN_MIGRATION=off so the installer does not remove them again.');
+    else if (r.files.length && r.stillEnabled) console.log('  WARNING: the bdb-aos plugin is still enabled, so the skills show up twice. Disable the plugin in Claude Code and set AOS_PLUGIN_MIGRATION=off.');
     process.exit(0);
   }
 
@@ -477,19 +504,19 @@ async function main() {
   if (!describe(p)) process.exit(1);
 
   if (DRY) {
-    console.log('\n[dry-run] Es wurde nichts verändert.');
+    console.log('\n[dry-run] Nothing was changed.');
     return;
   }
 
   if (!YES) {
-    if ((await ask('\nFortfahren? [ja/nein] ')).toLowerCase() !== 'ja') {
-      console.log('Abgebrochen. Nichts verändert.');
+    if ((await ask('\nContinue? [yes/no] ')).toLowerCase() !== 'yes') {
+      console.log('Aborted. Nothing changed.');
       return;
     }
     if (PURGE) {
-      console.log('\n\x1b[31mDer zweite Schritt löscht das Gedächtnis und die Zugangsdaten unwiderruflich.\x1b[0m');
-      if ((await ask('Zum Bestätigen PURGE eingeben: ')).trim() !== 'PURGE') {
-        console.log('Abgebrochen. Nichts verändert.');
+      console.log('\n\x1b[31mThe second step deletes the memory store and the credentials irreversibly.\x1b[0m');
+      if ((await ask('Type PURGE to confirm: ')).trim() !== 'PURGE') {
+        console.log('Aborted. Nothing changed.');
         return;
       }
     }
@@ -497,5 +524,5 @@ async function main() {
 
   console.log('');
   await execute(p);
-  console.log('\nFertig. Neu einrichten mit: npx -y @hybridlabor-api/aos@latest');
+  console.log('\nDone. Reinstall with: npx -y @hybridlabor-api/aos@latest');
 }
