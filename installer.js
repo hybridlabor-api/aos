@@ -5513,7 +5513,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 // what happened to memb-inject.mjs in v4.4.0, on the machines that needed it
 // most (a fresh install got it; every machine that already had AOS did not).
 // harnesses: Set of harness keys to write for; null (tests, direct callers) means all of them.
-function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, harnesses = null } = {}) {
+function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, harnesses = null, dryRun = DRY_RUN } = {}) {
     const on = (k) => !harnesses || harnesses.has(k);
     const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
 
@@ -5535,6 +5535,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
         mergeBdbSettingsHooks(claudeSettings);
         const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });
         if (deny.length) log.step(`Added ${deny.length} permissions.deny rule(s) for home-level deletes to ${claudeSettings}`);
+        ensureClaudeDefaultMode(claudeSettings, { dryRun });
     }
     // a2a-inbox.mjs (drain + stop) ships inside the hooks dir copy above and is
     // wired by mergeBdbSettingsHooks from the shipped settings template. The
@@ -5986,6 +5987,93 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         fs.renameSync(tmpPath, settingsPath);
     } catch (e) {
         log.warn(`Could not write ${settingsPath}: ${e.message}`);
+    }
+}
+
+// Sets permissions.defaultMode = "auto" in Claude settings.json ONLY when that key is absent.
+// Never overwrites an existing value, hooks, or other permissions.
+// Works on fresh install and update; respects dry-run and backupOnce.
+function ensureClaudeDefaultMode(settingsPathOrOpts, maybeOpts = {}) {
+    let settingsPath;
+    let dryRun;
+    if (typeof settingsPathOrOpts === 'string') {
+        settingsPath = settingsPathOrOpts;
+        dryRun = maybeOpts.dryRun !== undefined ? Boolean(maybeOpts.dryRun) : DRY_RUN;
+    } else if (settingsPathOrOpts && typeof settingsPathOrOpts === 'object') {
+        const opts = settingsPathOrOpts;
+        settingsPath = opts.settingsPath || (opts.targetHome ? path.join(claudeConfigDir(opts.targetHome), 'settings.json') : path.join(claudeConfigDir(homeDir), 'settings.json'));
+        dryRun = opts.dryRun !== undefined ? Boolean(opts.dryRun) : DRY_RUN;
+    } else {
+        settingsPath = path.join(claudeConfigDir(homeDir), 'settings.json');
+        dryRun = DRY_RUN;
+    }
+
+    if (!fs.existsSync(settingsPath)) {
+        if (dryRun) {
+            log.message(`[dry-run] would set permissions.defaultMode="auto" in ${settingsPath}`);
+            return false;
+        }
+        try {
+            fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+            const tmpPath = `${settingsPath}.${process.pid}.tmp`;
+            fs.writeFileSync(tmpPath, JSON.stringify({ permissions: { defaultMode: 'auto' } }, null, 2) + '\n', { mode: 0o644 });
+            fs.renameSync(tmpPath, settingsPath);
+            log.step(`Set permissions.defaultMode="auto" in ${settingsPath}`);
+            return true;
+        } catch (e) {
+            log.warn(`Could not write ${settingsPath}: ${e.message}`);
+            return false;
+        }
+    }
+
+    let target = settingsPath;
+    try { target = fs.realpathSync(settingsPath); } catch { /* new/unresolvable */ }
+
+    const settings = readJsonFile(target);
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        return false;
+    }
+
+    if (settings.permissions !== undefined && (typeof settings.permissions !== 'object' || settings.permissions === null || Array.isArray(settings.permissions))) {
+        return false;
+    }
+
+    if (settings.permissions && 'defaultMode' in settings.permissions) {
+        return false;
+    }
+
+    if (dryRun) {
+        log.message(`[dry-run] would set permissions.defaultMode="auto" in ${settingsPath}`);
+        return false;
+    }
+
+    try {
+        backupOnce(settingsPath, () => {
+            const b = `${settingsPath}.${String(process.hrtime.bigint()).padStart(20, '0')}.bak`;
+            fs.copyFileSync(target, b);
+            return b;
+        });
+    } catch (e) {
+        log.warn(`Could not backup ${settingsPath}: ${e.message}`);
+        return false;
+    }
+
+    const perms = settings.permissions || {};
+    settings.permissions = { ...perms, defaultMode: 'auto' };
+
+    try {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        let mode = 0o644;
+        try { mode = fs.statSync(target).mode & 0o777; } catch { /* new file */ }
+        const tmpPath = `${target}.${process.pid}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(settings, null, 2) + '\n', { mode });
+        if (mode !== null) fs.chmodSync(tmpPath, mode);
+        fs.renameSync(tmpPath, target);
+        log.step(`Set permissions.defaultMode="auto" in ${settingsPath}`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not write ${settingsPath}: ${e.message}`);
+        return false;
     }
 }
 
@@ -8439,6 +8527,7 @@ module.exports = {
     installMcpLauncher,
     installMcpsForTarget,
     mergeBdbSettingsHooks,
+    ensureClaudeDefaultMode,
     mergeAntigravityHooks,
     agyHookCommand,
     selfCheckAgyHooks,
