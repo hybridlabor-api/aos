@@ -88,7 +88,7 @@ your head. Ask; do not default it on.
 
 **AGENTS.md.** If missing, offer the template. If a real `CLAUDE.md` already
 holds content, merge it into `AGENTS.md` first and only then replace it with a
-symlink. Never silently overwrite it.
+pointer. Never silently overwrite it.
 
 **Subagents & Multi-Harness Pipeline.** Offer to initialize `.aos/pipeline.json` (or set per-role, per-harness model overrides via `/subagent-setup`; without an override agents use the session model, see `docs/agent-models.md`). Ensures subagents are automatically compiled across Claude Code, Antigravity, OpenCode, and Codex CLI.
 

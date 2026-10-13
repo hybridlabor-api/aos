@@ -35,8 +35,8 @@ const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
-const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
-const { upsertRoutingBlock } = require('./lib/routing-rules');
+const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
+const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
 const { gatewayCovered } = require('./lib/gateway/config');
 
@@ -5232,27 +5232,25 @@ function injectHarnessRules() {
             const claudeMdPath = path.join(homeDir, 'CLAUDE.md');
             installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
-                // A CLAUDE.md carrying this title is the short, hand-maintained
-                // form (see docs/sessions/audit-agents.md F-01): the GO gate lives in a hook,
-                // not in this file's prose, and the /startcycle spec + agent
-                // roster live in their own skill/workflow files, not duplicated
-                // here. Re-appending the old long-form content on every install
-                // would silently undo that diet. Leave it alone.
-                const isManagedShortForm = claudeContent.includes('BDB Agent Skills — Global Instructions');
-                if (isManagedShortForm) {
-                    const withBlock = upsertRoutingBlock(upsertDestructiveBlock(claudeContent));
-                    if (withBlock !== claudeContent) fs.writeFileSync(claudeMdPath, withBlock);
-                    log.step('CLAUDE.md already uses the short managed form -- only the destructive-actions and tool-routing blocks are managed.');
+                // ~/CLAUDE.md is a pointer only to ~/AGENTS.md (canonical home for destructive and routing blocks).
+                // It must not carry destructive-actions or routing blocks.
+                let next = stripRoutingBlock(stripDestructiveBlock(claudeContent));
+                next = next.replace(/\(CLAUDE\.md\/GEMINI\.md sind Symlinks darauf\)/g, '(CLAUDE.md/RULES.md verweisen darauf)');
+                next = next.replace(/CLAUDE\.md \/ GEMINI\.md in den Repos sind Symlinks darauf/g, 'CLAUDE.md / RULES.md in den Repos verweisen darauf');
+                next = next.replace(/Harness files: `CLAUDE\.md`, `RULES\.md` and `CODEX\.md` are symlinks to this/g, 'Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this');
+
+                if (!next.trim()) {
+                    const srcClaude = path.join(srcDir, 'CLAUDE.md');
+                    next = fs.existsSync(srcClaude) ? fs.readFileSync(srcClaude, 'utf8') : '# AOS — Claude Code\n\n**Read [AGENTS.md](AGENTS.md) first.**\n';
+                } else if (!next.includes('AGENTS.md')) {
+                    next = `**Read [AGENTS.md](AGENTS.md) first.**\n\n${next}`;
+                }
+
+                if (next !== claudeContent) {
+                    fs.writeFileSync(claudeMdPath, next);
+                    log.step('Synced ~/CLAUDE.md as pointer to AGENTS.md (blocks live canonically in AGENTS.md)');
                 } else {
-                    if (!claudeContent.includes("Global Agent Instructions") && !claudeContent.includes(DESTRUCTIVE_START)) {
-                        claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
-                    }
-                    if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
-                        claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
-                    }
-                    claudeContent = upsertRoutingBlock(upsertDestructiveBlock(claudeContent));
-                    fs.writeFileSync(claudeMdPath, claudeContent);
-                    log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
+                    log.step('~/CLAUDE.md already a clean pointer to AGENTS.md.');
                 }
             }, 'CLAUDE.md is unchanged.');
 
@@ -5295,7 +5293,12 @@ function injectHarnessRules() {
                     return;
                 }
                 const agentsContent = fs.readFileSync(homeAgentsPath, 'utf8');
-                const next = upsertRoutingBlock(upsertDestructiveBlock(agentsContent));
+                let next = agentsContent;
+                next = next.replace(/\(CLAUDE\.md\/GEMINI\.md sind Symlinks darauf\)/g, '(CLAUDE.md/RULES.md verweisen darauf)');
+                next = next.replace(/CLAUDE\.md \/ GEMINI\.md in den Repos sind Symlinks darauf/g, 'CLAUDE.md / RULES.md in den Repos verweisen darauf');
+                next = next.replace(/Harness files: `CLAUDE\.md`, `RULES\.md` and `CODEX\.md` are symlinks to this/g, 'Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this');
+                next = next.replace(/- \*\*Globale Regeln\*\* \(Core-Behavior, Safety, GO-Protokoll, Skill-Routing\): `~\/CLAUDE\.md` \(gilt für alle Harnesses; Codex\/OpenCode lesen zusätzlich diese Datei\) bzw\. `~\/\.gemini\/antigravity-cli\/GEMINI\.md`\n?/g, '');
+                next = upsertRoutingBlock(upsertDestructiveBlock(next));
                 if (next !== agentsContent) {
                     fs.writeFileSync(homeAgentsPath, next);
                     log.step(`Synced managed blocks in ${homeAgentsPath}`);

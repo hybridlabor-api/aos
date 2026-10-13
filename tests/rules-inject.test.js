@@ -106,3 +106,45 @@ test('a settings.json that cannot be parsed or has a non-array deny is left unto
         assert.strictEqual(fs.readFileSync(f, 'utf8'), raw);
     }
 });
+
+test('rules-inject: does not inject when AGENTS.md in cwd already holds the block', () => {
+    const dir = tmp('proj-agents');
+    fs.writeFileSync(path.join(dir, 'AGENTS.md'), '# Repo\n\n' + BLOCK);
+    const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi', cwd: dir }));
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '');
+});
+
+test('rules-inject: does not inject when CLAUDE.md in cwd already holds the block', () => {
+    const dir = tmp('proj-claude');
+    fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# Repo\n\n' + BLOCK);
+    const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi', cwd: dir }));
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '');
+});
+
+test('rules-inject: does not inject when RULES.md in cwd already holds the block (agy)', () => {
+    const dir = tmp('proj-rules');
+    fs.writeFileSync(path.join(dir, 'RULES.md'), '# Repo\n\n' + BLOCK);
+    const r = runHook(HOOK, tmp('h'), JSON.stringify({ conversationId: 'c1', workspacePaths: [dir] }));
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '');
+});
+
+test('rules-inject: does not inject when home AGENTS.md holds the block and cwd is home', () => {
+    const home = tmp('home-agents');
+    fs.writeFileSync(path.join(home, 'AGENTS.md'), '# Home\n\n' + BLOCK);
+    const r = runHook(HOOK, home, JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi', cwd: home }));
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '');
+});
+
+test('rules-inject: does not inject when ancestor project root AGENTS.md holds the block', () => {
+    const rootDir = tmp('proj-root');
+    fs.writeFileSync(path.join(rootDir, 'AGENTS.md'), '# Root\n\n' + BLOCK);
+    const subDir = path.join(rootDir, 'src', 'deep');
+    fs.mkdirSync(subDir, { recursive: true });
+    const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi', cwd: subDir }));
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '');
+});

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { START, END, BLOCK, upsertDestructiveBlock, stripDestructiveBlock } = require('../lib/destructive-rules');
+const { START, END, BLOCK, hasDestructiveBlock, upsertDestructiveBlock, stripDestructiveBlock } = require('../lib/destructive-rules');
 
 const root = path.join(__dirname, '..');
 const sources = [
@@ -57,9 +57,17 @@ for (const rel of sources) {
     });
 }
 
-test('installer wires the helper into the CLAUDE.md, copilot, codex and ~/AGENTS.md writers', () => {
+test('installer wires the helper into copilot, codex and canonical ~/AGENTS.md writers, while ~/CLAUDE.md is stripped as pointer only', () => {
     const src = fs.readFileSync(path.join(root, 'installer.js'), 'utf8');
-    assert.equal(src.split('upsertDestructiveBlock(').length - 1, 5);
+    assert.equal(src.split('upsertDestructiveBlock(').length - 1, 3);
+    assert.ok(src.includes('stripDestructiveBlock(claudeContent)'));
+});
+
+test('hasDestructiveBlock correctly detects the presence of the block', () => {
+    assert.equal(hasDestructiveBlock(''), false);
+    assert.equal(hasDestructiveBlock('Some normal rules'), false);
+    assert.equal(hasDestructiveBlock(BLOCK), true);
+    assert.equal(hasDestructiveBlock(`prefix\n${START}\nmiddle\n${END}\nsuffix`), true);
 });
 
 test('strip removes the block and restores the user file', () => {
