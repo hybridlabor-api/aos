@@ -89,10 +89,12 @@ function checkAgentDocs() {
     if (existsSync(f)) {
       const isLink = lstatSync(f).isSymbolicLink();
       const target = isLink ? readlinkSync(f) : null;
-      ok = isLink && path.basename(target) === 'AGENTS.md';
-      detail = isLink ? `-> ${target}` : 'a real file, not a symlink (will drift from AGENTS.md)';
+      const content = !isLink ? readFileSync(f, 'utf8') : '';
+      const isPointer = !isLink && (content.includes('AGENTS.md') || content.includes('Read [AGENTS.md]'));
+      ok = (isLink && path.basename(target) === 'AGENTS.md') || isPointer;
+      detail = isLink ? `-> ${target}` : (isPointer ? 'pointer to AGENTS.md' : 'a real file without AGENTS.md pointer (will drift from AGENTS.md)');
     }
-    add('docs', alias, ok, detail, `ln -sf AGENTS.md ${alias}`);
+    add('docs', alias, ok, detail, `point ${alias} to AGENTS.md`);
   }
 }
 
