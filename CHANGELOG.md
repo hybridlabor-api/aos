@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.0.1](https://github.com/hybridlabor-api/aos/compare/v5.0.0...v5.0.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **uninstall:** stop only this user's own gateway and hub processes; read config files with a BOM ([c76ab29](https://github.com/hybridlabor-api/aos/commit/c76ab299fda9b3105ce9a2d27e62c7c1f2da7525))
+* **uninstall:** stop only this user's own gateway and hub processes; read config files with a BOM (5.0.1) ([e42701f](https://github.com/hybridlabor-api/aos/commit/e42701f55c94837c7cac5c8f988e32854157d91e))
+
 ## [5.0.0](https://github.com/hybridlabor-api/aos/compare/v5.0.0-beta.2...v5.0.0) (2026-10-13)
 
 
