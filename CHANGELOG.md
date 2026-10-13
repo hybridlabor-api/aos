@@ -1,5 +1,43 @@
 # Changelog
 
+## [5.0.0](https://github.com/hybridlabor-api/aos/compare/v5.0.0-beta.2...v5.0.0) (2026-10-13)
+
+
+### Features
+
+* **codex:** AOS-owned execution-policy rules as the enforced gate layer ([88575b0](https://github.com/hybridlabor-api/aos/commit/88575b09364f2f8a8e10c5bc7257055706245759))
+* **installer-v5:** enable the Claude Code mods with one settings.json write; unified memory docs ([31d7e2c](https://github.com/hybridlabor-api/aos/commit/31d7e2c25e571ba0bb69843694f3880cc2be9a38))
+* **installer-v5:** fresh install adds gateway, hub service and all Claude Code mods ([1a22843](https://github.com/hybridlabor-api/aos/commit/1a22843694c31fd1a34f7d408bc9cfda206514d8))
+* **installer:** aos launcher, launchers for hub/gogate/sessions/trail, English uninstaller output ([8980241](https://github.com/hybridlabor-api/aos/commit/89802418eaffe214338c5410952e2fffc4d62e07))
+* **installer:** unified memory (memB, deja, OpenWiki, Codebase Memory for coding tools) in the default install ([1421e03](https://github.com/hybridlabor-api/aos/commit/1421e0300ef225d1cdbb66e99f367208cf04ba84))
+
+
+### Bug Fixes
+
+* **codex:** register go-gate without a matcher; read tool_input.cmd ([76b2aa3](https://github.com/hybridlabor-api/aos/commit/76b2aa38c4f7ff295bd0abb6d8e43ac5181ba573))
+* **doctor:** Codex hook review is informational, never a false warning ([d2facd1](https://github.com/hybridlabor-api/aos/commit/d2facd130cefceaa02848ba0237404992017e390))
+* **go-gate,hub:** read Codex code-mode exec sources; migrate the Windows hub from the beta.2 task to the Startup .vbs ([f5f2bc1](https://github.com/hybridlabor-api/aos/commit/f5f2bc1f2cba0e4184c35356d31f6d9921c76a72))
+* **go-gate,uninstall:** Codex deny contract and Windows Startup entries on uninstall ([b169fa1](https://github.com/hybridlabor-api/aos/commit/b169fa1447ae51296c8b843ed41f8f5897f8746c))
+* **go-gate:** free read-only gh calls and store reads through filters; guard aos-uninstall ([9c29ce5](https://github.com/hybridlabor-api/aos/commit/9c29ce516be4807bc663520b3442a76b0a125c06))
+* **go-gate:** open powershell -Command and cmd /c like bash -c; -EncodedCommand needs a GO ([8902b28](https://github.com/hybridlabor-api/aos/commit/8902b2865ff85c9dc56e062ce49d6c6c2097656d))
+* **go-gate:** type and Get-Content read the store like cat ([ace34a2](https://github.com/hybridlabor-api/aos/commit/ace34a26b446e3400c25a142a41ed55d60086dc3))
+* **go-gate:** Windows spellings, backslash store paths, dry-run=false and inline spawn of a non-literal command ([78f0717](https://github.com/hybridlabor-api/aos/commit/78f071764bdf2f210f4ad09dd8096fc4cd1d8b3f))
+* **installer:** back up each config file at most once per run ([8e9139c](https://github.com/hybridlabor-api/aos/commit/8e9139c5dc2e4a4c5ae2a93813f0886a9f6068e8))
+* **installer:** sync rule blocks into ~/CLAUDE.md and ~/AGENTS.md from any working directory ([3cea3c1](https://github.com/hybridlabor-api/aos/commit/3cea3c14ff3beca871a4d912580de10c8a6cadd2))
+* **installer:** touchdesigner-mcp builds without the mcpb pack step; Codex hook trust reminder and doctor row ([b1c7353](https://github.com/hybridlabor-api/aos/commit/b1c7353e16ab48fd4df1e785cc9152c8a730aeaa))
+* **memb,hub:** reconcile memb-mcp on its real entry import; hub service starts without package.json ([8e82aa1](https://github.com/hybridlabor-api/aos/commit/8e82aa19c87c4f0228988e3bd44c1a0272dbc0f9))
+* **opencode:** use the config dir OpenCode reads on Windows ([54a031b](https://github.com/hybridlabor-api/aos/commit/54a031b906be765e182048643ca0e9adf3f600c3))
+* **uninstall:** remove the memB WebUI Startup entry on Windows ([420bf4f](https://github.com/hybridlabor-api/aos/commit/420bf4f10affa85eb78c5da02ee3ba34f2861052))
+* **windows:** aos-acp starts npx/opencode shims, aos-a2a send exits cleanly, list marks stale peers ([65a8c66](https://github.com/hybridlabor-api/aos/commit/65a8c663a0569b28ff6075a238ea966416478a05))
+* **windows:** gateway and hub start from the Startup folder, not a scheduled task ([9cf4a53](https://github.com/hybridlabor-api/aos/commit/9cf4a53f9242f2219aa896a21edfe4d578ece121))
+* **windows:** gateway npm via cli-spawn, hub task XML as UTF-16, aos-uninstall launcher runs from the package ([c6d0e4a](https://github.com/hybridlabor-api/aos/commit/c6d0e4a63448da144c9973729b50a69cbe896a46))
+* **windows:** pass core.longpaths to spawned CLIs so marketplace add can clone ([6607b1b](https://github.com/hybridlabor-api/aos/commit/6607b1b016c9363b3f05a3225d8ba2efd226199d))
+
+
+### Miscellaneous Chores
+
+* **release:** graduate from beta to stable 5.0.0 ([3b309af](https://github.com/hybridlabor-api/aos/commit/3b309af2153b382fe728aaac955f4927bd761c12))
+
 ## [5.0.0-beta.2](https://github.com/hybridlabor-api/aos/compare/v5.0.0-beta.1...v5.0.0-beta.2) (2026-10-11)
 
 
