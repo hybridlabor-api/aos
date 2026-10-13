@@ -7979,6 +7979,8 @@ Options:
         if (DRY_RUN) log.warn('DRY-RUN MODE active - nothing AOS owns is written.');
         initFullSession(detectInstallState());
         persistInstallOptions();
+        // --platforms is parsed above but only marked explicit further down the full flow; hooks-only exits before that.
+        markPlatformsExplicit(PLATFORMS_ARG || []);
         installGlobalHooks({ harnesses: activeHarnessKeys() });
         flushSessionManifest();
         console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
