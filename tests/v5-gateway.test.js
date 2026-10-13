@@ -568,7 +568,8 @@ describe('pkg-gateway', () => {
         await pkg.uninstall({ ...win.ctx, now: 1700000000000 });
         assert.deepEqual(win.calls.filter((c) => c[0] === 'schtasks'), [['schtasks', '/Delete', '/TN', 'AOS MCP Gateway', '/F']]);
         const stop = win.calls.find((c) => c[0] === 'powershell').join(' ');
-        assert.ok(stop.includes(path.join(ROOT, 'bin', 'aos-gateway.mjs')) && stop.includes(path.join(cfg.gatewayDir(win.ctx.home), 'node_modules')) && stop.includes('Stop-Process'), stop);
+        const lcWin = (s) => s.toLowerCase().replace(/\//g, '\\'); // stopArgs lower-cases and uses backslashes
+        assert.ok(lcWin(stop).includes(lcWin(path.join(ROOT, 'bin', 'aos-gateway.mjs'))) && lcWin(stop).includes(lcWin(path.join(cfg.gatewayDir(win.ctx.home), 'node_modules'))) && stop.includes('Stop-Process'), stop);
         assert.ok(!win.calls.some((c) => c[0] === 'wscript.exe'), 'uninstall starts nothing');
         assert.ok(!fs.existsSync(vbs));
     });
