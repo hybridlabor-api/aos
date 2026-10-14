@@ -17,7 +17,7 @@ test("book lists live sessions with whitelisted fields, 0600 file in 0700 dir", 
   reg.register({ name: "b2", harness: "opencode", pid: process.pid, url: "http://127.0.0.1:2/a2a" });
   const entries = reg.book();
   assert.deepEqual(entries.map((e) => e.name), ["a1", "b2"]);
-  const expected = ["name", "harness", "url", "cardUrl", "cwd", "since", "ts", "status", "pid"];
+  const expected = ["name", "harness", "url", "cardUrl", "cwd", "since", "ts", "status", "pid", "label"];
   for (const e of entries) {
     assert.deepEqual(Object.keys(e).sort(), [...expected].sort());
     assert.equal(typeof e.ts, "number");

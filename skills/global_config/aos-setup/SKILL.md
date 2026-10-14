@@ -135,6 +135,18 @@ globally, which is what makes it identity rather than project context.
 defaults to `bdb_developer`, which the ambient hook accepts as its baseline
 user. Never write credentials or high-entropy strings into a fact.
 
+### Worktrees for multi-agent work
+
+- One worktree per builder or worker. Never let two agents share a checkout.
+- Name paths `<repo>-wt-<task>` under one root next to the repo, or `.worktrees/<task>` if `.worktrees` is gitignored.
+- One branch per worktree. Never reuse a branch.
+- Create with `git worktree add <path> -b <branch> <base>`.
+- Never use bare `git stash` or `git stash pop`. The stash is shared by all worktrees; use a WIP commit or `git stash push -u -m "<tag>"`.
+- Workers and subagents delete nothing. Cleanup and `git worktree prune` are the dispatcher's job, after the user's GO.
+- Same for Claude Code, OpenCode and agy: plain git, no harness-specific tooling.
+- Creating one: `using-git-worktrees`. Landing one: `finishing-a-development-branch`.
+- `aos-doctor` reports the worktree count, orphaned (prunable) worktrees and `.worktrees` ignore status.
+
 ---
 
 ## 3. Install or update AOS itself

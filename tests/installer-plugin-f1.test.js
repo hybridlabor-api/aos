@@ -118,3 +118,72 @@ test('harnessDirs no longer copies .codex-plugin into HOME', () => {
   const m = /const harnessDirs = \[([^\]]*)\]/.exec(src);
   assert.ok(m && !m[1].includes('.codex-plugin'));
 });
+
+test('retireCodexSkillCopies: module skills matching ~/.agents/skills are backed up and retired, edited copies stay', () => {
+  const codexRoot = path.join(home, '.codex', 'skills');
+  const agentsRoot = path.join(home, '.agents', 'skills');
+
+  const mkCodex = (rel, text) => {
+    const f = path.join(codexRoot, rel);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, text);
+    return f;
+  };
+  const mkAgents = (rel, text) => {
+    const f = path.join(agentsRoot, rel);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, text);
+    return f;
+  };
+
+  // 1. Module skill matching exactly (e.g. code-first-hardware-design)
+  const m1Codex = mkCodex('code-first-hardware-design/SKILL.md', '# CFHD original');
+  const m1Agents = mkAgents('code-first-hardware-design/SKILL.md', '# CFHD original');
+
+  // 2. Module skill with nested files matching exactly
+  const m2CodexA = mkCodex('pcb-layout-routing-automation/SKILL.md', '# Routing');
+  const m2CodexB = mkCodex('pcb-layout-routing-automation/scripts/route.py', '# python code');
+  const m2AgentsA = mkAgents('pcb-layout-routing-automation/SKILL.md', '# Routing');
+  const m2AgentsB = mkAgents('pcb-layout-routing-automation/scripts/route.py', '# python code');
+
+  // 3. Module skill edited in ~/.codex/skills (e.g. pcb-constraint-definition)
+  const m3Codex = mkCodex('pcb-constraint-definition/SKILL.md', '# Constraints EDITED');
+  const m3Agents = mkAgents('pcb-constraint-definition/SKILL.md', '# Constraints original');
+
+  // 4. Foreign skill only in ~/.codex/skills (not in ~/.agents/skills)
+  const foreign = mkCodex('my-custom-codex-skill/SKILL.md', '# Custom');
+
+  // Manifest is empty (these are module skills, not in core manifest)
+  const manifest = {};
+  const res = inst.retireCodexSkillCopies(manifest);
+
+  // m1 and m2 should be retired (backed up and removed)
+  assert.ok(!fs.existsSync(m1Codex), 'm1 should be removed from ~/.codex/skills');
+  assert.ok(!fs.existsSync(path.dirname(m1Codex)), 'm1 dir should be cleaned up');
+  assert.ok(!fs.existsSync(m2CodexA), 'm2 SKILL.md should be removed');
+  assert.ok(!fs.existsSync(m2CodexB), 'm2 subfile should be removed');
+  assert.ok(!fs.existsSync(path.dirname(m2CodexA)), 'm2 dir should be cleaned up');
+
+  // ~/.agents/skills copies must remain untouched
+  assert.ok(fs.existsSync(m1Agents), 'agents copy of m1 must remain');
+  assert.ok(fs.existsSync(m2AgentsA), 'agents copy of m2 must remain');
+  assert.ok(fs.existsSync(m3Agents), 'agents copy of m3 must remain');
+
+  // Edited m3 must STAY in ~/.codex/skills and be reported
+  assert.ok(fs.existsSync(m3Codex), 'edited module skill copy must stay');
+  assert.ok(res.leftover.includes('pcb-constraint-definition'), 'edited skill must be in leftover');
+
+  // Foreign skill must STAY in ~/.codex/skills and NOT be in leftover
+  assert.ok(fs.existsSync(foreign), 'foreign skill must stay');
+  assert.ok(!res.leftover.includes('my-custom-codex-skill'), 'foreign skill is not an AOS leftover');
+
+  // Check backup exists for m1
+  const backupsDir = path.join(home, '.agents', 'backups');
+  const backupEntries = fs.readdirSync(backupsDir).filter((d) => d.startsWith('plugin-migration-codex-skills-'));
+  assert.ok(backupEntries.length > 0, 'backup directory should be created');
+  const latestBackup = path.join(backupsDir, backupEntries[backupEntries.length - 1]);
+  const backedUpM1 = path.join(latestBackup, '.codex', 'skills', 'code-first-hardware-design', 'SKILL.md');
+  assert.ok(fs.existsSync(backedUpM1), 'backed up file should exist');
+  assert.equal(fs.readFileSync(backedUpM1, 'utf8'), '# CFHD original');
+});
+

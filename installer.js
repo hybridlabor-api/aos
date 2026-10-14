@@ -35,8 +35,8 @@ const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
-const { START: DESTRUCTIVE_START, upsertDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
-const { upsertRoutingBlock } = require('./lib/routing-rules');
+const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
+const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
 const { gatewayCovered } = require('./lib/gateway/config');
 
@@ -1648,21 +1648,172 @@ function runCodexPluginStep() {
     if (r.ok === false) throw new Error(r.lines.filter((l) => /FAILED/.test(l)).join('; ') || 'Codex plugin install failed');
 }
 
+function collectSkillFiles(dir) {
+    const files = [];
+    let unsafe = false;
+    function walk(sub) {
+        const fullDir = sub ? path.join(dir, sub) : dir;
+        let items;
+        try { items = fs.readdirSync(fullDir, { withFileTypes: true }); } catch (_) { unsafe = true; return; }
+        for (const item of items) {
+            if (item.name === '.DS_Store') continue;
+            const rel = sub ? `${sub}/${item.name}` : item.name;
+            const full = path.join(dir, rel);
+            let st;
+            try { st = fs.lstatSync(full); } catch (_) { unsafe = true; continue; }
+            if (st.isSymbolicLink()) {
+                unsafe = true;
+            } else if (st.isDirectory()) {
+                walk(rel);
+            } else if (st.isFile()) {
+                files.push(rel);
+            } else {
+                unsafe = true;
+            }
+        }
+    }
+    walk('');
+    return { files: files.sort(), unsafe };
+}
+
+function cleanEmptySkillDirs(dir) {
+    let items;
+    try { items = fs.readdirSync(dir); } catch (_) { return; }
+    for (const item of items) {
+        const full = path.join(dir, item);
+        try {
+            if (item === '.DS_Store') {
+                fs.unlinkSync(full);
+            } else if (fs.statSync(full).isDirectory()) {
+                cleanEmptySkillDirs(full);
+            }
+        } catch (_) {}
+    }
+    try { fs.rmdirSync(dir); } catch (_) {}
+}
+
 // Measured with codex 0.154.0: Codex loads BOTH ~/.agents/skills and ~/.codex/skills, so AOS copies
 // in both double the list (366 entries, descriptions squeezed out, cut off after pb-ship). AOS writes
 // only ~/.agents/skills; copies it wrote earlier into ~/.codex/skills (manifest hash still matches) are
-// backed up and removed, all-or-nothing (edited files stop the removal and are reported).
-function retireCodexSkillCopies(manifest) {
-    if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return;
-    const root = path.join(homeDir, '.codex', 'skills');
-    if (!fs.existsSync(root)) return;
-    const backup = path.join(homeDir, '.agents', 'backups', `plugin-migration-codex-skills-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
+// backed up and removed, all-or-nothing (edited files stop the removal and are reported). Legacy module
+// skills (e.g. hardware-pcb) also present in ~/.agents/skills are backed up and retired when file
+// hashes match; edited copies stay and are reported.
+function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManifest(), { home = homeDir } = {}) {
+    if (DRY_RUN || pluginMigrationMode() !== 'on' || !manifest) return { removed: [], leftover: [] };
+    const targetHome = home || homeDir;
+    const root = path.join(targetHome, '.codex', 'skills');
+    if (!fs.existsSync(root)) return { removed: [], leftover: [] };
+    let rootStat;
+    try { rootStat = fs.lstatSync(root); } catch { return { removed: [], leftover: [] }; }
+    if (rootStat.isSymbolicLink()) {
+        log.warn(`Codex skills: ${root} is a symlink; not touched, Codex will list those skills twice.`);
+        return { removed: [], leftover: [], refused: `${root} is a symlink` };
+    }
+    const backup = path.join(targetHome, '.agents', 'backups', `plugin-migration-codex-skills-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
+    let r = { removed: [], leftover: [], refused: null };
     try {
-        const r = pluginMigration.removeLooseCopies({ home: homeDir, root, manifest, backupDir: backup });
-        if (r.refused) log.warn(`Codex skills: ${r.refused}; not touched, Codex will list those skills twice.`);
-        else if (r.leftover.length) log.warn(`Codex skills: ${r.leftover.length} edited or unsafe copies in ${root} (${r.leftover.slice(0, 5).join(', ')}) stay, so Codex lists skills twice (it also reads ~/.agents/skills). Move your edits out and re-run to retire them.`);
-        else if (r.removed.length) log.step(`Codex reads ~/.agents/skills, so ${r.removed.length} AOS copies were removed from ${root} (backup: ${backup}).`);
-    } catch (e) { log.warn(`Codex skill cleanup skipped: ${e.message}`); }
+        r = pluginMigration.removeLooseCopies({ home: targetHome, root, manifest: manifest || {}, backupDir: backup });
+        if (r.refused) {
+            log.warn(`Codex skills: ${r.refused}; not touched, Codex will list those skills twice.`);
+            return { removed: [], leftover: [], refused: r.refused };
+        }
+    } catch (e) {
+        log.warn(`Codex skill cleanup skipped: ${e.message}`);
+    }
+
+    const removedFiles = [...(r.removed || [])];
+    const leftoverSkills = new Set(r.leftover || []);
+
+    const agentsSkillsDir = path.join(targetHome, '.agents', 'skills');
+    if (fs.existsSync(agentsSkillsDir)) {
+        const prefix = path.resolve(root) + path.sep;
+        let realPrefix = null;
+        try { realPrefix = fs.realpathSync(root) + path.sep; } catch (_) {}
+
+        let entries = [];
+        try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (_) { entries = []; }
+        for (const entry of entries) {
+            if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+            const skillName = entry.name;
+            if (leftoverSkills.has(skillName)) continue;
+            const codexSkillDir = path.join(root, skillName);
+            const agentsSkillDir = path.join(agentsSkillsDir, skillName);
+            let agentsStat;
+            try { agentsStat = fs.statSync(agentsSkillDir); } catch (_) { continue; }
+            if (!agentsStat.isDirectory()) continue;
+
+            const codexScan = collectSkillFiles(codexSkillDir);
+            const agentsScan = collectSkillFiles(agentsSkillDir);
+
+            if (codexScan.unsafe || agentsScan.unsafe || codexScan.files.length === 0 || codexScan.files.length !== agentsScan.files.length) {
+                leftoverSkills.add(skillName);
+                continue;
+            }
+
+            let matches = true;
+            for (let i = 0; i < codexScan.files.length; i++) {
+                if (codexScan.files[i] !== agentsScan.files[i]) {
+                    matches = false;
+                    break;
+                }
+                const rel = codexScan.files[i];
+                const fileA = path.join(codexSkillDir, rel);
+                const fileB = path.join(agentsSkillDir, rel);
+                const hashA = computeFileHash(fileA);
+                const hashB = computeFileHash(fileB);
+                if (!hashA || hashA !== hashB) {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if (!matches) {
+                leftoverSkills.add(skillName);
+                continue;
+            }
+
+            // Verify paths are safely within root before moving
+            let pathsSafe = true;
+            for (const rel of codexScan.files) {
+                const abs = path.resolve(path.join(codexSkillDir, rel));
+                let realAbs = null;
+                try { realAbs = fs.realpathSync(abs); } catch (_) {}
+                if (!abs.startsWith(prefix) || !realAbs || (realPrefix && !realAbs.startsWith(realPrefix))) {
+                    pathsSafe = false;
+                    break;
+                }
+            }
+            if (!pathsSafe) {
+                leftoverSkills.add(skillName);
+                continue;
+            }
+
+            // All file hashes match the ~/.agents copy: back up and retire.
+            for (const rel of codexScan.files) {
+                const abs = path.join(codexSkillDir, rel);
+                try {
+                    const dest = path.join(backup, path.relative(targetHome, abs));
+                    fs.mkdirSync(path.dirname(dest), { recursive: true });
+                    fs.copyFileSync(abs, dest);
+                    fs.unlinkSync(abs);
+                    if (manifest && manifest[abs]) delete manifest[abs];
+                    removedFiles.push(abs);
+                } catch (e) {
+                    logDebug(e, `Codex retire module skill: ${abs}`);
+                }
+            }
+            cleanEmptySkillDirs(codexSkillDir);
+        }
+    }
+
+    if (leftoverSkills.size) {
+        const leftoverArr = [...leftoverSkills].sort();
+        log.warn(`Codex skills: ${leftoverArr.length} edited or unsafe copies in ${root} (${leftoverArr.slice(0, 5).join(', ')}) stay, so Codex lists skills twice (it also reads ~/.agents/skills). Move your edits out and re-run to retire them.`);
+    }
+    if (removedFiles.length) {
+        log.step(`Codex reads ~/.agents/skills, so ${removedFiles.length} AOS copies were removed from ${root} (backup: ${backup}).`);
+    }
+    return { removed: removedFiles, leftover: [...leftoverSkills].sort() };
 }
 
 // ~/.codex-plugin/plugin.json in HOME made Codex rename every skill, even OpenAI's, to bdb-aos:<name>.
@@ -5081,27 +5232,25 @@ function injectHarnessRules() {
             const claudeMdPath = path.join(homeDir, 'CLAUDE.md');
             installStep(`sync ${claudeMdPath}`, () => {
                 let claudeContent = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
-                // A CLAUDE.md carrying this title is the short, hand-maintained
-                // form (see docs/sessions/audit-agents.md F-01): the GO gate lives in a hook,
-                // not in this file's prose, and the /startcycle spec + agent
-                // roster live in their own skill/workflow files, not duplicated
-                // here. Re-appending the old long-form content on every install
-                // would silently undo that diet. Leave it alone.
-                const isManagedShortForm = claudeContent.includes('BDB Agent Skills — Global Instructions');
-                if (isManagedShortForm) {
-                    const withBlock = upsertRoutingBlock(upsertDestructiveBlock(claudeContent));
-                    if (withBlock !== claudeContent) fs.writeFileSync(claudeMdPath, withBlock);
-                    log.step('CLAUDE.md already uses the short managed form -- only the destructive-actions and tool-routing blocks are managed.');
+                // ~/CLAUDE.md is a pointer only to ~/AGENTS.md (canonical home for destructive and routing blocks).
+                // It must not carry destructive-actions or routing blocks.
+                let next = stripRoutingBlock(stripDestructiveBlock(claudeContent));
+                next = next.replace(/\(CLAUDE\.md\/GEMINI\.md sind Symlinks darauf\)/g, '(CLAUDE.md/RULES.md verweisen darauf)');
+                next = next.replace(/CLAUDE\.md \/ GEMINI\.md in den Repos sind Symlinks darauf/g, 'CLAUDE.md / RULES.md in den Repos verweisen darauf');
+                next = next.replace(/Harness files: `CLAUDE\.md`, `RULES\.md` and `CODEX\.md` are symlinks to this/g, 'Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this');
+
+                if (!next.trim()) {
+                    const srcClaude = path.join(srcDir, 'CLAUDE.md');
+                    next = fs.existsSync(srcClaude) ? fs.readFileSync(srcClaude, 'utf8') : '# AOS — Claude Code\n\n**Read [AGENTS.md](AGENTS.md) first.**\n';
+                } else if (!next.includes('AGENTS.md')) {
+                    next = `**Read [AGENTS.md](AGENTS.md) first.**\n\n${next}`;
+                }
+
+                if (next !== claudeContent) {
+                    fs.writeFileSync(claudeMdPath, next);
+                    log.step('Synced ~/CLAUDE.md as pointer to AGENTS.md (blocks live canonically in AGENTS.md)');
                 } else {
-                    if (!claudeContent.includes("Global Agent Instructions") && !claudeContent.includes(DESTRUCTIVE_START)) {
-                        claudeContent = `${claudeContent}\n\n${globalRules}`.trim();
-                    }
-                    if (startcycleContent && !claudeContent.includes("Autonomous Development Cycle Workflow")) {
-                        claudeContent = `${claudeContent}\n\n---\n\n${startcycleContent}`.trim();
-                    }
-                    claudeContent = upsertRoutingBlock(upsertDestructiveBlock(claudeContent));
-                    fs.writeFileSync(claudeMdPath, claudeContent);
-                    log.step('Synced CLAUDE.md with Global Rules and /startcycle workflow');
+                    log.step('~/CLAUDE.md already a clean pointer to AGENTS.md.');
                 }
             }, 'CLAUDE.md is unchanged.');
 
@@ -5144,7 +5293,12 @@ function injectHarnessRules() {
                     return;
                 }
                 const agentsContent = fs.readFileSync(homeAgentsPath, 'utf8');
-                const next = upsertRoutingBlock(upsertDestructiveBlock(agentsContent));
+                let next = agentsContent;
+                next = next.replace(/\(CLAUDE\.md\/GEMINI\.md sind Symlinks darauf\)/g, '(CLAUDE.md/RULES.md verweisen darauf)');
+                next = next.replace(/CLAUDE\.md \/ GEMINI\.md in den Repos sind Symlinks darauf/g, 'CLAUDE.md / RULES.md in den Repos verweisen darauf');
+                next = next.replace(/Harness files: `CLAUDE\.md`, `RULES\.md` and `CODEX\.md` are symlinks to this/g, 'Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this');
+                next = next.replace(/- \*\*Globale Regeln\*\* \(Core-Behavior, Safety, GO-Protokoll, Skill-Routing\): `~\/CLAUDE\.md` \(gilt für alle Harnesses; Codex\/OpenCode lesen zusätzlich diese Datei\) bzw\. `~\/\.gemini\/antigravity-cli\/GEMINI\.md`\n?/g, '');
+                next = upsertRoutingBlock(upsertDestructiveBlock(next));
                 if (next !== agentsContent) {
                     fs.writeFileSync(homeAgentsPath, next);
                     log.step(`Synced managed blocks in ${homeAgentsPath}`);
@@ -5513,7 +5667,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
 // what happened to memb-inject.mjs in v4.4.0, on the machines that needed it
 // most (a fresh install got it; every machine that already had AOS did not).
 // harnesses: Set of harness keys to write for; null (tests, direct callers) means all of them.
-function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, harnesses = null } = {}) {
+function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, harnesses = null, dryRun = DRY_RUN } = {}) {
     const on = (k) => !harnesses || harnesses.has(k);
     const workflowsSrc = path.join(srcDir, '.claude', 'workflows');
 
@@ -5535,6 +5689,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
         mergeBdbSettingsHooks(claudeSettings);
         const deny = uninstallRecords.addClaudeDeny({ home: targetHome, settingsPath: claudeSettings, rules: CLAUDE_DENY_RULES });
         if (deny.length) log.step(`Added ${deny.length} permissions.deny rule(s) for home-level deletes to ${claudeSettings}`);
+        ensureClaudeDefaultMode(claudeSettings, { dryRun });
     }
     // a2a-inbox.mjs (drain + stop) ships inside the hooks dir copy above and is
     // wired by mergeBdbSettingsHooks from the shipped settings template. The
@@ -5756,7 +5911,7 @@ function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
         if (JSON.stringify(settings).includes('a2a-session.mjs')) return true; // already wired
         settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
         if (!Array.isArray(settings.hooks.SessionStart)) settings.hooks.SessionStart = [];
-        settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/a2a-session.mjs"' }] });
+        settings.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/a2a-session.mjs"', timeout: 5 }] });
         if (fs.existsSync(settingsPath)) backupOnce(settingsPath, () => { const b = `${settingsPath}.${timestamp}.bak`; fs.copyFileSync(settingsPath, b); return b; });
         fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
         fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
@@ -5897,10 +6052,37 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     const localize = (cmd) => (projectLocal
         ? (machineGlobalHooks.some((n) => cmd.includes(n)) ? cmd : cmd.split('${HOME}').join('${CLAUDE_PROJECT_DIR}').replace(/\$CLAUDE_PROJECT_DIR\b/g, '${CLAUDE_PROJECT_DIR}'))
         : cmd.replace(/\$\{?CLAUDE_PROJECT_DIR\}?\/\.claude\/hooks\//g, '$HOME/.claude/hooks/').split('$HOME/.claude/hooks/').join(process.env.CLAUDE_CONFIG_DIR ? '${CLAUDE_CONFIG_DIR}/hooks/' : '$HOME/.claude/hooks/'));
+    const DEFAULT_HOOK_TIMEOUTS = {
+        'go-gate.mjs': 10,
+        'conventional-commits.mjs': 10,
+        'env-file-protection.mjs': 10,
+        'graph-gate.mjs': 10,
+        'memb-inject.mjs': 10,
+        'a2a-inbox.mjs': 5,
+        'a2a-session.mjs': 5,
+        'go-token.mjs': 5,
+        'go-grant.mjs': 5,
+        'rules-inject.mjs': 3,
+        'trail-relay.mjs': 3,
+        'trail-autostart.mjs': 3,
+        'aos-session-hint.mjs': 3,
+    };
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
             ...e,
-            hooks: (e.hooks || []).map((h) => (typeof h.command === 'string' ? { ...h, command: localize(h.command) } : h)),
+            hooks: (e.hooks || []).map((h) => {
+                if (!h || typeof h.command !== 'string') return h;
+                const updated = { ...h, command: localize(h.command) };
+                if (typeof updated.timeout !== 'number' || updated.timeout <= 0) {
+                    for (const [script, to] of Object.entries(DEFAULT_HOOK_TIMEOUTS)) {
+                        if (updated.command.includes(script)) {
+                            updated.timeout = to;
+                            break;
+                        }
+                    }
+                }
+                return updated;
+            }),
         }));
 
     const buildMerged = (existing) => {
@@ -5959,6 +6141,93 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         fs.renameSync(tmpPath, settingsPath);
     } catch (e) {
         log.warn(`Could not write ${settingsPath}: ${e.message}`);
+    }
+}
+
+// Sets permissions.defaultMode = "auto" in Claude settings.json ONLY when that key is absent.
+// Never overwrites an existing value, hooks, or other permissions.
+// Works on fresh install and update; respects dry-run and backupOnce.
+function ensureClaudeDefaultMode(settingsPathOrOpts, maybeOpts = {}) {
+    let settingsPath;
+    let dryRun;
+    if (typeof settingsPathOrOpts === 'string') {
+        settingsPath = settingsPathOrOpts;
+        dryRun = maybeOpts.dryRun !== undefined ? Boolean(maybeOpts.dryRun) : DRY_RUN;
+    } else if (settingsPathOrOpts && typeof settingsPathOrOpts === 'object') {
+        const opts = settingsPathOrOpts;
+        settingsPath = opts.settingsPath || (opts.targetHome ? path.join(claudeConfigDir(opts.targetHome), 'settings.json') : path.join(claudeConfigDir(homeDir), 'settings.json'));
+        dryRun = opts.dryRun !== undefined ? Boolean(opts.dryRun) : DRY_RUN;
+    } else {
+        settingsPath = path.join(claudeConfigDir(homeDir), 'settings.json');
+        dryRun = DRY_RUN;
+    }
+
+    if (!fs.existsSync(settingsPath)) {
+        if (dryRun) {
+            log.message(`[dry-run] would set permissions.defaultMode="auto" in ${settingsPath}`);
+            return false;
+        }
+        try {
+            fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+            const tmpPath = `${settingsPath}.${process.pid}.tmp`;
+            fs.writeFileSync(tmpPath, JSON.stringify({ permissions: { defaultMode: 'auto' } }, null, 2) + '\n', { mode: 0o644 });
+            fs.renameSync(tmpPath, settingsPath);
+            log.step(`Set permissions.defaultMode="auto" in ${settingsPath}`);
+            return true;
+        } catch (e) {
+            log.warn(`Could not write ${settingsPath}: ${e.message}`);
+            return false;
+        }
+    }
+
+    let target = settingsPath;
+    try { target = fs.realpathSync(settingsPath); } catch { /* new/unresolvable */ }
+
+    const settings = readJsonFile(target);
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        return false;
+    }
+
+    if (settings.permissions !== undefined && (typeof settings.permissions !== 'object' || settings.permissions === null || Array.isArray(settings.permissions))) {
+        return false;
+    }
+
+    if (settings.permissions && 'defaultMode' in settings.permissions) {
+        return false;
+    }
+
+    if (dryRun) {
+        log.message(`[dry-run] would set permissions.defaultMode="auto" in ${settingsPath}`);
+        return false;
+    }
+
+    try {
+        backupOnce(settingsPath, () => {
+            const b = `${settingsPath}.${String(process.hrtime.bigint()).padStart(20, '0')}.bak`;
+            fs.copyFileSync(target, b);
+            return b;
+        });
+    } catch (e) {
+        log.warn(`Could not backup ${settingsPath}: ${e.message}`);
+        return false;
+    }
+
+    const perms = settings.permissions || {};
+    settings.permissions = { ...perms, defaultMode: 'auto' };
+
+    try {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        let mode = 0o644;
+        try { mode = fs.statSync(target).mode & 0o777; } catch { /* new file */ }
+        const tmpPath = `${target}.${process.pid}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(settings, null, 2) + '\n', { mode });
+        if (mode !== null) fs.chmodSync(tmpPath, mode);
+        fs.renameSync(tmpPath, target);
+        log.step(`Set permissions.defaultMode="auto" in ${settingsPath}`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not write ${settingsPath}: ${e.message}`);
+        return false;
     }
 }
 
@@ -8412,6 +8681,7 @@ module.exports = {
     installMcpLauncher,
     installMcpsForTarget,
     mergeBdbSettingsHooks,
+    ensureClaudeDefaultMode,
     mergeAntigravityHooks,
     agyHookCommand,
     selfCheckAgyHooks,
