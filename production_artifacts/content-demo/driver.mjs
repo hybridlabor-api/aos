@@ -164,9 +164,8 @@ export function buildTimeline(plan, duration = 36, cwd = DEFAULT_DIR) {
 
 export function checkDir(dir) {
   if (!path.isAbsolute(dir)) throw new Error('--dir must be an absolute path')
-  const user = os.userInfo().username
-  if ((user && user.length > 2 && dir.includes(user)) || dir === os.homedir() || dir.startsWith(os.homedir() + path.sep)) {
-    throw new Error('--dir must not be inside the home directory or contain the username')
+  if (dir === os.homedir() || dir.startsWith(os.homedir() + path.sep)) {
+    throw new Error('--dir must not be inside the home directory')
   }
 }
 

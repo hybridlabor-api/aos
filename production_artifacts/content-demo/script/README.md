@@ -24,4 +24,4 @@ Screen recording runbook and script for a 30–40 s demo of the agenttrail board
   ./record.sh trim cropped.mp4 3 40 final.mp4
 ```
 
-Then move `final.mp4` to `~/.aos/briefs/brag-output-2026-10-07-aos/footage/`.
+Then move `final.mp4` to `footage/`.

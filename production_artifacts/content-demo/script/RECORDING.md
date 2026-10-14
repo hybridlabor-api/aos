@@ -51,7 +51,7 @@ node driver.mjs --dir /tmp/pulse-demo --duration 36 --speed 1 --port 5350
 
 Move final file to:
 ```
-~/.aos/briefs/brag-output-2026-10-07-aos/footage/pulse-demo-final.mp4
+footage/pulse-demo-final.mp4
 ```
 
 ## Notes
