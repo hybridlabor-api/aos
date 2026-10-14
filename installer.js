@@ -8126,26 +8126,6 @@ async function runQuickUpdate(installState) {
 }
 
 
-function buildAoAnnouncementBanner() {
-    const W = 78;
-    const row = (text, style = '') => `\x1b[36m│\x1b[0m${style}${text.padEnd(W)}\x1b[0m\x1b[36m│\x1b[0m`;
-    return [
-        `\x1b[36m╭${'─'.repeat(W)}╮\x1b[0m`,
-        row(''),
-        row('   BDB AGENT ORCHESTRATOR APP — FINAL BETA NOW AVAILABLE', '\x1b[1m\x1b[35m'),
-        row(''),
-        row('   The next generation of cross-harness multi-agent orchestration'),
-        row('   is now open to every user as a final beta.'),
-        row(''),
-        row('   • Dashboard & WebUI:  http://localhost:3101'),
-        row('   • Service command:    ao service install  (enables the background service)'),
-        row('   • Quick launch:       ao open  or  ao service status'),
-        row('   • Features:           session telemetry, live AgentTrail, multi-workspaces'),
-        row(''),
-        `\x1b[36m╰${'─'.repeat(W)}╯\x1b[0m\n`
-    ].join('\n');
-}
-
 // AOS CLI ships as a separate npm package under packages/ for one reason: pi
 // updates on its own cadence, and folding it into this release cycle would turn
 // every pi bump into a full AOS reinstall. So it installs as an ordinary global
@@ -8458,7 +8438,6 @@ Options:
 
     intro(buildHeroHeader(pkg.version));
     console.log(buildTelemetryCard({ installState, detections, daemonStatus }));
-    console.log(buildAoAnnouncementBanner());
 
     if (DRY_RUN) {
         // Precise on purpose: version comparison still queries the registry, and
@@ -8856,7 +8835,6 @@ module.exports = {
     readAoDaemonIdentity,
     selectAoCandidate,
     describeAoVersion,
-    buildAoAnnouncementBanner,
     agentsNotShippedAsFiles,
     downloadOrUpdateModule,
     detectPlatforms,
