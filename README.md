@@ -315,7 +315,7 @@ npx -y @hybridlabor-api/aos@latest
 
 | Flag | Effect |
 |---|---|
-| `--profile=standard` (default) | Skills, agents, rules, all hooks, MCPs, OpenWiki, Token Saver, fleet. |
+| `--profile=standard` (default) | Skills, agents, rules, all hooks, MCPs, OpenWiki, fleet. Token Saver is off by default (use `--profile=full` to include it); for CLI output compression install [rtk](https://github.com/rtk-ai/rtk) yourself, AOS does not install it. |
 | `--profile=minimal` | Skills, agents and harness rules only. No context-injection hooks, OpenWiki, Token Saver, Codenotch, optional modules, gateway or fleet. The low-context choice. |
 | `--profile=full` | `standard` plus every optional module (same as `--modules=all` with `-y`). |
 | `--no-hooks` | Skips only the context-injection hooks (`memb-inject`, `rules-inject`, `trail-relay`, `trail-autostart`). |
