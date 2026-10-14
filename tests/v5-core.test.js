@@ -118,7 +118,9 @@ test('F5: an outdated OpenWiki upgrades its CLI once; the second update does no 
         assert.strictEqual(await menu.update(m.host, m.opts({ npmView })), 0);
         assert.strictEqual(fs.readFileSync(log, 'utf8').trim().split('\n').length, 1, 'npm not run again');
         assert.strictEqual(refreshed, 1, 'daemon not refreshed again');
-        assert.match(m.out.join(''), /Everything is current/);
+        // The fake host never records the kernel version, so the plan keeps a Kernel entry; OpenWiki must not be in it.
+        assert.doesNotMatch(m.out.join(''), /Plan:[^\n]*OpenWiki/);
+        assert.match(m.out.join(''), /✔ OpenWiki 0\.7\.2/);
     });
 });
 

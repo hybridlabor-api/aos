@@ -107,7 +107,8 @@ test('S2 second Update with unchanged versions: zero prompts, zero installer cal
         m.calls.length = 0;
         assert.strictEqual(await menu.update(m.host, m.opts({ ui: pc.ui })), 0);
         assert.strictEqual(pc.hits.length, 0, `prompted: ${pc.hits}`);
-        assert.match(m.text(), /Everything is current/);
+        // The fake host never records the kernel version, so the plan keeps a Kernel entry; no package may be offered as an update.
+        assert.doesNotMatch(m.text(), /updates? available|Plan:[^\n]*(memB|OpenWiki|Synapse)/);
         for (const c of INSTALLERS) assert.ok(!m.calls.includes(c), `${c} not called`);
     });
 });

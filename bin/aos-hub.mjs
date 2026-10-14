@@ -23,11 +23,11 @@ export const homeDir = () => process.env.AOS_HUB_HOME || osHome();
 export const hubPaths = (home = homeDir()) => ({ dir: join(home, '.aos', 'hub'), file: join(home, '.aos', 'hub', 'hub.json') });
 
 export function parseArgv(argv) {
-  const out = { cmd: 'start', port: DEFAULT_PORT, tab: undefined, noOpen: false, json: false };
+  const out = { cmd: 'start', port: DEFAULT_PORT, tab: undefined, noOpen: process.env.AOS_NO_OPEN === '1', json: false };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === 'start' || a === 'stop' || a === 'restart' || a === 'status') out.cmd = a;
+    if (a === 'start' || a === 'stop' || a === 'restart' || a === 'status' || a === 'open') out.cmd = a;
     else if (a === '--port') out.port = Number(argv[++i]);
     else if (a.startsWith('--port=')) out.port = Number(a.split('=')[1]);
     else if (a === '--tab') out.tab = argv[++i];
@@ -40,7 +40,7 @@ export function parseArgv(argv) {
   }
   if (out.tab !== undefined && !/^[a-z]+$/.test(out.tab)) throw new Error(`invalid --tab: ${out.tab}`);
   if (out.watch && !out.serve) throw new Error('--watch is only valid together with --serve');
-  if (rest.length) out.cmd = rest[0];
+  if (rest.length && (rest[0] === 'open' || ['start', 'stop', 'restart', 'status'].includes(rest[0]))) out.cmd = rest[0];
   if (!Number.isInteger(out.port) || out.port < 1 || out.port > 65535) throw new Error(`invalid --port: ${out.port}`);
   return out;
 }
@@ -69,14 +69,16 @@ export const portConnectable = (port, timeoutMs = 800) => new Promise((resolve) 
   sock.once('error', () => done(false));
 });
 
-export const openBrowser = (url) => {
+export const openBrowser = (url, { spawnFn = spawn } = {}) => {
+  if (process.env.AOS_NO_OPEN === '1') return false;
   const [cmd, args] = process.platform === 'darwin' ? ['open', [url]]
     : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
   try {
-    const child = spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true, shell: false });
+    const child = spawnFn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true, shell: false });
     child.on('error', () => {});
     child.unref();
-  } catch { /* best effort */ }
+    return true;
+  } catch { /* best effort */ return false; }
 };
 
 export const writeHubJson = (home, { pid, port, version, token }) => {
@@ -120,11 +122,13 @@ const packageVersion = () => {
 async function cmdStart(opts) {
   if (await probeHealth(opts.port)) {
     console.log(`AOS Hub already running: http://127.0.0.1:${opts.port}/`);
-    if (!opts.noOpen) openBrowser(`http://127.0.0.1:${opts.port}/${opts.tab ? `?tab=${opts.tab}` : ''}`);
+    if (!opts.noOpen && process.env.AOS_NO_OPEN !== '1') openBrowser(`http://127.0.0.1:${opts.port}/${opts.tab ? `?tab=${opts.tab}` : ''}`);
     return 0;
   }
   const env = { ...process.env, AOS_HUB_SERVE: '1', AOS_HUB_TOKEN: randomBytes(32).toString('hex') };
-  const child = spawn(process.execPath, [SELF, '--serve', '--port', String(opts.port)], {
+  const childArgs = [SELF, '--serve', '--port', String(opts.port)];
+  if (opts.noOpen || process.env.AOS_NO_OPEN === '1') childArgs.push('--no-open');
+  const child = spawn(process.execPath, childArgs, {
     detached: true, windowsHide: true, stdio: 'ignore', cwd: homeDir(), env, shell: false,
   });
   child.unref();
@@ -155,6 +159,9 @@ async function cmdStart(opts) {
     }
     console.error(`AOS Hub did not come up on 127.0.0.1:${opts.port} within 5 s.`);
     return 1;
+  }
+  if (!opts.noOpen && process.env.AOS_NO_OPEN !== '1') {
+    openBrowser(`http://127.0.0.1:${opts.port}/${opts.tab ? `?tab=${opts.tab}` : ''}`);
   }
   return 0;
 }
@@ -248,11 +255,23 @@ async function cmdRestart(opts) {
   return cmdStart(opts);
 }
 
+async function cmdOpen(opts) {
+  if (!await probeHealth(opts.port)) {
+    const code = await cmdStart({ ...opts, noOpen: true });
+    if (code !== 0) return code;
+  }
+  if (!opts.noOpen && process.env.AOS_NO_OPEN !== '1') {
+    openBrowser(`http://127.0.0.1:${opts.port}/${opts.tab ? `?tab=${opts.tab}` : ''}`);
+  }
+  return 0;
+}
+
 export async function cli(argv = process.argv.slice(2)) {
   const opts = parseArgv(argv);
   if (opts.cmd === 'stop') return cmdStop();
   if (opts.cmd === 'restart') return cmdRestart(opts);
   if (opts.cmd === 'status') return cmdStatus(opts);
+  if (opts.cmd === 'open') return cmdOpen(opts);
   return cmdStart(opts);
 }
 

@@ -23,8 +23,8 @@ let cmd = null
 let repo = process.cwd()
 let port = probePorts()[0]
 const spawningPaths = new Set()
-let openBrowser = process.stdout.isTTY ? true : false
-let noOpen = false
+let openBrowser = process.stdout.isTTY && process.env.AOS_NO_OPEN !== '1' ? true : false
+let noOpen = process.env.AOS_NO_OPEN === '1'
 let hooksOnly = false
 const MAX_BODY_BYTES = 64 * 1024
 const MAX_CONTROL_BODY_BYTES = 4 * 1024
@@ -1152,7 +1152,7 @@ function onListen() {
       console.log('no PLAN.md found — run `agenttrail init` in the repo to scaffold one')
     }
   }
-  if (openBrowser && !noOpen) {
+  if (openBrowser && !noOpen && process.env.AOS_NO_OPEN !== '1') {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
     import('node:child_process').then(cp => cp.spawn(opener, [`http://localhost:${port}`], { stdio: 'ignore', detached: true, shell: false }))
   }
