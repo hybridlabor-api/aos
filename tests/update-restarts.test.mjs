@@ -56,6 +56,22 @@ test('update with no changed package restarts nothing', async () => {
   assert.deepEqual(done, []);
 });
 
+test('a kernel update restarts the running services that have no package id, not the packaged ones', async () => {
+  const rows = [
+    { id: 'memb', up: true, control: 'launchd', pkg: '@hybridlabor-api/memb' },
+    { id: 'plan-canvas', up: true, control: 'launchd', pkg: null },
+    { id: 'agenttrail', up: true, control: 'launchd', pkg: null },
+    { id: 'a2a', up: true, control: 'launchd', pkg: null },
+  ];
+  const calls = [];
+  const done = await restartRunningServices({ home: '/nowhere', write: () => {} }, {
+    statusService: async () => rows,
+    controlService: async (ctx, id, action) => { calls.push([id, action]); },
+  }, new Set(['kernel']));
+  assert.deepEqual(calls, [['plan-canvas', 'restart'], ['agenttrail', 'restart'], ['a2a', 'restart']]);
+  assert.deepEqual(done, ['plan-canvas', 'agenttrail', 'a2a']);
+});
+
 for (const [name, stampOf] of [['plan-canvas', pcStamp], ['agenttrail', trailStamp]]) {
   test(`${name}: touching a file in a watched folder raises the code stamp`, () => {
     const dir = mkdtempSync(join(tmpdir(), `aos-stamp-${name}-`));
