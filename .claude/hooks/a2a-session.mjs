@@ -17,8 +17,8 @@ const at = argv.indexOf("--harness");
 const harness = at >= 0 && argv[at + 1] ? argv[at + 1] : "claude";
 
 // repo checkout: <repo>/.claude/hooks -> ../../lib; installed copies find the lib under ~/.agents/lib
-async function loadLib() {
-  const candidates = [new URL("../../lib/a2a-session.mjs", import.meta.url), pathToFileURL(join(homedir(), ".agents", "lib", "a2a-session.mjs"))];
+async function loadLib(file = "a2a-session.mjs") {
+  const candidates = [new URL(`../../lib/${file}`, import.meta.url), pathToFileURL(join(homedir(), ".agents", "lib", file))];
   for (const c of candidates) {
     try { return await import(c); } catch { /* try the next location */ }
   }
@@ -31,7 +31,11 @@ try {
     const sessionId = input.session_id || "";
     // process.ppid is the harness CLI that spawned this hook
     if (harness === "codex") lib.ensureSidecar({ harness, sessionId, parentPid: process.ppid, mode: "codex", thread: sessionId });
-    else lib.ensureSidecar({ harness, sessionId, parentPid: process.ppid });
+    else {
+      const r = lib.ensureSidecar({ harness, sessionId, parentPid: process.ppid });
+      // the bdb-aos plugin monitor has no session_id: it finds this session's inbox through a pid binding
+      if (harness === "claude" && r?.name) (await loadLib("a2a-monitor.mjs"))?.bindSession(r.name);
+    }
   }
 } catch {}
 process.exit(0);
