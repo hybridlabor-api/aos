@@ -244,3 +244,73 @@ test('gateway and hub re-apply when kernel or harness is updated', async () => {
         assert.strictEqual(hub.reason, 'kernel/harnesses updated');
     }
 });
+
+test('failed step in lastFailedSteps is retried by repair although verify passes, and cleared after success', async () => {
+    const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+    const settingsPath = path.join(m.home, '.aos', 'v5-settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+        disabled: ['gateway', 'openwiki', 'deja'],
+        lastRunFailed: true,
+        lastFailedSteps: ['memb'],
+    }));
+
+    const code = await menu.repair(m.host, m.opts());
+    assert.strictEqual(code, 0);
+
+    // memb should have been updated/retried despite verify passing
+    assert.ok(m.calls.includes('installMemB'), 'installMemB called because memb was in lastFailedSteps');
+
+    // After clean repair, lastRunFailed and lastFailedSteps cleared
+    const afterSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    assert.strictEqual(afterSettings.lastRunFailed, false, 'lastRunFailed cleared after success');
+    assert.deepStrictEqual(afterSettings.lastFailedSteps, [], 'lastFailedSteps cleared after success');
+});
+
+test('update records failed step ids in lastFailedSteps', async () => {
+    const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+    m.host.installMemB = async () => { throw new Error('lock error'); };
+    const settingsPath = path.join(m.home, '.aos', 'v5-settings.json');
+
+    const code = await menu.update(m.host, m.opts({
+        npmView: async (name) => {
+            if (name.endsWith('/memb')) return '2.5.0';
+            if (name.endsWith('/aos')) return runningVersion;
+            return '1.0.0';
+        },
+    }));
+    assert.strictEqual(code, 1);
+
+    const afterSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    assert.strictEqual(afterSettings.lastRunFailed, true);
+    assert.ok(Array.isArray(afterSettings.lastFailedSteps));
+    assert.ok(afterSettings.lastFailedSteps.includes('memb'));
+});
+
+test('Everything is current appears only for an empty plan', async () => {
+    // 1. Plan with changes: Everything is current is NOT printed
+    const m1 = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+    const settingsPath = path.join(m1.home, '.aos', 'v5-settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({ disabled: ['gateway', 'openwiki', 'deja'], lastRunFailed: true }));
+
+    await menu.update(m1.host, m1.opts());
+    const text1 = m1.text();
+    assert.ok(!text1.includes('Everything is current'), 'Everything is current should not appear when plan has changes');
+    assert.ok(text1.includes('Plan:'), 'Plan line should appear');
+
+    // 2. Empty plan: Everything is current IS printed
+    const m2 = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+    await menu.update(m2.host, m2.opts());
+    const text2 = m2.text();
+    assert.ok(text2.includes('Everything is current'), 'Everything is current should appear when plan is empty');
+    assert.ok(!text2.includes('Plan:'), 'Plan line should not appear');
+});
+
+test('sanitizeSettings accepts valid package ids plus kernel and harnesses for lastFailedSteps', () => {
+    const profile = require('../lib/v5/profile');
+    const { settings, problems } = profile.sanitizeSettings({
+        lastFailedSteps: ['kernel', 'harnesses', 'memb', 'not-a-real-package', 123],
+    });
+    assert.deepStrictEqual(settings.lastFailedSteps, ['kernel', 'harnesses', 'memb']);
+    assert.strictEqual(problems.length, 1);
+});
+
