@@ -65,3 +65,133 @@ test('token saver: Store Python virtualized cli.py is found', () => {
     assert.strictEqual(pk.storePythonCli({ LOCALAPPDATA: 'L' }, fsx), want);
     assert.strictEqual(pk.storePythonCli({ LOCALAPPDATA: 'L' }, { readdirSync: () => { throw new Error('x'); } }), null);
 });
+
+test('token saver: Store Python enumerates packages newest first', () => {
+    const p10 = path.join('L', 'Packages', 'PythonSoftwareFoundation.Python.3.10_x', 'LocalCache', 'Roaming', 'token-saver', 'src', 'cli.py');
+    const p12 = path.join('L', 'Packages', 'PythonSoftwareFoundation.Python.3.12_y', 'LocalCache', 'Roaming', 'token-saver', 'src', 'cli.py');
+
+    // Newer mtime on 3.12: picks 3.12
+    const fsxMtime = {
+        readdirSync: () => ['PythonSoftwareFoundation.Python.3.10_x', 'PythonSoftwareFoundation.Python.3.12_y'],
+        statSync: (p) => ({ mtimeMs: p.includes('3.12') ? 2000 : 1000 }),
+        existsSync: (f) => f === p10 || f === p12,
+    };
+    assert.strictEqual(pk.storePythonCli({ LOCALAPPDATA: 'L' }, fsxMtime), p12);
+
+    // Newer mtime on 3.10: picks 3.10
+    const fsxMtimeRev = {
+        readdirSync: () => ['PythonSoftwareFoundation.Python.3.10_x', 'PythonSoftwareFoundation.Python.3.12_y'],
+        statSync: (p) => ({ mtimeMs: p.includes('3.10') ? 3000 : 1000 }),
+        existsSync: (f) => f === p10 || f === p12,
+    };
+    assert.strictEqual(pk.storePythonCli({ LOCALAPPDATA: 'L' }, fsxMtimeRev), p10);
+
+    // No statSync: numeric sort puts 3.12 before 3.10
+    const fsxNoStat = {
+        readdirSync: () => ['PythonSoftwareFoundation.Python.3.10_x', 'PythonSoftwareFoundation.Python.3.12_y'],
+        existsSync: (f) => f === p10 || f === p12,
+    };
+    assert.strictEqual(pk.storePythonCli({ LOCALAPPDATA: 'L' }, fsxNoStat), p12);
+
+    // Newest package lacks cli.py: falls back to older package that has it
+    const fsxFallback = {
+        readdirSync: () => ['PythonSoftwareFoundation.Python.3.10_x', 'PythonSoftwareFoundation.Python.3.12_y'],
+        existsSync: (f) => f === p10,
+    };
+    assert.strictEqual(pk.storePythonCli({ LOCALAPPDATA: 'L' }, fsxFallback), p10);
+});
+
+test('token saver detect: on win32 checks both normal APPDATA and Store Python location', () => {
+    const normalCli = path.join('A', 'token-saver', 'src', 'cli.py');
+    const storeCli = path.join('L', 'Packages', 'PythonSoftwareFoundation.Python.3.11_x', 'LocalCache', 'Roaming', 'token-saver', 'src', 'cli.py');
+
+    // Case 1: Normal APPDATA exists
+    const fsxNormal = {
+        existsSync: (f) => f === normalCli,
+        readFileSync: () => { throw new Error('no settings'); },
+    };
+    assert.strictEqual(
+        pk.tokenSaverDetect({
+            platform: 'win32',
+            env: { APPDATA: 'A', LOCALAPPDATA: 'L' },
+            fs: fsxNormal,
+        }).installed,
+        true
+    );
+
+    // Case 2: Normal APPDATA missing, Store Python exists
+    const fsxStore = {
+        readdirSync: () => ['PythonSoftwareFoundation.Python.3.11_x'],
+        existsSync: (f) => f === storeCli,
+        readFileSync: () => { throw new Error('no settings'); },
+    };
+    assert.strictEqual(
+        pk.tokenSaverDetect({
+            platform: 'win32',
+            env: { APPDATA: 'A', LOCALAPPDATA: 'L' },
+            fs: fsxStore,
+        }).installed,
+        true
+    );
+
+    // Case 3: Missing everywhere
+    const fsxMissing = {
+        readdirSync: () => [],
+        existsSync: () => false,
+        readFileSync: () => { throw new Error('no settings'); },
+    };
+    assert.strictEqual(
+        pk.tokenSaverDetect({
+            platform: 'win32',
+            env: { APPDATA: 'A', LOCALAPPDATA: 'L' },
+            fs: fsxMissing,
+        }).installed,
+        false
+    );
+
+    // Case 4: Non-win32 platform ignores Store Python
+    assert.strictEqual(
+        pk.tokenSaverDetect({
+            platform: 'linux',
+            home: '/fake/home',
+            env: { APPDATA: 'A', LOCALAPPDATA: 'L' },
+            fs: fsxStore,
+        }).installed,
+        false
+    );
+});
+
+test('token saver verify: on win32 finds Store Python when APPDATA is redirected and avoids "CLI missing"', () => {
+    const storeCli = path.join('L', 'Packages', 'PythonSoftwareFoundation.Python.3.11_x', 'LocalCache', 'Roaming', 'token-saver', 'src', 'cli.py');
+    const settingsPath = path.join('H', '.claude', 'settings.json');
+    const orig = cliSpawn.run;
+    try {
+        const calls = [];
+        cliSpawn.run = (cmd, args) => {
+            calls.push({ cmd, args });
+            return cmd === 'token-saver' ? { error: Object.assign(new Error('x'), { code: 'ENOENT' }) } : { status: 0 };
+        };
+
+        const fsx = {
+            readdirSync: () => ['PythonSoftwareFoundation.Python.3.11_x'],
+            existsSync: (f) => f === storeCli,
+            readFileSync: (f) => {
+                if (f === settingsPath) return JSON.stringify({ enabledPlugins: { 'token-saver@token-saver-marketplace': true } });
+                throw new Error('not found');
+            },
+        };
+
+        const r = pk.tokenSaverVerify({
+            home: 'H',
+            platform: 'win32',
+            env: { APPDATA: 'A', LOCALAPPDATA: 'L' },
+            fs: fsx,
+        });
+
+        assert.strictEqual(r.ok, true, r.detail);
+        assert.ok(r.detail.includes(storeCli), r.detail);
+        assert.ok(!r.detail.includes('CLI missing'), 'must not report CLI missing');
+        assert.deepStrictEqual(calls[1], { cmd: 'python', args: [storeCli, 'stats'] });
+    } finally { cliSpawn.run = orig; }
+});
+
