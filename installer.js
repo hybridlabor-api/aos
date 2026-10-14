@@ -7710,9 +7710,7 @@ function generateAndOpenLaunchpad(installedModules = []) {
     try {
         let child;
         if (process.platform === 'darwin') {
-            if (!shouldAutostartLaunchpad()) {
-                child = spawn('open', [filePath], { detached: true, stdio: 'ignore' });
-            }
+            child = spawn('open', [filePath], { detached: true, stdio: 'ignore' });
         } else if (process.platform === 'win32') {
             // cmd.exe /c start has a title-vs-path quoting quirk when the
             // arguments come from spawn's argv array rather than a real shell --
