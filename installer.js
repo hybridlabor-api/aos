@@ -2564,7 +2564,7 @@ function checkModuleUpdate(pkgName, targetDir) {
                 if (r.error || r.status !== 0) throw r.error || new Error(`npm view exited ${r.status}`);
                 remoteVer = r.stdout.trim();
             } else {
-                remoteVer = execFileSync(npmCmd, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+                remoteVer = execFileSync(npmCmd, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 15000 }).trim();
             }
         } catch (e) {
             // Offline, a proxy, or a misconfigured registry. Swallowing this
