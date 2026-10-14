@@ -2559,7 +2559,10 @@ function checkModuleUpdate(pkgName, targetDir) {
         try {
             const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
             if (process.platform === 'win32') {
-                remoteVer = execSync(`"${npmCmd}" view ${pkgName} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+                // npm.cmd needs ~2 s warm and more under load: the old 4 s limit reported a reachable registry as unreachable.
+                const r = require('./lib/cli-spawn').run('npm', ['view', pkgName, 'version'], { timeout: 30000 });
+                if (r.error || r.status !== 0) throw r.error || new Error(`npm view exited ${r.status}`);
+                remoteVer = r.stdout.trim();
             } else {
                 remoteVer = execFileSync(npmCmd, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
             }
