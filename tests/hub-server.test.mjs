@@ -403,18 +403,19 @@ test('serve-mode child: imports route graph, binds, writes hub.json after listen
 test('failed start (port busy) reports failure and never clobbers hub.json', async () => {
   const homeFail = join(tmp, 'fail-home');
   mkdirSync(homeFail, { recursive: true });
-  writeHubJson(homeFail, { pid: 424242, port: 59996, version: 'sentinel', token: 'y'.repeat(64) });
+  const blocker = createServer_fwd(() => {});
+  await new Promise((ok, bad) => { blocker.once('error', bad); blocker.listen(0, '127.0.0.1', ok); });
+  const busyPort = blocker.address().port;
+  writeHubJson(homeFail, { pid: 424242, port: busyPort, version: 'sentinel', token: 'y'.repeat(64) });
   const { file } = hubPaths(homeFail);
   const before6 = readFileSync(file, 'utf8');
-  const blocker = createServer_fwd(() => {});
-  await new Promise((ok, bad) => { blocker.once('error', bad); blocker.listen(59996, '127.0.0.1', ok); });
   const prevHome = process.env.AOS_HUB_HOME;
   const prevServe = process.env.AOS_HUB_SERVE;
   process.env.AOS_HUB_HOME = homeFail;
   process.env.AOS_HUB_SERVE = '';
   try {
     const { cli } = await import('../bin/aos-hub.mjs');
-    const code = await cli(['start', '--port', '59996', '--no-open']);
+    const code = await cli(['start', '--port', String(busyPort), '--no-open']);
     assert.equal(code, 1, 'start reports failure');
   } finally {
     process.env.AOS_HUB_HOME = prevHome;
