@@ -1,5 +1,49 @@
 # Changelog
 
+## [5.3.0](https://github.com/hybridlabor-api/aos/compare/v5.2.1...v5.3.0) (2026-10-14)
+
+
+### Features
+
+* **router:** add advisory route logging hook to startcycle dispatcher ([b7421df](https://github.com/hybridlabor-api/aos/commit/b7421dfa6f1b9ba85805c5dd0951648aad013fbe))
+* **router:** add central routing table and pure route resolution ([b183b30](https://github.com/hybridlabor-api/aos/commit/b183b309c62915d25e5c35685ceeabcf1b48ec05))
+* **router:** add test suite for table validation, route resolution, and dispatcher advisory ([fdf93dd](https://github.com/hybridlabor-api/aos/commit/fdf93ddf902521a209e2fa8a24fd46a5c659ecc8))
+* **router:** merge feat/router-r1 (table, route resolution, dispatcher advisory) ([b5605c1](https://github.com/hybridlabor-api/aos/commit/b5605c1a8b8b4452cab077a4ec635e70b84da26b))
+* **settings:** add gateway sub-menu for status, adoption, and direct restore ([e8963a0](https://github.com/hybridlabor-api/aos/commit/e8963a00ea0cbb14231d093744878a22f789b8a5))
+* **update:** diff-based plan phase and gating for kernel and packages ([359a005](https://github.com/hybridlabor-api/aos/commit/359a005fb642dfef0b6bcd579d2d733f0486e718))
+* **update:** hash based drift detection and persisted last-run-failed flag ([cba4d38](https://github.com/hybridlabor-api/aos/commit/cba4d381167482c4e4f353cb86bdaac09a48c5a5))
+* **update:** support force flag to re-apply all components ([f81ed47](https://github.com/hybridlabor-api/aos/commit/f81ed47f49a17f53d85fb7c51a7eb4e03f3c57b2))
+
+
+### Bug Fixes
+
+* **gateway:** answering none to the adoption prompt no longer switches the gateway to direct mode ([6092eb3](https://github.com/hybridlabor-api/aos/commit/6092eb3ba2c5527eade7041a757ec3635b45ea9b))
+* **gateway:** implement real service restart and honor direct mode in update ([7a7cf51](https://github.com/hybridlabor-api/aos/commit/7a7cf517c10c4f84b2e63be7b982a63ad39049bc))
+* **gateway:** remember the MCP adoption choice in v5 settings ([3fc846e](https://github.com/hybridlabor-api/aos/commit/3fc846eaa6c315f99e0cc3a7e592665d0a7c7164))
+* **gateway:** skip reinstall and restart when the gateway is unchanged ([9763d1c](https://github.com/hybridlabor-api/aos/commit/9763d1cc85bf4f2f87e42b4684384cbaf05a119d))
+* installer idempotent updates, gateway settings, Windows module locks, router R1 ([fa63340](https://github.com/hybridlabor-api/aos/commit/fa63340cb7900d362d5d0d645e0c8ef4c5223297))
+* **installer:** a CRLF copy of a shipped text file is ours, not a user edit ([ca1cb0e](https://github.com/hybridlabor-api/aos/commit/ca1cb0e5f8325f94e23c23768085735f7902b54b))
+* **installer:** a file identical to the payload is never kept as a user edit ([b4d8feb](https://github.com/hybridlabor-api/aos/commit/b4d8feb5e3b594c6f3b4737ab30d519e2ce0a99f))
+* **installer:** keep the darwin launchpad open call unconditional; suppression already happens earlier ([d1d6245](https://github.com/hybridlabor-api/aos/commit/d1d62457e251ee3630932548bb21f591a82e15b1))
+* **installer:** reorder guard files so hook list check passes ([2585705](https://github.com/hybridlabor-api/aos/commit/258570539e62a745af654c55bec7a9cc87cace7c))
+* **menu:** retry failed steps in repair and print current only on empty plan ([48be7d2](https://github.com/hybridlabor-api/aos/commit/48be7d243dadab23bd622a74889d904f058496d5))
+* no browser tabs on update, aos repair retries failed steps, Token Saver Store-Python detection ([b192618](https://github.com/hybridlabor-api/aos/commit/b192618498fd743e72cade15575abf5ede97f47b))
+* **packages:** resolve Store-Python redirected path for token-saver on win32 ([738759e](https://github.com/hybridlabor-api/aos/commit/738759e5d988de2a4d614fc4519e89b5b99c0fe3))
+* **pins:** single source for the deja and 1mcp pins ([0568986](https://github.com/hybridlabor-api/aos/commit/056898652df9bd5fdeafea84240c9061d0723be8))
+* **profile:** persist and sanitize lastFailedSteps setting ([6315604](https://github.com/hybridlabor-api/aos/commit/631560487b92b8ad867ea40062440b662d2220b1))
+* record files written by a stale update, replace stale gate files, stop pinned deja counting as outdated ([fa09045](https://github.com/hybridlabor-api/aos/commit/fa090456162fe5f0f4097801188992e333040c38))
+* **router:** use dynamic import for workflow runner and fix pipeline fixture ([99f4c86](https://github.com/hybridlabor-api/aos/commit/99f4c8631e42da2b734eacb235ee7beafa43cac1))
+* **router:** write the advisory log to stderr so it cannot corrupt dispatcher stdout ([a3d58f1](https://github.com/hybridlabor-api/aos/commit/a3d58f1a9635ae551312a7341d066a45999e622a))
+* **update:** drift detection only counts files the installed kernel wrote, inside HOME ([d46f515](https://github.com/hybridlabor-api/aos/commit/d46f515f0e16033c7f7396b6950625893141ac50))
+* **update:** plan broken packages on verify failure and print status for skipped components ([9860dfe](https://github.com/hybridlabor-api/aos/commit/9860dfe5e2b97cba21b7ba4f0a52095d454ddd87))
+* **update:** re-apply alwaysUpdate packages after kernel or harness change ([baaf9e3](https://github.com/hybridlabor-api/aos/commit/baaf9e3e50f74da918a3e0af3e35720106584710))
+* **update:** restart only services whose package changed in this run ([6c23df8](https://github.com/hybridlabor-api/aos/commit/6c23df82799a93965f09b97e78ae9c28cee41830))
+* **update:** restart services without a package id after a kernel update ([98ad8d4](https://github.com/hybridlabor-api/aos/commit/98ad8d4a7eeccfb8edb7866bdaafcbc03deb1bdf))
+* **update:** suppress browser opening during update and repair operations ([7afb4c8](https://github.com/hybridlabor-api/aos/commit/7afb4c88635677bd7696ec274d3cab6ecc69de32))
+* **windows:** also stop orphaned workers that map files from a locked service directory ([a11541e](https://github.com/hybridlabor-api/aos/commit/a11541e2be3a7f4ffd774939add9104c8ab8fca7))
+* **windows:** stop a service module's own processes before swapping its locked directory ([32e7b32](https://github.com/hybridlabor-api/aos/commit/32e7b326d34f511c63a42565df99f50f85fb0ac0))
+* **windows:** use path.win32.basename so the service-module check is platform neutral ([c89e2c6](https://github.com/hybridlabor-api/aos/commit/c89e2c68067b91e7e528553237ea9299f42cf0b3))
+
 ## [5.2.1](https://github.com/hybridlabor-api/aos/compare/v5.2.0...v5.2.1) (2026-10-14)
 
 
