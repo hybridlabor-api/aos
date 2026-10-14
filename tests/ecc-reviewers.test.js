@@ -1,7 +1,7 @@
 /**
  * tests/ecc-reviewers.test.js
  *
- * v5/ecc-reviewers round: the eight language-specific code reviewers ported
+ * v5/ecc-reviewers round: the 24 code reviewers ported
  * from affaan-m/ECC (see docs/ecc-reviewers.md, THIRD_PARTY_NOTICES.md).
  * No dependency: node:test only. Fully offline; installer.js and
  * .agents/AGENTS.md are read as plain text, never executed.
