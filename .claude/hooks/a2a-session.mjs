@@ -46,4 +46,4 @@ try {
     }
   }
 } catch {}
-process.exitCode = 0; // not process.exit(): it can drop buffered stdout on Windows pipes
+process.exitCode = 0; // a hard exit can drop buffered stdout on Windows pipes
