@@ -146,7 +146,7 @@ test('bdb-ui-library skill is registered across harness manifests', () => {
     assert.ok(designCategory.skills.includes('bdb-ui-library'), 'skills.sh.json includes bdb-ui-library');
 });
 
-test('component registry wiring verifies 7 core items and inlined distribution files', () => {
+test('component registry wiring verifies 7 core items and inlined distribution files', (t) => {
     const candidateDirs = [
         process.env.BDB_UI_LIBRARY_DIR,
         path.resolve(ROOT, '..', 'bdb-ui-library'),
@@ -154,7 +154,8 @@ test('component registry wiring verifies 7 core items and inlined distribution f
     ].filter(Boolean);
     const libDir = candidateDirs.find((d) => fs.existsSync(d) && fs.existsSync(path.join(d, 'registry.json')));
     if (!libDir) {
-        return; // running in sandbox without mounted library dir
+        t.skip('bdb-ui-library not found');
+        return;
     }
     const regPath = path.join(libDir, 'registry.json');
     const reg = JSON.parse(readFile(regPath));
