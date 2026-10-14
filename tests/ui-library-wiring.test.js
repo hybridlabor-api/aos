@@ -150,7 +150,6 @@ test('component registry wiring verifies 7 core items and inlined distribution f
     const candidateDirs = [
         process.env.BDB_UI_LIBRARY_DIR,
         path.resolve(ROOT, '..', 'bdb-ui-library'),
-        '/Users/timrennings/dev/bdb-dev/bdb-ui-library',
         '/bdb-ui-library',
     ].filter(Boolean);
     const libDir = candidateDirs.find((d) => fs.existsSync(d) && fs.existsSync(path.join(d, 'registry.json')));
