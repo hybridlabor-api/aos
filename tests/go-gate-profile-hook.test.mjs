@@ -61,3 +61,31 @@ test("off allows a release command, but not a hard block", () => {
   assert.equal(run("npm publish", { profile: "off", expires_at: exp(1) }), 0);
   assert.equal(run("rm -rf ~/Desktop", { profile: "off", expires_at: exp(1) }), 2);
 });
+
+const WIDEN = [
+  "aos-gate profile off",
+  "aos-gate work",
+  "aos-gate grant merge",
+  "node --no-warnings x/aos-gate.mjs grant publish 1h",
+  'bash -c "aos-gate grant publish"',
+  "env X=1 aos-gate profile off",
+  "~/.local/bin/aos-gate profile work --for 2h",
+];
+test("work and off never free an aos-gate widening command", () => {
+  for (const c of WIDEN) {
+    assert.equal(run(c, work()), 2, `work: ${c}`);
+    assert.equal(run(c, { profile: "off", expires_at: exp(1) }), 2, `off: ${c}`);
+  }
+});
+test("a global grant never frees an aos-gate widening command", () => {
+  const grants = ["merge", "publish", "destructive", "push-main"].map((scope) => ({ scope, expires_at: exp(1) }));
+  for (const c of WIDEN) assert.equal(run(c, { profile: "strict", expires_at: null, grants }), 2, c);
+});
+test("aos-gate narrowing and status stay unguarded", async () => {
+  const g = await import(HOOK);
+  for (const c of ["aos-gate strict", "aos-gate profile strict", "node x/aos-gate.mjs revoke all", "aos-gate status"]) {
+    assert.equal(g.neverGrantable(c), false, c);
+    assert.equal(g.isGuardedCommand(c), false, c);
+  }
+  for (const c of WIDEN) assert.ok(g.neverGrantable(c) && g.isGuardedCommand(c), c);
+});

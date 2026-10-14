@@ -157,7 +157,7 @@ test("Touch ID path is a stub", () => {
   assert.throws(() => touchId(), /WP-9/);
 });
 
-test("child process: agent-run aos-gate cannot widen; status and strict still work", () => {
+test("child process: aos-gate without a terminal cannot widen; status and strict still work", () => {
   const d = tmp();
   const bin = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "aos-gate.mjs");
   const env = { PATH: process.env.PATH, HOME: d, AOS_TEST_SANDBOX: "container", AOS_GATE_DIR: d };
@@ -167,6 +167,7 @@ test("child process: agent-run aos-gate cannot widen; status and strict still wo
     assert.match(p.stderr, /terminal/);
     assert.equal(existsSync(join(d, "config.json")), false);
   }
+  // Piped stdin has no TTY, so this stops at the terminal check; the harness check is covered by the widenRefusal test below.
   const h = spawnSync(process.execPath, [bin, "grant", "publish"], { env: { ...env, CLAUDECODE: "1" }, input: "", encoding: "utf8" });
   assert.equal(h.status, 1);
   const s = spawnSync(process.execPath, [bin, "status"], { env, encoding: "utf8" });
@@ -183,6 +184,45 @@ test("widenRefusal: terminal, harness env and typed word are all required", asyn
   let word = "";
   const out = { isTTY: true, write: (s) => { word = /confirm: (\S+)/.exec(s)?.[1] ?? word; } };
   assert.equal(await widenRefusal({ env: {}, stdin: tty, stdout: out, what: "x", ask: async () => word }), null);
+});
+
+test("setProfile strict clears every grant and says which", async () => {
+  const d = tmp();
+  setGrant({ dir: d, scopes: "merge,publish", duration: "2h", now: NOW, out: () => {} });
+  const r = await run(d, { profile: "strict" });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /grants cleared: merge, publish/);
+  const p = readProfile({ file: join(d, "config.json"), now: NOW, uid });
+  assert.equal(p.profile, "strict");
+  assert.deepEqual(p.grants, []);
+});
+
+test("setProfile work keeps live grants; revoke stays the selective removal", async () => {
+  const d = tmp();
+  setGrant({ dir: d, scopes: "merge", duration: "2h", now: NOW, out: () => {} });
+  assert.equal((await run(d, { profile: "work" })).code, 0);
+  assert.equal(readProfile({ file: join(d, "config.json"), now: NOW, uid }).grants.length, 1);
+});
+
+test("a grant under off or work keeps the profile and its expiry", async () => {
+  for (const profile of ["off", "work"]) {
+    const d = tmp();
+    await run(d, { profile });
+    const before = JSON.parse(readFileSync(join(d, "config.json"), "utf8"));
+    assert.equal(setGrant({ dir: d, scopes: "publish", duration: "1h", now: NOW, out: () => {} }), 0);
+    const c = JSON.parse(readFileSync(join(d, "config.json"), "utf8"));
+    assert.equal(c.expires_at, before.expires_at, profile);
+    const p = readProfile({ file: join(d, "config.json"), now: NOW, uid });
+    assert.equal(p.profile, profile);
+    assert.equal(p.grants.length, 1);
+  }
+});
+
+test("widenRefusal: a harness session is refused even with a terminal (CLAUDECODE)", async () => {
+  // A spawned child cannot get a TTY without a pty, so the child-process tests stop at the terminal check;
+  // this drives the harness check directly with TTY-like streams.
+  const tty = { isTTY: true, write() {} };
+  assert.match(await widenRefusal({ env: { CLAUDECODE: "1" }, stdin: tty, stdout: tty, what: "x", ask: async () => "" }), /harness session detected \(CLAUDECODE\)/);
 });
 
 test("setGrant: unknown scope and over-24h duration are refused, nothing written", () => {
