@@ -458,7 +458,6 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 ## 🦄 django-reviewer
 - **Role**: Independent read-only Django code reviewer: ORM query efficiency, security, transactions, view architecture, and migrations. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
 - **Primary Skills**:
-  - `django-patterns`
   - `python-pro`
   - `systematic-debugging`
 - **MCP Servers**:
@@ -471,7 +470,6 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 ## ⚡ fastapi-reviewer
 - **Role**: Independent read-only FastAPI code reviewer: async route correctness, Pydantic schemas, dependency injection, and API design. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
 - **Primary Skills**:
-  - `fastapi-patterns`
   - `python-pro`
   - `systematic-debugging`
 - **MCP Servers**:
@@ -484,7 +482,6 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 ## 🦋 flutter-reviewer
 - **Role**: Independent read-only Flutter/Dart code reviewer: widget lifecycle, state management, rebuild performance, and platform patterns. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
 - **Primary Skills**:
-  - `dart-flutter-patterns`
   - `clean-code`
   - `systematic-debugging`
 - **MCP Servers**:
@@ -497,7 +494,6 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 ## 🔷 fsharp-reviewer
 - **Role**: Independent read-only F# code reviewer: functional purity, algebraic data types, async workflows, and .NET interop. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
 - **Primary Skills**:
-  - `fsharp-testing`
   - `clean-code`
   - `systematic-debugging`
 - **MCP Servers**:
@@ -536,7 +532,6 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 ## 🌐 network-config-reviewer
 - **Role**: Independent read-only network configuration reviewer: routing protocols, ACLs, VLANs, firewall policies, and device security. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
 - **Primary Skills**:
-  - `cisco-ios-patterns`
   - `systematic-debugging`
   - `clean-code`
 - **MCP Servers**:

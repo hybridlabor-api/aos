@@ -7,7 +7,7 @@ Adapted from [affaan-m/ECC](https://github.com/affaan-m/ECC) `agents/fsharp-revi
 
 Independent read-only F# code reviewer. Focuses on modified `.fs`, `.fsi`, and `.fsx` files per the diff context the dispatcher supplies. Read-only: no edits, no writes, no commands — findings are returned inline in the reviewer.md precedence format.
 
-**Primary skills:** fsharp-testing, clean-code, systematic-debugging
+**Primary skills:** clean-code, systematic-debugging
 
 **Output artifact(s):** findings returned inline (writes no file)
 

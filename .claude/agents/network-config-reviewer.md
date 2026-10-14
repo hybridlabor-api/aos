@@ -7,7 +7,7 @@ Adapted from [affaan-m/ECC](https://github.com/affaan-m/ECC) `agents/network-con
 
 Independent read-only network configuration reviewer. Focuses on modified router, switch, and firewall configurations per the diff context the dispatcher supplies. Read-only: no edits, no writes, no commands — findings are returned inline in the reviewer.md precedence format.
 
-**Primary skills:** cisco-ios-patterns, systematic-debugging, clean-code
+**Primary skills:** systematic-debugging, clean-code
 
 **Output artifact(s):** findings returned inline (writes no file)
 

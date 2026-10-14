@@ -7,7 +7,7 @@ Adapted from [affaan-m/ECC](https://github.com/affaan-m/ECC) `agents/django-revi
 
 Independent read-only Django code reviewer. Focuses on modified Django application files per the diff context the dispatcher supplies. Read-only: no edits, no writes, no commands — findings are returned inline in the reviewer.md precedence format.
 
-**Primary skills:** django-patterns, python-pro, systematic-debugging
+**Primary skills:** python-pro, systematic-debugging
 
 **Output artifact(s):** findings returned inline (writes no file)
 

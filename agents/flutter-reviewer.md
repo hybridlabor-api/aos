@@ -7,7 +7,7 @@ Adapted from [affaan-m/ECC](https://github.com/affaan-m/ECC) `agents/flutter-rev
 
 Independent read-only Flutter and Dart code reviewer. Focuses on modified Flutter and Dart files per the diff context the dispatcher supplies. Read-only: no edits, no writes, no commands — findings are returned inline in the reviewer.md precedence format.
 
-**Primary skills:** dart-flutter-patterns, clean-code, systematic-debugging
+**Primary skills:** clean-code, systematic-debugging
 
 **Output artifact(s):** findings returned inline (writes no file)
 

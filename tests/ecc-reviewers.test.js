@@ -23,6 +23,22 @@ const ECC_REVIEWERS = [
     'kotlin-reviewer',
     'cpp-reviewer',
     'csharp-reviewer',
+    'code-reviewer',
+    'comment-analyzer',
+    'django-reviewer',
+    'fastapi-reviewer',
+    'flutter-reviewer',
+    'fsharp-reviewer',
+    'healthcare-reviewer',
+    'mle-reviewer',
+    'network-config-reviewer',
+    'php-reviewer',
+    'pr-test-analyzer',
+    'rag-pipeline-reviewer',
+    'react-reviewer',
+    'swift-reviewer',
+    'type-design-analyzer',
+    'vue-reviewer',
 ];
 
 const agentsMd = fs.readFileSync(path.join(ROOT, '.agents', 'AGENTS.md'), 'utf8');

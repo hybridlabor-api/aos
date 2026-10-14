@@ -7,7 +7,7 @@ Adapted from [affaan-m/ECC](https://github.com/affaan-m/ECC) `agents/fastapi-rev
 
 Independent read-only FastAPI code reviewer. Focuses on modified FastAPI routes, models, and dependencies per the diff context the dispatcher supplies. Read-only: no edits, no writes, no commands — findings are returned inline in the reviewer.md precedence format.
 
-**Primary skills:** fastapi-patterns, python-pro, systematic-debugging
+**Primary skills:** python-pro, systematic-debugging
 
 **Output artifact(s):** findings returned inline (writes no file)
 
