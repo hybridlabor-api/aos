@@ -878,6 +878,13 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
         return 'wrote';
     }
 
+    // Rebuilt on every pack and unable to contain its own hash, so an older copy is never a user edit.
+    if (path.basename(targetPath) === 'shipped-hashes.json') {
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        return 'wrote';
+    }
+
     const diskHash = computeFileHash(targetPath);
 
     // Case: an older release of our own file. Its hash appears in the
