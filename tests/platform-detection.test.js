@@ -165,33 +165,15 @@ describe('detectPlatforms', () => {
         }
     });
 
-    test('findBundledClaudeCli picks Contents/MacOS/claude when it is the only macOS candidate', () => {
+    test('findBundledClaudeCli does not treat the Electron binary Contents/MacOS/Claude as a CLI', () => {
         const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-macos-'));
         try {
-            const cliPath = path.join(fakeHome, 'Applications', 'Claude.app', 'Contents', 'MacOS', 'claude');
-            fs.mkdirSync(path.dirname(cliPath), { recursive: true });
-            fs.writeFileSync(cliPath, '#!/bin/sh\nexit 0\n');
-            fs.chmodSync(cliPath, 0o755);
+            const electron = path.join(fakeHome, 'Applications', 'Claude.app', 'Contents', 'MacOS', 'Claude');
+            fs.mkdirSync(path.dirname(electron), { recursive: true });
+            fs.writeFileSync(electron, '#!/bin/sh\nexit 0\n');
+            fs.chmodSync(electron, 0o755);
 
-            assert.equal(findBundledClaudeCli({ platform: 'darwin', home: fakeHome, fsImpl: fs }), cliPath);
-        } finally {
-            fs.rmSync(fakeHome, { recursive: true, force: true });
-        }
-    });
-
-    test('findBundledClaudeCli prefers Contents/Resources/bin/claude over Contents/MacOS/claude', () => {
-        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-order-'));
-        try {
-            const appDir = path.join(fakeHome, 'Applications', 'Claude.app', 'Contents');
-            const binPath = path.join(appDir, 'Resources', 'bin', 'claude');
-            const macosPath = path.join(appDir, 'MacOS', 'claude');
-            for (const p of [binPath, macosPath]) {
-                fs.mkdirSync(path.dirname(p), { recursive: true });
-                fs.writeFileSync(p, '#!/bin/sh\nexit 0\n');
-                fs.chmodSync(p, 0o755);
-            }
-
-            assert.equal(findBundledClaudeCli({ platform: 'darwin', home: fakeHome, fsImpl: fs }), binPath);
+            assert.equal(findBundledClaudeCli({ platform: 'darwin', home: fakeHome, fsImpl: fs }), null);
         } finally {
             fs.rmSync(fakeHome, { recursive: true, force: true });
         }

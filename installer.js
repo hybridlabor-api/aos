@@ -336,7 +336,6 @@ function findBundledClaudeCli({
             candidates.push(
                 path.join(app, 'Contents', 'Resources', 'claude'),
                 path.join(app, 'Contents', 'Resources', 'bin', 'claude'),
-                path.join(app, 'Contents', 'MacOS', 'claude'),
                 path.join(app, 'Contents', 'Resources', 'claude-code'),
             );
         }
