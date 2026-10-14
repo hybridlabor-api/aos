@@ -1,0 +1,94 @@
+{
+  "enforce": false,
+  "roles": [
+    "architect",
+    "techlead",
+    "reviewer",
+    "builder",
+    "scout"
+  ],
+  "targets": {
+    "claude": {
+      "model": null,
+      "limits": {
+        "window_5h": { "soft": 0.8, "hard": 0.95 },
+        "weekly": { "soft": 0.8, "hard": 0.95 }
+      }
+    },
+    "opencode-go": {
+      "model": "glm-5.3-flash",
+      "limits": {
+        "window_5h": { "soft": 0.8, "hard": 0.95 },
+        "weekly": { "soft": 0.8, "hard": 0.95 }
+      }
+    },
+    "agy": {
+      "model": null,
+      "limits": {
+        "window_5h": { "soft": 0.8, "hard": 0.95 },
+        "weekly": { "soft": 0.8, "hard": 0.95 }
+      }
+    },
+    "codex": {
+      "model": null,
+      "limits": {
+        "window_5h": { "soft": 0.8, "hard": 0.95 },
+        "weekly": { "soft": 0.8, "hard": 0.95 }
+      }
+    },
+    "claude-glm": {
+      "model": null,
+      "limits": {
+        "window_5h": { "soft": 0.8, "hard": 0.95 },
+        "weekly": { "soft": 0.8, "hard": 0.95 }
+      }
+    }
+  },
+  "preferences": {
+    "architect": [
+      "claude",
+      "codex",
+      "agy",
+      "opencode-go",
+      "claude-glm"
+    ],
+    "techlead": [
+      "claude",
+      "codex",
+      "agy",
+      "opencode-go",
+      "claude-glm"
+    ],
+    "reviewer": [
+      "claude",
+      "codex",
+      "agy",
+      "opencode-go",
+      "claude-glm"
+    ],
+    "builder": [
+      "opencode-go",
+      "agy",
+      "claude",
+      "codex",
+      "claude-glm"
+    ],
+    "scout": [
+      "opencode-go",
+      "agy",
+      "claude",
+      "codex",
+      "claude-glm"
+    ]
+  },
+  "limits": {
+    "window_5h": {
+      "soft": 0.8,
+      "hard": 0.95
+    },
+    "weekly": {
+      "soft": 0.8,
+      "hard": 0.95
+    }
+  }
+}

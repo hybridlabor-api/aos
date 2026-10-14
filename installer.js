@@ -913,6 +913,18 @@ function computeFileHash(filePath) {
     }
 }
 
+// Hash of a text file with CRLF read as LF; null for binary or unreadable files. Windows git checkouts (core.autocrlf) leave
+// CRLF copies of our own files, which must not count as user edits.
+function lfNormalizedHash(filePath) {
+    try {
+        const buf = fs.readFileSync(filePath);
+        if (buf.includes(0) || !buf.includes(13)) return null;
+        return crypto.createHash('sha256').update(Buffer.from(buf.toString('latin1').replace(/\r\n/g, '\n'), 'latin1')).digest('hex');
+    } catch (e) {
+        return null;
+    }
+}
+
 function loadInstallManifest(customPath = null) {
     const manifestPath = customPath || getInstallManifestPath();
     try {
@@ -964,6 +976,23 @@ const keptUserEdits = [];
 // Returns 'wrote' | 'bak' | 'kept' | 'skipped'.
 // knownSourceHashes: Set of sha256 hashes of all source files in the current
 // payload (used to identify files we recognise even before manifest entry).
+// A stale gate is a security defect, so these are never left behind as <file>.new: the old copy is moved
+// to <file>.bak and the shipped one installed.
+const GUARD_FILES = new Set(['aos-gate.mjs', 'gate-profile.mjs', 'go-gate.mjs']);
+
+function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
+    if (GUARD_FILES.has(path.basename(targetPath))) {
+        fs.copyFileSync(targetPath, `${targetPath}.bak`);
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        log.warn(`Gate file ${targetPath} differed from every shipped version; replaced it (previous copy: ${targetPath}.bak).`);
+        return 'wrote';
+    }
+    fs.copyFileSync(sourcePath, `${targetPath}.new`);
+    keptUserEdits.push(targetPath);
+    return 'kept';
+}
+
 function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes, shippedHashes = SHIPPED_HASHES) {
     const sourceHash = computeFileHash(sourcePath);
     if (!sourceHash) {
@@ -1004,6 +1033,23 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
         return 'wrote';
     }
 
+    // Differs from the payload (or a released payload) only by CRLF line endings: ours, replace with the LF original.
+    const lfHash = lfNormalizedHash(targetPath);
+    if (lfHash && (lfHash === sourceHash || shippedHashes.has(lfHash))) {
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        try { fs.rmSync(`${targetPath}.new`, { force: true }); } catch { /* a stale .new is only noise */ }
+        return 'wrote';
+    }
+
+    // Identical to the payload is never a user edit, with or without a manifest entry (an interrupted or
+    // dev-built run leaves none). Checked before the unrecognised-content case, which would keep it as a phantom edit.
+    if (diskHash === sourceHash) {
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        try { fs.rmSync(`${targetPath}.new`, { force: true }); } catch { /* a stale .new is only noise */ }
+        return 'wrote';
+    }
+
     // Case: unrecognised content at a path this payload owns.
     //
     // This used to skip, on the reading that unknown content means a file the
@@ -1022,10 +1068,7 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     // foreign file. Either way the disk version wins and the shipped copy
     // lands beside it as <file>.new.
     if (!manifestEntry && !knownSourceHashes.has(diskHash)) {
-        const newPath = `${targetPath}.new`;
-        fs.copyFileSync(sourcePath, newPath);
-        keptUserEdits.push(targetPath);
-        return 'kept';
+        return keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash);
     }
 
     // Case: first-run bootstrap – disk hash matches source hash but no manifest entry.
@@ -1045,10 +1088,7 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     // The user's file wins: the shipped version lands next to it as .new, and
     // the manifest keeps the old hash so the next run still sees the edit.
     if (manifestEntry && diskHash !== manifestEntry.sha256) {
-        const newPath = `${targetPath}.new`;
-        fs.copyFileSync(sourcePath, newPath);
-        keptUserEdits.push(targetPath);
-        return 'kept';
+        return keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash);
     }
 
     // Default: manifest entry present, disk matches manifest (no change needed) – overwrite.
@@ -2688,7 +2728,7 @@ function checkModuleUpdate(pkgName, targetDir) {
             logDebug(e, `npm view ${pkgName}`);
         }
 
-        if (remoteVer && localVer !== remoteVer) {
+        if (remoteVer && (!localVer || isNewerVersion(localVer, remoteVer))) {
             return { installed: true, updateAvailable: true, localVer, remoteVer, checkFailed };
         }
         return { installed: true, updateAvailable: false, localVer, remoteVer, checkFailed };
@@ -2728,6 +2768,7 @@ function recoverStaleSwaps(targetDir) {
 }
 
 const { renameWithRetry } = require('./lib/rename-retry.js');
+const { stopModuleProcesses, isServiceModule } = require('./lib/stop-module-processes.js');
 function downloadOrUpdateModule(pkgName, targetDir, displayName) {
     const status = checkModuleUpdate(pkgName, targetDir);
     if (status.installed && !status.updateAvailable) {
@@ -2783,10 +2824,18 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
 
         movePreserved(targetDir, stagingDir);
 
-        // Phase 1: retire the live tree. On Windows a running service holds the directory:
-        // renameWithRetry backs off, then fails with a clear "locked" reason (no process is killed).
+        // Phase 1: retire the live tree. On Windows a running service holds the directory: renameWithRetry backs off,
+        // then, for a service module, stops only the processes that run from this directory (AOS_NO_STOP_SERVICES=1 opts
+        // out) and tries again; otherwise it fails with a clear "locked" reason. The module's own step starts its service again.
         try {
-            renameWithRetry(targetDir, retiredDir, { module: path.basename(targetDir).replace(/^bdb-/, '') });
+            renameWithRetry(targetDir, retiredDir, {
+                module: path.basename(targetDir).replace(/^bdb-/, ''),
+                release: isServiceModule(targetDir) ? () => {
+                    const stopped = stopModuleProcesses(targetDir);
+                    if (stopped.length) log.warn(`${displayName}: stopped ${stopped.length} running process${stopped.length === 1 ? '' : 'es'} (${[...new Set(stopped.map((p) => p.Name))].join(', ')}) that held ${targetDir}`);
+                    return stopped.length > 0;
+                } : undefined,
+            });
         } catch (retireError) {
             // The live tree stayed in place: give it its preserved entries back before staging goes.
             movePreserved(stagingDir, targetDir);
@@ -2847,21 +2896,23 @@ function ensureDejaExclude(excludePath) {
     return true;
 }
 
+const { DEJA_VERSION } = require('./lib/v5/pins.js');
+
 async function installDeja() {
     if (DRY_RUN) {
-        log.step('[dry-run] would install deja-vu 0.21.1 globally and add its exclude pattern');
+        log.step(`[dry-run] would install deja-vu ${DEJA_VERSION} globally and add its exclude pattern`);
         return;
     }
     try {
         log.step('Installing deja-vu session memory...');
-        execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore', windowsHide: true });
+        execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
         uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
     } catch (e) {
-        log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
+        log.warn(`deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
     const dejaOnPath = hasExecutable('deja');
     if (!dejaOnPath) {
-        log.warn('deja is not on PATH. Install it with: npm install -g @vshulcz/deja-vu@0.21.1');
+        log.warn(`deja is not on PATH. Install it with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
     const base = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
     const excludePath = path.join(base, 'deja', 'exclude');
@@ -8155,7 +8206,7 @@ function v5Options(interactive) {
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
-    return { home: homeDir, write: (s) => process.stdout.write(s), ui };
+    return { home: homeDir, write: (s) => process.stdout.write(s), ui, force: process.argv.includes('--force') || Boolean(process.env.AOS_FORCE) };
 }
 
 // Flags/env win over the persisted v5 settings for this run. Writes nothing: see persistInstallOptions.
@@ -8894,7 +8945,7 @@ module.exports = {
     loadExistingEnv,
     // installer v5 host surface (lib/v5/*)
     runQuickUpdate, applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
-    saveManifest, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, runUninstaller, PROVIDER_KEY_ENV_NAMES,
+    saveManifest, DEJA_VERSION, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, checkModuleUpdate, runUninstaller, PROVIDER_KEY_ENV_NAMES,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,

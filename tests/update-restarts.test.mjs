@@ -30,6 +30,48 @@ test('aos update restarts only running, controllable services other than hub and
   assert.ok(out.some((l) => /warning: could not restart ao/.test(l)), 'a failed restart warns and does not throw');
 });
 
+const runningRows = [
+  { id: 'memb', up: true, control: 'launchd' },
+  { id: 'synapse', up: true, control: 'systemd' },
+  { id: 'ao', up: true, control: 'launchd' },
+];
+
+test('update restarts only the services whose package changed in this run', async () => {
+  const calls = [];
+  const done = await restartRunningServices({ home: '/nowhere', write: () => {} }, {
+    statusService: async () => runningRows,
+    controlService: async (ctx, id, action) => { calls.push([id, action]); },
+  }, new Set(['synapse']));
+  assert.deepEqual(calls, [['synapse', 'restart']]);
+  assert.deepEqual(done, ['synapse']);
+});
+
+test('update with no changed package restarts nothing', async () => {
+  const calls = [];
+  const done = await restartRunningServices({ home: '/nowhere', write: () => {} }, {
+    statusService: async () => runningRows,
+    controlService: async (ctx, id, action) => { calls.push([id, action]); },
+  }, new Set());
+  assert.deepEqual(calls, []);
+  assert.deepEqual(done, []);
+});
+
+test('a kernel update restarts the running services that have no package id, not the packaged ones', async () => {
+  const rows = [
+    { id: 'memb', up: true, control: 'launchd', pkg: '@hybridlabor-api/memb' },
+    { id: 'plan-canvas', up: true, control: 'launchd', pkg: null },
+    { id: 'agenttrail', up: true, control: 'launchd', pkg: null },
+    { id: 'a2a', up: true, control: 'launchd', pkg: null },
+  ];
+  const calls = [];
+  const done = await restartRunningServices({ home: '/nowhere', write: () => {} }, {
+    statusService: async () => rows,
+    controlService: async (ctx, id, action) => { calls.push([id, action]); },
+  }, new Set(['kernel']));
+  assert.deepEqual(calls, [['plan-canvas', 'restart'], ['agenttrail', 'restart'], ['a2a', 'restart']]);
+  assert.deepEqual(done, ['plan-canvas', 'agenttrail', 'a2a']);
+});
+
 for (const [name, stampOf] of [['plan-canvas', pcStamp], ['agenttrail', trailStamp]]) {
   test(`${name}: touching a file in a watched folder raises the code stamp`, () => {
     const dir = mkdtempSync(join(tmpdir(), `aos-stamp-${name}-`));

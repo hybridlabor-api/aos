@@ -69,6 +69,14 @@ export const meta = {
     'Dispatcher-mediated build pipeline: Architect -> TechLead -> {UI_UX, Engineering, Media_EventTech} -> Reviewer -> Shipping, per .agents/graph.md. Agents never invoke each other -- this script decides every next step. Node identities come from .agents/nodes.json, loaded fresh each run.',
 };
 
+let routeFor = null;
+if (typeof process !== 'undefined') {
+  try {
+    const routeMod = await import(new URL('../../lib/router/route.js', import.meta.url).href);
+    routeFor = routeMod.routeFor;
+  } catch {}
+}
+
 // Polyfilled module access for standalone CLI and hook executions outside Claude runtime
 let fs = typeof process !== 'undefined' && typeof process.getBuiltinModule === 'function'
   ? process.getBuiltinModule('node:fs')
@@ -645,7 +653,15 @@ const modelOpt = (...roles) => {
   const model = modelFor(...roles);
   return model ? { model } : {};
 };
-const nodeModelOpt = (n) => modelOpt(n.agentType, n.id);
+const nodeModelOpt = (n) => {
+  if (typeof routeFor === 'function') {
+    try {
+      const chosen = routeFor(n);
+      console.error(`[router] advisory node ${n?.id || n?.agentType || 'node'} -> target: ${chosen.target}`);
+    } catch {}
+  }
+  return modelOpt(n.agentType, n.id);
+};
 
 // Centralizes every escalation path through one place, so `needs_human` and
 // `phase: escalated` actually land in state.json instead of only in this
