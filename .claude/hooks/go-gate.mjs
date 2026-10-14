@@ -99,6 +99,8 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
   // `git -c alias.x=push x`: a one-off alias hides the subcommand (a persisted `git config alias` cannot be seen here).
   re(String.raw`git\s+(?:-[cC]\s*\S+\s+)*-c\s*['"]?alias\.`),
+  // Widening the gate profile or adding a global grant: an agent-run aos-gate needs a plain GO (the CLI also refuses outside a terminal).
+  re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-gate(?:\.mjs)?\s+(?:grant|work|profile)\b`),
   // Never grantable (no scope), always a plain GO: driving another OpenCode session
   // (resume/attach, or the server's HTTP API) can type text that looks human there.
   // The HTTP paths are matched anywhere in the command, independent of host spelling
@@ -1559,8 +1561,8 @@ let gateCtx = { cwd: "", blockTs: 0 };
 export const setGateContext = (c) => { gateCtx = { cwd: "", blockTs: 0, ...c }; memo = new Map(); };
 // Clock for the installed-script age check. Only the hook sets gateCtx (from the harness input, never from the command), so `now` is a test seam, not an input.
 const nowMs = () => (Number.isFinite(gateCtx.now) ? gateCtx.now : Date.now());
-export const COOLDOWN_MS = 0;
-export const COOLDOWN_MESSAGE = "";
+export const COOLDOWN_MS = 10 * 60 * 1000;
+export const COOLDOWN_MESSAGE = "go-gate: blocked recently; a freshly written script after a block needs a GO; stop and report.";
 const FILE_HEAD = /^(?:python[\d.]*|node(?:js)?|bun|deno|ruby|perl|php|bash|sh|zsh|dash|ksh|pwsh|powershell|osascript)$/i;
 const INLINE_FLAG = /^(?:-[a-zA-Z]*[ce]|--eval|-p|--print|-command|-c)$/i;
 const VALUE_FLAG = /^(?:-r|--require|--import|--loader|--experimental-loader|--env-file|--input-type|-C|--conditions|-W|-X|-Q|-I)$/;
@@ -1620,6 +1622,7 @@ function membScript(path) {
 }
 function installedScript(path, changed) {
   if (membScript(path)) return true;
+  if (!(gateCtx.blockTs ? changed < gateCtx.blockTs : false) && nowMs() - changed <= COOLDOWN_MS) return false;
   let real;
   try { real = realpathSync(path); } catch { return false; }
   return trustedDirs().some((d) => {
@@ -1675,6 +1678,10 @@ function scriptInto(r, h, file, cwd) {
   // Only a regular file is ever opened: a device (/dev/zero), FIFO, socket or directory is
   // unscoped and never read (a read could hang the hook). statSync follows a symlink.
   if (!st.isFile()) { r.unscoped = true; return; }
+  // Cooldown limits, said plainly: an agent can still backdate a script (touch -t), run one
+  // written before the block, or remove the marker through a path built at run time; the
+  // last is covered only for literal paths (isHomeLevel knows ~/.aos/gate).
+  if (gateCtx.blockTs && nowMs() - gateCtx.blockTs < COOLDOWN_MS && changed > gateCtx.blockTs && !membScript(path)) { r.unscoped = true; r.cooldown = true; return; }
   if (st.size > SCRIPT_MAX) { r.unscoped = true; return; }
   const body = readSmallRegular(path, SCRIPT_MAX, true);
   if (typeof body !== "string") { r.unscoped = true; return; }
@@ -2055,15 +2062,8 @@ function scopesOf(orig, protectedFor) {
   return [...out];
 }
 
-export const isGuardedCommand = (command) => {
-  if (typeof command !== "string") return false;
-  if (commandTooLong(command)) return true;
-  const sc = commandScopes(command);
-  if (sc !== null) {
-    return GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || sc.length > 0;
-  }
-  return contentReleaseRisk(command);
-};
+export const isGuardedCommand = (command) =>
+  typeof command === "string" && (commandTooLong(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
 
 // ---------------------------------------------------------------------------
 // Grant store protection (Bash side; Write/Edit side is env-file-protection).
@@ -2127,7 +2127,11 @@ function readStdin() {
 let blockKey = "";
 const blockFile = (key) => join(gateDir(), `${key}.block`);
 export function readBlockTs(key) {
-  return 0;
+  // A marker from the future (a forged or skewed ts) counts as written now, never as later.
+  // A planted non-regular marker (FIFO/device/dir/symlink/oversize) fails closed: the cooldown window is always open. Missing = 0.
+  const txt = readSmallRegular(blockFile(key), 4096);
+  if (txt === false) return Date.now() - (COOLDOWN_MS >> 1);
+  try { return Math.min(Number(JSON.parse(txt ?? "")?.ts) || 0, Date.now()); } catch { return 0; }
 }
 // Never blocks or follows a link: a planted FIFO/device/symlink must not hang the hook (fail-open).
 // null = missing, false = not a small regular file, else the text. follow=true keeps a symlink to a regular file readable (the fstat still rejects a FIFO/device behind it).
@@ -2159,7 +2163,11 @@ export function writeNoHang(f, data, flags) {
   try { writeFileSync(fd, data); } finally { closeSync(fd); }
 }
 export function markBlock(key, now = Date.now()) {
-  // Gate v2: blocks do not set cooldowns
+  if (!key || now - readBlockTs(key) < COOLDOWN_MS) return;
+  try {
+    mkdirSync(gateDir(), { recursive: true, mode: 0o700 });
+    writeNoHang(blockFile(key), JSON.stringify({ ts: now }), FS.O_TRUNC);
+  } catch { /* the cooldown is best effort; the block itself already holds */ }
 }
 
 // Cooldown key: the session id; without one (Antigravity, other hosts) a conversation id, else
@@ -3148,7 +3156,10 @@ export function isHeadSubstitution(command) {
     if (/^[$\x60]/.test(head) || /^\$\(/.test(head)) return true;
     if (gluedHead(base(head))) return true;
     if (head === "eval" && rest.slice(1).some((t) => /^[$\x60]/.test(unq(t)))) return true;
-    if (/^(?:npm|git|npx|pnpm|yarn|bun)$/.test(head) && rest.slice(1).some((t) => /^\$[@*]/.test(unq(t)))) return true;
+    if (/^(?:npm|git|gh|npx|pnpm|yarn|bun)$/.test(head)) {
+      const sub = rest.slice(1).find((t) => !unq(t).startsWith("-"));
+      if (rest.slice(1).some((t) => /^\$[@*]/.test(unq(t))) || (sub && /^[$\x60]/.test(unq(sub)))) return true;
+    }
   }
   return false;
 }
@@ -3423,7 +3434,9 @@ function main() {
   }
 
   blockKey = hookBlockKey(input, isAgy);
-  setGateContext({ cwd: typeof input.cwd === "string" ? input.cwd : "", blockTs: 0 });
+  // Under work/off a fresh script is judged by its content (scriptInto), not held back by the block cooldown.
+  const looser = profileFor().profile !== "strict";
+  setGateContext({ cwd: typeof input.cwd === "string" ? input.cwd : "", blockTs: blockKey && !looser ? readBlockTs(blockKey) : 0 });
 
   // Over the length cap nothing is parsed: it is guarded, only a GO lifts it, and it is not a hard block.
   const tooLong = commandTooLong(command);
@@ -3460,20 +3473,25 @@ function main() {
   const go = lastUserMessageIsGo(transcriptPath);
   if (goAllows(go, command)) return respond(isAgy, true, "", command);
   const reasons = [go.ok ? "a GO with PR numbers covers only gh pr merge/edit/close/review/comment for those PRs; type a plain GO" : go.reason];
+  const cooling = analyzeDeletes(command).cooldown;
+  if (cooling) {
+    const left = Math.max(1, Math.ceil((COOLDOWN_MS - (Date.now() - readBlockTs(blockKey))) / 60000));
+    reasons.unshift(`${COOLDOWN_MESSAGE} The block cooldown ends in about ${left} min; after that the same unchanged command may run once (rule 16).`);
+  }
   if (tooLong) reasons.unshift(TOO_LONG_MESSAGE);
   if (codexOpaque) reasons.unshift("Codex exec code with a non-literal exec_command; type GO");
 
   // Gate profile config: any doubt reads as strict. Hard blocks and the store check returned above.
-  if (!tooLong && !codexOpaque) {
+  if (!cooling && !tooLong && !codexOpaque) {
     if (profileAllows(command)) return respond(isAgy, true, "", command);
     if (profileFor().profile === "work") reasons.push("profile work: this command is in the release class and needs a GO");
   }
 
   // Global grants from config.json (work across all sessions and windows)
   const globalGrants = profileFor().grants || [];
-  if (!tooLong && !codexOpaque && globalGrants.length > 0) {
+  if (!cooling && !tooLong && !codexOpaque && globalGrants.length > 0) {
     const branchRes = makeBranchResolver(typeof input.cwd === "string" ? input.cwd : process.cwd(), spawnSync);
-    const need = commandScopes(command, branchRes) ?? inferredReleaseScopes(command);
+    const need = commandScopes(command, branchRes);
     if (need && need.length > 0 && need.every((s) => globalGrants.some((g) => g.scope === s || (s === "workspace" && g.scope === "destructive")))) {
       gateLog("global", `global grant: allowed ${JSON.stringify(command.slice(0, 200))}`);
       return respond(isAgy, true, "", command);
@@ -3482,7 +3500,7 @@ function main() {
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).
   const key = !isAgy && input.session_id ? sessionKey(input.session_id) : "";
-  if (key && !tooLong && !codexOpaque) {
+  if (key && !cooling && !tooLong && !codexOpaque) {
     const eff = effectiveGate(key, { source: transcriptPath, cmds: claudeGogateCommands(transcriptPath) });
     for (const r of eff.rejected) gateLog(key, `rejected: ${r}`);
     if (eff.mode === "off") {
@@ -3500,7 +3518,7 @@ function main() {
   if (token.ok) return respond(isAgy, true, "", command);
   reasons.push(token.reason);
   // Last additive path (WP-9): a signed click receipt for exactly this command. Hard blocks and the store check returned above.
-  if (key && !tooLong && !codexOpaque && clickReceiptCovers(command, key)) {
+  if (key && !tooLong && !cooling && !codexOpaque && clickReceiptCovers(command, key)) {
     gateLog(key, `click: allowed ${JSON.stringify(command.slice(0, 200))}`);
     return respond(isAgy, true, "", command);
   }

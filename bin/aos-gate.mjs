@@ -4,7 +4,9 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createInterface } from "node:readline";
 import { readProfile, LIMITS, PROFILES } from "../lib/gate-profile.mjs";
+import { SCOPES } from "../.claude/hooks/go-gate.mjs";
 
 export const HARNESS_ENV = ["CLAUDE_SESSION_ID", "CLAUDECODE", "OPENCODE", "CODEX_SANDBOX", "CODEX_SESSION_ID", "AGY_SESSION_ID", "ANTIGRAVITY_SESSION_ID"];
 
@@ -18,6 +20,18 @@ export function parseDuration(s) {
   const m = /^(\d+)(m|h)$/.exec(s ?? "");
   if (!m || +m[1] <= 0) return null;
   return +m[1] * (m[2] === "h" ? 3600000 : 60000);
+}
+
+const WORDS = ["amber", "birch", "cobalt", "delta", "ember", "falcon", "garnet", "harbor", "indigo", "juniper", "kestrel", "lantern", "marble", "nectar", "onyx", "pebble"];
+
+// Widening the gate (work profile, grants) is a human act: a terminal on stdin and stdout, no harness session, a typed word.
+export async function widenRefusal({ env = process.env, stdin = process.stdin, stdout = process.stdout, ask, what }) {
+  if (!stdin.isTTY || !stdout.isTTY) return "refused: needs a terminal on stdin and stdout";
+  const h = HARNESS_ENV.find((k) => env[k]);
+  if (h) return `refused: harness session detected (${h})`;
+  const word = WORDS[randomBytes(1)[0] % WORDS.length] + "-" + randomBytes(2).toString("hex");
+  stdout.write(`Loosening gate (${what}). Type this to confirm: ${word}\n`);
+  return String(await ask()).trim() === word ? null : "refused: confirmation does not match";
 }
 
 // STUB: Touch ID via the WP-9 credential.
@@ -103,6 +117,8 @@ export function setGrant({
   const printOut = out ?? ((s) => (stdout?.write ? stdout.write(s) : console.log(s)));
   const list = (Array.isArray(scopes) ? scopes : String(scopes || "").split(",")).map((s) => s.trim()).filter(Boolean);
   if (!list.length) { err("usage: aos-gate grant <scope[,scope...]> [duration]"); return 2; }
+  const badScope = list.filter((x) => !SCOPES.includes(x));
+  if (badScope.length) { err(`refused: unknown scope ${badScope.join(",")}; scopes: ${SCOPES.join(", ")}`); return 2; }
   const ms = duration !== undefined ? parseDuration(duration) : (2 * 3600 * 1000);
   if (ms === null) { err("refused: bad duration value (use e.g. 30m, 2h, 4h)"); return 2; }
   if (ms > 24 * 3600 * 1000) { err("refused: grant max is 24h"); return 1; }
@@ -113,9 +129,9 @@ export function setGrant({
     existing = JSON.parse(readFileSync(cfgPath, "utf8"));
   } catch {}
 
-  const prof = existing.profile && PROFILES.includes(existing.profile) ? existing.profile : "work";
+  const prof = existing.profile && PROFILES.includes(existing.profile) ? existing.profile : "strict";
   const setAt = existing.set_at || new Date(now).toISOString();
-  const expAt = existing.expires_at || (prof === "work" ? new Date(now + LIMITS.work.defaultMs).toISOString() : null);
+  const expAt = prof === "work" ? existing.expires_at || new Date(now + LIMITS.work.defaultMs).toISOString() : null;
 
   const oldGrants = (Array.isArray(existing.grants) ? existing.grants : []).filter((g) => {
     const exp = typeof g.expires_at === "string" ? Date.parse(g.expires_at) : (typeof g.until === "string" ? Date.parse(g.until) : NaN);
@@ -163,7 +179,7 @@ export function revokeGrant({
   writeConfig(dir, {
     ...existing,
     version: 1,
-    profile: existing.profile && PROFILES.includes(existing.profile) ? existing.profile : "work",
+    profile: existing.profile && PROFILES.includes(existing.profile) ? existing.profile : "strict",
     set_at: existing.set_at || new Date(now).toISOString(),
     expires_at: existing.expires_at ?? null,
     grants,
@@ -176,25 +192,33 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const [cmd, a, ...rest] = process.argv.slice(2);
   const dir = gateDir();
   const err = (m) => console.error(m);
+  const rl = createInterface({ input: process.stdin });
+  const lines = rl[Symbol.asyncIterator]();
+  const ask = async () => (await lines.next()).value ?? "";
+  const widen = async (what) => {
+    const why = await widenRefusal({ ask, what });
+    if (why) err(why);
+    return why ? 1 : 0;
+  };
+  let code;
   if (cmd === "status") {
-    process.exit(status({ dir, out: console.log }));
-  } else if (cmd === "profile") {
-    const i = rest.indexOf("--for");
-    const forArg = i >= 0 ? rest[i + 1] : undefined;
-    const code = await setProfile({ dir, profile: a, forArg, err });
-    process.exit(code);
-  } else if (cmd === "work" || cmd === "strict") {
-    const forArg = a === "--for" ? rest[0] : rest.includes("--for") ? rest[rest.indexOf("--for") + 1] : undefined;
-    const code = await setProfile({ dir, profile: cmd, forArg, err });
-    process.exit(code);
+    code = status({ dir, out: console.log });
+  } else if (cmd === "profile" || cmd === "work" || cmd === "strict") {
+    const profile = cmd === "profile" ? a : cmd;
+    const args = cmd === "profile" ? rest : [a, ...rest];
+    const i = args.indexOf("--for");
+    const forArg = i >= 0 ? args[i + 1] : undefined;
+    code = profile === "strict" || PROFILES.indexOf(profile) < 0 ? 0 : await widen(`profile ${profile}`);
+    if (!code) code = await setProfile({ dir, profile, forArg, err });
   } else if (cmd === "grant") {
-    const code = setGrant({ dir, scopes: a, duration: rest[0], err });
-    process.exit(code);
+    code = await widen(`grant ${a}`);
+    if (!code) code = setGrant({ dir, scopes: a, duration: rest[0], err });
   } else if (cmd === "revoke") {
-    const code = revokeGrant({ dir, scope: a || "all", err });
-    process.exit(code);
+    code = revokeGrant({ dir, scope: a || "all", err });
   } else {
     err("usage: aos-gate status | profile strict|work [--for 4h] | grant <scope> [duration] | revoke <scope>");
-    process.exit(2);
+    code = 2;
   }
+  rl.close();
+  process.exit(code);
 }

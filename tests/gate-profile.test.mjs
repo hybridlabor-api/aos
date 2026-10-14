@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readProfile, LIMITS, RELEASE_CLASS, PROFILES } from "../lib/gate-profile.mjs";
-import { setProfile, setGrant, revokeGrant, status, gateDir, touchId } from "../bin/aos-gate.mjs";
+import { setProfile, setGrant, revokeGrant, status, gateDir, touchId, widenRefusal } from "../bin/aos-gate.mjs";
 
 const H = 3600000;
 const NOW = Date.parse("2026-10-09T12:00:00Z");
@@ -141,7 +141,7 @@ test("CLI: status shows profile and active global grants", () => {
   setGrant({ dir: d, scopes: "merge", duration: "2h", now: NOW, out: () => {} });
   const lines = [];
   assert.equal(status({ dir: d, now: NOW, out: (l) => lines.push(l) }), 0);
-  assert.match(lines[0], /work/);
+  assert.match(lines[0], /strict/);
   assert.ok(lines.some((l) => l.includes("grant merge")));
 });
 
@@ -155,15 +155,38 @@ test("Touch ID path is a stub", () => {
   assert.throws(() => touchId(), /WP-9/);
 });
 
-test("child process: non-interactive profile work succeeds, status prints profile", () => {
+test("child process: agent-run aos-gate cannot widen; status and strict still work", () => {
   const d = tmp();
   const bin = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "aos-gate.mjs");
   const env = { PATH: process.env.PATH, HOME: d, AOS_TEST_SANDBOX: "container", AOS_GATE_DIR: d };
-  const p = spawnSync(process.execPath, [bin, "profile", "work", "--for", "2h"], { env, input: "", encoding: "utf8" });
-  assert.equal(p.status, 0);
-  assert.match(p.stdout, /profile set: work/);
-
+  for (const args of [["profile", "work", "--for", "2h"], ["work"], ["grant", "publish", "1h"]]) {
+    const p = spawnSync(process.execPath, [bin, ...args], { env, input: "", encoding: "utf8" });
+    assert.equal(p.status, 1, args.join(" "));
+    assert.match(p.stderr, /terminal/);
+    assert.equal(existsSync(join(d, "config.json")), false);
+  }
+  const h = spawnSync(process.execPath, [bin, "grant", "publish"], { env: { ...env, CLAUDECODE: "1" }, input: "", encoding: "utf8" });
+  assert.equal(h.status, 1);
   const s = spawnSync(process.execPath, [bin, "status"], { env, encoding: "utf8" });
   assert.equal(s.status, 0);
-  assert.match(s.stdout, /profile: work/);
+  assert.match(s.stdout, /profile: strict/);
+});
+
+test("widenRefusal: terminal, harness env and typed word are all required", async () => {
+  const tty = { isTTY: true, write() {} };
+  const ok = (extra = {}) => widenRefusal({ env: {}, stdin: tty, stdout: tty, what: "x", ask: async () => "wrong", ...extra });
+  assert.match(await ok(), /confirmation/);
+  assert.match(await ok({ stdin: { isTTY: false } }), /terminal/);
+  assert.match(await ok({ env: { OPENCODE: "1" } }), /harness/);
+  let word = "";
+  const out = { isTTY: true, write: (s) => { word = /confirm: (\S+)/.exec(s)?.[1] ?? word; } };
+  assert.equal(await widenRefusal({ env: {}, stdin: tty, stdout: out, what: "x", ask: async () => word }), null);
+});
+
+test("setGrant: unknown scope and over-24h duration are refused, nothing written", () => {
+  const d = tmp();
+  const errs = [];
+  assert.equal(setGrant({ dir: d, scopes: "root", duration: "1h", now: NOW, out() {}, err: (m) => errs.push(m) }), 2);
+  assert.equal(setGrant({ dir: d, scopes: "publish", duration: "25h", now: NOW, out() {}, err: (m) => errs.push(m) }), 1);
+  assert.equal(existsSync(join(d, "config.json")), false);
 });
