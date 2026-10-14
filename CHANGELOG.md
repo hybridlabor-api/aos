@@ -1,5 +1,25 @@
 # Changelog
 
+## [5.1.0](https://github.com/hybridlabor-api/aos/compare/v5.0.2...v5.1.0) (2026-10-14)
+
+
+### Features
+
+* **a2a:** add session labels, phonebook list format and label-based target resolution ([2bd39b1](https://github.com/hybridlabor-api/aos/commit/2bd39b13a04b8326445ce108e77d9c149979a6b7))
+* AOS 5.1 — prompt audit fixes, hook timeouts, defaultMode auto, A2A labels ([6038cb5](https://github.com/hybridlabor-api/aos/commit/6038cb57065b637aace2e30a28ab0d6c10e44c6e))
+* **aos-setup:** multi-agent worktree guidance and doctor checks ([6f874a7](https://github.com/hybridlabor-api/aos/commit/6f874a739fddba0660edd49ebbaae423e1251c32))
+
+
+### Bug Fixes
+
+* **a2a:** list shows label and session name, a bad label never blocks registration ([a9fe380](https://github.com/hybridlabor-api/aos/commit/a9fe380276202671c441f1859cc68cf65b7c1feb))
+* **agy:** stage the plugin manifest with an empty skills array so agy stops logging relative-path errors ([833a1af](https://github.com/hybridlabor-api/aos/commit/833a1af0d84f23c3ba938f213e3487a6e0a2df37))
+* **aos-setup:** worktree count and prunable checks are advisory, they no longer fail the doctor ([e0385e2](https://github.com/hybridlabor-api/aos/commit/e0385e2d81497b23f35781d43364ecdb61fd719e))
+* **hooks:** set explicit Claude hook timeouts and fast bounded trail-relay and rules-inject ([13e6c8d](https://github.com/hybridlabor-api/aos/commit/13e6c8d0efb98fb51ffbda55842122c4fd1fd6dc))
+* **installer:** retire legacy ~/.codex/skills copies of module skills matching ~/.agents ([e950394](https://github.com/hybridlabor-api/aos/commit/e950394312dd1c047cf1467cd73a05e8d9c2434c))
+* **installer:** set permissions.defaultMode="auto" in Claude settings when absent ([aa444b2](https://github.com/hybridlabor-api/aos/commit/aa444b2f200c1dc546fe7e3de521da7ac44b4539))
+* **instructions:** make ~/AGENTS.md canonical and avoid redundant rules injection ([000dcfa](https://github.com/hybridlabor-api/aos/commit/000dcfa4d7880be788747e7027b4a495aa6dfede))
+
 ## [5.0.2](https://github.com/hybridlabor-api/aos/compare/v5.0.1...v5.0.2) (2026-10-13)
 
 
