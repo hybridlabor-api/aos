@@ -60,7 +60,7 @@ try {
     if (o.json) console.log(JSON.stringify(sessions, null, 2));
     else {
       for (const s of sessions) {
-        const label = s.label || s.name;
+        const label = s.label ? `${s.label} (${s.name})` : s.name;
         const status = s.stale ? "stale" : (s.status ?? "idle");
         const ts = typeof s.ts === "number" ? s.ts : Date.parse(s.ts ?? "");
         const age = formatAge(Date.now() - (Number.isFinite(ts) ? ts : Date.now()));
