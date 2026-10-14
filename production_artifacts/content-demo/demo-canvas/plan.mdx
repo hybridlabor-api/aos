@@ -1,0 +1,51 @@
+---
+title: Cue list with drag reorder
+subtitle: "The Pulse cue editor list now reorders by drag instead of up/down buttons. Invented example."
+kind: recap
+pr: "#87"
+branch: feat/cue-list-drag
+base: main
+commit: 3c9e1a7
+files: 6
+additions: 214
+deletions: 63
+author: sample-author
+date: 2026-10-08
+---
+
+<Callout tone="note" title="Demo data">
+
+Fictional Pulse show-control app, component Cue editor UI. The design canvas (canvas.mdx) shows BEFORE and AFTER with numbered markers on AFTER. All names and numbers are invented.
+
+</Callout>
+
+## Summary {#summary}
+
+- **What:** cues in the Cue editor UI are reordered by dragging a handle. The up/down buttons are gone.
+- **Why:** moving a cue 12 places took 12 clicks, and a mis-click mid-show was easy.
+- **Scope:** cue list interaction only. Cue data, timing and the engine are untouched.
+
+## What changed {#changes}
+
+The numbers match the markers on the AFTER artboard.
+
+1. **Drag handles.** Every row has a grip on the left; rows no longer carry up/down buttons.
+2. **Insertion line.** A blue line shows where the cue will land while dragging.
+3. **Numbers stay stable.** Cue numbers are kept; only the order changes.
+4. **Undo toast.** "Cue moved - Undo" appears for 6 seconds after a drop.
+5. **Keyboard fallback.** Alt + Up/Down moves the selected cue, so the list works without a mouse.
+
+## Verification {#verification}
+
+<Columns columns={[
+  { label: "Verified", blocks: "- Drag reorder with 200 cues stays smooth\n- Undo restores the old order and position\n- Alt + Up/Down moves the selected cue" },
+  { label: "Not verified", blocks: "- Touch screens\n- Lists above 1000 cues\n- Reorder while a cue is running" },
+]} />
+
+## Follow-ups {#followups}
+
+<Checklist title="Follow-ups">
+- [ ] Decide whether a drop snaps to the nearest cue
+- [ ] Keep the selection after undo
+- [ ] Test reorder on the touch console
+</Checklist>
