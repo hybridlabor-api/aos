@@ -991,7 +991,7 @@ const server = http.createServer((req, res) => {
           else {
             spawningPaths.add(target); setTimeout(() => spawningPaths.delete(target), 30000)
             const cp = await import('node:child_process')
-            const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), p, '--no-open'], { detached: true, stdio: 'ignore', shell: false })
+            const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), p, '--no-open'], { detached: true, windowsHide: true, stdio: 'ignore', shell: false })
             child.unref()
             setTimeout(discoverBoards, 2500)
             setTimeout(discoverBoards, 6000)
@@ -1246,7 +1246,7 @@ async function upAll() {
   for (const k of known) {
     const live = await fetch(`http://127.0.0.1:${k.port}/whoami`, { signal: AbortSignal.timeout(300) }).then(r => r.json()).catch(() => null)
     if (live) { console.log(`already up: ${k.repo} (:${k.port})`); continue }
-    const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), k.repo, '--port', String(k.port), '--no-open'], { detached: true, stdio: 'ignore', shell: false })
+    const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), k.repo, '--port', String(k.port), '--no-open'], { detached: true, windowsHide: true, stdio: 'ignore', shell: false })
     child.unref()
     console.log(`started: ${k.repo} (:${k.port})`)
   }

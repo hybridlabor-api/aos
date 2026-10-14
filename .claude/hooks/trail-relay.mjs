@@ -92,6 +92,7 @@ if (hubPort !== 1) {
     if (body.length < 65536) {
       const child = spawn(process.execPath, [here, '--relay-worker', '--relay-send', body], {
         detached: true,
+        windowsHide: true,
         stdio: 'ignore',
         env: process.env,
       });
@@ -99,6 +100,7 @@ if (hubPort !== 1) {
     } else {
       const child = spawn(process.execPath, [here, '--relay-worker'], {
         detached: true,
+        windowsHide: true,
         stdio: ['pipe', 'ignore', 'ignore'],
         env: process.env,
       });
