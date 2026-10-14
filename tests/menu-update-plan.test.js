@@ -38,7 +38,7 @@ function machine({ localKernel = runningVersion, membVersion = '2.4.0' } = {}) {
     const mcp = path.join(home, 'gemini-config');
     fs.mkdirSync(path.join(skills, 'startcycle'), { recursive: true });
     fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway', 'openwiki'] }));
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway', 'openwiki', 'deja'] }));
 
     const membDir = path.join(baseDir, 'memB');
     pkgJson(membDir, membVersion);
@@ -57,6 +57,7 @@ function machine({ localKernel = runningVersion, membVersion = '2.4.0' } = {}) {
         refreshOpenWikiSilently: async () => false,
         installMemB: async () => { calls.push('installMemB'); return true; },
         installSynapse: async () => { calls.push('installSynapse'); return true; },
+        installDeja: async () => { calls.push('installDeja'); return true; },
         findSynapseBinary: () => null,
         downloadOrUpdateModule: (npm, dir) => { calls.push(`download ${path.basename(dir)}`); return true; },
         uvBin: () => 'uv',
@@ -143,4 +144,90 @@ test('update runs only the planned package when a package is outdated', async ()
 
     // Only memb was updated
     assert.ok(m.calls.includes('installMemB'), 'installMemB should be called');
+});
+
+test('equal version with modified shipped file detected as drift and repaired', async () => {
+    const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+    const shippedFile = path.join(m.home, '.agents', 'test-shipped.txt');
+    fs.writeFileSync(shippedFile, 'modified-content');
+    const manifestPath = path.join(m.home, '.agents', '.bdb-install-manifest.json');
+    fs.writeFileSync(manifestPath, JSON.stringify({
+        [shippedFile]: { path: shippedFile, sha256: 'original-different-sha256', version: runningVersion }
+    }));
+
+    const plan = await menu.planUpdate(m.host, m.opts());
+    const kernel = plan.find((p) => p.id === 'kernel');
+    assert.ok(kernel);
+    assert.strictEqual(kernel.changed, true, 'kernel flagged changed due to drift');
+    assert.strictEqual(kernel.reason, 'modified test-shipped.txt');
+
+    const code = await menu.update(m.host, m.opts());
+    assert.strictEqual(code, 0);
+    assert.ok(m.calls.includes('quickUpdateKernel'), 'quickUpdateKernel called to repair drift');
+    assert.ok(m.calls.includes('quickUpdateHarnesses'), 'quickUpdateHarnesses called');
+});
+
+test('failed earlier run is retried even if versions match', async () => {
+    const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+    const settingsPath = path.join(m.home, '.aos', 'v5-settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({ disabled: ['gateway', 'openwiki'], lastRunFailed: true }));
+
+    const plan = await menu.planUpdate(m.host, m.opts());
+    const kernel = plan.find((p) => p.id === 'kernel');
+    assert.ok(kernel);
+    assert.strictEqual(kernel.changed, true, 'kernel flagged changed due to previous failure');
+    assert.strictEqual(kernel.reason, 'retrying failed run');
+
+    const code = await menu.update(m.host, m.opts());
+    assert.strictEqual(code, 0);
+    assert.ok(m.calls.includes('quickUpdateKernel'), 'quickUpdateKernel retried');
+
+    // After clean update, lastRunFailed should be reset to false
+    const afterSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    assert.strictEqual(afterSettings.lastRunFailed, false, 'lastRunFailed cleared after success');
+});
+
+test('force flag forces re-update of all components', async () => {
+    const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+    const plan = await menu.planUpdate(m.host, m.opts({ force: true }));
+
+    const kernel = plan.find((p) => p.id === 'kernel');
+    assert.strictEqual(kernel.changed, true);
+    assert.strictEqual(kernel.reason, 'forced');
+
+    const harnesses = plan.find((p) => p.id === 'harnesses');
+    assert.strictEqual(harnesses.changed, true);
+    assert.strictEqual(harnesses.reason, 'forced');
+
+    const memb = plan.find((p) => p.id === 'memb');
+    assert.strictEqual(memb.changed, true);
+    assert.strictEqual(memb.reason, 'forced');
+
+    const code = await menu.update(m.host, m.opts({ force: true }));
+    assert.strictEqual(code, 0);
+    assert.ok(m.calls.includes('quickUpdateKernel'), 'kernel executed when forced');
+    assert.ok(m.calls.includes('quickUpdateHarnesses'), 'harnesses executed when forced');
+    assert.ok(m.calls.includes('installMemB'), 'memb executed when forced');
+});
+
+test('gateway and hub re-apply when kernel or harness is updated', async () => {
+    const m = machine({ localKernel: '5.2.0', membVersion: '2.4.0' });
+    // Enable gateway and hub in settings (remove from disabled list)
+    fs.writeFileSync(path.join(m.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['openwiki'] }));
+
+    const plan = await menu.planUpdate(m.host, m.opts());
+    const kernel = plan.find((p) => p.id === 'kernel');
+    assert.strictEqual(kernel.changed, true);
+
+    const gateway = plan.find((p) => p.id === 'gateway');
+    if (gateway) {
+        assert.strictEqual(gateway.changed, true, 'gateway planned for re-apply when kernel updated');
+        assert.strictEqual(gateway.reason, 'kernel/harnesses updated');
+    }
+
+    const hub = plan.find((p) => p.id === 'hub');
+    if (hub) {
+        assert.strictEqual(hub.changed, true, 'hub planned for re-apply when kernel updated');
+        assert.strictEqual(hub.reason, 'kernel/harnesses updated');
+    }
 });
