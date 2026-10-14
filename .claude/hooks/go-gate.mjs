@@ -74,6 +74,11 @@ const GH = String.raw`gh(?:\s+(?:-R|--repo)(?:\s+|=)\S+)+\s+`;
 const S = String.raw`[^;&|\n]*`;
 const re = (s, f = "i") => new RegExp(A + s, f);
 
+// The aos-gate token anywhere in the command (node/npx/env/bash -c wrappers, any path); grant, work and every profile but strict widen the gate. strict and revoke only narrow it.
+export const GATE_WIDEN = new RegExp(String.raw`(?:^|[\s\/\\'"=;&|(\x60])aos-gate(?:\.mjs)?['"]?\s+(?:grant|work|profile(?!\s+['"]?strict\b))\b`, "i");
+// A command no profile and no global grant may free: only a typed GO (or a human-typed gogate grant) opens it.
+export const neverGrantable = (command) => typeof command === "string" && [command, unIFS(command), unIFS(commandView(command).text)].some((t) => GATE_WIDEN.test(t));
+
 export const GUARDED_PATTERNS = [
   re(String.raw`(?:git\s+push|${G}push)\b`),
   re(String.raw`npm\s+publish\b`),
@@ -99,8 +104,8 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
   // `git -c alias.x=push x`: a one-off alias hides the subcommand (a persisted `git config alias` cannot be seen here).
   re(String.raw`git\s+(?:-[cC]\s*\S+\s+)*-c\s*['"]?alias\.`),
-  // Widening the gate profile or adding a global grant: an agent-run aos-gate needs a plain GO (the CLI also refuses outside a terminal).
-  re(String.raw`(?:(?:npx|bunx|pnpx)\s+(?:-{1,2}[\w-]+(?:[\s=]+\S+)?\s+)*|node(?:js)?\s+)?(?:\S*/)?aos-gate(?:\.mjs)?\s+(?:grant|work|profile)\b`),
+  // Widening the gate profile or adding a global grant: never grantable, always a plain GO (see neverGrantable).
+  GATE_WIDEN,
   // Never grantable (no scope), always a plain GO: driving another OpenCode session
   // (resume/attach, or the server's HTTP API) can type text that looks human there.
   // The HTTP paths are matched anywhere in the command, independent of host spelling
@@ -2063,7 +2068,7 @@ function scopesOf(orig, protectedFor) {
 }
 
 export const isGuardedCommand = (command) =>
-  typeof command === "string" && (commandTooLong(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
+  typeof command === "string" && (commandTooLong(command) || neverGrantable(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
 
 // ---------------------------------------------------------------------------
 // Grant store protection (Bash side; Write/Edit side is env-file-protection).
@@ -3380,6 +3385,7 @@ export function codexExecCommands(src) {
 // Shared by the Claude hook and the OpenCode plugin. Callers run it after hard blocks, the store check, cooldown and the length cap.
 // off allows; work allows unless a release scope shows. null scope = guarded but unreadable: free only without indirection.
 export function profileAllows(command) {
+  if (neverGrantable(command)) return false;
   const p = profileFor().profile;
   if (p === "off") return true;
   if (p !== "work") return false;
@@ -3506,7 +3512,7 @@ function main() {
 
   // Global grants from config.json (work across all sessions and windows)
   const globalGrants = profileFor().grants || [];
-  if (!cooling && !tooLong && !codexOpaque && globalGrants.length > 0) {
+  if (!cooling && !tooLong && !codexOpaque && globalGrants.length > 0 && !neverGrantable(command)) {
     const branchRes = makeBranchResolver(typeof input.cwd === "string" ? input.cwd : process.cwd(), spawnSync);
     const need = commandScopes(command, branchRes);
     if (need && need.length > 0 && need.every((s) => globalGrants.some((g) => g.scope === s || (s === "workspace" && g.scope === "destructive")))) {

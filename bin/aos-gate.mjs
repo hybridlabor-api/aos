@@ -86,12 +86,15 @@ export async function setProfile({
     const cfgPath = join(dir, "config.json");
     existing = JSON.parse(readFileSync(cfgPath, "utf8"));
   } catch {}
-  const grants = Array.isArray(existing.grants)
+  const live = Array.isArray(existing.grants)
     ? existing.grants.filter((g) => {
         const exp = typeof g.expires_at === "string" ? Date.parse(g.expires_at) : (typeof g.until === "string" ? Date.parse(g.until) : NaN);
         return Number.isFinite(exp) && exp > now;
       })
     : [];
+  // strict is the panic button: it drops every grant, revoke stays the selective way.
+  const grants = profile === "strict" ? [] : live;
+  if (profile === "strict" && live.length) printOut(`grants cleared: ${live.map((g) => g.scope).join(", ")}\n`);
   writeConfig(dir, {
     version: 1,
     profile,
@@ -130,7 +133,7 @@ export function setGrant({
 
   const prof = existing.profile && PROFILES.includes(existing.profile) ? existing.profile : "strict";
   const setAt = existing.set_at || new Date(now).toISOString();
-  const expAt = prof === "work" ? existing.expires_at || new Date(now + LIMITS.work.defaultMs).toISOString() : null;
+  const expAt = prof === "strict" ? null : existing.expires_at || new Date(now + LIMITS[prof].defaultMs).toISOString();
 
   const oldGrants = (Array.isArray(existing.grants) ? existing.grants : []).filter((g) => {
     const exp = typeof g.expires_at === "string" ? Date.parse(g.expires_at) : (typeof g.until === "string" ? Date.parse(g.until) : NaN);
