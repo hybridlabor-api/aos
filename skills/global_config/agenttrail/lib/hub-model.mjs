@@ -50,7 +50,7 @@ export function gridPlace(index, cols) {
 const statSafe = (p) => { try { return fs.statSync(p) } catch { return null } }
 const readSafe = (p) => { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
 
-const git = (repo, args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', timeout: 2000 })
+const git = (repo, args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', timeout: 2000, windowsHide: true })
 
 // Git facts change on commits and branch moves, not per event. The hub passes a
 // ttlMemo so a rebuild reuses them; without one every lookup runs fresh.

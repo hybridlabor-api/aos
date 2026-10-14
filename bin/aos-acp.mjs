@@ -138,7 +138,7 @@ async function runPrint(opts, log, emitTrail, sandbox) {
   const out = opts.stdout || process.stdout;
   const [bin, ...binArgs] = sandbox ? sandbox.wrap(["agy", ...args], { cwd: opts.cwd }) : ["agy", ...args];
   const env = agyChildEnv({ ...process.env, AOS_SESSION_NAME: opts.name, AOS_ACP_CLIENT: "1", ...trailEnv(opts) }, { withMcp: opts.withMcp, warn: (m) => process.stderr.write(`aos-acp: ${m}\n`) });
-  const child = spawn(bin, binArgs, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"], env });
+  const child = spawn(bin, binArgs, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"], env, windowsHide: true });
   let stdout = "", stderr = "", timedOut = false;
   child.stdout.on("data", (d) => { stdout += d; });
   child.stderr.on("data", (d) => { stderr += d; });
@@ -242,7 +242,7 @@ export class AcpClient {
     this.nextId = 1;
     this.log = log;
     const verbatim = process.platform === "win32" && /(^|[\\/])cmd(\.exe)?$/i.test(cmd[0]);
-    this.child = spawn(cmd[0], cmd.slice(1), { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsVerbatimArguments: verbatim });
+    this.child = spawn(cmd[0], cmd.slice(1), { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsVerbatimArguments: verbatim, windowsHide: true });
     this.child.stderr.on("data", (d) => log("agent_stderr", { text: String(d).trimEnd() }));
     this.exited = new Promise((res) => this.child.on("exit", (code, sig) => {
       for (const p of this.pending.values()) p.reject(new Error(`agent exited (${code ?? sig})`));
