@@ -68,7 +68,7 @@ test('"none" is remembered as declined and not asked again', async () => {
     const first = await run(home, ['foo', 'bar'], []);
     assert.deepStrictEqual(first.settings.adopted, []);
     assert.deepStrictEqual(first.settings.declined, ['foo', 'bar']);
-    assert.equal(first.settings.mode, 'direct');
+    assert.notEqual(first.settings.mode, 'direct', 'declining extra servers does not switch the gateway to direct');
     const again = await run(home, ['foo', 'bar'], []);
     assert.equal(again.asked.length, 0);
 });
