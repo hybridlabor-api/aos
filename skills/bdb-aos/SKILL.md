@@ -11,7 +11,7 @@ description: >-
 
 # BDB Agent OS
 
-The full AOS suite: 200+ skills, 29 subagents, and the startcycle pipelines.
+The full AOS suite: 200+ skills, 45 subagents, and the startcycle pipelines.
 
 ## Where things live
 

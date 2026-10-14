@@ -64,6 +64,22 @@ Ported from ECC `agents/<name>.md` to BOTH `agents/<name>.md` and
 | `agents/kotlin-reviewer.md` | `agents/kotlin-reviewer.md` |
 | `agents/cpp-reviewer.md` | `agents/cpp-reviewer.md` |
 | `agents/csharp-reviewer.md` | `agents/csharp-reviewer.md` |
+| `agents/code-reviewer.md` | `agents/code-reviewer.md` |
+| `agents/comment-analyzer.md` | `agents/comment-analyzer.md` |
+| `agents/django-reviewer.md` | `agents/django-reviewer.md` |
+| `agents/fastapi-reviewer.md` | `agents/fastapi-reviewer.md` |
+| `agents/flutter-reviewer.md` | `agents/flutter-reviewer.md` |
+| `agents/fsharp-reviewer.md` | `agents/fsharp-reviewer.md` |
+| `agents/healthcare-reviewer.md` | `agents/healthcare-reviewer.md` |
+| `agents/mle-reviewer.md` | `agents/mle-reviewer.md` |
+| `agents/network-config-reviewer.md` | `agents/network-config-reviewer.md` |
+| `agents/php-reviewer.md` | `agents/php-reviewer.md` |
+| `agents/pr-test-analyzer.md` | `agents/pr-test-analyzer.md` |
+| `agents/rag-pipeline-reviewer.md` | `agents/rag-pipeline-reviewer.md` |
+| `agents/react-reviewer.md` | `agents/react-reviewer.md` |
+| `agents/swift-reviewer.md` | `agents/swift-reviewer.md` |
+| `agents/type-design-analyzer.md` | `agents/type-design-analyzer.md` |
+| `agents/vue-reviewer.md` | `agents/vue-reviewer.md` |
 
 **Changes made (adapted, not verbatim):** AOS frontmatter (`name`, quoted
 `description`, exactly `tools: Read, Grep, Glob`); review-checklist substance

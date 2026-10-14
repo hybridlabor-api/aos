@@ -5202,6 +5202,23 @@ const READ_ONLY_AGENT_SLUGS = new Set([
     'kotlin-reviewer',
     'cpp-reviewer',
     'csharp-reviewer',
+    // ECC remaining reviewers and analyzers:
+    'code-reviewer',
+    'django-reviewer',
+    'fastapi-reviewer',
+    'flutter-reviewer',
+    'fsharp-reviewer',
+    'healthcare-reviewer',
+    'mle-reviewer',
+    'network-config-reviewer',
+    'php-reviewer',
+    'rag-pipeline-reviewer',
+    'react-reviewer',
+    'swift-reviewer',
+    'vue-reviewer',
+    'pr-test-analyzer',
+    'comment-analyzer',
+    'type-design-analyzer',
 ]);
 const isReadOnlyAgent = (slug) => READ_ONLY_AGENT_SLUGS.has(slug);
 
