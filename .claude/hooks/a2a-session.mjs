@@ -46,4 +46,4 @@ try {
     }
   }
 } catch {}
-process.exit(0);
+process.exitCode = 0; // not process.exit(): it can drop buffered stdout on Windows pipes

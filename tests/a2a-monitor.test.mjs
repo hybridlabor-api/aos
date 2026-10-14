@@ -44,11 +44,11 @@ test("ancestorChain walks ppid links, stops at pid 1, unknown pids and cycles", 
 
 test("bindTargets binds up to the Claude process, else up to the first non-shell", () => {
   const e = (pid, comm) => ({ pid, comm });
-  assert.deepEqual(mon.bindTargets([e(5, "sh"), e(4, "claude"), e(3, "zsh")]), [5, 4]);
+  assert.deepEqual(mon.bindTargets([e(5, "sh"), e(4, "claude"), e(3, "zsh")]), [4]);
   assert.deepEqual(mon.bindTargets([e(4, "claude"), e(3, "zsh")]), [4]);
   // npm install: Claude runs as `node`
-  assert.deepEqual(mon.bindTargets([e(5, "bash"), e(4, "node"), e(3, "zsh"), e(2, "login")]), [5, 4]);
-  assert.deepEqual(mon.bindTargets([e(5, "sh"), e(4, "zsh")]), [5, 4]);
+  assert.deepEqual(mon.bindTargets([e(5, "bash"), e(4, "node"), e(3, "zsh"), e(2, "login")]), [4]);
+  assert.deepEqual(mon.bindTargets([e(5, "sh"), e(4, "zsh")]), [4]);
   assert.deepEqual(mon.bindTargets([]), []);
 });
 
@@ -109,6 +109,18 @@ test("drainOnce claims each message exactly once (rename to .delivered)", () => 
   const files = readdirSync(inboxDir("claude-drain01")).sort();
   assert.deepEqual(files.map((f) => f.replace(/^\d+-/, "")), ["d-1.delivered", "d-2.delivered"]);
   assert.deepEqual(mon.drainOnce("claude-drain01"), []);
+});
+
+test("drainOnce caps a tick, keeps order, writes before claiming and leaves the note pending when the write fails", () => {
+  const s = "claude-flood001";
+  for (let i = 1; i <= 7; i++) inbox.writeMessage(s, { taskId: `f-${i}`, from: "peer", text: `m${i}`, ts: i });
+  const out = [];
+  assert.equal(mon.drainOnce(s, { write: (l) => out.push(l), max: 3 }).length, 3);
+  assert.deepEqual(out.map((l) => l.match(/> (m\d)/)[1]), ["m1", "m2", "m3"]);
+  assert.equal(inbox.pending(s).length, 4, "the rest waits for the next tick");
+  assert.throws(() => mon.drainOnce(s, { write: () => { throw new Error("EPIPE"); } }), /EPIPE/);
+  assert.equal(inbox.pending(s).length, 4, "failed write: nothing claimed");
+  assert.equal(mon.drainOnce(s).length, 4);
 });
 
 test("a message the drain hook already claimed is not delivered again by the monitor", () => {

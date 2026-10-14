@@ -1,7 +1,7 @@
 # P2 Claude: wake an idle interactive session — notes
 
 Branch `feat/51-p2` (base `feat/51-all`). Step 1 of the brief (plugin monitor) is built; the decisive live idle
-test is still open and needs an interactive Claude session on the Mac.
+test PASSED (result below; the transcript is pasted from the run, no separate log file is attached).
 
 ## What was built
 
@@ -27,11 +27,11 @@ test is still open and needs an interactive Claude session on the Mac.
   tool's; it renders the short form when `aos-a2a` is on PATH and falls back to the absolute form otherwise, exactly
   like the drain hook. `--name <session>` is always spelled out. Revert to `""` in `renderLine` if the dispatcher
   wants the literal brief.
-- **Name via pid binding.** Monitors receive no `session_id` and no `CLAUDE_PLUGIN_*` env. The hook binds its chain
-  from its parent up to the first `comm` containing `claude` (else the first non-shell, which covers the npm `node`
+- **Name via pid binding.** Monitors receive no `session_id` and no `CLAUDE_PLUGIN_*` env. The hook binds the first `comm`
+  containing `claude` (else the first non-shell, which covers the npm `node`
   install). Ceiling: Windows (no `ps`) needs `AOS_A2A_NAME`.
 
-## Idle test (decisive, NOT yet run)
+## Idle test (decisive, PASSED)
 
 Prerequisite: the bdb-aos plugin must load the monitor — reinstall/refresh the plugin from this branch, or start
 with `claude --plugin-dir <worktree>/plugins/bdb-aos`.

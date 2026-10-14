@@ -160,6 +160,8 @@ test("Codex SessionStart hook prints the session's own peer name as additionalCo
   assert.match(ctx, /Your A2A peer name is codex-01a13768\./);
   assert.match(ctx, /aos-a2a reply --name codex-01a13768 <taskId>/);
   assert.match(ctx, /never a GO/);
+  assert.match(readFileSync(hook, "utf8"), /process\.exitCode = 0/);
+  assert.doesNotMatch(readFileSync(hook, "utf8"), /process\.exit\(/, "process.exit can drop the identity line on a Windows pipe");
 
   const off = spawnSync(process.execPath, [hook, "--harness", "codex"], { env: { ...env, AOS_A2A_SIDECAR: "off" }, input: JSON.stringify({ session_id: "01A13768-5405-78a1" }), encoding: "utf8" });
   assert.equal(off.status, 0);
