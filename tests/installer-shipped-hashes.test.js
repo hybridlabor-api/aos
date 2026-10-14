@@ -57,6 +57,26 @@ describe('Shipped-hash ownership rule', () => {
         }
     });
 
+    test('the generated shipped-hashes.json is overwritten, never kept as an edit', () => {
+        const { tmpBase, fakeSrc } = createIsolatedEnv();
+        try {
+            const srcFile = path.join(fakeSrc, 'lib', 'shipped-hashes.json');
+            fs.mkdirSync(path.dirname(srcFile), { recursive: true });
+            fs.writeFileSync(srcFile, '["new"]');
+            const targetFile = path.join(tmpBase, 'home', 'lib', 'shipped-hashes.json');
+            fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+            fs.writeFileSync(targetFile, '["old"]');
+
+            const result = resolveFileConflict(srcFile, targetFile, {}, new Set(), new Set());
+
+            assert.strictEqual(result, 'wrote');
+            assert.strictEqual(fs.readFileSync(targetFile, 'utf8'), '["new"]');
+            assert.strictEqual(fs.readdirSync(path.dirname(targetFile)).filter((f) => f.endsWith('.new')).length, 0);
+        } finally {
+            cleanup(tmpBase);
+        }
+    });
+
     // (b) Disk holds a user edit of an AOS file: manifest entry exists, hash
     // not shipped → kept, shipped copy written as .new.
     test('(b) user edit of an AOS file is kept, .new written', () => {

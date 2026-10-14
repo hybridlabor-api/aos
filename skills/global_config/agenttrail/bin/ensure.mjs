@@ -38,7 +38,7 @@ async function registerWithHub(port, root, plan) {
 const hubBinary = () => fileURLToPath(new URL('./trail-hub.mjs', import.meta.url))
 
 function startHub(port) {
-  const c = cp.spawn(process.execPath, [hubBinary(), '--port', String(port)], { detached: true, stdio: 'ignore' })
+  const c = cp.spawn(process.execPath, [hubBinary(), '--port', String(port)], { detached: true, windowsHide: true, stdio: 'ignore' })
   c.on('error', () => {})
   c.unref()
 }
@@ -84,7 +84,7 @@ async function retire(d) {
 function startMap(root, plan, script) {
   const args = [script, root, '--plan', plan, '--no-open']
   if (process.env.AOS_TRAIL_PORTS) args.push('--port', String(probePorts()[0]))
-  const c = cp.spawn(process.execPath, args, { cwd: root, detached: true, stdio: 'ignore' })
+  const c = cp.spawn(process.execPath, args, { cwd: root, detached: true, windowsHide: true, stdio: 'ignore' })
   c.on('error', () => {})
   c.unref()
 }
@@ -104,7 +104,7 @@ function openUrl(url) {
   else if (process.platform === 'win32') [cmd, args] = ['cmd', ['/c', 'start', '', url]]
   else [cmd, args] = ['xdg-open', [url]]
   try {
-    const c = cp.spawn(cmd, args, { detached: true, stdio: 'ignore' })
+    const c = cp.spawn(cmd, args, { detached: true, windowsHide: true, stdio: 'ignore' })
     c.on('error', () => {})
     c.unref()
   } catch {}

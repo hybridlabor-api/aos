@@ -15,7 +15,7 @@ try {
     const bin = process.env.AOS_TRAIL_BIN || 'aos-trail';
     const viaNode = /\.(?:mjs|cjs|js)$/i.test(bin); // a #! script is not spawnable on Windows
     const r = spawnSync(viaNode ? process.execPath : bin, viaNode ? [bin, ...args] : args, {
-      encoding: 'utf8', timeout: 1800, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8', timeout: 1800, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
     });
     const out = r.error || r.status !== 0 ? null : JSON.parse(r.stdout);
     const text = out && (out.url ? `agenttrail live map: ${out.url}` : out.hint);

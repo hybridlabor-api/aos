@@ -878,6 +878,13 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
         return 'wrote';
     }
 
+    // Rebuilt on every pack and unable to contain its own hash, so an older copy is never a user edit.
+    if (path.basename(targetPath) === 'shipped-hashes.json') {
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        return 'wrote';
+    }
+
     const diskHash = computeFileHash(targetPath);
 
     // Case: an older release of our own file. Its hash appears in the
@@ -2559,9 +2566,12 @@ function checkModuleUpdate(pkgName, targetDir) {
         try {
             const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
             if (process.platform === 'win32') {
-                remoteVer = execSync(`"${npmCmd}" view ${pkgName} version`, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+                // npm.cmd needs ~2 s warm and more under load: the old 4 s limit reported a reachable registry as unreachable.
+                const r = require('./lib/cli-spawn').run('npm', ['view', pkgName, 'version'], { timeout: 30000 });
+                if (r.error || r.status !== 0) throw r.error || new Error(`npm view exited ${r.status}`);
+                remoteVer = r.stdout.trim();
             } else {
-                remoteVer = execFileSync(npmCmd, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 }).trim();
+                remoteVer = execFileSync(npmCmd, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 15000 }).trim();
             }
         } catch (e) {
             // Offline, a proxy, or a misconfigured registry. Swallowing this
@@ -6058,11 +6068,11 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         'env-file-protection.mjs': 10,
         'graph-gate.mjs': 10,
         'memb-inject.mjs': 10,
-        'a2a-inbox.mjs': 5,
+        'a2a-inbox.mjs': 10,
         'a2a-session.mjs': 5,
-        'go-token.mjs': 5,
-        'go-grant.mjs': 5,
-        'rules-inject.mjs': 3,
+        'go-token.mjs': 10,
+        'go-grant.mjs': 10,
+        'rules-inject.mjs': 10,
         'trail-relay.mjs': 3,
         'trail-autostart.mjs': 3,
         'aos-session-hint.mjs': 3,

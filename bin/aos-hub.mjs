@@ -73,7 +73,7 @@ export const openBrowser = (url) => {
   const [cmd, args] = process.platform === 'darwin' ? ['open', [url]]
     : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
   try {
-    const child = spawn(cmd, args, { stdio: 'ignore', detached: true, shell: false });
+    const child = spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true, shell: false });
     child.on('error', () => {});
     child.unref();
   } catch { /* best effort */ }
@@ -125,7 +125,7 @@ async function cmdStart(opts) {
   }
   const env = { ...process.env, AOS_HUB_SERVE: '1', AOS_HUB_TOKEN: randomBytes(32).toString('hex') };
   const child = spawn(process.execPath, [SELF, '--serve', '--port', String(opts.port)], {
-    detached: true, stdio: 'ignore', cwd: homeDir(), env, shell: false,
+    detached: true, windowsHide: true, stdio: 'ignore', cwd: homeDir(), env, shell: false,
   });
   child.unref();
   console.log(`AOS Hub starting: http://127.0.0.1:${opts.port}/ (pid ${child.pid})`);
