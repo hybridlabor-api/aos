@@ -966,7 +966,7 @@ const keptUserEdits = [];
 // payload (used to identify files we recognise even before manifest entry).
 // A stale gate is a security defect, so these are never left behind as <file>.new: the old copy is moved
 // to <file>.bak and the shipped one installed.
-const GUARD_FILES = new Set(['go-gate.mjs', 'gate-profile.mjs', 'aos-gate.mjs']);
+const GUARD_FILES = new Set(['aos-gate.mjs', 'gate-profile.mjs', 'go-gate.mjs']);
 
 function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
     if (GUARD_FILES.has(path.basename(targetPath))) {
