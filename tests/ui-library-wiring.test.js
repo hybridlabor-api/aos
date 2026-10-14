@@ -117,3 +117,64 @@ test('phantom-reference check hits the network only when AOS_TEST_NETWORK=1', as
     const res2 = await fetch(unpkgUrl);
     assert.strictEqual(res2.status, 200, `unpkg registry entry statuspill.json answers 200 at ${unpkgUrl}`);
 });
+
+test('bdb-ui-library skill is placed under skills/global_config and wires routing rules', () => {
+    const skillPath = path.join(ROOT, 'skills', 'global_config', 'bdb-ui-library', 'SKILL.md');
+    assert.ok(fs.existsSync(skillPath), 'skills/global_config/bdb-ui-library/SKILL.md exists');
+    const content = readFile(skillPath);
+    assert.ok(content.includes('name: bdb-ui-library'), 'declares name: bdb-ui-library');
+    assert.ok(content.includes(PKG), `references package ${PKG}`);
+    assert.ok(content.includes('@bdb'), 'references @bdb namespace');
+    assert.ok(content.includes('docs/sources.md'), 'references docs/sources.md');
+    assert.ok(!new RegExp(PKG.replace(/[/@.]/g, (c) => `\\${c}`) + '@latest').test(content),
+        'no @latest for package in skill definition');
+});
+
+test('bdb-ui-library skill is registered across harness manifests', () => {
+    const pj = JSON.parse(readFile(path.join(ROOT, 'plugin.json')));
+    assert.ok(pj.skills.includes('./skills/global_config/bdb-ui-library'), 'plugin.json includes bdb-ui-library');
+
+    const claudePj = JSON.parse(readFile(path.join(ROOT, '.claude-plugin', 'plugin.json')));
+    assert.ok(claudePj.skills.includes('./skills/global_config/bdb-ui-library'), '.claude-plugin/plugin.json includes bdb-ui-library');
+
+    const bdbAosPj = JSON.parse(readFile(path.join(ROOT, 'plugins', 'bdb-aos', 'plugin.json')));
+    assert.ok(bdbAosPj.skills.includes('./skills/global_config/bdb-ui-library'), 'plugins/bdb-aos/plugin.json includes bdb-ui-library');
+
+    const skillsSh = JSON.parse(readFile(path.join(ROOT, 'skills.sh.json')));
+    const designCategory = (skillsSh.groupings || []).find((c) => c.title === 'Design & UI/UX');
+    assert.ok(designCategory, 'Design & UI/UX grouping found in skills.sh.json');
+    assert.ok(designCategory.skills.includes('bdb-ui-library'), 'skills.sh.json includes bdb-ui-library');
+});
+
+test('component registry wiring verifies 7 core items and inlined distribution files', () => {
+    const candidateDirs = [
+        process.env.BDB_UI_LIBRARY_DIR,
+        path.resolve(ROOT, '..', 'bdb-ui-library'),
+        '/Users/timrennings/dev/bdb-dev/bdb-ui-library',
+        '/bdb-ui-library',
+    ].filter(Boolean);
+    const libDir = candidateDirs.find((d) => fs.existsSync(d) && fs.existsSync(path.join(d, 'registry.json')));
+    if (!libDir) {
+        return; // running in sandbox without mounted library dir
+    }
+    const regPath = path.join(libDir, 'registry.json');
+    const reg = JSON.parse(readFile(regPath));
+    const expected = ['knob', 'thermostat', 'volume', 'statuspill', 'thinkingorb', 'glasscard', 'particletext'];
+    const itemNames = reg.items.map((i) => i.name);
+    for (const name of expected) {
+        assert.ok(itemNames.includes(name), `registry.json includes item ${name}`);
+        const pubPath = path.join(libDir, 'publish', 'registry', `${name}.json`);
+        assert.ok(fs.existsSync(pubPath), `inlined registry file publish/registry/${name}.json exists`);
+        const item = JSON.parse(readFile(pubPath));
+        assert.strictEqual(item.name, name, `${name}.json has matching name`);
+        assert.ok(Array.isArray(item.files) && item.files.length > 0, `${name} has files array`);
+        for (const file of item.files) {
+            assert.ok(typeof file.content === 'string' && file.content.length > 0,
+                `${name} file ${file.path} has inlined content for shadcn CLI`);
+        }
+    }
+    const tokensDist = path.join(libDir, 'dist', 'tokens.css');
+    const tokensSrc = path.join(libDir, 'src', 'tokens', 'tokens.css');
+    assert.ok(fs.existsSync(tokensDist) || fs.existsSync(tokensSrc), 'tokens.css exists in library');
+});
+

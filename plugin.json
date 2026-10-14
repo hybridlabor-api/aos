@@ -75,6 +75,7 @@
     "./skills/global_config/bdb-rhino-mcp",
     "./skills/global_config/bdb-security-audit",
     "./skills/global_config/bdb-touchdesigner-mcp",
+    "./skills/global_config/bdb-ui-library",
     "./skills/global_config/bdb-unreal-mcp",
     "./skills/global_config/bdb-updater",
     "./skills/global_config/bdb-vectorworks-mcp",
