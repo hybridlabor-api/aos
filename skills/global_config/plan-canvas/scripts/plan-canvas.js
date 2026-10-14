@@ -378,8 +378,8 @@ async function cmdOpen(file, args, { stateDir, port }) {
     browser: attached ? 'already open' : launched ? 'opened' : 'not opened',
     mode,
     ...(built ? { artifact: built.outFile, warnings: built.warnings } : {}),
-    ...(mdxWarning ? { warning: mdxWarning, warnings: built?.warnings ? [...built.warnings, mdxWarning] : [mdxWarning] } : {}),
-    next_step: built && built.warnings.length
+    ...(mdxWarning ? { warning: mdxWarning, warnings: Array.isArray(built?.warnings) ? [...built.warnings, mdxWarning] : [mdxWarning] } : {}),
+    next_step: built && Array.isArray(built.warnings) && built.warnings.length
       ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas await <dir>/plan.builder.html\` and leave it running.`
       : 'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
   };

@@ -367,8 +367,13 @@ function findBundledClaudeCli({
     }
     for (const c of candidates) {
         try {
-            if (fsImpl.existsSync(c) && fsImpl.statSync(c).isFile()) {
-                return c;
+            if (fsImpl.existsSync(c)) {
+                const st = fsImpl.statSync(c);
+                if (st.isFile()) {
+                    if (platform === 'win32' ? st.size > 0 : Boolean(st.mode & 0o111)) {
+                        return c;
+                    }
+                }
             }
         } catch {}
     }
@@ -8354,7 +8359,6 @@ Options:
         process.exitCode = await require('./lib/v5/menu').packageCommand(module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)), process.argv.slice(3));
         return;
     }
-    checkSystemPrereqs();
     // Before the intro, the telemetry card and the update check: refreshing hooks needs none of them.
     if (INSTALL_OPTS.hooksOnly && !PROJECT_HARNESS_ARG) {
         if (DRY_RUN) log.warn('DRY-RUN MODE active - nothing AOS owns is written.');
@@ -8365,6 +8369,10 @@ Options:
         installGlobalHooks({ harnesses: activeHarnessKeys() });
         flushSessionManifest();
         console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+        return;
+    }
+    if (!DRY_RUN && !checkSystemPrereqs({ exitOnError: false }).ok) {
+        process.exitCode = 1;
         return;
     }
     const skipIntro = isAutoYes || process.argv.includes('--no-intro') || process.argv.includes('--no-animation');

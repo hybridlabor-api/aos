@@ -165,6 +165,38 @@ describe('detectPlatforms', () => {
         }
     });
 
+    test('findBundledClaudeCli picks Contents/MacOS/claude when it is the only macOS candidate', () => {
+        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-macos-'));
+        try {
+            const cliPath = path.join(fakeHome, 'Applications', 'Claude.app', 'Contents', 'MacOS', 'claude');
+            fs.mkdirSync(path.dirname(cliPath), { recursive: true });
+            fs.writeFileSync(cliPath, '#!/bin/sh\nexit 0\n');
+            fs.chmodSync(cliPath, 0o755);
+
+            assert.equal(findBundledClaudeCli({ platform: 'darwin', home: fakeHome, fsImpl: fs }), cliPath);
+        } finally {
+            fs.rmSync(fakeHome, { recursive: true, force: true });
+        }
+    });
+
+    test('findBundledClaudeCli prefers Contents/Resources/bin/claude over Contents/MacOS/claude', () => {
+        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-order-'));
+        try {
+            const appDir = path.join(fakeHome, 'Applications', 'Claude.app', 'Contents');
+            const binPath = path.join(appDir, 'Resources', 'bin', 'claude');
+            const macosPath = path.join(appDir, 'MacOS', 'claude');
+            for (const p of [binPath, macosPath]) {
+                fs.mkdirSync(path.dirname(p), { recursive: true });
+                fs.writeFileSync(p, '#!/bin/sh\nexit 0\n');
+                fs.chmodSync(p, 0o755);
+            }
+
+            assert.equal(findBundledClaudeCli({ platform: 'darwin', home: fakeHome, fsImpl: fs }), binPath);
+        } finally {
+            fs.rmSync(fakeHome, { recursive: true, force: true });
+        }
+    });
+
     test('detectPlatforms finds claudecode when bundled CLI is present even without PATH binary', () => {
         const bundleDir = path.join(home, 'Applications', 'Claude.app', 'Contents', 'Resources');
         fs.mkdirSync(bundleDir, { recursive: true });

@@ -21,6 +21,7 @@ describe('checkSystemPrereqs (installer preflight)', () => {
             }),
             /brew install git \/ xcode-select --install/
         );
+        assert.equal(process.exitCode, 1);
         process.exitCode = 0;
 
         assert.equal(errors.length, 1);
@@ -40,6 +41,7 @@ describe('checkSystemPrereqs (installer preflight)', () => {
             }),
             /git-scm\.com or winget install Git\.Git/
         );
+        assert.equal(process.exitCode, 1);
         process.exitCode = 0;
 
         assert.equal(errors.length, 1);
@@ -59,6 +61,7 @@ describe('checkSystemPrereqs (installer preflight)', () => {
             }),
             /apt install git \/ dnf install git/
         );
+        assert.equal(process.exitCode, 1);
         process.exitCode = 0;
 
         assert.equal(errors.length, 1);

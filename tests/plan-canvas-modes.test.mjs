@@ -119,7 +119,7 @@ describe('Plan Canvas modes', () => {
   test('open .mdx file without --mode bdb-plan-builder emits warning to stderr and in JSON return object with await instruction', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-canvas-mdx-'));
     const tempStateDir = path.join(tempDir, 'state');
-    const mdxFile = path.join(root, 'test-plan-warning.mdx');
+    const mdxFile = path.join(tempDir, 'test-plan-warning.mdx');
     fs.writeFileSync(mdxFile, '# Test Plan\n<Component />');
 
     try {
