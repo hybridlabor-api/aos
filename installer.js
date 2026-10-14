@@ -3478,6 +3478,8 @@ async function installCreatorExtension() {
         if (setupResult.stdout) process.stdout.write(setupResult.stdout);
         if (setupResult.stderr) process.stderr.write(setupResult.stderr);
         if (setupResult.status !== 0) {
+            const optional = require('./lib/v5/creator-failures').optionalOnlyWarning(`${setupResult.stdout || ''}\n${setupResult.stderr || ''}`);
+            if (optional) { log.warn(`Creator Extension: ${optional}`); return optional; }
             log.warn(`Creator Extension setup note: exit code ${setupResult.status}`);
             return false;
         }
