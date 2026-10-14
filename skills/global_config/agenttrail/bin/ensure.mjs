@@ -91,12 +91,14 @@ function startMap(root, plan, script) {
 
 function mayOpen() {
   const e = process.env
+  if (e.AOS_NO_OPEN === '1') return false
   if (e.CI || e.SSH_CONNECTION || e.SSH_TTY) return false
   if (process.platform === 'linux' && !e.DISPLAY && !e.WAYLAND_DISPLAY) return false
   return true
 }
 
 function openUrl(url) {
+  if (process.env.AOS_NO_OPEN === '1') return
   let cmd, args
   if (process.env.AO_BROWSER_CAPABILITY) [cmd, args] = ['ao', ['preview', url]]
   else if (process.env.AOS_TRAIL_OPENER) [cmd, args] = [process.env.AOS_TRAIL_OPENER, [url]]
