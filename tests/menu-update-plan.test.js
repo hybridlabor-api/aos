@@ -167,6 +167,19 @@ test('equal version with modified shipped file detected as drift and repaired', 
     assert.ok(m.calls.includes('quickUpdateHarnesses'), 'quickUpdateHarnesses called');
 });
 
+test('manifest entries of older releases and outside HOME never count as drift', async () => {
+    const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
+    const stale = path.join(m.home, '.agents', 'old-release.txt');
+    fs.writeFileSync(stale, 'changed');
+    const outside = path.join(os.tmpdir(), 'aos-no-such-sandbox', 'gone.md');
+    fs.writeFileSync(path.join(m.home, '.agents', '.bdb-install-manifest.json'), JSON.stringify({
+        [stale]: { path: stale, sha256: 'other', version: '4.18.1' },
+        [outside]: { path: outside, sha256: 'other', version: runningVersion },
+    }));
+    const plan = await menu.planUpdate(m.host, m.opts());
+    assert.strictEqual(plan.find((p) => p.id === 'kernel').changed, false);
+});
+
 test('failed earlier run is retried even if versions match', async () => {
     const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
     const settingsPath = path.join(m.home, '.aos', 'v5-settings.json');
