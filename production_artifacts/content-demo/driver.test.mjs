@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { buildTimeline, parsePlan, applyEdit, checkDir, PLAN_SRC, DEFAULT_DIR, AGENTS } from './driver.mjs'
 
+const FAKE_USER = 'fixture-user'
 const text = fs.readFileSync(PLAN_SRC, 'utf8')
 const plan = parsePlan(text)
 const KINDS = ['session.start', 'session.end', 'session.stop', 'tool.pre', 'tool.post', 'task.update', 'waiting', 'blocker', 'go.request', 'note']
@@ -78,8 +79,8 @@ test('PLAN.md parses cleanly', () => {
 
 test('no username path or secret-looking string', () => {
   const blob = text + JSON.stringify(buildTimeline(plan, 36))
-  const user = os.userInfo().username
-  if (user.length > 2 && !['demo', 'pulse', 'test', 'admin'].includes(user)) assert.ok(!blob.includes(user))
+  const user = FAKE_USER
+  assert.ok(!blob.includes(user))
   assert.ok(!/\/Users\/|\/home\//.test(blob))
   assert.ok(!/(sk-|ghp_|xox[bp]-|AKIA)[A-Za-z0-9]{8,}/.test(blob))
   assert.ok(!/[A-Za-z0-9+/=_-]{40,}/.test(blob))
@@ -99,7 +100,13 @@ test('plan edit round trip ends with all tasks done', () => {
 })
 
 test('checkDir rejects relative and home paths', () => {
-  assert.throws(() => checkDir('relative/dir'))
-  assert.throws(() => checkDir(path.join(os.homedir(), 'demo')))
-  assert.doesNotThrow(() => checkDir(DEFAULT_DIR))
+  assert.throws(() => checkDir('relative/dir', FAKE_USER))
+  assert.throws(() => checkDir(path.join(os.homedir(), 'demo'), FAKE_USER))
+  assert.doesNotThrow(() => checkDir(DEFAULT_DIR, FAKE_USER))
+})
+
+test('checkDir refuses a username path segment but accepts a substring', () => {
+  assert.throws(() => checkDir('/tmp/fixture-user/demo', FAKE_USER), /username/)
+  assert.throws(() => checkDir('/tmp/Fixture-User', FAKE_USER), /username/)
+  assert.doesNotThrow(() => checkDir('/tmp/my-fixture-user-demo', FAKE_USER))
 })

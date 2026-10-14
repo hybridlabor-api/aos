@@ -162,10 +162,14 @@ export function buildTimeline(plan, duration = 36, cwd = DEFAULT_DIR) {
   return out.map((s, i) => [s, i]).sort((a, b) => a[0].atMs - b[0].atMs || a[1] - b[1]).map(([s]) => s)
 }
 
-export function checkDir(dir) {
+export function checkDir(dir, user = os.userInfo().username) {
   if (!path.isAbsolute(dir)) throw new Error('--dir must be an absolute path')
   if (dir === os.homedir() || dir.startsWith(os.homedir() + path.sep)) {
     throw new Error('--dir must not be inside the home directory')
+  }
+  const segments = dir.split(/[\\/]+/).map((s) => s.toLowerCase())
+  if (user && user.length > 2 && segments.includes(user.toLowerCase())) {
+    throw new Error('--dir must not contain the username as a path segment')
   }
 }
 
