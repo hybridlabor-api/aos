@@ -620,6 +620,16 @@ test('A8: an outdated kernel is not reported as success and the old version is n
     assert.ok(!m.calls.includes('saveManifest'));
 });
 
+test('A8b: an update run by the latest package records its version and prints no "available" hint', async () => {
+    const m = machine();
+    const running = require('../package.json').version;
+    const code = await menu.update(m.host, m.opts({ npmView: async (name) => (name.endsWith('/aos') ? running : '2.4.0') }));
+    const text = m.out.join('');
+    assert.strictEqual(code, 0);
+    assert.doesNotMatch(text, /available: run/);
+    assert.ok(m.calls.includes('saveManifest'));
+});
+
 test('B12: Settings -> Install OpenWiki without a key asks first, then reports skipped as a failure', async () => {
     const m = machine();
     m.host.PROVIDER_KEY_ENV_NAMES = { google: 'GEMINI_API_KEY' };

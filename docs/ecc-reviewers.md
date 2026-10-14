@@ -3,7 +3,7 @@
 Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) agents at upstream commit
 `ef648e01899ba3e8dc6371642deaaf64b4477775`.
 
-Eight language reviewers, each as `agents/<name>.md` plus an identical `.claude/agents/<name>.md`
+Twenty-four reviewers in total. The eight original language reviewers, each as `agents/<name>.md` plus an identical `.claude/agents/<name>.md`
 copy: `go-reviewer`, `python-reviewer`, `rust-reviewer`, `typescript-reviewer` (covers
 JavaScript), `java-reviewer` (Spring Boot/Quarkus), `kotlin-reviewer` (Android/KMP),
 `cpp-reviewer`, `csharp-reviewer` (.NET).
@@ -11,7 +11,7 @@ JavaScript), `java-reviewer` (Spring Boot/Quarkus), `kotlin-reviewer` (Android/K
 ## Taken / left out
 
 - Taken: the upstream CRITICAL/HIGH/MEDIUM per-language checklist substance (security, error
-  handling, concurrency, framework notes) and the reviewer role; all eight are registered in
+  handling, concurrency, framework notes) and the reviewer role; all twenty-four are registered in
   `.agents/AGENTS.md` and in `READ_ONLY_AGENT_SLUGS` in `installer.js`.
 - Left out: build resolvers, rules, hooks, MCP configs (out of scope); `model: sonnet`;
   Bash-driven "When invoked"/"Diagnostic Commands"; and upstream `skill:` references that do not

@@ -24,7 +24,7 @@ export function probePorts() {
 // Bare repos, separate git dirs and submodules have no `<main>/.git` parent, so they keep today's top-level identity.
 export function gitRoots(dir) {
   const d = norm(dir)
-  const r = cp.spawnSync('git', ['rev-parse', '--show-toplevel', '--git-common-dir'], { cwd: d, encoding: 'utf8', timeout: 1000 })
+  const r = cp.spawnSync('git', ['rev-parse', '--show-toplevel', '--git-common-dir'], { cwd: d, encoding: 'utf8', timeout: 1000, windowsHide: true })
   const [top, common] = r.status === 0 ? r.stdout.trim().split('\n') : []
   if (!top) return { top: path.resolve(dir), main: path.resolve(dir) } // non-git folders keep the path they were given
   const t = norm(top)
@@ -37,7 +37,7 @@ export const mainRoot = dir => gitRoots(dir).main
 // Main checkout first, then linked worktrees that still exist, at most `cap` entries.
 export function listWorktrees(main, cap = 12) {
   const only = [{ path: main, branch: null }]
-  const r = cp.spawnSync('git', ['worktree', 'list', '--porcelain'], { cwd: main, encoding: 'utf8', timeout: 2000 })
+  const r = cp.spawnSync('git', ['worktree', 'list', '--porcelain'], { cwd: main, encoding: 'utf8', timeout: 2000, windowsHide: true })
   if (r.status !== 0) return only
   const out = []
   for (const block of r.stdout.split(/\n\s*\n/)) {

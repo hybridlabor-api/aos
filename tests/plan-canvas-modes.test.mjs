@@ -115,4 +115,40 @@ describe('Plan Canvas modes', () => {
     assert.equal(result.code, 1);
     assert.ok(result.stdout.includes('artifact not found'));
   });
+
+  test('open .mdx file without --mode bdb-plan-builder emits warning to stderr and in JSON return object with await instruction', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-canvas-mdx-'));
+    const tempStateDir = path.join(tempDir, 'state');
+    // plan-canvas only opens files inside a workspace, so the .mdx must sit in the repo; the finally block removes it.
+    const mdxFile = path.join(root, 'test-plan-warning.mdx');
+    fs.writeFileSync(mdxFile, '# Test Plan\n<Component />');
+
+    try {
+      // Own port and HOME so a plan-canvas server left running on the documented port by an earlier test file
+      // (rooted in another workspace) is never reused.
+      const result = await runCommand(['open', mdxFile, '--no-open'], {
+        AOS_PLAN_CANVAS_STATE_DIR: tempStateDir,
+        AOS_PLAN_CANVAS_PORT: String(46000 + (process.pid % 1000)),
+        HOME: tempDir,
+        USERPROFILE: tempDir
+      });
+      assert.equal(result.code, 0);
+
+      // Should emit warning to stderr
+      assert.match(result.stderr, /without --mode bdb-plan-builder/i);
+      assert.match(result.stderr, /aos-plan-canvas await <file>/);
+
+      // JSON stdout should contain warning property and await instruction
+      const output = JSON.parse(result.stdout);
+      assert.equal(output.status, 'open');
+      assert.ok(output.warning || (output.warnings && output.warnings.length > 0));
+      const warnMsg = output.warning || output.warnings[0];
+      assert.match(warnMsg, /without --mode bdb-plan-builder/i);
+      assert.match(warnMsg, /aos-plan-canvas await <file>/);
+      assert.match(output.next_step, /aos-plan-canvas await <file>/);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      fs.rmSync(mdxFile, { force: true });
+    }
+  });
 });

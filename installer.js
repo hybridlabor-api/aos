@@ -28,6 +28,7 @@ const { claudeConfigDir } = require('./lib/plugin-evidence');
 const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
+const { tarExtractArgs } = require('./lib/tar-extract-args');
 const systemdUnits = require('./lib/systemd-units');
 const mcpSecrets = require('./lib/mcp-secrets');
 const { backupOnce, backupOf } = require('./lib/backup-once');
@@ -264,10 +265,10 @@ const conditionalMcpConfigKeys = [
 function hasExecutable(binary) {
     try {
         if (process.platform === 'win32') {
-            execFileSync('where.exe', [binary], { stdio: 'ignore' });
+            execFileSync('where.exe', [binary], { stdio: 'ignore', windowsHide: true });
         } else {
             if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(binary)) return false;
-            execSync(`command -v ${binary}`, { stdio: 'ignore' });
+            execSync(`command -v ${binary}`, { stdio: 'ignore', windowsHide: true });
         }
         return true;
     } catch (e) {
@@ -275,14 +276,119 @@ function hasExecutable(binary) {
     }
 }
 
+function checkSystemPrereqs({
+    which = hasExecutable,
+    platform = process.platform,
+    logger = log,
+    exitOnError = true,
+} = {}) {
+    const isWin = platform === 'win32';
+    const isMac = platform === 'darwin';
+
+    const gitOk = Boolean(which('git'));
+    const ghOk = Boolean(which('gh'));
+
+    const gitInstruction = isWin
+        ? 'Install Git via git-scm.com or winget install Git.Git'
+        : isMac
+            ? 'Install Git via brew install git / xcode-select --install'
+            : 'Install Git via your package manager (e.g. apt install git / dnf install git)';
+
+    const ghInstruction = isWin
+        ? 'Install GitHub CLI: winget install GitHub.cli'
+        : isMac
+            ? 'Install GitHub CLI: brew install gh'
+            : 'Install GitHub CLI via https://cli.github.com/';
+
+    if (!gitOk) {
+        const msg = `Git CLI is required for AOS workflows and worktrees.\n${gitInstruction}`;
+        if (logger && typeof logger.error === 'function') logger.error(msg);
+        else console.error(msg);
+        if (exitOnError) {
+            process.exitCode = 1;
+            throw new Error(`Git CLI is missing — required for AOS workflows and worktrees. ${gitInstruction}`);
+        }
+        return { ok: false, missing: 'git', error: msg, instruction: gitInstruction };
+    }
+
+    if (!ghOk) {
+        const warnMsg = `GitHub CLI (gh) is optional — needed for repo automation & release PRs.\n${ghInstruction}`;
+        if (logger && typeof logger.warn === 'function') logger.warn(warnMsg);
+        else console.warn(warnMsg);
+    }
+
+    return { ok: true, git: true, gh: ghOk };
+}
+
+function findBundledClaudeCli({
+    platform = process.platform,
+    home = homeDir,
+    env = process.env,
+    fsImpl = fs,
+} = {}) {
+    const candidates = [];
+    if (platform === 'darwin') {
+        const appRoots = [
+            '/Applications/Claude.app',
+            path.join(home, 'Applications', 'Claude.app'),
+        ];
+        for (const app of appRoots) {
+            candidates.push(
+                path.join(app, 'Contents', 'Resources', 'claude'),
+                path.join(app, 'Contents', 'Resources', 'bin', 'claude'),
+                path.join(app, 'Contents', 'Resources', 'claude-code'),
+            );
+        }
+    } else if (platform === 'win32') {
+        const localAppData = env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+        const appData = env.APPDATA || path.join(home, 'AppData', 'Roaming');
+        candidates.push(
+            path.join(localAppData, 'Programs', 'Claude', 'resources', 'claude.exe'),
+            path.join(localAppData, 'Programs', 'Claude', 'resources', 'bin', 'claude.exe'),
+            path.join(localAppData, 'AnthropicClaude', 'bin', 'claude.exe'),
+            path.join(localAppData, 'Programs', 'Claude', 'bin', 'claude.exe'),
+            path.join(localAppData, 'Microsoft', 'WindowsApps', 'claude.exe'),
+            path.join(appData, 'Claude', 'claude-code', 'claude.exe'),
+        );
+    } else {
+        const appRoots = [
+            '/opt/Claude',
+            path.join(home, '.local', 'share', 'Claude'),
+            path.join(home, 'Applications', 'Claude.app'),
+        ];
+        for (const app of appRoots) {
+            candidates.push(
+                path.join(app, 'claude'),
+                path.join(app, 'bin', 'claude'),
+                path.join(app, 'resources', 'claude'),
+                path.join(app, 'Contents', 'Resources', 'claude'),
+            );
+        }
+    }
+    for (const c of candidates) {
+        try {
+            if (fsImpl.existsSync(c)) {
+                const st = fsImpl.statSync(c);
+                if (st.isFile()) {
+                    if (platform === 'win32' ? st.size > 0 : Boolean(st.mode & 0o111)) {
+                        return c;
+                    }
+                }
+            }
+        } catch {}
+    }
+    return null;
+}
+
+
 // uv's installers drop it in ~/.local/bin or ~/.cargo/bin, which a GUI-launched or
 // fresh shell often lacks on PATH. PATH first, then the standard install locations.
 function findUv(home = homeDir, platform = process.platform) {
     const win = platform === 'win32';
     try {
         const out = win
-            ? execFileSync('where.exe', ['uv'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' })
-            : execSync('command -v uv', { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+            ? execFileSync('where.exe', ['uv'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', windowsHide: true })
+            : execSync('command -v uv', { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', windowsHide: true });
         const first = out.trim().split(/\r?\n/)[0];
         if (first && fs.existsSync(first)) return first;
     } catch (e) { logDebug(e, 'uv lookup'); }
@@ -316,7 +422,7 @@ const pyAtLeast = (v, min) => Boolean(v) && (v[0] > min[0] || (v[0] === min[0] &
 function pickPython(min = MEMB_MIN_PYTHON, opts = {}) {
     const home = opts.home || homeDir;
     const win = (opts.platform || process.platform) === 'win32';
-    const run = opts.run || ((cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000 }));
+    const run = opts.run || ((cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000, windowsHide: true }));
     const names = win ? ['python'] : ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3'];
     const dirs = win ? [] : ['/opt/homebrew/bin', '/usr/local/bin', path.join(home, '.local', 'bin')];
     if (!win) {
@@ -351,8 +457,8 @@ function ensurePythonVenv(dir, opts = {}) {
         if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
         log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
     }
-    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: 'ignore', cwd: dir, ...o }));
-    const hasUv = opts.hasUv !== undefined ? opts.hasUv : (() => { try { execFileSync(uvBin(), ['--version'], { stdio: 'ignore' }); return true; } catch (e) { return false; } })();
+    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: 'ignore', cwd: dir, windowsHide: true, ...o }));
+    const hasUv = opts.hasUv !== undefined ? opts.hasUv : (() => { try { execFileSync(uvBin(), ['--version'], { stdio: 'ignore', windowsHide: true }); return true; } catch (e) { return false; } })();
     const sys = (opts.pick || pickPython)(MEMB_MIN_PYTHON);
     if (!sys && !hasUv) {
         log.warn(MEMB_PYTHON_FIX);
@@ -381,7 +487,7 @@ function findWindowsGoBin() {
     if (process.platform !== 'win32') return null;
     const candidates = [];
     try {
-        const found = execFileSync('where.exe', ['go'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+        const found = execFileSync('where.exe', ['go'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
             .split(/\r?\n/).map(s => s.trim()).find(Boolean);
         if (found) candidates.push(path.dirname(found));
     } catch (_) { /* PATH can be stale immediately after installation */ }
@@ -404,6 +510,7 @@ function verifyPythonImports(pythonPath, cwd, importCode) {
         cwd,
         stdio: 'ignore',
         timeout: 30000,
+        windowsHide: true,
     });
     return !result.error && result.status === 0;
 }
@@ -448,7 +555,7 @@ function reconcileMembVenv(membDir, opts = {}) {
         return { status: 'up-to-date' };
     }
     const install = opts.runInstall || (() => {
-        const hasUv = (opts.hasUv !== undefined) ? opts.hasUv : (() => { try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore' }); return true; } catch { return false; } })();
+        const hasUv = (opts.hasUv !== undefined) ? opts.hasUv : (() => { try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore', windowsHide: true }); return true; } catch { return false; } })();
         const cmd = hasUv
             ? `"${uvBin()}" pip install --python "${venvPython}" -r requirements.txt`
             : `"${venvPython}" -m pip install -r requirements.txt --timeout 30 --no-input`;
@@ -648,7 +755,7 @@ function isNewerVersion(local, remote) {
 function newestDistTag(pkg, localVer, view = null) {
     try {
         const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-        const opts = { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000 };
+        const opts = { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 4000, windowsHide: true };
         const out = view
             ? view(pkg)
             : process.platform === 'win32'
@@ -689,7 +796,7 @@ function checkForUpdates() {
 function cleanNpmCacheOnWindows() {
     if (process.platform !== 'win32' || DRY_RUN) return;
     try {
-        execSync('npm cache clean --force', { stdio: 'ignore' });
+        execSync('npm cache clean --force', { stdio: 'ignore', windowsHide: true });
     } catch (e) { logDebug(e, 'operation'); }
 }
 
@@ -707,7 +814,7 @@ function runNpmWithRetry(cmd, opts, label, attempts = 3) {
     }
     for (let i = 1; i <= attempts; i++) {
         try {
-            execSync(cmd, { ...opts, stdio: 'pipe', maxBuffer: 16 * 1024 * 1024 });
+            execSync(cmd, { ...opts, stdio: 'pipe', maxBuffer: 16 * 1024 * 1024, windowsHide: true });
             return true;
         } catch (e) {
             if (i === attempts) {
@@ -721,7 +828,7 @@ function runNpmWithRetry(cmd, opts, label, attempts = 3) {
             }
             const waitMs = 1000 * i;
             log.warn(`${label} failed (attempt ${i}/${attempts}), retrying in ${waitMs / 1000}s...`);
-            execSync(process.platform === 'win32' ? `powershell -NoProfile -Command "Start-Sleep -Seconds ${waitMs / 1000}"` : `sleep ${waitMs / 1000}`, { stdio: 'ignore' });
+            execSync(process.platform === 'win32' ? `powershell -NoProfile -Command "Start-Sleep -Seconds ${waitMs / 1000}"` : `sleep ${waitMs / 1000}`, { stdio: 'ignore', windowsHide: true });
         }
     }
     return false;
@@ -734,7 +841,7 @@ function runPipWithRetry(cmd, opts, label, attempts = 2, timeoutMs = 900000) {
     }
     for (let i = 1; i <= attempts; i++) {
         try {
-            execSync(cmd, { ...opts, timeout: timeoutMs });
+            execSync(cmd, { ...opts, timeout: timeoutMs, windowsHide: true });
             return true;
         } catch (e) {
             if (i === attempts) {
@@ -743,7 +850,7 @@ function runPipWithRetry(cmd, opts, label, attempts = 2, timeoutMs = 900000) {
             }
             const waitMs = 1000 * i;
             log.warn(`${label} failed (attempt ${i}/${attempts}), retrying in ${waitMs / 1000}s...`);
-            execSync(process.platform === 'win32' ? `powershell -NoProfile -Command "Start-Sleep -Seconds ${waitMs / 1000}"` : `sleep ${waitMs / 1000}`, { stdio: 'ignore' });
+            execSync(process.platform === 'win32' ? `powershell -NoProfile -Command "Start-Sleep -Seconds ${waitMs / 1000}"` : `sleep ${waitMs / 1000}`, { stdio: 'ignore', windowsHide: true });
         }
     }
     return false;
@@ -1172,7 +1279,7 @@ function detectPlatforms() {
         },
         {
             key: 'claudecode', name: 'Claude Code CLI', path: claudeConfigDir(homeDir),
-            evidence: () => hasExecutable('claude'),
+            evidence: () => hasExecutable('claude') || Boolean(findBundledClaudeCli()),
         },
         {
             key: 'claudedesktop', name: 'Claude Desktop',
@@ -1420,7 +1527,7 @@ async function reloadDaemons(skipNames = []) {
             if (skipNames.includes(d.name)) continue;
             if (fs.existsSync(d.vbs)) {
                 try {
-                    spawn('wscript.exe', [d.vbs], { detached: true, stdio: 'ignore' }).unref();
+                    spawn('wscript.exe', [d.vbs], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
                     const port = DAEMON_PORTS[d.name];
                     if (port && !(await verifyDaemonListening(port, d.name))) {
                         log.warn(`${d.name} was relaunched but Port ${port} isn't responding — check ~/.synapse/daemon.stderr.log (or the module's own log) for the actual error.`);
@@ -1937,7 +2044,7 @@ const TAURI_PILOT_MCP = 'tauri-pilot';
 // The tauri-pilot CLI is also the MCP server. A missing cargo or a failed build only warns: the skills stay usable.
 function ensureTauriPilotCli({ exec = execFileSync, has = hasExecutable } = {}) {
     try {
-        const out = exec('tauri-pilot', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000 });
+        const out = exec('tauri-pilot', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000, windowsHide: true });
         if ((String(out).match(/\d+\.\d+\.\d+/) || [])[0] === TAURI_PILOT_VERSION) {
             log.step(`tauri-pilot ${TAURI_PILOT_VERSION} already installed.`);
             return true;
@@ -2399,7 +2506,7 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
             args = [scriptPath];
             try { fs.chmodSync(scriptPath, '755'); } catch (e) { logDebug(e, 'operation'); }
         }
-        const child = spawn(command, args, { stdio: 'inherit', env: daemonEnv });
+        const child = spawn(command, args, { stdio: 'inherit', env: daemonEnv, windowsHide: true });
         child.on('close', (code) => {
             const usedLogonFallback = code === DAEMON_LOGON_FALLBACK_EXIT_CODE;
             if (code === 0 || usedLogonFallback) {
@@ -2411,7 +2518,7 @@ async function installOpenWikiDaemon(apiKey, targetSkillDir, openwikiEnv = {}) {
                 try {
                     const pythonCmd = os.platform() === 'win32' ? 'python' : 'python3';
                     const daemonPath = path.join(scriptBase, 'openwiki_daemon.py');
-                    spawn(pythonCmd, [daemonPath, '--one-shot'], { detached: true, stdio: 'ignore', env: daemonEnv }).unref();
+                    spawn(pythonCmd, [daemonPath, '--one-shot'], { detached: true, stdio: 'ignore', env: daemonEnv, windowsHide: true }).unref();
                 } catch (e) { logDebug(e, 'operation'); }
                 s.stop('OpenWiki Daemon ready');
             } else {
@@ -2571,7 +2678,7 @@ function checkModuleUpdate(pkgName, targetDir) {
                 if (r.error || r.status !== 0) throw r.error || new Error(`npm view exited ${r.status}`);
                 remoteVer = r.stdout.trim();
             } else {
-                remoteVer = execFileSync(npmCmd, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 15000 }).trim();
+                remoteVer = execFileSync(npmCmd, ['view', pkgName, 'version'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 15000, windowsHide: true }).trim();
             }
         } catch (e) {
             // Offline, a proxy, or a misconfigured registry. Swallowing this
@@ -2620,6 +2727,7 @@ function recoverStaleSwaps(targetDir) {
     } catch (_) {}
 }
 
+const { renameWithRetry } = require('./lib/rename-retry.js');
 function downloadOrUpdateModule(pkgName, targetDir, displayName) {
     const status = checkModuleUpdate(pkgName, targetDir);
     if (status.installed && !status.updateAvailable) {
@@ -2669,37 +2777,21 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
 
         safeRmDirSync(stagingDir);
         fs.mkdirSync(stagingDir, { recursive: true });
-        execSync(`tar -xzf "${path.join(targetDir, tarball)}" --strip-components=1 -C "${stagingDir}"`, { stdio: 'ignore' });
+        const tar = tarExtractArgs(path.join(targetDir, tarball), stagingDir);
+        execFileSync('tar', tar.args, { cwd: tar.cwd, stdio: 'ignore', windowsHide: true });
         fs.unlinkSync(path.join(targetDir, tarball));
 
         movePreserved(targetDir, stagingDir);
 
-        // Phase 1: retire the live tree. On Windows a running daemon holds open
-        // file handles into targetDir — retry with brief backoff before failing.
-        // ponytail: 3 retries × 600ms; escalate to process kill if this ceiling matters
-        let phase1Done = false;
-        for (let attempt = 0; attempt < 3 && !phase1Done; attempt++) {
-            try {
-                fs.renameSync(targetDir, retiredDir);
-                phase1Done = true;
-            } catch (retireError) {
-                const retriable = retireError.code === 'EPERM' || retireError.code === 'EBUSY';
-                if (retriable && attempt < 2) {
-                    const delayMs = 600 * (attempt + 1);
-                    try {
-                        if (process.platform === 'win32') {
-                            execSync(`powershell -NoProfile -Command "Start-Sleep -Milliseconds ${delayMs}"`, { stdio: 'ignore' });
-                        } else {
-                            execSync(`sleep ${delayMs / 1000}`, { stdio: 'ignore' });
-                        }
-                    } catch (_) {}
-                    continue;
-                }
-                // The live tree stayed in place: give it its preserved entries back before staging goes.
-                movePreserved(stagingDir, targetDir);
-                safeRmDirSync(stagingDir);
-                throw retireError;
-            }
+        // Phase 1: retire the live tree. On Windows a running service holds the directory:
+        // renameWithRetry backs off, then fails with a clear "locked" reason (no process is killed).
+        try {
+            renameWithRetry(targetDir, retiredDir, { module: path.basename(targetDir).replace(/^bdb-/, '') });
+        } catch (retireError) {
+            // The live tree stayed in place: give it its preserved entries back before staging goes.
+            movePreserved(stagingDir, targetDir);
+            safeRmDirSync(stagingDir);
+            throw retireError;
         }
 
         // Phase 2: promote the staging tree. stagingDir was just unpacked and
@@ -2762,7 +2854,7 @@ async function installDeja() {
     }
     try {
         log.step('Installing deja-vu session memory...');
-        execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore' });
+        execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore', windowsHide: true });
         uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
     } catch (e) {
         log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
@@ -2805,7 +2897,7 @@ async function installMemB(interactive) {
                 ' ForEach-Object { $p = Get-CimInstance Win32_Process -Filter (\'ProcessId=\' + $_);' +
                 ' $o = Invoke-CimMethod -InputObject $p -MethodName GetOwner -ErrorAction SilentlyContinue;' +
                 ' if ($o -and $o.User -and ($o.Domain + \'\\\' + $o.User) -eq ($env:USERDOMAIN + \'\\\' + $env:USERNAME)) { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }"',
-                { stdio: 'ignore' }
+                { stdio: 'ignore', windowsHide: true }
             );
         } catch (_) {}
     }
@@ -2843,14 +2935,14 @@ async function installMemB(interactive) {
             // actually created the venv -- it's a strictly more reliable install path.
             let hasUv = createdViaUv;
             if (!hasUv) {
-                try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore' }); hasUv = true; } catch (e) { hasUv = false; }
+                try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore', windowsHide: true }); hasUv = true; } catch (e) { hasUv = false; }
             }
             if (!hasUv && fs.existsSync(venvPython)) {
                 try {
-                    execSync(`"${venvPython}" -m pip --version`, { stdio: 'ignore' });
+                    execSync(`"${venvPython}" -m pip --version`, { stdio: 'ignore', windowsHide: true });
                 } catch (_) {
                     try {
-                        execSync(`"${venvPython}" -m ensurepip --default-pip`, { cwd: membDir, stdio: 'ignore' });
+                        execSync(`"${venvPython}" -m ensurepip --default-pip`, { cwd: membDir, stdio: 'ignore', windowsHide: true });
                     } catch (ePip) {
                         logDebug(ePip, 'ensurepip bootstrap for memB');
                     }
@@ -2954,7 +3046,7 @@ async function installMemB(interactive) {
                     logErr: path.join(homeDir, '.memb', 'webui.stderr.log'),
                 }));
                 await systemdUnits.enableUnit(async (cmd, args) => {
-                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    execFileSync(cmd, args, { stdio: 'ignore', windowsHide: true });
                     return { ok: true };
                 }, unitName);
                 const isListening = await verifyDaemonListening(8088, 'memB WebUI');
@@ -2973,7 +3065,7 @@ async function installMemB(interactive) {
             try {
                 fs.mkdirSync(startupDir, { recursive: true });
                 fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
-                spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
+                spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
                 const isListening = await verifyDaemonListening(8088, 'memB WebUI');
                 if (isListening) {
                     log.success('memB WebUI Windows Background Service registered & started (Port 8088)');
@@ -3096,7 +3188,7 @@ async function installSynapse() {
                     logErr: path.join(homeDir, '.synapse', 'daemon.stderr.log'),
                 }));
                 await systemdUnits.enableUnit(async (cmd, args) => {
-                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    execFileSync(cmd, args, { stdio: 'ignore', windowsHide: true });
                     return { ok: true };
                 }, unitName);
                 const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
@@ -3134,7 +3226,7 @@ async function installSynapse() {
             try {
                 fs.writeFileSync(batPath, batContent, 'utf-8');
                 fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
-                spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
+                spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
                 // wscript -> WshShell.Run -> node.exe is three layers of indirection plus a cold
                 // interpreter start (macOS/Linux launch a pre-built native binary instead), and a
                 // freshly-downloaded synapse.js can get held up by Defender's first-run scan —
@@ -3173,7 +3265,7 @@ async function installOpenWikiVisualizer() {
         if (installCli) {
             try {
                 log.step('Installing OpenWiki CLI globally (npm install -g openwiki@latest)...');
-                execSync('npm install -g openwiki@latest', { stdio: 'ignore' });
+                execSync('npm install -g openwiki@latest', { stdio: 'ignore', windowsHide: true });
             } catch (e) { logDebug(e, 'openwiki cli install'); }
         }
         if (!hasExecutable('openwiki')) {
@@ -3187,9 +3279,9 @@ async function installOpenWikiVisualizer() {
     let openwikiBin = 'openwiki';
     try {
         if (process.platform === 'win32') {
-            openwikiBin = execFileSync('where.exe', ['openwiki'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(/\r?\n/)[0].trim() || 'openwiki';
+            openwikiBin = execFileSync('where.exe', ['openwiki'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).split(/\r?\n/)[0].trim() || 'openwiki';
         } else {
-            openwikiBin = execSync('command -v openwiki', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(/\r?\n/)[0].trim() || 'openwiki';
+            openwikiBin = execSync('command -v openwiki', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).split(/\r?\n/)[0].trim() || 'openwiki';
         }
     } catch (e) { logDebug(e, 'openwiki path lookup'); }
 
@@ -3200,9 +3292,9 @@ async function installOpenWikiVisualizer() {
     let nodeBin = 'node';
     try {
         if (process.platform === 'win32') {
-            nodeBin = execFileSync('where.exe', ['node'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(/\r?\n/)[0].trim() || 'node';
+            nodeBin = execFileSync('where.exe', ['node'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).split(/\r?\n/)[0].trim() || 'node';
         } else {
-            nodeBin = execSync('command -v node', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(/\r?\n/)[0].trim() || 'node';
+            nodeBin = execSync('command -v node', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).split(/\r?\n/)[0].trim() || 'node';
         }
     } catch (e) { logDebug(e, 'node path lookup'); }
 
@@ -3239,7 +3331,7 @@ async function installOpenWikiVisualizer() {
             wikiPath = ecosystemWiki;
         } else if (fs.existsSync(syncScript) && pyBin) {
             try {
-                execSync(`"${pyBin}" "${syncScript}"`, { stdio: 'ignore' });
+                execSync(`"${pyBin}" "${syncScript}"`, { stdio: 'ignore', windowsHide: true });
                 if (looksLikeWiki(ecosystemWiki)) wikiPath = ecosystemWiki;
             } catch (e) { logDebug(e, 'ecosystem wiki sync'); }
         }
@@ -3328,7 +3420,7 @@ async function installOpenWikiVisualizer() {
             });
             fs.writeFileSync(unitFile, unit);
             await systemdUnits.enableUnit(async (cmd, args) => {
-                execFileSync(cmd, args, { stdio: 'ignore' });
+                execFileSync(cmd, args, { stdio: 'ignore', windowsHide: true });
                 return { ok: true };
             }, unitName);
             const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
@@ -3354,7 +3446,7 @@ async function installOpenWikiVisualizer() {
         try {
             fs.writeFileSync(batPath, batContent, 'utf-8');
             fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
-            spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
+            spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
             // Same reasoning as the Synapse Windows path: wscript -> WshShell.Run is
             // multiple layers of indirection, so allow the generous 12s budget here too.
             const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer', 12000);
@@ -3381,11 +3473,13 @@ async function installCreatorExtension() {
     if (fs.existsSync(installerScript)) {
         const setupResult = DRY_RUN
             ? { status: 0 }
-            : spawnSync('node', [installerScript, '--auto'], { stdio: 'pipe', cwd: creatorDir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+            : spawnSync('node', [installerScript, '--auto'], { stdio: 'pipe', cwd: creatorDir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
         // Piped, then written through process.stdout/stderr: the v5 update step redirects those into its log file.
         if (setupResult.stdout) process.stdout.write(setupResult.stdout);
         if (setupResult.stderr) process.stderr.write(setupResult.stderr);
         if (setupResult.status !== 0) {
+            const optional = require('./lib/v5/creator-failures').optionalOnlyWarning(`${setupResult.stdout || ''}\n${setupResult.stderr || ''}`);
+            if (optional) { log.warn(`Creator Extension: ${optional}`); return optional; }
             log.warn(`Creator Extension setup note: exit code ${setupResult.status}`);
             return false;
         }
@@ -3480,14 +3574,14 @@ async function installHardwarePcb() {
     const needsSync = hardwareApps.hwServerDirsNeedingSync(hwDir);
     for (const serverDir of needsSync) {
         log.step(`Hardware & PCB: venv python missing in ${path.basename(serverDir)} — running uv sync (explicit uv path: ${uvBin()}).`);
-        const res = spawnSync(uvBin(), ['sync'], { cwd: serverDir, stdio: 'ignore', timeout: 600000 });
+        const res = spawnSync(uvBin(), ['sync'], { cwd: serverDir, stdio: 'ignore', timeout: 600000, windowsHide: true });
         if (res.error || res.status !== 0) {
             log.warn(`uv sync failed for ${path.basename(serverDir)}${res.error ? ` (${res.error.message})` : ` (exit ${res.status})`}. The MCP launcher may fall back to 'uv run', which needs uv on the harness's PATH.`);
         }
     }
     const installerScript = path.join(hwDir, 'installer.js');
     if (fs.existsSync(installerScript)) {
-        const setupResult = spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: hwDir });
+        const setupResult = spawnSync('node', [installerScript, '--auto'], { stdio: 'inherit', cwd: hwDir, windowsHide: true });
         if (setupResult.status !== 0) {
             log.warn(`Hardware & PCB setup note: exit code ${setupResult.status}`);
             return false;
@@ -3616,7 +3710,7 @@ function decideAoInstall({ installedExists, installed, candidate, allowDirty = f
 }
 
 // A dev checkout is a release source only when clean and HEAD sits on a tag.
-function checkAoWorkspace(dir, git = (args) => execFileSync('git', ['--no-optional-locks', '-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()) {
+function checkAoWorkspace(dir, git = (args) => execFileSync('git', ['--no-optional-locks', '-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim()) {
     try {
         if (git(['status', '--porcelain'])) return { ok: false, reason: 'it has uncommitted or untracked changes' };
         let tag;
@@ -3635,7 +3729,7 @@ function buildAoFromSource(dir) {
     const s = spinner();
     s.start('Compiling AO daemon binary from Go source...');
     try {
-        execFileSync('go', ['build', '-ldflags=-s -w', '-o', out, './cmd/ao'], { cwd: path.join(dir, 'backend'), stdio: 'ignore' });
+        execFileSync('go', ['build', '-ldflags=-s -w', '-o', out, './cmd/ao'], { cwd: path.join(dir, 'backend'), stdio: 'ignore', windowsHide: true });
         s.stop('Compiled AO daemon binary successfully.');
         return out;
     } catch (e) {
@@ -3852,7 +3946,7 @@ function aoServiceInstall(binTarget) {
     }
     // AO installs its own service, and does it for macOS, Windows and Linux.
     try {
-        execFileSync(binTarget, ['service', 'install'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        execFileSync(binTarget, ['service', 'install'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     } catch (e) {
         throw new Error(describeExecError(e));
     }
@@ -3888,7 +3982,7 @@ async function promptMemBIngestion(mcpCodeTarget) {
             if (includeTranscripts) ingestArgs.push('--transcripts');
             const ingestResult = DRY_RUN
                 ? { status: 0 }
-                : spawnSync(pythonBin, ingestArgs, { stdio: 'inherit' });
+                : spawnSync(pythonBin, ingestArgs, { stdio: 'inherit', windowsHide: true });
             if (ingestResult.status !== 0) throw new Error(`exit code ${ingestResult.status}`);
             s.stop('memB ingestion completed');
         } catch (e) {
@@ -4454,7 +4548,7 @@ async function installMcpsForTarget(paths, ctx) {
         const aeOut = path.join(aeDir, 'bin', process.platform === 'win32' ? 'ae-mcp.exe' : 'ae-mcp');
         installStep(`build the ae-mcp binary ${aeOut}`, () => {
             fs.mkdirSync(path.dirname(aeOut), { recursive: true });
-            execFileSync('go', ['-C', aeDir, 'build', '-o', aeOut, './cmd/ae-mcp'], { stdio: 'ignore', timeout: 120000 });
+            execFileSync('go', ['-C', aeDir, 'build', '-o', aeOut, './cmd/ae-mcp'], { stdio: 'ignore', timeout: 120000, windowsHide: true });
         }, 'ae-mcp keeps the `go run` fallback shape; rebuild manually with: go -C ' + aeDir + ' build -o ' + aeOut + ' ./cmd/ae-mcp');
     }
 
@@ -4465,7 +4559,7 @@ async function installMcpsForTarget(paths, ctx) {
                 if (DRY_RUN) {
                     log.step('[dry-run] would bootstrap DaVinci Resolve MCP Studio');
                 } else {
-                    const davinciResult = spawnSync('node', ['bin/davinci-resolve-mcp.mjs', 'setup', '--clients', 'manual'], { cwd: davinciFolder, stdio: 'ignore' });
+                    const davinciResult = spawnSync('node', ['bin/davinci-resolve-mcp.mjs', 'setup', '--clients', 'manual'], { cwd: davinciFolder, stdio: 'ignore', windowsHide: true });
                     if (davinciResult.status !== 0 && davinciResult.error) {
                         logDebug(davinciResult.error, 'DaVinci Resolve MCP setup');
                     }
@@ -4503,7 +4597,7 @@ async function installMcpsForTarget(paths, ctx) {
                 if (!verifyPythonImports(venvPython, membMcpFolder, fastmcpImport)) {
                     log.step('[memb] mcp/fastmcp SDK missing from the memb-mcp venv; installing the MCP SDK pin.');
                     let hasUvSdk = false;
-                    try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore' }); hasUvSdk = true; } catch (e) { logDebug(e, 'uv lookup for memb-mcp'); }
+                    try { execSync(`"${uvBin()}" --version`, { stdio: 'ignore', windowsHide: true }); hasUvSdk = true; } catch (e) { logDebug(e, 'uv lookup for memb-mcp'); }
                     const sdkCmd = hasUvSdk
                         ? `"${uvBin()}" pip install --python "${venvPython}" "mcp>=1.0.0,<2.0.0" --no-input`
                         : `"${venvPython}" -m pip install "mcp>=1.0.0,<2.0.0" --timeout 30 --no-input`;
@@ -4545,7 +4639,7 @@ async function installMcpsForTarget(paths, ctx) {
                 log.step(`[dry-run] would pre-warm Python deps for ${mcp.folder}`);
                 continue;
             }
-            const result = spawnSync(uvBin(), prewarmArgs, { cwd: targetFolder, stdio: 'ignore' });
+            const result = spawnSync(uvBin(), prewarmArgs, { cwd: targetFolder, stdio: 'ignore', windowsHide: true });
             if (result.error) {
                 // uv itself is missing or unrunnable. That is one machine-level
                 // fact, not six per-MCP failures — say it once and stop trying.
@@ -5110,6 +5204,23 @@ const READ_ONLY_AGENT_SLUGS = new Set([
     'kotlin-reviewer',
     'cpp-reviewer',
     'csharp-reviewer',
+    // ECC remaining reviewers and analyzers:
+    'code-reviewer',
+    'django-reviewer',
+    'fastapi-reviewer',
+    'flutter-reviewer',
+    'fsharp-reviewer',
+    'healthcare-reviewer',
+    'mle-reviewer',
+    'network-config-reviewer',
+    'php-reviewer',
+    'rag-pipeline-reviewer',
+    'react-reviewer',
+    'swift-reviewer',
+    'vue-reviewer',
+    'pr-test-analyzer',
+    'comment-analyzer',
+    'type-design-analyzer',
 ]);
 const isReadOnlyAgent = (slug) => READ_ONLY_AGENT_SLUGS.has(slug);
 
@@ -6644,7 +6755,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'aos-session-hint.mjs')}"`)}`,
         'timeout = 3',
         '',
-        // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints nothing; skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
+        // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints only the session's own A2A peer name (one line of additionalContext); skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
         '[[hooks.SessionStart]]',
         '[[hooks.SessionStart.hooks]]',
         'type = "command"',
@@ -7069,7 +7180,7 @@ function installPlanCanvasAutostart(overrides = {}) {
             const files = buildPlanCanvasWinFiles({ nodeBin, scriptPath, home, logDir, batPath });
             fs.writeFileSync(batPath, files.bat, 'utf-8');
             fs.writeFileSync(vbsPath, files.vbs, 'utf-8');
-            if (!overrides.skipLaunchctl) spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore' }).unref();
+            if (!overrides.skipLaunchctl) spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
             log.success('Plan Canvas Startup entry registered (Port 4519)');
         } else if (platform === 'linux') {
             // Same program, env and logs as the launchd plist above.
@@ -7089,7 +7200,7 @@ function installPlanCanvasAutostart(overrides = {}) {
                 // This install path stays synchronous (its return value is asserted
                 // in tests), so the enable result is reported outside the try.
                 systemdUnits.enableUnit(async (cmd, args) => {
-                    execFileSync(cmd, args, { stdio: 'ignore' });
+                    execFileSync(cmd, args, { stdio: 'ignore', windowsHide: true });
                     return { ok: true };
                 }, unitName).catch((e) => logDebug(e, 'plan canvas linux unit'));
             }
@@ -7547,9 +7658,9 @@ function generateAndOpenLaunchpad(installedModules = []) {
             // via 'error', not by throwing, so the try/catch around this call
             // could never have caught it regardless of --verbose. explorer.exe
             // on a plain file path has no title argument to misparse.
-            child = spawn('explorer', [filePath], { detached: true, stdio: 'ignore' });
+            child = spawn('explorer', [filePath], { detached: true, stdio: 'ignore', windowsHide: true });
         } else {
-            child = spawn('xdg-open', [filePath], { detached: true, stdio: 'ignore' });
+            child = spawn('xdg-open', [filePath], { detached: true, stdio: 'ignore', windowsHide: true });
         }
         child.on('error', warnOpenFailed);
         child.unref();
@@ -8001,7 +8112,7 @@ function installAosCli() {
 
     const res = installStep('install AOS CLI', () => {
         log.step('Installing AOS CLI globally (pi is installed as its dependency)...');
-        execSync(`npm install -g ${JSON.stringify(pkgDir)}`, { stdio: 'ignore' });
+        execSync(`npm install -g ${JSON.stringify(pkgDir)}`, { stdio: 'ignore', windowsHide: true });
     }, `The rest of AOS is installed. Install AOS CLI later: ${manual}`);
 
     if (res.ok && hasExecutable('aos-cli')) {
@@ -8032,7 +8143,7 @@ function runUninstaller() {
         log.error(`Uninstaller not found at ${uninstallScript} -- run it directly: aos-uninstall (or npx -p @hybridlabor-api/aos aos-uninstall)`);
         return 1;
     }
-    const r = spawnSync(process.execPath, [uninstallScript], { stdio: 'inherit' });
+    const r = spawnSync(process.execPath, [uninstallScript], { stdio: 'inherit', windowsHide: true });
     return r.status == null ? 1 : r.status;
 }
 
@@ -8199,14 +8310,14 @@ Options:
     }
     if (process.argv[2] === 'store') {
         const storeScript = path.join(srcDir, 'bin', 'aos-store.mjs');
-        const result = spawnSync(process.execPath, [storeScript, ...process.argv.slice(3)], { stdio: 'inherit' });
+        const result = spawnSync(process.execPath, [storeScript, ...process.argv.slice(3)], { stdio: 'inherit', windowsHide: true });
         process.exitCode = result.status == null ? 1 : result.status;
         return;
     }
     if (process.argv[2] === 'doctor' || process.argv[2] === 'checkup' || process.argv.includes('--doctor')) {
         const doctorScript = path.join(srcDir, 'bin', 'aos-doctor.mjs');
         const doctorArgs = process.argv.slice(process.argv[2] === 'doctor' || process.argv[2] === 'checkup' ? 3 : 2).filter(a => a !== '--doctor');
-        const result = spawnSync(process.execPath, [doctorScript, ...doctorArgs], { stdio: 'inherit' });
+        const result = spawnSync(process.execPath, [doctorScript, ...doctorArgs], { stdio: 'inherit', windowsHide: true });
         process.exitCode = result.status == null ? 1 : result.status;
         return;
     }
@@ -8215,7 +8326,7 @@ Options:
         // args array, shell:false, so no value from argv can become a command.
         const hubScript = path.join(srcDir, 'bin', 'aos-hub.mjs');
         const hubArgs = process.argv.slice(3);
-        const result = spawnSync(process.execPath, [hubScript, ...hubArgs], { stdio: 'inherit', shell: false });
+        const result = spawnSync(process.execPath, [hubScript, ...hubArgs], { stdio: 'inherit', shell: false, windowsHide: true });
         process.exitCode = result.status == null ? 1 : result.status;
         return;
     }
@@ -8243,7 +8354,7 @@ Options:
     if (process.argv[2] === 'dashboard') {
         // Same spawn discipline as `hub`: ESM bin, current node, args array, shell:false.
         const dashScript = path.join(srcDir, 'bin', 'aos-dashboard.mjs');
-        const result = spawnSync(process.execPath, [dashScript, ...process.argv.slice(3)], { stdio: 'inherit', shell: false });
+        const result = spawnSync(process.execPath, [dashScript, ...process.argv.slice(3)], { stdio: 'inherit', shell: false, windowsHide: true });
         process.exitCode = result.status == null ? 1 : result.status;
         return;
     }
@@ -8263,6 +8374,10 @@ Options:
         installGlobalHooks({ harnesses: activeHarnessKeys() });
         flushSessionManifest();
         console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
+        return;
+    }
+    if (!DRY_RUN && !checkSystemPrereqs({ exitOnError: false }).ok) {
+        process.exitCode = 1;
         return;
     }
     const skipIntro = isAutoYes || process.argv.includes('--no-intro') || process.argv.includes('--no-animation');
@@ -8806,6 +8921,8 @@ module.exports = {
     isDevEnvironment,
     LAUNCHPAD_WEB_MODULES,
     LAUNCHPAD_OPEN_FLAGS,
+    checkSystemPrereqs,
+    findBundledClaudeCli,
 };
 
 // After module.exports: the v5 menu receives it as its host and main() runs before the first await.

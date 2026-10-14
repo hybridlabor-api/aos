@@ -48,7 +48,7 @@ if (win && !/[\\/]/.test(command)) {
         process.exit(127);
     }
 }
-const child = win ? spawn('cmd', ['/c', command, ...args], { stdio: 'inherit', env }) : spawn(command, args, { stdio: 'inherit', env });
+const child = win ? spawn('cmd', ['/c', command, ...args], { stdio: 'inherit', env, windowsHide: true }) : spawn(command, args, { stdio: 'inherit', env, windowsHide: true });
 const forward = (sig) => () => { try { child.kill(sig); } catch { /* already gone */ } };
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, forward(sig));
 child.on('error', (e) => { console.error(`aos-mcp-env: cannot start ${command}: ${e.code || e.message}`); process.exit(127); });

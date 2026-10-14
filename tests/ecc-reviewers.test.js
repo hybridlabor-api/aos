@@ -1,7 +1,7 @@
 /**
  * tests/ecc-reviewers.test.js
  *
- * v5/ecc-reviewers round: the eight language-specific code reviewers ported
+ * v5/ecc-reviewers round: the 24 code reviewers ported
  * from affaan-m/ECC (see docs/ecc-reviewers.md, THIRD_PARTY_NOTICES.md).
  * No dependency: node:test only. Fully offline; installer.js and
  * .agents/AGENTS.md are read as plain text, never executed.
@@ -23,6 +23,22 @@ const ECC_REVIEWERS = [
     'kotlin-reviewer',
     'cpp-reviewer',
     'csharp-reviewer',
+    'code-reviewer',
+    'comment-analyzer',
+    'django-reviewer',
+    'fastapi-reviewer',
+    'flutter-reviewer',
+    'fsharp-reviewer',
+    'healthcare-reviewer',
+    'mle-reviewer',
+    'network-config-reviewer',
+    'php-reviewer',
+    'pr-test-analyzer',
+    'rag-pipeline-reviewer',
+    'react-reviewer',
+    'swift-reviewer',
+    'type-design-analyzer',
+    'vue-reviewer',
 ];
 
 const agentsMd = fs.readFileSync(path.join(ROOT, '.agents', 'AGENTS.md'), 'utf8');

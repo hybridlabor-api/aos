@@ -74,6 +74,11 @@ const GH = String.raw`gh(?:\s+(?:-R|--repo)(?:\s+|=)\S+)+\s+`;
 const S = String.raw`[^;&|\n]*`;
 const re = (s, f = "i") => new RegExp(A + s, f);
 
+// The aos-gate token anywhere in the command (node/npx/env/bash -c wrappers, any path); grant, work and every profile but strict widen the gate. strict and revoke only narrow it.
+export const GATE_WIDEN = new RegExp(String.raw`(?:^|[\s\/\\'"=;&|(\x60])aos-gate(?:\.mjs)?['"]?\s+(?:grant|work|profile(?!\s+['"]?strict\b))\b`, "i");
+// A command no profile and no global grant may free: only a typed GO (or a human-typed gogate grant) opens it.
+export const neverGrantable = (command) => typeof command === "string" && [command, unIFS(command), unIFS(commandView(command).text)].some((t) => GATE_WIDEN.test(t));
+
 export const GUARDED_PATTERNS = [
   re(String.raw`(?:git\s+push|${G}push)\b`),
   re(String.raw`npm\s+publish\b`),
@@ -99,6 +104,8 @@ export const GUARDED_PATTERNS = [
   re(String.raw`(?:gh\s+|${GH})api\b${S}\s(?:-[fF]|--field|--raw-field|--input)`, ""),
   // `git -c alias.x=push x`: a one-off alias hides the subcommand (a persisted `git config alias` cannot be seen here).
   re(String.raw`git\s+(?:-[cC]\s*\S+\s+)*-c\s*['"]?alias\.`),
+  // Widening the gate profile or adding a global grant: never grantable, always a plain GO (see neverGrantable).
+  GATE_WIDEN,
   // Never grantable (no scope), always a plain GO: driving another OpenCode session
   // (resume/attach, or the server's HTTP API) can type text that looks human there.
   // The HTTP paths are matched anywhere in the command, independent of host spelling
@@ -2061,7 +2068,7 @@ function scopesOf(orig, protectedFor) {
 }
 
 export const isGuardedCommand = (command) =>
-  typeof command === "string" && (commandTooLong(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
+  typeof command === "string" && (commandTooLong(command) || neverGrantable(command) || GUARDED_PATTERNS.some((r) => r.test(commandView(command).text)) || (commandScopes(command) ?? [1]).length > 0);
 
 // ---------------------------------------------------------------------------
 // Grant store protection (Bash side; Write/Edit side is env-file-protection).
@@ -3155,6 +3162,94 @@ function indirectReleaseRisk(command) {
   });
 }
 
+// Gate v2: Content-based keyword scanning and head substitution detection (§2 & §3a).
+// Unreadable commands (variables, bash -c, $(...), eval) are judged by content:
+// if the text contains a release-class noun, they are Layer B; otherwise Layer C.
+// Exception (§3a): A variable or substitution in the head position stays fail-closed.
+export function isHeadSubstitution(command) {
+  if (typeof command !== "string" || !command.trim()) return false;
+  const view = unIFS(commandView(command).text);
+  for (const p of scanSplit(view)) {
+    const tk = tokens(p.t.trim());
+    if (!tk.length) continue;
+    const { rest } = stripPrefix(tk);
+    if (!rest.length) continue;
+    const head = unq(rest[0] ?? "");
+    if (/^[$\x60]/.test(head) || /^\$\(/.test(head)) return true;
+    if (gluedHead(base(head))) return true;
+    if (head === "eval" && rest.slice(1).some((t) => /^[$\x60]/.test(unq(t)))) return true;
+    if (/^(?:npm|git|gh|npx|pnpm|yarn|bun)$/.test(head)) {
+      const sub = rest.slice(1).find((t) => !unq(t).startsWith("-"));
+      if (rest.slice(1).some((t) => /^\$[@*]/.test(unq(t))) || (sub && /^[$\x60]/.test(unq(sub)))) return true;
+    }
+  }
+  return false;
+}
+
+export function contentReleaseRisk(command) {
+  if (typeof command !== "string") return false;
+  if (isHeadSubstitution(command)) return true;
+  const view = unIFS(commandView(command).text);
+
+  // 1. Publish / release creation
+  if (/\b(?:publish|release\s+create)\b/i.test(view) ||
+      /\b(?:semantic-release|release-it)\b/i.test(view) ||
+      /\bchangeset\s+publish\b/i.test(view) ||
+      /\blerna\s+publish\b/i.test(view)) {
+    return true;
+  }
+
+  // 2. Protected branch pushes
+  if (/\bpush\b[^\n;&|]*\b(?:main|master|release[/_-]|HEAD:(?:refs\/heads\/)?(?:main|master|release[/_-]))\b/i.test(view)) {
+    return true;
+  }
+  if (/\bpush\b[^\n;&|]*(?:--force\b|-f\b)/i.test(view)) {
+    return true;
+  }
+
+  // 3. Merges into protected branches or PR merges
+  if (/\b(?:gh\s+)?pr\s+merge\b/i.test(view) ||
+      /\bmerge\b[^\n;&|]*\b(?:main|master)\b/i.test(view)) {
+    return true;
+  }
+
+  // 4. Destructive git
+  if (/\breset\s+--hard\b/i.test(view) ||
+      /\bbranch\s+-[a-zA-Z]*D\b/.test(view) ||
+      /\bclean\b[^\n;&|]*(?:-[a-zA-Z]*f\b|--force\b)/i.test(view)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function inferredReleaseScopes(command) {
+  const scopes = new Set();
+  const view = unIFS(commandView(command).text);
+  if (/\b(?:publish|release\s+create|semantic-release|release-it)\b/i.test(view)) scopes.add("publish");
+  if (/\bpush\b[^\n;&|]*\b(?:main|master|release[/_-]|HEAD:(?:refs\/heads\/)?(?:main|master|release[/_-]))\b/i.test(view)) scopes.add("push-main");
+  if (/\b(?:gh\s+)?pr\s+merge\b/i.test(view) || /\bmerge\b[^\n;&|]*\b(?:main|master)\b/i.test(view)) scopes.add("merge");
+  if (/\b(?:reset\s+--hard|branch\s+-[a-zA-Z]*D|push\b[^\n;&|]*(?:--force\b|-f\b))\b/i.test(view)) scopes.add("destructive");
+  return scopes.size ? [...scopes] : null;
+}
+
+export function classifyLayer(command, protectedFor = staticResolver) {
+  if (typeof command !== "string") return "B";
+  if (hardBlockReason(command) || gateStoreReason(command)) return "A";
+  if (commandTooLong(command) || (codexMode && command === CODEX_OPAQUE)) return "B";
+  if (isHeadSubstitution(command)) return "B";
+  const sc = commandScopes(command, protectedFor);
+  if (Array.isArray(sc)) {
+    if (sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive")) return "B";
+    if (sc.includes("push-feature")) {
+      const p = profileFor().profile;
+      return p === "strict" ? "B" : "C";
+    }
+    return "C";
+  }
+  return contentReleaseRisk(command) ? "B" : "C";
+}
+
 // Codex code mode sends JS source (tool `exec`) that calls tools.exec_command({cmd}). Only literal cmd values are read;
 // anything else (variable, ${}, concatenation, alias, spread, computed key) marks the source opaque: fail closed.
 const JS_ESC = { n: "\n", t: "\t", r: "\r", b: "\b", f: "\f", v: "\v", 0: "\0" };
@@ -3290,11 +3385,12 @@ export function codexExecCommands(src) {
 // Shared by the Claude hook and the OpenCode plugin. Callers run it after hard blocks, the store check, cooldown and the length cap.
 // off allows; work allows unless a release scope shows. null scope = guarded but unreadable: free only without indirection.
 export function profileAllows(command) {
+  if (neverGrantable(command)) return false;
   const p = profileFor().profile;
   if (p === "off") return true;
   if (p !== "work") return false;
   const sc = commandScopes(command);
-  return sc ? !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive") : !indirectReleaseRisk(command);
+  return sc ? !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive") : !(indirectReleaseRisk(command) || contentReleaseRisk(command));
 }
 
 function main() {
@@ -3412,6 +3508,17 @@ function main() {
   if (!cooling && !tooLong && !codexOpaque) {
     if (profileAllows(command)) return respond(isAgy, true, "", command);
     if (profileFor().profile === "work") reasons.push("profile work: this command is in the release class and needs a GO");
+  }
+
+  // Global grants from config.json (work across all sessions and windows)
+  const globalGrants = profileFor().grants || [];
+  if (!cooling && !tooLong && !codexOpaque && globalGrants.length > 0 && !neverGrantable(command)) {
+    const branchRes = makeBranchResolver(typeof input.cwd === "string" ? input.cwd : process.cwd(), spawnSync);
+    const need = commandScopes(command, branchRes);
+    if (need && need.length > 0 && need.every((s) => globalGrants.some((g) => g.scope === s || (s === "workspace" && g.scope === "destructive")))) {
+      gateLog("global", `global grant: allowed ${JSON.stringify(command.slice(0, 200))}`);
+      return respond(isAgy, true, "", command);
+    }
   }
 
   // Modes and grants exist only where go-grant.mjs runs (Claude Code: session_id present).

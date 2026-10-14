@@ -50,7 +50,7 @@ export function stalledTasks(tasks, runs, now, cfg = CONFIG_DEFAULTS) {
   return out
 }
 
-const runGit = (repo, args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8' })
+const runGit = (repo, args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', windowsHide: true })
 
 function discoverDefaultBranch(repo, run) {
   const head = run(repo, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])

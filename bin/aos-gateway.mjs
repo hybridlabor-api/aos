@@ -103,7 +103,7 @@ export async function reapOrphan(dir, script, upstreamPort, sleep = (ms) => new 
     let pid;
     try { pid = Number(fs.readFileSync(path.join(dir, 'upstream.pid'), 'utf8')); } catch { return false; }
     if (!Number.isInteger(pid) || pid <= 1) return false;
-    const ps = spawnSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', shell: false });
+    const ps = spawnSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', shell: false, windowsHide: true });
     const cmd = ps.status === 0 ? ps.stdout : '';
     if (!cmd.includes(script) || !cmd.includes(dir)) return false;
     try { process.kill(pid, 'SIGTERM'); } catch { return false; }
@@ -204,7 +204,7 @@ function service(cmd) {
         if (r.stderr) process.stderr.write(r.stderr);
         return r.status ?? 1;
     };
-    const run = (c, a) => out(spawnSync(c, a, { encoding: 'utf8' }));
+    const run = (c, a) => out(spawnSync(c, a, { encoding: 'utf8', windowsHide: true }));
     if (process.platform === 'darwin') {
         const uid = process.getuid();
         const plist = path.join(os.homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);

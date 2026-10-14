@@ -10,7 +10,7 @@ const p = require('../lib/v5/profile');
 const IDS = ['kernel', 'memb', 'synapse', 'openwiki', 'fleet', 'gateway'];
 const parse = (argv = [], env = {}) => p.parseOptions(['node', 'installer.js', ...argv], env, IDS);
 
-test('defaults: standard, nothing skipped', () => {
+test('defaults: standard, only the opt-in Token Saver is left out', () => {
     const o = parse();
     assert.strictEqual(o.profile, 'standard');
     assert.strictEqual(o.profileGiven, false);
@@ -18,7 +18,7 @@ test('defaults: standard, nothing skipped', () => {
     const r = p.resolve(o, {});
     assert.strictEqual(r.profile, 'standard');
     assert.strictEqual(r.contextHooks, true);
-    assert.strictEqual(r.excluded.size, 0);
+    assert.deepStrictEqual([...r.excluded], ['token-saver']);
 });
 
 test('profile: flag wins over AOS_PROFILE, unknown value is an error', () => {
@@ -50,7 +50,7 @@ test('--hooks-only is parsed', () => {
 test('--without maps to registry ids; unknown id and kernel are errors', () => {
     assert.deepStrictEqual(parse(['--without=memb, fleet']).without, ['memb', 'fleet']);
     const r = p.resolve(parse(['--without=memb']), { disabled: ['synapse'] });
-    assert.deepStrictEqual([...r.excluded].sort(), ['memb', 'synapse']);
+    assert.deepStrictEqual([...r.excluded].sort(), ['memb', 'synapse', 'token-saver']);
     assert.throws(() => parse(['--without=nope,memb']), /Unknown id\(s\) in --without: nope/);
     assert.throws(() => parse(['--without=kernel']), /kernel/);
     assert.throws(() => parse(['--without']), /needs a value/);
@@ -189,7 +189,7 @@ test('S2: a corrupt or odd settings file never throws and falls back to defaults
         const r = p.resolve(parse(), odd);
         assert.strictEqual(r.profile, 'standard');
         assert.strictEqual(r.contextHooks, true);
-        assert.strictEqual(r.excluded.size, 0);
+        assert.deepStrictEqual([...r.excluded], ['token-saver']);
     }
     const none = tmpHome();
     const [quiet, warn] = collect();
@@ -246,8 +246,8 @@ test('S3: uninstall moves the saved options aside and keeps foreign keys', () =>
 
 test('S6: update and repair skip what the profile excludes, like disabled ids', async () => {
     assert.deepStrictEqual([...p.excludedIds({ profile: 'minimal', disabled: ['synapse'] })].sort(), ['alert', 'codenotch', 'deja', 'fleet', 'gateway', 'hub', 'memb', 'openwiki', 'sessions', 'synapse', 'token-saver']);
-    assert.strictEqual(p.excludedIds(null).size, 0);
-    assert.strictEqual(p.excludedIds({ profile: 'constructor' }).size, 0);
+    assert.deepStrictEqual([...p.excludedIds(null)], ['token-saver']); // the standard profile leaves the opt-in Token Saver out
+    assert.deepStrictEqual([...p.excludedIds({ profile: 'constructor' })], ['token-saver']);
 
     const pk = require('../lib/v5/packages');
     if (Object.isFrozen(pk.registry)) return;

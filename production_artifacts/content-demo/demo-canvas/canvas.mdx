@@ -1,0 +1,66 @@
+<DesignBoard title="Pulse - cue list before and after" version={1} transitions={[
+  { from: "before", to: "after", label: "change" },
+]}>
+<Section id="compare" title="Cue list" subtitle="Low-fidelity sketches of the old and the new cue list. Numbers on the AFTER notes match the change list in the plan.">
+<Artboard id="before" label="BEFORE" surface="desktop" x={80} y={120} width={420} height={420} order={1}>
+<Screen surface="desktop" caption="Plain list, up/down buttons on every row.">
+  <FrameScreen>
+    <Col full>
+      <Title text="Cue list" />
+      <Row><Text value="Q1  House to half" /><Btn label="Up" /><Btn label="Down" /></Row>
+      <Row><Text value="Q2  Intro video" /><Btn label="Up" /><Btn label="Down" /></Row>
+      <Row><Text value="Q3  Band blackout" /><Btn label="Up" /><Btn label="Down" /></Row>
+      <Row><Text value="Q4  Chorus strobe" /><Btn label="Up" /><Btn label="Down" /></Row>
+      <Row><Text value="Q5  Outro fade" /><Btn label="Up" /><Btn label="Down" /></Row>
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+<Artboard id="after" label="AFTER" surface="desktop" x={640} y={120} width={420} height={420} order={2}>
+<Screen surface="desktop" caption="Drag handles, insertion line, undo toast.">
+  <FrameScreen>
+    <Col full>
+      <Title text="Cue list" />
+      <Row><IconSquare /><Text value="Q1  House to half" /></Row>
+      <Row><IconSquare active /><Text value="Q3  Band blackout (dragging)" weight="bold" /></Row>
+      <Divider />
+      <Row><IconSquare /><Text value="Q2  Intro video" /></Row>
+      <Row><IconSquare /><Text value="Q4  Chorus strobe" /></Row>
+      <Row><IconSquare /><Text value="Q5  Outro fade" /></Row>
+      <Box dashed><Text value="Cue moved - Undo" tone="muted" /></Box>
+    </Col>
+  </FrameScreen>
+</Screen>
+</Artboard>
+</Section>
+
+<Annotation id="m1" title="1 Drag handles" targetId="after" placement="right">
+
+A grip on every row replaces the up/down buttons.
+
+</Annotation>
+
+<Annotation id="m2" title="2 Insertion line" targetId="after" placement="right">
+
+A line shows where the dragged cue will land.
+
+</Annotation>
+
+<Annotation id="m3" title="3 Numbers stay stable" targetId="after" placement="right">
+
+Cue numbers keep their value, only the order changes.
+
+</Annotation>
+
+<Annotation id="m4" title="4 Undo toast" targetId="after" placement="right">
+
+"Cue moved - Undo" stays visible for 6 seconds after a drop.
+
+</Annotation>
+
+<Annotation id="m5" title="5 Keyboard fallback" targetId="after" placement="right">
+
+Alt + Up/Down moves the selected cue without a mouse.
+
+</Annotation>
+</DesignBoard>

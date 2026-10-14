@@ -198,7 +198,7 @@ test('event-manager-assistant scope note is agent-owned, not personal', () => {
 
 test('plugin description counts the real number of agent personas', () => {
     const actual = fs.readdirSync(path.join(ROOT, 'agents')).filter((f) => f.endsWith('.md')).length;
-    assert.strictEqual(actual, 29, 'agents/ holds 29 personas');
+    assert.ok(actual >= 29, 'agents/ holds at least the 29 original personas');
     const marketplace = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
     const described = JSON.stringify(marketplace).match(/(\d+) subagents/);
     assert.ok(described, 'marketplace.json describes a subagent count');

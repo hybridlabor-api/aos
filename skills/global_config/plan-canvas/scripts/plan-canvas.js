@@ -323,6 +323,15 @@ async function cmdOpen(file, args, { stateDir, port }) {
     return { error: `Mode not available: ${mode} (${modeConfig.reason})` };
   }
 
+  const isMdx = typeof file === 'string' && /\.mdx$/i.test(file);
+  const mdxWarning = isMdx && mode !== 'bdb-plan-builder'
+    ? 'Warning: Opening a .mdx file without --mode bdb-plan-builder may not render Plan Builder components properly. Run `aos-plan-canvas await <file>` and leave it running to collect feedback or approval.'
+    : null;
+
+  if (mdxWarning) {
+    process.stderr.write(`${mdxWarning}\n`);
+  }
+
   // bdb-plan-builder owns the artifact: it renders the plan folder to one
   // self-contained HTML file next to plan.mdx, then that file goes through the
   // normal session path unchanged.
@@ -343,8 +352,20 @@ async function cmdOpen(file, args, { stateDir, port }) {
     file: artifact,
     reopen: args.includes('--reopen')
   });
-  if (res.statusCode === 409) return res.body;
-  if (res.statusCode !== 200) throw new Error(res.body.error || `open failed (HTTP ${res.statusCode})`);
+  if (res.statusCode === 409) {
+    return {
+      ...res.body,
+      ...(mdxWarning ? { warning: mdxWarning, warnings: res.body?.warnings ? [...res.body.warnings, mdxWarning] : [mdxWarning] } : {})
+    };
+  }
+  if (res.statusCode !== 200) {
+    const err = new Error(res.body.error || `open failed (HTTP ${res.statusCode})`);
+    if (mdxWarning) {
+      err.warning = mdxWarning;
+      err.warnings = [mdxWarning];
+    }
+    throw err;
+  }
   const url = `http://${DEFAULT_HOST}:${port}${res.body.url}`;
   const viewers = res.body.viewers || 0;
   const attached = viewers > 0;
@@ -357,7 +378,8 @@ async function cmdOpen(file, args, { stateDir, port }) {
     browser: attached ? 'already open' : launched ? 'opened' : 'not opened',
     mode,
     ...(built ? { artifact: built.outFile, warnings: built.warnings } : {}),
-    next_step: built && built.warnings.length
+    ...(mdxWarning ? { warning: mdxWarning, warnings: Array.isArray(built?.warnings) ? [...built.warnings, mdxWarning] : [mdxWarning] } : {}),
+    next_step: built && Array.isArray(built.warnings) && built.warnings.length
       ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas await <dir>/plan.builder.html\` and leave it running.`
       : 'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
   };
@@ -700,7 +722,10 @@ async function main(argv = process.argv.slice(2)) {
     }
     return 0;
   } catch (error) {
-    output({ error: error.message });
+    output({
+      error: error.message,
+      ...(error.warning ? { warning: error.warning, warnings: error.warnings } : {})
+    });
     return 1;
   }
 }
