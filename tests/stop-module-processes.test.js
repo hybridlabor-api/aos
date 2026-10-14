@@ -51,7 +51,7 @@ test('findModuleProcesses never selects the installer itself or its ancestors', 
 test('stopModuleProcesses kills the matches, tolerates a failed kill and waits once', () => {
     const killed = []; let sleeps = 0;
     const out = stopModuleProcesses(DIR, {
-        platform: 'win32', env: {}, selfPid: 100, list: table, sleep: () => { sleeps++; },
+        platform: 'win32', env: {}, selfPid: 100, list: table, listHolders: () => [], sleep: () => { sleeps++; },
         kill: (pid) => { killed.push(pid); if (pid === 201) throw new Error('already gone'); },
     });
     assert.deepStrictEqual(killed, [200, 201]);
@@ -68,7 +68,32 @@ test('stopModuleProcesses does nothing off Windows, with the opt-out, or when li
 
 test('stopModuleProcesses returns [] and sleeps not at all when nothing matches', () => {
     let sleeps = 0;
-    const out = stopModuleProcesses('C:\\Users\\Yola\\.agents\\other', { platform: 'win32', env: {}, selfPid: 100, list: table, kill: () => {}, sleep: () => { sleeps++; } });
+    const out = stopModuleProcesses('C:\\Users\\Yola\\.agents\\other', { platform: 'win32', env: {}, selfPid: 100, list: table, listHolders: () => [], kill: () => {}, sleep: () => { sleeps++; } });
     assert.deepStrictEqual(out, []);
     assert.strictEqual(sleeps, 0);
+});
+
+// uvicorn --reload leaves a multiprocessing worker whose command line has no module path, but which maps the venv's .pyd files.
+test('stopModuleProcesses also stops an orphaned worker found only by its mapped modules', () => {
+    const killed = []; let sleeps = 0;
+    const orphan = { ProcessId: 900, Name: 'python' };
+    const out = stopModuleProcesses(DIR, {
+        platform: 'win32', env: {}, selfPid: 100, list: table, listHolders: () => [orphan, { ProcessId: 200, Name: 'python' }],
+        sleep: () => { sleeps++; }, kill: (pid) => killed.push(pid),
+    });
+    assert.deepStrictEqual(killed, [200, 201, 900]);
+    assert.deepStrictEqual(out.map((p) => p.ProcessId), [200, 201, 900]);
+    assert.strictEqual(sleeps, 2);
+});
+
+test('the module scan never kills the installer or its ancestors, and a failing scan keeps the first pass', () => {
+    const killed = [];
+    const out = stopModuleProcesses(DIR, {
+        platform: 'win32', env: {}, selfPid: 100, list: table, sleep: () => {}, kill: (pid) => killed.push(pid),
+        listHolders: () => [{ ProcessId: 100, Name: 'node' }, { ProcessId: 1, Name: 'System' }],
+    });
+    assert.deepStrictEqual(killed, [200, 201]);
+    assert.deepStrictEqual(out.map((p) => p.ProcessId), [200, 201]);
+    const out2 = stopModuleProcesses(DIR, { platform: 'win32', env: {}, selfPid: 100, list: table, sleep: () => {}, kill: () => {}, listHolders: () => { throw new Error('scan failed'); } });
+    assert.deepStrictEqual(out2.map((p) => p.ProcessId), [200, 201]);
 });
