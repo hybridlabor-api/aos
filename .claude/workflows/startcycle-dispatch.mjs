@@ -649,7 +649,7 @@ const modelOpt = (...roles) => {
 };
 const nodeModelOpt = (n) => {
   const chosen = routeFor(n);
-  console.log(`[router] advisory node ${n?.id || n?.agentType || 'node'} -> target: ${chosen.target}`);
+  console.error(`[router] advisory node ${n?.id || n?.agentType || 'node'} -> target: ${chosen.target}`);
   return modelOpt(n.agentType, n.id);
 };
 
