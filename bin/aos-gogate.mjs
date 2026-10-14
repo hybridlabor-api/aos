@@ -47,7 +47,7 @@ function status(argv) {
     return 1;
   }
   const session = id ? ['--session', id] : [];
-  const r = spawnSync(process.execPath, [grant, '--status', ...session], { stdio: 'inherit' });
+  const r = spawnSync(process.execPath, [grant, '--status', ...session], { stdio: 'inherit', windowsHide: true });
   if (r.error) console.error(`aos-gogate: ${r.error.message}`);
   return r.status ?? 1;
 }

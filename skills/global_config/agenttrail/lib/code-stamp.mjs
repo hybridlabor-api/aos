@@ -33,7 +33,7 @@ export function watchCodeStamp({ entryFile, dirs, stamp, server, log = (m) => co
       await Promise.race([new Promise((ok) => s.close(ok)), new Promise((ok) => setTimeout(ok, 2000))])
     }
     const cp = await import('node:child_process')
-    cp.spawn(process.execPath, process.argv.slice(1), { cwd: process.cwd(), env: process.env, detached: true, stdio: 'ignore' }).unref()
+    cp.spawn(process.execPath, process.argv.slice(1), { cwd: process.cwd(), env: process.env, detached: true, stdio: 'ignore', windowsHide: true }).unref()
     process.exit(0)
   }
   const timer = setInterval(() => { if (!restarting && codeStampOf(entryFile, dirs) > stamp) restart() }, 30000)
