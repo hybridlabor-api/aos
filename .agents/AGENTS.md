@@ -442,6 +442,213 @@ Ported from [affaan-m/ECC](https://github.com/affaan-m/ECC) (MIT) — the langua
 - Correctness focus: SQL injection, `BinaryFormatter`, blocking async (`.Result`/`.Wait()`), `async void`, nullable warnings suppressed with `!`, EF Core lazy-loading N+1.
 
 ---
+
+## 🔍 code-reviewer
+- **Role**: Independent read-only general code reviewer: code health, architecture boundaries, edge cases, error handling, and maintainability. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `systematic-debugging`
+  - `clean-code`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: silent error swallowing, resource leaks, injection flaws, auth bypasses, module boundary violations, deep nesting, code duplication.
+
+---
+
+## 🦄 django-reviewer
+- **Role**: Independent read-only Django code reviewer: ORM query efficiency, security, transactions, view architecture, and migrations. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `django-patterns`
+  - `python-pro`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: SQL injection in RawSQL/extra, insecure DEBUG/hosts, hardcoded SECRET_KEY, N+1 query loops, non-atomic database writes, destructive migrations without rollbacks.
+
+---
+
+## ⚡ fastapi-reviewer
+- **Role**: Independent read-only FastAPI code reviewer: async route correctness, Pydantic schemas, dependency injection, and API design. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `fastapi-patterns`
+  - `python-pro`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: blocking synchronous calls in async routes, permissive CORS, unhandled exceptions leaking traces, db session leaks in dependencies, missing response models.
+
+---
+
+## 🦋 flutter-reviewer
+- **Role**: Independent read-only Flutter/Dart code reviewer: widget lifecycle, state management, rebuild performance, and platform patterns. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `dart-flutter-patterns`
+  - `clean-code`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: unclosed controllers/streams missing dispose(), BuildContext across async gaps without mounted check, unnecessary setState rebuilds, missing const constructors.
+
+---
+
+## 🔷 fsharp-reviewer
+- **Role**: Independent read-only F# code reviewer: functional purity, algebraic data types, async workflows, and .NET interop. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `fsharp-testing`
+  - `clean-code`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: incomplete pattern matching on discriminated unions, raw exceptions instead of Result/Option, unchecked nulls in .NET interop, mutable bindings in domain logic, blocking async workflows.
+
+---
+
+## 🏥 healthcare-reviewer
+- **Role**: Independent read-only healthcare application reviewer: HIPAA compliance, PHI protection, medical data schemas, and audit logging. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `bdb-security-audit`
+  - `clean-code`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: PHI leaks in logs/telemetry, unencrypted PHI in transit/rest, missing RBAC or tenant isolation, missing tamper-evident audit logs, FHIR/HL7 schema non-compliance.
+
+---
+
+## 🧠 mle-reviewer
+- **Role**: Independent read-only machine learning engineering reviewer: training pipelines, data leakage, inference latency, drift, and numerical stability. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `python-pro`
+  - `python-patterns`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: data leakage between splits, unhandled NaN/Inf tensor propagation, unseeded RNGs, GPU memory leaks from retained computational graphs, unsafe pickle weights loading.
+
+---
+
+## 🌐 network-config-reviewer
+- **Role**: Independent read-only network configuration reviewer: routing protocols, ACLs, VLANs, firewall policies, and device security. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `cisco-ios-patterns`
+  - `systematic-debugging`
+  - `clean-code`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: overly permissive ACLs, plaintext passwords/SNMP strings, insecure management protocols (Telnet/HTTP), BGP route leaks, native VLAN misconfiguration on trunks.
+
+---
+
+## 🐘 php-reviewer
+- **Role**: Independent read-only PHP code reviewer: modern PHP 8.x idioms, Laravel/Symfony frameworks, OWASP security, and type safety. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `clean-code`
+  - `api-design-principles`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: SQL injection in raw queries, RCE via eval/unserialize, XSS in template rendering, missing strict_types, silenced errors via @, Eloquent/Doctrine N+1 query loops.
+
+---
+
+## 📚 rag-pipeline-reviewer
+- **Role**: Independent read-only RAG pipeline reviewer: chunking strategy, embeddings, vector indexing, retrieval quality, and prompt injection defense. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `rag-implementation`
+  - `python-pro`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: indirect prompt injection via retrieved text, cross-tenant vector leakage, silent zero-retrieval hallucination, naive chunking splitting mid-token, missing reranking.
+
+---
+
+## ⚛️ react-reviewer
+- **Role**: Independent read-only React code reviewer: hooks correctness, component lifecycle, Next.js architecture, render performance, and accessibility. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `react-best-practices`
+  - `senior-frontend`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: XSS via dangerouslySetInnerHTML, secrets in client bundles, infinite render loops, unstable hook dependency arrays, index keys in dynamic lists, direct state mutation.
+
+---
+
+## 🦅 swift-reviewer
+- **Role**: Independent read-only Swift code reviewer: Swift Concurrency, memory safety (ARC), SwiftUI/UIKit architecture, and Apple platform patterns. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `clean-code`
+  - `systematic-debugging`
+  - `api-design-principles`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: retain cycles in closures missing weak self, data races across actor boundaries, forced unwrapping (!), unstructured Task lifecycle leaks, missing @MainActor on UI updates.
+
+---
+
+## 💚 vue-reviewer
+- **Role**: Independent read-only Vue.js code reviewer: Vue 3 Composition API, reactivity rules, Pinia state, Nuxt architecture, and component performance. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `senior-frontend`
+  - `clean-code`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: destructuring reactive objects losing reactivity, XSS via v-html, memory leaks in uncleaned watchers, direct prop mutation, deep ref wrapping on large datasets.
+
+---
+
+## 🧪 pr-test-analyzer
+- **Role**: Independent read-only pull request test coverage analyzer: assertion strength, mocking integrity, edge cases, and test flakiness. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `test-driven-development`
+  - `systematic-debugging`
+  - `clean-code`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: tests without assertions, swallowed errors in tests, disabled/skipped tests on critical paths, over-mocking implementation details, missing error branch coverage.
+
+---
+
+## 💬 comment-analyzer
+- **Role**: Independent read-only code comment analyzer: documentation drift, comment accuracy, security disclosures, and comment hygiene. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `documentation`
+  - `clean-code`
+  - `systematic-debugging`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: comments contradicting code logic, leaked credentials or secrets in comments, comments advising security bypasses, stale parameter docstrings, commented-out dead code.
+
+---
+
+## 📐 type-design-analyzer
+- **Role**: Independent read-only type design analyzer: encapsulation, domain modeling precision, algebraic data types, and type-system safety. Strictly read-only. Classifies every finding in the fixed precedence format used by reviewer.md (contract misread → valid & actionable → valid trade-off → noise) and returns findings inline (writes no file).
+- **Primary Skills**:
+  - `domain-modeling`
+  - `software-architecture`
+  - `clean-code`
+- **MCP Servers**:
+  - `memb_mcp`
+- **Output Artifact**: findings returned inline (writes no file)
+- Correctness focus: pervasive any/unsafe type escape hatches, unsound type assertions, primitive obsession for domain entities, types permitting illegal states, leaky implementation types.
+
+---
 ## 🔄 Context Boot Sequence
 Before executing any tasks, every agent MUST perform the following checks silently:
 1. **memB**: Retrieve past context and memories for the project folder.
