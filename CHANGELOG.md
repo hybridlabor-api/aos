@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.2.1](https://github.com/hybridlabor-api/aos/compare/v5.2.0...v5.2.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **test:** hub port-busy test blocks an OS-assigned port instead of fixed 59996 ([18d2fcd](https://github.com/hybridlabor-api/aos/commit/18d2fcd1df90c909c3e0a4bc372acfd3013efde0))
+* **test:** hub port-busy test uses an OS-assigned port ([844fd8c](https://github.com/hybridlabor-api/aos/commit/844fd8c801beb49d7cef0d03cba66ff2e1a81f6a))
+
 ## [5.2.0](https://github.com/hybridlabor-api/aos/compare/v5.1.1...v5.2.0) (2026-10-14)
 
 
