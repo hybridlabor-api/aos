@@ -80,3 +80,43 @@ test("without AOS_A2A_NAME the peer name is agy-<first 8 chars of the conversati
   const out = JSON.parse(run(env, { invocationNum: 0, conversationId: "6098EC7E-09a8-4013-8b26-a3613dec89ac" }).stdout.trim());
   assert.match(out.injectSteps[0].ephemeralMessage, /^\[a2a from peer-c\][^\n]*\n<<<A2A-MESSAGE\n> hello\n<<<END-A2A-MESSAGE/);
 });
+
+test("the injection names the session's own peer name and its bus inbox, and the reply carries --name", () => {
+  const { env, bus } = setup();
+  send(env, "task7");
+  const out = JSON.parse(run(env, { invocationNum: 0, conversationId: "c7" }).stdout.trim());
+  const m = out.injectSteps[0].ephemeralMessage;
+  assert.ok(m.includes(`Your A2A peer name is agy-researcher; your inbox is ${join(bus, "a2a", "agy-researcher")}.`), m);
+  assert.match(m, /carries --name agy-researcher\)/);
+  assert.match(m, /reply --name agy-researcher task7 /);
+});
+
+test("inbox lookup is the bus inbox <AOS_BUS_ROOT>/a2a/<name>, never the reply dir (AOS_A2A_INBOX)", async () => {
+  const { env } = setup();
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  // a stray file in the reply dir must never be taken for an inbound message
+  const replyDir = join(env.AOS_A2A_INBOX, "agy-researcher");
+  mkdirSync(replyDir, { recursive: true });
+  writeFileSync(join(replyDir, "1-stray.json"), JSON.stringify({ taskId: "stray", from: "x", text: "not inbound", ts: 1 }));
+  writeFileSync(join(replyDir, "old.reply"), "an earlier answer");
+  assert.deepEqual(JSON.parse(run(env, { invocationNum: 0, conversationId: "c8" }).stdout.trim()), { injectSteps: [] });
+  send(env, "task8", "inbound one");
+  const m = JSON.parse(run(env, { invocationNum: 0, conversationId: "c8" }).stdout.trim()).injectSteps[0].ephemeralMessage;
+  assert.match(m, /> inbound one/);
+  assert.ok(!m.includes("not inbound"));
+});
+
+test("inboxDir and replyDir are distinct directories", async () => {
+  const { env, bus } = setup();
+  const saved = { b: process.env.AOS_BUS_ROOT, i: process.env.AOS_A2A_INBOX };
+  process.env.AOS_BUS_ROOT = env.AOS_BUS_ROOT;
+  process.env.AOS_A2A_INBOX = env.AOS_A2A_INBOX;
+  try {
+    const { inboxDir, replyDir } = await import(new URL("../lib/a2a-inbox.mjs", import.meta.url));
+    assert.equal(inboxDir("agy-researcher"), join(bus, "a2a", "agy-researcher"));
+    assert.equal(replyDir("agy-researcher"), join(env.AOS_A2A_INBOX, "agy-researcher"));
+    assert.throws(() => inboxDir("../x"));
+  } finally {
+    for (const [k, v] of [["AOS_BUS_ROOT", saved.b], ["AOS_A2A_INBOX", saved.i]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});

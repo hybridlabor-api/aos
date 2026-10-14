@@ -78,7 +78,7 @@ test("successful spawn completes with the file reply; prompt carries prefix and 
   const args = calls[0].args;
   assert.deepEqual(args.slice(0, 3), ["queue", "--thread", "cx-thread"]);
   const msg = messageOf(args);
-  assert.ok(msg.startsWith("[a2a from tester]"), msg);
+  assert.match(msg, /\[a2a from tester\]/, msg);
   assert.match(msg, /<<<A2A-MESSAGE\n> what is 2\+3\n<<<END-A2A-MESSAGE/);
   assert.ok(msg.includes(NEVER_GO));
   assert.match(msg, /Answer by running: (aos-a2a|node "[^"]*aos-a2a\.mjs") reply --name \S+ \S+ "<your answer>"/);

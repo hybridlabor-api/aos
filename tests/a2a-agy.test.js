@@ -14,7 +14,7 @@ process.env.AOS_A2A_NAME = "agy-session";
 
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const inbox = await import("../lib/a2a-inbox.mjs");
-const { agyResumeExecutor, buildAgyArgs, agyMcpAddArgs } = await import("../lib/a2a-agy.mjs");
+const { agyResumeExecutor, buildAgyArgs, agyMcpAddArgs, RESUME_LINE, stripProxyEnv } = await import("../lib/a2a-agy.mjs");
 
 const writeReq = (child, obj) => child.stdin.write(JSON.stringify(obj) + "\n");
 const clientFor = (child) => {
@@ -138,7 +138,12 @@ test("agyResumeExecutor: fake run output becomes the artifact; prompt has prefix
     assert.ok(seen[0].prompt.startsWith("[a2a from oc-1]"), seen[0].prompt);
     assert.match(seen[0].prompt, /<<<A2A-MESSAGE\n> what is 2\+3\n<<<END-A2A-MESSAGE/);
     assert.ok(seen[0].prompt.includes(NEVER_GO));
-    assert.ok(readdirSync(join(process.env.AOS_BUS_ROOT, "a2a", "agy-run1")).some((f) => f.includes(".json")));
+    assert.ok(seen[0].prompt.endsWith(RESUME_LINE), "the headless turn answers on stdout, not via aos-a2a reply");
+    // the note is kept as a record but claimed at once: the agy hook must not hand the answered task to the open chat
+    const files = readdirSync(join(process.env.AOS_BUS_ROOT, "a2a", "agy-run1"));
+    assert.ok(files.some((f) => f.endsWith(".delivered")), files.join(","));
+    assert.ok(!files.some((f) => f.endsWith(".json")), files.join(","));
+    assert.deepEqual(inbox.pending("agy-run1"), []);
   } finally { s.stop(); }
 });
 
@@ -176,4 +181,15 @@ test("agy executor keeps one own conversation per A2A contextId and never reuses
   await ex.execute(ctx("t2", "thread-a"), bus);
   await ex.execute(ctx("t3", "thread-b"), bus);
   assert.deepEqual(seen, [undefined, "conv-new", undefined]);
+});
+
+test("headless agy env: proxies stripped, loopback NO_PROXY, own AOS_A2A_NAME (overrides an inherited one)", () => {
+  const env = stripProxyEnv({ HTTP_PROXY: "http://p:1", https_proxy: "x", AOS_A2A_NAME: "claude-other", PATH: "/bin" }, "agy-run9");
+  assert.equal(env.HTTP_PROXY, undefined);
+  assert.equal(env.https_proxy, undefined);
+  assert.equal(env.NO_PROXY, "127.0.0.1,localhost,::1");
+  assert.equal(env.AOS_A2A_NAME, "agy-run9");
+  assert.equal(env.PATH, "/bin");
+  assert.equal(stripProxyEnv({ AOS_A2A_NAME: "keep" }).AOS_A2A_NAME, "keep");
+  assert.throws(() => stripProxyEnv({}, "../evil"));
 });

@@ -42,19 +42,28 @@ try {
   const sess = await lib("a2a-session.mjs");
   if (!inbox || !sess) done();
   const conv = String(input.conversationId || "");
-  // the peer name Tim chose (AOS_A2A_NAME, e.g. agy-researcher) or agy-<first 8 chars of the conversation id>
+  // the peer name the human chose (AOS_A2A_NAME, e.g. agy-researcher) or agy-<first 8 chars of the conversation id>
   const name = sess.sessionName({ harness: "agy", sessionId: conv, env: process.env });
-  // register this interactive session as a live peer once per name (idempotent; skipped under AOS_A2A_SIDECAR=off)
-  sess.ensureSidecar({ harness: "agy", sessionId: conv, parentPid: agyPid(), mode: "live" });
+  // Everything this hook loads or starts resolves the same identity (the sidecar also gets it in its env).
+  process.env.AOS_A2A_NAME = name;
+  // Register this session as a peer once per name (idempotent; skipped under AOS_A2A_SIDECAR=off). No explicit mode:
+  // agy defaults to the resume executor (`--mode agy`), which answers while this chat sits idle and claims the inbox
+  // note itself; AOS_A2A_AGY_MODE=live switches back to the inbox drained below at the next typed prompt.
+  sess.ensureSidecar({ harness: "agy", sessionId: conv, parentPid: agyPid(), env: process.env });
   if (input.invocationNum !== 0) done(); // mid-turn model call: queue, never inject
   const texts = [];
+  // the bus inbox <AOS_BUS_ROOT or ~/.aos/bus>/a2a/<name>; the reply dir (~/.aos/a2a-inbox) never holds inbound messages
   for (const m of inbox.pending(name)) {
     const msg = inbox.claim(m.file);
     if (!msg) continue;
     texts.push(`${inbox.formatInjection(msg)}\nAnswer by running: ${inbox.replyCommand(msg.taskId, undefined, "", name)}`);
   }
   if (!texts.length) done();
-  done(JSON.stringify({ injectSteps: [{ ephemeralMessage: texts.join("\n\n") }] }));
+  // The session has no other way to learn its own peer name: spell it and the inbox once per delivery.
+  // (messages are already claimed here, so nothing below may throw: an older installed lib may lack inboxDir)
+  const dir = typeof inbox.inboxDir === "function" ? `; your inbox is ${inbox.inboxDir(name)}` : "";
+  const who = `Your A2A peer name is ${name}${dir}. Answer each message with its own "Answer by running" command (it already carries --name ${name}).`;
+  done(JSON.stringify({ injectSteps: [{ ephemeralMessage: `${texts.join("\n\n")}\n${who}` }] }));
 } catch {
   done();
 }
