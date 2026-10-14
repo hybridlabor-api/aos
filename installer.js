@@ -2621,6 +2621,7 @@ function recoverStaleSwaps(targetDir) {
     } catch (_) {}
 }
 
+const { renameWithRetry } = require('./lib/rename-retry.js');
 function downloadOrUpdateModule(pkgName, targetDir, displayName) {
     const status = checkModuleUpdate(pkgName, targetDir);
     if (status.installed && !status.updateAvailable) {
@@ -2676,32 +2677,15 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
 
         movePreserved(targetDir, stagingDir);
 
-        // Phase 1: retire the live tree. On Windows a running daemon holds open
-        // file handles into targetDir — retry with brief backoff before failing.
-        // ponytail: 3 retries × 600ms; escalate to process kill if this ceiling matters
-        let phase1Done = false;
-        for (let attempt = 0; attempt < 3 && !phase1Done; attempt++) {
-            try {
-                fs.renameSync(targetDir, retiredDir);
-                phase1Done = true;
-            } catch (retireError) {
-                const retriable = retireError.code === 'EPERM' || retireError.code === 'EBUSY';
-                if (retriable && attempt < 2) {
-                    const delayMs = 600 * (attempt + 1);
-                    try {
-                        if (process.platform === 'win32') {
-                            execSync(`powershell -NoProfile -Command "Start-Sleep -Milliseconds ${delayMs}"`, { stdio: 'ignore' });
-                        } else {
-                            execSync(`sleep ${delayMs / 1000}`, { stdio: 'ignore' });
-                        }
-                    } catch (_) {}
-                    continue;
-                }
-                // The live tree stayed in place: give it its preserved entries back before staging goes.
-                movePreserved(stagingDir, targetDir);
-                safeRmDirSync(stagingDir);
-                throw retireError;
-            }
+        // Phase 1: retire the live tree. On Windows a running service holds the directory:
+        // renameWithRetry backs off, then fails with a clear "locked" reason (no process is killed).
+        try {
+            renameWithRetry(targetDir, retiredDir, { module: path.basename(targetDir).replace(/^bdb-/, '') });
+        } catch (retireError) {
+            // The live tree stayed in place: give it its preserved entries back before staging goes.
+            movePreserved(stagingDir, targetDir);
+            safeRmDirSync(stagingDir);
+            throw retireError;
         }
 
         // Phase 2: promote the staging tree. stagingDir was just unpacked and
