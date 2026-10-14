@@ -28,6 +28,7 @@ const { claudeConfigDir } = require('./lib/plugin-evidence');
 const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
 const uninstallRecords = require('./lib/uninstall-records');
+const { tarExtractArgs } = require('./lib/tar-extract-args');
 const systemdUnits = require('./lib/systemd-units');
 const mcpSecrets = require('./lib/mcp-secrets');
 const { backupOnce, backupOf } = require('./lib/backup-once');
@@ -2669,7 +2670,8 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
 
         safeRmDirSync(stagingDir);
         fs.mkdirSync(stagingDir, { recursive: true });
-        execSync(`tar -xzf "${path.join(targetDir, tarball)}" --strip-components=1 -C "${stagingDir}"`, { stdio: 'ignore' });
+        const tar = tarExtractArgs(path.join(targetDir, tarball), stagingDir);
+        execFileSync('tar', tar.args, { cwd: tar.cwd, stdio: 'ignore' });
         fs.unlinkSync(path.join(targetDir, tarball));
 
         movePreserved(targetDir, stagingDir);
