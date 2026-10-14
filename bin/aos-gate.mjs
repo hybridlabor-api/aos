@@ -74,7 +74,7 @@ export async function setProfile({
   out,
 }) {
   const printOut = out ?? ((s) => (stdout?.write ? stdout.write(s) : console.log(s)));
-  if (!PROFILES.includes(profile)) { err("usage: aos-gate profile strict|work [--for 4h]"); return 2; }
+  if (!PROFILES.includes(profile)) { err("usage: aos-gate profile strict|work|off [--for 4h]"); return 2; }
   let ms = null;
   if (profile !== "strict") {
     const L = LIMITS[profile];
@@ -216,7 +216,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   } else if (cmd === "revoke") {
     code = revokeGrant({ dir, scope: a || "all", err });
   } else {
-    err("usage: aos-gate status | profile strict|work [--for 4h] | grant <scope> [duration] | revoke <scope>");
+    err("usage: aos-gate status | profile strict|work|off [--for 4h] | grant <scope> [duration] | revoke <scope>");
     code = 2;
   }
   rl.close();

@@ -2,11 +2,12 @@ import * as nodeFs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const PROFILES = ["strict", "work"];
+export const PROFILES = ["strict", "work", "off"];
 export const MAX_CONFIG_BYTES = 4096;
 const H = 3600 * 1000;
 export const LIMITS = {
   work: { defaultMs: 4 * H, maxMs: 24 * H },
+  off: { defaultMs: 1 * H, maxMs: 2 * H },
 };
 
 // Command classes that still need Tim under `work`. Data only; the gate decides how to match them.
