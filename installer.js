@@ -1544,6 +1544,10 @@ async function reloadDaemons(skipNames = []) {
         for (const d of daemons) {
             if (skipNames.includes(d.name)) continue;
             if (fs.existsSync(d.plist)) {
+                if (v5Profile.isTestSandbox(homeDir)) {
+                    log.success(`${d.name} daemon reloaded`);
+                    continue;
+                }
                 try {
                     execSync(`launchctl unload "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
                     execSync(`launchctl load "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
@@ -3071,13 +3075,17 @@ async function installMemB(interactive) {
             try {
                 fs.mkdirSync(path.join(homeDir, '.memb'), { recursive: true });
                 fs.writeFileSync(plistPath, plistContent);
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                const isListening = await verifyDaemonListening(8088, 'memB WebUI');
-                if (isListening) {
+                if (v5Profile.isTestSandbox(homeDir)) {
                     log.success('memB WebUI LaunchAgent active (Port 8088)');
                 } else {
-                    log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                    execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    const isListening = await verifyDaemonListening(8088, 'memB WebUI');
+                    if (isListening) {
+                        log.success('memB WebUI LaunchAgent active (Port 8088)');
+                    } else {
+                        log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                    }
                 }
             } catch (e) { logDebug(e, 'operation'); }
         } else if (process.platform === 'linux') {
@@ -3215,13 +3223,17 @@ async function installSynapse() {
             try {
                 fs.mkdirSync(path.join(homeDir, '.synapse'), { recursive: true });
                 fs.writeFileSync(plistPath, plistContent);
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
-                if (isListening) {
+                if (v5Profile.isTestSandbox(homeDir)) {
                     log.success('Synapse 3D LaunchAgent active (Port 7781)');
                 } else {
-                    log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                    execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
+                    if (isListening) {
+                        log.success('Synapse 3D LaunchAgent active (Port 7781)');
+                    } else {
+                        log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                    }
                 }
             } catch (e) { logDebug(e, 'synapse plist setup'); }
         } else if (process.platform === 'linux') {
@@ -3446,13 +3458,17 @@ async function installOpenWikiVisualizer() {
         try {
             fs.mkdirSync(path.join(homeDir, '.openwiki'), { recursive: true });
             fs.writeFileSync(plistPath, plistContent);
-            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
-            if (isListening) {
+            if (v5Profile.isTestSandbox(homeDir)) {
                 log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
             } else {
-                log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
+                if (isListening) {
+                    log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
+                } else {
+                    log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+                }
             }
         } catch (e) { logDebug(e, 'openwiki visualizer plist setup'); }
     } else if (process.platform === 'linux') {
@@ -7227,7 +7243,7 @@ function installPlanCanvasAutostart(overrides = {}) {
             const plistPath = path.join(home, 'Library', 'LaunchAgents', `${PLAN_CANVAS_LABEL}.plist`);
             fs.mkdirSync(path.dirname(plistPath), { recursive: true });
             fs.writeFileSync(plistPath, buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }));
-            if (!overrides.skipLaunchctl) {
+            if (!overrides.skipLaunchctl && !v5Profile.isTestSandbox(home)) {
                 execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
                 execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
             }
@@ -7763,8 +7779,10 @@ function generateAndOpenLaunchpad(installedModules = []) {
         // normal exit as a crash to restart, reopening the tab in a loop.
         try {
             fs.writeFileSync(plistPath, plistContent);
-            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            if (!v5Profile.isTestSandbox(homeDir)) {
+                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            }
         } catch (e) { logDebug(e, 'launchpad autostart plist'); }
     } else if (process.platform === 'win32') {
         const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
