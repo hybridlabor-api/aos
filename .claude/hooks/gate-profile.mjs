@@ -2,12 +2,11 @@ import * as nodeFs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const PROFILES = ["strict", "work", "off"];
+export const PROFILES = ["strict", "work"];
 export const MAX_CONFIG_BYTES = 4096;
 const H = 3600 * 1000;
 export const LIMITS = {
   work: { defaultMs: 4 * H, maxMs: 24 * H },
-  off: { defaultMs: 1 * H, maxMs: 2 * H },
 };
 
 // Command classes that still need Tim under `work`. Data only; the gate decides how to match them.
@@ -24,7 +23,7 @@ export const RELEASE_CLASS = Object.freeze([
 // ~/.aos/gate/config.json
 export const defaultConfigFile = () => join(homedir(), ".aos/gate/config.json");
 
-const strict = (reason) => ({ profile: "strict", reason });
+const strict = (reason) => ({ profile: "strict", reason, grants: [] });
 
 export function readProfile({ file = defaultConfigFile(), now = Date.now(), uid = process.getuid?.(), fs = nodeFs } = {}) {
   const C = fs.constants;
@@ -53,16 +52,27 @@ export function readProfile({ file = defaultConfigFile(), now = Date.now(), uid 
   let c;
   try { c = JSON.parse(text); } catch { return strict("corrupt JSON"); }
   if (!c || typeof c !== "object" || Array.isArray(c) || c.version !== 1) return strict("bad schema");
+  const grants = [];
+  if (Array.isArray(c.grants)) {
+    for (const g of c.grants) {
+      if (typeof g?.scope === "string") {
+        const exp = typeof g.expires_at === "string" ? Date.parse(g.expires_at) : (typeof g.until === "string" ? Date.parse(g.until) : (typeof g.expires_at === "number" ? g.expires_at : NaN));
+        if (Number.isFinite(exp) && exp > now) {
+          grants.push({ scope: g.scope, expires_at: new Date(exp).toISOString(), until: exp });
+        }
+      }
+    }
+  }
   if (!PROFILES.includes(c.profile)) return strict("unknown profile");
   const setAt = typeof c.set_at === "string" ? Date.parse(c.set_at) : NaN;
   if (!Number.isFinite(setAt)) return strict("bad set_at");
   if (setAt > now) return strict("set_at in the future");
-  if (c.profile === "strict") return { profile: "strict", reason: null, set_at: c.set_at, expires_at: null, set_by: c.set_by ?? null };
+  if (c.profile === "strict") return { profile: "strict", reason: null, set_at: c.set_at, expires_at: null, set_by: c.set_by ?? null, grants };
   const exp = typeof c.expires_at === "string" ? Date.parse(c.expires_at) : NaN;
   if (!Number.isFinite(exp)) return strict("missing expiry");
   if (exp <= now) return strict("expired");
   if (exp - setAt > LIMITS[c.profile].maxMs) return strict("expiry beyond maximum");
-  return { profile: c.profile, reason: null, set_at: c.set_at, expires_at: c.expires_at, set_by: c.set_by ?? null, remaining_ms: exp - now };
+  return { profile: c.profile, reason: null, set_at: c.set_at, expires_at: c.expires_at, set_by: c.set_by ?? null, remaining_ms: exp - now, grants };
 }
 
 export const profileFor = (now = Date.now(), opts = {}) => readProfile({ ...opts, now });
