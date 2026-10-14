@@ -275,6 +275,107 @@ function hasExecutable(binary) {
     }
 }
 
+function checkSystemPrereqs({
+    which = hasExecutable,
+    platform = process.platform,
+    logger = log,
+    exitOnError = true,
+} = {}) {
+    const isWin = platform === 'win32';
+    const isMac = platform === 'darwin';
+
+    const gitOk = Boolean(which('git'));
+    const ghOk = Boolean(which('gh'));
+
+    const gitInstruction = isWin
+        ? 'Install Git via git-scm.com or winget install Git.Git'
+        : isMac
+            ? 'Install Git via brew install git / xcode-select --install'
+            : 'Install Git via your package manager (e.g. apt install git / dnf install git)';
+
+    const ghInstruction = isWin
+        ? 'Install GitHub CLI: winget install GitHub.cli'
+        : isMac
+            ? 'Install GitHub CLI: brew install gh'
+            : 'Install GitHub CLI via https://cli.github.com/';
+
+    if (!gitOk) {
+        const msg = `Git CLI is required for AOS workflows and worktrees.\n${gitInstruction}`;
+        if (logger && typeof logger.error === 'function') logger.error(msg);
+        else console.error(msg);
+        if (exitOnError) {
+            process.exitCode = 1;
+            throw new Error(`Git CLI is missing — required for AOS workflows and worktrees. ${gitInstruction}`);
+        }
+        return { ok: false, missing: 'git', error: msg, instruction: gitInstruction };
+    }
+
+    if (!ghOk) {
+        const warnMsg = `GitHub CLI (gh) is optional — needed for repo automation & release PRs.\n${ghInstruction}`;
+        if (logger && typeof logger.warn === 'function') logger.warn(warnMsg);
+        else console.warn(warnMsg);
+    }
+
+    return { ok: true, git: true, gh: ghOk };
+}
+
+function findBundledClaudeCli({
+    platform = process.platform,
+    home = homeDir,
+    env = process.env,
+    fsImpl = fs,
+} = {}) {
+    const candidates = [];
+    if (platform === 'darwin') {
+        const appRoots = [
+            '/Applications/Claude.app',
+            path.join(home, 'Applications', 'Claude.app'),
+        ];
+        for (const app of appRoots) {
+            candidates.push(
+                path.join(app, 'Contents', 'Resources', 'claude'),
+                path.join(app, 'Contents', 'Resources', 'bin', 'claude'),
+                path.join(app, 'Contents', 'MacOS', 'claude'),
+                path.join(app, 'Contents', 'Resources', 'claude-code'),
+            );
+        }
+    } else if (platform === 'win32') {
+        const localAppData = env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+        const appData = env.APPDATA || path.join(home, 'AppData', 'Roaming');
+        candidates.push(
+            path.join(localAppData, 'Programs', 'Claude', 'resources', 'claude.exe'),
+            path.join(localAppData, 'Programs', 'Claude', 'resources', 'bin', 'claude.exe'),
+            path.join(localAppData, 'AnthropicClaude', 'bin', 'claude.exe'),
+            path.join(localAppData, 'Programs', 'Claude', 'bin', 'claude.exe'),
+            path.join(localAppData, 'Microsoft', 'WindowsApps', 'claude.exe'),
+            path.join(appData, 'Claude', 'claude-code', 'claude.exe'),
+        );
+    } else {
+        const appRoots = [
+            '/opt/Claude',
+            path.join(home, '.local', 'share', 'Claude'),
+            path.join(home, 'Applications', 'Claude.app'),
+        ];
+        for (const app of appRoots) {
+            candidates.push(
+                path.join(app, 'claude'),
+                path.join(app, 'bin', 'claude'),
+                path.join(app, 'resources', 'claude'),
+                path.join(app, 'Contents', 'Resources', 'claude'),
+            );
+        }
+    }
+    for (const c of candidates) {
+        try {
+            if (fsImpl.existsSync(c) && fsImpl.statSync(c).isFile()) {
+                return c;
+            }
+        } catch {}
+    }
+    return null;
+}
+
+
 // uv's installers drop it in ~/.local/bin or ~/.cargo/bin, which a GUI-launched or
 // fresh shell often lacks on PATH. PATH first, then the standard install locations.
 function findUv(home = homeDir, platform = process.platform) {
@@ -1172,7 +1273,7 @@ function detectPlatforms() {
         },
         {
             key: 'claudecode', name: 'Claude Code CLI', path: claudeConfigDir(homeDir),
-            evidence: () => hasExecutable('claude'),
+            evidence: () => hasExecutable('claude') || Boolean(findBundledClaudeCli()),
         },
         {
             key: 'claudedesktop', name: 'Claude Desktop',
@@ -8253,6 +8354,7 @@ Options:
         process.exitCode = await require('./lib/v5/menu').packageCommand(module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)), process.argv.slice(3));
         return;
     }
+    checkSystemPrereqs();
     // Before the intro, the telemetry card and the update check: refreshing hooks needs none of them.
     if (INSTALL_OPTS.hooksOnly && !PROJECT_HARNESS_ARG) {
         if (DRY_RUN) log.warn('DRY-RUN MODE active - nothing AOS owns is written.');
@@ -8806,6 +8908,8 @@ module.exports = {
     isDevEnvironment,
     LAUNCHPAD_WEB_MODULES,
     LAUNCHPAD_OPEN_FLAGS,
+    checkSystemPrereqs,
+    findBundledClaudeCli,
 };
 
 // After module.exports: the v5 menu receives it as its host and main() runs before the first await.
