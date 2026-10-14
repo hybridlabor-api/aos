@@ -86,3 +86,55 @@ test('sanitizeSettings keeps valid gateway fields and drops bad ones', () => {
     assert.deepStrictEqual(settings.gateway, { declined: ['b'] });
     assert.equal(problems.length, 3);
 });
+
+function homeWithInstalledGateway() {
+    const home = homeWithToken();
+    const gdir = cfg.gatewayDir(home);
+    const bin = path.join(gdir, 'node_modules', '.bin', process.platform === 'win32' ? '1mcp.cmd' : '1mcp');
+    fs.mkdirSync(path.dirname(bin), { recursive: true });
+    fs.writeFileSync(bin, '#!/bin/sh\nexit 0\n');
+    const svc = process.platform === 'darwin'
+        ? path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')
+        : path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.gateway.service');
+    fs.mkdirSync(path.dirname(svc), { recursive: true });
+    fs.writeFileSync(svc, 'dummy\n');
+    return home;
+}
+
+test('settings menu includes gateway option when gateway is installed', async () => {
+    const home = homeWithInstalledGateway();
+    let shownOptions = [];
+    const ui = {
+        select: async (msg, options) => {
+            if (msg === 'Settings:') {
+                shownOptions = options;
+                return 'back';
+            }
+            return 'back';
+        },
+    };
+    const installer = require('../installer.js');
+    const host = {
+        ...installer,
+        detectInstallState: () => ({ isInstalled: true }),
+        isNewerVersion: () => false,
+    };
+    await menu.settings(host, { home, ui, write: () => {} });
+    const gwOpt = shownOptions.find((o) => o.value === 'gateway');
+    assert.ok(gwOpt, 'gateway option should be visible in settings');
+    assert.match(gwOpt.label, /Gateway/);
+});
+
+test('gatewaySettings menu dispatches direct option', async () => {
+    const home = homeWithToken();
+    profile.writeSettings(home, { gateway: { adopted: ['foo'], mode: 'gateway' } });
+    const out = [];
+    const ui = {
+        select: async (msg, options) => 'direct',
+    };
+    const b = { home, host: {} };
+    const fakeGw = { verify: async () => ({ ok: true, detail: 'running' }), update: async () => ({ ok: true }) };
+    await menu.gatewaySettings({}, { home, ui, write: (s) => out.push(s) }, b, fakeGw);
+    const updated = profile.readSettings(home).gateway;
+    assert.strictEqual(updated.mode, 'direct');
+});
