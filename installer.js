@@ -2739,6 +2739,7 @@ function recoverStaleSwaps(targetDir) {
 }
 
 const { renameWithRetry } = require('./lib/rename-retry.js');
+const { stopModuleProcesses, isServiceModule } = require('./lib/stop-module-processes.js');
 function downloadOrUpdateModule(pkgName, targetDir, displayName) {
     const status = checkModuleUpdate(pkgName, targetDir);
     if (status.installed && !status.updateAvailable) {
@@ -2794,10 +2795,18 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
 
         movePreserved(targetDir, stagingDir);
 
-        // Phase 1: retire the live tree. On Windows a running service holds the directory:
-        // renameWithRetry backs off, then fails with a clear "locked" reason (no process is killed).
+        // Phase 1: retire the live tree. On Windows a running service holds the directory: renameWithRetry backs off,
+        // then, for a service module, stops only the processes that run from this directory (AOS_NO_STOP_SERVICES=1 opts
+        // out) and tries again; otherwise it fails with a clear "locked" reason. The module's own step starts its service again.
         try {
-            renameWithRetry(targetDir, retiredDir, { module: path.basename(targetDir).replace(/^bdb-/, '') });
+            renameWithRetry(targetDir, retiredDir, {
+                module: path.basename(targetDir).replace(/^bdb-/, ''),
+                release: isServiceModule(targetDir) ? () => {
+                    const stopped = stopModuleProcesses(targetDir);
+                    if (stopped.length) log.warn(`${displayName}: stopped ${stopped.length} running process${stopped.length === 1 ? '' : 'es'} (${[...new Set(stopped.map((p) => p.Name))].join(', ')}) that held ${targetDir}`);
+                    return stopped.length > 0;
+                } : undefined,
+            });
         } catch (retireError) {
             // The live tree stayed in place: give it its preserved entries back before staging goes.
             movePreserved(stagingDir, targetDir);
