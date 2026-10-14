@@ -226,6 +226,17 @@ test('versions: 24 h cache', async () => {
     assert.strictEqual((await versions.checkAll(pkgs, { home, now: 1000 + 25 * 3600 * 1000, npmView: dead, isNewer: newer }))[0].remote, 'unknown');
 });
 
+test('versions: a cached remote older than the running kernel is refetched, and falls back to the running version offline', async () => {
+    const home = mkHome();
+    const pkgs = [{ id: 'kernel', npm: 'aos', local: '4.19.0' }];
+    await versions.checkAll(pkgs, { home, now: 1000, npmView: async () => '5.0.0', isNewer: newer });
+    const row = await versions.checkAll(pkgs, { home, now: 2000, npmView: async () => '5.1.0', isNewer: newer, floor: { aos: '5.1.0' } });
+    assert.strictEqual(row[0].remote, '5.1.0');
+    const dead = async () => { throw new Error('offline'); };
+    const off = await versions.checkAll(pkgs, { home, now: 2000 + 25 * 3600 * 1000, npmView: dead, isNewer: newer, floor: { aos: '5.1.0' } });
+    assert.strictEqual(off[0].remote, '5.1.0');
+});
+
 test('memB with a dangling venv python: verify fails, repair renames, recreates, syncs the MCP copy', { skip: SKIP_WIN }, async () => {
     const m = machine({ copyVersion: '2.3.3' });
     const py = path.join(m.memb, '.venv', 'bin', 'python');
