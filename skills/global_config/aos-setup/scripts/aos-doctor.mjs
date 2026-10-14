@@ -450,6 +450,34 @@ async function checkSynapse() {
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781');
 }
 
+// ---------------------------------------------------------------- worktrees
+// Read-only: reports on the repo at process.cwd(). Never prunes or removes.
+function checkWorktrees() {
+  const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  let root = null;
+  try { root = git(['rev-parse', '--show-toplevel']); } catch {}
+  if (!root) { add('worktrees', 'git repo', true, 'skipped: not a git repo', ''); return; }
+
+  const lines = git(['worktree', 'list', '--porcelain']).split('\n');
+  const count = lines.filter((l) => l.startsWith('worktree ')).length;
+  add('worktrees', 'registered count', count <= 15, `${count} registered (warn above 15)`,
+    "Review with `git worktree list`, then remove finished ones after the user's GO.");
+
+  const prunable = lines.filter((l) => l.startsWith('prunable')).length;
+  add('worktrees', 'prunable (orphaned)', prunable === 0, prunable ? `${prunable} orphaned` : 'none',
+    "Review with `git worktree list`, then `git worktree prune` after the user's GO.");
+
+  const detached = lines.filter((l) => l === 'detached').length;
+  add('worktrees', 'detached HEAD', true, `${detached} worktree(s) on detached HEAD (info)`, '');
+
+  if (existsSync(path.join(root, '.worktrees'))) {
+    let ignored = false;
+    try { git(['check-ignore', '-q', path.join(root, '.worktrees')]); ignored = true; } catch {}
+    add('worktrees', '.worktrees ignored', ignored, ignored ? '.worktrees is gitignored' : '.worktrees exists but is not gitignored',
+      'Add .worktrees to .gitignore and commit');
+  }
+}
+
 // ---------------------------------------------------------------- report
 function report() {
   if (JSON_OUT) {
@@ -475,5 +503,6 @@ await checkMemory();
 await checkDeja();
 checkOpenWiki();
 await checkSynapse();
+checkWorktrees();
 report();
 process.exit(results.some(r => !r.ok) ? 1 : 0);
