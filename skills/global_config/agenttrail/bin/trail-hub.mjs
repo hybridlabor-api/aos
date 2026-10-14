@@ -355,7 +355,7 @@ server.on('error', async (e) => {
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`agenttrail-hub · http://localhost:${port} · ${repos().length ? 'watching known repos' : 'waiting for events'}`)
-  if (openBrowser) import('node:child_process').then((cp) => cp.spawn('open', [`http://localhost:${port}`], { stdio: 'ignore', shell: false }).unref()).catch(() => {})
+  if (openBrowser && process.env.AOS_NO_OPEN !== '1') import('node:child_process').then((cp) => cp.spawn('open', [`http://localhost:${port}`], { stdio: 'ignore', shell: false }).unref()).catch(() => {})
 })
 
 // Self-refresh: after `aos update` replaces the files, this stale in-memory

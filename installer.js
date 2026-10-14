@@ -3198,6 +3198,7 @@ async function installSynapse() {
         <string>serve</string>
         <string>--port</string>
         <string>7781</string>
+        <string>--no-open</string>
     </array>
     <key>WorkingDirectory</key>
     <string>${synapseDir}</string>
@@ -3232,7 +3233,7 @@ async function installSynapse() {
                 fs.mkdirSync(path.dirname(unitFile), { recursive: true });
                 fs.writeFileSync(unitFile, systemdUnits.buildUserUnit({
                     description: 'Synapse 3D',
-                    execStart: binaryPath.endsWith('.js') ? [process.execPath, binaryPath, 'serve', '--port', '7781'] : [binaryPath, 'serve', '--port', '7781'],
+                    execStart: binaryPath.endsWith('.js') ? [process.execPath, binaryPath, 'serve', '--port', '7781', '--no-open'] : [binaryPath, 'serve', '--port', '7781', '--no-open'],
                     workingDirectory: synapseDir,
                     restart: 'always',
                     logOut: path.join(homeDir, '.synapse', 'daemon.stdout.log'),
@@ -3257,7 +3258,7 @@ async function installSynapse() {
             const stdoutLog = path.join(synapseLogDir, 'daemon.stdout.log');
             const stderrLog = path.join(synapseLogDir, 'daemon.stderr.log');
             const batPath = path.join(synapseLogDir, 'run-synapse.bat');
-            const runCmd = binaryPath.endsWith('.js') ? `node "${binaryPath}" serve --port 7781` : `"${binaryPath}" serve --port 7781`;
+            const runCmd = binaryPath.endsWith('.js') ? `node "${binaryPath}" serve --port 7781 --no-open` : `"${binaryPath}" serve --port 7781 --no-open`;
             const goBin = binaryPath.endsWith('.js') ? findWindowsGoBin() : null;
             if (binaryPath.endsWith('.js') && goBin) {
                 log.step(`Synapse Windows wrapper will use Go from ${goBin}`);
@@ -7120,7 +7121,11 @@ function isDevEnvironment(overrides = {}) {
 // True when the launchpad should be generated and opened: a dev checkout, an
 // explicit flag, or installed daemon/WebUI modules. Overrides exist for tests.
 function shouldOpenLaunchpad(installedModules = [], overrides = {}) {
+    const env = overrides.env || process.env;
     const argv = overrides.argv || process.argv;
+    if (env.AOS_NO_OPEN === '1' || argv.includes('--no-open')) return false;
+    if (overrides.isUpdate || overrides.isRepair) return false;
+    if (argv.includes('update') || argv.includes('repair') || argv.includes('--update') || argv.includes('--repair')) return false;
     if (isDevEnvironment(overrides)) return true;
     if (LAUNCHPAD_OPEN_FLAGS.some(f => argv.includes(f))) return true;
     const installed = Array.isArray(installedModules) ? installedModules : [];
@@ -7131,7 +7136,11 @@ function shouldOpenLaunchpad(installedModules = [], overrides = {}) {
 // checkout. Regular end-user installs must not get an autostart entry that
 // opens a browser on every login. Overrides exist for tests.
 function shouldAutostartLaunchpad(overrides = {}) {
+    const env = overrides.env || process.env;
     const argv = overrides.argv || process.argv;
+    if (env.AOS_NO_OPEN === '1' || argv.includes('--no-open')) return false;
+    if (overrides.isUpdate || overrides.isRepair) return false;
+    if (argv.includes('update') || argv.includes('repair') || argv.includes('--update') || argv.includes('--repair')) return false;
     if (argv.includes('--autostart-launchpad')) return true;
     return isDevEnvironment(overrides);
 }
@@ -7270,6 +7279,7 @@ function generateAndOpenLaunchpad(installedModules = []) {
         return false;
     }
     if (process.env.SSH_CLIENT || process.env.SSH_TTY) return false;
+    if (process.env.AOS_NO_OPEN === '1' || process.argv.includes('--no-open')) return false;
 
     // Decoupled from the dev-checkout layout: on a regular end-user machine
     // (no ~/dev/bdb-dev, no ~/bdb-dev) the launchpad still opens when daemon
@@ -7713,8 +7723,10 @@ function generateAndOpenLaunchpad(installedModules = []) {
         } else {
             child = spawn('xdg-open', [filePath], { detached: true, stdio: 'ignore', windowsHide: true });
         }
-        child.on('error', warnOpenFailed);
-        child.unref();
+        if (child) {
+            child.on('error', warnOpenFailed);
+            child.unref();
+        }
     } catch (e) { warnOpenFailed(e); }
 
     // Opening it once per install/update isn't the same as being available at
@@ -8111,11 +8123,6 @@ async function runQuickUpdate(installState) {
     console.log('');
     verifyEcosystemInstallation();
     await maybeInstallCodenotch();
-    // Fresh installs open this via universalHarnessSync(); Quick Update never
-    // did, so a dev-workflow machine only ever saw it once, on day one --
-    // every subsequent run is a Quick Update, which is what almost every
-    // real run after the first actually is.
-    generateAndOpenLaunchpad(modulesToUpdate);
 }
 
 
@@ -8265,7 +8272,10 @@ async function main() {
     }
     applyInstallOptions();
     if (['status', 'update', 'repair'].includes(args[0])) {
-        if (args[0] !== 'status') persistInstallOptions();
+        if (args[0] !== 'status') {
+            process.env.AOS_NO_OPEN = '1';
+            persistInstallOptions();
+        }
         process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
         return;
     }

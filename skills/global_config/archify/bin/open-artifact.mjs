@@ -28,6 +28,14 @@ const OPENERS = {
 };
 
 function launchTarget(target, options = {}) {
+  if (process.env.AOS_NO_OPEN === '1' || options.noOpen) {
+    return {
+      requested: false,
+      status: 'suppressed',
+      target,
+      method: null,
+    };
+  }
   const platform = options.platform || process.platform;
   const opener = OPENERS[platform];
   if (!opener) {

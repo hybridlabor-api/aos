@@ -232,6 +232,7 @@ async function ensureServer({ stateDir, port }) {
 }
 
 function openBrowser(url) {
+  if (process.env.AOS_NO_OPEN === '1') return false;
   const platform = process.platform;
   const [cmd, args] =
     platform === 'darwin' ? ['open', [url]]
@@ -369,7 +370,7 @@ async function cmdOpen(file, args, { stateDir, port }) {
   const url = `http://${DEFAULT_HOST}:${port}${res.body.url}`;
   const viewers = res.body.viewers || 0;
   const attached = viewers > 0;
-  const launched = args.includes('--no-open') || attached ? false : openBrowser(url);
+  const launched = args.includes('--no-open') || process.env.AOS_NO_OPEN === '1' || attached ? false : openBrowser(url);
   return {
     status: 'open',
     url,
