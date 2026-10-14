@@ -125,7 +125,8 @@ test('bdb-ui-library skill is placed under skills/global_config and wires routin
     assert.ok(content.includes('name: bdb-ui-library'), 'declares name: bdb-ui-library');
     assert.ok(content.includes(PKG), `references package ${PKG}`);
     assert.ok(content.includes('@bdb'), 'references @bdb namespace');
-    assert.ok(content.includes('docs/sources.md'), 'references docs/sources.md');
+    assert.ok(content.includes('bdb-ui-library repository docs'), 'points to the library repository docs for the source list');
+    assert.ok(!content.includes('docs/sources.md'), 'cites no file that is not shipped with the skill');
     assert.ok(!new RegExp(PKG.replace(/[/@.]/g, (c) => `\\${c}`) + '@latest').test(content),
         'no @latest for package in skill definition');
 });
