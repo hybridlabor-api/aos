@@ -2699,7 +2699,7 @@ function checkModuleUpdate(pkgName, targetDir) {
             logDebug(e, `npm view ${pkgName}`);
         }
 
-        if (remoteVer && localVer !== remoteVer) {
+        if (remoteVer && (!localVer || isNewerVersion(localVer, remoteVer))) {
             return { installed: true, updateAvailable: true, localVer, remoteVer, checkFailed };
         }
         return { installed: true, updateAvailable: false, localVer, remoteVer, checkFailed };
@@ -2867,8 +2867,7 @@ function ensureDejaExclude(excludePath) {
     return true;
 }
 
-// Pinned on purpose: the update check compares against this, not the registry's latest.
-const DEJA_VERSION = '0.21.1';
+const { DEJA_VERSION } = require('./lib/v5/pins.js');
 
 async function installDeja() {
     if (DRY_RUN) {
@@ -8917,7 +8916,7 @@ module.exports = {
     loadExistingEnv,
     // installer v5 host surface (lib/v5/*)
     runQuickUpdate, applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
-    saveManifest, DEJA_VERSION, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, runUninstaller, PROVIDER_KEY_ENV_NAMES,
+    saveManifest, DEJA_VERSION, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, checkModuleUpdate, runUninstaller, PROVIDER_KEY_ENV_NAMES,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
