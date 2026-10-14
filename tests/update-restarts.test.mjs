@@ -30,6 +30,32 @@ test('aos update restarts only running, controllable services other than hub and
   assert.ok(out.some((l) => /warning: could not restart ao/.test(l)), 'a failed restart warns and does not throw');
 });
 
+const runningRows = [
+  { id: 'memb', up: true, control: 'launchd' },
+  { id: 'synapse', up: true, control: 'systemd' },
+  { id: 'ao', up: true, control: 'launchd' },
+];
+
+test('update restarts only the services whose package changed in this run', async () => {
+  const calls = [];
+  const done = await restartRunningServices({ home: '/nowhere', write: () => {} }, {
+    statusService: async () => runningRows,
+    controlService: async (ctx, id, action) => { calls.push([id, action]); },
+  }, new Set(['synapse']));
+  assert.deepEqual(calls, [['synapse', 'restart']]);
+  assert.deepEqual(done, ['synapse']);
+});
+
+test('update with no changed package restarts nothing', async () => {
+  const calls = [];
+  const done = await restartRunningServices({ home: '/nowhere', write: () => {} }, {
+    statusService: async () => runningRows,
+    controlService: async (ctx, id, action) => { calls.push([id, action]); },
+  }, new Set());
+  assert.deepEqual(calls, []);
+  assert.deepEqual(done, []);
+});
+
 for (const [name, stampOf] of [['plan-canvas', pcStamp], ['agenttrail', trailStamp]]) {
   test(`${name}: touching a file in a watched folder raises the code stamp`, () => {
     const dir = mkdtempSync(join(tmpdir(), `aos-stamp-${name}-`));
