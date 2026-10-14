@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.1.1](https://github.com/hybridlabor-api/aos/compare/v5.1.0...v5.1.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **hooks:** give rules-inject and the GO hooks 10 s so a loaded machine no longer drops their output ([b67bf0e](https://github.com/hybridlabor-api/aos/commit/b67bf0ece86a4f92f059675f0ef281d45460099b))
+* update hint, hook timeouts under load, Windows spawns and console windows (5.1.1) ([199dc0d](https://github.com/hybridlabor-api/aos/commit/199dc0d65e73fc35b3af84fea81559d6bf8ca1df))
+* **update:** a version cache older than the running kernel is refetched, so the update no longer reports a stale remote ([0bae7fb](https://github.com/hybridlabor-api/aos/commit/0bae7fb3e2d21c3b8f4e3e48c41100163eafcff9))
+* **update:** give the module npm view check 15 s on macOS and Linux too ([e47f28d](https://github.com/hybridlabor-api/aos/commit/e47f28d9847f06dcd073d02e9c4f4569a0b0430e))
+* **update:** the generated shipped-hashes.json is overwritten, not kept as a user edit ([d1ffd60](https://github.com/hybridlabor-api/aos/commit/d1ffd60ff36cde0a50ca336c0b9d307541beb551))
+* **windows:** hide console windows of detached hook and hub spawns ([1338646](https://github.com/hybridlabor-api/aos/commit/1338646d1e31401f59a272410480c1dbee18648c))
+* **windows:** hide the console of cli-spawn children and of the session-start trail probe ([6bcf2fd](https://github.com/hybridlabor-api/aos/commit/6bcf2fde949db291058ed85d411941915fd04796))
+* **windows:** hide the powershell console in the a2a process start-time probe ([9e3ba57](https://github.com/hybridlabor-api/aos/commit/9e3ba5789f5a95096ec658f95a3bcd65c146d154))
+* **windows:** resolve npm .cmd shims for openwiki, deja, token-saver and npm view ([36d644e](https://github.com/hybridlabor-api/aos/commit/36d644e2f6bd7c415d95e8740c8384d1bcc0be61))
+
 ## [5.1.0](https://github.com/hybridlabor-api/aos/compare/v5.0.2...v5.1.0) (2026-10-14)
 
 
