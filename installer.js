@@ -6634,7 +6634,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'aos-session-hint.mjs')}"`)}`,
         'timeout = 3',
         '',
-        // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints nothing; skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
+        // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints only the session's own A2A peer name (one line of additionalContext); skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
         '[[hooks.SessionStart]]',
         '[[hooks.SessionStart.hooks]]',
         'type = "command"',

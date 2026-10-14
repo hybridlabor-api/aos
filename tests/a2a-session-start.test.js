@@ -107,3 +107,61 @@ test("codex mode: sidecar started with --mode codex --thread <session id>; missi
   assert.equal(ensureSidecar({ harness: "claude", sessionId: "x2", parentPid: 1, mode: "bogus", env: {}, spawnImpl }).skipped, "error");
   assert.equal(calls.length, 1, "no spawn for the refused calls");
 });
+
+test("agy: default sidecar mode is the resume executor (--mode agy); AOS_A2A_AGY_MODE=live opts back; other harnesses stay live", async () => {
+  const { defaultMode, SIDECAR_MODES } = await import("../lib/a2a-session.mjs");
+  assert.deepEqual(SIDECAR_MODES, ["live", "agy", "codex"]);
+  assert.equal(defaultMode("agy", {}), "agy");
+  assert.equal(defaultMode("AGY", {}), "agy");
+  assert.equal(defaultMode("agy", { AOS_A2A_AGY_MODE: "live" }), "live");
+  assert.equal(defaultMode("agy", { AOS_A2A_AGY_MODE: "bogus" }), "agy");
+  for (const h of ["claude", "opencode", "codex"]) assert.equal(defaultMode(h, {}), "live");
+
+  const calls = [];
+  const spawnImpl = (cmd, args, opts) => { calls.push({ cmd, args, opts }); return { pid: 11, unref: () => {} }; };
+  const r = ensureSidecar({ harness: "agy", sessionId: "6098ec7e-09a8", parentPid: 55, env: {}, spawnImpl, binPath: "/b/aos-a2a.mjs" });
+  assert.equal(r.started, true);
+  assert.equal(r.name, "agy-6098ec7e");
+  assert.deepEqual(calls[0].args, ["/b/aos-a2a.mjs", "serve", "--name", "agy-6098ec7e", "--harness", "agy", "--mode", "agy", "--parent-pid", "55"]);
+  assert.ok(!calls[0].args.includes("--continue"), "the sidecar never resumes the user's chat");
+
+  ensureSidecar({ harness: "agy", sessionId: "7098ec7e-09a8", parentPid: 55, env: { AOS_A2A_AGY_MODE: "live" }, spawnImpl, binPath: "/b/aos-a2a.mjs" });
+  assert.equal(calls[1].args[calls[1].args.indexOf("--mode") + 1], "live");
+  ensureSidecar({ harness: "agy", sessionId: "8098ec7e-09a8", parentPid: 55, mode: "agy", env: {}, spawnImpl, binPath: "/b/aos-a2a.mjs" });
+  assert.equal(calls[2].args[calls[2].args.indexOf("--mode") + 1], "agy");
+});
+
+test("the sidecar env carries its own AOS_A2A_NAME, overriding an inherited one", () => {
+  const calls = [];
+  const spawnImpl = (cmd, args, opts) => { calls.push({ cmd, args, opts }); return { pid: 12, unref: () => {} }; };
+  ensureSidecar({ harness: "codex", sessionId: "01a13768-aaaa", parentPid: 1, mode: "codex", thread: "01a13768-aaaa", env: { PATH: "/bin" }, spawnImpl, binPath: "/b" });
+  assert.equal(calls[0].opts.env.AOS_A2A_NAME, "codex-01a13768");
+  ensureSidecar({ harness: "agy", sessionId: "x", parentPid: 1, env: { AOS_A2A_NAME: "agy-researcher" }, spawnImpl, binPath: "/b" });
+  assert.equal(calls[1].opts.env.AOS_A2A_NAME, "agy-researcher");
+});
+
+test("Codex SessionStart hook prints the session's own peer name as additionalContext", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const hook = join(fileURLToPath(new URL("..", import.meta.url)), ".claude", "hooks", "a2a-session.mjs");
+  // a live pidfile makes ensureSidecar return { skipped: "running", name } without spawning a real sidecar
+  const pidfile = join(sessionsDir(), "codex-01a13768.pid");
+  writeFileSync(pidfile, String(process.pid), { mode: 0o600 });
+  const env = { ...process.env, AOS_SESSIONS_DIR: sessionsDir() };
+  delete env.AOS_A2A_NAME;
+  delete env.AOS_A2A_SIDECAR;
+  delete env.AOS_DELEGATE_DEPTH;
+  delete env.MCSC_DEPTH;
+  const r = spawnSync(process.execPath, [hook, "--harness", "codex"], { env, input: JSON.stringify({ session_id: "01A13768-5405-78a1" }), encoding: "utf8" });
+  assert.equal(r.status, 0);
+  const out = JSON.parse(r.stdout.trim());
+  assert.equal(out.hookSpecificOutput.hookEventName, "SessionStart");
+  const ctx = out.hookSpecificOutput.additionalContext;
+  assert.match(ctx, /Your A2A peer name is codex-01a13768\./);
+  assert.match(ctx, /aos-a2a reply --name codex-01a13768 <taskId>/);
+  assert.match(ctx, /never a GO/);
+
+  const off = spawnSync(process.execPath, [hook, "--harness", "codex"], { env: { ...env, AOS_A2A_SIDECAR: "off" }, input: JSON.stringify({ session_id: "01A13768-5405-78a1" }), encoding: "utf8" });
+  assert.equal(off.status, 0);
+  assert.equal(off.stdout, "", "sidecar off: no identity line");
+});
