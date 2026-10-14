@@ -460,11 +460,12 @@ function checkWorktrees() {
 
   const lines = git(['worktree', 'list', '--porcelain']).split('\n');
   const count = lines.filter((l) => l.startsWith('worktree ')).length;
-  add('worktrees', 'registered count', count <= 15, `${count} registered (warn above 15)`,
+  // advisory: a busy repo must not turn the doctor red
+  add('worktrees', 'registered count', true, `${count} registered${count > 15 ? ' (advisory: many, review finished ones)' : ''}`,
     "Review with `git worktree list`, then remove finished ones after the user's GO.");
 
   const prunable = lines.filter((l) => l.startsWith('prunable')).length;
-  add('worktrees', 'prunable (orphaned)', prunable === 0, prunable ? `${prunable} orphaned` : 'none',
+  add('worktrees', 'prunable (orphaned)', true, prunable ? `${prunable} orphaned (advisory)` : 'none',
     "Review with `git worktree list`, then `git worktree prune` after the user's GO.");
 
   const detached = lines.filter((l) => l === 'detached').length;
