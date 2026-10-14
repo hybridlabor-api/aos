@@ -170,7 +170,7 @@ export async function killViaPs(pid, { runPs, selfPid = process.pid, port = null
   const doPs = () => (runPs
     ? runPs(pid)
     : new Promise((ok) => {
-      const child = spawn('ps', ['-p', String(pid), '-o', 'command='], { shell: false });
+      const child = spawn('ps', ['-p', String(pid), '-o', 'command='], { shell: false, windowsHide: true });
       let text = '';
       let settled = false;
       const done = (ok_) => { if (!settled) { settled = true; ok(ok_); } };
