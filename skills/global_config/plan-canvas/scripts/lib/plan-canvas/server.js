@@ -16,7 +16,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
-const { buildAllowedHostnames, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin } = require('../loopback-guard');
+const { buildAllowedHostnames, embedAncestors, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin, isEmbedNavigation } = require('../loopback-guard');
 const { createAnnotateHandler } = require('./annotate-server');
 const { renderMarkdown } = require('./markdown');
 const { artifactSdkJs } = require('./sdk');
@@ -165,15 +165,29 @@ function sendJson(res, statusCode, payload) {
 
 function sendHtml(res, statusCode, html, { csp = true } = {}) {
   const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' };
+  let body = html;
   if (csp) {
+    const ancestors = embedAncestors();
+    const frameAncestors = ancestors.length > 0
+      ? `frame-ancestors 'self' ${ancestors.join(' ')}`
+      : "frame-ancestors 'none'";
     headers['content-security-policy'] =
-      "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'";
+      `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; ${frameAncestors}`;
+    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ')}">`;
+    const scriptTag = '<script src="/ao-embed-bridge.js"></script>';
+    if (body.includes('</head>')) {
+      body = body.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`);
+    } else if (body.includes('<head>')) {
+      body = body.replace('<head>', `<head>\n${metaTag}\n${scriptTag}`);
+    } else {
+      body = `${metaTag}\n${scriptTag}\n${body}`;
+    }
   }
   res.writeHead(statusCode, headers);
-  res.end(html);
+  res.end(body);
 }
 
-const STATIC_READ_PATH = /^\/(sdk\.js|artifact\/[a-f0-9]{12}\/.*)$/;
+const STATIC_READ_PATH = /^\/(sdk\.js|ao-embed-bridge\.js|artifact\/[a-f0-9]{12}\/.*)$/;
 const PAGE_PATH = /^\/canvas\/[a-f0-9]{12}$/;
 
 function skillDescription(file) {
@@ -682,7 +696,11 @@ function createPlanCanvasServer({
       && (pathname === '/' || PAGE_PATH.test(pathname))
       && req.headers['sec-fetch-mode'] === 'navigate'
       && req.headers['sec-fetch-dest'] === 'document';
-    if (!isStaticRead && !isPageNavigation && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
+    const isEmbedPageNavigation = req.method === 'GET'
+      && (pathname === '/' || PAGE_PATH.test(pathname))
+      && embedAncestors().length > 0
+      && isEmbedNavigation(req.headers);
+    if (!isStaticRead && !isPageNavigation && !isEmbedPageNavigation && !isAllowedFetchSite(req.headers['sec-fetch-site'])) {
       return sendJson(res, 403, { error: 'forbidden fetch site' });
     }
 
@@ -697,6 +715,17 @@ function createPlanCanvasServer({
             if (onIdleShutdown) onIdleShutdown();
           });
           return undefined;
+        }
+        if (req.method === 'GET' && pathname === '/ao-embed-bridge.js') {
+          const bridgeFile = path.join(__dirname, 'ao-embed-bridge.js');
+          let data;
+          try {
+            data = fs.readFileSync(bridgeFile);
+          } catch {
+            return sendJson(res, 404, { error: 'bridge script not found' });
+          }
+          res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' });
+          return res.end(data);
         }
         if (req.method === 'GET' && pathname === '/') {
           return sendHtml(res, 200, renderHomeHtml(homeData(store)));

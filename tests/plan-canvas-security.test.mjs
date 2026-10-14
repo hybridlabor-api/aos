@@ -43,8 +43,6 @@ describe('Plan-Canvas artifact confinement', () => {
 
   after(async () => {
     if (server) await server.close().catch(() => {});
-    if (workspace) fs.rmSync(workspace, { recursive: true, force: true });
-    if (outside) fs.rmSync(outside, { recursive: true, force: true });
   });
 
   test('opens a file inside the workspace', async () => {
@@ -68,7 +66,7 @@ function rawRequest(port, { method = 'POST', pathName = '/api/end', headers = {}
     const req = http.request({ host: '127.0.0.1', port, method, path: pathName, headers: { host: `127.0.0.1:${port}`, 'content-type': 'application/json', ...headers } }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
     });
     req.setTimeout(3000, () => req.destroy(new Error('timeout')));
     req.on('error', reject);
@@ -89,7 +87,6 @@ describe('Plan-Canvas request provenance', () => {
 
   after(async () => {
     if (srv) await srv.close().catch(() => {});
-    if (ws) fs.rmSync(ws, { recursive: true, force: true });
   });
 
   test('unit: origin must match the port when one is given', () => {
@@ -165,8 +162,30 @@ describe('Plan-Canvas request provenance', () => {
     assert.equal((await rawRequest(port, { method: 'POST', pathName: '/api/end', headers: nav })).status, 403);
     const fetchMode = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' };
     assert.equal((await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: fetchMode })).status, 403, 'fetch() from another site stays refused');
+    assert.equal((await rawRequest(port, { method: 'GET', pathName: '/api/sessions', body: '', headers: fetchMode })).status, 403, 'API fetch from another site is 403');
+    
+    // Embed navigation with allowlist active: 200, frame-ancestors includes tauri://localhost
     const iframe = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'iframe' };
-    assert.equal((await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: iframe })).status, 403, 'framing by another site stays refused');
+    const embedRes = await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: iframe });
+    assert.equal(embedRes.status, 200, 'embed navigation allowed by default');
+    assert.match(embedRes.headers['content-security-policy'] || '', /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
+    assert.match(embedRes.body, /<script src="\/ao-embed-bridge\.js"><\/script>/);
+    assert.match(embedRes.body, /<meta name="ao-embed-ancestors"/);
+
+    // Bridge script route returns application/javascript
+    const bridgeRes = await rawRequest(port, { method: 'GET', pathName: '/ao-embed-bridge.js', body: '' });
+    assert.equal(bridgeRes.status, 200);
+    assert.match(bridgeRes.headers['content-type'], /application\/javascript/);
+
+    // With AOS_EMBED_ANCESTORS="" -> iframe-GET 403
+    const oldEnv = process.env.AOS_EMBED_ANCESTORS;
+    try {
+      process.env.AOS_EMBED_ANCESTORS = '';
+      assert.equal((await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: iframe })).status, 403, 'framing refused when allowlist empty');
+    } finally {
+      if (oldEnv === undefined) delete process.env.AOS_EMBED_ANCESTORS;
+      else process.env.AOS_EMBED_ANCESTORS = oldEnv;
+    }
   });
 
   test('shutdown and feedback endpoints are covered by the same gate', async () => {

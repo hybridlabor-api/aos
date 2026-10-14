@@ -65,11 +65,36 @@ function isAllowedFetchSite(value) {
   return site === 'same-origin' || site === 'none';
 }
 
+const DEFAULT_EMBED_ANCESTORS = [
+  'tauri://localhost',
+  'http://tauri.localhost',
+  'http://localhost:1420'
+];
+
+function embedAncestors(env = process.env) {
+  if (env && env.AOS_EMBED_ANCESTORS !== undefined) {
+    const raw = String(env.AOS_EMBED_ANCESTORS).trim();
+    if (!raw) return [];
+    return raw.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [...DEFAULT_EMBED_ANCESTORS];
+}
+
+function isEmbedNavigation(headers) {
+  if (!headers || typeof headers !== 'object') return false;
+  const dest = (headers['sec-fetch-dest'] || headers['Sec-Fetch-Dest'] || '').trim().toLowerCase();
+  const mode = (headers['sec-fetch-mode'] || headers['Sec-Fetch-Mode'] || '').trim().toLowerCase();
+  return dest === 'iframe' && mode === 'navigate';
+}
+
 module.exports = {
+  DEFAULT_EMBED_ANCESTORS,
   LOOPBACK_HOSTNAMES,
   buildAllowedHostnames,
+  embedAncestors,
   isAllowedFetchSite,
   isAllowedHostHeader,
   isAllowedOrigin,
+  isEmbedNavigation,
   parseHostHeader
 };

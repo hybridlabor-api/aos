@@ -221,8 +221,20 @@ describe('guarded server', () => {
   test('every response carries the security headers', async () => {
     const r = await clickPost();
     assert.equal(r.headers['cache-control'], 'no-store');
-    assert.equal(r.headers['x-frame-options'], 'DENY');
-    assert.equal(r.headers['content-security-policy'], "default-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+    assert.equal(r.headers['x-frame-options'], undefined);
+    assert.match(r.headers['content-security-policy'], /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
+
+    // With AOS_EMBED_ANCESTORS="" -> X-Frame-Options: DENY and frame-ancestors 'none'
+    const oldEnv = process.env.AOS_EMBED_ANCESTORS;
+    try {
+      process.env.AOS_EMBED_ANCESTORS = '';
+      const r2 = await clickPost();
+      assert.equal(r2.headers['x-frame-options'], 'DENY');
+      assert.equal(r2.headers['content-security-policy'], "default-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+    } finally {
+      if (oldEnv === undefined) delete process.env.AOS_EMBED_ANCESTORS;
+      else process.env.AOS_EMBED_ANCESTORS = oldEnv;
+    }
   });
 
   test('an HTTP/1.0 request without a Host header is refused', async () => {
