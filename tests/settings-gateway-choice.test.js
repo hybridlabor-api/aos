@@ -138,3 +138,13 @@ test('gatewaySettings menu dispatches direct option', async () => {
     const updated = profile.readSettings(home).gateway;
     assert.strictEqual(updated.mode, 'direct');
 });
+
+test('gatewaySettings menu dispatches restart option calling gw.restart', async () => {
+    const home = homeWithToken();
+    let restarted = false;
+    const ui = { select: async () => 'restart' };
+    const b = { home, host: {} };
+    const fakeGw = { restart: async () => { restarted = true; return { ok: true }; } };
+    await menu.gatewaySettings({}, { home, ui, write: () => {} }, b, fakeGw);
+    assert.strictEqual(restarted, true);
+});

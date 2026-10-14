@@ -11,6 +11,7 @@ const ROOT = path.resolve(__dirname, '..');
 const cfg = require('../lib/gateway/config.js');
 const { createForwarder } = require('../lib/gateway/forwarder.js');
 const pkg = require('../lib/v5/pkg-gateway.js');
+const profile = require('../lib/v5/profile.js');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-gw-'));
 const mode = (p) => fs.statSync(p).mode & 0o777;
@@ -318,6 +319,26 @@ describe('pkg-gateway', () => {
         const res = await pkg.update(ctx);
         assert.equal(res.unchanged, true);
         assert.deepEqual(sideEffects(calls), []);
+    });
+
+    test('restart on an unchanged gateway restarts the service without reinstalling', async () => {
+        const home = tmp();
+        await pkg.install(mkCtx(home).ctx);
+        pinnedOnDisk(home);
+        const { ctx, calls } = mkCtx(home);
+        const res = await pkg.restart(ctx);
+        assert.equal(res.ok, true);
+        assert.deepEqual(sideEffects(calls), ['launchctl kickstart -k gui/501/com.bdb.aos.gateway']);
+    });
+
+    test('update honors gateway.mode === direct and leaves harnesses direct', async () => {
+        const home = tmp();
+        await pkg.install(mkCtx(home).ctx);
+        pinnedOnDisk(home);
+        profile.writeSettings(home, { gateway: { mode: 'direct' } });
+        const { ctx } = mkCtx(home);
+        const res = await pkg.update(ctx);
+        assert.equal(res.harness, undefined);
     });
 
     test('update on a changed mcp.json reinstalls and restarts', async () => {
