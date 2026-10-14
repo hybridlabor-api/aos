@@ -3140,6 +3140,23 @@ export function lastUserText(transcriptPath) {
   return { text: null };
 }
 
+// Work profile: a guarded command with no scope (null) is free unless it carries indirection that can hide a release command.
+// Built from the classifier's own helpers: shell -c/eval bodies, pipes into a shell, computed or glued heads, braces, release tools through npx.
+function indirectReleaseRisk(command) {
+  const view = unIFS(commandView(command).text);
+  const segs = segments(command);
+  if (feedsShell(segs) || opaqueBodyWords(tokens(view)).length || UNSAFE_COMPOUND.test(command)) return true;
+  if (/\$\(|\x60/.test(view) || (hasGuardedAssign(segs) && /[$\x60]/.test(command))) return true;
+  return scanSplit(view).some((p) => {
+    const tk = tokens(p.t.trim());
+    if (!tk.length) return false;
+    const sp = stripPrefix(tk), h = base(sp.rest[0] ?? "");
+    return (sp.opaque && (!SHELLS.test(h) || /^(?:watch|parallel|eval)$/.test(h))) || /^(?:eval|source|\.)$/.test(h) || gluedHead(h) || /^[$\x60]/.test(h) || globHead(unq(sp.rest[0] ?? "")) ||
+      tk.some((t) => t.includes("{") && BRACE.test(bareOf(t))) ||
+      (/^(?:npx|pnpx|bunx|npm|pnpm|yarn)$/.test(h) && /semantic-release|release-it|changeset|\bnp\b|lerna/.test(p.t));
+  });
+}
+
 // Gate v2: Content-based keyword scanning and head substitution detection (§2 & §3a).
 // Unreadable commands (variables, bash -c, $(...), eval) are judged by content:
 // if the text contains a release-class noun, they are Layer B; otherwise Layer C.
@@ -3367,7 +3384,7 @@ export function profileAllows(command) {
   if (p === "off") return true;
   if (p !== "work") return false;
   const sc = commandScopes(command);
-  return sc ? !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive") : !contentReleaseRisk(command);
+  return sc ? !sc.some((x) => x === "push-main" || x === "merge" || x === "publish" || x === "destructive") : !(indirectReleaseRisk(command) || contentReleaseRisk(command));
 }
 
 function main() {
