@@ -49,7 +49,7 @@ const bad = [
   ["future set_at", (d) => put(d, cfg({ set_at: iso(NOW + H) })), /future/],
   ["expired", (d) => put(d, cfg({ expires_at: iso(NOW - 1) })), /expired/],
   ["unknown profile", (d) => put(d, cfg({ profile: "root" })), /unknown/],
-  ["off is unknown profile", (d) => put(d, cfg({ profile: "off", set_at: iso(NOW - H), expires_at: iso(NOW + H) })), /unknown/],
+  ["off beyond 2h", (d) => put(d, cfg({ profile: "off", set_at: iso(NOW - H), expires_at: iso(NOW - H + 3 * H) })), /maximum/],
   ["missing", (d) => join(d, "config.json"), /no config/],
   ["work without expiry", (d) => put(d, cfg({ expires_at: null })), /expiry/],
   ["work beyond 24h", (d) => put(d, cfg({ set_at: iso(NOW - H), expires_at: iso(NOW - H + 25 * H) })), /maximum/],
@@ -216,4 +216,10 @@ test("child process: agent-run aos-gate profile off is refused; strict and revok
   for (const args of [["profile", "strict"], ["strict"], ["revoke", "all"]]) {
     assert.equal(spawnSync(process.execPath, [bin, ...args], { env, input: "", encoding: "utf8" }).status, 0, args.join(" "));
   }
+});
+
+test("SCOPES in gate-profile.mjs equals SCOPES in go-gate.mjs (aos-gate cannot import go-gate from its installed location)", async () => {
+  const { SCOPES: fromProfile } = await import("../lib/gate-profile.mjs");
+  const { SCOPES: fromGate } = await import("../.claude/hooks/go-gate.mjs");
+  assert.deepEqual(fromProfile, fromGate);
 });

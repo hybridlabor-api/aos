@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const PROFILES = ["strict", "work", "off"];
+// Same list as SCOPES in go-gate.mjs (a test keeps them equal). aos-gate runs from ~/.agents/bin where go-gate.mjs is not beside it.
+export const SCOPES = ["push-feature", "push-main", "merge", "publish", "destructive", "github-write", "container-test", "workspace"];
 export const MAX_CONFIG_BYTES = 4096;
 const H = 3600 * 1000;
 export const LIMITS = {

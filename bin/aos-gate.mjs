@@ -5,8 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
-import { readProfile, LIMITS, PROFILES } from "../lib/gate-profile.mjs";
-import { SCOPES } from "../.claude/hooks/go-gate.mjs";
+import { readProfile, LIMITS, PROFILES, SCOPES } from "../lib/gate-profile.mjs";
 
 export const HARNESS_ENV = ["CLAUDE_SESSION_ID", "CLAUDECODE", "OPENCODE", "CODEX_SANDBOX", "CODEX_SESSION_ID", "AGY_SESSION_ID", "ANTIGRAVITY_SESSION_ID"];
 

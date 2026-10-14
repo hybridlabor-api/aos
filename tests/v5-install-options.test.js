@@ -10,7 +10,7 @@ const p = require('../lib/v5/profile');
 const IDS = ['kernel', 'memb', 'synapse', 'openwiki', 'fleet', 'gateway'];
 const parse = (argv = [], env = {}) => p.parseOptions(['node', 'installer.js', ...argv], env, IDS);
 
-test('defaults: standard, nothing skipped', () => {
+test('defaults: standard, only the opt-in Token Saver is left out', () => {
     const o = parse();
     assert.strictEqual(o.profile, 'standard');
     assert.strictEqual(o.profileGiven, false);
@@ -18,7 +18,7 @@ test('defaults: standard, nothing skipped', () => {
     const r = p.resolve(o, {});
     assert.strictEqual(r.profile, 'standard');
     assert.strictEqual(r.contextHooks, true);
-    assert.strictEqual(r.excluded.size, 0);
+    assert.deepStrictEqual([...r.excluded], ['token-saver']);
 });
 
 test('profile: flag wins over AOS_PROFILE, unknown value is an error', () => {
