@@ -1,6 +1,6 @@
 {
   "name": "bdb-aos-alert",
-  "version": "5.1.1",
+  "version": "5.2.0",
   "description": "Blinks a red bar around the prompt when this session cannot continue without you (go-gate block, permission request, question)",
   "types": "./types/index.d.ts"
 }

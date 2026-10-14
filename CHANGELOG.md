@@ -1,5 +1,42 @@
 # Changelog
 
+## [5.2.0](https://github.com/hybridlabor-api/aos/compare/v5.1.1...v5.2.0) (2026-10-14)
+
+
+### Features
+
+* **agents:** add 16 upstream ECC code reviewers for full parity ([0110cbe](https://github.com/hybridlabor-api/aos/commit/0110cbeacec0796719017fd397ab957bb19246c3))
+* AOS 5.2.0 bundle: Windows fixes, gate v2, A2A P2-P4, ECC parity, lane-b ergonomics ([b6ebcc8](https://github.com/hybridlabor-api/aos/commit/b6ebcc875297bb9edda9571213aa25a4e96e4105))
+* **cli:** finish lane-b ergonomics: single preflight message, explicit exit code assertions, bundled CLI candidate tests ([ba3d336](https://github.com/hybridlabor-api/aos/commit/ba3d336f107f578e65b834ba45d93a68b08a0f5b))
+* **cli:** plan-canvas mdx warning, installer prereq preflight, desktop cli detection ([7464fe6](https://github.com/hybridlabor-api/aos/commit/7464fe64fcc1da57488ba2bac3e56a34a94f755b))
+* **content-demo:** demo plan-canvas recap board for the Pulse cue list (invented data) ([8fcb19f](https://github.com/hybridlabor-api/aos/commit/8fcb19fa707b13bd0e9cf207d2a373d9e4cd1ce9))
+* **content-demo:** fictional Pulse demo plan, event driver and recording runbook ([d53a219](https://github.com/hybridlabor-api/aos/commit/d53a219046238660b08fab3d088263b8e2d3d515))
+* **profile:** Token Saver is opt-in, rtk is installed by the user from its own repo ([a27d6a4](https://github.com/hybridlabor-api/aos/commit/a27d6a4c97dbe78ea1962359e2f5b7d3be5b97ae))
+* **ui:** finalize bdb-ui-library integration ([8535235](https://github.com/hybridlabor-api/aos/commit/853523553fa6176ebd70d570d86cc53576b9266a))
+
+
+### Bug Fixes
+
+* **a2a:** bind only the claude pid, cap and order monitor delivery, flush the Codex identity line ([7565cef](https://github.com/hybridlabor-api/aos/commit/7565cefb05021a9e6e2c7cb0d21d7e9d6571ad92))
+* **agents:** clean nonexistent skill references, update count to 45, and test all 24 reviewers ([3309422](https://github.com/hybridlabor-api/aos/commit/330942201c6e2fe247de9a33702c243376013bec))
+* aos-gate resolves its scopes from the installed gate-profile, plugin descriptions count 45 agents, tests follow the opt-in Token Saver and the restored off profile ([637d9d0](https://github.com/hybridlabor-api/aos/commit/637d9d02279cf37afe631951a99f13a456f66ba3))
+* **content-demo:** refuse a directory by path segment, make the driver tests environment independent ([7483c2f](https://github.com/hybridlabor-api/aos/commit/7483c2f0879f16e7ea8f2b2244f9627d4325524e))
+* **content-demo:** remove personal paths and make driver path check generic ([bea600c](https://github.com/hybridlabor-api/aos/commit/bea600c696361e01dafc10e6519da21aea8e7413))
+* **docs:** update subagent and reviewer counts after the ECC parity port ([c0f8b2c](https://github.com/hybridlabor-api/aos/commit/c0f8b2cc446f76df20447ccd07919903f60d193d))
+* drop the MacOS/claude candidate, scope the module lock message, bound agy stderr and state at-least-once delivery honestly ([cb631f4](https://github.com/hybridlabor-api/aos/commit/cb631f458eb75b6167b244d3a8d20b8391acc67c))
+* **gate:** aos-gate widening is a never-grantable plain-GO class, strict clears grants, grants keep the off expiry ([597f214](https://github.com/hybridlabor-api/aos/commit/597f21413cbacc4767eae0422a10e48fdfd8d034))
+* **gate:** regenerate the guarded pattern list and restore the $PWD trust and work-profile behavior ([13e55fc](https://github.com/hybridlabor-api/aos/commit/13e55fc746cdf315d89e5744d754488e8d6b87ee))
+* **gate:** restore fail-closed on unparseable commands and refuse agent-run aos-gate widening ([cfc7a60](https://github.com/hybridlabor-api/aos/commit/cfc7a60efd4c244c161ae7d9f21ce44a26b98aed))
+* **gate:** restore the off profile and keep every widening action human-only ([deb1420](https://github.com/hybridlabor-api/aos/commit/deb1420a70b991c2feeca6cd527ea164198c676a))
+* **ui:** add skill category, remove hardcoded user path, and pin version ([3abdb04](https://github.com/hybridlabor-api/aos/commit/3abdb043da2014df5cb6ab4f059e8b8591daca71))
+* **ui:** skip the library wiring test explicitly, drop dangling references, revert the shadcn pin ([72018ef](https://github.com/hybridlabor-api/aos/commit/72018efa89a75e1ab1c51f9de0842a534d25c488))
+* **update:** an update run by the latest package records its version instead of calling itself stale ([a2b060d](https://github.com/hybridlabor-api/aos/commit/a2b060d448d047ada904919e89c7d4c027d7c219))
+* **windows:** extract tarballs with cwd-relative paths so GNU tar never reads C: as a host ([37889b6](https://github.com/hybridlabor-api/aos/commit/37889b6d4b31602bac2cb1163a7fe7541f2856c7))
+* **windows:** hide the console of background spawns in a2a-agy, aos-acp, agenttrail, store-ui and aos-gogate ([b2c8f53](https://github.com/hybridlabor-api/aos/commit/b2c8f534dafd3f04a0017aee0e39b936ff72879d))
+* **windows:** hide the console of installer and v5 step child processes ([ec219f0](https://github.com/hybridlabor-api/aos/commit/ec219f0380cffc5a4cd384ead2f7bc6bef865fc6))
+* **windows:** honest Token Saver and Codenotch checks, optional creator engines no longer fail the step ([3dd8703](https://github.com/hybridlabor-api/aos/commit/3dd8703f82f523e3312bfdcca29cfba0c622465e))
+* **windows:** retry the module swap rename and report a locked module clearly ([b1129e0](https://github.com/hybridlabor-api/aos/commit/b1129e0f03f3c57cce3c05cbb116f95aff1f9fcc))
+
 ## [5.1.1](https://github.com/hybridlabor-api/aos/compare/v5.1.0...v5.1.1) (2026-10-14)
 
 
