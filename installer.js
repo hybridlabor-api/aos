@@ -913,6 +913,18 @@ function computeFileHash(filePath) {
     }
 }
 
+// Hash of a text file with CRLF read as LF; null for binary or unreadable files. Windows git checkouts (core.autocrlf) leave
+// CRLF copies of our own files, which must not count as user edits.
+function lfNormalizedHash(filePath) {
+    try {
+        const buf = fs.readFileSync(filePath);
+        if (buf.includes(0) || !buf.includes(13)) return null;
+        return crypto.createHash('sha256').update(Buffer.from(buf.toString('latin1').replace(/\r\n/g, '\n'), 'latin1')).digest('hex');
+    } catch (e) {
+        return null;
+    }
+}
+
 function loadInstallManifest(customPath = null) {
     const manifestPath = customPath || getInstallManifestPath();
     try {
@@ -1018,6 +1030,15 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     if (shippedHashes.has(diskHash)) {
         fs.copyFileSync(sourcePath, targetPath);
         manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        return 'wrote';
+    }
+
+    // Differs from the payload (or a released payload) only by CRLF line endings: ours, replace with the LF original.
+    const lfHash = lfNormalizedHash(targetPath);
+    if (lfHash && (lfHash === sourceHash || shippedHashes.has(lfHash))) {
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        try { fs.rmSync(`${targetPath}.new`, { force: true }); } catch { /* a stale .new is only noise */ }
         return 'wrote';
     }
 

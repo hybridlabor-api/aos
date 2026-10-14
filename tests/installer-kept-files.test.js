@@ -51,6 +51,24 @@ test('a file identical to the payload is not an edit even without a manifest ent
     assert.ok(manifest[dst] && manifest[dst].sha256, 'recorded in the manifest');
 });
 
+test('a CRLF copy of the payload is ours and replaced; a real edit and a binary file stay kept', () => {
+    const src = path.join(root, 's4');
+    const dst = path.join(root, 'd4');
+    write(path.join(src, 'a.mjs'), 'one\ntwo\n');
+    write(path.join(dst, 'a.mjs'), 'one\r\ntwo\r\n');
+    write(path.join(src, 'b.mjs'), 'one\ntwo\n');
+    write(path.join(dst, 'b.mjs'), 'one\r\nTWO edited\r\n');
+    write(path.join(src, 'c.bin'), Buffer.from([1, 2, 3, 10]));
+    write(path.join(dst, 'c.bin'), Buffer.from([1, 2, 3, 13, 10, 0]));
+    installer.setShippedHashes(new Set());
+    const manifest = {};
+    assert.strictEqual(installer.resolveFileConflict(path.join(src, 'a.mjs'), path.join(dst, 'a.mjs'), manifest, new Set()), 'wrote');
+    assert.strictEqual(fs.readFileSync(path.join(dst, 'a.mjs'), 'utf8'), 'one\ntwo\n', 'replaced with the LF original');
+    assert.strictEqual(installer.resolveFileConflict(path.join(src, 'b.mjs'), path.join(dst, 'b.mjs'), manifest, new Set()), 'kept');
+    assert.strictEqual(installer.resolveFileConflict(path.join(src, 'c.bin'), path.join(dst, 'c.bin'), manifest, new Set()), 'kept');
+    assert.deepStrictEqual(newFiles(dst).sort(), ['b.mjs.new', 'c.bin.new']);
+});
+
 test('written file is recorded, so the next run does not see an edit', () => {
     const src = path.join(root, 's2', 'a.md');
     const dst = path.join(root, 'd2', 'a.md');
