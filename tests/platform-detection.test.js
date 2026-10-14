@@ -6,6 +6,7 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const REPO = path.resolve(__dirname, '..');
+const { findBundledClaudeCli } = require(path.join(REPO, 'installer.js'));
 
 // detectPlatforms() reads $HOME and $PATH, both resolved by installer.js at
 // module load, so each scenario runs in a child process with those pointed
@@ -109,5 +110,101 @@ describe('detectPlatforms', () => {
         fakeBin(bin, 'opencode');
         const [d] = detectIn({ home, pathDirs: [bin], explicit: ['8'] }).filter((x) => x.key === 'opencode');
         assert.equal(d.chosen, false, 'evidence outranks the explicit flag in how it is labelled');
+    });
+
+    test('findBundledClaudeCli detects macOS bundled binary', () => {
+        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-mac-'));
+        try {
+            const cliPath = path.join(fakeHome, 'Applications', 'Claude.app', 'Contents', 'Resources', 'claude');
+            fs.mkdirSync(path.dirname(cliPath), { recursive: true });
+            fs.writeFileSync(cliPath, '#!/bin/sh\nexit 0\n');
+            fs.chmodSync(cliPath, 0o755);
+
+            const found = findBundledClaudeCli({
+                platform: 'darwin',
+                home: fakeHome,
+                fsImpl: fs,
+            });
+            assert.equal(found, cliPath);
+        } finally {
+            fs.rmSync(fakeHome, { recursive: true, force: true });
+        }
+    });
+
+    test('findBundledClaudeCli detects Windows bundled binary in LOCALAPPDATA', () => {
+        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-win-'));
+        try {
+            const localAppData = path.join(fakeHome, 'AppData', 'Local');
+            const cliPath = path.join(localAppData, 'Programs', 'Claude', 'resources', 'claude.exe');
+            fs.mkdirSync(path.dirname(cliPath), { recursive: true });
+            fs.writeFileSync(cliPath, 'dummy exe');
+
+            const found = findBundledClaudeCli({
+                platform: 'win32',
+                home: fakeHome,
+                env: { LOCALAPPDATA: localAppData },
+                fsImpl: fs,
+            });
+            assert.equal(found, cliPath);
+        } finally {
+            fs.rmSync(fakeHome, { recursive: true, force: true });
+        }
+    });
+
+    test('findBundledClaudeCli returns null when no candidate exists', () => {
+        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-none-'));
+        try {
+            const found = findBundledClaudeCli({
+                platform: 'darwin',
+                home: fakeHome,
+                fsImpl: fs,
+            });
+            assert.equal(found, null);
+        } finally {
+            fs.rmSync(fakeHome, { recursive: true, force: true });
+        }
+    });
+
+    test('findBundledClaudeCli picks Contents/MacOS/claude when it is the only macOS candidate', () => {
+        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-macos-'));
+        try {
+            const cliPath = path.join(fakeHome, 'Applications', 'Claude.app', 'Contents', 'MacOS', 'claude');
+            fs.mkdirSync(path.dirname(cliPath), { recursive: true });
+            fs.writeFileSync(cliPath, '#!/bin/sh\nexit 0\n');
+            fs.chmodSync(cliPath, 0o755);
+
+            assert.equal(findBundledClaudeCli({ platform: 'darwin', home: fakeHome, fsImpl: fs }), cliPath);
+        } finally {
+            fs.rmSync(fakeHome, { recursive: true, force: true });
+        }
+    });
+
+    test('findBundledClaudeCli prefers Contents/Resources/bin/claude over Contents/MacOS/claude', () => {
+        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-bundle-order-'));
+        try {
+            const appDir = path.join(fakeHome, 'Applications', 'Claude.app', 'Contents');
+            const binPath = path.join(appDir, 'Resources', 'bin', 'claude');
+            const macosPath = path.join(appDir, 'MacOS', 'claude');
+            for (const p of [binPath, macosPath]) {
+                fs.mkdirSync(path.dirname(p), { recursive: true });
+                fs.writeFileSync(p, '#!/bin/sh\nexit 0\n');
+                fs.chmodSync(p, 0o755);
+            }
+
+            assert.equal(findBundledClaudeCli({ platform: 'darwin', home: fakeHome, fsImpl: fs }), binPath);
+        } finally {
+            fs.rmSync(fakeHome, { recursive: true, force: true });
+        }
+    });
+
+    test('detectPlatforms finds claudecode when bundled CLI is present even without PATH binary', () => {
+        const bundleDir = path.join(home, 'Applications', 'Claude.app', 'Contents', 'Resources');
+        fs.mkdirSync(bundleDir, { recursive: true });
+        const bundleCli = path.join(bundleDir, 'claude');
+        fs.writeFileSync(bundleCli, '#!/bin/sh\nexit 0\n');
+        fs.chmodSync(bundleCli, 0o755);
+
+        const keys = keysOf(detectIn({ home }));
+        assert.ok(keys.includes('claudecode'), 'bundled Claude CLI is recognized as claudecode evidence');
     });
 });
