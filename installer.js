@@ -1021,6 +1021,14 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
         return 'wrote';
     }
 
+    // Identical to the payload is never a user edit, with or without a manifest entry (an interrupted or
+    // dev-built run leaves none). Checked before the unrecognised-content case, which would keep it as a phantom edit.
+    if (diskHash === sourceHash) {
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        try { fs.rmSync(`${targetPath}.new`, { force: true }); } catch { /* a stale .new is only noise */ }
+        return 'wrote';
+    }
+
     // Case: unrecognised content at a path this payload owns.
     //
     // This used to skip, on the reading that unknown content means a file the

@@ -38,6 +38,19 @@ test('edited file is kept with .new; unknown guard file is replaced with a .bak'
     assert.strictEqual(fs.readFileSync(path.join(dst, 'go-gate.mjs.bak'), 'utf8'), 'gate v1 unknown build\n');
 });
 
+test('a file identical to the payload is not an edit even without a manifest entry, and a stale .new is removed', () => {
+    const src = path.join(root, 's3', 'route.js');
+    const dst = path.join(root, 'd3', 'route.js');
+    write(src, 'same\n');
+    write(dst, 'same\n');
+    write(`${dst}.new`, 'same\n');
+    installer.setShippedHashes(new Set());
+    const manifest = {};
+    assert.strictEqual(installer.resolveFileConflict(src, dst, manifest, new Set()), 'wrote');
+    assert.deepStrictEqual(newFiles(path.dirname(dst)), []);
+    assert.ok(manifest[dst] && manifest[dst].sha256, 'recorded in the manifest');
+});
+
 test('written file is recorded, so the next run does not see an edit', () => {
     const src = path.join(root, 's2', 'a.md');
     const dst = path.join(root, 'd2', 'a.md');
