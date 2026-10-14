@@ -69,7 +69,13 @@ export const meta = {
     'Dispatcher-mediated build pipeline: Architect -> TechLead -> {UI_UX, Engineering, Media_EventTech} -> Reviewer -> Shipping, per .agents/graph.md. Agents never invoke each other -- this script decides every next step. Node identities come from .agents/nodes.json, loaded fresh each run.',
 };
 
-import { routeFor } from '../../lib/router/route.js';
+let routeFor = null;
+if (typeof process !== 'undefined') {
+  try {
+    const routeMod = await import(new URL('../../lib/router/route.js', import.meta.url).href);
+    routeFor = routeMod.routeFor;
+  } catch {}
+}
 
 // Polyfilled module access for standalone CLI and hook executions outside Claude runtime
 let fs = typeof process !== 'undefined' && typeof process.getBuiltinModule === 'function'
@@ -648,8 +654,12 @@ const modelOpt = (...roles) => {
   return model ? { model } : {};
 };
 const nodeModelOpt = (n) => {
-  const chosen = routeFor(n);
-  console.error(`[router] advisory node ${n?.id || n?.agentType || 'node'} -> target: ${chosen.target}`);
+  if (typeof routeFor === 'function') {
+    try {
+      const chosen = routeFor(n);
+      console.error(`[router] advisory node ${n?.id || n?.agentType || 'node'} -> target: ${chosen.target}`);
+    } catch {}
+  }
   return modelOpt(n.agentType, n.id);
 };
 

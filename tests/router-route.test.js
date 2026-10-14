@@ -275,7 +275,9 @@ describe('Dispatcher Advisory Hook (enforce=false leaves dispatch unchanged)', (
 
     // Custom pipeline config with a specific model override for architect
     const pipelineConfig = {
-      architect: { harness: 'claude', model: 'claude-3-7-sonnet-custom' },
+      pipeline: {
+        architect: { harness: 'claude', model: 'claude-3-7-sonnet-custom' },
+      },
     };
     fs.writeFileSync(path.join(cwd, '.aos', 'pipeline.json'), JSON.stringify(pipelineConfig));
 
