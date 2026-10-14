@@ -190,3 +190,30 @@ test("setGrant: unknown scope and over-24h duration are refused, nothing written
   assert.equal(setGrant({ dir: d, scopes: "publish", duration: "25h", now: NOW, out() {}, err: (m) => errs.push(m) }), 1);
   assert.equal(existsSync(join(d, "config.json")), false);
 });
+
+test("off is a valid profile: 1 h default, 2 h cap", async () => {
+  assert.deepEqual(PROFILES, ["strict", "work", "off"]);
+  assert.deepEqual(LIMITS.off, { defaultMs: 1 * H, maxMs: 2 * H });
+  const d = tmp();
+  assert.equal((await run(d, { profile: "off" })).code, 0);
+  const c = JSON.parse(readFileSync(join(d, "config.json"), "utf8"));
+  assert.equal(Date.parse(c.expires_at) - NOW, 1 * H);
+  assert.equal(readProfile({ file: join(d, "config.json"), now: NOW, uid }).profile, "off");
+  const r = await run(tmp(), { profile: "off", forArg: "3h" });
+  assert.equal(r.code, 1);
+  assert.equal((await run(tmp(), { profile: "bogus" })).code, 2);
+});
+
+test("child process: agent-run aos-gate profile off is refused; strict and revoke stay open", () => {
+  const d = tmp();
+  const bin = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "aos-gate.mjs");
+  const env = { PATH: process.env.PATH, HOME: d, AOS_TEST_SANDBOX: "container", AOS_GATE_DIR: d };
+  for (const e of [env, { ...env, CLAUDECODE: "1" }]) {
+    const p = spawnSync(process.execPath, [bin, "profile", "off", "--for", "1h"], { env: e, input: "", encoding: "utf8" });
+    assert.equal(p.status, 1);
+    assert.equal(existsSync(join(d, "config.json")), false);
+  }
+  for (const args of [["profile", "strict"], ["strict"], ["revoke", "all"]]) {
+    assert.equal(spawnSync(process.execPath, [bin, ...args], { env, input: "", encoding: "utf8" }).status, 0, args.join(" "));
+  }
+});
