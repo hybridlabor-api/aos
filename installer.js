@@ -964,6 +964,23 @@ const keptUserEdits = [];
 // Returns 'wrote' | 'bak' | 'kept' | 'skipped'.
 // knownSourceHashes: Set of sha256 hashes of all source files in the current
 // payload (used to identify files we recognise even before manifest entry).
+// A stale gate is a security defect, so these are never left behind as <file>.new: the old copy is moved
+// to <file>.bak and the shipped one installed.
+const GUARD_FILES = new Set(['go-gate.mjs', 'gate-profile.mjs', 'aos-gate.mjs']);
+
+function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
+    if (GUARD_FILES.has(path.basename(targetPath))) {
+        fs.copyFileSync(targetPath, `${targetPath}.bak`);
+        fs.copyFileSync(sourcePath, targetPath);
+        manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
+        log.warn(`Gate file ${targetPath} differed from every shipped version; replaced it (previous copy: ${targetPath}.bak).`);
+        return 'wrote';
+    }
+    fs.copyFileSync(sourcePath, `${targetPath}.new`);
+    keptUserEdits.push(targetPath);
+    return 'kept';
+}
+
 function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes, shippedHashes = SHIPPED_HASHES) {
     const sourceHash = computeFileHash(sourcePath);
     if (!sourceHash) {
@@ -1022,10 +1039,7 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     // foreign file. Either way the disk version wins and the shipped copy
     // lands beside it as <file>.new.
     if (!manifestEntry && !knownSourceHashes.has(diskHash)) {
-        const newPath = `${targetPath}.new`;
-        fs.copyFileSync(sourcePath, newPath);
-        keptUserEdits.push(targetPath);
-        return 'kept';
+        return keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash);
     }
 
     // Case: first-run bootstrap – disk hash matches source hash but no manifest entry.
@@ -1045,10 +1059,7 @@ function resolveFileConflict(sourcePath, targetPath, manifest, knownSourceHashes
     // The user's file wins: the shipped version lands next to it as .new, and
     // the manifest keeps the old hash so the next run still sees the edit.
     if (manifestEntry && diskHash !== manifestEntry.sha256) {
-        const newPath = `${targetPath}.new`;
-        fs.copyFileSync(sourcePath, newPath);
-        keptUserEdits.push(targetPath);
-        return 'kept';
+        return keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash);
     }
 
     // Default: manifest entry present, disk matches manifest (no change needed) – overwrite.
@@ -2847,21 +2858,24 @@ function ensureDejaExclude(excludePath) {
     return true;
 }
 
+// Pinned on purpose: the update check compares against this, not the registry's latest.
+const DEJA_VERSION = '0.21.1';
+
 async function installDeja() {
     if (DRY_RUN) {
-        log.step('[dry-run] would install deja-vu 0.21.1 globally and add its exclude pattern');
+        log.step(`[dry-run] would install deja-vu ${DEJA_VERSION} globally and add its exclude pattern`);
         return;
     }
     try {
         log.step('Installing deja-vu session memory...');
-        execSync('npm install -g @vshulcz/deja-vu@0.21.1', { stdio: 'ignore', windowsHide: true });
+        execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
         uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
     } catch (e) {
-        log.warn('deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@0.21.1');
+        log.warn(`deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
     const dejaOnPath = hasExecutable('deja');
     if (!dejaOnPath) {
-        log.warn('deja is not on PATH. Install it with: npm install -g @vshulcz/deja-vu@0.21.1');
+        log.warn(`deja is not on PATH. Install it with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
     const base = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
     const excludePath = path.join(base, 'deja', 'exclude');
@@ -8894,7 +8908,7 @@ module.exports = {
     loadExistingEnv,
     // installer v5 host surface (lib/v5/*)
     runQuickUpdate, applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
-    saveManifest, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, runUninstaller, PROVIDER_KEY_ENV_NAMES,
+    saveManifest, DEJA_VERSION, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, runUninstaller, PROVIDER_KEY_ENV_NAMES,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,
     copyDirRecursiveSync,
