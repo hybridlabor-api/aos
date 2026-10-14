@@ -1,0 +1,46 @@
+name: Jules Skill Implementer
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  jules-skill:
+    name: Implement requested skill via Google Labs Jules
+    # Hardened guards:
+    # 1. Private fork confinement: refuse to run in public hybridlabor-api/aos
+    # 2. Label trigger filter: run only when labeled with aos-skill-request
+    # 3. Access control: run only if triggered by an OWNER or MEMBER
+    if: |
+      github.repository == vars.JULES_ALLOWED_REPO &&
+      github.event.label.name == 'aos-skill-request' &&
+      (github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Build Jules task prompt
+        id: prompt
+        # Environment variables prevent shell injection; never interpolate ${{ github.event.issue }} inside run
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          delimiter="EOF_JULES_PROMPT_$(date +%s)"
+          {
+            echo "task<<$delimiter"
+            echo "AOS Skill Implementation Request"
+            echo "Title: $ISSUE_TITLE"
+            echo ""
+            echo "$ISSUE_BODY"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch task to Google Jules
+        uses: google-labs-code/jules-action@bff7875eaa123cac6742b7cfc51005b95ba4d566 # v1.0.0
+        with:
+          prompt: ${{ steps.prompt.outputs.task }}
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
