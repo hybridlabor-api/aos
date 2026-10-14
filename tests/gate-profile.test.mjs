@@ -76,7 +76,8 @@ test("fail closed: FIFO does not hang", (t) => {
 
 test("durations and release class are data", () => {
   assert.deepEqual(LIMITS.work, { defaultMs: 4 * H, maxMs: 24 * H });
-  assert.deepEqual(PROFILES, ["strict", "work"]);
+  assert.deepEqual(PROFILES, ["strict", "work", "off"]);
+  assert.deepEqual(LIMITS.off, { defaultMs: 1 * H, maxMs: 2 * H });
   assert.ok(RELEASE_CLASS.some((c) => c.id === "npm-publish"));
   assert.ok(Object.isFrozen(RELEASE_CLASS));
 });
@@ -113,7 +114,8 @@ test("CLI: setProfile strict sets null expiry without prompt", async () => {
 
 test("CLI: max durations enforced", async () => {
   const d = tmp();
-  assert.equal((await run(d, { profile: "off" })).code, 2); // off is removed
+  assert.equal((await run(d, { profile: "off", forArg: "3h" })).code, 1); // off is capped at 2h
+  assert.equal((await run(d, { profile: "root" })).code, 2); // unknown profile
   assert.equal((await run(d, { profile: "work", forArg: "25h" })).code, 1);
   assert.equal((await run(d, { profile: "work", forArg: "bogus" })).code, 2);
 });

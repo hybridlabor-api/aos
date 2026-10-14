@@ -124,9 +124,11 @@ describe('Plan Canvas modes', () => {
     fs.writeFileSync(mdxFile, '# Test Plan\n<Component />');
 
     try {
-      // Own HOME so a plan-canvas server left running by an earlier test file (rooted in another workspace) is never reused.
+      // Own port and HOME so a plan-canvas server left running on the documented port by an earlier test file
+      // (rooted in another workspace) is never reused.
       const result = await runCommand(['open', mdxFile, '--no-open'], {
         AOS_PLAN_CANVAS_STATE_DIR: tempStateDir,
+        AOS_PLAN_CANVAS_PORT: String(46000 + (process.pid % 1000)),
         HOME: tempDir,
         USERPROFILE: tempDir
       });
