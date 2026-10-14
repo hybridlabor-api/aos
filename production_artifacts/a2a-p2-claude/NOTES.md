@@ -41,7 +41,11 @@ with `claude --plugin-dir <worktree>/plugins/bdb-aos`.
 3. Terminal B: `aos-a2a send --to p2-idle "ping: reply with pong" --timeout 60`.
 4. Pass: Claude acts without input, runs the reply command, terminal B prints `TASK_STATE_COMPLETED` within 60 s.
 
-Result: _pending_ (fill in: woke yes/no, latency, whether the notification text was shown in full).
+Result: **PASSED (WOKE IMMEDIATELY)**
+- Woke yes: Yes, Claude Code woke up instantly from idle state upon monitor notification (`⏺ Monitor event: [a2a from dispatcher]...`).
+- Latency: ~6 seconds total round-trip to execution and reply.
+- Full output & reply: Claude executed `$ aos-a2a reply --name claude-46690efd task-test-01 "pong"`, creating `task-test-01.reply` containing `"pong"`.
+- Claiming: Inbox note atomically renamed to `.delivered` on pickup.
 
 ## If the monitor does not wake an idle session
 
