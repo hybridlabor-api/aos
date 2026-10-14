@@ -303,6 +303,47 @@ describe('pkg-gateway', () => {
         assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
     });
 
+    const pinnedOnDisk = (home) => {
+        const d = path.join(cfg.gatewayDir(home), 'node_modules', '@1mcp', 'agent');
+        fs.mkdirSync(d, { recursive: true });
+        fs.writeFileSync(path.join(d, 'package.json'), JSON.stringify({ version: '0.38.2' }));
+    };
+    const sideEffects = (calls) => calls.filter((c) => c[0] === 'npm' || c[0] === 'launchctl' || c[1] === 'preset').map((c) => c.join(' '));
+
+    test('update on an unchanged gateway does no npm install, no rewrite and no kickstart', async () => {
+        const home = tmp();
+        await pkg.install(mkCtx(home).ctx);
+        pinnedOnDisk(home);
+        const { ctx, calls } = mkCtx(home);
+        const res = await pkg.update(ctx);
+        assert.equal(res.unchanged, true);
+        assert.deepEqual(sideEffects(calls), []);
+    });
+
+    test('update on a changed mcp.json reinstalls and restarts', async () => {
+        const home = tmp();
+        await pkg.install(mkCtx(home).ctx);
+        pinnedOnDisk(home);
+        fs.writeFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), '{}\n');
+        const { ctx, calls } = mkCtx(home);
+        const res = await pkg.update(ctx);
+        assert.notEqual(res.unchanged, true);
+        assert.ok(sideEffects(calls).includes(`npm install --prefix ${cfg.gatewayDir(home)} --no-audit --no-fund @1mcp/agent@0.38.2`));
+        assert.ok(sideEffects(calls).includes('launchctl kickstart -k gui/501/com.bdb.aos.gateway'));
+    });
+
+    test('update with a changed plist or without the pinned package is not unchanged', async () => {
+        const home = tmp();
+        await pkg.install(mkCtx(home).ctx);
+        const plist = path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist');
+        fs.writeFileSync(plist, fs.readFileSync(plist, 'utf8').replace('<integer>30</integer>', '<integer>31</integer>'));
+        const { ctx, calls } = mkCtx(home);
+        const res = await pkg.update(ctx);
+        assert.notEqual(res.unchanged, true);
+        assert.ok(sideEffects(calls).some((c) => c.startsWith('npm install')));
+        assert.ok(sideEffects(calls).some((c) => c.startsWith('launchctl')));
+    });
+
     const launchctlFails = (how) => async (cmd) => {
         if (cmd !== 'launchctl') return { status: 0, stdout: '' };
         if (how === 'reject') throw new Error('spawn launchctl ENOENT');
