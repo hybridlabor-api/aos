@@ -8177,7 +8177,7 @@ function v5Options(interactive) {
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
-    return { home: homeDir, write: (s) => process.stdout.write(s), ui };
+    return { home: homeDir, write: (s) => process.stdout.write(s), ui, force: process.argv.includes('--force') || Boolean(process.env.AOS_FORCE) };
 }
 
 // Flags/env win over the persisted v5 settings for this run. Writes nothing: see persistInstallOptions.
