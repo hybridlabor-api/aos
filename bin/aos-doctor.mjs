@@ -711,6 +711,39 @@ async function checkDaemonsAndModules() {
     }
   }
 
+  // REA MCP: opt-in dual-use reverse-engineering tool. Kept direct (stateful stdio, large tool catalog).
+  {
+    const reaEnabled = process.env.AOS_REA_MCP === 'on';
+    if (!reaEnabled) {
+      add('daemons', 'REA MCP', true,
+        'off — dual-use research tool; opt-in via AOS_REA_MCP=on or `aos package install rea`',
+        'Set AOS_REA_MCP=on to enable the REA reverse-engineering MCP pick.', true);
+    } else {
+      let reaPath = which('rea');
+      let reaVer = null;
+      if (reaPath) {
+        try {
+          reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        } catch {}
+      }
+      // Fall back to the npm package name when the global `rea` shim is absent.
+      if (!reaPath) {
+        try {
+          reaVer = execFileSync(IS_WIN ? 'npx.cmd' : 'npx', ['-y', 'rea-agents@6.5.0', '--version'], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          reaPath = 'npx -y rea-agents@6.5.0';
+        } catch {}
+      }
+      if (reaPath) {
+        add('daemons', 'REA MCP', true,
+          `present: ${tilde(reaPath)} · stdio MCP (${reaVer || 'v6.5.0'}, direct)`);
+      } else {
+        add('daemons', 'REA MCP', false,
+          'AOS_REA_MCP=on but the REA CLI is not reachable',
+          'Run: npm install -g rea-agents@latest (or `aos package install rea` once available)');
+      }
+    }
+  }
+
   // memB
   const membDir = findModule('memB');
   const membListening = await portOpen(8088);
