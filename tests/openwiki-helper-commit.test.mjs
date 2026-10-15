@@ -6,7 +6,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const repo = resolve(dirname(fileURLToPath(new URL('..', import.meta.url))), '..');
+const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const helper = join(repo, 'skills', 'global_config', 'openwiki-skill', 'scripts', 'openwiki_helper.py');
 
 const tmp = mkdtempSync(join(tmpdir(), 'openwiki-helper-'));
@@ -31,6 +31,7 @@ function makeRepo(name, identity) {
   const dir = join(tmp, name);
   mkdirSync(dir, { recursive: true });
   git(['init'], dir);
+  if (!identity) git(['config', 'user.useConfigOnly', 'true'], dir);
   if (identity) {
     git(['config', 'user.name', identity.name], dir);
     git(['config', 'user.email', identity.email], dir);
@@ -73,8 +74,8 @@ describe('openwiki_helper commit identity fallback', { concurrency: false }, () 
     runHelper('commit', dir);
     const localName = git(['config', '--local', 'user.name'], dir).stdout.trim();
     const localEmail = git(['config', '--local', 'user.email'], dir).stdout.trim();
-    assert.notMatch(localName, /AOS OpenWiki/, 'fallback must not persist user.name');
-    assert.notMatch(localEmail, /openwiki@aos\.local/, 'fallback must not persist user.email');
+    assert.doesNotMatch(localName, /AOS OpenWiki/, 'fallback must not persist user.name');
+    assert.doesNotMatch(localEmail, /openwiki@aos\.local/, 'fallback must not persist user.email');
   });
 });
 
