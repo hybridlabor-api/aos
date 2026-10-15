@@ -356,11 +356,16 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
 export function agyIdentitySent(conversationId, base = path.join(os.homedir(), '.aos', 'cache')) {
   const id = String(conversationId || '').replace(/[^\w.-]/g, '_').slice(0, 80);
   if (!id) return false;
+  const stamp = path.join(base, 'memb-agy', id);
+  return existsSync(stamp);
+}
+
+export function stampAgyIdentity(conversationId, base = path.join(os.homedir(), '.aos', 'cache')) {
+  const id = String(conversationId || '').replace(/[^\w.-]/g, '_').slice(0, 80);
+  if (!id) return false;
   const dir = path.join(base, 'memb-agy');
   const stamp = path.join(dir, id);
-  if (existsSync(stamp)) return true;
-  try { mkdirSync(dir, { recursive: true }); writeFileSync(stamp, ''); } catch {}
-  return false;
+  try { mkdirSync(dir, { recursive: true }); writeFileSync(stamp, ''); return true; } catch { return false; }
 }
 
 // Main logic runs only when the file is executed directly as a hook; importing
@@ -377,7 +382,8 @@ async function main() {
     // Discover candidate directory across harnesses:
     // Claude / Codex: eventData.cwd; Antigravity: eventData.workspacePaths[0] or eventData.cwd
     const isAgy = !eventData.hook_event_name && (Array.isArray(eventData.workspacePaths) || !!eventData.conversationId);
-    const event = isAgy && agyIdentitySent(eventData.conversationId)
+    const agyAlreadySent = isAgy && agyIdentitySent(eventData.conversationId);
+    const event = agyAlreadySent
       ? 'UserPromptSubmit'
       : (eventData.hook_event_name || '');
 
@@ -393,6 +399,9 @@ async function main() {
     });
 
     if (memoryBlock) {
+      if (isAgy && !agyAlreadySent) {
+        stampAgyIdentity(eventData.conversationId);
+      }
       const MAX_CONTEXT_CHARS = 2000;
       const capped = memoryBlock.length > MAX_CONTEXT_CHARS ? memoryBlock.slice(0, MAX_CONTEXT_CHARS) : memoryBlock;
       process.stdout.write(JSON.stringify(isAgy
