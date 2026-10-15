@@ -82,12 +82,12 @@ function modsRow(settings, withClaude = true) {
 test('Claude Code mods row: warns with the fix when claude is installed and a mod is not enabled', () => {
     const d = modsRow({ enabledPlugins: { 'bdb-aos-fleet@bdb-marketplace': true } });
     assert.ok(!d.ok && d.warningOnly, JSON.stringify(d));
-    assert.match(d.detail, /enabled: fleet; not enabled: sessions, alert; Claude Code in PATH is 2\.1\.162/);
-    assert.match(d.fix, /claude update.*aos package install sessions\|alert/);
+    assert.match(d.detail, /enabled: fleet; not enabled: sessions, alert, control; Claude Code in PATH is 2\.1\.162/);
+    assert.match(d.fix, /claude update.*aos package install sessions\|alert\|control/);
 });
 
-test('Claude Code mods row: passes when all three are enabled, absent without claude', () => {
-    const all = Object.fromEntries(['fleet', 'sessions', 'alert'].map((m) => [`bdb-aos-${m}@bdb-marketplace`, true]));
+test('Claude Code mods row: passes when all four are enabled, absent without claude', () => {
+    const all = Object.fromEntries(['fleet', 'sessions', 'alert', 'control'].map((m) => [`bdb-aos-${m}@bdb-marketplace`, true]));
     assert.ok(modsRow({ enabledPlugins: all }).ok);
     assert.equal(modsRow({}, false), undefined);
 });
