@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const req = createRequire(import.meta.url);
-const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
+const { pluginSkills, pluginAgents, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
@@ -273,6 +273,22 @@ function checkHarnesses() {
   if (twice.length) {
     add('harnesses', 'Claude duplicate skills', false, `${twice.length} AOS skill(s) exist both as loose copies in ${tilde(looseRoot)} and in the bdb-aos plugin, so Claude lists them twice`,
       'Run the AOS installer again; it backs up and retires the loose copies (aos-uninstall --restore-plugin-backup restores them).', true);
+  }
+
+  // Duplicate agents: when ~/.claude/agents mirrors the plugin agents
+  const agentsRoot = hc('agents');
+  const claudePluginAgents = pluginAgents(HOME);
+  if (claudePluginAgents && existsSync(agentsRoot)) {
+    try {
+      const looseAgents = readdirSync(agentsRoot).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
+      const duplicates = looseAgents.filter((a) => claudePluginAgents.agents.has(a));
+      if (duplicates.length) {
+        add('harnesses', 'Claude duplicate agents', false,
+          `${duplicates.length} agent(s) exist both in ${tilde(agentsRoot)} and in the bdb-aos plugin, which duplicates system prompt token cost (~${Math.round(duplicates.length * 97)} tokens)`,
+          `Remove redundant copies from ${tilde(agentsRoot)} if the plugin already provides them (e.g. rm ~/.claude/agents/<name>.md).`,
+          true);
+      }
+    } catch {}
   }
 
   const ov = req('../lib/opencode-verify.js');
