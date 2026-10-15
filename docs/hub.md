@@ -57,6 +57,34 @@ Paths must be absolute Windows paths without quotes, newlines or control charact
 - Typed confirm: destructive or install actions must repeat the target id or name in a `confirm` field (CLI: `--confirm <id>`).
 - No secrets: log tails are redacted and the hub never stores or displays API keys or tokens.
 
+## Troubleshooting
+
+### OpenWiki shows "down" and "Wikis: none yet"
+
+OpenWiki is a launchd interval job (StartInterval 7200). When the job is loaded
+but not currently running, the hub reports it as **scheduled** — this is
+correct for a timer-based service.
+
+The Wikis list is empty when the hub cannot find any `.openwiki` directories or
+`~/.openwiki/projects.json`. The hub discovers wikis in `~/dev` (up to four
+levels deep) and reads tracked projects from `~/.openwiki/projects.json`. Both
+paths are resolved relative to the **user the hub process is running as**.
+
+If AOS was installed under one user account (for example a service or build
+account) but your repositories live under a different home directory, the hub
+process will look in the wrong `~` and show "none yet". Fix the environment,
+not the code: stop the hub running under the wrong user and start it from the
+account that owns `~/dev` and `~/.openwiki`:
+
+```bash
+# Run as the user whose ~/dev contains the wikis.
+aos hub restart
+```
+
+Or, for a service install, ensure the LaunchAgent runs as the intended user and
+that `AOS_HUB_HOME` points at that user's home if the account differs from the
+log-in user.
+
 ## Notes
 
 - On-demand start: `aos hub` probes `/api/health` first; if the hub is already running it only opens the browser.
