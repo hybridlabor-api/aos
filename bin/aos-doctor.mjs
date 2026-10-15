@@ -14,11 +14,31 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const req = createRequire(import.meta.url);
-const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
+const pkg = (() => {
+  try { return req('../package.json'); } catch {
+    try {
+      const rootPath = path.join(os.homedir(), '.agents', 'lib', '.aos-package-root.json');
+      const root = JSON.parse(readFileSync(rootPath, 'utf8'))?.packageRoot;
+      if (root) {
+        const p = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+        if (p && p.version) return p;
+      }
+    } catch {}
+    try {
+      const manifestPath = path.join(os.homedir(), '.agents', '.bdb-manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      if (manifest && manifest.version) return { version: manifest.version };
+    } catch {}
+    return { version: 'unknown' };
+  }
+})();
+const updateCheck = req('../lib/update-check.js');
+const { pluginSkills, pluginAgents, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
-const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } =req('../lib/uninstall-records.js');
+const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } = req('../lib/uninstall-records.js');
+const { findExecutable, getGitInstallInstruction, isElevated } = req('../lib/executable-probe.js');
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
@@ -58,14 +78,7 @@ const add = (area, name, ok, detail, fix, warningOnly = false) => {
   results.push({ area, name, ok, detail, fix, warningOnly });
 };
 
-const which = (bin) => {
-  const probe = IS_WIN ? 'where.exe' : 'which';
-  try {
-    return execFileSync(probe, [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
-  } catch {
-    return null;
-  }
-};
+const which = (bin) => findExecutable(bin);
 
 const dirCount = (p) => {
   try {
@@ -97,8 +110,8 @@ function checkPrereqs() {
     IS_WIN ? 'Install Python from python.org or winget install Python.Python.3.12' : 'brew install python3');
 
   const gitProbe = which('git');
-  add('prereq', 'Git CLI', !!gitProbe, tilde(gitProbe) || 'missing — required for AOS workflows and worktrees',
-    IS_WIN ? 'Install Git via git-scm.com or winget install Git.Git' : 'brew install git / xcode-select --install');
+  const gitFix = getGitInstallInstruction({ platform: process.platform, elevated: isElevated({ platform: process.platform }) });
+  add('prereq', 'Git CLI', !!gitProbe, tilde(gitProbe) || 'missing — required for AOS workflows and worktrees', gitFix);
 
   const uvProbe = which('uv');
   add('prereq', 'uv package manager', !!uvProbe, uvProbe ? `${tilde(uvProbe)} (fast venv seeding)` : 'optional — pip fallback will be used',
@@ -275,6 +288,22 @@ function checkHarnesses() {
       'Run the AOS installer again; it backs up and retires the loose copies (aos-uninstall --restore-plugin-backup restores them).', true);
   }
 
+  // Duplicate agents: when ~/.claude/agents mirrors the plugin agents
+  const agentsRoot = hc('agents');
+  const claudePluginAgents = pluginAgents(HOME);
+  if (claudePluginAgents && existsSync(agentsRoot)) {
+    try {
+      const looseAgents = readdirSync(agentsRoot).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
+      const duplicates = looseAgents.filter((a) => claudePluginAgents.agents.has(a));
+      if (duplicates.length) {
+        add('harnesses', 'Claude duplicate agents', false,
+          `${duplicates.length} agent(s) exist both in ${tilde(agentsRoot)} and in the bdb-aos plugin, which duplicates system prompt token cost (~${Math.round(duplicates.length * 97)} tokens)`,
+          `Remove redundant copies from ${tilde(agentsRoot)} if the plugin already provides them (e.g. rm ~/.claude/agents/<name>.md).`,
+          true);
+      }
+    } catch {}
+  }
+
   const ov = req('../lib/opencode-verify.js');
   results.push(...ov.checkOpencode({ home: HOME }), ...ov.checkAcpAndGoCheck({ home: HOME }));
   checkOpencodeMcpNames();
@@ -363,7 +392,7 @@ function checkHooks() {
     // Codex's hash algorithm is not reproduced here. Evidence of a re-trust is only that Codex's set of
     // trust values changed after the install that last changed the AOS hooks (snapshot in ~/.aos/codex-hooks.json).
     const rec = readJson(h('.aos', 'codex-hooks.json'));
-    const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.';
+    const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.\nNon-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.';
     const gateWired = /^\s*command\s*=.*go-gate\.mjs/m.test(codexToml);
     // Informational only: our hook hash is more sensitive than Codex's own, so "no new trust entry" is not proof of an
     // untrusted hook (Lenovo P15 saw a false warning while /hooks showed Active 2/2). Codex says "Hooks need review"
@@ -493,6 +522,25 @@ function checkAgyMcsc() {
     add('agy', 'mcsc not in agy config', false, `mcsc is registered in ${tilde(f)} and can recurse (agy -> mcsc -> agy ...)`,
       `Remove the "mcsc" entry from ${tilde(f)}, or re-run the AOS installer (it removes its own entry).`, true);
   }
+}
+
+// Antigravity loads <workspace>/.agents/mcp_config.json; in $HOME that picked up the shipped server template.
+function checkAgyWorkspaceMcp() {
+  const f = h('.agents', 'mcp_config.json');
+  if (!existsSync(f)) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} absent (clean)`, '');
+    return;
+  }
+  const data = readJson(f);
+  const servers = Object.keys(data?.mcpServers || {});
+  const foreign = servers.filter((s) => s !== 'aos' && s !== 'mcsc');
+  if (!foreign.length) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} lists only ${servers.join(', ') || 'no'} servers`, '');
+    return;
+  }
+  add('agy', 'agy workspace MCP', false,
+    `${tilde(f)} lists servers other than aos/mcsc (${foreign.join(', ')}): agy loads them in $HOME`,
+    'aos repair', true);
 }
 
 // Secrets belong in ~/.aos/secrets.env (0600), never inline in a harness MCP config. Names only, never values.
@@ -663,6 +711,39 @@ async function checkDaemonsAndModules() {
     }
   }
 
+  // REA MCP: opt-in dual-use reverse-engineering tool. Kept direct (stateful stdio, large tool catalog).
+  {
+    const reaEnabled = process.env.AOS_REA_MCP === 'on';
+    if (!reaEnabled) {
+      add('daemons', 'REA MCP', true,
+        'off — dual-use research tool; opt-in via AOS_REA_MCP=on or `aos package install rea`',
+        'Set AOS_REA_MCP=on to enable the REA reverse-engineering MCP pick.', true);
+    } else {
+      let reaPath = which('rea');
+      let reaVer = null;
+      if (reaPath) {
+        try {
+          reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        } catch {}
+      }
+      // Fall back to the npm package name when the global `rea` shim is absent.
+      if (!reaPath) {
+        try {
+          reaVer = execFileSync(IS_WIN ? 'npx.cmd' : 'npx', ['-y', 'rea-agents@6.5.0', '--version'], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          reaPath = 'npx -y rea-agents@6.5.0';
+        } catch {}
+      }
+      if (reaPath) {
+        add('daemons', 'REA MCP', true,
+          `present: ${tilde(reaPath)} · stdio MCP (${reaVer || 'v6.5.0'}, direct)`);
+      } else {
+        add('daemons', 'REA MCP', false,
+          'AOS_REA_MCP=on but the REA CLI is not reachable',
+          'Run: npm install -g rea-agents@latest (or `aos package install rea` once available)');
+      }
+    }
+  }
+
   // memB
   const membDir = findModule('memB');
   const membListening = await portOpen(8088);
@@ -738,33 +819,12 @@ async function checkDaemonsAndModules() {
   }
 }
 
-// ---------------------------------------------------------------- 6. Output & Announcement
-function printAoAnnouncement() {
-  console.log(`
-╭──────────────────────────────────────────────────────────────────────────────╮
-│                                                                              │
-│   BDB AGENT ORCHESTRATOR APP — FINAL BETA NOW AVAILABLE                      │
-│                                                                              │
-│   The next generation of cross-harness multi-agent orchestration             │
-│   is now open to every user as a final beta.                                 │
-│                                                                              │
-│   • Dashboard & WebUI:  http://localhost:3101                                │
-│   • Service command:    ao service install  (enables the background service) │
-│   • Quick launch:       ao open  or  ao service status                       │
-│   • Features:           session telemetry, live AgentTrail, multi-workspaces │
-│                                                                              │
-╰──────────────────────────────────────────────────────────────────────────────╯
-`);
-}
-
 function report() {
   if (JSON_OUT) {
     const ok = results.filter(r => !r.warningOnly).every(r => r.ok);
     console.log(JSON.stringify({ ok, platform: process.platform, arch: process.arch, results }, null, 2));
     return;
   }
-
-  printAoAnnouncement();
 
   console.log(`\n======================================================`);
   console.log(`   🩺 AOS SYSTEM CHECKUP & DIAGNOSTIC REPORT`);
@@ -797,6 +857,17 @@ function report() {
     console.log(`⚠️  ${criticalFails.length} critical check(s) need attention! Follow the fix instructions above.`);
   }
   console.log(`------------------------------------------------------\n`);
+  try {
+    const updateInfo = updateCheck.getCachedUpdateInfo({ home: HOME, installed: pkg.version });
+    if (updateInfo.updateAvailable && updateInfo.latest) {
+      updateCheck.notifySurface('doctor', {
+        home: HOME,
+        installed: pkg.version,
+        latest: updateInfo.latest,
+        out: (msg) => console.log(msg),
+      });
+    }
+  } catch {}
 }
 
 // ---------------------------------------------------------------- Run
@@ -896,6 +967,7 @@ checkAgentModels();
 checkHooks();
 checkPlugins();
 checkAgyMcsc();
+checkAgyWorkspaceMcp();
 checkAgyWorkerHome();
 checkMcpSecrets();
 checkInstallerBaks();

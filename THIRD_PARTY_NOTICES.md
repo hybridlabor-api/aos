@@ -687,3 +687,45 @@ Changes made:
 - Added a "Prerequisites and safety" section, built from the upstream `Cargo.toml`, `README.md`, `docs/src/content/docs/guides/plugin-setup.md` and `SECURITY.md`. The upstream "Safety" section is kept as "Operating rules".
 
 Not carried: `assets/` and `scripts/` from the upstream repository.
+
+---
+
+## morluto/rea
+
+- **Upstream:** <https://github.com/morluto/rea> (commit `d69acc3455c33f90a2fc4381db43d38b6af50622`)
+- **License:** MIT (`SPDX-License-Identifier: MIT`)
+- **Copyright:** Copyright (c) 2026 morluto
+
+Ported to `skills/global_config/reverse-engineer-anything/`:
+
+| File | Upstream source |
+|---|---|
+| `skills/global_config/reverse-engineer-anything/SKILL.md` | `.agents/skills/reverse-engineer-anything/SKILL.md` (frontmatter: added `category`, `risk`, `source`, `metadata`; shortened description; added Authorized use safety block) |
+| `skills/global_config/reverse-engineer-anything/references/**` | `.agents/skills/reverse-engineer-anything/references/**` (added source pointer comment) |
+
+### License text
+
+```
+MIT License
+
+Copyright (c) 2026 morluto
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+

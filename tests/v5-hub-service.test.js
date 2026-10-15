@@ -19,7 +19,7 @@ const realAosRoot = ROOT;
 function mkCtx(home, extra = {}) {
     const calls = [];
     const run = async (cmd, args) => { calls.push([cmd, ...args]); return { ok: true, status: 0, stdout: '', stderr: '' }; };
-    return { calls, ctx: { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: NODE, aosRoot: realAosRoot, uid: 501, sleep: async () => {}, hubPort: 1, ...extra } };
+    return { calls, ctx: { home, run, serviceRunner: true, dryRun: false, platform: 'darwin', log: () => {}, nodePath: NODE, aosRoot: realAosRoot, uid: 501, sleep: async () => {}, hubPort: 1, ...extra } };
 }
 
 describe('service definitions', () => {

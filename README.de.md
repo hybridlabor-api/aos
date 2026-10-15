@@ -21,7 +21,7 @@
 
 [![agents](https://img.shields.io/badge/subagents-45-orange.svg)](#die-subagents-45)
 [![commands](https://img.shields.io/badge/commands-15-blue.svg)](#alles-stöbern)
-[![playbooks](https://img.shields.io/badge/playbooks-35-informational.svg)](#playbooks)
+[![playbooks](https://img.shields.io/badge/playbooks-36-informational.svg)](#playbooks)
 [![A2A](https://img.shields.io/badge/A2A-Claude%20%C2%B7%20OpenCode%20%C2%B7%20agy%20%C2%B7%20Codex-0b7285.svg)](#a2a-sessions-die-miteinander-reden)
 [![MCP gateway](https://img.shields.io/badge/MCP%20gateway-default-teal.svg)](#mcp-gateway-und-ein-mcp-pro-app)
 [![go-gate](https://img.shields.io/badge/go--gate-hook--enforced-red.svg)](#das-go-gate)
@@ -236,7 +236,7 @@ v5 verändert, wie AOS auf eine Maschine kommt und wie seine Teile miteinander r
 | **agenttrail** | Eine Live-Karte pro Repo, automatisch gestartet, mit Link in deiner Session. Ein v2-Control-Room ist **in Arbeit**. |
 | **Plan Canvas** | Pläne öffnen sich in einer lokalen Canvas; Annotationen werden an den Agent zurückgeleitet. |
 | **go-gate** | Read-, Test- und Build-Befehle ohne Schreib- oder Netzwerkeffekt laufen ohne GO durch; Deny-Logs maskieren Credentials; Hooks in vier Harnesses; ein maschinenweites Gate-Profil (`strict`, `work`, `off`) verengt oder weitet sie. |
-| **Playbooks und Factory** | 35 `pb-*`-Playbooks, die neun `factory-*`-Skills und `plan-arbiter`. |
+| **Playbooks und Factory** | 36 `pb-*`-Playbooks, die neun `factory-*`-Skills und `plan-arbiter`. |
 | **Orchestrator-Kette** | Master Session, Project Orchestrator, Package Orchestrator, abgebildet auf echte Mechanismen. |
 
 **In Arbeit, nicht als ausgeliefert deklariert.** agenttrail-v2-Control-Room, A2A-Intercom und a2abook, A2A-`spawn`-Modus, `skill-create` und `instinct-*`.
@@ -574,7 +574,7 @@ aos-gate profile strict               # keine Bestätigung nötig
 
 ## Playbooks
 
-Ein Playbook ist ein Skill mit `kind: playbook`, der eine wiederkehrende Aufgabe in einen geführten Lauf mit festem Contract verwandelt. Die 35 `pb-*`-Playbooks kommen mit den Skills; `/playbooks` listet sie (es führt `list-playbooks.mjs` aus und druckt Name, Zeit, Schwierigkeit und Anforderungen für jedes). Es gibt keinen Befehl pro Playbook: du benennst das Playbook.
+Ein Playbook ist ein Skill mit `kind: playbook`, der eine wiederkehrende Aufgabe in einen geführten Lauf mit festem Contract verwandelt. Die 36 `pb-*`-Playbooks kommen mit den Skills; `/playbooks` listet sie (es führt `list-playbooks.mjs` aus und druckt Name, Zeit, Schwierigkeit und Anforderungen für jedes). Es gibt keinen Befehl pro Playbook: du benennst das Playbook.
 
 **Was ein Playbook deklariert.** Sein Frontmatter nennt Trigger-Phrasen, `inputs`, `requires` (Skills, Subagents, MCP-Server, Store-Items), `go_points`, `outputs`, einen `verify`-Check, `difficulty` und `est_time`. Der Body ist eine nummerierte Schrittliste. Jeder Schritt nennt den Skill oder Agent, den er nutzt, seine Eingabe, das Artifact, das er schreibt, und den Check, der „fertig" sagt.
 
@@ -624,7 +624,7 @@ flowchart LR
 <p align="center"><sub><b>pb-bug-fix.</b> Das Issue ist der Contract, der Test kommt vor dem Fix, der Reviewer sieht nur den Diff und das Issue, und der Push wartet auf dein GO.</sub></p>
 
 <details>
-<summary><b>Playbooks nach Domäne (35)</b></summary>
+<summary><b>Playbooks nach Domäne (36)</b></summary>
 
 | Playbook | Zweck | Subagents | Zeit · Level |
 |---|---|---|---|
@@ -635,6 +635,7 @@ flowchart LR
 | `pb-harness-work` | Den Agent-Harness selbst verändern (Hooks, Gates, Memory, Permissions, Plugins) — auf den sicheren Weg. | architect, techlead, reviewer | 1-3 h · advanced |
 | `pb-security-sweep` | Security-Sweep über ein Repo: Secrets, Dependencies, Diff, ein gerankter Findings-Report. | security-reviewer, silent-failure-hunter | 1-2 h · advanced |
 | `pb-open-source` | Ein Projekt auf Open Sourcing vorbereiten: sanitizierter Fork, Sanitizer-Urteil, README und LICENSE, neues privates Repo. | opensource-forker, opensource-sanitizer | 1-3 h · advanced |
+| `pb-tauri-e2e` | Mehrphasiger E2E-, Live-App- und Binary-Sicherheits-Audit für Tauri-v2-Desktop-Apps. | reviewer, silent-failure-hunter, security-reviewer | 15-45 min · advanced |
 | `pb-worktrees-land` | Git-Worktrees über deine Repos aufräumen; entfernt nur gemergte. | — | 10-30 min · intermediate |
 | **Release, CI und Betrieb** | | | |
 | `pb-ship` | Die Arbeit des Tages in einem Repo ausliefern: Triage, jeden offenen PR reviewen, mergen. | reviewer | 20-60 min · intermediate |
@@ -1030,7 +1031,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>Skills (217)</b></summary>
+<summary><b>Skills (219)</b></summary>
 
 <details>
 <summary><b>library (85)</b></summary>
@@ -1126,7 +1127,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>engineering-method (54)</b></summary>
+<summary><b>engineering-method (55)</b></summary>
 
 | Skill | What it does |
 |---|---|
@@ -1169,6 +1170,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `prototype` | Build a throwaway prototype to answer a design question. |
 | `read-the-damn-docs` | Read the docs before implementing, integrating, upgrading, or debugging anything third-party. |
 | `requesting-code-review` | Verify work meets requirements after completing tasks or before merging. |
+| `reverse-engineer-anything` | Reverse engineer native, managed, Electron/JS, packaged, firmware, and browser targets with REA. |
 | `simplify-code` | Review a diff for clarity and safe simplifications, then optionally apply low-risk fixes. |
 | `software-architecture` | Guide for quality-focused software architecture. |
 | `subagent-driven-development` | Execute implementation plans with independent tasks in the current session. |
@@ -1268,10 +1270,11 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>design-ui-ux (12)</b></summary>
+<summary><b>design-ui-ux (13)</b></summary>
 
 | Skill | What it does |
 |---|---|
+| `bdb-ui-library` | >- |
 | `bdb-visual-edit` | Edit source from an element the human points at in a running local dev app. |
 | `bdbdesignpro` | Animation engine choice, motion tokens, scroll effects, micro-interactions, motion accessibility. |
 | `design-spells` | Curated micro-interactions, delightful animations, and subtle design details. |
@@ -1308,7 +1311,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>Playbooks (35)</b></summary>
+<summary><b>Playbooks (36)</b></summary>
 
 | Playbook | What it does |
 |---|---|
@@ -1344,6 +1347,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `pb-ship` | Ship the day's work in one repo: triage, review every open PR, merge. |
 | `pb-show-build` | Build a show across lights (grandMA3), media (Resolume) and visuals (TouchDesigner) from one cue list. |
 | `pb-social-pack` | Turn a release recap into a social pack where every claim traces to a facts file. |
+| `pb-tauri-e2e` | Multi-phase E2E, live-app, and binary security audit for Tauri v2 desktop apps. |
 | `pb-todo` | Turn one sentence into a task line in the right to-do list. |
 | `pb-week-plan` | Turn scattered to-do lists and notes into one prioritised plan for the week. |
 | `pb-worktrees-land` | Clean up git worktrees across your repos; removes only merged ones. |
@@ -1356,24 +1360,37 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | Agent | What it does |
 |---|---|
 | `architect` | Turns the user's goal into a system plan. |
+| `code-reviewer` | Independent read-only general code reviewer: code health, architecture boundaries, edge cases, error handling, and maintainability. |
+| `comment-analyzer` | Independent read-only code comment analyzer: documentation drift, comment accuracy, security disclosures, and comment hygiene. |
 | `cpp-reviewer` | Independent read-only C++ code reviewer: memory safety, modern C++ idioms, concurrency, and performance for `.cpp`/`.hpp`/`.cc`/`.h` changes. |
 | `csharp-reviewer` | Independent read-only C#/.NET code reviewer: .NET conventions, async patterns, security, nullable reference types, EF Core. |
 | `database-reviewer` | PostgreSQL specialist for query optimization, schema design, security, and performance. |
 | `devils-advocate` | Argues against the plan or diff under review: hunts unstated assumptions, missing failure modes, and the case where the proposed approach is the wrong one. |
+| `django-reviewer` | Independent read-only Django code reviewer: ORM query efficiency, security, transactions, view architecture, and migrations. |
 | `event-manager-assistant` | Event production planning assistant: run of show, technical riders, crew plans, schedules and budgets, load-in planning, and vendor lists. |
+| `fastapi-reviewer` | Independent read-only FastAPI code reviewer: async route correctness, Pydantic schemas, dependency injection, and API design. |
+| `flutter-reviewer` | Independent read-only Flutter/Dart code reviewer: widget lifecycle, state management, rebuild performance, and platform patterns. |
+| `fsharp-reviewer` | Independent read-only F# code reviewer: functional purity, algebraic data types, async workflows, and .NET interop. |
 | `go-build-resolver` | Resolves Go build, vet, and compilation errors with minimal changes. |
 | `go-reviewer` | Independent read-only Go code reviewer: idiomatic Go, concurrency, error handling, and performance for `.go` changes. |
 | `godmode-engineering` | Senior Fullstack and Backend Engineer. |
 | `godmode-media-eventtech` | Creative-Tech and Show-Control Specialist. |
 | `godmode-shipping` | Release Gatekeeper, QA and Verification Auditor. |
 | `godmode-ui-ux` | Lead Frontend Designer and UI Engineer. |
+| `healthcare-reviewer` | Independent read-only healthcare application reviewer: HIPAA compliance, PHI protection, medical data schemas, and audit logging. |
 | `java-reviewer` | Independent read-only Java code reviewer for Spring Boot and Quarkus projects: layered architecture, JPA/Panache, security, concurrency, testing. |
 | `kotlin-reviewer` | Independent read-only Kotlin/Android/KMP code reviewer: idiomatic Kotlin, coroutine and Flow safety, Compose recomposition traps, clean architecture, Android... |
 | `live-media-operator` | Live show operator for grandMA3, media servers such as Resolume, and TouchDesigner networks. |
+| `mle-reviewer` | Independent read-only machine learning engineering reviewer: training pipelines, data leakage, inference latency, drift, and numerical stability. |
+| `network-config-reviewer` | Independent read-only network configuration reviewer: routing protocols, ACLs, VLANs, firewall policies, and device security. |
 | `opensource-forker` | Forks a project for open-sourcing: strips secrets and internal references. |
 | `opensource-sanitizer` | Verifies an open-source fork is fully sanitized before release. |
 | `pcb-design-assistant` | PCB design assistant for KiCad-centered hardware work: schematic and layout review, DRC/ERC clearance, stackup and impedance constraints, BOM checks, and man... |
+| `php-reviewer` | Independent read-only PHP code reviewer: modern PHP 8.x idioms, Laravel/Symfony frameworks, OWASP security, and type safety. |
+| `pr-test-analyzer` | Independent read-only pull request test coverage analyzer: assertion strength, mocking integrity, edge cases, and test flakiness. |
 | `python-reviewer` | Independent read-only Python code reviewer: Pythonic idioms, PEP 8, type hints, security, and concurrency for `.py` changes. |
+| `rag-pipeline-reviewer` | Independent read-only RAG pipeline reviewer: chunking strategy, embeddings, vector indexing, retrieval quality, and prompt injection defense. |
+| `react-reviewer` | Independent read-only React code reviewer: hooks correctness, component lifecycle, Next.js architecture, render performance, and accessibility. |
 | `reviewer` | Adversarial review of build-node output against the plan's contract. |
 | `reviewer-1` | Independent adversarial reviewer, correctness focus: logic errors, broken edge cases, mismatches between the plan's stated contract and the implementation, a... |
 | `reviewer-2` | Independent adversarial reviewer, security and operability focus: injection, leaked secrets, auth gaps, silent failures, and rollback/deployment hazards. |
@@ -1381,9 +1398,12 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `security-reviewer` | Security vulnerability detection and remediation. |
 | `silent-failure-hunter` | Reviews code for silent failures, swallowed errors, bad fallbacks. |
 | `spec-prd-creator` | Turns a raw idea into a spec/PRD: goals, non-goals, user stories, acceptance criteria, and open questions. |
+| `swift-reviewer` | Independent read-only Swift code reviewer: Swift Concurrency, memory safety (ARC), SwiftUI/UIKit architecture, and Apple platform patterns. |
 | `techlead` | Reviews the plan for a capability map before any build node starts. |
+| `type-design-analyzer` | Independent read-only type design analyzer: encapsulation, domain modeling precision, algebraic data types, and type-system safety. |
 | `typescript-reviewer` | Independent read-only TypeScript/JavaScript code reviewer: type safety, async correctness, Node/web security, and idiomatic patterns for `.ts`/`.tsx`/`.js`/`... |
 | `video-motion-assistant` | Code-driven video and motion specialist, carved out of godmode-media-eventtech: programmatic video generation and editing, After Effects and Premiere automat... |
+| `vue-reviewer` | Independent read-only Vue.js code reviewer: Vue 3 Composition API, reactivity rules, Pinia state, Nuxt architecture, and component performance. |
 
 </details>
 
@@ -1451,7 +1471,7 @@ npx skills add hybridlabor-api/aos
 
 ### Playbooks
 
-35 `pb-*`-Playbooks verwandeln wiederkehrende Aufgaben in geführte Läufe mit deklarierten GO-Punkten. Wie ein Lauf funktioniert und die volle Tabelle nach Domäne: siehe [Playbooks](#playbooks).
+36 `pb-*`-Playbooks verwandeln wiederkehrende Aufgaben in geführte Läufe mit deklarierten GO-Punkten. Wie ein Lauf funktioniert und die volle Tabelle nach Domäne: siehe [Playbooks](#playbooks).
 
 ---
 

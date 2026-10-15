@@ -400,6 +400,25 @@ function checkAgyMcsc() {
   }
 }
 
+// Antigravity loads <workspace>/.agents/mcp_config.json; in $HOME that picked up the shipped server template.
+function checkAgyWorkspaceMcp() {
+  const f = h('.agents', 'mcp_config.json');
+  if (!existsSync(f)) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} absent (clean)`, '');
+    return;
+  }
+  const data = readJson(f);
+  const servers = Object.keys(data?.mcpServers || {});
+  const foreign = servers.filter((s) => s !== 'aos' && s !== 'mcsc');
+  if (!foreign.length) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} lists only ${servers.join(', ') || 'no'} servers`, '');
+    return;
+  }
+  add('agy', 'agy workspace MCP', false,
+    `${tilde(f)} lists servers other than aos/mcsc (${foreign.join(', ')}): agy loads them in $HOME`,
+    'aos repair');
+}
+
 // ---------------------------------------------------------------- OpenWiki
 function checkOpenWiki() {
   const bin = which('openwiki');
@@ -448,6 +467,40 @@ async function checkSynapse() {
            : 'Re-run the installer (it symlinks ~/.local/bin/synapse), and add ~/.local/bin to PATH.');
   add('synapse', 'daemon :7781', await portOpen(7781), 'something is listening (a bare TCP probe — it does not prove it is Synapse)',
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781');
+}
+
+// ---------------------------------------------------------------- REA MCP
+// Opt-in dual-use reverse-engineering tool. Kept direct (stateful stdio,
+// large tool catalog); never a default selection.
+function checkReaMcp() {
+  const reaEnabled = process.env.AOS_REA_MCP === 'on';
+  if (!reaEnabled) {
+    add('tools', 'REA MCP', true,
+      'off — dual-use research tool; opt-in via AOS_REA_MCP=on or `aos package install rea`',
+      'Set AOS_REA_MCP=on to enable the REA reverse-engineering MCP pick.');
+    return;
+  }
+  let reaPath = which('rea');
+  let reaVer = null;
+  if (reaPath) {
+    try {
+      reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    } catch {}
+  }
+  if (!reaPath) {
+    try {
+      reaVer = execFileSync(IS_WIN ? 'npx.cmd' : 'npx', ['-y', 'rea-agents@6.5.0', '--version'], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      reaPath = 'npx -y rea-agents@6.5.0';
+    } catch {}
+  }
+  if (reaPath) {
+    add('tools', 'REA MCP', true,
+      `present: ${reaPath} · stdio MCP (${reaVer || 'v6.5.0'}, direct)`);
+  } else {
+    add('tools', 'REA MCP', false,
+      'AOS_REA_MCP=on but the REA CLI is not reachable',
+      'Run: npm install -g rea-agents@latest (or `aos package install rea` once available)');
+  }
 }
 
 // ---------------------------------------------------------------- worktrees
@@ -499,11 +552,13 @@ checkPrereqs();
 checkAos();
 checkHooks();
 checkAgyMcsc();
+checkAgyWorkspaceMcp();
 await checkMemb();
 await checkMemory();
 await checkDeja();
 checkOpenWiki();
 await checkSynapse();
 checkWorktrees();
+checkReaMcp();
 report();
 process.exit(results.some(r => !r.ok) ? 1 : 0);

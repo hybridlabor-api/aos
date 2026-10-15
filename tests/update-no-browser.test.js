@@ -56,23 +56,29 @@ test('generateAndOpenLaunchpad exits early and does not open when AOS_NO_OPEN=1 
     }
 });
 
-test('menu update() and repair() set AOS_NO_OPEN=1', async () => {
+test('menu update() and repair() set AOS_NO_OPEN=1 and never call real service managers', async () => {
     delete process.env.AOS_NO_OPEN;
     const mockHost = {
         detectInstallState: () => ({ isInstalled: true }),
+    };
+    const safeRunner = (cmd, args = []) => {
+        if (['launchctl', 'systemctl', 'schtasks'].includes(cmd)) {
+            throw new Error(`Real service manager called in test: ${cmd} ${args.join(' ')}`);
+        }
+        return { status: 0, stdout: '' };
     };
 
     // runCommand with update sets AOS_NO_OPEN immediately
     assert.strictEqual(process.env.AOS_NO_OPEN, undefined);
     try {
-        await menu.runCommand('update', mockHost, { home: tempHome, write: () => {} });
+        await menu.runCommand('update', mockHost, { home: tempHome, write: () => {}, run: safeRunner });
     } catch (_) {}
     assert.strictEqual(process.env.AOS_NO_OPEN, '1');
 
     delete process.env.AOS_NO_OPEN;
     assert.strictEqual(process.env.AOS_NO_OPEN, undefined);
     try {
-        await menu.runCommand('repair', mockHost, { home: tempHome, write: () => {} });
+        await menu.runCommand('repair', mockHost, { home: tempHome, write: () => {}, run: safeRunner });
     } catch (_) {}
     assert.strictEqual(process.env.AOS_NO_OPEN, '1');
 });

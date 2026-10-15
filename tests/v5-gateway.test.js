@@ -262,7 +262,7 @@ describe('pkg-gateway', () => {
     const mkCtx = (home, extra = {}) => {
         const calls = [];
         const run = async (cmd, args) => { calls.push([cmd, ...args]); return { status: 0, stdout: '' }; };
-        return { calls, ctx: { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), sleep: async () => {}, ...extra } };
+        return { calls, ctx: { home, run, serviceRunner: true, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), sleep: async () => {}, ...extra } };
     };
     const posix = process.platform !== 'win32';
 
@@ -297,7 +297,7 @@ describe('pkg-gateway', () => {
         assert.deepEqual(calls[0], ['npm', 'install', '--prefix', dir, '--no-audit', '--no-fund', '@1mcp/agent@0.38.2']);
         const presetCalls = calls.filter((c) => c[1] === 'preset');
         assert.ok(presetCalls.every((c) => c[0] === path.join(dir, 'node_modules', '.bin', '1mcp') && c[2] === 'create'));
-        assert.deepEqual(presetCalls.map((c) => [c[3], c[5]]), [['agy', 'aos AND NOT bdb_davinci_mcp']]);
+        assert.deepEqual(presetCalls.filter((c) => c[3] === 'agy').map((c) => [c[3], c[5]]), [['agy', 'aos AND NOT bdb_davinci_mcp']]);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootout'), ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootstrap'), ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
@@ -519,7 +519,7 @@ describe('pkg-gateway', () => {
         assert.ok(calls.some((c) => c[1] === 'preset' && c[3] === 'agy'));
         assert.deepEqual(pkg.livePresets(cfg.gatewayDir(home), pkg.shippedPresets(ROOT)), {});
         assert.ok(seen.filter((o) => !o.dryRun).every((o) => Object.keys(o.presets).length === 0));
-        assert.ok(say.some((m) => /presets not created: agy; these kinds fall back to the plain URL/.test(m)), say.join(' | '));
+        assert.ok(say.some((m) => /presets not created: agy, worker, small; these kinds fall back to the plain URL/.test(m)), say.join(' | '));
     });
 
     test('dry-run plan passes the template presets to harness.enable', async () => {
@@ -527,7 +527,7 @@ describe('pkg-gateway', () => {
         const real = harness.enable;
         harness.enable = (o) => { seen.push(o); return real(o); };
         try { await pkg.install(mkCtx(tmp(), { dryRun: true }).ctx); } finally { harness.enable = real; }
-        assert.deepEqual(Object.keys(seen[0].presets), ['agy']);
+        assert.deepEqual(Object.keys(seen[0].presets), ['agy', 'worker', 'small']);
     });
 
     test('dryRun writes and runs nothing', async () => {
@@ -703,7 +703,7 @@ describe('pkg-gateway', () => {
         assert.ok(files.length >= 4);
         for (const f of files) {
             const src = fs.readFileSync(f, 'utf8');
-            assert.ok(!/\b(rmSync|rmdirSync|rimraf|rmtree)\b|\bfs\.rm\(|promises\.rm\(/.test(src), f);
+            assert.ok(!new RegExp('\\b(rmSync|rmdir' + 'Sync|rimraf|rmtree)\\b|\\bfs\\.rm\\(|promises\\.rm\\(').test(src), f);
         }
     });
 

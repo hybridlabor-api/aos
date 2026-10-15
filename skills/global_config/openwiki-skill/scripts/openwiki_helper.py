@@ -83,24 +83,32 @@ def execute_commit(cwd):
     # Verify we have changes to commit in .openwiki, README.md, agent.md or CLAUDE.md
     paths_to_stage = [".openwiki", "README.md", "agent.md", "CLAUDE.md"]
     modified_paths = []
-    
+
     for path in paths_to_stage:
         full_path = os.path.join(cwd, path)
         if os.path.exists(full_path):
             status = run_cmd(["git", "status", "--porcelain", path], cwd)
             if status:
                 modified_paths.append(path)
-                
+
     if not modified_paths:
         return "No documentation changes detected to commit."
-        
+
     # Stage the documentation files
     for path in modified_paths:
         run_cmd(["git", "add", path], cwd)
-        
-    # Commit the changes
+
+    # Commit the changes. Repos without a git identity need an explicit author
+    # passed on the command line; never write git config.
     msg = "docs(wiki): update project specs and codebase documentation [auto]"
-    commit_res = run_cmd(["git", "commit", "-m", msg], cwd)
+    commit_args = ["git", "commit", "-m", msg]
+    email = run_cmd(["git", "config", "user.email"], cwd)
+    if not email or email.startswith("Error") or email.startswith("Exception"):
+        commit_args.insert(1, "-c")
+        commit_args.insert(2, "user.name=AOS OpenWiki")
+        commit_args.insert(3, "-c")
+        commit_args.insert(4, "user.email=openwiki@aos.local")
+    commit_res = run_cmd(commit_args, cwd)
     return f"Successfully committed documentation changes:\n{commit_res}"
 
 def main():

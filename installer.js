@@ -36,6 +36,7 @@ const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
+const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
@@ -262,25 +263,12 @@ const conditionalMcpConfigKeys = [
     { key: 'bdb_after_effects_mcp_fallback', requires: 'go', hint: 'https://go.dev/dl/' }
 ];
 
-function hasExecutable(binary) {
-    try {
-        if (process.platform === 'win32') {
-            execFileSync('where.exe', [binary], { stdio: 'ignore', windowsHide: true });
-        } else {
-            if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(binary)) return false;
-            execSync(`command -v ${binary}`, { stdio: 'ignore', windowsHide: true });
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
 function checkSystemPrereqs({
     which = hasExecutable,
     platform = process.platform,
     logger = log,
     exitOnError = true,
+    isElevated: isElevatedOpt,
 } = {}) {
     const isWin = platform === 'win32';
     const isMac = platform === 'darwin';
@@ -288,11 +276,11 @@ function checkSystemPrereqs({
     const gitOk = Boolean(which('git'));
     const ghOk = Boolean(which('gh'));
 
-    const gitInstruction = isWin
-        ? 'Install Git via git-scm.com or winget install Git.Git'
-        : isMac
-            ? 'Install Git via brew install git / xcode-select --install'
-            : 'Install Git via your package manager (e.g. apt install git / dnf install git)';
+    const elevated = isElevatedOpt !== undefined
+        ? Boolean(isElevatedOpt)
+        : (isWin ? isElevated({ platform }) : false);
+
+    const gitInstruction = getGitInstallInstruction({ platform, elevated });
 
     const ghInstruction = isWin
         ? 'Install GitHub CLI: winget install GitHub.cli'
@@ -1544,6 +1532,10 @@ async function reloadDaemons(skipNames = []) {
         for (const d of daemons) {
             if (skipNames.includes(d.name)) continue;
             if (fs.existsSync(d.plist)) {
+                if (v5Profile.isTestSandbox(homeDir)) {
+                    log.success(`${d.name} daemon reloaded`);
+                    continue;
+                }
                 try {
                     execSync(`launchctl unload "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
                     execSync(`launchctl load "${d.plist}" 2>/dev/null || true`, { stdio: 'ignore' });
@@ -3071,13 +3063,17 @@ async function installMemB(interactive) {
             try {
                 fs.mkdirSync(path.join(homeDir, '.memb'), { recursive: true });
                 fs.writeFileSync(plistPath, plistContent);
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                const isListening = await verifyDaemonListening(8088, 'memB WebUI');
-                if (isListening) {
+                if (v5Profile.isTestSandbox(homeDir)) {
                     log.success('memB WebUI LaunchAgent active (Port 8088)');
                 } else {
-                    log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                    execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    const isListening = await verifyDaemonListening(8088, 'memB WebUI');
+                    if (isListening) {
+                        log.success('memB WebUI LaunchAgent active (Port 8088)');
+                    } else {
+                        log.warn('memB WebUI daemon did not respond on Port 8088 within timeout. You may need to start it manually or check for port conflicts.');
+                    }
                 }
             } catch (e) { logDebug(e, 'operation'); }
         } else if (process.platform === 'linux') {
@@ -3215,13 +3211,17 @@ async function installSynapse() {
             try {
                 fs.mkdirSync(path.join(homeDir, '.synapse'), { recursive: true });
                 fs.writeFileSync(plistPath, plistContent);
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
-                if (isListening) {
+                if (v5Profile.isTestSandbox(homeDir)) {
                     log.success('Synapse 3D LaunchAgent active (Port 7781)');
                 } else {
-                    log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                    execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
+                    if (isListening) {
+                        log.success('Synapse 3D LaunchAgent active (Port 7781)');
+                    } else {
+                        log.warn('Synapse 3D daemon did not respond on Port 7781 within timeout. You may need to start it manually or check for port conflicts.');
+                    }
                 }
             } catch (e) { logDebug(e, 'synapse plist setup'); }
         } else if (process.platform === 'linux') {
@@ -3446,13 +3446,17 @@ async function installOpenWikiVisualizer() {
         try {
             fs.mkdirSync(path.join(homeDir, '.openwiki'), { recursive: true });
             fs.writeFileSync(plistPath, plistContent);
-            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
-            if (isListening) {
+            if (v5Profile.isTestSandbox(homeDir)) {
                 log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
             } else {
-                log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
+                if (isListening) {
+                    log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
+                } else {
+                    log.warn('OpenWiki Visualizer daemon did not respond on Port 4321 within timeout. You may need to start it manually or check for port conflicts.');
+                }
             }
         } catch (e) { logDebug(e, 'openwiki visualizer plist setup'); }
     } else if (process.platform === 'linux') {
@@ -4706,7 +4710,7 @@ async function installMcpsForTarget(paths, ctx) {
         }
     }
 
-    const mcpTemplatePath = path.join(srcDir, 'mcp_config.json');
+    const mcpTemplatePath = mcpSecrets.shippedMcpTemplatePath(srcDir);
     const mcpTemplate = installStep(
         `read the MCP template ${mcpTemplatePath}`,
         () => fs.readFileSync(mcpTemplatePath, 'utf8'),
@@ -5854,6 +5858,8 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     // rules-inject.mjs reads the rules text from here when it does not run from a checkout.
     const rulesLib = path.join(srcDir, 'lib', 'destructive-rules.js');
     if (fs.existsSync(rulesLib)) copyDirRecursiveSync(rulesLib, path.join(targetHome, '.agents', 'lib', 'destructive-rules.js'));
+    const routingRulesLib = path.join(srcDir, 'lib', 'routing-rules.js');
+    if (fs.existsSync(routingRulesLib)) copyDirRecursiveSync(routingRulesLib, path.join(targetHome, '.agents', 'lib', 'routing-rules.js'));
     // aos-acp (installed in ~/.agents/bin) loads ../lib/cli-spawn.js to start npx/opencode .cmd shims on Windows.
     const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
     if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));
@@ -6096,26 +6102,33 @@ function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
     }
 }
 
-function installGlobalBinaries() {
+function installGlobalBinaries(targetHome = (process.env.HOME || homeDir)) {
     const binSrc = path.join(srcDir, 'bin');
-    const globalAgentsBin = path.join(homeDir, '.agents', 'bin');
+    const globalAgentsBin = path.join(targetHome, '.agents', 'bin');
     if (fs.existsSync(binSrc)) {
         copyDirRecursiveSync(binSrc, globalAgentsBin);
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
-        copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(homeDir, '.agents', 'lib'));
-        // The gateway reads the shipped server list from ~/.agents (aosRoot); without these it serves nothing.
-        for (const f of ['mcp_config.json', 'mcp_picks.json']) {
-            if (fs.existsSync(path.join(srcDir, f))) copyDirRecursiveSync(path.join(srcDir, f), path.join(homeDir, '.agents', f));
+        copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(targetHome, '.agents', 'lib'));
+        // The gateway reads the shipped server list from ~/.agents/gateway/upstream_template.json (aosRoot); without these it serves nothing.
+        const gatewayDir = path.join(targetHome, '.agents', 'gateway');
+        fs.mkdirSync(gatewayDir, { recursive: true });
+        const srcTemplate = mcpSecrets.shippedMcpTemplatePath(srcDir);
+        if (fs.existsSync(srcTemplate)) {
+            copyDirRecursiveSync(srcTemplate, path.join(gatewayDir, 'upstream_template.json'));
         }
+        if (fs.existsSync(path.join(srcDir, 'mcp_picks.json'))) {
+            copyDirRecursiveSync(path.join(srcDir, 'mcp_picks.json'), path.join(targetHome, '.agents', 'mcp_picks.json'));
+        }
+        mcpSecrets.migrateLegacyAgyWorkspaceMcp(targetHome, srcDir, { log });
         // lib/gate-profile.mjs is a re-export of the hook copy, which does not exist under ~/.agents: aos-gate needs the real file there.
         const profileSrc = path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs');
-        if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(homeDir, '.agents', 'lib', 'gate-profile.mjs'));
+        if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(targetHome, '.agents', 'lib', 'gate-profile.mjs'));
         // lib/a2a-sdk-resolve.mjs in the copy above needs the package root (deps are package deps).
         writeA2aPackageRootRecord();
     }
 
-    const localBinDir = path.join(homeDir, '.local', 'bin');
+    const localBinDir = path.join(targetHome, '.local', 'bin');
     if (!fs.existsSync(localBinDir)) {
         try { fs.mkdirSync(localBinDir, { recursive: true }); } catch (e) { logDebug(e, 'mkdir localBin'); }
     }
@@ -6136,7 +6149,7 @@ function installGlobalBinaries() {
             // (Lenovo P15: "Cannot find module '../installer.js'"). Run it from the package instead.
             run = `npx -y -p ${AOS_NPX_SPEC}${aosDistTag(pkg.version)} aos-uninstall`;
         } else {
-            const targetMjs = launcherTarget(homeDir, name);
+            const targetMjs = launcherTarget(targetHome, name);
             if (!fs.existsSync(targetMjs)) continue;
             run = `node "${targetMjs}"`;
         }
@@ -6758,7 +6771,9 @@ function installCodexRules({ targetHome = homeDir } = {}) {
     }
 }
 
-const CODEX_TRUST_REMINDER ='Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.';
+const CODEX_TRUST_REMINDER =
+    'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.\n' +
+    'Non-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.';
 // Set when an install changed the AOS hook groups in ~/.codex/config.toml; printed as the last outro line.
 let codexHooksChanged = false;
 
@@ -7227,7 +7242,7 @@ function installPlanCanvasAutostart(overrides = {}) {
             const plistPath = path.join(home, 'Library', 'LaunchAgents', `${PLAN_CANVAS_LABEL}.plist`);
             fs.mkdirSync(path.dirname(plistPath), { recursive: true });
             fs.writeFileSync(plistPath, buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }));
-            if (!overrides.skipLaunchctl) {
+            if (!overrides.skipLaunchctl && !v5Profile.isTestSandbox(home)) {
                 execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
                 execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
             }
@@ -7763,8 +7778,10 @@ function generateAndOpenLaunchpad(installedModules = []) {
         // normal exit as a crash to restart, reopening the tab in a loop.
         try {
             fs.writeFileSync(plistPath, plistContent);
-            execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-            execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            if (!v5Profile.isTestSandbox(homeDir)) {
+                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+            }
         } catch (e) { logDebug(e, 'launchpad autostart plist'); }
     } else if (process.platform === 'win32') {
         const startupDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
@@ -8052,6 +8069,7 @@ function quickUpdateHarnesses() {
             injectHarnessRules();
         }, 'Harness files keep whatever version this machine already had.')],
         ['remove the AOS mcsc entry from agy configs', installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.')],
+        ['migrate legacy agy workspace MCP config', installStep('migrate legacy agy workspace MCP config', () => { mcpSecrets.migrateLegacyAgyWorkspaceMcp(homeDir, srcDir, { log }); })],
         ['move inline MCP secrets into the secrets file', installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`)],
         ['install the Codex plugin', installStep('install the Codex plugin', () => { runCodexPluginStep(); })],
     ];
@@ -8125,26 +8143,6 @@ async function runQuickUpdate(installState) {
     await maybeInstallCodenotch();
 }
 
-
-function buildAoAnnouncementBanner() {
-    const W = 78;
-    const row = (text, style = '') => `\x1b[36m│\x1b[0m${style}${text.padEnd(W)}\x1b[0m\x1b[36m│\x1b[0m`;
-    return [
-        `\x1b[36m╭${'─'.repeat(W)}╮\x1b[0m`,
-        row(''),
-        row('   BDB AGENT ORCHESTRATOR APP — FINAL BETA NOW AVAILABLE', '\x1b[1m\x1b[35m'),
-        row(''),
-        row('   The next generation of cross-harness multi-agent orchestration'),
-        row('   is now open to every user as a final beta.'),
-        row(''),
-        row('   • Dashboard & WebUI:  http://localhost:3101'),
-        row('   • Service command:    ao service install  (enables the background service)'),
-        row('   • Quick launch:       ao open  or  ao service status'),
-        row('   • Features:           session telemetry, live AgentTrail, multi-workspaces'),
-        row(''),
-        `\x1b[36m╰${'─'.repeat(W)}╯\x1b[0m\n`
-    ].join('\n');
-}
 
 // AOS CLI ships as a separate npm package under packages/ for one reason: pi
 // updates on its own cadence, and folding it into this release cycle would turn
@@ -8264,13 +8262,18 @@ async function main() {
     const args = process.argv.slice(2);
     // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
     // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
-    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package'];
+    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup'];
     if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
         console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
         process.exitCode = 2;
         return;
     }
     applyInstallOptions();
+    if (args[0] === 'context') {
+        const { contextCommand } = require('./lib/v5/context-profiles');
+        process.exitCode = contextCommand(args.slice(1), { home: homeDir });
+        return;
+    }
     if (['status', 'update', 'repair'].includes(args[0])) {
         if (args[0] !== 'status') {
             process.env.AOS_NO_OPEN = '1';
@@ -8298,6 +8301,8 @@ Commands:
   dashboard        Run the AOS dashboard (--port N, --no-open)
   package          Install, update, repair or verify one v5 package by id
   doctor|checkup   Check the installation
+  setup            Run setup wizard (interactive configuration)
+  context [role]   Show or set context profile (full|orchestrator|worker|small)
 
 Options:
   --codex-gate     Print the go-gate [[hooks.PreToolUse]] stanza for ~/.codex/config.toml
@@ -8458,7 +8463,6 @@ Options:
 
     intro(buildHeroHeader(pkg.version));
     console.log(buildTelemetryCard({ installState, detections, daemonStatus }));
-    console.log(buildAoAnnouncementBanner());
 
     if (DRY_RUN) {
         // Precise on purpose: version comparison still queries the registry, and
@@ -8485,7 +8489,7 @@ Options:
         return;
     }
 
-    if (installState.isInstalled && !isAutoYes) {
+    if (installState.isInstalled && !isAutoYes && args[0] !== 'setup') {
         persistInstallOptions();
         process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true));
         return;
@@ -8511,6 +8515,7 @@ Options:
     let customPaths = null;
     let creds = null;
     let selectedMcps = null;
+    let contextProfileChoice = null;
     let wantsUniversal = true;
     markPlatformsExplicit(PLATFORMS_ARG || []);
     let specificPlatforms = [defaultPlatformValue()];
@@ -8533,7 +8538,7 @@ Options:
         creds = { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
         selectedMcps = await promptMcpSelection(tier);
     } else {
-        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null };
+        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, contextProfile: null };
         const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness', '10': 'AOS CLI' };
 
         const stepTier = async () => {
@@ -8627,6 +8632,24 @@ Options:
             memoryOn = v === 'on';
         };
 
+        const stepContextProfile = async () => {
+            if (ctx.selectedPlatforms.includes('9')) return;
+            const { CONTEXT_PROFILES, CONTEXT_PROFILE_DEFS, contextProfileOf } = require('./lib/v5/context-profiles');
+            const st = v5Profile.readSettings(homeDir, () => {});
+            const cur = ctx.contextProfile || contextProfileOf(st);
+            const ans = await selectWithBack({
+                message: 'Context Profile (session token budget & gateway MCP tools):',
+                options: CONTEXT_PROFILES.map((p) => ({
+                    value: p,
+                    label: `${CONTEXT_PROFILE_DEFS[p].label}`,
+                    hint: CONTEXT_PROFILE_DEFS[p].description
+                })),
+                initialValue: cur
+            });
+            if (ans === BACK) return 'back';
+            ctx.contextProfile = ans;
+        };
+
         const stepMcps = async () => {
             if (ctx.selectedPlatforms.includes('9')) return;
             const sel = await promptMcpSelection(ctx.tier);
@@ -8659,6 +8682,7 @@ Options:
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
                 `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
+                `Context:       ${ctx.contextProfile || 'full'}`,
                 `MCPs:          ${(ctx.selectedMcps || []).join(', ') || '(none)'}`,
                 `LLM Provider:  ${ctx.creds ? ctx.creds.openwikiProvider : '-'}`,
                 `GitHub Token:  ${ctx.creds && ctx.creds.github ? maskApiKey(ctx.creds.github) : '(none)'}`,
@@ -8677,7 +8701,7 @@ Options:
             if (action === 'abort') return 'exit';
         };
 
-        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepMcps, stepCredentials, stepReview];
+        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepContextProfile, stepMcps, stepCredentials, stepReview];
 
         let i = 0;
         while (i < steps.length) {
@@ -8692,6 +8716,7 @@ Options:
         customPaths = ctx.customPaths;
         creds = ctx.creds;
         selectedMcps = ctx.selectedMcps;
+        contextProfileChoice = ctx.contextProfile;
         wantsUniversal = ctx.selectedPlatforms.includes('0');
         specificPlatforms = ctx.selectedPlatforms.filter(p => p !== '0');
         if (specificPlatforms.length === 0 && wantsUniversal) specificPlatforms.push(defaultPlatformValue());
@@ -8711,6 +8736,11 @@ Options:
         return;
     }
     persistInstallOptions();
+    if (contextProfileChoice) {
+        const st = v5Profile.readSettings(homeDir, () => {});
+        st.context = contextProfileChoice;
+        v5Profile.writeSettings(homeDir, st);
+    }
     if (!memoryOn && !installExcluded.has('memb')) declineUnifiedMemory();
 
     // The backup directory is created on first use (moveIfExists, the MCP merge), never empty, 0700 because it can hold credential copies.
@@ -8856,7 +8886,6 @@ module.exports = {
     readAoDaemonIdentity,
     selectAoCandidate,
     describeAoVersion,
-    buildAoAnnouncementBanner,
     agentsNotShippedAsFiles,
     downloadOrUpdateModule,
     detectPlatforms,
@@ -8984,6 +9013,10 @@ module.exports = {
     LAUNCHPAD_OPEN_FLAGS,
     checkSystemPrereqs,
     findBundledClaudeCli,
+    hasExecutable,
+    findExecutable,
+    shippedMcpTemplatePath: mcpSecrets.shippedMcpTemplatePath,
+    migrateLegacyAgyWorkspaceMcp: mcpSecrets.migrateLegacyAgyWorkspaceMcp,
 };
 
 // After module.exports: the v5 menu receives it as its host and main() runs before the first await.

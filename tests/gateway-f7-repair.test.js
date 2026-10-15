@@ -98,15 +98,16 @@ test('F14: verify fails when 1mcp is down behind a healthy forwarder, but not wh
     assert.strictEqual((await v([{ name: 'github', ok: true }])).ok, true);
 });
 
-test('G: run from HOME, ~/.agents/mcp_config.json (the server template) is not a harness file', () => {
+test('G: run from HOME, ~/.agents/mcp_config.json is not a harness file and templates are not harness files', () => {
     const home = tmp('aos-f7g-');
     const fromHome = harnessMcpFiles(home, {}, 'linux', home).map((f) => f.file);
     assert.ok(!fromHome.includes(path.join(home, '.agents', 'mcp_config.json')));
+    assert.ok(!fromHome.includes(path.join(home, '.agents', 'gateway', 'upstream_template.json')));
     const repo = tmp('aos-f7g-repo-');
     assert.ok(harnessMcpFiles(home, {}, 'linux', repo).map((f) => f.file).includes(path.join(repo, '.agents', 'mcp_config.json')));
 });
 
-test('F: a real install puts the server templates the gateway reads into ~/.agents (container only)', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
+test('F: a real install puts the server templates the gateway reads into ~/.agents/gateway (container only)', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
     const { spawnSync } = require('child_process');
     const home = tmp('aos-f7f-home-');
     const r = spawnSync(process.execPath, [path.join(ROOT, 'installer.js'), '--hooks-only', '-y', '--no-intro'], {
@@ -114,6 +115,7 @@ test('F: a real install puts the server templates the gateway reads into ~/.agen
     });
     assert.strictEqual(r.status, 0, r.stderr);
     const agents = path.join(home, '.agents');
-    assert.ok(fs.existsSync(path.join(agents, 'mcp_config.json')) && fs.existsSync(path.join(agents, 'mcp_picks.json')));
+    assert.ok(fs.existsSync(path.join(agents, 'gateway', 'upstream_template.json')) && fs.existsSync(path.join(agents, 'mcp_picks.json')));
+    assert.ok(!fs.existsSync(path.join(agents, 'mcp_config.json')), 'mcp_config.json must not be written to ~/.agents root');
     assert.ok(Object.keys(shippedServers(agents)).includes('github'), 'shippedServers(~/.agents) is not empty');
 });

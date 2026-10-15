@@ -67,7 +67,7 @@
     <text class="li ink mono" x="108" y="424" font-size="12">bdb-core · design-ui-ux</text>
     <text class="li ink mono" x="108" y="446" font-size="12">engineering-method · library</text>
     <text class="li ink mono" x="108" y="468" font-size="12">media-eventtech · hardware</text>
-    <text class="li muted" x="108" y="494">+ 34 pb-* playbooks</text>
+    <text class="li muted" x="108" y="494">+ 36 pb-* playbooks</text>
 
     <!-- Agents -->
     <rect class="panelSoft" x="448" y="330" width="340" height="176" rx="12"/>

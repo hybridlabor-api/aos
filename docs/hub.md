@@ -63,3 +63,12 @@ Paths must be absolute Windows paths without quotes, newlines or control charact
 - agenttrail is linked, not embedded: the Plans tab deep-links to the trail's own port.
 - The hub performs no GO actions and no pushes; gates (gogate) stay CLI-side.
 - Shell-free everywhere: probes and control use spawn with an args array (`shell:false`); args never become commands.
+
+## Troubleshooting
+
+**OpenWiki "down" or "Wikis: none yet".** OpenWiki is a launchd interval job
+(every 2 h): loaded but idle shows as *scheduled*. The Wikis list reads
+`~/.openwiki/projects.json` and scans `~/dev` (four levels) for `.openwiki`
+directories, relative to the home of the user the hub runs as
+(`AOS_HUB_HOME` overrides it). If repos live under another home, run
+`aos hub restart` from the account that owns them.

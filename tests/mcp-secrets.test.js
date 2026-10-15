@@ -464,4 +464,23 @@ describe('review round', () => {
         assert.equal(b.length, 1);
         assert.deepEqual(JSON.parse(read(path.join(h, b[0]))).permissions.deny, ['Bash(a)']);
     });
+
+    test('C2: harnessMcpFiles dedupes symlink pairs by realpath', () => {
+        const h = fresh();
+        const geminiDir = path.join(h, '.gemini', 'config');
+        const agyCliDir = path.join(h, '.gemini', 'antigravity-cli');
+        fs.mkdirSync(geminiDir, { recursive: true });
+        const realFile = path.join(geminiDir, 'mcp_config.json');
+        fs.writeFileSync(realFile, JSON.stringify({ mcpServers: {} }));
+        fs.mkdirSync(agyCliDir, { recursive: true });
+        const symlinkFile = path.join(agyCliDir, 'mcp_config.json');
+        try {
+            fs.symlinkSync(realFile, symlinkFile);
+        } catch {
+            return;
+        }
+        const files = sec.harnessMcpFiles(h, {}, 'linux', h);
+        const agyFiles = files.filter((f) => f.file.includes('mcp_config.json'));
+        assert.equal(agyFiles.length, 1, 'symlink pair to same real file must be deduped to one');
+    });
 });

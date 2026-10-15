@@ -25,3 +25,14 @@ Reference prompts for `/bdb-aos:loop`. Pick a template, fill the placeholders, h
 - A loop prompt never issues a GO, never types or runs `gogate`, never sets a mode or grant.
 - Act on a guarded step (merge, push, publish) only if the human's immediately preceding message is a literal GO or a valid grant (scope and time fit) covers the action. A loop iteration never satisfies the first condition, so it must STOP and report instead of continuing a blocked guarded step.
 - Every template carries explicit limits and a stop condition; never remove them.
+
+## Plan review
+
+When a loop produces a plan or updated artifact, open it in the Plan Canvas before acting on it:
+
+1. Give the document's top-level heading a stable ID, e.g. `## Plan {#plan-id}`.
+2. Run `aos-plan-canvas open <path-to-plan>.md`.
+3. Run `aos-plan-canvas await <path-to-plan>.md` and wait for the human verdict.
+4. Continue the loop only after an `approve` verdict.
+
+*(If running in OpenCode, always print the Canvas URL in chat.)*

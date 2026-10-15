@@ -8,6 +8,11 @@ GEMINI_API_KEY=...
 REMOTEOS_API_KEY=...
 ```
 
+Opt-in MCP picks are controlled by non-secret flags, not by values in this file:
+
+- `AOS_FIRECRAWL_MCP=on` enables the firecrawl pick; it still needs `FIRECRAWL_API_KEY` above.
+- `AOS_REA_MCP=on` enables the REA reverse-engineering MCP pick. REA is dual-use; the flag itself is the gate and no API key is required.
+
 One `KEY=value` per line. The file is never committed, never logged, and never copied into a harness config.
 
 ## How a server gets its variables

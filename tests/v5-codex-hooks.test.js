@@ -114,7 +114,10 @@ test('merge reports a changed AOS hook stanza only when it changed, and snapshot
 
 test('the trust reminder has the exact text and is printed after the outro, only when the stanza changed', () => {
     const { CODEX_TRUST_REMINDER } = require('../installer.js');
-    assert.strictEqual(CODEX_TRUST_REMINDER, 'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.');
+    assert.strictEqual(
+        CODEX_TRUST_REMINDER,
+        'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.\nNon-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.'
+    );
     const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
     assert.match(src, /if \(mergeCodexTomlHooks\(path\.join\(targetHome, '\.codex', 'config\.toml'\)\)\) codexHooksChanged = true;/);
     const print = src.indexOf('if (codexHooksChanged) console.log(');
