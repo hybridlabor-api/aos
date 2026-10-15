@@ -262,7 +262,7 @@ describe('pkg-gateway', () => {
     const mkCtx = (home, extra = {}) => {
         const calls = [];
         const run = async (cmd, args) => { calls.push([cmd, ...args]); return { status: 0, stdout: '' }; };
-        return { calls, ctx: { home, run, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), sleep: async () => {}, ...extra } };
+        return { calls, ctx: { home, run, serviceRunner: true, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), sleep: async () => {}, ...extra } };
     };
     const posix = process.platform !== 'win32';
 
