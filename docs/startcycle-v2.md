@@ -1,11 +1,11 @@
-# Startcycle Family v2 (WP1 + WP2)
+# Startcycle Family v2 (WP1 + WP2 + WP3)
 
-This document describes the first version of the Startcycle Family v2 architecture implemented in AOS.
+This document describes the Startcycle Family v2 architecture implemented in AOS.
 Startcycle v2 introduces custom role registries, team configurations, and dynamic workstream schemas while preserving 100% byte-identical backward compatibility for default runs.
 
 ---
 
-## What Exists in Version 1 (WP1 + WP2)
+## What Exists in Version 1 (WP1, WP2 & WP3)
 
 ### 1. Role Registry Engine
 - **Module:** `lib/roles/role-registry.mjs`
@@ -119,26 +119,42 @@ Stored at `.aos/teams/desktop-app.json` or `~/.aos/teams/desktop-app.json`:
 }
 ```
 
+### 5. Dynamic Workstreams Engine & Dispatcher (WP3)
+- **Modules:** `lib/roles/workstream.mjs`, `.claude/workflows/startcycle-dispatch.mjs`
+- **Flag:** `--workstreams` (default: OFF).
+  - Without `--workstreams`: 100% byte-identical backward compatibility with the legacy 7-node flow.
+  - With `--workstreams`: dynamic workstream resolution driven by Architect-authored `execution_manifest`.
+- **Workstream Rules & Constraints:**
+  - Target: 1 to 4 workstreams (hard cap: 6, enforced by schema & validator).
+  - Stream IDs: regex `^[a-z0-9_]+$` with strict uniqueness.
+  - Required non-empty `skills` array with existence verified against installed skills.
+  - Playbooks verified against indexed playbooks with valid phases (`before`, `during`, `after`).
+  - Ad-hoc roles supported when composed of verified installed skills.
+- **TechLead Validation Gate:**
+  - Fast-fail validation gate verifying role, skill, and playbook existence before build dispatch.
+  - Rejects back to Architect with specific error messages if any component is missing or invalid.
+- **Build Fan-Out & Barrier State Merging:**
+  - `BUILD_NODES` dynamically assembled via `resolveBuildPlan` / `buildNodesFromManifest`.
+  - Parallel isolation: each workstream writes exclusively to `production_artifacts/state.d/<ws_id>.json`.
+  - Barrier folding: existing `mergeStateD()` folds all fragments into `production_artifacts/state.json` deterministically.
+  - Dispatcher mediation: agents never invoke each other; dispatcher controls all edges and loops.
+- **Per-Stream Quality Gates:**
+  - `deriveWorkstreamGates` aggregates custom gates across workstreams (e.g. `ipc_latency`, `binary_security`) or falls back to standard gates (`lint`, `typecheck`, `tests`, `a11y`, `seo`, `security`).
+
 ---
 
 ## What is NOT Built Yet (Future Work Packages)
 
-The following components are defined in the architectural plan (`/Users/timrennings/.aos/briefs/plan-startcycle-v2.md`) and are intentionally out of scope for WP1 & WP2:
+The following components are defined in the architectural plan (`/Users/timrennings/.aos/briefs/plan-startcycle-v2.md`) and are intentionally out of scope for WP1, WP2 & WP3:
 
-1. **Dispatcher Dynamic Workstreams (WP3):**
-   - The `--workstreams` flag for `/startcycle-graph`.
-   - Dynamic `BUILD_NODES` generation from `execution_manifest.workstreams`.
-   - TechLead validation gate verifying manifest consistency.
-   - Dynamic `state.d/<ws_id>.json` fan-out and fragment folding.
-   - *Current status:* Dispatcher (`.claude/workflows/startcycle-dispatch.mjs`) is unmodified and runs the legacy 7-node flow byte-identically.
-
-2. **Loop Orchestrator & Quota Guard (WP5):**
+1. **Loop Orchestrator & Quota Guard (WP5):**
    - Autonomous multi-round review loops driven by `effortRounds`.
    - Stop predicates (clean findings + passed gates vs. iteration ceiling).
    - No-progress guard detecting identical blocking finding IDs.
    - Quota limit detection (`stay-within-limits` / `ccusage`).
 
-3. **Sibling Skills Alignment (WP4):**
+2. **Sibling Skills Alignment (WP4):**
    - Integration of custom role resolution into `/startcycle` (linear mode).
    - Integration into `/startcycle-graph-user` (lightweight fan-out).
    - Dynamic team preview generation in `/teamwork-preview`.
+
