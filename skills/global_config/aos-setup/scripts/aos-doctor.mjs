@@ -400,6 +400,25 @@ function checkAgyMcsc() {
   }
 }
 
+// Antigravity loads <workspace>/.agents/mcp_config.json; in $HOME that picked up the shipped server template.
+function checkAgyWorkspaceMcp() {
+  const f = h('.agents', 'mcp_config.json');
+  if (!existsSync(f)) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} absent (clean)`, '');
+    return;
+  }
+  const data = readJson(f);
+  const servers = Object.keys(data?.mcpServers || {});
+  const foreign = servers.filter((s) => s !== 'aos' && s !== 'mcsc');
+  if (!foreign.length) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} lists only ${servers.join(', ') || 'no'} servers`, '');
+    return;
+  }
+  add('agy', 'agy workspace MCP', false,
+    `${tilde(f)} lists servers other than aos/mcsc (${foreign.join(', ')}): agy loads them in $HOME`,
+    'aos repair');
+}
+
 // ---------------------------------------------------------------- OpenWiki
 function checkOpenWiki() {
   const bin = which('openwiki');
@@ -499,6 +518,7 @@ checkPrereqs();
 checkAos();
 checkHooks();
 checkAgyMcsc();
+checkAgyWorkspaceMcp();
 await checkMemb();
 await checkMemory();
 await checkDeja();

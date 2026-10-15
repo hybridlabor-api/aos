@@ -4,7 +4,7 @@ Source: `bin/aos-gateway.mjs`, `lib/gateway/{config,forwarder,adopt}.js`, `lib/m
 
 ## Gateway
 
-A local token-checking forwarder on `127.0.0.1:7790` in front of `@1mcp/agent` on `127.0.0.1:7791`. The forwarder answers `/healthcheck` without a token; every other request needs the static token (`x-aos-token` or `Authorization: Bearer`), a loopback `Host`, and no browser `Origin`, otherwise it gets 401/403. The token stops browsers, not local processes. Config lives in `~/.agents/gateway/` (`token`, `mcp.json`, `adopted.json`, `gateway.pid`); `token` must be mode 600.
+A local token-checking forwarder on `127.0.0.1:7790` in front of `@1mcp/agent` on `127.0.0.1:7791`. The forwarder answers `/healthcheck` without a token; every other request needs the static token (`x-aos-token` or `Authorization: Bearer`), a loopback `Host`, and no browser `Origin`, otherwise it gets 401/403. The token stops browsers, not local processes. Config lives in `~/.agents/gateway/` (`token`, `mcp.json`, `adopted.json`, `upstream_template.json`, `gateway.pid`); `token` must be mode 600.
 
 ```
 aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json]
@@ -62,7 +62,7 @@ The harness table is driven by `lib/harnesses.json`; adding a harness = one row 
 | Claude, Cursor, OpenCode | see `harnessMcpFiles` | `type http` / `url` / `type remote` | enabled (earlier work) |
 | Roo | global `.../globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`, project `.roo/mcp.json` | `{type: "streamable-http", url, headers}` | **enabled**. Verified: vendor docs (https://roocodeinc.github.io/Roo-Code/features/mcp/using-mcp-in-roo) and the real global file on this machine (top-level `mcpServers`, stdio entries). Remote shape from docs only. |
 | Codex | `~/.codex/config.toml` | `[mcp_servers.aos]` with `url`, `http_headers` (https://learn.chatgpt.com/docs/extend/mcp?surface=cli) | **enabled**. Written string-level by `harness.js` (`enableToml`), only the `[mcp_servers.aos]` table is touched. Known gap: shipped direct `[mcp_servers.<server>]` tables are not yet removed, so Codex may list github twice until the next round. |
-| Antigravity (agy) | `~/.gemini/config/mcp_config.json`, workspace `.agents/mcp_config.json` | `{serverUrl, headers}`; `url`/`httpUrl` not supported (https://antigravity.google/docs/mcp) | **enabled** (vendor-docs shape; no agy install on the test machine to confirm). Global file and `<cwd>/.agents/mcp_config.json`. |
+| Antigravity (agy) | `~/.gemini/config/mcp_config.json`, workspace `.agents/mcp_config.json` | `{serverUrl, headers}`; `url`/`httpUrl` not supported (https://antigravity.google/docs/mcp) | **enabled** (vendor-docs shape; no agy install on the test machine to confirm). Global file and `<cwd>/.agents/mcp_config.json`. Shipped upstream template lives at `~/.agents/gateway/upstream_template.json` (never `~/.agents/mcp_config.json`) so agy does not load legacy direct stdio servers when run from `$HOME`. |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `{serverUrl, headers}` (secondary guides; vendor docs moved to https://docs.devin.ai/desktop/cascade/mcp, which lists another path) | skipped: path and shape not confirmed from a vendor page or locally. |
 
 A skipped harness is reported as `skipped: shape unverified` and never modified.
