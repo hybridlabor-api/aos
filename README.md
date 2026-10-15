@@ -1642,6 +1642,7 @@ Found a bug or want a skill added? [Open an issue](https://github.com/hybridlabo
 - Package: [npmjs.com/package/@hybridlabor-api/aos](https://www.npmjs.com/package/@hybridlabor-api/aos)
 - Source and issues: [github.com/hybridlabor-api/aos](https://github.com/hybridlabor-api/aos) · [issues](https://github.com/hybridlabor-api/aos/issues)
 - [CHANGELOG.md](CHANGELOG.md) · [docs/skills_table.md](docs/skills_table.md)
+- Engineering notes: [docs/engineering/](docs/engineering/) — [update engine](docs/engineering/update-engine.md) · [Windows support](docs/engineering/windows-support.md) · [router](docs/engineering/router.md) · [release process](docs/engineering/release-process.md) · [v4.15→v5.3 history](docs/engineering/history-4.15-to-5.3.md)
 - Sibling repos: [bdb-agent-orchestrator](https://github.com/hybridlabor-api/bdb-agent-orchestrator) · [bdb-synapse](https://github.com/hybridlabor-api/bdb-synapse) · [bdb-dev-creator-extension](https://github.com/hybridlabor-api/bdb-dev-creator-extension) · [bdb-hardware-pcb](https://github.com/hybridlabor-api/bdb-hardware-pcb) · [bdb-os-remote](https://github.com/hybridlabor-api/bdb-os-remote)
 
 License: [Apache-2.0](LICENSE).
