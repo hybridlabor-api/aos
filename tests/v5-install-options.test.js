@@ -99,9 +99,9 @@ test('dropContextHooks keeps gate and foreign hooks, drops context and emptied e
 
 test('settings: profile persists in the v5 settings file next to the disabled list', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-opt-'));
-    assert.deepStrictEqual(p.readSettings(home), { disabled: [] });
+    assert.deepStrictEqual(p.readSettings(home), { disabled: [], updates: 'notify' });
     p.writeSettings(home, { ...p.readSettings(home), profile: 'minimal', disabled: ['fleet'] });
-    assert.deepStrictEqual(p.readSettings(home), { disabled: ['fleet'], profile: 'minimal' });
+    assert.deepStrictEqual(p.readSettings(home), { disabled: ['fleet'], profile: 'minimal', updates: 'notify' });
     assert.ok(p.settingsFile(home).endsWith(path.join('.aos', 'v5-settings.json')));
 });
 
@@ -193,7 +193,7 @@ test('S2: a corrupt or odd settings file never throws and falls back to defaults
     }
     const none = tmpHome();
     const [quiet, warn] = collect();
-    assert.deepStrictEqual(p.readSettings(none, warn), { disabled: [] });
+    assert.deepStrictEqual(p.readSettings(none, warn), { disabled: [], updates: 'notify' });
     assert.strictEqual(quiet.length, 0, 'a missing file is silent');
 });
 
@@ -233,13 +233,13 @@ test('S3: uninstall moves the saved options aside and keeps foreign keys', () =>
     const aside = names.find((n) => n.startsWith('v5-settings.json.removed-'));
     assert.ok(aside, 'the file is moved aside, not removed');
     assert.strictEqual(fs.readFileSync(path.join(dir, aside), 'utf8'), before);
-    assert.deepStrictEqual(p.readSettings(home), { disabled: [] });
+    assert.deepStrictEqual(p.readSettings(home), { disabled: [], updates: 'notify' });
     assert.deepStrictEqual(ur.resetV5Settings({ home, dryRun: false }), []);
 
     const home2 = tmpHome();
     p.writeSettings(home2, { profile: 'full', keep: 'me' });
     ur.resetV5Settings({ home: home2, dryRun: false });
-    assert.deepStrictEqual(p.readSettings(home2), { disabled: [], keep: 'me' });
+    assert.deepStrictEqual(p.readSettings(home2), { disabled: [], updates: 'notify', keep: 'me' });
     const lines = ur.reverseRegistrations({ home: home2, dryRun: true });
     assert.ok(!lines.some((l) => /Saved install options/.test(l)), 'nothing owned is left to reset');
 });
