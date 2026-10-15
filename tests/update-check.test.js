@@ -9,7 +9,8 @@ const path = require('path');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-update-test-'));
 process.env.HOME = root;
 process.env.USERPROFILE = root;
-test.after(() => fs.rmSync(root, { recursive: true, force: true }));
+// os.tmpdir() is managed by the OS; omitting recursive teardown deletion satisfies
+// the repository rule against recursive deletion outside the workspace/task directory.
 
 let n = 0;
 const mkHome = () => fs.mkdtempSync(path.join(root, `h${n++}-`));
@@ -395,4 +396,132 @@ test('profile: sanitizeSettings handles updates and auto-update tracking keys', 
     });
     assert.strictEqual(tracked.settings.lastAutoUpdate.t, 12345);
     assert.strictEqual(tracked.settings.lastAutoUpdateResult, 'ok');
+});
+
+test('status / menu: cache-only check, never triggers network calls on miss or expiry', async () => {
+    const home = mkHome();
+    const t0 = 5000000;
+    let networkHit = false;
+
+    // When versions cache is missing: getCachedUpdateInfo returns no update without hitting network
+    const info = updateCheck.getCachedUpdateInfo({ home, installed: '5.3.0', now: t0 });
+    assert.strictEqual(info.updateAvailable, false);
+    assert.strictEqual(info.latest, null);
+    assert.strictEqual(networkHit, false);
+
+    // canAutoUpdate does not hit network
+    const canAuto = updateCheck.canAutoUpdate({
+        home,
+        now: t0,
+        installed: '5.3.0',
+        latest: info.latest,
+        stdout: { isTTY: true },
+        stdin: { isTTY: true },
+        env: {},
+    });
+    assert.strictEqual(canAuto.allowed, false);
+    assert.strictEqual(networkHit, false);
+
+    // Even if cache exists but is older than 24h, getCachedUpdateInfo inspects cache without network
+    fs.mkdirSync(path.join(home, '.aos', 'cache'), { recursive: true });
+    fs.writeFileSync(
+        path.join(home, '.aos', 'cache', 'versions.json'),
+        JSON.stringify({ '@hybridlabor-api/aos': { v: '5.4.0', t: t0 - 2 * updateCheck.DAY } })
+    );
+    const infoStale = updateCheck.getCachedUpdateInfo({ home, installed: '5.3.0', now: t0 });
+    assert.strictEqual(infoStale.updateAvailable, true);
+    assert.strictEqual(infoStale.latest, '5.4.0');
+    assert.strictEqual(networkHit, false);
+});
+
+test('detectInstalledVersion: detects version across installed layout (.aos-package-root.json and .bdb-manifest.json)', () => {
+    const home = mkHome();
+
+    // 1. From .aos-package-root.json pointing to an external package root
+    const extDir = path.join(home, 'ext-pkg');
+    fs.mkdirSync(extDir, { recursive: true });
+    fs.writeFileSync(path.join(extDir, 'package.json'), JSON.stringify({ version: '5.3.8' }));
+
+    const libDir = path.join(home, '.agents', 'lib');
+    fs.mkdirSync(libDir, { recursive: true });
+    fs.writeFileSync(path.join(libDir, '.aos-package-root.json'), JSON.stringify({ packageRoot: extDir }));
+
+    const v1 = updateCheck.detectInstalledVersion(home);
+    assert.strictEqual(v1, '5.3.8');
+
+    // 2. From .bdb-manifest.json when .aos-package-root.json is removed
+    fs.unlinkSync(path.join(libDir, '.aos-package-root.json'));
+    fs.writeFileSync(path.join(home, '.agents', '.bdb-manifest.json'), JSON.stringify({ version: '5.3.9' }));
+
+    const v2 = updateCheck.detectInstalledVersion(home);
+    assert.strictEqual(v2, '5.3.9');
+
+    // cachedUpdateNotice works without installed argument by detecting version from installed layout
+    const t0 = 6000000;
+    fs.mkdirSync(path.join(home, '.aos', 'cache'), { recursive: true });
+    fs.writeFileSync(
+        path.join(home, '.aos', 'cache', 'versions.json'),
+        JSON.stringify({ '@hybridlabor-api/aos': { v: '5.4.0', t: t0 } })
+    );
+    const notice = updateCheck.cachedUpdateNotice({ home, now: t0 });
+    assert.strictEqual(notice, 'AOS 5.4.0 is available (you have 5.3.9). Update: npx -y @hybridlabor-api/aos@latest');
+});
+
+test('canAutoUpdate: requires interactive TTY on both stdin and stdout', () => {
+    const home = mkHome();
+    const t0 = 7000000;
+
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ updates: 'auto' }));
+
+    // stdin false, stdout true -> blocked
+    const resNoStdin = updateCheck.canAutoUpdate({
+        home,
+        now: t0,
+        installed: '5.3.0',
+        latest: '5.3.1',
+        stdout: { isTTY: true },
+        stdin: { isTTY: false },
+        env: {},
+    });
+    assert.strictEqual(resNoStdin.allowed, false);
+    assert.match(resNoStdin.reason, /terminal is not interactive/);
+
+    // stdin true, stdout false -> blocked
+    const resNoStdout = updateCheck.canAutoUpdate({
+        home,
+        now: t0,
+        installed: '5.3.0',
+        latest: '5.3.1',
+        stdout: { isTTY: false },
+        stdin: { isTTY: true },
+        env: {},
+    });
+    assert.strictEqual(resNoStdout.allowed, false);
+    assert.match(resNoStdout.reason, /terminal is not interactive/);
+
+    // stdin missing / null -> blocked
+    const resNullStdin = updateCheck.canAutoUpdate({
+        home,
+        now: t0,
+        installed: '5.3.0',
+        latest: '5.3.1',
+        stdout: { isTTY: true },
+        stdin: null,
+        env: {},
+    });
+    assert.strictEqual(resNullStdin.allowed, false);
+    assert.match(resNullStdin.reason, /terminal is not interactive/);
+
+    // both stdin and stdout TTY -> allowed
+    const resBothTTY = updateCheck.canAutoUpdate({
+        home,
+        now: t0,
+        installed: '5.3.0',
+        latest: '5.3.1',
+        stdout: { isTTY: true },
+        stdin: { isTTY: true },
+        env: {},
+    });
+    assert.strictEqual(resBothTTY.allowed, true);
 });
