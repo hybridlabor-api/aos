@@ -51,6 +51,11 @@
         },
         {
           "type": "json",
+          "path": "plugins/bdb-aos-control/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": ".claude-plugin/marketplace.json",
           "jsonpath": "$.plugins[0].version"
         },
@@ -59,26 +64,21 @@
           "path": ".claude-plugin/marketplace.json",
           "jsonpath": "$.plugins[1].version"
         },
-    {
-      "type": "json",
-      "path": "plugins/bdb-aos-alert/.claude-plugin/plugin.json",
-      "jsonpath": "$.version"
-    },
-    {
-      "type": "json",
-      "path": "plugins/bdb-aos-control/.claude-plugin/plugin.json",
-      "jsonpath": "$.version"
-    },
-    {
-      "type": "json",
-      "path": ".claude-plugin/marketplace.json",
-      "jsonpath": "$.plugins[3].version"
-    },
-    {
-      "type": "json",
-      "path": ".claude-plugin/marketplace.json",
-      "jsonpath": "$.plugins[4].version"
-    }
+        {
+          "type": "json",
+          "path": ".claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[2].version"
+        },
+        {
+          "type": "json",
+          "path": ".claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[3].version"
+        },
+        {
+          "type": "json",
+          "path": ".claude-plugin/marketplace.json",
+          "jsonpath": "$.plugins[4].version"
+        }
       ]
     }
   }
