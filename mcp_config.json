@@ -5,7 +5,33 @@
     "opencode": "all",
     "codex": "all",
     "roo": "all",
-    "cursor": "all"
+    "cursor": "all",
+    "full": "all",
+    "orchestrator": "all",
+    "worker": [
+      "bdb_davinci_mcp",
+      "bdb_unreal_mcp",
+      "bdb_blender_mcp",
+      "bdb_grandma3_mcp",
+      "bdb_td_backup",
+      "bdb_after_effects_mcp",
+      "bdb_resolume_mcp",
+      "adobe_uxp_mcp",
+      "bdb_rhino_mcp",
+      "bdb_vectorworks_mcp"
+    ],
+    "small": [
+      "bdb_davinci_mcp",
+      "bdb_unreal_mcp",
+      "bdb_blender_mcp",
+      "bdb_grandma3_mcp",
+      "bdb_td_backup",
+      "bdb_after_effects_mcp",
+      "bdb_resolume_mcp",
+      "adobe_uxp_mcp",
+      "bdb_rhino_mcp",
+      "bdb_vectorworks_mcp"
+    ]
   },
   "mcpServers": {
     "github": {
