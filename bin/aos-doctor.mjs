@@ -14,7 +14,24 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const req = createRequire(import.meta.url);
-const pkg = req('../package.json');
+const pkg = (() => {
+  try { return req('../package.json'); } catch {
+    try {
+      const rootPath = path.join(os.homedir(), '.agents', 'lib', '.aos-package-root.json');
+      const root = JSON.parse(readFileSync(rootPath, 'utf8'))?.packageRoot;
+      if (root) {
+        const p = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+        if (p && p.version) return p;
+      }
+    } catch {}
+    try {
+      const manifestPath = path.join(os.homedir(), '.agents', '.bdb-manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      if (manifest && manifest.version) return { version: manifest.version };
+    } catch {}
+    return { version: 'unknown' };
+  }
+})();
 const updateCheck = req('../lib/update-check.js');
 const { pluginSkills, claudeConfigDir } = req('../lib/plugin-evidence.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
