@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/.agents/role.schema.json",
+  "title": "BDB Role Definition",
+  "description": "Typed role definition for Startcycle v2 multi-agent teams.",
+  "type": "object",
+  "required": ["id", "label", "role"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique role identifier (snake_case, lowercase alphanumeric and underscore only)."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable label for the role."
+    },
+    "role": {
+      "type": "string",
+      "enum": ["plan", "approve", "build", "review", "gate", "specialist"],
+      "description": "Functional pipeline category for this role."
+    },
+    "persona": {
+      "type": "string",
+      "description": "Inline persona instructions and system prompt for the role."
+    },
+    "personaFile": {
+      "type": "string",
+      "description": "Path to a markdown persona file (relative or absolute)."
+    },
+    "skills": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Skills available to this role, matching directory names under skills/."
+    },
+    "playbooks": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "phase": {
+                "type": "string",
+                "enum": ["before", "during", "after"],
+                "default": "during"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "default": [],
+      "description": "Playbooks attached to this role, either as string IDs or { id, phase } objects."
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Tools or binaries allowed for this role."
+    },
+    "gates": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Quality gates this role owns or participates in."
+    },
+    "model_tier": {
+      "type": "string",
+      "enum": ["flash_lo", "flash", "pro"],
+      "description": "Model capability tier mapping to pipeline.json/AGENTS.md tiers."
+    }
+  },
+  "anyOf": [
+    { "required": ["persona"] },
+    { "required": ["personaFile"] }
+  ],
+  "additionalProperties": false
+}
