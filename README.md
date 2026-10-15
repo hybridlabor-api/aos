@@ -21,7 +21,7 @@
 
 [![agents](https://img.shields.io/badge/subagents-45-orange.svg)](#the-subagents-45)
 [![commands](https://img.shields.io/badge/commands-15-blue.svg)](#browse-everything)
-[![playbooks](https://img.shields.io/badge/playbooks-35-informational.svg)](#playbooks)
+[![playbooks](https://img.shields.io/badge/playbooks-36-informational.svg)](#playbooks)
 [![A2A](https://img.shields.io/badge/A2A-Claude%20%C2%B7%20OpenCode%20%C2%B7%20agy%20%C2%B7%20Codex-0b7285.svg)](#a2a-sessions-that-talk-to-each-other)
 [![MCP gateway](https://img.shields.io/badge/MCP%20gateway-default-teal.svg)](#mcp-gateway-and-one-mcp-per-app)
 [![go-gate](https://img.shields.io/badge/go--gate-hook--enforced-red.svg)](#the-go-gate)
@@ -236,7 +236,7 @@ v5 changes how AOS gets onto a machine and how its parts talk to each other.
 | **agenttrail** | One live map per repo, started automatically, with a link in your session. A v2 control room is **in progress**. |
 | **Plan Canvas** | Plans open in a local canvas; annotations are dispatched back to the agent. |
 | **go-gate** | Read, test and build commands with no write or network effect pass without a GO; deny logs mask credentials; hooks in four harnesses; a machine-wide gate profile (`strict`, `work`, `off`) narrows or widens it. |
-| **Playbooks and Factory** | 35 `pb-*` playbooks, the nine `factory-*` skills and `plan-arbiter`. |
+| **Playbooks and Factory** | 36 `pb-*` playbooks, the nine `factory-*` skills and `plan-arbiter`. |
 | **Orchestrator chain** | master session, project orchestrator, package orchestrator, mapped to real mechanisms. |
 
 **In progress, not claimed as shipped.** agenttrail v2 control room, A2A intercom and a2abook, A2A `spawn` mode, `skill-create` and `instinct-*`.
@@ -574,7 +574,7 @@ aos-gate profile strict               # no confirmation needed
 
 ## Playbooks
 
-A playbook is a skill with `kind: playbook` that turns a recurring job into a guided run with a fixed contract. The 35 `pb-*` playbooks ship with the skills; list and start them with `/playbooks` (it runs `list-playbooks.mjs` and prints name, time, difficulty and requirements for each). There is no per-playbook command: you name the playbook.
+A playbook is a skill with `kind: playbook` that turns a recurring job into a guided run with a fixed contract. The 36 `pb-*` playbooks ship with the skills; list and start them with `/playbooks` (it runs `list-playbooks.mjs` and prints name, time, difficulty and requirements for each). There is no per-playbook command: you name the playbook.
 
 **What a playbook declares.** Its frontmatter names trigger phrases, `inputs`, `requires` (skills, subagents, MCP servers, store items), `go_points`, `outputs`, a `verify` check, `difficulty` and `est_time`. The body is a numbered step list. Each step names the skill or agent it uses, its input, the artifact it writes and the check that says it is done.
 
@@ -624,7 +624,7 @@ flowchart LR
 <p align="center"><sub><b>pb-bug-fix.</b> The issue is the contract, the test comes before the fix, the Reviewer sees only the diff and the issue, and the push waits for your GO.</sub></p>
 
 <details>
-<summary><b>Playbooks by domain (35)</b></summary>
+<summary><b>Playbooks by domain (36)</b></summary>
 
 | Playbook | Purpose | Subagents | Time · level |
 |---|---|---|---|
@@ -635,6 +635,7 @@ flowchart LR
 | `pb-harness-work` | Change the agent harness itself (hooks, gates, memory, permissions, plugins) the safe way. | architect, techlead, reviewer | 1-3 h · advanced |
 | `pb-security-sweep` | Security sweep over one repo: secrets, dependencies, diff, one ranked findings report. | security-reviewer, silent-failure-hunter | 1-2 h · advanced |
 | `pb-open-source` | Prepare a project for open sourcing: sanitized fork, sanitizer verdict, README and LICENSE, new private repo. | opensource-forker, opensource-sanitizer | 1-3 h · advanced |
+| `pb-tauri-e2e` | Multi-phase E2E, live-app, and binary security audit for Tauri v2 desktop apps. | reviewer, silent-failure-hunter, security-reviewer | 15-45 min · advanced |
 | `pb-worktrees-land` | Clean up git worktrees across your repos; removes only merged ones. | — | 10-30 min · intermediate |
 | **Release, CI and operations** | | | |
 | `pb-ship` | Ship the day's work in one repo: triage, review every open PR, merge. | reviewer | 20-60 min · intermediate |
@@ -1309,7 +1310,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 </details>
 
 <details>
-<summary><b>Playbooks (35)</b></summary>
+<summary><b>Playbooks (36)</b></summary>
 
 | Playbook | What it does |
 |---|---|
@@ -1345,6 +1346,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 | `pb-ship` | Ship the day's work in one repo: triage, review every open PR, merge. |
 | `pb-show-build` | Build a show across lights (grandMA3), media (Resolume) and visuals (TouchDesigner) from one cue list. |
 | `pb-social-pack` | Turn a release recap into a social pack where every claim traces to a facts file. |
+| `pb-tauri-e2e` | Multi-phase E2E, live-app, and binary security audit for Tauri v2 desktop apps. |
 | `pb-todo` | Turn one sentence into a task line in the right to-do list. |
 | `pb-week-plan` | Turn scattered to-do lists and notes into one prioritised plan for the week. |
 | `pb-worktrees-land` | Clean up git worktrees across your repos; removes only merged ones. |
@@ -1452,7 +1454,7 @@ npx skills add hybridlabor-api/aos
 
 ### Playbooks
 
-35 `pb-*` playbooks turn recurring jobs into guided runs with declared GO points. See [Playbooks](#playbooks) for how a run works and the full table by domain.
+36 `pb-*` playbooks turn recurring jobs into guided runs with declared GO points. See [Playbooks](#playbooks) for how a run works and the full table by domain.
 
 ---
 

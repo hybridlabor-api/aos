@@ -21,7 +21,7 @@
 
 [![agents](https://img.shields.io/badge/subagents-45-orange.svg)](#die-subagents-45)
 [![commands](https://img.shields.io/badge/commands-15-blue.svg)](#alles-stöbern)
-[![playbooks](https://img.shields.io/badge/playbooks-35-informational.svg)](#playbooks)
+[![playbooks](https://img.shields.io/badge/playbooks-36-informational.svg)](#playbooks)
 [![A2A](https://img.shields.io/badge/A2A-Claude%20%C2%B7%20OpenCode%20%C2%B7%20agy%20%C2%B7%20Codex-0b7285.svg)](#a2a-sessions-die-miteinander-reden)
 [![MCP gateway](https://img.shields.io/badge/MCP%20gateway-default-teal.svg)](#mcp-gateway-und-ein-mcp-pro-app)
 [![go-gate](https://img.shields.io/badge/go--gate-hook--enforced-red.svg)](#das-go-gate)
@@ -236,7 +236,7 @@ v5 verändert, wie AOS auf eine Maschine kommt und wie seine Teile miteinander r
 | **agenttrail** | Eine Live-Karte pro Repo, automatisch gestartet, mit Link in deiner Session. Ein v2-Control-Room ist **in Arbeit**. |
 | **Plan Canvas** | Pläne öffnen sich in einer lokalen Canvas; Annotationen werden an den Agent zurückgeleitet. |
 | **go-gate** | Read-, Test- und Build-Befehle ohne Schreib- oder Netzwerkeffekt laufen ohne GO durch; Deny-Logs maskieren Credentials; Hooks in vier Harnesses; ein maschinenweites Gate-Profil (`strict`, `work`, `off`) verengt oder weitet sie. |
-| **Playbooks und Factory** | 35 `pb-*`-Playbooks, die neun `factory-*`-Skills und `plan-arbiter`. |
+| **Playbooks und Factory** | 36 `pb-*`-Playbooks, die neun `factory-*`-Skills und `plan-arbiter`. |
 | **Orchestrator-Kette** | Master Session, Project Orchestrator, Package Orchestrator, abgebildet auf echte Mechanismen. |
 
 **In Arbeit, nicht als ausgeliefert deklariert.** agenttrail-v2-Control-Room, A2A-Intercom und a2abook, A2A-`spawn`-Modus, `skill-create` und `instinct-*`.
@@ -574,7 +574,7 @@ aos-gate profile strict               # keine Bestätigung nötig
 
 ## Playbooks
 
-Ein Playbook ist ein Skill mit `kind: playbook`, der eine wiederkehrende Aufgabe in einen geführten Lauf mit festem Contract verwandelt. Die 35 `pb-*`-Playbooks kommen mit den Skills; `/playbooks` listet sie (es führt `list-playbooks.mjs` aus und druckt Name, Zeit, Schwierigkeit und Anforderungen für jedes). Es gibt keinen Befehl pro Playbook: du benennst das Playbook.
+Ein Playbook ist ein Skill mit `kind: playbook`, der eine wiederkehrende Aufgabe in einen geführten Lauf mit festem Contract verwandelt. Die 36 `pb-*`-Playbooks kommen mit den Skills; `/playbooks` listet sie (es führt `list-playbooks.mjs` aus und druckt Name, Zeit, Schwierigkeit und Anforderungen für jedes). Es gibt keinen Befehl pro Playbook: du benennst das Playbook.
 
 **Was ein Playbook deklariert.** Sein Frontmatter nennt Trigger-Phrasen, `inputs`, `requires` (Skills, Subagents, MCP-Server, Store-Items), `go_points`, `outputs`, einen `verify`-Check, `difficulty` und `est_time`. Der Body ist eine nummerierte Schrittliste. Jeder Schritt nennt den Skill oder Agent, den er nutzt, seine Eingabe, das Artifact, das er schreibt, und den Check, der „fertig" sagt.
 
@@ -624,7 +624,7 @@ flowchart LR
 <p align="center"><sub><b>pb-bug-fix.</b> Das Issue ist der Contract, der Test kommt vor dem Fix, der Reviewer sieht nur den Diff und das Issue, und der Push wartet auf dein GO.</sub></p>
 
 <details>
-<summary><b>Playbooks nach Domäne (35)</b></summary>
+<summary><b>Playbooks nach Domäne (36)</b></summary>
 
 | Playbook | Zweck | Subagents | Zeit · Level |
 |---|---|---|---|
@@ -635,6 +635,7 @@ flowchart LR
 | `pb-harness-work` | Den Agent-Harness selbst verändern (Hooks, Gates, Memory, Permissions, Plugins) — auf den sicheren Weg. | architect, techlead, reviewer | 1-3 h · advanced |
 | `pb-security-sweep` | Security-Sweep über ein Repo: Secrets, Dependencies, Diff, ein gerankter Findings-Report. | security-reviewer, silent-failure-hunter | 1-2 h · advanced |
 | `pb-open-source` | Ein Projekt auf Open Sourcing vorbereiten: sanitizierter Fork, Sanitizer-Urteil, README und LICENSE, neues privates Repo. | opensource-forker, opensource-sanitizer | 1-3 h · advanced |
+| `pb-tauri-e2e` | Mehrphasiger E2E-, Live-App- und Binary-Sicherheits-Audit für Tauri-v2-Desktop-Apps. | reviewer, silent-failure-hunter, security-reviewer | 15-45 min · advanced |
 | `pb-worktrees-land` | Git-Worktrees über deine Repos aufräumen; entfernt nur gemergte. | — | 10-30 min · intermediate |
 | **Release, CI und Betrieb** | | | |
 | `pb-ship` | Die Arbeit des Tages in einem Repo ausliefern: Triage, jeden offenen PR reviewen, mergen. | reviewer | 20-60 min · intermediate |
@@ -1308,7 +1309,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>Playbooks (35)</b></summary>
+<summary><b>Playbooks (36)</b></summary>
 
 | Playbook | What it does |
 |---|---|
@@ -1344,6 +1345,7 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 | `pb-ship` | Ship the day's work in one repo: triage, review every open PR, merge. |
 | `pb-show-build` | Build a show across lights (grandMA3), media (Resolume) and visuals (TouchDesigner) from one cue list. |
 | `pb-social-pack` | Turn a release recap into a social pack where every claim traces to a facts file. |
+| `pb-tauri-e2e` | Multi-phase E2E, live-app, and binary security audit for Tauri v2 desktop apps. |
 | `pb-todo` | Turn one sentence into a task line in the right to-do list. |
 | `pb-week-plan` | Turn scattered to-do lists and notes into one prioritised plan for the week. |
 | `pb-worktrees-land` | Clean up git worktrees across your repos; removes only merged ones. |
@@ -1451,7 +1453,7 @@ npx skills add hybridlabor-api/aos
 
 ### Playbooks
 
-35 `pb-*`-Playbooks verwandeln wiederkehrende Aufgaben in geführte Läufe mit deklarierten GO-Punkten. Wie ein Lauf funktioniert und die volle Tabelle nach Domäne: siehe [Playbooks](#playbooks).
+36 `pb-*`-Playbooks verwandeln wiederkehrende Aufgaben in geführte Läufe mit deklarierten GO-Punkten. Wie ein Lauf funktioniert und die volle Tabelle nach Domäne: siehe [Playbooks](#playbooks).
 
 ---
 
