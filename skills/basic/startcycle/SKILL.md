@@ -76,7 +76,16 @@ A straight-line run through the BDB agent roster. Whoever invokes this skill inv
 - **Action**: reviews the plan for module boundaries, dependency direction, and build order. Approves it, or sends it back to Architect once for a revision. This is a gate, not a deliverable — TechLead does not invoke Architect itself; the invoker re-runs step 1 if TechLead rejects.
 - **Writes**: no separate file; approval is just the invoker's own record of the gate having passed.
 
-> **Optional — Plan Canvas.** Before or alongside TechLead's gate, the plan can be reviewed in the browser: `aos-plan-canvas open production_artifacts/00_execution_plan.md`, then `aos-plan-canvas await …`. An `approve` verdict is a human confirmation of the gate. This is optional; the pipeline runs unchanged without it. See the `plan-canvas` skill.
+## Plan review
+
+When a plan is produced, it must be reviewed in the Plan Canvas before the build starts. The human `approve` verdict replaces TechLead's written gate confirmation.
+
+1. Ensure the plan has a top-level ID, e.g. `## Execution Plan {#execution-plan}`.
+2. Run `aos-plan-canvas open production_artifacts/00_execution_plan.md`.
+3. Run `aos-plan-canvas await production_artifacts/00_execution_plan.md` and wait for the human verdict.
+4. Start the build only after an `approve` verdict.
+
+*(If running in OpenCode, always print the Canvas URL in chat.)*
 
 ### 3. Build (parallel, stream-selective)
 

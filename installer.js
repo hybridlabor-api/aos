@@ -5858,6 +5858,8 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     // rules-inject.mjs reads the rules text from here when it does not run from a checkout.
     const rulesLib = path.join(srcDir, 'lib', 'destructive-rules.js');
     if (fs.existsSync(rulesLib)) copyDirRecursiveSync(rulesLib, path.join(targetHome, '.agents', 'lib', 'destructive-rules.js'));
+    const routingRulesLib = path.join(srcDir, 'lib', 'routing-rules.js');
+    if (fs.existsSync(routingRulesLib)) copyDirRecursiveSync(routingRulesLib, path.join(targetHome, '.agents', 'lib', 'routing-rules.js'));
     // aos-acp (installed in ~/.agents/bin) loads ../lib/cli-spawn.js to start npx/opencode .cmd shims on Windows.
     const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
     if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));

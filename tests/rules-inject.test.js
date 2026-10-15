@@ -9,12 +9,15 @@ const { spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const HOOK = path.join(ROOT, '.claude', 'hooks', 'rules-inject.mjs');
 const { BLOCK, START, END, CLAUDE_DENY_RULES } = require('../lib/destructive-rules.js');
+const { BLOCK: ROUTING_BLOCK, START: ROUTING_START, END: ROUTING_END } = require('../lib/routing-rules.js');
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-inject-'));
 test.after(() => fs.rmSync(base, { recursive: true, force: true }));
 const tmp = (n) => fs.mkdtempSync(path.join(base, `${n}-`));
 
 const runHook = (hook, home, input) => spawnSync(process.execPath, [hook], { input, env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home }, encoding: 'utf8' });
 const bullets = (text) => text.split('\n').filter((l) => l.startsWith('- ')).length;
+const stripped = (block, start, end) => block.replace(start, '').replace(end, '').trim();
+const expectedRulesText = () => [stripped(BLOCK, START, END), stripped(ROUTING_BLOCK, ROUTING_START, ROUTING_END)].join('\n\n');
 
 test('Claude Code / Codex: additionalContext carries the five rules from the single source', () => {
     const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi' }));
@@ -22,18 +25,33 @@ test('Claude Code / Codex: additionalContext carries the five rules from the sin
     const out = JSON.parse(r.stdout);
     assert.strictEqual(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
     const text = out.hookSpecificOutput.additionalContext;
-    assert.strictEqual(text, BLOCK.replace(START, '').replace(END, '').trim());
+    assert.strictEqual(text, expectedRulesText());
     assert.strictEqual(bullets(text), 5);
+    assert.ok(text.includes('plan-canvas'), 'routing block must mention plan-canvas');
+    assert.ok(text.includes('## Tool routing (automatic)'), 'routing block heading must be present');
 });
 
 test('agy gets injectSteps; garbage or empty stdin still injects; never blocks', () => {
     const agy = JSON.parse(runHook(HOOK, tmp('h'), JSON.stringify({ conversationId: 'c1', workspacePaths: ['/x'] })).stdout);
-    assert.strictEqual(bullets(agy.injectSteps[0].ephemeralMessage), 5);
+    const text = agy.injectSteps[0].ephemeralMessage;
+    assert.strictEqual(bullets(text), 5);
+    assert.ok(text.includes('## Tool routing (automatic)'), 'agy routing block heading must be present');
     for (const input of ['', 'not json']) {
         const r = runHook(HOOK, tmp('h'), input);
         assert.strictEqual(r.status, 0);
         assert.strictEqual(bullets(JSON.parse(r.stdout).hookSpecificOutput.additionalContext), 5);
     }
+});
+
+test('rules-inject output contains the routing block with plan-canvas and agenttrail triggers', () => {
+    const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'plan' }));
+    assert.strictEqual(r.status, 0);
+    const text = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    assert.ok(text.includes('<!-- aos:routing:start -->') === false, 'markers should be stripped');
+    assert.ok(text.includes('## Tool routing (automatic)'));
+    assert.ok(text.includes('plan-canvas'));
+    assert.ok(text.includes('agenttrail'));
+    assert.ok(text.includes('Never a GO by side channel'));
 });
 
 test('installed layout: reads ~/.agents/lib, and fails open (no output, exit 0) when the text is missing', () => {
@@ -46,7 +64,10 @@ test('installed layout: reads ~/.agents/lib, and fails open (no output, exit 0) 
     assert.strictEqual(missing.stdout, '');
     fs.mkdirSync(path.join(dir, '.agents', 'lib'), { recursive: true });
     fs.copyFileSync(path.join(ROOT, 'lib', 'destructive-rules.js'), path.join(dir, '.agents', 'lib', 'destructive-rules.js'));
-    assert.strictEqual(bullets(JSON.parse(runHook(path.join(hooks, 'rules-inject.mjs'), dir, '{}').stdout).hookSpecificOutput.additionalContext), 5);
+    fs.copyFileSync(path.join(ROOT, 'lib', 'routing-rules.js'), path.join(dir, '.agents', 'lib', 'routing-rules.js'));
+    const text = JSON.parse(runHook(path.join(hooks, 'rules-inject.mjs'), dir, '{}').stdout).hookSpecificOutput.additionalContext;
+    assert.strictEqual(bullets(text), 5);
+    assert.ok(text.includes('## Tool routing (automatic)'), 'installed hook must inject routing block');
 });
 
 test('deny rules are home-level only, never a broad rm -rf prefix', () => {
@@ -80,6 +101,7 @@ test('installer wires the hook on every harness, adds deny rules idempotently, r
     assert.strictEqual(cmds.filter((c) => c.includes('rules-inject.mjs')).length, 1);
     assert.ok(fs.existsSync(path.join(home, '.claude', 'hooks', 'rules-inject.mjs')));
     assert.ok(fs.existsSync(path.join(home, '.agents', 'lib', 'destructive-rules.js')));
+    assert.ok(fs.existsSync(path.join(home, '.agents', 'lib', 'routing-rules.js')));
 
     assert.match(fs.readFileSync(path.join(home, '.codex', 'config.toml'), 'utf8'), /command = .*rules-inject\.mjs/);
     const agy = JSON.parse(fs.readFileSync(path.join(home, '.gemini', 'config', 'hooks.json'), 'utf8'));
