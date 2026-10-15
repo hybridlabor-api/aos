@@ -13,13 +13,16 @@ try {
   } catch {}
 
   const depth = Number(process.env.AOS_DELEGATE_DEPTH || 0);
-  if (process.env.AOS_SESSION_HINT === "off" || depth > 0) process.exit(0);
+  if (process.env.AOS_SESSION_HINT === "off" || process.env.AOS_SESSION_START_CONTEXT === "off" || depth > 0) process.exit(0);
 
-  const hint = [
+  const rawHint = [
     'plan-canvas is available for plan review — check the canvas with `aos-plan-canvas` and open a plan with `aos-plan-canvas open <file|plan-dir>`.',
     'agenttrail serves a live map of multi-agent builds when one is running.',
     'The automatic tool-routing rules (when to use plan-canvas, agenttrail, subagents, startcycle) live in the "Tool routing (automatic)" block of AGENTS.md.',
   ].join("\n");
+
+  const MAX_CONTEXT_CHARS = 2000;
+  const hint = rawHint.length > MAX_CONTEXT_CHARS ? rawHint.slice(0, MAX_CONTEXT_CHARS) : rawHint;
 
   process.stdout.write(
     JSON.stringify({

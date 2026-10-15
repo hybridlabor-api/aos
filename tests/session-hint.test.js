@@ -32,6 +32,11 @@ const cases = [
     expectSilent: true,
   },
   {
+    label: 'AOS_SESSION_START_CONTEXT=off: nothing printed',
+    env: { AOS_SESSION_START_CONTEXT: 'off' },
+    expectSilent: true,
+  },
+  {
     label: 'AOS_DELEGATE_DEPTH>0: delegated worker stays silent',
     env: { AOS_DELEGATE_DEPTH: '1' },
     expectSilent: true,

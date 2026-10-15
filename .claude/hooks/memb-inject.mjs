@@ -167,6 +167,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
   const rawEvent = event;
   const sessionStart = rawEvent === 'SessionStart';
   const promptSubmit = rawEvent === 'UserPromptSubmit';
+  if (sessionStart && process.env.AOS_SESSION_START_CONTEXT === 'off') return null;
 
   const rawCandidateDir =
     cwd ||
@@ -379,6 +380,11 @@ async function main() {
     const event = isAgy && agyIdentitySent(eventData.conversationId)
       ? 'UserPromptSubmit'
       : (eventData.hook_event_name || '');
+
+    if (process.env.AOS_SESSION_START_CONTEXT === 'off' && (event === 'SessionStart' || eventData.hook_event_name === 'SessionStart')) {
+      failOpen();
+    }
+
     const memoryBlock = await buildMemoryBlock({
       event,
       prompt: eventData.prompt || eventData.userPrompt || '',
@@ -387,12 +393,14 @@ async function main() {
     });
 
     if (memoryBlock) {
+      const MAX_CONTEXT_CHARS = 2000;
+      const capped = memoryBlock.length > MAX_CONTEXT_CHARS ? memoryBlock.slice(0, MAX_CONTEXT_CHARS) : memoryBlock;
       process.stdout.write(JSON.stringify(isAgy
-        ? { injectSteps: [{ ephemeralMessage: memoryBlock }] }
+        ? { injectSteps: [{ ephemeralMessage: capped }] }
         : {
           hookSpecificOutput: {
             hookEventName: eventData.hook_event_name || 'UserPromptSubmit',
-            additionalContext: memoryBlock,
+            additionalContext: capped,
           },
         }) + '\n');
     }
