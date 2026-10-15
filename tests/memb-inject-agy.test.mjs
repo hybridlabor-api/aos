@@ -93,3 +93,37 @@ test('A2: agy stamps only after memory block is delivered and then switches to r
   assert.equal(res2.status, 0);
   assert.equal(res2.stdout.trim(), '', 'no fts match on turn 2 should mean no output');
 });
+
+test('A3: agy first turn honors AOS_SESSION_START_CONTEXT=off', { skip: !DatabaseSync && 'node:sqlite unavailable' }, (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-home-off-'));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+
+  const proj = path.join(home, 'proj');
+  fs.mkdirSync(path.join(proj, '.git'), { recursive: true });
+
+  const dbDir = path.join(home, '.MemBDB');
+  fs.mkdirSync(dbDir, { recursive: true });
+  const db = new DatabaseSync(path.join(dbDir, 'memb.db'));
+  db.exec(`
+    CREATE TABLE memb_vectors(id TEXT PRIMARY KEY, collection TEXT, vector BLOB, payload TEXT, created_at TEXT);
+    CREATE VIRTUAL TABLE memb_fts USING fts5(id, collection, content);
+  `);
+  const row = { category: 'godmode', memory: 'Agy user identity fact' };
+  db.prepare('INSERT INTO memb_vectors (id, collection, payload) VALUES (?, ?, ?)')
+    .run('r1', 'bdb_agent_memory', JSON.stringify(row));
+  db.prepare('INSERT INTO memb_fts (id, collection, content) VALUES (?, ?, ?)')
+    .run('r1', 'bdb_agent_memory', row.memory);
+  db.close();
+
+  const stamp = path.join(home, '.aos', 'cache', 'memb-agy', 'conv-off');
+
+  const res = spawnSync(process.execPath, [HOOK_SRC], {
+    input: JSON.stringify({ conversationId: 'conv-off', workspacePaths: [proj], prompt: 'hello' }),
+    encoding: 'utf8',
+    env: { HOME: home, PATH: process.env.PATH, MEMB_USER_ID: 'user', AOS_SESSION_START_CONTEXT: 'off' },
+  });
+
+  assert.equal(res.status, 0);
+  assert.equal(res.stdout.trim(), '', 'output must be empty when AOS_SESSION_START_CONTEXT=off');
+  assert.equal(fs.existsSync(stamp), false, 'stamp must not be created when disabled');
+});

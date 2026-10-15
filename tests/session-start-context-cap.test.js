@@ -50,3 +50,13 @@ test('memb-inject honors AOS_SESSION_START_CONTEXT=off on SessionStart', () => {
   assert.strictEqual(res.status, 0);
   assert.strictEqual(res.stdout.trim(), '');
 });
+
+test('memb-inject honors AOS_SESSION_START_CONTEXT=off on agy first turn', () => {
+  const res = spawnSync(process.execPath, [MEMB_HOOK], {
+    input: JSON.stringify({ conversationId: 'c-off', workspacePaths: ['/tmp/proj'], prompt: 'hello' }),
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, AOS_SESSION_START_CONTEXT: 'off' },
+  });
+  assert.strictEqual(res.status, 0);
+  assert.strictEqual(res.stdout.trim(), '');
+});

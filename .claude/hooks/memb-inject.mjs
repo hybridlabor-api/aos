@@ -156,7 +156,7 @@ function resolveProjectIdentifiers(projectRoot, homeDir) {
 
 // Shared with the OpenCode plugin: everything between "which event" and the
 // finished text block. Returns null when there is nothing to inject; never exits.
-export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } = {}) {
+export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, isAgy = false } = {}) {
   prompt = String(prompt).trim();
   const home = os.homedir();
 
@@ -165,7 +165,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
   // missing event name from harnesses that never adopted them — keeps the
   // full legacy behaviour plus identity (hookless-start harnesses).
   const rawEvent = event;
-  const sessionStart = rawEvent === 'SessionStart';
+  const sessionStart = rawEvent === 'SessionStart' || (isAgy && rawEvent === '');
   const promptSubmit = rawEvent === 'UserPromptSubmit';
   if (sessionStart && process.env.AOS_SESSION_START_CONTEXT === 'off') return null;
 
@@ -387,7 +387,7 @@ async function main() {
       ? 'UserPromptSubmit'
       : (eventData.hook_event_name || '');
 
-    if (process.env.AOS_SESSION_START_CONTEXT === 'off' && (event === 'SessionStart' || eventData.hook_event_name === 'SessionStart')) {
+    if (process.env.AOS_SESSION_START_CONTEXT === 'off' && (event === 'SessionStart' || eventData.hook_event_name === 'SessionStart' || (isAgy && event === ''))) {
       failOpen();
     }
 
@@ -396,6 +396,7 @@ async function main() {
       prompt: eventData.prompt || eventData.userPrompt || '',
       cwd: (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) || eventData.cwd,
       userId: eventData.user_id || eventData.userId,
+      isAgy,
     });
 
     if (memoryBlock) {
