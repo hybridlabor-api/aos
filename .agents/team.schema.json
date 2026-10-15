@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/bdb-dev-optimized-agent-skills/.agents/team.schema.json",
+  "title": "BDB Team Definition",
+  "description": "Typed team definition for Startcycle v2 multi-agent teams.",
+  "type": "object",
+  "required": ["id", "label", "roles"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Unique team identifier (lowercase alphanumeric, hyphens, and underscores)."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable label for the team."
+    },
+    "roles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Role identifiers included in this team."
+    },
+    "playbooks": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "phase": {
+                "type": "string",
+                "enum": ["before", "during", "after"],
+                "default": "during"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "default": [],
+      "description": "Playbooks equipped for the entire team."
+    },
+    "gates": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Quality gates enforced across the team."
+    },
+    "effort": {
+      "type": "string",
+      "enum": ["S", "M", "L"],
+      "default": "S",
+      "description": "Team effort tier setting max repair rounds: S=3, M=4, L=5."
+    }
+  },
+  "additionalProperties": false
+}
