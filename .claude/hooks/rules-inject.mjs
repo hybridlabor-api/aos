@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // aos-hook-version: 1
-// Re-injects the "Destructive Actions" rules on every prompt so context compaction cannot drop them.
-// Text comes from lib/destructive-rules.js (single source): the repo copy when run from a checkout,
-// else ~/.agents/lib (the installer puts it there). Output shapes are the ones memb-inject.mjs
+// Re-injects the "Destructive Actions" and "Tool routing (automatic)" blocks on every prompt so
+// context compaction cannot drop them. Text comes from lib/destructive-rules.js and
+// lib/routing-rules.js (shared sources): the repo copies when run from a checkout, else
+// ~/.agents/lib (the installer puts them there). Output shapes are the ones memb-inject.mjs
 // already uses: hookSpecificOutput.additionalContext (Claude Code, Codex), injectSteps (agy).
 // Bounded I/O: reads stdin with a timeout so it never hangs if the parent stream stays open.
 // Fails open: any error prints nothing and exits 0; it never blocks a prompt.
@@ -72,11 +73,11 @@ export function fileAlreadyHoldsBlock(eventData, homeDir = os.homedir()) {
   }
 }
 
-export function rulesText() {
+function loadBlock(name) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   // here/../../lib is only trusted inside an AOS checkout (package.json names it), never from ~/.claude/hooks.
   const inCheckout = (() => { try { return JSON.parse(readFileSync(path.join(here, '..', '..', 'package.json'), 'utf8')).name === '@hybridlabor-api/aos'; } catch { return false; } })();
-  for (const p of [...(inCheckout ? [path.join(here, '..', '..', 'lib', 'destructive-rules.js')] : []), path.join(os.homedir(), '.agents', 'lib', 'destructive-rules.js')]) {
+  for (const p of [...(inCheckout ? [path.join(here, '..', '..', 'lib', name)] : []), path.join(os.homedir(), '.agents', 'lib', name)]) {
     if (!existsSync(p)) continue;
     try {
       const { BLOCK, START, END } = createRequire(import.meta.url)(p);
@@ -84,6 +85,13 @@ export function rulesText() {
     } catch { /* try the next location */ }
   }
   return '';
+}
+
+export function rulesText() {
+  const destructive = loadBlock('destructive-rules.js');
+  const routing = loadBlock('routing-rules.js');
+  if (!destructive && !routing) return '';
+  return [destructive, routing].filter(Boolean).join('\n\n');
 }
 
 export function hookOutput(eventData, text, homeDir = os.homedir()) {
