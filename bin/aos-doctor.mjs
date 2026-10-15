@@ -767,33 +767,12 @@ async function checkDaemonsAndModules() {
   }
 }
 
-// ---------------------------------------------------------------- 6. Output & Announcement
-function printAoAnnouncement() {
-  console.log(`
-╭──────────────────────────────────────────────────────────────────────────────╮
-│                                                                              │
-│   BDB AGENT ORCHESTRATOR APP — FINAL BETA NOW AVAILABLE                      │
-│                                                                              │
-│   The next generation of cross-harness multi-agent orchestration             │
-│   is now open to every user as a final beta.                                 │
-│                                                                              │
-│   • Dashboard & WebUI:  http://localhost:3101                                │
-│   • Service command:    ao service install  (enables the background service) │
-│   • Quick launch:       ao open  or  ao service status                       │
-│   • Features:           session telemetry, live AgentTrail, multi-workspaces │
-│                                                                              │
-╰──────────────────────────────────────────────────────────────────────────────╯
-`);
-}
-
 function report() {
   if (JSON_OUT) {
     const ok = results.filter(r => !r.warningOnly).every(r => r.ok);
     console.log(JSON.stringify({ ok, platform: process.platform, arch: process.arch, results }, null, 2));
     return;
   }
-
-  printAoAnnouncement();
 
   console.log(`\n======================================================`);
   console.log(`   🩺 AOS SYSTEM CHECKUP & DIAGNOSTIC REPORT`);
