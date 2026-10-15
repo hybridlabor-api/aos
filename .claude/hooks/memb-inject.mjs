@@ -156,7 +156,7 @@ function resolveProjectIdentifiers(projectRoot, homeDir) {
 
 // Shared with the OpenCode plugin: everything between "which event" and the
 // finished text block. Returns null when there is nothing to inject; never exits.
-export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } = {}) {
+export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, isAgy = false } = {}) {
   prompt = String(prompt).trim();
   const home = os.homedir();
 
@@ -165,7 +165,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
   // missing event name from harnesses that never adopted them — keeps the
   // full legacy behaviour plus identity (hookless-start harnesses).
   const rawEvent = event;
-  const sessionStart = rawEvent === 'SessionStart';
+  const sessionStart = rawEvent === 'SessionStart' || (isAgy && rawEvent === '');
   const promptSubmit = rawEvent === 'UserPromptSubmit';
   if (sessionStart && process.env.AOS_SESSION_START_CONTEXT === 'off') return null;
 
@@ -356,11 +356,16 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId } 
 export function agyIdentitySent(conversationId, base = path.join(os.homedir(), '.aos', 'cache')) {
   const id = String(conversationId || '').replace(/[^\w.-]/g, '_').slice(0, 80);
   if (!id) return false;
+  const stamp = path.join(base, 'memb-agy', id);
+  return existsSync(stamp);
+}
+
+export function stampAgyIdentity(conversationId, base = path.join(os.homedir(), '.aos', 'cache')) {
+  const id = String(conversationId || '').replace(/[^\w.-]/g, '_').slice(0, 80);
+  if (!id) return false;
   const dir = path.join(base, 'memb-agy');
   const stamp = path.join(dir, id);
-  if (existsSync(stamp)) return true;
-  try { mkdirSync(dir, { recursive: true }); writeFileSync(stamp, ''); } catch {}
-  return false;
+  try { mkdirSync(dir, { recursive: true }); writeFileSync(stamp, ''); return true; } catch { return false; }
 }
 
 // Main logic runs only when the file is executed directly as a hook; importing
@@ -377,11 +382,12 @@ async function main() {
     // Discover candidate directory across harnesses:
     // Claude / Codex: eventData.cwd; Antigravity: eventData.workspacePaths[0] or eventData.cwd
     const isAgy = !eventData.hook_event_name && (Array.isArray(eventData.workspacePaths) || !!eventData.conversationId);
-    const event = isAgy && agyIdentitySent(eventData.conversationId)
+    const agyAlreadySent = isAgy && agyIdentitySent(eventData.conversationId);
+    const event = agyAlreadySent
       ? 'UserPromptSubmit'
       : (eventData.hook_event_name || '');
 
-    if (process.env.AOS_SESSION_START_CONTEXT === 'off' && (event === 'SessionStart' || eventData.hook_event_name === 'SessionStart')) {
+    if (process.env.AOS_SESSION_START_CONTEXT === 'off' && (event === 'SessionStart' || eventData.hook_event_name === 'SessionStart' || (isAgy && event === ''))) {
       failOpen();
     }
 
@@ -390,9 +396,13 @@ async function main() {
       prompt: eventData.prompt || eventData.userPrompt || '',
       cwd: (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) || eventData.cwd,
       userId: eventData.user_id || eventData.userId,
+      isAgy,
     });
 
     if (memoryBlock) {
+      if (isAgy && !agyAlreadySent) {
+        stampAgyIdentity(eventData.conversationId);
+      }
       const MAX_CONTEXT_CHARS = 2000;
       const capped = memoryBlock.length > MAX_CONTEXT_CHARS ? memoryBlock.slice(0, MAX_CONTEXT_CHARS) : memoryBlock;
       process.stdout.write(JSON.stringify(isAgy

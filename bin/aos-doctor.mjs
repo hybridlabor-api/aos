@@ -392,7 +392,7 @@ function checkHooks() {
     // Codex's hash algorithm is not reproduced here. Evidence of a re-trust is only that Codex's set of
     // trust values changed after the install that last changed the AOS hooks (snapshot in ~/.aos/codex-hooks.json).
     const rec = readJson(h('.aos', 'codex-hooks.json'));
-    const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.';
+    const fix = 'In Codex run /hooks and trust the AOS hooks; a changed hook command needs the review again.\nNon-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.';
     const gateWired = /^\s*command\s*=.*go-gate\.mjs/m.test(codexToml);
     // Informational only: our hook hash is more sensitive than Codex's own, so "no new trust entry" is not proof of an
     // untrusted hook (Lenovo P15 saw a false warning while /hooks showed Active 2/2). Codex says "Hooks need review"

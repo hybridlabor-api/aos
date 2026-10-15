@@ -28,6 +28,15 @@ test('classify recognises Antigravity global and workspace files only', () => {
     assert.equal(harness.classify(path.join(fx.home, '.gemini', 'antigravity-cli', 'mcp_config.json'), 'json'), 'agy-cli');
 });
 
+test('agy-cli uses the Antigravity {serverUrl, headers} entry shape, not the Claude fallback', () => {
+    const entry = harness.entryFor('agy-cli', TOKEN);
+    assert.deepEqual(entry, {
+        serverUrl: harness.GATEWAY_URL,
+        headers: { 'x-aos-token': TOKEN },
+    });
+    assert.strictEqual(entry.url, undefined, 'must not fall back to Claude url shape');
+});
+
 test('enable adds serverUrl aos, keeps unrelated content, backs up, is idempotent; disable restores', () => {
     const fx = fixture();
     const before = fs.readFileSync(fx.g, 'utf8');

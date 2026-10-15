@@ -69,6 +69,6 @@
   {"id":"agy-cli","name":"Antigravity (second global candidate)","format":"json","root":"mcpServers",
    "mcp":{"global":["~/.gemini/antigravity-cli/mcp_config.json"],"workspace":[]},
    "match":[".gemini/antigravity-cli/mcp_config.json"],
-   "entry":{"remote":null},"rules":null,"skills":null,"verified":false,
+   "entry":{"remote":{"serverUrl":"URL","headers":{"x-aos-token":"TOKEN"}}},"rules":null,"skills":null,"verified":false,
    "source":"none recorded (candidate path, not confirmed live)"}
 ]
