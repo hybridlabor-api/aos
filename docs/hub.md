@@ -57,6 +57,13 @@ Paths must be absolute Windows paths without quotes, newlines or control charact
 - Typed confirm: destructive or install actions must repeat the target id or name in a `confirm` field (CLI: `--confirm <id>`).
 - No secrets: log tails are redacted and the hub never stores or displays API keys or tokens.
 
+## Notes
+
+- On-demand start: `aos hub` probes `/api/health` first; if the hub is already running it only opens the browser.
+- agenttrail is linked, not embedded: the Plans tab deep-links to the trail's own port.
+- The hub performs no GO actions and no pushes; gates (gogate) stay CLI-side.
+- Shell-free everywhere: probes and control use spawn with an args array (`shell:false`); args never become commands.
+
 ## Troubleshooting
 
 **OpenWiki "down" or "Wikis: none yet".** OpenWiki is a launchd interval job
