@@ -1,4 +1,5 @@
 <!-- Source: morluto/rea .agents/skills/reverse-engineer-anything/references/connection-and-recovery.md — MIT, see THIRD_PARTY_NOTICES.md -->
+<!-- Source: morluto/rea .agents/skills/reverse-engineer-anything/references/connection-and-recovery.md — MIT, see THIRD_PARTY_NOTICES.md -->
 
 # Connection and task recovery
 

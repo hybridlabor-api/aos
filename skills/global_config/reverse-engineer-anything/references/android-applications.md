@@ -1,4 +1,5 @@
 <!-- Source: morluto/rea .agents/skills/reverse-engineer-anything/references/android-applications.md — MIT, see THIRD_PARTY_NOTICES.md -->
+<!-- Source: morluto/rea .agents/skills/reverse-engineer-anything/references/android-applications.md — MIT, see THIRD_PARTY_NOTICES.md -->
 
 # Android application artifacts
 

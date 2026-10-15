@@ -1,4 +1,5 @@
 <!-- Source: morluto/rea .agents/skills/reverse-engineer-anything/references/javascript-applications.md — MIT, see THIRD_PARTY_NOTICES.md -->
+<!-- Source: morluto/rea .agents/skills/reverse-engineer-anything/references/javascript-applications.md — MIT, see THIRD_PARTY_NOTICES.md -->
 
 # JavaScript and Electron application artifacts
 
