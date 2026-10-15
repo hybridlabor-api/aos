@@ -13,7 +13,17 @@ Reference prompts for `/bdb-aos:loop`. Pick a template, fill the placeholders, h
 | CI until green | `references/ci-until-green.md` | 10 / 2 h |
 | Follow a PR to merge | `references/pr-to-merge.md` | 20 / 4 h |
 | Review rounds until no blockers | `references/review-rounds.md` | 5 / 3 h |
+| Flow loop (build/review) | `references/flow-loop.md` | 3-5 rounds (effort S/M/L) / 3 h |
 | Daily session summary | `references/daily-summary.md` | 7 days |
+
+## Flow loop (autonomous build/review)
+
+The `flow loop` template (`references/flow-loop.md`) drives iterative build and review cycles for multi-agent workflows (`/startcycle-graph --loop`):
+- **Stop predicate**: halts on clean review (zero blocking findings and all quality gates pass).
+- **Max rounds by effort**: capped at `max_iterations` derived from team effort (`S` = 3 rounds, `M` = 4 rounds, `L` = 5 rounds).
+- **No-progress guard**: stops and escalates immediately if consecutive review rounds produce identical blocking finding IDs.
+- **Stay-within-limits check**: inspects quota windows via `stay-within-limits` before each round; if usage >= 95%, halts in a persistent wait state.
+- **Guarded commands**: never auto-run commands guarded by `go-gate` (e.g. `git push`, `npm publish`); requires explicit human `GO`.
 
 ## Per-harness invocation
 - **Claude Code:** built-in `/loop <interval> <prompt>`; omit the interval to let the model self-pace.
