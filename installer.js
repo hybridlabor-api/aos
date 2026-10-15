@@ -6771,7 +6771,9 @@ function installCodexRules({ targetHome = homeDir } = {}) {
     }
 }
 
-const CODEX_TRUST_REMINDER ='Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.';
+const CODEX_TRUST_REMINDER =
+    'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.\n' +
+    'Non-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.';
 // Set when an install changed the AOS hook groups in ~/.codex/config.toml; printed as the last outro line.
 let codexHooksChanged = false;
 
