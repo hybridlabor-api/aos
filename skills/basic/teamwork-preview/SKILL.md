@@ -189,6 +189,17 @@ Integrity mode: [development | demo | benchmark]
 
 Seek explicit approval from the user before triggering execution.
 
+## Plan review
+
+Before delegating, open the final `prompt_draft.md` in the Plan Canvas for visual annotation and a clear approve/request-changes verdict:
+
+1. Give the top-level heading a stable ID, e.g. `# Teamwork Project Prompt — Draft {#prompt-draft}`.
+2. Run `aos-plan-canvas open prompt_draft.md`.
+3. Run `aos-plan-canvas await prompt_draft.md` and wait for the human verdict.
+4. Delegate only after an `approve` verdict.
+
+*(If running in OpenCode, always print the Canvas URL in chat.)*
+
 ---
 
 ## 🚀 Delegation Protocol
