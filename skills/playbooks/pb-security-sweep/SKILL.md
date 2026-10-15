@@ -1,11 +1,10 @@
 ---
 name: pb-security-sweep
 description: >-
-  Run a security sweep over one repo: secrets, dependencies and the diff,
-  a security review and a silent-failure hunt, one deduped and ranked findings
-  report, issues filed for blocking findings only after GO, each one handed to
-  pb-bug-fix. Use for "security sweep", "audit this repo", "check for leaked
-  secrets and vulnerable deps".
+  Comprehensive security sweep: scan secrets, dependencies, diffs, silent
+  failures, and vulnerabilities. Delivers ranked findings and files issues for
+  blockers after GO. Use for "security sweep", "audit repo", or "check leaked
+  secrets".
 category: engineering-method
 kind: playbook
 trigger: ["security sweep", "audit this repo", "check for leaked secrets"]

@@ -1,10 +1,9 @@
 ---
 name: agent-tool-builder
 description: >-
-  Tools are how AI agents interact with the world. A well-designed tool is the
-  difference between an agent that works and one that hallucinates, fails
-  silently, or costs 10x more tokens than necessary. This skill covers tool
-  design from schema to error handling.
+  Design high-performance AI agent tools from schema to error handling. Avoid
+  hallucination, silent failures, and token bloat. Use when creating or
+  refining tool definitions for agents.
 category: engineering-method
 risk: unknown
 source: vibeship-spawner-skills (Apache 2.0)

@@ -8282,13 +8282,18 @@ async function main() {
     const args = process.argv.slice(2);
     // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
     // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
-    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package'];
+    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup'];
     if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
         console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
         process.exitCode = 2;
         return;
     }
     applyInstallOptions();
+    if (args[0] === 'context') {
+        const { contextCommand } = require('./lib/v5/context-profiles');
+        process.exitCode = contextCommand(args.slice(1), { home: homeDir });
+        return;
+    }
     if (['status', 'update', 'repair'].includes(args[0])) {
         if (args[0] !== 'status') {
             process.env.AOS_NO_OPEN = '1';
@@ -8316,6 +8321,8 @@ Commands:
   dashboard        Run the AOS dashboard (--port N, --no-open)
   package          Install, update, repair or verify one v5 package by id
   doctor|checkup   Check the installation
+  setup            Run setup wizard (interactive configuration)
+  context [role]   Show or set context profile (full|orchestrator|worker|small)
 
 Options:
   --codex-gate     Print the go-gate [[hooks.PreToolUse]] stanza for ~/.codex/config.toml
@@ -8503,7 +8510,7 @@ Options:
         return;
     }
 
-    if (installState.isInstalled && !isAutoYes) {
+    if (installState.isInstalled && !isAutoYes && args[0] !== 'setup') {
         persistInstallOptions();
         process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true));
         return;
@@ -8529,6 +8536,7 @@ Options:
     let customPaths = null;
     let creds = null;
     let selectedMcps = null;
+    let contextProfileChoice = null;
     let wantsUniversal = true;
     markPlatformsExplicit(PLATFORMS_ARG || []);
     let specificPlatforms = [defaultPlatformValue()];
@@ -8551,7 +8559,7 @@ Options:
         creds = { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
         selectedMcps = await promptMcpSelection(tier);
     } else {
-        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null };
+        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, contextProfile: null };
         const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness', '10': 'AOS CLI' };
 
         const stepTier = async () => {
@@ -8645,6 +8653,24 @@ Options:
             memoryOn = v === 'on';
         };
 
+        const stepContextProfile = async () => {
+            if (ctx.selectedPlatforms.includes('9')) return;
+            const { CONTEXT_PROFILES, CONTEXT_PROFILE_DEFS, contextProfileOf } = require('./lib/v5/context-profiles');
+            const st = v5Profile.readSettings(homeDir, () => {});
+            const cur = ctx.contextProfile || contextProfileOf(st);
+            const ans = await selectWithBack({
+                message: 'Context Profile (session token budget & gateway MCP tools):',
+                options: CONTEXT_PROFILES.map((p) => ({
+                    value: p,
+                    label: `${CONTEXT_PROFILE_DEFS[p].label}`,
+                    hint: CONTEXT_PROFILE_DEFS[p].description
+                })),
+                initialValue: cur
+            });
+            if (ans === BACK) return 'back';
+            ctx.contextProfile = ans;
+        };
+
         const stepMcps = async () => {
             if (ctx.selectedPlatforms.includes('9')) return;
             const sel = await promptMcpSelection(ctx.tier);
@@ -8677,6 +8703,7 @@ Options:
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
                 `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
+                `Context:       ${ctx.contextProfile || 'full'}`,
                 `MCPs:          ${(ctx.selectedMcps || []).join(', ') || '(none)'}`,
                 `LLM Provider:  ${ctx.creds ? ctx.creds.openwikiProvider : '-'}`,
                 `GitHub Token:  ${ctx.creds && ctx.creds.github ? maskApiKey(ctx.creds.github) : '(none)'}`,
@@ -8695,7 +8722,7 @@ Options:
             if (action === 'abort') return 'exit';
         };
 
-        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepMcps, stepCredentials, stepReview];
+        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepContextProfile, stepMcps, stepCredentials, stepReview];
 
         let i = 0;
         while (i < steps.length) {
@@ -8710,6 +8737,7 @@ Options:
         customPaths = ctx.customPaths;
         creds = ctx.creds;
         selectedMcps = ctx.selectedMcps;
+        contextProfileChoice = ctx.contextProfile;
         wantsUniversal = ctx.selectedPlatforms.includes('0');
         specificPlatforms = ctx.selectedPlatforms.filter(p => p !== '0');
         if (specificPlatforms.length === 0 && wantsUniversal) specificPlatforms.push(defaultPlatformValue());
@@ -8729,6 +8757,11 @@ Options:
         return;
     }
     persistInstallOptions();
+    if (contextProfileChoice) {
+        const st = v5Profile.readSettings(homeDir, () => {});
+        st.context = contextProfileChoice;
+        v5Profile.writeSettings(homeDir, st);
+    }
     if (!memoryOn && !installExcluded.has('memb')) declineUnifiedMemory();
 
     // The backup directory is created on first use (moveIfExists, the MCP merge), never empty, 0700 because it can hold credential copies.

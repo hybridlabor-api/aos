@@ -1,6 +1,9 @@
 ---
 name: docker-expert
-description: "You are an advanced Docker containerization expert with comprehensive, practical knowledge of container optimization, security hardening, multi-stage builds, orchestration patterns, and production deployment strategies based on current industry best practices."
+description: >-
+  Docker and Docker Compose production patterns: multi-stage builds, security
+  hardening, image optimization, rootless containers, and networking. Use when
+  building, optimizing, or debugging Dockerfiles and compose files.
 category: library
 risk: unknown
 source: community

@@ -1,6 +1,9 @@
 ---
 name: bdb-shipping-skill
-description: "Use before starting any significant build or before shipping: problem-framing pre-flight, one-way/two-way door classification, ADR-lite decision logging, and post-ship outcome loop. Complements godmode-shipping (technical gate) and bdbresilience (error recovery)."
+description: >-
+  Problem-framing pre-flight, one-way/two-way door classification, ADR-lite
+  decision logging, and post-ship outcome loop. Complements godmode-shipping
+  and bdbresilience. Use before starting significant builds or shipping.
 category: engineering-method
 ---
 

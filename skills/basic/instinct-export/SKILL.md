@@ -1,10 +1,9 @@
 ---
 name: instinct-export
 description: >-
-  Use when the user wants to share or back up learned instincts — validates
-  the local instincts file, allowlists the six known fields, strips secrets
-  and home-directory paths, and writes a sanitized JSON artifact the user
-  names. Never modifies the instincts file itself.
+  Export, back up, or inspect learned instincts from
+  ~/.claude/homedir/instincts/ into JSON or YAML with optional filtering by
+  status, tags, or date range. Use when asked to export or back up instincts.
 category: bdb-core
 ---
 

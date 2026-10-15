@@ -1,6 +1,10 @@
 ---
 name: gogate
-description: Show or explain the AOS go-gate mode (hard, soft, off) and the time-limited grants of this session. Use when the human runs /bdb-aos:gogate, asks why a git push, merge, publish or destructive command was blocked, or wants to know which grants are active. The agent only displays status and explains; only a plain `gogate ...` message typed by the human changes a mode or a grant.
+description: >-
+  Mechanical release gate: blocks push, publish, and recursive rm unless
+  confirmed with GO. Use to diagnose blocked commands, check gate or cooldown
+  status, or inspect release contracts across harnesses. Never bypass the
+  gate.
 category: bdb-core
 risk: safe
 tools:

@@ -1,11 +1,9 @@
 ---
 name: ci-pipeline
 description: >-
-  Set up a complete CI/CD pipeline for a project. Detects the stack, then
-  generates and validates GitHub Actions workflows, a Dockerfile, and a
-  Makefile as one coherent pipeline. Use when asked to "set up CI", "add
-  pipeline", "create GitHub Actions", "ci/cd setup", "automate builds",
-  "containerize", or "add a Makefile".
+  Set up a CI/CD pipeline: detects stack, generates and validates GitHub
+  Actions workflows, Dockerfile, and Makefile. Use for "set up CI", "add
+  pipeline", "create GitHub Actions", "automate builds", or "containerize".
 category: engineering-method
 risk: safe
 source: community

@@ -1,10 +1,10 @@
 ---
 name: pb-meeting-actions
 description: >-
-  Turn a meeting transcript into clean notes, the decisions, and who does
-  what by when, then draft the follow-up mail and send it only after your GO.
-  Use for "meeting notes", "action items from this meeting", "who did what
-  in this transcript", "who does what after the call".
+  Turn meeting transcripts into clean notes, decisions, and action items with
+  owners and deadlines; drafts follow-up emails sent only after GO. Use for
+  "meeting notes", "action items from meeting", or "who does what after the
+  call".
 category: bdb-core
 kind: playbook
 trigger: ["meeting notes", "action items from this meeting", "follow-up mail"]

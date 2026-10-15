@@ -1,14 +1,9 @@
 ---
 name: startcycle-graph-user
 description: >-
-  Use when a task needs a small, throwaway multi-agent fan-out (a couple of
-  parallel workers plus a review pass) in ANY project — trigger phrases
-  "spawn a few parallel agents", "fan out", "quick worker team" — without the
-  full /startcycle-graph contract, no .agents/graph.md bootstrap, no state.json
-  schema, no persistent files. Roles run on the session model unless
-  `.aos/pipeline.json` overrides one (an external CLI can take the worker step)
-  and portable across machines that may not have Antigravity/OpenCode/Codex
-  installed.
+  Throwaway multi-agent fan-out (parallel workers + review pass) in any
+  project without persistent state or graph contract. Use for "spawn a few
+  parallel agents", "fan out", "quick worker team", or lightweight team tasks.
 category: bdb-core
 ---
 

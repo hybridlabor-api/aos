@@ -1,13 +1,10 @@
 ---
 name: agenttrail
 description: >-
-  agenttrail: live map of a multi-agent build in the browser: which plan component is being
-  worked on, by which agent or harness, what is done and what is stuck. Use
-  when a multi-agent pipeline starts (/startcycle, /startcycle-graph,
-  /teamwork-preview) or after a plan-canvas approve, when the user asks to see
-  what the agents are doing ("live map", "build board", "who is running now"),
-  or by yourself whenever a multi-agent run is under way — no user prompt
-  needed.
+  agenttrail: live browser map of a multi-agent build showing active
+  components, agents, harnesses, and status. Use on /startcycle,
+  /startcycle-graph, /teamwork-preview, or when asked for "live map", "build
+  board", or "who is running now".
 category: bdb-core
 metadata:
   version: "0.2.0"

@@ -1,11 +1,10 @@
 ---
 name: pb-machine-setup
 description: >-
-  Bring a new machine to a verified AOS installation: read-only doctor
-  baseline, install after GO, MCP servers wired per harness with the configs
-  backed up first, memB and OpenWiki checks, and a second doctor run for the
-  delta. Use for "set up this machine", "onboard a new computer", "install AOS
-  on this laptop".
+  Onboard a machine to verified AOS installation: doctor baseline, install
+  after GO, harness MCP wiring with backups, memB/OpenWiki checks, and
+  verification delta. Use for "set up this machine", "onboard computer", or
+  "install AOS".
 category: bdb-core
 kind: playbook
 trigger: ["set up this machine", "onboard a new computer", "install AOS on this machine"]

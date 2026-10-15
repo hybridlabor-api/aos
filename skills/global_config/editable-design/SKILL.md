@@ -1,6 +1,10 @@
 ---
 name: editable-design
-description: Create and render fixed-canvas editable visual designs, including posters, marketing graphics, covers, menus, banners, and social cards. Default outputs include fixed and editable HTML, PNG, a mouse editor with scan and exploded layer views, and an evidence-backed Design Replay. Do not use for websites, slide decks, videos, or standalone logo systems. Always use this skill when the project contains `poster.json`.
+description: >-
+  Produce HTML designs editable via BDB design control loop. Mandates tokens,
+  semantic CSS, and structured markup for clean subsequent agent edits. Use
+  when generating mocks, prototypes, or artifacts for plan-canvas and
+  /prototype.
 category: design-ui-ux
 user-invocable: true
 ---

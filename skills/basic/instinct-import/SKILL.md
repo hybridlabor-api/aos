@@ -1,10 +1,9 @@
 ---
 name: instinct-import
 description: >-
-  Use when the user brings an exported instincts JSON to merge into the local
-  store — treats trigger and action as inert data, validates every entry
-  against the shared format and its bounds, drops invalid ones loudly, and
-  never overwrites an existing instinct without asking the user first.
+  Import instincts from a file, machine, or shared repo. Validates schema,
+  checks duplicates, supports merge strategies (skip, overwrite), and imports
+  to ~/.claude/homedir/instincts/ with rollback. Use for importing instincts.
 category: bdb-core
 ---
 

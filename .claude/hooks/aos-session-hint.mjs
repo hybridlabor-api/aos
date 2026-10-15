@@ -15,7 +15,7 @@ try {
   } catch {}
 
   const depth = Number(process.env.AOS_DELEGATE_DEPTH || 0);
-  if (process.env.AOS_SESSION_HINT === "off" || depth > 0) process.exit(0);
+  if (process.env.AOS_SESSION_HINT === "off" || process.env.AOS_SESSION_START_CONTEXT === "off" || depth > 0) process.exit(0);
 
   const hints = [
     'plan-canvas is available for plan review — check the canvas with `aos-plan-canvas` and open a plan with `aos-plan-canvas open <file|plan-dir>`.',
@@ -36,6 +36,7 @@ try {
         const { cachedUpdateNotice } = await import(fallbackLib);
         notice = cachedUpdateNotice({ home });
       }
+    }
     if (notice) {
       hints.push(notice);
       // Dual-channel output: process.stderr prints directly to the user's terminal
@@ -45,11 +46,15 @@ try {
     }
   } catch {}
 
+  const MAX_CONTEXT_CHARS = 2000;
+  const rawHint = hints.join("\n");
+  const hint = rawHint.length > MAX_CONTEXT_CHARS ? rawHint.slice(0, MAX_CONTEXT_CHARS) : rawHint;
+
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: hints.join("\n"),
+        additionalContext: hint,
       },
     }) + "\n",
   );

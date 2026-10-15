@@ -1,12 +1,9 @@
 ---
 name: read-the-damn-docs
 description: >-
-  Use when implementing, integrating, upgrading, debugging, or answering
-  anything involving third-party APIs, libraries, frameworks, CLIs, cloud
-  services, model or provider SDKs, fast-moving product behavior, unfamiliar
-  repo docs or specs, errors that may indicate API drift, or high-stakes auth,
-  security, billing, data, migration, deployment, compliance, or privacy
-  behavior. Forces a docs pass before coding from memory.
+  Forces documentation check before coding from memory. Use when implementing,
+  integrating, upgrading, or debugging third-party APIs, libraries, SDKs, auth
+  flows, migrations, or unfamiliar repository specifications.
 category: engineering-method
 source: BuilderIO/skills
 ---

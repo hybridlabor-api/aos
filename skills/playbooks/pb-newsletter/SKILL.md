@@ -1,10 +1,9 @@
 ---
 name: pb-newsletter
 description: >-
-  Turn a pb-ship recap, a changelog range or a quick recap into a newsletter
-  email draft where every claim cites a source line, and send it only after
-  GO. Use for "newsletter from the recap", "write the release newsletter",
-  "email update from the changelog".
+  Draft newsletter emails from release recaps or changelogs with cited
+  sources; send only after GO. Use for "newsletter from recap", "write release
+  newsletter", or "email update from changelog".
 category: design-ui-ux
 kind: playbook
 trigger: ["newsletter from the recap", "release newsletter", "email update from the changelog"]
