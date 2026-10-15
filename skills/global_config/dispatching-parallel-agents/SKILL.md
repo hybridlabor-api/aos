@@ -1,11 +1,9 @@
 ---
 name: dispatching-parallel-agents
 description: >-
-  Use when facing 2+ independent tasks — "in parallel", "independent tasks",
-  "multiple unrelated failures", "different test files or subsystems" — that
-  can be worked on without shared state or sequential dependencies. Dispatch
-  one agent per independent slice, each with only the context it needs, even
-  when the user did not ask for subagents explicitly.
+  Dispatch parallel subagents for 2+ independent tasks without shared state.
+  Use for "in parallel", "independent tasks", "multiple unrelated failures",
+  or "different test files" to work concurrently with minimal context.
 category: engineering-method
 source: superpowers
 date_added: "2026-09-25"

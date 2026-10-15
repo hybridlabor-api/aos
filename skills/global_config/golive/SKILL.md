@@ -1,6 +1,10 @@
 ---
 name: golive
-description: Take an agent-written app from repo to live production on the user's OWN accounts, with providers they choose (hosting, database, auth, payments, email, domain/DNS). The human connects accounts and approves changes; supported wiring operations run through a local CLI and produce verification evidence with explicit limits. Use when the user wants to ship, deploy, go live, launch, publish, or put their app online, or asks to wire up env vars, webhooks, auth settings (signup, email confirmation, password policy), a real signup → confirmation email → login journey, password recovery, account isolation between two users, auth redirects, email DNS or a custom domain.
+description: >-
+  Release verification gate before deploy or pb-ship. Audits WCAG 2.2 a11y,
+  Web Vitals, SEO, API contracts, types/lint, and mobile layout with
+  PASS/WARN/BLOCKED verdict. Use for "golive", "pre-flight check", or "audit
+  before shipping".
 category: saas-ops
 source: "vendored from mikehasa/golive-skill (MIT) — https://github.com/mikehasa/golive-skill/tree/main/skills/golive"
 license: MIT

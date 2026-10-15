@@ -1,10 +1,9 @@
 ---
 name: pb-week-plan
 description: >-
-  Turn your scattered to-do lists and notes into one prioritised plan for the
-  week, with at most 3 must-do items per day. Use for "plan my week", "what
-  should I do this week", "sort my to-dos", "weekly plan from my notes".
-  Nothing leaves your computer unless you opt in to steps 4 or 8.
+  Turn scattered to-do lists and notes into a prioritized weekly plan with max
+  3 must-do items per day. Local-only processing. Use for "plan my week",
+  "what should I do this week", "sort my to-dos", or "weekly plan from notes".
 category: bdb-core
 kind: playbook
 trigger: ["plan my week", "sort my to-dos", "weekly plan"]

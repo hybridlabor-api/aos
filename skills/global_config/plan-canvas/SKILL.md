@@ -1,14 +1,9 @@
 ---
 name: plan-canvas
 description: >-
-  Use when the user just says "plan", "planen" or "roadmap": offer a template via aos-plan-canvas templates.
-  Open plans and HTML artifacts in a local browser canvas where the human
-  annotates elements, chats, and approves or requests changes without leaving
-  the page. Use for planning, whenever a user says "plan", "roadmap",
-  "visualize the plan", "review the plan" or /plan-canvas, right after a
-  brainstorm or grill interview has produced a plan, and whenever any skill's
-  artifact (plan, design, comparison, report, diagram) can be reviewed
-  visually instead of with typed feedback.
+  Browser review canvas for plans and HTML artifacts: visual annotations, live
+  chat, and approval flow. Use on "plan", "planen", "roadmap", /plan-canvas,
+  or after brainstorming/grilling to visually review any plan or artifact.
 category: bdb-core
 metadata:
   version: "1.1.0"

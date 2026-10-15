@@ -1,10 +1,9 @@
 ---
 name: pb-project-new
 description: >-
-  Start a new private GitHub project the AOS way: create the private repo,
-  bootstrap AOS (project card, AGENTS.md, wiki, memory, CI choice), push
-  after GO, and confirm the first CI run is green and the repo is still
-  private. Use for "new project", "start a repo", "bootstrap a project".
+  Initialize private GitHub projects the AOS way: create repo, bootstrap
+  project card, AGENTS.md, wiki, memory, and CI; verify green CI run on push
+  after GO. Use for "new project", "start a repo", or "bootstrap a project".
 category: bdb-core
 kind: playbook
 trigger: ["new project", "start a new repo", "bootstrap a project"]

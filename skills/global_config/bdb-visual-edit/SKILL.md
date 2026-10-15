@@ -1,6 +1,9 @@
 ---
 name: bdb-visual-edit
-description: Use when `aos-plan-canvas await` returns an item with route "visual-edit", or the human points at an element in a running local dev app and wants the source edited. Finds the source with a deterministic search, posts a diff plan in the canvas, and edits one file only after a yes given in the canvas. Not for remote or production sites.
+description: >-
+  Visual in-app source editing when pointed at an element in local dev or via
+  plan-canvas "visual-edit". Finds source deterministically, drafts a diff
+  plan in canvas, and edits after confirmation. Local dev apps only.
 category: design-ui-ux
 metadata:
   version: "2.0.0"

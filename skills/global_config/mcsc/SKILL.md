@@ -1,6 +1,9 @@
 ---
 name: mcsc
-description: Delegate a task to another installed CLI harness (Antigravity/agy, OpenCode, Codex) from inside an AOS repo. Use this instead of shelling out to that CLI directly whenever one is installed — it wraps the wrapper flags for you and streams live tool-call telemetry to agenttrail, which is why the board updates in real time. Reach for it any time you're about to delegate work to another harness.
+description: >-
+  Delegate tasks to external CLI harnesses (Antigravity, OpenCode, Codex) with
+  flag wrappers and live agenttrail telemetry. Use instead of direct CLI
+  shelling whenever delegating work across harnesses from an AOS repository.
 category: bdb-core
 metadata:
   version: "0.1.0"

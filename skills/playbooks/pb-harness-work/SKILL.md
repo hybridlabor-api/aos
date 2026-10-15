@@ -1,11 +1,10 @@
 ---
 name: pb-harness-work
 description: >-
-  Change the agent harness itself (AOS, AO or CBS hooks, gates, memory,
-  permissions, delegation, plugins, bootstrap) the safe way: look up the
-  matching harness pattern, design against its gotchas, build with
-  /startcycle and a live trail, check every harness, open a PR after GO.
-  Use for "change a hook", "fix the go-gate", "harness work", "plugin change".
+  Port skills, agents, commands, hooks, or tests across harnesses (Claude
+  Code, OpenCode, Codex, Antigravity). Tests parity with isolated
+  environments. Use for "port to OpenCode", "make this work in Codex", or
+  "harness compatibility".
 category: bdb-core
 kind: playbook
 trigger: ["harness work", "change a hook", "fix the go-gate", "plugin change"]

@@ -1,10 +1,9 @@
 ---
 name: skill-create
 description: >-
-  Use when the user wants to capture a real repo's working patterns as a
-  reusable skill — analyzes the local git log and diffs the agent runs itself
-  and drafts a new SKILL.md describing the team's coding patterns, into a
-  scratch/output path the user names. Never overwrites an existing skill.
+  Create, generate, or scaffold a new Claude Code skill with SKILL.md, YAML
+  frontmatter, directory structure, and optional scripts/references. Run
+  validate-skills afterwards. Use when creating new skills.
 category: bdb-core
 ---
 

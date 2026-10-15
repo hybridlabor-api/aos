@@ -1,13 +1,10 @@
 ---
 name: startcycle
 description: >-
-  Linear multi-agent build pipeline with file hand-offs in production_artifacts/,
-  run after /bdbrainstorm or /grill-me. This is the linear variant — no
-  state.json, no repair loop, no dispatcher graph — distinct from
-  startcycle-graph, which adds durable state and automated escalation. Use when
-  an approved plan should be built, when the user types /startcycle or "run a
-  startcycle", or when you pick a startcycle variant from the situation
-  yourself (no user prompt needed).
+  End-to-end multi-agent feature development, architecture changes, and major
+  builds. Coordinates Architect -> TechLead -> parallel Build -> Reviewer ->
+  Shipping. Use on /startcycle, "run a startcycle", or "build this feature
+  end-to-end".
 category: bdb-core
 ---
 

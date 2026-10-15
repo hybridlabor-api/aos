@@ -1,6 +1,9 @@
 ---
 name: plan-arbiter
-description: Use when asked to compare, cross-review, merge, judge, choose, or arbitrate competing plans from multiple agents such as Codex and Claude Code; when given two or more proposed plans, session IDs, transcripts, plan documents, PR descriptions, or pasted strategies; or when the user wants one recommended execution plan after agents review each other's proposals.
+description: >-
+  Compare, cross-review, merge, and arbitrate competing plans from multiple
+  agents or harnesses (e.g. Codex, Claude Code). Use when evaluating multiple
+  proposed plans or transcripts to produce one unified execution plan.
 category: bdb-core
 source: BuilderIO/skills
 ---

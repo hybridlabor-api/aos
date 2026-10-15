@@ -30,6 +30,14 @@ const NAME_MAX = 64;
 // in validate() -- the two can drift, and then the test proves nothing.
 const isValidSkillName = (v) => v.length <= NAME_MAX && NAME_RE.test(v);
 
+export const DESC_MAX = 250;
+export function cleanDescription(descKey) {
+  if (!descKey) return '';
+  let v = unquote(descKey.value);
+  v = v.replace(/^[|>][-+]?\d*\s*/, '').trim();
+  return v;
+}
+
 // Names that are stand-ins or service accounts rather than a person. The rule
 // is about leaking a human's username; `/home/agent` on the SaaS fleet is a
 // role account and is meant to be written down.
@@ -401,8 +409,16 @@ function validate() {
     }
 
     const desc = byKey.get('description');
-    if (desc && unquote(desc.value) === '') {
-      findings.push({ level: 'error', code: 'E-FM05', file: rel, line: desc.line, msg: 'description is empty' });
+    if (desc) {
+      const cleanDesc = cleanDescription(desc);
+      if (cleanDesc === '') {
+        findings.push({ level: 'error', code: 'E-FM05', file: rel, line: desc.line, msg: 'description is empty' });
+      } else if (cleanDesc.length > DESC_MAX) {
+        findings.push({
+          level: 'error', code: 'E-DESC01', file: rel, line: desc.line,
+          msg: `description is ${cleanDesc.length} characters (budget: max ${DESC_MAX} chars). Frontmatter budget requires concise descriptions to limit session startup token bloat. Shorten while preserving trigger words.`,
+        });
+      }
     }
 
     const cat = byKey.get('category');

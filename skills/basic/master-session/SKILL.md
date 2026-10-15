@@ -1,6 +1,10 @@
 ---
 name: master-session
-description: Use when one Claude Code session must supervise several others on this machine — adopting sessions the user started by hand, or spawning workers itself. Covers roster, status requests, a GO board, idle notices, and the GO-token protocol. Works with AOS alone; the AO daemon is optional.
+description: >-
+  Supervise multiple worker sessions across worktrees. Dispatches tasks via
+  /startcycle, monitors progress, handles reviews, and coordinates
+  integration. Use when managing complex, multi-agent projects from a single
+  control point.
 category: bdb-core
 risk: safe
 tools:
