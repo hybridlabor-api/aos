@@ -1,10 +1,10 @@
 ---
 name: pb-ship
 description: >-
-  Ship work in a repository: triage issues, review open PRs (visual recap,
-  adversarial review, shipping quality gates), merge after GO, and post status
-  recap. Use for "ship it", "ship day", "merge ready PRs", or "end of work
-  block".
+  Ship the day's work in one repo: triage new issues, review every open PR
+  (description, visual recap, adversarial reviewer, shipping pre-flight and
+  quality gate), merge only after GO, then post a status recap. Use for
+  "ship it", "ship day", "merge the ready PRs", "end of work block".
 category: engineering-method
 kind: playbook
 trigger: ["ship it", "ship day", "merge the ready PRs"]

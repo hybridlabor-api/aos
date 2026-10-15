@@ -1,9 +1,12 @@
 ---
 name: prototype
 description: >-
-  Build throwaway prototypes, UI variations or state walkthroughs to validate
-  design questions. Use on /prototype, UI exploration, after a brainstorm, or
-  as the prototype step before plan-canvas review.
+  Build a throwaway prototype to answer a design question, as UI variations or
+  a state-model walkthrough. Use when the user types /prototype, wants to
+  sanity-check whether a state model or logic feels right, wants to explore
+  what a UI should look like, or as the prototype step of the web design flow
+  with brainstorm or grill before the final plan goes to plan-canvas (annotate
+  the running prototype with the plan-canvas annotation tool).
 category: engineering-method
 source: "adapted from mattpocock/skills (MIT) — https://github.com/mattpocock/skills/tree/main/skills/engineering/prototype"
 ---

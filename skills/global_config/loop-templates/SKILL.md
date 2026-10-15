@@ -1,10 +1,6 @@
 ---
 name: loop-templates
-description: >-
-  Prompt templates for repeating tasks with stop conditions and limits: CI
-  until green, PR follow-up, review loops, or session summaries. Includes
-  go-gate safety rules and harness loop invocation. Use for
-  scheduled/iterative tasks.
+description: Use when a task should repeat on a schedule or until a condition holds (CI until green, follow a PR to merge, review rounds until no blockers, daily session summary). Ships ready prompt templates with run and duration limits, stop conditions and go-gate safety rules, and per-harness loop invocation.
 category: bdb-core
 ---
 

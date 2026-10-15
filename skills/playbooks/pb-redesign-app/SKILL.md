@@ -1,10 +1,11 @@
 ---
 name: pb-redesign-app
 description: >-
-  App UI redesign: audits running app, defines design tokens, creates
-  before/after visual plan, runs startcycle build with a11y and browser tests,
-  and submits PR after GO. Use for "redesign this app", "design overhaul", or
-  "give app a new look".
+  Overhaul one app's UI against an audit: UX audit and UI review of the
+  running app, current versus proposed design tokens, a before/after visual
+  plan, a startcycle build, point fixes, accessibility and browser tests,
+  delivered as a PR after GO. Use for "redesign this app", "design overhaul",
+  "audit and fix the UI", "give the app a new look".
 category: design-ui-ux
 kind: playbook
 trigger: ["redesign this app", "design overhaul", "audit and fix the UI"]

@@ -1,10 +1,11 @@
 ---
 name: pb-social-pack
 description: >-
-  Generate social release packs: platform-tailored posts with cited claims and
-  video cut-downs formatted via ffmpeg/ffprobe, ready for publishing after GO.
-  Use for "social pack for the release", "posts and clips for launch", or
-  "announce release".
+  Turn a release or ship recap into a social pack: posts per platform where
+  every claim traces to a facts file, clip cut-downs per aspect ratio cut with
+  ffmpeg and checked with ffprobe, hand-off for publishing only after GO. Use
+  for "social pack for the release", "posts and clips for this launch",
+  "announce the release".
 category: media-eventtech
 kind: playbook
 trigger: ["social pack for the release", "posts and clips for this launch", "announce the release"]

@@ -1,10 +1,10 @@
 ---
 name: pb-event-tracker
 description: >-
-  Build event spreadsheet covering guests, vendors, timeline, and budget from
-  event briefs. Draft vendor outreach messages for review before GO. Use for
-  "event tracker", "plan this event", "track vendors and budget", or "event
-  spreadsheet".
+  Build one spreadsheet for an event covering guests, vendors, timeline and
+  budget, from your event brief and vendor list, and draft the vendor
+  messages for your GO. Use for "event tracker", "plan this event", "track
+  vendors and budget", "event spreadsheet".
 category: media-eventtech
 kind: playbook
 trigger: ["event tracker", "track my event", "vendor and budget sheet"]

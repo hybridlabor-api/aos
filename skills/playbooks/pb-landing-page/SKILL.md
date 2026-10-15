@@ -1,9 +1,10 @@
 ---
 name: pb-landing-page
 description: >-
-  Build and launch a high-converting landing page: verified copy, brand design
-  tokens, UI and SEO audit, deployed after GO with live URL verification. Use
-  for "landing page", "launch page for this product", or "ship a one-pager".
+  Build and launch a landing page: confirmed copy without invented claims, a
+  generated page in your brand tokens, UI and SEO review, deploy only after
+  GO, then a check on the live URL. Use for "landing page", "launch page for
+  this product", "ship a one-pager".
 category: design-ui-ux
 kind: playbook
 trigger: ["landing page", "launch page for this product", "ship a one-pager"]

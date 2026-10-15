@@ -1,9 +1,10 @@
 ---
 name: grill-me
 description: >-
-  Adversarial plan stress-tester and design interview: probes assumptions and
-  edge cases before coding. Use for "grill me", "stress-test this idea", or
-  critical plan reviews.
+  A relentless interview to sharpen a plan or design before committing to an
+  approach. Use on any "grill me" or "grill this plan" trigger phrase, when the
+  user asks to stress-test a decision, plan or design, and before handing a
+  finished plan off to a startcycle run or a plan-canvas review.
 category: engineering-method
 ---
 

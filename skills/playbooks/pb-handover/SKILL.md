@@ -1,10 +1,10 @@
 ---
 name: pb-handover
 description: >-
-  Wrap up a session or prepare a handover for the next agent: update wiki and
-  ADRs, verify git status, and generate structured HANDOVER.md with open
-  threads. Use for "handover", "session wrap-up", "prepare next agent", or
-  "end of day".
+  Write a handover note for a colleague from the state of a project folder:
+  what is done, what is open, what is risky, the next 3 steps and where
+  things live. Sent only after your GO. Use for "handover note", "hand this
+  project over", "I'm going on leave, brief my colleague".
 category: bdb-core
 kind: playbook
 trigger: ["handover note", "hand this project over", "brief my colleague"]

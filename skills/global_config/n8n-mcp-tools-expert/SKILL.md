@@ -1,9 +1,6 @@
 ---
 name: n8n-mcp-tools-expert
-description: >-
-  Guide for n8n-mcp MCP tools: node searches, config validation, templates,
-  and workflow management. Provides tool selection guidance, parameter
-  formats, and common patterns. Use for any n8n-mcp operations.
+description: Expert guide for using n8n-mcp MCP tools effectively. Use when searching for nodes, validating configurations, accessing templates, managing workflows, or using any n8n-mcp tool. Provides tool selection guidance, parameter formats, and common patterns.
 category: library
 risk: unknown
 source: community

@@ -2,9 +2,11 @@
 name: bdb-aos
 category: bdb-core
 description: >-
-  Entry point for BDB Agent OS plugin. Routes to relevant AOS skills,
-  startcycle subagents, and pipeline workflows. Reach for a specific skill
-  directly when you already know its name — this skill only routes.
+  Entry point for the BDB Agent OS suite installed as a Claude Code plugin.
+  Use to find out which of the 200+ AOS skills, the seven startcycle subagents,
+  or the pipeline workflows apply to a task, and where their contracts live.
+  Reach for a specific skill directly when you already know its name — this
+  skill only routes.
 ---
 
 # BDB Agent OS

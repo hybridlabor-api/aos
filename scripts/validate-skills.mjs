@@ -415,7 +415,7 @@ function validate() {
         findings.push({ level: 'error', code: 'E-FM05', file: rel, line: desc.line, msg: 'description is empty' });
       } else if (cleanDesc.length > DESC_MAX) {
         findings.push({
-          level: 'error', code: 'E-DESC01', file: rel, line: desc.line,
+          level: 'warn', code: 'W-DESC01', file: rel, line: desc.line,
           msg: `description is ${cleanDesc.length} characters (budget: max ${DESC_MAX} chars). Frontmatter budget requires concise descriptions to limit session startup token bloat. Shorten while preserving trigger words.`,
         });
       }

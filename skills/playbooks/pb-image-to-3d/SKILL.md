@@ -1,10 +1,10 @@
 ---
 name: pb-image-to-3d
 description: >-
-  Turn reference images into cleaned, scaled 3D assets: generates mesh via
-  ComfyUI image-to-3D, optimizes geometry and materials in Blender, and
-  exports .glb. Use for "image to 3D", "make a 3D model from picture", or
-  "photo to glb".
+  Turn one reference image into a cleaned, scaled 3D asset: your own
+  image-to-3D ComfyUI workflow makes the mesh, Blender decimates it to a poly
+  budget, fixes scale, origin and material, and exports a .glb. Use for
+  "image to 3D", "make a 3D model from this picture", "photo to glb".
 category: media-eventtech
 kind: playbook
 trigger: ["image to 3D", "3D model from this picture", "photo to glb"]
