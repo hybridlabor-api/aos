@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
 import { join, dirname, basename, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -84,8 +84,11 @@ function collect() {
   const found = [];
   const seen = new Set();
   const add = (id, file) => {
-    if (seen.has(file)) return;
-    seen.add(file);
+    // plugins/bdb-aos/skills is a symlink to ../../skills, so the same file is
+    // reached twice. Dedupe on the real path and keep the first (canonical) hit.
+    const key = realpathSync(file);
+    if (seen.has(key)) return;
+    seen.add(key);
     const desc = descriptionOf(readFileSync(file, 'utf8'));
     if (desc !== null) found.push({ id, file, description: desc });
   };
