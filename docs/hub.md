@@ -59,35 +59,9 @@ Paths must be absolute Windows paths without quotes, newlines or control charact
 
 ## Troubleshooting
 
-### OpenWiki shows "down" and "Wikis: none yet"
-
-OpenWiki is a launchd interval job (StartInterval 7200). When the job is loaded
-but not currently running, the hub reports it as **scheduled** — this is
-correct for a timer-based service.
-
-The Wikis list is empty when the hub cannot find any `.openwiki` directories or
-`~/.openwiki/projects.json`. The hub discovers wikis in `~/dev` (up to four
-levels deep) and reads tracked projects from `~/.openwiki/projects.json`. Both
-paths are resolved relative to the **user the hub process is running as**.
-
-If AOS was installed under one user account (for example a service or build
-account) but your repositories live under a different home directory, the hub
-process will look in the wrong `~` and show "none yet". Fix the environment,
-not the code: stop the hub running under the wrong user and start it from the
-account that owns `~/dev` and `~/.openwiki`:
-
-```bash
-# Run as the user whose ~/dev contains the wikis.
-aos hub restart
-```
-
-Or, for a service install, ensure the LaunchAgent runs as the intended user and
-that `AOS_HUB_HOME` points at that user's home if the account differs from the
-log-in user.
-
-## Notes
-
-- On-demand start: `aos hub` probes `/api/health` first; if the hub is already running it only opens the browser.
-- agenttrail is linked, not embedded: the Plans tab deep-links to the trail's own port.
-- The hub performs no GO actions and no pushes; gates (gogate) stay CLI-side.
-- Shell-free everywhere: probes and control use spawn with an args array (`shell:false`); args never become commands.
+**OpenWiki "down" or "Wikis: none yet".** OpenWiki is a launchd interval job
+(every 2 h): loaded but idle shows as *scheduled*. The Wikis list reads
+`~/.openwiki/projects.json` and scans `~/dev` (four levels) for `.openwiki`
+directories, relative to the home of the user the hub runs as
+(`AOS_HUB_HOME` overrides it). If repos live under another home, run
+`aos hub restart` from the account that owns them.
