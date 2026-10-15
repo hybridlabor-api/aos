@@ -4706,7 +4706,7 @@ async function installMcpsForTarget(paths, ctx) {
         }
     }
 
-    const mcpTemplatePath = path.join(srcDir, 'mcp_config.json');
+    const mcpTemplatePath = mcpSecrets.shippedMcpTemplatePath(srcDir);
     const mcpTemplate = installStep(
         `read the MCP template ${mcpTemplatePath}`,
         () => fs.readFileSync(mcpTemplatePath, 'utf8'),
@@ -6096,26 +6096,33 @@ function installClaudeA2aSessionHook({ targetHome = homeDir } = {}) {
     }
 }
 
-function installGlobalBinaries() {
+function installGlobalBinaries(targetHome = (process.env.HOME || homeDir)) {
     const binSrc = path.join(srcDir, 'bin');
-    const globalAgentsBin = path.join(homeDir, '.agents', 'bin');
+    const globalAgentsBin = path.join(targetHome, '.agents', 'bin');
     if (fs.existsSync(binSrc)) {
         copyDirRecursiveSync(binSrc, globalAgentsBin);
         log.step(`Installed CLI binaries to ${globalAgentsBin}`);
         // aos-doctor, aos-store and aos-uninstall require ../lib from their installed copy.
-        copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(homeDir, '.agents', 'lib'));
-        // The gateway reads the shipped server list from ~/.agents (aosRoot); without these it serves nothing.
-        for (const f of ['mcp_config.json', 'mcp_picks.json']) {
-            if (fs.existsSync(path.join(srcDir, f))) copyDirRecursiveSync(path.join(srcDir, f), path.join(homeDir, '.agents', f));
+        copyDirRecursiveSync(path.join(srcDir, 'lib'), path.join(targetHome, '.agents', 'lib'));
+        // The gateway reads the shipped server list from ~/.agents/gateway/upstream_template.json (aosRoot); without these it serves nothing.
+        const gatewayDir = path.join(targetHome, '.agents', 'gateway');
+        fs.mkdirSync(gatewayDir, { recursive: true });
+        const srcTemplate = mcpSecrets.shippedMcpTemplatePath(srcDir);
+        if (fs.existsSync(srcTemplate)) {
+            copyDirRecursiveSync(srcTemplate, path.join(gatewayDir, 'upstream_template.json'));
         }
+        if (fs.existsSync(path.join(srcDir, 'mcp_picks.json'))) {
+            copyDirRecursiveSync(path.join(srcDir, 'mcp_picks.json'), path.join(targetHome, '.agents', 'mcp_picks.json'));
+        }
+        mcpSecrets.migrateLegacyAgyWorkspaceMcp(targetHome, srcDir, { log });
         // lib/gate-profile.mjs is a re-export of the hook copy, which does not exist under ~/.agents: aos-gate needs the real file there.
         const profileSrc = path.join(srcDir, '.claude', 'hooks', 'gate-profile.mjs');
-        if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(homeDir, '.agents', 'lib', 'gate-profile.mjs'));
+        if (fs.existsSync(profileSrc)) copyDirRecursiveSync(profileSrc, path.join(targetHome, '.agents', 'lib', 'gate-profile.mjs'));
         // lib/a2a-sdk-resolve.mjs in the copy above needs the package root (deps are package deps).
         writeA2aPackageRootRecord();
     }
 
-    const localBinDir = path.join(homeDir, '.local', 'bin');
+    const localBinDir = path.join(targetHome, '.local', 'bin');
     if (!fs.existsSync(localBinDir)) {
         try { fs.mkdirSync(localBinDir, { recursive: true }); } catch (e) { logDebug(e, 'mkdir localBin'); }
     }
@@ -6136,7 +6143,7 @@ function installGlobalBinaries() {
             // (Lenovo P15: "Cannot find module '../installer.js'"). Run it from the package instead.
             run = `npx -y -p ${AOS_NPX_SPEC}${aosDistTag(pkg.version)} aos-uninstall`;
         } else {
-            const targetMjs = launcherTarget(homeDir, name);
+            const targetMjs = launcherTarget(targetHome, name);
             if (!fs.existsSync(targetMjs)) continue;
             run = `node "${targetMjs}"`;
         }
@@ -8052,6 +8059,7 @@ function quickUpdateHarnesses() {
             injectHarnessRules();
         }, 'Harness files keep whatever version this machine already had.')],
         ['remove the AOS mcsc entry from agy configs', installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.')],
+        ['migrate legacy agy workspace MCP config', installStep('migrate legacy agy workspace MCP config', () => { mcpSecrets.migrateLegacyAgyWorkspaceMcp(homeDir, srcDir, { log }); })],
         ['move inline MCP secrets into the secrets file', installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`)],
         ['install the Codex plugin', installStep('install the Codex plugin', () => { runCodexPluginStep(); })],
     ];
@@ -8984,6 +8992,8 @@ module.exports = {
     LAUNCHPAD_OPEN_FLAGS,
     checkSystemPrereqs,
     findBundledClaudeCli,
+    shippedMcpTemplatePath: mcpSecrets.shippedMcpTemplatePath,
+    migrateLegacyAgyWorkspaceMcp: mcpSecrets.migrateLegacyAgyWorkspaceMcp,
 };
 
 // After module.exports: the v5 menu receives it as its host and main() runs before the first await.

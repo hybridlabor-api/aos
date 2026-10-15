@@ -495,6 +495,25 @@ function checkAgyMcsc() {
   }
 }
 
+// Antigravity loads <workspace>/.agents/mcp_config.json; in $HOME that picked up the shipped server template.
+function checkAgyWorkspaceMcp() {
+  const f = h('.agents', 'mcp_config.json');
+  if (!existsSync(f)) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} absent (clean)`, '');
+    return;
+  }
+  const data = readJson(f);
+  const servers = Object.keys(data?.mcpServers || {});
+  const foreign = servers.filter((s) => s !== 'aos' && s !== 'mcsc');
+  if (!foreign.length) {
+    add('agy', 'agy workspace MCP', true, `${tilde(f)} lists only ${servers.join(', ') || 'no'} servers`, '');
+    return;
+  }
+  add('agy', 'agy workspace MCP', false,
+    `${tilde(f)} lists servers other than aos/mcsc (${foreign.join(', ')}): agy loads them in $HOME`,
+    'aos repair', true);
+}
+
 // Secrets belong in ~/.aos/secrets.env (0600), never inline in a harness MCP config. Names only, never values.
 function checkMcpSecrets() {
   const { findInlineSecrets, secretsPath, readSecretsFile, firecrawlDoctorHint } = req('../lib/mcp-secrets.js');
@@ -896,6 +915,7 @@ checkAgentModels();
 checkHooks();
 checkPlugins();
 checkAgyMcsc();
+checkAgyWorkspaceMcp();
 checkAgyWorkerHome();
 checkMcpSecrets();
 checkInstallerBaks();
