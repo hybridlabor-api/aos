@@ -469,6 +469,40 @@ async function checkSynapse() {
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781');
 }
 
+// ---------------------------------------------------------------- REA MCP
+// Opt-in dual-use reverse-engineering tool. Kept direct (stateful stdio,
+// large tool catalog); never a default selection.
+function checkReaMcp() {
+  const reaEnabled = process.env.AOS_REA_MCP === 'on';
+  if (!reaEnabled) {
+    add('tools', 'REA MCP', true,
+      'off — dual-use research tool; opt-in via AOS_REA_MCP=on or `aos package install rea`',
+      'Set AOS_REA_MCP=on to enable the REA reverse-engineering MCP pick.');
+    return;
+  }
+  let reaPath = which('rea');
+  let reaVer = null;
+  if (reaPath) {
+    try {
+      reaVer = execFileSync(reaPath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    } catch {}
+  }
+  if (!reaPath) {
+    try {
+      reaVer = execFileSync(IS_WIN ? 'npx.cmd' : 'npx', ['-y', 'rea-agents@6.5.0', '--version'], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      reaPath = 'npx -y rea-agents@6.5.0';
+    } catch {}
+  }
+  if (reaPath) {
+    add('tools', 'REA MCP', true,
+      `present: ${reaPath} · stdio MCP (${reaVer || 'v6.5.0'}, direct)`);
+  } else {
+    add('tools', 'REA MCP', false,
+      'AOS_REA_MCP=on but the REA CLI is not reachable',
+      'Run: npm install -g rea-agents@latest (or `aos package install rea` once available)');
+  }
+}
+
 // ---------------------------------------------------------------- worktrees
 // Read-only: reports on the repo at process.cwd(). Never prunes or removes.
 function checkWorktrees() {
@@ -525,5 +559,6 @@ await checkDeja();
 checkOpenWiki();
 await checkSynapse();
 checkWorktrees();
+checkReaMcp();
 report();
 process.exit(results.some(r => !r.ok) ? 1 : 0);
