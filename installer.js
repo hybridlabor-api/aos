@@ -36,6 +36,7 @@ const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
+const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
@@ -262,25 +263,12 @@ const conditionalMcpConfigKeys = [
     { key: 'bdb_after_effects_mcp_fallback', requires: 'go', hint: 'https://go.dev/dl/' }
 ];
 
-function hasExecutable(binary) {
-    try {
-        if (process.platform === 'win32') {
-            execFileSync('where.exe', [binary], { stdio: 'ignore', windowsHide: true });
-        } else {
-            if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(binary)) return false;
-            execSync(`command -v ${binary}`, { stdio: 'ignore', windowsHide: true });
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
 function checkSystemPrereqs({
     which = hasExecutable,
     platform = process.platform,
     logger = log,
     exitOnError = true,
+    isElevated: isElevatedOpt,
 } = {}) {
     const isWin = platform === 'win32';
     const isMac = platform === 'darwin';
@@ -288,11 +276,11 @@ function checkSystemPrereqs({
     const gitOk = Boolean(which('git'));
     const ghOk = Boolean(which('gh'));
 
-    const gitInstruction = isWin
-        ? 'Install Git via git-scm.com or winget install Git.Git'
-        : isMac
-            ? 'Install Git via brew install git / xcode-select --install'
-            : 'Install Git via your package manager (e.g. apt install git / dnf install git)';
+    const elevated = isElevatedOpt !== undefined
+        ? Boolean(isElevatedOpt)
+        : (isWin ? isElevated({ platform }) : false);
+
+    const gitInstruction = getGitInstallInstruction({ platform, elevated });
 
     const ghInstruction = isWin
         ? 'Install GitHub CLI: winget install GitHub.cli'
@@ -9035,6 +9023,8 @@ module.exports = {
     LAUNCHPAD_OPEN_FLAGS,
     checkSystemPrereqs,
     findBundledClaudeCli,
+    hasExecutable,
+    findExecutable,
 };
 
 // After module.exports: the v5 menu receives it as its host and main() runs before the first await.

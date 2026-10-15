@@ -38,6 +38,7 @@ describe('checkSystemPrereqs (installer preflight)', () => {
                 platform: 'win32',
                 logger,
                 exitOnError: true,
+                isElevated: false,
             }),
             /git-scm\.com or winget install Git\.Git/
         );
@@ -46,6 +47,32 @@ describe('checkSystemPrereqs (installer preflight)', () => {
 
         assert.equal(errors.length, 1);
         assert.match(errors[0], /git-scm\.com or winget install Git\.Git/);
+    });
+
+    test('missing git on Windows when elevated includes elevated PowerShell hint', () => {
+        const errors = [];
+        const logger = { error: (msg) => errors.push(msg), warn: () => {} };
+
+        assert.throws(
+            () => checkSystemPrereqs({
+                which: () => false,
+                platform: 'win32',
+                logger,
+                exitOnError: true,
+                isElevated: true,
+            }),
+            (err) => {
+                assert.match(err.message, /git-scm\.com or winget install Git\.Git/);
+                assert.match(err.message, /Git may be installed for another user or missing from this shell's PATH/);
+                return true;
+            }
+        );
+        assert.equal(process.exitCode, 1);
+        process.exitCode = 0;
+
+        assert.equal(errors.length, 1);
+        assert.match(errors[0], /git-scm\.com or winget install Git\.Git/);
+        assert.match(errors[0], /Git may be installed for another user or missing from this shell's PATH/);
     });
 
     test('missing git on Linux throws with package manager instructions', () => {

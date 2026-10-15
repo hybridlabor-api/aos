@@ -37,7 +37,8 @@ const { pluginSkills, pluginAgents, claudeConfigDir } = req('../lib/plugin-evide
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
-const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } =req('../lib/uninstall-records.js');
+const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } = req('../lib/uninstall-records.js');
+const { findExecutable, getGitInstallInstruction, isElevated } = req('../lib/executable-probe.js');
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
@@ -77,14 +78,7 @@ const add = (area, name, ok, detail, fix, warningOnly = false) => {
   results.push({ area, name, ok, detail, fix, warningOnly });
 };
 
-const which = (bin) => {
-  const probe = IS_WIN ? 'where.exe' : 'which';
-  try {
-    return execFileSync(probe, [bin], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
-  } catch {
-    return null;
-  }
-};
+const which = (bin) => findExecutable(bin);
 
 const dirCount = (p) => {
   try {
@@ -116,8 +110,8 @@ function checkPrereqs() {
     IS_WIN ? 'Install Python from python.org or winget install Python.Python.3.12' : 'brew install python3');
 
   const gitProbe = which('git');
-  add('prereq', 'Git CLI', !!gitProbe, tilde(gitProbe) || 'missing — required for AOS workflows and worktrees',
-    IS_WIN ? 'Install Git via git-scm.com or winget install Git.Git' : 'brew install git / xcode-select --install');
+  const gitFix = getGitInstallInstruction({ platform: process.platform, elevated: isElevated({ platform: process.platform }) });
+  add('prereq', 'Git CLI', !!gitProbe, tilde(gitProbe) || 'missing — required for AOS workflows and worktrees', gitFix);
 
   const uvProbe = which('uv');
   add('prereq', 'uv package manager', !!uvProbe, uvProbe ? `${tilde(uvProbe)} (fast venv seeding)` : 'optional — pip fallback will be used',
