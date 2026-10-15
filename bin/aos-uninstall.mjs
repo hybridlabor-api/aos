@@ -400,8 +400,8 @@ async function execute(p) {
   }
 
   // Claude Code mods, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
-  const always = ['fleet', 'sessions', 'alert', 'rustauri'];
-  for (const id of ['fleet', 'sessions', 'alert', 'gateway', 'hub', 'rustauri']) {
+  const always = ['fleet', 'sessions', 'alert', 'control', 'rustauri'];
+  for (const id of ['fleet', 'sessions', 'alert', 'control', 'gateway', 'hub', 'rustauri']) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
       // run: gateway and hub stop their service through it (launchctl, systemctl, or the Windows Startup .vbs process).
