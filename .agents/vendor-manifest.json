@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
   "description": "Pinned upstream vendor repositories tracked for AOS skills and tools",
-  "updated_at": "2026-09-25T19:27:14Z",
+  "updated_at": "2026-10-15T02:02:00Z",
   "vendors": {
     "superdesign-skill": {
       "upstream": "https://github.com/superdesigndev/superdesign-skill",
@@ -79,6 +79,23 @@
         "conventional-commits.py": "92fdaa1f87b45cfc7b881f03ee69d2bad27b09d3",
         "env-file-protection.json": "36fa6dbd5d8a45a62628b634aa48410f4d39682d"
       }
+    },
+    "reverse-engineer-anything": {
+      "upstream": "https://github.com/morluto/rea",
+      "pinned_commit": "d69acc3455c33f90a2fc4381db43d38b6af50622",
+      "license": "MIT",
+      "date": "2026-10-15",
+      "purpose": "Reverse engineer native, managed, Electron/JS, packaged, firmware, and browser targets with REA",
+      "target_skill": "skills/global_config/reverse-engineer-anything",
+      "files": [
+        "SKILL.md",
+        "references/android-applications.md",
+        "references/connection-and-recovery.md",
+        "references/evidence-workflows.md",
+        "references/javascript-applications.md",
+        "references/native-and-artifacts.md",
+        "references/runtime-observation.md"
+      ]
     }
   }
 }
