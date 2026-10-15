@@ -1,6 +1,6 @@
 ---
 name: clear-context
-description: Use to survive a /clear or a context limit. `/clear-context save` writes a verified handoff (state, rules, running work, next steps) and stores the key decisions in unified memory; `/clear-context` after the clear reads the newest handoff, cross-checks it with deja and memB, re-verifies the live state and continues. Works in every harness.
+description: Use to survive a /clear or context limit. `save` writes a verified handoff and stores decisions in memB; after the clear, it reads the handoff, cross-checks deja and memB, re-verifies live state and continues. Works in every harness.
 category: bdb-core
 risk: low
 source: bdb
