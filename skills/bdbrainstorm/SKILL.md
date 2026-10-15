@@ -1,10 +1,10 @@
 ---
 name: bdbrainstorm
 description: >-
-  Multi-agent ideation and technical design workflow combining /grill-me and
-  Core Godmodes, ending in plan-canvas review and hand-off to
-  /startcycle-graph. Use to brainstorm, ideate, scope, or sharpen a plan,
-  idea, or product.
+  Multi-agent brainstorm combining /grill-me and Godmodes
+  (godmode-engineering, ui-ux, shipping), ending in plan-canvas review and
+  hand-off to /startcycle-graph. Use to ideate, scope or sharpen a plan or
+  product.
 category: bdb-core
 ---
 

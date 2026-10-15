@@ -1,9 +1,9 @@
 ---
 name: startcycle-graph-user
 description: >-
-  Throwaway multi-agent fan-out (parallel workers + review pass) in any
-  project without persistent state or graph contract. Use for "spawn a few
-  parallel agents", "fan out", "quick worker team", or lightweight team tasks.
+  Throwaway fan-out: a few parallel workers plus a review pass in any project,
+  no persistent state; lighter than /startcycle-graph. Use for "fan out",
+  "quick worker team", spawning parallel agents.
 category: bdb-core
 ---
 

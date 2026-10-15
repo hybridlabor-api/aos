@@ -1,9 +1,9 @@
 ---
 name: plan-canvas
 description: >-
-  Browser review canvas for plans and HTML artifacts: visual annotations, live
-  chat, and approval flow. Use on "plan", "planen", "roadmap", /plan-canvas,
-  or after brainstorming/grilling to visually review any plan or artifact.
+  Browser canvas to visualize the plan: annotations, chat, approval. Use on
+  planning, "plan", "planen", roadmap, /plan-canvas, or after
+  brainstorming/grilling to review any plan or artifact.
 category: bdb-core
 metadata:
   version: "1.1.0"

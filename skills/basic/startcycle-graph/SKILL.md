@@ -1,10 +1,9 @@
 ---
 name: startcycle-graph
 description: >-
-  Autonomous multi-agent build pipeline with durable state, review repair
-  loop, and quality gate. Dispatches Architect, TechLead, UI/UX, Engineering,
-  Media, Reviewer, Shipping via .agents/graph.md. Use on /startcycle-graph or
-  "run a startcycle".
+  Autonomous multi-agent pipeline: durable production_artifacts/state.json,
+  repair loop, quality gate, per .agents/graph.md. Use on /startcycle-graph
+  after bdbrainstorm or /grill-me.
 category: bdb-core
 ---
 

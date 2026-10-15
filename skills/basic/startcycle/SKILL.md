@@ -1,10 +1,9 @@
 ---
 name: startcycle
 description: >-
-  End-to-end multi-agent feature development, architecture changes, and major
-  builds. Coordinates Architect -> TechLead -> parallel Build -> Reviewer ->
-  Shipping. Use on /startcycle, "run a startcycle", or "build this feature
-  end-to-end".
+  Linear multi-agent build: Architect -> TechLead -> Build -> Reviewer, file
+  hand-offs in production_artifacts/. Use on /startcycle after /bdbrainstorm
+  or /grill-me; not startcycle-graph (state, repair loop).
 category: bdb-core
 ---
 

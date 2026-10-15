@@ -1,10 +1,9 @@
 ---
 name: grill-me
 description: >-
-  Adversarial design and plan stress-tester. Probes assumptions and uncovers
-  edge cases in technical proposals, architecture, or feature plans before
-  coding. Use for "grill me", "stress-test this idea", or critical proposal
-  reviews.
+  Adversarial plan stress-tester and design interview: probes assumptions and
+  edge cases before coding. Use for "grill me", "stress-test this idea", or
+  critical plan reviews.
 category: engineering-method
 ---
 
