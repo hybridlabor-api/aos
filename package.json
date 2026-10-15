@@ -26,7 +26,8 @@
     "aos-gateway": "bin/aos-gateway.mjs",
     "aos-gogate": "bin/aos-gogate.mjs",
     "aos-a2a": "bin/aos-a2a.mjs",
-    "aos-sessions": "bin/aos-sessions.mjs"
+    "aos-sessions": "bin/aos-sessions.mjs",
+    "aos-team": "bin/aos-team.mjs"
   },
   "scripts": {
     "prepack": "node scripts/build-shipped-hashes.mjs",

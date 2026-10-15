@@ -8369,6 +8369,12 @@ Options:
   -h, --help       Print this help and exit`);
         return;
     }
+    if (process.argv[2] === 'team') {
+        const teamScript = path.join(srcDir, 'bin', 'aos-team.mjs');
+        const result = spawnSync(process.execPath, [teamScript, ...process.argv.slice(3)], { stdio: 'inherit', shell: false, windowsHide: true });
+        process.exitCode = result.status == null ? 1 : result.status;
+        return;
+    }
     if (process.argv[2] === 'store') {
         const storeScript = path.join(srcDir, 'bin', 'aos-store.mjs');
         const result = spawnSync(process.execPath, [storeScript, ...process.argv.slice(3)], { stdio: 'inherit', windowsHide: true });
