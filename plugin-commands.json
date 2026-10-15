@@ -46,7 +46,7 @@
       }
     },
     "mastersession": {
-      "description": "Supervise other Claude Code sessions on this machine: roster, status requests, GO board, idle notices.",
+      "description": "Supervise other agent sessions on this machine: roster, status requests, GO board, idle notices.",
       "skills": [
         "master-session"
       ],
