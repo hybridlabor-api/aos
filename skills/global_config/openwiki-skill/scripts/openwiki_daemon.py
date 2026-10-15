@@ -276,14 +276,17 @@ def call_model(api_key, evidence, existing_pages):
         # OpenAI-compatible REST API call (covers OpenAI, Groq, Grok, Nvidia NIM, OpenRouter, Ollama, Kimi, Qwen, etc.)
         import urllib.request, json as _json
         base = BASE_URL.rstrip("/")
-        payload = _json.dumps({
+        body = {
             "model": MODEL_ID,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user",   "content": user_msg},
             ],
-            "temperature": 0.3,
-        }).encode()
+        }
+        # Anthropic's current models reject `temperature` (HTTP 400 "deprecated for this model").
+        if "anthropic.com" not in base:
+            body["temperature"] = 0.3
+        payload = _json.dumps(body).encode()
 
         headers = {"Content-Type": "application/json"}
         if api_key:
