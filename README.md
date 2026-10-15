@@ -1581,13 +1581,13 @@ npx -y @hybridlabor-api/aos@latest
 
 **`aos update`.** The installer puts an `aos` launcher in `~/.local/bin` that runs `npx -y @hybridlabor-api/aos@<channel>` (`latest`, or `beta` when you installed a beta), so `aos update`, `aos status` and `aos repair` always run the newest release of your channel. If you once ran `npm i -g @hybridlabor-api/aos`, whichever `aos` comes first on your PATH wins: a global npm copy stays frozen at its version, so update it (`npm i -g @hybridlabor-api/aos@latest`) or remove it. The installer prints the update command itself whenever a newer version exists; the `bdb-updater` skill wraps the same check for use from inside a session.
 
-**Update notifications & opt-in auto-update.** AOS checks for newer releases in the background (cached for 24 h). Notifications appear in `aos status`, `aos doctor`, the Claude Code session start hint, and the AOS Hub header:
+**Update notifications & opt-in auto-update.** AOS checks for newer releases during CLI operations and caches registry results for 24 h. Notifications appear in `aos status`, `aos doctor`, the Claude Code session start hint, and the AOS Hub status:
 ```bash
 AOS 5.3.1 is available (you have 5.3.0). Update: npx -y @hybridlabor-api/aos@latest
 ```
 Configure update behavior via `aos` → **Settings** → **Updates** (or the `updates` key in `~/.aos/v5-settings.json`):
 - `notify` (default): Checks for updates and displays a notification at most once per 24 hours per surface.
-- `auto`: Automatically updates AOS in the foreground when running `aos` or `aos status` if a newer stable release is found and no auto-update was attempted in the last 24 hours. Because updates refresh active hooks and release gate files, auto-update is strictly opt-in. Auto-update never runs inside background daemons or hooks, never runs in CI environments (`CI=1`), requires a TTY stdout, never updates to prereleases, and falls back to notification if an attempt fails.
+- `auto`: Automatically updates AOS in the foreground when running `aos` or `aos status` if a newer stable release is found and no auto-update was attempted in the last 24 hours. Because updates refresh active hooks and release gate files, auto-update is strictly opt-in. Auto-update never runs inside background daemons or hooks, never runs in CI environments (`CI=1`), requires an interactive terminal (TTY on stdin and stdout), never updates to prereleases, and falls back to notification if an attempt fails.
 - `off`: Disables update checks and notifications completely.
 
 You can also set `AOS_NO_UPDATE_CHECK=1` in your environment to disable all update checks and notifications.
