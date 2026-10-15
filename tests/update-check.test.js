@@ -231,6 +231,7 @@ test('canAutoUpdate: enforces all requirements', () => {
         installed: '5.3.0',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: {},
     });
     assert.strictEqual(res.allowed, false);
@@ -244,6 +245,7 @@ test('canAutoUpdate: enforces all requirements', () => {
         installed: '5.3.0',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: {},
     });
     assert.strictEqual(res.allowed, true);
@@ -255,6 +257,7 @@ test('canAutoUpdate: enforces all requirements', () => {
         installed: '5.3.0',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: { AOS_NO_UPDATE_CHECK: '1' },
     });
     assert.strictEqual(res.allowed, false);
@@ -266,6 +269,7 @@ test('canAutoUpdate: enforces all requirements', () => {
         installed: '5.3.0',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: { CI: 'true' },
     });
     assert.strictEqual(res.allowed, false);
@@ -290,6 +294,7 @@ test('canAutoUpdate: enforces all requirements', () => {
         installed: '5.3.0',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: {},
         isHook: true,
     });
@@ -302,6 +307,7 @@ test('canAutoUpdate: enforces all requirements', () => {
         installed: '5.3.0',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: {},
         isDaemon: true,
     });
@@ -315,6 +321,7 @@ test('canAutoUpdate: enforces all requirements', () => {
         installed: '5.3.0',
         latest: '5.4.0-rc.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: {},
     });
     assert.strictEqual(res.allowed, false);
@@ -327,6 +334,7 @@ test('canAutoUpdate: enforces all requirements', () => {
         installed: '5.3.1',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: {},
     });
     assert.strictEqual(res.allowed, false);
@@ -358,6 +366,7 @@ test('canAutoUpdate: failure fallback when previous attempt failed within 24h', 
         installed: '5.3.0',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: {},
     });
     assert.strictEqual(res.allowed, false);
@@ -372,6 +381,7 @@ test('canAutoUpdate: failure fallback when previous attempt failed within 24h', 
         installed: '5.3.0',
         latest: '5.3.1',
         stdout: fakeStdout,
+        stdin: fakeStdout,
         env: {},
     });
     assert.strictEqual(resAfter24h.allowed, true);
