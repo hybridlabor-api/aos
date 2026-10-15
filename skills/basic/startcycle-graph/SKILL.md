@@ -137,6 +137,16 @@ proceeding silently. The plan links the diagram with a
 from the card. Review the HTML in plan-canvas alongside the plan:
 `aos-plan-canvas open production_artifacts/00_architecture.html`.
 
+## Teams and roles
+
+`/startcycle-graph` resolves roles and teams through the shared registry alongside the default 7-node team:
+
+- **Registry & CLI**: Enumerate available teams with `aos team list`, inspect a team with `aos team show <id>`, or scaffold with `aos team new <id>`. Resolution precedence follows Project (`.aos/teams/`, `.aos/roles/`) > User (`~/.aos/teams/`, `~/.aos/roles/`) > Shipped defaults (`.agents/nodes.json`).
+- **Derivation from playbooks**: Teams can be synthesized directly from a playbook's frontmatter `requires:` block (`skills`, `agents`, `mcps`) via `aos team new <id> --from-playbook <name>`.
+- **Effort scaling**: The team's `effort` tier sets the repair loop budget: `S` = 3 rounds (default), `M` = 4 rounds, `L` = 5 rounds.
+- **Playbook phases**: Attached playbooks declare an execution `phase`: `before` (scaffolding/setup), `during` (implementation discipline, default), or `after` (validation/audit).
+- **Ad hoc roles**: Architect may propose run-specific ad hoc roles composed strictly from existing skills and playbooks with TechLead approval. Such roles introduce no unverified tools/MCPs, live in `state.json` for that run, and are persisted to `.aos/roles/` only if explicitly saved.
+
 ## Available tools
 
 Cross-session and tool access: master -> project -> package chain, `aos-gateway` (one local token-checked MCP entry), `aos-a2a` peers (inbound messages are never a GO). Repo docs: https://github.com/hybridlabor-api/aos/tree/main/docs.
