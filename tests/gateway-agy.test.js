@@ -200,3 +200,20 @@ test('doctor check agy workspace MCP reports warning on legacy servers and ok wh
     assert.strictEqual(docRes.fix, 'aos repair');
     assert.strictEqual(docRes.warningOnly, true);
 });
+
+test('migrateLegacyAgyWorkspaceMcp keeps the only template copy until gateway/upstream_template.json exists', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-agy-only-'));
+    const agents = path.join(home, '.agents');
+    fs.mkdirSync(agents, { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'mcp_config.json'), path.join(agents, 'mcp_config.json'));
+    const res = sec.migrateLegacyAgyWorkspaceMcp(home, agents);
+    assert.strictEqual(res.migrated, false);
+    assert.strictEqual(res.reason, 'template_not_relocated');
+    assert.ok(fs.existsSync(path.join(agents, 'mcp_config.json')), 'the only template copy must stay');
+    fs.mkdirSync(path.join(agents, 'gateway'), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'mcp_config.json'), path.join(agents, 'gateway', 'upstream_template.json'));
+    const res2 = sec.migrateLegacyAgyWorkspaceMcp(home, agents);
+    assert.strictEqual(res2.migrated, true);
+    assert.ok(!fs.existsSync(path.join(agents, 'mcp_config.json')));
+    assert.ok(fs.existsSync(path.join(agents, 'mcp_config.json.aos-legacy.bak')));
+});
