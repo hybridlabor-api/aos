@@ -128,7 +128,7 @@
           },
           "entry": {
             "command": "npx",
-            "args": ["-y", "rea-agents@6.5.0", "--mcp"]
+            "args": ["-y", "rea-agents@6.5.0", "mcp"]
           }
         }
       ]

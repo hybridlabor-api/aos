@@ -25,7 +25,7 @@ describe('rea_mcp pick', () => {
         const e = s.rea_mcp;
         assert.ok(e, 'rea_mcp registered');
         assert.equal(e.command, 'npx');
-        assert.deepEqual(e.args, ['-y', 'rea-agents@6.5.0', '--mcp']);
+        assert.deepEqual(e.args, ['-y', 'rea-agents@6.5.0', 'mcp']);
     });
 
     test('wrong opt-in value stays off (exact match)', () => {
