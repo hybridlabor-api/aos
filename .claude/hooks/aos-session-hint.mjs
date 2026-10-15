@@ -36,8 +36,13 @@ try {
         const { cachedUpdateNotice } = await import(fallbackLib);
         notice = cachedUpdateNotice({ home });
       }
+    if (notice) {
+      hints.push(notice);
+      // Dual-channel output: process.stderr prints directly to the user's terminal
+      // without breaking hook runner JSON parsing on stdout, while additionalContext
+      // provides update awareness to the assistant model prompt.
+      process.stderr.write(`${notice}\n`);
     }
-    if (notice) hints.push(notice);
   } catch {}
 
   process.stdout.write(
