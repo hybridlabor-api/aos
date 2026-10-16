@@ -10,7 +10,10 @@ import {
   parseProfile,
   parseServices,
   parseStatusBranch,
+  parseV5Settings,
   parseWorktrees,
+  roleHint,
+  tokenEstimate,
 } from '../hooks/register'
 
 const PIPELINE_FIXTURE = JSON.stringify({
@@ -40,10 +43,14 @@ const spy = { fills: 0, opened: [] as string[] }
 
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 const controlMocks = (on: any, nowMs: { n: number }, files: Record<string, string>, demo: boolean, reads: string[] = []) => {
+  const defaultFiles: Record<string, string> = {
+    'v5-settings.json': JSON.stringify({ profile: 'standard', context: 'worker' }),
+  }
+  const allFiles = { ...defaultFiles, ...files }
   on('env.get', (_$: unknown, e: unknown) => {
     const key = JSON.stringify(e)
     if (demo && key.includes('AOS_FLEET_DEMO')) return { value: '1' }
-    if (key.includes('AOS_CONTEXT_PROFILE')) return { value: 'worker' }
+    if (key.includes('AOS_SESSION_NAME')) return { value: 'orchestrator-1' }
     if (key.includes('HOME')) return { value: '/home' }
     return { value: '' }
   })
@@ -56,7 +63,7 @@ const controlMocks = (on: any, nowMs: { n: number }, files: Record<string, strin
   on('fs.read', (_$: unknown, e: unknown) => {
     const path = JSON.stringify(e)
     reads.push(path)
-    for (const [k, v] of Object.entries(files)) {
+    for (const [k, v] of Object.entries(allFiles)) {
       if (path.includes(k)) return { value: v }
     }
     throw new Error(`missing ${path}`)
@@ -112,6 +119,38 @@ test('parseGateStatus handles mode and grants', () => {
 test('parseProfile parses strict with minutes', () => {
   const p = parseProfile('profile: strict (30 min left)\nnote: none')
   expect(p).toEqual({ profile: 'strict', minutesLeft: 30, note: 'none' })
+})
+
+test('tokenEstimate formats context profile estimates', () => {
+  expect(tokenEstimate('full')).toBe('~70k')
+  expect(tokenEstimate('orchestrator')).toBe('~55k')
+  expect(tokenEstimate('worker')).toBe('~35k')
+  expect(tokenEstimate('small')).toBe('~15k')
+  expect(tokenEstimate('unknown')).toBe('unknown')
+})
+
+test('roleHint maps session names to recommended context profiles', () => {
+  expect(roleHint('master')).toBe('full/orchestrator')
+  expect(roleHint('orchestrator-1')).toBe('full/orchestrator')
+  expect(roleHint('worker-3')).toBe('worker')
+  expect(roleHint('small-model')).toBe('small')
+  expect(roleHint('sid')).toBe('')
+})
+
+test('parseV5Settings reads install and context profiles with defaults', () => {
+  expect(parseV5Settings(JSON.stringify({ profile: 'minimal', context: 'worker' }))).toEqual({
+    installProfile: 'minimal',
+    contextProfile: 'worker',
+  })
+  expect(parseV5Settings('not json')).toEqual({ installProfile: 'standard', contextProfile: 'full' })
+  expect(parseV5Settings(JSON.stringify({ context: 'small' }))).toEqual({
+    installProfile: 'standard',
+    contextProfile: 'small',
+  })
+  expect(parseV5Settings(JSON.stringify({ profile: 'invalid', context: 'invalid' }))).toEqual({
+    installProfile: 'standard',
+    contextProfile: 'full',
+  })
 })
 
 test('parsePipelineState validates required phase and findings', () => {
@@ -206,7 +245,7 @@ test('pressing tab-git renders worktree rows', async ($, on) => {
   expect(json).toContain('WORKTREES')
 })
 
-test('pressing tab-control renders gate, profile and services', async ($, on) => {
+test('pressing tab-control renders gate, install, context and services', async ($, on) => {
   const nowMs = { n: 60_000 }
   const reads: string[] = []
   controlMocks(on, nowMs, {}, true, reads)
@@ -215,9 +254,33 @@ test('pressing tab-control renders gate, profile and services', async ($, on) =>
   await pane.press({ key: 'tab-control' } as never)
   const json = JSON.stringify(await pane.drawn())
   expect(json).toContain('GO-GATE')
-  expect(json).toContain('PROFILE')
+  expect(json).toContain('GATE PROFILE')
+  expect(json).toContain('INSTALL PROFILE')
+  expect(json).toContain('CONTEXT PROFILE')
   expect(json).toContain('SERVICES')
   expect(json).toContain('DIAGNOSTICS')
+  expect(json).toContain('standard')
+  expect(json).toContain('worker')
+  expect(json).toContain('~35k')
+  expect(json).toContain('role hint: full/orchestrator')
+  expect(reads.some(r => r.includes('v5-settings.json'))).toBe(true)
+})
+
+test('profile switch buttons are rendered on the control tab', async ($, on) => {
+  const nowMs = { n: 60_000 }
+  const reads: string[] = []
+  controlMocks(on, nowMs, {}, true, reads)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true } as never)
+  const pane = await $.ui.mount(CONTROL_MOUNT(80) as never)
+  await pane.press({ key: 'tab-control' } as never)
+  const drawn = await pane.drawn()
+  expect((findNode(drawn, 'install-minimal') as { type?: string }).type).toBe('Button')
+  expect((findNode(drawn, 'install-standard') as { type?: string }).type).toBe('Button')
+  expect((findNode(drawn, 'install-full') as { type?: string }).type).toBe('Button')
+  expect((findNode(drawn, 'ctx-full') as { type?: string }).type).toBe('Button')
+  expect((findNode(drawn, 'ctx-orchestrator') as { type?: string }).type).toBe('Button')
+  expect((findNode(drawn, 'ctx-worker') as { type?: string }).type).toBe('Button')
+  expect((findNode(drawn, 'ctx-small') as { type?: string }).type).toBe('Button')
 })
 
 test('active tab is Text, others are Buttons with the right keys', async ($, on) => {
