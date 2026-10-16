@@ -74,10 +74,8 @@ export type GateState = {
   raw: string
 }
 
-export type ContextProfile = {
-  name: string
-  estimate?: string
-}
+export type InstallProfileName = 'minimal' | 'standard' | 'full'
+export type ContextProfileName = 'full' | 'orchestrator' | 'worker' | 'small'
 
 export type ServiceStatus = {
   id: string
@@ -95,7 +93,9 @@ declare module 'claude-code' {
       gitWorktrees: GitWorktreeItem[]
       profile: GateProfile | null
       gate: GateState | null
-      contextProfile: ContextProfile | null
+      contextProfile: ContextProfileName
+      installProfile: InstallProfileName
+      roleHint: string
       services: ServiceStatus[]
       message: string
       frame: number

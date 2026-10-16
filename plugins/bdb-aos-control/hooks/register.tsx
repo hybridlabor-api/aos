@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type {
-  ContextProfile,
+  ContextProfileName,
   FleetActivity,
   FleetProgress,
   FleetRole,
@@ -11,6 +11,7 @@ import type {
   GateState,
   GitStage,
   GitWorktreeItem,
+  InstallProfileName,
   PipelineState,
   ServiceStatus,
 } from '../types'
@@ -25,10 +26,68 @@ const pipeline_ = atom({ plugin: 'bdb-aos-control', key: 'pipeline' } as const, 
 const gitWorktrees_ = atom({ plugin: 'bdb-aos-control', key: 'gitWorktrees' } as const, [] as GitWorktreeItem[])
 const profile_ = atom({ plugin: 'bdb-aos-control', key: 'profile' } as const, null as GateProfile | null)
 const gate_ = atom({ plugin: 'bdb-aos-control', key: 'gate' } as const, { mode: 'soft', grants: [], raw: '' } as GateState)
-const contextProfile_ = atom({ plugin: 'bdb-aos-control', key: 'contextProfile' } as const, null as ContextProfile | null)
+const contextProfile_ = atom({ plugin: 'bdb-aos-control', key: 'contextProfile' } as const, 'full' as ContextProfileName)
+const installProfile_ = atom({ plugin: 'bdb-aos-control', key: 'installProfile' } as const, 'standard' as InstallProfileName)
+const roleHint_ = atom({ plugin: 'bdb-aos-control', key: 'roleHint' } as const, '')
 const services_ = atom({ plugin: 'bdb-aos-control', key: 'services' } as const, [] as ServiceStatus[])
 const message_ = atom({ plugin: 'bdb-aos-control', key: 'message' } as const, '')
 const frame_ = atom({ plugin: 'bdb-aos-control', key: 'frame' } as const, 0)
+
+// ---------------------------------------------------------------------------
+// Install / context profile helpers (same logic as lib/v5/context-profiles.js)
+// ---------------------------------------------------------------------------
+
+const INSTALL_PROFILES: InstallProfileName[] = ['minimal', 'standard', 'full']
+const CONTEXT_PROFILES: Record<ContextProfileName, { estimate: number }> = {
+  full: { estimate: 70000 },
+  orchestrator: { estimate: 55000 },
+  worker: { estimate: 35000 },
+  small: { estimate: 15000 },
+}
+
+const DEFAULT_INSTALL_PROFILE: InstallProfileName = 'standard'
+const DEFAULT_CONTEXT_PROFILE: ContextProfileName = 'full'
+
+const knownInstallProfile = (x: unknown): x is InstallProfileName =>
+  typeof x === 'string' && INSTALL_PROFILES.includes(x as InstallProfileName)
+
+const sanitizeInstallProfile = (raw: unknown): InstallProfileName =>
+  knownInstallProfile(raw) ? raw : DEFAULT_INSTALL_PROFILE
+
+const knownContextProfile = (x: unknown): x is ContextProfileName =>
+  typeof x === 'string' && Object.hasOwn(CONTEXT_PROFILES, x)
+
+const sanitizeContext = (raw: unknown): ContextProfileName =>
+  knownContextProfile(raw) ? raw : DEFAULT_CONTEXT_PROFILE
+
+export const tokenEstimate = (name: string) => {
+  const n = CONTEXT_PROFILES[name as ContextProfileName]?.estimate
+  if (n === undefined) return 'unknown'
+  return n >= 1000 ? `~${Math.round(n / 1000)}k` : `~${n}`
+}
+
+export const roleHint = (sessionName = '') => {
+  const name = String(sessionName).toLowerCase()
+  if (/master|orchestrator/.test(name)) return 'full/orchestrator'
+  if (/worker/.test(name)) return 'worker'
+  if (/small/.test(name)) return 'small'
+  return ''
+}
+
+export const parseV5Settings = (text: string) => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text.replace(/^\uFEFF/, ''))
+  } catch {
+    raw = {}
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) raw = {}
+  const obj = raw as Record<string, unknown>
+  return {
+    installProfile: sanitizeInstallProfile(obj.profile),
+    contextProfile: sanitizeContext(obj.context),
+  }
+}
 
 type PaneInput = Parameters<EngineInterface['ui']['resolve']>[0] & { props: { bodyColumns?: number } }
 
@@ -487,9 +546,14 @@ async function loadProfile($: EngineInterface) {
   await update($, profile_, () => found)
 }
 
-async function loadContextProfile($: EngineInterface) {
-  const name = await $.env.get('AOS_CONTEXT_PROFILE').catch(() => '')
-  await update($, contextProfile_, () => (name ? { name } : { name: 'full' }))
+async function loadProfiles($: EngineInterface) {
+  const home = await $.env.get('HOME')
+  const text = await $.fs.read(`${home}/.aos/v5-settings.json`).catch(() => '{}')
+  const { installProfile, contextProfile } = parseV5Settings(text)
+  await update($, installProfile_, () => installProfile)
+  await update($, contextProfile_, () => contextProfile)
+  const sessionName = await $.env.get('AOS_SESSION_NAME').catch(() => '') || (await $.session.id())
+  await update($, roleHint_, () => roleHint(sessionName))
 }
 
 async function loadServices($: EngineInterface) {
@@ -524,7 +588,7 @@ async function loadAll($: EngineInterface) {
   await loadGit($)
   await loadGate($)
   await loadProfile($)
-  await loadContextProfile($)
+  await loadProfiles($)
   await loadServices($)
 }
 
@@ -776,6 +840,8 @@ async function renderControlBody($: EngineInterface, e: PaneInput) {
   const gate = await read($, gate_)
   const prof = await read($, profile_)
   const ctx = await read($, contextProfile_)
+  const install = await read($, installProfile_)
+  const hint = await read($, roleHint_)
   const services = await read($, services_)
   const wide = (e.props.bodyColumns ?? 80) >= 96
   const gateCard = (
@@ -801,9 +867,9 @@ async function renderControlBody($: EngineInterface, e: PaneInput) {
       </Box>
     </Box>
   )
-  const profileCard = (
-    <Box key="profile" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginBottom={1}>
-      <Text bold>PROFILE</Text>
+  const gateProfileCard = (
+    <Box key="gate-profile" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginBottom={1}>
+      <Text bold>GATE PROFILE</Text>
       {prof ? (
         <Text color={PROFILE_COLOR[prof.profile]}>
           {prof.profile} · {prof.minutesLeft === null ? 'no expiry' : `${timeLeft(prof.minutesLeft)} left`}
@@ -811,11 +877,46 @@ async function renderControlBody($: EngineInterface, e: PaneInput) {
       ) : (
         <Text dimColor>profile not found</Text>
       )}
-      {ctx && <Text dimColor>context: {ctx.name}</Text>}
       <Box flexDirection="row" marginTop={1}>
         <Button key="profile-work" plain label="work" onPress={() => void fillPreset($, 'aos-gate profile work')} />
         <Box marginRight={1} />
         <Button key="profile-strict" plain label="strict" onPress={() => void fillPreset($, 'aos-gate profile strict')} />
+      </Box>
+    </Box>
+  )
+  const installProfileCard = (
+    <Box key="install-profile" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginBottom={1}>
+      <Text bold>INSTALL PROFILE</Text>
+      <Text color="cyan">{install}</Text>
+      <Box flexDirection="row" marginTop={1}>
+        <Button key="install-minimal" plain label="minimal" onPress={() => void fillPreset($, 'aos --profile=minimal')} />
+        <Box marginRight={1} />
+        <Button key="install-standard" plain label="standard" onPress={() => void fillPreset($, 'aos --profile=standard')} />
+        <Box marginRight={1} />
+        <Button key="install-full" plain label="full" onPress={() => void fillPreset($, 'aos --profile=full')} />
+      </Box>
+    </Box>
+  )
+  const contextProfileCard = (
+    <Box key="context-profile" flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginBottom={1}>
+      <Text bold>CONTEXT PROFILE</Text>
+      <Box flexDirection="row" justifyContent="space-between">
+        <Text color="cyan">{ctx}</Text>
+        <Text dimColor>estimate {tokenEstimate(ctx)}</Text>
+      </Box>
+      <Text dimColor>
+        estimate {' '}
+        {Object.keys(CONTEXT_PROFILES).map((k, i) => `${k} ${tokenEstimate(k as ContextProfileName)}`).join(' · ')}
+      </Text>
+      {hint && <Text dimColor>role hint: {hint}</Text>}
+      <Box flexDirection="row" marginTop={1}>
+        <Button key="ctx-full" plain label="full" onPress={() => void fillPreset($, 'aos context full')} />
+        <Box marginRight={1} />
+        <Button key="ctx-orchestrator" plain label="orchestrator" onPress={() => void fillPreset($, 'aos context orchestrator')} />
+        <Box marginRight={1} />
+        <Button key="ctx-worker" plain label="worker" onPress={() => void fillPreset($, 'aos context worker')} />
+        <Box marginRight={1} />
+        <Button key="ctx-small" plain label="small" onPress={() => void fillPreset($, 'aos context small')} />
       </Box>
     </Box>
   )
@@ -850,11 +951,11 @@ async function renderControlBody($: EngineInterface, e: PaneInput) {
   )
   const body = wide ? (
     <Box key="cols" flexDirection="row">
-      <Box key="col-left" flexGrow={1} flexDirection="column">{gateCard}{profileCard}</Box>
+      <Box key="col-left" flexGrow={1} flexDirection="column">{gateCard}{gateProfileCard}{installProfileCard}{contextProfileCard}</Box>
       <Box key="col-right" flexGrow={1} flexDirection="column">{servicesCard}{diagnosticsCard}</Box>
     </Box>
   ) : (
-    <Box key="stack" flexDirection="column">{gateCard}{profileCard}{servicesCard}{diagnosticsCard}</Box>
+    <Box key="stack" flexDirection="column">{gateCard}{gateProfileCard}{installProfileCard}{contextProfileCard}{servicesCard}{diagnosticsCard}</Box>
   )
   return <Box flexDirection="column">{body}</Box>
 }
