@@ -138,6 +138,18 @@ If the invoker isn't sure whether shipping applies, treat step 4 as the finish l
 
 ---
 
+## Teams and roles
+
+By default, `/startcycle` runs the canonical 7-node team (`architect`, `techlead`, `ui_ux`, `engineering`, `media_eventtech`, `reviewer`, `shipping`) with effort `S`. Custom teams and roles resolve through the shared registry:
+
+- **Registry & CLI**: Enumerate available teams with `aos team list`, inspect a team with `aos team show <id>`, and create templates with `aos team new <id>`. Resolution precedence follows Project (`.aos/teams/`, `.aos/roles/`) > User (`~/.aos/teams/`, `~/.aos/roles/`) > Shipped defaults (`.agents/nodes.json`).
+- **Derivation from playbooks**: Teams can be derived directly from a playbook's frontmatter `requires:` block (`skills`, `agents`, `mcps`) using `aos team new <id> --from-playbook <name>`. Listed agents resolve to roles and attached skills equip the team.
+- **Effort scaling**: Team effort defines the repair round allocation: `S` = 3 rounds (default), `M` = 4 rounds, `L` = 5 rounds.
+- **Playbook phases**: Attached playbooks declare an execution `phase`: `before` (scaffolding and setup, e.g. `pb-project-new`), `during` (work method and implementation, e.g. `pb-tauri-e2e`), or `after` (verification and audit, e.g. `pb-ship`, `pb-security-sweep`).
+- **Ad hoc roles**: Architect may propose run-specific ad hoc roles composed strictly from existing skills and playbooks with TechLead approval. Ad hoc roles cannot introduce unverified tools or MCPs, live in the run manifest, and are persisted to `.aos/roles/` only if explicitly saved.
+
+---
+
 ## Explicit non-goals
 
 This skill deliberately does **not** have:
