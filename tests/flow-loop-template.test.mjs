@@ -59,7 +59,7 @@ test('startcycle family skills contain Teams and roles section with required reg
     assert.match(content, /## Teams and roles/, `${skillPath} must have '## Teams and roles' section`);
 
     // Required concepts from WP4 specification
-    assert.match(content, /aos team (?:list|show|new)/, `${skillPath} must mention 'aos team list|show|new' CLI commands`);
+    assert.match(content, /aos-team (?:list|show|new)/, `${skillPath} must mention 'aos-team list|show|new' CLI commands`);
     assert.match(content, /requires:/, `${skillPath} must mention playbook 'requires' derivation`);
     assert.match(content, /S`?\s*=\s*3.+M`?\s*=\s*4.+L`?\s*=\s*5/s, `${skillPath} must mention effort rounds (S=3, M=4, L=5)`);
     assert.match(content, /before.+during.+after/s, `${skillPath} must mention playbook phases (before/during/after)`);

@@ -78,7 +78,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   if (command === 'list') {
-    const reg = teamRegistry({ projectRoot: effectiveCwd, home: effectiveHome });
+    const reg = teamRegistry({ cwd: effectiveCwd, home: effectiveHome });
     const teams = reg.list();
 
     if (jsonMode) {
@@ -118,7 +118,7 @@ export async function main(argv = process.argv.slice(2)) {
       return 1;
     }
 
-    const reg = teamRegistry({ projectRoot: effectiveCwd, home: effectiveHome });
+    const reg = teamRegistry({ cwd: effectiveCwd, home: effectiveHome });
     const team = reg.get(id);
 
     if (!team) {
