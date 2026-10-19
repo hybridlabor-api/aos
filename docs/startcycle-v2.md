@@ -3,6 +3,8 @@
 This document describes the Startcycle Family v2 architecture implemented in AOS.
 Startcycle v2 introduces custom role registries, team configurations, and dynamic workstream schemas while preserving 100% byte-identical backward compatibility for default runs.
 
+> **Naming note:** the user-facing name for this family may still change (Flows is under consideration). All names in this document and in code (`startcycle`, `startcycle-graph`, `startcycle-graph-user`, `teamwork-preview`, `aos-team`) are internal code names and stay neutral.
+
 ---
 
 ## What Exists in Version 1 (WP1, WP2 & WP3)
@@ -33,7 +35,7 @@ Startcycle v2 introduces custom role registries, team configurations, and dynami
   - `S` = 3 repair rounds (default)
   - `M` = 4 repair rounds
   - `L` = 5 repair rounds
-- **Shipped Default Team:** The `default` team contains the 7 canonical node IDs with effort `S`.
+- **Shipped Defaults:** The `default` team contains the 7 canonical node IDs with effort `S`. Bundled team presets (`web-launch`, `desktop-app`, `event`) and role definitions (`tauri_expert`, `copywriter`, `event_manager`) ship as JSON under the registry's shipped-defaults directories (`lib/roles/teams/`, `lib/roles/shipped-roles/`) and load alongside `.agents/nodes.json`. Users copy and edit a preset rather than starting from scratch.
 - **Derivation via `teamFromPlaybook(playbookPath, options)`:**
   - Parses playbook frontmatter `requires: { skills, agents, mcps, tools }` (e.g. `pb-tauri-e2e`).
   - Agents matching registered role IDs become team roles (unmatched reported in `missingRoles`).
@@ -141,20 +143,26 @@ Stored at `.aos/teams/desktop-app.json` or `~/.aos/teams/desktop-app.json`:
 - **Per-Stream Quality Gates:**
   - `deriveWorkstreamGates` aggregates custom gates across workstreams (e.g. `ipc_latency`, `binary_security`) or falls back to standard gates (`lint`, `typecheck`, `tests`, `a11y`, `seo`, `security`).
 
+### 6. Loop: the Flow Loop Template
+- **Template:** `skills/global_config/loop-templates/references/flow-loop.md`
+- The loop is not a dispatcher flag. It runs `/startcycle-graph` in rounds via the harness loop mechanism (`/loop` on Claude Code, `opencode-loop` on OpenCode, `/goal` on Codex), using the flow-loop template as the round prompt.
+- **Effort rounds:** max rounds derive from the team's effort tier — `S` = 3, `M` = 4, `L` = 5 (default 3).
+- **Stop predicate (first match halts):** zero blocking findings and all quality gates pass; round limit reached; no-progress guard fires (consecutive rounds produce the exact same blocking finding IDs — escalate immediately); quota usage ≥ 95% via `stay-within-limits` (persistent wait state, not a failure); or a node requests human escalation.
+- **Safety:** the loop never issues a GO, never runs or types `gogate`, and never auto-runs guarded commands (`git push`, `npm publish`, merges). A blocked guarded step stops the round with a report.
+
 ---
 
 ## What is NOT Built Yet (Future Work Packages)
 
 The following components are defined in the architectural plan (`/Users/timrennings/.aos/briefs/plan-startcycle-v2.md`) and are intentionally out of scope for WP1, WP2 & WP3:
 
-1. **Loop Orchestrator & Quota Guard (WP5):**
-   - Autonomous multi-round review loops driven by `effortRounds`.
-   - Stop predicates (clean findings + passed gates vs. iteration ceiling).
-   - No-progress guard detecting identical blocking finding IDs.
-   - Quota limit detection (`stay-within-limits` / `ccusage`).
+1. **Dedicated Dispatcher-Level Loop Orchestrator (WP5, partially shipped):**
+   - The loop currently ships as the flow-loop template above, driven by the harness loop mechanism.
+   - Not yet built: loop accounting inside the dispatcher itself (per-workstream `iteration` counters so one flaky lane does not starve unaffected parallel streams) and automated quota-window inspection inside the dispatcher process.
 
-2. **Sibling Skills Alignment (WP4):**
-   - Integration of custom role resolution into `/startcycle` (linear mode).
-   - Integration into `/startcycle-graph-user` (lightweight fan-out).
-   - Dynamic team preview generation in `/teamwork-preview`.
+2. **Sibling Skills Alignment (WP4, shipped):**
+   - All four sibling skills (`/startcycle`, `/startcycle-graph`, `/startcycle-graph-user`, `/teamwork-preview`) document team and role resolution through the shared registry, including `aos-team` commands, effort rounds, playbook phases and ad-hoc role rules.
+
+3. **End-to-End Docker Verification (WP6):**
+   - Containerized execution of custom roles (`tauri_expert`, `copywriter`) across a live mock project.
 
