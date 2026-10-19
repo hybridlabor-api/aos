@@ -71,7 +71,7 @@ describe('fleet package step', () => {
 
     test('too-old Claude Code: the result names the found version and the exact fix', async () => {
         const r = await pkg.install(ctxOf(mkHome(), withVersion('2.1.162')));
-        assert.equal(r.hint, 'Claude Code in PATH is 2.1.162, mods need >= 2.1.287: run `claude update`, then `aos package install fleet|sessions|alert`');
+        assert.equal(r.hint, 'Claude Code in PATH is 2.1.162, mods need >= 2.1.287: run `claude update`, then `aos package install fleet|sessions|alert|control`');
     });
 
     test('missing claude is skipped, thrown or failing run alike', async () => {
@@ -251,8 +251,8 @@ describe('fleet package step', () => {
 describe('sessions and alert mods', () => {
     const byId = (id) => pkg.mods.find((m) => m.id === id);
 
-    test('mods are fleet, sessions and alert, each a plugin folder of its own', () => {
-        assert.deepEqual(pkg.mods.map((m) => [m.id, m.KEY]), [['fleet', KEY], ['sessions', 'bdb-aos-sessions@bdb-marketplace'], ['alert', 'bdb-aos-alert@bdb-marketplace']]);
+    test('mods are fleet, sessions, alert and control, each a plugin folder of its own', () => {
+        assert.deepEqual(pkg.mods.map((m) => [m.id, m.KEY]), [['fleet', KEY], ['sessions', 'bdb-aos-sessions@bdb-marketplace'], ['alert', 'bdb-aos-alert@bdb-marketplace'], ['control', 'bdb-aos-control@bdb-marketplace']]);
         for (const m of pkg.mods) assert.ok(fs.existsSync(path.join(ROOT, 'plugins', m.plugin, '.claude-plugin', 'plugin.json')), m.plugin);
     });
 
@@ -260,11 +260,11 @@ describe('sessions and alert mods', () => {
         const home = mkHome();
         const env = { AOS_NO_FLEET: '1' };
         for (const m of pkg.mods) await m.install(ctxOf(home, { env }));
-        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-sessions@bdb-marketplace': true, 'bdb-aos-alert@bdb-marketplace': true });
+        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-sessions@bdb-marketplace': true, 'bdb-aos-alert@bdb-marketplace': true, 'bdb-aos-control@bdb-marketplace': true });
         assert.equal((await byId('fleet').detect(ctxOf(home, { env }))).envOptOut, true);
         assert.equal((await byId('sessions').verify(ctxOf(home, { env }))).ok, true);
         await byId('alert').uninstall(ctxOf(home));
-        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-sessions@bdb-marketplace': true });
+        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-sessions@bdb-marketplace': true, 'bdb-aos-control@bdb-marketplace': true });
     });
 
     test('same Claude Code version gate and per-key opt-out as fleet', async () => {
@@ -274,17 +274,19 @@ describe('sessions and alert mods', () => {
         put(home, { enabledPlugins: { 'bdb-aos-sessions@bdb-marketplace': false } });
         assert.equal((await byId('sessions').install(ctxOf(home))).optedOut, true);
         assert.equal(read(home).enabledPlugins['bdb-aos-sessions@bdb-marketplace'], false);
+        assert.equal((await byId('control').install(ctxOf(home))).changed, true);
+        assert.equal(read(home).enabledPlugins['bdb-aos-control@bdb-marketplace'], true);
     });
 
-    test('enable() turns on all three with one settings.json write', async () => {
+    test('enable() turns on all four with one settings.json write', async () => {
         const home = mkHome();
         put(home, { model: 'opus' });
         const rs = await pkg.enable(ctxOf(home), pkg.mods);
-        assert.deepEqual(rs.map((r) => [r.ok, r.changed]), [[true, true], [true, true], [true, true]]);
+        assert.deepEqual(rs.map((r) => [r.ok, r.changed]), [[true, true], [true, true], [true, true], [true, true]]);
         assert.deepEqual(Object.keys(read(home).enabledPlugins), pkg.mods.map((m) => m.KEY));
         assert.equal(read(home).model, 'opus');
         assert.equal(baks(home).length, 1);
-        assert.deepEqual((await pkg.enable(ctxOf(home), pkg.mods)).map((r) => r.changed), [false, false, false]);
+        assert.deepEqual((await pkg.enable(ctxOf(home), pkg.mods)).map((r) => r.changed), [false, false, false, false]);
         assert.equal(baks(home).length, 1);
     });
 
@@ -292,13 +294,13 @@ describe('sessions and alert mods', () => {
         const home = mkHome();
         put(home, { enabledPlugins: { 'bdb-aos-alert@bdb-marketplace': false } });
         const rs = await pkg.enable(ctxOf(home, { env: { AOS_NO_FLEET: '1' } }), pkg.mods);
-        assert.deepEqual(rs.map((r) => !!r.optedOut), [true, false, true]);
-        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-alert@bdb-marketplace': false, 'bdb-aos-sessions@bdb-marketplace': true });
+        assert.deepEqual(rs.map((r) => !!r.optedOut), [true, false, true, false]);
+        assert.deepEqual(read(home).enabledPlugins, { 'bdb-aos-alert@bdb-marketplace': false, 'bdb-aos-sessions@bdb-marketplace': true, 'bdb-aos-control@bdb-marketplace': true });
     });
 
-    test('the registry carries all three, so --without, Settings, update and uninstall know them', () => {
+    test('the registry carries all four, so --without, Settings, update and uninstall know them', () => {
         const ids = require('../lib/v5/packages').registry.filter((p) => p.claudeMod).map((p) => p.id);
-        assert.deepEqual(ids, ['fleet', 'sessions', 'alert']);
+        assert.deepEqual(ids, ['fleet', 'sessions', 'alert', 'control']);
     });
 });
 
@@ -311,5 +313,15 @@ describe('marketplace.json', () => {
         assert.equal(fleet.source, './plugins/bdb-aos-fleet');
         assert.equal(fleet.version, main.version);
         assert.ok(fs.existsSync(path.join(ROOT, fleet.source, '.claude-plugin', 'plugin.json')));
+    });
+
+    test('lists bdb-aos-control pointing at a real plugin folder, version matches bdb-aos', () => {
+        const m = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+        const control = m.plugins.find((p) => p.name === 'bdb-aos-control');
+        const main = m.plugins.find((p) => p.name === 'bdb-aos');
+        assert.ok(control);
+        assert.equal(control.source, './plugins/bdb-aos-control');
+        assert.equal(control.version, main.version);
+        assert.ok(fs.existsSync(path.join(ROOT, control.source, '.claude-plugin', 'plugin.json')));
     });
 });

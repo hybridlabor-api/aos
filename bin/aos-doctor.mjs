@@ -889,7 +889,7 @@ function checkPlugins() {
   }
   const claudeBin = which('claude');
   if (claudeBin) {
-    const MODS = ['fleet', 'sessions', 'alert'];
+    const MODS = ['fleet', 'sessions', 'alert', 'control'];
     const enabled = MODS.filter((m) => settings?.enabledPlugins?.[`bdb-aos-${m}@bdb-marketplace`] === true);
     const off = MODS.filter((m) => !enabled.includes(m));
     let ver = null;
