@@ -103,16 +103,31 @@ function activityFor(instances, sessionTable) {
 
 // A session's task.update names a plan node by id and points at its plan file.
 // Only the plan it names counts, so the same id in another plan stays untouched.
+// Alongside one live marker per task, the sessions reporting on that node become
+// the worker card: name, harness, state, last file written and seconds since.
 function liveTasksFor(primary, sessions, now, cfg) {
   const live = new Map()
+  const workers = new Map()
   for (const s of sessions) {
     const task = s.currentTask
     if (!task || !task.id || !task.plan || s.done) continue
     if (now - (s.lastEventAt || 0) >= cfg.liveMs) continue
     if (path.resolve(primary.path, task.plan) !== primary.planPath) continue
     live.set(task.id, { status: task.status, harness: s.harness || '', name: s.name || '', at: new Date(s.lastEventAt || 0).toISOString() })
+    if (!workers.has(task.id)) workers.set(task.id, [])
+    workers.get(task.id).push({
+      id: s.id,
+      name: s.name || '',
+      harness: s.harness || '',
+      model: s.model || '',
+      state: s.state || 'working',
+      lastFile: s.lastFile || '',
+      lastFileAt: new Date(s.lastFileAt || 0).toISOString(),
+      writeAge: s.lastFileAt ? Math.max(0, now - s.lastFileAt) : null,
+      age: Math.max(0, now - (s.lastEventAt || 0)),
+    })
   }
-  return live
+  return { live, workers }
 }
 
 // A node a session released (Stop or SessionEnd) stays visible as touched, never done.
@@ -193,7 +208,7 @@ export function buildModel({
       const bs = primary.branch && primary.branch !== '(detached)'
         ? (bsCache.has(primary.branch) ? bsCache.get(primary.branch) : bsCache.set(primary.branch, memo(`branch|${repoId}|${primary.branch}`, () => branchState(repoId, primary.branch, { defaultBranch: defBranch }), TTL.branch)).get(primary.branch))
         : 'open'
-      const liveTasks = liveTasksFor(primary, sessions, now, cfg)
+      const { live: liveTasks, workers } = liveTasksFor(primary, sessions, now, cfg)
       const touchedTasks = touchedFor(primary, sessions)
       const pinned = pinnedKeys.includes(group.planKey)
       // "live" means still reporting and not finished. A session that ended cannot keep a
@@ -213,7 +228,7 @@ const live = inPrimary.some((s) => now - (s.lastEventAt || 0) < cfg.liveMs && !s
         mirrors: mirrors.map((m) => ({ path: m.path, branch: m.branch })),
         divergent: divergent.map((m) => ({ path: m.path, branch: m.branch, tasks: differingTasks(m, primary) })),
         components: components.map((c) => ({ id: c.id, title: c.title, status: c.status, files: c.files, needs: c.needs, links: c.links, tech: c.tech })),
-        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, parent: t.parent, live: liveTasks.get(t.id) || null, touchedAt: touchedTasks.get(t.id) || null })),
+        tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, parent: t.parent, live: liveTasks.get(t.id) || null, workers: workers.get(t.id) || [], touchedAt: touchedTasks.get(t.id) || null })),
         progress: { done: tasks.filter((t) => t.status === 'done').length, total: tasks.length, stalled: stalled.size, live: tasks.filter((t) => liveTasks.has(t.id)).length },
         lastActivity: new Date(lastActivity).toISOString(),
       }
