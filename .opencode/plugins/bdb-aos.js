@@ -432,7 +432,7 @@ export default async function bdbAosPlugin(input) {
         const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
         s.identitySent = true;
         const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
-        if (membContext) injectText(msgInput, msgOutput, membContext);
+        if (membContext) injectText(msgInput, msgOutput, (await hook('session-cap.mjs').catch(() => ({ capText: (t) => t }))).capText(membContext)); // per-context-profile cap
       } catch {}
 
       // Destructive-actions rules on the first human message of a session and again after compaction (s.rulesSent reset in the compaction hook).

@@ -97,3 +97,41 @@ To maintain absolute architectural integrity and adhere to the zero-guesswork ru
 
 4. **Trimming Harness Base Prompts**:
    - The ~16k tokens of harness preamble, built-in tool definitions (Bash, Edit, Glob, Grep), and safety instructions are injected by Anthropic servers and cannot be modified or reduced by client-side configuration.
+
+---
+
+## 6. Measured injected context (before / after)
+
+`node scripts/measure-session-context.mjs --home DIR [--cwd DIR] [--prompts N] [--json]` sums the text a fresh Claude Code session gets from files under a HOME, from the same sources as the context viewer: `CLAUDE.md`, `MEMORY.md` of the cwd project, the skill and agent listings (name + description of `~/.claude/skills`, `~/.claude/agents` and plugin caches), and the real output of the context hooks (`memb-inject`, `rules-inject`, `aos-session-hint`) run against the `SessionStart` and `UserPromptSubmit` entries of `HOME/.claude/settings.json`. Tokens are chars / 4.
+
+**Not measurable from files (Claude Code itself):** the system prompt, built-in tool schemas, MCP server instructions, and MCP / connector tool names. Per the viewer these are the bulk of what remains after the AOS parts are trimmed.
+
+Run: temp HOME per commit, hooks installed with `installGlobalHooks` (base = `b970a259`, i.e. the 5.3.x behaviour of the hooks; after = this branch), real `~/CLAUDE.md` and `MEMORY.md` copied in, no memB database (memb-inject prints nothing), 8 prompts. Skills and agents are not installed in either HOME (the skill and agent listings are changed by another workstream; the viewer shows ~16.6k tokens skills, ~4.7k duplicate agents before that fix).
+
+| Part | Base (chars) | After (chars) |
+|---|---|---|
+| CLAUDE.md + MEMORY.md | 11,070 | 11,070 |
+| SessionStart hooks | 368 | 368 |
+| UserPromptSubmit rules block, prompt 1 | 2,939 | 2,939 |
+| UserPromptSubmit rules block, prompts 2..8 | 2,939 each (20,573) | 0 |
+| **Hook text after 8 prompts** | **23,880 (~5,970 tok)** | **3,307 (~827 tok)** |
+| Session total after 8 prompts (files only) | 34,950 (~8,740 tok) | 14,377 (~3,600 tok) |
+
+Rules text alone: ~735 tokens per prompt before, ~735 tokens once per session (plus once after each `/clear` or compaction) after. A 20-prompt session saves ~14k tokens of conversation context from this hook, and the saving grows with every prompt. The total effect on a brand new session (prompt 1 only) is zero for the rules; the per-profile `small` cap shortens `memb-inject` and `aos-session-hint` output to 1,000 chars (unit-tested in `tests/rules-inject.test.js`; the empty-memB run above never reaches the cap).
+
+A rule block is also skipped when the project `AGENTS.md`/`CLAUDE.md` already holds it. If a hook is killed by its timeout before it writes the marker (heavy load), the block is simply injected once more on the next prompt.
+
+## 7. Per-harness verification of install and context profiles
+
+| Harness | Install profile `minimal` / `--no-hooks` | Context profile `small` |
+|---|---|---|
+| Claude Code | Context hooks dropped from `settings.json` (`dropContextHooks`); gates stay. Verified in `mergeBdbSettingsHooks`. | SessionStart text capped by `session-cap.mjs` (new). Gateway entry gets `?preset=small` via `harness.enable({ contextProfile })`. Skills, agents, CLAUDE.md, MEMORY.md cannot be reduced. |
+| Codex | `mergeCodexTomlHooks` writes the gate-only snippet when `contextHooksOn` is false. Verified by code reading. | Same hook scripts, so the cap applies (`session-cap.mjs` is in the Codex copy list through `HOOK_IMPORTS`). Gateway preset per section 4. |
+| agy | `aos-trail-relay` is deleted explicitly; removal of `aos-context` (`PreInvocation`) goes through `droppedHook` and was not traced end to end (unverified). | Cap applies to `memb-inject`. `rules-inject` is now once per `conversationId`. |
+| OpenCode | `aos-profile.json` flag (`contextHooks:false`) switches memB, rules and trail off in the plugin. The `--help` text claimed the opposite; corrected. | Gap fixed: the plugin did not cap memB text at all; it now uses `session-cap.mjs`. |
+
+Open gaps (not fixed, need a decision or an unverified API):
+- **OpenCode compaction re-arm**: the plugin resets the once-per-session flag on a `session.compacted` event; that event name is unverified against the OpenCode SDK. Without it the rules are sent once per session only.
+- **agy / Codex compaction re-arm**: no known SessionStart `source` for agy; Codex SessionStart `source` values (`clear`, `compact`) are unverified. The instruction-file rule block is the safety net there.
+- **Gateway presets**: `small` and `worker` presets exist only when 1mcp created them (`createPresets` falls back to the plain URL with a warning); not exercised in this run.
+- `lib/v5/context-profiles.js` `tokenEstimate()` still reports hard-coded audit numbers (skills 17,930, agents 4,371, hooks 413); it does not call the measure script.

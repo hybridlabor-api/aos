@@ -8505,8 +8505,8 @@ Options:
                    relay/autostart) in the Claude, Antigravity and Codex configs. The go-gate,
                    graph-gate and safety hooks are ALWAYS installed; no profile or flag
                    removes them. Takes no value. It also rewrites hook entries of yours whose
-                   command only names a bdb script. The OpenCode plugin bdb-aos.js still
-                   injects memB and rules and autostarts the trail under --no-hooks and minimal.
+                   command only names a bdb script. The OpenCode plugin bdb-aos.js reads the
+                   profile flag and skips memB, rules and trail autostart the same way.
   --hooks-only     Install or refresh only the hooks and their settings entries, then exit.
                    Combine with --no-hooks only: not with --profile or --without, and not with
                    status, update or repair.
