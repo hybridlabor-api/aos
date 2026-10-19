@@ -312,6 +312,8 @@ function checkHarnesses() {
 // ---------------------------------------------------------------- 4. Hooks & Security Gates
 function checkHooks() {
   const claudeHooksDir = hc('hooks');
+  const gateOff = req('../lib/v5/profile.js').readSettings(HOME, () => {}).gate === 'off';
+  if (gateOff) add('hooks', 'go-gate: off (by setting)', true, 'go-gate, go-token, go-grant and graph-gate are not registered; turn on: aos, Settings, Go-gate', '');
   const EXPECTED_VERSION = { 'memb-inject.mjs': 8 };
   const versionOf = (text) => {
     const m = /^\/\/\s*aos-hook-version:\s*(\d+)/m.exec(text);
@@ -339,7 +341,7 @@ function checkHooks() {
   // Claude settings.json wiring
   const claudeSettings = readJson(hc('settings.json'));
   const wired = JSON.stringify(claudeSettings?.hooks || {});
-  const claudeWiredOk = wired.includes('go-gate.mjs') && wired.includes('memb-inject.mjs');
+  const claudeWiredOk = (gateOff || wired.includes('go-gate.mjs')) && wired.includes('memb-inject.mjs');
   add('hooks', 'Claude settings.json wired', claudeWiredOk,
     claudeWiredOk ? 'PreToolUse & UserPromptSubmit registered' : 'Hooks not fully registered in ~/.claude/settings.json',
     'Run the AOS installer to wire hooks in settings.json.');
@@ -368,7 +370,8 @@ function checkHooks() {
   ]);
   const agHooks = agHooksFile ? readJson(agHooksFile) : null;
   // New format: one named hook per concern at the top level; legacy: all handlers under "hooks".
-  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox'];
+  const AG_NAMED = ['aos-go-gate', 'aos-conventional-commits', 'aos-env-protection', 'aos-trail-relay', 'aos-graph-gate', 'aos-context', 'aos-a2a-inbox']
+    .filter((n) => !(gateOff && (n === 'aos-go-gate' || n === 'aos-graph-gate')));
   const namedWired = AG_NAMED.filter((n) => agHooks && agHooks[n]);
   const legacyWired = JSON.stringify(agHooks?.hooks || {}).includes('memb-inject.mjs');
   const missingNamed = AG_NAMED.filter((n) => !(agHooks && agHooks[n]));
@@ -403,7 +406,7 @@ function checkHooks() {
       ? `Codex trust entries changed after the last AOS hook change (${rec.changedAt || 'time unknown'}): re-trusted after the last hook change`
       : 'trust state is not readable from here: if Codex shows "Hooks need review", run /hooks and trust the AOS go-gate hook (Codex enforces AOS rules through aos-gate.rules either way)', fix, true);
   }
-  if (existsSync(h('.codex'))) {
+  if (existsSync(h('.codex')) && !gateOff) {
     const rulesFile = h('.codex', 'rules', 'aos-gate.rules');
     let rulesText = '';
     try { rulesText = readFileSync(rulesFile, 'utf8'); } catch {}

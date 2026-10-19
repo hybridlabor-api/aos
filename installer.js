@@ -172,8 +172,11 @@ let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
 // Unified memory (docs/unified-memory.md): off when memb is excluded; then no memb_mcp, deja MCP or memb-inject is wired.
 let memoryOn = true;
+// `gate` setting (Settings menu): off = go-gate, go-token, go-grant and graph-gate are not registered; the script files stay on disk.
+let gateOn = true;
 const droppedHook = (cmd) => typeof cmd === 'string'
-    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && cmd.includes('memb-inject.mjs')));
+    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && cmd.includes('memb-inject.mjs'))
+        || (!gateOn && v5Profile.GATE_HOOKS.some((n) => cmd.includes(n))));
 
 if (DRY_RUN) {
     const guardedFns = ['writeFileSync', 'mkdirSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'symlinkSync', 'appendFileSync', 'chmodSync', 'rmdirSync', 'rmSync'];
@@ -5750,8 +5753,8 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     // Profile flag for the plugin (context behaviours only; gates and A2A are never switched off).
     if (pluginInstalled && !DRY_RUN) {
         try {
-            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn, memoryOn);
-            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}, memory=${memoryOn}`);
+            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn, memoryOn, gateOn);
+            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}, memory=${memoryOn}, gate=${gateOn}`);
             uninstallRecords.recordOpencodeProfile(targetHome, flag.file);
         } catch (e) {
             log.warn(`Could not write OpenCode plugin profile flag: ${e.message}`);
@@ -6281,7 +6284,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
                 .filter((e) => !isBdbEntry(e));
             // Only context-injection hooks can be dropped here (--no-hooks, minimal profile); the gates never are.
             const own = cloneBdbEntries(entries);
-            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn && memoryOn ? own : v5Profile.dropContextHooks(own, droppedHook))];
+            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn && memoryOn && gateOn ? own : v5Profile.dropContextHooks(own, droppedHook))];
         }
         return merged;
     };
@@ -6513,6 +6516,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
 
     const allHookNames = Object.keys(bdbHooks);
     if (!contextHooksOn) delete bdbHooks['aos-trail-relay'];
+    if (!gateOn) { delete bdbHooks['aos-go-gate']; delete bdbHooks['aos-graph-gate']; }
     bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command));
 
     // Earlier AOS versions wrote all handlers under one named hook called "hooks" (old wrapped shapes
@@ -6754,6 +6758,10 @@ function installCodexRules({ targetHome = homeDir } = {}) {
     const want = codexGateRules();
     try {
         const have = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+        if (!gateOn) {
+            if (have !== null && have.startsWith(uninstallRecords.CODEX_RULES_HEADER) && !DRY_RUN) { fs.unlinkSync(file); log.step(`Removed Codex go-gate rules ${file} (gate setting is off)`); return true; }
+            return false;
+        }
         if (have === want) return false;
         if (have !== null && !have.startsWith(uninstallRecords.CODEX_RULES_HEADER)) {
             log.warn(`${file} exists and is not from AOS; kept. The Codex go-gate rules backstop is not installed.`);
@@ -6849,7 +6857,7 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '# AOS:HOOKS:END'
     ].join('\n');
     // Blocks are blank-line separated; without context hooks only blocks naming a context script go.
-    const tomlSnippet = contextHooksOn && memoryOn ? fullSnippet
+    const tomlSnippet = contextHooksOn && memoryOn && gateOn ? fullSnippet
         : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !droppedHook(b)).join('\n\n')}\n# AOS:HOOKS:END`;
 
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
@@ -8221,6 +8229,7 @@ function applyInstallOptions(home = homeDir) {
     activeProfile = r.profile;
     installExcluded = r.excluded;
     memoryOn = !installExcluded.has('memb');
+    gateOn = r.gateOn;
     return r;
 }
 
