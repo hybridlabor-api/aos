@@ -314,3 +314,33 @@ test('sanitizeSettings accepts valid package ids plus kernel and harnesses for l
     assert.strictEqual(problems.length, 1);
 });
 
+
+test('planUpdate adds the hub supervisor when it is not installed, unless disabled or profile minimal', async () => {
+    const m = machine();
+    const plan = await menu.planUpdate(m.host, m.opts());
+    const hub = plan.find((p) => p.id === 'hub');
+    assert.ok(hub, 'plan includes hub');
+    assert.strictEqual(hub.changed, true);
+
+    const off = machine();
+    fs.writeFileSync(path.join(off.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['hub'] }));
+    assert.ok(!(await menu.planUpdate(off.host, off.opts())).some((p) => p.id === 'hub'));
+
+    const min = machine();
+    fs.writeFileSync(path.join(min.home, '.aos', 'v5-settings.json'), JSON.stringify({ profile: 'minimal' }));
+    assert.ok(!(await menu.planUpdate(min.host, min.opts())).some((p) => p.id === 'hub'));
+});
+
+test('update prints the one-line supervisor notice and installs the hub service for an existing install', async () => {
+    const m = machine();
+    await menu.update(m.host, m.opts({ serviceRunner: async () => ({ ok: true, code: 0, stdout: '', stderr: '' }) }));
+    assert.match(m.text(), /Supervisor: installing the AOS Hub service/);
+    assert.match(m.text(), /AOS Hub/);
+});
+
+test('update leaves the hub alone when the user disabled it', async () => {
+    const m = machine();
+    fs.writeFileSync(path.join(m.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway', 'openwiki', 'deja', 'hub'] }));
+    await menu.update(m.host, m.opts());
+    assert.doesNotMatch(m.text(), /Supervisor: installing/);
+});

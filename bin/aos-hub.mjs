@@ -13,10 +13,13 @@ import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, readFileSy
 import { homedir as osHome } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 
+const require = createRequire(import.meta.url);
 const SELF = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(SELF), '..');
 const DEFAULT_PORT = 7900;
+const { excludedIds, readSettings } = require('../lib/v5/profile.js');
 
 // All paths come from the injectable home (tests use a temp dir).
 export const homeDir = () => process.env.AOS_HUB_HOME || osHome();
@@ -309,6 +312,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   const { routes: serviceRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-services.mjs')).href);
   const { routes: catalogRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-catalog.mjs')).href);
   const { routes: storeRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-store.mjs')).href);
+  const { createProxy } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'proxy.mjs')).href);
   const watchMod = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-watch.mjs')).href);
   const home = homeDir();
   const serveArgv = parseArgv(process.argv.slice(2));
@@ -321,7 +325,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
     port: serveArgv.port,
     home,
     routes: [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes, ...watchMod.routes],
-    ctx: { root: ROOT, hubJsonPath: hubPaths(home).file, tokenEnv: hubToken },
+    ctx: { root: ROOT, hubJsonPath: hubPaths(home).file, tokenEnv: hubToken, proxy: createProxy() },
   });
   await hub.listen();
   // Only the process that actually bound the port writes hub.json. A failed
@@ -339,6 +343,8 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
     const watcher = createWatcher({
       ctx: hub.ctx,
       statusFile,
+      // Never touch a service the user switched off in settings (or the profile excludes).
+      isDisabled: (id) => { try { return excludedIds(readSettings(home)).has(id); } catch { return false; } },
       beforeTick: async () => {
         const diskStamp = codeStamp();
         if (diskStamp > ownStamp) {
