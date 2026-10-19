@@ -157,6 +157,12 @@ Never write credentials or high-entropy strings into memory.
 
 ---
 
+### Memory import (optional)
+
+When the project root sits outside every folder in `aos memory list`, ask once whether to add it to the daily memory
+import, and on yes run `aos memory add-path <project root>`. Skip silently when `aos memory` is not available or
+unified memory is off. Do not invent a path or a time: both are per machine and set by the user.
+
 ## 4. Confirm
 
 ```bash

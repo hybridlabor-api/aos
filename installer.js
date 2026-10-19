@@ -3236,14 +3236,12 @@ async function installMemB(interactive) {
             } catch (e) { logDebug(e, 'windows memb daemon setup'); }
         }
     }
-    // Nightly docs/wiki ingest job (supervised by launchd / systemd); the job script exits by itself when memb is excluded.
+    // Memory import job (supervised by launchd / systemd): only exists when the user set a time (`aos memory set-time`).
     if (membOk && !DRY_RUN) {
         try {
-            const sandbox = v5Profile.isTestSandbox(homeDir);
-            const run = sandbox ? null : async (cmd, args) => { execFileSync(cmd, args, { stdio: 'ignore', windowsHide: true }); return { ok: true }; };
-            const job = await require('./lib/memb-nightly').install({ home: homeDir, run });
-            if (job.file) log.success(`memB nightly ingest job ${sandbox ? 'written' : 'active'} (${path.basename(job.file)})`);
-        } catch (e) { logDebug(e, 'memb nightly ingest job'); }
+            const job = await require('./lib/memory-import').applyJob(homeDir);
+            if (job.file) log.success(`memB memory import job active (${path.basename(job.file)})`);
+        } catch (e) { logDebug(e, 'memb memory import job'); }
     }
     return membOk;
 }
@@ -4130,6 +4128,15 @@ function aoServiceInstall(binTarget) {
         throw new Error(describeExecError(e));
     }
 }
+// Optional setup step: which folders the daily memory import covers and when it runs. Skipped unattended; nothing is preset.
+async function promptMemoryImport() {
+    if (isAutoYes || DRY_RUN || !memoryOn) return;
+    const yes = pick(await askConfirm({ message: 'Set up the daily memory import (folders to read into memB, and a time)?', initialValue: false }));
+    if (!yes) return;
+    const ui = v5Options(true).ui;
+    await require('./lib/memory-import').interactive({ home: homeDir, write: (x) => process.stdout.write(x), ui });
+}
+
 async function promptMemBIngestion(mcpCodeTarget) {
     if (isAutoYes || DRY_RUN) return;
 
@@ -8365,6 +8372,7 @@ function v5Options(interactive) {
     const ui = interactive ? {
         select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
         multi: async (message, options, initialValues) => { const a = await multiselect({ message, options, initialValues, required: false }); return isCancel(a) ? [] : a; },
+        text: async (message, initialValue) => { const v = await text({ message, initialValue }); return isCancel(v) ? null : String(v || '').trim(); },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
@@ -8421,13 +8429,17 @@ async function main() {
     const args = process.argv.slice(2);
     // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
     // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
-    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup'];
+    const COMMANDS = ['memory', 'status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup'];
     if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
         console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
         process.exitCode = 2;
         return;
     }
     applyInstallOptions();
+    if (args[0] === 'memory') {
+        process.exitCode = await require('./lib/memory-import').command(args.slice(1), { home: homeDir });
+        return;
+    }
     if (args[0] === 'context') {
         const { contextCommand } = require('./lib/v5/context-profiles');
         process.exitCode = contextCommand(args.slice(1), { home: homeDir });
@@ -9027,6 +9039,7 @@ Options:
     justInstalled.push(...memoryInstalled);
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
+    await promptMemoryImport();
 
     const alreadyHandled = justInstalled.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);

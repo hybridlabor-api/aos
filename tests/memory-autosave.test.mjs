@@ -94,30 +94,78 @@ test('memb_mcp launcher entry carries --memb-llm, other servers do not', () => {
   assert.ok(!wrapServer('github', { command: 'npx', args: ['x'], env: { GITHUB_TOKEN: 'ghp_x' } }, l).args.includes('--memb-llm'));
 });
 
-test('nightly job: plist has a calendar interval and the ingest script; Linux gets service plus timer', async (t) => {
+const mi = require('../lib/memory-import.js');
+
+test('nightly job: plist carries the chosen time; Linux gets service plus OnCalendar timer; remove deletes both', async (t) => {
   const home = tmp(t);
-  const mac = await nightly.install({ home, platform: 'darwin', node: '/usr/bin/node' });
+  const mac = await nightly.install({ home, platform: 'darwin', node: '/usr/bin/node', hour: 4, minute: 5 });
   const xml = fs.readFileSync(mac.file, 'utf8');
   assert.match(xml, /com\.bdb\.memb\.ingest/);
-  assert.match(xml, /StartCalendarInterval/);
+  assert.match(xml, /<key>Hour<\/key>\s*<integer>4<\/integer>\s*<key>Minute<\/key>\s*<integer>5<\/integer>/);
   assert.ok(xml.includes(path.join(home, '.agents', 'bin', 'aos-memb-ingest.mjs')));
-  const lin = await nightly.install({ home, platform: 'linux', node: '/usr/bin/node' });
-  assert.match(fs.readFileSync(lin.file, 'utf8'), /OnUnitActiveSec=24h/);
+  const lin = await nightly.install({ home, platform: 'linux', node: '/usr/bin/node', hour: 4, minute: 5 });
+  assert.match(fs.readFileSync(lin.file, 'utf8'), /OnCalendar=\*-\*-\* 04:05:00/);
   assert.match(fs.readFileSync(lin.file.replace('.timer', '.service'), 'utf8'), /Type=oneshot/);
+  assert.equal((await nightly.remove({ home, platform: 'darwin' })).removed, true);
+  assert.equal(fs.existsSync(mac.file), false);
 });
 
-test('aos-memb-ingest: lists projects (no worktrees) with --dry-run, and is off when memb is excluded', (t) => {
+test('memory import: nothing preset; paths and time are validated and persisted; job follows the time', async (t) => {
   const home = tmp(t);
-  const ws = path.join(home, 'dev', 'bdb-dev');
-  for (const p of ['alpha', 'beta-wt-x', 'plain']) fs.mkdirSync(path.join(ws, p), { recursive: true });
-  write(path.join(ws, 'alpha', 'AGENTS.md'), ''); write(path.join(ws, 'beta-wt-x', 'AGENTS.md'), '');
+  assert.deepEqual(mi.read(home), { paths: [], time: null, off: false });
+  const dir = path.join(home, 'dev'); fs.mkdirSync(dir);
+  assert.equal(mi.addPath(home, dir).changed, true);
+  assert.equal(mi.addPath(home, dir).changed, false);
+  assert.throws(() => mi.addPath(home, path.join(home, 'nope')), /not a directory/);
+  assert.throws(() => mi.setTime(home, '25:00'), /HH:MM/);
+  assert.throws(() => mi.setTime(home, '3:30'), /HH:MM/);
+  mi.setTime(home, '02:15');
+  assert.deepEqual(mi.read(home), { paths: [dir], time: '02:15', off: false });
+  const mac = await mi.applyJob(home, { platform: 'darwin', run: null, node: '/usr/bin/node' });
+  assert.equal(mac.scheduled, true);
+  assert.match(fs.readFileSync(nightly.plistPath(home), 'utf8'), /<integer>2<\/integer>\s*<key>Minute<\/key>\s*<integer>15<\/integer>/);
+  mi.setTime(home, null);
+  assert.equal((await mi.applyJob(home, { platform: 'darwin', run: null })).scheduled, false);
+  assert.equal(fs.existsSync(nightly.plistPath(home)), false);
+  assert.equal(mi.removePath(home, dir).changed, true);
+  assert.deepEqual(mi.read(home).paths, []);
+});
+
+test('aos memory command: list hints when empty, add-path/remove-path/set-time work, bad input exits non-zero', async (t) => {
+  const home = tmp(t);
+  const out = []; const w = (s) => out.push(s);
+  const apply = async () => ({});
+  assert.equal(await mi.command(['list'], { home, write: w, apply }), 0);
+  assert.match(out.join(''), /No paths set\. Add a folder with `aos memory add-path/);
+  const dir = path.join(home, 'work'); fs.mkdirSync(dir);
+  assert.equal(await mi.command(['add-path', dir], { home, write: w, apply }), 0);
+  assert.equal(await mi.command(['set-time', '07:30'], { home, write: w, apply }), 0);
+  assert.equal(mi.read(home).time, '07:30');
+  assert.equal(await mi.command(['set-time', 'soon'], { home, write: w, apply }), 1);
+  assert.equal(await mi.command(['add-path'], { home, write: w, apply }), 2);
+  assert.equal(await mi.command(['remove-path', dir], { home, write: w, apply }), 0);
+});
+
+test('findProjects: .openwiki or AGENTS.md, two levels deep, worktrees and dot dirs skipped, no descent into a project', (t) => {
+  const home = tmp(t);
+  const ws = path.join(home, 'dev');
+  for (const p of ['a', 'group/b', 'group/c-wt-x', 'plain', '.hidden/h', 'a/nested']) fs.mkdirSync(path.join(ws, p), { recursive: true });
+  write(path.join(ws, 'a', 'AGENTS.md'), ''); write(path.join(ws, 'a', 'nested', 'AGENTS.md'), '');
+  write(path.join(ws, 'group', 'b', '.openwiki', 'x'), ''); write(path.join(ws, 'group', 'c-wt-x', 'AGENTS.md'), ''); write(path.join(ws, '.hidden', 'h', 'AGENTS.md'), '');
+  assert.deepEqual(mi.findProjects([ws]), [path.join(ws, 'a'), path.join(ws, 'group', 'b')]);
+});
+
+test('aos-memb-ingest: says how to add paths when empty, lists projects with --dry-run, off when memb is excluded', (t) => {
+  const home = tmp(t);
+  const ws = path.join(home, 'dev');
+  fs.mkdirSync(path.join(ws, 'alpha'), { recursive: true }); write(path.join(ws, 'alpha', 'AGENTS.md'), '');
   const mcp = path.join(home, '.agents', 'memB');
   write(path.join(mcp, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python'), '');
   write(path.join(mcp, 'memb_ingest.py'), '');
   const run = () => spawnSync(process.execPath, [path.join(root, 'bin', 'aos-memb-ingest.mjs'), '--dry-run'], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
-  const on = run();
-  assert.match(on.stdout, /would ingest .*alpha/);
-  assert.doesNotMatch(on.stdout, /beta-wt-x|plain/);
-  write(path.join(home, '.aos', 'v5-settings.json'), '{"disabled":["memb"]}');
+  assert.match(run().stdout, /no paths configured\. Add a folder with `aos memory add-path/);
+  write(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ memoryIngest: { paths: [ws] } }));
+  assert.match(run().stdout, /would ingest .*alpha/);
+  write(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['memb'], memoryIngest: { paths: [ws] } }));
   assert.match(run().stdout, /off/);
 });

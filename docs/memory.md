@@ -37,9 +37,12 @@ Three writers now exist:
    (`~/.aos/cache/memb-save/<id>`), drops env-like lines and redacts token shapes (memb-mcp filters again).
    Off with `AOS_MEMB_AUTOSAVE=off`, `AOS_SESSION_START_CONTEXT=off`, delegated workers, or `"memorySave": "off"` in `~/.aos/v5-settings.json`.
    Wired only when unified memory and context hooks are on.
-3. **Nightly ingest** (`bin/aos-memb-ingest.mjs`): launchd job `com.bdb.memb.ingest` (03:30) or systemd user timer on Linux, written by the memB
-   install step (none on Windows). Ingests each project under the workspace root (setting `memoryIngest.workspace`, default `~/dev/bdb-dev`) that has
-   `.openwiki` or `AGENTS.md`, skipping `-wt-` worktrees. Exits immediately when `memb` is excluded; `"memoryIngest": "off"` disables it.
+3. **Memory import** (`bin/aos-memb-ingest.mjs`): a daily launchd job `com.bdb.memb.ingest` / systemd user timer (none on Windows), per machine and
+   off by default. Settings in `~/.aos/v5-settings.json`: `memoryIngest.paths` (absolute dirs, default empty) and `memoryIngest.time` (`"HH:MM"`,
+   default unset = no schedule). Manage them with `aos memory list | add-path <dir> | remove-path <dir> | set-time <HH:MM|off> | run`, the `aos`
+   Settings row "Memory import (paths, time)", or the optional step in `aos setup`; every change rewrites the job. Under each path, projects are
+   directories with `.openwiki` or `AGENTS.md` (two levels deep, `-wt-` worktrees and dot dirs skipped). With no paths the job prints how to add one.
+   The `aos-project-init` skill offers `aos memory add-path <project root>` for a new project. Exits at once when `memb` is excluded.
 
 ## LLM provider for memB extraction
 
@@ -54,6 +57,11 @@ Now `aos-mcp-env --memb-llm` (added to the `memb_mcp` entry by `wrapServer`) res
 `GEMINI_API_KEY`, so current memB works again with the Gemini key. Honouring `MEMB_LLM_*` needs the memB change in
 `docs/patches/memb-llm-provider.patch` (applies to memB `run.py`, `patch -p1`; verified with `--dry-run`, openai/openrouter path checked; anthropic
 needs `pip install anthropic` in the venv). Until memB releases it, only Gemini works.
+
+**memB release note (ships with AOS 5.4; the release itself needs the owner's GO):** memB `run.py` reads `MEMB_LLM_PROVIDER` (default `gemini`),
+`MEMB_LLM_MODEL` (default `gemini-2.5-flash` for gemini only), `MEMB_LLM_API_KEY` and `MEMB_LLM_BASE_URL`, so extraction can use OpenAI, OpenRouter,
+NVIDIA, Anthropic (needs the `anthropic` package) or any OpenAI-compatible endpoint. Apply `docs/patches/memb-llm-provider.patch` to the memB repo, bump
+the version, publish `@hybridlabor-api/memb`, then `aos update` syncs the memb-mcp copy.
 
 ## Overlap today
 
