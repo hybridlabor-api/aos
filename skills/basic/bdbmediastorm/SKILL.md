@@ -28,7 +28,7 @@ Ideation must never be performed in isolation. Spawn specialized subagents to an
 
 ## 2. Interactive Technical Interview
 
-Before drafting signal flow diagrams or system configs, **invoke the `grill-with-docs` skill** (or `grill-me` when there is no working directory) and run it to completion. Those skills hold the interview protocol — design tree, frontier rounds, numbered questions each with a recommended answer — and it is not restated here.
+Before drafting signal flow diagrams or system configs, **invoke the `grill-with-docs` skill** (or `grill-me` when there is no working directory) and run it to completion. Those skills hold the interview protocol — design tree, frontier rounds, multiple-choice questions each with a recommended answer (`AskUserQuestion` in Claude Code, numbered options in chat) — and it is not restated here.
 
 What this domain adds to that protocol: deeply challenge the user's technical assumptions and hardware readiness. The frontier questions for a show-control build are:
 

@@ -23,7 +23,7 @@ You are strictly required to enforce the following 6 pillars in your process:
 - Assign clear, distinct roles to subagents (e.g., "UI/UX Visionary", "Technical Architect", "Devil's Advocate") and have them debate and refine the concept before any code is written.
 
 ### 2. The Grilling Interview
-- **Invoke the `grill-with-docs` skill and follow it** — or `grill-me` when there is no working directory to leave a paper trail in. Do not paraphrase an interview here; those skills hold the protocol (design tree, frontier rounds, numbered questions each with a recommended answer), and a second description of it in this file would drift from the first.
+- **Invoke the `grill-with-docs` skill and follow it** — or `grill-me` when there is no working directory to leave a paper trail in. Do not paraphrase an interview here; those skills hold the protocol (design tree, frontier rounds, multiple-choice questions each with a recommended answer — `AskUserQuestion` in Claude Code, numbered options in chat, `<QuestionForm>` inside a plan builder plan), and a second description of it in this file would drift from the first.
 - Actively challenge the user's initial ideas. Do not accept vague requirements.
 - `grill-with-docs` additionally runs `domain-modeling`, so terminology and decisions settled during the debate land in `CONTEXT.md` and ADRs as they crystallise rather than evaporating with the session — which is usually what you want before a multi-agent build.
 
