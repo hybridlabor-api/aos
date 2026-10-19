@@ -817,8 +817,9 @@ async function renderGitBody($: EngineInterface, e: PaneInput) {
       <Box key="git-head" flexDirection="row" justifyContent="space-between" marginBottom={1}>
         <Text bold>WORKTREES</Text>
         <Box flexDirection="row">
-          <Button key="fetch" plain label="fetch" hotkey="F" onPress={() => void fillPreset($, `git -C ${root} fetch origin`)} />
-          <Button key="prune" plain label="prune" hotkey="P" onPress={() => void fillPreset($, `git -C ${root} worktree prune`)} />
+          <Button key="fetch" plain label="fetch" onPress={() => void fillPreset($, `git -C ${root} fetch origin`)} />
+          <Box marginRight={1} />
+          <Button key="prune" plain label="prune" onPress={() => void fillPreset($, `git -C ${root} worktree prune`)} />
         </Box>
       </Box>
       {wide ? (

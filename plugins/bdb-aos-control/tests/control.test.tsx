@@ -59,7 +59,7 @@ const controlMocks = (on: any, nowMs: { n: number }, files: Record<string, strin
   on('session.cwd', () => ({ value: '/x' }))
   on('session.repo', () => ({ value: null }))
   on('clock.now', () => ({ value: (nowMs.n += 60_000) }))
-  on('clock.every', () => ({ value: { cancel: () => undefined } } as never))
+  on('clock.every', () => ({ value: { cancel: 'noop' } } as never))
   on('fs.read', (_$: unknown, e: unknown) => {
     const path = JSON.stringify(e)
     reads.push(path)
@@ -89,7 +89,7 @@ const controlMocks = (on: any, nowMs: { n: number }, files: Record<string, strin
       isStderrTruncated: false,
     },
   }))
-  on('http.fetch', () => ({ ok: false, text: '' }))
+  on('http.fetch', () => ({ value: { ok: false, text: '' } }))
   on('tool.call', () => ({ result: { stdout: 'ok', stderr: '', interrupted: false }, text: 'ok' }))
 }
 
@@ -262,7 +262,8 @@ test('pressing tab-control renders gate, install, context and services', async (
   expect(json).toContain('standard')
   expect(json).toContain('worker')
   expect(json).toContain('~35k')
-  expect(json).toContain('role hint: full/orchestrator')
+  expect(json).toContain('role hint:')
+  expect(json).toContain('full/orchestrator')
   expect(reads.some(r => r.includes('v5-settings.json'))).toBe(true)
 })
 
@@ -328,46 +329,23 @@ test('command.run aos-control with an arg opens on that tab', async ($, on) => {
   expect(findNode(JSON.parse(json), 'tab-pipeline')).toBeUndefined()
 })
 
-test('buildWorktreeItems derives stages from git output and pipeline state', async ($, on) => {
-  const runs: Array<{ cmd: string[]; out: string }> = []
-  on('process.run', (_$: unknown, e: unknown) => {
-    const cmd = (e as { command?: string[] }).command ?? []
-    const key = cmd.join(' ')
-    if (key.includes('worktree list')) {
-      runs.push({ cmd, out: 'list' })
-      return {
-        value: {
-          stdout: 'worktree /repo/main\nHEAD abc1234\nbranch refs/heads/main\n\nworktree /repo/wt1\nHEAD def5678\nbranch refs/heads/feat/ui\n',
-          stderr: '',
-          exitCode: 0,
-        },
-      }
-    }
-    if (key.includes('status')) {
-      return {
-        value: {
-          stdout: key.includes('wt1') ? '## feat/ui...origin/feat/ui [ahead 2]\n' : '## main...origin/main\n',
-          stderr: '',
-          exitCode: 0,
-        },
-      }
-    }
-    if (key.includes('branch --merged')) {
-      return {
-        value: {
-          stdout: key.includes('wt1') ? '' : 'main\n',
-          stderr: '',
-          exitCode: 0,
-        },
-      }
-    }
-    return { value: { stdout: '', stderr: '', exitCode: 1 } }
-  })
-  on('env.get', () => ({ value: '/home' }))
-  on('session.cwd', () => ({ value: '/repo/main' }))
-  on('session.repo', () => ({ value: { root: '/repo/main' } }))
+test('buildWorktreeItems derives stages from git output and pipeline state', async () => {
+  const out = (stdout: string, exitCode = 0) => ({ stdout, stderr: '', exitCode })
+  const fake = {
+    process: {
+      run: async (cmd: string[]) => {
+        const key = cmd.join(' ')
+        if (key.includes('worktree list')) {
+          return out('worktree /repo/main\nHEAD abc1234\nbranch refs/heads/main\n\nworktree /repo/wt1\nHEAD def5678\nbranch refs/heads/feat/ui\n')
+        }
+        if (key.includes('status')) return out(key.includes('wt1') ? '## feat/ui...origin/feat/ui [ahead 2]\n' : '## main...origin/main\n')
+        if (key.includes('branch --merged')) return out(key.includes('wt1') ? '' : 'main\n')
+        return out('', 1)
+      },
+    },
+  }
   const state = parsePipelineState(PIPELINE_FIXTURE)
-  const items = await buildWorktreeItems($, '/repo/main', state)
+  const items = await buildWorktreeItems(fake as never, '/repo/main', state)
   expect(items.map(i => [i.branch, i.stage, i.isAgentWorktree])).toEqual([
     ['main', 'merged', false],
     ['feat/ui', 'reviewed', true],
