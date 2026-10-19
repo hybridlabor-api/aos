@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // aos-hook-version: 1
-// Re-injects the "Destructive Actions" and "Tool routing (automatic)" blocks on every prompt so
-// context compaction cannot drop them. Text comes from lib/destructive-rules.js and
+// Injects the "Destructive Actions" and "Tool routing (automatic)" blocks once per session (first prompt),
+// and again after /clear or compaction (SessionStart source clear/compact drops the session marker). Text comes from lib/destructive-rules.js and
 // lib/routing-rules.js (shared sources): the repo copies when run from a checkout, else
 // ~/.agents/lib (the installer puts them there). Output shapes are the ones memb-inject.mjs
 // already uses: hookSpecificOutput.additionalContext (Claude Code, Codex), injectSteps (agy).
 // Bounded I/O: reads stdin with a timeout so it never hangs if the parent stream stays open.
 // Fails open: any error prints nothing and exits 0; it never blocks a prompt.
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -71,6 +71,32 @@ export function fileAlreadyHoldsBlock(eventData, homeDir = os.homedir()) {
   } catch {
     return false;
   }
+}
+
+const MARKER_TTL_MS = 7 * 24 * 3600 * 1000;
+const markerDir = (home) => path.join(home, '.aos', 'state', 'rules-seen');
+const sessionKey = (e) => String(e?.session_id || e?.sessionId || e?.conversationId || '').replace(/[^\w.-]/g, '_').slice(0, 80);
+
+export function rulesSeen(id, home = os.homedir()) {
+  if (!id) return false;
+  try { return existsSync(path.join(markerDir(home), id)); } catch { return false; }
+}
+
+export function markRulesSeen(id, home = os.homedir()) {
+  if (!id) return;
+  try {
+    const dir = markerDir(home);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(dir, id), String(Date.now()));
+    for (const f of readdirSync(dir)) {
+      try { if (Date.now() - statSync(path.join(dir, f)).mtimeMs > MARKER_TTL_MS) unlinkSync(path.join(dir, f)); } catch {}
+    }
+  } catch { /* marker is best effort: without it the rules just repeat */ }
+}
+
+export function forgetRules(id, home = os.homedir()) {
+  if (!id) return;
+  try { unlinkSync(path.join(markerDir(home), id)); } catch {}
 }
 
 function loadBlock(name) {
@@ -147,8 +173,13 @@ if (isMain()) {
       const raw = await readStdinBounded(100);
       eventData = raw ? (JSON.parse(raw) || {}) : {};
     } catch { /* no or bad stdin: still inject */ }
-    const out = hookOutput(eventData, rulesText());
-    if (out) process.stdout.write(JSON.stringify(out) + '\n');
+    const id = sessionKey(eventData);
+    if (eventData.hook_event_name === 'SessionStart') {
+      if (eventData.source === 'clear' || eventData.source === 'compact') forgetRules(id);
+    } else if (!rulesSeen(id)) {
+      const out = hookOutput(eventData, rulesText());
+      if (out) { process.stdout.write(JSON.stringify(out) + '\n'); markRulesSeen(id); }
+    }
   } catch { /* fail open */ }
   process.exit(0);
 }

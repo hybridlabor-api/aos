@@ -6014,6 +6014,9 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     if (fs.existsSync(rulesLib)) copyDirRecursiveSync(rulesLib, path.join(targetHome, '.agents', 'lib', 'destructive-rules.js'));
     const routingRulesLib = path.join(srcDir, 'lib', 'routing-rules.js');
     if (fs.existsSync(routingRulesLib)) copyDirRecursiveSync(routingRulesLib, path.join(targetHome, '.agents', 'lib', 'routing-rules.js'));
+    // session-cap.mjs (memb-inject, aos-session-hint) reads the per-context-profile SessionStart cap from here outside a checkout.
+    const ctxProfilesLib = path.join(srcDir, 'lib', 'v5', 'context-profiles.js');
+    if (fs.existsSync(ctxProfilesLib)) copyDirRecursiveSync(ctxProfilesLib, path.join(targetHome, '.agents', 'lib', 'context-profiles.js'));
     // aos-acp (installed in ~/.agents/bin) loads ../lib/cli-spawn.js to start npx/opencode .cmd shims on Windows.
     const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
     if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));
@@ -6979,6 +6982,13 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '[[hooks.SessionStart.hooks]]',
         'type = "command"',
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'aos-session-hint.mjs')}"`)}`,
+        'timeout = 3',
+        '',
+        // Re-arms the once-per-session rules block after /clear or compaction (SessionStart source); prints nothing.
+        '[[hooks.SessionStart]]',
+        '[[hooks.SessionStart.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'rules-inject.mjs')}"`)}`,
         'timeout = 3',
         '',
         // Sidecar starter: not a context hook, so --no-hooks and minimal keep it. Prints only the session's own A2A peer name (one line of additionalContext); skips itself under AOS_A2A_SIDECAR=off / AOS_DELEGATE_DEPTH>0.
@@ -8516,8 +8526,8 @@ Options:
                    relay/autostart) in the Claude, Antigravity and Codex configs. The go-gate,
                    graph-gate and safety hooks are ALWAYS installed; no profile or flag
                    removes them. Takes no value. It also rewrites hook entries of yours whose
-                   command only names a bdb script. The OpenCode plugin bdb-aos.js still
-                   injects memB and rules and autostarts the trail under --no-hooks and minimal.
+                   command only names a bdb script. The OpenCode plugin bdb-aos.js reads the
+                   profile flag and skips memB, rules and trail autostart the same way.
   --hooks-only     Install or refresh only the hooks and their settings entries, then exit.
                    Combine with --no-hooks only: not with --profile or --without, and not with
                    status, update or repair.

@@ -2,9 +2,9 @@
 
 The five "Destructive Actions" bullets live in `lib/destructive-rules.js` (single source) and are written as a managed block into every instruction file. A long session can compact that block away, so two further layers exist.
 
-## Per-turn injection (`.claude/hooks/rules-inject.mjs`)
+## Once-per-session injection (`.claude/hooks/rules-inject.mjs`)
 
-Prints the five bullets as context on every prompt. Reads only the bundled text (repo `lib/`, else `~/.agents/lib/destructive-rules.js`, which the installer copies). Fails open: any error prints nothing and exits 0, the prompt is never blocked. Measured about 90 ms wall time, almost all of it Node startup.
+Prints the five bullets as context on the first prompt of a session, and again after `/clear` or compaction (a `SessionStart` hook with source `clear`/`compact` drops the session marker; the hook prints nothing itself). The marker is `~/.aos/state/rules-seen/<session_id>` (Antigravity: conversationId), pruned after 7 days. Without a session id the rules are printed every time. OpenCode keeps the flag in memory per session and resets it on the `session.compacted` event (event name unverified). Reads only the bundled text (repo `lib/`, else `~/.agents/lib/destructive-rules.js`, which the installer copies). Fails open: any error prints nothing and exits 0, the prompt is never blocked. Measured about 90 ms wall time, almost all of it Node startup.
 
 | Harness | Mechanism | Output shape |
 |---|---|---|
@@ -13,7 +13,7 @@ Prints the five bullets as context on every prompt. Reads only the bundled text 
 | Antigravity | handler in the `aos-context` `PreInvocation` hook | `injectSteps[].ephemeralMessage` |
 | OpenCode | `chat.message` in the AOS plugin adds a synthetic text part | n/a |
 
-The output shapes are the ones `memb-inject.mjs` already uses on each harness. Antigravity's `PreInvocation` can fire more than once per user turn, so the rules may be repeated there.
+The output shapes are the ones `memb-inject.mjs` already uses on each harness. Antigravity's `PreInvocation` can fire more than once per user turn, the marker keeps it to one injection per conversation. Antigravity compaction cannot re-arm it (no SessionStart source known; unverified), so there the instruction-file block is the compaction safety net.
 
 ## `permissions.deny` (Claude Code only)
 

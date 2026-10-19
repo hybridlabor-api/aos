@@ -367,6 +367,8 @@ export default async function bdbAosPlugin(input) {
           sess(props.info.id).parentID = props.info.parentID ?? null;
           trail('SessionStart', props.info.id);
           void ensureBus(props.info.id, props.info.parentID ?? null);
+        } else if (event?.type === 'session.compacted' && props.sessionID) {
+          sess(props.sessionID).rulesSent = false; // event name unverified against the OpenCode SDK; without it the rules are sent once per session
         } else if (event?.type === 'session.deleted' && props.info?.id) {
           dropBus(props.info.id);
         } else if (event?.type === 'permission.updated') {
@@ -430,14 +432,14 @@ export default async function bdbAosPlugin(input) {
         const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
         s.identitySent = true;
         const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
-        if (membContext) injectText(msgInput, msgOutput, membContext);
+        if (membContext) injectText(msgInput, msgOutput, (await hook('session-cap.mjs').catch(() => ({ capText: (t) => t }))).capText(membContext)); // per-context-profile cap
       } catch {}
 
-      // Destructive-actions rules on every human message, so compaction cannot drop them.
+      // Destructive-actions rules on the first human message of a session and again after compaction (s.rulesSent reset in the compaction hook).
       try {
-        if (!contextHooks) throw 0; // profile without context hooks: no rules injection
+        if (!contextHooks || s.rulesSent) throw 0; // profile without context hooks, or already sent
         const rules = rulesText();
-        if (rules) injectText(msgInput, msgOutput, rules);
+        if (rules) { injectText(msgInput, msgOutput, rules); s.rulesSent = true; }
       } catch {}
 
       // Recognize and wire the AOS pipeline group

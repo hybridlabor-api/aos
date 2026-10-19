@@ -46,9 +46,8 @@ try {
     }
   } catch {}
 
-  const MAX_CONTEXT_CHARS = 2000;
-  const rawHint = hints.join("\n");
-  const hint = rawHint.length > MAX_CONTEXT_CHARS ? rawHint.slice(0, MAX_CONTEXT_CHARS) : rawHint;
+  const { capText } = await import("./session-cap.mjs");
+  const hint = capText(hints.join("\n"), homedir());
 
   process.stdout.write(
     JSON.stringify({
