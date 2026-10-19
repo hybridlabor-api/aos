@@ -29,7 +29,7 @@ test('agyIdentitySent and stampAgyIdentity unit behavior', (t) => {
   assert.equal(agyIdentitySent('conv-1', tmp), true);
 });
 
-test('A2: agy does not stamp when memory block is null (missing db)', (t) => {
+test('A2: agy does not stamp when memory block is null (session context off)', (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-home-'));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
 
@@ -39,7 +39,7 @@ test('A2: agy does not stamp when memory block is null (missing db)', (t) => {
   const res = spawnSync(process.execPath, [HOOK_SRC], {
     input: JSON.stringify({ conversationId: 'conv-null', workspacePaths: [proj], prompt: 'hello' }),
     encoding: 'utf8',
-    env: { HOME: home, PATH: process.env.PATH },
+    env: { HOME: home, PATH: process.env.PATH, AOS_SESSION_START_CONTEXT: 'off' },
   });
 
   assert.equal(res.status, 0);

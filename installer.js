@@ -6635,6 +6635,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
         'aos-context': {
             PreInvocation: [
                 { type: 'command', command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
+                { type: 'command', command: obs(globalHooksDir, 'aos-session-hint.mjs'), timeout: 3 },
                 { type: 'command', command: obs(globalHooksDir, 'rules-inject.mjs'), timeout: 3 },
                 { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
             ]
