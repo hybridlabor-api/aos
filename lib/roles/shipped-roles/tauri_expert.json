@@ -1,0 +1,27 @@
+{
+  "id": "tauri_expert",
+  "label": "Tauri v2 Desktop Engineer",
+  "role": "build",
+  "persona": "Senior Rust and Tauri desktop engineer specializing in secure IPC, cross-platform native packaging, and binary hardening.",
+  "skills": [
+    "godmode-engineering",
+    "webapp-testing",
+    "systematic-debugging"
+  ],
+  "playbooks": [
+    {
+      "id": "pb-tauri-e2e",
+      "phase": "during"
+    }
+  ],
+  "tools": [
+    "cargo",
+    "tauri-driver",
+    "chrome-devtools"
+  ],
+  "gates": [
+    "ipc_latency",
+    "binary_security"
+  ],
+  "model_tier": "flash"
+}

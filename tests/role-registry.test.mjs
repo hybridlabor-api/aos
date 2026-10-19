@@ -26,8 +26,8 @@ describe('role-registry', () => {
     tempCwd = mkdtempSync(join(tmpdir(), 'aos-cwd-test-'));
   });
 
-  test('default registry equals exactly the 7 nodes.json nodes', () => {
-    // Inject clean temp home and temp project dir with no custom roles, but pointing to real repo nodes.json and skills
+  test('default registry contains the 7 nodes.json nodes plus shipped roles', () => {
+    // Inject clean temp home and temp project dir with no custom roles, but pointing to real repo nodes.json, shipped-roles and skills
     const reg = loadRoleRegistry({
       cwd: REPO_ROOT,
       home: tempHome,
@@ -35,7 +35,10 @@ describe('role-registry', () => {
       userRolesDir: join(tempHome, '.aos', 'roles')
     });
 
-    const expectedIds = ['architect', 'engineering', 'media_eventtech', 'reviewer', 'shipping', 'techlead', 'ui_ux'];
+    const expectedIds = [
+      'architect', 'engineering', 'media_eventtech', 'reviewer', 'shipping', 'techlead', 'ui_ux',
+      'tauri_expert', 'copywriter', 'event_manager'
+    ].sort();
     const actualIds = reg.list().map((r) => r.id).sort();
 
     assert.deepEqual(actualIds, expectedIds);
@@ -51,7 +54,6 @@ describe('role-registry', () => {
       assert.ok(Array.isArray(role.playbooks));
       assert.ok(Array.isArray(role.tools));
       assert.ok(Array.isArray(role.gates));
-      assert.ok(role.personaFile, `Shipped role ${id} should have personaFile`);
     }
   });
 

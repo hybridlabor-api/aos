@@ -1,0 +1,18 @@
+{
+  "id": "event",
+  "label": "Event Production Team",
+  "roles": [
+    "event_manager",
+    "media_eventtech",
+    "shipping"
+  ],
+  "playbooks": [
+    "pb-show-build"
+  ],
+  "gates": [
+    "lint",
+    "typecheck",
+    "tests"
+  ],
+  "effort": "M"
+}

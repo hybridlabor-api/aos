@@ -1,0 +1,19 @@
+{
+  "id": "desktop-app",
+  "label": "Tauri Desktop Application Team",
+  "roles": [
+    "architect",
+    "techlead",
+    "tauri_expert",
+    "reviewer",
+    "shipping"
+  ],
+  "playbooks": [
+    "pb-tauri-e2e"
+  ],
+  "gates": [
+    "ipc_latency",
+    "binary_security"
+  ],
+  "effort": "M"
+}
