@@ -51,7 +51,7 @@ export async function sideModel({ now = Date.now(), home = os.homedir(), gateMod
       cmdHash: r.cmdHash,
     })),
     sessions,
-    modes: g.modes.map((m) => ({ session: nameByKey.get(m.sessionKey) || m.sessionKey, sessionKey: m.sessionKey, mode: m.mode })),
+    modes: g.modes.map((m) => ({ session: nameByKey.get(m.sessionKey) || m.sessionKey.replace(/^name-/, ''), sessionKey: m.sessionKey, mode: m.mode })),
     grants: g.grants,
     now,
   }
@@ -82,7 +82,7 @@ export async function decide(input, { now = Date.now(), home = os.homedir(), gat
   if (scope !== 'once' && !GRANT_MS[scope]) throw new DecisionError('bad-scope')
   const dir = goDir(home)
   if (scope === 'once') {
-    const p = { v: 1, kind: 'go', request_id: r.id, session_key: r.sessionKey, cmd_hash: r.cmdHash, scopes: r.scopes, ms: 0, issued_at: now, expires_at: now + RECEIPT_TTL_MS }
+    const p = { v: 1, kind: 'go', request_id: r.id, session_key: r.sessionKey, cmd_hash: r.cmdHash, scopes: r.scopes, ms: 0, issued_at: now, expires_at: now + RECEIPT_TTL_MS, nonce: crypto.randomBytes(16).toString('hex') }
     writeNew(path.join(dir, `${r.sessionKey}.local-${r.id}.json`), { payload: p, via: 'map-click' })
     return { ok: true, decision: 'approve', scope, expiresAt: p.expires_at }
   }
@@ -90,7 +90,7 @@ export async function decide(input, { now = Date.now(), home = os.homedir(), gat
   if (!scopes.length || scopes.some((s) => BROAD_SCOPES.includes(s))) throw new DecisionError('broad-needs-terminal', 403)
   const id = `g-${crypto.randomBytes(12).toString('hex')}`
   const ms = GRANT_MS[scope]
-  const p = { v: 1, kind: 'grant', request_id: id, session_key: r.sessionKey, cmd_hash: '', scopes, ms, issued_at: now, expires_at: now + ms }
+  const p = { v: 1, kind: 'grant', request_id: id, session_key: r.sessionKey, cmd_hash: '', scopes, ms, issued_at: now, expires_at: now + ms, nonce: crypto.randomBytes(16).toString('hex') }
   writeNew(path.join(dir, `${r.sessionKey}.local-${id}.json`), { payload: p, via: 'map-click' })
   return { ok: true, decision: 'approve', scope, expiresAt: p.expires_at }
 }

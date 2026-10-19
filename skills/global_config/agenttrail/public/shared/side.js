@@ -31,7 +31,7 @@
     if (busy.has(id)) return
     busy.add(id); render()
     try {
-      const r = await fetch('/side/decision', { method: 'POST', headers: { 'content-type': 'application/json', 'x-trail-csrf': TOKEN }, body: JSON.stringify({ id, decision, scope: scopes[id] || 'once' }) })
+      const r = await fetch('side/decision', { method: 'POST', headers: { 'content-type': 'application/json', 'x-trail-csrf': TOKEN }, body: JSON.stringify({ id, decision, scope: scopes[id] || 'once' }) })
       const j = await r.json().catch(() => ({}))
       toast(r.ok ? (decision === 'approve' ? 'Approved (' + (scopes[id] || 'once') + ')' : 'Denied') : 'Rejected: ' + (j.error || r.status))
     } catch { toast('Could not reach the map server') }
@@ -87,7 +87,7 @@
   }
 
   async function refresh() {
-    try { model = await (await fetch('/side/model')).json(); render() } catch { /* server restarting */ }
+    try { model = await (await fetch('side/model')).json(); render() } catch { /* server restarting */ }
   }
 
   // Project / plan switchers are built from the boards the page already tracks (W / M globals).
@@ -126,7 +126,7 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open && !wide()) setOpen(false) })
     matchMedia('(min-width:1100px)').addEventListener('change', (e) => setOpen(e.matches))
     setOpen(open)
-    fetch('/suggest').then((r) => r.json()).then((l) => { window.__knownRepos = Array.isArray(l) ? l.slice(0, 20) : []; lastSwitchSig = '' }).catch(() => {})
-    refresh(); setInterval(refresh, 3000); setInterval(switchers, 1500)
+    fetch('suggest').then((r) => r.json()).then((l) => { window.__knownRepos = Array.isArray(l) ? l.slice(0, 20) : []; lastSwitchSig = '' }).catch(() => {})
+    refresh(); switchers(); setInterval(refresh, 3000); setInterval(switchers, 700)
   })
 })()

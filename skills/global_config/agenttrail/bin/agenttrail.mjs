@@ -895,9 +895,11 @@ const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
     securityHeaders(res)
+    // The page builds markup with style attributes and data: icons; scripts stay 'self' only.
+    res.setHeader('Content-Security-Policy', String(res.getHeader('Content-Security-Policy')).replace("script-src 'self';", "script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"))
     const ancestors = embedAncestors()
     const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
-    const scriptTag = '<script src="/ao-embed-bridge.js"></script>'
+    const scriptTag = '<script src="ao-embed-bridge.js"></script>'
     let html = fs.readFileSync(indexPath, 'utf8').replace('__TRAIL_SIDE_TOKEN__', SIDE_TOKEN)
     if (html.includes('</head>')) {
       html = html.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`)
