@@ -82,9 +82,6 @@ code, .cmd { font: 12px/1.45 var(--mono); background: var(--raised); border: 1px
 .tasks .t .id { color: var(--dim); flex: none; }
 .tasks .t.done { color: var(--dim); }
 .tasks .t.active { color: var(--accent); }
-.tag.worker { font-size: 10px; padding: 0 4px; text-transform: none; letter-spacing: 0; }
-.tag.worker.run { color: var(--accent); border-color: var(--accent); }
-.tag.worker.idle, .tag.worker.done, .tag.worker.ended { opacity: .75; }
 .tasks .t.blocked { color: var(--danger); }
 .hub .tasks-wrap button { justify-self: start; font-size: 11px; padding: 1px 7px; color: var(--dim); background: none; border: none; }
 

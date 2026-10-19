@@ -67,3 +67,88 @@ describe('node marker attribution', () => {
     assert.equal(stampTrailNode(ev, { env: { AOS_TRAIL_NODE: 'env-node' } }).task.id, 'env-node');
   });
 });
+
+import { SessionTable } from '../skills/global_config/agenttrail/lib/sessions.mjs';
+import { buildModel } from '../skills/global_config/agenttrail/lib/hub-model.mjs';
+import { tickTask } from '../skills/global_config/agenttrail/lib/plan.mjs';
+
+const PLAN_REL = 'production_artifacts/00_execution_plan.md';
+const PLAN = `# Checkout rewrite
+
+## Cart {#cart}
+files: [src/cart.ts]
+
+- [ ] build it {#cart-build}
+- [ ] wire it {#cart-wire}
+`;
+
+function planRepo(prefix) {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: dir });
+  fs.mkdirSync(path.join(dir, 'production_artifacts'), { recursive: true });
+  fs.writeFileSync(path.join(dir, PLAN_REL), PLAN);
+  spawnSync('git', ['add', '.'], { cwd: dir, env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' } });
+  spawnSync('git', ['commit', '-qm', 'plan'], { cwd: dir, env: { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+  return dir;
+}
+
+const ev = (repo, id, opts = {}) => ({
+  hook_event_name: opts.hook || 'PreToolUse',
+  session_id: id,
+  cwd: repo,
+  agent: opts.agent || 'claude',
+  tool_name: opts.hook === undefined ? 'Edit' : undefined,
+  file: opts.file,
+  ...(opts.task ? { task: opts.task } : {}),
+  ...(opts.marker ? { tool_input: { prompt: `brief [trail-node:${opts.marker}]` } } : {}),
+});
+
+describe('two workers land on the right nodes', () => {
+  test('worker A via env marker path, worker B via brief marker, different nodes', () => {
+    const repo = planRepo('trail-workers-');
+    // Worker A: env-stamped (dispatcher set AOS_TRAIL_NODE before the run).
+    const a = { ...ev(repo, 'worker-a'), task: { id: 'cart-build', status: 'doing', plan: PLAN_REL }, hook_event_name: 'PreToolUse' };
+    // Worker B: marker in the brief, no env anywhere.
+    const b = JSON.parse(JSON.stringify(ev(repo, 'worker-b', { marker: 'cart-wire' })));
+    const stamped = stampTrailNode(b, { env: {} });
+    const table = new SessionTable();
+    table.apply(fromLegacyHook(a));
+    table.apply(fromLegacyHook(stamped));
+
+    const m = buildModel({ now: Date.now(), port: 5350, sessionTable: table, gate: null, asks: [], repos: [{ root: repo }], pinnedKeys: [] });
+    const plan = m.repos.flatMap((r) => r.plans)[0];
+    const byId = Object.fromEntries(plan.tasks.map((t) => [t.id, t]));
+    assert.equal(byId['cart-build'].live?.status, 'doing');
+    assert.equal(byId['cart-wire'].live?.status, 'doing');
+    assert.equal(plan.progress.live, 2);
+    const wb = byId['cart-wire'].workers?.[0];
+    assert.equal(wb?.id, 'worker-b');
+    assert.equal(wb?.state, 'working');
+    assert.ok(Array.isArray(byId['cart-build'].workers));
+  });
+});
+
+describe('float: aos-trail tick', () => {
+  test('tickTask flips exactly one checkbox for the named id', () => {
+    const plan = `# t\n## C {#c}\n\n- [ ] one {#task-1}\n- [ ] one-two {#task-12}\n- [ ] three {#task-3}\n`;
+    const r = tickTask(plan, 'task-12');
+    assert.equal(r.changed, true);
+    assert.match(r.text, /- \[x\] one-two \{#task-12\}/);
+    assert.match(r.text, /- \[ \] one \{#task-1\}/);
+    assert.match(r.text, /- \[ \] three \{#task-3\}/);
+    assert.equal(tickTask(r.text, 'task-12').changed, false);
+    assert.equal(tickTask(plan, 'missing').changed, false);
+  });
+
+  test('aos-trail tick edits the plan file: exactly one line flips', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trail-tick-'));
+    const file = path.join(dir, 'plan.md');
+    fs.writeFileSync(file, `# t\n## C {#c}\n\n- [ ] a {#aa}\n- [ ] bb {#aaa}\n`);
+    const CLI = path.join(here, '..', 'skills', 'global_config', 'agenttrail', 'bin', 'agenttrail.mjs');
+    const r = spawnSync(process.execPath, [CLI, 'tick', file, 'aa'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const text = fs.readFileSync(file, 'utf8');
+    assert.match(text, /- \[x\] a \{#aa\}/);
+    assert.match(text, /- \[ \] bb \{#aaa\}/);
+  });
+});

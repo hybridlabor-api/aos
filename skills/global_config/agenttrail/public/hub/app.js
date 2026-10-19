@@ -191,18 +191,10 @@ function taskSection(plan) {
   const shown = expanded ? tasks : tasks.filter((t) => t.live || visible.has(t))
   const wrap = el('div', { class: 'tasks', 'data-cols': String(entryColumns(shown.length)) })
   for (const t of shown) {
-    const chips = [
-      t.live ? el('span', { class: 'tag', text: `live · ${t.live.harness || 'agent'}` }) : null,
-      ...(t.workers || []).slice(0, 4).map((w) => el('span', {
-        class: `tag worker${w.state === 'working' ? ' run' : ''}`,
-        title: w.lastFile ? `${w.state} · ${w.lastFile} · ${ageText(w.writeAge || w.age)}` : `${w.state} · ${ageText(w.age)}`,
-        text: `${w.name || w.harness || 'worker'} · ${w.state}${w.lastFile ? ` · ${w.lastFile.split('/').pop()}` : ''}${w.writeAge != null ? ` · ${ageText(w.writeAge)}` : ''}`,
-      })),
-    ]
     wrap.appendChild(el('div', { class: `t ${t.status}${t.live ? ' live' : ''}` }, [
       el('span', { class: 'id', text: `#${t.id}` }),
       el('span', { text: t.title || '' }),
-      ...chips,
+      t.live ? el('span', { class: 'tag', text: `live · ${t.live.harness || 'agent'}` }) : null,
     ].filter(Boolean)))
   }
   const hidden = tasks.length - shown.length
