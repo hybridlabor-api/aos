@@ -50,19 +50,11 @@ function repoWithPlan(plan = PLAN) {
   return fs.realpathSync(dir);
 }
 
-// v2: --ensure probes a HUB by name (protocol 3) on AGENTTRAIL_PORT and starts one
-// when it is missing. The legacy per-repo daemons (protocol 2) are only scanned to
-// be retired through their own /shutdown, never reused.
-function fakeHub(port) {
-  const s = http.createServer((req, res) => res.end(JSON.stringify({ name: 'agenttrail-hub', protocol: 3, port })));
-  servers.push(s);
-  return new Promise((resolve) => s.listen(port, '127.0.0.1', () => resolve(s)));
-}
-
-function fakeLegacy(port, repoPath) {
+// --ensure reuses or starts the repo's own map (protocol 2, /whoami repoPath) and never stops another map.
+function fakeMap(port, repoPath) {
   const state = { shutdowns: 0 };
   const s = http.createServer((req, res) => {
-    if (req.url === '/shutdown' && req.method === 'POST') { state.shutdowns += 1; req.resume(); res.writeHead(500).end('no'); return }
+    if (req.url === '/shutdown') { state.shutdowns += 1; req.resume(); res.writeHead(500).end('no'); return }
     res.end(JSON.stringify({ protocol: 2, project: 'x', port, repoPath }));
   });
   servers.push(s);
@@ -131,6 +123,8 @@ after(async () => {
 describe('aos-trail --ensure', () => {
   afterEach(async () => {
     for (const s of servers.splice(0)) await new Promise((r) => { s.close(r); s.closeAllConnections?.(); });
+    stopTrailHubs(portRange(LO, HI));
+    await sleep(150);
   });
 
   test('no plan -> no start', async () => {
@@ -156,39 +150,42 @@ describe('aos-trail --ensure', () => {
     assert.match(out.hint, /a\/00_execution_plan\.md.*b\/00_execution_plan\.md/);
   });
 
-  test('reuses a running hub, opens once per session via the opener', { skip: noShStub }, async () => {
+  test('reuses the repo map, opens once per session via the opener, leaves other maps alone', { skip: noShStub }, async () => {
     const repo = repoWithPlan();
-    await fakeHub(LO + 1);
+    await fakeMap(LO + 1, repo);
+    const other = await fakeMap(LO + 2, mk('elsewhere'));
     const rec = recorder('opener');
-    const env = { AOS_TRAIL_OPENER: rec.script, AGENTTRAIL_PORT: String(LO + 1) };
+    const env = { AOS_TRAIL_OPENER: rec.script };
+    const url = `http://127.0.0.1:${LO + 1}`;
     const a = await run(['--cwd', repo, '--session', 'sess/1'], env);
-    assert.deepEqual([a.started, a.opened, a.url, a.reason], [false, true, `http://127.0.0.1:${LO + 1}`, null]);
+    assert.deepEqual([a.started, a.opened, a.url, a.reason], [false, true, url, null]);
     for (let i = 0; i < 40 && rec.calls().length < 1; i++) await sleep(100);
-    assert.deepEqual(rec.calls(), [`http://127.0.0.1:${LO + 1}`]);
+    assert.deepEqual(rec.calls(), [url]);
     const b = await run(['--cwd', repo, '--session', 'sess/1'], env);
     assert.equal(b.opened, false);
-    assert.equal(b.url, a.url);
+    assert.equal(b.url, url);
     await sleep(500);
     assert.equal(rec.calls().length, 1);
     assert.equal((await run(['--cwd', repo, '--session', 'sess/2'], env)).opened, true);
+    assert.equal(other.state.shutdowns, 0, 'another repo map must never be stopped');
   });
 
-  test('a legacy daemon of another repo is not reused and not retired', async () => {
+  test('a map of another repo is not reused and not stopped; a new map starts', async () => {
     const repo = repoWithPlan();
-    const foreign = await fakeLegacy(LO + 3, mk('elsewhere'));
-    const out = await run(['--cwd', repo, '--session', 'other'], { AOS_TRAIL_PORTS: `${LO + 3}-${LO + 4}`, CI: '1', AGENTTRAIL_PORT: String(LO + 4) });
-    assert.equal(out.started, true);
-    assert.notEqual(out.url, `http://127.0.0.1:${LO + 3}`);
+    const foreign = await fakeMap(LO, mk('elsewhere2'));
+    const out = await run(['--cwd', repo, '--session', 'other'], { CI: '1' });
+    assert.equal(out.started, true, JSON.stringify(out));
+    assert.notEqual(out.url, `http://127.0.0.1:${LO}`);
     await sleep(300);
-    assert.equal(foreign.state.shutdowns, 0, 'a daemon for another repo must not be retired');
+    assert.equal(foreign.state.shutdowns, 0);
   });
 
-  test('CI, SSH and headless Linux never open', async () => {
+  test('CI, SSH, headless Linux and the test sandbox never open', async () => {
     const repo = repoWithPlan();
-    await fakeHub(LO + 1);
+    await fakeMap(LO + 1, repo);
     const rec = recorder('noopen');
-    for (const [i, extra] of [{ CI: '1' }, { SSH_TTY: '/dev/pts/1' }].entries()) {
-      const out = await run(['--cwd', repo, '--session', `no${i}`], { AOS_TRAIL_OPENER: rec.script, AGENTTRAIL_PORT: String(LO + 1), ...extra });
+    for (const [i, extra] of [{ CI: '1' }, { SSH_TTY: '/dev/pts/1' }, { AOS_TEST_SANDBOX: '1', AOS_TRAIL_OPENER: '' }].entries()) {
+      const out = await run(['--cwd', repo, '--session', `no${i}`], { AOS_TRAIL_OPENER: rec.script, ...extra });
       assert.equal(out.opened, false);
       assert.equal(out.url, `http://127.0.0.1:${LO + 1}`);
     }
@@ -198,25 +195,25 @@ describe('aos-trail --ensure', () => {
 
   test('AO_BROWSER_CAPABILITY runs `ao preview <url>`', { skip: noShStub }, async () => {
     const repo = repoWithPlan();
-    await fakeHub(LO + 1);
+    await fakeMap(LO + 1, repo);
     const ao = recorder('ao');
     fs.renameSync(ao.script, path.join(ao.bin, 'ao'));
-    const out = await run(['--cwd', repo, '--session', 'ao'], { AO_BROWSER_CAPABILITY: '1', PATH: `${ao.bin}${path.delimiter}${process.env.PATH}`, AOS_TRAIL_OPENER: '/nonexistent', AGENTTRAIL_PORT: String(LO + 1) });
+    const out = await run(['--cwd', repo, '--session', 'ao'], { AO_BROWSER_CAPABILITY: '1', PATH: `${ao.bin}${path.delimiter}${process.env.PATH}`, AOS_TRAIL_OPENER: '/nonexistent' });
     assert.equal(out.opened, true);
     for (let i = 0; i < 40 && ao.calls().length < 1; i++) await sleep(100);
     assert.deepEqual(ao.calls(), [`preview http://127.0.0.1:${LO + 1}`]);
   });
 
-  test('starts one detached hub, a second call reuses it; loopback URL; non-JSON output', async () => {
+  test('starts one detached map, a second call reuses it; no hub port is touched; non-JSON output', async () => {
     const repo = repoWithPlan();
-    const env = { CI: '1', AGENTTRAIL_PORT: String(LO) };
+    const env = { CI: '1' };
     const a = await run(['--cwd', repo], env);
     assert.equal(a.started, true, JSON.stringify(a));
     assert.equal(a.opened, false);
     assert.match(a.url, /^http:\/\/127\.0\.0\.1:\d+$/);
     const b = await run(['--cwd', repo], env);
     assert.deepEqual([b.started, b.url], [false, a.url]);
-    const line = await exec(['--ensure', '--cwd', repo], baseEnv({ CI: '1', AGENTTRAIL_PORT: String(LO) }));
+    const line = await exec(['--ensure', '--cwd', repo], baseEnv(env));
     assert.equal(line.status, 0);
     assert.equal(line.stdout.trim(), `agenttrail: ${a.url}`);
   });
