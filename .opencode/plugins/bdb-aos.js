@@ -39,7 +39,8 @@ const OPENCODE_RUN = process.argv.slice(1, 4).includes('run');
 // memory: false = unified memory not installed (no memB engine), so memB injection is off as well.
 let contextHooks = true;
 let memory = true;
-try { const flag = JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8')); if (flag?.contextHooks === false) contextHooks = false; if (flag?.memory === false) memory = false; } catch {}
+let gateOn = true; // flag gate:false (Settings: go-gate off) skips the go-gate checks below; commit/env checks stay
+try { const flag = JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8')); if (flag?.contextHooks === false) contextHooks = false; if (flag?.memory === false) memory = false; if (flag?.gate === false) gateOn = false; } catch {}
 const noContext = { buildMemoryBlock: async () => '', rulesText: () => '' };
 const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
   await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map((f) => ((!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs')) || (!memory && f === 'memb-inject.mjs') ? noContext : hook(f))));
@@ -475,17 +476,17 @@ export default async function bdbAosPlugin(input) {
         const bkey = ocKey(toolInput.sessionID);
         setGateContext({ cwd: directory, blockTs: readBlockTs(bkey) });
         const deny = (msg) => { markBlock(bkey); throw new Error(msg); };
-        if (typeof cmd !== 'string') deny('Blocked by BDB go-gate: the command is not a string; the gate cannot read it (ask for GO).');
+        if (gateOn && typeof cmd !== 'string') deny('Blocked by BDB go-gate: the command is not a string; the gate cannot read it (ask for GO).');
         // Over the length cap nothing is parsed: guarded, lifted only by a GO, not a hard block.
         const tooLong = commandTooLong(cmd);
-        if (!tooLong) {
+        if (gateOn && !tooLong) {
           // Unconditional, before any GO, grant, mode or token.
           const hardReason = hardBlockReason(cmd);
           if (hardReason) deny(hardReason);
           const storeReason = gateStoreReason(cmd);
           if (storeReason) deny(storeReason);
         }
-        if (isGuardedCommand(cmd)) {
+        if (gateOn && isGuardedCommand(cmd)) {
           const cooling = analyzeDeletes(cmd).cooldown;
           const s = sess(toolInput.sessionID);
           // An unanswered lookup is not proof of a root session: token-only for this call, not cached.
