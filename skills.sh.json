@@ -240,6 +240,7 @@
       "title": "Playbooks",
       "description": "End-to-end recipes (pb-*) with duration, difficulty and requirements: ship, fix CI, release, onboard and more.",
       "skills": [
+        "pb-aos-e2e",
         "pb-bug-fix",
         "pb-ci-fix",
         "pb-clip-from-moodboard",
