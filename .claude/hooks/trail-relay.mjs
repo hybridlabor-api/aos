@@ -78,10 +78,20 @@ if (!ev || typeof ev !== 'object') process.exit(0);
 ev.agent = arg('--agent') || ev.agent || 'claude';
 ev.hook_event_name ||= arg('--event');
 ev.cwd ||= process.cwd();
-// A dispatcher sets AOS_TRAIL_NODE (+ AOS_TRAIL_PLAN) when it starts a worker: the node is live on the map.
-if (process.env.AOS_TRAIL_NODE && !ev.task) {
-  ev.task = { id: process.env.AOS_TRAIL_NODE, status: 'doing', ...(process.env.AOS_TRAIL_PLAN ? { plan: process.env.AOS_TRAIL_PLAN } : {}) };
+// Attribution: AOS_TRAIL_NODE env wins (dispatcher intent); a [trail-node:<id>]
+// marker anywhere in the payload (subagent prompt/brief) is the fallback.
+// stampTrailNode lives in the agenttrail lib; the hook dir may sit next to it
+// (repo checkout) or detached (installed copies), so try the known homes.
+let stampTrailNode = ({ env: e } = {}) => {
+  if (e?.AOS_TRAIL_NODE && !ev.task) ev.task = { id: e.AOS_TRAIL_NODE, status: 'doing', ...(e.AOS_TRAIL_PLAN ? { plan: e.AOS_TRAIL_PLAN } : {}) };
+};
+for (const rel of ['../global_config/agenttrail/lib/events.mjs', '../../skills/global_config/agenttrail/lib/events.mjs', './lib/events.mjs']) {
+  try {
+    ({ stampTrailNode } = await import(new URL(rel, import.meta.url)));
+    break;
+  } catch {}
 }
+stampTrailNode(ev, { env: process.env });
 const body = JSON.stringify(ev);
 
 // Detach slow network I/O: spawn a background worker so the hook returns immediately.

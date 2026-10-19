@@ -353,8 +353,20 @@ export default async function bdbAosPlugin(input) {
     } catch {} finally { polling = false; }
   // ponytail: 1 s poll; fs.watch if latency matters. A wake turn is awaited, so it delays later messages until it ends.
   });
-  const trail = (hook_event_name, session_id, extra = {}) =>
-    contextHooks && void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
+  // Node attribution for the live map: AOS_TRAIL_NODE env (dispatcher intent when
+  // launching `opencode run`) wins; a [trail-node:<id>] marker in the worker's first
+  // user message (captured in chat.message as s.trailNode) is the fallback.
+  const NODE_MARKER = /\[trail-node:([A-Za-z0-9_.:-]+)\]/;
+  const trailNodeOf = (sessionID) => process.env.AOS_TRAIL_NODE || sess(sessionID).trailNode || null;
+  const trail = (hook_event_name, session_id, extra = {}) => {
+    if (!contextHooks) return;
+    const node = trailNodeOf(session_id);
+    if (node && !extra.task) {
+      extra.task = { id: node, status: 'doing' };
+      if (process.env.AOS_TRAIL_PLAN) extra.task.plan = process.env.AOS_TRAIL_PLAN;
+    }
+    void postTrail({ hook_event_name, session_id, cwd: directory, agent: 'opencode', ...extra });
+  };
 
   return {
     // W-6 loop-keeper. Fires whenever a session goes idle. Reads the graph
@@ -410,6 +422,8 @@ export default async function bdbAosPlugin(input) {
       const s = sess(msgInput.sessionID);
       void ensureBus(msgInput.sessionID);
       s.prompt = fullText;
+      // First marked brief wins: [trail-node:<id>] ties this session to a plan node.
+      try { const nm = fullText.match(NODE_MARKER); if (nm && !s.trailNode) s.trailNode = nm[1]; } catch {}
       // No human text (aos-bus pair, nudges): never a human GO, skip memB/pipeline/token.
       const parts = msgOutput.parts || [];
       const texts = parts.filter((p) => p && p.type === 'text');
