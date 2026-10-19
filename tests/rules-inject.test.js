@@ -18,15 +18,16 @@ const runHook = (hook, home, input) => spawnSync(process.execPath, [hook], { inp
 const bullets = (text) => text.split('\n').filter((l) => l.startsWith('- ')).length;
 const stripped = (block, start, end) => block.replace(start, '').replace(end, '').trim();
 const expectedRulesText = () => [stripped(BLOCK, START, END), stripped(ROUTING_BLOCK, ROUTING_START, ROUTING_END)].join('\n\n');
+const ruleCount = bullets(stripped(BLOCK, START, END));
 
-test('Claude Code / Codex: additionalContext carries the five rules from the single source', () => {
+test('Claude Code / Codex: additionalContext carries the destructive rules from the single source', () => {
     const r = runHook(HOOK, tmp('h'), JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'hi' }));
     assert.strictEqual(r.status, 0);
     const out = JSON.parse(r.stdout);
     assert.strictEqual(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
     const text = out.hookSpecificOutput.additionalContext;
     assert.strictEqual(text, expectedRulesText());
-    assert.strictEqual(bullets(text), 5);
+    assert.strictEqual(bullets(text), ruleCount);
     assert.ok(text.includes('plan-canvas'), 'routing block must mention plan-canvas');
     assert.ok(text.includes('## Tool routing (automatic)'), 'routing block heading must be present');
 });
@@ -34,12 +35,12 @@ test('Claude Code / Codex: additionalContext carries the five rules from the sin
 test('agy gets injectSteps; garbage or empty stdin still injects; never blocks', () => {
     const agy = JSON.parse(runHook(HOOK, tmp('h'), JSON.stringify({ conversationId: 'c1', workspacePaths: ['/x'] })).stdout);
     const text = agy.injectSteps[0].ephemeralMessage;
-    assert.strictEqual(bullets(text), 5);
+    assert.strictEqual(bullets(text), ruleCount);
     assert.ok(text.includes('## Tool routing (automatic)'), 'agy routing block heading must be present');
     for (const input of ['', 'not json']) {
         const r = runHook(HOOK, tmp('h'), input);
         assert.strictEqual(r.status, 0);
-        assert.strictEqual(bullets(JSON.parse(r.stdout).hookSpecificOutput.additionalContext), 5);
+        assert.strictEqual(bullets(JSON.parse(r.stdout).hookSpecificOutput.additionalContext), ruleCount);
     }
 });
 
@@ -66,7 +67,7 @@ test('installed layout: reads ~/.agents/lib, and fails open (no output, exit 0) 
     fs.copyFileSync(path.join(ROOT, 'lib', 'destructive-rules.js'), path.join(dir, '.agents', 'lib', 'destructive-rules.js'));
     fs.copyFileSync(path.join(ROOT, 'lib', 'routing-rules.js'), path.join(dir, '.agents', 'lib', 'routing-rules.js'));
     const text = JSON.parse(runHook(path.join(hooks, 'rules-inject.mjs'), dir, '{}').stdout).hookSpecificOutput.additionalContext;
-    assert.strictEqual(bullets(text), 5);
+    assert.strictEqual(bullets(text), ruleCount);
     assert.ok(text.includes('## Tool routing (automatic)'), 'installed hook must inject routing block');
 });
 
