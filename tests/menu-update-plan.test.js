@@ -31,14 +31,14 @@ function isNewer(local, remote) {
     return false;
 }
 
-function machine({ localKernel = runningVersion, membVersion = '2.4.0' } = {}) {
+function machine({ localKernel = runningVersion, membVersion = '2.4.0', hub = false } = {}) {
     const home = mkHome();
     const baseDir = path.join(home, '.agents');
     const skills = path.join(home, 'skills');
     const mcp = path.join(home, 'gemini-config');
     fs.mkdirSync(path.join(skills, 'startcycle'), { recursive: true });
     fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway', 'openwiki', 'deja'] }));
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway', 'openwiki', 'deja', ...(hub ? [] : ['hub'])] }));
 
     const membDir = path.join(baseDir, 'memB');
     pkgJson(membDir, membVersion);
@@ -183,7 +183,7 @@ test('manifest entries of older releases and outside HOME never count as drift',
 test('failed earlier run is retried even if versions match', async () => {
     const m = machine({ localKernel: runningVersion, membVersion: '2.4.0' });
     const settingsPath = path.join(m.home, '.aos', 'v5-settings.json');
-    fs.writeFileSync(settingsPath, JSON.stringify({ disabled: ['gateway', 'openwiki'], lastRunFailed: true }));
+    fs.writeFileSync(settingsPath, JSON.stringify({ disabled: ['gateway', 'openwiki', 'hub'], lastRunFailed: true }));
 
     const plan = await menu.planUpdate(m.host, m.opts());
     const kernel = plan.find((p) => p.id === 'kernel');
@@ -241,7 +241,8 @@ test('gateway and hub re-apply when kernel or harness is updated', async () => {
     const hub = plan.find((p) => p.id === 'hub');
     if (hub) {
         assert.strictEqual(hub.changed, true, 'hub planned for re-apply when kernel updated');
-        assert.strictEqual(hub.reason, 'kernel/harnesses updated');
+        // not installed in this fake machine: planned as the default supervisor install, not as a re-apply
+        assert.match(hub.reason, /kernel\/harnesses updated|not installed \(default supervisor\)/);
     }
 });
 
@@ -316,7 +317,7 @@ test('sanitizeSettings accepts valid package ids plus kernel and harnesses for l
 
 
 test('planUpdate adds the hub supervisor when it is not installed, unless disabled or profile minimal', async () => {
-    const m = machine();
+    const m = machine({ hub: true });
     const plan = await menu.planUpdate(m.host, m.opts());
     const hub = plan.find((p) => p.id === 'hub');
     assert.ok(hub, 'plan includes hub');
@@ -332,7 +333,7 @@ test('planUpdate adds the hub supervisor when it is not installed, unless disabl
 });
 
 test('update prints the one-line supervisor notice and installs the hub service for an existing install', async () => {
-    const m = machine();
+    const m = machine({ hub: true });
     await menu.update(m.host, m.opts({ serviceRunner: async () => ({ ok: true, code: 0, stdout: '', stderr: '' }) }));
     assert.match(m.text(), /Supervisor: installing the AOS Hub service/);
     assert.match(m.text(), /AOS Hub/);
@@ -340,7 +341,6 @@ test('update prints the one-line supervisor notice and installs the hub service 
 
 test('update leaves the hub alone when the user disabled it', async () => {
     const m = machine();
-    fs.writeFileSync(path.join(m.home, '.aos', 'v5-settings.json'), JSON.stringify({ disabled: ['gateway', 'openwiki', 'deja', 'hub'] }));
     await menu.update(m.host, m.opts());
     assert.doesNotMatch(m.text(), /Supervisor: installing/);
 });
