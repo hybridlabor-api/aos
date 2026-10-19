@@ -110,9 +110,10 @@ function resolvePort(env = process.env) {
 
 function resolveIdleTimeoutMs(env = process.env) {
   const raw = String(env.AOS_PLAN_CANVAS_IDLE_MS || '').trim().toLowerCase();
-  if (raw === '0' || raw === 'off') return 0;
+  if (raw === '0' || raw === 'off' || (!raw && env.AOS_SUPERVISED === '1')) return 0;
   const value = Number.parseInt(raw, 10);
-  return Number.isInteger(value) && value > 0 ? value : DEFAULT_IDLE_TIMEOUT_MS;
+  // a test sandbox never leaves a 30 min orphan behind
+  return Number.isInteger(value) && value > 0 ? value : env.AOS_TEST_SANDBOX ? 60 * 1000 : DEFAULT_IDLE_TIMEOUT_MS;
 }
 
 function readJsonBody(req) {

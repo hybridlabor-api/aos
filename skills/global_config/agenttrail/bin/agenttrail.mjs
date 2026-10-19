@@ -27,6 +27,7 @@ const spawningPaths = new Set()
 let openBrowser = process.stdout.isTTY && process.env.AOS_NO_OPEN !== '1' ? true : false
 let noOpen = process.env.AOS_NO_OPEN === '1'
 let hooksOnly = false
+let supervised = process.env.AOS_SUPERVISED === '1' // a supervised service never idle-exits: its supervisor restarts it anyway
 const MAX_BODY_BYTES = 64 * 1024
 const MAX_CONTROL_BODY_BYTES = 4 * 1024
 let assumeYes = false
@@ -87,6 +88,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--remove') removeFlag = true
   else if (a === '--print') printFlag = true
   else if (a === '--hooks-only') hooksOnly = true
+  else if (a === '--supervised') supervised = true
   // AOS patch: --plan <path> and --agent <name> flags
   else if (a === '--plan') planArg = argv[++i]
   else if (a === '--agent') agentArg = argv[++i]
@@ -674,7 +676,16 @@ function expireAsks() {
   }
   if (changed) { stateDirty = true; broadcastTick() }
 }
-setInterval(expireAsks, 1000).unref()
+// event-driven: one timer aimed at the next pending deadline instead of a 1s tick
+let askTimer = null
+function scheduleAskExpiry() {
+  clearTimeout(askTimer)
+  const next = Math.min(...asks.filter(a => a.status === 'pending').map(a => a.expiryAt))
+  if (!Number.isFinite(next)) return
+  askTimer = setTimeout(() => { expireAsks(); scheduleAskExpiry() }, Math.min(Math.max(next - Date.now(), 0) + 5, 2 ** 31 - 1))
+  askTimer.unref()
+}
+scheduleAskExpiry()
 
 // ---------- repo tree (vs-code-style explorer, folders first) ----------
 const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv|\.build|\.pytest_cache|\.ruff_cache|\.cache|\.DS_Store)(\/|$)/
@@ -801,7 +812,7 @@ function broadcastTick() {
 let planDebounce = null
 refreshLanes()
 reloadPlans()
-setInterval(() => { if (refreshLanes()) { reloadPlans(); broadcast() } }, 30000).unref()
+setInterval(() => { if (clients.size && refreshLanes()) { reloadPlans(); broadcast() } }, 30000).unref() // lanes only matter to a viewer; a client connect refreshes them
 let lastActivityPush = 0
 function throttleBroadcast() {
   const now = Date.now()
@@ -826,7 +837,7 @@ async function discoverBoards() {
 }
 discoverBoards()
 for (const t of [3000, 8000]) setTimeout(discoverBoards, t).unref() // cold-start: siblings may not be up yet
-setInterval(discoverBoards, 30000).unref()
+setInterval(() => { if (clients.size) discoverBoards() }, 30000).unref()
 
 // ---------- fleet (the zoomed-out altitude) ----------
 function summaryModel() {
@@ -888,6 +899,7 @@ watchCodeStamp({
   server: () => server, // declared below; read only when a restart happens
 })
 const server = http.createServer((req, res) => {
+  lastSeen = Date.now()
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
     securityHeaders(res)
@@ -1041,7 +1053,9 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
     res.write(`data: ${JSON.stringify(model())}\n\n`)
     clients.add(res)
-    req.on('close', () => clients.delete(res))
+    req.on('close', () => { clients.delete(res); lastSeen = Date.now() })
+    if (refreshLanes()) { reloadPlans(); broadcast() }
+    discoverBoards()
   } else if (u.pathname === '/hook' && req.method === 'POST') {
     readCapped(req, res, body => {
       try { if (handleHookEvent(JSON.parse(body || '{}'))) hookTick() } catch {}
@@ -1062,6 +1076,7 @@ const server = http.createServer((req, res) => {
       const now = Date.now()
       const ask = { id: crypto.randomUUID(), question: q, askedBy, askedAt: now, expiryAt: now + timeoutMs, status: 'pending', decidedAt: null, by: null, expired: false }
       asks.push(ask)
+      scheduleAskExpiry()
       if (asks.length > 100) { const i = asks.findIndex(x => x.status !== 'pending'); asks.splice(i === -1 ? 0 : i, 1) } // cap: drop oldest resolved
       stateDirty = true
       broadcastTick()
@@ -1137,6 +1152,24 @@ function hookTick() {
   const now = Date.now()
   if (now - lastHookTick > 300) { lastHookTick = now; broadcastTick() }
 }
+// On-demand map: exit once nobody has asked for it (no request, no viewer, no open question) for the idle window.
+// ensure/up restart it on the next session. AOS_TRAIL_IDLE_MS=0|off disables; test sandboxes get a short window.
+let lastSeen = Date.now()
+function idleMs() {
+  const raw = String(process.env.AOS_TRAIL_IDLE_MS || '').trim().toLowerCase()
+  if (raw === '0' || raw === 'off') return 0
+  const n = Number.parseInt(raw, 10)
+  return n > 0 ? n : process.env.AOS_TEST_SANDBOX ? 60e3 : 30 * 60e3
+}
+function armIdleExit() {
+  const ms = idleMs()
+  if (supervised || !ms) return
+  const t = setInterval(() => {
+    if (clients.size || asks.some(a => a.status === 'pending') || Date.now() - lastSeen < ms) return
+    stateDirty = true; saveState(); process.exit(0)
+  }, Math.min(ms, 60e3))
+  t.unref()
+}
 function listenWithFallback(tries = 20) {
   server.once('error', e => {
     if (e.code === 'EADDRINUSE' && tries > 0) { port += 1; listenWithFallback(tries - 1) }
@@ -1160,6 +1193,7 @@ async function firstRunFlow() {
 }
 function onListen() {
   console.log(`agenttrail · ${session.project} · http://localhost:${port}`)
+  armIdleExit()
   // AOS patch: when --plan is given, show a different startup message
   if (!planText) {
     if (planArg) {
