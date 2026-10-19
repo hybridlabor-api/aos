@@ -99,10 +99,20 @@ test('guard: bad Origin on POST gets 403', async () => {
   assert.equal((await post('/api/test/mutate', {}, { origin: 'http://127.0.0.1:4519' })).status, 403);
 });
 
-test('navigation exemption: same-site navigate/document passes; iframe fails', async () => {
+test('navigation exemption: same-site navigate/document passes; iframe allowed with allowlist, fails with empty', async () => {
   const nav = { 'sec-fetch-site': 'same-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' };
   assert.equal((await raw('/', { headers: nav })).status, 200);
-  assert.equal((await raw('/', { headers: { ...nav, 'sec-fetch-dest': 'iframe' } })).status, 403);
+  assert.equal((await raw('/', { headers: { ...nav, 'sec-fetch-dest': 'iframe' } })).status, 403, 'embedding is opt-in');
+  const oldEnv = process.env.AOS_EMBED_ANCESTORS;
+  try {
+    process.env.AOS_EMBED_ANCESTORS = 'tauri://localhost';
+    assert.equal((await raw('/', { headers: { ...nav, 'sec-fetch-dest': 'iframe' } })).status, 200);
+    process.env.AOS_EMBED_ANCESTORS = '';
+    assert.equal((await raw('/', { headers: { ...nav, 'sec-fetch-dest': 'iframe' } })).status, 403);
+  } finally {
+    if (oldEnv === undefined) delete process.env.AOS_EMBED_ANCESTORS;
+    else process.env.AOS_EMBED_ANCESTORS = oldEnv;
+  }
   assert.equal((await raw('/api/test/x', { headers: nav })).status, 403);
 });
 
@@ -154,6 +164,15 @@ test('single-flight: two concurrent locked POSTs -> one 409 busy', async () => {
 test('headers on every response', async () => {
   const res = await raw('/api/health');
   assert.match(res.headers['content-security-policy'], /frame-ancestors 'none'/);
+  const oldEnv = process.env.AOS_EMBED_ANCESTORS;
+  try {
+    process.env.AOS_EMBED_ANCESTORS = 'tauri://localhost';
+    const res2 = await raw('/api/health');
+    assert.match(res2.headers['content-security-policy'], /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
+  } finally {
+    if (oldEnv === undefined) delete process.env.AOS_EMBED_ANCESTORS;
+    else process.env.AOS_EMBED_ANCESTORS = oldEnv;
+  }
   assert.equal(res.headers['x-content-type-options'], 'nosniff');
   assert.equal(res.headers['cache-control'], 'no-store');
   assert.equal(res.headers['referrer-policy'], 'no-referrer');

@@ -1,10 +1,21 @@
 // Transport hardening for the hub. Every comparison here is exact: a regex that
 // "looks right" is how a Host or Origin allowlist turns into a bypass.
 import crypto from 'node:crypto'
+import { embedAncestors } from '../../plan-canvas/scripts/lib/loopback-guard.js'
+
+export { embedAncestors }
 
 export const MAX_BODY_BYTES = 16 * 1024
 
-const CSP = "default-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+export function buildCsp(env = process.env) {
+  const ancestors = embedAncestors(env)
+  const frameAncestors = ancestors.length > 0
+    ? `frame-ancestors 'self' ${ancestors.join(' ')}`
+    : "frame-ancestors 'none'"
+  return `default-src 'self'; script-src 'self'; ${frameAncestors}; base-uri 'none'; form-action 'none'`
+}
+
+export const CSP = buildCsp()
 
 export function csrfToken() {
   return crypto.randomBytes(24).toString('base64url')
@@ -34,10 +45,13 @@ export function csrfOk(headers, token) {
   return typeof headers['x-trail-csrf'] === 'string' && headers['x-trail-csrf'] === token
 }
 
-export function securityHeaders(res) {
+export function securityHeaders(res, env = process.env) {
+  const ancestors = embedAncestors(env)
   res.setHeader('Cache-Control', 'no-store')
-  res.setHeader('Content-Security-Policy', CSP)
-  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Content-Security-Policy', buildCsp(env))
+  if (ancestors.length === 0) {
+    res.setHeader('X-Frame-Options', 'DENY')
+  }
 }
 
 export function readJson(req, res, { maxBytes = MAX_BODY_BYTES } = {}) {

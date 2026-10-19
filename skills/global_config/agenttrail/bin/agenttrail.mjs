@@ -14,6 +14,7 @@ import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOC
 import { parsePlan, lintPlan } from '../lib/plan.mjs'
 import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
 import { enrolRefusal, createEnrolCode } from '../lib/click.mjs'
+import { embedAncestors, securityHeaders } from '../lib/httpguard.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -889,7 +890,23 @@ watchCodeStamp({
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
-    res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
+    securityHeaders(res)
+    const ancestors = embedAncestors()
+    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
+    const scriptTag = '<script src="/ao-embed-bridge.js"></script>'
+    let html = fs.readFileSync(indexPath, 'utf8')
+    if (html.includes('</head>')) {
+      html = html.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`)
+    } else {
+      html = `${metaTag}\n${scriptTag}\n${html}`
+    }
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(html)
+  } else if (req.method === 'GET' && u.pathname === '/ao-embed-bridge.js') {
+    const bridgeFile = path.join(__dirname, '..', 'public', 'ao-embed-bridge.js')
+    let data
+    try { data = fs.readFileSync(bridgeFile) } catch { res.writeHead(404).end(); return }
+    securityHeaders(res)
+    res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8' }).end(data)
   } else if (req.method === 'GET' && u.pathname.startsWith('/shared/')) {
     serveShared(u.pathname, res)
   } else if (u.pathname.startsWith('/production_artifacts/')) {

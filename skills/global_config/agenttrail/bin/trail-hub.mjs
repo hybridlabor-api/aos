@@ -11,8 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { validateEvent, fromLegacyHook, MAX_BODY_BYTES } from '../lib/events.mjs'
 import { SessionTable, readA2aRegistry } from '../lib/sessions.mjs'
 import { buildModel, ttlMemo } from '../lib/hub-model.mjs'
-import { panel as gatePanel, loadGate } from '../lib/gatepanel.mjs'
-import { csrfToken, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, MAX_BODY_BYTES as GATE_BODY_BYTES } from '../lib/httpguard.mjs'
+import { csrfToken, embedAncestors, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, securityHeaders, MAX_BODY_BYTES as GATE_BODY_BYTES } from '../lib/httpguard.mjs'
 import { createClick, ClickError } from '../lib/click.mjs'
 import { loadConfig } from '../lib/stale.mjs'
 import { STATE_DIR, loadRepos, registerRepo, loadState, setPinned } from '../lib/hub-state.mjs'
@@ -64,13 +63,6 @@ const MIME = {
 
 const hostOk = (host) => host === `localhost:${port}` || host === `127.0.0.1:${port}`
 const clickRoute = (url) => url.startsWith('/v1/gate/')
-
-function securityHeaders(res) {
-  res.setHeader('Cache-Control', 'no-store')
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
-  res.setHeader('X-Frame-Options', 'DENY')
-  res.setHeader('Referrer-Policy', 'no-referrer')
-}
 
 // CSRF token: delivered only in the same-origin HTML, required on every write.
 const CSRF = csrfToken()
@@ -209,8 +201,18 @@ async function serveStatic(req, res, urlPath) {
   if (!data) { res.writeHead(404, { 'content-type': 'text/plain' }).end('not found'); return }
   const type = MIME[path.extname(file)] || 'application/octet-stream'
   // The CSRF token reaches the page here and nowhere else.
-  if (rel === 'index.html' || rel === 'enroll.html') res.writeHead(200, { 'content-type': type }).end(data.toString('utf8').replace('__TRAIL_CSRF__', CSRF))
-  else res.writeHead(200, { 'content-type': type }).end(data)
+  if (rel === 'index.html' || rel === 'enroll.html') {
+    const ancestors = embedAncestors()
+    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
+    const scriptTag = '<script src="/ao-embed-bridge.js"></script>'
+    let html = data.toString('utf8').replace('__TRAIL_CSRF__', CSRF)
+    if (html.includes('</head>')) {
+      html = html.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`)
+    } else {
+      html = `${metaTag}\n${scriptTag}\n${html}`
+    }
+    res.writeHead(200, { 'content-type': type }).end(html)
+  } else res.writeHead(200, { 'content-type': type }).end(data)
 }
 
 const server = http.createServer(async (req, res) => {
