@@ -5648,7 +5648,15 @@ function injectHarnessRules() {
                     // settings.json is merged separately below: a wholesale
                     // copy would clobber user-owned keys like enabledPlugins.
                     // hooks: installGlobalHooks delivers only what each harness wires.
-                    const exclude = dir === '.claude' ? ['settings.json', 'hooks', ...pluginCoveredAgentFiles()] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    let exclude = dir === '.claude' ? ['settings.json', 'hooks', ...pluginCoveredAgentFiles()] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    // Only ship antigravity-rtk-rules.md if rtk is detected on PATH
+                    if (dir === '.agents') {
+                        try {
+                            require('child_process').execSync('which rtk', { stdio: 'ignore' });
+                        } catch {
+                            exclude = [...exclude, 'rules/antigravity-rtk-rules.md'];
+                        }
+                    }
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
