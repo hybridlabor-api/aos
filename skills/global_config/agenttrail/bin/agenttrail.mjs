@@ -802,9 +802,11 @@ function send(obj) {
   const data = `data: ${JSON.stringify(obj)}\n\n`
   for (const res of clients) res.write(data)
 }
-function broadcast() { send(model()) }
+// no viewer: skip the build; treeDirty stays set, so the next /events connect rebuilds the tree
+function broadcast() { if (clients.size) send(model()) }
 // activity ticks carry only what moved — the 600KB tree stays home
 function broadcastTick() {
+  if (!clients.size) return
   send({ partial: true, runs: liveRuns(), activity, recentActivity, touched: { ...compTouched }, compRecent, handoffs, asks, hotFiles: hotFiles(), now: Date.now() }) // AOS patch: asks ride along so open questions update live
 }
 
@@ -1165,7 +1167,8 @@ function armIdleExit() {
   const ms = idleMs()
   if (supervised || !ms) return
   const t = setInterval(() => {
-    if (clients.size || asks.some(a => a.status === 'pending') || Date.now() - lastSeen < ms) return
+    const repoGone = !fs.existsSync(repo) // a removed worktree leaves nothing to serve
+    if (!repoGone && (clients.size || asks.some(a => a.status === 'pending') || Date.now() - lastSeen < ms)) return
     stateDirty = true; saveState(); process.exit(0)
   }, Math.min(ms, 60e3))
   t.unref()

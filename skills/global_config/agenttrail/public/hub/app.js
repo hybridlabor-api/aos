@@ -522,7 +522,7 @@ function connect() {
   es.onmessage = (ev) => {
     try { render(JSON.parse(ev.data)) } catch { /* a partial frame must not kill the board */ }
   }
-  es.onerror = () => { /* the browser retries; the tick keeps the board fresh anyway */ }
+  es.onerror = () => { /* the browser reconnects; the next frame refreshes the board */ }
 }
 
 function start() {
@@ -536,7 +536,6 @@ function start() {
   })
   refresh(true)
   connect()
-  setInterval(() => refresh(), 10000)
   return true
 }
 
