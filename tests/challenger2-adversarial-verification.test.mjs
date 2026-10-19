@@ -138,7 +138,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       assert.strictEqual(cmds.filter(c => c.includes('trail-relay.mjs')).length, 2, 'Antigravity trail relay on PreToolUse and Stop');
       assert.strictEqual(cmds.filter(c => c.includes('custom-pre-tool')).length, 1, 'exactly 1 foreign tool hook');
 
-      assert.strictEqual(parsed['aos-context'].PreInvocation.length, 3, 'aos-context PreInvocation has memb, rules, startcycle');
+      assert.strictEqual(parsed['aos-context'].PreInvocation.length, 4, 'aos-context PreInvocation has memb, session-hint, rules, startcycle');
       const preInvocCmds = parsed['aos-context'].PreInvocation.map(h => h.command);
       assert.strictEqual(preInvocCmds.filter(c => c.includes('memb-inject.mjs')).length, 1);
       assert.strictEqual(preInvocCmds.filter(c => c.includes('startcycle-dispatch.mjs')).length, 1);
@@ -216,7 +216,7 @@ describe('Challenger 2 Empirical Verification: Idempotence & Interoperability', 
       const agCmds = agyCommands(agContent);
       assert.strictEqual(agCmds.filter(c => c.includes('go-gate.mjs')).length, 1);
       assert.strictEqual(agCmds.filter(c => c.includes('trail-relay.mjs')).length, 2);
-      assert.strictEqual(agContent['aos-context'].PreInvocation.length, 3);
+      assert.strictEqual(agContent['aos-context'].PreInvocation.length, 4);
 
       const cdxContent = fs.readFileSync(cdxConfigFile, 'utf8');
       assert.strictEqual((cdxContent.match(/# AOS:HOOKS:START/g) || []).length, 1);

@@ -196,7 +196,7 @@ describe('Challenger Suite 1: Installer Hook Mergers', () => {
         const final = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
         // PreToolUse and Stop each carry two AOS entries (gate + trail-relay); what must hold is that re-runs add none.
         assert.deepStrictEqual(final, once, 'repeated runs must not change the file');
-        assert.strictEqual(final['aos-context'].PreInvocation.length, 3, 'PreInvocation must not duplicate on repeated runs');
+        assert.strictEqual(final['aos-context'].PreInvocation.length, 4, 'PreInvocation must not duplicate on repeated runs');
     });
 
     // --- Codex config.toml tests ---

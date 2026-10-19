@@ -62,7 +62,7 @@ test('fresh output is valid per agy hook format: one named, non-empty hook per c
     assert.strictEqual(data['aos-go-gate'].PreToolUse[0].matcher, 'run_command|Bash');
     assert.strictEqual(data['aos-go-gate'].PreToolUse[0].hooks[0].command, 'node hooks/go-gate.mjs');
     assert.ok(data['aos-trail-relay'].PreToolUse[0].hooks[0].command.includes('trail-relay.mjs'));
-    assert.ok(data['aos-context'].PreInvocation.length === 3);
+    assert.strictEqual(data['aos-context'].PreInvocation.length, 4, 'memb-inject, session-hint, rules-inject, startcycle-dispatch');
 });
 
 test('named format has no top-level "hooks" key and wires every AOS hook script', () => {
