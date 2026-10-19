@@ -64,7 +64,7 @@ Collate replies into one block per session and show it to the human:
   subagents: <n running | none>
 ```
 
-The human answers per session. Items under `GO needed` are the human's to decide; list them verbatim, never summarised into something softer.
+The human answers per session. Items under `GO needed` are the human's to decide; list them verbatim, never summarised into something softer. When an agenttrail hub runs for this repo, the same GO-needed items also surface in its Waiting-for-you strip and Go-gate panel — but the hub itself can never approve: answering still means typing the GO (in the worker's own window, or via the GO-token protocol below).
 
 ## Portable mode (no Claude Code)
 
