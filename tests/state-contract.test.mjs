@@ -52,7 +52,7 @@ describe('state schema contract', () => {
 
   test('dispatcher shipping gate includes every canonical key', () => {
     const dispatcher = readFileSync(resolve(root, '.claude', 'workflows', 'startcycle-dispatch.mjs'), 'utf8');
-    assert.match(dispatcher, /const GATE_KEYS = profile \? Object\.keys\(profile\.gates\) : \[[^\]]*'security'/);
+    assert.match(dispatcher, /const GATE_KEYS = [^;]*?profile \? Object\.keys\(profile\.gates\) : \[[^\]]*'security'/);
     assert.match(dispatcher, /a11y, seo, security/);
   });
 
