@@ -169,6 +169,20 @@ version policy before reaching for `feat:`.
 
 ---
 
+## Router and team
+
+Project init asks nothing new. It only records where a project-level router
+override would live: `.aos/router.json` in the project root (project beats
+`~/.aos/router.json` beats the shipped table). Create it with
+`aos-router set <role> <targets> --project`, never by default.
+
+- Peers: `aos-a2a list` shows running A2A peers. Read-only information; init writes no A2A config.
+
+## 5.3 state
+
+Note in the confirmation (read-only): context profile, updates policy, mods,
+gateway and memory as set at machine level, plus whether `.aos/router.json` exists.
+
 ## Red flags
 
 - Inventing a domain because `aos-config` has none. Send the user to

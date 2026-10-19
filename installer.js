@@ -1389,6 +1389,64 @@ function harnessSummaryLine() {
     return `Installed for: ${names(true)}  Skipped (not found): ${names(false)}`;
 }
 
+const ROUTER_TARGETS = ['claude', 'opencode-go', 'agy', 'codex', 'claude-glm'];
+const ROUTER_TARGET_LABELS = {
+    claude: 'Claude (Claude Code / Desktop)',
+    'opencode-go': 'OpenCode (glm-5.3-flash)',
+    agy: 'Google Antigravity (agy)',
+    codex: 'ChatGPT Codex CLI',
+    'claude-glm': 'Claude via GLM bridge',
+};
+
+// Map installed harnesses to router targets. Never guess: a target is only
+// preselected when its CLI or app bundle is actually present.
+function detectRouterTargets() {
+    const detected = new Set();
+    for (const d of detectPlatforms()) {
+        if (d.chosen) continue; // chosen = explicitly selected but not detected
+        if (d.key === 'claudecode' || d.key === 'claudedesktop') detected.add('claude');
+        if (d.key === 'codex') detected.add('codex');
+        if (d.key === 'opencode') detected.add('opencode-go');
+        if (d.key === 'antigravity') detected.add('agy');
+    }
+    return ROUTER_TARGETS.map((key) => ({ key, detected: detected.has(key) }));
+}
+
+function orderTargets(first, selected) {
+    return [first, ...selected.filter((t) => t !== first)];
+}
+
+const ROUTER_ROLES = ['architect', 'techlead', 'reviewer', 'builder', 'scout'];
+
+function buildRouterPreferences(mainHarness, selectedTargets, preset = 'default') {
+    const has = (t) => selectedTargets.includes(t);
+    if (preset === 'claude-only') {
+        return Object.fromEntries(ROUTER_ROLES.map((role) => [role, orderTargets('claude', selectedTargets)]));
+    }
+    // default / budget: planning roles start with the main harness; builder/scout
+    // start with opencode-go when available, because it is the budget option.
+    const planningFirst = mainHarness;
+    const buildFirst = has('opencode-go') ? 'opencode-go' : mainHarness;
+    return {
+        architect: orderTargets(planningFirst, selectedTargets),
+        techlead: orderTargets(planningFirst, selectedTargets),
+        reviewer: orderTargets(planningFirst, selectedTargets),
+        builder: orderTargets(buildFirst, selectedTargets),
+        scout: orderTargets(buildFirst, selectedTargets),
+    };
+}
+
+// default keeps the shipped table (no file written); claude-only/budget/custom write ~/.aos/router.json.
+function writeUserRouterConfig({ home, preset, mainHarness, selectedTargets }) {
+    if (!preset || preset === 'default') return null;
+    const preferences = buildRouterPreferences(mainHarness || 'claude', selectedTargets, preset);
+    const file = path.join(home, '.aos', 'router.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
+    fs.writeFileSync(file, JSON.stringify({ preferences }, null, 2) + '\n');
+    return file;
+}
+
 function detectInstallState() {
     const manifestPath = path.join(homeDir, '.agents', '.bdb-manifest.json');
     let isInstalled = false;
@@ -8516,6 +8574,7 @@ Options:
     let creds = null;
     let selectedMcps = null;
     let contextProfileChoice = null;
+    let routerChoice = null;
     let wantsUniversal = true;
     markPlatformsExplicit(PLATFORMS_ARG || []);
     let specificPlatforms = [defaultPlatformValue()];
@@ -8538,7 +8597,7 @@ Options:
         creds = { gemini: "", github: "", openwikiProvider: "google", openwikiModel: "", openwikiBaseUrl: "", keyEnvName: 'GEMINI_API_KEY' };
         selectedMcps = await promptMcpSelection(tier);
     } else {
-        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, contextProfile: null };
+        const ctx = { tier: '1', selectedPlatforms: ['0'], mode: 'merge', customPaths: null, creds: null, selectedMcps: null, contextProfile: null, router: null };
         const platformNames = { '0': '🌐 Universal Harness', '1': 'Google Antigravity', '2': 'Claude Desktop/Code', '3': 'Cursor/Generic IDE', '4': 'Custom Paths', '5': 'ChatGPT Codex CLI', '6': 'Windsurf', '7': 'Roo Code / Cline / VS Code', '8': 'Aider CLI', '9': 'Local Project Harness', '10': 'AOS CLI' };
 
         const stepTier = async () => {
@@ -8650,6 +8709,36 @@ Options:
             ctx.contextProfile = ans;
         };
 
+        const stepRouter = async () => {
+            if (ctx.selectedPlatforms.includes('9')) return;
+            const mode = await selectWithBack({
+                message: 'Team & Router (which harness leads, which workers you have):',
+                options: [
+                    { value: 'keep', label: 'Keep the shipped table (recommended)', hint: 'advisory routing, nothing written' },
+                    { value: 'custom', label: 'Set up my team', hint: 'writes ~/.aos/router.json' }
+                ],
+                initialValue: 'keep'
+            });
+            if (mode === BACK) return 'back';
+            if (mode === 'keep') { ctx.router = null; return; }
+            const found = detectRouterTargets();
+            const sel = await multiselectWithBack({
+                message: 'Which targets/workers do you have? (detected CLIs are preselected)',
+                options: found.map((t) => ({ value: t.key, label: ROUTER_TARGET_LABELS[t.key], hint: t.detected ? 'detected' : 'not detected' })),
+                initialValues: found.filter((t) => t.detected).map((t) => t.key),
+                allowEmpty: true
+            });
+            if (sel === BACK) return 'back';
+            if (sel.length === 0) { ctx.router = null; return; }
+            const main = sel.length === 1 ? sel[0] : await selectWithBack({
+                message: 'Your main harness (leads architect, techlead, reviewer):',
+                options: sel.map((k) => ({ value: k, label: ROUTER_TARGET_LABELS[k] })),
+                initialValue: sel[0]
+            });
+            if (main === BACK) return 'back';
+            ctx.router = { preset: 'custom', mainHarness: main, selectedTargets: sel };
+        };
+
         const stepMcps = async () => {
             if (ctx.selectedPlatforms.includes('9')) return;
             const sel = await promptMcpSelection(ctx.tier);
@@ -8683,6 +8772,7 @@ Options:
                 `Mode:          ${ctx.mode}`,
                 `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
                 `Context:       ${ctx.contextProfile || 'full'}`,
+                `Router:        ${ctx.router ? `custom (lead: ${ctx.router.mainHarness})` : 'shipped table'}`,
                 `MCPs:          ${(ctx.selectedMcps || []).join(', ') || '(none)'}`,
                 `LLM Provider:  ${ctx.creds ? ctx.creds.openwikiProvider : '-'}`,
                 `GitHub Token:  ${ctx.creds && ctx.creds.github ? maskApiKey(ctx.creds.github) : '(none)'}`,
@@ -8701,7 +8791,7 @@ Options:
             if (action === 'abort') return 'exit';
         };
 
-        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepContextProfile, stepMcps, stepCredentials, stepReview];
+        const steps = [stepTier, stepPlatforms, stepMode, stepCustomPaths, stepMemory, stepContextProfile, stepRouter, stepMcps, stepCredentials, stepReview];
 
         let i = 0;
         while (i < steps.length) {
@@ -8717,6 +8807,7 @@ Options:
         creds = ctx.creds;
         selectedMcps = ctx.selectedMcps;
         contextProfileChoice = ctx.contextProfile;
+        routerChoice = ctx.router;
         wantsUniversal = ctx.selectedPlatforms.includes('0');
         specificPlatforms = ctx.selectedPlatforms.filter(p => p !== '0');
         if (specificPlatforms.length === 0 && wantsUniversal) specificPlatforms.push(defaultPlatformValue());
@@ -8736,6 +8827,15 @@ Options:
         return;
     }
     persistInstallOptions();
+    if (INSTALL_OPTS.router && !routerChoice) {
+        const detected = detectRouterTargets().filter((t) => t.detected).map((t) => t.key);
+        routerChoice = { preset: INSTALL_OPTS.router, mainHarness: 'claude', selectedTargets: [...new Set(['claude', ...detected])] };
+    }
+    if (routerChoice && !DRY_RUN) {
+        const file = writeUserRouterConfig({ home: homeDir, ...routerChoice });
+        if (file) log.info(`Router table written: ${file}`);
+    }
+    if (INSTALL_OPTS.context && !contextProfileChoice) contextProfileChoice = INSTALL_OPTS.context;
     if (contextProfileChoice) {
         const st = v5Profile.readSettings(homeDir, () => {});
         st.context = contextProfileChoice;
@@ -8852,6 +8952,9 @@ Options:
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    detectRouterTargets,
+    buildRouterPreferences,
+    writeUserRouterConfig,
     movePreserved,
     recoverStaleSwaps,
     MODULE_PRESERVE,
