@@ -294,11 +294,12 @@ function checkHarnesses() {
   if (claudePluginAgents && existsSync(agentsRoot)) {
     try {
       const looseAgents = readdirSync(agentsRoot).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
-      const duplicates = looseAgents.filter((a) => claudePluginAgents.agents.has(a));
+      const hasOverride = (a) => { try { return /^model:/m.test((readFileSync(path.join(agentsRoot, `${a}.md`), 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || ''); } catch { return false; } };
+      const duplicates = looseAgents.filter((a) => claudePluginAgents.agents.has(a) && !hasOverride(a));
       if (duplicates.length) {
         add('harnesses', 'Claude duplicate agents', false,
           `${duplicates.length} agent(s) exist both in ${tilde(agentsRoot)} and in the bdb-aos plugin, which duplicates system prompt token cost (~${Math.round(duplicates.length * 97)} tokens)`,
-          `Remove redundant copies from ${tilde(agentsRoot)} if the plugin already provides them (e.g. rm ~/.claude/agents/<name>.md).`,
+          `Run aos update / aos repair: the installer backs up and retires unedited copies (aos-uninstall --restore-plugin-backup restores them). Copies you edited, or that carry a pipeline.json model override, stay.`,
           true);
       }
     } catch {}
