@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import crypto from 'node:crypto'
 import { serveShared } from '../lib/shared-static.mjs'
+import { announceTrail } from '../lib/endpoints-lite.mjs'
 import { codeStampOf, watchCodeStamp } from '../lib/code-stamp.mjs'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
 import { parsePlan, lintPlan } from '../lib/plan.mjs'
@@ -1193,6 +1194,7 @@ async function firstRunFlow() {
   }
 }
 function onListen() {
+  announceTrail({ repo, port })
   console.log(`agenttrail · ${session.project} · http://localhost:${port}`)
   armIdleExit()
   // AOS patch: when --plan is given, show a different startup message

@@ -165,6 +165,30 @@ function sendJson(res, statusCode, payload) {
   res.end(body);
 }
 
+// Behind the AOS Hub's /canvas prefix the hub sends X-Forwarded-Prefix. The pages and client script
+// emit root-absolute URLs, so HTML and JS bodies and redirect targets get the prefix on the way out.
+const FORWARDED_PREFIX = /^\/[a-z0-9-]+$/;
+function prefixResponse(res, prefix) {
+  const writeHead = res.writeHead.bind(res);
+  const end = res.end.bind(res);
+  let type = '';
+  res.writeHead = (status, headers) => {
+    if (headers) {
+      type = String(headers['content-type'] || '');
+      if (typeof headers.location === 'string' && headers.location.startsWith('/')) headers = { ...headers, location: prefix + headers.location };
+    }
+    return writeHead(status, headers);
+  };
+  res.end = (body, ...rest) => {
+    if (typeof body === 'string' && /html|javascript/.test(type)) {
+      body = body
+        .replace(/\b(src|href|action)="\/(?!\/)/g, `$1="${prefix}/`)
+        .replace(/\b(fetch|EventSource)\((['"])\/(?!\/)/g, `$1($2${prefix}/`);
+    }
+    return end(body, ...rest);
+  };
+}
+
 function sendHtml(res, statusCode, html, { csp = true } = {}) {
   const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' };
   let body = html;
@@ -683,6 +707,8 @@ function createPlanCanvasServer({
       return sendJson(res, 400, { error: 'bad request target' });
     }
     const { pathname } = url;
+    const forwarded = String(req.headers['x-forwarded-prefix'] || '');
+    if (FORWARDED_PREFIX.test(forwarded)) prefixResponse(res, forwarded);
     // Annotate routes are called from a dev app on another loopback origin, so
     // they do their own Origin/token checks instead of the same-origin gate.
     if (annotate.handles(pathname)) return annotate.handle(req, res, url);

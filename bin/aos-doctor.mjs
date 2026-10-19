@@ -630,9 +630,25 @@ async function checkHub() {
   const hubRecord = readJson(hubFile);
   const hubPort = Number(hubRecord?.port) || 7900;
   const hubReachable = await portOpen(hubPort);
+  // The hub is the supervisor: once its service is installed, a dead :7900 means nothing restarts the other services.
+  const serviceFile = IS_MAC ? h('Library', 'LaunchAgents', 'com.bdb.aos.hub.plist') : IS_WIN ? null : h('.config', 'systemd', 'user', 'com.bdb.aos.hub.service');
+  const serviceInstalled = !!serviceFile && existsSync(serviceFile);
   add('hub', 'AOS Hub (:7900)', hubReachable,
-    hubReachable ? 'Running on http://127.0.0.1:7900' : 'Not running — the hub starts on demand (`aos hub`); never failed here',
-    'aos hub', true);
+    hubReachable ? 'Running on http://127.0.0.1:7900 (one port: /canvas /memb /synapse /trail /store)'
+      : serviceInstalled ? 'Service installed but not answering — nothing supervises the other services'
+        : 'Not installed or not running — `aos update` installs the hub service (supervisor)',
+    serviceInstalled ? 'aos repair' : 'aos update', !serviceInstalled);
+  const statusJson = readJson(h('.aos', 'status.json'));
+  if (statusJson && typeof statusJson.at === 'number') {
+    const ageS = Math.round((Date.now() - statusJson.at) / 1000);
+    const svcs = Object.entries(statusJson.services || {});
+    const failed = svcs.filter(([, e]) => e && e.failed).map(([id]) => id);
+    const down = svcs.filter(([, e]) => e && e.up === false).map(([id]) => id);
+    const stale = ageS > 120;
+    add('hub', 'Supervisor (status.json)', !stale && failed.length === 0,
+      `${svcs.length} services tracked, updated ${ageS}s ago${stale ? ' (stale)' : ''}${down.length ? `, down: ${down.join(', ')}` : ''}${failed.length ? `, gave up on: ${failed.join(', ')}` : ''}`,
+      'aos repair', true);
+  }
 
   if (existsSync(hubFile)) {
     let modeLoose = !IS_WIN && (statSync(hubFile).mode & 0o077) !== 0;
