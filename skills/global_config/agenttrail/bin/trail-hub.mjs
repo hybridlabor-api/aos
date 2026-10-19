@@ -203,7 +203,7 @@ async function serveStatic(req, res, urlPath) {
   // The CSRF token reaches the page here and nowhere else.
   if (rel === 'index.html' || rel === 'enroll.html') {
     const ancestors = embedAncestors()
-    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ')}">`
+    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
     const scriptTag = '<script src="/ao-embed-bridge.js"></script>'
     let html = data.toString('utf8').replace('__TRAIL_CSRF__', CSRF)
     if (html.includes('</head>')) {

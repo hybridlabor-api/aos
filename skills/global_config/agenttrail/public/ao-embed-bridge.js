@@ -8,9 +8,11 @@
     allowedOrigins = meta.content.split(/[,\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
   }
 
-  try {
-    window.parent.postMessage({ type: 'ao.embed.hello', app: 'agenttrail', protocol: 1 }, '*');
-  } catch (e) {}
+  allowedOrigins.forEach(function (origin) {
+    try {
+      window.parent.postMessage({ type: 'ao.embed.hello', app: 'aos-hub', protocol: 1 }, origin);
+    } catch (e) {}
+  });
 
   function clamp(val, min, max) {
     return Math.min(Math.max(val, min), max);

@@ -221,16 +221,16 @@ describe('guarded server', () => {
   test('every response carries the security headers', async () => {
     const r = await clickPost();
     assert.equal(r.headers['cache-control'], 'no-store');
-    assert.equal(r.headers['x-frame-options'], undefined);
-    assert.match(r.headers['content-security-policy'], /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
+    assert.equal(r.headers['x-frame-options'], 'DENY');
+    assert.match(r.headers['content-security-policy'], /frame-ancestors 'none'/);
 
-    // With AOS_EMBED_ANCESTORS="" -> X-Frame-Options: DENY and frame-ancestors 'none'
+    // Opt-in via env: frame-ancestors lists the origin and X-Frame-Options is dropped
     const oldEnv = process.env.AOS_EMBED_ANCESTORS;
     try {
-      process.env.AOS_EMBED_ANCESTORS = '';
+      process.env.AOS_EMBED_ANCESTORS = 'tauri://localhost';
       const r2 = await clickPost();
-      assert.equal(r2.headers['x-frame-options'], 'DENY');
-      assert.equal(r2.headers['content-security-policy'], "default-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+      assert.equal(r2.headers['x-frame-options'], undefined);
+      assert.match(r2.headers['content-security-policy'], /frame-ancestors 'self' tauri:\/\/localhost;/);
     } finally {
       if (oldEnv === undefined) delete process.env.AOS_EMBED_ANCESTORS;
       else process.env.AOS_EMBED_ANCESTORS = oldEnv;

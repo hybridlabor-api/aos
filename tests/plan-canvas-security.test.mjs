@@ -166,8 +166,13 @@ describe('Plan-Canvas request provenance', () => {
     
     // Embed navigation with allowlist active: 200, frame-ancestors includes tauri://localhost
     const iframe = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'iframe' };
-    const embedRes = await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: iframe });
-    assert.equal(embedRes.status, 200, 'embed navigation allowed by default');
+    assert.equal((await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: iframe })).status, 403, 'embedding is opt-in');
+    const oldEnv0 = process.env.AOS_EMBED_ANCESTORS;
+    process.env.AOS_EMBED_ANCESTORS = 'tauri://localhost';
+    let embedRes;
+    try { embedRes = await rawRequest(port, { method: 'GET', pathName: '/', body: '', headers: iframe }); }
+    finally { if (oldEnv0 === undefined) delete process.env.AOS_EMBED_ANCESTORS; else process.env.AOS_EMBED_ANCESTORS = oldEnv0; }
+    assert.equal(embedRes.status, 200, 'embed navigation allowed when opted in');
     assert.match(embedRes.headers['content-security-policy'] || '', /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
     assert.match(embedRes.body, /<script src="\/ao-embed-bridge\.js"><\/script>/);
     assert.match(embedRes.body, /<meta name="ao-embed-ancestors"/);

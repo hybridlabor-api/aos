@@ -102,9 +102,11 @@ test('guard: bad Origin on POST gets 403', async () => {
 test('navigation exemption: same-site navigate/document passes; iframe allowed with allowlist, fails with empty', async () => {
   const nav = { 'sec-fetch-site': 'same-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' };
   assert.equal((await raw('/', { headers: nav })).status, 200);
-  assert.equal((await raw('/', { headers: { ...nav, 'sec-fetch-dest': 'iframe' } })).status, 200);
+  assert.equal((await raw('/', { headers: { ...nav, 'sec-fetch-dest': 'iframe' } })).status, 403, 'embedding is opt-in');
   const oldEnv = process.env.AOS_EMBED_ANCESTORS;
   try {
+    process.env.AOS_EMBED_ANCESTORS = 'tauri://localhost';
+    assert.equal((await raw('/', { headers: { ...nav, 'sec-fetch-dest': 'iframe' } })).status, 200);
     process.env.AOS_EMBED_ANCESTORS = '';
     assert.equal((await raw('/', { headers: { ...nav, 'sec-fetch-dest': 'iframe' } })).status, 403);
   } finally {
@@ -161,12 +163,12 @@ test('single-flight: two concurrent locked POSTs -> one 409 busy', async () => {
 
 test('headers on every response', async () => {
   const res = await raw('/api/health');
-  assert.match(res.headers['content-security-policy'], /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
+  assert.match(res.headers['content-security-policy'], /frame-ancestors 'none'/);
   const oldEnv = process.env.AOS_EMBED_ANCESTORS;
   try {
-    process.env.AOS_EMBED_ANCESTORS = '';
+    process.env.AOS_EMBED_ANCESTORS = 'tauri://localhost';
     const res2 = await raw('/api/health');
-    assert.match(res2.headers['content-security-policy'], /frame-ancestors 'none'/);
+    assert.match(res2.headers['content-security-policy'], /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
   } finally {
     if (oldEnv === undefined) delete process.env.AOS_EMBED_ANCESTORS;
     else process.env.AOS_EMBED_ANCESTORS = oldEnv;

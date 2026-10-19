@@ -32,7 +32,8 @@ test('sec-fetch-site: exemptions only for static reads and top navigation', () =
   assert.ok(allow({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'document' }));
   assert.ok(allow({ method: 'GET', path: '/', site: 'cross-site', mode: 'navigate', dest: 'document' }));
   // framed load from another site: allowed when allowlist active, refused when empty
-  assert.equal(allow({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'iframe' }), true);
+  assert.equal(allow({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'iframe' }), false, 'embedding is opt-in');
+  assert.equal(fetchSiteOk({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'iframe' }, { AOS_EMBED_ANCESTORS: 'tauri://localhost' }), true);
   assert.equal(fetchSiteOk({ method: 'GET', path: '/', site: 'same-site', mode: 'navigate', dest: 'iframe' }, { AOS_EMBED_ANCESTORS: '' }), false);
   assert.equal(allow({ method: 'POST', path: '/', site: 'same-site', mode: 'navigate', dest: 'document' }), false);
   // static reads exemption
@@ -77,8 +78,9 @@ test('FlightLock: single-flight returns false for a second lock', async () => {
 });
 
 test('security headers: CSP frame-ancestors allowlist / none, no unsafe-inline', () => {
-  const h = securityHeaders();
+  const h = securityHeaders({ AOS_EMBED_ANCESTORS: 'tauri://localhost' });
   assert.match(h['content-security-policy'], /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
+  assert.match(securityHeaders({ AOS_EMBED_ANCESTORS: '' })['content-security-policy'], /frame-ancestors 'none'/);
   const hNone = securityHeaders({ AOS_EMBED_ANCESTORS: '' });
   assert.match(hNone['content-security-policy'], /frame-ancestors 'none'/);
   assert.match(h['content-security-policy'], /default-src 'self'/);

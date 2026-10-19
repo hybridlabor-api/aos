@@ -9,6 +9,10 @@
  * Source: affaan-m/ECC — MIT, see THIRD_PARTY_NOTICES.md
  */
 
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
 const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 
 // Extract the hostname portion of an HTTP Host header value, stripping any
@@ -65,19 +69,40 @@ function isAllowedFetchSite(value) {
   return site === 'same-origin' || site === 'none';
 }
 
-const DEFAULT_EMBED_ANCESTORS = [
-  'tauri://localhost',
-  'http://tauri.localhost',
-  'http://localhost:1420'
-];
+// Embedding is opt-in: the default is no ancestors. Preset an installer/CLI may write to ~/.aos/v5-settings.json.
+const AO_EMBED_ANCESTORS = ['tauri://localhost', 'http://tauri.localhost'];
 
-function embedAncestors(env = process.env) {
+const EMBED_ORIGIN = /^[a-z][a-z0-9+.-]*:\/\/[a-z0-9.-]+(:\d{1,5})?$/;
+const warnedEmbed = new Set();
+
+function warnEmbed(msg) {
+  if (warnedEmbed.has(msg)) return;
+  warnedEmbed.add(msg);
+  process.stderr.write(`[embed] ${msg}\n`);
+}
+
+function validEmbedOrigins(list, source) {
+  const out = [];
+  for (const item of list) {
+    if (typeof item === 'string' && EMBED_ORIGIN.test(item)) out.push(item);
+    else warnEmbed(`${source}: ignoring invalid embed origin ${JSON.stringify(item).slice(0, 60)}`);
+  }
+  return [...new Set(out)];
+}
+
+// Order: env AOS_EMBED_ANCESTORS (even empty) wins, else ~/.aos/v5-settings.json "embedAncestors", else [].
+function embedAncestors(env = process.env, home = os.homedir()) {
   if (env && env.AOS_EMBED_ANCESTORS !== undefined) {
     const raw = String(env.AOS_EMBED_ANCESTORS).trim();
-    if (!raw) return [];
-    return raw.split(',').map(s => s.trim()).filter(Boolean);
+    return raw ? validEmbedOrigins(raw.split(',').map((x) => x.trim()).filter(Boolean), 'AOS_EMBED_ANCESTORS') : [];
   }
-  return [...DEFAULT_EMBED_ANCESTORS];
+  try {
+    const file = path.join(home, '.aos', 'v5-settings.json');
+    const v = JSON.parse(fs.readFileSync(file, 'utf8')).embedAncestors;
+    if (Array.isArray(v)) return validEmbedOrigins(v, file);
+    if (v !== undefined) warnEmbed(`${file}: "embedAncestors" is not an array, ignored`);
+  } catch { /* missing or unreadable settings: embedding stays off */ }
+  return [];
 }
 
 function isEmbedNavigation(headers) {
@@ -88,7 +113,8 @@ function isEmbedNavigation(headers) {
 }
 
 module.exports = {
-  DEFAULT_EMBED_ANCESTORS,
+  AO_EMBED_ANCESTORS,
+  EMBED_ORIGIN,
   LOOPBACK_HOSTNAMES,
   buildAllowedHostnames,
   embedAncestors,

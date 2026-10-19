@@ -173,7 +173,7 @@ function sendHtml(res, statusCode, html, { csp = true } = {}) {
       : "frame-ancestors 'none'";
     headers['content-security-policy'] =
       `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; ${frameAncestors}`;
-    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ')}">`;
+    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`;
     const scriptTag = '<script src="/ao-embed-bridge.js"></script>';
     if (body.includes('</head>')) {
       body = body.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`);
