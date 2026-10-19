@@ -5552,8 +5552,7 @@ function injectHarnessRules() {
                 next = next.replace(/Harness files: `CLAUDE\.md`, `RULES\.md` and `CODEX\.md` are symlinks to this/g, 'Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this');
 
                 if (!next.trim()) {
-                    const srcClaude = path.join(srcDir, 'CLAUDE.md');
-                    next = fs.existsSync(srcClaude) ? fs.readFileSync(srcClaude, 'utf8') : '# AOS — Claude Code\n\n**Read [AGENTS.md](AGENTS.md) first.**\n';
+                    next = '# AOS Rules\n\n**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n';
                 } else if (!next.includes('AGENTS.md')) {
                     next = `**Read [AGENTS.md](AGENTS.md) first.**\n\n${next}`;
                 }
