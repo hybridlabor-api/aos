@@ -22,6 +22,7 @@ if (sep < 0 || sep === argv.length - 1) {
 }
 const wanted = (vi >= 0 && vi < sep ? String(argv[vi + 1] || '') : '').split(',').filter((v) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(v));
 const [command, ...args] = argv.slice(sep + 1);
+const membLlm = argv.slice(0, sep).includes('--memb-llm');
 
 const env = { ...process.env };
 const missing = wanted.filter((v) => !env[v]);
@@ -35,6 +36,15 @@ if (missing.length && !lib) {
     else if (s.state === 'refused') console.error(`aos-mcp-env: ${file} ignored: ${s.reason}`);
     const still = missing.filter((v) => !env[v]);
     if (still.length) console.error(`aos-mcp-env: ${still.join(', ')} not set; add ${still.length > 1 ? 'them' : 'it'} to ${file} (KEY=value per line, chmod 600). Starting without.`);
+}
+
+// memb_mcp: LLM provider/model/key follow the user's OpenWiki or MEMB_LLM_* choice (lib/memb-llm.js), not just GEMINI_API_KEY.
+if (membLlm) {
+    try {
+        const resolved = createRequire(import.meta.url)('../lib/memb-llm.js').resolveMembLlm({ home: os.homedir(), env });
+        for (const [k, v] of Object.entries(resolved)) if (!env[k]) env[k] = v;
+        if (env.MEMB_LLM_PROVIDER) console.error(`aos-mcp-env: memB LLM provider ${env.MEMB_LLM_PROVIDER}${env.MEMB_LLM_MODEL ? ` (${env.MEMB_LLM_MODEL})` : ''}`);
+    } catch { /* memB keeps its own defaults */ }
 }
 
 // npx, uv shims etc. are .cmd files on Windows and need cmd to be spawned.

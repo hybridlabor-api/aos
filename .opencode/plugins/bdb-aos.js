@@ -41,9 +41,9 @@ let contextHooks = true;
 let memory = true;
 let gateOn = true; // flag gate:false (Settings: go-gate off) skips the go-gate checks below; commit/env checks stay
 try { const flag = JSON.parse(readFileSync(new URL('./aos-hooks/aos-profile.json', import.meta.url), 'utf8')); if (flag?.contextHooks === false) contextHooks = false; if (flag?.memory === false) memory = false; if (flag?.gate === false) gateOn = false; } catch {}
-const noContext = { buildMemoryBlock: async () => '', rulesText: () => '' };
-const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }] =
-  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs'].map((f) => ((!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs')) || (!memory && f === 'memb-inject.mjs') ? noContext : hook(f))));
+const noContext = { buildMemoryBlock: async () => '', rulesText: () => '', buildHint: async () => '' };
+const [gate, { issueGoToken }, { checkConventionalCommit }, { envFileReason, targetsOf }, { buildMemoryBlock }, bus, { applyGogate }, { rulesText }, { buildHint }] =
+  await Promise.all(['go-gate.mjs', 'go-token.mjs', 'conventional-commits.mjs', 'env-file-protection.mjs', 'memb-inject.mjs', 'aos-bus.mjs', 'go-grant.mjs', 'rules-inject.mjs', 'aos-session-hint.mjs'].map((f) => ((!contextHooks && (f === 'memb-inject.mjs' || f === 'rules-inject.mjs' || f === 'aos-session-hint.mjs')) || (!memory && f === 'memb-inject.mjs') ? noContext : hook(f))));
 const { GUARDED_PATTERNS, tokenGrantsGo, isHumanPart, parseGoText, goAllows, isGuardedCommand, gateStoreReason, effectiveGate, opencodeGogateCommands, grantsCover, sessionKey, gateLog, hardBlockReason, setGateContext, readBlockTs, markBlock, analyzeDeletes, COOLDOWN_MESSAGE, commandTooLong, TOO_LONG_MESSAGE } = gate;
 
 // ---------------------------------------------------------------------------
@@ -427,13 +427,19 @@ export default async function bdbAosPlugin(input) {
         if (reply) injectText(msgInput, msgOutput, reply);
       } catch {}
 
+      const firstTurn = !(s.identitySent || s.parentID);
       try {
         if (!contextHooks || !memory) throw 0; // no context hooks or no unified memory: no memB injection
-        const event = s.identitySent || s.parentID ? 'UserPromptSubmit' : 'SessionStart';
-        s.identitySent = true;
+        const event = firstTurn ? 'SessionStart' : 'UserPromptSubmit';
         const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
         if (membContext) injectText(msgInput, msgOutput, (await hook('session-cap.mjs').catch(() => ({ capText: (t) => t }))).capText(membContext)); // per-context-profile cap
       } catch {}
+      try {
+        if (!contextHooks || !firstTurn) throw 0; // tool hint: once per root session, like Claude's SessionStart
+        const hint = await buildHint();
+        if (hint) injectText(msgInput, msgOutput, hint);
+      } catch {}
+      s.identitySent = true;
 
       // Destructive-actions rules on the first human message of a session and again after compaction (s.rulesSent reset in the compaction hook).
       try {

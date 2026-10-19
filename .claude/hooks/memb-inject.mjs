@@ -154,6 +154,24 @@ function resolveProjectIdentifiers(projectRoot, homeDir) {
   return Array.from(ids).filter(Boolean);
 }
 
+// Same tables memB's numpy_flat store creates (memb/vector_stores/numpy_flat.py), so a first
+// memB run opens this file as-is. Best-effort: false when the file cannot be created.
+export function createEmptyMembDb(dbPath, DatabaseSync) {
+  try {
+    mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec(`CREATE TABLE IF NOT EXISTS memb_vectors (id TEXT PRIMARY KEY, collection TEXT, vector BLOB, payload TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_memb_col ON memb_vectors(collection);
+CREATE VIRTUAL TABLE IF NOT EXISTS memb_fts USING fts5(id UNINDEXED, collection, content, tokenize = 'unicode61');`);
+    } finally { db.close(); }
+    return true;
+  } catch { return false; }
+}
+
+// Nothing writes memB automatically; this line is the only prompt to do it.
+export const MEMB_WRITE_HINT = '- To keep a durable decision or convention, call memb_mcp add_memory (project_id = this project, category e.g. architecture_decisions). Nothing is saved automatically.';
+
 // Shared with the OpenCode plugin: everything between "which event" and the
 // finished text block. Returns null when there is nothing to inject; never exits.
 export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, isAgy = false } = {}) {
@@ -181,6 +199,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
   const candidateUsers = resolveReaderIds({ userId });
 
   const contextItems = [];
+  if (sessionStart) contextItems.push(MEMB_WRITE_HINT);
 
   // 1. Standing facts, if the user keeps any. Skipped on UserPromptSubmit:
   //    they were already injected at SessionStart.
@@ -197,8 +216,8 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
   }
 
   const dbPath = path.join(home, '.MemBDB', 'memb.db');
-  if (!existsSync(dbPath)) return null;
   const { DatabaseSync } = await import('node:sqlite');
+  if (!existsSync(dbPath) && !createEmptyMembDb(dbPath, DatabaseSync)) return null;
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
     db.exec('PRAGMA busy_timeout = 5000;');

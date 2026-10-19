@@ -185,7 +185,7 @@ const gateOnFor = (key) => gateOn && !gateHoldKeys.has(key);
 // `key` names the harness whose config is being merged, so a hold in one harness never deletes
 // gate hooks another harness still has. Without a key (no harness context) only the setting decides.
 const droppedHook = (cmd, key = null) => typeof cmd === 'string'
-    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && cmd.includes('memb-inject.mjs'))
+    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && /memb-inject\.mjs|memb-session-save\.mjs/.test(cmd))
         || ((key ? !gateOnFor(key) : !gateOn) && v5Profile.GATE_HOOKS.some((n) => cmd.includes(n))));
 
 if (DRY_RUN) {
@@ -3254,6 +3254,13 @@ async function installMemB(interactive) {
             } catch (e) { logDebug(e, 'windows memb daemon setup'); }
         }
     }
+    // Memory import job (supervised by launchd / systemd): only exists when the user set a time (`aos memory set-time`).
+    if (membOk && !DRY_RUN) {
+        try {
+            const job = await require('./lib/memory-import').applyJob(homeDir);
+            if (job.file) log.success(`memB memory import job active (${path.basename(job.file)})`);
+        } catch (e) { logDebug(e, 'memb memory import job'); }
+    }
     return membOk;
 }
 
@@ -4140,6 +4147,15 @@ function aoServiceInstall(binTarget) {
         throw new Error(describeExecError(e));
     }
 }
+// Optional setup step: which folders the daily memory import covers and when it runs. Skipped unattended; nothing is preset.
+async function promptMemoryImport() {
+    if (isAutoYes || DRY_RUN || !memoryOn) return;
+    const yes = pick(await askConfirm({ message: 'Set up the daily memory import (folders to read into memB, and a time)?', initialValue: false }));
+    if (!yes) return;
+    const ui = v5Options(true).ui;
+    await require('./lib/memory-import').interactive({ home: homeDir, write: (x) => process.stdout.write(x), ui });
+}
+
 async function promptMemBIngestion(mcpCodeTarget) {
     if (isAutoYes || DRY_RUN) return;
 
@@ -6410,6 +6426,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         'trail-relay.mjs': 3,
         'trail-autostart.mjs': 3,
         'aos-session-hint.mjs': 3,
+        'memb-session-save.mjs': 5,
     };
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
@@ -6657,9 +6674,14 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
         'aos-context': {
             PreInvocation: [
                 { type: 'command', command: obs(globalHooksDir, 'memb-inject.mjs'), timeout: 8 },
+                { type: 'command', command: obs(globalHooksDir, 'aos-session-hint.mjs'), timeout: 3 },
                 { type: 'command', command: obs(globalHooksDir, 'rules-inject.mjs'), timeout: 3 },
                 { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
             ]
+        },
+        // Session-end memory capture: agy's Stop event. Payload fields are unverified on live agy; the hook skips quietly without a transcript.
+        'aos-memb-save': {
+            Stop: [{ type: 'command', command: obs(globalHooksDir, 'memb-session-save.mjs'), timeout: 5 }]
         },
         'aos-a2a-inbox': {
             // Interactive-session A2A inbox (agy PreInvocation): delivers pending messages only on the
@@ -6671,6 +6693,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
 
     const allHookNames = Object.keys(bdbHooks);
     if (!contextHooksOn) delete bdbHooks['aos-trail-relay'];
+    if (!contextHooksOn || !memoryOn) delete bdbHooks['aos-memb-save'];
     if (!gateOnFor('antigravity')) { delete bdbHooks['aos-go-gate']; delete bdbHooks['aos-graph-gate']; }
     bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command, 'antigravity'));
 
@@ -8379,6 +8402,7 @@ function v5Options(interactive) {
     const ui = interactive ? {
         select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
         multi: async (message, options, initialValues) => { const a = await multiselect({ message, options, initialValues, required: false }); return isCancel(a) ? [] : a; },
+        text: async (message, initialValue) => { const v = await text({ message, initialValue }); return isCancel(v) ? null : String(v || '').trim(); },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
     } : {};
@@ -8437,7 +8461,7 @@ async function main() {
     const args = process.argv.slice(2);
     // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
     // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
-    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup', 'allow'];
+    const COMMANDS = ['memory', 'status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup', 'allow'];
     if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
         console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
         process.exitCode = 2;
@@ -8448,6 +8472,10 @@ async function main() {
         return;
     }
     applyInstallOptions();
+    if (args[0] === 'memory') {
+        process.exitCode = await require('./lib/memory-import').command(args.slice(1), { home: homeDir });
+        return;
+    }
     if (args[0] === 'context') {
         const { contextCommand } = require('./lib/v5/context-profiles');
         process.exitCode = contextCommand(args.slice(1), { home: homeDir });
@@ -9053,6 +9081,7 @@ Options:
     justInstalled.push(...memoryInstalled);
 
     await promptMemBIngestion(path.join(primaryTarget.targetMcpDir, 'mcps'));
+    await promptMemoryImport();
 
     const alreadyHandled = justInstalled.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);
