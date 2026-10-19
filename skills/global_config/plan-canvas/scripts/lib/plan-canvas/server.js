@@ -105,7 +105,8 @@ const CONTENT_TYPES = {
 
 function resolvePort(env = process.env) {
   const value = Number.parseInt(env.AOS_PLAN_CANVAS_PORT || '', 10);
-  return Number.isInteger(value) && value >= 0 && value <= 65535 ? value : DEFAULT_PORT;
+  // a test sandbox never binds the owner's documented port
+  return Number.isInteger(value) && value >= 0 && value <= 65535 ? value : env.AOS_TEST_SANDBOX === '1' ? 0 : DEFAULT_PORT;
 }
 
 function resolveIdleTimeoutMs(env = process.env) {

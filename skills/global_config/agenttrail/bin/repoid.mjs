@@ -16,7 +16,8 @@ export const norm = p => { try { return fs.realpathSync(p) } catch { return path
 // AOS_TRAIL_PORTS="lo-hi" overrides the probed range (tests); default 5330-5344 like trail-relay.mjs
 export function probePorts() {
   const m = String(process.env.AOS_TRAIL_PORTS || '').match(/^(\d+)-(\d+)$/)
-  const [lo, hi] = m ? [+m[1], +m[2]] : [5330, 5344]
+  // a test sandbox never binds or probes the owner's live map ports
+  const [lo, hi] = m ? [+m[1], +m[2]] : process.env.AOS_TEST_SANDBOX === '1' ? [45330, 45344] : [5330, 5344]
   return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
 }
 

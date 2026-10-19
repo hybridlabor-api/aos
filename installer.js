@@ -3428,6 +3428,7 @@ async function installOpenWikiVisualizer() {
             });
             installCli = !isCancel(answer) && !!answer;
         }
+        if (v5Profile.isTestSandbox(homeDir)) installCli = false;
         if (installCli) {
             try {
                 log.step('Installing OpenWiki CLI globally (npm install -g openwiki@latest)...');
