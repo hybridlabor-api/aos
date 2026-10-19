@@ -49,7 +49,7 @@ describe('WP5 hub wiring', () => {
         assert.equal(pkg.bin['aos-hub'], 'bin/aos-hub.mjs');
         assert.equal(pkg.bin['aos-dashboard'], 'bin/aos-dashboard.mjs');
         for (const f of ['hub-guard.test.mjs', 'hub-server.test.mjs', 'hub-services.test.mjs', 'hub-catalog.test.mjs', 'hub-store.test.mjs', 'hub-wiring.test.mjs']) {
-            assert.ok(pkg.scripts.test.includes(`node --test tests/${f}`), `test script must include ${f}`);
+            assert.match(pkg.scripts.test, new RegExp(`node --test (--\\S+ )*tests/${f.replace(/\./g, '\\.')}`), `test script must include ${f}`);
         }
     });
 
