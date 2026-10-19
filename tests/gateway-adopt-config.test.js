@@ -98,3 +98,33 @@ describe('adopted upstreams', () => {
         assert.deepEqual(Object.keys(cfg.buildUpstreams({ shipped, home: h, launcher, pathEnv })), ['github']);
     });
 });
+
+describe('adopted servers must be served (audit P0)', () => {
+    const { gatewayChecks } = require('../lib/gateway/doctor.js');
+    const setup = (served) => {
+        const h = tmp();
+        const dir = path.join(h, '.agents', 'gateway');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'token'), 'x', { mode: 0o600 });
+        fs.writeFileSync(path.join(dir, 'adopted.json'), JSON.stringify({ version: 1, servers: { codebase_memory_mcp: { command: 'codebase-memory-mcp', args: [], env: {} } } }));
+        fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify({ mcpServers: served }));
+        return h;
+    };
+    const row = (h) => gatewayChecks({ home: h, platform: 'linux', nodeMajor: 24 }).find((c) => c.name === 'gateway adopted servers served');
+
+    test('codebase_memory_mcp is a gateway server and an adopted copy is served', () => {
+        assert.ok(cfg.GATEWAY_SERVERS.includes('codebase_memory_mcp'));
+        const out = cfg.buildUpstreams({ shipped: {}, home, launcher, pathEnv, adopted: { codebase_memory_mcp: { command: 'codebase-memory-mcp', args: [] } } });
+        assert.ok(out.codebase_memory_mcp);
+        const h = setup({});
+        assert.ok(cfg.readAdopted(h).codebase_memory_mcp);
+    });
+    test('doctor fails when an adopted server is not in mcp.json', () => {
+        const r = row(setup({ github: {} }));
+        assert.equal(r.ok, false);
+        assert.match(r.detail, /codebase_memory_mcp/);
+    });
+    test('doctor passes when every adopted server is served', () => {
+        assert.equal(row(setup({ codebase_memory_mcp: {} })).ok, true);
+    });
+});

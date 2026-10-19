@@ -301,7 +301,7 @@ describe('pkg-gateway', () => {
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootout'), ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootstrap'), ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
-        assert.deepEqual(Object.keys(g).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
+        assert.deepEqual(Object.keys(g).filter((n) => n !== 'codebase_memory_mcp').sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
     });
 
     const pinnedOnDisk = (home) => {
