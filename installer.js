@@ -36,6 +36,7 @@ const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
+const coreSkills = require('./lib/core-skills');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
@@ -170,6 +171,8 @@ try {
 let contextHooksOn = true;
 let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
+// `skillSet` setting: "core" installs only lib/core-skills.json and leaves the rest to `aos store install`.
+let skillSet = coreSkills.DEFAULT_SKILL_SET;
 // Unified memory (docs/unified-memory.md): off when memb is excluded; then no memb_mcp, deja MCP or memb-inject is wired.
 let memoryOn = true;
 // `gate` setting (Settings menu): off = go-gate, go-token, go-grant and graph-gate are not registered; the script files stay on disk.
@@ -1174,6 +1177,21 @@ function pruneRemovedSkills(manifest) {
         backupDir: path.join(homeDir, '.agents', 'backups', `retired-skills-${timestamp}`),
         log,
     });
+}
+
+// "core" skill set: installed copies of moved skills are removed (lib/core-skills.js) and the move is announced.
+function applySkillSet(manifest) {
+    if (skillSet !== 'core') return;
+    try {
+        coreSkills.pruneMoved({
+            root: srcDir,
+            home: homeDir,
+            manifest,
+            roots: globalSkillDestRoots(),
+            backupDir: path.join(homeDir, '.agents', 'backups', `skill-set-core-${timestamp}`),
+            log,
+        });
+    } catch (e) { log.warn(`Skill set "core" skipped: ${e.message}`); }
 }
 
 function flushSessionManifest() {
@@ -4319,7 +4337,7 @@ function resolveTargetPaths(platformValue, customPaths) {
 function getTierExcludeSkills(tier) {
     // Matched against directory entry names by copyDirRecursiveSync, so these
     // carry no extension: the MCP guides became <name>/SKILL.md directories.
-    return tier === '2' ? [
+    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...(tier === '2' ? [
         'bdb-adobe-suite-mcp',
         'bdb-after-effects-mcp',
         'bdb-blender-mcp',
@@ -4331,7 +4349,7 @@ function getTierExcludeSkills(tier) {
         'bdb-unreal-mcp',
         'bdb-vectorworks-mcp',
         'bdbmediastorm'
-    ] : [];
+    ] : [])];
 }
 
 // Merge the BDB MCP servers into a harness's *secondary* config store without
@@ -8187,6 +8205,7 @@ function quickUpdateKernel(installState) {
     }
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
+    applySkillSet(_sessionManifest);
     s.stop('Skills refreshed');
     const failures = [];
     const migration = runPluginMigration();
@@ -8361,6 +8380,7 @@ function applyInstallOptions(home = homeDir) {
     contextHooksOn = r.contextHooks;
     activeProfile = r.profile;
     installExcluded = r.excluded;
+    skillSet = r.skillSet;
     memoryOn = !installExcluded.has('memb');
     gateOn = r.gateOn;
     gateHoldKeys.clear(); // a fresh resolution restarts the decision; an explicit Settings choice re-applies everywhere
@@ -8371,11 +8391,12 @@ function applyInstallOptions(home = homeDir) {
 // --dry-run, status or uninstall). A flag on the command line is saved; AOS_PROFILE is not.
 function persistInstallOptions(home = homeDir) {
     const o = INSTALL_OPTS;
-    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length)) return false;
+    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length || o.skillSetFromFlag)) return false;
     try {
         const st = v5Profile.readSettings(home);
         const next = { ...st, disabled: [...new Set([...st.disabled, ...o.without])] };
         if (o.profileFromFlag) { next.profile = o.profile; next.noHooks = o.noHooks; } else if (o.noHooks) next.noHooks = true;
+        if (o.skillSetFromFlag) next.skillSet = o.skillSet;
         v5Profile.writeSettings(home, next);
         return true;
     } catch (e) {
@@ -8970,6 +8991,7 @@ Options:
 
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
+    applySkillSet(_sessionManifest);
     s.stop('Skills installed.');
     runAgyPluginStep();
 
