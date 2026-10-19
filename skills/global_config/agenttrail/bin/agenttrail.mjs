@@ -892,13 +892,11 @@ const server = http.createServer((req, res) => {
   if (u.pathname === '/') {
     securityHeaders(res)
     const ancestors = embedAncestors()
-    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
-    const scriptTag = '<script src="/ao-embed-bridge.js"></script>'
     let html = fs.readFileSync(indexPath, 'utf8')
-    if (html.includes('</head>')) {
-      html = html.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`)
-    } else {
-      html = `${metaTag}\n${scriptTag}\n${html}`
+    if (ancestors.length > 0) {
+      const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
+      const inject = `${metaTag}\n<script src="/ao-embed-bridge.js"></script>`
+      html = html.includes('</head>') ? html.replace('</head>', `${inject}\n</head>`) : `${inject}\n${html}`
     }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(html)
   } else if (req.method === 'GET' && u.pathname === '/ao-embed-bridge.js') {

@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { validateEvent, fromLegacyHook, MAX_BODY_BYTES } from '../lib/events.mjs'
 import { SessionTable, readA2aRegistry } from '../lib/sessions.mjs'
 import { buildModel, ttlMemo } from '../lib/hub-model.mjs'
+import { panel as gatePanel, loadGate } from '../lib/gatepanel.mjs'
 import { csrfToken, embedAncestors, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, securityHeaders, MAX_BODY_BYTES as GATE_BODY_BYTES } from '../lib/httpguard.mjs'
 import { createClick, ClickError } from '../lib/click.mjs'
 import { loadConfig } from '../lib/stale.mjs'
@@ -203,13 +204,11 @@ async function serveStatic(req, res, urlPath) {
   // The CSRF token reaches the page here and nowhere else.
   if (rel === 'index.html' || rel === 'enroll.html') {
     const ancestors = embedAncestors()
-    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
-    const scriptTag = '<script src="/ao-embed-bridge.js"></script>'
     let html = data.toString('utf8').replace('__TRAIL_CSRF__', CSRF)
-    if (html.includes('</head>')) {
-      html = html.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`)
-    } else {
-      html = `${metaTag}\n${scriptTag}\n${html}`
+    if (ancestors.length > 0) {
+      const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
+      const inject = `${metaTag}\n<script src="/ao-embed-bridge.js"></script>`
+      html = html.includes('</head>') ? html.replace('</head>', `${inject}\n</head>`) : `${inject}\n${html}`
     }
     res.writeHead(200, { 'content-type': type }).end(html)
   } else res.writeHead(200, { 'content-type': type }).end(data)

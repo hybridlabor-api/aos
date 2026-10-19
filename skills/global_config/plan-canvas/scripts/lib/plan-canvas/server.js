@@ -173,6 +173,7 @@ function sendHtml(res, statusCode, html, { csp = true } = {}) {
       : "frame-ancestors 'none'";
     headers['content-security-policy'] =
       `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; ${frameAncestors}`;
+    if (ancestors.length > 0) {
     const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`;
     const scriptTag = '<script src="/ao-embed-bridge.js"></script>';
     if (body.includes('</head>')) {
@@ -181,6 +182,7 @@ function sendHtml(res, statusCode, html, { csp = true } = {}) {
       body = body.replace('<head>', `<head>\n${metaTag}\n${scriptTag}`);
     } else {
       body = `${metaTag}\n${scriptTag}\n${body}`;
+    }
     }
   }
   res.writeHead(statusCode, headers);
