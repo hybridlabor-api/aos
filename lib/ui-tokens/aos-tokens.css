@@ -1,0 +1,26 @@
+/* AOS shared design tokens (direction A2: obsidian surfaces, orchid accent, mono labels).
+   Canonical copy. skills/global_config/agenttrail/public/shared/aos-tokens.css must stay byte-identical
+   (the agenttrail skill installs on its own); tests/ui-tokens-sync.test.mjs enforces it. */
+:root{color-scheme:dark;
+--aos-bg:#0a0a0a;--aos-surface:#141414;--aos-surface-2:#1e1e1e;--aos-border:#2c2c2c;--aos-text:#ececec;--aos-muted:#a3a3a3;
+--aos-accent:#c58cff;--aos-accent-ink:#0a0a0a;--aos-ok:#5fe0a0;--aos-warn:#ffb454;--aos-bad:#ff6b7a;--aos-info:#6cb8ff;
+--aos-code-bg:#0a0a0a;--aos-overlay:#000a;
+--aos-radius:4px;--aos-radius-s:3px;--aos-chip-r:2px;--aos-top-h:52px;--aos-side-w:360px;
+--aos-font-ui:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+--aos-font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+:root[data-theme="light"]{color-scheme:light;
+--aos-bg:#f6f5f8;--aos-surface:#ffffff;--aos-surface-2:#eeedf2;--aos-border:#cfcdd6;--aos-text:#17161c;--aos-muted:#595664;
+--aos-accent:#7a2fc9;--aos-accent-ink:#ffffff;--aos-ok:#0b7a45;--aos-warn:#8a5200;--aos-bad:#c0182f;--aos-info:#0b5cad;
+--aos-code-bg:#eeedf2;--aos-overlay:#0003}
+.aos-chip{display:inline-block;font:400 .72em var(--aos-font-mono);padding:1px 8px;border-radius:var(--aos-chip-r);
+ border:1px solid color-mix(in srgb,var(--c,var(--aos-muted)) 45%,transparent);background:color-mix(in srgb,var(--c,var(--aos-muted)) 14%,transparent);
+ color:var(--c,var(--aos-muted));white-space:nowrap;text-transform:uppercase;letter-spacing:.06em}
+.aos-chip.ok{--c:var(--aos-ok)}.aos-chip.info{--c:var(--aos-info)}.aos-chip.bad{--c:var(--aos-bad)}.aos-chip.warn{--c:var(--aos-warn)}.aos-chip.accent{--c:var(--aos-accent)}
+.aos-btn{font:inherit;font-family:var(--aos-font-mono);font-size:.92em;color:var(--aos-text);background:var(--aos-surface-2);border:1px solid var(--aos-border);
+ border-radius:var(--aos-radius-s);padding:5px 12px;min-height:34px;cursor:pointer}
+.aos-btn:hover{border-color:var(--aos-accent)}
+.aos-btn.primary{background:var(--aos-accent);color:var(--aos-accent-ink);border-color:var(--aos-accent);font-weight:700}
+.aos-btn:disabled{opacity:.5;cursor:not-allowed}
+.aos-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+:where(a,button,input,select,summary,[tabindex]):focus-visible{outline:2px solid var(--aos-accent);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

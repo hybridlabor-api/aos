@@ -14,7 +14,8 @@ import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOC
 import { parsePlan, lintPlan } from '../lib/plan.mjs'
 import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
 import { enrolRefusal, createEnrolCode } from '../lib/click.mjs'
-import { embedAncestors, securityHeaders } from '../lib/httpguard.mjs'
+import { embedAncestors, securityHeaders, csrfToken, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk } from '../lib/httpguard.mjs'
+import { sideModel, publicModel, decide, DecisionError } from '../lib/sidepanel.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -29,6 +30,9 @@ let noOpen = process.env.AOS_NO_OPEN === '1'
 let hooksOnly = false
 const MAX_BODY_BYTES = 64 * 1024
 const MAX_CONTROL_BODY_BYTES = 4 * 1024
+// Side panel: one random page token per process, delivered only in the same-origin HTML.
+const SIDE_TOKEN = csrfToken()
+const sideDismissed = new Set()
 let assumeYes = false
 let removeFlag = false
 let printFlag = false
@@ -894,7 +898,7 @@ const server = http.createServer((req, res) => {
     const ancestors = embedAncestors()
     const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
     const scriptTag = '<script src="/ao-embed-bridge.js"></script>'
-    let html = fs.readFileSync(indexPath, 'utf8')
+    let html = fs.readFileSync(indexPath, 'utf8').replace('__TRAIL_SIDE_TOKEN__', SIDE_TOKEN)
     if (html.includes('</head>')) {
       html = html.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`)
     } else {
@@ -1047,6 +1051,26 @@ const server = http.createServer((req, res) => {
       try { if (handleHookEvent(JSON.parse(body || '{}'))) hookTick() } catch {}
       res.writeHead(200).end()
     }, MAX_CONTROL_BODY_BYTES)
+  } else if (u.pathname === '/side/model' && req.method === 'GET') {
+    securityHeaders(res)
+    if (!strictHostOk(req.headers.host, port)) { res.writeHead(421).end(); return }
+    if (!sameOriginFetchSite(req.headers)) { res.writeHead(403).end(); return }
+    sideModel({ dismissed: sideDismissed }).then(m => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(publicModel(m))))
+      .catch(() => res.writeHead(500, { 'content-type': 'application/json' }).end('{"error":"internal"}'))
+  } else if (u.pathname === '/side/decision' && req.method === 'POST') {
+    // Plain click, no WebAuthn. Order of checks: Host, Origin, fetch site, content type, page token.
+    const reply = (st, o) => res.writeHead(st, { 'content-type': 'application/json' }).end(JSON.stringify(o))
+    if (!strictHostOk(req.headers.host, port, { click: true })) { res.writeHead(421).end(); return }
+    if (!originOk(req.headers.origin, port)) { reply(403, { error: 'origin' }); return }
+    if (!sameOriginFetchSite(req.headers)) { reply(403, { error: 'fetch-site' }); return }
+    if (!contentTypeOk(req)) { reply(415, { error: 'content-type' }); return }
+    if (!csrfOk(req.headers, SIDE_TOKEN)) { reply(403, { error: 'csrf' }); return }
+    readCapped(req, res, body => {
+      let j = null
+      try { j = JSON.parse(body || '{}') } catch { reply(400, { error: 'bad-body' }); return }
+      decide(j, { dismissed: sideDismissed }).then(r => { broadcastTick(); reply(200, r) })
+        .catch(e => e instanceof DecisionError ? reply(e.status, { error: e.code }) : reply(500, { error: 'internal' }))
+    })
   } else if (u.pathname === '/ask' && req.method === 'POST') {
     // AOS patch: ask engine — register a question the human answers on the map.
     // Pure relay: an answer here never runs anything (go-gate keeps sole authority).
