@@ -214,6 +214,7 @@ test("SessionStart hook binds the Claude process (its parent) to the session nam
     input: JSON.stringify({ session_id: "hookbind-0000" }), encoding: "utf8", env: testEnv({ AOS_A2A_NAME: "claude-hookbind" }),
   });
   assert.equal(r.status, 0, r.stderr);
-  // the hook's parent is this test process (comm "node", not a shell): exactly that pid is bound
-  assert.equal(mon.readBinding(process.pid), "claude-hookbind");
+  // the hook binds bindTargets(its chain): the test process, or a claude ancestor when the test runs under Claude Code
+  const [target] = mon.bindTargets(mon.ancestorChain(process.pid, { depth: 4 }));
+  assert.equal(mon.readBinding(target), "claude-hookbind");
 });
