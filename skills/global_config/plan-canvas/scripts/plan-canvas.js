@@ -74,7 +74,7 @@ function usage() {
     '  aos-plan-canvas server           Run the server in the foreground',
     '',
     'Options:',
-    '  open:  --mode <id>    Select planning mode (default: standard)',
+    '  open:  --mode <id>    Select planning mode (default: bdb-plan-builder when available, else standard)',
     '                   bdb-plan-builder builds <plan-dir>/plan.builder.html from',
     '                   plan.mdx and opens that file instead',
     '         --no-open      Do not launch a browser window',
@@ -300,8 +300,10 @@ function resolveModes() {
     reason: fs.existsSync(planBuilderPath) ? null : 'bdb-plan-builder not installed'
   });
 
+  // The builder is the default whenever it is available; standard is the fallback.
+  const builder = modes.find(m => m.id === 'bdb-plan-builder');
   return {
-    default: 'standard',
+    default: builder.available ? 'bdb-plan-builder' : 'standard',
     modes
   };
 }

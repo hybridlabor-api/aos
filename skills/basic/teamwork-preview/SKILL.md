@@ -194,11 +194,17 @@ Seek explicit approval from the user before triggering execution.
 Before delegating, open the final `prompt_draft.md` in the Plan Canvas for visual annotation and a clear approve/request-changes verdict:
 
 1. Give the top-level heading a stable ID, e.g. `# Teamwork Project Prompt — Draft {#prompt-draft}`.
-2. Run `aos-plan-canvas open prompt_draft.md`.
+2. Run `aos-plan-canvas open prompt_draft.md` (planning mode resolved per the `plan-canvas` skill — builder default, no question).
 3. Run `aos-plan-canvas await prompt_draft.md` and wait for the human verdict.
 4. Delegate only after an `approve` verdict.
 
 *(If running in OpenCode, always print the Canvas URL in chat.)*
+
+**Monitor the run on the agenttrail map.** After the approve, in this pipeline
+context also run `aos-plan-canvas trail .` to write the execution plan file,
+then `aos-trail --ensure` to open the live map; GO requests surface in the
+agenttrail hub, where the human answers them by typing GO. See the
+`agenttrail` skill.
 
 ## Teams and roles
 

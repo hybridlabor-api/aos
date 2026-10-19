@@ -8,7 +8,7 @@ category: engineering-method
 
 Invoke two skills and run them together: `grilling` and `domain-modeling`.
 
-Neither is restated here. `grilling` supplies the interview — design tree, frontier rounds, numbered questions with a recommended answer each. `domain-modeling` supplies the discipline that runs underneath it: challenging terms against the glossary, sharpening fuzzy language, stress-testing relationships with concrete scenarios, and writing what is settled into `CONTEXT.md` and `docs/adr/` **as it crystallises**, not batched at the end.
+Neither is restated here. `grilling` supplies the interview — design tree, frontier rounds, multiple-choice questions with a recommended answer each (`AskUserQuestion` in Claude Code, numbered options in chat on harnesses without it). `domain-modeling` supplies the discipline that runs underneath it: challenging terms against the glossary, sharpening fuzzy language, stress-testing relationships with concrete scenarios, and writing what is settled into `CONTEXT.md` and `docs/adr/` **as it crystallises**, not batched at the end.
 
 **Prefer this over `grill-me` whenever there is a repo to leave a trail in.** The interview is identical; the difference is whether the shared understanding survives the session. Use `grill-me` when there is no working directory, or when the outcome is a decision rather than a document.
 

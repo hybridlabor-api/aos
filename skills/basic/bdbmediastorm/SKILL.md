@@ -28,7 +28,7 @@ Ideation must never be performed in isolation. Spawn specialized subagents to an
 
 ## 2. Interactive Technical Interview
 
-Before drafting signal flow diagrams or system configs, **invoke the `grill-with-docs` skill** (or `grill-me` when there is no working directory) and run it to completion. Those skills hold the interview protocol — design tree, frontier rounds, numbered questions each with a recommended answer — and it is not restated here.
+Before drafting signal flow diagrams or system configs, **invoke the `grill-with-docs` skill** (or `grill-me` when there is no working directory) and run it to completion. Those skills hold the interview protocol — design tree, frontier rounds, multiple-choice questions each with a recommended answer (`AskUserQuestion` in Claude Code, numbered options in chat) — and it is not restated here.
 
 What this domain adds to that protocol: deeply challenge the user's technical assumptions and hardware readiness. The frontier questions for a show-control build are:
 
@@ -76,7 +76,7 @@ Define hardware and software nodes as strict bounded contexts:
 
 ## 5. Mandatory — Plan Canvas Review
 
-Before this session concludes, choose the planning mode by running `aos-plan-canvas modes` and presenting available modes to the user (see the "Planning mode choice" section in the `plan-canvas` skill). Then run `aos-plan-canvas open <file> --mode <choice>` against `signal-flow.md` (or the combined show-control spec), then `aos-plan-canvas await <file>` and leave it running. The user reviews the signal flow diagram, hardware topology, and failover matrix in the browser (Mermaid renders live, click-to-annotate, chat rail). Do not consider the show architecture finalized before an `approve` verdict. A `request_changes` verdict means revise the artifact and reopen — it live-reloads. This is a plain CLI tool, identical regardless of which agent harness runs this skill. See the `plan-canvas` skill. If a build follows the approve, Trigger A starts the live map (`agenttrail` skill); `aos-archify` can render the signal flow as a workflow or architecture diagram for the review.
+Before this session concludes, resolve the planning mode with `aos-plan-canvas modes`: use `bdb-plan-builder` whenever it is available (it is the default when detected), `standard` only as fallback — do not ask the user to choose (see the "Planning mode choice" section in the `plan-canvas` skill). Then run `aos-plan-canvas open <file> --mode <resolved>` against `signal-flow.md` (or the combined show-control spec), then `aos-plan-canvas await <file>` and leave it running. The user reviews the signal flow diagram, hardware topology, and failover matrix in the browser (Mermaid renders live, click-to-annotate, chat rail). Do not consider the show architecture finalized before an `approve` verdict. A `request_changes` verdict means revise the artifact and reopen — it live-reloads. This is a plain CLI tool, identical regardless of which agent harness runs this skill. See the `plan-canvas` skill. If a build follows the approve, Trigger A starts the live map (`agenttrail` skill); `aos-archify` can render the signal flow as a workflow or architecture diagram for the review.
 
 ---
 
