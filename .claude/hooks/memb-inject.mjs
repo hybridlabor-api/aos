@@ -403,8 +403,8 @@ async function main() {
       if (isAgy && !agyAlreadySent) {
         stampAgyIdentity(eventData.conversationId);
       }
-      const MAX_CONTEXT_CHARS = 2000;
-      const capped = memoryBlock.length > MAX_CONTEXT_CHARS ? memoryBlock.slice(0, MAX_CONTEXT_CHARS) : memoryBlock;
+      const { capText } = await import('./session-cap.mjs');
+      const capped = capText(memoryBlock);
       process.stdout.write(JSON.stringify(isAgy
         ? { injectSteps: [{ ephemeralMessage: capped }] }
         : {

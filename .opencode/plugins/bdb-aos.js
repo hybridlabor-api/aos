@@ -367,6 +367,8 @@ export default async function bdbAosPlugin(input) {
           sess(props.info.id).parentID = props.info.parentID ?? null;
           trail('SessionStart', props.info.id);
           void ensureBus(props.info.id, props.info.parentID ?? null);
+        } else if (event?.type === 'session.compacted' && props.sessionID) {
+          sess(props.sessionID).rulesSent = false; // event name unverified against the OpenCode SDK; without it the rules are sent once per session
         } else if (event?.type === 'session.deleted' && props.info?.id) {
           dropBus(props.info.id);
         } else if (event?.type === 'permission.updated') {
@@ -433,11 +435,11 @@ export default async function bdbAosPlugin(input) {
         if (membContext) injectText(msgInput, msgOutput, membContext);
       } catch {}
 
-      // Destructive-actions rules on every human message, so compaction cannot drop them.
+      // Destructive-actions rules on the first human message of a session and again after compaction (s.rulesSent reset in the compaction hook).
       try {
-        if (!contextHooks) throw 0; // profile without context hooks: no rules injection
+        if (!contextHooks || s.rulesSent) throw 0; // profile without context hooks, or already sent
         const rules = rulesText();
-        if (rules) injectText(msgInput, msgOutput, rules);
+        if (rules) { injectText(msgInput, msgOutput, rules); s.rulesSent = true; }
       } catch {}
 
       // Recognize and wire the AOS pipeline group

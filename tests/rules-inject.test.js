@@ -170,3 +170,45 @@ test('rules-inject: does not inject when ancestor project root AGENTS.md holds t
     assert.strictEqual(r.status, 0);
     assert.strictEqual(r.stdout, '');
 });
+
+test('rules-inject: once per session; SessionStart clear/compact re-arms it; other sessions are independent', () => {
+    const home = tmp('once');
+    const run = (o) => runHook(HOOK, home, JSON.stringify(o)).stdout;
+    const p = (id) => ({ hook_event_name: 'UserPromptSubmit', session_id: id, prompt: 'hi' });
+    assert.ok(run(p('s1')).includes('additionalContext'));
+    assert.strictEqual(run(p('s1')), '', 'second prompt of the same session injects nothing');
+    assert.ok(run(p('s2')).includes('additionalContext'), 'a new session injects again');
+    assert.strictEqual(run({ hook_event_name: 'SessionStart', session_id: 's1', source: 'resume' }), '');
+    assert.strictEqual(run(p('s1')), '', 'resume keeps the marker');
+    assert.strictEqual(run({ hook_event_name: 'SessionStart', session_id: 's1', source: 'compact' }), '', 'SessionStart prints nothing');
+    assert.ok(run(p('s1')).includes('additionalContext'), 'compact re-arms');
+    run({ hook_event_name: 'SessionStart', session_id: 's1', source: 'clear' });
+    assert.ok(run(p('s1')).includes('additionalContext'), 'clear re-arms');
+    assert.ok(run({ conversationId: 'c9', workspacePaths: ['/x'] }).includes('injectSteps'));
+    assert.strictEqual(run({ conversationId: 'c9', workspacePaths: ['/x'] }), '', 'agy: once per conversation');
+});
+
+test('rules-inject: markers older than 7 days are removed', () => {
+    const home = tmp('ttl');
+    const dir = path.join(home, '.aos', 'state', 'rules-seen');
+    fs.mkdirSync(dir, { recursive: true });
+    const old = path.join(dir, 'old');
+    fs.writeFileSync(old, '1');
+    const t = new Date(Date.now() - 8 * 24 * 3600 * 1000);
+    fs.utimesSync(old, t, t);
+    runHook(HOOK, home, JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 'new', prompt: 'x' }));
+    assert.ok(!fs.existsSync(old));
+    assert.ok(fs.existsSync(path.join(dir, 'new')));
+});
+
+test('session-cap: small context profile caps SessionStart text at 1000 chars, default 2000', async () => {
+    const { sessionStartCap, capText } = await import(path.join(ROOT, '.claude', 'hooks', 'session-cap.mjs'));
+    const home = tmp('cap');
+    assert.strictEqual(sessionStartCap(home), 2000);
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ context: 'small' }));
+    assert.strictEqual(sessionStartCap(home), 1000);
+    assert.strictEqual(capText('x'.repeat(3000), home).length, 1000);
+    fs.writeFileSync(path.join(home, '.aos', 'v5-settings.json'), JSON.stringify({ context: 'worker' }));
+    assert.strictEqual(sessionStartCap(home), 2000);
+});
