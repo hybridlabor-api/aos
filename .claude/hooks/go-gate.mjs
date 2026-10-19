@@ -3103,24 +3103,31 @@ function loadLocalReceipt(key, name) {
   try {
     const r = JSON.parse(txt);
     const p = r?.payload;
-    if (r?.via !== "map-click" || !clickPayloadOk(p) || p.session_key !== key || name !== `${key}.local-${p.request_id}.json`) return null;
+    if (r?.via !== "map-click" || !clickPayloadOk(p) || p.session_key !== key || name !== (p.kind === "grant" ? `${key}.local-g-${p.request_id}.json` : `${key}.local-${p.request_id}.json`)) return null;
     return p;
   } catch { return null; }
 }
 
-// A map click may open a session grant for ordinary scopes only; release-class scopes need a typed grant.
+// A map click never approves release-class scopes (destructive, push to main, publish) and a grant lasts at most 2h.
 const LOCAL_NEVER = new Set(["destructive", "push-main", "publish"]);
 const LOCAL_GRANT_MAX_MS = 2 * 3600e3;
+const LOCAL_REQUEST_MAX_MS = 10 * 60e3;
 const localTimeOk = (p, now) => p.issued_at <= now && now < p.expires_at && p.expires_at - p.issued_at <= (p.kind === "go" ? TOKEN_TTL_MS : MAX_GRANT_MS);
+const localNever = (p, r) => [...(p.scopes ?? []), ...(r.scopes ?? [])].some((s) => LOCAL_NEVER.has(s));
 
-// The receipt must answer a request the gate itself recorded (and that was not a hard block).
-function requestRecorded(key, p) {
+// A receipt must answer a request the gate recorded: same id (a go receipt also the same command hash), not a hard block,
+// recorded no later than the receipt and at most 10 min before it; a go receipt is also refused once the request is 10 min old.
+function recordedRequest(key, p, now) {
   try {
+    if (!p) return null;
     const txt = readSmallRegular(join(gateDir(), `${key}.req.json`), 64 * 1024);
-    if (!txt) return false;
+    if (!txt) return null;
     const a = JSON.parse(txt);
-    return (Array.isArray(a) ? a : [a]).some((r) => r && r.id === p.request_id && r.cmd_hash === p.cmd_hash && r.hard !== true);
-  } catch { return false; }
+    const r = (Array.isArray(a) ? a : [a]).find((x) => x && x.id === p.request_id && x.hard !== true && (p.kind === "grant" || x.cmd_hash === p.cmd_hash));
+    const ts = Date.parse(r?.ts);
+    if (!r || !Number.isFinite(ts) || ts > p.issued_at || p.issued_at - ts > LOCAL_REQUEST_MAX_MS || (p.kind === "go" && now - ts > LOCAL_REQUEST_MAX_MS)) return null;
+    return r;
+  } catch { return null; }
 }
 
 // A later typed `hard` in the transcript cancels receipts issued before it.
@@ -3135,12 +3142,14 @@ function lastHardTs(transcriptPath) {
 export function localClickCovers(command, key, { now = Date.now(), consume = true, hardTs = -Infinity } = {}) {
   try {
     if (typeof command !== "string" || !command.trim() || typeof key !== "string" || !CLICK_KEY.test(key) || !clickEligible(command)) return false;
+    if ((inferredReleaseScopes(command) ?? []).some((s) => LOCAL_NEVER.has(s))) return false;
     const want = textHash(command);
     const revokeTs = readRevokeTs(key, now);
     for (const name of clickNames(`${key}.local-`)) {
       if (name.startsWith(`${key}.local-g-`)) continue;
       const p = loadLocalReceipt(key, name);
-      if (!p || p.kind !== "go" || p.cmd_hash !== want || p.issued_at <= revokeTs || p.issued_at <= hardTs || !localTimeOk(p, now) || !requestRecorded(key, p) || clickSpent(key, p.request_id)) continue;
+      const r = p && p.kind === "go" && p.cmd_hash === want ? recordedRequest(key, p, now) : null;
+      if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !localTimeOk(p, now) || localNever(p, r) || clickSpent(key, p.request_id)) continue;
       if (!consume) return true;
       if (claimClick(key, p.request_id)) return true;
     }
@@ -3154,11 +3163,11 @@ function localClickGrants(key, now, { opencode, hardTs, revokeTs }) {
     if (typeof key !== "string" || !CLICK_KEY.test(key)) return out;
     for (const name of clickNames(`${key}.local-g-`)) {
       const p = loadLocalReceipt(key, name);
-      if (!p || p.kind !== "grant" || p.cmd_hash !== "" || !Array.isArray(p.scopes) || !p.scopes.length) continue;
-      if (p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS) || !localTimeOk(p, now) || p.scopes.some((x) => LOCAL_NEVER.has(x))) continue;
+      const r = p && p.kind === "grant" && p.cmd_hash === "" && Array.isArray(p.scopes) && p.scopes.length ? recordedRequest(key, p, now) : null;
+      if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= LOCAL_GRANT_MAX_MS) || !localTimeOk(p, now) || localNever(p, r)) continue;
       const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
       if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
-      const until = Math.min(p.expires_at, p.issued_at + Math.min(p.ms, LOCAL_GRANT_MAX_MS, opencode ? OPENCODE_MAX_GRANT_MS : Infinity));
+      const until = Math.min(p.expires_at, p.issued_at + (opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms));
       if (now < until) for (const scope of parsed.scopes) out.push({ scope, until, session: false });
     }
   } catch { /* fail closed */ }

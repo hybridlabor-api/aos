@@ -13,6 +13,8 @@ export const REQUEST_MAX_AGE_MS = 10 * 60 * 1000
 const STALE_MS = 5 * 60 * 1000
 export const GRANT_MS = { '15m': 15 * 60 * 1000, session: 2 * 60 * 60 * 1000 }
 export const BROAD_SCOPES = ['destructive', 'push-main']
+// A map click never approves these, once or as a grant: they need a typed GO in the terminal.
+const NEVER_CLICK = ['destructive', 'push-main', 'publish']
 const KEY_RE = /^[a-z0-9._-]{1,128}$/
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -102,21 +104,24 @@ export async function decide(input, { now = Date.now(), home = os.homedir(), gat
   if (input.decision !== 'approve') throw new DecisionError('bad-decision')
   if (!r.decidable) throw new DecisionError('request-hard', 403)
   if (!KEY_RE.test(r.sessionKey) || !r.cmdHash) throw new DecisionError('request-unbound', 409)
+  if (r.age < 0) throw new DecisionError('request-future', 409)
   if (r.age > REQUEST_MAX_AGE_MS) throw new DecisionError('request-stale', 409)
+  const scopes = [...new Set(r.scopes || [])].sort()
+  if (!scopes.length || scopes.some((s) => NEVER_CLICK.includes(s))) throw new DecisionError('broad-needs-terminal', 403)
   const scope = input.scope || 'once'
   if (scope !== 'once' && !GRANT_MS[scope]) throw new DecisionError('bad-scope')
   const dir = goDir(home)
   pruneStale(r.sessionKey, { now, home })
+  const once = path.join(dir, `${r.sessionKey}.local-${r.id}.json`)
+  const grant = path.join(dir, `${r.sessionKey}.local-g-${r.id}.json`)
+  if (fs.existsSync(once) || fs.existsSync(grant)) throw new DecisionError('request-decided', 409)
   if (scope === 'once') {
     const p = { v: 1, kind: 'go', request_id: r.id, session_key: r.sessionKey, cmd_hash: r.cmdHash, scopes: r.scopes, ms: 0, issued_at: now, expires_at: now + RECEIPT_TTL_MS, nonce: crypto.randomBytes(16).toString('hex') }
-    writeNew(path.join(dir, `${r.sessionKey}.local-${r.id}.json`), { payload: p, via: 'map-click' })
+    writeNew(once, { payload: p, via: 'map-click' })
     return { ok: true, decision: 'approve', scope, expiresAt: p.expires_at }
   }
-  const scopes = [...new Set(r.scopes || [])].sort()
-  if (!scopes.length || scopes.some((s) => BROAD_SCOPES.includes(s) || s === 'publish')) throw new DecisionError('broad-needs-terminal', 403)
-  const id = `g-${crypto.randomBytes(12).toString('hex')}`
   const ms = GRANT_MS[scope]
-  const p = { v: 1, kind: 'grant', request_id: id, session_key: r.sessionKey, cmd_hash: '', scopes, ms, issued_at: now, expires_at: now + ms, nonce: crypto.randomBytes(16).toString('hex') }
-  writeNew(path.join(dir, `${r.sessionKey}.local-${id}.json`), { payload: p, via: 'map-click' })
+  const p = { v: 1, kind: 'grant', request_id: r.id, session_key: r.sessionKey, cmd_hash: '', scopes, ms, issued_at: now, expires_at: now + ms, nonce: crypto.randomBytes(16).toString('hex') }
+  writeNew(grant, { payload: p, via: 'map-click' })
   return { ok: true, decision: 'approve', scope, expiresAt: p.expires_at }
 }
