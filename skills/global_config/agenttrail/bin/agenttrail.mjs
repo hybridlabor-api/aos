@@ -11,7 +11,7 @@ import crypto from 'node:crypto'
 import { serveShared } from '../lib/shared-static.mjs'
 import { codeStampOf, watchCodeStamp } from '../lib/code-stamp.mjs'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
-import { parsePlan, lintPlan } from '../lib/plan.mjs'
+import { parsePlan, lintPlan, tickTask } from '../lib/plan.mjs'
 import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
 import { enrolRefusal, createEnrolCode } from '../lib/click.mjs'
 import { embedAncestors, securityHeaders } from '../lib/httpguard.mjs'
@@ -63,6 +63,8 @@ for (let i = 0; i < argv.length; i++) {
   // AOS patch: ask engine CLI — asks the human a question via the map
   else if (a === 'ask') cmd = 'ask'
   else if (a === 'emit') cmd = 'emit'
+  // AOS patch: `tick <plan-file> <task-id>` — flip one `- [ ]` to `- [x]` so a worker can mark its task done
+  else if (a === 'tick') cmd = 'tick'
   else if (a === 'enroll' && cmd === null) cmd = 'enroll'
   else if (a === '--replace') replaceFlag = true
   else if (a === '--ensure') ensureMode = true
@@ -174,6 +176,27 @@ if (cmd === 'hook') { await relayHook(); process.exit(0) }
 if (cmd === 'enroll') { process.exit(await enrollFlow()) }
 // AOS v2: report one event to the hub. Always exits 0 — a reporting hook never fails a tool call.
 if (cmd === 'emit') { await emitFlow(); process.exit(0) }
+
+// AOS patch: tick — `tick <plan-file> <task-id>`. Pure file edit, no daemon needed;
+// the map reloads the plan (fs watcher) and the node turns done on its own.
+let tickPlanFile = null
+let tickTaskId = null
+if (cmd === 'tick') {
+  const pos = []
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (a.startsWith('-')) continue
+    pos.push(a)
+  }
+  tickPlanFile = pos[0] ? path.resolve(pos[0]) : null
+  tickTaskId = pos[1] || null
+  if (!tickPlanFile || !tickTaskId) { console.error('usage: aos-trail tick <plan-file> <task-id>'); process.exit(1) }
+  const text = fs.readFileSync(tickPlanFile, 'utf8')
+  const r = tickTask(text, tickTaskId)
+  if (!r.changed) { console.error(`tick: task id "${tickTaskId}" not found, already done, or ambiguous in ${tickPlanFile}`); process.exit(1) }
+  fs.writeFileSync(tickPlanFile, r.text)
+  process.exit(0)
+}
 // AOS patch: ask engine CLI — blocks until the map answers; exit 0 = go, 1 = deny/timeout
 if (cmd === 'ask') { process.exit(await askFlow()) }
 

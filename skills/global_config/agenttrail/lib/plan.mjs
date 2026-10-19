@@ -79,3 +79,14 @@ export function lintPlan(parsed, planText) {
   if (comps.length > 9) out.push(`${comps.length} components — over the 5–9 governor, consider merging`)
   return out.slice(0, 12)
 }
+// Ticking from the outside in: a worker or dispatcher names a task id; exactly the
+// one line carrying `{#<task-id>}` flips `- [ ]` to `- [x]`. Untouched: an id twice,
+// a task already done, or unknown ids — the bool is false and the text comes back as-is.
+export function tickTask(text, taskId) {
+  const matches = [...String(text || '').matchAll(new RegExp(`^\\s*[-*]\\s+\\[ \\]\\s+.*\\{#${taskId}\\}\\s*$`, 'gm'))]
+  if (matches.length !== 1) return { text, changed: false }
+  const [raw] = matches
+  const line = raw[0]
+  const flipped = line.replace(/^(\s*[-*]\s+)\[ \]/, '$1[x]')
+  return { text: String(text).replace(line, flipped), changed: true }
+}
