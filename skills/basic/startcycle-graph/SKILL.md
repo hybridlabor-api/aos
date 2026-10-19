@@ -141,7 +141,7 @@ from the card. Review the HTML in plan-canvas alongside the plan:
 
 `/startcycle-graph` resolves roles and teams through the shared registry alongside the default 7-node team:
 
-- **Registry & CLI**: Enumerate available teams with `aos-team list`, inspect a team with `aos-team show <id>`, or scaffold with `aos-team new <id>`. Resolution precedence follows Project (`.aos/teams/`, `.aos/roles/`) > User (`~/.aos/teams/`, `~/.aos/roles/`) > Shipped defaults (`.agents/nodes.json`).
+- **Registry & CLI**: Enumerate available teams with `aos-team list`, inspect a team with `aos-team show <id>`, or scaffold with `aos-team new <id>`. Resolution precedence follows Project (`.aos/teams/`, `.aos/roles/`) > User (`~/.aos/teams/`, `~/.aos/roles/`) > Shipped defaults (`.agents/nodes.json` plus the role and team presets bundled with AOS).
 - **Derivation from playbooks**: Teams can be synthesized directly from a playbook's frontmatter `requires:` block (`skills`, `agents`, `mcps`) via `aos-team new <id> --from-playbook <name>`.
 - **Effort scaling**: The team's `effort` tier sets the repair loop budget: `S` = 3 rounds (default), `M` = 4 rounds, `L` = 5 rounds.
 - **Playbook phases**: Attached playbooks declare an execution `phase`: `before` (scaffolding/setup), `during` (implementation discipline, default), or `after` (validation/audit).
