@@ -3108,9 +3108,31 @@ function loadLocalReceipt(key, name) {
   } catch { return null; }
 }
 
+// A map click may open a session grant for ordinary scopes only; release-class scopes need a typed grant.
+const LOCAL_NEVER = new Set(["destructive", "push-main", "publish"]);
+const LOCAL_GRANT_MAX_MS = 2 * 3600e3;
 const localTimeOk = (p, now) => p.issued_at <= now && now < p.expires_at && p.expires_at - p.issued_at <= (p.kind === "go" ? TOKEN_TTL_MS : MAX_GRANT_MS);
 
-export function localClickCovers(command, key, { now = Date.now(), consume = true } = {}) {
+// The receipt must answer a request the gate itself recorded (and that was not a hard block).
+function requestRecorded(key, p) {
+  try {
+    const txt = readSmallRegular(join(gateDir(), `${key}.req.json`), 64 * 1024);
+    if (!txt) return false;
+    const a = JSON.parse(txt);
+    return (Array.isArray(a) ? a : [a]).some((r) => r && r.id === p.request_id && r.cmd_hash === p.cmd_hash && r.hard !== true);
+  } catch { return false; }
+}
+
+// A later typed `hard` in the transcript cancels receipts issued before it.
+function lastHardTs(transcriptPath) {
+  try {
+    const cmds = claudeGogateCommands(transcriptPath);
+    const i = cmds.findLastIndex((c) => c.parsed.cmd === "hard");
+    return i < 0 ? -Infinity : Number.isFinite(cmds[i].ts) ? cmds[i].ts : Infinity;
+  } catch { return Infinity; }
+}
+
+export function localClickCovers(command, key, { now = Date.now(), consume = true, hardTs = -Infinity } = {}) {
   try {
     if (typeof command !== "string" || !command.trim() || typeof key !== "string" || !CLICK_KEY.test(key) || !clickEligible(command)) return false;
     const want = textHash(command);
@@ -3118,7 +3140,7 @@ export function localClickCovers(command, key, { now = Date.now(), consume = tru
     for (const name of clickNames(`${key}.local-`)) {
       if (name.startsWith(`${key}.local-g-`)) continue;
       const p = loadLocalReceipt(key, name);
-      if (!p || p.kind !== "go" || p.cmd_hash !== want || p.issued_at <= revokeTs || !localTimeOk(p, now) || clickSpent(key, p.request_id)) continue;
+      if (!p || p.kind !== "go" || p.cmd_hash !== want || p.issued_at <= revokeTs || p.issued_at <= hardTs || !localTimeOk(p, now) || !requestRecorded(key, p) || clickSpent(key, p.request_id)) continue;
       if (!consume) return true;
       if (claimClick(key, p.request_id)) return true;
     }
@@ -3133,10 +3155,10 @@ function localClickGrants(key, now, { opencode, hardTs, revokeTs }) {
     for (const name of clickNames(`${key}.local-g-`)) {
       const p = loadLocalReceipt(key, name);
       if (!p || p.kind !== "grant" || p.cmd_hash !== "" || !Array.isArray(p.scopes) || !p.scopes.length) continue;
-      if (p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS) || !localTimeOk(p, now)) continue;
+      if (p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS) || !localTimeOk(p, now) || p.scopes.some((x) => LOCAL_NEVER.has(x))) continue;
       const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
       if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
-      const until = Math.min(p.expires_at, p.issued_at + (opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms));
+      const until = Math.min(p.expires_at, p.issued_at + Math.min(p.ms, LOCAL_GRANT_MAX_MS, opencode ? OPENCODE_MAX_GRANT_MS : Infinity));
       if (now < until) for (const scope of parsed.scopes) out.push({ scope, until, session: false });
     }
   } catch { /* fail closed */ }
@@ -3590,7 +3612,7 @@ function main() {
   if (token.ok) return respond(isAgy, true, "", command);
   reasons.push(token.reason);
   // Last additive path (WP-9): a signed click receipt for exactly this command. Hard blocks and the store check returned above.
-  if (key && !tooLong && !cooling && !codexOpaque && (clickReceiptCovers(command, key) || localClickCovers(command, key))) {
+  if (key && !tooLong && !cooling && !codexOpaque && (clickReceiptCovers(command, key) || localClickCovers(command, key, { hardTs: lastHardTs(transcriptPath) }))) {
     gateLog(key, `click: allowed ${JSON.stringify(command.slice(0, 200))}`);
     return respond(isAgy, true, "", command);
   }

@@ -33,7 +33,7 @@
     try {
       const r = await fetch('side/decision', { method: 'POST', headers: { 'content-type': 'application/json', 'x-trail-csrf': TOKEN }, body: JSON.stringify({ id, decision, scope: scopes[id] || 'once' }) })
       const j = await r.json().catch(() => ({}))
-      toast(r.ok ? (decision === 'approve' ? 'Approved (' + (scopes[id] || 'once') + ')' : 'Denied') : 'Rejected: ' + (j.error || r.status))
+      toast(r.ok ? (decision === 'approve' ? 'Approved (' + (scopes[id] || 'once') + ')' : 'Hidden (the gate still blocks it)') : 'Rejected: ' + (j.error || r.status))
     } catch { toast('Could not reach the map server') }
     busy.delete(id); refresh()
   }
@@ -53,7 +53,7 @@
     sel.value = scopes[r.id] || 'once'
     sel.addEventListener('change', () => { scopes[r.id] = sel.value })
     lab.append(sel)
-    const ok = el('button', 'btn primary', 'Approve', { type: 'button' }), no = el('button', 'btn', 'Deny', { type: 'button' })
+    const ok = el('button', 'btn primary', 'Approve', { type: 'button' }), no = el('button', 'btn', 'Hide', { type: 'button', title: 'Hides this card only; the gate keeps blocking the command' })
     ok.disabled = no.disabled = busy.has(r.id)
     ok.addEventListener('click', () => decide(r.id, 'approve'))
     no.addEventListener('click', () => decide(r.id, 'deny'))

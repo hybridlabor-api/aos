@@ -9,6 +9,8 @@ import { loadGate, panel } from './gatepanel.mjs'
 import { readA2aRegistry } from './sessions.mjs'
 
 export const RECEIPT_TTL_MS = 10 * 60 * 1000
+export const REQUEST_MAX_AGE_MS = 10 * 60 * 1000
+const STALE_MS = 5 * 60 * 1000
 export const GRANT_MS = { '15m': 15 * 60 * 1000, session: 2 * 60 * 60 * 1000 }
 export const BROAD_SCOPES = ['destructive', 'push-main']
 const KEY_RE = /^[a-z0-9._-]{1,128}$/
@@ -69,6 +71,28 @@ function writeNew(file, value) {
   } finally { try { fs.unlinkSync(tmp) } catch { /* gone */ } }
 }
 
+// The gate scans at most 32 receipts per key and deletes nothing, so stale ones are pruned here.
+export function pruneStale(key, { now = Date.now(), home = os.homedir() } = {}) {
+  const dir = goDir(home)
+  let names = []
+  try { names = fs.readdirSync(dir).filter((n) => n.startsWith(`${key}.local-`)) } catch { return 0 }
+  let gone = 0
+  for (const n of names) {
+    try {
+      const f = path.join(dir, n)
+      let stale = false
+      if (n.endsWith('.json.used')) stale = fs.statSync(f).mtimeMs < now - 30 * 60 * 1000
+      else if (n.endsWith('.json')) {
+        let exp = NaN
+        try { exp = JSON.parse(fs.readFileSync(f, 'utf8')).payload.expires_at } catch { /* unreadable */ }
+        stale = Number.isFinite(exp) ? exp < now - STALE_MS : fs.statSync(f).mtimeMs < now - STALE_MS
+      }
+      if (stale) { fs.unlinkSync(f); gone += 1 }
+    } catch { /* raced or gone */ }
+  }
+  return gone
+}
+
 // input: { id, decision: 'approve'|'deny', scope: 'once'|'15m'|'session' }
 export async function decide(input, { now = Date.now(), home = os.homedir(), gateMod, dismissed } = {}) {
   if (!input || typeof input.id !== 'string' || !ID_RE.test(input.id)) throw new DecisionError('bad-request-id')
@@ -78,16 +102,18 @@ export async function decide(input, { now = Date.now(), home = os.homedir(), gat
   if (input.decision !== 'approve') throw new DecisionError('bad-decision')
   if (!r.decidable) throw new DecisionError('request-hard', 403)
   if (!KEY_RE.test(r.sessionKey) || !r.cmdHash) throw new DecisionError('request-unbound', 409)
+  if (r.age > REQUEST_MAX_AGE_MS) throw new DecisionError('request-stale', 409)
   const scope = input.scope || 'once'
   if (scope !== 'once' && !GRANT_MS[scope]) throw new DecisionError('bad-scope')
   const dir = goDir(home)
+  pruneStale(r.sessionKey, { now, home })
   if (scope === 'once') {
     const p = { v: 1, kind: 'go', request_id: r.id, session_key: r.sessionKey, cmd_hash: r.cmdHash, scopes: r.scopes, ms: 0, issued_at: now, expires_at: now + RECEIPT_TTL_MS, nonce: crypto.randomBytes(16).toString('hex') }
     writeNew(path.join(dir, `${r.sessionKey}.local-${r.id}.json`), { payload: p, via: 'map-click' })
     return { ok: true, decision: 'approve', scope, expiresAt: p.expires_at }
   }
   const scopes = [...new Set(r.scopes || [])].sort()
-  if (!scopes.length || scopes.some((s) => BROAD_SCOPES.includes(s))) throw new DecisionError('broad-needs-terminal', 403)
+  if (!scopes.length || scopes.some((s) => BROAD_SCOPES.includes(s) || s === 'publish')) throw new DecisionError('broad-needs-terminal', 403)
   const id = `g-${crypto.randomBytes(12).toString('hex')}`
   const ms = GRANT_MS[scope]
   const p = { v: 1, kind: 'grant', request_id: id, session_key: r.sessionKey, cmd_hash: '', scopes, ms, issued_at: now, expires_at: now + ms, nonce: crypto.randomBytes(16).toString('hex') }
