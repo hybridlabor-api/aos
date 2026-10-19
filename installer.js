@@ -182,7 +182,7 @@ const gateOnFor = (key) => gateOn && !gateHoldKeys.has(key);
 // `key` names the harness whose config is being merged, so a hold in one harness never deletes
 // gate hooks another harness still has. Without a key (no harness context) only the setting decides.
 const droppedHook = (cmd, key = null) => typeof cmd === 'string'
-    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && cmd.includes('memb-inject.mjs'))
+    && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && /memb-inject\.mjs|memb-session-save\.mjs/.test(cmd))
         || ((key ? !gateOnFor(key) : !gateOn) && v5Profile.GATE_HOOKS.some((n) => cmd.includes(n))));
 
 if (DRY_RUN) {
@@ -3235,6 +3235,15 @@ async function installMemB(interactive) {
                 }
             } catch (e) { logDebug(e, 'windows memb daemon setup'); }
         }
+    }
+    // Nightly docs/wiki ingest job (supervised by launchd / systemd); the job script exits by itself when memb is excluded.
+    if (membOk && !DRY_RUN) {
+        try {
+            const sandbox = v5Profile.isTestSandbox(homeDir);
+            const run = sandbox ? null : async (cmd, args) => { execFileSync(cmd, args, { stdio: 'ignore', windowsHide: true }); return { ok: true }; };
+            const job = await require('./lib/memb-nightly').install({ home: homeDir, run });
+            if (job.file) log.success(`memB nightly ingest job ${sandbox ? 'written' : 'active'} (${path.basename(job.file)})`);
+        } catch (e) { logDebug(e, 'memb nightly ingest job'); }
     }
     return membOk;
 }
@@ -6388,6 +6397,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
         'trail-relay.mjs': 3,
         'trail-autostart.mjs': 3,
         'aos-session-hint.mjs': 3,
+        'memb-session-save.mjs': 5,
     };
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
@@ -6640,6 +6650,10 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
                 { type: 'command', command: cmd(workflowsDir, 'startcycle-dispatch.mjs'), timeout: 30 }
             ]
         },
+        // Session-end memory capture: agy's Stop event. Payload fields are unverified on live agy; the hook skips quietly without a transcript.
+        'aos-memb-save': {
+            Stop: [{ type: 'command', command: obs(globalHooksDir, 'memb-session-save.mjs'), timeout: 5 }]
+        },
         'aos-a2a-inbox': {
             // Interactive-session A2A inbox (agy PreInvocation): delivers pending messages only on the
             // first model call of a turn. Not a context hook, so --no-hooks and minimal keep it; the
@@ -6650,6 +6664,7 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
 
     const allHookNames = Object.keys(bdbHooks);
     if (!contextHooksOn) delete bdbHooks['aos-trail-relay'];
+    if (!contextHooksOn || !memoryOn) delete bdbHooks['aos-memb-save'];
     if (!gateOnFor('antigravity')) { delete bdbHooks['aos-go-gate']; delete bdbHooks['aos-graph-gate']; }
     bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command, 'antigravity'));
 

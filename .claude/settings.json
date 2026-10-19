@@ -192,6 +192,17 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/memb-session-save.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   },
   "permissions": {

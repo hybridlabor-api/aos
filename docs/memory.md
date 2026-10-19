@@ -22,17 +22,38 @@ Rule of thumb: memB = what is decided, deja = what happened, OpenWiki = how the 
 
 All inject at most 2000 chars and fail open.
 
-## Why memB stopped growing (2026-10)
+## Why memB stopped growing (2026-10) and what writes now
 
-Nothing in AOS writes memB automatically. The last rows (2026-10-14 21:27) came from one `memb_ingest` batch;
-since then the only write path is an agent calling `add_memory`, and nothing told agents to. The MCP itself
-works (verified against a temp `MEMB_DATA_DIR`: `add_memory` falls back to a verbatim save without a valid
-`GEMINI_API_KEY`). Fix in AOS: the SessionStart block now carries one line naming `add_memory`. If you want
-automatic capture, that is a new Stop/SessionEnd hook calling `add_memory`; it does not exist yet.
+Nothing in AOS wrote memB automatically. The last rows (2026-10-14 21:27) came from one `memb_ingest` batch;
+after that the only write path was an agent calling `add_memory`, and nothing told agents to. The MCP itself
+works (verified against a temp `MEMB_DATA_DIR`: `add_memory` falls back to a verbatim save when extraction fails).
+Three writers now exist:
 
-Not the cause, but visible in logs: `GEMINI_API_KEY` is not set for the gateway (`~/.aos/secrets.env`), so
-`infer=True` extraction fails and rows are stored verbatim; and the `com.bdb.memb.webui` LaunchAgent is not
-loaded (WebUI on 8088 is down; it is not a write path).
+1. **Agent hint.** The SessionStart block carries one line naming `memb_mcp add_memory`.
+2. **Session-end save** (`memb-session-save.mjs`): Claude `SessionEnd`, agy `Stop` (payload unverified on live agy). OpenCode has no hook yet.
+   It condenses the transcript to `Task: ... Outcome: ...` (last assistant answer), hands it to memb-mcp `add_memory(infer=False)` in a
+   detached child (no LLM, no key, never delays the session) with `harness`/`session` provenance.
+   Skips sessions under 4 user turns or without a substantial last answer, saves each session id once
+   (`~/.aos/cache/memb-save/<id>`), drops env-like lines and redacts token shapes (memb-mcp filters again).
+   Off with `AOS_MEMB_AUTOSAVE=off`, `AOS_SESSION_START_CONTEXT=off`, delegated workers, or `"memorySave": "off"` in `~/.aos/v5-settings.json`.
+   Wired only when unified memory and context hooks are on.
+3. **Nightly ingest** (`bin/aos-memb-ingest.mjs`): launchd job `com.bdb.memb.ingest` (03:30) or systemd user timer on Linux, written by the memB
+   install step (none on Windows). Ingests each project under the workspace root (setting `memoryIngest.workspace`, default `~/dev/bdb-dev`) that has
+   `.openwiki` or `AGENTS.md`, skipping `-wt-` worktrees. Exits immediately when `memb` is excluded; `"memoryIngest": "off"` disables it.
+
+## LLM provider for memB extraction
+
+`infer=True` extraction uses an LLM. memB ships adapters for many providers, but its `run.py` hard-wires `gemini`, and the AOS gateway only
+passed `GEMINI_API_KEY` from `~/.aos/secrets.env`. A key the user stored for OpenWiki (`~/.openwiki/.env`: `OPENWIKI_PROVIDER`, `OPENWIKI_MODEL_ID`,
+`<PROVIDER>_API_KEY`) was never seen by memB. This regressed when v5 moved secrets out of the harness configs (4.19.1, `d53f7cc3`): the old inline
+`GEMINI_API_KEY` placeholder was filled from the installer's stored env; the launcher reads only `secrets.env`, where the key is not.
+
+Now `aos-mcp-env --memb-llm` (added to the `memb_mcp` entry by `wrapServer`) resolves the provider via `lib/memb-llm.js`, in order: environment,
+`~/.aos/secrets.env` (`MEMB_LLM_PROVIDER`, `MEMB_LLM_MODEL`, `MEMB_LLM_API_KEY`, `MEMB_LLM_BASE_URL`), then the OpenWiki choice
+(gemini, openai, openrouter, nvidia, openai-compatible incl. groq/xai/ollama/lmstudio, anthropic). It exports `MEMB_LLM_*` and, when found anywhere,
+`GEMINI_API_KEY`, so current memB works again with the Gemini key. Honouring `MEMB_LLM_*` needs the memB change in
+`docs/patches/memb-llm-provider.patch` (applies to memB `run.py`, `patch -p1`; verified with `--dry-run`, openai/openrouter path checked; anthropic
+needs `pip install anthropic` in the venv). Until memB releases it, only Gemini works.
 
 ## Overlap today
 
@@ -57,4 +78,4 @@ loaded (WebUI on 8088 is down; it is not a write path).
 - **Read:** import `buildMemoryBlock({event, prompt, cwd})` from `.claude/hooks/memb-inject.mjs` (as the OpenCode plugin does) and
   `buildHint()` from `.claude/hooks/aos-session-hint.mjs`. `event` is `SessionStart` or `UserPromptSubmit`.
 - **Switches:** `AOS_SESSION_START_CONTEXT=off`, `AOS_SESSION_HINT=off`, `AOS_DELEGATE_DEPTH>0` (delegated workers stay silent).
-- **Gap for AO 2.0:** a capture hook (Stop/SessionEnd to `add_memory`) and a fixed ingest scope are the two missing pieces.
+- **Gap for AO 2.0:** OpenCode session-end capture, and a Windows scheduler for the nightly ingest.
