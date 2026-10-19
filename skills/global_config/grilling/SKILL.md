@@ -41,4 +41,4 @@ Grilling produces a shared understanding, not a plan. Once the frontier is empty
 
 **Do not use the `AskUserQuestion` tool for a grilling round.** A round is numbered questions with recommended answers, answered in prose, in whatever order the user likes — several at once, or one with a correction to another. Forcing that into fixed-choice widgets loses exactly the nuance the interview exists to surface.
 
-**When the grilling ends in a written plan,** run `aos-plan-canvas modes` and offer the planning mode before opening it: standard plan-canvas (preselected) or, if detected, the pro planner. Ask every time. See "Planning mode choice" in the `plan-canvas` skill.
+**When the grilling ends in a written plan,** open it in plan-canvas with the planning mode resolved by the rules in the `plan-canvas` skill ("Planning mode choice"): `bdb-plan-builder` whenever it is available (it is the default when detected), `standard` only as fallback when it is not. Do not ask which mode to use.

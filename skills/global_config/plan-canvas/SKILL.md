@@ -262,21 +262,22 @@ mirror at `AOS_PLAN_CANVAS_MERMAID_URL` for air-gapped use.
 
 ## Planning mode choice
 
-Always run `aos-plan-canvas modes` first to discover what planning modes are available in your environment, then present only the available modes to the user with `standard` preselected as the default. Ask every time a plan review begins, even if modes have been configured previously — the environment may have changed between reviews.
+`bdb-plan-builder` is the default whenever it is available; `standard` is only the fallback for environments where the builder mode is not installed. Do not ask which mode to use and do not present a "standard or builder" question. Run `aos-plan-canvas modes` once per environment to detect availability, pick the default accordingly, and open.
 
 ```bash
-# Discover available modes
+# Discover available modes (once per environment)
 aos-plan-canvas modes
-# → { "default": "standard", "modes": [ {"id":"standard","label":"Standard Plan Canvas","available":true,"reason":null}, ... ] }
+# → { "default": "bdb-plan-builder", "modes": [ {"id":"standard","label":"Standard Plan Canvas","available":true,"reason":null}, {"id":"bdb-plan-builder","label":"BDB Plan Builder","available":true,"reason":null}, ... ] }
 ```
 
-After the user chooses (or selects the preselected default), open with that mode:
+Open with the resolved default:
 
 ```bash
-aos-plan-canvas open <file> --mode <chosen-id>
+aos-plan-canvas open <file> --mode bdb-plan-builder
+# builder mode unavailable → aos-plan-canvas open <file> --mode standard
 ```
 
-`bdb-plan-builder` (labeled "BDB Plan Builder") is listed as available only when `lib/plan-builder/index.js` exists in this skill's scripts directory. Until then, only `standard` is available.
+`bdb-plan-builder` (labeled "BDB Plan Builder") is listed as available only when `lib/plan-builder/index.js` exists in this skill's scripts directory. Until then, only `standard` is available and it is the default. Pass `--mode` explicitly: `open` without `--mode` still falls back to `standard` for plain `.md` files.
 
 ### `bdb-plan-builder`
 

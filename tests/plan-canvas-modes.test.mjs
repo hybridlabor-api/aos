@@ -62,7 +62,10 @@ describe('Plan Canvas modes', () => {
     assert.ok(standard);
     assert.strictEqual(standard.available, true);
     assert.strictEqual(standard.reason, null);
-    assert.strictEqual(output.default, 'standard');
+    // The builder is the default whenever it is available; standard is the fallback.
+    const builder = output.modes.find(m => m.id === 'bdb-plan-builder');
+    const expectedDefault = builder && builder.available ? 'bdb-plan-builder' : 'standard';
+    assert.strictEqual(output.default, expectedDefault);
   });
 
   test('bdb-plan-builder is available because lib/plan-builder/index.js exists', async () => {
