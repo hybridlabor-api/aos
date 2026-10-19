@@ -1,0 +1,13 @@
+{
+  "5.4.0": [
+    { "title": "Router setup + aos-router", "how": "Pick which agent does which role (default, claude-only, budget); inspect it any time.", "cmd": "aos-router show" },
+    { "title": "AOS Control mod", "how": "Claude Code pane for gate, fleet and sessions; it loads with the bdb-aos-control plugin.", "cmd": "aos status" },
+    { "title": "Flows (startcycle v2 teams)", "how": "Define custom roles and teams for a build run instead of the fixed pipeline.", "cmd": "aos-team --help" },
+    { "title": "go-gate setting", "how": "Settings has a go-gate row with modes hard, soft and off; update never re-enables a gate you turned off.", "cmd": "aos" },
+    { "title": "Duplicate agents fixed", "how": "Loose copies of plugin agents in ~/.claude/agents are retired on update; edited ones are kept and reported.", "cmd": "aos doctor" },
+    { "title": "Embed allowlist for AO 2.0", "how": "The AO dashboard may now be embedded by allow-listed origins only.", "cmd": "aos status" },
+    { "title": "clear-context skill", "how": "Save a verified handoff before /clear or a context limit, then resume from it.", "cmd": "/clear-context save" },
+    { "title": "Context profiles", "how": "Lower start-of-session tokens with full, orchestrator, worker or small.", "cmd": "aos context" },
+    { "title": "aos allow", "how": "Add permission rules for blocked remote or aos commands; you run it, agents never do.", "cmd": "aos allow" }
+  ]
+}
