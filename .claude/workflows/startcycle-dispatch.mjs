@@ -77,6 +77,135 @@ if (typeof process !== 'undefined') {
   } catch {}
 }
 
+let workstreamMod = null;
+if (typeof process !== 'undefined') {
+  try {
+    workstreamMod = await import(new URL('../../lib/roles/workstream.mjs', import.meta.url).href);
+  } catch {}
+}
+
+export const AGENT_ALIASES = workstreamMod?.AGENT_ALIASES || Object.freeze({
+  'engineering': 'godmode-engineering',
+  'godmode-engineering': 'engineering',
+  'godmode_engineering': 'engineering',
+  'ui_ux': 'godmode-ui-ux',
+  'ui-ux': 'godmode-ui-ux',
+  'godmode-ui-ux': 'ui_ux',
+  'godmode_ui_ux': 'ui_ux',
+  'shipping': 'godmode-shipping',
+  'godmode-shipping': 'shipping',
+  'godmode_shipping': 'shipping',
+  'media_eventtech': 'godmode-media-eventtech',
+  'media-eventtech': 'godmode-media-eventtech',
+  'godmode-media-eventtech': 'media_eventtech',
+  'godmode_media_eventtech': 'media_eventtech',
+});
+
+export function resolveAgentName(name) {
+  if (workstreamMod?.resolveAgentName) return workstreamMod.resolveAgentName(name);
+  if (typeof name !== 'string') return name;
+  const normalized = name.trim();
+  const stripped = normalized.includes(':') ? normalized.split(':').pop() : normalized;
+  return AGENT_ALIASES[stripped] || stripped;
+}
+
+export function canonicalNodeId(name) {
+  if (workstreamMod?.canonicalNodeId) return workstreamMod.canonicalNodeId(name);
+  if (typeof name !== 'string') return name;
+  const stripped = name.includes(':') ? name.split(':').pop() : name;
+  if (['architect', 'techlead', 'ui_ux', 'engineering', 'media_eventtech', 'reviewer', 'shipping'].includes(stripped)) {
+    return stripped;
+  }
+  const resolved = AGENT_ALIASES[stripped];
+  if (resolved && ['architect', 'techlead', 'ui_ux', 'engineering', 'media_eventtech', 'reviewer', 'shipping'].includes(resolved)) {
+    return resolved;
+  }
+  return stripped;
+}
+
+export function canonicalAgentType(name) {
+  if (workstreamMod?.canonicalAgentType) return workstreamMod.canonicalAgentType(name);
+  if (typeof name !== 'string') return name;
+  const stripped = name.includes(':') ? name.split(':').pop() : name;
+  if (['godmode-ui-ux', 'godmode-engineering', 'godmode-media-eventtech', 'godmode-shipping'].includes(stripped)) {
+    return stripped;
+  }
+  const resolved = AGENT_ALIASES[stripped];
+  if (resolved && ['godmode-ui-ux', 'godmode-engineering', 'godmode-media-eventtech', 'godmode-shipping'].includes(resolved)) {
+    return resolved;
+  }
+  return stripped;
+}
+
+export function extractWorkstreamsFlag(text) {
+  if (workstreamMod?.extractWorkstreamsFlag) return workstreamMod.extractWorkstreamsFlag(text);
+  if (typeof text !== 'string') return { workstreams: false, goal: text };
+  const flagPattern = /--workstreams\b/i;
+  const hasFlag = flagPattern.test(text);
+  const goal = hasFlag ? text.replace(flagPattern, '').replace(/\s{2,}/g, ' ').trim() : text;
+  return { workstreams: hasFlag, goal };
+}
+
+export function validateExecutionManifest(manifest, options = {}) {
+  if (workstreamMod?.validateExecutionManifest) return workstreamMod.validateExecutionManifest(manifest, options);
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return { valid: false, errors: [{ code: 'ERR_INVALID_MANIFEST', message: 'Execution manifest must be an object' }] };
+  }
+  if (manifest.createdBy !== 'architect') {
+    return { valid: false, errors: [{ code: 'ERR_INVALID_CREATED_BY', message: 'createdBy must be architect' }] };
+  }
+  if (!Array.isArray(manifest.workstreams) || manifest.workstreams.length === 0 || manifest.workstreams.length > 6) {
+    return { valid: false, errors: [{ code: 'ERR_WORKSTREAM_CAP', message: 'workstreams must be 1 to 6' }] };
+  }
+  return { valid: true, errors: [] };
+}
+
+export function buildNodesFromManifest(manifest, options = {}) {
+  if (workstreamMod?.buildNodesFromManifest) return workstreamMod.buildNodesFromManifest(manifest, options);
+  if (!manifest?.workstreams || !Array.isArray(manifest.workstreams)) return [];
+  return manifest.workstreams.map((ws) => ({
+    id: ws.id,
+    label: ws.label || ws.id,
+    agentType: canonicalAgentType(ws.agentType || ws.id),
+    personaFile: ws.personaFile || `.claude/agents/${canonicalAgentType(ws.agentType || ws.id)}.md`,
+    role: ws.role || 'build',
+    artifactKey: ws.artifactKey || ws.id,
+    writes: `production_artifacts/state.d/${ws.id}.json`,
+    optional: false,
+    skills: ws.skills || [],
+    playbooks: ws.playbooks || [],
+    gates: ws.gates || [],
+    instructions: ws.instructions || `Execute workstream ${ws.id}. Produce ${ws.artifactKey || ws.id} artifact.`,
+  }));
+}
+
+export function deriveWorkstreamGates(workstreams, fallbackGates = ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security']) {
+  if (workstreamMod?.deriveWorkstreamGates) return workstreamMod.deriveWorkstreamGates(workstreams, fallbackGates);
+  if (!Array.isArray(workstreams) || workstreams.length === 0) return [...fallbackGates];
+  const custom = [];
+  for (const ws of workstreams) {
+    if (Array.isArray(ws.gates)) {
+      for (const g of ws.gates) {
+        if (typeof g === 'string' && g.trim() && !custom.includes(g)) custom.push(g);
+      }
+    }
+  }
+  return custom.length > 0 ? custom : [...fallbackGates];
+}
+
+export function resolveBuildPlan(params = {}) {
+  if (workstreamMod?.resolveBuildPlan) return workstreamMod.resolveBuildPlan(params);
+  const { workstreamsFlag = false, executionManifest = null, effectiveNodes = {}, needsMedia = false, skipNodes = [], profile = null } = params;
+  if (!workstreamsFlag || !executionManifest?.workstreams) {
+    return Object.keys(effectiveNodes)
+      .filter((id) => effectiveNodes[id]?.role === 'build')
+      .filter((id) => (profile ? !skipNodes.includes(id) : (id !== 'media_eventtech' || needsMedia)))
+      .map((id) => ({ id, ...effectiveNodes[id] }));
+  }
+  return buildNodesFromManifest(executionManifest, params);
+}
+
+
 // Polyfilled module access for standalone CLI and hook executions outside Claude runtime
 let fs = typeof process !== 'undefined' && typeof process.getBuiltinModule === 'function'
   ? process.getBuiltinModule('node:fs')
@@ -466,7 +595,23 @@ if (typeof globalThis.agent === 'undefined') {
     }
 
     if (label.startsWith('architect')) {
-      return { planPath: 'production_artifacts/00_execution_plan.md', needsMedia: false };
+      const baseRes = {
+        planPath: 'production_artifacts/00_execution_plan.md',
+        needsMedia: false,
+        architectureSpec: 'production_artifacts/00_architecture.json',
+        architectureHtml: 'production_artifacts/00_architecture.html',
+        deliverOk: true
+      };
+      if (prompt.includes('execution_manifest')) {
+        baseRes.execution_manifest = {
+          createdBy: 'architect',
+          workstreams: [
+            { id: 'ws_core', agentType: 'godmode-engineering', skills: ['godmode-engineering'], artifactKey: 'backend' },
+            { id: 'ws_ui', agentType: 'godmode-ui-ux', skills: ['godmode-ui-ux'], artifactKey: 'frontend' }
+          ]
+        };
+      }
+      return baseRes;
     }
     if (label.startsWith('techlead')) {
       return { approved: true, reason: 'Approved capability map' };
@@ -475,10 +620,31 @@ if (typeof globalThis.agent === 'undefined') {
       return { findings: [], blockingCount: 0 };
     }
     if (label.startsWith('shipping')) {
+      const gateObj = { lint: 'pass', typecheck: 'pass', tests: 'pass', a11y: 'pass', seo: 'pass', security: 'pass' };
+      if (options?.schema?.properties?.gate?.required) {
+        for (const k of options.schema.properties.gate.required) {
+          gateObj[k] = 'pass';
+        }
+      }
       return {
-        gate: { lint: 'pass', typecheck: 'pass', tests: 'pass', a11y: 'pass', seo: 'pass' },
+        gate: gateObj,
         blockingNodes: [],
       };
+    }
+    if (label.startsWith('ws_') || ['ui_ux', 'engineering', 'media_eventtech'].includes(label)) {
+      if (fs) {
+        try {
+          const stateDDir = path ? path.resolve('production_artifacts', 'state.d') : 'production_artifacts/state.d';
+          fs.mkdirSync(stateDDir, { recursive: true });
+          const fragPath = path.join(stateDDir, `${label}.json`);
+          fs.writeFileSync(fragPath, JSON.stringify({
+            node: label,
+            artifacts: { [label]: `production_artifacts/${label}_spec.md` },
+            findings: []
+          }, null, 2) + '\n');
+        } catch {}
+      }
+      return { needsHuman: false };
     }
 
     return { needsHuman: false };
@@ -844,6 +1010,32 @@ if (!rawGoal) {
   );
 }
 
+const { workstreams: workstreamsFromFlag, goal: goalAfterWs } = extractWorkstreamsFlag(rawGoal);
+const hasWorkstreamsFlag = workstreamsFromFlag || !!resolvedArgs?.workstreams;
+
+let roleRegistry = null;
+if (hasWorkstreamsFlag && typeof process !== 'undefined') {
+  try {
+    const regMod = await import(new URL('../../lib/roles/role-registry.mjs', import.meta.url).href);
+    if (typeof regMod?.loadRoleRegistry === 'function') {
+      roleRegistry = regMod.loadRoleRegistry({ cwd: process.cwd() });
+    }
+  } catch {}
+}
+
+const activeRoleRegistry = roleRegistry || {
+  has(id) {
+    const canon = canonicalNodeId(id);
+    return !!(registryNodes[id] || registryNodes[canon]);
+  },
+  get(id) {
+    const canon = canonicalNodeId(id);
+    return registryNodes[id] || registryNodes[canon] || null;
+  },
+  availableSkills: roleRegistry?.availableSkills || null,
+  availablePlaybooks: roleRegistry?.availablePlaybooks || null,
+};
+
 // --skill=<name>, repeatable, extracted out of the raw goal text before
 // anything else sees it -- e.g. "--skill=my-custom-skill Add OAuth login"
 // becomes goal "Add OAuth login" plus one mandated skill name. This is the
@@ -899,7 +1091,7 @@ function extractMandatorySkills(text) {
   return { skills, goal, malformed };
 }
 
-const { profile: profileFromFlag, goal: goalAfterProfile, malformed: profileMalformed, duplicates: profileDuplicates } = extractProfileFlag(rawGoal);
+const { profile: profileFromFlag, goal: goalAfterProfile, malformed: profileMalformed, duplicates: profileDuplicates } = extractProfileFlag(goalAfterWs);
 if (profileDuplicates > 0) {
   return await escalate('--profile was given more than once. Name exactly one profile, e.g. --profile=kicad. Refusing to pick one silently.');
 }
@@ -1072,6 +1264,7 @@ if (mandatorySkillNames.length > 0) {
 let planPath = null;
 let needsMedia = false;
 let skipNodes = [];
+let executionManifest = null;
 // A profile run tells Architect and TechLead which domain and build nodes the plan is for; the default run's prompts are unchanged.
 const profileBuildIds = profile ? Object.keys(effectiveNodes).filter((id) => effectiveNodes[id]?.role === 'build') : [];
 const profileOptionalIds = profileBuildIds.filter((id) => effectiveNodes[id]?.optional);
@@ -1102,8 +1295,14 @@ while (!approved) {
       `link it from the relevant plan component with a url: production_artifacts/00_architecture.html line, ` +
       `and set state.goal, state.phase = "plan", state.artifacts.plan to the plan path, state.artifacts.architecture to production_artifacts/00_architecture.html only on a passing showcase receipt (9/9 checks, 0 errors), and state.mandatory_skills to ${JSON.stringify(mandatorySkills)}. ` +
       `On a failed validate/deliver preserve the previous HTML and report deliverOk false instead of proceeding silently. ` +
+      (hasWorkstreamsFlag
+        ? `This run uses dynamic workstreams (--workstreams). Design an execution manifest with between 1 and 4 workstreams (hard cap 6). ` +
+          `Each workstream must define: "id" (matching ^[a-z0-9_]+$), "agentType" (e.g. godmode-engineering, godmode-ui-ux, or a registered/ad-hoc specialist), ` +
+          `"skills" (non-empty array of valid installed skills), "artifactKey" (key in state.artifacts it produces), and optional "playbooks" and "gates". ` +
+          `Set state.execution_manifest in state.json with createdBy: "architect" and effort: "S"|"M"|"L".\n\n`
+        : '') +
       (profileNote ?? `Decide whether the goal needs the Media_EventTech build node (TouchDesigner/show-control/3D/media work) -- most goals don't.\n\n`) +
-      `Return only: { "planPath": string, "needsMedia": boolean, "architectureSpec": string, "architectureHtml": string, "deliverOk": boolean${profileOptionalIds.length > 0 ? ', "skipNodes": string[]' : ''} }.`,
+      `Return only: { "planPath": string, "needsMedia": boolean, "architectureSpec": string, "architectureHtml": string, "deliverOk": boolean${profileOptionalIds.length > 0 ? ', "skipNodes": string[]' : ''}${hasWorkstreamsFlag ? ', "execution_manifest": object' : ''} }.`,
     {
       label: `architect-${iteration}`,
       agentType: architectNode.agentType,
@@ -1117,6 +1316,33 @@ while (!approved) {
           architectureSpec: { type: 'string' },
           architectureHtml: { type: 'string' },
           deliverOk: { type: 'boolean' },
+          ...(hasWorkstreamsFlag ? {
+            execution_manifest: {
+              type: 'object',
+              required: ['workstreams', 'createdBy'],
+              properties: {
+                createdBy: { type: 'string', enum: ['architect'] },
+                effort: { type: 'string', enum: ['S', 'M', 'L'] },
+                workstreams: {
+                  type: 'array',
+                  minItems: 1,
+                  maxItems: 6,
+                  items: {
+                    type: 'object',
+                    required: ['id', 'agentType', 'skills', 'artifactKey'],
+                    properties: {
+                      id: { type: 'string' },
+                      agentType: { type: 'string' },
+                      role: { type: 'string' },
+                      skills: { type: 'array', items: { type: 'string' } },
+                      artifactKey: { type: 'string' },
+                      gates: { type: 'array', items: { type: 'string' } },
+                    },
+                  },
+                },
+              },
+            },
+          } : {}),
           ...(profileOptionalIds.length > 0 ? { skipNodes: { type: 'array', items: { type: 'string' } } } : {}),
         },
       },
@@ -1172,6 +1398,34 @@ while (!approved) {
     lastRejectionReason = `Archify boundary verification failed; previous HTML preserved: ${boundaryError}. Repair the spec and deliver again.`;
     continue;
   }
+
+  if (hasWorkstreamsFlag) {
+    const manifest = architectResult?.execution_manifest;
+    if (!manifest) {
+      iteration++;
+      if (iteration >= MAX_ITERATIONS) {
+        return await escalate('Architect did not return an execution_manifest as requested by --workstreams.', { planPath });
+      }
+      lastRejectionReason = 'Architect did not return an execution_manifest as requested by --workstreams. You must provide an execution_manifest object.';
+      continue;
+    }
+    const validation = validateExecutionManifest(manifest, {
+      roleRegistry: activeRoleRegistry,
+      availableSkills: activeRoleRegistry?.availableSkills || (mandatorySkills.length ? new Set(mandatorySkills) : null),
+      availablePlaybooks: activeRoleRegistry?.availablePlaybooks,
+    });
+    if (!validation.valid) {
+      iteration++;
+      const valError = validation.errors.map((e) => e.message).join('; ');
+      if (iteration >= MAX_ITERATIONS) {
+        return await escalate(`TechLead validation gate rejected execution_manifest: ${valError}`, { planPath, manifest });
+      }
+      lastRejectionReason = `TechLead validation gate rejected execution_manifest: ${valError}. Fix the workstream manifest.`;
+      continue;
+    }
+    executionManifest = manifest;
+  }
+
   try {
     if (fs && fs.existsSync && fs.existsSync(architectureHtml) && child_process) {
       const canvas = child_process.spawn('aos-plan-canvas', ['open', architectureHtml, '--no-open'], { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: false, detached: true });
@@ -1187,6 +1441,11 @@ while (!approved) {
       `Apply the architecture gate: reject unless ${architectureSpec} and ${architectureHtml} both exist, ` +
       `the plan links the diagram with a url: ${architectureHtml} line, ` +
       `and the deliver receipt is a passing showcase receipt (9/9 checks, 0 errors, failure preserves the previous HTML). ` +
+      (hasWorkstreamsFlag
+        ? `This run uses dynamic workstreams (--workstreams). Validate the execution_manifest: ` +
+          `verify that every workstream role, skill, and playbook exists, workstream count is between 1 and 4 (max 6), ` +
+          `and IDs match ^[a-z0-9_]+$. Reject back to Architect if anything is invalid.\n`
+        : '') +
       (mandatorySkills.length > 0
         ? `The user also required this run to use the following skill(s) via /startcycle-graph's --skill flag: ${mandatorySkills.join(', ')}. ` +
           `Reject the plan if it does not actually account for them — catching that here costs one planning round, ` +
@@ -1195,7 +1454,7 @@ while (!approved) {
       (profile
         ? `This run uses the "${profile.domain}" domain profile: approve only if the plan covers its build nodes (${profileBuildIds.join(', ')}) and does not assume a software frontend/backend split.\n`
         : '') +
-      `Record your decision in state.json (plan approval, state.phase = "build" if approved).\n\n` +
+      `Record your decision in state.json (plan approval, state.phase = "build" if approved${hasWorkstreamsFlag ? ', and record execution_manifest in state.execution_manifest' : ''}).\n\n` +
       `Return only: { "approved": boolean, "reason": string }.`,
     {
       label: `techlead-${iteration}`,
@@ -1232,10 +1491,15 @@ while (!approved) {
 // media_eventtech specifically) Architect's needsMedia decision.
 // ---------------------------------------------------------------------
 
-const BUILD_NODES = Object.keys(effectiveNodes)
-  .filter((id) => effectiveNodes[id]?.role === 'build')
-  .filter((id) => (profile ? !skipNodes.includes(id) : (id !== 'media_eventtech' || needsMedia)))
-  .map((id) => ({ id, ...effectiveNodes[id] }));
+const BUILD_NODES = resolveBuildPlan({
+  workstreamsFlag: hasWorkstreamsFlag,
+  executionManifest,
+  effectiveNodes,
+  needsMedia,
+  skipNodes,
+  profile,
+  roleRegistry: activeRoleRegistry,
+});
 
 if (BUILD_NODES.length === 0) {
   return await escalate('No build-role nodes resolved from .agents/nodes.json for this goal.');
@@ -1304,10 +1568,14 @@ while (!reviewedClean) {
   // Reviewer: ARTIFACT + CONTRACT only, per .agents/graph.md's discipline --
   // reviewerStateNote() (not dispatchNote()) is what actually enforces this;
   // see that function's own comment for why the distinction matters.
+  const reviewerArtifactsNote = hasWorkstreamsFlag && executionManifest?.workstreams
+    ? executionManifest.workstreams.map((ws) => `state.artifacts.${ws.artifactKey || ws.id}`).join(', ')
+    : (profile && profile.artifacts ? Object.values(profile.artifacts).join(', ') : `production_artifacts/01_frontend_spec.md, 02_backend_schema.md${needsMedia ? ', 03_media_pipeline.md' : ''}`);
+
   const reviewResult = await agent(
     `You are acting as the ${reviewerNode.label} agent (${reviewerNode.personaFile}). ${reviewerStateNote()}${skillsNote(reviewerNode)}\n\n` +
       `Read the plan/contract at ${planPath} and the artifacts it produced ` +
-      `(${(profile && profile.artifacts ? Object.values(profile.artifacts).join(', ') : `production_artifacts/01_frontend_spec.md, 02_backend_schema.md${needsMedia ? ', 03_media_pipeline.md' : ''}`)}, and the actual code). ` +
+      `(${reviewerArtifactsNote}, and the actual code). ` +
       `Do an adversarial review against the contract: find what is wrong, do not validate, do not summarize. ` +
       `Do not assume the implementation is correct just because it exists. ` +
       (mandatorySkills.length > 0
@@ -1414,8 +1682,12 @@ while (!reviewedClean) {
 // state.d + merge treatment as the build/review loop above.
 // ---------------------------------------------------------------------
 
-const GATE_KEYS = profile ? Object.keys(profile.gates) : ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security'];
-const GATE_LABELS = profile ? Object.entries(profile.gates).map(([k, v]) => `${k} (${v})`).join(', ') : 'lint, typecheck, tests, a11y, seo, security';
+const GATE_KEYS = hasWorkstreamsFlag && executionManifest?.workstreams
+  ? deriveWorkstreamGates(executionManifest.workstreams)
+  : (profile ? Object.keys(profile.gates) : ['lint', 'typecheck', 'tests', 'a11y', 'seo', 'security']);
+const GATE_LABELS = profile
+  ? Object.entries(profile.gates).map(([k, v]) => `${k} (${v})`).join(', ')
+  : GATE_KEYS.join(', ');
 const GATE_VALUE_ENUM = ['pass', 'fail', 'skip'];
 let allGatesPass = false;
 let lastGate = null;

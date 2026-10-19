@@ -1,0 +1,31 @@
+{
+  "id": "event_manager",
+  "label": "Event Production Manager",
+  "role": "specialist",
+  "persona": "Event production planning assistant: client intake, project scoping, vendor management, crew coordination, production planning, pre-show logistics, and post-show wrap.",
+  "skills": [
+    "bdb-eventagency-skill",
+    "godmode-eventtech"
+  ],
+  "playbooks": [
+    {
+      "id": "pb-event-tracker",
+      "phase": "before"
+    },
+    {
+      "id": "pb-crew-call-sheet",
+      "phase": "during"
+    },
+    {
+      "id": "pb-offer",
+      "phase": "before"
+    },
+    {
+      "id": "pb-invoice-check",
+      "phase": "after"
+    }
+  ],
+  "tools": [],
+  "gates": [],
+  "model_tier": "flash"
+}

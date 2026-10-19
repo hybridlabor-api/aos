@@ -200,6 +200,16 @@ Before delegating, open the final `prompt_draft.md` in the Plan Canvas for visua
 
 *(If running in OpenCode, always print the Canvas URL in chat.)*
 
+## Teams and roles
+
+When crafting prompts and delegating to multi-agent teams, map requested roles and team topologies to the shared registry:
+
+- **Team selection & inspection**: Use `aos-team list` to browse available team presets, `aos-team show <id>` to inspect role composition, and `aos-team new <id>` to define new team configurations. Registry precedence: Project (`.aos/teams/`, `.aos/roles/`) > User (`~/.aos/teams/`, `~/.aos/roles/`) > Shipped defaults (`.agents/nodes.json` plus the role and team presets bundled with AOS).
+- **Deriving from playbooks**: When a project aligns with an existing playbook, derive the required team automatically from the playbook's frontmatter `requires:` block (`skills`, `agents`, `mcps`) using `aos-team new <id> --from-playbook <name>`.
+- **Effort tiers**: Team scale maps to effort tiers and repair iteration rounds: `S` = 3 rounds (small/focused), `M` = 4 rounds (standard), `L` = 5 rounds (large/complex).
+- **Playbook phases**: Equip roles with playbooks categorized by phase: `before` (scaffolding and setup), `during` (work method and implementation), `after` (verification, security, and shipping).
+- **Ad hoc roles**: If a project requires specialized ad hoc roles, Architect or the prompt crafter may compose them strictly from existing skills and playbooks with TechLead approval. Ad hoc roles cannot introduce unverified tools or MCPs and exist only for the run unless saved.
+
 ---
 
 ## 🚀 Delegation Protocol

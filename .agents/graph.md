@@ -33,6 +33,15 @@ before returning — this is what replaces "hand-off," and it's why a node
 never needs another node's reasoning: `goal` and prior artifacts are always
 read from the same typed record, not re-derived from a sibling's prose.
 
+### Team and Execution Manifest (v2 optional fields)
+
+For custom team and dynamic workstream runs, `state.json` additively supports two optional properties:
+- **`team`**: The active team configuration (`id`, `label`, `roles[]`, `playbooks[]`, `gates[]`, `effort: S|M|L`). When absent, the pipeline runs the legacy 7-node default team byte-identically.
+- **`execution_manifest`**: Dynamic workstreams plan authored by Architect and approved by TechLead (`createdBy: "architect"`, `effort: S|M|L`, `workstreams: [...]`). Each workstream defines `id`, `agentType`, optional `role`, `skills[]`, `playbooks[]`, `artifactKey`, and per-stream `gates[]`. Hard-capped at 6 workstreams (default max 4).
+- **`workstreams`**: Array of active workstream runtime definitions.
+
+Existing state files without these fields continue to validate strictly against `.agents/state.schema.json`.
+
 ## Mandatory Skill Injection
 
 `/startcycle-graph --skill=<name> <goal>` (repeatable: `--skill=a --skill=b

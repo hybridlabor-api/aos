@@ -57,6 +57,16 @@ instruction, not a contract. See
 [`.agents/graph.md`](../../../.agents/graph.md)'s "Mandatory Skill
 Injection" section for the same mechanic in the durable graph variant.
 
+## Teams and roles
+
+Even in a lightweight, disposable fan-out, worker roles can resolve through the shared registry instead of inventing arbitrary role shapes:
+
+- **Team discovery**: Use `aos-team list` to view predefined teams, `aos-team show <id>` to inspect roles, or `aos-team new <id>` to create a project team. Resolution checks Project (`.aos/teams/`, `.aos/roles/`) > User (`~/.aos/teams/`, `~/.aos/roles/`) > Shipped defaults (`.agents/nodes.json` plus the role and team presets bundled with AOS).
+- **Playbook requirements**: When a task corresponds to a playbook, derive worker roles from the playbook's frontmatter `requires:` block (via `aos-team new <id> --from-playbook <name>`), pulling required skills and agents automatically.
+- **Effort & rounds**: Sizing effort guides loop bounds: `S` = 3 rounds, `M` = 4 rounds, `L` = 5 rounds.
+- **Playbook phases**: Playbook tasks attach with phase discipline: `before` (scaffold/prep), `during` (execution), or `after` (verification).
+- **Ad hoc roles**: Ad hoc worker roles must be composed strictly from existing skills and playbooks with TechLead approval (or self-verification on light graphs), never introducing unverified tools or MCPs.
+
 ## 2. Detect what's available — before deciding how workers run
 
 ```bash
