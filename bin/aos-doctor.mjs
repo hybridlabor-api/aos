@@ -544,7 +544,7 @@ function checkAgyWorkspaceMcp() {
   }
   add('agy', 'agy workspace MCP', false,
     `${tilde(f)} lists servers other than aos/mcsc (${foreign.join(', ')}): agy loads them in $HOME`,
-    'aos repair', true);
+    'aos update moves an AOS template copy aside; a user-owned file must be edited or removed by hand', true);
 }
 
 // Secrets belong in ~/.aos/secrets.env (0600), never inline in a harness MCP config. Names only, never values.
