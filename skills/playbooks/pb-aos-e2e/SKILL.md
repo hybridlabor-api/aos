@@ -2,10 +2,9 @@
 name: pb-aos-e2e
 description: >-
   AOS release E2E check in a clean sandbox: installs the packed tarball
-  non-interactively, then verifies doctor, per-harness gate hooks, the Settings
-  gate off/on round trip, session-context caps, memB inject, plan-canvas plus
-  trail, hub status, update-keeps-settings and a clean uninstall. Use before a
-  release is merged or published.
+  non-interactively, then verifies doctor, per-harness gate hooks, the gate
+  round trip, context caps, memB inject, hub, update and clean uninstall.
+  Use before a release PR merges.
 category: engineering-method
 kind: playbook
 trigger: ["aos e2e", "release e2e", "aos release check", "installer e2e", "e2e check aos"]
@@ -36,7 +35,7 @@ What you get: one automated pass over the whole install lifecycle of a packed AO
 
 The check must run against a throwaway `$HOME` inside a container, VM or dedicated test user — never the operator's real home. Pick the first available runner:
 
-1. **netcup aos-ci runner (preferred):** `~/.aos/cloud-sandbox/scripts/aos-ci-run <worktree>` — passes the worktree to the cloud sandbox runner and runs `scripts/e2e/aos-e2e.sh` inside it. Unverified when the script is absent locally; skip to the next runner.
+1. **netcup aos-ci runner (preferred):** `~/.aos/cloud-sandbox/scripts/aos-ci-run` with the worktree as its argument — passes the worktree to the cloud sandbox runner and runs the E2E script inside it. Unverified when the script is absent locally; skip to the next runner.
 2. **Docker:** `docker run --rm -v "$PWD":/aos -w /aos node:24-bookworm bash scripts/e2e/aos-e2e.sh` — the script itself requires `AOS_TEST_SANDBOX=1` and creates its own fresh `HOME` with `mktemp -d`.
 3. **Local dry shape (no container):** not allowed for the install/uninstall steps. `tests/installer-e2e.sh` shows the minimal shape; the E2E script refuses to run without `AOS_TEST_SANDBOX=1`.
 
@@ -44,7 +43,7 @@ The check must run against a throwaway `$HOME` inside a container, VM or dedicat
 
 1. **Build the tarball** — `npm pack --pack-destination <out_dir>` in `repo_dir`:
    - Command: `npm pack --pack-destination aos-e2e-output`
-   - Expected: one `aos-<version>.tgz` (package `@hybridlabor-api/aos`) and the `prepack` hash build (`scripts/build-shipped-hashes.mjs`) exits 0.
+   - Expected: one `aos-<version>.tgz` (package `@hybridlabor-api/aos`) and the `prepack` hash build from scripts/build-shipped-hashes.mjs exits 0.
    - Pass: a tarball path exists. Fail: npm errors or no tarball produced.
 2. **Install from the tarball, non-interactive** — global install, then install into a fresh `HOME`:
    - Command: `npm install -g <tarball>` then `HOME=<sandbox_home> aos -y --profile standard --platforms=1,2,5` (1 = Antigravity, 2 = Claude, 5 = Codex; OpenCode is wired when its binary is detected).
@@ -77,7 +76,7 @@ The check must run against a throwaway `$HOME` inside a container, VM or dedicat
 8. **plan-canvas open + trail produce an agenttrail plan**:
    - Command: `aos-plan-canvas open <plan>`, then check the trail board shows the plan (`aos-trail`, or open the agenttrail board).
    - Expected: the canvas serves the plan in a browser and the trail lists it as a live plan.
-   - Pass/fail: judge interactively — needs a browser and display. `scripts/e2e/aos-e2e.sh` records `SKIP (needs a browser)` here.
+   - Pass/fail: judge interactively — needs a browser and display. The E2E script records `SKIP (needs a browser)` here.
 9. **Hub supervisor status**:
    - Command: `HOME=<sandbox_home> aos hub start` then `HOME=<sandbox_home> aos hub status --json`
    - Expected: status JSON answers with `ok: true` and `service: "aos-hub"`.
