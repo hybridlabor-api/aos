@@ -351,6 +351,26 @@ Then hand off: **the machine is ready; per-project setup runs through
 
 ---
 
+## Router and team
+
+The router is advisory: it suggests which harness/worker fits a role
+(architect, techlead, reviewer, builder, scout) and never blocks. The shipped
+table is `config/router.json`; override it per user in `~/.aos/router.json`
+and per project in `.aos/router.json` (project beats user beats shipped).
+
+- Installer step "Team & Router" is optional; the safe default keeps the shipped table.
+  It asks only for your main harness and which targets you have (claude,
+  opencode-go, agy, codex, claude-glm), detecting installed CLIs, never guessing.
+- Non-interactive: `--router=default|claude-only|budget` and `--context=<profile>`.
+- Inspect and edit afterwards: `aos-router show`, `aos-router test <role>`,
+  `aos-router set <role> <target[,target...]> [--project|--user]`.
+- Peers: `aos-a2a list` shows running A2A peers. Read-only information; setup writes no A2A config.
+
+## 5.3 state
+
+Record what this machine ended up with, read from `~/.aos/v5-settings.json` and the router files, without changing anything:
+context profile, updates policy (notify, auto or off), installed mods, gateway on/off, memory on/off, and whether `~/.aos/router.json` exists.
+
 ## Red flags
 
 - Reporting "AOS installed" on the strength of a successful `npx` run. The
