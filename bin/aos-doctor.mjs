@@ -3,7 +3,7 @@
 // cross-platform harness synchronization, daemons and hooks across macOS and Windows.
 // Usage:
 //   aos doctor
-//   node bin/aos-doctor.mjs [--json] [--net]
+//   node bin/aos-doctor.mjs [--json] [--net] [--resources [--sample <seconds>]]
 
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -46,6 +46,16 @@ const NET = process.argv.includes('--net');
 const IS_MAC = process.platform === 'darwin';
 const IS_WIN = process.platform === 'win32';
 const IS_ARM64 = process.arch === 'arm64';
+
+// `aos doctor --resources [--sample <s>] [--json]`: read-only process census, nothing else runs.
+if (process.argv.includes('--resources')) {
+  const { runResources, format } = await import('../lib/resources.mjs');
+  const at = process.argv.indexOf('--sample');
+  const sampleSec = at >= 0 && Number.isFinite(Number(process.argv[at + 1])) ? Number(process.argv[at + 1]) : 10;
+  const result = await runResources({ sampleSec, home: HOME });
+  console.log(JSON_OUT ? JSON.stringify(result, null, 2) : format(result));
+  process.exit(0);
+}
 
 const h = (...p) => path.join(HOME, ...p);
 const hc = (...p) => path.join(claudeConfigDir(HOME), ...p);

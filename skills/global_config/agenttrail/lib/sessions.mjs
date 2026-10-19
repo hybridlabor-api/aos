@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const IDLE_MS = 15 * 60 * 1000
+const ENDED_KEEP_MS = 24 * 60 * 60 * 1000 // ponytail: linear sweep per apply, fine for hundreds of sessions
 
 export function mergeKey(event) {
   const id = event?.session?.id
@@ -26,12 +27,18 @@ export class SessionTable {
 
   all() { return [...this.sessions.values()].sort((a, b) => b.lastEventAt - a.lastEventAt) }
 
+  pruneEnded() {
+    const cutoff = this.now() - ENDED_KEEP_MS
+    for (const [k, s] of this.sessions) if (s.done && s.lastEventAt < cutoff) this.sessions.delete(k)
+  }
+
   apply(event) {
     if (!event || typeof event !== 'object') return null
     const key = mergeKey(event)
     const at = Date.parse(event.ts) || this.now()
     let s = this.sessions.get(key)
     if (!s) {
+      this.pruneEnded()
       s = {
         id: key,
         harnesses: [],

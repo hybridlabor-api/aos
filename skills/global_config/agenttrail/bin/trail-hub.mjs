@@ -174,6 +174,7 @@ async function currentModel({ fresh = false } = {}) {
 // Rebuilds are the hub's only real cost: git is spawned per worktree. So a build runs
 // only while an SSE client listens, and at most once per BROADCAST_MIN_MS, trailing.
 let broadcastTimer = null
+let lastPayload = ''
 let lastBuildAt = 0
 function broadcast() {
   modelCache = null
@@ -183,6 +184,9 @@ function broadcast() {
     broadcastTimer = null
     lastBuildAt = Date.now()
     currentModel({ fresh: true }).then((m) => {
+      const same = JSON.stringify({ ...m, now: 0 })
+      if (same === lastPayload) return
+      lastPayload = same
       const payload = `data: ${JSON.stringify(m)}\n\n`
       for (const res of clients) { try { res.write(payload) } catch { clients.delete(res) } }
     }).catch(() => { /* the next event or tick rebuilds it */ })
@@ -190,7 +194,8 @@ function broadcast() {
   broadcastTimer.unref()
 }
 
-const tick = setInterval(broadcast, 2000)
+// events drive the board; this slow tick is only a safety net (a 2 s tick re-ran git per worktree for every open tab)
+const tick = setInterval(broadcast, 30000)
 tick.unref()
 
 async function serveStatic(req, res, urlPath) {

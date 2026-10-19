@@ -139,7 +139,7 @@ export function buildModel({
   for (const entry of repos) {
     const stat = statSafe(entry.root)
     if (!stat || !stat.isDirectory()) continue
-    const repoId = repoIdOf(entry.root)
+    const repoId = memo(`id|${entry.root}`, () => repoIdOf(entry.root), TTL.defaultBranch)
     const worktrees = memo(`wt|${repoId}`, () => listWorktrees(repoId, 24), TTL.worktrees)
     // One git call per repo for the default branch, then reuse it for every plan:
     // branchState spawns 2-3 processes, and a model build runs once per request.
