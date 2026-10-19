@@ -343,6 +343,11 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
     const watcher = createWatcher({
       ctx: hub.ctx,
       statusFile,
+      onRows: async (rows) => {
+        const ep = await import(pathToFileURL(join(ROOT, 'lib', 'endpoints.mjs')).href);
+        const trailRepos = ep.readRaw(home).agenttrail;
+        ep.updateEndpoints(home, ep.patchFromRows(rows, { hubPort: hub.server.address().port, hubVersion: ownVersion, trailRepos: Array.isArray(trailRepos) ? trailRepos : [] }));
+      },
       // Never touch a service the user switched off in settings (or the profile excludes).
       isDisabled: (id) => { try { return excludedIds(readSettings(home)).has(id); } catch { return false; } },
       beforeTick: async () => {
@@ -365,6 +370,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   }
 
   const stopped = async () => {
+    try { (await import(pathToFileURL(join(ROOT, 'lib', 'endpoints.mjs')).href)).markDown(home, 'hub'); } catch { /* best effort */ }
     try { unlinkSync(hubPaths(home).file); } catch { /* already gone */ }
     try {
       // OpenWiki graph viewers are child processes of this server: kill them

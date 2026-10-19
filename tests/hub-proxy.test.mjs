@@ -20,7 +20,7 @@ const upstream = () => listen((req, res) => {
   let body = '';
   req.on('data', (c) => { body += c; });
   req.on('end', () => {
-    seen.push({ method: req.method, url: req.url, host: req.headers.host, origin: req.headers.origin, token: req.headers['x-aos-hub-token'], body });
+    seen.push({ fwd: req.headers['x-forwarded-prefix'], method: req.method, url: req.url, host: req.headers.host, origin: req.headers.origin, token: req.headers['x-aos-hub-token'], body });
     if (req.url.startsWith('/events')) {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.write('data: one\n\n');
@@ -75,7 +75,10 @@ test('API-style GET is proxied with the prefix stripped, query kept, Host pinned
 });
 
 test('prefix root maps to /', async () => {
-  const r = await get('/memb', { 'sec-fetch-mode': 'cors' });
+  const bare = await get('/memb?a=1', { 'sec-fetch-mode': 'cors' });
+  assert.equal(bare.status, 302);
+  assert.equal(bare.headers.location, '/memb/?a=1');
+  const r = await get('/memb/', { 'sec-fetch-mode': 'cors' });
   assert.equal(JSON.parse(r.text).path, '/');
 });
 
@@ -154,4 +157,11 @@ test('/store lands on the hub store tab', async () => {
 test('hub own routes are untouched', async () => {
   const r = await get('/ui/hub.css', { 'sec-fetch-site': 'same-origin' });
   assert.equal(r.status, 200);
+});
+
+test('every proxied route sends X-Forwarded-Prefix and overrides a client-supplied one', async () => {
+  await get('/memb/api/x', { 'sec-fetch-mode': 'cors', 'x-forwarded-prefix': '/evil' });
+  assert.equal(seen.at(-1).fwd, '/memb');
+  await get(`/trail/${trailB}/world`, { 'sec-fetch-mode': 'cors' });
+  assert.equal(seen.at(-1).fwd, `/trail/${trailB}`);
 });

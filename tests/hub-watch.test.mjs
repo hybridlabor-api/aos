@@ -144,3 +144,10 @@ test('unloaded launchd job with a plist is started (reboot case); unloaded witho
   await w.tick();
   assert.deepEqual(restarts.map((r) => [r.id, r.action]), [['ao', 'start']]);
 });
+
+test('onRows gets every round and a throwing hook never breaks the round', async () => {
+  const got = [];
+  const { w } = mk(() => [row('memb', true)], { onRows: async (rows) => { got.push(rows.length); throw new Error('disk full'); } });
+  await w.tick();
+  assert.deepEqual(got, [1]);
+});

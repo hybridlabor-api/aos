@@ -24,6 +24,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const endpoints = require('./lib/endpoints-lite');
 
 const {
   canonicalizeArtifactPath,
@@ -593,6 +594,7 @@ async function cmdServer(args, { stateDir, port }) {
     if (shuttingDown) return;
     shuttingDown = true;
     fs.rmSync(serverInfoPath(stateDir), { force: true });
+    endpoints.retire('plan-canvas');
     await canvas.close().catch(() => {});
     process.exit(code);
   };
@@ -606,6 +608,7 @@ async function cmdServer(args, { stateDir, port }) {
     log: line => process.stderr.write(`${line}\n`)
   });
   const bound = await canvas.listen(listenPort);
+  endpoints.announce('plan-canvas', { port: bound.port, version: VERSION });
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(
     serverInfoPath(stateDir),
