@@ -53,11 +53,16 @@ describe('aos-team CLI', () => {
     assert.equal(res.code, 0);
     const parsed = JSON.parse(res.stdout);
     assert.ok(Array.isArray(parsed));
-    assert.equal(parsed.length, 1);
-    assert.equal(parsed[0].id, 'default');
-    assert.equal(parsed[0].tier, 'shipped');
-    assert.equal(parsed[0].effort, 'S');
-    assert.equal(parsed[0].roles.length, 7);
+    // Shipped tier: the default team plus the bundled presets (web-launch, desktop-app, event)
+    assert.equal(parsed.length, 4);
+    const defaultTeam = parsed.find((t) => t.id === 'default');
+    assert.ok(defaultTeam);
+    assert.equal(defaultTeam.tier, 'shipped');
+    assert.equal(defaultTeam.effort, 'S');
+    assert.equal(defaultTeam.roles.length, 7);
+    for (const preset of ['web-launch', 'desktop-app', 'event']) {
+      assert.ok(parsed.some((t) => t.id === preset && t.tier === 'shipped'), `shipped preset ${preset} must be listed`);
+    }
   });
 
   test('show command outputs details for shipped default team', async () => {
