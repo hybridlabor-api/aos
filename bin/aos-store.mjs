@@ -4,10 +4,10 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_BYTES, fetchSkillFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
+import { MAX_BYTES, aosInstalledExact, fetchSkillFiles, readAosFiles, fileTargets, findItem, installPlan, installWithBackup, appendInstallLog, loadSources, localAgents, localSkills, planSkillFiles, planSummary, rollbackInstall, targetsFor as sharedTargetsFor, validateFiles } from '../lib/store-shared.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const sources = loadSources(ROOT);
+const sources = loadSources(ROOT, process.env, { withAos: true });
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const project = args.includes('--project');
@@ -15,9 +15,13 @@ const net = args.includes('--net');
 const positional = args.filter((arg) => !arg.startsWith('--'));
 const option = (name) => args.find((arg) => arg === name || arg.startsWith(`${name}=`))?.split('=').slice(1).join('=');
 
+// The local aos source is listed only on request: --source=aos (or all). install always sees it.
 function allItems(type) {
   const selected = type === 'agents' || type === 'subagents' ? 'subagents' : 'skills';
-  return sources.flatMap((src) => Object.entries(src.index[selected] || {}).map(([name, item]) => ({ name, item, type: selected, src })));
+  const want = option('--source');
+  const visible = want === 'all' ? sources : sources.filter((src) => (want ? src.id === want : !src.local));
+  if (want && want !== 'all' && !visible.length) throw new Error(`Unknown source: ${want} (${sources.map((s) => s.id).join(', ')}, all)`);
+  return visible.flatMap((src) => Object.entries(src.index[selected] || {}).map(([name, item]) => ({ name, item, type: selected, src })));
 }
 
 const localSkillNames = () => new Set(localSkills(ROOT).keys());
@@ -71,11 +75,11 @@ async function install(name) {
   if (!found) throw new Error(`Store item not found: ${name}`);
   const { type, src } = found;
   const coreNames = type === 'skills' ? localSkillNames() : localAgentNames();
-  if (coreNames.has(name)) {
+  if (!src.local && coreNames.has(name)) {
     console.log(`Skipped ${name}: AOS core already provides it.`);
     return;
   }
-  const plan = installPlan(sources, found).filter((p) => !(p.type === 'skills' && p.name !== name && localSkillNames().has(p.name)));
+  const plan = installPlan(sources, found).filter((p) => p.src.local || !(p.type === 'skills' && p.name !== name && localSkillNames().has(p.name)));
   for (const p of plan) if (p.item.files?.length > 1) validateFiles(p.item.files);
   const multi = (p) => p.type === 'skills' && p.item.files?.length > 1;
   const summary = planSummary(plan);
@@ -93,7 +97,7 @@ async function install(name) {
     }
     return;
   }
-  if (!net) {
+  if (!net && !src.local) {
     throw new Error(`Downloading '${name}' requires internet access to fetch from upstream GitHub. Pass --net to confirm: aos store install ${name} --net`);
   }
   // All-or-nothing: download, hash-check and path-check every skill in memory before the first write.
@@ -101,7 +105,9 @@ async function install(name) {
   for (const p of plan) {
     const pSrc = p.src;
     let files;
-    if (multi(p)) {
+    if (pSrc.local) {
+      files = readAosFiles(p.item);
+    } else if (multi(p)) {
       files = await fetchSkillFiles(pSrc.raw_base, pSrc.pinned_commit, dirname(p.item.upstream_path), p.item.files);
     } else {
       const content = await download(pSrc, p.item.upstream_path);
@@ -114,6 +120,11 @@ async function install(name) {
     if (files) for (const target of targetsFor(p.type, p.name)) writes.push({ type: 'dir', target, plan: planSkillFiles(target, files) });
   }
   for (const note of notes) console.log(note);
+  if (src.local) {
+    const todo = writes.filter((w) => !aosInstalledExact(plan[0].item, w.target));
+    if (!todo.length) { console.log(`Already installed: ${name}`); return; }
+    writes.splice(0, writes.length, ...todo);
+  }
   const home = homedir();
   const written = installWithBackup({ writes, home });
   const kind = found.type === 'skills' ? 'skill' : 'agent';
@@ -146,8 +157,8 @@ function rollback(name) {
 
 function usage() {
   console.log('Usage:');
-  console.log('  aos store list [--type=skills|agents]');
-  console.log('  aos store search <query>');
+  console.log('  aos store list [--type=skills|agents] [--source=ecc|scenario|aos|all]');
+  console.log('  aos store search <query> [--source=...]');
   console.log('  aos store install <name> [--project] [--dry-run] [--net]');
   console.log('  aos store rollback <name> [--project]');
   console.log('  aos store ui [--port=N] [--no-open]');
