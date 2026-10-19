@@ -641,6 +641,7 @@ flowchart LR
 | `pb-ship` | Die Arbeit des Tages in einem Repo ausliefern: Triage, jeden offenen PR reviewen, mergen. | reviewer | 20-60 min · intermediate |
 | `pb-release-aos` | Eine neue AOS-Version über die release-please-PR auf npm bringen, gemergt erst nach GO. | reviewer | 30-60 min · advanced |
 | `pb-ci-fix` | Rote CI fixen oder GitHub Actions komplett aufsetzen; Push erst nach GO. | — | 15-45 min · intermediate |
+| `pb-aos-e2e` | AOS-Release-E2E-Check in einer sauberen Sandbox aus dem gepackten Tarball: Install, Doctor, Gate-Hooks, Gate-Round-Trip, Hub, Uninstall. | reviewer | 20-60 min · advanced |
 | `pb-deploy-saas` | Eine SaaS-App auf die BDB-Fleet deployen: Pre-Flight, Guardrail-Plan, grüne CI, Deploy nach GO, Health-Check. | — | 30-90 min · advanced |
 | `pb-health-weekly` | Wöchentlicher Health-Report über die BDB-Repos: Version-Drift und CI-Status. | — | 15-30 min · intermediate |
 | **Design und Web** | | | |
@@ -1311,10 +1312,11 @@ Als optionale Module vom Installer installiert; `aos doctor` verifiziert sie und
 </details>
 
 <details>
-<summary><b>Playbooks (36)</b></summary>
+<summary><b>Playbooks (37)</b></summary>
 
 | Playbook | What it does |
 |---|---|
+| `pb-aos-e2e` | AOS release E2E check in a clean sandbox: tarball install, doctor, gate hooks, memB inject, hub, update, uninstall. |
 | `pb-bug-fix` | Turn a GitHub issue into a tested fix on a branch with an open PR. |
 | `pb-ci-fix` | Fix red CI or set up GitHub Actions end to end; push only after GO. |
 | `pb-clip-from-moodboard` | Turn a look brief and reference images into a finished social clip. |
