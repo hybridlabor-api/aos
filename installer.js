@@ -5220,6 +5220,27 @@ function applyClaudeModelOverrides(agents, targetDir, pipelineConfig, manifest) 
     return applied;
 }
 
+// With the bdb-aos plugin installed, Claude lists its agents as bdb-aos:<name>; a loose copy in
+// ~/.claude/agents doubles ~45 agent prompts per session. Unedited loose copies are backed up (same
+// plugin-migration-* backup as skills, so --restore-plugin-backup restores them) and not copied again.
+// Agents with a Claude model override in pipeline.json keep their loose copy: plugin agents cannot take one.
+function pluginCoveredAgentFiles() {
+    if (DRY_RUN || pluginMigrationMode() !== 'on') return [];
+    const shippedDir = path.join(srcDir, '.claude', 'agents');
+    const cfg = loadPipelineConfig();
+    let slugs = [];
+    try { slugs = fs.readdirSync(shippedDir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)); } catch { return []; }
+    const keep = new Set(slugs.filter((slug) => resolveAgentConfig(slug, 'claude', cfg).model));
+    const manifest = _sessionManifest || loadInstallManifest();
+    const backupDir = path.join(homeDir, '.agents', 'backups', `plugin-migration-agents-${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}`);
+    const r = pluginMigration.retireLooseAgents({ home: homeDir, manifest, shippedDir, keep, backupDir });
+    if (!r) return [];
+    if (!_sessionManifest) saveInstallManifest(manifest);
+    if (r.removed.length) log.step(`Claude loads the agents from the ${pluginMigration.PLUGIN} plugin, so ${r.removed.length} loose copies were removed from ~/.claude/agents (backup: ${backupDir}; aos-uninstall --restore-plugin-backup restores them).`);
+    if (r.kept.length) log.warn(`${r.kept.length} edited loose agent(s) stay in ~/.claude/agents and duplicate the plugin (${r.kept.slice(0, 5).join(', ')}). Move your edits out and re-run to retire them.`);
+    return [...r.covered];
+}
+
 // OpenCode's agent picker lists only primary agents; `mode: all` puts these there and keeps them callable as subagents.
 const OPENCODE_PICKER_AGENTS = new Set(['godmode-ui-ux', 'godmode-engineering', 'godmode-media-eventtech', 'godmode-shipping']);
 // Session-level roles with no AGENTS.md persona: thin primary agents that load the matching skill.
@@ -5571,7 +5592,7 @@ function injectHarnessRules() {
                     // settings.json is merged separately below: a wholesale
                     // copy would clobber user-owned keys like enabledPlugins.
                     // hooks: installGlobalHooks delivers only what each harness wires.
-                    const exclude = dir === '.claude' ? ['settings.json', 'hooks'] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    const exclude = dir === '.claude' ? ['settings.json', 'hooks', ...pluginCoveredAgentFiles()] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }
@@ -9106,6 +9127,7 @@ module.exports = {
     compileCodexAgents,
     compileAgyAgents,
     applyClaudeModelOverrides,
+    pluginCoveredAgentFiles,
     loadPipelineConfig,
     resolveAgentConfig,
     installPipelineDefault,
