@@ -5,7 +5,7 @@
 //   Output: {"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"..."}}
 //   Off switches: AOS_SESSION_HINT=off (human or installer kills it) and
 //   AOS_DELEGATE_DEPTH>0 (delegated workers stay silent).
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -43,6 +43,18 @@ try {
       // without breaking hook runner JSON parsing on stdout, while additionalContext
       // provides update awareness to the assistant model prompt.
       process.stderr.write(`${notice}\n`);
+    }
+  } catch {}
+
+  // Post-update line: once per update, from the marker `aos update` leaves (lib/whats-new.js)
+  try {
+    const marker = join(homedir(), ".aos", "cache", "last-update.json");
+    const m = JSON.parse(readFileSync(marker, "utf8"));
+    if (m && !m.shown && m.version && Date.now() - m.t < 7 * 86400000) {
+      const line = `AOS updated to ${m.version} — run \`aos setup\` to optimize (${Number(m.hints) || 0} hints)`;
+      hints.unshift(line);
+      process.stderr.write(`${line}\n`);
+      writeFileSync(marker, JSON.stringify({ ...m, shown: true }));
     }
   } catch {}
 

@@ -318,6 +318,11 @@ async function execute(p) {
     } catch { console.log(`  ${tilde(f)} unreadable — check the rule blocks by hand`); }
   }
 
+  try {
+    const n = createRequire(import.meta.url)('../lib/permissions-allow.js').removeAllRecorded(HOME);
+    if (n) console.log(`  ${n} permission rule(s) added by \`aos allow\` removed`);
+  } catch { console.log('  ~/.claude/settings.json unreadable — remove the rules added by `aos allow` (see ~/.aos/allow-records.json) by hand'); }
+
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
   if (modules.length) console.log(`  ${modules.length} modules removed`);
 
