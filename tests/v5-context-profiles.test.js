@@ -107,6 +107,7 @@ test('contextCommand prints status and updates profile', () => {
     const code2 = contextCommand(['worker'], { home: tmpHome, write, error });
     assert.strictEqual(code2, 0);
     assert.ok(out.includes('Context profile updated to: worker'));
+    assert.ok(out.includes('Gateway preset'), 'the preset is applied now or reported as pending');
     assert.ok(out.includes('AOS Context Profile: worker'));
     assert.ok(out.includes('Savings vs Full Profile'));
 
