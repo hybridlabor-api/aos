@@ -8405,10 +8405,14 @@ async function main() {
     const args = process.argv.slice(2);
     // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
     // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
-    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup'];
+    const COMMANDS = ['status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup', 'allow'];
     if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
         console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
         process.exitCode = 2;
+        return;
+    }
+    if (args[0] === 'allow') {
+        process.exitCode = require('./lib/permissions-allow').allowCommand(args.slice(1), { home: homeDir });
         return;
     }
     applyInstallOptions();
@@ -8935,6 +8939,11 @@ Options:
         const st = v5Profile.readSettings(homeDir, () => {});
         st.context = contextProfileChoice;
         v5Profile.writeSettings(homeDir, st);
+    }
+    if (!isAutoYes && !DRY_RUN && process.stdout.isTTY && process.stdin.isTTY) {
+        const ok = await askConfirm({ message: 'Optional: allow read-only aos status/doctor commands without prompts (adds rules to ~/.claude/settings.json, backup first, undo with `aos allow aos-tools --remove`)?', initialValue: false });
+        if (!isCancel(ok) && ok) require('./lib/permissions-allow').allowCommand(['aos-tools'], { home: homeDir, write: (t) => log.info(t.trim()) });
+        else log.info('Other presets (remote CI hosts etc.): `aos allow` lists them; run them yourself with `! aos allow <preset>`.');
     }
     if (!memoryOn && !installExcluded.has('memb')) declineUnifiedMemory();
 
