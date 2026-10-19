@@ -2652,7 +2652,7 @@ export function effectiveGate(key, { source, cmds, opencode = false }, now = Dat
     grants.push({ scope: g.scope, until, session: !!c.parsed.session });
   }
   const hardTs = lastHard >= 0 ? (Number.isFinite(cmds[lastHard].ts) ? cmds[lastHard].ts : Infinity) : -Infinity;
-  grants.push(...clickGrants(key, now, { opencode, hardTs, revokeTs }));
+  grants.push(...clickGrants(key, now, { opencode, hardTs, revokeTs }), ...localClickGrants(key, now, { opencode, hardTs, revokeTs }));
   return { mode, grants, rejected };
 }
 
@@ -3091,6 +3091,55 @@ function clickGrants(key, now, { opencode, hardTs, revokeTs }) {
       for (const scope of parsed.scopes) out.push({ scope, until, session: false });
     }
   } catch { /* fail closed: no click grants */ }
+  return out;
+}
+
+// Local map clicks: the agenttrail map server writes <go dir>/<key>.local-<id>.json = {via:"map-click", payload} after a plain
+// click behind its page token and CSRF/origin guards (owner decision: no WebAuthn). Same payload shape, caps, single use and
+// revoke/hard handling as click receipts; the file must be owned by this uid with mode 0600. Every failure means "not covered".
+function loadLocalReceipt(key, name) {
+  const txt = readOwnedPrivate(join(goDir(), name), CLICK_FILE_MAX);
+  if (!txt) return null;
+  try {
+    const r = JSON.parse(txt);
+    const p = r?.payload;
+    if (r?.via !== "map-click" || !clickPayloadOk(p) || p.session_key !== key || name !== `${key}.local-${p.request_id}.json`) return null;
+    return p;
+  } catch { return null; }
+}
+
+const localTimeOk = (p, now) => p.issued_at <= now && now < p.expires_at && p.expires_at - p.issued_at <= (p.kind === "go" ? TOKEN_TTL_MS : MAX_GRANT_MS);
+
+export function localClickCovers(command, key, { now = Date.now(), consume = true } = {}) {
+  try {
+    if (typeof command !== "string" || !command.trim() || typeof key !== "string" || !CLICK_KEY.test(key) || !clickEligible(command)) return false;
+    const want = textHash(command);
+    const revokeTs = readRevokeTs(key, now);
+    for (const name of clickNames(`${key}.local-`)) {
+      if (name.startsWith(`${key}.local-g-`)) continue;
+      const p = loadLocalReceipt(key, name);
+      if (!p || p.kind !== "go" || p.cmd_hash !== want || p.issued_at <= revokeTs || !localTimeOk(p, now) || clickSpent(key, p.request_id)) continue;
+      if (!consume) return true;
+      if (claimClick(key, p.request_id)) return true;
+    }
+  } catch { /* fail closed */ }
+  return false;
+}
+
+function localClickGrants(key, now, { opencode, hardTs, revokeTs }) {
+  const out = [];
+  try {
+    if (typeof key !== "string" || !CLICK_KEY.test(key)) return out;
+    for (const name of clickNames(`${key}.local-g-`)) {
+      const p = loadLocalReceipt(key, name);
+      if (!p || p.kind !== "grant" || p.cmd_hash !== "" || !Array.isArray(p.scopes) || !p.scopes.length) continue;
+      if (p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS) || !localTimeOk(p, now)) continue;
+      const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
+      if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
+      const until = Math.min(p.expires_at, p.issued_at + (opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms));
+      if (now < until) for (const scope of parsed.scopes) out.push({ scope, until, session: false });
+    }
+  } catch { /* fail closed */ }
   return out;
 }
 
@@ -3541,7 +3590,7 @@ function main() {
   if (token.ok) return respond(isAgy, true, "", command);
   reasons.push(token.reason);
   // Last additive path (WP-9): a signed click receipt for exactly this command. Hard blocks and the store check returned above.
-  if (key && !tooLong && !cooling && !codexOpaque && clickReceiptCovers(command, key)) {
+  if (key && !tooLong && !cooling && !codexOpaque && (clickReceiptCovers(command, key) || localClickCovers(command, key))) {
     gateLog(key, `click: allowed ${JSON.stringify(command.slice(0, 200))}`);
     return respond(isAgy, true, "", command);
   }
