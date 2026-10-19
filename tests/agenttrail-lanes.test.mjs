@@ -245,40 +245,20 @@ describe('setup writes into the requesting lane', () => {
 });
 
 describe('daemon upgrade', () => {
-  test('an old daemon without a shutdown API is replaced by a new one and a hint is printed; both stay up', async () => {
+  test('ensure starts the repo map next to old or foreign daemons and never shuts any of them down', async () => {
+    await stopHubs();
     const main = gitRepo('old-keep');
-    const old = await fakeDaemon(LO + 5, main);
+    const other = gitRepo('old-other');
+    const old = await fakeDaemon(LO + 5, main, { shutdown: true });
+    const foreign = await fakeDaemon(LO + 6, other, { shutdown: true });
     const a = await ensure(main);
     assert.equal(a.started, true, JSON.stringify(a));
     assert.notEqual(a.url, `http://127.0.0.1:${LO + 5}`);
-    assert.equal((await getJson(`${a.url}/whoami`)).protocol, 3);
-    assert.match(a.hint, new RegExp(`:${LO + 5}`));
-    assert.ok(old.calls.every((c) => c.startsWith('POST /shutdown')), old.calls.join('|'));
-    assert.equal(await fetch(`http://127.0.0.1:${LO + 5}/whoami`).then(() => true).catch(() => false), true);
+    assert.equal((await getJson(`${a.url}/whoami`)).protocol, 2);
+    assert.deepEqual([old.calls, foreign.calls], [[], []]);
     const b = await ensure(main);
     assert.deepEqual([b.started, b.url], [false, a.url]);
-    old.server.close();
-    old.server.closeAllConnections();
-  });
-
-  test('an old per-worktree daemon that supports shutdown is retired after the new one is up; unrelated daemons are never touched', async () => {
-    await stopHubs();
-    const main = gitRepo('old-go');
-    const wt = path.join(tmp, 'old-go-wt');
-    git(main, 'worktree', 'add', '-q', '-b', 'feat/o', wt);
-    const real = fs.realpathSync(wt);
-    const other = gitRepo('old-other');
-    const old = await fakeDaemon(LO + 6, real, { shutdown: true });
-    const foreign = await fakeDaemon(LO + 7, other, { shutdown: true });
-    const a = await ensure(main);
-    assert.equal(a.started, true, JSON.stringify(a));
-    assert.equal(a.hint, null);
-    assert.equal(old.calls.length, 1);
-    assert.equal(JSON.parse(old.calls[0].split(' ').slice(2).join(' ')).repoPath, real);
-    assert.equal(await fetch(`http://127.0.0.1:${LO + 6}/whoami`).then(() => true).catch(() => false), false);
-    assert.deepEqual(foreign.calls, []);
-    foreign.server.close();
-    foreign.server.closeAllConnections();
+    for (const d of [old, foreign]) { d.server.close(); d.server.closeAllConnections(); }
   });
 
   test('a daemon refuses shutdown for another repo and for a form post', async () => {
@@ -300,7 +280,7 @@ describe('ensure race', () => {
     assert.equal(a.url, b.url, JSON.stringify([a, b]));
     assert.equal([a, b].filter((x) => x.started).length, 1);
     await sleep(500);
-    assert.notEqual(await canBind(LO), true, 'exactly one hub listens on AGENTTRAIL_PORT');
+    assert.equal(await whoAnswers(main), 1, 'exactly one map serves the repo');
   });
 
   test('a stale lock from a dead pid does not block ensure', async () => {

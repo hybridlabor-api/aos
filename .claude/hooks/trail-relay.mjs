@@ -24,11 +24,12 @@ if (process.argv.includes('--relay-worker')) {
     try { for await (const c of process.stdin) workerBody += c; } catch {}
   }
   if (!workerBody) process.exit(0);
-  const hubPort = Number(process.env.AGENTTRAIL_PORT) || 5350;
-  if (hubPort === 1) process.exit(0);
-  const legacy = process.env.AGENTTRAIL_LEGACY === '1';
-  const legacyPorts = legacy ? Array.from({ length: 15 }, (_, i) => 5330 + i).filter((p) => p !== hubPort) : [];
-  const targets = [{ url: `http://127.0.0.1:${hubPort}/hook`, body: workerBody }, ...legacyPorts.map((p) => ({ url: `http://127.0.0.1:${p}/hook`, body: workerBody }))];
+  const explicit = Number(process.env.AGENTTRAIL_PORT) || 0;
+  if (explicit === 1) process.exit(0);
+  // default = the per-repo maps (5330-5344); AGENTTRAIL_PORT targets one port instead, AGENTTRAIL_LEGACY=1 adds the range to it
+  const range = Array.from({ length: 15 }, (_, i) => 5330 + i);
+  const ports = explicit ? [explicit, ...(process.env.AGENTTRAIL_LEGACY === '1' ? range.filter((p) => p !== explicit) : [])] : range;
+  const targets = ports.map((p) => ({ url: `http://127.0.0.1:${p}/hook`, body: workerBody }));
   try {
     await Promise.allSettled(targets.map((t) => fetch(t.url, { method: 'POST', body: t.body, signal: AbortSignal.timeout(500) }).catch(() => {})));
   } catch {}
@@ -85,8 +86,7 @@ if (process.env.AOS_TRAIL_NODE && !ev.task) {
 const body = JSON.stringify(ev);
 
 // Detach slow network I/O: spawn a background worker so the hook returns immediately.
-const hubPort = Number(process.env.AGENTTRAIL_PORT) || 5350;
-if (hubPort !== 1) {
+if (Number(process.env.AGENTTRAIL_PORT) !== 1) {
   try {
     const here = fileURLToPath(import.meta.url);
     if (body.length < 65536) {
