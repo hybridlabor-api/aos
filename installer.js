@@ -9027,6 +9027,7 @@ Options:
     if (aosCliRequested) installAosCli();
 
     // After every harness MCP config write above: the gateway switches those entries, and a later write would undo it.
+    saveGatewaySelectedServers(tier);
     for (const name of await require('./lib/v5/menu').installDefaults(module.exports, { ...v5Options(!isAutoYes), dryRun: DRY_RUN }, installExcluded)) {
         moduleFailures.push({ id: name, name, reason: 'see the step line above and ~/.aos/logs' });
     }
@@ -9043,6 +9044,38 @@ Options:
     }
     // Last line on purpose: an earlier CODEX_GATE_NOTICE scrolled by unread and the gate stayed off.
     if (codexHooksChanged) console.log(`⚠️  ${CODEX_TRUST_REMINDER}`);
+}
+
+// Persist which shipped servers the 1mcp gateway runs: derived once from this install's tier
+// (Pro MEDIA adds the media/show-control group) and installed modules (Creator Extension adds
+// the creative group), unioned with what the user already runs today. An explicit choice saved
+// by a prior run or `aos-gateway add/remove` is kept; DRY_RUN writes nothing.
+function saveGatewaySelectedServers(tierValue = tier, installedList = null, home = homeDir) {
+    if (DRY_RUN) return false;
+    try {
+        const gwConfig = require('./lib/gateway/config');
+        const selection = require('./lib/gateway/selection');
+        const dir = gwConfig.gatewayDir(home);
+        const current = require('./lib/v5/pkg-gateway').currentShippedUpstreams(dir);
+        let adopted = [];
+        try { adopted = Object.keys(gwConfig.readAdopted(home)); } catch { /* no adopted.json yet */ }
+        const seen = require('./lib/gateway/doctor').directGatewayNames({ files: harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
+        const st = v5Profile.readSettings(home, () => {});
+        const installed = Array.isArray(installedList) ? installedList : []
+        const r = selection.resolveGatewayServers({
+            settingServers: st.gateway && st.gateway.servers,
+            media: tierValue === '1',
+            creator: installed.includes('creator') || installed.includes('all'),
+            keep: [...current, ...seen, ...adopted],
+        });
+        const next = { ...st, gateway: { ...(st.gateway || {}), servers: r.servers } };
+        v5Profile.writeSettings(home, next);
+        log.step(`Gateway servers: ${r.servers.join(', ')}`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not save the gateway server selection: ${e.message}`);
+        return false;
+    }
 }
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
@@ -9218,6 +9251,7 @@ module.exports = {
     hasExecutable,
     findExecutable,
     shippedMcpTemplatePath: mcpSecrets.shippedMcpTemplatePath,
+    saveGatewaySelectedServers,
     migrateLegacyAgyWorkspaceMcp: mcpSecrets.migrateLegacyAgyWorkspaceMcp,
 };
 
