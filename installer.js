@@ -174,9 +174,16 @@ let installExcluded = new Set();
 let memoryOn = true;
 // `gate` setting (Settings menu): off = go-gate, go-token, go-grant and graph-gate are not registered; the script files stay on disk.
 let gateOn = true;
-const droppedHook = (cmd) => typeof cmd === 'string'
+// Harness keys whose config is AOS-wired but registers no gate hook any more (removed there by hand).
+// gateReenableStep fills this on non-interactive runs so an update never silently re-enables the gate.
+const gateHoldKeys = new Set();
+// Effective per harness: the setting, minus a hold for exactly the harness the user disabled by hand.
+const gateOnFor = (key) => gateOn && !gateHoldKeys.has(key);
+// `key` names the harness whose config is being merged, so a hold in one harness never deletes
+// gate hooks another harness still has. Without a key (no harness context) only the setting decides.
+const droppedHook = (cmd, key = null) => typeof cmd === 'string'
     && ((!contextHooksOn && v5Profile.isContextCommand(cmd)) || (!memoryOn && cmd.includes('memb-inject.mjs'))
-        || (!gateOn && v5Profile.GATE_HOOKS.some((n) => cmd.includes(n))));
+        || ((key ? !gateOnFor(key) : !gateOn) && v5Profile.GATE_HOOKS.some((n) => cmd.includes(n))));
 
 if (DRY_RUN) {
     const guardedFns = ['writeFileSync', 'mkdirSync', 'copyFileSync', 'renameSync', 'unlinkSync', 'symlinkSync', 'appendFileSync', 'chmodSync', 'rmdirSync', 'rmSync'];
@@ -1383,6 +1390,52 @@ function defaultPlatformValue() {
     const keys = activeHarnessKeys();
     const hit = PRIMARY_TARGET_ORDER.find(([k]) => keys.has(k));
     return hit ? hit[1] : '2';
+}
+
+// Which active harnesses have AOS hooks wired but no gate hook any more (removed there by hand).
+// Reads only. A config that is absent or has no AOS wiring at all proves nothing — nothing to preserve there.
+function gateMissingInHarnesses({ home = homeDir } = {}) {
+    const read = (p) => { try { return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''; } catch { return ''; } };
+    const missing = [];
+    const claude = read(path.join(claudeConfigDir(home), 'settings.json'));
+    if (claude && /conventional-commits\.mjs|env-file-protection\.mjs|memb-inject\.mjs/.test(claude)
+        && !v5Profile.GATE_HOOKS.some((n) => claude.includes(n))) missing.push('claudecode');
+    const agyHooks = read(path.join(home === homeDir ? geminiDir : path.join(home, '.gemini'), 'config', 'hooks.json'));
+    if (agyHooks && /aos-conventional-commits|aos-env-protection/.test(agyHooks)
+        && !/aos-go-gate|aos-graph-gate/.test(agyHooks)) missing.push('antigravity');
+    const codexToml = read(path.join(home, '.codex', 'config.toml'));
+    if (codexToml.includes('# AOS:HOOKS:START')
+        && !/go-gate\.mjs|graph-gate\.mjs/.test(codexToml)) missing.push('codex');
+    return missing;
+}
+
+// The go-gate was turned off by hand in a harness config while the `gate` setting still says on. An update must
+// not silently re-enable it: an interactive TTY asks once and stores the answer in the gate setting; without a
+// TTY this run keeps the current state (setting untouched, hooks stay absent in exactly those harnesses) and
+// prints one line saying so. ask: null means non-interactive.
+async function gateReenableStep({ home = homeDir, ask = null, write = (s) => process.stdout.write(s) } = {}) {
+    if (!gateOn || gateHoldKeys.size) return;
+    const missing = gateMissingInHarnesses({ home });
+    if (!missing.length) return;
+    const labels = missing.map((k) => HARNESS_LABELS[k] || k).join(', ');
+    if (typeof ask === 'function') {
+        const yes = await ask(`The go-gate is off in ${labels}. Turn it back on? (y/N)`);
+        if (yes) return;
+        if (!DRY_RUN) {
+            try { v5Profile.writeSettings(home, { ...v5Profile.readSettings(home), gate: 'off' }); } catch (e) { log.warn(`Could not save the gate choice: ${e.message}`); }
+        }
+        gateOn = false;
+        write(`Go-gate stays off in ${labels}. Change it any time: run aos, Settings, Go-gate.\n`);
+        return;
+    }
+    for (const k of missing) gateHoldKeys.add(k);
+    write(`Go-gate: not re-registered in ${labels} (removed there by hand); the gate setting is unchanged. Decide in aos, Settings, Go-gate.\n`);
+}
+
+// Same interactivity rule as applyCodingModeStep: stdin must be a TTY, -y and CI never prompt.
+function gateReenableAsk() {
+    if (isAutoYes || !process.stdin.isTTY || process.env.CI) return null;
+    return async (message) => { const a = await askConfirm({ message, initialValue: false }); return isCancel(a) ? false : Boolean(a); };
 }
 
 function harnessSummaryLine() {
@@ -5753,8 +5806,9 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
     // Profile flag for the plugin (context behaviours only; gates and A2A are never switched off).
     if (pluginInstalled && !DRY_RUN) {
         try {
-            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn, memoryOn, gateOn);
-            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}, memory=${memoryOn}, gate=${gateOn}`);
+            const gateEffective = gateOnFor('opencode');
+            const flag = require('./lib/opencode-profile').writeProfileFlag(opencodeDir, contextHooksOn, memoryOn, gateEffective);
+            if (flag.changed) log.step(`OpenCode plugin profile: contextHooks=${contextHooksOn !== false}, memory=${memoryOn}, gate=${gateEffective}`);
             uninstallRecords.recordOpencodeProfile(targetHome, flag.file);
         } catch (e) {
             log.warn(`Could not write OpenCode plugin profile flag: ${e.message}`);
@@ -6284,7 +6338,7 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
                 .filter((e) => !isBdbEntry(e));
             // Only context-injection hooks can be dropped here (--no-hooks, minimal profile); the gates never are.
             const own = cloneBdbEntries(entries);
-            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn && memoryOn && gateOn ? own : v5Profile.dropContextHooks(own, droppedHook))];
+            merged.hooks[event] = [...foreignEntries, ...(contextHooksOn && memoryOn && gateOnFor('claudecode') ? own : v5Profile.dropContextHooks(own, (c) => droppedHook(c, 'claudecode')))];
         }
         return merged;
     };
@@ -6516,8 +6570,8 @@ function mergeAntigravityHooks(hooksPath, { projectLocal = false, selfCheck = sp
 
     const allHookNames = Object.keys(bdbHooks);
     if (!contextHooksOn) delete bdbHooks['aos-trail-relay'];
-    if (!gateOn) { delete bdbHooks['aos-go-gate']; delete bdbHooks['aos-graph-gate']; }
-    bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command));
+    if (!gateOnFor('antigravity')) { delete bdbHooks['aos-go-gate']; delete bdbHooks['aos-graph-gate']; }
+    bdbHooks['aos-context'].PreInvocation = bdbHooks['aos-context'].PreInvocation.filter((h) => !droppedHook(h.command, 'antigravity'));
 
     // Earlier AOS versions wrote all handlers under one named hook called "hooks" (old wrapped shapes
     // included). Strip the BDB handlers out of it, keep foreign ones, and drop it when nothing is left.
@@ -6758,7 +6812,7 @@ function installCodexRules({ targetHome = homeDir } = {}) {
     const want = codexGateRules();
     try {
         const have = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
-        if (!gateOn) {
+        if (!gateOnFor('codex')) {
             if (have !== null && have.startsWith(uninstallRecords.CODEX_RULES_HEADER) && !DRY_RUN) { fs.unlinkSync(file); log.step(`Removed Codex go-gate rules ${file} (gate setting is off)`); return true; }
             return false;
         }
@@ -6857,8 +6911,8 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         '# AOS:HOOKS:END'
     ].join('\n');
     // Blocks are blank-line separated; without context hooks only blocks naming a context script go.
-    const tomlSnippet = contextHooksOn && memoryOn && gateOn ? fullSnippet
-        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !droppedHook(b)).join('\n\n')}\n# AOS:HOOKS:END`;
+    const tomlSnippet = contextHooksOn && memoryOn && gateOnFor('codex') ? fullSnippet
+        : `${fullSnippet.replace(/\n# AOS:HOOKS:END$/, '').split('\n\n').filter((b) => !droppedHook(b, 'codex')).join('\n\n')}\n# AOS:HOOKS:END`;
 
     let content = fs.existsSync(configTomlPath) ? fs.readFileSync(configTomlPath, 'utf8') : '';
     const original = content;
@@ -8230,6 +8284,7 @@ function applyInstallOptions(home = homeDir) {
     installExcluded = r.excluded;
     memoryOn = !installExcluded.has('memb');
     gateOn = r.gateOn;
+    gateHoldKeys.clear(); // a fresh resolution restarts the decision; an explicit Settings choice re-applies everywhere
     return r;
 }
 
@@ -8446,6 +8501,7 @@ Options:
         persistInstallOptions();
         // --platforms is parsed above but only marked explicit further down the full flow; hooks-only exits before that.
         markPlatformsExplicit(PLATFORMS_ARG || []);
+        await gateReenableStep(gateReenableAsk());
         installGlobalHooks({ harnesses: activeHarnessKeys() });
         flushSessionManifest();
         console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
@@ -8503,6 +8559,9 @@ Options:
         process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true));
         return;
     }
+
+    // A -y reinstall re-merges every hook: never silently re-enable a gate the user removed by hand.
+    await gateReenableStep(gateReenableAsk());
 
     const detectedNames = detections.map(d => d.name).join(', ');
     const platformOptions = [
@@ -8915,6 +8974,9 @@ module.exports = {
     installGlobalHooks,
     injectHarnessRules,
     activeHarnessKeys,
+    gateMissingInHarnesses,
+    gateReenableStep,
+    gateHoldKeys,
     defaultPlatformValue,
     harnessSummaryLine,
     applyInstallOptions,

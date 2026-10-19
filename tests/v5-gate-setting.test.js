@@ -138,3 +138,119 @@ test('agy hooks.json: aos-go-gate and aos-graph-gate follow the setting', () => 
     const on = run('on');
     assert.ok(on['aos-go-gate'] && on['aos-graph-gate']);
 });
+
+// --- user feedback: an update must never re-enable a gate the user disabled ---
+
+// A Claude settings.json that still wires AOS context/backstop hooks but no gate hook any more.
+function wireClaudeWithoutGate(home) {
+    fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.claude', 'settings.json'), JSON.stringify({
+        hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'node $HOME/.claude/hooks/conventional-commits.mjs', timeout: 10 }] }] },
+    }));
+}
+
+test('update keeps gate off: setting off, step does nothing, hooks stay unregistered', async () => {
+    const home = mkHome();
+    wireClaudeWithoutGate(home);
+    p.writeSettings(home, { disabled: [], gate: 'off' });
+    installer.applyInstallOptions(home);
+    let asked = false;
+    await installer.gateReenableStep({ home, ask: async () => { asked = true; return true; }, write: () => {} });
+    assert.strictEqual(asked, false, 'a gate off by setting is never asked about');
+    assert.strictEqual(p.readSettings(home).gate, 'off');
+    installer.mergeBdbSettingsHooks(path.join(home, '.claude', 'settings.json'));
+    const cmdsTxt = cmds(JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8')));
+    for (const g of GATE_NAMES) assert.ok(!cmdsTxt.includes(g), `${g} must stay unregistered`);
+});
+
+test('non-TTY update: gate hooks removed by hand stay absent, setting untouched, one line says so', async () => {
+    const home = mkHome();
+    wireClaudeWithoutGate(home);
+    p.writeSettings(home, { disabled: [], gate: 'on' });
+    installer.applyInstallOptions(home);
+    const out = [];
+    await installer.gateReenableStep({ home, ask: null, write: (s) => out.push(s) });
+    assert.match(out.join(''), /not re-registered in Claude Code/);
+    assert.match(out.join(''), /gogate|Settings/);
+    assert.strictEqual(p.readSettings(home).gate, 'on', 'the setting itself is unchanged');
+    assert.ok(installer.gateHoldKeys.has('claudecode'), 'this run holds the gate for claudecode');
+    // The merge that the update would run now keeps the gate hooks out of exactly that harness.
+    installer.mergeBdbSettingsHooks(path.join(home, '.claude', 'settings.json'));
+    const kept = cmds(JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8')));
+    for (const g of GATE_NAMES) assert.ok(!kept.includes(g), `${g} must not be re-added`);
+    assert.ok(kept.includes('conventional-commits.mjs'));
+
+    // Per-harness: a harness whose config still has the gate keeps it, even while claudecode is held.
+    p.writeSettings(home, { disabled: [], gate: 'on' });
+    installer.applyInstallOptions(home); // fresh run: clears the hold
+    await installer.gateReenableStep({ home, ask: null, write: () => {} });
+    const agyFile = path.join(home, '.gemini', 'config', 'hooks.json');
+    fs.mkdirSync(path.dirname(agyFile), { recursive: true });
+    fs.writeFileSync(agyFile, JSON.stringify({ 'aos-conventional-commits': { PreToolUse: [] }, 'aos-go-gate': { PreToolUse: [] } }));
+    installer.mergeAntigravityHooks(agyFile, { selfCheck: () => ({ status: 0, stdout: '', stderr: '' }) });
+    const agy = JSON.parse(fs.readFileSync(agyFile, 'utf8'));
+    assert.ok(agy['aos-go-gate'], 'Antigravity still registers the gate: the hold is per harness');
+});
+
+test('TTY update: asking stores the answer in the gate setting', async () => {
+    // No: stored as gate off, hooks stay absent, message says how to turn it back on.
+    const home = mkHome();
+    wireClaudeWithoutGate(home);
+    p.writeSettings(home, { disabled: [], gate: 'on' });
+    installer.applyInstallOptions(home);
+    const out = [];
+    await installer.gateReenableStep({ home, ask: async (m) => { assert.match(m, /^The go-gate is off in Claude Code\. Turn it back on\? \(y\/N\)$/); return false; }, write: (s) => out.push(s) });
+    assert.strictEqual(p.readSettings(home).gate, 'off');
+    assert.match(out.join(''), /Go-gate stays off in Claude Code/);
+    installer.mergeBdbSettingsHooks(path.join(home, '.claude', 'settings.json'));
+    const off = cmds(JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf8')));
+    for (const g of GATE_NAMES) assert.ok(!off.includes(g), `${g} stays absent after the answer no`);
+
+    // Yes: the setting stays on and the merge re-registers the hooks.
+    const home2 = mkHome();
+    wireClaudeWithoutGate(home2);
+    p.writeSettings(home2, { disabled: [], gate: 'on' });
+    installer.applyInstallOptions(home2);
+    await installer.gateReenableStep({ home: home2, ask: async () => true, write: () => {} });
+    assert.ok(!installer.gateHoldKeys.has('claudecode'));
+    installer.mergeBdbSettingsHooks(path.join(home2, '.claude', 'settings.json'));
+    const on = cmds(JSON.parse(fs.readFileSync(path.join(home2, '.claude', 'settings.json'), 'utf8')));
+    for (const g of GATE_NAMES) assert.ok(on.includes(g), `${g} is registered again`);
+});
+
+test('help text: 3-5 lines and only gogate modes that exist in the hook code', () => {
+    const menu = require('../lib/v5/menu');
+    const help = menu.GATE_HELP;
+    const lines = help.split('\n').filter((l) => l.trim());
+    assert.ok(lines.length >= 3 && lines.length <= 5, `help block is 3-5 lines, got ${lines.length}`);
+
+    // The real command surface, read from the hook code: the subcommand list in go-gate.mjs plus `grant` in go-grant.mjs.
+    const gateSrc = fs.readFileSync(path.join(__dirname, '..', '.claude', 'hooks', 'go-gate.mjs'), 'utf8');
+    const grantSrc = fs.readFileSync(path.join(__dirname, '..', '.claude', 'hooks', 'go-grant.mjs'), 'utf8');
+    const parseList = /\["hard", "soft", "off", "status"\]/.test(gateSrc) ? ['hard', 'soft', 'off', 'status'] : null;
+    assert.ok(parseList, 'go-gate.mjs no longer parses [hard, soft, off, status] as gogate subcommands - update this test');
+    assert.ok(/gogate grant <scope/.test(grantSrc), 'go-grant.mjs no longer documents `gogate grant <scope...>` - update this test');
+    const real = new Set([...parseList, 'grant']);
+
+    const used = [...help.matchAll(/gogate (\w+)/g)].map((m) => m[1]);
+    assert.ok(used.length >= 3, 'the help names how to control the gate');
+    for (const m of used) assert.ok(real.has(m), `help names "gogate ${m}", which is not a real gogate command`);
+    assert.ok(!/\bwork\b/.test(help), '"work" is a gate-profile config value, not a gogate command: never name it here');
+});
+
+test('help block: shown under the Settings row question, and after update when the gate is off', async () => {
+    const home = mkHome();
+    const host = fakeHost(home);
+    const out = [];
+    await menu.settings(host, { home, write: (s) => out.push(s), ui: { select: async (msg, options) => (msg === 'Settings:' ? 'gate' : (options.some((o) => o.value === 'on') ? 'on' : 'back')) } });
+    assert.match(out.join(''), /gogate soft/, 'the Settings gate row prints the mode help under the question');
+
+    // (b) after update: the helper update() calls prints the block only when the setting is off.
+    const silent = [];
+    p.writeSettings(home, { disabled: [], gate: 'on' });
+    menu.printGateHelpIfOff(home, (s) => silent.push(s));
+    assert.strictEqual(silent.join(''), '');
+    p.writeSettings(home, { disabled: [], gate: 'off' });
+    menu.printGateHelpIfOff(home, (s) => silent.push(s));
+    assert.match(silent.join(''), /gogate hard/);
+});
