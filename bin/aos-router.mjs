@@ -68,18 +68,10 @@ function loadRawLayers() {
 }
 
 function provenance(merged, shipped, userLayer, projectLayer) {
-  const withUser = deepMerge(shipped, userLayer);
-  const sources = {};
-  for (const key of Object.keys(merged)) {
-    const mergedJson = JSON.stringify(merged[key]);
-    if (projectLayer && mergedJson !== JSON.stringify(withUser[key])) {
-      sources[key] = 'project';
-    } else if (userLayer && mergedJson !== JSON.stringify(shipped[key])) {
-      sources[key] = 'user';
-    } else {
-      sources[key] = 'shipped';
-    }
-  }
+  const layerOf = (get) => (get(projectLayer) !== undefined ? 'project' : get(userLayer) !== undefined ? 'user' : 'shipped');
+  const sources = { enforce: layerOf((l) => l?.enforce) };
+  for (const role of merged.roles) sources[role] = layerOf((l) => l?.preferences?.[role]);
+  for (const t of Object.keys(merged.targets)) sources[`target:${t}`] = layerOf((l) => l?.targets?.[t]);
   return sources;
 }
 
