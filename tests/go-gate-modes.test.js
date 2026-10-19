@@ -448,6 +448,26 @@ describe('store protection', () => {
         const r = spawnSync(process.execPath, [ENVP], { input: JSON.stringify({ tool_input: { file_path: path.join(home, 'innocent', 's1.json') } }), env: env(), encoding: 'utf8' });
         assert.equal(r.status, 2);
     });
+
+    // Audit P1-11: the guard judges write/redirect targets, not argv text. A quoted search
+    // pattern, ls glob or print-only heredoc body that merely mentions the store path passes;
+    // everything that actually writes into the store still blocks.
+    test('mentions of the store inside data text are allowed (audit P1-11)', () => {
+        typed('gogate off');
+        ok(`grep -n "\\.aos/gate" installer.js`);
+        ok(`grep -n "gate => honoring" installer.js`);
+        ok("grep -n 'aos/go' bin/aos-doctor.mjs");
+        ok('ls ~/.aos/*.json');
+        ok("cat <<'EOF'\nthe store lives at .aos/gate, the tokens at .aos/go\nEOF");
+        ok(`printf 'the gate store is .aos/gate.md'`);
+    });
+
+    test('writes into the store stay blocked even when hidden in quoted targets or heredocs (audit P1-11)', () => {
+        typed('gogate off');
+        for (const c of ['printf x > "~/.aos/gate/y.json"', 'cat <<\'EOF\' > ~/.aos/gate/new.json\n{}\nEOF', 'echo x >> ~/.aos/go/w.token', 'mv /tmp/x ~/.aos/gate/s1.json', 'rm ~/\'.aos\'/gate/s1.json', `node -e "require('fs').writeFileSync(process.env.HOME+'/.aos/gate/s1.json','{}')"`]) {
+            assert.equal(runGate(c).status, 2, c);
+        }
+    });
 });
 
 describe('status', () => {
