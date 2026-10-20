@@ -1895,12 +1895,15 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     const ownsManifest = !_sessionManifest;
     const manifest = _sessionManifest || loadInstallManifest();
     let result;
+    let cliSkipped = true;
     try {
         const useCli = pluginCli === undefined && realClaudeHome(targetHome);
         if (pluginCli === undefined && !useCli && mode === 'on' && keys.includes('claudecode')) {
             log.step(`claude plugin CLI steps skipped: HOME is not the account's real home (${process.env.AOS_PLUGIN_CLI === 'off' ? 'AOS_PLUGIN_CLI=off' : 'set AOS_PLUGIN_CLI=on to force them'}).`);
         }
-        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, announce: (m) => log.step(m), cli: uninstallRecords.recordingCli(targetHome, pluginCli !== undefined ? pluginCli : useCli ? pluginMigration.defaultCliRunner : null), ...(registrars ? { registrars } : {}) });
+        const cliForRun = pluginCli !== undefined ? pluginCli : useCli ? pluginMigration.defaultCliRunner : null;
+        cliSkipped = !cliForRun;
+        result = pluginMigration.migrate({ home: targetHome, manifest, detected: keys, mode, version: require('./package.json').version, announce: (m) => log.step(m), cli: uninstallRecords.recordingCli(targetHome, cliForRun), ...(registrars ? { registrars } : {}) });
     } catch (e) {
         log.warn(`Plugin migration skipped: ${e.message}`);
         result = { covered: new Set(), lines: [], error: e.message };
@@ -1909,6 +1912,7 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     const regFailed = result.lines.filter((l) => /plugin registration failed/.test(l));
     if (regFailed.length && !result.error) result.error = regFailed.join('; ');
     if (ownsManifest && mode === 'on') saveInstallManifest(manifest);
+    result.cliSkipped = cliSkipped;
     if (targetHome === homeDir) _pluginMigration = result;
     return result;
 }
@@ -1917,7 +1921,7 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
 // plugin step did not finish: what failed plus the exact fix for PowerShell and bash. Success stays
 // in the step logs; nothing is printed then.
 function printClaudePluginFix() {
-    const line = pluginMigration.pluginFixSummary(_pluginMigration);
+    const line = _pluginMigration && !_pluginMigration.cliSkipped ? pluginMigration.pluginFixSummary(_pluginMigration) : null;
     if (line) console.log(line);
     return !!line;
 }
