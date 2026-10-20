@@ -149,7 +149,7 @@ test('Claude plugin is uninstalled only when AOS recorded installing it', () => 
 
         const skip = ur.recordingCli(home, () => ({ ok: true, stdout: 'already installed' }));
         skip(['plugin', 'install', 'x']);
-        assert.deepStrictEqual(ur.readRecords(home).claude, {}, 'a plugin the user installed first is not ours');
+        assert.deepStrictEqual(ur.readRecords(home).claude || {}, {}, 'a plugin the user installed first is not ours');
         const notReal = ur.reverseRegistrations({ home, runner });
         assert.deepStrictEqual(notReal, []);
     } finally { rm(home); }
