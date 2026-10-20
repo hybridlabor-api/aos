@@ -48,9 +48,26 @@ function laneLayout(phases){
   phases.forEach(getDepth);const cols={};phases.forEach(p=>(cols[depth[p.id]]??=[]).push(p));const gx=120,gy=48,pad=64,pos={},metrics=Object.fromEntries(phases.map(p=>[p.id,graphNodeMetrics(p)])),columnWidths={}
   for(const[col,list]of Object.entries(cols))columnWidths[col]=Math.max(...list.map(p=>metrics[p.id].w))
   const orderedColumns=Object.keys(cols).map(Number).sort((a,b)=>a-b),columnX={};let nextX=pad
-  for(const col of orderedColumns){columnX[col]=nextX;nextX+=columnWidths[col]+gx}
+  const MAX_NODES_PER_RANK=4,rankWraps={}
+  for(const col of orderedColumns){const list=cols[col];if(list.length>MAX_NODES_PER_RANK){const cols_needed=Math.ceil(list.length/MAX_NODES_PER_RANK);rankWraps[col]={cols:cols_needed,perCol:Math.ceil(list.length/cols_needed)}}
+    const w=columnWidths[col],actualW=rankWraps[col]?columnWidths[col]*rankWraps[col].cols+gx*(rankWraps[col].cols-1):w;columnX[col]=nextX;nextX+=actualW+gx}
   let maxBottom=pad
-  for(const[col,list]of Object.entries(cols)){let nextY=pad;for(const p of list){const size=metrics[p.id],x=columnX[col]+(columnWidths[col]-size.w)/2;pos[p.id]={x,y:nextY,...size,nodeX:x+(size.w-size.nodeW)/2,nodeY:nextY};nextY+=size.h+gy}maxBottom=Math.max(maxBottom,nextY-gy+pad)}
+  for(const[col,list]of Object.entries(cols)){const wrap=rankWraps[col];const subRowGap=wrap?gy/2:gy
+    if(wrap){const colWidth=columnWidths[col];const rows=Math.ceil(list.length/wrap.cols)
+      const maxHeights=Array(wrap.cols).fill(0)
+      for(let i=0;i<list.length;i++){const sc=i%wrap.cols,sr=Math.floor(i/wrap.cols);maxHeights[sc]=Math.max(maxHeights[sc],metrics[list[i].id].h)}
+      let nextY=pad
+      for(let sr=0;sr<rows;sr++){let colNextY=nextY
+        for(let sc=0;sc<wrap.cols;sc++){const idx=sr*wrap.cols+sc;if(idx>=list.length)continue
+          const p=list[idx],size=metrics[p.id],baseX=columnX[col]+sc*(colWidth+gx),x=baseX+(colWidth-size.w)/2,y=nextY
+          pos[p.id]={x,y,...size,nodeX:x+(size.w-size.nodeW)/2,nodeY:y}
+          colNextY=Math.max(colNextY,y+size.h)}
+        nextY=colNextY+subRowGap}
+      maxBottom=Math.max(maxBottom,nextY-subRowGap+pad)}
+    else{let nextY=pad
+      for(const p of list){const size=metrics[p.id],x=columnX[col]+(columnWidths[col]-size.w)/2
+        pos[p.id]={x,y:nextY,...size,nodeX:x+(size.w-size.nodeW)/2,nodeY:nextY};nextY+=size.h+subRowGap}
+      maxBottom=Math.max(maxBottom,nextY-subRowGap+pad)}}
   return{phases,byId,pos,width:Math.max(nextX-gx+pad,560),height:Math.max(maxBottom,300)}
 }
 function boardInnerHtml(b,L){
@@ -115,7 +132,7 @@ function renderGraph(){
   $('graph').innerHTML=`<svg class="graph-grid"><defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="var(--grid)"/></pattern></defs><rect width="100%" height="100%" fill="url(#grid)"/></svg><div class="graph-stage" id="graph-stage"><svg class="graph-svg"><title>World map</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--grid)"/></marker></defs><g class="world" id="world" transform="translate(${graphPan.x} ${graphPan.y}) scale(${graphZoom})">${content}</g></svg></div><div class="canvas-tools"><button class="icon" aria-label="Zoom out" data-act="zoom-out"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button><span class="zoom" id="zoom">${Math.round(graphZoom*100)}%</span><button class="icon" aria-label="Zoom in" data-act="zoom-in"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg></button><span class="divider"></span><button class="icon" id="ov-activity" aria-label="Activity overlay" title="Activity overlay" data-act="ov-activity"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/></svg></button><button class="icon" id="ov-runs" aria-label="Runs overlay" title="Runs overlay" data-act="ov-runs"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="6" rx="2"/><rect x="4" y="14" width="10" height="5" rx="2"/></svg></button><span class="divider"></span><button class="icon" aria-label="Fit world" title="Fit the whole world" data-act="fit-world"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button><button class="icon" aria-label="Fit my repo" title="Fit this repo" data-act="fit-graph"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button></div>`
   applyStyles($('graph'));renderMinimap();applyOverlays();$('graph-stage').addEventListener('wheel',onGraphWheel,{passive:false});if(graphNeedsFit){graphNeedsFit=false;requestAnimationFrame(fitGraph)}
 }
-function graphDetailHeight(p){const list=kids(p.id),openRows=list.filter(graphTaskIsOpen).reduce((a,t)=>a+16+Math.max(graphTaskDetails(t).rows.length,5)*20,0);const sessN=(M.runs||[]).filter(r=>r.componentId===p.id).reduce((a,r)=>a+(r.todos||[]).length,0)+((p.touchedAt&&Date.now()-p.touchedAt<60000&&!list.some(k=>k.status==='active'||k.status==='blocked'))?1:0);return (list.length+sessN)?(list.length+sessN)*44+Math.max(0,list.length+sessN-1)+openRows:64}
+function graphDetailHeight(p){const list=kids(p.id),openRows=list.filter(graphTaskIsOpen).reduce((a,t)=>a+16+Math.max(graphTaskDetails(t).rows.length,5)*20,0);const sessN=(M.runs||[]).filter(r=>r.componentId===p.id).reduce((a,r)=>a+(r.todos||[]).length,0)+((p.touchedAt&&Date.now()-p.touchedAt<60000&&!list.some(k=>k.status==='active'||k.status==='blocked'))?1:0);const maxListHeight=list.length>3?Math.min((list.length+sessN)*44+Math.max(0,list.length+sessN-1)+openRows,360):undefined;return (list.length+sessN)?(list.length+sessN)*44+Math.max(0,list.length+sessN-1)+openRows:64}
 function graphNodeMetrics(p){const nodeW=400;let nodeH=128;if(fileMode&&(p.filesList||[]).length)nodeH=110+Math.ceil(Math.min(p.filesList.length,8)/2)*24+(p.filesList.length>8?30:10);if(!isUnfolded(p))return{w:nodeW,h:nodeH,nodeW,nodeH,detailW:0,detailH:0};const detailW=400,detailH=graphDetailHeight(p);return{w:detailW,h:nodeH+24+detailH,nodeW,nodeH,detailW,detailH}}
 function graphEdge(source,target,pos,handoff){if(!source||!pos[source.id]||!pos[target.id])return'';const a=pos[source.id],b=pos[target.id],x1=a.nodeX+a.nodeW,y1=a.nodeY+a.nodeH/2,x2=b.nodeX,y2=b.nodeY+b.nodeH/2,bend=Math.max(48,(x2-x1)/2),active=source.status==='active'||target.status==='active',d=`M${x1} ${y1}C${x1+bend} ${y1} ${x2-bend} ${y2} ${x2} ${y2}`
   if(handoff){const c=agentColor(handoff.agent),mx=(x1+x2)/2,my=(y1+y2)/2-10
@@ -129,7 +146,7 @@ function graphLinkEdge(a,b,pos){const A=pos[a.id],B=pos[b.id];if(!A||!B)return''
     return`<path class="edge handoff" d="${d}" data-st="stroke:${c}"/><text x="${(x1+x2)/2}" y="${(y1+y2)/2-8}" text-anchor="middle" fill="${c}" font-size="10.5" font-weight="650" font-family="var(--mono)">${esc(h.agent)} ⇢</text>`}
   return`<path class="edge link" d="${d}"/>`}
 function graphNode(p,index,pos){return collapsedGraphNode(p,index,pos)+(!fileMode&&isUnfolded(p)?expandedGraphNode(p,pos):'')}
-function graphTaskIsOpen(task){if(openGraphTasks.has(ns(task.id)))return true;if(closedGraphTasks.has(ns(task.id)))return false;return task.status==='active'}
+function graphTaskIsOpen(task){if(openGraphTasks.has(ns(task.id)))return true;if(closedGraphTasks.has(ns(task.id)))return false;const parent=M.plan.find(p=>p.id===task.parent),siblingCount=(parent?kids(parent.id):M.plan).length;return task.status==='active'&&siblingCount<=3}
 function graphTaskMarker(task,index){if(task.status==='done')return`<span class="task-capsule-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>`;if(task.status==='blocked')return`<span class="task-capsule-badge blocked" aria-hidden="true">!</span>`;return`<span class="task-capsule-marker" aria-hidden="true"><svg viewBox="0 0 24 24"><circle class="ring-track" cx="12" cy="12" r="11"/><circle class="ring-live" cx="12" cy="12" r="11"/></svg><span>${index+1}</span></span>`}
 function graphTaskDetails(task){const comp=M.plan.find(x=>x.id===task.parent),compActive=M.plan.some(x=>x.parent===task.parent&&x.status==='active')
   const live=!!(comp&&(comp.recent||[]).length&&(task.status==='active'||task.status==='blocked'||(task.status==='done'&&!compActive)))
@@ -224,7 +241,10 @@ function expandedGraphNode(p,pos){
   const liveSess=(M.runs||[]).some(r=>r.componentId===p.id&&!r.ended&&(r.todos||[]).length)
   const a0=(p.recent||[])[0]
   const obsRow=liveNow&&!declaredKid&&!liveSess&&a0?`<div class="task-capsule active obsrow" role="listitem"><button class="task-capsule-button" type="button" data-st="cursor:default"><span class="task-capsule-marker-wrap"><span class="task-capsule-marker" aria-hidden="true"><svg viewBox="0 0 24 24"><circle class="ring-track" cx="12" cy="12" r="11"/><circle class="ring-live" cx="12" cy="12" r="11"/></svg></span></span><span class="task-capsule-copy" data-obs-copy="${ns(p.id)}">Revising · ${esc(a0.file.split('/').pop())}</span><span class="task-capsule-amount" data-obs-ago="${ns(p.id)}">${ago(a0.at)}</span></button></div>`:''
-  const tasks=(list.length||sessRows||obsRow)?`<div class="task-capsules list" role="list" aria-label="${esc(p.title)} tasks">${list.map(graphTaskRow).join('')}${sessRows}${obsRow}</div>`:'<div class="graph-task-empty">No tasks in this phase.</div>'
+  const taskCount=list.length+sessRows.split('task-capsule').length-1+(obsRow?1:0)
+  const hasScroll=taskCount>3
+  const listStyle=hasScroll?'data-st="max-height:360px;overflow-y:auto;overflow-x:hidden"':''
+  const tasks=(list.length||sessRows||obsRow)?`<div class="task-capsules list" role="list" aria-label="${esc(p.title)} tasks" ${listStyle}>${list.map(graphTaskRow).join('')}${sessRows}${obsRow}</div>`:'<div class="graph-task-empty">No tasks in this phase.</div>'
   return`<path class="detail-tether" d="M${centerX} ${pos.nodeY+pos.nodeH}V${detailY}"/><g class="graph-detail" data-detail="${ns(p.id)}" transform="translate(${pos.x} ${detailY})"><foreignObject width="${pos.detailW}" height="${pos.detailH}"><div xmlns="http://www.w3.org/1999/xhtml" class="graph-task-card">${tasks}</div></foreignObject></g>`
 }
 function toggleGraphNode(id,event){event?.stopPropagation()
