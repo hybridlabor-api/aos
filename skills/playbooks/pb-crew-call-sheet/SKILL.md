@@ -23,6 +23,18 @@ est_time: 10-20 min
 # Crew call sheet
 What you get: a call sheet and a load-in / load-out plan for one show day.
 
+## Plan first
+
+The show day is planned in the `show-control` template; the call sheet derives from it:
+
+```bash
+aos-plan-canvas new show-control <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Inputs
 - The `tracker.csv` from pb-event-tracker, or an event brief — a text or document file
 - A crew list — a file with name, role and contact for each person

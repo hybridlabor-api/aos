@@ -11,6 +11,18 @@ date_added: "2026-02-27"
 
 > **Learn to THINK, not copy SQL patterns.**
 
+## Plan first
+
+A schema or service move starts from the `migration` template — safe cutover and a way back:
+
+```bash
+aos-plan-canvas new migration <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## 🎯 Selective Reading Rule
 
 **Read ONLY files relevant to the request!** Check the content map, find what you need.

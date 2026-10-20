@@ -14,6 +14,18 @@ Both axes run as **parallel sub-agents** so they don't pollute each other's cont
 
 If the originating issue lives in a tracker, fetch it with `gh issue view` (GitHub) or read it from `production_artifacts/`. For an adversarial single-axis review of build output, `requesting-code-review` and the `reviewer` agents remain the pipeline path; this skill is the two-axis (Standards + Spec) report.
 
+## Plan first
+
+Open the review from the `recap-review` template so both axes land in one document the author can point at:
+
+```bash
+aos-plan-canvas new recap-review <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Process
 
 ### 1. Pin the fixed point

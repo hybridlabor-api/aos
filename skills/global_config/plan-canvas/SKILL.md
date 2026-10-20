@@ -90,18 +90,18 @@ On Builder pages, blocks carry ids like `src-plan.mdx-L42`: an annotation `selec
 
 ### Which template when
 
-| Template id | Use when | Not for |
-|---|---|---|
-| `architecture` | Designing or reshaping a service or system; structure, interfaces and trade-offs agreed before building | A single defect (`bugfix`) |
-| `bugfix` | Fixing one defect; cause, fix and proof written down before coding | A new feature (`feature`) or a system design (`architecture`) |
-| `feature` | A user-facing feature with 3-4 screens and a clear build order | System structure without screens (`architecture`) |
-| `migration` | Moving data or a service from an old system to a new one; safe cutover and a way back | Shipping a version to users (`release`) |
-| `recap` | Work is finished and reviewers or teammates need a quick visual summary | Work still in progress |
-| `recap-board` | The change is mostly visible (a screen or a system shape); before and after side by side | A change that is not visible (`recap-review`) |
-| `recap-review` | A reviewer must decide on a merge or take over work; honest account of verified vs not verified | A visible change that needs before/after artboards (`recap-board`) |
-| `release` | Shipping a version to users; agreed scope, go/no-go gate, staged rollout and a way back | Moving data or a service between systems (`migration`) |
-| `research` | Choosing between options; evidence and recommendation reviewed before anyone builds | A defect (`bugfix`) |
-| `show-control` | Lighting, video, audio and network of a live show or event; one reviewable technical document | Non-event software (`feature`, `architecture`) |
+| Template id | Use when | Not for | Used by |
+|---|---|---|---|
+| `architecture` | Designing or reshaping a service or system; structure, interfaces and trade-offs agreed before building | A single defect (`bugfix`) | godmode-engineering, godmode-hardware-pcb, software-architecture, architect-review |
+| `bugfix` | Fixing one defect; cause, fix and proof written down before coding | A new feature (`feature`) or a system design (`architecture`) | godmode-engineering, systematic-debugging, diagnosing-bugs, pb-bug-fix, pb-ci-fix |
+| `feature` | A user-facing feature with 3-4 screens and a clear build order | System structure without screens (`architecture`) | godmode-ui-ux, godmode-media-creation, pb-landing-page, pb-idea-to-launch, prototype |
+| `migration` | Moving data or a service from an old system to a new one; safe cutover and a way back | Shipping a version to users (`release`) | godmode-engineering, database-design |
+| `recap` | Work is finished and reviewers or teammates need a quick visual summary | Work still in progress | quick-recap, pb-handover |
+| `recap-board` | The change is mostly visible (a screen or a system shape); before and after side by side | A change that is not visible (`recap-review`) | godmode-ui-ux, bdb-visual-edit, pb-redesign-app |
+| `recap-review` | A reviewer must decide on a merge or take over work; honest account of verified vs not verified | A visible change that needs before/after artboards (`recap-board`) | godmode-shipping, pr-recap, requesting-code-review, two-axis-code-review, finishing-a-development-branch, pb-worktrees-land |
+| `release` | Shipping a version to users; agreed scope, go/no-go gate, staged rollout and a way back | Moving data or a service between systems (`migration`) | godmode-shipping, bdb-eventagency-skill, pb-ship, pb-release-aos, golive |
+| `research` | Choosing between options; evidence and recommendation reviewed before anyone builds | A defect (`bugfix`) | godmode-engineering, godmode-media-creation, godmode-3d-creation, deep-research, plan-arbiter |
+| `show-control` | Lighting, video, audio and network of a live show or event; one reviewable technical document | Non-event software (`feature`, `architecture`) | godmode-eventtech, bdbmediastorm, bdb-eventagency-skill, pb-show-build, pb-crew-call-sheet |
 
 ### Stay listening, or the human talks to an empty chair
 

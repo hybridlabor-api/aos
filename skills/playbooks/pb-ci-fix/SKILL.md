@@ -23,6 +23,18 @@ est_time: 15-45 min
 # Fix red CI or set up GitHub Actions
 What you get: a green GitHub Actions run on a pushed commit, with the cause and the fix written down.
 
+## Plan first
+
+Write the failing run into the `bugfix` template before patching the workflow:
+
+```bash
+aos-plan-canvas new bugfix <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Inputs
 - repo — the current directory, or the one the user names
 - failing_run_id (optional) — from the GitHub Actions page; otherwise the latest failed run

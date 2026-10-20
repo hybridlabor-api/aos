@@ -10,6 +10,20 @@ This skill is the single source of truth for all design decisions. It replaces: 
 
 **Routing:** Component lookup order: the project's own design system and sources file first (its components, tokens, `DESIGN.md`); the BDB library (`@bdb` registry; version-pinned unpkg entry `https://unpkg.com/@hybridlabor-api/ui-motion-library@0.1.0/publish/registry/{name}.json` in `components.json`) only when the project opts in; then the verified registries listed in the UI library's `docs/sources.md` (link-only entries are documentation links, never code sources).
 
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- A user-facing feature with screens and a build order → `feature`; a finished visual change shown before/after → `recap-board`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve` of a `feature` plan, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build; a `recap-board` plan is the artifact itself (no components, no map). The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## -1. Design Source Discovery (MANDATORY FIRST STEP)
 
 Look for the project's own design source first: design-tokens.json, tokens.css, the tailwind theme, brand.md or DESIGN.md. Use it if found. If none exists, ask the user; otherwise start from the neutral defaults in design-tokens.json.

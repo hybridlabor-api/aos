@@ -20,6 +20,18 @@ node <this-skill-dir>/scripts/golive.mjs <command> --json
 `<this-skill-dir>` is the folder containing this SKILL.md. Every command prints one JSON document.
 Exit code `2` means "worked, but something needs attention": read the JSON.
 
+## Plan first
+
+Plan the go-live with the `release` template — staged rollout and a way back:
+
+```bash
+aos-plan-canvas new release <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Start with a verified release
 
 At the start of a new deployment run, run `version --json` and `update-check --json` using the

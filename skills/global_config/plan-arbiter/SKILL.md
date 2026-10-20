@@ -10,6 +10,18 @@ source: BuilderIO/skills
 Turn competing plans into one executable direction. Preserve the best ideas,
 reject weak assumptions, and produce a clear handoff instead of a blended mush.
 
+## Plan first
+
+The decision memo is a `research` page — options, evidence, recommendation, one verdict:
+
+```bash
+aos-plan-canvas new research <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+The approved plan is the artifact: this template has no components, so there is no agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Workflow
 
 1. Collect the source plans.

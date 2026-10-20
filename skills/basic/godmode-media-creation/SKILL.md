@@ -14,6 +14,20 @@ You are the Master Orchestrator for all media creation workflows within the BDB 
 
 ---
 
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- A produced piece with screens and a build order → `feature`; choosing between engines or pipelines → `research`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve` of a `feature` plan, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build; a `research` plan is the artifact itself (no components, no map). The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## 1. Engine & Local Backend Architecture
 
 The core local video generation backends are hosted within the Creator Extension (external module, not part of this repo):
