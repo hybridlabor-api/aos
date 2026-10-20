@@ -71,9 +71,13 @@ const DATA_PATHS = [
 const AGENTS = [
   'com.bdb.memb.webui', 'com.bdb.synapse', 'com.bdb.openwiki.daemon',
   'com.bdb.ao.daemon', 'com.bdb.agent-workspace', 'com.hybridlabor.bdb-remote', 'com.bdb.plan-canvas',
+  'com.bdb.memb.ingest',
 ];
 // Linux: the systemd user units the installer writes for the same services.
-const LINUX_UNITS = ['com.bdb.memb.webui.service', 'com.bdb.synapse.service', 'com.bdb.openwiki-visualize.service', 'com.bdb.plan-canvas.service'];
+const LINUX_UNITS = [
+  'com.bdb.memb.webui.service', 'com.bdb.synapse.service', 'com.bdb.openwiki-visualize.service', 'com.bdb.plan-canvas.service',
+  'openwiki-daemon.timer', 'openwiki-daemon.service', 'com.bdb.memb.ingest.timer', 'com.bdb.memb.ingest.service',
+];
 // Windows: the installer starts these through a hidden .vbs in the user's
 // Startup folder that runs a .bat (names and dirs as written by installer.js).
 const WIN_STARTUP = [
@@ -157,6 +161,9 @@ function plan(opts = {}) {
       const bat = s.batName ? path.join(home, s.batDir, s.batName) : null;
       if (existsSync(vbs) && (!bat || existsSync(bat))) agents.push({ label: s.label, vbs, bat, match: s.match || (bat && `*${bat}*`) });
     }
+    // OpenWiki daemon fallback entry (install_daemon.ps1) when no scheduled task could be registered.
+    const owCmd = path.join(startupDir, 'BDB_OpenWiki_Daemon.cmd');
+    if (existsSync(owCmd)) agents.push({ label: 'openwiki-daemon', vbs: owCmd, match: '*openwiki_daemon.py*' });
   }
 
   // v5 gateway/hub autostart: removed by their own step after the package loop, not through WIN_STARTUP.
@@ -223,7 +230,7 @@ function describe(p) {
     console.log(`\nBDB AO Codenotch ${tilde(c.state.path || c.state.uninstallPath)} ${note}`);
   }
 
-  const regLines = ur.reverseRegistrations({ home: HOME, dryRun: true, runner: pm.defaultCliRunner });
+  const regLines = ur.reverseRegistrations({ home: HOME, dryRun: true, runner: pm.defaultCliRunner, purge: PURGE });
   const cxLines = cp.uninstallCodexPlugin({ home: HOME, dryRun: true }).lines;
   const agyLines = [];
   agyPlugin.uninstall({ home: HOME, dryRun: true, log: { step: (m) => agyLines.push(m), warn: (m) => agyLines.push(m) } });
@@ -296,6 +303,9 @@ async function execute(p) {
     try { rmSync(a.plist); } catch { /* already gone */ }
   }
   if (agents.length) console.log(`  ${agents.length} services stopped and removed`);
+  if (process.platform === 'win32') {
+    try { execFileSync('schtasks', ['/Delete', '/TN', 'BDB_OpenWiki_Daemon', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { /* no such task */ }
+  }
 
   for (const f of edited) {
     try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch { /* unreadable */ }
@@ -340,6 +350,17 @@ async function execute(p) {
       console.log('  deja-vu (npm) removed');
     } catch {
       console.log(`  deja-vu not removed via npm — remove it by hand: npm uninstall -g ${DEJA_PKG}`);
+    }
+  }
+
+  // Other global npm packages AOS installed itself (aos-cli, codebase-memory-mcp), recorded at install time.
+  for (const pkg of (ur.readRecords(HOME).npmGlobal || []).filter((x) => x !== DEJA_PKG)) {
+    try {
+      execFileSync('npm', ['uninstall', '-g', pkg], { stdio: 'ignore', shell: process.platform === 'win32' });
+      ur.forgetNpmGlobal(HOME, pkg);
+      console.log(`  ${pkg} (npm) removed`);
+    } catch {
+      console.log(`  ${pkg} not removed via npm — remove it by hand: npm uninstall -g ${pkg}`);
     }
   }
 
@@ -436,7 +457,7 @@ async function execute(p) {
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} install markers removed`);
 
-  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner })) console.log(`  ${l}`);
+  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner, purge: PURGE })) console.log(`  ${l}`);
 
   const reg = pm.readState(HOME).registered.claudecode;
   if (reg) {

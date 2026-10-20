@@ -2838,7 +2838,7 @@ async function runTopologyAnimation(backgroundTask, label) {
     }
 }
 
-async function installTokenSaver(platformTarget) {
+async function installTokenSaver() {
     const tokenSaverDir = path.join(srcDir, 'vendor', 'token-saver');
     if (!fs.existsSync(tokenSaverDir)) return false;
     if (DRY_RUN) {
@@ -2846,7 +2846,8 @@ async function installTokenSaver(platformTarget) {
         return;
     }
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    
+    const existed = [path.join(homeDir, '.token-saver'), path.join(process.env.APPDATA || homeDir, 'token-saver')].some((d) => fs.existsSync(d));
+
     const { exec } = require('child_process');
     const execAsync = util.promisify(exec);
     
@@ -2859,6 +2860,7 @@ async function installTokenSaver(platformTarget) {
     try {
         await runTopologyAnimation(task, 'Installing Heimdall Token Saver Context Optimizer');
         log.success('Heimdall Token Saver registered');
+        if (!existed) uninstallRecords.recordTokenSaver(homeDir);
     } catch (err) {
         log.warn(`Heimdall Token Saver skipped/failed: ${err.message}`);
         logDebug(err, 'Token Saver install');
@@ -3857,7 +3859,11 @@ async function applyCodingModeStep({ flag } = {}) {
             // stdin must be a TTY too, and CI never prompts (a pty-allocating runner is still CI).
             interactive: !isAutoYes && Boolean(process.stdin.isTTY) && !process.env.CI,
             ask: async (message) => { const a = await askConfirm({ message, initialValue: false }); return isCancel(a) ? undefined : Boolean(a); },
-            run: (cmd) => runNpmWithRetry(cmd, {}, 'install codebase-memory-mcp'),
+            run: async (cmd) => {
+                const ok = await runNpmWithRetry(cmd, {}, 'install codebase-memory-mcp');
+                if (ok !== false && !DRY_RUN) uninstallRecords.recordNpmGlobal(homeDir, codebaseMemory.CMB_BINARY);
+                return ok;
+            },
             warn: (m) => log.warn(m),
             step: (m) => log.step(m),
         });
@@ -4181,6 +4187,7 @@ function aoServiceInstall(binTarget) {
     // AO installs its own service, and does it for macOS, Windows and Linux.
     try {
         execFileSync(binTarget, ['service', 'install'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        uninstallRecords.recordAoService(homeDir, binTarget);
     } catch (e) {
         throw new Error(describeExecError(e));
     }
@@ -8488,6 +8495,7 @@ function installAosCli() {
     const res = installStep('install AOS CLI', () => {
         log.step('Installing AOS CLI globally (pi is installed as its dependency)...');
         execSync(`npm install -g ${JSON.stringify(pkgDir)}`, { stdio: 'ignore', windowsHide: true });
+        uninstallRecords.recordNpmGlobal(homeDir, '@hybridlabor-api/aos-cli');
     }, `The rest of AOS is installed. Install AOS CLI later: ${manual}`);
 
     if (res.ok && hasExecutable('aos-cli')) {
@@ -9216,7 +9224,7 @@ Options:
         await installOpenWikiVisualizer();
     }
     if (installExcluded.has('token-saver')) log.step('Token Saver skipped (profile or --without).');
-    else await installTokenSaver(primaryTarget.platformValue);
+    else await installTokenSaver();
 
     const installedModulesForPrompt = (installState && installState.installedModules) || [];
     // Unified memory is part of the default install, not an optional module: memB (with deja) goes in here.
