@@ -37,17 +37,6 @@ aos services restart <id> --confirm <id>
 
 Only start/stop/restart need the typed confirm; `status` is always free.
 
-## Plan canvas as a Windows service (text only)
-
-`lib/hub/services-win.mjs` is the Windows mirror of the macOS `com.bdb.plan-canvas` LaunchAgent. Pure functions, no spawn or fs writes:
-
-- `buildPlanCanvasTaskXml({ nodePath, scriptPath, workingDir })` returns Task Scheduler XML: starts `node <script> server` at logon, restarts on failure (1 min, 999x), no time limit.
-- `parsePlanCanvasTaskXml(xml)` reads those fields back.
-- `schtasksArgs(action, { xmlPath })` returns constant `schtasks` argument lists (create, start, stop, delete, query).
-- `parseSchtasksStatus(output)` returns `{ installed, running, status }` from `schtasks /Query /FO LIST /V`.
-
-Paths must be absolute Windows paths without quotes, newlines or control characters; everything is XML-escaped. Registration is not wired into the installer yet.
-
 ## Security model
 
 - Loopback only: the hub listens on 127.0.0.1 and never on 0.0.0.0.

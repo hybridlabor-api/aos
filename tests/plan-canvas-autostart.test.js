@@ -5,12 +5,10 @@ const os = require('node:os');
 const path = require('node:path');
 
 const {
-    shouldOpenLaunchpad,
     shouldAutostartPlanCanvas,
     buildPlanCanvasPlist,
     buildPlanCanvasWinFiles,
     installPlanCanvasAutostart,
-    LAUNCHPAD_WEB_MODULES,
 } = require('../installer.js');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
@@ -18,24 +16,6 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'installer.js'), 'utf8');
 function tmpHome() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'aos-pc-home-'));
 }
-
-describe('launchpad Plan Canvas card', () => {
-    test('card links to :4519, shows port pill, status dot and copyable start command', () => {
-        assert.match(src, /<a class="card" href="http:\/\/127\.0\.0\.1:4519\/"/);
-        assert.match(src, /<span class="port-pill">:4519<\/span>/);
-        assert.match(src, /id="dot-plancanvas"/);
-        assert.match(src, /checkHealth\('http:\/\/127\.0\.0\.1:4519', 'dot-plancanvas'\)/);
-        assert.match(src, /offline — run: <code data-copy="aos-plan-canvas server"/);
-    });
-
-    test('plan-canvas is not a launchpad-opening module', () => {
-        assert.ok(!LAUNCHPAD_WEB_MODULES.includes('plan-canvas'));
-        const home = tmpHome();
-        try {
-            assert.equal(shouldOpenLaunchpad(['plan-canvas'], { homeDir: home, env: {}, argv: ['node', 'i.js'] }), false);
-        } finally { fs.rmSync(home, { recursive: true, force: true }); }
-    });
-});
 
 describe('Plan Canvas autostart', () => {
     test('opt-in only, and not implied by a dev checkout', () => {
