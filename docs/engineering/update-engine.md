@@ -106,11 +106,10 @@ pin for its global install.
 `update()`, `repair()` and the settings sub-flows set `process.env.AOS_NO_OPEN
 = '1'` before doing anything (lib/v5/menu.js:399, 543, 698, 702, 809, 832), so
 no browser tab opens during a headless update. The environment variable is
-honoured by every browser-opener path: installer launchpad (installer.js:7126,
-7141, 7282, 8276), hub/dashboard/store-ui, plan-canvas, agenttrail and archify
-(test suite: tests/update-no-browser.test.js; behavioural fix 7afb4c8 "suppress
-browser opening during update and repair operations", plus d1d6245 which keeps
-the Darwin launchpad call unconditional because suppression happens earlier).
+honoured by every browser-opener path: hub/dashboard/store-ui, plan-canvas,
+agenttrail and archify (test suite: tests/update-no-browser.test.js). The
+installer no longer generates a launchpad page; update and install remove the
+old launchpad login item and page (`reverseLaunchpad`).
 
 ## Flow, in text
 

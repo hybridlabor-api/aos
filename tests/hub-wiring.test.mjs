@@ -27,22 +27,11 @@ describe('WP5 hub wiring', () => {
         assert.match(src, /  package\s+Install, update, repair or verify one v5 package/);
     });
 
-    test('installer still names aos-dashboard on port 7900 (launchpad alias)', () => {
+    test('installer still names aos-dashboard on port 7900 (dashboard alias)', () => {
         const src = read('installer.js');
         assert.match(src, /aos-dashboard/);
         assert.match(src, /127\.0\.0\.1:7900/);
         assert.match(src, /BDB Agent OS Dashboard/);
-    });
-
-    test('LAUNCHPAD_WEB_MODULES still carries the daemon list and now surfaces the hub card', () => {
-        const src = read('installer.js');
-        // launchpad-installer.test.js pins this exact literal; it must stay.
-        assert.match(src, /const LAUNCHPAD_WEB_MODULES = \['memb', 'synapse', 'openwiki', 'ao', 'remote'\]/);
-        assert.match(src, /LAUNCHPAD_WEB_MODULES\.push\('hub'\)/);
-        // the launchpad card: link, not absorb.
-        assert.match(src, /href="http:\/\/127\.0\.0\.1:7900\/"/);
-        assert.match(src, /id="dot-hub"/);
-        assert.match(src, /checkHealth\('http:\/\/127\.0\.0\.1:7900', 'dot-hub'\)/);
     });
 
     test('package.json bin entries and test registration', () => {
