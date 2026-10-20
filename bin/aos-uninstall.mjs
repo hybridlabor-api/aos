@@ -310,10 +310,11 @@ async function execute(p) {
     try { execFileSync('schtasks', ['/Delete', '/TN', 'BDB_OpenWiki_Daemon', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { /* no such task */ }
   }
 
+  const unsaved = new Set();
   for (const f of edited) {
-    try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch { /* unreadable */ }
+    try { copyFileSync(f, `${f}.${stamp}.bak`); backed++; } catch (e) { unsaved.add(f); failures.push(`${tilde(f)} not removed: backup failed (${e.message})`); }
   }
-  for (const f of [...ours, ...edited]) {
+  for (const f of [...ours, ...edited].filter((x) => !unsaved.has(x))) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
@@ -384,16 +385,21 @@ async function execute(p) {
   for (const f of dejaMcpJson.filter(existsSync)) {
     try {
       const cfg = JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, ''));
-      if (dejaByAos && cfg.mcpServers && cfg.mcpServers.deja) {
+      // Backed up before every rewrite; a failed backup aborts this file's edit.
+      const save = () => { copyFileSync(f, `${f}.${stamp}.bak`); writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n'); };
+      // Only the invocation AOS writes: deja mcp, or cmd /c deja mcp on Windows.
+      const d = cfg.mcpServers && cfg.mcpServers.deja;
+      const aosDeja = !!d && ((d.command === 'deja' && JSON.stringify(d.args) === '["mcp"]') || (d.command === 'cmd' && JSON.stringify(d.args) === '["/c","deja","mcp"]'));
+      if (dejaByAos && aosDeja) {
         delete cfg.mcpServers.deja;
-        writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
+        save();
         console.log(`  deja entry removed from ${tilde(f)}`);
       }
       // Rust + Tauri package: only the entry AOS writes ({command: tauri-pilot, args: [mcp]}) leaves.
       const tp = cfg.mcpServers && cfg.mcpServers['tauri-pilot'];
       if (tp && tp.command === 'tauri-pilot' && JSON.stringify(tp.args) === '["mcp"]') {
         delete cfg.mcpServers['tauri-pilot'];
-        writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
+        save();
         console.log(`  tauri-pilot entry removed from ${tilde(f)}`);
       }
     } catch { failures.push(`${tilde(f)} unreadable`); console.log(`  ${tilde(f)} unreadable — check by hand`); }
