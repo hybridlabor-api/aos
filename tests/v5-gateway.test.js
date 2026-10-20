@@ -41,7 +41,7 @@ describe('config generator', () => {
         bdb_resolume_mcp: { command: 'uv', args: ['run', '__MCPS_DIR__/resolume_mcp.py'] },
         bdb_blender_mcp: { command: 'node', args: ['{{HOME}}/x.js'], cwd: '/work/dir', env: { FOO: 'bar' } },
         mcsc: { command: 'node', args: ['__MCPS_DIR__/mcsc/server.js'] },
-        zavora_computer_use: { command: 'npx', args: ['-y', 'z@1.0.0'] },
+        bdb_rhino_mcp: { command: 'npx', args: ['-y', 'z@1.0.0'] },
         unknown_new_server: { command: 'node', args: ['n.js'] },
         open_design_mcp: { command: 'node', args: ['p.js'], shared: false },
     };
@@ -49,7 +49,7 @@ describe('config generator', () => {
     test('splitServers: only allow-listed servers go to the gateway; shared:false forces direct', () => {
         const { gateway, direct } = cfg.splitServers(shipped);
         assert.deepEqual(Object.keys(gateway).sort(), ['bdb_blender_mcp', 'bdb_resolume_mcp', 'github']);
-        assert.deepEqual(Object.keys(direct).sort(), ['mcsc', 'open_design_mcp', 'unknown_new_server', 'zavora_computer_use']);
+        assert.deepEqual(Object.keys(direct).sort(), ['bdb_rhino_mcp', 'mcsc', 'open_design_mcp', 'unknown_new_server']);
         for (const n of cfg.DIRECT_SERVERS) assert.ok(!cfg.GATEWAY_SERVERS.includes(n), n);
     });
 
@@ -98,9 +98,9 @@ describe('config generator', () => {
     test('the shipped template yields exactly the allow-listed gateway servers and no secret value', () => {
         const real = require('../lib/mcp-secrets.js').shippedServers(ROOT);
         const out = cfg.buildUpstreams({ shipped: real, home, launcher, pathEnv: 'p' });
-        assert.deepEqual(Object.keys(out).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
-        assert.ok(!('bdb_remoteos_mcp' in out));
-        assert.ok(cfg.splitServers(real).direct.bdb_remoteos_mcp);
+        assert.deepEqual(Object.keys(out).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_remoteos_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'bdb_windows_computer_use', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp', 'zavora_computer_use']);
+        assert.ok(!('bdb_rhino_mcp' in out));
+        assert.ok(cfg.splitServers(real).direct.bdb_rhino_mcp);
         for (const n of cfg.DIRECT_SERVERS) assert.ok(!(n in out), n);
         assert.ok(!/__MCPS_DIR__|__GEMINI_API_KEY__/.test(JSON.stringify(out)));
     });
@@ -289,7 +289,7 @@ describe('pkg-gateway', () => {
         }
         assert.match(fs.readFileSync(path.join(dir, 'token'), 'utf8'), /^[0-9a-f]{64}$/);
         const servers = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
-        assert.ok(servers.github && !servers.mcsc && !servers.zavora_computer_use);
+        assert.ok(servers.github && !servers.mcsc && !servers.bdb_rhino_mcp);
 
         const plist = fs.readFileSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist'), 'utf8');
         assert.ok(plist.includes('<string>com.bdb.aos.gateway</string>'));
@@ -926,7 +926,7 @@ describe('harness enable/disable', () => {
             codex: path.join(home, '.codex', 'config.toml'),
             agy: path.join(home, '.gemini', 'config', 'mcp_config.json'),
         };
-        const common = (h) => ({ mcsc: shipped.mcsc, zavora_computer_use: shipped.zavora_computer_use, mine: { command: 'node', args: ['mine.js'] }, ...h });
+        const common = (h) => ({ mcsc: shipped.mcsc, bdb_rhino_mcp: shipped.bdb_rhino_mcp, mine: { command: 'node', args: ['mine.js'] }, ...h });
         wj(f.claude, { numStartups: 3, mcpServers: common({ github: owned(home, 'github'), open_design_mcp: owned(home, 'open_design_mcp') }), projects: { '/x': { mcpServers: { github: edited } } } });
         wj(f.cursor, { mcpServers: common({ github: edited, bdb_resolume_mcp: owned(home, 'bdb_resolume_mcp') }) });
         wj(f.oc, { $schema: 'x', mcp: { github: ownedOc(home, 'github'), mine: { type: 'local', command: ['node', 'm.js'] } }, ...extra });
@@ -951,7 +951,7 @@ describe('harness enable/disable', () => {
         const before = snap(fx.f);
         const rep = run(fx);
         const claude = rj(fx.f.claude);
-        assert.deepEqual(Object.keys(claude.mcpServers).sort(), ['aos', 'mcsc', 'mine', 'zavora_computer_use']);
+        assert.deepEqual(Object.keys(claude.mcpServers).sort(), ['aos', 'bdb_rhino_mcp', 'mcsc', 'mine']);
         assert.deepEqual(claude.mcpServers.aos, { type: 'http', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } });
         assert.equal(claude.numStartups, 3);
         assert.deepEqual(claude.projects['/x'].mcpServers.github, edited, 'per-project servers untouched');

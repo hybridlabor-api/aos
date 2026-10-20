@@ -230,3 +230,20 @@ test('route cache served for the same result object identity support', () => {
   catalogCacheReset();
   assert.doesNotThrow(() => catalogCacheReset());
 });
+
+test('gateway-served upstreams are flagged installed via the aos entry and ~/.agents/gateway/mcp.json', () => {
+  const home = join(tmpBase, 'gw-flags-home');
+  mkdirSync(join(home, '.agents', 'gateway'), { recursive: true });
+  writeFileSync(join(home, '.claude.json'), JSON.stringify({ mcpServers: { aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp' } } }));
+  writeFileSync(join(home, '.agents', 'gateway', 'mcp.json'), JSON.stringify({ mcpServers: { github: { type: 'stdio', command: 'x' } } }));
+  const keep = process.env.CODEX_HOME;
+  delete process.env.CODEX_HOME;
+  try {
+    const gh = byName(buildCatalog({ root: ROOT, home, now: () => Date.now() }).mcps, 'github');
+    assert.equal(gh.installed.gateway, true);
+    assert.equal(gh.installed.claude, true);
+    assert.equal(gh.installed.codex, false);
+  } finally {
+    if (keep !== undefined) process.env.CODEX_HOME = keep;
+  }
+});
