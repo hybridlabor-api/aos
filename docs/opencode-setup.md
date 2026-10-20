@@ -23,8 +23,8 @@ OpenCode deliberately runs a small MCP set (`memb_mcp`, `deja`, `zavora_computer
 AOS_OPENCODE_OPTIONAL=ponytail,loop,rtk aos        # or: aos --opencode-optional=ponytail,loop,rtk
 ```
 
-- `ponytail`: appends `@dietrichgebert/ponytail@4.10.0` to `plugin[]`
-- `loop`: appends `@bybrawe/opencode-loop@0.6.2` to `plugin[]`
+- `ponytail`: appends `@dietrichgebert/ponytail@5.3.2` to `plugin[]`
+- `loop`: appends `@bybrawe/opencode-loop@0.6.8` to `plugin[]`
 - `rtk`: prints `brew install rtk && rtk init -g --opencode`; AOS installs nothing
 
 Entries are appended only when no entry for that package exists, after a timestamped `opencode.jsonc.<ts>.bak` backup. AOS never runs foreign installers (the `opencode-loop` npx installer rewrites the config) and skips `orca-opencode-status.js` (the Orca app maintains it) and `dag.jsonc` / GraphAgent (AGPL engine, different program).

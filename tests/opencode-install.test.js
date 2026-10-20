@@ -147,8 +147,8 @@ test('opt-in appends pinned entries after a backup, once, and warns about loop-s
   const first = install(home, { optional: ['ponytail', 'loop', 'rtk', 'bogus'] });
   const plugins = readCfg(cfg).plugin;
   assert.ok(plugins.includes('some-other'));
-  assert.ok(plugins.includes('@dietrichgebert/ponytail@4.10.0'));
-  assert.ok(plugins.includes('@bybrawe/opencode-loop@0.6.2'));
+  assert.ok(plugins.includes('@dietrichgebert/ponytail@5.3.2'));
+  assert.ok(plugins.includes('@bybrawe/opencode-loop@0.6.8'));
   assert.ok(!plugins.some((p) => /rtk/.test(p)), 'rtk is a hint only');
   assert.match(first.out, /brew install rtk && rtk init -g --opencode/);
   assert.match(first.out, /go-gate, may never see them/);
@@ -170,10 +170,10 @@ test('opt-in via env var and --opencode-optional flag; an existing other pin is 
   const plugins = readCfg(cfg).plugin;
   assert.equal(plugins.filter((p) => /ponytail/.test(p)).length, 1);
   assert.ok(plugins.includes('@dietrichgebert/ponytail@4.9.0'));
-  assert.ok(plugins.includes('@bybrawe/opencode-loop@0.6.2'));
+  assert.ok(plugins.includes('@bybrawe/opencode-loop@0.6.8'));
   const home2 = tmp();
   const r = install(home2, { optional: null, argv: ['--opencode-optional=ponytail'] });
-  assert.ok(readCfg(r.cfg).plugin.includes('@dietrichgebert/ponytail@4.10.0'));
+  assert.ok(readCfg(r.cfg).plugin.includes('@dietrichgebert/ponytail@5.3.2'));
 });
 
 test('lean-MCP rule: the plugin install leaves OpenCode mcp keys untouched, opt-ins included', () => {

@@ -5900,8 +5900,8 @@ function injectHarnessRules() {
 // Pinned entries only; the foreign installers (opencode-loop's npx installer, rtk init)
 // are never run because they rewrite the user's opencode config.
 const OPENCODE_OPTIONAL_PINS = {
-    ponytail: '@dietrichgebert/ponytail@4.10.0',
-    loop: '@bybrawe/opencode-loop@0.6.2',
+    ponytail: '@dietrichgebert/ponytail@5.3.2',
+    loop: '@bybrawe/opencode-loop@0.6.8',
 };
 const OPENCODE_RTK_HINT = 'rtk is not installed by AOS. Run yourself: brew install rtk && rtk init -g --opencode';
 const OPENCODE_LOOP_SHELL_WARNING = 'opencode-loop: /loop-shell style commands run shell commands as child processes. ' +
