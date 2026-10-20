@@ -256,6 +256,16 @@ describe('uninstall after the hub bin is gone', () => {
         });
     }
 
+    test('uninstall removes the hub runtime state files', async () => {
+        const home = tmp();
+        const { ctx } = mkCtx(home, { platform: 'linux' });
+        await pkg.install(ctx);
+        const state = [['.aos', 'hub', 'hub.json'], ['.aos', 'status.json'], ['.aos', 'endpoints.json']].map((p) => path.join(home, ...p));
+        for (const f of state) fs.writeFileSync(f, '{}');
+        await pkg.uninstall(ctx);
+        for (const f of state) assert.ok(!fs.existsSync(f), f);
+    });
+
     test('a foreign file at the unit path is not ours', () => {
         const home = tmp();
         const f = path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.hub.service');
