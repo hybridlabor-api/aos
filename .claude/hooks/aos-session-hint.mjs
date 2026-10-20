@@ -12,6 +12,22 @@ import { fileURLToPath } from "node:url";
 
 export const hintOff = () => process.env.AOS_SESSION_HINT === "off" || process.env.AOS_SESSION_START_CONTEXT === "off" || Number(process.env.AOS_DELEGATE_DEPTH || 0) > 0;
 
+// Retrieval tools that are installed here, probed with fs only (no spawn). [] when none.
+export function memoryTools({ home = homedir(), env = process.env, platform = process.platform, exists = existsSync } = {}) {
+  const dirs = String(env.PATH || '').split(platform === 'win32' ? ';' : ':').concat(['/usr/local/bin', '/opt/homebrew/bin', join(home, '.local', 'bin')]);
+  const exts = platform === 'win32' ? ['.cmd', '.exe', '.bat', ''] : [''];
+  const onPath = (name) => dirs.some((d) => d && exts.some((e) => exists(join(d, name + e))));
+  let off = [];
+  try { off = JSON.parse(readFileSync(join(home, '.aos', 'v5-settings.json'), 'utf8')).disabled || []; } catch {}
+  const on = (id) => !off.includes(id);
+  return [
+    ['memb search', on('memb') && (exists(join(home, '.MemBDB', 'memb.db')) || exists(join(home, '.agents', 'memB')))],
+    ['deja search', on('deja') && onPath('deja')],
+    ['openwiki_search', on('openwiki') && onPath('openwiki')],
+    ['codebase_memory_mcp', onPath('codebase-memory-mcp')],
+  ].filter(([, ok]) => ok).map(([n]) => n);
+}
+
 // The hint text, shared with the OpenCode plugin. "" when switched off.
 export async function buildHint() {
   if (hintOff()) return "";
@@ -20,6 +36,10 @@ export async function buildHint() {
     'agenttrail serves a live map of multi-agent builds when one is running.',
     'The automatic tool-routing rules (when to use plan-canvas, agenttrail, subagents, startcycle) live in the "Tool routing (automatic)" block of AGENTS.md.',
   ];
+  try {
+    const tools = memoryTools();
+    if (tools.length) hints.push(`Need more context? Pull it on demand: ${tools.join(', ')}.`);
+  } catch {}
   try {
     const home = homedir();
     let notice = null;

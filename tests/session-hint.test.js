@@ -71,7 +71,8 @@ for (const c of cases) {
     `${c.label}: additionalContext must be a non-empty string`,
   );
   const lines = out.additionalContext.split('\n');
-  assert.equal(lines.length, 3, `${c.label}: hint must be exactly 3 lines`);
+  // line 4 is the optional "pull more" line, present only when a memory tool is installed
+  assert.ok(lines.length === 3 || (lines.length === 4 && /Pull it on demand/.test(lines[3])), `${c.label}: hint must be 3 lines plus the optional pull line`);
   assert.match(lines[0], /aos-plan-canvas/);
   assert.match(lines[1], /agenttrail/);
   assert.match(lines[2], /AGENTS\.md/);
