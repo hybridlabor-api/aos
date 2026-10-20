@@ -16,7 +16,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
-const { buildAllowedHostnames, embedAncestors, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin, isEmbedNavigation } = require('../loopback-guard');
+const { buildAllowedHostnames, embedAncestors, frameAncestors, injectEmbed, isAllowedFetchSite, isAllowedHostHeader, isAllowedOrigin, isEmbedNavigation } = require('../loopback-guard');
 const { createAnnotateHandler } = require('./annotate-server');
 const { renderMarkdown } = require('./markdown');
 const { artifactSdkJs } = require('./sdk');
@@ -189,27 +189,20 @@ function prefixResponse(res, prefix) {
   };
 }
 
+// Absolute path, symlinks resolved when the path exists (it may not yet).
+function realRoot(p) {
+  const abs = path.resolve(p);
+  try { return fs.realpathSync(abs); } catch { return abs; }
+}
+
 function sendHtml(res, statusCode, html, { csp = true } = {}) {
   const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' };
   let body = html;
   if (csp) {
     const ancestors = embedAncestors();
-    const frameAncestors = ancestors.length > 0
-      ? `frame-ancestors 'self' ${ancestors.join(' ')}`
-      : "frame-ancestors 'none'";
     headers['content-security-policy'] =
-      `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; ${frameAncestors}`;
-    if (ancestors.length > 0) {
-    const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`;
-    const scriptTag = '<script src="/ao-embed-bridge.js"></script>';
-    if (body.includes('</head>')) {
-      body = body.replace('</head>', `${metaTag}\n${scriptTag}\n</head>`);
-    } else if (body.includes('<head>')) {
-      body = body.replace('<head>', `<head>\n${metaTag}\n${scriptTag}`);
-    } else {
-      body = `${metaTag}\n${scriptTag}\n${body}`;
-    }
-    }
+      `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; ${frameAncestors(ancestors)}`;
+    body = injectEmbed(body, ancestors);
   }
   res.writeHead(statusCode, headers);
   res.end(body);
@@ -258,8 +251,7 @@ function createPlanCanvasServer({
   // The workspace root this server serves, realpathed once: /health reports it so the CLI can tell
   // a server of another project/root apart (audit port-collision). It is this machine's own,
   // loopback-reachable workspace path — clients are the local CLI and the same-origin canvas page.
-  let serverRoot = path.resolve(workspaceRoot);
-  try { serverRoot = fs.realpathSync(serverRoot); } catch { /* may not exist yet */ }
+  const serverRoot = realRoot(workspaceRoot);
 
   const allowedHostnames = buildAllowedHostnames(host);
   const annotate = createAnnotateHandler({
@@ -839,6 +831,7 @@ function createPlanCanvasServer({
 
 module.exports = {
   DEFAULT_HOST,
+  realRoot,
   DEFAULT_PORT,
   DEFAULT_THINKING_STALE_MS,
   DEFAULT_TYPING_EXPIRY_MS,

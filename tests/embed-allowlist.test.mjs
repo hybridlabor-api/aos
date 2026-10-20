@@ -92,7 +92,6 @@ describe('Embed Allowlist & Bridge Contract', () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const files = [
       'lib/hub/ui/ao-embed-bridge.js',
-      'skills/global_config/agenttrail/public/ao-embed-bridge.js',
       'skills/global_config/agenttrail/public/hub/ao-embed-bridge.js',
       'skills/global_config/plan-canvas/scripts/lib/plan-canvas/ao-embed-bridge.js',
     ].map((f) => fs.readFileSync(path.join(root, f), 'utf8'));

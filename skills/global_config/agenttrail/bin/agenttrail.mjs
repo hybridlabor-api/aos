@@ -10,6 +10,7 @@ import os from 'node:os'
 import crypto from 'node:crypto'
 import { serveShared } from '../lib/shared-static.mjs'
 import { announceTrail } from '../lib/endpoints-lite.mjs'
+import { injectEmbed } from '../../plan-canvas/scripts/lib/loopback-guard.js'
 import { codeStampOf, watchCodeStamp } from '../lib/code-stamp.mjs'
 import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOCOL } from './repoid.mjs'
 import { parsePlan, lintPlan, tickTask } from '../lib/plan.mjs'
@@ -191,17 +192,9 @@ let tickPlanFile = null
 let tickTaskId = null
 let tickMode = 'done'
 if (cmd === 'tick') {
-  const pos = []
-  let tickSeen = false
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
-    if (cmd === 'tick' && !tickSeen && a === 'tick') { tickSeen = true; continue }
-    if (a === '--doing') tickMode = 'doing'
-    else if (a === '--done') tickMode = 'done'
-    else if (a === '--todo') tickMode = 'todo'
-    else if (a.startsWith('-')) continue
-    else pos.push(a)
-  }
+  const rest = argv.slice(argv.indexOf('tick') + 1)
+  const pos = rest.filter((a) => !a.startsWith('-'))
+  for (const a of rest) if (['--doing', '--done', '--todo'].includes(a)) tickMode = a.slice(2)
   tickPlanFile = pos[0] ? path.resolve(pos[0]) : null
   tickTaskId = pos[1] || null
   if (!tickPlanFile || !tickTaskId) { console.error('usage: aos-trail tick <plan-file> <task-id> [--doing|--done|--todo]'); process.exit(1) }
@@ -939,19 +932,12 @@ const server = http.createServer((req, res) => {
   lastSeen = Date.now()
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
-    securityHeaders(res)
     // The page builds markup with style attributes and data: icons; scripts stay 'self' only.
-    res.setHeader('Content-Security-Policy', String(res.getHeader('Content-Security-Policy')).replace("script-src 'self';", "script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"))
-    const ancestors = embedAncestors()
-    let html = fs.readFileSync(indexPath, 'utf8').replace('__TRAIL_SIDE_TOKEN__', SIDE_TOKEN)
-    if (ancestors.length > 0) {
-      const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
-      const inject = `${metaTag}\n<script src="ao-embed-bridge.js"></script>`
-      html = html.includes('</head>') ? html.replace('</head>', `${inject}\n</head>`) : `${inject}\n${html}`
-    }
+    securityHeaders(res, process.env, ["style-src 'self' 'unsafe-inline'", "img-src 'self' data:"])
+    const html = injectEmbed(fs.readFileSync(indexPath, 'utf8').replace('__TRAIL_SIDE_TOKEN__', SIDE_TOKEN), embedAncestors(), 'ao-embed-bridge.js')
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(html)
   } else if (req.method === 'GET' && u.pathname === '/ao-embed-bridge.js') {
-    const bridgeFile = path.join(__dirname, '..', 'public', 'ao-embed-bridge.js')
+    const bridgeFile = path.join(__dirname, '..', 'public', 'hub', 'ao-embed-bridge.js')
     let data
     try { data = fs.readFileSync(bridgeFile) } catch { res.writeHead(404).end(); return }
     securityHeaders(res)

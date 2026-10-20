@@ -103,8 +103,6 @@ function activityFor(instances, sessionTable) {
 
 // A session's task.update names a plan node by id and points at its plan file.
 // Only the plan it names counts, so the same id in another plan stays untouched.
-// Alongside one live marker per task, the sessions reporting on that node become
-// the worker card: name, harness, state, last file written and seconds since.
 //
 // Auto state (model-only, the plan file is never written): a worker stamped with
 // a node id (AOS_TRAIL_NODE + AOS_TRAIL_PLAN, or the brief marker) that has made
@@ -113,7 +111,6 @@ function activityFor(instances, sessionTable) {
 // auto-ticked; the dispatcher owns every tick.
 function liveTasksFor(primary, sessions, now, cfg) {
   const live = new Map()
-  const workers = new Map()
   const taskIds = new Set(primary.plan.nodes.filter((n) => n.level === 'task').map((n) => n.id))
   const componentIds = new Set(primary.plan.nodes.filter((n) => n.level === 'component').map((n) => n.id))
   const admit = (taskId, s, auto = false) => {
@@ -123,18 +120,6 @@ function liveTasksFor(primary, sessions, now, cfg) {
       harness: s.harness || '',
       name: s.name || '',
       at: new Date(s.lastEventAt || 0).toISOString(),
-    })
-    if (!workers.has(taskId)) workers.set(taskId, [])
-    workers.get(taskId).push({
-      id: s.id,
-      name: s.name || '',
-      harness: s.harness || '',
-      model: s.model || '',
-      state: s.state || 'working',
-      lastFile: s.lastFile || '',
-      lastFileAt: new Date(s.lastFileAt || 0).toISOString(),
-      writeAge: s.lastFileAt ? Math.max(0, now - s.lastFileAt) : null,
-      age: Math.max(0, now - (s.lastEventAt || 0)),
     })
   }
   for (const s of sessions) {
@@ -156,7 +141,7 @@ function liveTasksFor(primary, sessions, now, cfg) {
     const openId = firstOpenTaskId(primary.plan.nodes, claimed.id)
     if (openId && !live.has(openId)) admit(openId, s, true)
   }
-  return { live, workers }
+  return live
 }
 
 // A node a session released (Stop or SessionEnd) stays visible as touched, never done.
@@ -237,7 +222,7 @@ export function buildModel({
       const bs = primary.branch && primary.branch !== '(detached)'
         ? (bsCache.has(primary.branch) ? bsCache.get(primary.branch) : bsCache.set(primary.branch, memo(`branch|${repoId}|${primary.branch}`, () => branchState(repoId, primary.branch, { defaultBranch: defBranch }), TTL.branch)).get(primary.branch))
         : 'open'
-      const { live: liveTasks, workers } = liveTasksFor(primary, sessions, now, cfg)
+      const liveTasks = liveTasksFor(primary, sessions, now, cfg)
       const touchedTasks = touchedFor(primary, sessions)
       const pinned = pinnedKeys.includes(group.planKey)
       // "live" means still reporting and not finished. A session that ended cannot keep a
@@ -268,7 +253,6 @@ const live = inPrimary.some((s) => now - (s.lastEventAt || 0) < cfg.liveMs && !s
             status: liveTask && liveTask.auto ? 'active' : t.status,
             parent: t.parent,
             live: liveTask,
-            workers: workers.get(t.id) || [],
             touchedAt: touchedTasks.get(t.id) || null,
           }
         }),

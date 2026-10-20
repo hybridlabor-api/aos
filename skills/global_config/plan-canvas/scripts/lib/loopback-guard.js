@@ -112,15 +112,28 @@ function isEmbedNavigation(headers) {
   return dest === 'iframe' && mode === 'navigate';
 }
 
+function frameAncestors(ancestors) {
+  return ancestors.length > 0 ? `frame-ancestors 'self' ${ancestors.join(' ')}` : "frame-ancestors 'none'";
+}
+
+// Adds the ancestors meta tag and the bridge script to an HTML page; no-op when embedding is off.
+function injectEmbed(html, ancestors, src = '/ao-embed-bridge.js') {
+  if (ancestors.length === 0) return html;
+  const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`;
+  const inject = `${metaTag}\n<script src="${src}"></script>`;
+  if (html.includes('</head>')) return html.replace('</head>', `${inject}\n</head>`);
+  if (html.includes('<head>')) return html.replace('<head>', `<head>\n${inject}`);
+  return `${inject}\n${html}`;
+}
+
 module.exports = {
   AO_EMBED_ANCESTORS,
-  EMBED_ORIGIN,
-  LOOPBACK_HOSTNAMES,
   buildAllowedHostnames,
   embedAncestors,
+  frameAncestors,
+  injectEmbed,
   isAllowedFetchSite,
   isAllowedHostHeader,
   isAllowedOrigin,
-  isEmbedNavigation,
-  parseHostHeader
+  isEmbedNavigation
 };

@@ -104,8 +104,7 @@ export function tickTask(text, taskId, mode = 'done') {
   if (!m) return { text, changed: false }
   const matches = [...String(text || '').matchAll(new RegExp(`^\\s*[-*]\\s+\\[${m.from}\\]\\s+.*\\{#${taskId}\\}\\s*$`, 'gm'))]
   if (matches.length !== 1) return { text, changed: false }
-  const [raw] = matches
-  const line = raw[0]
+  const line = matches[0][0]
   const flipped = line.replace(/^(\s*[-*]\s+)\[.\]/, `$1[${m.to}]`)
   return { text: String(text).replace(line, flipped), changed: true }
 }
