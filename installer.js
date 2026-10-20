@@ -1466,17 +1466,19 @@ function defaultPlatformValue() {
 
 // Which active harnesses have AOS hooks wired but no gate hook any more (removed there by hand).
 // Reads only. A config that is absent or has no AOS wiring at all proves nothing — nothing to preserve there.
-// What `aos repair` checks after it re-merges the harness wiring (hooks, settings, Codex config, agents).
-// Reads only. A harness whose config dir does not exist is not installed there and proves nothing.
-// kernel: the launcher support files Kernel.update copies. Claude: the Claude plugin counts as wiring too.
-function harnessWiringProblems({ home = homeDir } = {}) {
+// Launcher support files Kernel.update copies (not written by the harness step).
+function kernelFileProblems({ home = homeDir } = {}) {
+    return [path.join(home, '.agents', 'bin', 'aos-doctor.mjs'), path.join(home, '.agents', 'lib', 'uninstall-records.js')]
+        .filter((f) => !fs.existsSync(f)).map((f) => `missing ${f}`);
+}
+
+// What `aos repair` and the update plan check for the wiring quickUpdateHarnesses writes: hooks and settings merges
+// (Claude, Antigravity, Codex) and the compiled Antigravity/Codex agents. Reads only. A harness whose config dir
+// does not exist is not installed there and proves nothing. For Claude the plugin counts as wiring too.
+function harnessWiringProblems({ home = homeDir, keys = activeHarnessKeys() } = {}) {
     const read = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
     const hasFiles = (dir) => { try { return fs.readdirSync(dir).length > 0; } catch { return false; } };
     const problems = [];
-    for (const f of [path.join(home, '.agents', 'bin', 'aos-doctor.mjs'), path.join(home, '.agents', 'lib', 'uninstall-records.js')]) {
-        if (!fs.existsSync(f)) problems.push(`missing ${f}`);
-    }
-    const keys = activeHarnessKeys();
     const claudeDir = claudeConfigDir(home);
     if (keys.has('claudecode') && fs.existsSync(claudeDir)) {
         const settings = read(path.join(claudeDir, 'settings.json'));
@@ -1485,7 +1487,6 @@ function harnessWiringProblems({ home = homeDir } = {}) {
         try { if (settings) JSON.parse(settings.replace(/^\uFEFF/, '')); } catch { parsed = false; }
         if (!parsed) problems.push(`${path.join(claudeDir, 'settings.json')} is not valid JSON`);
         else if (!viaPlugin && !v5Profile.HOOK_SCRIPTS.some((n) => settings.includes(n))) problems.push('Claude Code settings.json has no AOS hooks');
-        if (!viaPlugin && !hasFiles(path.join(claudeDir, 'agents'))) problems.push('Claude Code has no AOS agents');
     }
     const geminiHome = home === homeDir ? geminiDir : path.join(home, '.gemini');
     if (keys.has('antigravity') && fs.existsSync(path.join(geminiHome, 'config'))) {
@@ -8557,7 +8558,7 @@ async function refreshOpenWikiSilently({ key: given } = {}) {
 
 async function runQuickUpdate(installState) {
     quickUpdateKernel(installState);
-    quickUpdateHarnesses();
+    for (const f of quickUpdateHarnesses()) log.warn(`Harness step failed: ${f}`);
     const paths = resolveTargetPaths('1', null);
 
     // OpenWiki: if already configured, refresh the daemon silently (no prompt).
@@ -9517,6 +9518,7 @@ module.exports = {
     activeHarnessKeys,
     gateMissingInHarnesses,
     harnessWiringProblems,
+    kernelFileProblems,
     gateReenableStep,
     gateHoldKeys,
     defaultPlatformValue,
