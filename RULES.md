@@ -42,7 +42,7 @@ Delegate with a real timeout and verify results; model choice is the user's resp
 Use these tools by yourself, from the situation. The user never has to say
 "use plan-canvas", "use agenttrail", "use subagents" or "run a startcycle".
 
-If the user says "plan", "Plan", "planen" or "roadmap" with nothing else: run `aos-plan-canvas templates`, offer the matching template, then `aos-plan-canvas new <id> <dir>` and `aos-plan-canvas open`.
+If the user says "plan", "Plan", "planen" or "roadmap" with nothing else: run `aos-plan-canvas templates`, offer the matching template, then `aos-plan-canvas new <id> <dir>` and `aos-plan-canvas open <dir>/plan.mdx --mode bdb-plan-builder --await`.
 **plan-canvas** — open the browser review canvas for any plan. Check
 availability first with `aos-plan-canvas` (the bare command prints server
 status and sessions; the server starts itself when a command needs it). Start
@@ -50,9 +50,11 @@ a new plan with `aos-plan-canvas templates`, then
 `aos-plan-canvas new <template-id> <target-dir>`; open an existing plan with
 `aos-plan-canvas open <file|plan-dir> --mode <mode>` (check available modes
 with `aos-plan-canvas modes` once per environment; builder plans use
-`--mode bdb-plan-builder`). Annotation layer for a running dev app:
-`aos-plan-canvas annotate <app-url>`. Blocking wait for the human verdict:
-`aos-plan-canvas await <file>`.
+`--mode bdb-plan-builder`, the default). Annotation layer for a running dev app:
+`aos-plan-canvas annotate <app-url>`. Always keep a listener on an open
+review: use `aos-plan-canvas open <file> --await` (or `open` then
+`await <file>` immediately) — never end the turn without one; it blocks
+until the human sends feedback, a verdict, or ends the session.
 Triggers: the user wants to plan or review a plan; a brainstorm or grill
 interview has just produced a plan; the user types `/plan-canvas`; any skill's
 artifact (plan, design, comparison, report, diagram) can be reviewed visually.
