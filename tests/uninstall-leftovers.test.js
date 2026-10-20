@@ -9,63 +9,54 @@ const load = () => import(pathToFileURL(path.join(__dirname, '..', 'bin', 'aos-u
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-leftovers-'));
 const touch = (...p) => { fs.mkdirSync(path.dirname(path.join(...p)), { recursive: true }); fs.writeFileSync(path.join(...p), 'x'); };
 
-test('removeGeneratedMcpTrees removes AOS copies of shipped servers whole and keeps other servers', async () => {
+const marker = require('../lib/mcp-copy-marker.js');
+
+test('a recorded MCP copy goes, changed and unrecorded files stay and are reported', async () => {
     const { removeGeneratedMcpTrees } = await load();
     const home = tmp();
-    const roots = [path.join(home, 'Library', 'Application Support', 'Claude', 'mcps'), path.join(home, '.gemini', 'config', 'mcps')];
-    for (const root of roots) {
-        touch(root, 'blender-mcp', 'node_modules', 'a', 'f.js');
-        touch(root, 'blender-mcp', 'dist', 'index.js');
-        touch(root, 'memb-mcp', '.venv', 'bin', 'python');
-        touch(root, 'my-own-mcp', 'node_modules', 'keep.js');
-    }
-    touch(roots[0], 'tdmcp', 'node_modules', 'b.js');
-    touch(roots[0], 'tdmcp', 'notes.txt');
-
-    const owned = [];
-    for (const root of roots) for (const n of ['blender-mcp', 'memb-mcp']) owned.push(path.join(root, n, 'server.js'));
-    owned.push(path.join(roots[0], 'tdmcp', 'index.js'));
-    const { removed: gone, kept } = removeGeneratedMcpTrees({ home, names: ['blender-mcp', 'tdmcp'], owned });
-    assert.equal(gone.length, 5);
-    assert.deepEqual(kept, []);
-    for (const root of roots) {
-        assert.ok(!fs.existsSync(path.join(root, 'blender-mcp')), 'emptied server dir is pruned');
-        assert.ok(!fs.existsSync(path.join(root, 'memb-mcp')));
-        assert.ok(fs.existsSync(path.join(root, 'my-own-mcp', 'node_modules', 'keep.js')), 'non-shipped server untouched');
-    }
-    assert.ok(!fs.existsSync(path.join(roots[0], 'tdmcp')), 'recognised AOS copy goes whole');
+    const root = path.join(home, 'Library', 'Application Support', 'Claude', 'mcps');
+    const dir = path.join(root, 'tdmcp');
+    touch(dir, 'index.js');
+    touch(dir, 'lib', 'a.js');
+    touch(dir, 'node_modules', 'b.js');
+    marker.writeMarker(dir, null, '1');
+    fs.writeFileSync(path.join(dir, 'lib', 'a.js'), 'edited');
+    touch(dir, 'notes.txt');
+    touch(root, 'my-own-mcp', 'node_modules', 'keep.js');
+    const r = removeGeneratedMcpTrees({ home, names: ['tdmcp', 'my-own-mcp'] });
+    assert.equal(r.kept.length, 1);
+    assert.match(r.hints[0], /2 changed or unrecorded/);
+    assert.ok(!fs.existsSync(path.join(dir, 'index.js')) && !fs.existsSync(path.join(dir, 'node_modules')));
+    assert.ok(fs.existsSync(path.join(dir, 'lib', 'a.js')) && fs.existsSync(path.join(dir, 'notes.txt')));
+    assert.ok(!fs.existsSync(path.join(dir, marker.MARKER)));
+    assert.ok(fs.existsSync(path.join(root, 'my-own-mcp', 'node_modules', 'keep.js')));
 });
 
-test('removeGeneratedMcpTrees drops the mcps dir once nothing is left and is a no-op without one', async () => {
+test('a fully recorded, unchanged copy is removed whole and the empty mcps dir goes', async () => {
     const { removeGeneratedMcpTrees } = await load();
     const home = tmp();
-    assert.deepEqual(removeGeneratedMcpTrees({ home, names: ['x'] }).removed, []);
-    touch(home, '.config', 'Claude', 'mcps', 'x', 'dist', 'a.js');
-    removeGeneratedMcpTrees({ home, names: ['x'], owned: [path.join(home, '.config', 'Claude', 'mcps', 'x', 'a.js')] });
+    const dir = path.join(home, '.config', 'Claude', 'mcps', 'x');
+    touch(dir, 'a.js');
+    touch(dir, '.venv', 'bin', 'python');
+    marker.writeMarker(dir, null, '1');
+    const dry = removeGeneratedMcpTrees({ home, names: ['x'], dry: true });
+    assert.deepEqual(dry.removed, [dir]);
+    assert.ok(fs.existsSync(path.join(dir, 'a.js')), 'dry run deletes nothing');
+    removeGeneratedMcpTrees({ home, names: ['x'] });
     assert.ok(!fs.existsSync(path.join(home, '.config', 'Claude', 'mcps')));
-    assert.ok(fs.existsSync(path.join(home, '.config', 'Claude')));
 });
 
-test('a shipped-name folder that is not an AOS copy keeps its build folders and is reported', async () => {
+test('a legacy copy without a record is kept with a hint', async () => {
     const { removeGeneratedMcpTrees } = await load();
     const home = tmp();
     const dir = path.join(home, '.config', 'Claude', 'mcps', 'x');
     touch(dir, 'node_modules', 'a.js');
-    touch(dir, 'package.json');
-    fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"someone-elses-x"}');
+    fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"x"}');
     const r = removeGeneratedMcpTrees({ home, names: ['x'] });
     assert.deepEqual(r.removed, []);
     assert.deepEqual(r.kept, [dir]);
+    assert.match(r.hints[0], /aos update/);
     assert.ok(fs.existsSync(path.join(dir, 'node_modules', 'a.js')));
-});
-
-test('dry run lists the trees and deletes nothing', async () => {
-    const { removeGeneratedMcpTrees } = await load();
-    const home = tmp();
-    touch(home, '.config', 'Claude', 'mcps', 'x', 'node_modules', 'a.js');
-    const owned = [path.join(home, '.config', 'Claude', 'mcps', 'x', 'a.js')];
-    assert.equal(removeGeneratedMcpTrees({ home, names: ['x'], dry: true, owned }).removed.length, 1);
-    assert.ok(fs.existsSync(path.join(home, '.config', 'Claude', 'mcps', 'x', 'node_modules', 'a.js')));
 });
 
 test('removeClaudePointer removes the exact installer pointer, strips only its prefix line, leaves user files', async () => {

@@ -24,6 +24,7 @@ const readline = require('readline');
 const util = require('util');
 const crypto = require('crypto');
 const pluginMigration = require('./lib/plugin-migration');
+const mcpCopyMarker = require('./lib/mcp-copy-marker');
 const { claudeConfigDir } = require('./lib/plugin-evidence');
 const { modelProblem } = require('./lib/agent-models');
 const codexPluginInstall = require('./lib/codex-plugin-install');
@@ -879,6 +880,7 @@ const timestamp = now.getFullYear().toString() +
 const backupDir = path.join(geminiDir, `skills_backup_${timestamp}`);
 
 const CORE_MCP = 'memb-mcp';
+const VERSION_FOR_MARKER = () => { try { return require('./package.json').version; } catch { return null; } };
 
 // ─── Install-Manifest Store ──────────────────────────────────────────────────
 // Tracks every file this installer places. Stored at
@@ -4831,6 +4833,7 @@ async function installMcpsForTarget(paths, ctx) {
         }
         installStep(`copy the MCP server ${mcp}`, () => {
             copyDirRecursiveSync(path.join(mcpSrcDir, mcp), path.join(mcpCodeTarget, mcp));
+            if (!DRY_RUN) mcpCopyMarker.writeMarker(path.join(mcpCodeTarget, mcp), path.join(mcpSrcDir, mcp), VERSION_FOR_MARKER());
         }, 'The remaining MCP servers are still installed.');
     }
 
@@ -4850,6 +4853,7 @@ async function installMcpsForTarget(paths, ctx) {
             if (!downloadOrUpdateModule('@hybridlabor-api/memb', membMcpTarget, 'memB MCP')) {
                 throw new Error('npm pack did not produce the memb-mcp payload');
             }
+            if (!DRY_RUN) mcpCopyMarker.writeMarker(membMcpTarget, null, VERSION_FOR_MARKER());
         }, 'memb-mcp installation skipped; MCP config may reference a missing path.');
     }
     log.step(`Installed selected MCP servers to ${mcpCodeTarget}`);

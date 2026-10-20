@@ -218,12 +218,12 @@ function describe(p) {
   }
   for (const s of p.winSvc || []) console.log(`\nWindows Startup entry ${tilde(s.vbs)} is removed; processes running ${tilde(s.full)} are stopped`);
   if (p.mcpTrees && p.mcpTrees.removed.length) {
-    console.log(`\nAOS copies of shipped MCP servers (${p.mcpTrees.removed.length}) are removed:`);
+    console.log(`\nAOS-recorded MCP server files and folders (${p.mcpTrees.removed.length}) are removed:`);
     for (const t of p.mcpTrees.removed) console.log(`    ${tilde(t)}`);
   }
-  if (p.mcpTrees && p.mcpTrees.kept.length) {
-    console.log('\nMCP folders with build folders that are not recognised as AOS copies are kept:');
-    for (const k of p.mcpTrees.kept) console.log(`    ${tilde(k)}`);
+  if (p.mcpTrees && p.mcpTrees.hints.length) {
+    console.log('\nMCP folders that stay:');
+    for (const k of p.mcpTrees.hints) console.log(`    ${k}`);
   }
   if (modules.length) {
     console.log('\nModules:');
@@ -295,19 +295,10 @@ const pruneEmpty = (dir) => {
   for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
   try { rmdirSync(dir); } catch { /* not empty */ }
 };
-// A shipped-name folder counts as an AOS copy when the install manifest lists files in it, or its package.json /
-// pyproject name matches the shipped one (memb-mcp: any memb name). Anything else may be the user's own.
-const pkgName = (dir) => {
-  try { return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).name || null; } catch { /* no package.json */ }
-  try { return (/^name\s*=\s*["']([^"']+)["']/m.exec(readFileSync(path.join(dir, 'pyproject.toml'), 'utf8')) || [])[1] || null; } catch { return null; }
-};
-function isAosMcpCopy(dir, name, owned, shippedDir) {
-  if (owned.some((f) => f.startsWith(dir + path.sep))) return true;
-  const mine = pkgName(dir);
-  if (!mine) return false;
-  if (name === 'memb-mcp') return /memb/i.test(mine);
-  return !!shippedDir && mine === pkgName(path.join(shippedDir, name));
-}
+// An MCP server folder is AOS's only through its record: <folder>/.aos-copy.json (written at install, file -> sha256).
+// Unchanged recorded files and generated build trees go; changed or unrecorded files stay and are reported.
+// A folder without a record is a legacy copy (or the user's): left alone, reported once.
+const mcpMarker = createRequire(import.meta.url)('../lib/mcp-copy-marker.js');
 function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, owned = [] } = {}) {
   const base = appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
   const roots = [
@@ -319,19 +310,50 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
   if (!shipped) { try { shipped = readdirSync(shippedDir); } catch { shipped = []; } }
   const removed = [];
   const kept = [];
+  const hints = [];
   for (const root of roots) for (const name of new Set([...shipped, 'memb-mcp'])) {
     const dir = path.join(root, name);
     let st; try { st = lstatSync(dir); } catch { continue; }
     if (!st.isDirectory()) continue;
-    if (!isAosMcpCopy(dir, name, owned, shippedDir)) {
-      if (MCP_GENERATED.some((g) => existsSync(path.join(dir, g)))) kept.push(dir);
+    const trees = MCP_GENERATED.map((g) => path.join(dir, g)).filter(existsSync);
+    const rec = mcpMarker.readMarker(dir);
+    if (!rec) {
+      // Files listed in the install manifest leave with it; their build trees go here.
+      if (trees.length && owned.some((f) => f.startsWith(dir + path.sep))) {
+        for (const t of trees) { removed.push(t); if (!dry) rmSync(t, { recursive: true, force: true }); }
+        if (!dry) { pruneEmpty(dir); try { rmdirSync(root); } catch { /* not empty */ } }
+      } else {
+        kept.push(dir);
+        hints.push(`${tilde(dir)}: no AOS copy record (installed before it existed); run "aos update" once, then uninstall again`);
+      }
       continue;
     }
-    // An AOS copy goes whole (sources included, they are copies of the shipped payload).
-    removed.push(dir);
-    if (!dry) { rmSync(dir, { recursive: true, force: true }); try { rmdirSync(root); } catch { /* other servers or files left */ } }
+    const foreign = [];
+    const doomed = [];
+    const walk = (cur, relDir) => {
+      for (const e of readdirSync(cur, { withFileTypes: true })) {
+        const rel = relDir ? `${relDir}/${e.name}` : e.name;
+        const full = path.join(cur, e.name);
+        if (!relDir && (MCP_GENERATED.includes(e.name) || e.name === mcpMarker.MARKER)) continue;
+        if (e.isDirectory()) walk(full, rel);
+        else if (rec.files[rel] && mcpMarker.sha(full) === rec.files[rel]) doomed.push(full);
+        else foreign.push(full);
+      }
+    };
+    walk(dir, '');
+    for (const f of doomed) if (!dry) rmSync(f, { force: true });
+    for (const t of trees) if (!dry) rmSync(t, { recursive: true, force: true });
+    if (!foreign.length) {
+      removed.push(dir);
+      if (!dry) { rmSync(dir, { recursive: true, force: true }); try { rmdirSync(root); } catch { /* other servers left */ } }
+    } else {
+      removed.push(...doomed, ...trees);
+      kept.push(dir);
+      hints.push(`${tilde(dir)}: ${foreign.length} changed or unrecorded file(s) kept (${foreign.slice(0, 3).map((f) => path.basename(f)).join(', ')}${foreign.length > 3 ? ', ...' : ''})`);
+      if (!dry) { rmSync(path.join(dir, mcpMarker.MARKER), { force: true }); pruneEmpty(dir); }
+    }
   }
-  return { removed, kept };
+  return { removed, kept, hints };
 }
 
 // ~/CLAUDE.md as the installer wrote it: exactly the pointer goes whole; its prefix line goes from user text.
@@ -389,9 +411,9 @@ async function execute(p) {
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
   attempt('AOS-copied MCP server folders', () => {
-    const { removed: gone, kept } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });
+    const { removed: gone, hints } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });
     for (const t of gone) console.log(`  removed ${tilde(t)}`);
-    for (const k of kept) console.log(`  ${tilde(k)} has build folders but is not recognised as an AOS copy, kept`);
+    for (const k of hints) console.log(`  kept ${k}`);
   });
 
   const ruleFiles = [
