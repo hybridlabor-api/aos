@@ -114,7 +114,7 @@ body.hide-runs .runs,body.hide-runs .task-capsule.sess{display:none!important}
 .topbar .status{margin-left:auto}
 .btn{font-family:var(--mono);border-radius:var(--aos-radius-s);color:var(--text)}.btn:hover{border-color:var(--accent)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--aos-accent-ink);font-weight:700}
-.need-n{background:var(--aos-warn);color:#0a0a0a;font:700 11px var(--mono);border-radius:99px;padding:0 6px;margin-left:4px}
+.need-n:empty{display:none}.need-n{background:var(--aos-warn);color:#0a0a0a;font:700 11px var(--mono);border-radius:99px;padding:0 6px;margin-left:4px}
 .workspace{grid-template-columns:272px minmax(0,1fr)}
 .workspace.side-on{grid-template-columns:272px minmax(0,1fr) var(--aos-side-w)}
 .workspace.side-on .minimap{right:calc(var(--aos-side-w) + 24px)}

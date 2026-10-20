@@ -25,7 +25,6 @@
     $('side-toggle').setAttribute('aria-expanded', String(open))
   }
 
-  function toast(msg) { const t = $('toast'); if (!t) return; t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 5000) }
 
   async function decide(id, decision) {
     if (busy.has(id)) return
@@ -33,8 +32,8 @@
     try {
       const r = await fetch('side/decision', { method: 'POST', headers: { 'content-type': 'application/json', 'x-trail-csrf': TOKEN }, body: JSON.stringify({ id, decision, scope: scopes[id] || 'once' }) })
       const j = await r.json().catch(() => ({}))
-      toast(r.ok ? (decision === 'approve' ? 'Approved (' + (scopes[id] || 'once') + ')' : 'Hidden (the gate still blocks it)') : 'Rejected: ' + (j.error || r.status))
-    } catch { toast('Could not reach the map server') }
+      toast(r.ok ? (decision === 'approve' ? 'Approved (' + (scopes[id] || 'once') + ')' : 'Hidden (the gate still blocks it)') : 'Rejected: ' + (j.error || r.status), 5000)
+    } catch { toast('Could not reach the map server', 5000) }
     busy.delete(id); refresh()
   }
 
@@ -66,7 +65,6 @@
     if (!model) return
     const n = model.requests.length
     $('need-n').textContent = n ? String(n) : ''
-    $('need-n').hidden = !n
     const needs = $('side-needs'); needs.textContent = ''
     if (!model.available) needs.append(el('p', 'muted small', 'Go-gate module not found; no requests to show.'))
     else if (!n) needs.append(el('p', 'muted small', 'Nothing waiting for you.'))
@@ -107,7 +105,6 @@
     for (const b of boards.filter((x) => curBoard && x.project === curBoard.project)) { const o = el('option', null, b.planFile || 'PLAN.md'); o.value = String(b.port); sl.append(o) }
     if (curBoard) sl.value = String(curBoard.port)
     const known = el('optgroup', null, null, { label: 'Known repos (start map)' })
-    window.__knownRepos = window.__knownRepos || null
     if (window.__knownRepos) for (const p of window.__knownRepos) { const o = el('option', null, p.split('/').pop()); o.value = 'repo:' + p; known.append(o) }
     if (known.children.length) sp.append(known)
   }
@@ -115,7 +112,7 @@
     if (v.startsWith('repo:') && typeof pickSuggestion === 'function') { pickSuggestion(v.slice(5)); return }
     const port = +v
     if (typeof flyToRegion === 'function') flyToRegion(port)
-    if (port !== (typeof M !== 'undefined' && M ? M.port : port)) toast('Showing board on :' + port)
+    if (port !== (typeof M !== 'undefined' && M ? M.port : port)) toast('Showing board on :' + port, 5000)
   }
 
   window.addEventListener('DOMContentLoaded', () => {
