@@ -95,3 +95,32 @@ test('removeClaudePointer removes the exact installer pointer, strips only its p
     assert.equal(removeClaudePointer(f), null);
     assert.equal(fs.readFileSync(f, 'utf8'), '# My rules\nSee AGENTS.md\n');
 });
+
+test('files built after the copy are recorded by refreshMarker and leave with it; older unrecorded user files stay', async () => {
+    const { removeGeneratedMcpTrees } = await load();
+    const home = tmp();
+    const root = path.join(home, 'Library', 'Application Support', 'Claude', 'mcps');
+    const dir = path.join(root, 'touchdesigner-mcp');
+    touch(dir, 'package.json');
+    touch(dir, 'src', 'index.ts');
+    const mine = path.join(dir, 'notes.txt');
+    touch(dir, 'notes.txt');
+    const old = new Date(Date.now() - 3600e3);
+    fs.utimesSync(mine, old, old);
+    const shipped = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-shipped-'));
+    touch(shipped, 'package.json');
+    touch(shipped, 'src', 'index.ts');
+    marker.writeMarker(dir, shipped, '1');
+    const since = Date.now() - 2000;
+    touch(dir, 'src', 'gen', 'mcp', 'touchDesignerAPI.zod.ts');
+    touch(dir, 'tsconfig.tsbuildinfo');
+    touch(dir, 'build', 'index.js');
+    touch(dir, 'node_modules', 'x.js');
+    marker.refreshMarker(dir, since, '2');
+    const rec = marker.readMarker(dir);
+    assert.deepEqual(Object.keys(rec.files).sort(), ['build/index.js', 'package.json', 'src/gen/mcp/touchDesignerAPI.zod.ts', 'src/index.ts', 'tsconfig.tsbuildinfo']);
+    assert.equal(rec.aos, '2');
+    const r = removeGeneratedMcpTrees({ home, names: ['touchdesigner-mcp'] });
+    assert.equal(r.kept.length, 1);
+    assert.deepEqual(fs.readdirSync(dir).sort(), ['notes.txt']);
+});

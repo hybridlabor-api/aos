@@ -4815,6 +4815,7 @@ async function installMcpsForTarget(paths, ctx) {
     const { selectedMcps, mode, platformValue, creds } = ctx;
     const mcpSrcDir = path.join(srcDir, 'mcps');
     const mcpCodeTarget = path.join(paths.targetMcpDir, 'mcps');
+    const copyStartedAt = Date.now() - 2000;
 
     if (!selectedMcps || selectedMcps.length === 0) {
         log.step('Skipping MCP installation for this target.');
@@ -4989,6 +4990,12 @@ async function installMcpsForTarget(paths, ctx) {
             } else {
                 log.warn(`Prewarm failed for ${mcp.folder}: uv exited ${result.status}. The MCP is configured but its dependencies may not resolve.`);
             }
+        }
+    }
+
+    if (!DRY_RUN) {
+        for (const mcp of selectedMcps) {
+            try { mcpCopyMarker.refreshMarker(path.join(mcpCodeTarget, mcp), copyStartedAt, VERSION_FOR_MARKER()); } catch (e) { logDebug(e, `refresh the copy record of ${mcp}`); }
         }
     }
 
