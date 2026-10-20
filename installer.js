@@ -45,6 +45,11 @@ const { writeManagedRulesFile } = require('./lib/harness-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
 const { gatewayCovered } = require('./lib/gateway/config');
 
+function reloadLaunchAgent(plistPath) {
+    execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+    execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+}
+
 function verifyDaemonListening(port, name, timeoutMs = 4000) {
     return new Promise((resolve) => {
         const deadline = Date.now() + timeoutMs;
@@ -3233,8 +3238,7 @@ async function installMemB(interactive) {
                 if (v5Profile.isTestSandbox(homeDir)) {
                     log.success('memB WebUI LaunchAgent active (Port 8088)');
                 } else {
-                    execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                    execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    reloadLaunchAgent(plistPath);
                     const isListening = await verifyDaemonListening(8088, 'memB WebUI');
                     if (isListening) {
                         log.success('memB WebUI LaunchAgent active (Port 8088)');
@@ -3388,8 +3392,7 @@ async function installSynapse() {
                 if (v5Profile.isTestSandbox(homeDir)) {
                     log.success('Synapse 3D LaunchAgent active (Port 7781)');
                 } else {
-                    execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                    execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                    reloadLaunchAgent(plistPath);
                     const isListening = await verifyDaemonListening(7781, 'Synapse 3D');
                     if (isListening) {
                         log.success('Synapse 3D LaunchAgent active (Port 7781)');
@@ -3624,8 +3627,7 @@ async function installOpenWikiVisualizer() {
             if (v5Profile.isTestSandbox(homeDir)) {
                 log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
             } else {
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                reloadLaunchAgent(plistPath);
                 const isListening = await verifyDaemonListening(4321, 'OpenWiki Visualizer');
                 if (isListening) {
                     log.success('OpenWiki Visualizer LaunchAgent active (Port 4321)');
@@ -5762,11 +5764,7 @@ function injectHarnessRules() {
                     let exclude = dir === '.claude' ? ['settings.json', 'hooks', ...pluginCoveredAgentFiles()] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
                     // Only ship antigravity-rtk-rules.md if rtk is detected on PATH
                     if (dir === '.agents') {
-                        try {
-                            require('child_process').execSync('which rtk', { stdio: 'ignore' });
-                        } catch {
-                            exclude = [...exclude, 'rules/antigravity-rtk-rules.md'];
-                        }
+                        if (!hasExecutable('rtk')) exclude = [...exclude, 'rules/antigravity-rtk-rules.md'];
                     }
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
@@ -7545,8 +7543,7 @@ function installPlanCanvasAutostart(overrides = {}) {
             fs.mkdirSync(path.dirname(plistPath), { recursive: true });
             fs.writeFileSync(plistPath, buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }));
             if (!overrides.skipLaunchctl && !v5Profile.isTestSandbox(home)) {
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                reloadLaunchAgent(plistPath);
             }
             log.success('Plan Canvas LaunchAgent registered (Port 4519)');
         } else if (platform === 'win32') {
@@ -8081,8 +8078,7 @@ function generateAndOpenLaunchpad(installedModules = []) {
         try {
             fs.writeFileSync(plistPath, plistContent);
             if (!v5Profile.isTestSandbox(homeDir)) {
-                execSync(`launchctl unload "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-                execSync(`launchctl load -w "${plistPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+                reloadLaunchAgent(plistPath);
             }
         } catch (e) { logDebug(e, 'launchpad autostart plist'); }
     } else if (process.platform === 'win32') {
