@@ -26,7 +26,7 @@ const a2aLib = async (f) => {
   try { return await import((existsSync(local) ? local : pathToFileURL(path.join(homedir(), '.agents', 'lib', f))).href); } catch { return {}; }
 };
 const { deliverA2a = async () => {} } = await a2aLib('a2a-oc.mjs');
-const { ensureSidecar = () => ({ skipped: 'lib' }), sessionName = () => null } = await a2aLib('a2a-session.mjs');
+const { ensureSidecar = () => ({ skipped: 'lib' }), sessionName = () => null, ensureAutoLabel = () => null } = await a2aLib('a2a-session.mjs');
 // Decision logic lives in the shared hooks: installed copy next to this file
 // (plugins/aos-hooks), else the repo's .claude/hooks. existsSync, not try/catch,
 // so a broken installed hook fails loudly instead of silently falling back.
@@ -140,14 +140,17 @@ function matchPipelineCommand(text) {
     return PIPELINE_COMMANDS.find(c => c.name === m[1].toLowerCase()) || null;
 }
 
-// This session's name for the token: env (set by aos-acp / the user), else the
-// OpenCode session title.
-async function ownSessionName(client, sessionID) {
-  if (process.env.AOS_SESSION_NAME) return process.env.AOS_SESSION_NAME;
+// The OpenCode session title (audit phonebook: the source the phonebook labels peers from),
+// and this session's own name for the token: env (set by aos-acp / the user), else that title.
+async function sessionTitle(client, sessionID) {
   try {
     const res = await client?.session?.get?.({ path: { id: sessionID } });
-    return res?.data?.title || '';
+    return (res?.data?.title || '').trim();
   } catch { return ''; }
+}
+async function ownSessionName(client, sessionID) {
+  if (process.env.AOS_SESSION_NAME) return process.env.AOS_SESSION_NAME;
+  return sessionTitle(client, sessionID);
 }
 
 // Only plain text parts are human turns: synthetic = model-only, ignored = display-only,
@@ -281,7 +284,11 @@ export default async function bdbAosPlugin(input) {
       // not the aos-bus name — otherwise messages written for the sidecar name never reach OpenCode.
       try {
         s.a2aName = sessionName({ harness: 'opencode', sessionId: id, env: process.env });
-        ensureSidecar({ harness: 'opencode', sessionId: id, parentPid: process.pid, env: process.env });
+        // Phonebook: the session title labels the peer (only fills an unlabeled or auto-labeled
+        // entry — a hand-set label always wins) and follows a rename at the next human message.
+        const title = await sessionTitle(input.client, id);
+        const r = ensureSidecar({ harness: 'opencode', sessionId: id, parentPid: process.pid, env: process.env, title: title || undefined });
+        if (title) ensureAutoLabel(s.a2aName, title);
       } catch {}
       busNames.set(name, id);
     } catch (e) {
@@ -410,6 +417,12 @@ export default async function bdbAosPlugin(input) {
       const s = sess(msgInput.sessionID);
       void ensureBus(msgInput.sessionID);
       s.prompt = fullText;
+      // Phonebook: a session rename (OpenCode titles are editable) lands on the next human message.
+      if (s.a2aName) {
+        void sessionTitle(input.client, msgInput.sessionID)
+          .then((t) => { if (t) ensureAutoLabel(s.a2aName, t); })
+          .catch(() => {});
+      }
       // No human text (aos-bus pair, nudges): never a human GO, skip memB/pipeline/token.
       const parts = msgOutput.parts || [];
       const texts = parts.filter((p) => p && p.type === 'text');
