@@ -11,8 +11,12 @@ const helper = join(repo, 'skills', 'global_config', 'openwiki-skill', 'scripts'
 
 const tmp = mkdtempSync(join(tmpdir(), 'openwiki-helper-'));
 
+// No system/global identity (CI images configure one in /etc/gitconfig), so "no identity" is real.
+const env = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' };
+for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'EMAIL']) delete env[k];
+
 function git(args, cwd) {
-  const res = spawnSync('git', args, { cwd, encoding: 'utf8', shell: false });
+  const res = spawnSync('git', args, { cwd, env, encoding: 'utf8', shell: false });
   if (res.error) throw res.error;
   return res;
 }
@@ -20,6 +24,7 @@ function git(args, cwd) {
 function runHelper(command, cwd) {
   const res = spawnSync('python3', [helper, '--command', command, '--cwd', cwd], {
     cwd,
+    env,
     encoding: 'utf8',
     shell: false,
   });

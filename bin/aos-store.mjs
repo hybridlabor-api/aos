@@ -143,6 +143,7 @@ async function install(name) {
     name,
     kind,
     source: found.src.id,
+    ...(found.src.local ? { from: found.src.from || 'package' } : {}),
     commit: found.src.pinned_commit,
     scope: project ? 'project' : 'global',
     targets: written.targets,

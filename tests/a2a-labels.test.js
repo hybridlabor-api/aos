@@ -192,7 +192,7 @@ test("CLI aos-a2a list prints label, harness, cwd, status, age and --json includ
   assert.ok(line, `expected line with label in output: ${rText.stdout}`);
   const parts = line.split("\t");
   assert.equal(parts.length, 5);
-  assert.equal(parts[0], "List Role");
+  assert.equal(parts[0], "List Role (cli-list-ses)");
   assert.equal(parts[1], "claude");
   assert.ok(parts[2].length >= 0); // cwd
   assert.equal(parts[3], "idle"); // status

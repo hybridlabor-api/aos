@@ -1,4 +1,4 @@
-// A4: ~/CLAUDE.md and an existing ~/AGENTS.md get the routing and destructive-actions blocks from any cwd; the cwd gets nothing.
+// A4: an existing ~/AGENTS.md gets the routing and destructive-actions blocks from any cwd (~/CLAUDE.md stays a pointer); the cwd gets nothing.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -20,10 +20,11 @@ test('injectHarnessRules writes the managed blocks into HOME files when run from
     assert.equal(r.status, 0, r.stderr);
     const claude = fs.readFileSync(path.join(home, 'CLAUDE.md'), 'utf8');
     const agents = fs.readFileSync(path.join(home, 'AGENTS.md'), 'utf8');
-    for (const text of [claude, agents]) {
-        assert.ok(text.includes(routing.START), 'routing block');
-        assert.ok(text.includes(destructive.START), 'destructive-actions block');
-    }
+    assert.ok(agents.includes(routing.START), 'routing block');
+    assert.ok(agents.includes(destructive.START), 'destructive-actions block');
+    // ~/CLAUDE.md is only a pointer to ~/AGENTS.md, where the blocks live canonically
+    assert.ok(claude.includes('AGENTS.md'));
+    assert.ok(!claude.includes(routing.START) && !claude.includes(destructive.START));
     assert.ok(agents.startsWith('# mine'));
     assert.deepEqual(fs.readdirSync(cwd), [], 'nothing written into the cwd');
 });
@@ -36,5 +37,5 @@ test('a HOME without AGENTS.md does not get one created (container only)', { ski
     });
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!fs.existsSync(path.join(home, 'AGENTS.md')));
-    assert.ok(fs.readFileSync(path.join(home, 'CLAUDE.md'), 'utf8').includes(routing.START));
+    assert.ok(!fs.readFileSync(path.join(home, 'CLAUDE.md'), 'utf8').includes(routing.START));
 });

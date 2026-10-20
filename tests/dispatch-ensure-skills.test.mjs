@@ -26,24 +26,29 @@ test('ensure-skills runs before each node worker and carries that node’s regis
     fs.cpSync(path.join(ROOT, '.agents'), path.join(cwd, '.agents'), { recursive: true });
     const harness = path.join(dir, 'run.mjs');
     fs.writeFileSync(harness, `
+import fs from 'node:fs';
 const calls = [];
 globalThis.args = { goal: 'build a thing' };
 globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
 globalThis.agent = async (prompt, opts) => {
-  calls.push(opts);
+  calls.push({ ...opts, prompt });
   if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
   if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
   if (opts.label.startsWith('ensure-skills-')) return { installed: [], stillMissing: [] };
-  if (opts.label.startsWith('archify-verify')) throw new Error('stop');
+  if (opts.label.startsWith('archify-verify')) return { validateOk: true, deliverOk: true, checksPassed: 9, checkCount: 9, error: '' };
   if (opts.label.startsWith('architect')) return { planPath: 'p.md', needsMedia: false, deliverOk: true };
-  throw new Error('stop');
+  if (opts.label.startsWith('techlead')) return { approved: true, reason: '' };
+  if (opts.label.startsWith('merge-')) return { merged: 0, skipped: [], needsHuman: false };
+  if (opts.label.startsWith('reviewer')) return { findings: [], blockingCount: 0 };
+  if (opts.label.startsWith('shipping')) return { gate: {}, blockingNodes: [] };
+  return {};
 };
 await import(${JSON.stringify(pathToFileURL(DISPATCH).href)});
 process.stdout.write(JSON.stringify(calls));
 `);
     const r = spawnSync(process.execPath, [harness], {
       cwd, encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, HOME: cwd, USERPROFILE: cwd },
+      env: { ...process.env, HOME: cwd, USERPROFILE: cwd, AOS_PLAN_APPROVAL: 'auto' },
     });
     assert.equal(r.status, 0, r.stderr);
     const calls = JSON.parse(r.stdout);

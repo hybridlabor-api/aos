@@ -103,7 +103,7 @@ test('MCP config: memb_mcp only when memb-mcp is selected, deja gone with memory
 
 test('--hooks-only wires memb-inject only with unified memory (container only)', container, () => {
     const hooks = (home) => {
-        const r = spawnSync(process.execPath, [INSTALLER, '--hooks-only', '-y', '--no-intro'], {
+        const r = spawnSync(process.execPath, [INSTALLER, '--hooks-only', '-y', '--no-intro', '--platforms=2'], {
             cwd: home, env: { ...process.env, HOME: home, USERPROFILE: home, AOS_PLUGIN_CLI: 'off' }, encoding: 'utf8', timeout: 120000,
         });
         assert.equal(r.status, 0, r.stderr);

@@ -23,7 +23,7 @@ test('sessionTitleOf reads only what the payload or env actually carries', () =>
   assert.equal(sessionTitleOf({ harness: 'claude', payload: { title: 'Fix the gate' }, env }), 'from env');
   delete env.AOS_A2A_SESSION_TITLE;
   assert.equal(sessionTitleOf({ harness: 'claude', payload: { session_id: 's1', cwd: '/repo' }, env }), null);
-  assert.equal(sessionTitleOf({ harness: 'claude', payload: { session_title: 'Renamed' }, env }), 'Renamed');
+  assert.equal(sessionTitleOf({ harness: 'claude', payload: { session_name: 'Renamed' }, env }), 'Renamed');
   // agy/codex: workspace folder name first, thread second; $HOME is never a project name
   assert.equal(sessionTitleOf({ harness: 'agy', payload: {}, env: {}, cwd: '/repo/demo' }), 'demo');
   assert.equal(sessionTitleOf({ harness: 'agy', payload: { thread: 'conv-1' }, env: {}, cwd: HOME, home: HOME }), 'conv-1');
@@ -104,6 +104,7 @@ test('a running sidecar seen with a new name gets its auto label updated (rename
   const name = 'claude-rename00';
   register({ name, harness: 'claude', pid: 1 });
   autoLabel(name, 'first title');
+  fs.writeFileSync(path.join(process.env.AOS_SESSIONS_DIR, `${name}.pid`), String(process.pid));
   const sp = mockSpawn();
   const r = ensureSidecar({ harness: 'claude', sessionId: 'rename00', parentPid: 1, env: {}, spawnImpl: sp, binPath: '/bin/aos-a2a.mjs', title: 'second title' });
   assert.equal(r.skipped, 'running', JSON.stringify(r));

@@ -16,7 +16,7 @@ const tmpHome = () => realpathSync(mkdtempSync(join(tmpdir(), 'aos-storepacks-')
 const store = (home, args, extraEnv = {}) => spawnSync(process.execPath, [cli, ...args], {
   env: { ...process.env, HOME: home, USERPROFILE: home, AOS_TEST_SANDBOX: '1', ...extraEnv }, encoding: 'utf8',
 });
-const roots = (home) => ['.agents', '.claude', '.codex', '.cursor', '.roo'].map((d) => join(home, d, 'skills'));
+const roots = (home) => ['.agents', '.claude', '.cursor', '.roo', '.config/opencode', '.gemini/config'].map((d) => join(home, d, 'skills'));
 const logLines = (home) => readFileSync(join(home, '.aos', 'store', 'installs.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 
 test('aos store packs lists every pack with descriptions', () => {
@@ -95,7 +95,7 @@ test('remove --pack parks the copies (never deletes), keeps user skills, updates
   assert.equal(r.status, 0, r.stderr);
   for (const name of ['bdb-grandma3-mcp', 'mcp-manage']) {
     for (const dir of roots(home)) {
-      if (dir === userDir) continue;
+      if (join(dir, name) === userDir) continue;
       assert.ok(!existsSync(join(dir, name)), `${join(dir, name)} removed`);
     }
   }

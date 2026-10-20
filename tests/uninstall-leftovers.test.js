@@ -24,8 +24,10 @@ test('a recorded MCP copy goes, changed and unrecorded files stay and are report
     touch(dir, 'notes.txt');
     touch(root, 'my-own-mcp', 'node_modules', 'keep.js');
     const r = removeGeneratedMcpTrees({ home, names: ['tdmcp', 'my-own-mcp'] });
-    assert.equal(r.kept.length, 1);
+    // The recorded copy keeps its changed files; a folder with no record at all is left whole and reported.
+    assert.deepEqual(r.kept, [dir, path.join(root, 'my-own-mcp')]);
     assert.match(r.hints[0], /2 changed or unrecorded/);
+    assert.match(r.hints[1], /my-own-mcp: no AOS copy record/);
     assert.ok(!fs.existsSync(path.join(dir, 'index.js')) && !fs.existsSync(path.join(dir, 'node_modules')));
     assert.ok(fs.existsSync(path.join(dir, 'lib', 'a.js')) && fs.existsSync(path.join(dir, 'notes.txt')));
     assert.ok(!fs.existsSync(path.join(dir, marker.MARKER)));

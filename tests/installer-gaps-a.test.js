@@ -116,13 +116,14 @@ test('G21: Basic exclusions and tier packs come from lib/skill-packs.js', () => 
 
 test('G16: harnessWiringProblems flags lost Claude hooks and passes once they are merged', () => {
     const { harnessWiringProblems } = require('../installer.js');
+    const keys = new Set(['claudecode']); // detection depends on the host's PATH and on dirs earlier tests left in tmpHome
     const claudeDir = path.join(tmpHome, '.claude');
     fs.mkdirSync(path.join(claudeDir, 'agents'), { recursive: true });
     fs.writeFileSync(path.join(claudeDir, 'agents', 'architect.md'), 'x');
     fs.writeFileSync(path.join(claudeDir, 'settings.json'), '{"model":"x"}');
-    assert.ok(harnessWiringProblems({ home: tmpHome }).some((p) => /no AOS hooks/.test(p)));
+    assert.ok(harnessWiringProblems({ home: tmpHome, keys }).some((p) => /no AOS hooks/.test(p)));
     fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ command: 'node go-gate.mjs' }] }] } }));
-    assert.ok(!harnessWiringProblems({ home: tmpHome }).some((p) => /Claude Code/.test(p)));
+    assert.ok(!harnessWiringProblems({ home: tmpHome, keys }).some((p) => /Claude Code/.test(p)));
 });
 
 test('review 2: a user-owned ~/.roo/skills/legacy is not retired unless the manifest lists its files', () => {
