@@ -1,6 +1,6 @@
 ---
 name: local-llm-expert
-description: Local LLM inference: model selection, VRAM optimization. Ollama, llama.cpp, vLLM, LM Studio, quantization.
+description: "Local LLM inference: model selection, VRAM optimization. Ollama, llama.cpp, vLLM, LM Studio, quantization."
 category: library
 risk: safe
 source: community

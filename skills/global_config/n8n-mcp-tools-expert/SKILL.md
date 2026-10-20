@@ -1,6 +1,6 @@
 ---
 name: n8n-mcp-tools-expert
-description: n8n-mcp tools: nodes, configs, templates, workflows. Tool guidance, parameters, patterns.
+description: "n8n-mcp tools: nodes, configs, templates, workflows. Tool guidance, parameters, patterns."
 category: library
 risk: unknown
 source: community
