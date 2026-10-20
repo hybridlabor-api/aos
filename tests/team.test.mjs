@@ -11,7 +11,6 @@ import {
   normalizeTeam,
   effortRounds,
   teamFromPlaybook,
-  SHIPPED_DEFAULT_TEAM,
   EFFORTS
 } from '../lib/roles/team.mjs';
 
