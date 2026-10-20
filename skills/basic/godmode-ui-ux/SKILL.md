@@ -1,6 +1,6 @@
 ---
 name: godmode-ui-ux
-description: "Use when acting as the authoritative design lead for all frontend work, enforcing brand discovery, Anti-Slop rules, DTCG design tokens, fluid motion, and data-driven design generation."
+description: "Design lead for frontend: brand discovery, Anti-Slop, DTCG tokens, fluid motion, data-driven design."
 category: design-ui-ux
 ---
 

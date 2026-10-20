@@ -1,6 +1,6 @@
 ---
 name: master-session
-description: Use when one agent session must supervise several others on this machine — adopting sessions the user started by hand, or spawning workers itself. Covers roster, status requests, a GO board, idle notices, and the GO-token protocol. Works with AOS alone; the AO daemon is optional.
+description: Supervise multiple agent sessions on this machine. Roster, status, GO-board, GO-token protocol. Adopt or spawn workers.
 category: bdb-core
 risk: safe
 tools:

@@ -1,6 +1,6 @@
 ---
 name: godmode-hardware-pcb
-description: "Use when designing electrical schematics, PCB layouts, KiCad projects, or OpenSCAD enclosures — trace geometry, impedance, stackup, DFM/DRC/ERC sign-off, and hardware-software co-design boundaries."
+description: "Electrical schematics, PCB layouts, KiCad, OpenSCAD. Impedance, stackup, DFM/DRC/ERC, hardware-software co-design."
 category: engineering-hardware
 ---
 

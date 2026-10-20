@@ -1,6 +1,6 @@
 ---
 name: godmode-media-creation
-description: "Use when assembling video timelines, rendering code-driven motion graphics, or executing media creation via Remotion, OpenMontage, or TouchDesigner audio/visuals."
+description: "Video timelines, motion graphics, media creation. Remotion, OpenMontage, TouchDesigner, audio/visuals."
 category: media-eventtech
 ---
 

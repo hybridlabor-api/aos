@@ -1,6 +1,6 @@
 ---
 name: bdb-eventagency-skill
-description: "Use for event agency operations: client intake, project scoping, vendor management, crew coordination, production planning, pre-show logistics, and post-show wrap. Delegates technical execution to godmode-eventtech and bdbmediastorm."
+description: "Event agency operations: client intake, scoping, vendors, crew, production planning, logistics, wrap. Delegates technical execution to godmode-eventtech."
 category: media-eventtech
 source: talkvalue/event-agency-skills
 ---
