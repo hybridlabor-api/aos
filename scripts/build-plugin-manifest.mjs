@@ -258,10 +258,12 @@ const bytesOf = (dir) => Object.fromEntries(readdirSync(dir).map((n) => [n, read
 const subCopies = {
   agents: Object.fromEntries(agentNames.map((n) => [n, readFileSync(join(agentSrc, n))])),
   commands: Object.fromEntries(Object.entries(commandFiles).map(([n, c]) => [n, Buffer.from(c)])),
-  ...(agyOverrides.length > 0 ? { 'agy-commands': Object.fromEntries(Object.entries(agyFiles).map(([n, c]) => [n, Buffer.from(c)])) } : {}),
+  // null = the copy must not exist (no agy overrides), so a stale directory fails --check
+  'agy-commands': agyOverrides.length > 0 ? Object.fromEntries(Object.entries(agyFiles).map(([n, c]) => [n, Buffer.from(c)])) : null,
 };
 const copyOk = (name, want) => {
   const dir = join(SUBDIR, name);
+  if (want === null) return !lstatSync(dir, { throwIfNoEntry: false });
   if (!existsSync(dir) || lstatSync(dir).isSymbolicLink()) return false;
   const have = bytesOf(dir);
   return Object.keys(have).length === Object.keys(want).length && Object.entries(want).every(([n, b]) => have[n]?.equals(b));
@@ -353,6 +355,7 @@ if (CHECK) {
   rmSync(legacySubSkills, { recursive: true, force: true });
   for (const [name, want] of badLinks) {
     rmSync(join(SUBDIR, name), { recursive: true, force: true });
+    if (want === null) continue;
     mkdirSync(join(SUBDIR, name), { recursive: true });
     for (const [n, b] of Object.entries(want)) writeFileSync(join(SUBDIR, name, n), b);
   }
