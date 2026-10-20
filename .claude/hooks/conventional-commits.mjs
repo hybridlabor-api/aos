@@ -2,6 +2,7 @@
 // PreToolUse gate that enforces Conventional Commits on `git commit` across harnesses:
 // - Claude Code (.claude/hooks/conventional-commits.mjs)
 // - Antigravity / Gemini CLI (hooks.json PreToolUse)
+// - Codex (config.toml PreToolUse; exit 2 + stderr is its deny shape)
 //
 // Why this exists: release-please (.github/workflows/release-please.yml) parses
 // commit subjects to compute the version bump and the changelog. It only reads
@@ -114,6 +115,7 @@ function main() {
     input?.toolCall?.args?.CommandLine ||
     input?.toolCall?.args?.command ||
     input?.tool_input?.command ||
+    input?.tool_input?.cmd || // Codex exec_command
     input?.command ||
     "";
 

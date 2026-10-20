@@ -50,7 +50,7 @@ are left alone. The run prints which skills moved and how to install them. Switc
 - **The gate and safety hooks are always installed and never removed by any profile or flag:**
   `go-gate`, `go-token`, `go-grant`, `graph-gate`, `conventional-commits`, `env-file-protection`.
   (Claude Code gets all six. Antigravity wires go-gate, graph-gate, conventional-commits and
-  env-file-protection; Codex wires go-gate and graph-gate.)
+  env-file-protection; Codex wires the same four. `memb-session-save` and `trail-autostart` are Claude-only by design: the first reads the Claude transcript format, the second reacts to the Agent/Task tool.)
 - `gate-profile.mjs` is not a hook entry but `go-gate.mjs` imports it, so it is copied next to
   `go-gate.mjs` in every hook dir (Claude, Antigravity, Codex; `HOOK_IMPORTS` in `lib/v5/profile.js`)
   and into `~/.aos/bin`. It is installed with the gate hooks and is not affected by `--no-hooks`

@@ -84,3 +84,15 @@ test('G15: aos-go-ref is a package bin and an installed launcher', () => {
     assert.strictEqual(pkg.bin['aos-go-ref'], 'bin/aos-go-ref.mjs');
     assert.ok(LAUNCHERS.includes('aos-go-ref'));
 });
+
+test('G18: Codex wires the conventional-commits and env-file-protection safety hooks', () => {
+    const { mergeCodexTomlHooks } = require('../installer.js');
+    const { HARNESS_HOOKS } = require('../lib/v5/profile.js');
+    const toml = path.join(fs.mkdtempSync(path.join(tmpHome, 'cx-')), 'config.toml');
+    mergeCodexTomlHooks(toml);
+    const text = fs.readFileSync(toml, 'utf8');
+    for (const n of ['conventional-commits.mjs', 'env-file-protection.mjs']) {
+        assert.ok(text.includes(n), n);
+        assert.ok(HARNESS_HOOKS.codex.includes(n), n);
+    }
+});
