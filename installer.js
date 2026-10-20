@@ -7481,9 +7481,18 @@ function shouldAutostartLaunchpad(overrides = {}) {
 // idle-exits there (AOS_PLAN_CANVAS_IDLE_MS=0 is honoured by server.js).
 const PLAN_CANVAS_LABEL = 'com.bdb.plan-canvas';
 
+// A machine that registered the server once keeps it current: install and update rewrite the unit.
+function planCanvasRegistered(home, platform, appData) {
+    if (platform === 'darwin') return fs.existsSync(path.join(home, 'Library', 'LaunchAgents', `${PLAN_CANVAS_LABEL}.plist`));
+    if (platform === 'linux') return fs.existsSync(systemdUnits.unitPath(home, 'com.bdb.plan-canvas.service'));
+    if (platform === 'win32') return fs.existsSync(path.join(appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', `${PLAN_CANVAS_LABEL}.vbs`));
+    return false;
+}
+
 function shouldAutostartPlanCanvas(overrides = {}) {
     const argv = overrides.argv || process.argv;
-    return argv.includes('--autostart-plan-canvas');
+    if (argv.includes('--autostart-plan-canvas')) return true;
+    return planCanvasRegistered(overrides.homeDir || homeDir, overrides.platform || process.platform, overrides.appData);
 }
 
 function buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }) {
@@ -8369,7 +8378,6 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
     noticeSecretBackups();
     log.success('Universal Sync Complete!');
     generateAndOpenLaunchpad(installedModules);
-    installPlanCanvasAutostart();
 }
 
 // Kernel = skills, plugin migration; Harnesses = rules/hooks/MCP secrets. v5 runs them as separate steps.
@@ -8453,6 +8461,7 @@ function quickUpdateHarnesses() {
         ['migrate legacy agy workspace MCP config', installStep('migrate legacy agy workspace MCP config', () => { mcpSecrets.migrateLegacyAgyWorkspaceMcp(homeDir, srcDir, { log }); })],
         ['move inline MCP secrets into the secrets file', installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`)],
         ['install the Codex plugin', installStep('install the Codex plugin', () => { runCodexPluginStep(); })],
+        ['refresh the Plan Canvas background server', installStep('refresh the Plan Canvas background server', () => { installPlanCanvasAutostart(); })],
     ];
     return steps.filter(([, r]) => !r.ok).map(([what, r]) => `${what}: ${r.error.message}`);
 }
@@ -9311,6 +9320,7 @@ Options:
     if (wantsUniversal) {
         await universalHarnessSync(primaryTarget.mcpConfigPath, installedModulesForPrompt);
     }
+    installStep('register the Plan Canvas background server', () => { installPlanCanvasAutostart(); });
 
     // Flush file-level install manifest after all writes are done.
     flushSessionManifest();

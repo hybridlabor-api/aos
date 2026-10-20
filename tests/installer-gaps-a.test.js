@@ -66,3 +66,15 @@ test('G6: update re-syncs shipped MCP entries already in a harness config, leave
     assert.deepStrictEqual(after.mine, mine);
     assert.deepStrictEqual(Object.keys(after).sort(), ['mine', name].sort());
 });
+
+test('G7: a registered Plan Canvas unit is rewritten without the opt-in flag', () => {
+    const { installPlanCanvasAutostart } = require('../installer.js');
+    const home = fs.mkdtempSync(path.join(tmpHome, 'pc-'));
+    const base = { homeDir: home, platform: 'darwin', skipLaunchctl: true, nodeBin: '/usr/bin/node', argv: ['node', 'i.js'], dryRun: false };
+    assert.equal(installPlanCanvasAutostart(base), false);
+    installPlanCanvasAutostart({ ...base, argv: ['node', 'i.js', '--autostart-plan-canvas'] });
+    const plist = path.join(home, 'Library', 'LaunchAgents', 'com.bdb.plan-canvas.plist');
+    fs.writeFileSync(plist, 'stale');
+    assert.equal(installPlanCanvasAutostart(base), true);
+    assert.notStrictEqual(fs.readFileSync(plist, 'utf8'), 'stale');
+});
