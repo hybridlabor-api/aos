@@ -6015,6 +6015,23 @@ function warnOnDuplicateAosPlugin(plugins, canonical) {
     }
 }
 
+// The same bdb-aos.js spelled twice (slashes, file:// URL, ~/, case on Windows) makes OpenCode load it twice: keep the first.
+function dedupeAosPluginEntries(plugins, home = homeDir) {
+    const key = (v) => {
+        let s = String(Array.isArray(v) ? v[0] : v).trim().replace(/\\/g, '/').replace(/^file:\/\/\/?/i, '');
+        if (s.startsWith('~/')) s = `${String(home).replace(/\\/g, '/')}/${s.slice(2)}`;
+        return process.platform === 'win32' ? s.toLowerCase() : s;
+    };
+    const seen = new Set();
+    return plugins.filter((p) => {
+        if (!/bdb-aos\.js$/.test(key(p))) return true;
+        const k = key(p);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    });
+}
+
 function appendOptionalOpencodePlugins(data, configPath, optional) {
     const wanted = optional instanceof Set ? optional : new Set(optional || []);
     for (const name of wanted) {
@@ -6175,6 +6192,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         return str.includes('bdb-aos');
     });
     if (!alreadyRegistered) data.plugin.push(pluginPathNormalized);
+    data.plugin = dedupeAosPluginEntries(data.plugin);
     warnOnDuplicateAosPlugin(data.plugin, pluginPathNormalized);
     appendOptionalOpencodePlugins(data, configPath, optional);
 
