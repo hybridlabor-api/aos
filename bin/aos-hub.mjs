@@ -312,6 +312,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   const { routes: serviceRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-services.mjs')).href);
   const { routes: catalogRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-catalog.mjs')).href);
   const { routes: storeRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-store.mjs')).href);
+  const { routes: routerRoutes } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-router.mjs')).href);
   const { createProxy } = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'proxy.mjs')).href);
   const watchMod = await import(pathToFileURL(join(ROOT, 'lib', 'hub', 'routes-watch.mjs')).href);
   const home = homeDir();
@@ -324,7 +325,7 @@ if (process.env.AOS_HUB_SERVE === '1' && !process.env.AOS_HUB_CHILD_DONE) {
   const hub = createHub({
     port: serveArgv.port,
     home,
-    routes: [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes, ...watchMod.routes],
+    routes: [...planRoutes, ...serviceRoutes, ...catalogRoutes, ...storeRoutes, ...routerRoutes, ...watchMod.routes],
     ctx: { root: ROOT, hubJsonPath: hubPaths(home).file, tokenEnv: hubToken, proxy: createProxy() },
   });
   await hub.listen();
