@@ -352,6 +352,20 @@ describe('uninstall', () => {
         assert.equal(baks(f).length, 1);
     });
 
+    test('an opencode.jsonc left with only $schema after the launcher entries go is removed; with a foreign key it stays', () => {
+        const h = fresh();
+        const launcher = path.join(h, '.agents', 'bin', 'aos-mcp-env.mjs');
+        const entry = { type: 'local', command: ['node', launcher, '--vars', 'GITHUB_PERSONAL_ACCESS_TOKEN', '--', 'npx', ...GH_ARGS] };
+        const f = json(path.join(h, '.config', 'opencode', 'opencode.jsonc'), { $schema: 'https://opencode.ai/config.json', mcp: { github: entry } });
+        records.reverseRegistrations({ home: h });
+        assert.ok(!fs.existsSync(f), 'AOS-only file removed');
+        const h2 = fresh();
+        const l2 = path.join(h2, '.agents', 'bin', 'aos-mcp-env.mjs');
+        const f2 = json(path.join(h2, '.config', 'opencode', 'opencode.jsonc'), { theme: 'dark', mcp: { github: { ...entry, command: ['node', l2, '--vars', 'GITHUB_PERSONAL_ACCESS_TOKEN', '--', 'npx', ...GH_ARGS] } } });
+        records.reverseRegistrations({ home: h2 });
+        assert.deepEqual(JSON.parse(read(f2)), { theme: 'dark' });
+    });
+
     test('a launcher-form entry with a shipped name but a foreign command stays (JSON and TOML)', () => {
         const h = fresh();
         const launcher = path.join(h, '.agents', 'bin', 'aos-mcp-env.mjs');
