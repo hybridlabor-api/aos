@@ -1403,8 +1403,22 @@ describe('uninstall leftovers', () => {
         const home = tmp();
         const dir = cfg.gatewayDir(home);
         fs.mkdirSync(path.join(dir, 'runtime.owner'), { recursive: true });
-        for (const n of ['upstream.pid', 'server.pid', 'runtime.owner.flock', 'package.json', 'presets.json', 'runtime.owner/owner.json', 'gateway.json', 'migration.json.restored-1']) fs.writeFileSync(path.join(dir, n), '{}');
+        for (const n of ['upstream.pid', 'server.pid', 'runtime.owner.flock', 'package.json', 'runtime.owner/owner.json', 'gateway.json', 'migration.json.restored-1']) fs.writeFileSync(path.join(dir, n), '{}');
         pkg.removeGenerated(dir, home);
         assert.deepEqual(fs.readdirSync(dir).sort(), ['gateway.json', 'migration.json.restored-1']);
+    });
+});
+
+describe('presets.json', () => {
+    test('stripAosPresets removes only AOS-made presets; the file goes when none are left', () => {
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'aos-presets-ok.json'), JSON.stringify(['aos-core']));
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1', presets: { 'aos-core': {}, mine: { a: 1 } } }));
+        assert.equal(pkg.stripAosPresets(dir), 'stripped');
+        assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'presets.json'), 'utf8')).presets), ['mine']);
+        assert.ok(fs.readdirSync(dir).some((n) => n.endsWith('.bak')));
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ presets: { 'aos-core': {} } }));
+        assert.equal(pkg.stripAosPresets(dir), 'removed');
+        assert.ok(!fs.existsSync(path.join(dir, 'presets.json')));
     });
 });
