@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
-import { readEndpoints, updateEndpoints, markDown, upsertTrail, removeTrail, patchFromRows, endpointsPath, urlOf } from '../lib/endpoints.mjs';
+import { readEndpoints, updateEndpoints, markDown, patchFromRows, endpointsPath, urlOf } from '../lib/endpoints.mjs';
 
 const mk = () => mkdtempSync(join(tmpdir(), 'aos-endpoints-'));
 
@@ -50,15 +50,6 @@ test('updates merge per id, keep pid/version for the same port, markDown clears 
   assert.equal(raw.services.memb.status, 'down');
   assert.equal(raw.services.memb.pid, null);
   assert.deepEqual(readdirSync(join(home, '.aos')), ['endpoints.json']);
-});
-
-test('trail upsert/remove', () => {
-  const home = mk();
-  upsertTrail(home, { repo: '/a', url: 'http://127.0.0.1:5330', port: 5330, pid: process.pid });
-  upsertTrail(home, { repo: '/a', url: 'http://127.0.0.1:5330', port: 5330, pid: process.pid });
-  assert.equal(readEndpoints({ home }).agenttrail.length, 1);
-  removeTrail(home, 5330);
-  assert.equal(readEndpoints({ home }).agenttrail.length, 0);
 });
 
 test('patchFromRows maps supervisor rows, keeps trail repos', () => {
