@@ -128,15 +128,15 @@ test('Windows: PATH still wins; known locations are tried in preference order wh
   const all = [
     'C:\\Users\\A B\\AppData\\Roaming\\npm\\claude.cmd',
     'C:\\Users\\A B\\.local\\bin\\claude.exe',
-    'C:\\Users\\A B\\AppData\\Local\\Programs\\claude\\claude.exe',
+    'C:\\Users\\A B\\.claude\\local\\node_modules\\.bin\\claude.cmd',
   ];
   assert.equal(cs.resolveCommand('claude', o(all)).toLowerCase(), 'c:\\users\\a b\\.local\\bin\\claude.exe');
   const onlyNpm = all.slice(0, 1);
   assert.equal(cs.resolveCommand('claude', o(onlyNpm)).toLowerCase(), 'c:\\users\\a b\\appdata\\roaming\\npm\\claude.cmd');
   const onlyLocal = all.slice(2);
-  assert.equal(cs.resolveCommand('claude', o(onlyLocal)).toLowerCase(), 'c:\\users\\a b\\appdata\\local\\programs\\claude\\claude.exe');
+  assert.equal(cs.resolveCommand('claude', o(onlyLocal)).toLowerCase(), 'c:\\users\\a b\\.claude\\local\\node_modules\\.bin\\claude.cmd');
   assert.equal(cs.resolveCommand('claude', o([])), null, 'absent locations are skipped, not invented');
-  assert.equal(cs.resolveCommand('claude', { platform: 'win32', env: { PATH: '' }, fs: fakeFs(new Set(all)) }), null, 'locations without USERPROFILE/APPDATA/LOCALAPPDATA are not guessed');
+  assert.equal(cs.resolveCommand('claude', { platform: 'win32', env: { PATH: '' }, fs: fakeFs(new Set(all)) }), null, 'locations without USERPROFILE/APPDATA are not guessed');
 });
 
 test('POSIX: known locations in order, PATH first, shared with codex and agy', () => {

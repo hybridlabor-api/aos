@@ -88,7 +88,7 @@ test('claude missing: one manual line, copies kept, nothing thrown', () => {
   const r = migrate(h, manifest, { cli: fake(h, { missing: true }).runner });
   assert.equal(r.covered.size, 0);
   assert.ok(fs.existsSync(file));
-  const l = r.lines.filter((x) => /not on PATH/.test(x));
+  const l = r.lines.filter((x) => /not found on PATH/.test(x));
   assert.equal(l.length, 1);
   assert.match(l[0], /claude plugin marketplace add hybridlabor-api\/aos ; claude plugin install bdb-aos@bdb-marketplace/);
 });
@@ -245,10 +245,10 @@ test('pluginFixSummary: null on success, null without a result, one line with bo
   assert.equal(pm.pluginFixSummary(null), null);
   assert.equal(pm.pluginFixSummary({ lines: [] }), null);
 
-  const miss = pm.pluginFixSummary({ lines: ['claude: the claude CLI is not on PATH; loose copies kept. Run these two commands: claude plugin marketplace add hybridlabor-api/aos ; claude plugin install bdb-aos@bdb-marketplace'] });
+  const miss = pm.pluginFixSummary({ lines: ['claude: the claude CLI was not found on PATH or in a known install location; loose copies kept. Run these two commands: claude plugin marketplace add hybridlabor-api/aos ; claude plugin install bdb-aos@bdb-marketplace'] });
   assert.match(miss, /⚠️/);
   assert.match(miss, /NOT installed/);
-  assert.match(miss, /not on PATH/);
+  assert.match(miss, /not found on PATH/);
   assert.match(miss, /PowerShell: claude plugin marketplace add hybridlabor-api\/aos; claude plugin install bdb-aos@bdb-marketplace/);
   assert.match(miss, /bash: claude plugin marketplace add hybridlabor-api\/aos && claude plugin install bdb-aos@bdb-marketplace/);
   assert.equal(miss.split('\n').length, 1, 'exactly one line');
@@ -269,5 +269,5 @@ test('ensureClaudePlugin with a missing CLI produces the summary line through mi
   const r = migrate(h, seedLoose(h).manifest, { cli: () => ({ ok: false, missing: true }) });
   const line = pm.pluginFixSummary(r);
   assert.ok(line, `expected a fix line, got: ${JSON.stringify(r.lines)}`);
-  assert.match(line, /not on PATH/);
+  assert.match(line, /not found on PATH/);
 });
