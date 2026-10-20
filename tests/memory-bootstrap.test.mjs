@@ -16,16 +16,12 @@ const run = (script, home, input) => spawnSync(process.execPath, [hook(script)],
 });
 const tmpHome = (t) => { const h = fs.mkdtempSync(path.join(os.tmpdir(), 'mem-boot-')); t.after(() => fs.rmSync(h, { recursive: true, force: true })); return h; };
 
-test('memb-inject creates an empty memb.db with the memB schema and injects the write hint', async (t) => {
-  const { DatabaseSync } = await import('node:sqlite');
+test('memb-inject never creates memb.db and still injects the write hint', (t) => {
   const home = tmpHome(t);
   const proj = path.join(home, 'proj'); fs.mkdirSync(proj);
   const r = run('memb-inject.mjs', home, { hook_event_name: 'SessionStart', cwd: proj });
   assert.equal(r.status, 0, r.stderr);
-  const db = new DatabaseSync(path.join(home, '.MemBDB', 'memb.db'), { readOnly: true });
-  const names = db.prepare("SELECT name FROM sqlite_master WHERE name IN ('memb_vectors','memb_fts','idx_memb_col')").all().map((x) => x.name).sort();
-  db.close();
-  assert.deepEqual(names, ['idx_memb_col', 'memb_fts', 'memb_vectors']);
+  assert.equal(fs.existsSync(path.join(home, '.MemBDB', 'memb.db')), false);
   assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /memb_mcp add_memory/);
 });
 
