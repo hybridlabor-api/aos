@@ -303,7 +303,7 @@ function findSkillMd(name) {
   return null;
 }
 
-function resolveModes() {
+function resolveModes(target) {
   const modes = [
     {
       id: 'standard',
@@ -322,10 +322,13 @@ function resolveModes() {
     reason: fs.existsSync(planBuilderPath) ? null : 'bdb-plan-builder not installed'
   });
 
-  // The builder is the default whenever it is available; standard is the fallback.
+  // The builder is the default whenever it is available and the target is a plan folder or plan.mdx
+  // (the only inputs it renders); any other file falls back to standard.
   const builder = modes.find(m => m.id === 'bdb-plan-builder');
+  const isPlanTarget = !target || path.basename(target) === 'plan.mdx' ||
+    (fs.existsSync(target) && fs.statSync(target).isDirectory());
   return {
-    default: builder.available ? 'bdb-plan-builder' : 'standard',
+    default: builder.available && isPlanTarget ? 'bdb-plan-builder' : 'standard',
     modes
   };
 }
@@ -345,7 +348,7 @@ async function doOpen(file, args, { stateDir, port }) {
   if (!file) throw new Error('open requires a file path');
   if (!fs.existsSync(path.resolve(file))) throw new Error(`artifact not found: ${file}`);
 
-  const modesInfo = resolveModes();
+  const modesInfo = resolveModes(file);
   const mode = valueAfter(args, '--mode') || modesInfo.default;
   const modeConfig = modesInfo.modes.find(m => m.id === mode);
 
