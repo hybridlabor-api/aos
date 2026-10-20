@@ -21,6 +21,8 @@ export type FleetSession = {
   unmanaged?: boolean
   progress?: FleetProgress
   context?: number
+  delegated?: boolean
+  trailNode?: string
 }
 
 export type PipelineFinding = {
