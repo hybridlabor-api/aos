@@ -198,8 +198,9 @@ describe('grants in OpenCode', () => {
         const dir = path.join(home, '.aos', 'gate');
         fs.mkdirSync(dir, { recursive: true });
         const cfg = (profile) => {
+            const now = Date.now(); // one clock read: off allows at most 2h between set_at and expiry, a second read can add 1 ms
             const f = path.join(dir, 'config.json');
-            fs.writeFileSync(f, JSON.stringify({ version: 1, profile, set_at: new Date(Date.now() - 3600e3).toISOString(), expires_at: new Date(Date.now() + 3600e3).toISOString() }), { mode: 0o600 });
+            fs.writeFileSync(f, JSON.stringify({ version: 1, profile, set_at: new Date(now - 3600e3).toISOString(), expires_at: new Date(now + 3600e3).toISOString() }), { mode: 0o600 });
             fs.chmodSync(f, 0o600);
         };
         const { hooks, id } = await boot();
