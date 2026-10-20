@@ -1,6 +1,6 @@
 ---
 name: python-pro
-description: Modern Python 3.12+ expertise: async, performance, production practices and the latest ecosystem tooling (uv, ruff, pydantic, FastAPI).
+description: "Modern Python 3.12+ expertise: async, performance, production practices and the latest ecosystem tooling (uv, ruff, pydantic, FastAPI)."
 category: library
 risk: unknown
 source: community

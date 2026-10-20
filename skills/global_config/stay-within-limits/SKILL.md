@@ -1,6 +1,8 @@
 ---
 name: stay-within-limits
-description: Use when long-running or parallel agent work must respect 5-hour and weekly usage limits: check usage between waves, pause near the cap.
+description: >-
+  Use when long-running or parallel agent work must respect 5-hour and
+  weekly usage limits: check usage between waves, pause near the cap.
 category: bdb-core
 source: BuilderIO/skills
 ---

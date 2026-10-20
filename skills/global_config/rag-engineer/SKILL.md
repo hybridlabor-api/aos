@@ -1,6 +1,8 @@
 ---
 name: rag-engineer
-description: Build Retrieval-Augmented Generation systems: embedding models, vector databases, chunking strategies and retrieval optimization for LLM apps.
+description: >-
+  Build Retrieval-Augmented Generation systems: embedding models, vector
+  databases, chunking strategies and retrieval optimization for LLM apps.
 category: library
 risk: unknown
 source: vibeship-spawner-skills (Apache 2.0)

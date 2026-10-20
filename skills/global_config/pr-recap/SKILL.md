@@ -1,6 +1,6 @@
 ---
 name: pr-recap
-description: Visual recap page for a PR or git range: changed-files tree, per-file notes, verified table, risks, before/after images. Local review aid, never posts.
+description: "Visual recap page for a PR or git range: changed-files tree, per-file notes, verified table, risks, before/after images. Local review aid, never posts."
 category: engineering-method
 user-invocable: true
 ---

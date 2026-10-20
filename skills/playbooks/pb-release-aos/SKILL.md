@@ -1,6 +1,9 @@
 ---
 name: pb-release-aos
-description: Release a new AOS version to npm via the release-please PR: check commits, review and gate the PR, merge after GO, watch the workflow and drift.
+description: >-
+  Release a new AOS version to npm via the release-please PR: check
+  commits, review and gate the PR, merge after GO, watch the workflow
+  and drift.
 category: bdb-core
 kind: playbook
 trigger: ["release AOS", "cut an AOS release", "merge the release PR"]

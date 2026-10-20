@@ -1,6 +1,6 @@
 ---
 name: playwright-skill
-description: Use when a task needs custom Playwright code: end-to-end testing, scraping a JS-rendered page, or driving a browser interactively via a universal executor.
+description: "Use when a task needs custom Playwright code: end-to-end testing, scraping a JS-rendered page, or driving a browser interactively via a universal executor."
 category: library
 risk: unknown
 source: lackeyjb (MIT)

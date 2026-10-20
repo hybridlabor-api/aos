@@ -1,6 +1,8 @@
 ---
 name: using-git-worktrees
-description: Use for feature work needing isolation or before executing a plan: ensure an isolated worktree via native tools or git worktrees.
+description: >-
+  Use for feature work needing isolation or before executing a plan:
+  ensure an isolated worktree via native tools or git worktrees.
 category: engineering-method
 source: superpowers
 date_added: "2026-09-25"
