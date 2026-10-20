@@ -57,3 +57,39 @@ test('cancel inside a setting returns to Settings, Back returns to the main menu
     assert.strictEqual(seen, 3);
     assert.strictEqual(p.readSettings(home).updates, undefined);
 });
+
+const mainHost = (home) => ({ ...host(home), runUninstaller: () => 0 });
+const quiet = (home, ui) => ({ home, write: () => {}, ui, now: 0, npmView: async () => '4.0.0' });
+
+test('menu(): null main choice exits; Settings then Exit; main default is Settings after returning', async () => {
+    const home = fs.mkdtempSync(path.join(root, 'h-'));
+    const seen = [];
+    const script = ['settings', 'back', 'exit'];
+    const ui = { select: async (msg, opts, init) => { seen.push([msg, init]); return script.shift(); } };
+    assert.strictEqual(await menu.menu(mainHost(home), quiet(home, ui)), 0);
+    const mains = seen.filter(([m]) => m === 'Select an operation:');
+    assert.strictEqual(mains.length, 2);
+    assert.strictEqual(mains[1][1], 'settings');
+
+    const ui2 = { select: async () => null };
+    assert.strictEqual(await menu.menu(mainHost(home), quiet(home, ui2)), 0);
+});
+
+test('a failing setting keeps the loop open and the final exit code is 1', async () => {
+    const home = fs.mkdtempSync(path.join(root, 'h-'));
+    const out = [];
+    const h = { ...mainHost(home), installGlobalHooks: () => { throw new Error('boom'); } };
+    const script = ['settings', 'gate', 'off', 'back', 'exit'];
+    const ui = { select: async () => script.shift() };
+    const code = await menu.menu(h, { ...quiet(home, ui), write: (s) => out.push(s) });
+    assert.strictEqual(script.length, 0);
+    assert.strictEqual(code, 1);
+    assert.match(out.join(''), /that change failed/);
+});
+
+test('menu-mode multi cancel (null) writes nothing', async () => {
+    const home = fs.mkdtempSync(path.join(root, 'h-'));
+    const ui = { multi: async () => null };
+    await menu.installDefaults(mainHost(home), { home, write: () => {}, ui }, new Set());
+    assert.ok(!fs.existsSync(p.settingsFile(home)) || (p.readSettings(home).disabled || []).length === 0);
+});
