@@ -298,14 +298,6 @@ if (CHECK) {
     console.error(`plugin.json is out of date (${stale.map((t) => relative(ROOT, t)).join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
-  if (badLinks.length > 0) {
-    console.error(`plugins/bdb-aos copies missing, symlinked or stale (${badLinks.map(([n]) => n).join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
-    process.exit(1);
-  }
-  if (existsSync(legacySubSkills) || lstatSync(legacySubSkills, { throwIfNoEntry: false })) {
-    console.error('plugins/bdb-aos/skills must not exist (the plugin does not bundle skills) — run: node scripts/build-plugin-manifest.mjs');
-    process.exit(1);
-  }
   if (marketCurrent !== marketSerialized) {
     console.error('marketplace.json version is out of date — run: node scripts/build-plugin-manifest.mjs');
     process.exit(1);
@@ -329,6 +321,14 @@ if (CHECK) {
   }
   if (drift.length > 0) {
     console.error(`agents/ is out of date (${drift.join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
+    process.exit(1);
+  }
+  if (badLinks.length > 0) {
+    console.error(`plugins/bdb-aos copies missing, symlinked or stale (${badLinks.map(([n]) => n).join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
+    process.exit(1);
+  }
+  if (existsSync(legacySubSkills) || lstatSync(legacySubSkills, { throwIfNoEntry: false })) {
+    console.error('plugins/bdb-aos/skills must not exist (the plugin does not bundle skills) — run: node scripts/build-plugin-manifest.mjs');
     process.exit(1);
   }
   console.log(`plugin manifests up to date: ${agentNames.length} agents, ${commandNames.length} commands (+ ${commandNames.length} OpenCode)`);
