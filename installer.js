@@ -8542,6 +8542,23 @@ function persistInstallOptions(home = homeDir) {
     }
 }
 
+// The wizard's choices (Pro MEDIA tier, Creator/Hardware modules, pack checkboxes) become the stored pack
+// selection on a fresh install or a setup re-run. `aos update` never calls this: no stored selection = keep everything.
+function persistWizardPacks(home = homeDir) {
+    if (DRY_RUN || isAutoYes || INSTALL_OPTS.packsFromFlag) return false;
+    try {
+        const meta = readJsonFile(path.join(home, '.agents', '.bdb-manifest.json'));
+        const sel = skillPacks.normalizeSelection([...(packSelection || []), ...runImpliedPacks, ...skillPacks.impliedPacks(meta, srcDir)], srcDir) || [];
+        v5Profile.writeSettings(home, { ...v5Profile.readSettings(home), packs: sel });
+        packSelection = sel;
+        log.step(`Skill packs saved: base${sel.length ? ` + ${sel.join(', ')}` : ' only'} (change with aos store install/remove --pack).`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not save the skill pack selection: ${e.message}`);
+        return false;
+    }
+}
+
 // The file-manifest session of a full install; --hooks-only needs the same one so its copies are tracked alike.
 function initFullSession(installState) {
     initSessionManifest(installState.installManifest, [
@@ -9194,6 +9211,7 @@ Options:
     const alreadyHandled = justInstalled.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
+    if (persistWizardPacks()) applyPackSelection(_sessionManifest);
 
     if (wantsUniversal) {
         await universalHarnessSync(primaryTarget.mcpConfigPath, installedModulesForPrompt);
