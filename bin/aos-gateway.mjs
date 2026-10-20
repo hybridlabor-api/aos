@@ -333,6 +333,7 @@ async function main() {
             const r = service('restart');
             if (r !== 0) console.log(`gateway config updated; service restart reported ${r}; run "aos-gateway restart" and check "aos-gateway status"`);
         }
+        if (cmd === 'remove') console.log(`${server} disappears from every harness on the next "aos update" (or "aos-gateway enable") and the gateway no longer starts it`);
         console.log(`${cmd} ${server}: ${result.selected.length} servers selected (${result.dryRun ? 'dry-run' : 'mcp.json rewritten'}); run "aos-gateway status" to confirm`);
         process.exit(0);
     }
