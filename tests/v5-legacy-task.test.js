@@ -26,3 +26,15 @@ test('without a seam, a serviceRunner context keeps the plain call', async () =>
     await legacyTask(ctx, 'T', ['/Delete', '/TN', 'T', '/F']);
     assert.deepEqual(calls, [['schtasks', '/Delete', '/TN', 'T', '/F']]);
 });
+
+test('disabledStartupEntries: only AOS .vbs entries with the disabled flag are reported', () => {
+    const { disabledStartupEntries } = require('../lib/v5/win-startup.js');
+    const out = [
+        'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\StartupFolder',
+        '    com.bdb.aos.hub.vbs    REG_BINARY    030000000000000000000000',
+        '    com.bdb.aos.gateway.vbs    REG_BINARY    020000000000000000000000',
+        '    other.lnk    REG_BINARY    030000000000000000000000',
+    ].join('\r\n');
+    assert.deepEqual(disabledStartupEntries(out), ['com.bdb.aos.hub.vbs']);
+    assert.deepEqual(disabledStartupEntries(''), []);
+});
