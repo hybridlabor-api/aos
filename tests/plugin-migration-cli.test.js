@@ -237,3 +237,37 @@ test('pluginInstalled follows plugin.json skills and nested layouts, and require
   fs.writeFileSync(path.join(installPath, 'plugin.json'), JSON.stringify({ name: 'bdb-aos' }));
   assert.deepEqual([...pm.pluginSkills(installPath)].sort(), ['memb-skill', 'startcycle'], 'default ./skills is walked recursively');
 });
+
+// Issue #54: ONE summary line for the end of the install/update output when the plugin step failed.
+test('pluginFixSummary: null on success, null without a result, one line with both shell fixes on failure', () => {
+  const good = { lines: ['claudecode: bdb-aos plugin registered.', 'claude: bdb-aos@bdb-marketplace installed.'] };
+  assert.equal(pm.pluginFixSummary(good), null);
+  assert.equal(pm.pluginFixSummary(null), null);
+  assert.equal(pm.pluginFixSummary({ lines: [] }), null);
+
+  const miss = pm.pluginFixSummary({ lines: ['claude: the claude CLI is not on PATH; loose copies kept. Run these two commands: claude plugin marketplace add hybridlabor-api/aos ; claude plugin install bdb-aos@bdb-marketplace'] });
+  assert.match(miss, /⚠️/);
+  assert.match(miss, /NOT installed/);
+  assert.match(miss, /not on PATH/);
+  assert.match(miss, /PowerShell: claude plugin marketplace add hybridlabor-api\/aos; claude plugin install bdb-aos@bdb-marketplace/);
+  assert.match(miss, /bash: claude plugin marketplace add hybridlabor-api\/aos && claude plugin install bdb-aos@bdb-marketplace/);
+  assert.equal(miss.split('\n').length, 1, 'exactly one line');
+
+  const reg = pm.pluginFixSummary({ lines: ['claudecode: plugin registration failed (settings.json not readable); loose copies kept.'] });
+  assert.match(reg, /reason: plugin registration failed \(settings\.json not readable\)/);
+});
+
+test('pluginStepFailed matches every failure shape, nothing else', () => {
+  assert.equal(pm.pluginStepFailed({ lines: ['claude: `claude plugin list` failed; loose copies kept. Run these two commands: x'] }), true);
+  assert.equal(pm.pluginStepFailed({ lines: ['claude: `claude plugin install bdb-aos@bdb-marketplace timed out'] }), true, 'timedOut lines carry Run these two commands via manual()');
+  assert.equal(pm.pluginStepFailed({ lines: ['[check] claudecode: would register the bdb-aos plugin'] }), false);
+  assert.equal(pm.pluginStepFailed(undefined), false);
+});
+
+test('ensureClaudePlugin with a missing CLI produces the summary line through migrate', () => {
+  const h = home();
+  const r = migrate(h, seedLoose(h).manifest, { cli: () => ({ ok: false, missing: true }) });
+  const line = pm.pluginFixSummary(r);
+  assert.ok(line, `expected a fix line, got: ${JSON.stringify(r.lines)}`);
+  assert.match(line, /not on PATH/);
+});

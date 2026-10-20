@@ -1913,6 +1913,15 @@ function runPluginMigration({ targetHome = homeDir, detected = null, mode = plug
     return result;
 }
 
+// ONE highlighted line at the very end of the run (full install and Quick Update) when the Claude
+// plugin step did not finish: what failed plus the exact fix for PowerShell and bash. Success stays
+// in the step logs; nothing is printed then.
+function printClaudePluginFix() {
+    const line = pluginMigration.pluginFixSummary(_pluginMigration);
+    if (line) console.log(line);
+    return !!line;
+}
+
 // Antigravity and Codex plugin steps, shared by the full install and Quick Update so the default
 // update path installs the same plugins. Order: Claude (runPluginMigration), agy, Codex.
 function runAgyPluginStep() {
@@ -8382,6 +8391,8 @@ async function runQuickUpdate(installState) {
     console.log('');
     verifyEcosystemInstallation();
     await maybeInstallCodenotch();
+    // Very last line of a Quick Update when the Claude plugin step failed (issue #54).
+    printClaudePluginFix();
 }
 
 
@@ -9162,6 +9173,8 @@ Options:
     }
     // Last line on purpose: an earlier CODEX_GATE_NOTICE scrolled by unread and the gate stayed off.
     if (codexHooksChanged) console.log(`⚠️  ${CODEX_TRUST_REMINDER}`);
+    // After that notice: the very last line when the Claude plugin step failed (issue #54).
+    printClaudePluginFix();
 }
 
 // Persist which shipped servers the 1mcp gateway runs: derived once from this install's tier
@@ -9285,6 +9298,7 @@ module.exports = {
     pluginMigrationMode,
     prompts: { text, password, select, multiselect, confirm: askConfirm },
     runPluginMigration,
+    printClaudePluginFix,
     runAgyPluginStep,
     runCodexPluginStep,
     retireCodexSkillCopies,
