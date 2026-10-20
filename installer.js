@@ -39,6 +39,7 @@ const { pruneRetiredSkills } = require('./lib/retired-skills');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
+const { writeManagedRulesFile } = require('./lib/harness-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
 const { gatewayCovered } = require('./lib/gateway/config');
 
@@ -5464,12 +5465,17 @@ function injectHarnessRules() {
 
     if (fs.existsSync(rulesMdSrc)) {
         if (active.has('antigravity')) installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
-            copyDirRecursiveSync(rulesMdSrc, path.join(geminiDir, 'RULES.md'));
+            // Managed-block upsert: a user's own content in RULES.md / GEMINI.md is never
+            // overwritten. AOS replaces only its marker-delimited block, which
+            // `aos uninstall` strips again (and the file with it if nothing user-owned remains).
+            const rulesBody = fs.readFileSync(rulesMdSrc, 'utf8');
+            const rulesTarget = path.join(geminiDir, 'RULES.md');
             // Keep GEMINI.md in sync for backwards compatibility with Antigravity CLI harnesses
+            const geminiTarget = path.join(geminiDir, 'GEMINI.md');
             try {
-                fs.copyFileSync(rulesMdSrc, path.join(geminiDir, 'GEMINI.md'));
-            } catch (e) { logDebug(e, 'sync GEMINI.md fallback'); }
-            log.step(`Installed RULES.md to ${path.join(geminiDir, 'RULES.md')}`);
+                for (const target of [rulesTarget, geminiTarget]) writeManagedRulesFile(target, rulesBody);
+            } catch (e) { logDebug(e, 'managed-block upsert for RULES.md/GEMINI.md'); }
+            log.step(`Installed RULES.md as managed block to ${rulesTarget} (and GEMINI.md); user content preserved`);
         }, 'The harness injection below still runs.');
 
         // Dispatcher scripts must land in ~/.claude/workflows/, because that is

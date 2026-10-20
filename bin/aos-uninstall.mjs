@@ -40,6 +40,7 @@ const winStartup = createRequire(import.meta.url)('../lib/v5/win-startup.js');
 const installer = createRequire(import.meta.url)('../installer.js');
 const { stripDestructiveBlock } = createRequire(import.meta.url)('../lib/destructive-rules.js');
 const { stripRoutingBlock } = createRequire(import.meta.url)('../lib/routing-rules.js');
+const { stripHarnessRulesBlock } = createRequire(import.meta.url)('../lib/harness-rules.js');
 // agy worker home (~/.aos/agy-worker-home) is built and removed by no-mcp.js; absent in a layout without mcps/.
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 
@@ -311,8 +312,12 @@ async function execute(p) {
   for (const f of ruleFiles.filter(existsSync)) {
     try {
       const text = readFileSync(f, 'utf8');
-      const stripped = stripRoutingBlock(stripDestructiveBlock(text));
+      // The harness-rules block is the outermost one for ~/.gemini/RULES.md and
+      // GEMINI.md — strip it first so the inner blocks go with it; the inner
+      // strips still cover older installs that carried only those blocks.
+      const stripped = stripRoutingBlock(stripDestructiveBlock(stripHarnessRulesBlock(text)));
       if (stripped === text) continue;
+      if (!stripped.trim()) { rmSync(f); console.log(`  ${tilde(f)} removed (no user content left)`); continue; }
       writeFileSync(f, stripped);
       console.log(`  Rule blocks removed from ${tilde(f)}`);
     } catch { console.log(`  ${tilde(f)} unreadable — check the rule blocks by hand`); }
