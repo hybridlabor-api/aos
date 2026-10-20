@@ -21,7 +21,7 @@ export function memoryTools({ home = homedir(), env = process.env, platform = pr
   try { off = JSON.parse(readFileSync(join(home, '.aos', 'v5-settings.json'), 'utf8')).disabled || []; } catch {}
   const on = (id) => !off.includes(id);
   return [
-    ['memb search', on('memb') && (exists(join(home, '.MemBDB', 'memb.db')) || exists(join(home, '.agents', 'memB')))],
+    ['memb search', on('memb') && exists(join(home, '.agents', 'memB'))],
     ['deja search', on('deja') && onPath('deja')],
     ['openwiki_search', on('openwiki') && onPath('openwiki')],
     ['codebase_memory_mcp', onPath('codebase-memory-mcp')],
