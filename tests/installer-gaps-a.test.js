@@ -96,3 +96,9 @@ test('G18: Codex wires the conventional-commits and env-file-protection safety h
         assert.ok(HARNESS_HOOKS.codex.includes(n), n);
     }
 });
+
+test('G20: context-profile percentage uses the baseline the savings use', () => {
+    const src = fs.readFileSync(path.join(root, 'lib', 'v5', 'context-profiles.js'), 'utf8');
+    assert.ok(!src.includes('62020'));
+    assert.strictEqual((src.match(/68950/g) || []).length, 1);
+});
