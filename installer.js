@@ -1144,6 +1144,8 @@ function globalSkillDestRoots() {
         path.join(homeDir, '.cursor', 'skills'),
         path.join(homeDir, '.roo', 'skills'),
         path.join(homeDir, '.config', 'opencode', 'skills'),
+        path.join(homeDir, '.windsurf', 'bdb-skills'),
+        path.join(homeDir, '.aider', 'bdb-skills'),
         path.join(geminiDir, 'config', 'skills'),
     ];
 }
@@ -2244,6 +2246,9 @@ function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
         { dir: path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
+        // Same dirs the fresh install writes for platforms 6 and 8 (resolveTargetPaths), so update refreshes them too.
+        { dir: path.join(homeDir, '.windsurf', 'bdb-skills'), key: 'windsurf' },
+        { dir: path.join(homeDir, '.aider', 'bdb-skills'), key: 'aider' },
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 }
 
@@ -4375,8 +4380,9 @@ function resolveTargetPaths(platformValue, customPaths) {
         targetMcpDir = path.join(homeDir, '.windsurf');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '7') {
-        targetSkillDir = path.join(homeDir, '.roo', 'bdb-skills');
-        targetLegacyDir = path.join(homeDir, '.roo', 'bdb-skills', 'legacy');
+        // Same dir globalSkillDestinations() refreshes on update; a second bdb-skills copy would list skills twice.
+        targetSkillDir = path.join(homeDir, '.roo', 'skills');
+        targetLegacyDir = path.join(homeDir, '.roo', 'skills', 'legacy');
         targetMcpDir = path.join(homeDir, '.roo');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '8') {

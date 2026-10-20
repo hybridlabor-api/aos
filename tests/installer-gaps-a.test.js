@@ -33,3 +33,15 @@ test('G4: every skill copy destination is also a prune root', () => {
     for (const { dir } of inst.globalSkillDestinations({ ignorePluginCoverage: true })) assert.ok(roots.includes(dir), dir);
     assert.ok(roots.some((r) => r.endsWith(path.join('opencode', 'skills'))));
 });
+
+test('G5: fresh install targets for Roo, Windsurf and Aider are the dirs update refreshes', () => {
+    const inst = require('../installer.js');
+    const dests = inst.globalSkillDestinations({ ignorePluginCoverage: true }).map((d) => d.dir);
+    const roots = inst.globalSkillDestRoots();
+    for (const p of ['6', '7', '8']) {
+        const dir = inst.resolveTargetPaths(p, null).targetSkillDir;
+        assert.ok(roots.includes(dir), `${p}: ${dir} not a prune root`);
+    }
+    assert.ok(roots.includes(inst.resolveTargetPaths('7', null).targetSkillDir));
+    assert.ok(dests.every((d) => roots.includes(d)));
+});
