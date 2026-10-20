@@ -260,7 +260,7 @@ describe('uninstall after the hub bin is gone', () => {
         const home = tmp();
         const f = path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.hub.service');
         fs.mkdirSync(path.dirname(f), { recursive: true });
-        fs.writeFileSync(f, '[Service]\nExecStart=/bin/true\n');
+        fs.writeFileSync(f, '[Service]\nExecStart=/bin/true # my-aos-hub.mjs\n');
         assert.equal(pkg.present({ home, platform: 'linux' }), false);
     });
 });

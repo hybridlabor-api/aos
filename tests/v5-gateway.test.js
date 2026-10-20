@@ -600,6 +600,8 @@ describe('pkg-gateway', () => {
         assert.equal(pkg.present(ctx), true);
         fs.writeFileSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist'), 'not ours');
         assert.equal(pkg.present(ctx), false);
+        fs.mkdirSync(path.join(cfg.gatewayDir(home), 'node_modules'), { recursive: true });
+        assert.equal(pkg.present(ctx), true, 'generated dirs left by a failed uninstall keep it detectable');
     });
 
     test('linux install writes the systemd user unit and enables it now', async () => {
