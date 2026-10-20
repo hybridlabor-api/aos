@@ -315,6 +315,7 @@ describe('dispatcher contract wiring', () => {
     assert.match(source, /aos-archify-contract\.mjs/);
     assert.match(source, /runArchifyBoundary/);
     assert.doesNotMatch(verifyBlock, /JSON\.parse\(deliverRes\.stdout\)/);
-    assert.match(source, /spawn\('aos-trail',[\s\S]*?shell:\s*false/);
+    assert.match(source, /spawn\(cliBin\('aos-trail'\),[\s\S]*?\.map\(cliArg\),[\s\S]*?shell:\s*IS_WIN/);
+    assert.doesNotMatch(source, /shell:\s*true/);
   });
 });
