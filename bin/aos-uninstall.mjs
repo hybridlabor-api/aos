@@ -280,8 +280,11 @@ async function execute(p) {
   const { ours, edited, agents, modules, legacy, data, codenotch } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
   let removed = 0, backed = 0;
+  // One failing step must not skip the rest; failures are listed at the end and their records stay.
+  const failures = [];
+  const attempt = (label, fn) => { try { return fn(); } catch (e) { failures.push(`${label}: ${e.message}`); return undefined; } };
 
-  for (const a of agents) {
+  for (const a of agents) attempt(`service ${a.label}`, () => {
     if (a.vbs) {
       // Windows: the .bat loops (`goto loop`), so kill the processes running it
       // before anything else — delete the bat first, then the vbs, so a cmd
@@ -292,16 +295,16 @@ async function execute(p) {
       } catch { /* nothing running or powershell unavailable */ }
       if (a.bat) try { rmSync(a.bat); } catch { /* already gone */ }
       try { rmSync(a.vbs); } catch { /* already gone */ }
-      continue;
+      return;
     }
     if (a.unit) {
       try { execFileSync('systemctl', ['--user', 'disable', '--now', a.label], { stdio: 'ignore' }); } catch { /* not loaded */ }
       try { rmSync(a.unit); } catch { /* already gone */ }
-      continue;
+      return;
     }
     try { execFileSync('launchctl', ['unload', a.plist], { stdio: 'ignore' }); } catch { /* not loaded */ }
     try { rmSync(a.plist); } catch { /* already gone */ }
-  }
+  });
   if (agents.length) console.log(`  ${agents.length} services stopped and removed`);
   if (process.platform === 'win32') {
     try { execFileSync('schtasks', ['/Delete', '/TN', 'BDB_OpenWiki_Daemon', '/F'], { stdio: 'ignore', windowsHide: true }); } catch { /* no such task */ }
@@ -417,18 +420,18 @@ async function execute(p) {
     } catch { console.log(`  ${tilde(codexToml)} unreadable — check by hand`); }
   }
 
-  if (codenotch) {
+  if (codenotch) attempt('Codenotch', () => {
     const r = cn.uninstallCodenotch(codenotch, { stateFile: cn.stateFilePath(HOME) });
     console.log(`  Codenotch: ${r === 'remove' ? 'removed' : r === 'keep' ? 'kept, not the recorded build' : r === 'error' ? 'uninstaller failed, left in place' : 'already gone'}`);
-  }
+  });
 
-  agyPlugin.uninstall({ home: HOME, dryRun: DRY });
+  attempt('agy plugin', () => agyPlugin.uninstall({ home: HOME, dryRun: DRY }));
 
-  if (noMcp) {
+  if (noMcp) attempt('agy worker home', () => {
     const wh = noMcp.removeAgyWorkerHome({ home: HOME, dryRun: DRY });
     if (wh.removed.length) console.log(`  agy worker home without MCP servers: ${wh.removed.length} entries ${DRY ? 'would be removed' : 'removed'}`);
     for (const k of wh.kept) console.log(`  ${tilde(k)} not created by AOS, kept`);
-  }
+  });
 
   // Claude Code mods, MCP gateway, hub service and Rust + Tauri have their own registrations; gateway and hub only when installed.
   const always = ['fleet', 'sessions', 'alert', 'control', 'rustauri'];
@@ -445,7 +448,7 @@ async function execute(p) {
   }
 
   // The package loop skips gateway/hub when detect() is false; the Startup .vbs must still go, or both autostart again.
-  removeWinServices(p.winSvc);
+  attempt('Windows services', () => removeWinServices(p.winSvc));
 
   // A2A MCP entries (agy + Cursor): only the AOS-owned ones leave the harness
   // configs, each file backed up first (writeConfigWithBackup inside).
@@ -457,16 +460,19 @@ async function execute(p) {
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} install markers removed`);
 
-  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner })) console.log(`  ${l}`);
-
-  const reg = pm.readState(HOME).registered.claudecode;
-  if (reg) {
-    const r = pm.deregisterClaude({ home: HOME, record: reg });
-    if (r.changed) console.log(`  bdb-aos plugin registration removed from settings.json${reg.replaced ? ` (external marketplace ${reg.replaced.key} restored)` : ''}`);
+  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner })) {
+    console.log(`  ${l}`);
+    if (l.startsWith('FAILED')) failures.push(l);
   }
 
-  const cx = cp.uninstallCodexPlugin({ home: HOME });
-  for (const l of cx.lines) console.log(`  ${l}`);
+  attempt('Claude plugin registration', () => {
+    const reg = pm.readState(HOME).registered.claudecode;
+    if (!reg) return;
+    const r = pm.deregisterClaude({ home: HOME, record: reg });
+    if (r.changed) console.log(`  bdb-aos plugin registration removed from settings.json${reg.replaced ? ` (external marketplace ${reg.replaced.key} restored)` : ''}`);
+  });
+
+  attempt('Codex plugin', () => { for (const l of cp.uninstallCodexPlugin({ home: HOME }).lines) console.log(`  ${l}`); });
 
   // Only the BDB hook entries leave settings.json; everything else in it is
   // the user's and must survive an uninstall exactly as it survives an install.
@@ -494,11 +500,17 @@ async function execute(p) {
     catch (e) { console.log(`  could not delete ${tilde(d.path)}: ${e.message}`); }
   }
 
-  for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
+  // With a failed step the manifest stays, so a rerun sees the install and finishes the job.
+  if (!failures.length) for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
     try { rmSync(f); } catch { /* already gone */ }
   }
   pm.retireState(HOME);
   ur.retireRecords(HOME);
+  if (failures.length) {
+    console.log('\nThese steps failed; the rest ran. Fix the cause and run aos-uninstall again:');
+    for (const f of failures) console.log(`    ${f}`);
+    process.exitCode = 1;
+  }
 }
 
 // ---------------------------------------------------------------------- main
