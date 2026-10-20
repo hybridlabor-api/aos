@@ -39,6 +39,7 @@ const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
 const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } = req('../lib/uninstall-records.js');
 const { btmNotLoadedAgents, agentLoadStatus, btmFixHint } = req('../lib/launchagent-btm.mjs');
+const npmGlobalAos = req('../lib/npm-global-aos.js');
 const { findExecutable, getGitInstallInstruction, isElevated } = req('../lib/executable-probe.js');
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
@@ -149,6 +150,20 @@ function checkAosCore() {
     }
   } else {
     add('aos-core', 'Version vs npm', true, 'Skipped (offline mode — pass --net to check npm)', '', true);
+  }
+
+  // A leftover `npm i -g @hybridlabor-api/aos` can shadow the ~/.local/bin launcher on PATH (audit P0-1):
+  // read-only probe (`npm root -g`); the removal command is printed, AOS never removes the package itself.
+  {
+    const g = npmGlobalAos.detectGlobalAos();
+    if (!g.checked) {
+      add('aos-core', 'Global npm install', true, 'could not check (npm missing or offline)', '', true);
+    } else if (g.found) {
+      add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version})`,
+        `Remove the stale copy so it stops shadowing ~/.local/bin: ${npmGlobalAos.REMOVE_CMD} (AOS never removes it automatically).`);
+    } else {
+      add('aos-core', 'Global npm install', true, 'none — only the ~/.local/bin launcher');
+    }
   }
 
   // Check store index

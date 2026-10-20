@@ -8188,6 +8188,10 @@ function quickUpdateKernel(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     s.stop('Skills refreshed');
+    // Every AOS bin gets its ~/.local/bin launcher, on update too: skills above refreshed the files the
+    // launchers point at (plan-canvas, archify, trail), and an install that predates a new bin never
+    // gains the launcher without this. Idempotent; 'aos' still never overwrites a foreign file.
+    installGlobalBinaries();
     const failures = [];
     const migration = runPluginMigration();
     if (migration.error) failures.push(`plugin migration: ${migration.error}`);
