@@ -818,6 +818,27 @@ describe('status JSON', () => {
         await fw.close();
     });
 
+    test('/api/v1/servers drives per-upstream status (#178)', async () => {
+        const api = JSON.stringify({ kind: 'servers', servers: [{ server: 'a', status: 'connected', available: true }, { server: 'b', status: 'error', available: false }] });
+        const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? api : '{}'); });
+        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        await fw.listen();
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'upstream error' }]);
+        await fw.close();
+    });
+
+    test('1mcp listing 0 servers while servers are configured is never ready (#178)', async () => {
+        const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? '{"kind":"servers","servers":[]}' : '{"status":"ready"}'); });
+        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        await fw.listen();
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        assert.ok(s.upstreams.every((u) => !u.ok && !u.degraded && /lists 0 servers while 2 are configured/.test(u.error)));
+        const v = await pkg.verify({ home: dir, sleep: async () => {}, statusFn: async () => ({ ...s, port: cfg.GATEWAY_PORT }) }, { tries: 2 });
+        assert.equal(v.ok, false);
+        await fw.close();
+    });
+
     test('running gateway, 1mcp down', async () => {
         const fw = createForwarder({ port: 0, upstreamPort: 1, token: 'x'.repeat(64) });
         await fw.listen();

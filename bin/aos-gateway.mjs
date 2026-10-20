@@ -81,8 +81,25 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
     const problem = inUse ? `port ${port} in use by another process` : !running ? 'gateway not running' : null;
     const details = new Map();
     try { for (const d of JSON.parse(inner && inner.body).servers.details) details.set(d.name, d); } catch { /* no per-server body */ }
-    const upstreams = upstreamNames(dir).map((name) => {
+    // /api/v1/servers (1mcp build/transport/http/routes/inspectRoutes.js): per-server { server, status, available }.
+    // /health/ready can say "ready" with serverCount 0, so it is not used (#178).
+    const listed = new Map();
+    let apiServers = null;
+    if (running && inner && !inner.error) {
+        const api = await get(upstreamPort, '/api/v1/servers');
+        try { if (api.status === 200) apiServers = JSON.parse(api.body).servers; } catch { /* not the expected JSON */ }
+        if (Array.isArray(apiServers)) for (const e of apiServers) if (e && typeof e.server === 'string') listed.set(e.server, e);
+    }
+    const configured = upstreamNames(dir);
+    const upstreams = configured.map((name) => {
         if (problem) return { name, ok: false, error: problem };
+        if (Array.isArray(apiServers)) {
+            const e = listed.get(name);
+            if (e && e.available === true) return { name, ok: true };
+            // Nothing listed at all is not "degraded": verify must not call that gateway ready.
+            if (listed.size === 0) return { name, ok: false, error: `1mcp lists 0 servers while ${configured.length} are configured` };
+            return { name, ok: false, degraded: true, error: e ? `upstream ${e.status || 'not connected'}` : '1mcp does not list this server' };
+        }
         // 1mcp answers 503 once at most half of its upstreams are connected, but the body still lists each one:
         // a reachable 1mcp with failing upstreams is degraded (warn), not down.
         const d = details.get(name);
