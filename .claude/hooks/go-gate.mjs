@@ -2102,14 +2102,32 @@ export function gateStoreReason(command) {
   // Backslashes are tried both ways: stripped (escape tricks like ~/\.aos/gate) and as path separators (C:\x\.aos\gate).
   const norm = command.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/");
   const slashed = command.replace(/\\/g, "/");
-  if (slashed !== command && !STORE_REF.test(norm) && STORE_REF.test(slashed.replace(/["']/g, "").replace(/\/(?:\.?\/)+/g, "/"))) return gateStoreReason(slashed);
-  // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
-  const cdAos = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(norm);
-  if (!STORE_REF.test(norm) && !(cdAos && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cdAos[1]))) return null;
+  const touched = (t) => {
+    // `cd <anything>/.aos` followed by a relative gate/ or go/ path (`cd ~/.aos && rm gate/x`).
+    const cd = /\bcd\s+\S*\.aos\/*\s*(?:&&|;|\|\||\n)([\s\S]*)$/i.exec(t);
+    return STORE_REF.test(t) || (!!cd && /(?:^|[\s>])(?:gate|go)(?:\/|\s*$)/.test(cd[1]));
+  };
+  if (slashed !== command && !touched(norm) && !touched(slashed.replace(/["']/g, "").replace(/\/(?:\.?\/)+/g, "/"))) return null;
+  // Judge write targets, not the argument text (audit P1-11): quoted search patterns of
+  // grep/echo/... and print-only heredoc bodies that merely mention the store are stripped
+  // by commandView before the path is looked at again. Interpreter code (node -e, python
+  // heredocs) is kept fail-closed: a store path inside it blocks whatever the surrounding text is.
   const why = "Blocked by go-gate: the GO/grant store (~/.aos/gate, ~/.aos/go) is written only by the AOS hooks. Grants come from the human typing `gogate grant ...`; read-only cat/ls/grep/head/tail/wc/stat with plain options, and a redirect to /dev/null, are allowed.";
+  if (!touched(norm)) { if (touched(slashed.replace(/["']/g, "").replace(/\/(?:\.?\/)+/g, "/"))) return gateStoreReason(slashed); return null; }
+  const view = commandView(command, true);
+  let judged = view.text;
+  for (const c of view.code) judged += "\n" + c.body;
+  const vnorm = judged.replace(/["'\\]/g, "").replace(/\/(?:\.?\/)+/g, "/").replace(/\\/g, "/");
+  if (!touched(vnorm)) {
+    // A redirection whose target spells the store blocks even when blankData hid the target
+    // inside a quoted argument of a data head (`printf x > "$HOME/.aos/gate/y"`): taken from
+    // the quote-stripped raw text. Redirect targets, not argv text.
+    for (const m of norm.matchAll(REDIR)) if (STORE_REF.test(m[0]) && !/\/dev\/null|&\d/.test(m[0])) return why;
+    return null;
+  }
   // Command and process substitution run commands of their own.
-  if (/\$\(|\x60|<\(|>\(/.test(norm)) return why;
-  const plain = norm.replace(STORE_NULL_REDIR, "");
+  if (/\$\(|\x60|<\(|>\(/.test(vnorm)) return why;
+  const plain = vnorm.replace(STORE_NULL_REDIR, "");
   // Any other redirect or --output writes a file that may be the store.
   if (/>/.test(plain) || /--output\b/.test(plain)) return why;
   // No env-assignment prefix is stripped: `PATH=/tmp/x cat ...` or `LD_PRELOAD=...` is not a read-only head and blocks.

@@ -31,6 +31,7 @@ const { values: o, positionals } = parseArgs({
     timeout: { type: "string" },     background: { type: "boolean" },
     once: { type: "boolean" },
     label: { type: "string" },
+    "label-source": { type: "string" },
   },
 });
 
@@ -83,6 +84,7 @@ try {
     console.log(JSON.stringify(cardFromProfile(loadProfile({ profile: o.profile }), { name: o.name, harness: o.harness, model: o.model, url: o.url }), null, 2));
   } else if (cmd === "serve") {
     if (o.label) process.env.AOS_A2A_LABEL = o.label;
+    if (o["label-source"]) process.env.AOS_A2A_LABEL_SOURCE = o["label-source"];
     if (!o.name || !o.harness) throw new Error("serve needs --name and --harness");
     const modes = ["echo", "live", "agy", "codex", "spawn"];
     if (o.mode && !modes.includes(o.mode)) throw new Error(`unknown --mode ${o.mode} (echo, live, agy, codex or spawn)`);

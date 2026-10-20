@@ -139,9 +139,11 @@ test('migrateLegacyAgyWorkspaceMcp moves template copies and leaves user files u
     assert.equal(resAos.migrated, false);
     assert.ok(fs.existsSync(target), 'file with only aos must remain untouched');
 
-    // 4. Byte-identical copy of shipped template: moved to .bak
+    // 4. Byte-identical copy of shipped template: moved to .bak (and reported as pending before that)
     const templatePath = sec.shippedMcpTemplatePath(ROOT);
     fs.copyFileSync(templatePath, target);
+    assert.equal(sec.legacyAgyWorkspaceMcpPending(home, ROOT), true);
+    assert.equal(sec.legacyAgyWorkspaceMcpPending(path.join(home, 'nope'), ROOT), false);
     const resByte = sec.migrateLegacyAgyWorkspaceMcp(home, ROOT);
     assert.equal(resByte.migrated, true);
     assert.ok(!fs.existsSync(target), 'target must be removed');
@@ -151,6 +153,7 @@ test('migrateLegacyAgyWorkspaceMcp moves template copies and leaves user files u
     const resIdemp = sec.migrateLegacyAgyWorkspaceMcp(home, ROOT);
     assert.equal(resIdemp.migrated, false);
     assert.equal(resIdemp.reason, 'absent');
+    assert.equal(sec.legacyAgyWorkspaceMcpPending(home, ROOT), false);
 
     // 6. JSON copy containing shipped server keys (>1): moved to .bak
     fs.unlinkSync(bak);

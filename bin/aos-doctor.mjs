@@ -38,6 +38,8 @@ const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
 const { codexAosHookHash, codexTrustedHashes, CODEX_RULES_HEADER } = req('../lib/uninstall-records.js');
+const { btmNotLoadedAgents, agentLoadStatus, btmFixHint } = req('../lib/launchagent-btm.mjs');
+const npmGlobalAos = req('../lib/npm-global-aos.js');
 const { findExecutable, getGitInstallInstruction, isElevated } = req('../lib/executable-probe.js');
 const noMcp = await import(new URL('../mcps/mcsc/packages/core/src/no-mcp.js', import.meta.url).href).catch(() => null);
 const HOME = os.homedir();
@@ -158,6 +160,20 @@ function checkAosCore() {
     }
   } else {
     add('aos-core', 'Version vs npm', true, 'Skipped (offline mode — pass --net to check npm)', '', true);
+  }
+
+  // A leftover `npm i -g @hybridlabor-api/aos` can shadow the ~/.local/bin launcher on PATH (audit P0-1):
+  // read-only probe (`npm root -g`); the removal command is printed, AOS never removes the package itself.
+  {
+    const g = npmGlobalAos.detectGlobalAos();
+    if (!g.checked) {
+      add('aos-core', 'Global npm install', true, 'could not check (npm missing or offline)', '', true);
+    } else if (g.found) {
+      add('aos-core', 'Global npm install', false, `${tilde(g.root)} (v${g.version})`,
+        `Remove the stale copy so it stops shadowing ~/.local/bin: ${npmGlobalAos.REMOVE_CMD} (AOS never removes it automatically).`);
+    } else {
+      add('aos-core', 'Global npm install', true, 'none — only the ~/.local/bin launcher');
+    }
   }
 
   // Check store index
@@ -554,7 +570,7 @@ function checkAgyWorkspaceMcp() {
   }
   add('agy', 'agy workspace MCP', false,
     `${tilde(f)} lists servers other than aos/mcsc (${foreign.join(', ')}): agy loads them in $HOME`,
-    'aos repair', true);
+    'aos update moves an AOS template copy aside; a user-owned file must be edited or removed by hand', true);
 }
 
 // Secrets belong in ~/.aos/secrets.env (0600), never inline in a harness MCP config. Names only, never values.
@@ -799,15 +815,22 @@ async function checkDaemonsAndModules() {
   // memB
   const membDir = findModule('memB');
   const membListening = await portOpen(8088);
+  // macOS BTM (audit P0-3): a down service whose plist exists but whose agent is not loaded
+  // after login is macOS background-revocation, not a missing file — say the Login Items fix
+  // instead of `launchctl load -w`, which cannot lift it.
+  const membPlist = IS_MAC ? h('Library', 'LaunchAgents', 'com.bdb.memb.webui.plist') : null;
+  const membNotLoaded = membPlist && existsSync(membPlist) && !membListening && agentLoadStatus('com.bdb.memb.webui') === 'no';
   add('daemons', 'memB WebUI (:8088)', membListening,
     membListening ? 'Active & listening on http://127.0.0.1:8088' : 'Not listening on port 8088',
-    IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.memb.webui.plist' : 'Start src/backend/server.py in memB module.');
+    membNotLoaded ? btmFixHint('com.bdb.memb.webui') : IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.memb.webui.plist' : 'Start src/backend/server.py in memB module.');
 
   // Synapse 3D
   const synapseListening = await portOpen(7781);
+  const synapsePlist = IS_MAC ? h('Library', 'LaunchAgents', 'com.bdb.synapse.plist') : null;
+  const synapseNotLoaded = synapsePlist && existsSync(synapsePlist) && !synapseListening && agentLoadStatus('com.bdb.synapse') === 'no';
   add('daemons', 'Synapse 3D (:7781)', synapseListening,
     synapseListening ? 'Active & listening on http://127.0.0.1:7781' : 'Not listening on port 7781',
-    IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781', true);
+    synapseNotLoaded ? btmFixHint('com.bdb.synapse') : IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781', true);
 
   // BDB OS Remote Gateway
   const remoteListening = await portOpen(9080);
@@ -868,6 +891,17 @@ async function checkDaemonsAndModules() {
     add('security', 'AO Binary Signature (AMFI)', signed,
       signed ? 'Binary code-signed (AMFI safe)' : 'Unsigned binary — AMFI might terminate on launch',
       `Run: codesign -s - -f "${aoBin}"`);
+  }
+
+  // macOS BTM sweep (audit P0-3): any com.bdb.* LaunchAgent whose plist is installed but
+  // whose label is not loaded after login. Read-only `launchctl print` only (never sfltool);
+  // under a test sandbox without a run override the helper answers nothing, so the row is skipped.
+  if (IS_MAC) {
+    for (const a of btmNotLoadedAgents(HOME)) {
+      add('daemons', `LaunchAgent ${a.label}`, false,
+        'plist installed but the agent is not loaded after login (macOS revoked its background authorization)',
+        a.fix, true);
+    }
   }
 }
 

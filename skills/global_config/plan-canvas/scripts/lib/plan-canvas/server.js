@@ -255,6 +255,12 @@ function createPlanCanvasServer({
 } = {}) {
   if (!store) throw new Error('createPlanCanvasServer requires a session store');
 
+  // The workspace root this server serves, realpathed once: /health reports it so the CLI can tell
+  // a server of another project/root apart (audit port-collision). It is this machine's own,
+  // loopback-reachable workspace path — clients are the local CLI and the same-origin canvas page.
+  let serverRoot = path.resolve(workspaceRoot);
+  try { serverRoot = fs.realpathSync(serverRoot); } catch { /* may not exist yet */ }
+
   const allowedHostnames = buildAllowedHostnames(host);
   const annotate = createAnnotateHandler({
     store,
@@ -737,7 +743,7 @@ function createPlanCanvasServer({
     Promise.resolve()
       .then(() => {
         if (req.method === 'GET' && pathname === '/health') {
-          return sendJson(res, 200, { ok: true, app: 'aos-plan-canvas', version });
+          return sendJson(res, 200, { ok: true, app: 'aos-plan-canvas', version, root: serverRoot });
         }
         if (req.method === 'POST' && pathname === '/shutdown') {
           sendJson(res, 200, { status: 'stopping' });

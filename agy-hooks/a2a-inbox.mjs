@@ -46,10 +46,13 @@ try {
   const name = sess.sessionName({ harness: "agy", sessionId: conv, env: process.env });
   // Everything this hook loads or starts resolves the same identity (the sidecar also gets it in its env).
   process.env.AOS_A2A_NAME = name;
+  // Audit phonebook: agy labels are automatic from the workspace name (payload all opaque); a
+  // hand-set AOS_A2A_LABEL wins, and a rename (cwd change) updates the auto label here.
+  const title = sess.sessionTitleOf ? sess.sessionTitleOf({ harness: "agy", payload: input, env: process.env, cwd: process.cwd() }) : undefined;
   // Register this session as a peer once per name (idempotent; skipped under AOS_A2A_SIDECAR=off). No explicit mode:
   // agy defaults to the resume executor (`--mode agy`), which answers while this chat sits idle and claims the inbox
   // note itself; AOS_A2A_AGY_MODE=live switches back to the inbox drained below at the next typed prompt.
-  sess.ensureSidecar({ harness: "agy", sessionId: conv, parentPid: agyPid(), env: process.env });
+  sess.ensureSidecar({ harness: "agy", sessionId: conv, parentPid: agyPid(), env: process.env, title });
   if (input.invocationNum !== 0) done(); // mid-turn model call: queue, never inject
   const texts = [];
   // the bus inbox <AOS_BUS_ROOT or ~/.aos/bus>/a2a/<name>; the reply dir (~/.aos/a2a-inbox) never holds inbound messages

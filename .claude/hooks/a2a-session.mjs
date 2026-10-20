@@ -30,9 +30,15 @@ try {
   const lib = await loadLib();
   if (lib) {
     const sessionId = input.session_id || "";
-    // process.ppid is the harness CLI that spawned this hook
+    // Process.ppid is the harness CLI that spawned this hook. The session's title/name (audit
+    // phonebook) is read only when the payload or env actually carries one; it labels an
+    // unlabeled peer and follows renames. A hand-set AOS_A2A_LABEL always wins.
+    const title = lib.sessionTitleOf
+      ? lib.sessionTitleOf({ harness, payload: input, env: process.env })
+      : undefined;
     if (harness === "codex") {
-      const r = lib.ensureSidecar({ harness, sessionId, parentPid: process.ppid, mode: "codex", thread: sessionId });
+      // Documented codex fallback: with no workspace name the thread id (the session id) labels it.
+      const r = lib.ensureSidecar({ harness, sessionId, parentPid: process.ppid, mode: "codex", thread: sessionId, title: title || sessionId });
       // A Codex session has no AOS_A2A_NAME and several codex sidecars can be live: tell it which one is its own,
       // as SessionStart additionalContext (same output contract as aos-session-hint.mjs, which Codex already runs).
       if (r?.name) {
@@ -40,7 +46,7 @@ try {
         process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } }) + "\n");
       }
     } else {
-      const r = lib.ensureSidecar({ harness, sessionId, parentPid: process.ppid });
+      const r = lib.ensureSidecar({ harness, sessionId, parentPid: process.ppid, title });
       // the bdb-aos plugin monitor has no session_id: it finds this session's inbox through a pid binding
       if (harness === "claude" && r?.name) (await loadLib("a2a-monitor.mjs"))?.bindSession(r.name);
     }
