@@ -143,10 +143,10 @@ test('effective selection merges stored packs with run choices and the manifest'
     assert.deepStrictEqual(installer.effectivePackSelection(), ['business']);
     installer.addImpliedPack('live-show');
     assert.deepStrictEqual(installer.effectivePackSelection(), ['business', 'live-show']);
-    assert.deepStrictEqual(
-        installer.effectivePackSelection({ tier: '1', installedModules: ['creator'] }),
-        ['business', 'live-show', 'creator'],
-    );
+    fs.mkdirSync(path.join(HOME, '.agents'), { recursive: true });
+    fs.writeFileSync(path.join(HOME, '.agents', '.bdb-manifest.json'), JSON.stringify({ tier: '1', installedModules: ['creator'] }));
+    assert.deepStrictEqual(installer.effectivePackSelection(), ['business', 'live-show', 'creator']);
+    fs.rmSync(path.join(HOME, '.agents', '.bdb-manifest.json'));
     // Exclusion follows the merged selection: a live-show skill is no longer excluded.
     assert.ok(!installer.getTierExcludeSkills('1').includes('bdb-resolume-mcp'));
     installer.applyInstallOptions(HOME); // fresh resolution clears run-implied packs

@@ -185,10 +185,10 @@ const addImpliedPack = (id) => { if (skillPacks.knownPack(id, srcDir) && !runImp
 
 // The selection exclusion and install follow: the explicit selection plus every pack the last
 // install manifest implies and this run's choices imply. null explicit selection stays null.
-function effectivePackSelection(manifest = _sessionManifest || loadInstallManifest()) {
+function effectivePackSelection(meta = readJsonFile(path.join(homeDir, '.agents', '.bdb-manifest.json'))) {
     return skillPacks.mergeSelection(
         packSelection,
-        [...runImpliedPacks, ...skillPacks.impliedPacks(manifest, srcDir)],
+        [...runImpliedPacks, ...skillPacks.impliedPacks(meta, srcDir)],
         srcDir,
     );
 }
@@ -1244,7 +1244,7 @@ function populateSkillLibrary(home = homeDir) {
 // are left alone. A user skill is never in the manifest, so it can never be removed here.
 function applyPackSelection(manifest) {
     if (!Array.isArray(packSelection)) return;
-    const names = skillPacks.excludedByPacks(srcDir, effectivePackSelection(manifest));
+    const names = skillPacks.excludedByPacks(srcDir, effectivePackSelection());
     if (!names.length) return;
     try {
         pruneRetiredSkills({
