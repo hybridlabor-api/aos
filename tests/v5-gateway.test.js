@@ -265,6 +265,11 @@ describe('pkg-gateway', () => {
         return { calls, ctx: { home, run, serviceRunner: true, dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/opt/node/bin/node', aosRoot: ROOT, uid: 501, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), sleep: async () => {}, ...extra } };
     };
     const posix = process.platform !== 'win32';
+    // The server selection decides what the gateway runs. Fresh derivation carries only the base
+    // set (+creator); for the media servers these tests pre-seed a stored choice (Pro MEDIA install).
+    const seedSelection = (home, servers = cfg.GATEWAY_SERVERS) => {
+        profile.writeSettings(home, { gateway: { servers } });
+    };
 
     test('contract shape', () => {
         assert.equal(pkg.id, 'gateway');
@@ -273,6 +278,7 @@ describe('pkg-gateway', () => {
 
     test('install creates dir 0700, token 0600, mcp.json and the plist', async () => {
         const home = tmp();
+        seedSelection(home);
         const { ctx, calls } = mkCtx(home);
         await pkg.install(ctx);
         const dir = cfg.gatewayDir(home);
@@ -439,6 +445,7 @@ describe('pkg-gateway', () => {
 
     test('install warns about a missing launcher and missing server scripts', async () => {
         const home = tmp();
+        seedSelection(home);
         const say = [];
         await pkg.install(mkCtx(home, { log: (m) => say.push(m) }).ctx);
         assert.ok(say.some((m) => m.includes('launcher missing')));
@@ -447,6 +454,7 @@ describe('pkg-gateway', () => {
 
     test('install passes only allow-listed ctx.env keys and uvPath to the upstreams', async () => {
         const home = tmp();
+        seedSelection(home);
         const env = { HTTPS_PROXY: 'http://proxy:3128', LANG: 'de_DE.UTF-8', GITHUB_TOKEN: 'ghp_SHOULDNOTLEAK', SystemRoot: 'C:\\Windows' };
         await pkg.install(mkCtx(home, { env, uvPath: '/opt/uv/uv' }).ctx);
         const text = fs.readFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), 'utf8');
