@@ -126,6 +126,7 @@ test('windows: memb stop kills only processes under the install dir; wscript sta
     assert.equal(calls[0].cmd, 'powershell.exe');
     const script = calls[0].args.at(-1);
     assert.ok(script.includes('.agents'), 'pattern is anchored to the module dir under home');
+    assert.ok(script.includes('server'), 'pattern names the daemon entry, not just the dir');
     assert.ok(script.includes('GetOwner'), 'owner check stays');
     const res = await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'start');
     assert.equal(res.ok, true);
