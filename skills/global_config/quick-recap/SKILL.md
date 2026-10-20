@@ -1,6 +1,6 @@
 ---
 name: quick-recap
-description: Use when the user wants each agent response to end with a red/yellow/green status line showing whether the work is finished, pending a follow-up, or blocked on input.
+description: Use when each agent response should end with a red/yellow/green status line showing whether work is finished, pending follow-up, or blocked.
 category: bdb-core
 source: BuilderIO/skills
 ---

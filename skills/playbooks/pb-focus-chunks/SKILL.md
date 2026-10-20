@@ -1,10 +1,9 @@
 ---
 name: pb-focus-chunks
 description: >-
-  Split one big task into chunks of at most 25 minutes, each with a
-  done-check, and place the demanding ones in your high-energy hours. Use for
-  "split this task", "break it into chunks", "I can't start this", "focus
-  plan". Nothing leaves your computer.
+  Split one big task into at most 25-minute chunks, each with a done-check,
+  and place the demanding ones in your high-energy hours. Nothing leaves
+  your computer.
 category: bdb-core
 kind: playbook
 trigger: ["split this task", "break it into chunks", "focus plan"]

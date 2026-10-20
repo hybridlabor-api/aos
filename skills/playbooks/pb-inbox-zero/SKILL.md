@@ -2,8 +2,7 @@
 name: pb-inbox-zero
 description: >-
   Sort an email backlog into reply, delegate, archive and ignore, and draft
-  the replies. Nothing is sent without your GO. Use for "inbox zero", "sort
-  my mail", "clear my email backlog", "draft replies to my mail".
+  the replies. Nothing is sent without your GO.
 category: bdb-core
 kind: playbook
 trigger: ["inbox zero", "sort my mail", "email backlog"]

@@ -1,10 +1,9 @@
 ---
 name: pb-pcb-to-case
 description: >-
-  From a KiCad board to a parametric enclosure that fits it: ERC and DRC
-  clean, board dimensions extracted, an OpenSCAD case with your clearance,
-  Gerbers exported, fab hand-off only after GO. Use for "PCB to enclosure",
-  "case for this board", "KiCad to OpenSCAD case".
+  From a KiCad board to a parametric enclosure that fits it: ERC, DRC
+  clean, dimensions extracted, OpenSCAD case with clearance, Gerbers, fab
+  hand-off after GO.
 category: engineering-hardware
 kind: playbook
 trigger: ["PCB to enclosure", "case for this board", "KiCad to OpenSCAD case"]

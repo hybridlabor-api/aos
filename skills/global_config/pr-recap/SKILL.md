@@ -1,6 +1,6 @@
 ---
 name: pr-recap
-description: Use when a PR or git range needs a visual recap page for a reviewer, with a changed-files tree, per-file notes, a Verified vs Not verified table, risks, and optional before/after images. Local and informational; never posts to GitHub.
+description: "Visual recap page for a PR or git range: changed-files tree, per-file notes, verified table, risks, before/after images. Local review aid, never posts."
 category: engineering-method
 user-invocable: true
 ---

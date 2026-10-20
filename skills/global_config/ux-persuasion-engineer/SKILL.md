@@ -1,6 +1,6 @@
 ---
 name: ux-persuasion-engineer
-description: "Behavioral UX specialist applying choice architecture, friction audits, and commitment design to guide users toward intended actions without coercion. Use when optimizing conversion flows, onboarding, or checkout UX."
+description: "Behavioral UX choice architecture, friction audits and commitment design to guide users without coercion. Use for conversion flows, onboarding or checkout."
 category: design-ui-ux
 risk: safe
 source: community

@@ -1,10 +1,8 @@
 ---
 name: reverse-engineer-anything
 description: >-
-  Reverse engineer native, managed, Electron/JS, packaged, firmware, and
-  browser targets with REA. Use artifact or runtime evidence to explain
-  features, compare versions, decompile code, or guide reconstruction. Skip
-  for ordinary source repo analysis.
+  Reverse engineer native, managed, Electron, packaged, firmware or browser
+  targets with REA. Skip for ordinary source repo analysis.
 category: engineering-method
 risk: caution
 source: "morluto/rea (MIT)"

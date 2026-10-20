@@ -1,11 +1,9 @@
 ---
 name: pb-show-build
 description: >-
-  Build a show across lights (grandMA3), media (Resolume) and generative
-  visuals (TouchDesigner) from one cue list, offline first. A lane whose
-  console or app is not running is skipped and logged while the others
-  continue; the live rig is touched only after GO. Use for "build the show",
-  "cue list to grandMA3 Resolume and TouchDesigner", "show programming".
+  Build a show across grandMA3, Resolume and TouchDesigner from one cue
+  list, offline first; down lanes are skipped and logged; live rig
+  touched only after GO.
 category: media-eventtech
 kind: playbook
 trigger: ["build the show", "cue list to grandMA3 Resolume and TouchDesigner", "show programming"]

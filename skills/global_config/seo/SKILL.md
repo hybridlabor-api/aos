@@ -1,6 +1,6 @@
 ---
 name: seo
-description: "Run a broad SEO audit across technical SEO, on-page SEO, schema, sitemaps, content quality, AI search readiness, and GEO. Use as the umbrella skill when the user asks for a full SEO analysis or strategy."
+description: "Broad SEO audit across technical SEO, on-page, schema, sitemaps, content quality, AI readiness and GEO. Use as umbrella for a full SEO analysis or strategy."
 category: library
 risk: unknown
 source: "https://github.com/AgriciDaniel/claude-seo"

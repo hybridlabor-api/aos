@@ -1,10 +1,9 @@
 ---
 name: pb-worktrees-land
 description: >-
-  Clean up git worktrees across your repos: list every worktree, classify it
-  as merged, remote-only, local-only or dirty, recap what each holds, and
-  remove only the merged clean ones after GO. Use for "clean up worktrees",
-  "what is in my aos-wt folders", "land my worktrees", "prune worktrees".
+  Clean up git worktrees across your repos: list worktrees, classify
+  merged, remote-only, local-only or dirty, recap contents, remove
+  merged clean ones after GO.
 category: bdb-core
 kind: playbook
 trigger: ["clean up worktrees", "land my worktrees", "prune worktrees"]

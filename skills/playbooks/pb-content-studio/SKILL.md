@@ -1,10 +1,9 @@
 ---
 name: pb-content-studio
 description: >-
-  Idea to published-ready content: brief, script, render routed through the
-  Creator Extension content-studio skill (Hyperframes or Remotion), then a
-  social pack. Use for "make a reel", "idea to video", "content from this
-  idea", "script and render a clip".
+  Idea to published-ready content: brief, script and render via the Creator
+  Extension content-studio skill (Hyperframes or Remotion), then a social
+  pack.
 category: media-eventtech
 kind: playbook
 trigger: ["make a reel", "idea to video", "content from this idea", "script and render a clip"]

@@ -1,10 +1,9 @@
 ---
 name: pb-ci-fix
 description: >-
-  Fix red CI or set up GitHub Actions end to end: read the failing run, find
-  the root cause, patch and validate the workflow, push only after GO, and
-  watch the run go green on the pushed commit. Use for "CI is red", "the
-  build fails on GitHub", "set up CI for this repo", "fix the workflow".
+  Fix red CI or set up GitHub Actions: read the failing run, find the
+  root cause, patch and validate the workflow, push after GO, watch the
+  run go green.
 category: engineering-method
 kind: playbook
 trigger: ["CI is red", "set up CI", "fix the GitHub Actions run"]

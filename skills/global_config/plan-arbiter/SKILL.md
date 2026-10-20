@@ -1,6 +1,6 @@
 ---
 name: plan-arbiter
-description: Use when asked to compare, cross-review, merge, judge, choose, or arbitrate competing plans from multiple agents such as Codex and an agent session; when given two or more proposed plans, session IDs, transcripts, plan documents, PR descriptions, or pasted strategies; or when the user wants one recommended execution plan after agents review each other's proposals.
+description: Compare, cross-review or judge competing agent plans and recommend one execution plan. Use when several agents proposed plans or the user asks to arbitrate.
 category: bdb-core
 source: BuilderIO/skills
 ---

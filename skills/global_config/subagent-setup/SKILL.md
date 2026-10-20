@@ -1,6 +1,6 @@
 ---
 name: subagent-setup
-description: Configure and synchronize multi-harness subagents (Claude Code, Google Antigravity, OpenCode, ChatGPT Codex CLI) with optional per-harness model overrides and single source of truth in .aos/pipeline.json.
+description: Configure multi-harness subagents (Claude Code, Antigravity, OpenCode, Codex) with per-harness overrides and a single source in .aos/pipeline.json.
 category: bdb-core
 risk: low
 source: bdb
