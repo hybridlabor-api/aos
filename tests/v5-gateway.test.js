@@ -1389,14 +1389,16 @@ test('full install does not duplicate gateway servers when aos entry exists', ()
 });
 
 describe('uninstall leftovers', () => {
-    test('pruneBackups keeps only the oldest backup of a file', () => {
+    test('pruneBackups keeps the oldest and newest backup and archives the rest', () => {
         const d = tmp();
+        const arch = path.join(tmp(), 'arch');
         const f = path.join(d, 'x.json');
-        for (const t of [300, 100, 200]) fs.writeFileSync(`${f}.aos-gateway-bak-${t}`, '{}');
+        for (const t of [300, 100, 200, 400]) fs.writeFileSync(`${f}.aos-gateway-bak-${t}`, '{}');
         fs.writeFileSync(`${f}.bak`, '{}');
-        const gone = require('../lib/gateway/harness.js').pruneBackups(f);
-        assert.equal(gone.length, 2);
-        assert.deepEqual(fs.readdirSync(d).sort(), ['x.json.aos-gateway-bak-100', 'x.json.bak']);
+        const moved = require('../lib/gateway/harness.js').pruneBackups(f, arch);
+        assert.equal(moved.length, 2);
+        assert.deepEqual(fs.readdirSync(d).sort(), ['x.json.aos-gateway-bak-100', 'x.json.aos-gateway-bak-400', 'x.json.bak']);
+        assert.deepEqual(fs.readdirSync(arch).sort(), ['x.json.aos-gateway-bak-200', 'x.json.aos-gateway-bak-300']);
     });
 
     test('removeGenerated clears runtime files, keeps gateway.json and migration records', () => {
