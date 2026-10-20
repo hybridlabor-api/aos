@@ -106,6 +106,17 @@ test('latestAosVersion: cache hit, miss, expiry, and offline fallback', async ()
     assert.strictEqual(vOffline, 'unknown');
 });
 
+test('latestAosVersion: default path falls back to npm view when fetch fails', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error('ECONNREFUSED'); };
+    try {
+        const v = await updateCheck.latestAosVersion({ home: mkHome(), npmViewFallback: async () => '9.9.9' });
+        assert.strictEqual(v, '9.9.9');
+    } finally {
+        globalThis.fetch = realFetch;
+    }
+});
+
 test('latestAosVersion: switches off when disabled', async () => {
     const home = mkHome();
     let fetched = false;
