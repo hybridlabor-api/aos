@@ -1267,43 +1267,75 @@ if (mandatorySkillNames.length > 0) {
 // and proceeds without a human verdict. Never set it for an interactive run.
 // ---------------------------------------------------------------------
 
-function humanCanvasGate(planFile) {
-  if (process.env.AOS_PLAN_APPROVAL === 'auto') return { approved: true, auto: true };
-  if (!child_process) {
-    return { approved: false, feedback: 'plan-canvas gate could not run: no process runtime in this environment' };
+// BEGIN canvas-verdict (extracted verbatim by tests/startcycle-human-gate.test.mjs)
+function lastJsonObject(raw) {
+  const starts = [];
+  const re = /(^|\n)\{/g;
+  let m;
+  while ((m = re.exec(raw))) starts.push(m.index + m[1].length);
+  for (let i = starts.length - 1; i >= 0; i--) {
+    try { return JSON.parse(raw.slice(starts[i])); } catch { /* try an earlier object */ }
   }
-  const args = ['open', planFile, '--await'];
-  if (/\.mdx$/i.test(planFile)) args.push('--mode', 'bdb-plan-builder');
+  return null;
+}
+
+// approved: human said approve. feedback (no escalate): request-changes, every item text forwarded to
+// Architect. escalate: no human verdict is coming (ended, timeout, no server), so looping Architect is pointless.
+function decideCanvasVerdict(payload) {
+  if (!payload || payload.error) return { approved: false, escalate: true, feedback: `plan-canvas returned no verdict (${(payload && payload.error) || 'no JSON'})` };
+  const items = Array.isArray(payload.items) ? payload.items.filter((i) => i && typeof i === 'object') : [];
+  if (items.some((i) => i.kind === 'verdict' && i.verdict === 'approve')) return { approved: true };
+  if (payload.status === 'feedback' && items.length > 0) {
+    const lines = items.map((i) => `- [${i.kind === 'verdict' ? i.verdict : i.kind || 'comment'}] ${i.text || '(no text)'}`);
+    return { approved: false, feedback: lines.join('\n') };
+  }
+  return { approved: false, escalate: true, feedback: `canvas ended without a verdict (status: ${payload.status || 'unknown'})` };
+}
+// END canvas-verdict
+
+// .cmd shims need a shell on Windows; quote args there because the shell re-parses them.
+const IS_WIN = typeof process !== 'undefined' && process.platform === 'win32';
+const cliBin = (name) => (IS_WIN ? `${name}.cmd` : name);
+const cliArg = (a) => (IS_WIN ? `"${String(a).replace(/"/g, '""')}"` : a);
+
+function humanCanvasGate(planFile) {
+  if (process.env.AOS_PLAN_APPROVAL === 'auto') {
+    process.stderr.write('[startcycle-dispatch] WARNING: AOS_PLAN_APPROVAL=auto -- plan-canvas human verdict gate SKIPPED (CI-only escape, no human approved this plan)\n');
+    return { approved: true, auto: true };
+  }
+  if (!child_process) {
+    return { approved: false, escalate: true, feedback: 'plan-canvas gate could not run: no process runtime in this environment' };
+  }
+  const headless = !!process.env.CI || !process.stdin?.isTTY;
+  const noDisplay = process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+  const args = ['open', planFile, '--await', '--mode', /\.mdx$/i.test(planFile) ? 'bdb-plan-builder' : 'standard'];
+  if (headless || noDisplay) args.push('--no-open');
   const timeoutRaw = process.env.AOS_PLAN_AWAIT_TIMEOUT_MS;
-  const timeoutMs = timeoutRaw ? Number.parseInt(timeoutRaw, 10) || 0 : 0;
+  const timeoutMs = timeoutRaw !== undefined && timeoutRaw !== '' ? Number.parseInt(timeoutRaw, 10) || 0 : (headless ? 30 * 60 * 1000 : 0);
   let run;
   try {
-    run = child_process.spawnSync('aos-plan-canvas', args, {
+    run = child_process.spawnSync(cliBin('aos-plan-canvas'), args.map(cliArg), {
       cwd: process.cwd(),
       encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      shell: IS_WIN,
       ...(timeoutMs > 0 ? { timeout: timeoutMs } : {})
     });
   } catch (error) {
-    return { approved: false, feedback: `plan-canvas gate failed to run: ${error?.message || error}` };
+    run = { error };
   }
   if (run.error) {
-    return { approved: false, feedback: `plan-canvas gate failed to run: ${run.error.message || run.error}` };
+    const code = run.error.code;
+    const why = code === 'ETIMEDOUT' ? `no human verdict within ${timeoutMs} ms (AOS_PLAN_AWAIT_TIMEOUT_MS)`
+      : code === 'ENOENT' ? 'aos-plan-canvas CLI not found on PATH; install AOS, or set AOS_PLAN_APPROVAL=auto in CI only'
+      : `failed to run: ${run.error.message || run.error}`;
+    process.stderr.write(`[startcycle-dispatch] plan-canvas gate: ${why}\n`);
+    return { approved: false, escalate: true, feedback: `plan-canvas gate ${why}` };
   }
   const raw = typeof run.stdout === 'string' ? run.stdout : '';
-  let payload = null;
-  const start = raw.indexOf('{');
-  if (start >= 0) {
-    try { payload = JSON.parse(raw.slice(start)); } catch { payload = null; }
-  }
-  if (!payload || payload.error) {
-    const detail = (payload && payload.error) || raw.trim().slice(0, 200) || `exit code ${run.status}`;
-    return { approved: false, feedback: `plan-canvas gate returned no verdict (${detail})` };
-  }
-  const verdictItem = Array.isArray(payload.items)
-    ? payload.items.find((item) => item && item.kind === 'verdict')
-    : null;
-  if (verdictItem && verdictItem.verdict === 'approve') return { approved: true };
-  return { approved: false, feedback: verdictItem?.text || payload.next_step || 'no feedback text given' };
+  const decision = decideCanvasVerdict(lastJsonObject(raw));
+  if (decision.escalate && run.status) decision.feedback += ` (exit code ${run.status})`;
+  return decision;
 }
 
 // ---------------------------------------------------------------------
@@ -1483,8 +1515,8 @@ while (!approved) {
 
   try {
     if (fs && fs.existsSync && fs.existsSync(architectureHtml) && child_process) {
-      const canvas = child_process.spawn('aos-plan-canvas', ['open', architectureHtml, '--no-open'], { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: false, detached: true });
-      if (canvas && typeof canvas.on === 'function') canvas.on('error', () => {});
+      const canvas = child_process.spawn(cliBin('aos-plan-canvas'), ['open', architectureHtml, '--no-open'].map(cliArg), { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: IS_WIN, detached: true });
+      if (canvas && typeof canvas.on === 'function') canvas.on('error', (e) => process.stderr.write(`[startcycle-dispatch] architecture canvas not opened: ${e?.message || e}\n`));
       if (canvas && typeof canvas.unref === 'function') canvas.unref();
     }
   } catch {}
@@ -1542,7 +1574,11 @@ while (!approved) {
   // request-changes loops back to Architect with the feedback as the
   // revision brief.
   const humanGate = humanCanvasGate(planPath);
+  if (humanGate.escalate) {
+    return await escalate(`Plan canvas gate: ${humanGate.feedback}`, { planPath });
+  }
   if (!humanGate.approved) {
+    approved = false;
     iteration++;
     if (iteration >= MAX_ITERATIONS) {
       return await escalate(
@@ -1552,10 +1588,6 @@ while (!approved) {
     }
     lastRejectionReason = `The human requested changes in the plan canvas -- address this feedback: ${humanGate.feedback}`;
     continue;
-  }
-  if (humanGate.auto) {
-    // CI-only escape was used: record it so state.json never claims a human verdict.
-    process.stderr.write('[startcycle-dispatch] AOS_PLAN_APPROVAL=auto: skipping the plan-canvas human verdict gate (CI-only escape)\n');
   }
 }
 
@@ -1592,15 +1624,15 @@ const NODE_NAMES = humanList(NODE_ENUM);
 let trailPlan = planPath;
 if (/plan\.mdx$/i.test(planPath) && child_process) {
   try {
-    const t = child_process.spawnSync('aos-plan-canvas', ['trail', planPath, '--force'], { cwd: process.cwd(), encoding: 'utf8', shell: false });
-    const out = t.status === 0 ? JSON.parse(t.stdout.slice(t.stdout.indexOf('{'))).out : '';
+    const t = child_process.spawnSync(cliBin('aos-plan-canvas'), ['trail', planPath, '--force'].map(cliArg), { cwd: process.cwd(), encoding: 'utf8', shell: IS_WIN });
+    const out = t.status === 0 ? lastJsonObject(t.stdout)?.out : '';
     if (out) trailPlan = out;
-  } catch { /* trail derivation is best-effort */ }
+  } catch (e) { process.stderr.write(`[startcycle-dispatch] trail derivation skipped: ${e?.message || e}\n`); }
 }
 try {
-  child_process?.spawn('aos-trail', [process.cwd(), '--plan', trailPlan, '--no-open'],
-    { detached: true, stdio: 'ignore', shell: false }).on('error', () => {}).unref();
-} catch { /* no child_process in this runtime: run without the map */ }
+  child_process?.spawn(cliBin('aos-trail'), [process.cwd(), '--plan', trailPlan, '--no-open'].map(cliArg),
+    { detached: true, stdio: 'ignore', shell: IS_WIN }).on('error', (e) => process.stderr.write(`[startcycle-dispatch] live map not started: ${e?.message || e}\n`)).unref();
+} catch (e) { process.stderr.write(`[startcycle-dispatch] live map not started: ${e?.message || e}\n`); }
 
 let findings = [];
 let reviewedClean = false;

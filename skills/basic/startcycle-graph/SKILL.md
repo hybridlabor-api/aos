@@ -124,7 +124,8 @@ opened in plan-canvas (pipeline context), also run
 `aos-plan-canvas trail <plan-dir>` first so the map gets the execution plan.
 The Architect creates the plan from a template (`aos-plan-canvas new <template-id> production_artifacts/plan`);
 before any build node the dispatcher waits for the human verdict via `aos-plan-canvas open <plan> --await`
-(`approve` continues, `request-changes` returns to Architect with the feedback; `AOS_PLAN_APPROVAL=auto` is the CI-only skip).
+(`approve` continues, `request-changes` returns to Architect with the feedback; `AOS_PLAN_APPROVAL=auto` is the CI-only skip and prints a visible warning).
+Headless runs (`CI` set or stdin not a TTY) wait at most 30 minutes by default and then escalate; `AOS_PLAN_AWAIT_TIMEOUT_MS=<ms>` overrides it (`0` = unbounded). An ended session, timeout or missing `aos-plan-canvas` CLI escalates instead of looping Architect; comment-only feedback is request-changes with all comment texts.
 After approval every worker starts with `AOS_TRAIL_NODE`/`AOS_TRAIL_PLAN` (or a `[trail-node:<id>]` brief marker).
 Put the live-map link in your reply (the autostart hook also adds it as context when active). Agents follow
 the status-mark rules from the `agenttrail` skill: `[~]` before starting,

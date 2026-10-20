@@ -84,7 +84,8 @@ When a plan is produced, it must be reviewed in the Plan Canvas before any build
 1. Ensure the plan has a top-level ID, e.g. `## Execution Plan {#execution-plan}`.
 2. Open and listen in one call: `aos-plan-canvas open <plan> --await` (or `open` then `await` immediately) — never end the turn without a listener.
 3. Read the verdict: `approve` → start the build (step 3); `request-changes` → back to step 1 (Architect) with the feedback text as the revision brief.
-4. CI-only escape: `AOS_PLAN_APPROVAL=auto` skips the canvas wait and proceeds without a human verdict. Never set it for an interactive run.
+4. CI-only escape: `AOS_PLAN_APPROVAL=auto` skips the canvas wait and proceeds without a human verdict. Never set it for an interactive run; the dispatcher prints a visible warning when it is used.
+5. Headless runs (`CI` set or stdin not a TTY) wait at most 30 minutes by default, then escalate (never reject). `AOS_PLAN_AWAIT_TIMEOUT_MS=<ms>` overrides the bound (`0` = wait forever). An ended session, timeout or missing `aos-plan-canvas` CLI also escalates instead of looping Architect. Comment-only feedback counts as request-changes and all comment texts go to Architect.
 
 *(If running in OpenCode, always print the Canvas URL in chat.)*
 
