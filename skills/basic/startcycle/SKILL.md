@@ -22,10 +22,10 @@ A straight-line run through the BDB agent roster. Whoever invokes this skill inv
                   └──────────────────────┬───────────────────────┘
                                          │
                                          ▼
-                  ┌──────────────────────────────────────────────┐
-                  │ 1. ARCHITECT                                  │
-                  │    goal ──▶ 00_execution_plan.md              │
-                  └──────────────────────┬───────────────────────┘
+                   ┌──────────────────────────────────────────────┐
+                   │ 1. ARCHITECT                                  │
+                   │    template ──▶ plan.mdx                      │
+                   └──────────────────────┬───────────────────────┘
                                          ▼
                   ┌──────────────────────────────────────────────┐
                   │ 2. TECHLEAD                                   │
@@ -65,39 +65,40 @@ A straight-line run through the BDB agent roster. Whoever invokes this skill inv
 - **Agent**: `architect`
 - **Reads**: the goal (or `/bdbrainstorm` / `/grill-me` output), existing architecture.
 - **Action**: turns the goal into a system plan with an explicit capability map — module boundaries, dependency direction, what streams the goal actually touches.
-- **Writes**: `production_artifacts/00_execution_plan.md`
+- **Plan from a template**: run `aos-plan-canvas templates`, pick the template whose `useWhen` matches the goal, then `aos-plan-canvas new <template-id> production_artifacts/plan` and fill in the copied plan.mdx in place — that plan.mdx is the execution plan. On a revision round, edit the existing plan.mdx; do not create a new folder (`new` refuses a non-empty target).
+- **Writes**: the plan.mdx from the template (fallback when plan-canvas is unavailable: `production_artifacts/00_execution_plan.md`)
 - The plan uses the agenttrail component convention: `## Name {#id}` components with optional `needs:` / `files:` lines, and tasks as `- [ ] ... {#id}`.
 - The Architect renders the architecture with `aos-archify` to `production_artifacts/00_architecture.html` and links it from the relevant component with a `url:` line.
 - Plan-canvas can review that HTML too.
 
 ### 2. TechLead
 - **Agent**: `techlead`
-- **Reads**: `00_execution_plan.md`.
+- **Reads**: the plan (the template-created plan.mdx).
 - **Action**: reviews the plan for module boundaries, dependency direction, and build order. Approves it, or sends it back to Architect once for a revision. This is a gate, not a deliverable — TechLead does not invoke Architect itself; the invoker re-runs step 1 if TechLead rejects.
 - **Writes**: no separate file; approval is just the invoker's own record of the gate having passed.
 
 ## Plan review
 
-When a plan is produced, it must be reviewed in the Plan Canvas before the build starts. The human `approve` verdict replaces TechLead's written gate confirmation.
+When a plan is produced, it must be reviewed in the Plan Canvas before any build node starts. The human `approve` verdict replaces TechLead's written gate confirmation.
 
 1. Ensure the plan has a top-level ID, e.g. `## Execution Plan {#execution-plan}`.
-2. Run `aos-plan-canvas open production_artifacts/00_execution_plan.md`.
-3. Run `aos-plan-canvas await production_artifacts/00_execution_plan.md` and wait for the human verdict.
-4. Start the build only after an `approve` verdict.
+2. Open and listen in one call: `aos-plan-canvas open <plan> --await` (or `open` then `await` immediately) — never end the turn without a listener.
+3. Read the verdict: `approve` → start the build (step 3); `request-changes` → back to step 1 (Architect) with the feedback text as the revision brief.
+4. CI-only escape: `AOS_PLAN_APPROVAL=auto` skips the canvas wait and proceeds without a human verdict. Never set it for an interactive run.
 
 *(If running in OpenCode, always print the Canvas URL in chat.)*
 
 ### 3. Build (parallel, stream-selective)
 
-**Trigger B — start the live map:** `aos-trail --ensure` (safe to run twice: it reuses a map already running for this repo). Put the live-map link in your reply (the autostart hook also adds it as context when active). Inside AO (env var `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. If the plan being built was opened in plan-canvas, also run `aos-plan-canvas trail <plan-dir>` first so the map gets the execution plan. Tell each build agent to mark its tasks `[~]` before starting work, `[x]` when done, `[!]` when stuck, with an indented `by: <agent>` line, saving the plan file immediately after each change. GO requests surface in the agenttrail hub, where the human answers them by typing GO. See the `agenttrail` skill.
+**Trigger B — start the live map:** `aos-trail --ensure` (safe to run twice: it reuses a map already running for this repo). Put the live-map link in your reply (the autostart hook also adds it as context when active). Inside AO (env var `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. After the canvas approval, run `aos-plan-canvas trail <plan-dir>` first so the map gets the execution plan, and start every worker with `AOS_TRAIL_NODE=<node-id> AOS_TRAIL_PLAN=<trail file>` (or put `[trail-node:<node-id>]` in its brief where env cannot be set). Tell each build agent to mark its tasks `[~]` before starting work, `[x]` when done, `[!]` when stuck, with an indented `by: <agent>` line, saving the plan file immediately after each change. GO requests surface in the agenttrail hub, where the human answers them by typing GO. See the `agenttrail` skill.
 
 Run only the streams the goal actually needs. A plain backend feature does not need step 3a or 3c; a pure copy change does not need 3b. Each stream's `skills:` frontmatter already lists what it should reach for — the invoker passes that list through rather than restating it here.
 
 | Stream | Agent | Reads | Writes |
 |---|---|---|---|
-| 3a. Frontend | `godmode-ui-ux` | `00_execution_plan.md` | `production_artifacts/01_frontend_spec.md` + `frontend/src/` |
-| 3b. Backend | `godmode-engineering` | `00_execution_plan.md` | `production_artifacts/02_backend_schema.md` + `backend/src/` |
-| 3c. Media/EventTech | `godmode-media-eventtech` | `00_execution_plan.md` | `production_artifacts/03_media_pipeline.md` |
+| 3a. Frontend | `godmode-ui-ux` | the plan | `production_artifacts/01_frontend_spec.md` + `frontend/src/` |
+| 3b. Backend | `godmode-engineering` | the plan | `production_artifacts/02_backend_schema.md` + `backend/src/` |
+| 3c. Media/EventTech | `godmode-media-eventtech` | the plan | `production_artifacts/03_media_pipeline.md` |
 
 3c is for TouchDesigner, show-control, DMX/grandMA3, 3D, or other media-pipeline goals — most goals are not this. Skip it unless the plan actually calls for it.
 
@@ -113,7 +114,7 @@ Run only the streams the goal actually needs. A plain backend feature does not n
 > `~/.agents/skills/`, `~/.codex/skills/`, `~/.cursor/skills/` or `~/.roo/skills/`
 > — or this project's own `skills/` tree) — stop
 > and tell the user if one doesn't, don't silently proceed without it —
-> note the validated list in `00_execution_plan.md`, and include it as a
+> note the validated list in the plan, and include it as a
 > **hard requirement, not a suggestion** in each Build stream's dispatch
 > prompt at step 3. Reviewer (step 4) checks the resulting artifacts for
 > evidence the skill was actually applied, not just available, and treats
@@ -124,7 +125,7 @@ Run only the streams the goal actually needs. A plain backend feature does not n
 
 ### 4. Reviewer
 - **Agent**: `reviewer`
-- **Reads**: the artifacts each build stream produced (01/02/03) and the plan's stated contract (`00_execution_plan.md`) — nothing else. Never the goal directly, never a build agent's own claim that it's done; passing that claim through biases the review toward agreement.
+- **Reads**: the artifacts each build stream produced (01/02/03) and the plan's stated contract (the plan file) — nothing else. Never the goal directly, never a build agent's own claim that it's done; passing that claim through biases the review toward agreement.
 - **Action**: adversarial pass — "find what is wrong," never "does this look good." Every finding is classified by fixed precedence:
   1. contract misread
   2. valid & actionable (blocking)
