@@ -106,7 +106,14 @@ test('Claude plugin is uninstalled only when AOS recorded installing it', () => 
     const home = sandbox();
     try {
         const calls = [];
-        const runner = (args) => { calls.push(args.join(' ')); return { ok: true }; };
+        let source = 'GitHub (hybridlabor-api/aos)';
+        let plugins = '  ❯ bdb-aos@bdb-marketplace\n    Status: enabled\n';
+        const runner = (args) => {
+            calls.push(args.join(' '));
+            if (args.join(' ') === 'plugin marketplace list') return { ok: true, stdout: `  ❯ bdb-marketplace\n    Source: ${source}\n` };
+            if (args.join(' ') === 'plugin list') return { ok: true, stdout: plugins };
+            return { ok: true };
+        };
         ur.reverseRegistrations({ home, runner, injected: true });
         assert.deepStrictEqual(calls, [], 'nothing recorded, nothing run');
 
@@ -121,8 +128,24 @@ test('Claude plugin is uninstalled only when AOS recorded installing it', () => 
         assert.strictEqual(dry.length, 2);
         assert.deepStrictEqual(calls, []);
         ur.reverseRegistrations({ home, runner, injected: true });
-        assert.deepStrictEqual(calls, ['plugin uninstall bdb-aos@bdb-marketplace', 'plugin marketplace remove bdb-marketplace']);
+        assert.deepStrictEqual(calls, ['plugin uninstall bdb-aos@bdb-marketplace', 'plugin marketplace list', 'plugin list', 'plugin marketplace remove bdb-marketplace']);
         assert.deepStrictEqual(ur.readRecords(home).claude, {});
+
+        const record = () => { const w = ur.recordingCli(home, (a) => ({ ok: true, stdout: a[1] === 'install' ? 'installed' : '' })); w(['plugin', 'marketplace', 'add', 'x']); w(['plugin', 'install', 'bdb-aos@bdb-marketplace']); };
+        record();
+        source = 'GitHub (someone/else)';
+        calls.length = 0;
+        const elsewhere = ur.reverseRegistrations({ home, runner, injected: true });
+        assert.ok(!calls.some((c) => c.startsWith('plugin marketplace remove')), 'a marketplace pointing elsewhere is not removed');
+        assert.ok(elsewhere.some((l) => l.includes('kept')), elsewhere.join('\n'));
+
+        record();
+        source = 'GitHub (hybridlabor-api/aos)';
+        plugins += '  ❯ other@bdb-marketplace\n    Status: enabled\n';
+        calls.length = 0;
+        ur.reverseRegistrations({ home, runner, injected: true });
+        assert.ok(!calls.some((c) => c.startsWith('plugin marketplace remove')), 'a marketplace used by another plugin is not removed');
+        fs.rmSync(ur.recordsPath(home), { force: true });
 
         const skip = ur.recordingCli(home, () => ({ ok: true, stdout: 'already installed' }));
         skip(['plugin', 'install', 'x']);
@@ -156,6 +179,10 @@ test('the deja MCP entry is removed only when AOS recorded installing deja-vu', 
     try {
         const claude = path.join(home, '.claude.json');
         write(claude, JSON.stringify({ mcpServers: { deja: { command: 'deja', args: ['mcp'] } } }));
+        // Recorded npm packages are uninstalled through npm; a missing npm counts as a failed uninstall (exit 1).
+        const npm = path.join(home, 'empty-bin', 'npm');
+        write(npm, '#!/bin/sh\nexit 0\n');
+        fs.chmodSync(npm, 0o755);
         const stray = path.join(home, '.agents', 'x.txt');
         const runUninstall = () => {
             write(stray, 'x');
@@ -171,6 +198,11 @@ test('the deja MCP entry is removed only when AOS recorded installing deja-vu', 
         runUninstall();
         assert.strictEqual(readJson(claude).mcpServers.deja, undefined, 'recorded deja entry removed');
         assert.strictEqual(fs.existsSync(ur.recordsPath(home)), false, 'a finished uninstall retires its records');
+
+        write(claude, JSON.stringify({ mcpServers: { deja: { command: 'node', args: ['my-deja.js'] } } }));
+        ur.recordNpmGlobal(home, '@vshulcz/deja-vu');
+        runUninstall();
+        assert.deepStrictEqual(readJson(claude).mcpServers.deja, { command: 'node', args: ['my-deja.js'] }, 'a user deja entry of another shape is kept');
     } finally { rm(home); }
 });
 
