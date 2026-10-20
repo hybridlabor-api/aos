@@ -172,6 +172,21 @@ describe('--ensure starts the repo map, not the hub', () => {
 });
 
 describe('other daemons are never retired', () => {
+  // Earlier tests leave maps running inside the shared range, so the stubs get a range of their own that is free right now.
+  let shared;
+  before(async () => {
+    shared = [lo, hi];
+    for (;;) {
+      lo = 21600 + Math.floor(Math.random() * 3000);
+      if ((await canBind(lo)) && (await canBind(lo + 1)) && (await canBind(lo + 2))) break;
+    }
+    hi = lo + 2;
+  });
+  after(() => {
+    stopTrailHubs(portRange(lo, hi));
+    [lo, hi] = shared;
+  });
+
   test('daemons serving this or another repo are left running', async () => {
     const other = makeRepo()
     const mine = stubDaemon({ repo, port: lo, obeyShutdown: true })
