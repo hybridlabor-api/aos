@@ -1,6 +1,6 @@
 ---
 name: firecrawl-sdk
-description: "Integrate Firecrawl into product code: SDK setup and FIRECRAWL_API_KEY onboarding, /scrape, /search and /interact endpoints. Use when an application (not the agent itself) calls Firecrawl."
+description: "Integrate Firecrawl into product code: SDK setup and FIRECRAWL_API_KEY onboarding, /scrape, /search and /interact endpoints. Use for app code, not the agent."
 category: library
 ---
 
