@@ -1,6 +1,7 @@
 ---
 name: obsidian-markdown
-description: Obsidian Flavored Markdown: wikilinks, embeds, callouts, properties. .md files, frontmatter, tags.
+description: >-
+  Obsidian Flavored Markdown: wikilinks, embeds, callouts, properties. .md files, frontmatter, tags.
 category: library
 risk: unknown
 source: "https://github.com/kepano/obsidian-skills"
