@@ -40,6 +40,7 @@ const coreSkills = require('./lib/core-skills');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
+const { writeManagedRulesFile } = require('./lib/harness-rules');
 const { isAosShaped, tomlHasGateway } = require('./lib/gateway/harness');
 const { gatewayCovered } = require('./lib/gateway/config');
 
@@ -5527,12 +5528,17 @@ function injectHarnessRules() {
 
     if (fs.existsSync(rulesMdSrc)) {
         if (active.has('antigravity')) installStep(`install RULES.md to ${path.join(geminiDir, 'RULES.md')}`, () => {
-            copyDirRecursiveSync(rulesMdSrc, path.join(geminiDir, 'RULES.md'));
+            // Managed-block upsert: a user's own content in RULES.md / GEMINI.md is never
+            // overwritten. AOS replaces only its marker-delimited block, which
+            // `aos uninstall` strips again (and the file with it if nothing user-owned remains).
+            const rulesBody = fs.readFileSync(rulesMdSrc, 'utf8');
+            const rulesTarget = path.join(geminiDir, 'RULES.md');
             // Keep GEMINI.md in sync for backwards compatibility with Antigravity CLI harnesses
+            const geminiTarget = path.join(geminiDir, 'GEMINI.md');
             try {
-                fs.copyFileSync(rulesMdSrc, path.join(geminiDir, 'GEMINI.md'));
-            } catch (e) { logDebug(e, 'sync GEMINI.md fallback'); }
-            log.step(`Installed RULES.md to ${path.join(geminiDir, 'RULES.md')}`);
+                for (const target of [rulesTarget, geminiTarget]) writeManagedRulesFile(target, rulesBody);
+            } catch (e) { logDebug(e, 'managed-block upsert for RULES.md/GEMINI.md'); }
+            log.step(`Installed RULES.md as managed block to ${rulesTarget} (and GEMINI.md); user content preserved`);
         }, 'The harness injection below still runs.');
 
         // Dispatcher scripts must land in ~/.claude/workflows/, because that is
@@ -5621,8 +5627,7 @@ function injectHarnessRules() {
                 next = next.replace(/Harness files: `CLAUDE\.md`, `RULES\.md` and `CODEX\.md` are symlinks to this/g, 'Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this');
 
                 if (!next.trim()) {
-                    const srcClaude = path.join(srcDir, 'CLAUDE.md');
-                    next = fs.existsSync(srcClaude) ? fs.readFileSync(srcClaude, 'utf8') : '# AOS — Claude Code\n\n**Read [AGENTS.md](AGENTS.md) first.**\n';
+                    next = '# AOS Rules\n\n**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n';
                 } else if (!next.includes('AGENTS.md')) {
                     next = `**Read [AGENTS.md](AGENTS.md) first.**\n\n${next}`;
                 }
@@ -5717,7 +5722,15 @@ function injectHarnessRules() {
                     // settings.json is merged separately below: a wholesale
                     // copy would clobber user-owned keys like enabledPlugins.
                     // hooks: installGlobalHooks delivers only what each harness wires.
-                    const exclude = dir === '.claude' ? ['settings.json', 'hooks', ...pluginCoveredAgentFiles()] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    let exclude = dir === '.claude' ? ['settings.json', 'hooks', ...pluginCoveredAgentFiles()] : dir === '.agents' ? AGENTS_COPY_EXCLUDE : [];
+                    // Only ship antigravity-rtk-rules.md if rtk is detected on PATH
+                    if (dir === '.agents') {
+                        try {
+                            require('child_process').execSync('which rtk', { stdio: 'ignore' });
+                        } catch {
+                            exclude = [...exclude, 'rules/antigravity-rtk-rules.md'];
+                        }
+                    }
                     copyDirRecursiveSync(sourcePath, targetPath, exclude);
                     log.step(`Copied ${dir} to ${targetPath}`);
                 }

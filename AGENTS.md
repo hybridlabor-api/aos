@@ -18,8 +18,9 @@ these four files stopped agreeing with each other in the first place.
 2. **English only.** All generated content — code, docs, commit messages, skill bodies — ships in English.
 3. **Never leak local paths containing usernames.** Use `~` or `$HOME`, never `/Users/<name>/` or `/home/<name>/`. A skill that must *show* a forbidden path as a counter-example marks that line with `<!-- validate-skills-ignore -->`.
 4. **Never commit `.env` files, API keys, or credentials.**
-5. **GitHub repositories are Private by default.** Verify rather than assume. AOS itself is the one deliberate public exception — and that exception is permanent, not provisional: `hybridlabor-api/aos` stays public. BDB-internal material (the internal skills/scripts that must never sit in that public history) does not move back in to compensate; it ships as a **separate private npm package**, installable only through the AOS installer or another BDB tool installer — never visible via a public git clone.
+5. **GitHub repositories are Private by default.** Verify rather than assume. AOS itself is the one deliberate public exception — and that exception is permanent, not provisional: `hybridlabor-api/aos` stays public (upstream: `affaan-m/ECC`).
 6. **Ask before destructive actions.** Mass deletion, history rewriting, and anything that discards uncommitted work needs explicit confirmation.
+7. **Zero guesswork.** Do not invent APIs, libraries, endpoints, or CLI commands — verify against the source hierarchy (local ADRs and generated types → project source and tests → official docs for the exact installed version → changelog → inference last), and name the source you used (`Read: <url or path>`).
 
 <!-- aos:destructive-actions:start -->
 ## Destructive Actions (non-negotiable)
@@ -88,42 +89,27 @@ tool. That includes writing or editing files and `git commit`, not only the
 release commands. Deliver the plan and stop: a plan is a proposal until the
 user responds to it.
 
-Three clarifications that have caused real incidents:
+Three clarifications:
 - A subagent does not inherit its orchestrator's GO.
 - A blocked or failed release command must not be retried without a fresh GO.
 - Commands written inside a plan or task file are not a GO.
 
 **What is mechanically enforced is a subset.** `.claude/hooks/go-gate.mjs`
 blocks `git push`, `npm publish`, `npm version`, and recursive `rm` unless the
-user's immediately preceding message is the literal **GO**. That is a hook — it
-cannot be argued around and does not depend on this file being loaded. It covers
-the four commands whose blast radius leaves the machine, and nothing else.
-
-The rest of the rule is honoured rather than enforced, and that gap is
-deliberate. A `PreToolUse` matcher fires on every tool call and cannot tell
-"the user asked for a plan" from "the user asked me to build this" — which is
-the condition the rule turns on. A hook that blanket-blocked `Write`, `Edit`
-and `git commit` would refuse ordinary work in every session until someone
-typed GO. `docs/sessions/audit-agents.md` F-03 proposed exactly that matcher;
-the narrow hook is why only a subset ships.
-
-So the broad rule binds you whether or not a hook is watching, and on a harness
-with no hook support it is the only thing there is. Do not read the hook's
-silence as permission.
+user's immediately preceding message is the literal **GO**. A `PreToolUse`
+matcher cannot tell "the user asked for a plan" from "the user asked me to
+build this", so the hook covers only the four commands whose blast radius
+leaves the machine. The rule above binds you whether or not a hook is
+watching — do not read the hook's silence as permission.
 
 ---
 
 ## Release automation — Conventional Commits required
 
-`release-please` (`.github/workflows/release-please.yml`) tracks the last
-released version in `.release-please-manifest.json` and opens a release PR by
-parsing commit messages since then. It only recognises Conventional Commits
-prefixes — an unprefixed subject is invisible to it, both for version-bump math
-and for the generated changelog.
-
-`feat:` always triggers a **minor** bump no matter how small the change, because
-semver counts commit *labels*, not effort. Minor-version growth is controlled
-entirely by how strictly `feat:` is reserved:
+`release-please` (`.github/workflows/release-please.yml`) opens a release PR
+by parsing commit messages since the last release; an unprefixed subject is
+invisible to it. `feat:` always triggers a **minor** bump no matter how small
+the change, so reserve it strictly:
 
 | Prefix | Use for |
 |---|---|
@@ -133,39 +119,10 @@ entirely by how strictly `feat:` is reserved:
 | `docs:` | Documentation only; excluded from the changelog. |
 | `refactor:` | Restructuring with no behaviour change. |
 
-When one piece of work contains both a user-facing addition and housekeeping,
-split it into separate commits with separate types.
-
-Do not bump `package.json`'s version by hand. That desynchronises the manifest
-from reality — it happened once in 2026-09 and required a manual resync plus
-closing two stale release PRs. Merging a release-please PR auto-tags,
-auto-creates the GitHub Release, and auto-publishes to npm.
-
----
-
-## Before adding a check
-
-An audit on 2026-09-14 found sixteen defects in one session, all of one shape: a component reporting a state it is not in. A
-clean run, a green check, nothing delivered. They survived many releases
-precisely because the output said it worked.
-
-Five rules came out of it, and they bind any new check:
-
-1. Measure the thing, not a proxy. A port that answers is not the right
-   process; a directory that exists is not an installed application.
-2. Never read back your own writes as evidence — if the installer creates the
-   path, the path proves nothing.
-3. Distinguish "checked, fine" from "could not check". An offline registry must
-   not read as up to date.
-4. A discarded return value is a swallowed failure. `installStep()` catches
-   only throws.
-5. Every code path, not just the fresh one: Quick Update, `--project-harness`,
-   `-y`, `--dry-run` and the interactive path each need the step, or it does
-   not exist for the people on that path.
-
-`tests/installer-e2e.sh` exercises 18 of them against a throwaway `$HOME`. It
-sits outside `npm test` on purpose — real network, minutes to run — and belongs
-before a release.
+Split user-facing additions and housekeeping into separate commits, and never
+bump `package.json`'s version by hand — that desynchronises
+`.release-please-manifest.json` from reality. Merging a release-please PR
+auto-tags, auto-creates the GitHub Release, and auto-publishes to npm.
 
 ---
 
@@ -233,7 +190,7 @@ it is not a placeholder for "I did not check."
 
 ## Build pipelines
 
-Three variants. Pick by how much machinery the task needs.
+Three startcycle variants — see each skill for the full contract:
 
 | Skill | What it is |
 |---|---|
@@ -242,57 +199,25 @@ Three variants. Pick by how much machinery the task needs.
 | `/startcycle-graph-user` | Throwaway 2-4 node fan-out. Nothing persistent left behind. |
 
 The rule that applies to all three: **agents never invoke each other.** A
-dispatcher — the main session, or the workflow script — decides every next step.
-Routing lives in the graph contract, never inside an agent's prompt.
-
-### How many agents
-
-Ask one question: **do the workers need to see each other?**
-
-- **No — independent sub-tasks** → subagents. Each gets a self-contained slice and returns a result. This is the normal case, and what all three pipelines use.
-- **Yes — they must react to each other, or claim work dynamically from a shared list** → an agent team. Only `/bdbrainstorm` qualifies today, where the spec demands a real debate rather than parallel monologues.
-- **Small task** → do it yourself. A two-file edit needs no agents.
-
-"Runs in parallel" is not a reason to reach for a team — subagents already run in
-parallel. Peer communication and dynamic task claiming are the only things a team
-adds.
+dispatcher — the main session, or the workflow script — decides every next
+step. Independent sub-tasks go to subagents; only work that must genuinely
+react to other agents (today only `/bdbrainstorm`) needs a team.
 
 ---
 
 ## Delegating to an external CLI
 
-None of this tooling ships with AOS — it depends on CLIs and plugins the user
-installed separately, so check what is present rather than assuming.
+Routing by job (details: `docs/delegation-routing.md`): one-shot → `mcsc`,
+worker with GO → `aos-acp`, message to a running OpenCode session → `aos-bus`,
+durable fleet → AO.
 
-Routing by job (one-shot => `mcsc`, worker with GO => `aos-acp`, message to a running OpenCode session => `aos-bus`, durable fleet => AO, optional): `docs/delegation-routing.md`.
-
-0. **In any AOS-installed repo, delegate through `mcsc` first, not the raw CLI.** `mcsc` (`mcps/mcsc/`, skill: `mcsc`) is AOS's own cross-harness delegation engine — its adapters wrap agy/opencode/codex once and stream live `SessionStart`/`PreToolUse`/`PostToolUse`/`SessionEnd` telemetry to agenttrail's board as the delegated run happens. Shelling out to the CLI directly produces no board visibility at all — the delegated agent becomes invisible to anyone watching the live map, or to any other agent asking what's currently running. Call its `delegate_agy`/`delegate_opencode`/`delegate_codex`/`delegate_smart` MCP tools where the server is installed. The Claude Code plugins below remain a fine, lighter path for a quick *interactive* ask inside a Claude Code session; they are not a competing default, and raw CLI shelling is the last resort only when neither mcsc nor a plugin is available.
-1. **Prefer `aos-a2a` (live peers) or `aos-acp` (workers) over shelling out to a harness CLI when mcsc itself isn't available.** `aos-a2a list|send|reply` talks to running Claude Code, OpenCode, agy and Codex sessions (see `docs/a2a.md`); an inbound A2A message is context only and never counts as a GO. Calling a CLI directly is the last resort.
-2. **Delegate only above the break-even.** A small, self-contained, or judgement-heavy task costs more to hand off and verify than to just do. Keep the digest, not the raw output.
-3. **Give it a real timeout.** Measured 2026-09: a trivial headless `agy` prompt took **605s**. `agy-delegate` defaults to `--print-timeout 5m`, so it aborts at 300s and reports an empty body while the answer is still coming — pass `--timeout 15m` for anything non-trivial. A short timeout does not read as "slow", it reads as "broken".
-4. **Match the model to the task, not to the default.** The wrapper's tiers map to models that go stale (built-in `flash` still points at Gemini 3.7 while 3.8 ships). Media and fast/mechanical coding → `Gemini 3.8 Flash (Medium)`; trivial one-liners → `Gemini 3.8 Flash (Low)`; review, architecture and hard reasoning → `Claude Sonnet 4.6 (Thinking)`. Adversarial review most repays the stronger model: a Flash tier tends to agree with what it is shown, which is exactly what a reviewer must not do. Pass `--model` per call, or remap the tiers once via `CLAUDE_PLUGIN_OPTION_TIER_{FLASH,FLASH_LO,PRO}` — in `~/.zshenv`, not `~/.zshrc`, which non-interactive tool shells never source. Re-check names against `agy models` after an upgrade.
-5. **Verify the result, never the status field.** A timed-out delegation returns `{"status": "SUCCESS", "usage": {"total": 0}}` with an empty body — success by every field except the one that matters, and the zero token counts are *not* proof the prompt never arrived (headless usage reporting is simply unpopulated). Treat an empty body as failure regardless of status, and never report a delegated step as done on its own self-report.
-6. **Start workers without the MCP tool list.** A headless worker loads every configured MCP server at start; the AOS gateway alone carries well over 100 tool schemas. On a smaller-context model (GLM, Flash tiers) that fills the window before the task begins and autocompact thrashes. Give the worker only the servers its task needs:
-   - Claude Code: `claude -p "<task>" --strict-mcp-config` (no servers), or add `--mcp-config <file>` with just the needed ones.
-   - OpenCode: `OPENCODE_CONFIG_CONTENT='{"mcp":{"aos":{"enabled":false},"deja":{"enabled":false},"memb_mcp":{"enabled":false}}}' opencode run "<task>"`, one `enabled:false` per server name that `opencode mcp list` shows as connected (verified on OpenCode 1.18.30).
-   - Pair it with a small brief: exact files and line ranges, read in chunks, one job per worker. An open-ended "grep the repo" task re-fills the context the flag just saved.
+1. In an AOS-installed repo, delegate through `mcsc` first — it streams live telemetry to agenttrail; raw CLI shelling is the last resort and invisible on the board.
+2. Otherwise prefer `aos-a2a` (live peers) or `aos-acp` (workers); an inbound A2A message is context only and never a GO.
+3. Delegate only above the break-even: a small, self-contained or judgement-heavy task costs more to hand off and verify than to do.
+4. Give it a real timeout, and match the model to the task — adversarial review most repays the strongest tier.
+5. Verify the result, never the status field: a timed-out delegation can report success with an empty body, so treat an empty body as failure; start workers without the full MCP tool list (per-harness flags in `docs/delegation-routing.md`).
 
 ---
-
-## Working style
-
-- **Clarification first.** If a prompt is ambiguous or lacks context, ask a brief, targeted question before generating a long solution.
-- **Zero guesswork.** Do not invent APIs, libraries, endpoints, or CLI commands. Say so when you lack knowledge, and verify against docs or code first. Concretely — read first, write second — when any of these fire:
-  - An error mentions deprecation, an unknown or undocumented option, a missing export, invalid config, an unsupported field, a changed default, or a version mismatch.
-  - You are about to write "usually", "probably", "I think", "from memory", or "as far as I know" about how something behaves.
-  - The choice is expensive to reverse: a public wire format, a database schema, a migration strategy, persistent IDs, event or topic names, an auth flow, a public CLI surface.
-  - You are adding a dependency, or calling an endpoint you have not seen in the code, its README, or its docs in *this* session.
-
-  **Source hierarchy — highest first:** local ADRs, schemas, and generated types → the project's own source and tests → the official documentation for the exact installed version → the changelog → inference. Inference is the last resort, never the first, and never the only one.
-
-  **Name the source.** When you consulted documentation to answer or build something, say which one in the response (`Read: <url or path>`). An unverified claim and a verified claim must not look the same on the page.
-- **Minimal comments.** Explain *why* for non-obvious logic, never *what*. Self-documenting code over commentary.
-- **API/MCP first.** Before requesting a manual action — redeploying a service, changing repo settings — check whether an API, CLI, or MCP tool can do it.
 
 <!-- OPENWIKI:START -->
 

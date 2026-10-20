@@ -1,14 +1,3 @@
-# memB Auto-Injected Context
-The following knowledge was automatically retrieved from the memB vector engine.
-
-## Global Developer Preferences (Godmode)
-
-## Project Context: bdb-dev-optimized-agent-skills
-- None
-- None
-- None
-- None
-
 # Global Agent Instructions
 
 ## 1. Core Behavior & Communication
@@ -20,7 +9,7 @@ The following knowledge was automatically retrieved from the memB vector engine.
 ## 2. Safety, Control & Rollback
 - **Mandatory Git Snapshots:** Before modifying, refactoring, or deleting any file in the workspace, take a Git snapshot or create a commit of the current state.
 - **Rollback Readiness:** Ensure all changes can be safely reverted. Ask for confirmation before performing destructive actions (e.g., massive deletions).
-- **Explicit GO Confirmation:** If the user specifies "warte auf mein GO" (or similar), halt all plan execution, tools, or background tasks. Wait until the user explicitly responds with the literal word "GO" (case-insensitive) in the chat. Do NOT rely on automatic system approvals.
+- **Explicit GO Confirmation:** If the user requests a plan, review, audit or multi-step action, halt all plan execution, tools, or background tasks. Wait until the user explicitly responds with the literal word "GO" (case-insensitive) in the chat. Do NOT rely on automatic system approvals.
 
 ## 3. Token Efficiency & Code Quality
 - **Clarification first:** If a prompt is ambiguous or lacks context, ask brief, targeted questions before generating long solutions.
