@@ -25,16 +25,14 @@ const { parseAgentsMd, compileOpenCodeAgents, compileCodexAgents, compileAgyAgen
 
 const ROOT = path.join(__dirname, '..');
 const NEW_AGENTS = [
-    'pcb-design-assistant',
-    'event-manager-assistant',
-    'video-motion-assistant',
-    'live-media-operator',
     'spec-prd-creator',
     'devils-advocate',
     'reviewer-1',
     'reviewer-2',
 ];
-const EXISTING_AGENTS = ['architect', 'techlead', 'reviewer', 'godmode-engineering', 'godmode-ui-ux', 'godmode-shipping', 'godmode-media-eventtech'];
+// Note: pcb-design-assistant, event-manager-assistant, video-motion-assistant,
+// live-media-operator, and godmode-media-eventtech are now in pack-specific AGENTS.md files
+const EXISTING_AGENTS = ['architect', 'techlead', 'reviewer', 'godmode-engineering', 'godmode-ui-ux', 'godmode-shipping'];
 
 const agentsMd = fs.readFileSync(path.join(ROOT, '.agents', 'AGENTS.md'), 'utf8');
 const parsed = parseAgentsMd(agentsMd);
