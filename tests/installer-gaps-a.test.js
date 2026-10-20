@@ -78,3 +78,9 @@ test('G7: a registered Plan Canvas unit is rewritten without the opt-in flag', (
     assert.equal(installPlanCanvasAutostart(base), true);
     assert.notStrictEqual(fs.readFileSync(plist, 'utf8'), 'stale');
 });
+
+test('G15: aos-go-ref is a package bin and an installed launcher', () => {
+    const { LAUNCHERS } = require('../lib/uninstall-records.js');
+    assert.strictEqual(pkg.bin['aos-go-ref'], 'bin/aos-go-ref.mjs');
+    assert.ok(LAUNCHERS.includes('aos-go-ref'));
+});
