@@ -1442,6 +1442,39 @@ function defaultPlatformValue() {
 
 // Which active harnesses have AOS hooks wired but no gate hook any more (removed there by hand).
 // Reads only. A config that is absent or has no AOS wiring at all proves nothing — nothing to preserve there.
+// What `aos repair` checks after it re-merges the harness wiring (hooks, settings, Codex config, agents).
+// Reads only. A harness whose config dir does not exist is not installed there and proves nothing.
+// kernel: the launcher support files Kernel.update copies. Claude: the Claude plugin counts as wiring too.
+function harnessWiringProblems({ home = homeDir } = {}) {
+    const read = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
+    const hasFiles = (dir) => { try { return fs.readdirSync(dir).length > 0; } catch { return false; } };
+    const problems = [];
+    for (const f of [path.join(home, '.agents', 'bin', 'aos-doctor.mjs'), path.join(home, '.agents', 'lib', 'uninstall-records.js')]) {
+        if (!fs.existsSync(f)) problems.push(`missing ${f}`);
+    }
+    const keys = activeHarnessKeys();
+    const claudeDir = claudeConfigDir(home);
+    if (keys.has('claudecode') && fs.existsSync(claudeDir)) {
+        const settings = read(path.join(claudeDir, 'settings.json'));
+        const viaPlugin = /bdb-aos@/.test(settings) || /bdb-aos@/.test(read(path.join(home, '.claude', 'plugins', 'installed_plugins.json')));
+        let parsed = true;
+        try { if (settings) JSON.parse(settings.replace(/^\uFEFF/, '')); } catch { parsed = false; }
+        if (!parsed) problems.push(`${path.join(claudeDir, 'settings.json')} is not valid JSON`);
+        else if (!viaPlugin && !v5Profile.HOOK_SCRIPTS.some((n) => settings.includes(n))) problems.push('Claude Code settings.json has no AOS hooks');
+        if (!viaPlugin && !hasFiles(path.join(claudeDir, 'agents'))) problems.push('Claude Code has no AOS agents');
+    }
+    const geminiHome = home === homeDir ? geminiDir : path.join(home, '.gemini');
+    if (keys.has('antigravity') && fs.existsSync(path.join(geminiHome, 'config'))) {
+        if (!/aos-/.test(read(path.join(geminiHome, 'config', 'hooks.json')))) problems.push('Antigravity hooks.json has no AOS hooks');
+        if (!hasFiles(path.join(geminiHome, 'config', 'agents'))) problems.push('Antigravity has no AOS agents');
+    }
+    if (keys.has('codex') && fs.existsSync(path.join(home, '.codex'))) {
+        if (!/go-gate\.mjs|graph-gate\.mjs|conventional-commits\.mjs/.test(read(path.join(home, '.codex', 'config.toml')))) problems.push('Codex config.toml has no AOS hooks');
+        if (!hasFiles(path.join(home, '.codex', 'agents'))) problems.push('Codex has no AOS agents');
+    }
+    return problems;
+}
+
 function gateMissingInHarnesses({ home = homeDir } = {}) {
     const read = (p) => { try { return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''; } catch { return ''; } };
     const missing = [];
@@ -9442,6 +9475,7 @@ module.exports = {
     injectHarnessRules,
     activeHarnessKeys,
     gateMissingInHarnesses,
+    harnessWiringProblems,
     gateReenableStep,
     gateHoldKeys,
     defaultPlatformValue,

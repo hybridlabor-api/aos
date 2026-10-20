@@ -113,3 +113,14 @@ test('G21: Basic exclusions and tier packs come from lib/skill-packs.js', () => 
         assert.ok(sp.BASIC_TIER_EXCLUDES.includes(n), n);
     }
 });
+
+test('G16: harnessWiringProblems flags lost Claude hooks and passes once they are merged', () => {
+    const { harnessWiringProblems } = require('../installer.js');
+    const claudeDir = path.join(tmpHome, '.claude');
+    fs.mkdirSync(path.join(claudeDir, 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, 'agents', 'architect.md'), 'x');
+    fs.writeFileSync(path.join(claudeDir, 'settings.json'), '{"model":"x"}');
+    assert.ok(harnessWiringProblems({ home: tmpHome }).some((p) => /no AOS hooks/.test(p)));
+    fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ command: 'node go-gate.mjs' }] }] } }));
+    assert.ok(!harnessWiringProblems({ home: tmpHome }).some((p) => /Claude Code/.test(p)));
+});
