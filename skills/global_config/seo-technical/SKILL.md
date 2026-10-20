@@ -1,6 +1,6 @@
 ---
 name: seo-technical
-description: "Audit technical SEO across crawlability, indexability, security, URLs, mobile, Core Web Vitals, structured data, JavaScript rendering, and related platform signals like robots.txt and AI crawler access."
+description: "Audit technical SEO: crawlability, indexability, URLs, mobile, Core Web Vitals, structured data, JS rendering, robots.txt and AI crawler access."
 category: library
 risk: unknown
 source: "https://github.com/AgriciDaniel/claude-seo"

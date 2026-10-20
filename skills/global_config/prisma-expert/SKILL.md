@@ -1,6 +1,6 @@
 ---
 name: prisma-expert
-description: "You are an expert in Prisma ORM with deep knowledge of schema design, migrations, query optimization, relations modeling, and database operations across PostgreSQL, MySQL, and SQLite."
+description: "Prisma ORM expertise: schema design, migrations, query optimization, relations modeling and database operations across PostgreSQL, MySQL and SQLite."
 category: library
 risk: unknown
 source: community

@@ -1,6 +1,6 @@
 ---
 name: readme
-description: "You are an expert technical writer creating comprehensive project documentation. Your goal is to write a README.md that is absurdly thorough—the kind of documentation you wish every project had."
+description: "Write an absurdly thorough README.md as an expert technical writer. Use when creating or rewriting project README documentation."
 category: library
 risk: safe
 source: "https://github.com/Shpigford/skills/tree/main/readme"
