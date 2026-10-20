@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tplDir = path.join(root, 'skills/global_config/plan-canvas/scripts/lib/plan-builder/templates');
-const templates = new Set(fs.readdirSync(tplDir));
+const templates = new Set(fs.readdirSync(tplDir).filter((d) => fs.existsSync(path.join(tplDir, d, 'meta.json'))));
+const noComponents = new Set(['recap', 'recap-board', 'recap-review', 'research']);
+const section = (text) => text.match(/^#{2,3} Plan first$[\s\S]*?(?=^## (?!Plan first$)|(?![\s\S]))/m)?.[0] ?? '';
 
 const map = {
   'basic/godmode-engineering': ['architecture', 'bugfix', 'migration', 'research'],
@@ -46,13 +48,20 @@ const map = {
   'playbooks/pb-crew-call-sheet': ['show-control'],
 };
 
+test('every skill with a Plan first heading is in the map', () => {
+  const found = fs.readdirSync(path.join(root, 'skills'), { recursive: true })
+    .filter((f) => path.basename(f) === 'SKILL.md' && /^#{2,3} Plan first$/m.test(fs.readFileSync(path.join(root, 'skills', f), 'utf8')))
+    .map((f) => path.dirname(f).split(path.sep).join('/'));
+  assert.deepEqual(found.filter((s) => !(s in map)), [], 'skill has Plan first but is not in the map');
+});
+
 for (const [skill, ids] of Object.entries(map)) {
   test(`${skill} has a Plan first section with valid template ids`, () => {
-    const text = fs.readFileSync(path.join(root, 'skills', skill, 'SKILL.md'), 'utf8');
-    assert.match(text, /^#{2,3} Plan first$/m);
+    const text = section(fs.readFileSync(path.join(root, 'skills', skill, 'SKILL.md'), 'utf8'));
+    assert.ok(text, 'no Plan first section');
     assert.ok(text.includes('aos-plan-canvas open <plan-dir> --mode bdb-plan-builder'));
     assert.ok(text.includes('aos-plan-canvas await <plan-dir>/plan.mdx'));
-    assert.ok(text.includes('aos-plan-canvas trail <plan-dir>'));
+    assert.equal(text.includes('aos-plan-canvas trail <plan-dir>'), ids.some((id) => !noComponents.has(id)), 'trail step only for templates with components');
     for (const id of ids) {
       assert.ok(templates.has(id), `unknown template ${id}`);
       assert.ok(text.includes(`\`${id}\``), `${skill} does not name ${id}`);

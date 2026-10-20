@@ -11,7 +11,7 @@ Turns a PR or a git range into a Plan Builder recap page (`kind: recap`, the `re
 
 ## Plan first
 
-A recap page starts from the `recap-review` template — the script in this skill fills it from the real diff; by hand:
+A recap page uses the `recap-review` shape. The script in this skill writes the same shape (frontmatter, `FileTree`, `ImplementationMap`, verification table) from the real diff, but generates its own `plan.mdx` rather than copying the template. By hand:
 
 ```bash
 aos-plan-canvas new recap-review <plan-dir>                     # scaffold the plan folder
