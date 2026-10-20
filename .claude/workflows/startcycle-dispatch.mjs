@@ -1412,7 +1412,7 @@ const cliArg = (a) => {
   if (s.includes('%')) throw new Error(`argument contains %; cmd.exe would expand it: ${s.slice(0, 60)}`);
   return `"${s.replace(/"/g, '""').replace(/(\\+)$/, '$1$1')}"`;
 };
-// [command, args] for spawn: on Windows one command line with an empty args array (shell:true plus args is DEP0190).
+// [command, args] for spawn: on Windows one command line with an empty args array (a shell with an args array triggers DEP0190).
 const cliCall = (name, args) => (IS_WIN ? [[cliBin(name), ...args.map(cliArg)].join(' '), []] : [name, args]);
 
 function humanCanvasGate(planFile) {
