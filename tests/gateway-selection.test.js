@@ -41,7 +41,9 @@ test('resolveGatewayServers: a valid stored choice wins; invalid falls back to d
     assert.deepEqual(selection.validStoredServers([]), []);
     assert.deepEqual(selection.resolveGatewayServers({ settingServers: [], media: true, keep: ['github'] }), { servers: [], fromSetting: true, kept: [], retired: [] });
     // a non-empty list with no known name is corrupt and falls back to derivation
-    assert.equal(selection.resolveGatewayServers({ settingServers: ['nope'] }).fromSetting, false);
+    assert.equal(selection.resolveGatewayServers({ settingServers: ['nope/ok'] }).fromSetting, false);
+    // well-formed names that are all retired: an empty selection, reported as retired (not re-derived)
+    assert.deepEqual(selection.resolveGatewayServers({ settingServers: ['nope'], media: true }), { servers: [], fromSetting: true, kept: [], retired: ['nope'] });
 });
 
 test('pkg-gateway apply: builds only the selection, writes it back, keeps adopted servers', async () => {
@@ -152,12 +154,19 @@ test('resolveAndSaveSelection: first migration keeps running upstreams, saves af
     assert.ok(!readJson(settingsOf(home)).gateway.servers.includes('bdb_unreal_mcp'));
 });
 
-test('resolveAndSaveSelection: Pro MEDIA tier from the manifest adds the media group on a fresh install', () => {
+test('resolveAndSaveSelection: Pro MEDIA tier from the manifest adds only the media servers whose app is detected', () => {
     const home = tmp();
     fs.mkdirSync(path.join(home, '.agents'), { recursive: true });
     fs.writeFileSync(path.join(home, '.agents', '.bdb-manifest.json'), JSON.stringify({ tier: '1' }));
-    const { servers } = require('../lib/v5/pkg-gateway.js').resolveAndSaveSelection(ctxOf(home), () => {});
-    for (const n of selection.SERVER_GROUPS.media) assert.ok(servers.includes(n), n);
+    const pkg = require('../lib/v5/pkg-gateway.js');
+    const linux = { ...ctxOf(home), platform: 'linux' };
+    const bare = pkg.resolveAndSaveSelection(linux, () => {}).servers;
+    for (const n of selection.SERVER_GROUPS.media) assert.ok(!bare.includes(n), `${n} needs its app`);
+    // Unreal is the one media app detectable under a Linux HOME
+    fs.mkdirSync(path.join(home, 'UnrealEngine', 'Engine'), { recursive: true });
+    const { servers } = pkg.resolveAndSaveSelection(linux, () => {});
+    assert.ok(servers.includes('bdb_unreal_mcp'));
+    for (const n of ['bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup']) assert.ok(!servers.includes(n), n);
     assert.ok(!servers.includes('zavora_computer_use'), 'desktop group is opt-in');
 });
 
