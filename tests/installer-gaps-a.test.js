@@ -157,3 +157,34 @@ test('review 3: AOS copies in ~/.roo/bdb-skills are removed, edited files are ba
     assert.strictEqual(found.length, 1);
     assert.strictEqual(fs.readFileSync(found[0], 'utf8'), 'user edit');
 });
+
+test('review 4-6: MCP refresh keeps unregenerated TOML tables, skips commented JSON and files without entries', () => {
+    const inst = require('../installer.js');
+    const rec = require('../lib/uninstall-records.js');
+    const shipped = inst.resolveShippedMcpServers();
+    const keep = Object.keys(shipped).find((n) => rec.aosMcpNames().includes(n));
+    assert.ok(keep, 'a shipped AOS server name exists');
+    const home = process.env.HOME;
+
+    const toml = path.join(home, '.codex', 'config.toml');
+    fs.mkdirSync(path.dirname(toml), { recursive: true });
+    const table = `[mcp_servers.${keep}]\ncommand = "node"\nargs = ["a.js"]`;
+    fs.writeFileSync(toml, `# AOS:MCP:START\n${table}\n# AOS:MCP:END\n`);
+    process.env.AOS_DISABLED_MCPS = keep;
+    try {
+        inst.refreshHarnessMcpEntries();
+    } finally { delete process.env.AOS_DISABLED_MCPS; }
+    assert.ok(fs.readFileSync(toml, 'utf8').includes(`[mcp_servers.${keep}]`), 'unregenerated table survives');
+
+    const claude = path.join(home, '.claude.json');
+    const commented = `{\n  // mine\n  "mcpServers": { "${keep}": { "command": "x" } }\n}\n`;
+    fs.writeFileSync(claude, commented);
+    inst.refreshHarnessMcpEntries();
+    assert.strictEqual(fs.readFileSync(claude, 'utf8'), commented);
+
+    const empty = '{"mcpServers":{}}';
+    fs.writeFileSync(claude, empty);
+    inst.refreshHarnessMcpEntries();
+    assert.strictEqual(fs.readFileSync(claude, 'utf8'), empty);
+    assert.deepStrictEqual(fs.readdirSync(home).filter((f) => f.startsWith('.claude.json.')), []);
+});

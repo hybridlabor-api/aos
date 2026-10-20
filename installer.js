@@ -8195,7 +8195,8 @@ function syncMcpConfigFile(targetPath, masterMcpData) {
     }
 }
 
-function syncOpencodeConfigFile(targetPath, masterMcpData) {
+// plugin: false for the update-time MCP refresh, which must not install or rewrite the OpenCode plugin.
+function syncOpencodeConfigFile(targetPath, masterMcpData, { plugin = true } = {}) {
     try {
         const loaded = loadJsonConfig(targetPath);
         if (loaded.state === 'invalid') { warnUnparseable(targetPath, 'OpenCode MCP and plugin sync', loaded); return; }
@@ -8260,7 +8261,7 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
         // Wire BDB AOS Plugin for OpenCode. `data` is handed in because this
         // function owns the write -- it merges MCP servers in the same pass.
         // homeDir matches how the opencode harness entry builds its path.
-        installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
+        if (plugin) installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
 
         if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
         if (!stashInlineSecrets(collector, targetPath)) return;
@@ -8358,6 +8359,7 @@ function refreshHarnessMcpEntries() {
     installMcpLauncher();
     const shipped = resolveShippedMcpServers();
     const cwd = path.resolve(currentDir);
+    const retired = new Set(mcpPicks().retired);
     const refreshed = [];
     for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir)) {
         if (!fs.existsSync(file)) continue;
@@ -8365,23 +8367,38 @@ function refreshHarnessMcpEntries() {
         if (cwd !== path.resolve(homeDir) && path.resolve(file).startsWith(cwd + path.sep)) continue;
         try {
             let present;
-            if (kind === 'toml') present = Object.keys(mcpSecrets.parseCodexTables(readTextFile(file)));
-            else {
+            let tables = null;
+            if (kind === 'toml') {
+                tables = mcpSecrets.parseCodexTables(readTextFile(file));
+                present = Object.keys(tables);
+            } else {
+                const raw = readTextFile(file);
                 const loaded = loadJsonConfig(file);
                 if (loaded.state === 'invalid') { warnUnparseable(file, 'MCP refresh', loaded); continue; }
                 if (loaded.state !== 'ok') continue;
+                // A rewrite drops comments and trailing commas; a file that has them is left to the user.
+                let strict = true;
+                try { JSON.parse(raw); } catch { strict = false; }
+                if (!strict) { log.warn(`${file} has comments or trailing commas; shipped MCP entries not refreshed there (a rewrite would drop them). Edit it by hand or remove the comments.`); continue; }
                 present = Object.keys((kind === 'opencode' ? loaded.data.mcp : loaded.data.mcpServers) || {});
             }
-            const subset = { mcpServers: Object.fromEntries(Object.entries(shipped).filter(([n]) => present.includes(n))) };
-            if (kind === 'toml') mergeCodexTomlMcpServers(file, subset.mcpServers);
-            else if (kind === 'opencode') syncOpencodeConfigFile(file, subset);
-            else syncMcpConfigFile(file, subset);
+            if (!present.length) continue;
+            const subset = Object.fromEntries(Object.entries(shipped).filter(([n]) => present.includes(n)));
+            if (kind === 'toml') {
+                // Regenerating the AOS block drops every AOS table it is not handed: pass the ones that are not
+                // regenerated (server code missing, AOS_DISABLED_MCPS) back as they stand. Retired ones go.
+                for (const n of uninstallRecords.aosMcpNames()) {
+                    if (tables[n] && !subset[n] && !retired.has(n)) subset[n] = mcpSecrets.codexEntry(tables[n]);
+                }
+                mergeCodexTomlMcpServers(file, subset);
+            } else if (kind === 'opencode') syncOpencodeConfigFile(file, { mcpServers: subset }, { plugin: false });
+            else syncMcpConfigFile(file, { mcpServers: subset });
             refreshed.push(file);
         } catch (e) {
             log.warn(`Could not refresh the shipped MCP entries in ${file}: ${e.message}`);
         }
     }
-    if (refreshed.length) log.step(`Shipped MCP entries re-synced in: ${refreshed.join(', ')}`);
+    if (refreshed.length) log.step(`Shipped MCP entries checked in: ${refreshed.join(', ')}`);
     noticeSecretBackups();
 }
 
