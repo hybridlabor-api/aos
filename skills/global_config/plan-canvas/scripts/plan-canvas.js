@@ -70,7 +70,7 @@ function usage() {
     '  aos-plan-canvas pending          Show feedback queued for no listener',
     '  aos-plan-canvas typing <file>    Show a thinking/typing indicator in chat',
     '  aos-plan-canvas end <file>       End a session as the agent',
-    '  aos-plan-canvas stop             Shut down the canvas server',
+    '  aos-plan-canvas stop             Shut down the canvas server (only one started from this workspace)',
     '  aos-plan-canvas server           Run the server in the foreground',
     '',
     'Options:',
@@ -190,6 +190,20 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// The workspace root this CLI invocation runs from, realpathed the way the server reports it
+// in /health. A server of ANOTHER project/root must never be stopped or restarted from here
+// (audit port-collision): both share the documented port, and /shutdown answers anyone.
+function ownWorkspaceRoot() {
+  const cwd = process.cwd();
+  try { return fs.realpathSync(cwd); } catch { return path.resolve(cwd); }
+}
+
+function foreignWorkspace(health) {
+  const reported = health && typeof health.root === 'string' ? health.root : null;
+  if (!reported) return null; // a server without a reported root cannot be judged: treated as same/legacy
+  return ownWorkspaceRoot() === reported ? null : reported;
+}
+
 function parseVersion(value) {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(value));
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
@@ -210,6 +224,7 @@ function isOlderVersion(running, mine) {
 async function ensureServer({ stateDir, port }) {
   const health = await healthCheck(port);
   if (health && !isOlderVersion(health.version, VERSION)) return port;
+  if (health && foreignWorkspace(health)) return port; // an older server of ANOTHER root stays up: never stop it
   if (health) {
     await request(port, 'POST', '/shutdown').catch(() => {});
     for (let i = 0; i < 20 && (await healthCheck(port)); i++) await sleep(100);
@@ -360,7 +375,17 @@ async function cmdOpen(file, args, { stateDir, port }) {
     };
   }
   if (res.statusCode !== 200) {
-    const err = new Error(res.body.error || `open failed (HTTP ${res.statusCode})`);
+    let message = res.body.error || `open failed (HTTP ${res.statusCode})`;
+    // The shared documented port may hold a server started from another workspace: name the owner
+    // instead of the bare 403, and never suggest stopping it from here (it is left running).
+    if (res.statusCode === 403) {
+      const health = await healthCheck(port);
+      const owner = health && typeof health.root === 'string' ? health.root : null;
+      message = owner && owner !== ownWorkspaceRoot()
+        ? `artifact path is outside the workspace: the canvas server on port ${port} serves ${owner}. Stop it from that workspace (\`aos-plan-canvas stop\` there), or set AOS_PLAN_CANVAS_PORT to run your own.`
+        : message;
+    }
+    const err = new Error(message);
     if (mdxWarning) {
       err.warning = mdxWarning;
       err.warnings = [mdxWarning];
@@ -577,7 +602,17 @@ async function cmdEnd(file, { port }) {
 }
 
 async function cmdStop({ stateDir, port }) {
-  if (!(await healthCheck(port))) return { status: 'not running' };
+  const health = await healthCheck(port);
+  if (!health) return { status: 'not running' };
+  const owner = foreignWorkspace(health);
+  if (owner) {
+    return {
+      status: 'refused',
+      port,
+      ownerRoot: owner,
+      hint: `the canvas server on port ${port} serves ${owner}, not this workspace — it is left running. Stop it from that workspace (\`aos-plan-canvas stop\` there), or set AOS_PLAN_CANVAS_PORT to run your own alongside.`
+    };
+  }
   await request(port, 'POST', '/shutdown').catch(() => {});
   fs.rmSync(serverInfoPath(stateDir), { force: true });
   return { status: 'stopping' };
@@ -737,4 +772,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, ensureServer, healthCheck, isOlderVersion, cmdTemplates, findSkillMd };
+module.exports = { main, ensureServer, healthCheck, isOlderVersion, cmdTemplates, findSkillMd, foreignWorkspace, ownWorkspaceRoot };
