@@ -55,6 +55,11 @@ test('detectGlobalAos reads the npm global root; a failed probe is "could not ch
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test('globalAosWarning: a prerelease of the same base version is not "older"', () => {
+    const w = npmGlobalAos.globalAosWarning({ version: '5.4.0-rc.1', root: '/opt/npm', installedVersion: '5.4.0' });
+    assert.ok(!w.some((l) => l.includes('older than')));
+});
+
 test('globalAosWarning tells the user the exact removal command and never removes anything', () => {
     const older = npmGlobalAos.globalAosWarning({ version: '4.9.0', root: '/opt/npm', installedVersion: '5.1.0' });
     assert.ok(older.some((l) => l.includes('npm uninstall -g @hybridlabor-api/aos')), older.join('\n'));
