@@ -23,6 +23,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // ---------- CLI ----------
 const argv = process.argv.slice(2)
+// Answered before any flag is parsed: without this, `--help` was taken as a repo path and the daemon started.
+if (argv[0] === 'help' || argv.includes('--help') || argv.includes('-h')) {
+  process.stdout.write(`aos-trail - AgentTrail live map of plans and agent activity
+Usage:
+  aos-trail [repo-path] [--port N] [--open|--no-open]   start the map daemon for a repo (side effects)
+  aos-trail init [repo-path] [--hooks-only] [-y]        install the hooks for a repo
+  aos-trail up                                          start the daemons of all known repos
+  aos-trail autostart [--remove] [--print]              install, remove or print the autostart entry
+  aos-trail hook                                        relay a harness hook payload from stdin
+  aos-trail enroll [--replace] [--no-open]              one-time GO-click enrolment (terminal only)
+  aos-trail emit <kind> [--agent A] [--session S] [--name N] [--detail D] [--task T] [--status S] [--file F] [--message M] [--plan P] [--cwd DIR]
+  aos-trail emit --json -                               read one event from stdin
+  aos-trail tick <plan-file> <task-id> [--doing|--done|--todo]
+  aos-trail ask "<question>" [--timeout 10s|30m|2h|N]   block until the human answers
+  aos-trail --ensure [--cwd DIR] [--plan FILE] [--session ID] [--json]
+Exit: emit and --ensure always 0; tick and enroll 1 on failure; ask 0 = go, 1 = deny or timeout.
+Env: AGENTTRAIL_PORT (default 5350), AOS_NO_OPEN=1. Details: aos help aos-trail
+`, () => process.exit(0))
+  await new Promise(() => {})
+}
 let cmd = null
 let repo = process.cwd()
 let port = probePorts()[0]

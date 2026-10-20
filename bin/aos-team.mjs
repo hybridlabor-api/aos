@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../lib/cli-help-guard.mjs';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';

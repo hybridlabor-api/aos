@@ -145,7 +145,7 @@ describe('installed layout', () => {
         const env = { ...nodeEnv, HOME: home, USERPROFILE: home };
         const help = launch('aos-acp', ['--help'], { env, encoding: 'utf8' });
         assert.equal(help.status, 0, help.stderr);
-        assert.match(help.stdout, /usage: aos-acp/);
+        assert.match(help.stdout, /Usage:\s+aos-acp </);
         const fake = `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(__dirname, 'fixtures', 'fake-acp-agent.mjs'))}`;
         const dry = launch('aos-acp', ['codex', '--cmd', fake, '--name', 'w1', '--prompt', 'hi', '--cwd', proj], { env, encoding: 'utf8', timeout: 30000 });
         assert.equal(dry.status, 0, dry.stderr);

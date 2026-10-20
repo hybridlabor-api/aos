@@ -7,7 +7,7 @@ Source: `bin/aos-gateway.mjs`, `lib/gateway/{config,forwarder,adopt}.js`, `lib/m
 A local token-checking forwarder on `127.0.0.1:7790` in front of `@1mcp/agent` on `127.0.0.1:7791`. The forwarder answers `/healthcheck` without a token; every other request needs the static token (`x-aos-token` or `Authorization: Bearer`), a loopback `Host`, and no browser `Origin`, otherwise it gets 401/403. The token stops browsers, not local processes. Config lives in `~/.agents/gateway/` (`token`, `mcp.json`, `adopted.json`, `upstream_template.json`, `gateway.pid`); `token` must be mode 600.
 
 ```
-aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json]
+aos-gateway serve | start | stop | restart | status [--json] | enable | direct | add <server> [--dry-run] | remove <server> [--dry-run] | adopt [--dry-run] [--json]
 ```
 
 - **Service.** `aos update` registers the gateway as a background service on every platform: launchd on macOS (label `com.bdb.aos.gateway`), a systemd user unit `~/.config/systemd/user/com.bdb.aos.gateway.service` on Linux (`Restart=on-failure`, `enable --now`), and the scheduled task "AOS MCP Gateway" on Windows (`schtasks /Create ... /SC ONLOGON /F`, then `/Run`). Uninstall removes each of them. `start`/`stop`/`restart` map to launchctl, `systemctl --user` or `schtasks`; `status` prints the systemd `is-active` state on Linux.
@@ -31,6 +31,8 @@ Only these shipped servers are shared through the gateway (`GATEWAY_SERVERS` in 
 **Direct by design** (`DIRECT_SERVERS`, one config entry per harness, never in agy's workspace template): `mcsc` (its `MCSC_DEPTH` recursion guard is per session; a shared process would let delegated agents bypass it), `openwiki` (bound to the repository of the session and to `--host`), `bdb_rhino_mcp` (native router, tool list comes from the Rhino plugin, 64-character limit unverifiable), `bdb_td_minddesigner` (4 tool names exceed the 64-character limit), `rea_mcp`, `tauri-pilot`, and the pick-group duplicates. A shipped entry with `shared: false` also stays direct. `bdb_after_effects_mcp` needs Node >= 24; `serve` warns when it runs on an older Node.
 
 ## adopt
+
+`aos-gateway direct` is the inverse of `enable`: it removes the `aos` entry from the harness MCP configs and restores the direct entries recorded at enable time. `aos-gateway add <server> [--dry-run]` and `aos-gateway remove <server> [--dry-run]` change the selection of shipped servers (the name must be one of `GATEWAY_SERVERS`; exit 2 without a name); both rewrite `mcp.json` and restart the service, `--dry-run` only prints the plan. After `remove`, the server disappears from every harness on the next `aos update` (or `aos-gateway enable`). `status` exits 1 when the gateway is not running.
 
 `aos-gateway adopt [--dry-run] [--json]` moves your other local stdio MCP servers behind the gateway: each is removed from the harness files, recorded in `~/.agents/gateway/adopted.json` (mode 600), and an `aos` entry is added; `enable`/`direct` can restore them via the migration records. Skipped: remote (`url`/http/sse) entries, disabled ones, names handled by the AOS install, invalid names (over 26 chars), entries with inline secrets in env or arguments, entries with conflicting definitions across files. Secrets are never copied into `adopted.json`. Restart afterwards: `aos-gateway restart`.
 

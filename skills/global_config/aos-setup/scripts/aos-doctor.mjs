@@ -10,6 +10,16 @@ import { connect } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
+const HELP_ARGS = process.argv.slice(2);
+if (HELP_ARGS[0] === 'help' || HELP_ARGS.includes('--help') || HELP_ARGS.includes('-h')) {
+  process.stdout.write(`aos-setup-doctor - what a full AOS install needs and what this machine has (read-only)
+Usage: node aos-doctor.mjs [--json] [--net]
+  --json  machine-readable results
+  --net   ask npm whether a newer AOS is published
+Exit: 0 all checks ok, 1 at least one check not ok. For an installed system use: aos doctor
+`, () => process.exit(0));
+  await new Promise(() => {});
+}
 const HOME = os.homedir();
 const JSON_OUT = process.argv.includes('--json');
 const NET = process.argv.includes('--net');

@@ -8,6 +8,14 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
+const HELP_ARGS = process.argv.slice(2);
+if (HELP_ARGS[0] === 'help' || HELP_ARGS.includes('--help') || HELP_ARGS.includes('-h')) {
+  process.stdout.write(`aos-project-doctor - how completely one project folder is wired into AOS (read-only)
+Usage: node aos-project-doctor.mjs [dir] [--json]
+Exit: 0 all checks ok, 1 at least one check not ok.
+`, () => process.exit(0));
+  await new Promise(() => {});
+}
 const args = process.argv.slice(2).filter((a) => a !== '--json');
 const JSON_OUT = process.argv.includes('--json');
 const ROOT = path.resolve(args[0] || process.cwd());
