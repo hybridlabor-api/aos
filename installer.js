@@ -1254,6 +1254,12 @@ function reportKeptUserEdits() {
 // placeholder for it.
 function retireObsoleteLegacyDir(targetLegacyDir) {
     if (!targetLegacyDir || !fs.existsSync(targetLegacyDir)) return;
+    // Roo reads ~/.roo/skills as a skill dir, so a `legacy` folder there may be the user's own: retire it
+    // only when the install manifest lists files in it.
+    if (path.resolve(targetLegacyDir) === path.join(homeDir, '.roo', 'skills', 'legacy')) {
+        const prefix = path.resolve(targetLegacyDir) + path.sep;
+        if (!Object.keys(_sessionManifest || {}).some((f) => path.resolve(f).startsWith(prefix))) return;
+    }
     if (fs.existsSync(path.join(srcDir, 'skills', 'global_legacy'))) {
         fs.mkdirSync(targetLegacyDir, { recursive: true });
         return;
@@ -8425,7 +8431,6 @@ function quickUpdateKernel(installState) {
 
     populateSkillLibrary();
     fs.mkdirSync(paths.targetSkillDir, { recursive: true });
-    retireObsoleteLegacyDir(paths.targetLegacyDir);
     fs.mkdirSync(paths.targetWorkspaceDir, { recursive: true });
 
     // Initialize manifest for this update session.
@@ -8438,6 +8443,7 @@ function quickUpdateKernel(installState) {
         path.join(srcDir, '.github'),
         path.join(srcDir, '.codex-plugin'),
     ]);
+    retireObsoleteLegacyDir(paths.targetLegacyDir);
 
     const skillsBase = path.join(srcDir, 'skills');
     if (fs.existsSync(skillsBase)) {

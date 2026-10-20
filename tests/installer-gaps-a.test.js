@@ -124,3 +124,12 @@ test('G16: harnessWiringProblems flags lost Claude hooks and passes once they ar
     fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ command: 'node go-gate.mjs' }] }] } }));
     assert.ok(!harnessWiringProblems({ home: tmpHome }).some((p) => /Claude Code/.test(p)));
 });
+
+test('review 2: a user-owned ~/.roo/skills/legacy is not retired unless the manifest lists its files', () => {
+    const { retireObsoleteLegacyDir } = require('../installer.js');
+    const legacy = path.join(tmpHome, '.roo', 'skills', 'legacy');
+    fs.mkdirSync(legacy, { recursive: true });
+    fs.writeFileSync(path.join(legacy, 'mine.md'), 'keep');
+    retireObsoleteLegacyDir(legacy);
+    assert.ok(fs.existsSync(path.join(legacy, 'mine.md')));
+});
