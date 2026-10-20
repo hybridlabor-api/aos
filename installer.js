@@ -5334,10 +5334,28 @@ function installPipelineDefault({ targetHome = homeDir } = {}) {
 // are emitted (name, description, model). `model` is optional and omitting it inherits the
 // session model, so it is written only for a pipeline.json override, verbatim.
 // Generated agent files sit outside the file manifest; record them so aos-uninstall can reverse them.
+// Only the machine-global agent dirs are recorded, never a project's .claude or .opencode.
 function recordCompiledAgents(files) {
-    const root = path.resolve(homeDir) + path.sep;
-    const mine = files.filter((f) => path.resolve(f).startsWith(root));
+    const globalDirs = [path.join(claudeConfigDir(homeDir), 'agents'), path.join(homeDir, '.config', 'opencode', 'agents'), path.join(geminiDir, 'config', 'agents'), path.join(homeDir, '.codex', 'agents')]
+        .map((d) => path.resolve(d) + path.sep);
+    const mine = files.filter((f) => globalDirs.some((d) => path.resolve(f).startsWith(d)));
     if (!DRY_RUN && mine.length) uninstallRecords.recordGeneratedFiles(homeDir, mine);
+}
+
+// Writes a generated agent file. A file that exists, differs and is not an unedited recorded AOS file is
+// the user's: it is backed up before the overwrite and stays out of the uninstall record.
+function writeCompiledAgent(file, text, written) {
+    let ours = true;
+    if (fs.existsSync(file)) {
+        if (fs.readFileSync(file, 'utf8') === text) { written.push(file); return; }
+        const sum = uninstallRecords.generatedMap(homeDir).get(path.resolve(file));
+        if (!sum || sum !== crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')) {
+            ours = false;
+            fs.copyFileSync(file, `${file}.${timestamp}.bak`);
+        }
+    }
+    fs.writeFileSync(file, text);
+    if (ours) written.push(file);
 }
 
 function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
@@ -5362,8 +5380,7 @@ function compileClaudeAgents(agents, targetDir, pipelineConfig = null) {
             '',
         ].filter((l) => l !== null).join('\n');
 
-        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n');
-        written.push(path.join(targetDir, `${slug}.md`));
+        writeCompiledAgent(path.join(targetDir, `${slug}.md`), frontmatter + body + '\n', written);
     }
     recordCompiledAgents(written);
 }
@@ -5433,8 +5450,7 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
     fs.mkdirSync(targetDir, { recursive: true });
     const written = [];
     for (const a of OPENCODE_SKILL_AGENTS) {
-        written.push(path.join(targetDir, `${a.slug}.md`));
-        fs.writeFileSync(path.join(targetDir, `${a.slug}.md`), ['---', `description: ${yamlQuote(a.description)}`, 'mode: primary', '---', '', a.body, ''].join('\n'));
+        writeCompiledAgent(path.join(targetDir, `${a.slug}.md`), ['---', `description: ${yamlQuote(a.description)}`, 'mode: primary', '---', '', a.body, ''].join('\n'), written);
     }
     for (const a of agents) {
         const slug = a.name.toLowerCase().replace(/_/g, '-');
@@ -5462,8 +5478,7 @@ function compileOpenCodeAgents(agents, targetDir, pipelineConfig = null) {
         }
         frontmatterLines.push('---', '');
 
-        fs.writeFileSync(path.join(targetDir, `${slug}.md`), frontmatterLines.join('\n') + body + '\n');
-        written.push(path.join(targetDir, `${slug}.md`));
+        writeCompiledAgent(path.join(targetDir, `${slug}.md`), frontmatterLines.join('\n') + body + '\n', written);
     }
     recordCompiledAgents(written);
 }
@@ -5483,10 +5498,8 @@ function compileAgyAgents(agents, targetDir, pipelineConfig = null) {
         const model = resolveAgentConfig(slug, 'antigravity', pipelineConfig).model;
         const readOnly = isReadOnlyAgent(slug);
         const text = ['---', 'subagent: true', readOnly ? 'inheritMcp: false' : 'inheritMcp: true', ...(model ? [`model: ${model}`] : []), '---', '', `# ${a.name}`, '', a.systemPrompt, ''].join('\n');
-        written.push(file);
-        if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) continue;
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, text);
+        writeCompiledAgent(file, text, written);
     }
     recordCompiledAgents(written);
 }
