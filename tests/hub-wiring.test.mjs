@@ -21,10 +21,11 @@ describe('WP5 hub wiring', () => {
     });
 
     test('installer help text mentions the three commands', () => {
-        const src = read('installer.js');
-        assert.match(src, /  hub\s+Open the AOS Hub/);
-        assert.match(src, /  services\s+Status or control of the local services/);
-        assert.match(src, /  package\s+Install, update, repair or verify one v5 package/);
+        const src = read('lib/cli-specs/core.mjs');
+        assert.match(src, /name: 'hub'.*Open or control the AOS Hub/);
+        assert.match(src, /name: 'services'.*Status or control of the local services/);
+        assert.match(src, /name: 'package'.*Install, update, repair or verify one v5 package/);
+        assert.match(read('installer.js'), /aosSpec\.commands\.map/);
     });
 
     test('installer still names aos-dashboard on port 7900 (dashboard alias)', () => {
