@@ -91,11 +91,11 @@ test('applyPackSelection removes deselected skills the manifest lists, keeps sto
     manifest[path.join(remotionDir, 'SKILL.md')] = { sha256: hash(path.join(remotionDir, 'SKILL.md')) };
     // A user skill with no manifest entry: must survive.
     writeSkill(path.join(HOME, '.agents', 'skills'), 'my-own-skill', { 'SKILL.md': 'mine\n' });
-    // Store-installed skill: deselected pack math, but the store owns it.
+    // Store-installed skill: deselected pack math, but the exact copy the store wrote stays.
     const storeDir = writeSkill(path.join(HOME, '.agents', 'skills'), 'remotion', { 'SKILL.md': 'remotion\n' });
     manifest[path.join(storeDir, 'SKILL.md')] = { sha256: hash(path.join(storeDir, 'SKILL.md')) };
     fs.mkdirSync(path.join(HOME, '.aos', 'store'), { recursive: true });
-    fs.writeFileSync(path.join(HOME, '.aos', 'store', 'installs.jsonl'), JSON.stringify({ kind: 'skill', name: 'remotion' }) + '\n');
+    fs.writeFileSync(path.join(HOME, '.aos', 'store', 'installs.jsonl'), JSON.stringify({ kind: 'skill', name: 'remotion', targets: [path.join(storeDir, 'SKILL.md')] }) + '\n');
 
     // Selection drives the exclude list.
     v5Profile.writeSettings(HOME, { packs: ['live-show'] });

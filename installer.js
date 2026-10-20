@@ -35,7 +35,7 @@ const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
-const { pruneRetiredSkills } = require('./lib/retired-skills');
+const { pruneRetiredSkills, storeProtectedDirs } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
 const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
@@ -1225,17 +1225,11 @@ function populateSkillLibrary(home = homeDir) {
 
 // A stored pack selection removes installed copies of skills outside base+packs from the harness
 // dirs. Manifest-aware (lib/retired-skills.js): only dirs the install manifest lists are touched,
-// edited files are backed up first, and skills installed through the store are left alone. A user
-// skill is never in the manifest, so it can never be removed here.
+// edited files are backed up first, and the exact copies the store wrote (installs.jsonl targets)
+// are left alone. A user skill is never in the manifest, so it can never be removed here.
 function applyPackSelection(manifest) {
     if (!Array.isArray(packSelection)) return;
-    const storeOwned = new Set();
-    try {
-        for (const line of fs.readFileSync(path.join(homeDir, '.aos', 'store', 'installs.jsonl'), 'utf8').split('\n')) {
-            try { const j = JSON.parse(line); if (j && j.kind === 'skill' && typeof j.name === 'string') storeOwned.add(j.name); } catch { /* bad line */ }
-        }
-    } catch { /* no store log */ }
-    const names = skillPacks.excludedByPacks(srcDir, packSelection).filter((n) => !storeOwned.has(n));
+    const names = skillPacks.excludedByPacks(srcDir, packSelection);
     if (!names.length) return;
     try {
         pruneRetiredSkills({
@@ -1246,6 +1240,7 @@ function applyPackSelection(manifest) {
             log,
             names,
             what: 'deselected-pack',
+            keep: storeProtectedDirs(homeDir),
         });
     } catch (e) { log.warn(`Pack deselection prune skipped: ${e.message}`); }
 }
