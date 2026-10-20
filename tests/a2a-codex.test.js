@@ -112,7 +112,7 @@ test("codexInvocation (win32): npm shim is unwrapped to node + codex.js, multi-l
   const shim = "C:\\npm\\codex.cmd";
   const js = "C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js";
   const fs = winFs({ [shim]: '"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*', [js]: "" });
-  const inv = codexInvocation(["queue", "--message", "a\nb 100%"], { platform: "win32", env: { PATH: "C:\\npm", PATHEXT: ".CMD" }, fs });
+  const inv = codexInvocation(["queue", "--message", "a\nb 100%"], { platform: "win32", env: { PATH: "C:\\npm", PATHEXT: ".cmd" }, fs });
   assert.equal(inv.file, process.execPath);
   assert.deepEqual(inv.args, [js, "queue", "--message", "a\nb 100%"]);
 });
@@ -120,7 +120,7 @@ test("codexInvocation (win32): npm shim is unwrapped to node + codex.js, multi-l
 test("codexInvocation (win32): an unrecognised shim falls back to cli-spawn, which refuses CR/LF instead of mangling it", () => {
   const shim = "C:\\npm\\codex.cmd";
   const fs = winFs({ [shim]: "@echo off\r\ncodex-native %*" });
-  assert.throws(() => codexInvocation(["queue", "--message", "a\nb"], { platform: "win32", env: { PATH: "C:\\npm", PATHEXT: ".CMD" }, fs }), /CR or LF/);
+  assert.throws(() => codexInvocation(["queue", "--message", "a\nb"], { platform: "win32", env: { PATH: "C:\\npm", PATHEXT: ".cmd" }, fs }), /CR or LF/);
 });
 
 test("codexInvocation (posix): plain argv, no shell", () => {
