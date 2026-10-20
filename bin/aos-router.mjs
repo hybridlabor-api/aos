@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import tableMod from '../lib/router/table.js';
 import routeMod from '../lib/router/route.js';
 
-const { loadLayeredRouterTable, KNOWN_ROLES, KNOWN_TARGETS, deepMerge } = tableMod;
+const { loadLayeredRouterTable, KNOWN_ROLES, KNOWN_TARGETS, deepMerge, loadJsonIfExists: readJson, provenance } = tableMod;
 const { routeFor } = routeMod;
 
 const HOME = process.env.HOME || process.env.USERPROFILE || os.homedir();
@@ -49,15 +49,6 @@ function routerPaths() {
   };
 }
 
-function readJson(p) {
-  try {
-    return JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch (err) {
-    if (err && err.code === 'ENOENT') return null;
-    throw new Error(`Failed to read ${p}: ${err.message}`);
-  }
-}
-
 function loadRawLayers() {
   const { user, project } = routerPaths();
   return {
@@ -65,14 +56,6 @@ function loadRawLayers() {
     userLayer: readJson(user),
     projectLayer: readJson(project),
   };
-}
-
-function provenance(merged, shipped, userLayer, projectLayer) {
-  const layerOf = (get) => (get(projectLayer) !== undefined ? 'project' : get(userLayer) !== undefined ? 'user' : 'shipped');
-  const sources = { enforce: layerOf((l) => l?.enforce) };
-  for (const role of merged.roles) sources[role] = layerOf((l) => l?.preferences?.[role]);
-  for (const t of Object.keys(merged.targets)) sources[`target:${t}`] = layerOf((l) => l?.targets?.[t]);
-  return sources;
 }
 
 function fatal(msg) {
