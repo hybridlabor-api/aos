@@ -124,3 +124,18 @@ test('files built after the copy are recorded by refreshMarker and leave with it
     assert.equal(r.kept.length, 1);
     assert.deepEqual(fs.readdirSync(dir).sort(), ['notes.txt']);
 });
+
+test('opencode.jsonc left by install (empty plugin[], AOS skills.paths, empty mcp) is removed whole; user skills paths stay', () => {
+    const ur = require('../lib/uninstall-records.js');
+    const home = tmp();
+    const f = path.join(home, '.config', 'opencode', 'opencode.jsonc');
+    const body = (paths) => `{\n  "$schema": "https://opencode.ai/config.json",\n  "plugin": [\n  ],\n  "skills": {\n    "paths": ${JSON.stringify(paths)}\n  },\n  "mcp": {}\n}\n`;
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, body([`${home}/.agents/skills`, '.agents/skills']));
+    ur.reverseRegistrations({ home, env: {} });
+    assert.ok(!fs.existsSync(f));
+
+    fs.writeFileSync(f, body([`${home}/.agents/skills`, '/my/skills', '.agents/skills']));
+    ur.reverseRegistrations({ home, env: {} });
+    assert.deepEqual(JSON.parse(fs.readFileSync(f, 'utf8')).skills.paths, ['/my/skills']);
+});
