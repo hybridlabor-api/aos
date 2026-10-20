@@ -308,7 +308,16 @@ function checkHarnesses() {
   const recorded = new Set(Object.keys(installManifest).filter((k) => k.startsWith(looseRoot + path.sep)).map((k) => k.slice(looseRoot.length + 1).split(path.sep)[0]));
   const twice = claudePlugin ? [...claudePlugin.skills].filter((n) => recorded.has(n) && existsSync(path.join(looseRoot, n, 'SKILL.md'))) : [];
   if (twice.length) {
-    add('harnesses', 'Claude duplicate skills', false, `${twice.length} AOS skill(s) exist both as loose copies in ${tilde(looseRoot)} and in the bdb-aos plugin, so Claude lists them twice`,
+    // The marketplace serves the published plugin, so right after a tarball/pre-release kernel update the plugin is older: expected, not a defect.
+    const pluginVer = (() => {
+      for (const f of ['plugin.json', path.join('.claude-plugin', 'plugin.json')]) {
+        try { const v = JSON.parse(readFileSync(path.join(claudePlugin.installPath, f), 'utf8')).version; if (v) return v; } catch { /* next */ }
+      }
+      return /^\d+\.\d+\.\d+/.test(path.basename(claudePlugin.installPath)) ? path.basename(claudePlugin.installPath) : null;
+    })();
+    const kernelVer = readJson(h('.agents', '.bdb-manifest.json'))?.version;
+    const transition = !!(pluginVer && kernelVer && updateCheck.isNewerVersion(pluginVer, kernelVer));
+    add('harnesses', 'Claude duplicate skills', transition, `${twice.length} AOS skill(s) exist both as loose copies in ${tilde(looseRoot)} and in the bdb-aos plugin, so Claude lists them twice${transition ? ` (expected until the marketplace serves v${kernelVer}; plugin is v${pluginVer})` : ''}`,
       'Run the AOS installer again; it backs up and retires the loose copies (aos-uninstall --restore-plugin-backup restores them).', true);
   }
 
@@ -831,7 +840,9 @@ async function checkDaemonsAndModules() {
       // Fall back to the npm package name when the global `rea` shim is absent.
       if (!reaPath) {
         try {
-          reaVer = execFileSync(IS_WIN ? 'npx.cmd' : 'npx', ['-y', 'rea-agents@6.5.0', '--version'], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          const o = req('../lib/cli-spawn.js').run('npx', ['-y', 'rea-agents@6.5.0', '--version'], { timeout: 8000 });
+          if (o.status !== 0) throw new Error(o.stderr);
+          reaVer = o.stdout.trim();
           reaPath = 'npx -y rea-agents@6.5.0';
         } catch {}
       }
