@@ -13,6 +13,7 @@ import { SessionTable, readA2aRegistry } from '../lib/sessions.mjs'
 import { buildModel, ttlMemo } from '../lib/hub-model.mjs'
 import { panel as gatePanel, loadGate } from '../lib/gatepanel.mjs'
 import { csrfToken, embedAncestors, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, securityHeaders, MAX_BODY_BYTES as GATE_BODY_BYTES } from '../lib/httpguard.mjs'
+import { injectEmbed } from '../../plan-canvas/scripts/lib/loopback-guard.js'
 import { createClick, ClickError } from '../lib/click.mjs'
 import { loadConfig } from '../lib/stale.mjs'
 import { STATE_DIR, loadRepos, registerRepo, loadState, setPinned } from '../lib/hub-state.mjs'
@@ -208,13 +209,7 @@ async function serveStatic(req, res, urlPath) {
   const type = MIME[path.extname(file)] || 'application/octet-stream'
   // The CSRF token reaches the page here and nowhere else.
   if (rel === 'index.html' || rel === 'enroll.html') {
-    const ancestors = embedAncestors()
-    let html = data.toString('utf8').replace('__TRAIL_CSRF__', CSRF)
-    if (ancestors.length > 0) {
-      const metaTag = `<meta name="ao-embed-ancestors" content="${ancestors.join(' ').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}">`
-      const inject = `${metaTag}\n<script src="/ao-embed-bridge.js"></script>`
-      html = html.includes('</head>') ? html.replace('</head>', `${inject}\n</head>`) : `${inject}\n${html}`
-    }
+    const html = injectEmbed(data.toString('utf8').replace('__TRAIL_CSRF__', CSRF), embedAncestors())
     res.writeHead(200, { 'content-type': type }).end(html)
   } else res.writeHead(200, { 'content-type': type }).end(data)
 }
