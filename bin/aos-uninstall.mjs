@@ -333,13 +333,13 @@ async function execute(p) {
       if (!stripped.trim()) { rmSync(f); console.log(`  ${tilde(f)} removed (no user content left)`); continue; }
       writeFileSync(f, stripped);
       console.log(`  Rule blocks removed from ${tilde(f)}`);
-    } catch { console.log(`  ${tilde(f)} unreadable — check the rule blocks by hand`); }
+    } catch { failures.push(`${tilde(f)} unreadable (rule blocks)`); console.log(`  ${tilde(f)} unreadable — check the rule blocks by hand`); }
   }
 
   try {
     const n = createRequire(import.meta.url)('../lib/permissions-allow.js').removeAllRecorded(HOME);
     if (n) console.log(`  ${n} permission rule(s) added by \`aos allow\` removed`);
-  } catch { console.log('  ~/.claude/settings.json unreadable — remove the rules added by `aos allow` (see ~/.aos/allow-records.json) by hand'); }
+  } catch { failures.push('aos allow rules'); console.log('  ~/.claude/settings.json unreadable — remove the rules added by `aos allow` (see ~/.aos/allow-records.json) by hand'); }
 
   for (const m of modules) { try { rmSync(m, { recursive: true, force: true }); } catch { /* in use */ } }
   if (modules.length) console.log(`  ${modules.length} modules removed`);
@@ -352,6 +352,7 @@ async function execute(p) {
       ur.forgetNpmGlobal(HOME, DEJA_PKG);
       console.log('  deja-vu (npm) removed');
     } catch {
+      failures.push(`npm uninstall -g ${DEJA_PKG}`);
       console.log(`  deja-vu not removed via npm — remove it by hand: npm uninstall -g ${DEJA_PKG}`);
     }
   }
@@ -363,6 +364,7 @@ async function execute(p) {
       ur.forgetNpmGlobal(HOME, pkg);
       console.log(`  ${pkg} (npm) removed`);
     } catch {
+      failures.push(`npm uninstall -g ${pkg}`);
       console.log(`  ${pkg} not removed via npm — remove it by hand: npm uninstall -g ${pkg}`);
     }
   }
@@ -394,7 +396,7 @@ async function execute(p) {
         writeFileSync(f, JSON.stringify(cfg, null, 2) + '\n');
         console.log(`  tauri-pilot entry removed from ${tilde(f)}`);
       }
-    } catch { console.log(`  ${tilde(f)} unreadable — check by hand`); }
+    } catch { failures.push(`${tilde(f)} unreadable`); console.log(`  ${tilde(f)} unreadable — check by hand`); }
   }
 
   const opencodeCfg = h('.config', 'opencode', 'opencode.jsonc');
@@ -417,7 +419,7 @@ async function execute(p) {
         writeFileSync(codexToml, kept.join(eol));
         console.log(`  deja table removed from ${tilde(codexToml)}`);
       }
-    } catch { console.log(`  ${tilde(codexToml)} unreadable — check by hand`); }
+    } catch { failures.push(`${tilde(codexToml)} unreadable`); console.log(`  ${tilde(codexToml)} unreadable — check by hand`); }
   }
 
   if (codenotch) attempt('Codenotch', () => {
@@ -460,10 +462,7 @@ async function execute(p) {
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} install markers removed`);
 
-  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner })) {
-    console.log(`  ${l}`);
-    if (l.startsWith('FAILED')) failures.push(l);
-  }
+  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner, failures })) console.log(`  ${l}`);
 
   attempt('Claude plugin registration', () => {
     const reg = pm.readState(HOME).registered.claudecode;
@@ -501,25 +500,25 @@ async function execute(p) {
         writeFileSync(settings, JSON.stringify(s, null, 2) + '\n');
         console.log('  AOS hook handlers removed from settings.json; other handlers and settings unchanged');
       }
-    } catch { console.log('  settings.json unreadable — check by hand'); }
+    } catch { failures.push('settings.json unreadable'); console.log('  settings.json unreadable — check by hand'); }
   }
 
   for (const d of data) {
     try { rmSync(d.path, { recursive: true, force: true }); console.log(`  \x1b[31mdeleted:\x1b[0m ${tilde(d.path)}`); }
-    catch (e) { console.log(`  could not delete ${tilde(d.path)}: ${e.message}`); }
+    catch (e) { failures.push(`${tilde(d.path)}: ${e.message}`); console.log(`  could not delete ${tilde(d.path)}: ${e.message}`); }
   }
 
   // With a failed step the manifest stays, so a rerun sees the install and finishes the job.
   if (!failures.length) for (const f of [MANIFEST, h('.agents', '.bdb-manifest.json')]) {
     try { rmSync(f); } catch { /* already gone */ }
   }
-  pm.retireState(HOME);
+  if (!failures.length) pm.retireState(HOME);
   ur.retireRecords(HOME);
   if (failures.length) {
     console.log('\nThese steps failed; the rest ran. Fix the cause and run aos-uninstall again:');
     for (const f of failures) console.log(`    ${f}`);
-    process.exitCode = 1;
   }
+  return failures;
 }
 
 // ---------------------------------------------------------------------- main
@@ -575,6 +574,7 @@ async function main() {
   }
 
   console.log('');
-  await execute(p);
+  const failures = await execute(p);
+  if (failures.length) { process.exitCode = 1; return; }
   console.log('\nDone. Reinstall with: npx -y @hybridlabor-api/aos@latest');
 }
