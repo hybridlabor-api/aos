@@ -7923,6 +7923,12 @@ function resolveShippedMcpServers() {
         // An entry that points into mcps/ is only refreshed when that server's code is on disk.
         const dirs = [...raw.matchAll(/__MCPS_DIR__\/([^/"\\]+)/g)].map((m) => m[1]);
         if (dirs.some((d) => !fs.existsSync(path.join(mcpsDir, d)))) continue;
+        // A dist-based server whose build never produced its entry script would fail at launch (#185); fresh installs check this too.
+        const entry = def.command === 'node' && Array.isArray(def.args) && typeof def.args[0] === 'string' && def.args[0].startsWith('__MCPS_DIR__/') ? def.args[0].slice('__MCPS_DIR__/'.length) : null;
+        if (entry && !fs.existsSync(path.join(mcpsDir, entry))) {
+            log.warn(`${name}: ${entry} is missing (the build did not finish) -- not registering it. Run "npm run build" in ${path.join(mcpsDir, entry.split('/')[0])}; the failure is in the update log under ${path.join(homeDir, '.aos', 'logs')}.`);
+            continue;
+        }
         const resolved = raw
             .replace(/__MCPS_DIR__/g, () => esc(mcpsDir))
             .replace(/\{\{HOME\}\}/g, () => esc(homeDir))

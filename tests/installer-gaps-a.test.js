@@ -67,6 +67,16 @@ test('G6: update re-syncs shipped MCP entries already in a harness config, leave
     assert.deepStrictEqual(Object.keys(after).sort(), ['mine', name].sort());
 });
 
+test('#185: update registers a dist-based MCP only when its entry script exists', () => {
+    const inst = require('../installer.js');
+    const mcps = path.join(inst.resolveTargetPaths(inst.defaultPlatformValue(), null).targetMcpDir, 'mcps', 'tdmcp');
+    fs.mkdirSync(path.join(mcps, 'dist'), { recursive: true });
+    assert.ok(!('bdb_td_minddesigner' in inst.resolveShippedMcpServers()), 'no dist/index.js: not registered');
+    fs.writeFileSync(path.join(mcps, 'dist', 'index.js'), '');
+    assert.ok('bdb_td_minddesigner' in inst.resolveShippedMcpServers(), 'with dist/index.js: registered');
+    fs.rmSync(mcps, { recursive: true, force: true });
+});
+
 test('G7: a registered Plan Canvas unit is rewritten without the opt-in flag', () => {
     const { installPlanCanvasAutostart } = require('../installer.js');
     const home = fs.mkdtempSync(path.join(tmpHome, 'pc-'));
