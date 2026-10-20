@@ -612,7 +612,7 @@ aos-gate status
 Local MCP gateway (127.0.0.1:7790 in front of 7791): service control, server selection, harness config.
 
 - **When to use:** Check or control the MCP gateway, add or remove a gateway server, or adopt MCP servers from harness configs.
-- **Agent safety:** has side effects, call only when the task needs it. start/stop/restart control the service; enable/direct/add/remove/adopt rewrite harness MCP configs (with backups). status is read-only.
+- **Agent safety:** has side effects, call only when the task needs it. start/stop/restart control the service; enable/direct/add/remove/adopt rewrite harness MCP configs (with backups). status and inspect are read-only; run calls the chosen tool, which may have side effects.
 - **Entry:** `bin/aos-gateway.mjs`
 
 ```text
@@ -621,6 +621,8 @@ aos-gateway status [--json]
 aos-gateway enable | direct
 aos-gateway add|remove <server> [--dry-run]
 aos-gateway adopt [--dry-run] [--json]
+aos-gateway inspect [server|server/tool] [--format json]
+aos-gateway run <server>/<tool> --args '<json>'
 ```
 
 | Command | Usage | What it does |
@@ -635,6 +637,8 @@ aos-gateway adopt [--dry-run] [--json]
 | `add` | `aos-gateway add <server> [--dry-run]` | Add a shipped server to the gateway selection. |
 | `remove` | `aos-gateway remove <server> [--dry-run]` | Remove a server from the selection. |
 | `adopt` | `aos-gateway adopt [--dry-run] [--json]` | Move MCP servers found in harness configs behind the gateway. |
+| `inspect` | `aos-gateway inspect [server\|server/tool] [--format json]` | CLI mode: list servers, a server's tools or one tool schema from the running gateway, without loading MCP schemas into context. |
+| `run` | `aos-gateway run <server>/<tool> --args '<json>'` | CLI mode: call one gateway tool (inspect it first). Output goes to stdout. |
 
 | Option | What it does |
 |---|---|

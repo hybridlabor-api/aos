@@ -98,3 +98,15 @@ describe('gateway upstream recovery keys', () => {
         }
     });
 });
+
+describe('gateway async loading', () => {
+    test('off by default, on only for "asyncLoading": true, status reports the running state', async () => {
+        assert.ok(!(await serveArgs()).includes('--enable-async-loading'));
+        assert.ok(!(await serveArgs('{"asyncLoading": "yes"}')).includes('--enable-async-loading'));
+        assert.ok(!(await serveArgs('{ nope')).includes('--enable-async-loading'));
+        assert.ok((await serveArgs('{"asyncLoading": true}')).includes('--enable-async-loading'));
+        const { asyncText } = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+        assert.equal(asyncText({ running: false }), 'not running');
+        assert.match(asyncText({ running: true, asyncLoading: false, asyncRestartPending: true }), /off; restart pending/);
+    });
+});

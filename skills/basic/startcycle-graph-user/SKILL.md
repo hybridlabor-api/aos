@@ -119,6 +119,11 @@ set `OPENCODE_CONFIG_CONTENT='{"mcp":{"<name>":{"enabled":false}}}'` for each
 server `opencode mcp list` shows as connected. Give each worker exact files
 and line ranges, not an open-ended search.
 
+**Small-context workers can use CLI mode instead of MCP schemas.** When the
+AOS gateway runs, `aos-gateway inspect [server|server/tool]` lists servers,
+tools or one tool schema and `aos-gateway run <server>/<tool> --args '<json>'`
+calls it, so the worker loads only the schema it needs.
+
 **Give the delegation a real timeout.** Measured 2026-09: a trivial headless
 `agy` prompt took **605s**. `agy-delegate` defaults to `--print-timeout 5m`,
 so it aborts at 300s and reports an empty body while the answer is still on

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Local MCP gateway: token-checking forwarder on 127.0.0.1:7790 in front of @1mcp/agent on 127.0.0.1:7791.
-// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json]
+// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json] | inspect [target] | run <server>/<tool> --args '<json>'
 import '../lib/cli-help-guard.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const req = createRequire(import.meta.url);
-const { gatewayDir, lazyLoadingOn, RUNTIME_FILE, GATEWAY_PORT, UPSTREAM_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
+const { gatewayDir, lazyLoadingOn, asyncLoadingOn, RUNTIME_FILE, GATEWAY_PORT, UPSTREAM_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
 const { createForwarder } = req('../lib/gateway/forwarder.js');
 const { enable, disable } = req('../lib/gateway/harness.js');
 const { shippedPresets, livePresets } = req('../lib/v5/pkg-gateway.js');
@@ -22,6 +22,19 @@ const adoptApi = req('../lib/gateway/adopt.js');
 
 export const lazyText = (s) => !s.running ? 'not running' : s.lazyLoading === null ? 'unknown (restart the gateway to record it)'
     : `${s.lazyLoading ? 'on (meta-tools tool_list/tool_schema/tool_invoke)' : 'off'}${s.restartPending ? `; restart pending (gateway.json says ${s.lazyLoading ? 'off' : 'on'}; run aos-gateway restart)` : ''}`;
+
+export const asyncText = (s) => !s.running ? 'not running'
+    : `${s.asyncLoading ? 'on (--enable-async-loading)' : 'off'}${s.asyncRestartPending ? `; restart pending (gateway.json says ${s.asyncLoading ? 'off' : 'on'}; run aos-gateway restart)` : ''}`;
+
+// First non-flag argument, skipping the value of every 1mcp option that takes one (`--args '{"q":"x"}'` must not be the target).
+const VALUE_FLAGS = new Set(['--args', '--format', '--limit', '--cursor', '--preset', '-p', '--tag-filter', '-f', '--tags', '--context', '--url', '-u']);
+export function firstPositional(argv) {
+    for (let i = 0; i < argv.length; i++) {
+        if (VALUE_FLAGS.has(argv[i])) { i++; continue; }
+        if (!argv[i].startsWith('-')) return argv[i];
+    }
+    return undefined;
+}
 
 export const LABEL = 'com.bdb.aos.gateway';
 export const WIN_TASK = 'AOS MCP Gateway';
@@ -84,7 +97,10 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
     let lazyLoading = null;
     if (running) try { const r = JSON.parse(fs.readFileSync(path.join(dir, RUNTIME_FILE), 'utf8')); if (typeof r.lazyLoading === 'boolean') lazyLoading = r.lazyLoading; } catch { /* unknown */ }
     const restartPending = lazyLoading !== null && lazyLoading !== lazyLoadingOn(dir);
-    return { running, pid: running ? readPid(dir) : null, lazyLoading, restartPending, port, upstreamsScope: 'global', upstreams, ...(inUse ? { error: problem } : {}) };
+    let asyncLoading = false;
+    if (running) try { asyncLoading = JSON.parse(fs.readFileSync(path.join(dir, RUNTIME_FILE), 'utf8')).asyncLoading === true; } catch { /* unknown counts as off */ }
+    const asyncRestartPending = running && asyncLoading !== asyncLoadingOn(dir);
+    return { running, pid: running ? readPid(dir) : null, lazyLoading, restartPending, asyncLoading, asyncRestartPending, port, upstreamsScope: 'global', upstreams, ...(inUse ? { error: problem } : {}) };
 }
 
 const TOKEN_RE = /^[0-9a-f]{64}$/;
@@ -148,11 +164,13 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
     fs.writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
 
     const lazy = lazyLoadingOn(dir, log);
+    const asyncLoad = asyncLoadingOn(dir);
     const args = [script, 'serve', '-c', path.join(dir, 'mcp.json'), '--config-dir', dir, '--host', '127.0.0.1', '--port', String(upstreamPort),
         '--no-enable-session-persistence', '--enable-enhanced-security', '--log-level', 'warn',
-        ...(lazy ? ['--enable-lazy-loading', '--lazy-fallback-on-error', 'full'] : [])];
+        ...(lazy ? ['--enable-lazy-loading', '--lazy-fallback-on-error', 'full'] : []),
+        ...(asyncLoad ? ['--enable-async-loading'] : [])];
     const runtimeFile = path.join(dir, RUNTIME_FILE);
-    try { fs.writeFileSync(runtimeFile, JSON.stringify({ lazyLoading: lazy, pid: process.pid }), { mode: 0o600 }); } catch { /* status shows unknown */ }
+    try { fs.writeFileSync(runtimeFile, JSON.stringify({ lazyLoading: lazy, asyncLoading: asyncLoad, pid: process.pid }), { mode: 0o600 }); } catch { /* status shows unknown */ }
     let child = null;
     let stopping = false;
     let timer = null;
@@ -269,6 +287,7 @@ async function main() {
         else {
             console.log(`gateway: ${s.running ? `running${s.pid ? ` (pid ${s.pid})` : ''}` : 'not running'} on 127.0.0.1:${s.port}${s.error ? ` - ${s.error}` : ''}`);
             console.log(`  lazy loading: ${lazyText(s)}`);
+            console.log(`  async loading: ${asyncText(s)}`);
             for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
@@ -284,6 +303,12 @@ async function main() {
                 ? disable({ home, files })
                 : enable({ home, files, token: readToken(gatewayDir(home)), shipped: shippedServers(aosRoot), presets: livePresets(gatewayDir(home), shippedPresets(aosRoot)), contextProfile: contextProfileOf(profile.readSettings(home, () => {})) });
         } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
+        if (cmd === 'enable') {
+            try {
+                const dup = adoptApi.removeAdoptedDuplicates({ home, token: readToken(gatewayDir(home)), shipped: shippedServers(aosRoot), files });
+                report.push(...(dup.files || []).filter((f) => f.removed && f.removed.length));
+            } catch (e) { console.error(`aos-gateway enable: adopted-server cleanup failed: ${e.message}`); }
+        }
         for (const r of report) {
             const bits = r.error ? [`ERROR ${r.error}`] : r.skipped ? [`skipped: ${r.skipped}`] : [
                 ...(r.removed || []).map((n) => `removed ${n}`), ...(r.restored || []).map((n) => `restored ${n}`),
@@ -293,6 +318,20 @@ async function main() {
             console.log(`${r.file} [${r.kind}]: ${bits.join('; ') || 'no change'}`);
         }
         process.exit(report.some((r) => r.error) ? 1 : 0);
+    }
+    if (cmd === 'inspect' || cmd === 'run') {
+        // CLI mode: the bundled 1mcp client talks to the upstream on loopback (7791). Its own bearer auth is OAuth only and
+        // unused here; the AOS token guards the forwarder on 7790 and is never read or printed by this command.
+        const dir = gatewayDir(os.homedir());
+        if (!readPid(dir)) { console.error(`aos-gateway ${cmd}: the gateway is not running (aos-gateway start)`); process.exit(1); }
+        const target = firstPositional(rest);
+        if (cmd === 'run' && !(target && /^[^/]+\/[^/]+$/.test(target))) { console.error('usage: aos-gateway run <server>/<tool> --args \'<json>\''); process.exit(2); }
+        const ai = rest.indexOf('--args');
+        if (ai >= 0) try { JSON.parse(rest[ai + 1]); } catch { console.error('aos-gateway run: --args must be a JSON object string'); process.exit(2); }
+        let entry;
+        try { entry = oneMcpEntry(dir); } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
+        const r = spawnSync(process.execPath, [entry, cmd, ...rest, '-u', `http://127.0.0.1:${UPSTREAM_PORT}/mcp`], { stdio: 'inherit', shell: false, windowsHide: true });
+        process.exit(r.status ?? 1);
     }
     if (cmd === 'adopt') {
         const home = os.homedir();
@@ -359,7 +398,7 @@ async function main() {
         console.log(`${cmd} ${server}: ${result.selected.length} servers selected (${result.dryRun ? 'dry-run' : 'mcp.json rewritten'}); run "aos-gateway status" to confirm`);
         process.exit(0);
     }
-    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | add | remove | adopt [--dry-run] [--json]');
+    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | add | remove | adopt [--dry-run] [--json] | inspect [target] | run <server>/<tool> --args <json>');
     process.exit(2);
 }
 
