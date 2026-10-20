@@ -1491,7 +1491,7 @@ function harnessSummaryLine() {
     return `Installed for: ${names(true)}  Skipped (not found): ${names(false)}`;
 }
 
-const ROUTER_TARGETS = ['claude', 'opencode-go', 'agy', 'codex', 'claude-glm'];
+const { KNOWN_TARGETS: ROUTER_TARGETS, KNOWN_ROLES: ROUTER_ROLES } = require('./lib/router/table.js');
 const ROUTER_TARGET_LABELS = {
     claude: 'Claude (Claude Code / Desktop)',
     'opencode-go': 'OpenCode (glm-5.3-flash)',
@@ -1518,7 +1518,6 @@ function orderTargets(first, selected) {
     return [first, ...selected.filter((t) => t !== first)];
 }
 
-const ROUTER_ROLES = ['architect', 'techlead', 'reviewer', 'builder', 'scout'];
 
 function buildRouterPreferences(mainHarness, selectedTargets, preset = 'default') {
     const has = (t) => selectedTargets.includes(t);
@@ -6514,38 +6513,10 @@ function mergeBdbSettingsHooks(settingsPath, { projectLocal = false } = {}) {
     const localize = (cmd) => (projectLocal
         ? (machineGlobalHooks.some((n) => cmd.includes(n)) ? cmd : cmd.split('${HOME}').join('${CLAUDE_PROJECT_DIR}').replace(/\$CLAUDE_PROJECT_DIR\b/g, '${CLAUDE_PROJECT_DIR}'))
         : cmd.replace(/\$\{?CLAUDE_PROJECT_DIR\}?\/\.claude\/hooks\//g, '$HOME/.claude/hooks/').split('$HOME/.claude/hooks/').join(process.env.CLAUDE_CONFIG_DIR ? '${CLAUDE_CONFIG_DIR}/hooks/' : '$HOME/.claude/hooks/'));
-    const DEFAULT_HOOK_TIMEOUTS = {
-        'go-gate.mjs': 10,
-        'conventional-commits.mjs': 10,
-        'env-file-protection.mjs': 10,
-        'graph-gate.mjs': 10,
-        'memb-inject.mjs': 10,
-        'a2a-inbox.mjs': 10,
-        'a2a-session.mjs': 5,
-        'go-token.mjs': 10,
-        'go-grant.mjs': 10,
-        'rules-inject.mjs': 10,
-        'trail-relay.mjs': 3,
-        'trail-autostart.mjs': 3,
-        'aos-session-hint.mjs': 3,
-        'memb-session-save.mjs': 5,
-    };
     const cloneBdbEntries = (entries) =>
         JSON.parse(JSON.stringify(entries)).map((e) => ({
             ...e,
-            hooks: (e.hooks || []).map((h) => {
-                if (!h || typeof h.command !== 'string') return h;
-                const updated = { ...h, command: localize(h.command) };
-                if (typeof updated.timeout !== 'number' || updated.timeout <= 0) {
-                    for (const [script, to] of Object.entries(DEFAULT_HOOK_TIMEOUTS)) {
-                        if (updated.command.includes(script)) {
-                            updated.timeout = to;
-                            break;
-                        }
-                    }
-                }
-                return updated;
-            }),
+            hooks: (e.hooks || []).map((h) => (h && typeof h.command === 'string' ? { ...h, command: localize(h.command) } : h)),
         }));
 
     const buildMerged = (existing) => {
