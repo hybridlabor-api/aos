@@ -477,11 +477,12 @@ async function execute(p) {
       const bdb = profile.HOOK_SCRIPTS;
       let touched = false;
       for (const [event, entries] of Object.entries(s.hooks || {})) {
-        const kept = entries.filter((e) => !(e.hooks || []).some((x) => bdb.some((n) => String(x.command).includes(n))));
+        const kept = entries.filter((e) => !(e.hooks || []).some((x) => ur.commandRunsScript(x.command, bdb)));
         if (kept.length !== entries.length) { touched = true; s.hooks[event] = kept; }
         if (!kept.length) delete s.hooks[event];
       }
       if (touched) {
+        copyFileSync(settings, `${settings}.${stamp}.bak`);
         writeFileSync(settings, JSON.stringify(s, null, 2) + '\n');
         console.log('  BDB hooks removed from settings.json, everything else unchanged');
       }
