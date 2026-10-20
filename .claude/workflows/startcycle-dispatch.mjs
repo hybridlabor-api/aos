@@ -1406,7 +1406,12 @@ function decideCanvasVerdict(payload) {
 // .cmd shims need a shell on Windows; quote args there because the shell re-parses them.
 const IS_WIN = typeof process !== 'undefined' && process.platform === 'win32';
 const cliBin = (name) => (IS_WIN ? `${name}.cmd` : name);
-const cliArg = (a) => (IS_WIN ? `"${String(a).replace(/"/g, '""')}"` : a);
+const cliArg = (a) => {
+  if (!IS_WIN) return a;
+  const s = String(a);
+  if (s.includes('%')) throw new Error(`argument contains %; cmd.exe would expand it: ${s.slice(0, 60)}`);
+  return `"${s.replace(/"/g, '""').replace(/(\\+)$/, '$1$1')}"`;
+};
 // [command, args] for spawn: on Windows one command line with an empty args array (shell:true plus args is DEP0190).
 const cliCall = (name, args) => (IS_WIN ? [[cliBin(name), ...args.map(cliArg)].join(' '), []] : [name, args]);
 
