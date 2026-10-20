@@ -69,8 +69,9 @@ describe('node marker attribution', () => {
 });
 
 import { SessionTable } from '../skills/global_config/agenttrail/lib/sessions.mjs';
+import { autoActiveTask } from '../skills/global_config/agenttrail/lib/sessions.mjs';
 import { buildModel } from '../skills/global_config/agenttrail/lib/hub-model.mjs';
-import { tickTask } from '../skills/global_config/agenttrail/lib/plan.mjs';
+import { firstOpenTaskId, tickTask } from '../skills/global_config/agenttrail/lib/plan.mjs';
 
 const PLAN_REL = 'production_artifacts/00_execution_plan.md';
 const PLAN = `# Checkout rewrite
@@ -128,6 +129,96 @@ describe('two workers land on the right nodes', () => {
   });
 });
 
+describe('auto state: AOS_TRAIL_NODE workers read their first open task as [~]', () => {
+  // stampTrailNode turns AOS_TRAIL_NODE env into task {id:<node>, status:'doing', plan}
+  const stampedFor = (repo) => stampTrailNode(
+    { hook_event_name: 'PreToolUse', session_id: 'worker-a', cwd: repo, agent: 'opencode', tool_name: 'Edit' },
+    { env: { AOS_TRAIL_NODE: 'cart', AOS_TRAIL_PLAN: PLAN_REL } },
+  );
+  const posted = (repo, file) => ({
+    hook_event_name: 'PostToolUse', session_id: 'worker-a', cwd: repo, agent: 'opencode',
+    tool_name: 'Edit', tool_input: { file_path: path.join(repo, file) },
+  });
+
+  test('first edit flips the node\u2019s first open task to active in the model only', () => {
+    const repo = planRepo('trail-auto-on-');
+    const t = new SessionTable();
+    t.apply(fromLegacyHook(stampedFor(repo)));
+    t.apply(fromLegacyHook(posted(repo, 'src/cart.ts')));
+    const planFile = path.join(repo, PLAN_REL);
+    const before = fs.readFileSync(planFile, 'utf8');
+
+    const m = buildModel({ now: Date.now(), port: 5350, sessionTable: t, gate: null, asks: [], repos: [{ root: repo }], pinnedKeys: [] });
+    const p = m.repos.flatMap((r) => r.plans)[0];
+    const byId = Object.fromEntries(p.tasks.map((x) => [x.id, x]));
+    assert.equal(byId['cart-build'].status, 'active', 'first open task reads as [~]');
+    assert.equal(byId['cart-build'].live?.status, 'doing');
+    assert.equal(byId['cart-build'].live?.auto, true);
+    assert.equal(byId['cart-build'].workers?.[0]?.id, 'worker-a', 'worker card rides along');
+    assert.equal(byId['cart-wire'].status, 'pending', 'only the first open task is promoted');
+    assert.equal(byId['cart-wire'].live, null);
+    assert.equal(p.progress.live, 1);
+    assert.equal(fs.readFileSync(planFile, 'utf8'), before, 'the plan file is never written');
+  });
+
+  test('done tasks are never promoted; the next pending one is', () => {
+    const repo = planRepo('trail-auto-order-');
+    fs.writeFileSync(path.join(repo, PLAN_REL), PLAN.replace('- [ ] build it {#cart-build}', '- [x] build it {#cart-build}'));
+    const t = new SessionTable();
+    t.apply(fromLegacyHook(stampedFor(repo)));
+    t.apply(fromLegacyHook(posted(repo, 'src/cart.ts')));
+    const p = buildModel({ now: Date.now(), port: 5350, sessionTable: t, gate: null, asks: [], repos: [{ root: repo }], pinnedKeys: [] }).repos.flatMap((r) => r.plans)[0];
+    const byId = Object.fromEntries(p.tasks.map((x) => [x.id, x]));
+    assert.equal(byId['cart-build'].status, 'done', 'done stays done');
+    assert.equal(byId['cart-wire'].status, 'active', 'the first open task is next');
+  });
+
+  test('before the first edit nothing is auto-promoted', () => {
+    const repo = planRepo('trail-auto-preedit-');
+    const t = new SessionTable();
+    t.apply(fromLegacyHook(stampedFor(repo)));
+    const p = buildModel({ now: Date.now(), port: 5350, sessionTable: t, gate: null, asks: [], repos: [{ root: repo }], pinnedKeys: [] }).repos.flatMap((r) => r.plans)[0];
+    assert.equal(p.progress.live, 0);
+    assert.equal(p.tasks.find((x) => x.id === 'cart-build').status, 'pending');
+  });
+
+  test('an ended session contributes nothing automatic and the dispatcher still owns the plan', () => {
+    // a plan on the default branch is archived once no session is live; the
+    // SessionEnd case needs its own unmerged branch to stay on the map
+    const repo = planRepo('trail-auto-end-');
+    const g = (...args) => { const r = spawnSync('git', args, { cwd: repo, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_GLOBAL: '/dev/null' } }); assert.equal(r.status, 0, args.join(' ') + ': ' + r.stderr) };
+    g('checkout', '-qb', 'feat/cart');
+    fs.writeFileSync(path.join(repo, 'cart.txt'), 'wip');
+    g('add', '.');
+    g('commit', '-qm', 'wip');
+    const planFile = path.join(repo, PLAN_REL);
+    const before = fs.readFileSync(planFile, 'utf8');
+    const t = new SessionTable();
+    t.apply(fromLegacyHook(stampedFor(repo)));
+    t.apply(fromLegacyHook(posted(repo, 'src/cart.ts')));
+    t.apply(fromLegacyHook({ ...stampedFor(repo), hook_event_name: 'SessionEnd', tool_name: undefined }));
+    const p = buildModel({ now: Date.now(), port: 5350, sessionTable: t, gate: null, asks: [], repos: [{ root: repo }], pinnedKeys: [] }).repos.flatMap((r) => r.plans)[0];
+    const byId = Object.fromEntries(p.tasks.map((x) => [x.id, x]));
+    assert.equal(byId['cart-build'].live, null);
+    assert.equal(byId['cart-build'].status, 'pending', 'nothing is auto-ticked on end');
+    assert.equal(p.progress.live, 0);
+    assert.equal(fs.readFileSync(planFile, 'utf8'), before, 'the plan file still shows the open box');
+  });
+
+  test('autoActiveTask requires a stamped task, a live session and a first edit', () => {
+    const now = Date.now();
+    const task = () => ({ currentTask: { id: 'x', plan: 'p' } });
+    assert.equal(autoActiveTask(null), null);
+    assert.equal(autoActiveTask({ ...task(), done: true, lastFileAt: 1, lastEventAt: now }, { now, liveMs: 1000 }), null);
+    assert.equal(autoActiveTask({ ...task(), ended: true, lastFileAt: 1, lastEventAt: now }, { now, liveMs: 1000 }), null);
+    assert.equal(autoActiveTask({ ...task(), lastEventAt: now }, { now, liveMs: 1000 }), null, 'no first edit yet');
+    assert.equal(autoActiveTask({ ...task(), lastFileAt: 1, lastEventAt: now - 5000 }, { now, liveMs: 1000 }), null, 'stale');
+    assert.equal(autoActiveTask({ currentTask: { id: 'x' }, lastFileAt: 1, lastEventAt: now }, { now, liveMs: 1000 }), null, 'no plan named');
+    assert.deepEqual(
+      autoActiveTask({ currentTask: { id: 'x', plan: 'p', status: 'doing' }, lastFileAt: 1, lastEventAt: now }, { now, liveMs: 1000 }),
+      { id: 'x', plan: 'p', status: 'doing' });
+  });
+});
 
 describe('float: aos-trail tick', () => {
   test('tickTask flips exactly one checkbox for the named id', () => {

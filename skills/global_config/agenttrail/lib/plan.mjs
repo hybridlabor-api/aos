@@ -79,6 +79,14 @@ export function lintPlan(parsed, planText) {
   if (comps.length > 9) out.push(`${comps.length} components — over the 5–9 governor, consider merging`)
   return out.slice(0, 12)
 }
+// First open (declared `- [ ]`, in file order) task under a component — what an
+// AOS_TRAIL_NODE worker's node maps to while it works. Blocked and done tasks
+// are never auto-promoted.
+export function firstOpenTaskId(nodes, componentId) {
+  for (const n of nodes) if (n.level === 'task' && n.parent === componentId && n.status === 'pending') return n.id
+  return null
+}
+
 // Ticking from the outside in: a worker or dispatcher names a task id and a
 // mode — --doing (`[~]`), --done (`[x]`, the default), --todo (`[ ]`). Exactly
 // the one line carrying `{#<task-id>}` moves between the states each mode
