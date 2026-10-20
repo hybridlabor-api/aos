@@ -11,6 +11,18 @@ date_added: "2026-02-27"
 
 This skill provides guidance for quality focused software development and architecture. It is based on Clean Architecture and Domain Driven Design principles.
 
+## Plan first
+
+Design work starts from the `architecture` template — diagram, data model, trade-offs:
+
+```bash
+aos-plan-canvas new architecture <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Code Style Rules
 
 ### General Principles

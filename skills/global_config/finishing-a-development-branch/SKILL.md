@@ -8,6 +8,18 @@ date_added: "2026-09-25"
 
 # Finishing a Development Branch
 
+## Plan first
+
+Before the merge decision, present the branch as a `recap-review` page — the reviewer decides there:
+
+```bash
+aos-plan-canvas new recap-review <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Overview
 
 **Core principle:** Verify tests → Detect environment → Present options → Execute choice → Clean up.

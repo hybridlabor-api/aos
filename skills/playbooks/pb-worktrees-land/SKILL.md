@@ -23,6 +23,18 @@ est_time: 10-30 min
 # Land and clean up worktrees
 What you get: an inventory of your worktrees with a class for each, and the merged clean ones removed after your GO.
 
+## Plan first
+
+Recap a worktree's contents as a `recap-review` page before removing anything:
+
+```bash
+aos-plan-canvas new recap-review <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Inputs
 - repos (optional) — repo paths to scan; default is the current repo's main worktree (`git rev-parse --path-format=absolute --git-common-dir`, parent dir)
 - `<owner/repo>` for each repo comes from `git -C <repo> remote get-url origin`

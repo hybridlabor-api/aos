@@ -9,6 +9,18 @@ source: BuilderIO/skills
 
 Make completion state obvious at the end of every response.
 
+## Plan first
+
+For finished work that needs a quick visual summary, build a `recap` page:
+
+```bash
+aos-plan-canvas new recap <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Status Block
 
 Every response that completes a unit of work must end with:

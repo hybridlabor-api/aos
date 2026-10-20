@@ -23,6 +23,18 @@ est_time: 2-4 h
 # Redesign one app
 What you get: one app's UI overhauled against a written audit, new design tokens and a before/after plan, delivered as a pull request after your GO.
 
+## Plan first
+
+The before/after plan is a `recap-board` page — audit findings and target state on one board:
+
+```bash
+aos-plan-canvas new recap-board <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Inputs
 - repo — the app's checkout, default the current directory
 - app_url — the running local dev URL (not a remote or production site)

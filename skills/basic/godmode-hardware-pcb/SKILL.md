@@ -10,6 +10,20 @@ This skill is the architectural authority for **Electrical Schematics, PCB Layou
 
 ---
 
+## Plan first
+
+Planning starts on the plan canvas with the `architecture` template, and the human approves it there — not in chat.
+
+Board and enclosure design: structure, physical constraints and sign-off agreed before layout begins.
+
+```bash
+aos-plan-canvas new architecture <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## 1. Role & Architectural Boundaries
 
 * **Physical Design Authority:** Governs schematic capture, board layout, layer stackup, netclass definition, controlled-impedance routing, and DFM/DFA sign-off across KiCad-driven projects. Also governs parametric enclosure and mechanical co-design via OpenSCAD.

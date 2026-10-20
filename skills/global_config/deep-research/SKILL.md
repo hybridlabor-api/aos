@@ -11,6 +11,18 @@ date_added: "2026-02-27"
 
 Run autonomous research tasks that plan, search, read, and synthesize information into comprehensive reports.
 
+## Plan first
+
+The report starts from the `research` template — question, evidence table, recommendation:
+
+```bash
+aos-plan-canvas new research <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## When to Use This Skill
 
 Use this skill when:

@@ -23,6 +23,18 @@ est_time: 2-6 h
 # Show build: lights, media, visuals
 What you get: a cue sheet and a show built per lane, rehearsed offline first, with the live rig touched only after your GO. A lane that is not available is skipped, not faked.
 
+## Plan first
+
+The show is planned in the `show-control` template — one reviewable technical document:
+
+```bash
+aos-plan-canvas new show-control <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Inputs
 - tracker — the pb-event-tracker output (`tracker.csv`, `brief.md`)
 - cue_list — the cues: number, name, what happens in light, media and visuals

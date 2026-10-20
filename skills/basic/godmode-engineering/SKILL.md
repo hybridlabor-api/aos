@@ -8,6 +8,20 @@ category: engineering-method
 
 This skill orchestrates the core logic, domain modeling, and typing constraints of the codebase. It replaces scattershot coding with rigorous, structured engineering methodologies designed for the BDB ecosystem. As an agent, you must execute these principles rigorously across all supported harnesses (Cursor, Claude Code, Agy, Copilot).
 
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- System design or reshaping → `architecture`; one defect → `bugfix`; a data or service move → `migration`; choosing between options → `research`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## 1. Domain Modeling & Type Strictness
 Code represents business logic. Do not write implementation details before defining the boundaries.
 *   **Strict Typing:** `any` is strictly forbidden. Use `unknown` if a type is truly dynamic, and validate it at runtime (e.g., using Zod).

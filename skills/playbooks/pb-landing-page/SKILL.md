@@ -23,6 +23,18 @@ est_time: 1-3 h
 # Landing page launch
 What you get: a live landing page with checked copy, SEO basics and, if you have one, a launch video.
 
+## Plan first
+
+The build starts from the `feature` template — screens, storyboard and build order:
+
+```bash
+aos-plan-canvas new feature <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Inputs
 - brief — product brief: audience, offer, proof you can show
 - brand_tokens — path to the design tokens or brand notes

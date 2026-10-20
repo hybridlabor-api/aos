@@ -8,6 +8,20 @@ category: engineering-method
 
 This skill is the final gatekeeper. No code reaches production without passing these rigorous checks. It orchestrates release management and workflow discipline for the BDB ecosystem across all supported harnesses (Cursor, Claude Code, Agy, Copilot).
 
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- Shipping a version to users → `release`; a reviewer deciding on a merge (verified vs not verified) → `recap-review`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## 1. Spec-Driven Development
 Writing code without a specification is guessing.
 *   **The Specification Phase:** Every major feature or refactor must begin by writing a clear markdown specification file.

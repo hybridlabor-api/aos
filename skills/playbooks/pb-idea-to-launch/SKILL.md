@@ -23,6 +23,18 @@ est_time: 2-6 h
 What you get: an idea turned into a deployed prototype with green CI and one hero image, pushed and deployed only after your GO.
 Availability: needs the comfyui-mcp server configured in the harness (no config is shipped). Missing → steps 2 to 4 still run, step 5 stops with that message.
 
+## Plan first
+
+Scaffold the build with the `feature` template — screens and build order before code:
+
+```bash
+aos-plan-canvas new feature <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map. The full loop: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## Inputs
 - idea — a short description, asked once
 - repo_or_new_project — an existing checkout, or a name for a new project

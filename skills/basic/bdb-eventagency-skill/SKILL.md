@@ -13,6 +13,20 @@ Techniques adapted from [talkvalue/event-agency-skills](https://github.com/talkv
 
 ---
 
+## Plan first
+
+Planning starts on the plan canvas, and the human approves it there — not in chat. Pick the template by the work:
+
+- A show day's technical plan → `show-control`; a client project go-live → `release`.
+
+```bash
+aos-plan-canvas new <template-id> <plan-dir>             # scaffold from the choice above
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## 1. Routing Table
 
 | Task | Route to |

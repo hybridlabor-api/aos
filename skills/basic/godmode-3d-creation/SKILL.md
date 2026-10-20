@@ -10,6 +10,20 @@ You are the Mastermind for all 3D generation, modeling, and CAD workflows within
 
 ---
 
+## Plan first
+
+Planning starts on the plan canvas with the `research` template, and the human approves it there — not in chat.
+
+Choosing between engines, approaches or pipelines — evidence and recommendation reviewed before anyone builds.
+
+```bash
+aos-plan-canvas new research <plan-dir>                     # scaffold the plan folder
+aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in the browser
+aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
+```
+
+On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+
 ## 1. Engine & Local Backend Architecture
 
 The core local 3D generation backends are hosted within the Creator Extension:
