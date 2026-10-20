@@ -8,7 +8,7 @@ import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -42,15 +42,24 @@ describe('plan-canvas port ownership', () => {
 
   const planIn = (dir) => { n += 1; const f = path.join(dir, `plan-${n}.md`); fs.writeFileSync(f, '# P\n'); return f; };
 
-  const runCli = (cwd, port, ...args) => {
+  // Async on purpose: the servers run in this process, so a blocking spawnSync would starve them of the event loop.
+  const runCli = (cwd, port, ...args) => new Promise((resolve) => {
     const env = {
       PATH: WIN ? process.env.PATH : '/opt/homebrew/bin:/usr/bin:/bin', HOME: home,
       ...(WIN ? { SystemRoot: process.env.SystemRoot, USERPROFILE: home } : {}),
       AOS_PLAN_CANVAS_PORT: String(port), AOS_PLAN_CANVAS_STATE_DIR: stateDir,
     };
-    const r = spawnSync(process.execPath, [CLI, ...args], { env, cwd, encoding: 'utf8', timeout: 20000 });
-    try { return JSON.parse(r.stdout); } catch { return { raw: r.stdout, stderr: r.stderr, status: r.status }; }
-  };
+    const child = spawn(process.execPath, [CLI, ...args], { env, cwd });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => { stdout += d; });
+    child.stderr.on('data', (d) => { stderr += d; });
+    const timer = setTimeout(() => child.kill('SIGKILL'), 20000);
+    child.on('close', (status) => {
+      clearTimeout(timer);
+      try { resolve(JSON.parse(stdout)); } catch { resolve({ raw: stdout, stderr, status }); }
+    });
+  });
 
   const health = async (port) => {
     try {
@@ -74,7 +83,7 @@ describe('plan-canvas port ownership', () => {
   test('stop refuses a server of another root and leaves it running', async () => {
     const h = await serverFor(rootA);
     try {
-      const out = runCli(rootB, h.port, 'stop');
+      const out = await runCli(rootB, h.port, 'stop');
       assert.equal(out.status, 'refused', JSON.stringify(out));
       assert.equal(typeof out.ownerRoot, 'string');
       assert.match(out.hint, /serves .*repo-a|stop it from that workspace/);
@@ -86,7 +95,7 @@ describe('plan-canvas port ownership', () => {
   test('stop shuts down a server started from this workspace', async () => {
     const h = await serverFor(rootB);
     try {
-      const out = runCli(rootB, h.port, 'stop');
+      const out = await runCli(rootB, h.port, 'stop');
       assert.equal(out.status, 'stopping', JSON.stringify(out));
     } finally { await h.server.close().catch(() => {}); }
   });
@@ -94,7 +103,7 @@ describe('plan-canvas port ownership', () => {
   test('open from another root names the owning server instead of a bare 403', async () => {
     const h = await serverFor(rootA);
     try {
-      const out = runCli(rootB, h.port, 'open', planIn(rootB), '--no-open');
+      const out = await runCli(rootB, h.port, 'open', planIn(rootB), '--no-open');
       assert.equal(out.error !== undefined, true, JSON.stringify(out));
       assert.match(out.error, /serves .*repo-a/);
       assert.match(out.error, /AOS_PLAN_CANVAS_PORT/);
@@ -107,7 +116,7 @@ describe('plan-canvas port ownership', () => {
     try {
       const before = await health(h.port);
       assert.equal(before.version, '0.0.1');
-      const out = runCli(rootB, h.port, 'open', planIn(rootB), '--no-open');
+      const out = await runCli(rootB, h.port, 'open', planIn(rootB), '--no-open');
       assert.equal(out.error !== undefined, true, JSON.stringify(out));
       const now = await health(h.port);
       assert.equal(now.version, '0.0.1', 'foreign older server must not be replaced from another root');
