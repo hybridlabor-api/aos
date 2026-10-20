@@ -2,6 +2,7 @@
 // PreToolUse gate that enforces Conventional Commits on `git commit` across harnesses:
 // - Claude Code (.claude/hooks/conventional-commits.mjs)
 // - Antigravity / Gemini CLI (hooks.json PreToolUse)
+// - Codex (config.toml PreToolUse; exit 2 + stderr is its deny shape)
 //
 // Why this exists: release-please (.github/workflows/release-please.yml) parses
 // commit subjects to compute the version bump and the changelog. It only reads
@@ -26,7 +27,8 @@ const TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chor
 
 const CONVENTIONAL = new RegExp(`^(${TYPES.join("|")})(\\(.+\\))?:\\s.+`);
 
-const COMMIT = /git\s+commit\b/;
+// Command position only (start of line or after ; && || |): text that merely mentions the command is not a commit.
+const COMMIT = /(?:^|[;&|\n])[ \t]*(?:\w+=\S+[ \t]+)*git(?:[ \t]+(?:-[Cc][ \t]+\S+|--no-pager))*[ \t]+commit\b/;
 
 function readStdin() {
   try {
@@ -57,15 +59,21 @@ function respond(isAgy, allowed, reason = "") {
 // Returns the commit message, or null when it cannot be read. Null means
 // "cannot tell" and must be treated as allowed.
 function extractMessage(command) {
-  // -m "msg" / -m 'msg'
-  const inline = command.match(/git\s+commit[\s\S]*?-m\s+(?:"([^"]+)"|'([^']+)')/);
-  if (inline) return inline[1] ?? inline[2];
+  const at = command.search(COMMIT);
+  const tail = at < 0 ? command : command.slice(at);
 
-  // -m "$(cat <<'EOF' ... EOF)"
-  const heredoc = command.match(/git\s+commit[\s\S]*?-m\s+"?\$\(cat\s+<<['"]?EOF['"]?\s*\n([\s\S]+?)\nEOF/);
-  if (heredoc) return heredoc[1].trim();
+  // Heredoc form first: the inline form below would read the opening of the substitution as the message.
+  const heredoc = tail.match(/(?:-[a-zA-Z]*m|--message)(?:\s+|=)"?\$\(cat\s+<<-?\s*['"]?(\w+)['"]?[ \t]*\n([\s\S]+?)\n[ \t]*\1\b/);
+  if (heredoc) return heredoc[2].trim();
 
-  // Plain `git commit` (editor) or a message the hook cannot see: fail open.
+  // -m "msg", -am 'msg', --message "msg", --message="msg"
+  const inline = tail.match(/(?:-[a-zA-Z]*m|--message)(?:\s+|=)(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/);
+  if (inline) {
+    const msg = inline[1] ?? inline[2];
+    return msg.startsWith("$(") ? null : msg;
+  }
+
+  // Plain commit (editor) or a message the hook cannot see: fail open.
   return null;
 }
 
@@ -114,6 +122,7 @@ function main() {
     input?.toolCall?.args?.CommandLine ||
     input?.toolCall?.args?.command ||
     input?.tool_input?.command ||
+    input?.tool_input?.cmd || // Codex exec_command
     input?.command ||
     "";
 

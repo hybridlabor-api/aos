@@ -1143,13 +1143,34 @@ function globalSkillDestRoots() {
         path.join(homeDir, '.codex', 'skills'),
         path.join(homeDir, '.cursor', 'skills'),
         path.join(homeDir, '.roo', 'skills'),
+        path.join(homeDir, '.config', 'opencode', 'skills'),
+        path.join(homeDir, '.windsurf', 'bdb-skills'),
+        path.join(homeDir, '.aider', 'bdb-skills'),
         path.join(geminiDir, 'config', 'skills'),
     ];
 }
 
 // Retires skills the package no longer ships (lib/retired-skills.js). Edited or foreign files are
 // copied to the backup dir before the skill folder is removed.
+// Roo used to get a second copy under ~/.roo/bdb-skills. Once ~/.roo/skills exists, the AOS copies there are removed
+// (manifest-listed files); edited or foreign files are backed up first, never silently lost.
+function migrateRooBdbSkills(manifest, home = homeDir) {
+    const root = path.join(home, '.roo', 'bdb-skills');
+    if (!manifest || !fs.existsSync(root) || !fs.existsSync(path.join(home, '.roo', 'skills'))) return;
+    const names = new Set();
+    for (const f of Object.keys(manifest)) {
+        if (typeof f === 'string' && f.startsWith(root + path.sep)) names.add(f.slice(root.length + 1).split(path.sep)[0]);
+    }
+    if (!names.size) return;
+    pruneRetiredSkills({
+        home, manifest, roots: [root], names: [...names], what: 'duplicate Roo',
+        backupDir: path.join(home, '.agents', 'backups', `roo-bdb-skills-${timestamp}`),
+        log,
+    });
+}
+
 function pruneRemovedSkills(manifest) {
+    migrateRooBdbSkills(manifest);
     pruneRetiredSkills({
         home: homeDir,
         manifest,
@@ -1251,6 +1272,12 @@ function reportKeptUserEdits() {
 // placeholder for it.
 function retireObsoleteLegacyDir(targetLegacyDir) {
     if (!targetLegacyDir || !fs.existsSync(targetLegacyDir)) return;
+    // Roo reads ~/.roo/skills as a skill dir, so a `legacy` folder there may be the user's own: retire it
+    // only when the install manifest lists files in it.
+    if (path.resolve(targetLegacyDir) === path.join(homeDir, '.roo', 'skills', 'legacy')) {
+        const prefix = path.resolve(targetLegacyDir) + path.sep;
+        if (!Object.keys(_sessionManifest || {}).some((f) => path.resolve(f).startsWith(prefix))) return;
+    }
     if (fs.existsSync(path.join(srcDir, 'skills', 'global_legacy'))) {
         fs.mkdirSync(targetLegacyDir, { recursive: true });
         return;
@@ -1439,6 +1466,40 @@ function defaultPlatformValue() {
 
 // Which active harnesses have AOS hooks wired but no gate hook any more (removed there by hand).
 // Reads only. A config that is absent or has no AOS wiring at all proves nothing — nothing to preserve there.
+// Launcher support files Kernel.update copies (not written by the harness step).
+function kernelFileProblems({ home = homeDir } = {}) {
+    return [path.join(home, '.agents', 'bin', 'aos-doctor.mjs'), path.join(home, '.agents', 'lib', 'uninstall-records.js')]
+        .filter((f) => !fs.existsSync(f)).map((f) => `missing ${f}`);
+}
+
+// What `aos repair` and the update plan check for the wiring quickUpdateHarnesses writes: hooks and settings merges
+// (Claude, Antigravity, Codex) and the compiled Antigravity/Codex agents. Reads only. A harness whose config dir
+// does not exist is not installed there and proves nothing. For Claude the plugin counts as wiring too.
+function harnessWiringProblems({ home = homeDir, keys = activeHarnessKeys() } = {}) {
+    const read = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return ''; } };
+    const hasFiles = (dir) => { try { return fs.readdirSync(dir).length > 0; } catch { return false; } };
+    const problems = [];
+    const claudeDir = claudeConfigDir(home);
+    if (keys.has('claudecode') && fs.existsSync(claudeDir)) {
+        const settings = read(path.join(claudeDir, 'settings.json'));
+        const viaPlugin = /bdb-aos@/.test(settings) || /bdb-aos@/.test(read(path.join(home, '.claude', 'plugins', 'installed_plugins.json')));
+        let parsed = true;
+        try { if (settings) JSON.parse(settings.replace(/^\uFEFF/, '')); } catch { parsed = false; }
+        if (!parsed) problems.push(`${path.join(claudeDir, 'settings.json')} is not valid JSON`);
+        else if (!viaPlugin && !v5Profile.HOOK_SCRIPTS.some((n) => settings.includes(n))) problems.push('Claude Code settings.json has no AOS hooks');
+    }
+    const geminiHome = home === homeDir ? geminiDir : path.join(home, '.gemini');
+    if (keys.has('antigravity') && fs.existsSync(path.join(geminiHome, 'config'))) {
+        if (!/aos-/.test(read(path.join(geminiHome, 'config', 'hooks.json')))) problems.push('Antigravity hooks.json has no AOS hooks');
+        if (!hasFiles(path.join(geminiHome, 'config', 'agents'))) problems.push('Antigravity has no AOS agents');
+    }
+    if (keys.has('codex') && fs.existsSync(path.join(home, '.codex'))) {
+        if (!/go-gate\.mjs|graph-gate\.mjs|conventional-commits\.mjs/.test(read(path.join(home, '.codex', 'config.toml')))) problems.push('Codex config.toml has no AOS hooks');
+        if (!hasFiles(path.join(home, '.codex', 'agents'))) problems.push('Codex has no AOS agents');
+    }
+    return problems;
+}
+
 function gateMissingInHarnesses({ home = homeDir } = {}) {
     const read = (p) => { try { return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''; } catch { return ''; } };
     const missing = [];
@@ -1640,6 +1701,12 @@ function detectInstallState() {
     const installManifest = loadInstallManifest();
 
     return { isInstalled, localVersion, currentVersion, updateAvailable, isDowngrade, installedModules, manifest, installManifest };
+}
+
+// Tier/universal flag an installed machine already chose; update and -y reinstall must not reset them.
+function storedTierOpts(installState) {
+    const m = (installState && installState.manifest) || {};
+    return { tier: m.tier === '2' ? '2' : '1', isUniversal: m.isUniversal !== false };
 }
 
 function saveManifest(data = {}) {
@@ -2237,6 +2304,9 @@ function globalSkillDestinations({ ignorePluginCoverage = false } = {}) {
         { dir: path.join(homeDir, '.cursor', 'skills'), key: 'cursor' },
         { dir: path.join(homeDir, '.roo', 'skills'), key: 'vscode' },
         { dir: path.join(homeDir, '.config', 'opencode', 'skills'), key: 'opencode' },
+        // Same dirs the fresh install writes for platforms 6 and 8 (resolveTargetPaths), so update refreshes them too.
+        { dir: path.join(homeDir, '.windsurf', 'bdb-skills'), key: 'windsurf' },
+        { dir: path.join(homeDir, '.aider', 'bdb-skills'), key: 'aider' },
     ].filter((d) => d.key === null || (detectedKeys.has(d.key) && !pluginCovered.has(d.key)));
 }
 
@@ -4368,8 +4438,9 @@ function resolveTargetPaths(platformValue, customPaths) {
         targetMcpDir = path.join(homeDir, '.windsurf');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '7') {
-        targetSkillDir = path.join(homeDir, '.roo', 'bdb-skills');
-        targetLegacyDir = path.join(homeDir, '.roo', 'bdb-skills', 'legacy');
+        // Same dir globalSkillDestinations() refreshes on update; a second bdb-skills copy would list skills twice.
+        targetSkillDir = path.join(homeDir, '.roo', 'skills');
+        targetLegacyDir = path.join(homeDir, '.roo', 'skills', 'legacy');
         targetMcpDir = path.join(homeDir, '.roo');
         mcpConfigPath = path.join(targetMcpDir, 'mcp.json');
     } else if (platformValue === '8') {
@@ -4394,19 +4465,7 @@ function getTierExcludeSkills(tier) {
     // A stored pack selection excludes every shipped skill outside base+packs; the Pro MEDIA
     // tier and installed modules imply their packs on top (additive). No stored selection
     // excludes nothing (existing users keep all skills).
-    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? [
-        'bdb-adobe-suite-mcp',
-        'bdb-after-effects-mcp',
-        'bdb-blender-mcp',
-        'bdb-davinci-mcp',
-        'bdb-grandma3-mcp',
-        'bdb-resolume-mcp',
-        'bdb-rhino-mcp',
-        'bdb-touchdesigner-mcp',
-        'bdb-unreal-mcp',
-        'bdb-vectorworks-mcp',
-        'bdbmediastorm'
-    ] : [])];
+    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? skillPacks.BASIC_TIER_EXCLUDES : [])];
 }
 
 // Merge the BDB MCP servers into a harness's *secondary* config store without
@@ -5225,16 +5284,19 @@ function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
     return agents;
 }
 
-// Load pack-specific agents from .agents/packs/<pack>/AGENTS.md.
-// Default behavior: load all available packs (for backward compatibility).
-// Future: respect pack selection from user config.
-function loadPackAgents(packDir = path.join(currentDir, '.agents', 'packs'), commonSkills = loadCommonSkills()) {
+// Agent dir under .agents/packs -> the skill packs (lib/skill-packs.json) that bring it in.
+const PACK_AGENT_DIRS = { eventtech: ['live-show'], media: ['creator', 'live-show'], hardware: ['hardware'] };
+
+// Load pack-specific agents from the shipped .agents/packs/<dir>/AGENTS.md. A stored pack selection
+// gates them like skills; no stored selection (null) keeps every pack.
+function loadPackAgents(packDir = path.join(srcDir, '.agents', 'packs'), commonSkills = loadCommonSkills(), selection = effectivePackSelection()) {
     if (!fs.existsSync(packDir)) return [];
 
     const packAgents = [];
     const packs = fs.readdirSync(packDir).filter(f => {
-        const stat = fs.statSync(path.join(packDir, f));
-        return stat.isDirectory();
+        if (!fs.statSync(path.join(packDir, f)).isDirectory()) return false;
+        if (!Array.isArray(selection)) return true;
+        return (PACK_AGENT_DIRS[f] || [f]).some(p => selection.includes(p));
     });
 
     for (const pack of packs) {
@@ -7116,6 +7178,20 @@ function mergeCodexTomlHooks(configTomlPath, { projectLocal = false } = {}) {
         `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'trail-relay.mjs')}" --agent codex --event PreToolUse`)}`,
         'timeout = 5',
         '',
+        // Safety hooks every harness gets (docs/install-options.md). They fail open; memb-session-save (Claude transcript
+        // format) and trail-autostart (Agent/Task tool) have no Codex equivalent and are not wired here.
+        '[[hooks.PreToolUse]]',
+        '[[hooks.PreToolUse.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'conventional-commits.mjs')}"`)}`,
+        'timeout = 10',
+        '',
+        '[[hooks.PreToolUse]]',
+        '[[hooks.PreToolUse.hooks]]',
+        'type = "command"',
+        `command = ${JSON.stringify(`node "${path.join(globalHooksDir, 'env-file-protection.mjs')}"`)}`,
+        'timeout = 10',
+        '',
         '[[hooks.Stop]]',
         '[[hooks.Stop.hooks]]',
         'type = "command"',
@@ -7465,9 +7541,18 @@ function shouldAutostartLaunchpad(overrides = {}) {
 // idle-exits there (AOS_PLAN_CANVAS_IDLE_MS=0 is honoured by server.js).
 const PLAN_CANVAS_LABEL = 'com.bdb.plan-canvas';
 
+// A machine that registered the server once keeps it current: install and update rewrite the unit.
+function planCanvasRegistered(home, platform, appData) {
+    if (platform === 'darwin') return fs.existsSync(path.join(home, 'Library', 'LaunchAgents', `${PLAN_CANVAS_LABEL}.plist`));
+    if (platform === 'linux') return fs.existsSync(systemdUnits.unitPath(home, 'com.bdb.plan-canvas.service'));
+    if (platform === 'win32') return fs.existsSync(path.join(appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', `${PLAN_CANVAS_LABEL}.vbs`));
+    return false;
+}
+
 function shouldAutostartPlanCanvas(overrides = {}) {
     const argv = overrides.argv || process.argv;
-    return argv.includes('--autostart-plan-canvas');
+    if (argv.includes('--autostart-plan-canvas')) return true;
+    return planCanvasRegistered(overrides.homeDir || homeDir, overrides.platform || process.platform, overrides.appData);
 }
 
 function buildPlanCanvasPlist({ nodeBin, scriptPath, home, logDir }) {
@@ -8111,7 +8196,8 @@ function syncMcpConfigFile(targetPath, masterMcpData) {
     }
 }
 
-function syncOpencodeConfigFile(targetPath, masterMcpData) {
+// plugin: false for the update-time MCP refresh, which must not install or rewrite the OpenCode plugin.
+function syncOpencodeConfigFile(targetPath, masterMcpData, { plugin = true } = {}) {
     try {
         const loaded = loadJsonConfig(targetPath);
         if (loaded.state === 'invalid') { warnUnparseable(targetPath, 'OpenCode MCP and plugin sync', loaded); return; }
@@ -8176,7 +8262,7 @@ function syncOpencodeConfigFile(targetPath, masterMcpData) {
         // Wire BDB AOS Plugin for OpenCode. `data` is handed in because this
         // function owns the write -- it merges MCP servers in the same pass.
         // homeDir matches how the opencode harness entry builds its path.
-        installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
+        if (plugin) installOpencodePlugin({ targetHome: homeDir, configPath: targetPath, data });
 
         if (before !== null && before === JSON.stringify(data)) { writeConfigWithBackup(targetPath, data, before); return; }
         if (!stashInlineSecrets(collector, targetPath)) return;
@@ -8242,6 +8328,81 @@ function migrateMcpSecrets() {
     return moved;
 }
 
+// Update path of the shipped MCP definitions. Fresh install writes them via installMcpsForTarget (it knows
+// the user's picks); update has no stored pick, so it only re-merges into entries a harness config already
+// holds -- owned ones are rewritten to the current shape, retired ones dropped, user entries and servers
+// the user never installed stay as they are.
+function resolveShippedMcpServers() {
+    const mcpsDir = path.join(resolveTargetPaths(defaultPlatformValue(), null).targetMcpDir, 'mcps');
+    let servers = { ...mcpPicks().servers };
+    if (process.platform === 'win32' && servers.deja) servers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+    servers = v5Profile.filterMcpServers(servers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS)).servers;
+    if (!memoryOn) servers = v5Profile.filterMcpServers(servers, v5Profile.MEMORY_MCPS).servers;
+    const esc = (p) => String(p).replace(/\\/g, '\\\\');
+    const pyBin = (process.platform === 'win32' ? path.join(mcpsDir, 'memb-mcp', '.venv', 'Scripts', 'python.exe') : path.join(mcpsDir, 'memb-mcp', '.venv', 'bin', 'python')).split('\\').join('/');
+    const out = {};
+    for (const [name, def] of Object.entries(servers)) {
+        const raw = JSON.stringify(def);
+        // An entry that points into mcps/ is only refreshed when that server's code is on disk.
+        const dirs = [...raw.matchAll(/__MCPS_DIR__\/([^/"\\]+)/g)].map((m) => m[1]);
+        if (dirs.some((d) => !fs.existsSync(path.join(mcpsDir, d)))) continue;
+        const resolved = raw
+            .replace(/__MCPS_DIR__/g, () => esc(mcpsDir))
+            .replace(/\{\{HOME\}\}/g, () => esc(homeDir))
+            .replace(/"command":\s*"uv"/g, `"command": "${uvBin().replace(/\\/g, '/')}"`)
+            .replace(/__PYTHON_BIN__/g, () => JSON.stringify(pyBin).slice(1, -1));
+        try { out[name] = JSON.parse(resolved); } catch (e) { logDebug(e, 'resolve shipped MCP server'); }
+    }
+    return out;
+}
+
+function refreshHarnessMcpEntries() {
+    installMcpLauncher();
+    const shipped = resolveShippedMcpServers();
+    const cwd = path.resolve(currentDir);
+    const retired = new Set(mcpPicks().retired);
+    const refreshed = [];
+    for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir)) {
+        if (!fs.existsSync(file)) continue;
+        // An update started inside a repo must not write into that repo (F8).
+        if (cwd !== path.resolve(homeDir) && path.resolve(file).startsWith(cwd + path.sep)) continue;
+        try {
+            let present;
+            let tables = null;
+            if (kind === 'toml') {
+                tables = mcpSecrets.parseCodexTables(readTextFile(file));
+                present = Object.keys(tables);
+            } else {
+                const raw = readTextFile(file);
+                const loaded = loadJsonConfig(file);
+                if (loaded.state === 'invalid') { warnUnparseable(file, 'MCP refresh', loaded); continue; }
+                if (loaded.state !== 'ok') continue;
+                // A rewrite drops comments and trailing commas; a file that has them is left to the user.
+                let strict = true;
+                try { JSON.parse(raw); } catch { strict = false; }
+                if (!strict) { log.warn(`${file} has comments or trailing commas; shipped MCP entries not refreshed there (a rewrite would drop them). Edit it by hand or remove the comments.`); continue; }
+                present = Object.keys((kind === 'opencode' ? loaded.data.mcp : loaded.data.mcpServers) || {});
+            }
+            if (!present.length) continue;
+            const subset = Object.fromEntries(Object.entries(shipped).filter(([n]) => present.includes(n)));
+            if (kind === 'toml') {
+                // Regenerating the AOS block drops every AOS table it is not handed: pass the ones that are not
+                // regenerated (server code missing, AOS_DISABLED_MCPS) back as they stand. Retired ones go.
+                for (const n of uninstallRecords.aosMcpNames()) {
+                    if (tables[n] && !subset[n] && !retired.has(n)) subset[n] = mcpSecrets.codexEntry(tables[n]);
+                }
+                mergeCodexTomlMcpServers(file, subset);
+            } else if (kind === 'opencode') syncOpencodeConfigFile(file, { mcpServers: subset }, { plugin: false });
+            else syncMcpConfigFile(file, { mcpServers: subset });
+            refreshed.push(file);
+        } catch (e) {
+            log.warn(`Could not refresh the shipped MCP entries in ${file}: ${e.message}`);
+        }
+    }
+    if (refreshed.length) log.step(`Shipped MCP entries checked in: ${refreshed.join(', ')}`);
+    noticeSecretBackups();
+}
+
 async function universalHarnessSync(primaryMcpConfigPath, installedModules = []) {
     log.info('Universal Agent Harness Sync...');
     installMcpLauncher();
@@ -8294,7 +8455,6 @@ async function universalHarnessSync(primaryMcpConfigPath, installedModules = [])
     noticeSecretBackups();
     log.success('Universal Sync Complete!');
     generateAndOpenLaunchpad(installedModules);
-    installPlanCanvasAutostart();
 }
 
 // Kernel = skills, plugin migration; Harnesses = rules/hooks/MCP secrets. v5 runs them as separate steps.
@@ -8302,12 +8462,11 @@ function quickUpdateKernel(installState) {
     const s = spinner();
     s.start('Quick Update: refreshing skills & syncing installed submodules...');
 
-    const excludeSkills = getTierExcludeSkills('1');
+    const excludeSkills = getTierExcludeSkills(storedTierOpts(installState).tier);
     const paths = resolveTargetPaths(defaultPlatformValue(), null);
 
     populateSkillLibrary();
     fs.mkdirSync(paths.targetSkillDir, { recursive: true });
-    retireObsoleteLegacyDir(paths.targetLegacyDir);
     fs.mkdirSync(paths.targetWorkspaceDir, { recursive: true });
 
     // Initialize manifest for this update session.
@@ -8320,6 +8479,7 @@ function quickUpdateKernel(installState) {
         path.join(srcDir, '.github'),
         path.join(srcDir, '.codex-plugin'),
     ]);
+    retireObsoleteLegacyDir(paths.targetLegacyDir);
 
     const skillsBase = path.join(srcDir, 'skills');
     if (fs.existsSync(skillsBase)) {
@@ -8374,9 +8534,11 @@ function quickUpdateHarnesses() {
             injectHarnessRules();
         }, 'Harness files keep whatever version this machine already had.')],
         ['remove the AOS mcsc entry from agy configs', installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.')],
+        ['refresh shipped MCP definitions in the harness configs', installStep('refresh shipped MCP definitions in the harness configs', () => { refreshHarnessMcpEntries(); }, 'MCP entries keep the definitions this machine already had.')],
         ['migrate legacy agy workspace MCP config', installStep('migrate legacy agy workspace MCP config', () => { mcpSecrets.migrateLegacyAgyWorkspaceMcp(homeDir, srcDir, { log }); })],
         ['move inline MCP secrets into the secrets file', installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`)],
         ['install the Codex plugin', installStep('install the Codex plugin', () => { runCodexPluginStep(); })],
+        ['refresh the Plan Canvas background server', installStep('refresh the Plan Canvas background server', () => { installPlanCanvasAutostart(); })],
     ];
     return steps.filter(([, r]) => !r.ok).map(([what, r]) => `${what}: ${r.error.message}`);
 }
@@ -8396,7 +8558,7 @@ async function refreshOpenWikiSilently({ key: given } = {}) {
 
 async function runQuickUpdate(installState) {
     quickUpdateKernel(installState);
-    quickUpdateHarnesses();
+    for (const f of quickUpdateHarnesses()) log.warn(`Harness step failed: ${f}`);
     const paths = resolveTargetPaths('1', null);
 
     // OpenWiki: if already configured, refresh the daemon silently (no prompt).
@@ -8440,7 +8602,7 @@ async function runQuickUpdate(installState) {
     // them alone rather than relaunching and re-checking a daemon a second time.
     const alreadyHandled = modulesToUpdate.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);
-    saveManifest({ tier: '1', isUniversal: true, installedModules: modulesToUpdate });
+    saveManifest({ ...storedTierOpts(installState), installedModules: modulesToUpdate });
     flushSessionManifest();
 
     console.log('');
@@ -8865,7 +9027,7 @@ Options:
         { value: '4', label: '⚙️ Custom Installation', hint: 'specify paths manually' }
     ];
 
-    let tier = '1';
+    let tier = installState.isInstalled ? storedTierOpts(installState).tier : '1';
     let mode = 'merge';
     let customPaths = null;
     let creds = null;
@@ -9065,7 +9227,7 @@ Options:
             if (specNow.length === 0 && ctx.selectedPlatforms.includes('0')) specNow.push(defaultPlatformValue());
             const lines = [
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
-                `Skill Packs:   ${Array.isArray(packSelection) ? `base + ${[...new Set([...packSelection, ...(ctx.tier === '1' ? ['live-show'] : [])])].join(', ')}` : 'all skills (no pack selection stored)'}`,
+                `Skill Packs:   ${Array.isArray(packSelection) ? `base + ${[...new Set([...packSelection, ...skillPacks.tierPacks(ctx.tier)])].join(', ')}` : 'all skills (no pack selection stored)'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
                 `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
@@ -9125,7 +9287,7 @@ Options:
         return;
     }
     // Pro MEDIA brings the live-show pack (additive; base pack is always in).
-    if (tier === '1') addImpliedPack('live-show');
+    skillPacks.tierPacks(tier).forEach(addImpliedPack);
     persistInstallOptions();
     if (INSTALL_OPTS.router && !routerChoice) {
         const detected = detectRouterTargets().filter((t) => t.detected).map((t) => t.key);
@@ -9235,6 +9397,7 @@ Options:
     if (wantsUniversal) {
         await universalHarnessSync(primaryTarget.mcpConfigPath, installedModulesForPrompt);
     }
+    installStep('register the Plan Canvas background server', () => { installPlanCanvasAutostart(); });
 
     // Flush file-level install manifest after all writes are done.
     flushSessionManifest();
@@ -9354,12 +9517,20 @@ module.exports = {
     injectHarnessRules,
     activeHarnessKeys,
     gateMissingInHarnesses,
+    harnessWiringProblems,
+    kernelFileProblems,
     gateReenableStep,
     gateHoldKeys,
     defaultPlatformValue,
     harnessSummaryLine,
     applyInstallOptions,
     getTierExcludeSkills,
+    resolveShippedMcpServers,
+    migrateRooBdbSkills,
+    refreshHarnessMcpEntries,
+    globalSkillDestRoots,
+    globalSkillDestinations,
+    storedTierOpts,
     currentPackSelection: () => packSelection,
     effectivePackSelection,
     addImpliedPack,

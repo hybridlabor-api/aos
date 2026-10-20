@@ -1,0 +1,209 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-gaps-a-'));
+process.env.HOME = tmpHome;
+process.env.USERPROFILE = tmpHome;
+test.after(() => fs.rmSync(tmpHome, { recursive: true, force: true }));
+
+const root = path.join(__dirname, '..');
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+test('G1: config/ is shipped in the npm package', () => {
+    assert.ok(pkg.files.includes('config/'));
+});
+
+test('G2: stored Basic tier survives update', () => {
+    const { storedTierOpts } = require('../installer.js');
+    assert.deepStrictEqual(storedTierOpts({ manifest: { tier: '2', isUniversal: false } }), { tier: '2', isUniversal: false });
+    assert.deepStrictEqual(storedTierOpts({ manifest: null }), { tier: '1', isUniversal: true });
+});
+
+test('G3: pack agents follow the stored pack selection', () => {
+    const { loadPackAgents } = require('../installer.js');
+    const dir = path.join(root, '.agents', 'packs');
+    const names = (sel) => loadPackAgents(dir, undefined, sel).map(a => a.name.toLowerCase().replace(/_/g, '-'));
+    assert.ok(names(null).includes('pcb-design-assistant'));
+    assert.deepStrictEqual(names(['hardware']), ['pcb-design-assistant']);
+    assert.ok(names(['live-show']).includes('event-manager-assistant'));
+    assert.ok(!names(['live-show']).includes('pcb-design-assistant'));
+    assert.deepStrictEqual(names([]), []);
+});
+
+test('G4: every skill copy destination is also a prune root', () => {
+    const inst = require('../installer.js');
+    const roots = inst.globalSkillDestRoots();
+    for (const { dir } of inst.globalSkillDestinations({ ignorePluginCoverage: true })) assert.ok(roots.includes(dir), dir);
+    assert.ok(roots.some((r) => r.endsWith(path.join('opencode', 'skills'))));
+});
+
+test('G5: fresh install targets for Roo, Windsurf and Aider are the dirs update refreshes', () => {
+    const inst = require('../installer.js');
+    const dests = inst.globalSkillDestinations({ ignorePluginCoverage: true }).map((d) => d.dir);
+    const roots = inst.globalSkillDestRoots();
+    for (const p of ['6', '7', '8']) {
+        const dir = inst.resolveTargetPaths(p, null).targetSkillDir;
+        assert.ok(roots.includes(dir), `${p}: ${dir} not a prune root`);
+    }
+    assert.ok(roots.includes(inst.resolveTargetPaths('7', null).targetSkillDir));
+    assert.ok(dests.every((d) => roots.includes(d)));
+});
+
+test('G6: update re-syncs shipped MCP entries already in a harness config, leaves user entries', () => {
+    const inst = require('../installer.js');
+    const shipped = inst.resolveShippedMcpServers();
+    const name = Object.keys(shipped)[0];
+    assert.ok(name, 'at least one shipped server resolves');
+    assert.ok(!JSON.stringify(shipped).includes('__MCPS_DIR__'));
+    const file = path.join(tmpHome, '.claude.json');
+    const mine = { command: 'my-tool', args: ['--x'] };
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { mine, [name]: { command: 'stale-owner-cmd' } } }));
+    inst.refreshHarnessMcpEntries();
+    const after = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers;
+    assert.deepStrictEqual(after.mine, mine);
+    assert.deepStrictEqual(Object.keys(after).sort(), ['mine', name].sort());
+});
+
+test('G7: a registered Plan Canvas unit is rewritten without the opt-in flag', () => {
+    const { installPlanCanvasAutostart } = require('../installer.js');
+    const home = fs.mkdtempSync(path.join(tmpHome, 'pc-'));
+    const base = { homeDir: home, platform: 'darwin', skipLaunchctl: true, nodeBin: '/usr/bin/node', argv: ['node', 'i.js'], dryRun: false };
+    assert.equal(installPlanCanvasAutostart(base), false);
+    installPlanCanvasAutostart({ ...base, argv: ['node', 'i.js', '--autostart-plan-canvas'] });
+    const plist = path.join(home, 'Library', 'LaunchAgents', 'com.bdb.plan-canvas.plist');
+    fs.writeFileSync(plist, 'stale');
+    assert.equal(installPlanCanvasAutostart(base), true);
+    assert.notStrictEqual(fs.readFileSync(plist, 'utf8'), 'stale');
+});
+
+test('G15: aos-go-ref is a package bin and an installed launcher', () => {
+    const { LAUNCHERS } = require('../lib/uninstall-records.js');
+    assert.strictEqual(pkg.bin['aos-go-ref'], 'bin/aos-go-ref.mjs');
+    assert.ok(LAUNCHERS.includes('aos-go-ref'));
+});
+
+test('G18: Codex wires the conventional-commits and env-file-protection safety hooks', () => {
+    const { mergeCodexTomlHooks } = require('../installer.js');
+    const { HARNESS_HOOKS } = require('../lib/v5/profile.js');
+    const toml = path.join(fs.mkdtempSync(path.join(tmpHome, 'cx-')), 'config.toml');
+    mergeCodexTomlHooks(toml);
+    const text = fs.readFileSync(toml, 'utf8');
+    for (const n of ['conventional-commits.mjs', 'env-file-protection.mjs']) {
+        assert.ok(text.includes(n), n);
+        assert.ok(HARNESS_HOOKS.codex.includes(n), n);
+    }
+});
+
+test('G20: context-profile percentage uses the baseline the savings use', () => {
+    const src = fs.readFileSync(path.join(root, 'lib', 'v5', 'context-profiles.js'), 'utf8');
+    assert.ok(!src.includes('62020'));
+    assert.strictEqual((src.match(/68950/g) || []).length, 1);
+});
+
+test('G21: Basic exclusions and tier packs come from lib/skill-packs.js', () => {
+    const sp = require('../lib/skill-packs.js');
+    assert.deepStrictEqual(sp.tierPacks('1'), ['live-show']);
+    assert.deepStrictEqual(sp.tierPacks('2'), []);
+    const shipped = sp.shippedSkillDirs(root);
+    for (const n of sp.BASIC_TIER_EXCLUDES) assert.ok(shipped.has(n), n);
+    for (const n of sp.packSkillNames(root, 'live-show').filter((x) => /^bdb-.*-mcp$/.test(x) && x !== 'bdb-computer-use-mcp')) {
+        assert.ok(sp.BASIC_TIER_EXCLUDES.includes(n), n);
+    }
+});
+
+test('G16: harnessWiringProblems flags lost Claude hooks and passes once they are merged', () => {
+    const { harnessWiringProblems } = require('../installer.js');
+    const claudeDir = path.join(tmpHome, '.claude');
+    fs.mkdirSync(path.join(claudeDir, 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, 'agents', 'architect.md'), 'x');
+    fs.writeFileSync(path.join(claudeDir, 'settings.json'), '{"model":"x"}');
+    assert.ok(harnessWiringProblems({ home: tmpHome }).some((p) => /no AOS hooks/.test(p)));
+    fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ command: 'node go-gate.mjs' }] }] } }));
+    assert.ok(!harnessWiringProblems({ home: tmpHome }).some((p) => /Claude Code/.test(p)));
+});
+
+test('review 2: a user-owned ~/.roo/skills/legacy is not retired unless the manifest lists its files', () => {
+    const { retireObsoleteLegacyDir } = require('../installer.js');
+    const legacy = path.join(tmpHome, '.roo', 'skills', 'legacy');
+    fs.mkdirSync(legacy, { recursive: true });
+    fs.writeFileSync(path.join(legacy, 'mine.md'), 'keep');
+    retireObsoleteLegacyDir(legacy);
+    assert.ok(fs.existsSync(path.join(legacy, 'mine.md')));
+});
+
+test('review 3: AOS copies in ~/.roo/bdb-skills are removed, edited files are backed up', () => {
+    const { migrateRooBdbSkills } = require('../installer.js');
+    const crypto = require('crypto');
+    const home = fs.mkdtempSync(path.join(tmpHome, 'roo-'));
+    const root = path.join(home, '.roo', 'bdb-skills');
+    fs.mkdirSync(path.join(home, '.roo', 'skills'), { recursive: true });
+    const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
+    const clean = path.join(root, 'plan-canvas', 'SKILL.md');
+    const edited = path.join(root, 'grill-me', 'SKILL.md');
+    for (const f of [clean, edited]) fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(clean, 'a');
+    fs.writeFileSync(edited, 'user edit');
+    const manifest = { [clean]: { sha256: sha('a') }, [edited]: { sha256: sha('orig') } };
+    migrateRooBdbSkills(manifest, home);
+    assert.ok(!fs.existsSync(path.dirname(clean)));
+    assert.ok(!fs.existsSync(path.dirname(edited)));
+    const backups = path.join(home, '.agents', 'backups');
+    const found = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const a = path.join(d, e.name); if (e.isDirectory()) walk(a); else found.push(a); } };
+    walk(backups);
+    assert.strictEqual(found.length, 1);
+    assert.strictEqual(fs.readFileSync(found[0], 'utf8'), 'user edit');
+});
+
+test('review 4-6: MCP refresh keeps unregenerated TOML tables, skips commented JSON and files without entries', () => {
+    const inst = require('../installer.js');
+    const rec = require('../lib/uninstall-records.js');
+    const shipped = inst.resolveShippedMcpServers();
+    const keep = Object.keys(shipped).find((n) => rec.aosMcpNames().includes(n));
+    assert.ok(keep, 'a shipped AOS server name exists');
+    const home = process.env.HOME;
+
+    const toml = path.join(home, '.codex', 'config.toml');
+    fs.mkdirSync(path.dirname(toml), { recursive: true });
+    const table = `[mcp_servers.${keep}]\ncommand = "node"\nargs = ["a.js"]`;
+    fs.writeFileSync(toml, `# AOS:MCP:START\n${table}\n# AOS:MCP:END\n`);
+    process.env.AOS_DISABLED_MCPS = keep;
+    try {
+        inst.refreshHarnessMcpEntries();
+    } finally { delete process.env.AOS_DISABLED_MCPS; }
+    assert.ok(fs.readFileSync(toml, 'utf8').includes(`[mcp_servers.${keep}]`), 'unregenerated table survives');
+
+    const claude = path.join(home, '.claude.json');
+    const commented = `{\n  // mine\n  "mcpServers": { "${keep}": { "command": "x" } }\n}\n`;
+    fs.writeFileSync(claude, commented);
+    inst.refreshHarnessMcpEntries();
+    assert.strictEqual(fs.readFileSync(claude, 'utf8'), commented);
+
+    const empty = '{"mcpServers":{}}';
+    fs.writeFileSync(claude, empty);
+    inst.refreshHarnessMcpEntries();
+    assert.strictEqual(fs.readFileSync(claude, 'utf8'), empty);
+    assert.deepStrictEqual(fs.readdirSync(home).filter((f) => f.startsWith('.claude.json.')), []);
+});
+
+test('G16: harnessWiringProblems covers Codex and Antigravity hooks and agents', () => {
+    const { harnessWiringProblems } = require('../installer.js');
+    const home = fs.mkdtempSync(path.join(tmpHome, 'wire-'));
+    const keys = new Set(['codex', 'antigravity']);
+    fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
+    fs.mkdirSync(path.join(home, '.gemini', 'config'), { recursive: true });
+    const bad = harnessWiringProblems({ home, keys });
+    for (const re of [/Codex config\.toml/, /Codex has no AOS agents/, /Antigravity hooks\.json/, /Antigravity has no AOS agents/]) {
+        assert.ok(bad.some((p) => re.test(p)), String(re));
+    }
+    fs.writeFileSync(path.join(home, '.codex', 'config.toml'), '[[hooks.PreToolUse.hooks]]\ncommand = "node go-gate.mjs"\n');
+    fs.mkdirSync(path.join(home, '.codex', 'agents'));
+    fs.writeFileSync(path.join(home, '.codex', 'agents', 'a.toml'), 'x');
+    fs.writeFileSync(path.join(home, '.gemini', 'config', 'hooks.json'), '{"aos-go-gate":{}}');
+    fs.mkdirSync(path.join(home, '.gemini', 'config', 'agents'));
+    fs.writeFileSync(path.join(home, '.gemini', 'config', 'agents', 'a.md'), 'x');
+    assert.deepStrictEqual(harnessWiringProblems({ home, keys }), []);
+});
