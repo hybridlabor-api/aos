@@ -458,7 +458,7 @@ export default async function bdbAosPlugin(input) {
       try {
         if (!contextHooks || !memory) throw 0; // no context hooks or no unified memory: no memB injection
         const event = firstTurn ? 'SessionStart' : 'UserPromptSubmit';
-        const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory });
+        const membContext = await buildMemoryBlock({ event, prompt: fullText, cwd: directory, onStatus: (message) => input.client?.tui?.showToast?.({ body: { title: 'AOS memory', message, variant: 'info' } })?.catch?.(() => {}) });
         if (membContext) injectText(msgInput, msgOutput, (await hook('session-cap.mjs').catch(() => ({ capText: (t) => t }))).capText(membContext)); // per-context-profile cap
       } catch {}
       try {

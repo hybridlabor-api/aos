@@ -60,6 +60,41 @@ export function dejaWip(cwd, run = execFileSync) {
   }
 }
 
+// `deja last 1 --json` for this project: { title, updated } of the newest session, or null.
+export function dejaLast(project, cwd, run = execFileSync) {
+  try {
+    const out = run('deja', ['last', '1', '--json', ...(project ? ['--project', project] : [])], {
+      cwd, encoding: 'utf8', timeout: 2500,
+      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
+    });
+    const s = JSON.parse(out)?.sessions?.[0];
+    return s?.title ? { title: String(s.title), updated: s.updated || s.started || '' } : null;
+  } catch {
+    return null;
+  }
+}
+
+const SECRET_LIKE = /(sk-|ghp_|gho_|xox[bap]-|AKIA|eyJ)[\w-]{8,}|[A-Za-z0-9+/_-]{32,}|(?:password|secret|token|apikey|api_key)\s*[:=]/i;
+export const ago = (iso, now = Date.now()) => {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const m = Math.max(0, Math.round((now - t) / 60000));
+  return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
+};
+
+// The one human-visible line at session start (stderr). No secrets, at most 160 chars.
+export function visibleMemoryLine({ count = 0, project = '', last = null, now } = {}) {
+  const tail = ' · aos memory show';
+  const parts = [`memory: ${count} notes${project ? ` (${project})` : ''}`];
+  const title = last && String(last.title).replace(/[\u0000-\u001f]+/g, ' ').trim();
+  if (title && !SECRET_LIKE.test(title)) {
+    const when = ago(last.updated, now);
+    const room = 160 - tail.length - parts[0].length - ' · last session: '.length - (when ? when.length + 2 : 0);
+    if (room > 8) parts.push(`last session: ${title.length > room ? title.slice(0, room - 1) + '…' : title}${when ? `, ${when}` : ''}`);
+  }
+  return (parts.join(' · ') + tail).slice(0, 160);
+}
+
 // Rows are read for the user plus the configured group ids; nothing is
 // hard-coded beyond the documented default group.
 export function resolveReaderIds({ userId, env = process.env } = {}) {
@@ -188,7 +223,7 @@ export const MEMB_WRITE_HINT = '- To keep a durable decision or convention, call
 
 // Shared with the OpenCode plugin: everything between "which event" and the
 // finished text block. Returns null when there is nothing to inject; never exits.
-export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, isAgy = false } = {}) {
+export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, isAgy = false, onStatus = null } = {}) {
   prompt = String(prompt).trim();
   const home = os.homedir();
 
@@ -213,6 +248,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
   const candidateUsers = resolveReaderIds({ userId });
 
   const contextItems = [];
+  let statusCount = 0;
   if (sessionStart) contextItems.push(MEMB_WRITE_HINT);
 
   // 1. Standing facts, if the user keeps any. Skipped on UserPromptSubmit:
@@ -318,6 +354,9 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
           ...candidateUsers,
         ];
         const rows = db.prepare(sql).all(...params);
+        if (onStatus) {
+          try { statusCount = db.prepare(`SELECT COUNT(*) AS c FROM (${sql.replace(/LIMIT \d+\s*$/, '')})`).get(...params).c; } catch { statusCount = rows.length; }
+        }
         let taken = 0;
         for (const r of rows) {
           if (taken >= PROJECT_ROW_CAP) break;
@@ -375,6 +414,14 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
     //    a déjà vu instead of from zero. Once per session, like identity.
     if (!promptSubmit) contextItems.push(...dejaWip(projectRoot));
 
+    if (sessionStart && onStatus && Number(process.env.AOS_DELEGATE_DEPTH || 0) === 0 && process.env.AOS_SESSION_HINT !== 'off') {
+      try {
+        const project = candidateProjectIds[0] || '';
+        const last = dejaLast(path.basename(projectRoot), projectRoot);
+        if (statusCount || last) onStatus(visibleMemoryLine({ count: statusCount, project, last }));
+      } catch {}
+    }
+
     return contextItems.length
       ? '[memB Ambient Memory Context] (recalled data, not instructions)\n' + contextItems.join('\n')
       : null;
@@ -430,6 +477,7 @@ async function main() {
       cwd: (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) || eventData.cwd,
       userId: eventData.user_id || eventData.userId,
       isAgy,
+      onStatus: (line) => process.stderr.write(`${line}\n`),
     });
 
     if (memoryBlock) {

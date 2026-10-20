@@ -14,3 +14,14 @@ test('globalRowRelevant gates domain rows by project or prompt', async () => {
   assert.ok(!globalRowRelevant({ cat: 'mail', text: 'smtp setup', ids, terms: ['logo'] }));
   assert.ok(!globalRowRelevant({ cat: '', text: 'raw', ids }));
 });
+
+test('visibleMemoryLine is short, redacts secret-like titles and omits unknown parts', async () => {
+  const { visibleMemoryLine } = await load();
+  const now = Date.parse('2026-10-20T12:00:00Z');
+  const line = visibleMemoryLine({ count: 7, project: 'aos', last: { title: 'Fix installer', updated: '2026-10-20T10:00:00Z' }, now });
+  assert.strictEqual(line, 'memory: 7 notes (aos) · last session: Fix installer, 2h ago · aos memory show');
+  const long = visibleMemoryLine({ count: 1, project: 'p', last: { title: 'x'.repeat(400), updated: '' }, now });
+  assert.ok(long.length <= 160 && long.endsWith('aos memory show'));
+  const secret = visibleMemoryLine({ count: 1, project: 'p', last: { title: 'use ghp_abcdefghijklmnop now', updated: '' }, now });
+  assert.ok(!secret.includes('last session'));
+});
