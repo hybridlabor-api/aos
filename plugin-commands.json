@@ -64,7 +64,7 @@
       }
     },
     "plan": {
-      "description": "Plan end to end: draft, render in plan-canvas or Plan Builder, annotate, await approval, then hand off.",
+      "description": "Plan end to end: draft, render in Plan Builder, annotate, await approval, then hand off.",
       "skills": [
         "concise-planning",
         "plan-canvas",
