@@ -451,6 +451,42 @@ function checkHooks() {
   }
 }
 
+// ---------------------------------------------------------------- 4b. Unified memory start context per harness
+// One row per harness: is the hook that injects the start context (memb-inject) wired? Unified memory
+// switched off, or a harness that is not installed, is not a failure.
+function checkMemoryContext() {
+  const area = 'memory';
+  let off = [];
+  try { off = req('../lib/v5/profile.js').readSettings(HOME, () => {}).disabled || []; } catch {}
+  const memOff = off.includes('memb');
+  const row = (name, installed, wired, detail, fix) =>
+    add(area, name, memOff || !installed || wired, memOff ? 'unified memory is off (memb excluded)' : !installed ? 'harness not installed' : detail, fix, !installed);
+  const fix = 'Run aos update to wire the memory start-context hook.';
+
+  const cs = readJson(hc('settings.json'));
+  const claudeWired = JSON.stringify(cs?.hooks?.SessionStart || []).includes('memb-inject.mjs') && existsSync(hc('hooks', 'memb-inject.mjs'));
+  row('Memory start context Claude Code', existsSync(claudeConfigDir(HOME)), claudeWired,
+    claudeWired ? 'memb-inject on SessionStart + UserPromptSubmit' : 'memb-inject.mjs not registered for SessionStart in settings.json', fix);
+
+  let codexToml = '';
+  try { codexToml = readFileSync(h('.codex', 'config.toml'), 'utf8'); } catch {}
+  const codexWired = /^\s*command\s*=.*memb-inject\.mjs/m.test(codexToml);
+  row('Memory start context Codex', existsSync(h('.codex')), codexWired,
+    codexWired ? 'memb-inject wired in config.toml' : 'memb-inject.mjs not in ~/.codex/config.toml', fix);
+
+  const agFile = firstExisting([h('.gemini', 'antigravity-cli', 'hooks.json'), h('.gemini', 'config', 'hooks.json'), h('.agents', 'hooks.json')]);
+  const agWired = JSON.stringify(readJson(agFile || '')?.['aos-context'] || {}).includes('memb-inject.mjs');
+  row('Memory start context Antigravity (agy)', Boolean(agFile) || existsSync(h('.gemini')), agWired,
+    agWired ? 'memb-inject in aos-context (PreInvocation, first turn)' : 'aos-context hook without memb-inject.mjs', fix);
+
+  const ocPlugin = h('.config', 'opencode', 'plugins', 'bdb-aos.js');
+  let ocSrc = '';
+  try { ocSrc = readFileSync(ocPlugin, 'utf8'); } catch {}
+  const ocWired = ocSrc.includes('buildMemoryBlock') && existsSync(h('.config', 'opencode', 'plugins', 'aos-hooks', 'memb-inject.mjs'));
+  row('Memory start context OpenCode', existsSync(h('.config', 'opencode')), ocWired,
+    ocWired ? 'plugin injects memory on the first message' : `${tilde(ocPlugin)} lacks buildMemoryBlock or aos-hooks/memb-inject.mjs`, fix);
+}
+
 // ---------------------------------------------------------------- 5b. A2A capability matrix (WP-INSTALL)
 // A harness that is installed but whose A2A wiring is broken fails the doctor; a harness that is
 // not installed, and the optional agy/Codex/sidecar/SDK pieces, stay warnings (same philosophy as the mcsc row).
@@ -1060,6 +1096,7 @@ function checkAgentModels() {
 checkHarnesses();
 checkAgentModels();
 checkHooks();
+checkMemoryContext();
 checkPlugins();
 checkAgyMcsc();
 checkAgyWorkspaceMcp();

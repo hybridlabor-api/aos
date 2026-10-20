@@ -34,6 +34,37 @@ the MCP gateway):
 - `memb-mcp` is not offered in the MCP picker;
 - the `memb-inject` hook entry is not written.
 
+## How a session gets its memory
+
+One hook, `memb-inject.mjs`, serves every harness; deja, OpenWiki and codebase-memory are pulled on demand.
+
+| Harness | Start context | Per prompt |
+|---|---|---|
+| Claude Code | `SessionStart` hook | `UserPromptSubmit` hook |
+| Codex | `[[hooks.SessionStart]]` in `config.toml` | `[[hooks.UserPromptSubmit]]` |
+| Antigravity (agy) | `aos-context` `PreInvocation`, first turn of a conversation | later turns |
+| OpenCode | `bdb-aos.js` plugin, first message of a root session | later messages |
+
+- **Start context (small, once):** persona file, identity rows (`godmode`), the project's cards (max 5,
+  180 chars each) and `deja wip`. Capped per context profile (`aos context`).
+- **Per prompt:** only full-text hits that share at least two prompt terms. A hit without a project is
+  injected only if it relates to this project or prompt: project cards must name the project, other
+  categories (branding, mail, ...) must match a project id or a prompt term.
+- **Pull more:** the session hint (`aos-session-hint.mjs`, all four harnesses) ends with one line naming
+  the installed tools: `memb search`, `deja search`, `openwiki_search`, `codebase_memory_mcp`. Tools that
+  are not installed, or whose package is in the `disabled` list, are left out; AOS works with none of them.
+- **Visible line (human):** at session start, `memory: <n> notes (<project>) · last session: <title>, <when>
+  · aos memory show` goes to stderr (OpenCode: toast). At most 160 chars; titles that look like secrets
+  are dropped. `aos memory show` prints the full start context for the current folder.
+- **Optional deja digest:** `aos memory deja-context on` (setting `memory.dejaContext` in
+  `~/.aos/v5-settings.json`, or `AOS_DEJA_CONTEXT=on`) adds the output of `deja hook-context --plain --once`
+  to the start context in place of `deja wip`. Off by default. Because every harness runs
+  `memb-inject`, no extra hook entry is written per harness. Needs `deja` on PATH; silent otherwise.
+- **Switches:** `AOS_SESSION_START_CONTEXT=off`, `AOS_SESSION_HINT=off`, delegated workers
+  (`AOS_DELEGATE_DEPTH>0`) stay silent.
+- **Check:** `aos doctor` has a "Memory start context" row per harness (Claude Code, Codex, Antigravity,
+  OpenCode); a harness that is not installed or unified memory switched off is not a failure.
+
 ## Codebase Memory MCP
 
 With unified memory on, a coding tool detected on this machine answers "Do you use AOS for

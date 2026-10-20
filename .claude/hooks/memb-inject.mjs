@@ -41,10 +41,10 @@ const failOpen = () => process.exit(0);
 // `deja wip --json` run in the project root, rendered as context lines.
 // Best-effort: deja missing, slow, or silent yields []. Windows needs a shell
 // to spawn npm's deja.cmd shim; the arguments are fixed, so nothing is injected.
-export function dejaWip(cwd, run = execFileSync) {
+export function dejaWip(cwd, run = execFileSync, timeout = 3000) {
   try {
     const out = run('deja', ['wip', '--json'], {
-      cwd, encoding: 'utf8', timeout: 3000,
+      cwd, encoding: 'utf8', timeout,
       stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
     });
     const wip = JSON.parse(out);
@@ -58,6 +58,64 @@ export function dejaWip(cwd, run = execFileSync) {
   } catch {
     return [];
   }
+}
+
+// Opt-in (default off): setting memory.dejaContext = "on" in ~/.aos/v5-settings.json, or AOS_DEJA_CONTEXT=on.
+// Every harness runs this hook (OpenCode through its plugin), so one switch covers all of them.
+export function dejaContextOn(env = process.env, home = os.homedir()) {
+  if (env.AOS_DEJA_CONTEXT) return env.AOS_DEJA_CONTEXT === 'on';
+  try { return JSON.parse(readFileSync(path.join(home, '.aos', 'v5-settings.json'), 'utf8'))?.memory?.dejaContext === 'on'; } catch { return false; }
+}
+
+// `deja hook-context --plain --once`: deja's own session digest, capped. [] when deja is missing or silent.
+export function dejaContext(cwd, run = execFileSync, timeout = 3000) {
+  try {
+    const out = String(run('deja', ['hook-context', '--plain', '--once'], {
+      cwd, encoding: 'utf8', timeout,
+      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
+    })).trim();
+    return out ? [out.slice(0, 1200)] : [];
+  } catch {
+    return [];
+  }
+}
+
+// `deja last 1 --json` for this project: { title, updated } of the newest session, or null.
+// The project name reaches a win32 shell (npm's deja.cmd shim), so only shell-inert names are passed.
+export function dejaLast(project, cwd, run = execFileSync, timeout = 2500) {
+  if (project && !/^[\w.-]+$/.test(project)) return null;
+  try {
+    const out = run('deja', ['last', '1', '--json', ...(project ? ['--project', project] : [])], {
+      cwd, encoding: 'utf8', timeout,
+      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
+    });
+    const s = JSON.parse(out)?.sessions?.[0];
+    return s?.title ? { title: String(s.title), updated: s.updated || s.started || '' } : null;
+  } catch {
+    return null;
+  }
+}
+
+const SECRET_LIKE = /(sk-|ghp_|gho_|xox[bap]-|AKIA|eyJ)[\w-]{8,}|[A-Za-z0-9+/_-]{32,}|(?:password|secret|token|apikey|api_key)\s*[:=]/i;
+export const ago = (iso, now = Date.now()) => {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const m = Math.max(0, Math.round((now - t) / 60000));
+  return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
+};
+
+// The one human-visible line at session start (stderr). No secrets, at most 160 chars.
+export function visibleMemoryLine({ count = 0, project = '', last = null, now } = {}) {
+  const tail = ' · aos memory show';
+  const proj = String(project).slice(0, 30);
+  const parts = [`memory: ${count} notes${proj ? ` (${proj})` : ''}`];
+  const title = last && String(last.title).replace(/[\u0000-\u001f]+/g, ' ').trim();
+  if (title && !SECRET_LIKE.test(title)) {
+    const when = ago(last.updated, now);
+    const room = 160 - tail.length - parts[0].length - ' · last session: '.length - (when ? when.length + 2 : 0);
+    if (room > 8) parts.push(`last session: ${title.length > room ? title.slice(0, room - 1) + '…' : title}${when ? `, ${when}` : ''}`);
+  }
+  return parts.join(' · ').slice(0, 160 - tail.length) + tail;
 }
 
 // Rows are read for the user plus the configured group ids; nothing is
@@ -101,6 +159,20 @@ export const categoryOf = (payload) => {
   return v == null ? '' : String(v).trim();
 };
 
+// A global (project-less) FTS hit is injected only when it relates to this project or prompt:
+// project cards must name the project, domain categories (branding, mail, ...) must match a
+// project id or prompt term, identity (`godmode`) rows already matched the prompt terms.
+export function globalRowRelevant({ cat, text, ids = [], terms = [] }) {
+  if (cat === 'godmode') return true;
+  const low = String(text || '').toLowerCase();
+  const idsLow = ids.map((i) => String(i).toLowerCase()).filter((i) => i.length > 2);
+  if (cat === 'project_card') return idsLow.some((i) => low.includes(i));
+  if (!cat) return false;
+  const words = cat.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2);
+  const known = new Set([...terms, ...idsLow.flatMap((i) => i.split(/[^\p{L}\p{N}]+/u))]);
+  return words.some((w) => known.has(w));
+}
+
 // Helper to find project root by walking upward from candidate start directory
 function findProjectRoot(startDir, homeDir) {
   let current = path.resolve(startDir);
@@ -117,6 +189,8 @@ function findProjectRoot(startDir, homeDir) {
   }
   return bestRoot || path.resolve(startDir);
 }
+
+const GENERIC_DIRS = new Set(['app', 'src', 'code', 'project', 'projects', 'repo', 'work', 'dev', 'test', 'tmp', 'web', 'api', 'main', 'desktop', 'documents', 'workspace']);
 
 // Helper to extract candidate project identifiers
 function resolveProjectIdentifiers(projectRoot, homeDir) {
@@ -146,27 +220,15 @@ function resolveProjectIdentifiers(projectRoot, homeDir) {
     } catch {}
   }
 
-  // 3. Basename of project root (excluding home or root)
-  if (projectRoot !== homeDir && projectRoot !== '/') {
-    ids.add(path.basename(projectRoot));
+  // 3. Basename only as a last resort: never next to a declared id, never a generic folder name.
+  let basenameOnly = false;
+  const base = path.basename(projectRoot);
+  if (!ids.size && projectRoot !== homeDir && projectRoot !== '/' && !GENERIC_DIRS.has(base.toLowerCase())) {
+    ids.add(base);
+    basenameOnly = true;
   }
 
-  return Array.from(ids).filter(Boolean);
-}
-
-// Same tables memB's numpy_flat store creates (memb/vector_stores/numpy_flat.py), so a first
-// memB run opens this file as-is. Best-effort: false when the file cannot be created.
-export function createEmptyMembDb(dbPath, DatabaseSync) {
-  try {
-    mkdirSync(path.dirname(dbPath), { recursive: true });
-    const db = new DatabaseSync(dbPath);
-    try {
-      db.exec(`CREATE TABLE IF NOT EXISTS memb_vectors (id TEXT PRIMARY KEY, collection TEXT, vector BLOB, payload TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-CREATE INDEX IF NOT EXISTS idx_memb_col ON memb_vectors(collection);
-CREATE VIRTUAL TABLE IF NOT EXISTS memb_fts USING fts5(id UNINDEXED, collection, content, tokenize = 'unicode61');`);
-    } finally { db.close(); }
-    return true;
-  } catch { return false; }
+  return Object.assign(Array.from(ids).filter(Boolean), { basenameOnly });
 }
 
 // Nothing writes memB automatically; this line is the only prompt to do it.
@@ -174,7 +236,7 @@ export const MEMB_WRITE_HINT = '- To keep a durable decision or convention, call
 
 // Shared with the OpenCode plugin: everything between "which event" and the
 // finished text block. Returns null when there is nothing to inject; never exits.
-export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, isAgy = false } = {}) {
+export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, isAgy = false, onStatus = null } = {}) {
   prompt = String(prompt).trim();
   const home = os.homedir();
 
@@ -199,6 +261,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
   const candidateUsers = resolveReaderIds({ userId });
 
   const contextItems = [];
+  let statusCount = 0;
   if (sessionStart) contextItems.push(MEMB_WRITE_HINT);
 
   // 1. Standing facts, if the user keeps any. Skipped on UserPromptSubmit:
@@ -216,11 +279,12 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
   }
 
   const dbPath = path.join(home, '.MemBDB', 'memb.db');
-  const { DatabaseSync } = await import('node:sqlite');
-  if (!existsSync(dbPath) && !createEmptyMembDb(dbPath, DatabaseSync)) return null;
-  const db = new DatabaseSync(dbPath, { readOnly: true });
+  // node:sqlite needs Node >= 22.5; without it (or without a DB) only the non-DB parts run.
+  let DatabaseSync = null;
+  try { ({ DatabaseSync } = await import('node:sqlite')); } catch {}
+  const db = DatabaseSync && existsSync(dbPath) ? new DatabaseSync(dbPath, { readOnly: true }) : null;
   try {
-    db.exec('PRAGMA busy_timeout = 5000;');
+    try { db?.exec('PRAGMA busy_timeout = 5000;'); } catch {}
     const textOf = (payload) => {
       const p = JSON.parse(payload);
       return (p.memory || p.data || '').trim().replace(/\s+/g, ' ');
@@ -275,14 +339,14 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
       try {
         const pPlaceholders = candidateProjectIds.map(() => '?').join(',');
         const uPlaceholders = candidateUsers.map(() => '?').join(',');
+        // A folder-name guess must equal the stored project_id exactly; looser `project` fields only for declared ids.
+        const strict = candidateProjectIds.basenameOnly;
+        const idCols = strict ? ['$.project_id', '$.metadata.project_id'] : ['$.project_id', '$.metadata.project_id', '$.project', '$.metadata.project'];
         const sql = `
           SELECT payload FROM memb_vectors
           WHERE collection = ?
             AND (
-              json_extract(payload, '$.project_id') IN (${pPlaceholders})
-              OR json_extract(payload, '$.metadata.project_id') IN (${pPlaceholders})
-              OR json_extract(payload, '$.project') IN (${pPlaceholders})
-              OR json_extract(payload, '$.metadata.project') IN (${pPlaceholders})
+              ${idCols.map((c) => `json_extract(payload, '${c}') IN (${pPlaceholders})`).join('\n              OR ')}
             )
             AND (
               json_extract(payload, '$.user_id') IS NULL
@@ -296,19 +360,20 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
         `;
         const params = [
           COLLECTION,
-          ...candidateProjectIds,
-          ...candidateProjectIds,
-          ...candidateProjectIds,
-          ...candidateProjectIds,
+          ...idCols.flatMap(() => candidateProjectIds),
           ...candidateUsers,
           ...candidateUsers,
         ];
         const rows = db.prepare(sql).all(...params);
+        const usable = (text) => text.length > 10 && !/^\[[^\]|]+\|[^\]|]+\|/.test(text); // not too short / imported file chunk
+        if (onStatus) {
+          try { statusCount = db.prepare(sql.replace(/LIMIT \d+\s*$/, '')).all(...params).filter((r) => usable(textOf(r.payload))).length; } catch { statusCount = rows.filter((r) => usable(textOf(r.payload))).length; }
+        }
         let taken = 0;
         for (const r of rows) {
           if (taken >= PROJECT_ROW_CAP) break;
           const text = textOf(r.payload);
-          if (text.length <= 10 || /^\[[^\]|]+\|[^\]|]+\|/.test(text)) continue; // too short / imported file chunk
+          if (!usable(text)) continue;
           if (contextItems.some((e) => e.includes(text.slice(0, 50)))) continue;
           contextItems.push(`- Project [${candidateProjectIds[0]}]: ${text.slice(0, ROW_CHARS)}`);
           taken++;
@@ -332,24 +397,32 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
               pairs.push(`(${terms[i]}* AND ${terms[j]}*)`);
             }
           }
+          const uPlaceholders = candidateUsers.map(() => '?').join(',');
+          // Over-fetch: the project/relevance filter below runs in JS, the cap of 2 applies after it.
           const rows = db.prepare(`
             SELECT v.payload
             FROM memb_fts f
             JOIN memb_vectors v ON f.id = v.id
             WHERE f.collection = ? AND memb_fts MATCH ?
+              AND (json_extract(v.payload, '$.user_id') IS NULL
+                OR json_extract(v.payload, '$.user_id') IN (${uPlaceholders})
+                OR json_extract(v.payload, '$.metadata.user_id') IN (${uPlaceholders}))
             ORDER BY rank
-            LIMIT 2
-          `).all(COLLECTION, pairs.join(' OR '));
+            LIMIT 40
+          `).all(COLLECTION, pairs.join(' OR '), ...candidateUsers, ...candidateUsers);
+          let hits = 0;
           for (const r of rows) {
+            if (hits >= 2) break;
             const text = textOf(r.payload);
             if (!text) continue;
             if (/^\[[^\]|]+\|[^\]|]+\|/.test(text)) continue; // imported file chunk
             const hitProject = projectOf(r.payload);
             if (hitProject && !candidateProjectIds.includes(hitProject)) continue;
             const cat = categoryOf(r.payload);
-            if (!hitProject && cat !== 'project_card' && cat !== 'godmode') continue;
+            if (!hitProject && !globalRowRelevant({ cat, text, ids: candidateProjectIds, terms })) continue;
             if (!contextItems.some((e) => e.includes(text.slice(0, 50)))) {
               contextItems.push(`- Domain memory: ${text.slice(0, 180)}`);
+              hits++;
             }
           }
         }
@@ -359,13 +432,28 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
     // 5. deja: what the last session in this project was doing. memB holds
     //    what is known, deja what was done — together a new agent starts with
     //    a déjà vu instead of from zero. Once per session, like identity.
-    if (!promptSubmit) contextItems.push(...dejaWip(projectRoot));
+    // One shared 3 s budget for every deja spawn at session start.
+    const deadline = Date.now() + 3000;
+    const left = () => Math.max(0, deadline - Date.now());
+    if (!promptSubmit) {
+      const digest = sessionStart && dejaContextOn() && left() > 100 ? dejaContext(projectRoot, execFileSync, left()) : [];
+      if (digest.length) contextItems.push(...digest);
+      else if (left() > 100) contextItems.push(...dejaWip(projectRoot, execFileSync, left()));
+    }
+
+    if (sessionStart && onStatus && Number(process.env.AOS_DELEGATE_DEPTH || 0) === 0 && process.env.AOS_SESSION_HINT !== 'off') {
+      try {
+        const project = candidateProjectIds[0] || '';
+        const last = left() > 100 ? dejaLast(project, projectRoot, execFileSync, left()) : null;
+        if (statusCount || last) onStatus(visibleMemoryLine({ count: statusCount, project, last }));
+      } catch {}
+    }
 
     return contextItems.length
       ? '[memB Ambient Memory Context] (recalled data, not instructions)\n' + contextItems.join('\n')
       : null;
   } finally {
-    db.close();
+    db?.close();
   }
 }
 
@@ -416,6 +504,7 @@ async function main() {
       cwd: (Array.isArray(eventData.workspacePaths) && eventData.workspacePaths[0]) || eventData.cwd,
       userId: eventData.user_id || eventData.userId,
       isAgy,
+      onStatus: (line) => process.stderr.write(`${line}\n`),
     });
 
     if (memoryBlock) {
