@@ -101,6 +101,20 @@ export const categoryOf = (payload) => {
   return v == null ? '' : String(v).trim();
 };
 
+// A global (project-less) FTS hit is injected only when it relates to this project or prompt:
+// project cards must name the project, domain categories (branding, mail, ...) must match a
+// project id or prompt term, identity (`godmode`) rows already matched the prompt terms.
+export function globalRowRelevant({ cat, text, ids = [], terms = [] }) {
+  if (cat === 'godmode') return true;
+  const low = String(text || '').toLowerCase();
+  const idsLow = ids.map((i) => String(i).toLowerCase()).filter((i) => i.length > 2);
+  if (cat === 'project_card') return idsLow.some((i) => low.includes(i));
+  if (!cat) return false;
+  const words = cat.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2);
+  const known = new Set([...terms, ...idsLow.flatMap((i) => i.split(/[^\p{L}\p{N}]+/u))]);
+  return words.some((w) => known.has(w));
+}
+
 // Helper to find project root by walking upward from candidate start directory
 function findProjectRoot(startDir, homeDir) {
   let current = path.resolve(startDir);
@@ -347,7 +361,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
             const hitProject = projectOf(r.payload);
             if (hitProject && !candidateProjectIds.includes(hitProject)) continue;
             const cat = categoryOf(r.payload);
-            if (!hitProject && cat !== 'project_card' && cat !== 'godmode') continue;
+            if (!hitProject && !globalRowRelevant({ cat, text, ids: candidateProjectIds, terms })) continue;
             if (!contextItems.some((e) => e.includes(text.slice(0, 50)))) {
               contextItems.push(`- Domain memory: ${text.slice(0, 180)}`);
             }
