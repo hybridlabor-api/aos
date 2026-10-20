@@ -644,6 +644,7 @@ if (typeof globalThis.agent === 'undefined') {
           encoding: 'utf8',
           timeout: 35000,
           shell: false,
+          env: options.trail ? { ...process.env, AOS_TRAIL_NODE: options.trail.node, AOS_TRAIL_PLAN: options.trail.plan } : process.env,
         });
         if (agyRes.status === 0 && agyRes.stdout) {
           const jsonMatch = agyRes.stdout.match(/\{[\s\S]*\}/);
@@ -1369,6 +1370,87 @@ if (mandatorySkillNames.length > 0) {
 }
 
 // ---------------------------------------------------------------------
+// Human plan verdict from the plan canvas. Before any build node runs, the
+// dispatcher blocks until the human answers in the canvas: `approve`
+// continues, `request-changes` goes back to Architect with the feedback.
+// `open --await` is a plain blocking CLI call (open + parked listener in
+// one call), so this works on every harness, not just Claude Code.
+// AOS_PLAN_APPROVAL=auto is the CI-only escape: it skips the canvas wait
+// and proceeds without a human verdict. Never set it for an interactive run.
+// ---------------------------------------------------------------------
+
+// BEGIN canvas-verdict (extracted verbatim by tests/startcycle-human-gate.test.mjs)
+function lastJsonObject(raw) {
+  const starts = [];
+  const re = /(^|\n)\{/g;
+  let m;
+  while ((m = re.exec(raw))) starts.push(m.index + m[1].length);
+  for (let i = starts.length - 1; i >= 0; i--) {
+    try { return JSON.parse(raw.slice(starts[i])); } catch { /* try an earlier object */ }
+  }
+  return null;
+}
+
+// approved: human said approve. feedback (no escalate): request-changes, every item text forwarded to
+// Architect. escalate: no human verdict is coming (ended, timeout, no server), so looping Architect is pointless.
+function decideCanvasVerdict(payload) {
+  if (!payload || payload.error) return { approved: false, escalate: true, feedback: `plan-canvas returned no verdict (${(payload && payload.error) || 'no JSON'})` };
+  const items = Array.isArray(payload.items) ? payload.items.filter((i) => i && typeof i === 'object') : [];
+  if (items.some((i) => i.kind === 'verdict' && i.verdict === 'approve')) return { approved: true };
+  if (payload.status === 'feedback' && items.length > 0) {
+    const lines = items.map((i) => `- [${i.kind === 'verdict' ? i.verdict : i.kind || 'comment'}] ${i.text || '(no text)'}`);
+    return { approved: false, feedback: lines.join('\n') };
+  }
+  return { approved: false, escalate: true, feedback: `canvas ended without a verdict (status: ${payload.status || 'unknown'})` };
+}
+// END canvas-verdict
+
+// .cmd shims need a shell on Windows; quote args there because the shell re-parses them.
+const IS_WIN = typeof process !== 'undefined' && process.platform === 'win32';
+const cliBin = (name) => (IS_WIN ? `${name}.cmd` : name);
+const cliArg = (a) => (IS_WIN ? `"${String(a).replace(/"/g, '""')}"` : a);
+
+function humanCanvasGate(planFile) {
+  if (process.env.AOS_PLAN_APPROVAL === 'auto') {
+    process.stderr.write('[startcycle-dispatch] WARNING: AOS_PLAN_APPROVAL=auto -- plan-canvas human verdict gate SKIPPED (CI-only escape, no human approved this plan)\n');
+    return { approved: true, auto: true };
+  }
+  if (!child_process) {
+    return { approved: false, escalate: true, feedback: 'plan-canvas gate could not run: no process runtime in this environment' };
+  }
+  const headless = !!process.env.CI || !process.stdin?.isTTY;
+  const noDisplay = process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+  const args = ['open', planFile, '--await', '--mode', /\.mdx$/i.test(planFile) ? 'bdb-plan-builder' : 'standard'];
+  if (headless || noDisplay) args.push('--no-open');
+  const timeoutRaw = process.env.AOS_PLAN_AWAIT_TIMEOUT_MS;
+  const timeoutMs = timeoutRaw !== undefined && timeoutRaw !== '' ? Number.parseInt(timeoutRaw, 10) || 0 : (headless ? 30 * 60 * 1000 : 0);
+  let run;
+  try {
+    run = child_process.spawnSync(cliBin('aos-plan-canvas'), args.map(cliArg), {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      shell: IS_WIN,
+      ...(timeoutMs > 0 ? { timeout: timeoutMs } : {})
+    });
+  } catch (error) {
+    run = { error };
+  }
+  if (run.error) {
+    const code = run.error.code;
+    const why = code === 'ETIMEDOUT' ? `no human verdict within ${timeoutMs} ms (AOS_PLAN_AWAIT_TIMEOUT_MS)`
+      : code === 'ENOENT' ? 'aos-plan-canvas CLI not found on PATH; install AOS, or set AOS_PLAN_APPROVAL=auto in CI only'
+      : `failed to run: ${run.error.message || run.error}`;
+    process.stderr.write(`[startcycle-dispatch] plan-canvas gate: ${why}\n`);
+    return { approved: false, escalate: true, feedback: `plan-canvas gate ${why}` };
+  }
+  const raw = typeof run.stdout === 'string' ? run.stdout : '';
+  const decision = decideCanvasVerdict(lastJsonObject(raw));
+  if (decision.escalate && run.status) decision.feedback += ` (exit code ${run.status})`;
+  return decision;
+}
+
+// ---------------------------------------------------------------------
 // Architect <-> TechLead: plan, then capability-map approval. Sequential --
 // not part of the CHANGE 1 race, writes state.json directly as before.
 // ---------------------------------------------------------------------
@@ -1401,7 +1483,12 @@ while (!approved) {
         ? `TechLead rejected your previous plan for this reason -- address it: ${lastRejectionReason}\n`
         : '') +
       `Turn this goal into a system plan with an explicit capability map (module boundaries, ` +
-      `dependency direction, build order). Write it to production_artifacts/00_execution_plan.md. ` +
+      `dependency direction, build order). Create the plan from the matching plan-canvas template: ` +
+      `run \`aos-plan-canvas templates\`, pick the template whose useWhen matches this goal, then ` +
+      `\`aos-plan-canvas new <template-id> production_artifacts/plan\` and fill in the copied plan.mdx in place -- ` +
+      `that plan.mdx is the execution plan; return its path as planPath. On a revision round (or whenever ` +
+      `production_artifacts/plan/plan.mdx already exists) do NOT create a new folder: edit the existing plan.mdx in place. ` +
+      `If the plan-canvas CLI is unavailable, fall back to writing production_artifacts/00_execution_plan.md directly and return that path instead. ` +
       `Author the architecture as Archify architecture JSON to production_artifacts/00_architecture.json, ` +
       `run aos-archify validate architecture production_artifacts/00_architecture.json --quality showcase --json during repair and ` +
       `aos-archify deliver architecture production_artifacts/00_architecture.json production_artifacts/00_architecture.html --quality showcase --json once for final acceptance, ` +
@@ -1541,8 +1628,8 @@ while (!approved) {
 
   try {
     if (fs && fs.existsSync && fs.existsSync(architectureHtml) && child_process) {
-      const canvas = child_process.spawn('aos-plan-canvas', ['open', architectureHtml, '--no-open'], { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: false, detached: true });
-      if (canvas && typeof canvas.on === 'function') canvas.on('error', () => {});
+      const canvas = child_process.spawn(cliBin('aos-plan-canvas'), ['open', architectureHtml, '--no-open'].map(cliArg), { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: IS_WIN, detached: true });
+      if (canvas && typeof canvas.on === 'function') canvas.on('error', (e) => process.stderr.write(`[startcycle-dispatch] architecture canvas not opened: ${e?.message || e}\n`));
       if (canvas && typeof canvas.unref === 'function') canvas.unref();
     }
   } catch {}
@@ -1593,6 +1680,28 @@ while (!approved) {
         { planPath }
       );
     }
+    continue;
+  }
+
+  // Human verdict gate (see humanCanvasGate above): TechLead approved, but
+  // no build node starts before the human approves the plan in the canvas.
+  // request-changes loops back to Architect with the feedback as the
+  // revision brief.
+  const humanGate = humanCanvasGate(planPath);
+  if (humanGate.escalate) {
+    return await escalate(`Plan canvas gate: ${humanGate.feedback}`, { planPath });
+  }
+  if (!humanGate.approved) {
+    approved = false;
+    iteration++;
+    if (iteration >= MAX_ITERATIONS) {
+      return await escalate(
+        `No human approval in the plan canvas within ${MAX_ITERATIONS} iterations. Last feedback: ${humanGate.feedback}`,
+        { planPath }
+      );
+    }
+    lastRejectionReason = `The human requested changes in the plan canvas -- address this feedback: ${humanGate.feedback}`;
+    continue;
   }
 }
 
@@ -1623,11 +1732,21 @@ const NODE_ENUM = BUILD_NODES.map((n) => n.id);
 const NODE_NAMES = humanList(NODE_ENUM);
 
 // Live map (agenttrail skill, Trigger B): best-effort, never blocks or fails the run.
-// aos-trail exits on its own when a map for this repo is already running.
+// After approval, derive the agenttrail plan from the Plan Builder plan.mdx
+// (`aos-plan-canvas trail`), then start the map on it. aos-trail exits on its
+// own when a map for this repo is already running.
+let trailPlan = planPath;
+if (/plan\.mdx$/i.test(planPath) && child_process) {
+  try {
+    const t = child_process.spawnSync(cliBin('aos-plan-canvas'), ['trail', planPath, '--force'].map(cliArg), { cwd: process.cwd(), encoding: 'utf8', shell: IS_WIN });
+    const out = t.status === 0 ? lastJsonObject(t.stdout)?.out : '';
+    if (out) trailPlan = out;
+  } catch (e) { process.stderr.write(`[startcycle-dispatch] trail derivation skipped: ${e?.message || e}\n`); }
+}
 try {
-  child_process?.spawn('aos-trail', [process.cwd(), '--plan', 'production_artifacts/00_execution_plan.md', '--no-open'],
-    { detached: true, stdio: 'ignore', shell: false }).on('error', () => {}).unref();
-} catch { /* no child_process in this runtime: run without the map */ }
+  child_process?.spawn(cliBin('aos-trail'), [process.cwd(), '--plan', trailPlan, '--no-open'].map(cliArg),
+    { detached: true, stdio: 'ignore', shell: IS_WIN }).on('error', (e) => process.stderr.write(`[startcycle-dispatch] live map not started: ${e?.message || e}\n`)).unref();
+} catch (e) { process.stderr.write(`[startcycle-dispatch] live map not started: ${e?.message || e}\n`); }
 
 let findings = [];
 let reviewedClean = false;
@@ -1638,7 +1757,7 @@ while (!reviewedClean) {
   const isSolo = nodesToRun.length === 1;
   const pipelineResults = await pipeline(nodesToRun, (n) => {
     const openFindings = findings.filter((f) => f.node === n.id && f.status === 'open');
-    const opts = { label: n.id, agentType: n.agentType, ...nodeModelOpt(n) };
+    const opts = { label: n.id, agentType: n.agentType, trail: { node: n.id, plan: trailPlan }, ...nodeModelOpt(n) };
     if (isSolo) {
       opts.schema = {
         type: 'object',
@@ -1646,7 +1765,7 @@ while (!reviewedClean) {
       };
     }
     return ensureNodeSkills(n).then(() => agent(
-      `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
+      `[trail-node:${n.id}] You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
         `Read the plan at ${planPath}. ${n.instructions}\n` +
         (openFindings.length
           ? `Address these open Reviewer findings before anything else: ${JSON.stringify(openFindings)}\n`
@@ -1862,7 +1981,7 @@ while (!allGatesPass) {
 
   const isSolo = blockingNodes.length === 1;
   const pipelineResults = await pipeline(blockingNodes, (n) => {
-    const opts = { label: `${n.id}-gate-fix-${iteration}`, agentType: n.agentType, ...nodeModelOpt(n) };
+    const opts = { label: `${n.id}-gate-fix-${iteration}`, agentType: n.agentType, trail: { node: n.id, plan: trailPlan }, ...nodeModelOpt(n) };
     if (isSolo) {
       opts.schema = {
         type: 'object',
@@ -1870,7 +1989,7 @@ while (!allGatesPass) {
       };
     }
     return ensureNodeSkills(n).then(() => agent(
-      `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
+      `[trail-node:${n.id}] You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
         `Shipping's quality gate failed on a check you own: ${JSON.stringify(lastGate)}. ` +
         `Read production_artifacts/04_release_report.md for details and fix it.` +
         (isSolo ? `\n\nReturn only: { "needsHuman": boolean } (set to true only if you set "needs_human": true in state.json).` : ''),

@@ -6,7 +6,7 @@ description: >-
   brainstorm review.
 category: bdb-core
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   origin: affaan-m/ECC
   license: MIT
 ---
@@ -64,13 +64,20 @@ harness surfaces skills — e.g. `/plan-canvas` in Claude Code, `$plan-canvas` i
 Codex — or just run the `aos-plan-canvas` commands directly.
 
 ```bash
-# 1. Open the artifact in the user's browser (returns immediately)
-aos-plan-canvas open production_artifacts/00_execution_plan.md
+# 1+2 in one call: open the artifact in the user's browser AND block until
+# the human responds. Leave running; re-run if interrupted (queued feedback
+# is never lost). Equivalent to `open` then `await` immediately.
+aos-plan-canvas open production_artifacts/00_execution_plan.md --await
 
-# 2. Block until the human responds. Leave running; re-run if interrupted:
-#    queued feedback is never lost.
+# Or, in two calls (the await must follow immediately):
+aos-plan-canvas open production_artifacts/00_execution_plan.md
 aos-plan-canvas await production_artifacts/00_execution_plan.md
 ```
+
+**Always use `open --await` (or `open` then `await` immediately). Never end
+the turn without a listener parked on the session.** `open --await` prints the
+same JSON as `await` and works identically in every harness — it is a plain
+blocking shell call, no harness-specific API.
 
 When starting a new plan, offer the template choice first: `aos-plan-canvas templates`
 prints the available templates as JSON (`id`, `label`, `description`, `useWhen`,
@@ -273,6 +280,8 @@ aos-plan-canvas open <file> --mode bdb-plan-builder
 ```
 
 `bdb-plan-builder` (labeled "BDB Plan Builder") is listed as available only when `lib/plan-builder/index.js` exists in this skill's scripts directory. Until then, only `standard` is available and it is the default. Pass `--mode` explicitly: `open` without `--mode` still falls back to `standard` for plain `.md` files.
+
+`open` accepts `--await` (with optional `--reply <msg>`): it opens the session and then blocks exactly like `await`, returning the same JSON. Prefer it — one call keeps the listener up.
 
 ### `bdb-plan-builder`
 

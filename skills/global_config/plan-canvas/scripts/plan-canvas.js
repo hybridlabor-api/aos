@@ -41,7 +41,7 @@ const {
   watchCodeStamp
 } = require('./lib/plan-canvas/server');
 
-const VERSION = '1.1.0';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
+const VERSION = '1.2.0';   // vendored Plan Canvas protocol version; matches SKILL.md metadata.version.
                            // Bump when the vendored JS changes, to force a stale detached server to restart.
 
 const SAFE_REQUEST_PATHS = new Set([
@@ -65,6 +65,7 @@ function usage() {
     '  aos-plan-canvas templates        List plan templates as JSON ({id,label,description,useWhen,hasBoard})',
     '  aos-plan-canvas new <template-id> <target-dir>  Copy a plan template into a new folder',
     '  aos-plan-canvas open <file>      Open (or resume) a review session',
+    '  aos-plan-canvas open <file> --await  Open, then block like await in the same call',
     '  aos-plan-canvas trail <plan-dir|plan.mdx>  Write an agenttrail plan file from a plan folder',
     '  aos-plan-canvas annotate <app-url>  Print the script tag that lets you annotate a running dev app',
     '  aos-plan-canvas await <file>     Block until the human sends feedback',
@@ -79,6 +80,8 @@ function usage() {
     '                   bdb-plan-builder builds <plan-dir>/plan.builder.html from',
     '                   plan.mdx and opens that file instead',
     '         --no-open      Do not launch a browser window',
+    '         --await        After opening, block until the human sends feedback (same output contract as await)',
+    '         --reply <msg>  With --await: show an agent reply in the canvas chat before waiting',
     '         --reopen       Reopen a session the user ended from the browser',
     '  new:   --mode <id>    bdb-plan-builder (default: plan.mdx, canvas.mdx) or standard (plan.md);',
     '                   refuses a non-empty target (exit 2)',
@@ -250,12 +253,15 @@ async function ensureServer({ stateDir, port }) {
 function openBrowser(url) {
   if (process.env.AOS_NO_OPEN === '1') return false;
   const platform = process.platform;
+  if (platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return false;
   const [cmd, args] =
     platform === 'darwin' ? ['open', [url]]
       : platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
         : ['xdg-open', [url]];
   try {
-    spawn(cmd, args, { detached: true, stdio: 'ignore', shell: false }).unref();
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: false });
+    child.on('error', () => {});
+    child.unref();
     return true;
   } catch {
     return false;
@@ -324,12 +330,23 @@ function resolveModes() {
   };
 }
 
-async function cmdOpen(file, args, { stateDir, port }) {
+async function cmdOpen(file, args, context) {
+  const { stateDir, port } = context;
+  const result = await doOpen(file, args, { stateDir, port });
+  // open --await: one call opens the session AND keeps listening, so the turn
+  // can never end without a listener. Same output contract as await.
+  if (!result.error && args.includes('--await')) {
+    return cmdAwait(file, args.filter(a => a !== '--await'), context);
+  }
+  return result;
+}
+
+async function doOpen(file, args, { stateDir, port }) {
   if (!file) throw new Error('open requires a file path');
   if (!fs.existsSync(path.resolve(file))) throw new Error(`artifact not found: ${file}`);
 
-  const mode = valueAfter(args, '--mode') || 'standard';
   const modesInfo = resolveModes();
+  const mode = valueAfter(args, '--mode') || modesInfo.default;
   const modeConfig = modesInfo.modes.find(m => m.id === mode);
 
   if (!modeConfig) {
@@ -409,8 +426,8 @@ async function cmdOpen(file, args, { stateDir, port }) {
     ...(built ? { artifact: built.outFile, warnings: built.warnings } : {}),
     ...(mdxWarning ? { warning: mdxWarning, warnings: Array.isArray(built?.warnings) ? [...built.warnings, mdxWarning] : [mdxWarning] } : {}),
     next_step: built && Array.isArray(built.warnings) && built.warnings.length
-      ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas await <dir>/plan.builder.html\` and leave it running.`
-      : 'Run `aos-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
+      ? `Plan built with ${built.warnings.length} unreadable block(s), listed at the top of the artifact. Fix the MDX, then re-run \`open <dir> --mode bdb-plan-builder\` to rebuild. Then run \`aos-plan-canvas open <dir>/plan.builder.html --mode bdb-plan-builder --await\` and leave it running.`
+      : 'Required next step: keep a listener on this session — use `aos-plan-canvas open <file> --await` (or run `aos-plan-canvas await <file>` immediately). Never end the turn without one; it returns when the human sends feedback, a verdict, or ends the session.'
   };
 }
 
