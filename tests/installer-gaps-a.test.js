@@ -102,3 +102,14 @@ test('G20: context-profile percentage uses the baseline the savings use', () => 
     assert.ok(!src.includes('62020'));
     assert.strictEqual((src.match(/68950/g) || []).length, 1);
 });
+
+test('G21: Basic exclusions and tier packs come from lib/skill-packs.js', () => {
+    const sp = require('../lib/skill-packs.js');
+    assert.deepStrictEqual(sp.tierPacks('1'), ['live-show']);
+    assert.deepStrictEqual(sp.tierPacks('2'), []);
+    const shipped = sp.shippedSkillDirs(root);
+    for (const n of sp.BASIC_TIER_EXCLUDES) assert.ok(shipped.has(n), n);
+    for (const n of sp.packSkillNames(root, 'live-show').filter((x) => /^bdb-.*-mcp$/.test(x) && x !== 'bdb-computer-use-mcp')) {
+        assert.ok(sp.BASIC_TIER_EXCLUDES.includes(n), n);
+    }
+});

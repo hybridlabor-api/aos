@@ -4407,19 +4407,7 @@ function getTierExcludeSkills(tier) {
     // A stored pack selection excludes every shipped skill outside base+packs; the Pro MEDIA
     // tier and installed modules imply their packs on top (additive). No stored selection
     // excludes nothing (existing users keep all skills).
-    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? [
-        'bdb-adobe-suite-mcp',
-        'bdb-after-effects-mcp',
-        'bdb-blender-mcp',
-        'bdb-davinci-mcp',
-        'bdb-grandma3-mcp',
-        'bdb-resolume-mcp',
-        'bdb-rhino-mcp',
-        'bdb-touchdesigner-mcp',
-        'bdb-unreal-mcp',
-        'bdb-vectorworks-mcp',
-        'bdbmediastorm'
-    ] : [])];
+    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? skillPacks.BASIC_TIER_EXCLUDES : [])];
 }
 
 // Merge the BDB MCP servers into a harness's *secondary* config store without
@@ -9164,7 +9152,7 @@ Options:
             if (specNow.length === 0 && ctx.selectedPlatforms.includes('0')) specNow.push(defaultPlatformValue());
             const lines = [
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
-                `Skill Packs:   ${Array.isArray(packSelection) ? `base + ${[...new Set([...packSelection, ...(ctx.tier === '1' ? ['live-show'] : [])])].join(', ')}` : 'all skills (no pack selection stored)'}`,
+                `Skill Packs:   ${Array.isArray(packSelection) ? `base + ${[...new Set([...packSelection, ...skillPacks.tierPacks(ctx.tier)])].join(', ')}` : 'all skills (no pack selection stored)'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
                 `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
@@ -9224,7 +9212,7 @@ Options:
         return;
     }
     // Pro MEDIA brings the live-show pack (additive; base pack is always in).
-    if (tier === '1') addImpliedPack('live-show');
+    skillPacks.tierPacks(tier).forEach(addImpliedPack);
     persistInstallOptions();
     if (INSTALL_OPTS.router && !routerChoice) {
         const detected = detectRouterTargets().filter((t) => t.detected).map((t) => t.key);
