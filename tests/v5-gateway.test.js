@@ -1445,6 +1445,20 @@ describe('presets.json', () => {
         assert.equal(pkg.stripAosPresets(dir), 'removed');
     });
 
+    test('stripAosPresets removes the three presets exactly as 1mcp 1.0.0 stored them on a fresh install, with no record', () => {
+        const dir = tmp();
+        const base = (tags) => ({ strategy: 'advanced', tagQuery: { $and: [{ tag: 'aos' }, ...tags.map((tag) => ({ $not: { tag } }))] } });
+        const stamp = (name) => ({ name, created: '2026-10-20T08:01:14.270Z', lastModified: '2026-10-20T08:01:14.270Z' });
+        const presets = {
+            agy: { ...base(['bdb_davinci_mcp']), ...stamp('agy') },
+            worker: { ...base(['bdb_davinci_mcp', 'bdb_unreal_mcp', 'bdb_blender_mcp']), ...stamp('worker') },
+            small: { ...base(['bdb_davinci_mcp', 'bdb_unreal_mcp']), ...stamp('small') },
+        };
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1.0.0', presets }, null, 2));
+        assert.equal(pkg.stripAosPresets(dir), 'removed');
+        assert.ok(!fs.existsSync(path.join(dir, 'presets.json')));
+    });
+
     test('stripAosPresets removes the empty file 1mcp writes on start (real 1.0.0 storage shape); a user preset keeps it', () => {
         const dir = tmp();
         fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1.0.0', presets: {} }, null, 2));
