@@ -1145,8 +1145,6 @@ const activeRoleRegistry = roleRegistry || {
     const canon = canonicalNodeId(id);
     return registryNodes[id] || registryNodes[canon] || null;
   },
-  availableSkills: roleRegistry?.availableSkills || null,
-  availablePlaybooks: roleRegistry?.availablePlaybooks || null,
 };
 
 // --skill=<name>, repeatable, extracted out of the raw goal text before
