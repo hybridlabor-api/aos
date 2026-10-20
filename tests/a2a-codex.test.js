@@ -127,3 +127,7 @@ test("codexInvocation (posix): plain argv, no shell", () => {
   const inv = codexInvocation(["x"], { platform: "linux", env: { PATH: "/nope" }, fs: winFs({}) });
   assert.deepEqual([inv.file, inv.args], ["codex", ["x"]]);
 });
+
+test("codexInvocation (win32): no codex found is an error, never a bare 'codex' lookup", () => {
+  assert.throws(() => codexInvocation(["x"], { platform: "win32", env: { PATH: "C:\\\\nope", PATHEXT: ".cmd" }, fs: winFs({}) }), /codex not found/);
+});
