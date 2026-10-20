@@ -976,13 +976,18 @@ const keptUserEdits = [];
 // A stale gate is a security defect, so these are never left behind as <file>.new: the old copy is moved
 // to <file>.bak and the shipped one installed.
 const GUARD_FILES = new Set(['aos-gate.mjs', 'gate-profile.mjs', 'go-gate.mjs']);
+// Runtime scripts nobody is meant to edit. A copy from an untagged pre-release matches no shipped hash and, without a
+// manifest entry, looked like a user edit (Windows: five .new files after every update); same replace-with-.bak rule.
+const RUNTIME_FILES = new Set(['startcycle-dispatch.mjs', 'stop-module-processes.js']);
 
 function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
-    if (GUARD_FILES.has(path.basename(targetPath))) {
+    const base = path.basename(targetPath);
+    if (GUARD_FILES.has(base) || RUNTIME_FILES.has(base)) {
         fs.copyFileSync(targetPath, `${targetPath}.bak`);
         fs.copyFileSync(sourcePath, targetPath);
+        try { fs.rmSync(`${targetPath}.new`, { force: true }); } catch { /* stale .new is only noise */ }
         manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
-        log.warn(`Gate file ${targetPath} differed from every shipped version; replaced it (previous copy: ${targetPath}.bak).`);
+        log.warn(`${GUARD_FILES.has(base) ? 'Gate file' : 'AOS runtime file'} ${targetPath} differed from every shipped version; replaced it (previous copy: ${targetPath}.bak).`);
         return 'wrote';
     }
     fs.copyFileSync(sourcePath, `${targetPath}.new`);
