@@ -7231,6 +7231,7 @@ function installCodexWritableRoot({ targetHome = homeDir } = {}) {
         if (!backupConfigFile(file)) return false;
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, r.text, { mode: 0o600 });
+        uninstallRecords.recordCodexWritableRoot(targetHome, dir);
         log.step(`Codex: ${dir} added to [sandbox_workspace_write].writable_roots`);
         return true;
     } catch (e) {

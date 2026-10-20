@@ -56,3 +56,27 @@ test('CRLF files keep CRLF', () => {
     const a = ensure('[features]\r\nhooks = true\r\n', DIR);
     assert.ok(!/[^\r]\n/.test(a.text));
 });
+
+test('spaced and quoted header forms are edited in place, never duplicated', () => {
+    for (const header of ['[ sandbox_workspace_write ]', '["sandbox_workspace_write"]', "['sandbox_workspace_write']"]) {
+        const base = `${header}\nnetwork_access = true\n`;
+        const a = ensure(base, DIR);
+        assert.ok(a.changed, header);
+        assert.equal((a.text.match(/sandbox_workspace_write/g) || []).length, 1, `${header}: no second table`);
+        assert.equal(remove(a.text, DIR).text, base);
+    }
+});
+
+test('a second mention of the table (dotted key next to a header) is refused', () => {
+    const base = '[sandbox_workspace_write]\nnetwork_access = true\n[other]\nx = 1\nsandbox_workspace_write.writable_roots = ["/a"]\n';
+    const r = ensure(base, DIR);
+    assert.equal(r.changed, false);
+    assert.ok(r.note);
+});
+
+test('removal keeps user comment lines in the table', () => {
+    const base = '[sandbox_workspace_write]\n# my note\n';
+    const a = ensure(base, DIR);
+    const back = remove(a.text, DIR).text;
+    assert.ok(back.includes('# my note') && back.includes('[sandbox_workspace_write]'));
+});
