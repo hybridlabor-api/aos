@@ -1444,4 +1444,15 @@ describe('presets.json', () => {
         fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ presets: { worker: mk('a') } }));
         assert.equal(pkg.stripAosPresets(dir), 'removed');
     });
+
+    test('stripAosPresets removes the empty file 1mcp writes on start (real 1.0.0 storage shape); a user preset keeps it', () => {
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1.0.0', presets: {} }, null, 2));
+        assert.equal(pkg.stripAosPresets(dir), 'removed');
+        assert.ok(!fs.existsSync(path.join(dir, 'presets.json')));
+        const mine = { name: 'mine', strategy: 'or', tagQuery: { $or: [{ tag: 'github' }] }, created: 'x', lastModified: 'x' };
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ version: '1.0.0', presets: { mine } }));
+        assert.equal(pkg.stripAosPresets(dir), 'kept');
+        assert.ok(fs.existsSync(path.join(dir, 'presets.json')));
+    });
 });
