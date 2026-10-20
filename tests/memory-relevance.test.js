@@ -25,3 +25,13 @@ test('visibleMemoryLine is short, redacts secret-like titles and omits unknown p
   const secret = visibleMemoryLine({ count: 1, project: 'p', last: { title: 'use ghp_abcdefghijklmnop now', updated: '' }, now });
   assert.ok(!secret.includes('last session'));
 });
+
+test('dejaContext is off by default and runs `deja hook-context --once` only when on', async () => {
+  const { dejaContextOn, dejaContext } = await load();
+  assert.strictEqual(dejaContextOn({}, '/nonexistent'), false);
+  assert.strictEqual(dejaContextOn({ AOS_DEJA_CONTEXT: 'on' }, '/nonexistent'), true);
+  let seen;
+  const out = dejaContext('/x', (cmd, args) => { seen = [cmd, ...args]; return ' digest \n'; });
+  assert.deepStrictEqual(seen, ['deja', 'hook-context', '--plain', '--once']);
+  assert.deepStrictEqual(out, ['digest']);
+});

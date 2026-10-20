@@ -60,6 +60,26 @@ export function dejaWip(cwd, run = execFileSync) {
   }
 }
 
+// Opt-in (default off): setting memory.dejaContext = "on" in ~/.aos/v5-settings.json, or AOS_DEJA_CONTEXT=on.
+// Every harness runs this hook (OpenCode through its plugin), so one switch covers all of them.
+export function dejaContextOn(env = process.env, home = os.homedir()) {
+  if (env.AOS_DEJA_CONTEXT) return env.AOS_DEJA_CONTEXT === 'on';
+  try { return JSON.parse(readFileSync(path.join(home, '.aos', 'v5-settings.json'), 'utf8'))?.memory?.dejaContext === 'on'; } catch { return false; }
+}
+
+// `deja hook-context --plain --once`: deja's own session digest, capped. [] when deja is missing or silent.
+export function dejaContext(cwd, run = execFileSync) {
+  try {
+    const out = String(run('deja', ['hook-context', '--plain', '--once'], {
+      cwd, encoding: 'utf8', timeout: 3000,
+      stdio: ['ignore', 'pipe', 'ignore'], shell: process.platform === 'win32',
+    })).trim();
+    return out ? [out.slice(0, 1200)] : [];
+  } catch {
+    return [];
+  }
+}
+
 // `deja last 1 --json` for this project: { title, updated } of the newest session, or null.
 export function dejaLast(project, cwd, run = execFileSync) {
   try {
@@ -412,7 +432,10 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
     // 5. deja: what the last session in this project was doing. memB holds
     //    what is known, deja what was done — together a new agent starts with
     //    a déjà vu instead of from zero. Once per session, like identity.
-    if (!promptSubmit) contextItems.push(...dejaWip(projectRoot));
+    if (!promptSubmit) {
+      const digest = sessionStart && dejaContextOn() ? dejaContext(projectRoot) : [];
+      contextItems.push(...(digest.length ? digest : dejaWip(projectRoot)));
+    }
 
     if (sessionStart && onStatus && Number(process.env.AOS_DELEGATE_DEPTH || 0) === 0 && process.env.AOS_SESSION_HINT !== 'off') {
       try {
