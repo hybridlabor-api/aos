@@ -3,12 +3,14 @@
 // Usage: aos-mcp-env --vars GITHUB_PERSONAL_ACCESS_TOKEN -- npx -y @modelcontextprotocol/server-github@2025.4.8
 // A missing or refused secrets file never blocks the server: it starts without the variables and a hint
 // goes to stderr. Variables already set in the environment win. Values are never printed.
-import '../lib/cli-help-guard.mjs';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+
+// The help guard is optional here: the launcher starts every MCP server and may sit next to only its three lib files.
+await import('../lib/cli-help-guard.mjs').catch((e) => { if (e?.code !== 'ERR_MODULE_NOT_FOUND') throw e; });
 
 // A missing lib (e.g. ~/.agents/lib removed) must not keep the server from starting.
 let lib = null;
