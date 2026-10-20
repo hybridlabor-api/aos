@@ -103,10 +103,16 @@ test('harness URLs carry the active context profile preset for every kind', () =
     for (const u of urls) assert.ok(u.startsWith('http://127.0.0.1:7790/mcp?preset=worker'), u);
     // full profile: the plain URL (the profile's preset is "all"; the gateway already serves just the selection)
     const reportFull = enable({ home, token: 'a'.repeat(64), shipped: shipped.mcpServers, files, presets, contextProfile: 'full' });
-    for (const r of reportFull) {
-        const u = r.file === toml ? /url = "([^"]*)"/m.exec(fs.readFileSync(toml, 'utf8'))[1] : '';
-        if (r.file === toml) assert.equal(u, 'http://127.0.0.1:7790/mcp');
-    }
+    const fullUrls = files.map(({ file }) => {
+        if (file === toml) return /url = "([^"]*)"/m.exec(fs.readFileSync(file, 'utf8'))[1];
+        const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const e = d.mcpServers ? d.mcpServers.aos : d.mcp.aos;
+        return e.url || e.serverUrl;
+    });
+    assert.equal(fullUrls.length, 4);
+    // full has no preset of its own: claude, opencode and codex get the plain URL, agy keeps its kind preset
+    const kinds = ['claude', 'opencode', 'agy', 'codex'];
+    fullUrls.forEach((u, i) => assert.equal(u, cfg.presetFor(kinds[i], presets) ? `http://127.0.0.1:7790/mcp?preset=${kinds[i]}` : 'http://127.0.0.1:7790/mcp', kinds[i]));
     // persisted settings default to full: readSettings without context = 'full'
     assert.equal(require('../lib/v5/context-profiles.js').contextProfileOf({}), 'full');
 });

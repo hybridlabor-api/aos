@@ -125,13 +125,13 @@ async function install(name) {
       const digest = createHash('sha256').update(content).digest('hex');
       if (digest !== p.item.sha256) throw new Error(`SHA-256 mismatch for ${p.name}: expected ${p.item.sha256}, got ${digest}`);
       files = null;
-      for (const target of targetsFor(p.type, p.name)) writes.push({ type: 'file', target, data: content });
+      for (const target of targetsFor(p.type, p.name)) writes.push({ type: 'file', target, data: content, item: p.item });
     }
-    if (files) for (const target of targetsFor(p.type, p.name)) writes.push({ type: 'dir', target, plan: planSkillFiles(target, files) });
+    if (files) for (const target of targetsFor(p.type, p.name)) writes.push({ type: 'dir', target, plan: planSkillFiles(target, files), item: p.item });
   }
   for (const note of notes) console.log(note);
   if (src.local) {
-    const todo = writes.filter((w) => !aosInstalledExact(plan[0].item, w.target));
+    const todo = writes.filter((w) => !aosInstalledExact(w.item, w.target));
     if (!todo.length) { console.log(`Already installed: ${name}`); return; }
     writes.splice(0, writes.length, ...todo);
   }

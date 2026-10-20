@@ -92,5 +92,5 @@ test('menu-mode multi cancel (null) writes nothing', async () => {
     const ui = { multi: async () => null };
     // gateway and hub are excluded: the case is about the mods prompt, and they would run real installs
     await menu.installDefaults(mainHost(home), { home, write: () => {}, ui }, new Set(['gateway', 'hub']));
-    assert.ok(!fs.existsSync(p.settingsFile(home)) || (p.readSettings(home).disabled || []).length === 0);
+    assert.deepEqual(fs.existsSync(p.settingsFile(home)) ? (p.readSettings(home).disabled || []) : [], []);
 });
