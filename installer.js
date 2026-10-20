@@ -8882,6 +8882,7 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
             creator: selection.detectCreatorServers({ platform: process.platform, env: process.env, home }),
             keep: [...current, ...seen],
         });
+        if (r.retired && r.retired.length) log.step(`Gateway: retired server name(s) ignored: ${r.retired.join(', ')}${r.servers.length ? '' : ' (selection is now empty; add servers with aos-gateway add <name>)'}`);
         if (r.kept.length) log.step(`Gateway: keeping the servers you already run (${r.kept.join(', ')})`);
         const next = { ...st, gateway: { ...(st.gateway || {}), servers: r.servers } };
         v5Profile.writeSettings(home, next);

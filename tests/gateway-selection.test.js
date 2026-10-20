@@ -210,3 +210,11 @@ test('detectMediaServers selects only media servers whose app exists; deriveGate
     const d = selection.deriveGatewayServers({ media: ['bdb_resolume_mcp'] });
     assert.ok(d.includes('bdb_resolume_mcp') && !d.includes('bdb_unreal_mcp'));
 });
+
+test('a stored selection of only retired names stays empty and reports them', () => {
+    const r = selection.resolveGatewayServers({ settingServers: ['old_server_gone'], media: true });
+    assert.deepEqual(r.servers, []);
+    assert.equal(r.fromSetting, true);
+    assert.deepEqual(r.retired, ['old_server_gone']);
+    assert.equal(selection.validStoredServers(['bad name!']), null, 'malformed names still count as corrupt');
+});
