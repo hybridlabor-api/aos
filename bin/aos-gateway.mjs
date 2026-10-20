@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const req = createRequire(import.meta.url);
-const { gatewayDir, lazyLoadingOn, RUNTIME_FILE, GATEWAY_PORT, UPSTREAM_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
+const { gatewayDir, lazyLoadingOn, asyncLoadingOn, RUNTIME_FILE, GATEWAY_PORT, UPSTREAM_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
 const { createForwarder } = req('../lib/gateway/forwarder.js');
 const { enable, disable } = req('../lib/gateway/harness.js');
 const { shippedPresets, livePresets } = req('../lib/v5/pkg-gateway.js');
@@ -22,6 +22,9 @@ const adoptApi = req('../lib/gateway/adopt.js');
 
 export const lazyText = (s) => !s.running ? 'not running' : s.lazyLoading === null ? 'unknown (restart the gateway to record it)'
     : `${s.lazyLoading ? 'on (meta-tools tool_list/tool_schema/tool_invoke)' : 'off'}${s.restartPending ? `; restart pending (gateway.json says ${s.lazyLoading ? 'off' : 'on'}; run aos-gateway restart)` : ''}`;
+
+export const asyncText = (s) => !s.running ? 'not running'
+    : `${s.asyncLoading ? 'on (--enable-async-loading)' : 'off'}${s.asyncRestartPending ? `; restart pending (gateway.json says ${s.asyncLoading ? 'off' : 'on'}; run aos-gateway restart)` : ''}`;
 
 export const LABEL = 'com.bdb.aos.gateway';
 export const WIN_TASK = 'AOS MCP Gateway';
@@ -84,7 +87,10 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
     let lazyLoading = null;
     if (running) try { const r = JSON.parse(fs.readFileSync(path.join(dir, RUNTIME_FILE), 'utf8')); if (typeof r.lazyLoading === 'boolean') lazyLoading = r.lazyLoading; } catch { /* unknown */ }
     const restartPending = lazyLoading !== null && lazyLoading !== lazyLoadingOn(dir);
-    return { running, pid: running ? readPid(dir) : null, lazyLoading, restartPending, port, upstreamsScope: 'global', upstreams, ...(inUse ? { error: problem } : {}) };
+    let asyncLoading = false;
+    if (running) try { asyncLoading = JSON.parse(fs.readFileSync(path.join(dir, RUNTIME_FILE), 'utf8')).asyncLoading === true; } catch { /* unknown counts as off */ }
+    const asyncRestartPending = running && asyncLoading !== asyncLoadingOn(dir);
+    return { running, pid: running ? readPid(dir) : null, lazyLoading, restartPending, asyncLoading, asyncRestartPending, port, upstreamsScope: 'global', upstreams, ...(inUse ? { error: problem } : {}) };
 }
 
 const TOKEN_RE = /^[0-9a-f]{64}$/;
@@ -148,11 +154,13 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
     fs.writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
 
     const lazy = lazyLoadingOn(dir, log);
+    const asyncLoad = asyncLoadingOn(dir);
     const args = [script, 'serve', '-c', path.join(dir, 'mcp.json'), '--config-dir', dir, '--host', '127.0.0.1', '--port', String(upstreamPort),
         '--no-enable-session-persistence', '--enable-enhanced-security', '--log-level', 'warn',
-        ...(lazy ? ['--enable-lazy-loading', '--lazy-fallback-on-error', 'full'] : [])];
+        ...(lazy ? ['--enable-lazy-loading', '--lazy-fallback-on-error', 'full'] : []),
+        ...(asyncLoad ? ['--enable-async-loading'] : [])];
     const runtimeFile = path.join(dir, RUNTIME_FILE);
-    try { fs.writeFileSync(runtimeFile, JSON.stringify({ lazyLoading: lazy, pid: process.pid }), { mode: 0o600 }); } catch { /* status shows unknown */ }
+    try { fs.writeFileSync(runtimeFile, JSON.stringify({ lazyLoading: lazy, asyncLoading: asyncLoad, pid: process.pid }), { mode: 0o600 }); } catch { /* status shows unknown */ }
     let child = null;
     let stopping = false;
     let timer = null;
@@ -269,6 +277,7 @@ async function main() {
         else {
             console.log(`gateway: ${s.running ? `running${s.pid ? ` (pid ${s.pid})` : ''}` : 'not running'} on 127.0.0.1:${s.port}${s.error ? ` - ${s.error}` : ''}`);
             console.log(`  lazy loading: ${lazyText(s)}`);
+            console.log(`  async loading: ${asyncText(s)}`);
             for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
