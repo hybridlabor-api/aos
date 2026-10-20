@@ -111,7 +111,10 @@ person this machine belongs to, injected into every prompt. The doctor's
 
 Run it as a conversation, one question at a time: who the user is and their
 role, company and brands, how the workspace is structured, and their ground
-rules. Propose sources instead of asking blind — glob `WORKSPACE.md`,
+rules. Ask in the language the user writes in, never one taken from other
+context (memory, workspace files, the person who shared the setup prompt);
+store the facts in that same language unless the user asks otherwise.
+Propose sources instead of asking blind — glob `WORKSPACE.md`,
 `AGENTS.md` and `agents.md` directly under the configured workspace root (e.g.
 `~/dev/WORKSPACE.md`) and offer each as source material before using it. Never
 read the whole tree.
