@@ -809,6 +809,15 @@ describe('status JSON', () => {
         await fw.close();
     });
 
+    test('1mcp 503 without a parseable body is degraded-unknown, not down', async () => {
+        const [, inner] = await fake((req, res) => { res.writeHead(503); res.end('nope'); });
+        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        await fw.listen();
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        assert.ok(s.running && s.upstreams.every((u) => u.degraded && !u.ok));
+        await fw.close();
+    });
+
     test('running gateway, 1mcp down', async () => {
         const fw = createForwarder({ port: 0, upstreamPort: 1, token: 'x'.repeat(64) });
         await fw.listen();

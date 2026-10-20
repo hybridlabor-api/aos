@@ -73,6 +73,7 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         if (d) return d.healthy ? { name, ok: true } : { name, ok: false, degraded: true, error: d.lastError || d.status || 'upstream not connected' };
         if (inner.status === 200) return { name, ok: true };
         if (busy) return { name, ok: false, busy: true, error: `1mcp busy on ${upstreamPort} (no answer in 12 s, likely a catalog refresh); check again in a minute` };
+        if (inner.status === 503) return { name, ok: false, degraded: true, error: '1mcp health returned 503 without per-server details (some upstreams not connected)' };
         return { name, ok: false, error: inner.error ? `1mcp not reachable on ${upstreamPort} (${inner.error})` : `1mcp health returned ${inner.status}` };
     });
     // Upstream values are the state of 1mcp as a whole, not per-server health.
