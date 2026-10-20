@@ -127,7 +127,9 @@ test('the claude manifest is slim: no skills key; the full pack lives in skills.
   const skillsSh = json('skills.sh.json');
   const pack = skillsSh.groupings.flatMap((g) => (Array.isArray(g.skills) ? g.skills : []));
   assert.ok(pack.length > 100, `expected the full skill pack in skills.sh.json, got ${pack.length}`);
-  assert.deepEqual(pack, [...pack].sort(), 'skills.sh.json skills must be sorted for a stable diff');
+  for (const g of skillsSh.groupings) {
+    assert.deepEqual(g.skills, [...g.skills].sort(), `skills.sh.json group "${g.title}" must be sorted for a stable diff`);
+  }
   // every registered skill name resolves to a SKILL.md in the skills/ tree
   const dirs = [];
   const walk = (dir) => {

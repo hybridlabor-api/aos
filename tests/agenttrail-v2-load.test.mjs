@@ -104,11 +104,16 @@ describe('hub model rebuilds', () => {
     assert.equal(p.progress.live, 0);
   });
 
-  test('a task.update without a plan never marks a node live', () => {
+  test('a task.update without a plan adopts the checkout plan only when it names one of its nodes', () => {
     const repo = planRepo('trail-load-noplan-');
-    const t = taskSession(repo, { id: 'cart-wire', status: 'doing' });
-    const m = buildModel({ now: Date.now(), port: 5350, sessionTable: t, gate: null, asks: [], repos: [{ root: repo }], pinnedKeys: [] });
-    const p = m.repos.flatMap((r) => r.plans)[0];
-    assert.equal(p.progress.live, 0);
+    const model = (id) => buildModel({ now: Date.now(), port: 5350, sessionTable: taskSession(repo, { id, status: 'doing' }), gate: null, asks: [], repos: [{ root: repo }], pinnedKeys: [] });
+    const plan = (m) => m.repos.flatMap((r) => r.plans)[0];
+    const hit = plan(model('cart-wire'));
+    assert.equal(hit.progress.live, 1);
+    assert.equal(hit.tasks.find((x) => x.id === 'cart-wire').live.status, 'doing');
+    assert.equal(hit.tasks.find((x) => x.id === 'cart-build').live, null);
+    const miss = plan(model('not-in-this-plan'));
+    assert.equal(miss.progress.live, 0);
+    assert.ok(miss.tasks.every((x) => x.live === null));
   });
 });

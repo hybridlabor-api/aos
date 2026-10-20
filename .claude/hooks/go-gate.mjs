@@ -1292,7 +1292,9 @@ function blankData(text, keepCode = false) {
     if (!keepCode && !opaque && INTERP.test(h) && !/^(?:pwsh|powershell|cmd)/i.test(h) && scriptFile(h, rest.slice(1).map(unqQ)).inline) return blankQuotes(p.t) + p.sep;
     const sub = h === "git" ? rest.slice(1).map(unq).find((t, i, a) => !t.startsWith("-") && !/^-[cC]$/.test(a[i - 1] ?? "")) : "";
     const prog = rest.slice(1).filter((t) => !t.startsWith("-")).map(unqQ).join(" ");
-    const executes = (/^g?awk$/.test(h) && AWK_EXEC.test(prog)) || (h === "sed" && SED_EXEC.test(prog));
+    // git grep -O<cmd> / --open-files-in-pager=<cmd> runs a shell command: its quoted text is code, never data.
+    const gitPager = sub === "grep" && rest.slice(1).map(unq).some((t) => /^--open-files-in-pager\b/.test(t) || /^-[A-Za-z]*O/.test(t));
+    const executes = (/^g?awk$/.test(h) && AWK_EXEC.test(prog)) || (h === "sed" && SED_EXEC.test(prog)) || gitPager;
     // `aos-a2a send|reply ... "<message>"` (also `node <dir>/aos-a2a.mjs ...`): the quoted message is data for the A2A client and
     // is never run; read as command text, words like `; git push` inside a peer message made the whole send guarded (GO only).
     // The script file of a `node` run is still analysed on its own (scriptInto), so a planted aos-a2a.mjs gains nothing.

@@ -169,9 +169,10 @@ test('temp-HOME harness fixtures produce correct installed flags', () => {
   writeFileSync(join(home, '.agents', 'skills', 'demo-agy', 'SKILL.md'), 'x');
   writeFileSync(join(home, '.gemini', 'config', 'agents', 'g-agent.md'), 'x');
   const cat = buildCatalog({ root, home, now: () => Date.now() });
-  assert.deepEqual(byName(cat.skills, 'demo-claude-codex').installed, { claude: true, codex: true, agy: false, cursor: false, roo: false });
+  // a legacy ~/.codex/skills copy no longer counts: Codex reads ~/.agents/skills
+  assert.deepEqual(byName(cat.skills, 'demo-claude-codex').installed, { claude: true, codex: false, agy: false, cursor: false, roo: false });
   assert.deepEqual(byName(cat.skills, 'demo-roo').installed, { claude: false, codex: false, agy: false, cursor: false, roo: true });
-  assert.deepEqual(byName(cat.skills, 'demo-agy').installed, { claude: false, codex: false, agy: true, cursor: false, roo: false });
+  assert.deepEqual(byName(cat.skills, 'demo-agy').installed, { claude: false, codex: true, agy: true, cursor: false, roo: false });
   assert.deepEqual(byName(cat.skills, 'nowhere').installed, { claude: false, codex: false, agy: false, cursor: false, roo: false });
   // agents via <name>.md in the harness agents dirs; .agents and .gemini both are the agy family
   assert.deepEqual(byName(cat.agents, 'a-architect').installed, { claude: false, codex: false, agy: false, cursor: false, roo: true });
