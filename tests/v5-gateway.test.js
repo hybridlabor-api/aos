@@ -795,6 +795,20 @@ describe('status JSON', () => {
         await fw.close();
     });
 
+    test('1mcp 503 with a failing upstream is degraded, not down', async () => {
+        const body = JSON.stringify({ servers: { details: [{ name: 'a', healthy: true }, { name: 'b', healthy: false, lastError: 'spawn ENOENT' }] } });
+        const [, inner] = await fake((req, res) => { res.writeHead(req.url === '/health' ? 503 : 404); res.end(body); });
+        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        await fw.listen();
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        assert.equal(s.running, true);
+        assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'spawn ENOENT' }]);
+        const v = await pkg.verify({ home: dir, sleep: async () => {}, statusFn: async () => ({ ...s, port: cfg.GATEWAY_PORT }) });
+        assert.equal(v.ok, true);
+        assert.match(v.detail, /degraded upstreams: b/);
+        await fw.close();
+    });
+
     test('running gateway, 1mcp down', async () => {
         const fw = createForwarder({ port: 0, upstreamPort: 1, token: 'x'.repeat(64) });
         await fw.listen();

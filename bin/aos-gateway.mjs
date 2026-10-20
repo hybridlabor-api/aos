@@ -29,8 +29,9 @@ const get = (port, urlPath, timeoutMs = 2000) => new Promise((resolve) => {
     let timer = null;
     const finish = (v) => { if (done) return; done = true; clearTimeout(timer); resolve(v); };
     const r = http.get({ host: '127.0.0.1', port, path: urlPath }, (res) => {
-        res.resume();
-        res.on('end', () => finish({ status: res.statusCode, headers: res.headers }));
+        let body = '';
+        res.on('data', (c) => { if (body.length < 1e6) body += c; });
+        res.on('end', () => finish({ status: res.statusCode, headers: res.headers, body }));
         res.on('error', (e) => finish({ error: e.code || e.message }));
         res.on('close', () => finish({ error: 'ECONNRESET' }));
     });
@@ -62,8 +63,14 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
     if (inner && inner.error === 'ETIMEDOUT') inner = await get(upstreamPort, '/health', 10000);
     const busy = !!inner && inner.error === 'ETIMEDOUT';
     const problem = inUse ? `port ${port} in use by another process` : !running ? 'gateway not running' : null;
+    const details = new Map();
+    try { for (const d of JSON.parse(inner && inner.body).servers.details) details.set(d.name, d); } catch { /* no per-server body */ }
     const upstreams = upstreamNames(dir).map((name) => {
         if (problem) return { name, ok: false, error: problem };
+        // 1mcp answers 503 once at most half of its upstreams are connected, but the body still lists each one:
+        // a reachable 1mcp with failing upstreams is degraded (warn), not down.
+        const d = details.get(name);
+        if (d) return d.healthy ? { name, ok: true } : { name, ok: false, degraded: true, error: d.lastError || d.status || 'upstream not connected' };
         if (inner.status === 200) return { name, ok: true };
         if (busy) return { name, ok: false, busy: true, error: `1mcp busy on ${upstreamPort} (no answer in 12 s, likely a catalog refresh); check again in a minute` };
         return { name, ok: false, error: inner.error ? `1mcp not reachable on ${upstreamPort} (${inner.error})` : `1mcp health returned ${inner.status}` };
@@ -248,7 +255,7 @@ async function main() {
         if (rest.includes('--json')) console.log(JSON.stringify(s));
         else {
             console.log(`gateway: ${s.running ? `running${s.pid ? ` (pid ${s.pid})` : ''}` : 'not running'} on 127.0.0.1:${s.port}${s.error ? ` - ${s.error}` : ''}`);
-            for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
+            for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }
         process.exit(s.running ? 0 : 1);
