@@ -1,6 +1,6 @@
 ---
 name: orchestrator-chain
-description: "Hand work down the chain master session, project orchestrator, package orchestrator. Use when the human asks how to split work across levels, which channel connects them, or what each level may do. A convention mapped onto existing mechanisms, not a new tool. GO is never inherited."
+description: "Hand work across orchestration levels. Master session → project → package. Channel routing, level boundaries."
 category: bdb-core
 risk: safe
 tools:

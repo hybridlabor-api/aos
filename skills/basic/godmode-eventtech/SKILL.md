@@ -1,6 +1,6 @@
 ---
 name: godmode-eventtech
-description: "Use for real-time performance and multimedia operator work: technical show-control execution (signal flows, OSC/DMX, MCP orchestration, hardware limits) for tools like grandMA3, Resolume, Unreal, Rhino, Vectorworks, and Adobe MCP."
+description: "Real-time show-control execution: signal flows, OSC/DMX, MCP orchestration. grandMA3, Resolume, Unreal, Rhino, Vectorworks, Adobe."
 category: media-eventtech
 ---
 

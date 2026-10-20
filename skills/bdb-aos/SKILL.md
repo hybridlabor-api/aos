@@ -1,12 +1,7 @@
 ---
 name: bdb-aos
 category: bdb-core
-description: >-
-  Entry point for the BDB Agent OS suite installed as a harness plugin.
-  Use to find out which of the 200+ AOS skills, the seven startcycle subagents,
-  or the pipeline workflows apply to a task, and where their contracts live.
-  Reach for a specific skill directly when you already know its name — this
-  skill only routes.
+description: Entry point for BDB Agent OS suite. Routes 200+ skills, startcycle subagents, pipeline workflows. Direct access when known.
 ---
 
 # BDB Agent OS

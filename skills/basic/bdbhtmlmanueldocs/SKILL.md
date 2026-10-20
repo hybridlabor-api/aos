@@ -1,6 +1,6 @@
 ---
 name: bdbhtmlmanueldocs
-description: Use when authoritative design system, standalone HTML template, and automated GitHub Pages live hosting workflow for creating neutral, enterprise-grade developer documentation and user manuals in the official Google Antigravity / BDB OS aesthetic ...
+description: Enterprise-grade developer docs and user manuals. HTML template, GitHub Pages hosting, neutral design system.
 category: bdb-core
 risk: safe
 date_added: "2026-08-18"

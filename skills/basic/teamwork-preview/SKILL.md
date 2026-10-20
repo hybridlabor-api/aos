@@ -1,6 +1,6 @@
 ---
 name: teamwork-preview
-description: Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. Enforces objective verification, integrity modes, and acceptance criteria across Antigravity, Claude Code, Cursor, OpenCode, Codex, and Roo Code.
+description: Multi-agent team prompt crafting and delegation. 9 steps, objective verification, integrity modes, acceptance criteria.
 category: bdb-core
 ---
 
