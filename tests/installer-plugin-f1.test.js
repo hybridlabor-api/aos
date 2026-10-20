@@ -50,10 +50,11 @@ test('codex step reaches a Codex that is only an npm .cmd-style shim on PATH (no
   const old = process.env.PATH;
   process.env.PATH = [bin, ...(WIN ? [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')] : ['/usr/bin', '/bin'])].join(path.delimiter);
   try {
-    try { inst.runCodexPluginStep(); } catch { /* the shim never lists the plugin as installed, so the step now reports FAILED */ }
+    // The shim never lists the plugin as installed, so the step throws its FAILED report; anything else is a real error.
+    try { inst.runCodexPluginStep(); } catch (e) { if (!/FAILED|install failed/.test(e.message)) throw e; }
     const got = fs.readFileSync(calls, 'utf8').replace(/"/g, ''); // the cmd.exe path quotes every argument
     assert.match(got, /plugin list --json/);
-    assert.match(got, /plugin marketplace add .*/);
+    assert.match(got, /plugin marketplace add \S+/);
   } finally { process.env.PATH = old; }
 });
 

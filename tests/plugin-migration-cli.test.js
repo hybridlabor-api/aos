@@ -264,6 +264,19 @@ test('pluginStepFailed matches every failure shape, nothing else', () => {
   assert.equal(pm.pluginStepFailed(undefined), false);
 });
 
+test('doctorPluginRow: missing, installed+disabled, installed+enabled, CLI failure', () => {
+  const list = (status) => `  ❯ bdb-aos@bdb-marketplace\n    Version: 5.4.0\n    Status: ${status}\n`;
+  const missing = pm.doctorPluginRow({ status: 0, stdout: '  ❯ other@x\n    Status: enabled\n' });
+  assert.equal(missing.ok, false);
+  assert.match(missing.detail, /does not show bdb-aos@bdb-marketplace/);
+  const off = pm.doctorPluginRow({ status: 0, stdout: list('disabled') });
+  assert.deepEqual([off.ok, off.fix], [false, 'claude plugin enable bdb-aos@bdb-marketplace']);
+  assert.match(off.detail, /installed, disabled \(version 5\.4\.0\)/);
+  const on = pm.doctorPluginRow({ status: 0, stdout: list('enabled') });
+  assert.deepEqual([on.ok, on.fix], [true, null]);
+  assert.match(pm.doctorPluginRow({ status: 1, stderr: 'boom\nmore', stdout: '' }).detail, /failed \(boom\)/);
+});
+
 test('ensureClaudePlugin with a missing CLI produces the summary line through migrate', () => {
   const h = home();
   const r = migrate(h, seedLoose(h).manifest, { cli: () => ({ ok: false, missing: true }) });
