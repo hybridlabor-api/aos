@@ -1406,7 +1406,14 @@ function decideCanvasVerdict(payload) {
 // .cmd shims need a shell on Windows; quote args there because the shell re-parses them.
 const IS_WIN = typeof process !== 'undefined' && process.platform === 'win32';
 const cliBin = (name) => (IS_WIN ? `${name}.cmd` : name);
-const cliArg = (a) => (IS_WIN ? `"${String(a).replace(/"/g, '""')}"` : a);
+const cliArg = (a) => {
+  if (!IS_WIN) return a;
+  const s = String(a);
+  if (s.includes('%')) throw new Error(`argument contains %; cmd.exe would expand it: ${s.slice(0, 60)}`);
+  return `"${s.replace(/"/g, '""').replace(/(\\+)$/, '$1$1')}"`;
+};
+// [command, args] for spawn: on Windows one command line with an empty args array (shell:true plus args is DEP0190).
+const cliCall = (name, args) => (IS_WIN ? [[cliBin(name), ...args.map(cliArg)].join(' '), []] : [name, args]);
 
 function humanCanvasGate(planFile) {
   if (process.env.AOS_PLAN_APPROVAL === 'auto') {
@@ -1424,7 +1431,7 @@ function humanCanvasGate(planFile) {
   const timeoutMs = timeoutRaw !== undefined && timeoutRaw !== '' ? Number.parseInt(timeoutRaw, 10) || 0 : (headless ? 30 * 60 * 1000 : 0);
   let run;
   try {
-    run = child_process.spawnSync(cliBin('aos-plan-canvas'), args.map(cliArg), {
+    run = child_process.spawnSync(...cliCall('aos-plan-canvas', args), {
       cwd: process.cwd(),
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
@@ -1626,7 +1633,7 @@ while (!approved) {
 
   try {
     if (fs && fs.existsSync && fs.existsSync(architectureHtml) && child_process) {
-      const canvas = child_process.spawn(cliBin('aos-plan-canvas'), ['open', architectureHtml, '--no-open'].map(cliArg), { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: IS_WIN, detached: true });
+      const canvas = child_process.spawn(...cliCall('aos-plan-canvas', ['open', architectureHtml, '--no-open']), { cwd: process.cwd(), timeout: 15000, stdio: 'ignore', shell: IS_WIN, detached: true });
       if (canvas && typeof canvas.on === 'function') canvas.on('error', (e) => process.stderr.write(`[startcycle-dispatch] architecture canvas not opened: ${e?.message || e}\n`));
       if (canvas && typeof canvas.unref === 'function') canvas.unref();
     }
@@ -1736,13 +1743,13 @@ const NODE_NAMES = humanList(NODE_ENUM);
 let trailPlan = planPath;
 if (/plan\.mdx$/i.test(planPath) && child_process) {
   try {
-    const t = child_process.spawnSync(cliBin('aos-plan-canvas'), ['trail', planPath, '--force'].map(cliArg), { cwd: process.cwd(), encoding: 'utf8', shell: IS_WIN });
+    const t = child_process.spawnSync(...cliCall('aos-plan-canvas', ['trail', planPath, '--force']), { cwd: process.cwd(), encoding: 'utf8', shell: IS_WIN });
     const out = t.status === 0 ? lastJsonObject(t.stdout)?.out : '';
     if (out) trailPlan = out;
   } catch (e) { process.stderr.write(`[startcycle-dispatch] trail derivation skipped: ${e?.message || e}\n`); }
 }
 try {
-  child_process?.spawn(cliBin('aos-trail'), [process.cwd(), '--plan', trailPlan, '--no-open'].map(cliArg),
+  child_process?.spawn(...cliCall('aos-trail', [process.cwd(), '--plan', trailPlan, '--no-open']),
     { detached: true, stdio: 'ignore', shell: IS_WIN }).on('error', (e) => process.stderr.write(`[startcycle-dispatch] live map not started: ${e?.message || e}\n`)).unref();
 } catch (e) { process.stderr.write(`[startcycle-dispatch] live map not started: ${e?.message || e}\n`); }
 

@@ -10,7 +10,7 @@ import '../lib/cli-help-guard.mjs';
 import { spawn } from 'node:child_process';
 import { connect as netConnect } from 'node:net';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, mkdirSync, openSync, readdirSync, realpathSync, renameSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir as osHome } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -289,12 +289,22 @@ const serviceMode = mainPath === SELF && process.argv.includes('--serve') && pro
 // that dies later (Lenovo: a killed hub stayed down). So the task process stays a small watchdog
 // and respawns the server; launchd and systemd restart the process themselves.
 if (serviceMode && process.platform === 'win32' && !process.env.AOS_HUB_WATCHDOG_CHILD) {
+  // A .vbs/Task Scheduler start has no console: inherited handles are invalid, so the server logs to a file like the plist/unit do.
+  const logFd = (() => {
+    try {
+      const d = hubPaths().dir; mkdirSync(d, { recursive: true });
+      const f = join(d, 'stderr.log');
+      try { if (statSync(f).size > 1024 * 1024) renameSync(f, `${f}.old`); } catch { /* no log yet */ }
+      return openSync(f, 'a');
+    } catch { return null; }
+  })();
   const runChild = () => {
     const child = spawn(process.execPath, process.argv.slice(1), {
-      stdio: 'inherit', env: { ...process.env, AOS_HUB_WATCHDOG_CHILD: '1' }, shell: false, windowsHide: true,
+      stdio: logFd === null ? 'ignore' : ['ignore', logFd, logFd], env: { ...process.env, AOS_HUB_WATCHDOG_CHILD: '1' }, shell: false, windowsHide: true,
     });
     // Exit 0 = deliberate stop (/api/shutdown or SIGTERM): do not revive it. Exit 3 = the hub's code
     // changed on disk: start the new code at once; a crash waits 5 s.
+    child.on('error', () => setTimeout(runChild, 5000));
     child.on('exit', (code) => { if (code !== 0) setTimeout(runChild, code === 3 ? 0 : 5000); });
   };
   runChild();

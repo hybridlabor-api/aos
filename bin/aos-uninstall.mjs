@@ -31,6 +31,10 @@ const cn = createRequire(import.meta.url)('../lib/codenotch.js');
 const cp = createRequire(import.meta.url)('../lib/codex-plugin-install.js');
 const agyPlugin = createRequire(import.meta.url)('../lib/agy-plugin-install.js');
 const ur = createRequire(import.meta.url)('../lib/uninstall-records.js');
+const npmUninstallGlobal = (pkg) => {
+  const r = createRequire(import.meta.url)('../lib/cli-spawn.js').run('npm', ['uninstall', '-g', pkg], { timeout: 120000 });
+  if (r.status !== 0) throw new Error(r.stderr || `npm exited ${r.status}`);
+};
 const pk = createRequire(import.meta.url)('../lib/v5/packages.js');
 const profile = createRequire(import.meta.url)('../lib/v5/profile.js');
 const winStartup = createRequire(import.meta.url)('../lib/v5/win-startup.js');
@@ -453,7 +457,7 @@ async function execute(p) {
   const dejaByAos = (ur.readRecords(HOME).npmGlobal || []).includes(DEJA_PKG);
   if (dejaByAos) {
     try {
-      execFileSync('npm', ['uninstall', '-g', DEJA_PKG], { stdio: 'ignore', shell: process.platform === 'win32' });
+      npmUninstallGlobal(DEJA_PKG);
       ur.forgetNpmGlobal(HOME, DEJA_PKG);
       console.log('  deja-vu (npm) removed');
     } catch {
@@ -465,7 +469,7 @@ async function execute(p) {
   // Other global npm packages AOS installed itself (aos-cli, codebase-memory-mcp), recorded at install time.
   for (const pkg of (ur.readRecords(HOME).npmGlobal || []).filter((x) => x !== DEJA_PKG)) {
     try {
-      execFileSync('npm', ['uninstall', '-g', pkg], { stdio: 'ignore', shell: process.platform === 'win32' });
+      npmUninstallGlobal(pkg);
       ur.forgetNpmGlobal(HOME, pkg);
       console.log(`  ${pkg} (npm) removed`);
     } catch {

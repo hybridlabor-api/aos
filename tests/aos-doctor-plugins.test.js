@@ -102,3 +102,24 @@ test('plugin check: opt-out is not a failure; Codex and agy are checked by their
     assert.ok(by('Codex bdb-aos plugin').ok);
     assert.ok(!by('Antigravity bdb-aos plugin').ok);
 });
+
+function duplicateSkillsRow(pluginVersion, kernelVersion) {
+    return run((h) => {
+        write(path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', pluginVersion, 'plugin.json'), JSON.stringify({ version: pluginVersion, skills: ['./skills'] }));
+        write(path.join(h, '.claude', 'plugins', 'cache', 'bdb-marketplace', 'bdb-aos', pluginVersion, 'skills', 'dup-skill', 'SKILL.md'), '---\nname: dup-skill\n---\n');
+        const loose = path.join(h, '.claude', 'skills', 'dup-skill', 'SKILL.md');
+        write(loose, '---\nname: dup-skill\n---\n');
+        write(path.join(h, '.agents', '.bdb-install-manifest.json'), JSON.stringify({ [loose]: { path: loose } }));
+        write(path.join(h, '.agents', '.bdb-manifest.json'), JSON.stringify({ version: kernelVersion }));
+    })('Claude duplicate skills');
+}
+
+test('duplicate skills: expected (ok) while the plugin is older than the kernel', () => {
+    const d = duplicateSkillsRow('5.3.0', '5.4.0');
+    assert.ok(d && d.ok && /expected until the marketplace serves v5\.4\.0/.test(d.detail), d && d.detail);
+});
+
+test('duplicate skills: still a warning when the plugin is current', () => {
+    const d = duplicateSkillsRow('5.4.0', '5.4.0');
+    assert.ok(d && !d.ok && d.warningOnly, d && d.detail);
+});

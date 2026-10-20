@@ -976,13 +976,26 @@ const keptUserEdits = [];
 // A stale gate is a security defect, so these are never left behind as <file>.new: the old copy is moved
 // to <file>.bak and the shipped one installed.
 const GUARD_FILES = new Set(['aos-gate.mjs', 'gate-profile.mjs', 'go-gate.mjs']);
+// Runtime scripts nobody is meant to edit. A copy from an untagged pre-release matches no shipped hash and, without a
+// manifest entry, looked like a user edit (Windows: five .new files after every update); same replace-with-.bak rule.
+const RUNTIME_FILES = new Set(['startcycle-dispatch.mjs', 'stop-module-processes.js']);
 
 function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
-    if (GUARD_FILES.has(path.basename(targetPath))) {
-        fs.copyFileSync(targetPath, `${targetPath}.bak`);
+    const base = path.basename(targetPath);
+    if (GUARD_FILES.has(base) || RUNTIME_FILES.has(base)) {
+        // Never overwrite an earlier backup: it may hold the only copy of a user's edit.
+        let bak = `${targetPath}.bak`;
+        if (fs.existsSync(bak)) bak = `${targetPath}.${Date.now()}.bak`;
+        fs.copyFileSync(targetPath, bak);
         fs.copyFileSync(sourcePath, targetPath);
+        // A .new the user was told to merge stays unless it is just this shipped version.
+        const stale = `${targetPath}.new`;
+        if (fs.existsSync(stale)) {
+            if (computeFileHash(stale) === sourceHash) { try { fs.rmSync(stale, { force: true }); } catch { /* noise only */ } }
+            else log.warn(`${stale} differs from the shipped version and was kept; merge or delete it.`);
+        }
         manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
-        log.warn(`Gate file ${targetPath} differed from every shipped version; replaced it (previous copy: ${targetPath}.bak).`);
+        log.warn(`${GUARD_FILES.has(base) ? 'Gate file' : 'AOS runtime file'} ${targetPath} differed from every shipped version; replaced it (previous copy: ${bak}).`);
         return 'wrote';
     }
     fs.copyFileSync(sourcePath, `${targetPath}.new`);
@@ -6020,6 +6033,23 @@ function warnOnDuplicateAosPlugin(plugins, canonical) {
     }
 }
 
+// The same bdb-aos.js spelled twice (slashes, file:// URL, ~/, case on Windows) makes OpenCode load it twice: keep the first.
+function dedupeAosPluginEntries(plugins, home = homeDir) {
+    const key = (v) => {
+        let s = String(Array.isArray(v) ? v[0] : v).trim().replace(/\\/g, '/').replace(/^file:\/\/\/?/i, '');
+        if (s.startsWith('~/')) s = `${String(home).replace(/\\/g, '/')}/${s.slice(2)}`;
+        return process.platform === 'win32' ? s.toLowerCase() : s;
+    };
+    const seen = new Set();
+    return plugins.filter((p) => {
+        if (!/bdb-aos\.js$/.test(key(p))) return true;
+        const k = key(p);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    });
+}
+
 function appendOptionalOpencodePlugins(data, configPath, optional) {
     const wanted = optional instanceof Set ? optional : new Set(optional || []);
     for (const name of wanted) {
@@ -6180,6 +6210,7 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
         return str.includes('bdb-aos');
     });
     if (!alreadyRegistered) data.plugin.push(pluginPathNormalized);
+    data.plugin = dedupeAosPluginEntries(data.plugin);
     warnOnDuplicateAosPlugin(data.plugin, pluginPathNormalized);
     appendOptionalOpencodePlugins(data, configPath, optional);
 
