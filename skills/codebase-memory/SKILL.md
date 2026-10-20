@@ -1,6 +1,8 @@
 ---
 name: codebase-memory
-description: "Code research over indexed codebase. Graph queries: calls, chains, architecture, dead code, routes. Token-efficient exploration."
+description: >-
+  Code research over an indexed codebase with minimal context: graph queries,
+  call chains, architecture overview, dead code. Context minimisation.
 category: bdb-core
 ---
 

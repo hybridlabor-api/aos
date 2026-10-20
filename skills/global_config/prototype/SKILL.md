@@ -2,8 +2,8 @@
 name: prototype
 description: >-
   Build a throwaway prototype to answer a design question via UI variations
-  or a state walkthrough. Use for /prototype or the web design flow
-  prototype step.
+  or a state walkthrough. Use for /prototype, the plan-canvas design flow or
+  brainstorm.
 category: engineering-method
 source: "adapted from mattpocock/skills (MIT) — https://github.com/mattpocock/skills/tree/main/skills/engineering/prototype"
 ---

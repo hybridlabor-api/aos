@@ -1,6 +1,8 @@
 ---
 name: subagent-driven-development
-description: "Dispatch a fresh subagent per plan task with two-stage review after each: spec compliance, then code quality. Use to execute or split a plan into subagents."
+description: >-
+  Dispatch a fresh subagent per task: implementation plans with independent
+  tasks, two-stage review each: spec compliance, then quality.
 category: engineering-method
 risk: unknown
 source: community

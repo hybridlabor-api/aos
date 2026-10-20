@@ -1,7 +1,9 @@
 ---
 name: agenttrail
 description: >-
-  Live browser map of a multi-agent build. Use when a startcycle or teamwork pipeline runs, or the user asks which agents are running.
+  agenttrail: the live map of a multi-agent build. Use when a /startcycle
+  pipeline runs, a plan-canvas approve lands, or agents run for a human to
+  watch.
 category: bdb-core
 metadata:
   version: "0.2.0"

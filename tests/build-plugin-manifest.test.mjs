@@ -116,4 +116,4 @@ for (const file of ['.codex-plugin/plugin.json', 'plugin.json', '.agents/plugins
 }
 run('--check');
 
-console.log(`build-plugin-manifest: ${manifest.skills.length} skills, --check catches drift`);
+console.log(`build-plugin-manifest: slim manifest (${manifest.commands.length} commands), --check catches drift`);

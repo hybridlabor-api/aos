@@ -1,7 +1,8 @@
 ---
 name: dispatching-parallel-agents
 description: >-
-  Dispatch one subagent per independent task slice. Use with 2+ independent tasks: parallel work, unrelated failures, test files or subsystems.
+  Dispatch one subagent per independent task slice. Use with 2+ tasks:
+  parallel work, unrelated failures or shared state; no shared state needed.
 category: engineering-method
 source: superpowers
 date_added: "2026-09-25"

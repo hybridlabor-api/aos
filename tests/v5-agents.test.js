@@ -9,7 +9,16 @@ process.env.HOME = home;
 process.env.USERPROFILE = home;
 
 const { parseAgentsMd, compileOpenCodeAgents, compileAgyAgents } = require('../installer.js');
-const agents = parseAgentsMd(fs.readFileSync(path.join(__dirname, '..', '.agents', 'AGENTS.md'), 'utf8'));
+const mainAgentsMd = fs.readFileSync(path.join(__dirname, '..', '.agents', 'AGENTS.md'), 'utf8');
+// Domain personas live in .agents/packs/<pack>/AGENTS.md; a default install loads all packs.
+const packsDir = path.join(__dirname, '..', '.agents', 'packs');
+const packMds = fs.existsSync(packsDir)
+    ? fs.readdirSync(packsDir).map((p) => path.join(packsDir, p, 'AGENTS.md')).filter((f) => fs.existsSync(f))
+    : [];
+const agents = [
+    ...parseAgentsMd(mainAgentsMd),
+    ...packMds.flatMap((f) => parseAgentsMd(fs.readFileSync(f, 'utf8'))),
+];
 
 const listFiles = (dir) => fs.readdirSync(dir, { recursive: true }).map(String);
 
