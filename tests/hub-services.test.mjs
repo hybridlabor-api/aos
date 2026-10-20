@@ -136,6 +136,25 @@ test('windows: memb stop kills only processes under the install dir; wscript sta
   }
 });
 
+test('windows: gateway stop matches aos-gateway.mjs serve and its 1mcp child, start is the Startup wrapper', async () => {
+  const homeWin = join(tmp, 'home-win-gw');
+  const startup = join(homeWin, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  mkdirSync(startup, { recursive: true });
+  writeFileSync(join(startup, 'com.bdb.aos.gateway.vbs'), "' vbs stub");
+  const savedAppData = process.env.APPDATA;
+  delete process.env.APPDATA;
+  try {
+    calls.length = 0;
+    await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'gateway', 'stop');
+    const script = calls[0].args.at(-1);
+    assert.ok(script.includes('aos-gateway') && script.includes('@1mcp') && script.includes('GetOwner'));
+    await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'gateway', 'start');
+    assert.deepEqual(calls.at(-1), { cmd: 'wscript.exe', args: [join(startup, 'com.bdb.aos.gateway.vbs')], opts: { timeout: 10000 } });
+  } finally {
+    if (savedAppData !== undefined) process.env.APPDATA = savedAppData;
+  }
+});
+
 test('readServiceLog reads at most the last 64 KB and still redacts', async () => {
   const homeLog = join(tmp, 'home-tail');
   mkdirSync(join(homeLog, '.memb'), { recursive: true });
