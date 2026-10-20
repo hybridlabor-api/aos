@@ -284,6 +284,12 @@ async function main() {
                 ? disable({ home, files })
                 : enable({ home, files, token: readToken(gatewayDir(home)), shipped: shippedServers(aosRoot), presets: livePresets(gatewayDir(home), shippedPresets(aosRoot)), contextProfile: contextProfileOf(profile.readSettings(home, () => {})) });
         } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
+        if (cmd === 'enable') {
+            try {
+                const dup = adoptApi.removeAdoptedDuplicates({ home, token: readToken(gatewayDir(home)), shipped: shippedServers(aosRoot), files });
+                report.push(...(dup.files || []).filter((f) => f.removed && f.removed.length));
+            } catch (e) { console.error(`aos-gateway enable: adopted-server cleanup failed: ${e.message}`); }
+        }
         for (const r of report) {
             const bits = r.error ? [`ERROR ${r.error}`] : r.skipped ? [`skipped: ${r.skipped}`] : [
                 ...(r.removed || []).map((n) => `removed ${n}`), ...(r.restored || []).map((n) => `restored ${n}`),
