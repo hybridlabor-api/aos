@@ -483,14 +483,23 @@ async function execute(p) {
       const bdb = profile.HOOK_SCRIPTS;
       let touched = false;
       for (const [event, entries] of Object.entries(s.hooks || {})) {
-        const kept = entries.filter((e) => !(e.hooks || []).some((x) => ur.commandRunsScript(x.command, bdb)));
-        if (kept.length !== entries.length) { touched = true; s.hooks[event] = kept; }
+        if (!Array.isArray(entries)) continue;
+        // Handler level: a matcher group keeps its foreign handlers and goes only when it ends up empty.
+        const kept = [];
+        for (const e of entries) {
+          const hooks = Array.isArray(e && e.hooks) ? e.hooks : null;
+          const left = hooks ? hooks.filter((x) => !ur.commandRunsScript(x && x.command, bdb)) : null;
+          if (!hooks || left.length === hooks.length) { kept.push(e); continue; }
+          touched = true;
+          if (left.length) kept.push({ ...e, hooks: left });
+        }
+        s.hooks[event] = kept;
         if (!kept.length) delete s.hooks[event];
       }
       if (touched) {
         copyFileSync(settings, `${settings}.${stamp}.bak`);
         writeFileSync(settings, JSON.stringify(s, null, 2) + '\n');
-        console.log('  BDB hooks removed from settings.json, everything else unchanged');
+        console.log('  AOS hook handlers removed from settings.json; other handlers and settings unchanged');
       }
     } catch { console.log('  settings.json unreadable — check by hand'); }
   }
