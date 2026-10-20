@@ -31,6 +31,11 @@ Options:
  */
 export async function main(argv = process.argv.slice(2)) {
   let jsonMode = false;
+  const fail = (jsonMsg, plainMsg) => {
+    if (jsonMode) console.log(JSON.stringify({ error: jsonMsg }, null, 2));
+    else console.error(plainMsg);
+    return 1;
+  };
   let fromPlaybook = null;
   let homeDir = null;
   let cwdDir = null;
@@ -58,12 +63,7 @@ export async function main(argv = process.argv.slice(2)) {
     } else if (!arg.startsWith('-')) {
       positional.push(arg);
     } else {
-      if (jsonMode) {
-        console.log(JSON.stringify({ error: `Unknown flag: ${arg}` }, null, 2));
-      } else {
-        console.error(`Unknown flag: ${arg}`);
-      }
-      return 1;
+      return fail(`Unknown flag: ${arg}`, `Unknown flag: ${arg}`);
     }
   }
 
@@ -110,24 +110,14 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'show') {
     const id = positional[1];
     if (!id) {
-      if (jsonMode) {
-        console.log(JSON.stringify({ error: 'Missing team id. Usage: aos-team show <id> [--json]' }, null, 2));
-      } else {
-        console.error('Error: missing team id. Usage: aos-team show <id> [--json]');
-      }
-      return 1;
+      return fail('Missing team id. Usage: aos-team show <id> [--json]', 'Error: missing team id. Usage: aos-team show <id> [--json]');
     }
 
     const reg = teamRegistry({ cwd: effectiveCwd, home: effectiveHome });
     const team = reg.get(id);
 
     if (!team) {
-      if (jsonMode) {
-        console.log(JSON.stringify({ error: `Team "${id}" not found` }, null, 2));
-      } else {
-        console.error(`Error: Team "${id}" not found.`);
-      }
-      return 1;
+      return fail(`Team "${id}" not found`, `Error: Team "${id}" not found.`);
     }
 
     if (jsonMode) {
@@ -161,33 +151,18 @@ export async function main(argv = process.argv.slice(2)) {
   if (command === 'new') {
     const id = positional[1];
     if (!id) {
-      if (jsonMode) {
-        console.log(JSON.stringify({ error: 'Missing team id. Usage: aos-team new <id> [--from-playbook <name>] [--json]' }, null, 2));
-      } else {
-        console.error('Error: missing team id. Usage: aos-team new <id> [--from-playbook <name>] [--json]');
-      }
-      return 1;
+      return fail('Missing team id. Usage: aos-team new <id> [--from-playbook <name>] [--json]', 'Error: missing team id. Usage: aos-team new <id> [--from-playbook <name>] [--json]');
     }
 
     if (!/^[a-z0-9_-]+$/.test(id)) {
-      if (jsonMode) {
-        console.log(JSON.stringify({ error: `Invalid team id "${id}". Must match ^[a-z0-9_-]+$` }, null, 2));
-      } else {
-        console.error(`Error: Invalid team id "${id}". Must match ^[a-z0-9_-]+$`);
-      }
-      return 1;
+      return fail(`Invalid team id "${id}". Must match ^[a-z0-9_-]+$`, `Error: Invalid team id "${id}". Must match ^[a-z0-9_-]+$`);
     }
 
     const targetDir = join(effectiveCwd, '.aos', 'teams');
     const targetFile = join(targetDir, `${id}.json`);
 
     if (existsSync(targetFile)) {
-      if (jsonMode) {
-        console.log(JSON.stringify({ error: `Team "${id}" already exists at ${targetFile}` }, null, 2));
-      } else {
-        console.error(`Error: Team "${id}" already exists at ${targetFile}`);
-      }
-      return 1;
+      return fail(`Team "${id}" already exists at ${targetFile}`, `Error: Team "${id}" already exists at ${targetFile}`);
     }
 
     let teamData;
@@ -212,12 +187,7 @@ export async function main(argv = process.argv.slice(2)) {
           effort: derived.team.effort || 'S',
         };
       } catch (err) {
-        if (jsonMode) {
-          console.log(JSON.stringify({ error: `Failed to derive team from playbook "${fromPlaybook}": ${err.message}` }, null, 2));
-        } else {
-          console.error(`Error: Failed to derive team from playbook "${fromPlaybook}": ${err.message}`);
-        }
-        return 1;
+        return fail(`Failed to derive team from playbook "${fromPlaybook}": ${err.message}`, `Error: Failed to derive team from playbook "${fromPlaybook}": ${err.message}`);
       }
     } else {
       const formattedLabel = id
@@ -236,12 +206,7 @@ export async function main(argv = process.argv.slice(2)) {
     const { valid, errors } = validateTeamFields(teamData);
     if (!valid) {
       const msg = errors.map((e) => e.message).join('; ');
-      if (jsonMode) {
-        console.log(JSON.stringify({ error: `Validation error: ${msg}` }, null, 2));
-      } else {
-        console.error(`Error: Validation error: ${msg}`);
-      }
-      return 1;
+      return fail(`Validation error: ${msg}`, `Error: Validation error: ${msg}`);
     }
 
     mkdirSync(targetDir, { recursive: true });
@@ -255,12 +220,7 @@ export async function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  if (jsonMode) {
-    console.log(JSON.stringify({ error: `Unknown command "${command}"` }, null, 2));
-  } else {
-    console.error(`Unknown command "${command}". Run "aos-team --help" for usage.`);
-  }
-  return 1;
+  return fail(`Unknown command "${command}"`, `Unknown command "${command}". Run "aos-team --help" for usage.`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
