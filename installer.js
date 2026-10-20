@@ -3140,7 +3140,8 @@ function downloadOrUpdateModule(pkgName, targetDir, displayName) {
 }
 
 function moduleBasePath() {
-    return scriptDir.includes('_npx') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
+    // npx cache or a global npm install: modules live in ~/.agents, never next to the package; only a git checkout keeps them beside the repo.
+    return scriptDir.includes('_npx') || scriptDir.split(path.sep).includes('node_modules') ? path.join(os.homedir(), '.agents') : path.dirname(srcDir);
 }
 
 // deja resolves its exclude file as $XDG_CONFIG_HOME/deja/exclude, falling
