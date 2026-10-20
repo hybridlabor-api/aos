@@ -20,7 +20,7 @@ aos-plan-canvas open <plan-dir> --mode bdb-plan-builder  # render and open in th
 aos-plan-canvas await <plan-dir>/plan.mdx                # keep listening until the verdict
 ```
 
-On `approve`, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build. The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
+On `approve` of a `release` plan, `aos-plan-canvas trail <plan-dir>` derives the agenttrail map for the build; a `recap-review` plan is the artifact itself (no components, no map). The full loop and every template: the `plan-canvas` skill — a plain CLI, identical on every harness.
 
 ## 1. Spec-Driven Development
 Writing code without a specification is guessing.
