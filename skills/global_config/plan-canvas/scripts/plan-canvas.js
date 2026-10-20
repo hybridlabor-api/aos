@@ -36,6 +36,7 @@ const {
   DEFAULT_HOST,
   codeStampOf,
   createPlanCanvasServer,
+  realRoot,
   resolveIdleTimeoutMs,
   resolvePort,
   watchCodeStamp
@@ -198,8 +199,7 @@ function sleep(ms) {
 // in /health. A server of ANOTHER project/root must never be stopped or restarted from here
 // (audit port-collision): both share the documented port, and /shutdown answers anyone.
 function ownWorkspaceRoot() {
-  const cwd = process.cwd();
-  try { return fs.realpathSync(cwd); } catch { return path.resolve(cwd); }
+  return realRoot(process.cwd());
 }
 
 function foreignWorkspace(health) {
@@ -794,4 +794,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, ensureServer, healthCheck, isOlderVersion, cmdTemplates, findSkillMd, foreignWorkspace, ownWorkspaceRoot };
+module.exports = { main, ensureServer, healthCheck, isOlderVersion, cmdTemplates, findSkillMd };
