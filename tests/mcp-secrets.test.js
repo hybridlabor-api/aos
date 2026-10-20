@@ -480,7 +480,7 @@ describe('review round', () => {
             return;
         }
         const files = sec.harnessMcpFiles(h, {}, 'linux', h);
-        const agyFiles = files.filter((f) => f.file.includes('mcp_config.json'));
+        const agyFiles = files.filter((f) => f.file.startsWith(path.join(h, '.gemini')) && f.file.endsWith('mcp_config.json'));
         assert.equal(agyFiles.length, 1, 'symlink pair to same real file must be deduped to one');
     });
 });
