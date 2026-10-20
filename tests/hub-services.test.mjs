@@ -148,6 +148,8 @@ test('windows: gateway stop matches aos-gateway.mjs serve and its 1mcp child, st
     await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'gateway', 'stop');
     const script = calls[0].args.at(-1);
     assert.ok(script.includes('aos-gateway') && script.includes('@1mcp') && script.includes('GetOwner'));
+    assert.ok(script.includes('$_.ProcessId -ne $PID'), 'the hub never kills itself');
+    assert.ok(script.includes('home-win-gw') && script.includes('.agents'), 'both alternatives are anchored to this install, not a bare fragment');
     await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'gateway', 'start');
     assert.deepEqual(calls.at(-1), { cmd: 'wscript.exe', args: [join(startup, 'com.bdb.aos.gateway.vbs')], opts: { timeout: 10000 } });
   } finally {

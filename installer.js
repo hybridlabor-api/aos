@@ -6320,6 +6320,9 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     // aos-acp (installed in ~/.agents/bin) loads ../lib/cli-spawn.js to start npx/opencode .cmd shims on Windows.
     const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
     if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));
+    // cli-spawn.js and the a2a libs resolve powershell/taskkill through win-bin.js (absolute System32 paths).
+    const winBinLib = path.join(srcDir, 'lib', 'win-bin.js');
+    if (fs.existsSync(winBinLib)) copyDirRecursiveSync(winBinLib, path.join(targetHome, '.agents', 'lib', 'win-bin.js'));
     const claudeSettings = path.join(claudeConfigDir(targetHome), 'settings.json');
     if (on('claudecode')) {
         mergeBdbSettingsHooks(claudeSettings);
