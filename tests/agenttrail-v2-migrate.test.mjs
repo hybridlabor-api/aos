@@ -176,13 +176,16 @@ describe('other daemons are never retired', () => {
   let shared;
   before(async () => {
     shared = [lo, hi];
-    for (;;) {
+    for (let i = 0; ; i += 1) {
       lo = 21600 + Math.floor(Math.random() * 3000);
       if ((await canBind(lo)) && (await canBind(lo + 1)) && (await canBind(lo + 2))) break;
+      assert.ok(i < 50, 'no free 3-port range found');
     }
     hi = lo + 2;
   });
-  after(() => {
+  after(async () => {
+    // The stubs listen inside this process: close them first, or the lsof sweep would find (and SIGTERM) the test runner itself.
+    for (const s of stubs.splice(0)) await s.stop().catch(() => {});
     stopTrailHubs(portRange(lo, hi));
     [lo, hi] = shared;
   });
