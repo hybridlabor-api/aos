@@ -18,7 +18,7 @@ async function serveArgs(overrideText) {
     let args;
     const spawnFn = (cmd, a) => {
         args = a;
-        return { pid: undefined, exitCode: null, signalCode: null, on() {}, once() {}, kill() {} };
+        return { pid: undefined, exitCode: null, signalCode: null, on() {}, once(_e, f) { f(); }, kill() {} };
     };
     const h = await startServe({ dir, port: 0, upstreamPort: 59000 + Math.floor(Math.random() * 500), spawnFn, entry: '/x/1mcp.js', log: () => {} });
     await h.stop();
