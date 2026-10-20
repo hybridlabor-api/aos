@@ -69,14 +69,15 @@ function staleUpdateRunner(h, { bumpTo }) {
 const migrate = (h, manifest, extra) => pm.migrate({ home: h, manifest, detected: ['claudecode'], version: '9.9.9', ...extra });
 const mutating = (calls) => calls.filter((c) => /marketplace (add|remove)|plugin (install|update)/.test(c));
 
-test('add + install succeed, loose copies retired in the SAME run, second run is a no-op', () => {
+test('add + install succeed, loose copies stay, second run is a no-op', () => {
   const h = home();
   const { manifest, file } = seedLoose(h);
   const f = fake(h);
   const r = migrate(h, manifest, { cli: f.runner });
   assert.deepEqual(mutating(f.calls), [`plugin marketplace add ${OWN}`, 'plugin install bdb-aos@bdb-marketplace']);
-  assert.ok(r.covered.has('claudecode'));
-  assert.ok(!fs.existsSync(file));
+  assert.equal(r.covered.size, 0, 'the slim plugin does not retire loose copies');
+  assert.ok(fs.existsSync(file), 'loose copy stays');
+  assert.ok(r.lines.some((l) => /bdb-aos@bdb-marketplace installed/.test(l)));
   const f2 = fake(h, { marketplaces: { 'bdb-marketplace': OWN }, plugins: { 'bdb-aos@bdb-marketplace': '9.9.9' } });
   migrate(h, {}, { cli: f2.runner });
   assert.deepEqual(mutating(f2.calls), []);
@@ -122,7 +123,8 @@ test('external marketplace replaced in settings: removed, own added, plugin inst
   const f = fake(h, { marketplaces: { 'bdb-marketplace': EXT } });
   const r = migrate(h, {}, { cli: f.runner });
   assert.deepEqual(mutating(f.calls), ['plugin marketplace remove bdb-marketplace', `plugin marketplace add ${OWN}`, 'plugin install bdb-aos@bdb-marketplace']);
-  assert.ok(r.covered.has('claudecode'));
+  assert.ok(r.lines.some((l) => /bdb-aos@bdb-marketplace installed/.test(l)));
+  assert.ok(!pm.pluginStepFailed(r));
 });
 
 test('external marketplace that other plugins use is never removed', () => {
@@ -169,7 +171,7 @@ test('install reporting "already installed" with a non-zero exit is not a failur
   seedInstalled(h);
   const f = fake(h, { marketplaces: { 'bdb-marketplace': OWN }, installOut: { ok: false, stderr: 'Plugin bdb-aos@bdb-marketplace is already installed' } });
   const r = migrate(h, {}, { cli: f.runner });
-  assert.ok(r.covered.has('claudecode'));
+  assert.ok(r.lines.some((l) => /was already installed/.test(l)));
   assert.ok(!r.lines.some((x) => /Run these two commands/.test(x)));
 });
 
@@ -259,7 +261,7 @@ test('pluginFixSummary: null on success, null without a result, one line with bo
 
 test('pluginStepFailed matches every failure shape, nothing else', () => {
   assert.equal(pm.pluginStepFailed({ lines: ['claude: `claude plugin list` failed; loose copies kept. Run these two commands: x'] }), true);
-  assert.equal(pm.pluginStepFailed({ lines: ['claude: `claude plugin install bdb-aos@bdb-marketplace timed out'] }), true, 'timedOut lines carry Run these two commands via manual()');
+  assert.equal(pm.pluginStepFailed({ lines: ['claude: `claude plugin install bdb-aos@bdb-marketplace` timed out; loose copies kept. Run these two commands: x'] }), true, 'timed out lines come from manual()');
   assert.equal(pm.pluginStepFailed({ lines: ['[check] claudecode: would register the bdb-aos plugin'] }), false);
   assert.equal(pm.pluginStepFailed(undefined), false);
 });

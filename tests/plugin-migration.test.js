@@ -76,7 +76,7 @@ test('second run changes nothing', () => {
   assert.equal(fs.readFileSync(settingsOf(h), 'utf8'), before);
   assert.equal(baks(h).length, nBaks);
   assert.ok(r.lines.some((l) => /already in place/.test(l)));
-  assert.equal(pm.readState(h).backups.length, 1, 'no second backup dir');
+  assert.equal(pm.readState(h).backups.length, 0, 'no backup dir ever');
 });
 
 test('loose copies stay in all harnesses; no backups are created', () => {
@@ -196,22 +196,26 @@ test('installer: migration on/off/check, loose copies always stay', () => {
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h, '.agents', '.bdb-install-manifest.json'), 'utf8')), manifest);
 });
 
-test('uninstall: deregisters what was registered, restores the external marketplace', () => {
+test('uninstall: --restore-plugin-backup without backups exits 1 and changes nothing; the record reverses the registration', () => {
   const h = home();
   fs.mkdirSync(path.join(h, '.claude'));
   const ext = { source: { source: 'github', repo: 'hybridlabor-api/bdb-marketplace' } };
-  fs.writeFileSync(settingsOf(h), JSON.stringify({ theme: 'dark', extraKnownMarketplaces: { bdb: ext } }));
+  const original = { theme: 'dark', extraKnownMarketplaces: { bdb: ext } };
+  fs.writeFileSync(settingsOf(h), JSON.stringify(original));
   const manifest = seedLoose(h, { 'a/SKILL.md': 'A' });
   run(h, manifest);
   const skill = path.join(h, '.claude', 'skills', 'a', 'SKILL.md');
   assert.ok(fs.existsSync(skill), 'skill stays after migration since plugin does not remove copies');
+  const registered = readSettings(h);
 
   const res = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'aos-uninstall.mjs'), '--restore-plugin-backup'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h } });
-  assert.equal(res.status, 0, res.stderr);
-  assert.equal(fs.readFileSync(skill, 'utf8'), 'A', 'skill still exists (no restore needed)');
+  assert.equal(res.status, 1, 'nothing was ever backed up');
+  assert.match(res.stdout, /No plugin-migration backup found/);
+  assert.deepEqual(readSettings(h), registered, 'settings untouched by the restore path');
+  assert.equal(fs.readFileSync(skill, 'utf8'), 'A');
 
-  assert.deepEqual(readSettings(h), { theme: 'dark', extraKnownMarketplaces: { bdb: ext }, enabledPlugins: { 'bdb-aos@bdb-marketplace': false } }, 'uninstall deregisters and persists the opt-out');
-  assert.deepEqual(pm.readState(h).registered, {});
+  pm.deregisterClaude({ home: h, record: pm.readState(h).registered.claudecode });
+  assert.deepEqual(readSettings(h), original, 'deregistration restores the original settings exactly');
 });
 
 test('no backups are created since plugin does not remove loose copies', () => {
@@ -229,18 +233,18 @@ test('no backups are created since plugin does not remove loose copies', () => {
 test('loose copies stay across multiple migrations', () => {
   const h = home();
   const manifest = seedLoose(h, { 'a/SKILL.md': 'A' });
-  const r1 = run(h, manifest);
-  assert.equal(r1.covered.size, 0, 'first migration does not remove copies');
-  const tracked = JSON.parse(fs.readFileSync(path.join(h, '.agents', '.bdb-install-manifest.json'), 'utf8'));
-  const r2 = run(h, tracked);
-  assert.ok(fs.existsSync(path.join(h, '.claude', 'skills', 'a', 'SKILL.md')), 'skill stays across migrations');
-  assert.equal(again.covered.size, 0);
-  assert.equal(readSettings(h).enabledPlugins['bdb-aos@bdb-marketplace'], false);
+  const skill = path.join(h, '.claude', 'skills', 'a', 'SKILL.md');
+  assert.equal(run(h, manifest).covered.size, 0);
+  assert.ok(fs.existsSync(skill));
+  assert.equal(run(h, manifest).covered.size, 0);
+  assert.ok(fs.existsSync(skill), 'skill stays across migrations');
   const s = readSettings(h);
-  s.enabledPlugins['bdb-aos@bdb-marketplace'] = true;
+  s.enabledPlugins['bdb-aos@bdb-marketplace'] = false;
   fs.writeFileSync(settingsOf(h), JSON.stringify(s));
-  run(h, tracked);
-  assert.ok(fs.existsSync(path.join(h, '.claude', 'skills', 'a', 'SKILL.md')), 'skill stays even when re-enabled since plugin does not remove copies');
+  run(h, manifest);
+  assert.ok(fs.existsSync(skill), 'skill stays when the plugin is opted out');
+  assert.equal(readSettings(h).enabledPlugins['bdb-aos@bdb-marketplace'], false, 'opt-out respected');
+  assert.equal(pm.readState(h).backups.length, 0);
 });
 
 test('uninstall drops the registration record; no backups exist', () => {
@@ -262,13 +266,66 @@ test('H-1: registered but not verifiably installed, copies stay', () => {
   assert.ok(fs.existsSync(skill), 'loose copy stays');
   assert.equal(r.covered.size, 0, 'no copies removed');
   assert.equal(readSettings(h).enabledPlugins['bdb-aos@bdb-marketplace'], true, 'still registered');
-  assert.ok(r.lines.some((l) => /claude plugin marketplace add hybridlabor-api\/aos ; claude plugin install bdb-aos@bdb-marketplace/.test(l)));
   assert.ok(!r.lines.some((l) => /restart Claude Code/.test(l)));
   assert.equal(pm.readState(h).backups.length, 0);
   seedInstalled(h);
   const later = run(h, manifest, { installed: false });
   assert.ok(fs.existsSync(skill), 'loose copy stays even after plugin evidence exists');
   assert.equal(later.covered.size, 0, 'still no copies removed since plugin does not remove them');
+});
+
+test('retirement path (LOOSE_ROOTS injected): removes only unedited own copies, keeps edited, unknown and symlinked, restore brings them back', () => {
+  const saved = pm.LOOSE_ROOTS.claudecode;
+  pm.LOOSE_ROOTS.claudecode = (h0) => path.join(h0, '.claude', 'skills');
+  try {
+    // not verifiably installed: registered, nothing removed, the manual fix line is printed
+    const h0 = home();
+    const m0 = seedLoose(h0, { 'a/SKILL.md': 'A' });
+    const early = run(h0, m0, { installed: false });
+    assert.ok(fs.existsSync(path.join(h0, '.claude', 'skills', 'a', 'SKILL.md')));
+    assert.equal(early.covered.size, 0);
+    assert.ok(early.lines.some((l) => /claude plugin marketplace add hybridlabor-api\/aos ; claude plugin install bdb-aos@bdb-marketplace/.test(l)));
+
+    // installed: unedited removed, edited/unknown/symlink kept
+    const h = home();
+    const manifest = seedLoose(h, { 'a/SKILL.md': 'A', 'b/SKILL.md': 'B' });
+    const skills = path.join(h, '.claude', 'skills');
+    const unknown = path.join(skills, 'mine', 'SKILL.md');
+    fs.mkdirSync(path.dirname(unknown), { recursive: true });
+    fs.writeFileSync(unknown, 'mine');
+    const clean = run(h, manifest);
+    assert.ok(clean.covered.has('claudecode'));
+    assert.ok(!fs.existsSync(path.join(skills, 'a', 'SKILL.md')), 'unedited own copy removed');
+    assert.ok(!fs.existsSync(path.join(skills, 'b', 'SKILL.md')));
+    assert.equal(fs.readFileSync(unknown, 'utf8'), 'mine', 'unknown file untouched');
+    assert.equal(pm.readState(h).backups.length, 1);
+    const restored = pm.restorePluginBackups({ home: h });
+    assert.equal(restored.files.length, 2);
+    assert.equal(fs.readFileSync(path.join(skills, 'a', 'SKILL.md'), 'utf8'), 'A', 'restore brings the copy back');
+    assert.equal(restored.optedOut, true);
+
+    const h2 = home();
+    const m2 = seedLoose(h2, { 'a/SKILL.md': 'A', 'b/SKILL.md': 'B' });
+    const edited = path.join(h2, '.claude', 'skills', 'b', 'SKILL.md');
+    fs.writeFileSync(edited, 'B edited by user');
+    const kept = run(h2, m2);
+    assert.equal(kept.covered.size, 0, 'an edited copy blocks the retirement');
+    assert.equal(fs.readFileSync(edited, 'utf8'), 'B edited by user');
+    assert.ok(fs.existsSync(path.join(h2, '.claude', 'skills', 'a', 'SKILL.md')));
+    assert.ok(kept.lines.some((l) => /edited or unsafe loose copies/.test(l)));
+
+    const h3 = home();
+    const repo = path.join(h3, 'dev', 'aos', 'skills');
+    fs.mkdirSync(path.join(repo, 'x'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'x', 'SKILL.md'), 'src');
+    fs.mkdirSync(path.join(h3, '.claude'), { recursive: true });
+    fs.symlinkSync(repo, path.join(h3, '.claude', 'skills'));
+    const linked = run(h3, { [path.join(h3, '.claude', 'skills', 'x', 'SKILL.md')]: { sha256: sha('src') } });
+    assert.equal(linked.covered.size, 0);
+    assert.equal(fs.readFileSync(path.join(repo, 'x', 'SKILL.md'), 'utf8'), 'src', 'symlink target unchanged');
+  } finally {
+    if (saved) pm.LOOSE_ROOTS.claudecode = saved; else delete pm.LOOSE_ROOTS.claudecode;
+  }
 });
 
 test('M-A: weak evidence is rejected, a real skill under the plugin cache counts', () => {
@@ -397,7 +454,8 @@ test('M-1: a symlinked settings.json is written through, the link stays', () => 
   fs.writeFileSync(real, '{"a":1}');
   fs.symlinkSync(real, settingsOf(h));
   const r = run(h, {});
-  assert.ok(r.covered.has('claudecode'));
+  assert.equal(r.covered.size, 0);
+  assert.ok(r.lines.some((l) => /plugin registered/.test(l)));
   assert.ok(fs.lstatSync(settingsOf(h)).isSymbolicLink());
   const s = JSON.parse(fs.readFileSync(real, 'utf8'));
   assert.equal(s.a, 1);
@@ -432,9 +490,8 @@ const viaTargets = (h, env = {}) => {
   const res = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 30000, env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h, ...env } });
   assert.equal(res.status, 0, res.stderr);
 };
-const tree = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).sort().join('|') : '');
 
-test('C-1: with the plugin installed the loose copies are retired before the target loop and a rerun changes nothing', () => {
+test('C-1: with the plugin installed the loose copies stay, the target loop still writes them and a rerun changes nothing', () => {
   const h = home();
   const skill = path.join(h, '.claude', 'skills', 'x', 'SKILL.md');
   const manifest = seedLoose(h, { 'x/SKILL.md': 'A' });
@@ -442,13 +499,13 @@ test('C-1: with the plugin installed the loose copies are retired before the tar
   fs.writeFileSync(path.join(h, '.agents', '.bdb-install-manifest.json'), JSON.stringify(manifest));
   seedInstalled(h);
   viaTargets(h);
-  assert.ok(!fs.existsSync(skill), 'retired and not written again');
-  assert.equal(tree(path.join(h, '.claude', 'skills')), '');
-  const snap = () => [fs.readFileSync(settingsOf(h), 'utf8'), tree(path.join(h, '.agents', 'backups')), fs.readFileSync(pm.statePath(h), 'utf8')];
-  const first = snap();
+  assert.equal(fs.readFileSync(skill, 'utf8'), 'A', 'kept and written by the target loop');
+  assert.ok(!fs.existsSync(path.join(h, '.agents', 'backups')), 'nothing retired, so no backup');
+  const first = fs.readFileSync(settingsOf(h), 'utf8');
   viaTargets(h);
-  assert.deepEqual(snap(), first, 'byte-identical, no new backup dir');
-  assert.equal(tree(path.join(h, '.claude', 'skills')), '');
+  assert.equal(fs.readFileSync(settingsOf(h), 'utf8'), first, 'settings byte-identical on rerun');
+  assert.equal(fs.readFileSync(skill, 'utf8'), 'A');
+  assert.ok(!fs.existsSync(path.join(h, '.agents', 'backups')));
 });
 
 test('C-1: without evidence the skills are written and reruns never create backups', () => {
@@ -501,7 +558,7 @@ test('H-A: the scripts of openwiki-skill stay and the daemon installs from a sta
   run(h, manifest);
   const scripts = path.join(h, '.claude', 'skills', 'openwiki-skill', 'scripts');
   assert.ok(fs.existsSync(path.join(scripts, 'openwiki_daemon.py')), 'daemon scripts never retired');
-  assert.ok(!fs.existsSync(path.join(h, '.claude', 'skills', 'a')));
+  assert.ok(fs.existsSync(path.join(h, '.claude', 'skills', 'a', 'SKILL.md')), 'other copies stay too');
   const code = `const i = require(${JSON.stringify(path.join(ROOT, 'installer.js'))}); console.log(i.stableOpenWikiScripts());`;
   const res = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: h, USERPROFILE: h } });
   assert.equal(res.status, 0, res.stderr);
@@ -522,7 +579,8 @@ test('L-A: a held lock keeps the migration out, a stale lock is taken over, a va
   fs.writeFileSync(pm.lockPath(h), '999999999');
   fs.rmSync(path.join(h, '.claude', 'skills', 'b', 'SKILL.md'));
   const r = run(h, manifest);
-  assert.ok(r.covered.has('claudecode'), 'stale lock replaced, missing file skipped without throwing');
+  assert.ok(r.lines.some((l) => /plugin registered/.test(l)), 'stale lock replaced, migration ran');
+  assert.equal(r.covered.size, 0);
   assert.ok(!fs.existsSync(pm.lockPath(h)), 'lock released');
 });
 
