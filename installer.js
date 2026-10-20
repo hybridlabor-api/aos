@@ -5185,6 +5185,34 @@ function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
     return agents;
 }
 
+// Load pack-specific agents from .agents/packs/<pack>/AGENTS.md.
+// Default behavior: load all available packs (for backward compatibility).
+// Future: respect pack selection from user config.
+function loadPackAgents(packDir = path.join(currentDir, '.agents', 'packs'), commonSkills = loadCommonSkills()) {
+    if (!fs.existsSync(packDir)) return [];
+
+    const packAgents = [];
+    const packs = fs.readdirSync(packDir).filter(f => {
+        const stat = fs.statSync(path.join(packDir, f));
+        return stat.isDirectory();
+    });
+
+    for (const pack of packs) {
+        const agentsMdPath = path.join(packDir, pack, 'AGENTS.md');
+        if (fs.existsSync(agentsMdPath)) {
+            try {
+                const content = fs.readFileSync(agentsMdPath, 'utf8');
+                const agents = parseAgentsMd(content, commonSkills);
+                packAgents.push(...agents);
+            } catch (e) {
+                log.warn(`Failed to load agents from ${agentsMdPath}: ${e.message}`);
+            }
+        }
+    }
+
+    return packAgents;
+}
+
 // A role description is free text that may contain ": " (colon-space), which
 // breaks an unquoted YAML plain scalar the moment a future role happens to
 // use it (e.g. "Reviews: what changed"). Double-quoting defensively, with the
@@ -5541,7 +5569,9 @@ function injectHarnessRules() {
             if (active.has('antigravity')) installStep('compile Antigravity subagents', () => {
                 if (agentsMdContent) {
                     const agyAgentsDir = path.join(geminiDir, 'config', 'agents');
-                    compileAgyAgents(parseAgentsMd(agentsMdContent), agyAgentsDir, loadPipelineConfig());
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const packAgents = loadPackAgents();
+                    compileAgyAgents([...agents, ...packAgents], agyAgentsDir, loadPipelineConfig());
                     log.step(`Compiled AGENTS.md to native Antigravity subagents in ${agyAgentsDir}`);
                 }
             }, 'Antigravity agents unchanged');
@@ -5549,9 +5579,11 @@ function injectHarnessRules() {
             if (active.has('claudecode')) installStep('compile Claude Code subagents', () => {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
-                    const agents = agentsNotShippedAsFiles(parseAgentsMd(agentsMdContent));
+                    const agents = parseAgentsMd(agentsMdContent);
+                    const packAgents = loadPackAgents();
+                    const allAgents = agentsNotShippedAsFiles([...agents, ...packAgents]);
                     const claudeAgentsDir = path.join(claudeConfigDir(homeDir), 'agents');
-                    compileClaudeAgents(agents, claudeAgentsDir, pipelineConfig);
+                    compileClaudeAgents(allAgents, claudeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to Claude Code subagents in ${claudeAgentsDir}`);
                 }
             }, 'Claude Code agents unchanged');
@@ -5560,8 +5592,9 @@ function injectHarnessRules() {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
+                    const packAgents = loadPackAgents();
                     const opencodeAgentsDir = path.join(homeDir, '.config', 'opencode', 'agents');
-                    compileOpenCodeAgents(agents, opencodeAgentsDir, pipelineConfig);
+                    compileOpenCodeAgents([...agents, ...packAgents], opencodeAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to OpenCode subagents in ${opencodeAgentsDir}`);
                 }
             }, 'OpenCode agents unchanged');
@@ -5570,8 +5603,9 @@ function injectHarnessRules() {
                 if (agentsMdContent) {
                     const pipelineConfig = loadPipelineConfig();
                     const agents = parseAgentsMd(agentsMdContent);
+                    const packAgents = loadPackAgents();
                     const codexAgentsDir = path.join(homeDir, '.codex', 'agents');
-                    compileCodexAgents(agents, codexAgentsDir, pipelineConfig);
+                    compileCodexAgents([...agents, ...packAgents], codexAgentsDir, pipelineConfig);
                     log.step(`Compiled AGENTS.md to Codex subagents in ${codexAgentsDir}`);
                 }
             }, 'Codex agents unchanged');
@@ -9296,6 +9330,7 @@ module.exports = {
     INSTALL_MANIFEST_PATH,
     // Agent compilers & pipeline helpers
     parseAgentsMd,
+    loadPackAgents,
     loadCommonSkills,
     compileClaudeAgents,
     compileOpenCodeAgents,
