@@ -112,7 +112,7 @@ test('launchd control with a plist fixture: exact bootstrap argv', async () => {
   assert.equal(res.ok, true);
 });
 
-test('windows: memb/synapse stop is disabled (Task Scheduler message); wscript start stays', async () => {
+test('windows: memb stop kills only processes under the install dir; wscript start stays', async () => {
   const homeWin = join(tmp, 'home-win');
   const startup = join(homeWin, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
   mkdirSync(startup, { recursive: true });
@@ -121,12 +121,12 @@ test('windows: memb/synapse stop is disabled (Task Scheduler message); wscript s
   delete process.env.APPDATA;
   try {
     calls.length = 0;
-    await assert.rejects(
-      () => controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'stop'),
-      /Task Scheduler/,
-      'no substring process-kill on Windows: the exact installed path is not derivable',
-    );
-    assert.equal(calls.length, 0, 'stop must not even attempt a kill');
+    await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'stop');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].cmd, 'powershell.exe');
+    const script = calls[0].args.at(-1);
+    assert.ok(script.includes('.agents'), 'pattern is anchored to the module dir under home');
+    assert.ok(script.includes('GetOwner'), 'owner check stays');
     const res = await controlService(recordingCtx({ platform: 'win32', home: homeWin }), 'memb', 'start');
     assert.equal(res.ok, true);
     assert.deepEqual(calls.at(-1), { cmd: 'wscript.exe', args: [join(startup, 'com.bdb.memb.webui.vbs')], opts: { timeout: 10000 } });
