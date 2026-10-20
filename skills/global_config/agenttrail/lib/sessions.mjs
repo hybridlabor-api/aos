@@ -51,6 +51,7 @@ export class SessionTable {
         currentTask: null,
         touched: [],
         lastFile: '',
+        lastFileAt: 0,
         waiting: null,
         goClaim: null,
         ended: false,
@@ -92,7 +93,7 @@ export class SessionTable {
         s.done = false
         s.waiting = null
         s.currentTool = null
-        if (event.file) s.lastFile = event.file
+        if (event.file) { s.lastFile = event.file; s.lastFileAt = at }
         s.state = 'working'
         break
       case 'task.update':
