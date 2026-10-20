@@ -84,8 +84,7 @@ function collect() {
   const found = [];
   const seen = new Set();
   const add = (id, file) => {
-    // plugins/bdb-aos/skills is a symlink to ../../skills, so the same file is
-    // reached twice. Dedupe on the real path and keep the first (canonical) hit.
+    // Dedupe on the real path and keep the first (canonical) hit.
     const key = realpathSync(file);
     if (seen.has(key)) return;
     seen.add(key);
