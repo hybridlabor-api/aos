@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 
 // aos-cli forwards every flag to the pi agent; its --help is pi's, not ours.
-const runnable = SPECS.filter((s) => s.name !== 'aos-cli' && s.name !== 'aos');
+const runnable = SPECS.filter((s) => s.name !== 'aos-cli');
 // Guard-based CLIs print straight from the spec, so they support --json.
 const fromSpec = runnable.filter((s) => s.entry.startsWith('bin/') && s.name !== 'go-check');
 
@@ -63,4 +63,39 @@ test('aos-mcp-env leaves --help after -- to the wrapped command', () => {
   const { r } = run(spec, ['--vars', 'X', '--', process.execPath, '--version']);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^v\d+\./);
+});
+
+const aos = SPECS.find((s) => s.name === 'aos');
+
+test('aos --help lists every spec command and the generated list matches', () => {
+  const { r } = run(aos, ['--help']);
+  assert.equal(r.status, 0, r.stderr);
+  for (const c of aos.commands) assert.match(r.stdout, new RegExp(`^  ${c.name}\\s`, 'm'), `aos --help misses ${c.name}`);
+});
+
+for (const c of aos.commands) {
+  test(`aos ${c.name} --help prints help and changes nothing`, () => {
+    const { r, home } = run(aos, [c.name, '--help']);
+    assert.equal(r.status, 0, `${r.stderr}${r.stdout}`);
+    assert.match(r.stdout, /usage/i);
+    assert.deepEqual(readdirSync(home), []);
+  });
+}
+
+test('aos help --all --json lists every spec', () => {
+  const { r } = run(aos, ['help', '--all', '--json']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).clis.map((c) => c.name), SPECS.map((c) => c.name));
+});
+
+test('aos team is dispatched, not rejected as unknown', () => {
+  const { r } = run(aos, ['team', 'list', '--json']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(Array.isArray(JSON.parse(r.stdout)));
+});
+
+test('an unknown aos command exits 2 and changes nothing', () => {
+  const { r, home } = run(aos, ['nosuchcmd']);
+  assert.equal(r.status, 2);
+  assert.deepEqual(readdirSync(home), []);
 });

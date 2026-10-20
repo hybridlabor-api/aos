@@ -8163,59 +8163,13 @@ function initFullSession(installState) {
     ]);
 }
 
-async function main() {
-    const args = process.argv.slice(2);
-    // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
-    // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
-    const COMMANDS = ['memory', 'status', 'update', 'repair', 'version', 'help', 'store', 'doctor', 'checkup', 'hub', 'services', 'restart', 'dashboard', 'package', 'context', 'setup', 'allow'];
-    if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
-        console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
-        process.exitCode = 2;
-        return;
-    }
-    if (args[0] === 'allow') {
-        process.exitCode = require('./lib/permissions-allow').allowCommand(args.slice(1), { home: homeDir });
-        return;
-    }
-    applyInstallOptions();
-    if (args[0] === 'memory') {
-        process.exitCode = await require('./lib/memory-import').command(args.slice(1), { home: homeDir });
-        return;
-    }
-    if (args[0] === 'context') {
-        const { contextCommand } = require('./lib/v5/context-profiles');
-        process.exitCode = contextCommand(args.slice(1), { home: homeDir });
-        return;
-    }
-    if (['status', 'update', 'repair'].includes(args[0])) {
-        if (args[0] !== 'status') {
-            process.env.AOS_NO_OPEN = '1';
-            persistInstallOptions();
-        }
-        process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
-        return;
-    }
-    if (args.includes('--version') || args.includes('-V') || args[0] === 'version') {
-        console.log(pkg.version);
-        return;
-    }
-    if (args.includes('--codex-gate')) {
-        console.log(`${codexGateSnippet(path.join(homeDir, '.codex', 'hooks'))}\n\n${CODEX_GATE_NOTICE}`);
-        return;
-    }
-    if (args.includes('--help') || args.includes('-h') || args[0] === 'help') {
-        console.log(`Usage: aos [command] [options]
+// Top-level help: the command list is generated from the spec, the option text is the long form.
+function printAosHelp(aosSpec) {
+    const w = Math.max(...aosSpec.commands.map((c) => c.name.length)) + 2;
+    console.log(`Usage: aos [command] [options]
 
 Commands:
-  store            Browse and install skills
-  hub              Open the AOS Hub (start|stop|status on 127.0.0.1:7900)
-  services         Status or control of the local services (status|start|stop|restart)
-  restart <id>     Restart one local service (typed confirm; same as aos services restart)
-  dashboard        Run the AOS dashboard (--port N, --no-open)
-  package          Install, update, repair or verify one v5 package by id
-  doctor|checkup   Check the installation
-  setup            Run setup wizard (interactive configuration)
-  context [role]   Show or set context profile (full|orchestrator|worker|small)
+${aosSpec.commands.map((c) => `  ${c.name.padEnd(w)}${c.summary}`).join('\n')}
 
 Options:
   --codex-gate     Print the go-gate [[hooks.PreToolUse]] stanza for ~/.codex/config.toml
@@ -8284,7 +8238,66 @@ Options:
                    saved; unknown names are ignored with one warning.
   --verbose, -v    Verbose output
   -V, --version    Print the version and exit
-  -h, --help       Print this help and exit`);
+  -h, --help       Print this help and exit
+
+More: aos <command> --help | aos help <cli> | aos help --all [--json]`);
+}
+
+async function main() {
+    const args = process.argv.slice(2);
+    // An unknown word used to fall through to the full install, and without a TTY that is a silent -y install
+    // that writes rule files into the cwd repo (F8: an agent's `aos gateway status`).
+    // The command list comes from the CLI spec (lib/cli-specs), so the whitelist and `aos --help` cannot diverge.
+    const cliHelp = await import(require('url').pathToFileURL(path.join(srcDir, 'lib', 'cli-help.mjs')).href);
+    const aosSpec = cliHelp.loadSpecs().find((x) => x.name === 'aos');
+    const COMMANDS = aosSpec.commands.map((c) => c.name);
+    if (args[0] && !args[0].startsWith('-') && !COMMANDS.includes(args[0])) {
+        console.error(`aos: unknown command "${args[0]}". Nothing was changed. Commands: ${COMMANDS.join(', ')} (aos --help).`);
+        process.exitCode = 2;
+        return;
+    }
+    // Help is answered first and never reaches a command: `aos <sub> --help` shows that subcommand's help.
+    if (args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+        const json = args.includes('--json');
+        const words = args.filter((a) => !a.startsWith('-') && a !== 'help');
+        if (args.includes('--all')) { console.log(cliHelp.helpAll({ json })); return; }
+        const sub = words[0];
+        const specs = cliHelp.loadSpecs();
+        const target = sub && (specs.find((x) => x.name === sub || x.name === `aos-${sub}` || (x.aliases || []).includes(sub)) || (sub === 'checkup' ? specs.find((x) => x.name === 'aos-doctor') : null));
+        if (target && target.name !== 'aos') { console.log(cliHelp.helpFor(target, [...args.filter((a) => a === '--json'), ...words.slice(1)])); return; }
+        if (sub && COMMANDS.includes(sub) && !json) { console.log(cliHelp.renderHelp(aosSpec, sub)); return; }
+        if (json) { console.log(cliHelp.helpFor(aosSpec, ['--json'])); return; }
+        printAosHelp(aosSpec);
+        return;
+    }
+    if (args[0] === 'allow') {
+        process.exitCode = require('./lib/permissions-allow').allowCommand(args.slice(1), { home: homeDir });
+        return;
+    }
+    applyInstallOptions();
+    if (args[0] === 'memory') {
+        process.exitCode = await require('./lib/memory-import').command(args.slice(1), { home: homeDir });
+        return;
+    }
+    if (args[0] === 'context') {
+        const { contextCommand } = require('./lib/v5/context-profiles');
+        process.exitCode = contextCommand(args.slice(1), { home: homeDir });
+        return;
+    }
+    if (['status', 'update', 'repair'].includes(args[0])) {
+        if (args[0] !== 'status') {
+            process.env.AOS_NO_OPEN = '1';
+            persistInstallOptions();
+        }
+        process.exitCode = await require('./lib/v5/menu').runCommand(args[0], module.exports, v5Options(Boolean(process.stdout.isTTY && process.stdin.isTTY)));
+        return;
+    }
+    if (args.includes('--version') || args.includes('-V') || args[0] === 'version') {
+        console.log(pkg.version);
+        return;
+    }
+    if (args.includes('--codex-gate')) {
+        console.log(`${codexGateSnippet(path.join(homeDir, '.codex', 'hooks'))}\n\n${CODEX_GATE_NOTICE}`);
         return;
     }
     if (process.argv[2] === 'team') {
