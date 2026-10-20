@@ -1,10 +1,6 @@
 ---
 name: codebase-memory
-description: >-
-  Use when you need code research over an indexed codebase with minimal context:
-  structural graph queries (who calls X, call chains, architecture overview, dead
-  code, cross-service HTTP routes) instead of file-by-file grep/read cycles. Also
-  trigger to minimise token spend on repetitive code exploration.
+description: Code research over indexed codebase. Graph queries: calls, chains, architecture, dead code, routes. Token-efficient exploration.
 category: bdb-core
 ---
 
