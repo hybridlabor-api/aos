@@ -22,7 +22,7 @@ afterEach(() => {
     process.env.HOME = savedHome;
     if (savedProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedProfile;
     if (savedName === undefined) delete process.env.AOS_SESSION_NAME; else process.env.AOS_SESSION_NAME = savedName;
-    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); // a poller tick may still write as the hook runs
 });
 
 const waitFor = async (fn, ms = 5000) => {
