@@ -123,3 +123,18 @@ test('gateway install removes the direct copies of gateway and adopted servers f
     assert.deepEqual(Object.keys(rj(claude).mcpServers).sort(), ['aos', 'mine']);
     assert.ok(fs.readdirSync(home).some((n) => n.startsWith('.claude.json.aos-gateway-bak-')));
 });
+
+test('doctor: one hygiene row lists duplicates by file + server and gateway servers outside selection + adopted', () => {
+    const { gatewayChecks } = require('../lib/gateway/doctor.js');
+    const home = gatewayHome(['github']);
+    fs.writeFileSync(path.join(cfg.gatewayDir(home), 'mcp.json'), JSON.stringify({ mcpServers: { github: {}, deja: {}, extra: {}, user_own: {} } }));
+    const ocJsonc = path.join(home, '.config', 'opencode', 'opencode.jsonc');
+    fs.mkdirSync(path.dirname(ocJsonc), { recursive: true });
+    fs.writeFileSync(ocJsonc, `{\n  // my comment\n  "mcp": ${JSON.stringify({ aos: harness.entryFor('opencode', TOKEN), github: ownedOc(home, 'github') })}\n}\n`);
+    const checks = gatewayChecks({ home, files: [{ file: ocJsonc, kind: 'opencode' }], shipped, platform: 'darwin' });
+    const row = checks.find((c) => c.name === 'gateway hygiene');
+    assert.equal(row.ok, false);
+    assert.ok(row.detail.includes(`${ocJsonc}: github`), row.detail);
+    assert.ok(row.detail.includes('served but neither selected nor adopted: deja, extra'), row.detail);
+    assert.ok(!row.detail.includes('user_own'));
+});
