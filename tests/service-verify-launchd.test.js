@@ -12,6 +12,16 @@ const menu = require('../lib/v5/menu.js');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-svc-verify-'));
 
+// openwiki verify probes the real `openwiki --help`; put a stub first on PATH so the result does not depend on the host.
+const stubOpenwiki = (t) => {
+    const bin = tmp();
+    const cmd = path.join(bin, process.platform === 'win32' ? 'openwiki.cmd' : 'openwiki');
+    fs.writeFileSync(cmd, process.platform === 'win32' ? '@echo OpenWiki v0.5.0\r\n' : '#!/bin/sh\necho "OpenWiki v0.5.0"\n', { mode: 0o755 });
+    const prev = process.env.PATH;
+    process.env.PATH = `${bin}${path.delimiter}${prev}`;
+    t.after(() => { process.env.PATH = prev; });
+};
+
 describe('launchd service verification', () => {
     test('memb WebUI: loaded and running passes verify', () => {
         const home = tmp();
@@ -146,7 +156,8 @@ describe('launchd service verification', () => {
         assert.strictEqual(fixed.ok, true);
     });
 
-    test('openwiki: loaded interval job passes verify even with no running process', () => {
+    test('openwiki: loaded interval job passes verify even with no running process', (t) => {
+        stubOpenwiki(t);
         const home = tmp();
         const plistDir = path.join(home, 'Library', 'LaunchAgents');
         fs.mkdirSync(plistDir, { recursive: true });
@@ -162,7 +173,8 @@ describe('launchd service verification', () => {
         assert.strictEqual(res.ok, true);
     });
 
-    test('openwiki: plist present but not loaded fails verify and is repaired', async () => {
+    test('openwiki: plist present but not loaded fails verify and is repaired', async (t) => {
+        stubOpenwiki(t);
         const home = tmp();
         const plistDir = path.join(home, 'Library', 'LaunchAgents');
         fs.mkdirSync(plistDir, { recursive: true });
