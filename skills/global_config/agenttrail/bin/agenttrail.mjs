@@ -192,17 +192,9 @@ let tickPlanFile = null
 let tickTaskId = null
 let tickMode = 'done'
 if (cmd === 'tick') {
-  const pos = []
-  let tickSeen = false
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
-    if (cmd === 'tick' && !tickSeen && a === 'tick') { tickSeen = true; continue }
-    if (a === '--doing') tickMode = 'doing'
-    else if (a === '--done') tickMode = 'done'
-    else if (a === '--todo') tickMode = 'todo'
-    else if (a.startsWith('-')) continue
-    else pos.push(a)
-  }
+  const rest = argv.slice(argv.indexOf('tick') + 1)
+  const pos = rest.filter((a) => !a.startsWith('-'))
+  for (const a of rest) if (['--doing', '--done', '--todo'].includes(a)) tickMode = a.slice(2)
   tickPlanFile = pos[0] ? path.resolve(pos[0]) : null
   tickTaskId = pos[1] || null
   if (!tickPlanFile || !tickTaskId) { console.error('usage: aos-trail tick <plan-file> <task-id> [--doing|--done|--todo]'); process.exit(1) }

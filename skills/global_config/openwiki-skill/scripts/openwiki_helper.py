@@ -101,13 +101,10 @@ def execute_commit(cwd):
     # Commit the changes. Repos without a git identity need an explicit author
     # passed on the command line; never write git config.
     msg = "docs(wiki): update project specs and codebase documentation [auto]"
-    commit_args = ["git", "commit", "-m", msg]
     email = run_cmd(["git", "config", "user.email"], cwd)
-    if not email or email.startswith("Error") or email.startswith("Exception"):
-        commit_args.insert(1, "-c")
-        commit_args.insert(2, "user.name=AOS OpenWiki")
-        commit_args.insert(3, "-c")
-        commit_args.insert(4, "user.email=openwiki@aos.local")
+    no_identity = not email or email.startswith("Error") or email.startswith("Exception")
+    ident = ["-c", "user.name=AOS OpenWiki", "-c", "user.email=openwiki@aos.local"] if no_identity else []
+    commit_args = ["git", *ident, "commit", "-m", msg]
     commit_res = run_cmd(commit_args, cwd)
     return f"Successfully committed documentation changes:\n{commit_res}"
 
