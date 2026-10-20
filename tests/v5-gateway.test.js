@@ -307,7 +307,7 @@ describe('pkg-gateway', () => {
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootout'), ['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']);
         assert.deepEqual(calls.find((c) => c[0] === 'launchctl' && c[1] === 'bootstrap'), ['launchctl', 'bootstrap', 'gui/501', path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')]);
         const g = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8')).mcpServers;
-        assert.deepEqual(Object.keys(g).filter((n) => n !== 'codebase_memory_mcp').sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp']);
+        assert.deepEqual(Object.keys(g).filter((n) => n !== 'codebase_memory_mcp').sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp', 'bdb_blender_mcp', 'bdb_davinci_mcp', 'bdb_grandma3_mcp', 'bdb_remoteos_mcp', 'bdb_resolume_mcp', 'bdb_td_backup', 'bdb_unreal_mcp', 'bdb_windows_computer_use', 'chrome-devtools', 'deja', 'github', 'memb_mcp', 'open_design_mcp', 'zavora_computer_use']);
     });
 
     const pinnedOnDisk = (home) => {
@@ -1339,11 +1339,12 @@ test('full install does not duplicate gateway servers when aos entry exists', ()
     const dir = path.join(home, 'mcp');
     const file = path.join(home, 'mcp.json');
     fs.writeFileSync(file, JSON.stringify({ mcpServers: { aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp', headers: { 'X-AOS-Token': 'x' } } } }));
-    const code = `require(${JSON.stringify(path.join(ROOT, 'installer.js'))}).installMcpsForTarget({ targetMcpDir: process.argv[1], mcpConfigPath: process.argv[2], extraMcpConfigPaths: [] }, { selectedMcps: ['deja'], mode: 'merge', platformValue: '2', creds: {} });`;
+    const code = `require(${JSON.stringify(path.join(ROOT, 'installer.js'))}).installMcpsForTarget({ targetMcpDir: process.argv[1], mcpConfigPath: process.argv[2], extraMcpConfigPaths: [] }, { selectedMcps: ['mcsc'], mode: 'merge', platformValue: '2', creds: {} });`;
     const r = spawnSync(process.execPath, ['-e', code, dir, file], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 120000 });
     assert.strictEqual(r.status, 0, r.stderr);
     const servers = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers;
     assert.ok(servers.aos, 'gateway entry kept');
     assert.ok(Object.keys(servers).length > 1, 'merge still wrote the direct servers');
+    assert.ok(servers.mcsc, 'direct-by-design server written');
     assert.deepStrictEqual(cfg.GATEWAY_SERVERS.filter((n) => n in servers), []);
 });
