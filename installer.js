@@ -8258,6 +8258,65 @@ function migrateMcpSecrets() {
     return moved;
 }
 
+// Update path of the shipped MCP definitions. Fresh install writes them via installMcpsForTarget (it knows
+// the user's picks); update has no stored pick, so it only re-merges into entries a harness config already
+// holds -- owned ones are rewritten to the current shape, retired ones dropped, user entries and servers
+// the user never installed stay as they are.
+function resolveShippedMcpServers() {
+    const mcpsDir = path.join(resolveTargetPaths(defaultPlatformValue(), null).targetMcpDir, 'mcps');
+    let servers = { ...mcpPicks().servers };
+    if (process.platform === 'win32' && servers.deja) servers.deja = { command: 'cmd', args: ['/c', 'deja', 'mcp'] };
+    servers = v5Profile.filterMcpServers(servers, v5Profile.parseList(process.env.AOS_DISABLED_MCPS)).servers;
+    if (!memoryOn) servers = v5Profile.filterMcpServers(servers, v5Profile.MEMORY_MCPS).servers;
+    const esc = (p) => String(p).replace(/\\/g, '\\\\');
+    const pyBin = (process.platform === 'win32' ? path.join(mcpsDir, 'memb-mcp', '.venv', 'Scripts', 'python.exe') : path.join(mcpsDir, 'memb-mcp', '.venv', 'bin', 'python')).split('\\').join('/');
+    const out = {};
+    for (const [name, def] of Object.entries(servers)) {
+        const raw = JSON.stringify(def);
+        // An entry that points into mcps/ is only refreshed when that server's code is on disk.
+        const dirs = [...raw.matchAll(/__MCPS_DIR__\/([^/"\\]+)/g)].map((m) => m[1]);
+        if (dirs.some((d) => !fs.existsSync(path.join(mcpsDir, d)))) continue;
+        const resolved = raw
+            .replace(/__MCPS_DIR__/g, () => esc(mcpsDir))
+            .replace(/\{\{HOME\}\}/g, () => esc(homeDir))
+            .replace(/"command":\s*"uv"/g, `"command": "${uvBin().replace(/\\/g, '/')}"`)
+            .replace(/__PYTHON_BIN__/g, () => JSON.stringify(pyBin).slice(1, -1));
+        try { out[name] = JSON.parse(resolved); } catch (e) { logDebug(e, 'resolve shipped MCP server'); }
+    }
+    return out;
+}
+
+function refreshHarnessMcpEntries() {
+    installMcpLauncher();
+    const shipped = resolveShippedMcpServers();
+    const cwd = path.resolve(currentDir);
+    const refreshed = [];
+    for (const { file, kind } of mcpSecrets.harnessMcpFiles(homeDir)) {
+        if (!fs.existsSync(file)) continue;
+        // An update started inside a repo must not write into that repo (F8).
+        if (cwd !== path.resolve(homeDir) && path.resolve(file).startsWith(cwd + path.sep)) continue;
+        try {
+            let present;
+            if (kind === 'toml') present = Object.keys(mcpSecrets.parseCodexTables(readTextFile(file)));
+            else {
+                const loaded = loadJsonConfig(file);
+                if (loaded.state === 'invalid') { warnUnparseable(file, 'MCP refresh', loaded); continue; }
+                if (loaded.state !== 'ok') continue;
+                present = Object.keys((kind === 'opencode' ? loaded.data.mcp : loaded.data.mcpServers) || {});
+            }
+            const subset = { mcpServers: Object.fromEntries(Object.entries(shipped).filter(([n]) => present.includes(n))) };
+            if (kind === 'toml') mergeCodexTomlMcpServers(file, subset.mcpServers);
+            else if (kind === 'opencode') syncOpencodeConfigFile(file, subset);
+            else syncMcpConfigFile(file, subset);
+            refreshed.push(file);
+        } catch (e) {
+            log.warn(`Could not refresh the shipped MCP entries in ${file}: ${e.message}`);
+        }
+    }
+    if (refreshed.length) log.step(`Shipped MCP entries re-synced in: ${refreshed.join(', ')}`);
+    noticeSecretBackups();
+}
+
 async function universalHarnessSync(primaryMcpConfigPath, installedModules = []) {
     log.info('Universal Agent Harness Sync...');
     installMcpLauncher();
@@ -8390,6 +8449,7 @@ function quickUpdateHarnesses() {
             injectHarnessRules();
         }, 'Harness files keep whatever version this machine already had.')],
         ['remove the AOS mcsc entry from agy configs', installStep('remove the AOS mcsc entry from agy configs', () => { removeAosMcscFromAgyConfigs(); }, 'An mcsc entry in the agy config can recurse; remove it by hand.')],
+        ['refresh shipped MCP definitions in the harness configs', installStep('refresh shipped MCP definitions in the harness configs', () => { refreshHarnessMcpEntries(); }, 'MCP entries keep the definitions this machine already had.')],
         ['migrate legacy agy workspace MCP config', installStep('migrate legacy agy workspace MCP config', () => { mcpSecrets.migrateLegacyAgyWorkspaceMcp(homeDir, srcDir, { log }); })],
         ['move inline MCP secrets into the secrets file', installStep('move inline MCP secrets into the secrets file', () => { migrateMcpSecrets(); }, `Inline tokens stay in the harness configs; run the installer again or move them into ${mcpSecrets.secretsPath(homeDir)} yourself.`)],
         ['install the Codex plugin', installStep('install the Codex plugin', () => { runCodexPluginStep(); })],
@@ -9376,6 +9436,8 @@ module.exports = {
     harnessSummaryLine,
     applyInstallOptions,
     getTierExcludeSkills,
+    resolveShippedMcpServers,
+    refreshHarnessMcpEntries,
     globalSkillDestRoots,
     globalSkillDestinations,
     storedTierOpts,
