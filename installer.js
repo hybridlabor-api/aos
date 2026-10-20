@@ -3072,8 +3072,10 @@ async function installDeja() {
     }
     try {
         log.step('Installing deja-vu session memory...');
+        // Recorded for uninstall only when AOS puts it there; one the user installed stays theirs.
+        const preexisting = hasExecutable('deja');
         execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
-        uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
+        if (!preexisting) uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
     } catch (e) {
         log.warn(`deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
