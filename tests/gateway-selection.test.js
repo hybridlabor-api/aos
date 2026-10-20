@@ -39,7 +39,7 @@ test('resolveGatewayServers: a valid stored choice wins; invalid falls back to d
     assert.deepEqual(selection.validStoredServers(['github', 'deja', 'chrome-devtools', 'memb_mcp']), ['github', 'deja', 'chrome-devtools', 'memb_mcp']);
     // [] is a real selection (the user removed the last server): never re-derived
     assert.deepEqual(selection.validStoredServers([]), []);
-    assert.deepEqual(selection.resolveGatewayServers({ settingServers: [], media: true, keep: ['github'] }), { servers: [], fromSetting: true, kept: [] });
+    assert.deepEqual(selection.resolveGatewayServers({ settingServers: [], media: true, keep: ['github'] }), { servers: [], fromSetting: true, kept: [], retired: [] });
     // a non-empty list with no known name is corrupt and falls back to derivation
     assert.equal(selection.resolveGatewayServers({ settingServers: ['nope'] }).fromSetting, false);
 });
