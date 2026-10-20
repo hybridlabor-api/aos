@@ -7,8 +7,10 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { connect } from 'node:net';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const HELP_ARGS = process.argv.slice(2);
 if (HELP_ARGS[0] === 'help' || HELP_ARGS.includes('--help') || HELP_ARGS.includes('-h')) {
@@ -65,6 +67,15 @@ const which = (bin) => {
   const probe = process.platform === 'win32' ? 'where.exe' : 'which';
   try { return tilde(execFileSync(probe, [bin], { encoding: 'utf8' }).trim().split(/\r?\n/)[0]); } catch { return null; }
 };
+// lib/cli-spawn.js resolves npm's .cmd shims without a shell string (`where` lists the extensionless sh stub first).
+// Repo checkout: <repo>/skills/global_config/aos-setup/scripts -> ../../../../lib; installed: ~/.agents/lib.
+const cliSpawn = (() => {
+  const req = createRequire(import.meta.url);
+  for (const c of [path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'lib', 'cli-spawn.js'), path.join(HOME, '.agents', 'lib', 'cli-spawn.js')]) {
+    try { return req(c); } catch { /* next location */ }
+  }
+  return null;
+})();
 const dirCount = (p) => { try { return readdirSync(p, { withFileTypes: true }).filter(d => d.isDirectory()).length; } catch { return 0; } };
 
 // npm's Windows shim is deja.cmd, and Node refuses to spawn .cmd/.bat without
@@ -274,7 +285,8 @@ async function checkMemb() {
   add('memB', 'vector store', existsSync(db), existsSync(db) ? '~/.MemBDB/memb.db' : 'no database yet (empty memory)',
     'Created on first write; run an ingest from /aos-project-init to seed it.');
 
-  add('memB', 'WebUI :8088', await portOpen(8088), 'something is listening (a bare TCP probe — it does not prove it is memB)',
+  const membUp = await portOpen(8088);
+  add('memB', 'WebUI :8088', membUp, membUp ? 'something is listening on :8088 (a bare TCP probe — it does not prove it is memB)' : 'nothing is listening on :8088',
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.memb.webui.plist (installer writes it).' : 'Start src/backend/server.py from the memB module.');
 
   if (IS_MAC) {
@@ -364,7 +376,9 @@ async function checkDeja() {
   }
   const idx = doc?.index || {};
   const readAt = idx.sources_read_at;
-  const ok = idx.state === 'ok' && (idx.stale_stores ?? 0) === 0;
+  // Every session write marks its harness's store stale, so a few stale stores right after `deja index` are normal.
+  const DEJA_STALE_GRACE = 8;
+  const ok = idx.state === 'ok' && (idx.stale_stores ?? 0) <= DEJA_STALE_GRACE;
   add('deja', 'index status', ok,
     `${idx.state ?? 'unknown'}${idx.stale_stores ? `, ${idx.stale_stores} stale store(s)` : ''}${readAt != null ? `, sources read at ${typeof readAt === 'string' ? readAt : JSON.stringify(readAt)}` : ''}`,
     ok ? '' : 'deja index');
@@ -440,7 +454,12 @@ function checkOpenWiki() {
 
   if (bin) {
     try {
-      const out = execFileSync(bin, ['integrations', 'list'], { encoding: 'utf8', timeout: 15000 });
+      let out;
+      if (cliSpawn) {
+        const r = cliSpawn.run('openwiki', ['integrations', 'list'], { timeout: 15000 });
+        if (r.status !== 0) throw new Error((r.stderr || `exit ${r.status}`).trim().split('\n')[0]);
+        out = r.stdout;
+      } else out = execFileSync(bin, ['integrations', 'list'], { encoding: 'utf8', timeout: 15000, shell: IS_WIN });
       // The status enum includes "not-installed", whose substring would match a
       // naive includes('installed') — compare the exact tab-separated field.
       const installed = out.split('\n')
@@ -449,8 +468,8 @@ function checkOpenWiki() {
         .map(f => f[0].trim());
       add('openwiki', 'host integrations', installed.length > 0, installed.length ? installed.join(', ') : 'no harness integration installed',
         'openwiki integrations install claude   (repeat for codex/cursor/opencode as needed).');
-    } catch {
-      add('openwiki', 'host integrations', false, 'integrations list failed', 'Check `openwiki integrations list` manually.');
+    } catch (e) {
+      add('openwiki', 'host integrations', false, `integrations list failed: ${String(e.message || e).split('\n')[0]}`, 'Check `openwiki integrations list` manually.');
     }
   }
 
@@ -475,7 +494,8 @@ async function checkSynapse() {
   add('synapse', 'binary available', !!bin, bin || 'no binary on PATH or in the module',
     IS_WIN ? 'Re-run the installer; on Windows the binary stays in the module rather than being symlinked.'
            : 'Re-run the installer (it symlinks ~/.local/bin/synapse), and add ~/.local/bin to PATH.');
-  add('synapse', 'daemon :7781', await portOpen(7781), 'something is listening (a bare TCP probe — it does not prove it is Synapse)',
+  const synUp = await portOpen(7781);
+  add('synapse', 'daemon :7781', synUp, synUp ? 'something is listening on :7781 (a bare TCP probe — it does not prove it is Synapse)' : 'nothing is listening on :7781',
     IS_MAC ? 'launchctl load -w ~/Library/LaunchAgents/com.bdb.synapse.plist' : 'synapse serve --port 7781');
 }
 

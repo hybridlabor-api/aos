@@ -6172,6 +6172,13 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
             }
             pluginInstalled = true;
             uninstallRecords.recordOpencodePlugin(targetHome, pluginDest);
+            try {
+                // `opencode --version` creates ~/.config, ~/.cache and ~/.local: never in a dry run.
+                const ov = require('./lib/opencode-verify.js');
+                const v = !DRY_RUN && ov.onPath('opencode') && require('./lib/cli-spawn.js').run('opencode', ['--version'], { timeout: 8000 });
+                const warn = v && v.status === 0 ? ov.opencodeVersionWarning(v.stdout) : null;
+                if (warn) log.warn(warn);
+            } catch (e) { logDebug(e, 'opencode version check'); }
         } catch (e) {
             log.warn(`Could not install OpenCode plugin: ${e.message}`);
         }
@@ -6313,6 +6320,9 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     // aos-acp (installed in ~/.agents/bin) loads ../lib/cli-spawn.js to start npx/opencode .cmd shims on Windows.
     const cliSpawnLib = path.join(srcDir, 'lib', 'cli-spawn.js');
     if (fs.existsSync(cliSpawnLib)) copyDirRecursiveSync(cliSpawnLib, path.join(targetHome, '.agents', 'lib', 'cli-spawn.js'));
+    // cli-spawn.js and the a2a libs resolve powershell/taskkill through win-bin.js (absolute System32 paths).
+    const winBinLib = path.join(srcDir, 'lib', 'win-bin.js');
+    if (fs.existsSync(winBinLib)) copyDirRecursiveSync(winBinLib, path.join(targetHome, '.agents', 'lib', 'win-bin.js'));
     const claudeSettings = path.join(claudeConfigDir(targetHome), 'settings.json');
     if (on('claudecode')) {
         mergeBdbSettingsHooks(claudeSettings);
@@ -6369,6 +6379,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     if (on('codex')) {
         if (mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'))) codexHooksChanged = true;
         installCodexRules({ targetHome });
+        installCodexWritableRoot({ targetHome });
     }
 
     // 4. OpenCode CLI
@@ -7205,6 +7216,30 @@ function installCodexRules({ targetHome = homeDir } = {}) {
     }
 }
 
+// #174: Codex's workspace-write sandbox must be able to write the A2A reply file. Only the reply
+// directory becomes a writable root (never ~/.aos); backed up first, removed again by aos-uninstall.
+function installCodexWritableRoot({ targetHome = homeDir } = {}) {
+    if (process.env.AOS_A2A_SIDECAR === 'off') return false;
+    const file = path.join(targetHome, '.codex', 'config.toml');
+    try {
+        const writableRoot = require('./lib/codex-writable-root.js');
+        const dir = writableRoot.replyRoot(targetHome);
+        const r = writableRoot.ensureWritableRoot(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '', dir);
+        if (r.note) log.warn(`${file}: ${r.note}; add ${dir} to [sandbox_workspace_write].writable_roots by hand so Codex can answer A2A messages.`);
+        if (!r.changed) return false;
+        if (DRY_RUN) { log.message(`[dry-run] Codex writable root ${dir}`); return false; }
+        if (!backupConfigFile(file)) return false;
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, r.text, { mode: 0o600 });
+        uninstallRecords.recordCodexWritableRoot(targetHome, dir);
+        log.step(`Codex: ${dir} added to [sandbox_workspace_write].writable_roots`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not add the Codex A2A writable root: ${e.message}`);
+        return false;
+    }
+}
+
 const CODEX_TRUST_REMINDER =
     'Codex: open Codex, run /hooks and trust the AOS go-gate hook — until then the gate does not run in Codex.\n' +
     'Non-interactive opt-in: pass --dangerously-bypass-hook-trust to codex.';
@@ -7893,6 +7928,12 @@ function resolveShippedMcpServers() {
         // An entry that points into mcps/ is only refreshed when that server's code is on disk.
         const dirs = [...raw.matchAll(/__MCPS_DIR__\/([^/"\\]+)/g)].map((m) => m[1]);
         if (dirs.some((d) => !fs.existsSync(path.join(mcpsDir, d)))) continue;
+        // A dist-based server whose build never produced its entry script would fail at launch (#185); fresh installs check this too.
+        const entry = def.command === 'node' && Array.isArray(def.args) && typeof def.args[0] === 'string' && def.args[0].startsWith('__MCPS_DIR__/') ? def.args[0].slice('__MCPS_DIR__/'.length) : null;
+        if (entry && !fs.existsSync(path.join(mcpsDir, entry))) {
+            log.warn(`${name}: ${entry} is missing (the build did not finish) -- not registering it. Run "npm run build" in ${path.join(mcpsDir, entry.split('/')[0])}; the failure is in the update log under ${path.join(homeDir, '.aos', 'logs')}.`);
+            continue;
+        }
         const resolved = raw
             .replace(/__MCPS_DIR__/g, () => esc(mcpsDir))
             .replace(/\{\{HOME\}\}/g, () => esc(homeDir))

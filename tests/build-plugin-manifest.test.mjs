@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -31,16 +31,18 @@ assert.ok(!('agents' in manifest), 'the agents manifest key is a no-op; agents l
 
 run('--check');
 
-// Subfolder plugin: identical manifest, symlinks agents and commands (no skills link needed).
+// Subfolder plugin: identical manifest, real copies (git symlinks break with core.symlinks=false), no skills.
 const SUB = join(ROOT, 'plugins', 'bdb-aos');
 const SUB_MANIFEST = join(SUB, '.claude-plugin', 'plugin.json');
 const subOriginal = readFileSync(SUB_MANIFEST, 'utf8');
 assert.equal(subOriginal, original, 'subfolder plugin.json must match the root manifest');
 assert.equal(entry.source, './plugins/bdb-aos', 'marketplace entry must point at the subfolder plugin');
-for (const name of ['agents', 'commands']) {
-  assert.ok(lstatSync(join(SUB, name)).isSymbolicLink(), `plugins/bdb-aos/${name} must be a symlink`);
-  assert.equal(readlinkSync(join(SUB, name)).replace(/\\/g, '/'), `../../${name}`); // Windows readlink returns backslashes
+for (const name of ['agents', 'commands', 'agy-commands']) {
+  assert.ok(lstatSync(join(SUB, name)).isDirectory() && !lstatSync(join(SUB, name)).isSymbolicLink(), `plugins/bdb-aos/${name} must be a real directory`);
 }
+assert.ok(!existsSync(join(SUB, 'skills')), 'plugins/bdb-aos/skills must not exist');
+const listed = execFileSync('git', ['ls-files', '-s', 'plugins/bdb-aos'], { cwd: ROOT, encoding: 'utf8' });
+assert.ok(!/^120000 /m.test(listed), 'no git symlink (mode 120000) under plugins/bdb-aos');
 
 try {
   writeFileSync(SUB_MANIFEST, '{"name":"bdb-aos"}\n');
@@ -49,11 +51,10 @@ try {
   writeFileSync(SUB_MANIFEST, subOriginal);
 }
 try {
-  rmSync(join(SUB, 'agents'));
-  assert.throws(() => run('--check'), /symlinks/, '--check must fail on a missing symlink');
+  writeFileSync(join(SUB, 'commands', 'doctor.md'), 'drift\n');
+  assert.throws(() => run('--check'), /copies/, '--check must fail on a drifted copy');
 } finally {
-  rmSync(join(SUB, 'agents'), { force: true });
-  symlinkSync('../../agents', join(SUB, 'agents'));
+  run();
 }
 run('--check');
 

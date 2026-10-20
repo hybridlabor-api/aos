@@ -1113,6 +1113,23 @@ checkAgyWorkspaceMcp();
 checkAgyWorkerHome();
 checkMcpSecrets();
 checkInstallerBaks();
+// Windows: Task Manager -> Autostart can mark a Startup-folder entry "Deaktiviert"; Explorer keeps that in
+// HKCU\\...\\StartupApproved\\StartupFolder as REG_BINARY named after the file. Format (unverified here, from
+// public documentation): first byte 02/06 = enabled, 03 = disabled (bit 0). Read-only: the registry is never written.
+function checkWindowsStartupApproved() {
+  if (!IS_WIN) return;
+  const startupDir = path.join(process.env.APPDATA || h('AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  let reg = '';
+  try {
+    reg = execFileSync('reg.exe', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\StartupFolder'], { encoding: 'utf8', timeout: 5000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch { return; } // key absent: nothing was ever approved or disabled
+  const off = req('../lib/v5/win-startup.js').disabledStartupEntries(reg).filter((f) => existsSync(path.join(startupDir, f)));
+  add('daemons', 'Windows autostart entries', off.length === 0,
+    off.length ? `disabled in Task Manager: ${off.join(', ')}` : 'no AOS Startup entry is disabled',
+    `Task Manager -> Autostart -> enable ${off.join(', ')}; to start one now: ${off.map((f) => `wscript.exe "${path.join(startupDir, f)}"`).join(' ; ')}`, true);
+}
+
+checkWindowsStartupApproved();
 await checkHub();
 await checkA2aMatrix();
 await checkDaemonsAndModules();

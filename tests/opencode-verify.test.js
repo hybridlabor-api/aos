@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { COMMANDS, checkOpencode, checkAcpAndGoCheck } = require('../lib/opencode-verify.js');
+const { COMMANDS, checkOpencode, checkAcpAndGoCheck, opencodeVersionWarning } = require('../lib/opencode-verify.js');
 
 const REPO = path.resolve(__dirname, '..');
 let home;
@@ -34,6 +34,17 @@ const byName = (rs) => Object.fromEntries(rs.map((r) => [r.name, r]));
 const check = (out) => byName(checkOpencode({ home, platform: 'darwin', env: { PATH: binDir }, run: run(out) }));
 
 describe('opencode-verify', () => {
+    test('OpenCode 2.x gets one clear version warning, 1.x none (#175)', () => {
+        assert.match(opencodeVersionWarning('2.0.3\n'), /needs OpenCode 1\.x/);
+        assert.equal(opencodeVersionWarning('1.18.30'), null);
+        assert.equal(opencodeVersionWarning(null), null);
+        installFiles();
+        const r = byName(checkOpencode({ home, platform: 'darwin', env: { PATH: binDir }, run: (c, a) => (a[0] === '--version' ? '2.1.0' : cli()) }));
+        assert.equal(r['OpenCode version'].ok, false);
+        const old = byName(checkOpencode({ home, platform: 'darwin', env: { PATH: binDir }, run: (c, a) => (a[0] === '--version' ? '1.18.30' : cli()) }));
+        assert.equal(old['OpenCode version'], undefined);
+    });
+
     test('COMMANDS equals the shipped /bdb-aos-* files', () => {
         const shipped = fs.readdirSync(path.join(REPO, '.opencode', 'commands')).filter((f) => f.startsWith('bdb-aos-')).sort();
         assert.deepEqual([...COMMANDS].sort(), shipped);
