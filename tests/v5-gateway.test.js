@@ -1387,3 +1387,24 @@ test('full install does not duplicate gateway servers when aos entry exists', ()
     assert.ok(servers.mcsc, 'direct-by-design server written');
     assert.deepStrictEqual(cfg.GATEWAY_SERVERS.filter((n) => n in servers), []);
 });
+
+describe('uninstall leftovers', () => {
+    test('pruneBackups keeps only the oldest backup of a file', () => {
+        const d = tmp();
+        const f = path.join(d, 'x.json');
+        for (const t of [300, 100, 200]) fs.writeFileSync(`${f}.aos-gateway-bak-${t}`, '{}');
+        fs.writeFileSync(`${f}.bak`, '{}');
+        const gone = require('../lib/gateway/harness.js').pruneBackups(f);
+        assert.equal(gone.length, 2);
+        assert.deepEqual(fs.readdirSync(d).sort(), ['x.json.aos-gateway-bak-100', 'x.json.bak']);
+    });
+
+    test('removeGenerated clears runtime files, keeps gateway.json and migration records', () => {
+        const home = tmp();
+        const dir = cfg.gatewayDir(home);
+        fs.mkdirSync(path.join(dir, 'runtime.owner'), { recursive: true });
+        for (const n of ['upstream.pid', 'server.pid', 'runtime.owner.flock', 'package.json', 'presets.json', 'runtime.owner/owner.json', 'gateway.json', 'migration.json.restored-1']) fs.writeFileSync(path.join(dir, n), '{}');
+        pkg.removeGenerated(dir, home);
+        assert.deepEqual(fs.readdirSync(dir).sort(), ['gateway.json', 'migration.json.restored-1']);
+    });
+});
