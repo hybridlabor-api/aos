@@ -5344,13 +5344,13 @@ function recordCompiledAgents(files) {
 
 // Writes a generated agent file. A file that exists, differs and is not an unedited recorded AOS file is
 // the user's: it is backed up before the overwrite and stays out of the uninstall record.
-function writeCompiledAgent(file, text, written) {
+function writeCompiledAgent(file, text, written, { adopt = false } = {}) {
     let ours = true;
     if (fs.existsSync(file)) {
         if (fs.readFileSync(file, 'utf8') === text) { written.push(file); return; }
         const sum = uninstallRecords.generatedMap(homeDir).get(path.resolve(file));
         if (!sum || sum !== crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')) {
-            ours = false;
+            ours = adopt; // adopt: the file carries our marker, so the rewrite makes it ours (the backup keeps any edit)
             fs.copyFileSync(file, `${file}.${timestamp}.bak`);
         }
     }
@@ -5587,8 +5587,7 @@ function compileCodexAgents(agents, targetDir, pipelineConfig = null) {
             `sandbox_mode = "${codexSandboxMode(slug)}"`,
             `developer_instructions = ${JSON.stringify(instructions)}`
         ].filter(Boolean);
-        fs.writeFileSync(file, lines.join('\n') + '\n');
-        written.push(file);
+        writeCompiledAgent(file, lines.join('\n') + '\n', written, { adopt: true });
     }
     recordCompiledAgents(written);
 }
