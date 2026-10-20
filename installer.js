@@ -1195,6 +1195,7 @@ function populateSkillLibrary(home = homeDir) {
             base: def.base || [],
             packs: def.packs || {},
         }, null, 2));
+        uninstallRecords.recordGeneratedFiles(home, [skillPacks.libraryIndexFile(home)]);
         log.step(`Skill library populated: ${dirs.size} skills at ${dest}`);
     }, 'The library is incomplete; pack installs from it fall back to the package copy.');
 }
