@@ -54,6 +54,10 @@ aos-uninstall                  # removes the plugin registration it added and re
 
 Since no files are removed during plugin migration, there are no backups to restore. Uninstall simply reverses the registration changes.
 
+## Claude Desktop
+
+Claude Desktop manages plugins through the claude.ai account. AOS does not install into Claude Desktop; it only registers the plugin for the Claude Code CLI. If the CLI is not on the updating process PATH, the installer looks in the known install locations (`~/.local/bin`, `%APPDATA%\npm`, `%LOCALAPPDATA%\Programs\claude`, ...). If the step still fails, the last line of the installer output prints the fix for PowerShell and bash, and `aos-doctor` shows a "Claude plugin via CLI" row (installed+enabled, installed+disabled, missing).
+
 ## Known limits
 
 - The lock guards migrations only. An installer copy running at the same moment in another process is not serialized.
