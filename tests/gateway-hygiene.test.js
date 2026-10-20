@@ -215,3 +215,25 @@ test('opencode entries keep their extra fields in the identity', () => {
     assert.deepEqual(scan.adoptable.map((x) => x.name), ['b']);
     assert.match(scan.skipped.find((x) => x.name === 'a').reason, /timeout/);
 });
+
+test('lock: a held lock blocks, a stale lock is taken over, the lock is released afterwards', () => {
+    const { withLock, LOCK } = require('../lib/gateway/lock.js');
+    const dir = tmp();
+    const lock = path.join(dir, LOCK);
+    fs.writeFileSync(lock, '1');
+    assert.throws(() => withLock(dir, () => 'x', { waitMs: 250, staleMs: 60000 }), /held by another aos-gateway process/);
+    assert.equal(withLock(dir, () => 'ok', { waitMs: 250, staleMs: -1 }), 'ok');
+    assert.ok(!fs.existsSync(lock));
+    assert.throws(() => withLock(dir, () => { throw new Error('boom'); }), /boom/);
+    assert.ok(!fs.existsSync(lock), 'released after a failure too');
+});
+
+test('a harness file that changed since it was read is not overwritten', () => {
+    const home = tmp();
+    const claude = path.join(home, '.claude.json');
+    wj(claude, { mcpServers: { github: owned(home, 'github') } });
+    const before = fs.readFileSync(claude, 'utf8');
+    assert.throws(() => harness.writeAtomic(claude, { x: 1 }, '{"stale": true}'), /changed while writing/);
+    assert.equal(fs.readFileSync(claude, 'utf8'), before);
+    assert.deepEqual(fs.readdirSync(home), ['.claude.json'], 'no temp file left behind');
+});
