@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const req = createRequire(import.meta.url);
-const { gatewayDir, GATEWAY_PORT, UPSTREAM_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
+const { gatewayDir, lazyLoadingOn, GATEWAY_PORT, UPSTREAM_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
 const { createForwarder } = req('../lib/gateway/forwarder.js');
 const { enable, disable } = req('../lib/gateway/harness.js');
 const { shippedPresets, livePresets } = req('../lib/v5/pkg-gateway.js');
@@ -77,7 +77,7 @@ export async function gatewayStatus({ dir, port = GATEWAY_PORT, upstreamPort = U
         return { name, ok: false, error: inner.error ? `1mcp not reachable on ${upstreamPort} (${inner.error})` : `1mcp health returned ${inner.status}` };
     });
     // Upstream values are the state of 1mcp as a whole, not per-server health.
-    return { running, pid: running ? readPid(dir) : null, port, upstreamsScope: 'global', upstreams, ...(inUse ? { error: problem } : {}) };
+    return { running, pid: running ? readPid(dir) : null, lazyLoading: lazyLoadingOn(dir), port, upstreamsScope: 'global', upstreams, ...(inUse ? { error: problem } : {}) };
 }
 
 const TOKEN_RE = /^[0-9a-f]{64}$/;
@@ -141,7 +141,8 @@ export async function startServe({ dir, port = GATEWAY_PORT, upstreamPort = UPST
     fs.writeFileSync(pidFile, String(process.pid), { mode: 0o600 });
 
     const args = [script, 'serve', '-c', path.join(dir, 'mcp.json'), '--config-dir', dir, '--host', '127.0.0.1', '--port', String(upstreamPort),
-        '--no-enable-session-persistence', '--enable-enhanced-security', '--log-level', 'warn'];
+        '--no-enable-session-persistence', '--enable-enhanced-security', '--log-level', 'warn',
+        ...(lazyLoadingOn(dir) ? ['--enable-lazy-loading', '--lazy-fallback-on-error', 'full'] : [])];
     let child = null;
     let stopping = false;
     let timer = null;
@@ -256,6 +257,7 @@ async function main() {
         if (rest.includes('--json')) console.log(JSON.stringify(s));
         else {
             console.log(`gateway: ${s.running ? `running${s.pid ? ` (pid ${s.pid})` : ''}` : 'not running'} on 127.0.0.1:${s.port}${s.error ? ` - ${s.error}` : ''}`);
+            console.log(`  lazy loading: ${s.lazyLoading ? 'on (meta-tools tool_list/tool_schema/tool_invoke)' : 'off (gateway.json)'}`);
             for (const u of s.upstreams) console.log(`  ${u.ok ? 'ok  ' : u.busy ? 'BUSY' : u.degraded ? 'WARN' : 'FAIL'} ${u.name}${u.error ? ` - ${u.error}` : ''}`);
             if (process.platform === 'linux') console.log(`  service: ${spawnSync('systemctl', ['--user', 'is-active', `${LABEL}.service`], { encoding: 'utf8' }).stdout.trim() || 'unknown'}`);
         }

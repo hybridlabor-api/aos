@@ -670,6 +670,7 @@ async function checkGateway() {
     let checks;
     try { checks = gatewayChecks({ home, files: harnessMcpFiles(home, process.env, process.platform, home), status, shipped: shippedServers() }); } catch (e) { add('gateway', 'gateway checks', false, `could not run: ${e.message}`, '', true); checks = []; }
     for (const c of checks) add(c.area, c.name, c.ok, c.detail, c.fix, c.warningOnly);
+    if (status) add('gateway', 'gateway lazy loading', true, status.lazyLoading ? 'on (clients see tool_list/tool_schema/tool_invoke)' : 'off (gateway.json lazyLoading=false)', '', true);
     // Per-harness exposure: live tool counts (estimate) when the gateway answers; server list always.
     try {
         let toolCounts = undefined;
