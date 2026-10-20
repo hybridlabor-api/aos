@@ -10,10 +10,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 const req = createRequire(import.meta.url);
-const { gatewayDir, GATEWAY_PORT, UPSTREAM_PORT } = req('../lib/gateway/config.js');
+const { gatewayDir, GATEWAY_PORT, UPSTREAM_PORT, GATEWAY_SERVERS } = req('../lib/gateway/config.js');
 const { createForwarder } = req('../lib/gateway/forwarder.js');
 const { enable, disable } = req('../lib/gateway/harness.js');
 const { shippedPresets, livePresets } = req('../lib/v5/pkg-gateway.js');
+const { contextProfileOf } = req('../lib/v5/context-profiles.js');
+const profile = req('../lib/v5/profile.js');
 const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
 const adoptApi = req('../lib/gateway/adopt.js');
 
@@ -258,7 +260,7 @@ async function main() {
         try {
             report = cmd === 'direct'
                 ? disable({ home, files })
-                : enable({ home, files, token: readToken(gatewayDir(home)), shipped: shippedServers(aosRoot), presets: livePresets(gatewayDir(home), shippedPresets(aosRoot)) });
+                : enable({ home, files, token: readToken(gatewayDir(home)), shipped: shippedServers(aosRoot), presets: livePresets(gatewayDir(home), shippedPresets(aosRoot)), contextProfile: contextProfileOf(profile.readSettings(home, () => {})) });
         } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
         for (const r of report) {
             const bits = r.error ? [`ERROR ${r.error}`] : r.skipped ? [`skipped: ${r.skipped}`] : [
@@ -308,7 +310,33 @@ async function main() {
         }
         process.exit((report.files || []).some((f) => f.error) ? 1 : 0);
     }
-    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json]');
+    if (cmd === 'add' || cmd === 'remove') {
+        const home = os.homedir();
+        const aosRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+        const server = rest.find((a) => !a.startsWith('-'));
+        if (!server) { console.error(`aos-gateway ${cmd}: a server name is required (one of: ${GATEWAY_SERVERS.join(', ')})`); process.exit(2); }
+        const dryRun = rest.includes('--dry-run');
+        let result;
+        try {
+            result = req('../lib/gateway/selection.js').applyServerChange({
+                home, aosRoot, platform: process.platform, nodePath: process.execPath, env: process.env,
+                add: cmd === 'add' ? server : undefined, remove: cmd === 'remove' ? server : undefined,
+                dryRun,
+                log: (m) => console.log(m),
+            });
+        } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
+        if (dryRun) process.exit(0);
+        // A running gateway must load the new mcp.json: restart via the service manager (best effort;
+        // in test sandboxes the service may not exist, so a restart failure is a warning, not an error).
+        if (process.env.AOS_TEST_SANDBOX === '1') console.log('restart skipped (AOS_TEST_SANDBOX)');
+        else {
+            const r = service('restart');
+            if (r !== 0) console.log(`gateway config updated; service restart reported ${r}; run "aos-gateway restart" and check "aos-gateway status"`);
+        }
+        console.log(`${cmd} ${server}: ${result.selected.length} servers selected (${result.dryRun ? 'dry-run' : 'mcp.json rewritten'}); run "aos-gateway status" to confirm`);
+        process.exit(0);
+    }
+    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | add | remove | adopt [--dry-run] [--json]');
     process.exit(2);
 }
 
