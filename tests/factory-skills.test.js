@@ -78,46 +78,42 @@ for (const skill of WRITE_SKILLS) {
   });
 }
 
-test('all nine factory skills are present in each registration file', () => {
-  for (const file of REGISTRATION_FILES) {
-    const content = readFileSync(file, 'utf8');
+// Slim plugins: .claude-plugin/plugin.json and the sibling plugin manifests no
+// longer list skills — the installer installs them from skills.sh.json.
+const SLIM_MANIFESTS = REGISTRATION_FILES.filter((f) => f.endsWith('plugin.json'));
+const SKILLS_MANIFEST = join(REPO, 'skills.sh.json');
+
+test('the skills manifest registers all nine factory skills', () => {
     for (const skill of ALL_NINE) {
-      assert.ok(
-        content.includes(skill),
-        `${file} registers ${skill}`,
-      );
+        assert.ok(
+            readFileSync(SKILLS_MANIFEST, 'utf8').includes(skill),
+            `skills.sh.json registers ${skill}`,
+        );
     }
-  }
 });
 
-test('each registration file lists each factory skill exactly once', () => {
-  for (const file of REGISTRATION_FILES) {
-    const data = JSON.parse(readFileSync(file, 'utf8'));
+test('plugin manifests stay slim: no skills array at all', () => {
+    for (const file of SLIM_MANIFESTS) {
+        const data = JSON.parse(readFileSync(file, 'utf8'));
+        assert.ok(!('skills' in data), `${file} must not bundle skills (installed separately by the AOS installer)`);
+    }
+});
+
+test('the skills manifest lists each factory skill exactly once', () => {
+    const data = JSON.parse(readFileSync(SKILLS_MANIFEST, 'utf8'));
+    assert.ok(Array.isArray(data.groupings), 'skills.sh.json shape: groupings');
     const listed = [];
-    if (Array.isArray(data.skills)) {
-      // plugin manifest shape: "./skills/global_config/<skill>"
-      for (const entry of data.skills) {
-        if (typeof entry === 'string' && entry.includes('skills/global_config/')) {
-          listed.push(entry.split('/').pop());
-        }
-      }
-    } else if (Array.isArray(data.groupings)) {
-      // skills.sh.json shape: { groupings: [{ skills: ['<skill>', ...] }] }
-      for (const group of data.groupings) {
+    for (const group of data.groupings) {
         if (Array.isArray(group.skills)) listed.push(...group.skills);
-      }
-    } else {
-      assert.fail(`unexpected JSON shape in ${file}, no skills array found`);
     }
     for (const skill of ALL_NINE) {
-      const count = listed.filter((name) => name === skill).length;
-      assert.equal(
-        count,
-        1,
-        `${file} lists \`${skill}\` exactly once (found ${count})`,
-      );
+        const count = listed.filter((name) => name === skill).length;
+        assert.equal(
+            count,
+            1,
+            `skills.sh.json lists \`${skill}\` exactly once (found ${count})`,
+        );
     }
-  }
 });
 
 for (const skill of NEW_SKILLS) {

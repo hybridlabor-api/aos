@@ -27,6 +27,7 @@
         "design-control-loop",
         "factory",
         "factory-human-digest",
+        "gogate",
         "instinct-export",
         "instinct-import",
         "instinct-status",
