@@ -202,3 +202,11 @@ test('applyServerChange: a failing settings write restores the previous mcp.json
     assert.throws(() => selection.applyServerChange({ home, aosRoot: SRC, add: 'deja', platform: 'darwin', env: {} }), /not valid JSON/);
     assert.equal(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8'), before);
 });
+
+test('detectMediaServers selects only media servers whose app exists; deriveGatewayServers takes the array', () => {
+    const fsImpl = { readdirSync: (d) => (d === '/Applications' ? ['Resolume Arena', 'x'] : (() => { throw new Error('ENOENT'); })()) };
+    assert.deepEqual(selection.detectMediaServers({ platform: 'darwin', fsImpl, home: '/h' }), ['bdb_resolume_mcp']);
+    assert.deepEqual(selection.detectMediaServers({ platform: 'linux', fsImpl, home: '/h' }), []);
+    const d = selection.deriveGatewayServers({ media: ['bdb_resolume_mcp'] });
+    assert.ok(d.includes('bdb_resolume_mcp') && !d.includes('bdb_unreal_mcp'));
+});

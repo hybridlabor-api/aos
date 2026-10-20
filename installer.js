@@ -8874,7 +8874,7 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
         const st = v5Profile.readSettings(home, () => {});
         const r = selection.resolveGatewayServers({
             settingServers: st.gateway && st.gateway.servers,
-            media: tierValue === '1',
+            media: tierValue === '1' ? selection.detectMediaServers({ home }) : false,
             creator: selection.detectCreatorServers({ platform: process.platform, env: process.env, home }),
             keep: [...current, ...seen],
         });
