@@ -60,20 +60,20 @@ Run `aos setup` (or initial installation) to answer the Context Profile step int
 
 ## 4. How the Gateway Preset Mechanism Works
 
-The AOS MCP Gateway runs on `127.0.0.1:7901` (managed by 1mcp). 1mcp natively supports server filtering via the `?preset=<name>` HTTP URL query parameter.
+The AOS MCP Gateway runs on `127.0.0.1:7790` (managed by 1mcp). 1mcp natively supports server filtering via the `?preset=<name>` HTTP URL query parameter.
 
 When `context` is set to `worker` or `small` in `~/.aos/v5-settings.json`, `pkg-gateway.js` and `lib/gateway/harness.js` configure the harness entry:
 - **Claude Desktop / Claude Code (`~/.claude.json`)**:
   ```json
   "aos": {
     "type": "sse",
-    "url": "http://127.0.0.1:7901/sse?preset=worker"
+    "url": "http://127.0.0.1:7790/mcp?preset=worker"
   }
   ```
 - **ChatGPT Codex CLI (`~/.codex/config.toml`)**:
   ```toml
   [mcp_servers.aos]
-  url = "http://127.0.0.1:7901/sse?preset=worker"
+  url = "http://127.0.0.1:7790/mcp?preset=worker"
   ```
 The 10 media upstream servers (which contribute ~162 tools and ~21.5k tokens) are excluded from the catalog. They remain accessible on demand if the user opts in or switches to the `full` profile.
 

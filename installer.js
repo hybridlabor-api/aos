@@ -9273,17 +9273,15 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
         const selection = require('./lib/gateway/selection');
         const dir = gwConfig.gatewayDir(home);
         const current = require('./lib/v5/pkg-gateway').currentShippedUpstreams(dir);
-        let adopted = [];
-        try { adopted = Object.keys(gwConfig.readAdopted(home)); } catch { /* no adopted.json yet */ }
         const seen = require('./lib/gateway/doctor').directGatewayNames({ files: harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
         const st = v5Profile.readSettings(home, () => {});
-        const installed = Array.isArray(installedList) ? installedList : []
         const r = selection.resolveGatewayServers({
             settingServers: st.gateway && st.gateway.servers,
             media: tierValue === '1',
-            creator: installed.includes('creator') || installed.includes('all'),
-            keep: [...current, ...seen, ...adopted],
+            creator: selection.detectCreatorServers({ platform: process.platform, env: process.env, home }),
+            keep: [...current, ...seen],
         });
+        if (r.kept.length) log.step(`Gateway: keeping the servers you already run (${r.kept.join(', ')})`);
         const next = { ...st, gateway: { ...(st.gateway || {}), servers: r.servers } };
         v5Profile.writeSettings(home, next);
         log.step(`Gateway servers: ${r.servers.join(', ')}`);

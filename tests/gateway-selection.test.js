@@ -18,7 +18,9 @@ test('deriveGatewayServers: base only, media adds, creator adds; keep never drop
     assert.deepEqual(selection.deriveGatewayServers(), selection.SERVER_GROUPS.base);
     assert.equal(selection.deriveGatewayServers({ media: true }).filter((n) => selection.SERVER_GROUPS.media.includes(n)).length, 4);
     assert.equal(selection.deriveGatewayServers({ creator: true }).filter((n) => selection.SERVER_GROUPS.creator.includes(n)).length, 5);
-    assert.deepEqual(selection.deriveGatewayServers({ media: true, creator: true }).sort(), cfg.GATEWAY_SERVERS.slice().sort());
+    assert.deepEqual(selection.deriveGatewayServers({ media: true, creator: true, desktop: true }).sort(), cfg.GATEWAY_SERVERS.slice().sort());
+    // creator as an array = only the detected creator servers
+    assert.deepEqual(selection.deriveGatewayServers({ creator: ['bdb_blender_mcp'] }).filter((n) => selection.SERVER_GROUPS.creator.includes(n)), ['bdb_blender_mcp']);
     assert.ok(selection.deriveGatewayServers({ keep: ['github'] }).includes('github'));
 });
 
@@ -26,8 +28,12 @@ test('resolveGatewayServers: a valid stored choice wins; invalid falls back to d
     const r = selection.resolveGatewayServers({ settingServers: ['github'], media: true });
     assert.equal(r.fromSetting, true);
     assert.deepEqual(r.servers, ['github']);
-    // derivation ignored when a stored list exists, but keep is still unioned in
-    assert.deepEqual(selection.resolveGatewayServers({ settingServers: ['github'], media: true, keep: ['bdb_unreal_mcp'] }).servers.sort(), ['bdb_unreal_mcp', 'github']);
+    // a stored list is the whole truth: keep (what runs today) is not re-added on later updates
+    assert.deepEqual(selection.resolveGatewayServers({ settingServers: ['github'], media: true, keep: ['bdb_unreal_mcp'] }).servers, ['github']);
+    // first migration (nothing stored): keep is added and reported
+    const first = selection.resolveGatewayServers({ keep: ['bdb_unreal_mcp'] });
+    assert.ok(first.servers.includes('bdb_unreal_mcp'));
+    assert.deepEqual(first.kept, ['bdb_unreal_mcp']);
     // invalid stores fall back to derivation
     assert.equal(selection.validStoredServers(['nope/ok']), null);
     assert.deepEqual(selection.validStoredServers(['github', 'deja', 'chrome-devtools', 'memb_mcp']), ['github', 'deja', 'chrome-devtools', 'memb_mcp']);
@@ -97,4 +103,14 @@ test('harness URLs carry the active context profile preset for every kind', () =
     }
     // persisted settings default to full: readSettings without context = 'full'
     assert.equal(require('../lib/v5/context-profiles.js').contextProfileOf({}), 'full');
+});
+
+test('detectCreatorServers: only servers whose app exists; none on a bare machine', () => {
+    const fsFor = (dirs) => ({
+        existsSync: (p) => dirs.some((d) => d === p),
+        readdirSync: (p) => (p === '/Applications' ? ['Adobe After Effects 2025', 'Safari.app'] : []),
+    });
+    assert.deepEqual(selection.detectCreatorServers({ platform: 'darwin', env: {}, home: '/h', fsImpl: fsFor([]) }).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp']);
+    assert.ok(selection.detectCreatorServers({ platform: 'darwin', env: {}, home: '/h', fsImpl: fsFor(['/Applications/DaVinci Resolve']) }).includes('bdb_davinci_mcp'));
+    assert.deepEqual(selection.detectCreatorServers({ platform: 'linux', env: {}, home: '/h', fsImpl: { existsSync: () => false, readdirSync: () => [] } }), []);
 });
