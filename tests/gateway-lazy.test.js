@@ -42,6 +42,48 @@ describe('gateway lazy loading', () => {
     });
 });
 
+describe('gateway lazy loading file and status', () => {
+    const http = require('http');
+    const { createForwarder } = require('../lib/gateway/forwarder.js');
+    const gw = () => import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+
+    test('a BOM-prefixed gateway.json with lazyLoading=false is honoured', async () => {
+        assert.ok(!(await serveArgs('\uFEFF{"lazyLoading": false}')).includes('--enable-lazy-loading'));
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'gateway.json'), '{oops');
+        const lines = [];
+        assert.equal(cfg.lazyLoadingOn(dir, (m) => lines.push(m)), true);
+        assert.equal(lines.length, 1);
+    });
+
+    test('status reports the running process, flags a pending restart, and not running', async () => {
+        const { gatewayStatus, lazyText } = await gw();
+        const inner = http.createServer((q, r) => { r.writeHead(200); r.end('{}'); });
+        await new Promise((r) => inner.listen(0, '127.0.0.1', r));
+        const up = inner.address().port;
+        const fw = createForwarder({ port: 0, upstreamPort: up, token: 'x'.repeat(64) });
+        await fw.listen();
+        const port = fw.server.address().port;
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'mcp.json'), '{"mcpServers":{}}');
+        fs.writeFileSync(path.join(dir, 'gateway.pid'), String(process.pid));
+        fs.writeFileSync(path.join(dir, cfg.RUNTIME_FILE), JSON.stringify({ lazyLoading: true }));
+        let s = await gatewayStatus({ dir, port, upstreamPort: up });
+        assert.equal(s.lazyLoading, true);
+        assert.equal(s.restartPending, false);
+        fs.writeFileSync(path.join(dir, 'gateway.json'), '{"lazyLoading": false}');
+        s = await gatewayStatus({ dir, port, upstreamPort: up });
+        assert.equal(s.lazyLoading, true);
+        assert.equal(s.restartPending, true);
+        assert.match(lazyText(s), /on .*restart pending/);
+        await fw.close();
+        await new Promise((r) => inner.close(r));
+        s = await gatewayStatus({ dir, port, upstreamPort: up });
+        assert.equal(s.running, false);
+        assert.equal(lazyText(s), 'not running');
+    });
+});
+
 describe('gateway upstream recovery keys', () => {
     test('every generated shipped stdio upstream restarts on exit, 3 times, 2 s apart', () => {
         const shipped = { github: { command: 'npx', args: ['-y', 'pkg@1.0.0'] } };
