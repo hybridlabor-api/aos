@@ -7864,63 +7864,6 @@ async function refreshOpenWikiSilently({ key: given } = {}) {
     return true;
 }
 
-async function runQuickUpdate(installState) {
-    quickUpdateKernel(installState);
-    quickUpdateHarnesses();
-    const paths = resolveTargetPaths('1', null);
-
-    // OpenWiki: if already configured, refresh the daemon silently (no prompt).
-    // Only ask when there is no key yet — i.e. a first-time offer or a machine
-    // that predates this feature. This avoids the "keep existing?" confirmation
-    // on every Quick Update for users who have already set up OpenWiki.
-    if (!isAutoYes) {
-        const _owEnv = loadExistingEnv(paths.targetMcpDir);
-        const _owProvider = _owEnv['OPENWIKI_PROVIDER'] || 'google';
-        const _owKeyName = PROVIDER_KEY_ENV_NAMES[_owProvider] || 'GEMINI_API_KEY';
-        const _owKey = _owEnv[_owKeyName] || _owEnv['GEMINI_API_KEY'] || _owEnv['GOOGLE_API_KEY'] || _owEnv['OPENWIKI_API_KEY'] || '';
-        if (_owKey || _owProvider === 'ollama') {
-            await installOpenWikiDaemon(_owKey, paths.targetSkillDir, { provider: _owProvider, model: _owEnv['OPENWIKI_MODEL_ID'] || _owEnv['OPENWIKI_MODEL'] || '', baseUrl: _owEnv['OPENWIKI_BASE_URL'] || '' });
-            await installOpenWikiVisualizer();
-        } else {
-            const creds = await promptCredentials(paths.targetMcpDir);
-            if (creds !== BACK) {
-                await installOpenWikiDaemon(creds.gemini, paths.targetSkillDir, { provider: creds.openwikiProvider, model: creds.openwikiModel, baseUrl: creds.openwikiBaseUrl });
-                await installOpenWikiVisualizer();
-            }
-        }
-    }
-
-    const modulesToUpdate = installState.installedModules || [];
-    for (const subId of modulesToUpdate) {
-        if (subId === 'synapse') await installSynapse();
-        else if (subId === 'memb') await installMemB(false);
-        else if (subId === 'remote') await installOSRemoteGateway();
-        else if (subId === 'ao' && aoSupportedHere()) await installOSAgentWorkspace();
-        else if (subId === 'creator') await installCreatorExtension();
-        else if (subId === 'hardware') await installHardwarePcb();
-        else if (subId === 'codebase-memory') await installCodebaseMemory();
-        else if (subId === 'installer') await installDevToolInstaller();
-    }
-
-    await applyCodingModeStep(memoryCodingOptions());
-    await promptOptionalModules(modulesToUpdate);
-    // modulesToUpdate now covers both the modules updated in the loop above and any newly
-    // chosen ones promptOptionalModules just installed (it mutates the same array) -- every
-    // one of them already ran its own install-and-verify, so reloadDaemons() should leave
-    // them alone rather than relaunching and re-checking a daemon a second time.
-    const alreadyHandled = modulesToUpdate.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
-    await reloadDaemons(alreadyHandled);
-    saveManifest({ tier: '1', isUniversal: true, installedModules: modulesToUpdate });
-    flushSessionManifest();
-
-    console.log('');
-    verifyEcosystemInstallation();
-    await maybeInstallCodenotch();
-    // Very last line of a Quick Update when the Claude plugin step failed (issue #54).
-    printClaudePluginFix();
-}
-
-
 // AOS CLI ships as a separate npm package under packages/ for one reason: pi
 // updates on its own cadence, and folding it into this release cycle would turn
 // every pi bump into a full AOS reinstall. So it installs as an ordinary global
@@ -8685,7 +8628,6 @@ Options:
     await applyCodingModeStep(memoryCodingOptions());
     const modulePlan =v5Profile.PROFILES[activeProfile].modules;
     const explicitModules = parseModuleSelection();
-    // Unlike runQuickUpdate, nothing here reinstalls modules already in installedModulesForPrompt
     // -- only promptOptionalModules's own return value (the ones it just chose-and-installed
     // this call) actually ran an install-and-verify pass this run. Anything already in the
     // array before this call was untouched here and must still get its normal reloadDaemons()
@@ -8911,7 +8853,7 @@ module.exports = {
     isValidOpenWikiModelId,
     loadExistingEnv,
     // installer v5 host surface (lib/v5/*)
-    runQuickUpdate, applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
+    applyCodingModeStep, quickUpdateKernel, quickUpdateHarnesses, refreshOpenWikiSilently, detectInstallState, installMemB, installSynapse,
     saveManifest, DEJA_VERSION, moduleBasePath, resolveTargetPaths, uvBin, isNewerVersion, checkModuleUpdate, runUninstaller, PROVIDER_KEY_ENV_NAMES,
     AGENTS_COPY_EXCLUDE,
     flushSessionManifest,

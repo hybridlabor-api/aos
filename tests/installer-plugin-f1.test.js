@@ -29,9 +29,9 @@ function shim(name, body) {
 test('Quick Update runs the same three plugin steps, in the full-install order', () => {
   const src = fs.readFileSync(path.join(ROOT, 'installer.js'), 'utf8');
   const body = (name) => { const i = src.indexOf(`function ${name}(`); return src.slice(i, src.indexOf('\n}\n', i)); };
-  // v5 split Quick Update into kernel + harnesses steps; runQuickUpdate runs them in that order.
-  const quick = body('runQuickUpdate');
-  assert.ok(quick.indexOf('quickUpdateKernel(') >= 0 && quick.indexOf('quickUpdateKernel(') < quick.indexOf('quickUpdateHarnesses('));
+  // v5 update runs the kernel and harnesses steps from lib/v5/menu.js, in that order.
+  const menu = fs.readFileSync(path.join(ROOT, 'lib', 'v5', 'menu.js'), 'utf8');
+  assert.ok(menu.indexOf('quickUpdateHarnesses') > menu.indexOf('kernel.update'));
   {
     const b = `${body('quickUpdateKernel')}\n${body('quickUpdateHarnesses')}`;
     const order = ['runPluginMigration()', 'runAgyPluginStep()', 'injectHarnessRules()', 'runCodexPluginStep()'].map((k) => b.indexOf(k));
