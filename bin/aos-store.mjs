@@ -167,6 +167,10 @@ async function installPackCommand(name) {
   for (const s of skipped) console.log(`Skipped ${s.name}: ${s.reason}`);
   for (const s of installed) console.log(`Installed ${s} (pack ${name})`);
   console.log(`Pack ${name}: ${installed.length} installed, ${skipped.length} skipped${dryRun ? ' (dry-run)' : ''}.`);
+  const missing = skipped.filter((s) => /not found in the local library/.test(s.reason)).map((s) => s.name);
+  if (missing.length) {
+    console.log(`Not shipped offline (need a network install, e.g. aos store install <name> --net, or the pack's installer module): ${missing.join(', ')}`);
+  }
 }
 
 function removePackCommand(name) {
@@ -228,7 +232,7 @@ async function main() {
     const pack = optionValue('--pack');
     if (pack !== undefined) {
       if (!pack) throw new Error('--pack needs a value: aos store install --pack <name>');
-      installPackCommand(pack);
+      await installPackCommand(pack);
       return;
     }
     if (!positional[1]) throw new Error('Install requires a store item name.');

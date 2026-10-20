@@ -45,7 +45,7 @@ test('install --pack copies every pack skill into every harness dir, offline, fr
   // Idempotent rerun: everything already installed.
   const again = store(home, ['install', '--pack', 'live-show']);
   assert.equal(again.status, 0, again.stderr);
-  assert.match(again.stdout, /8 installed, 8 skipped/);
+  assert.match(again.stdout, /0 installed, 8 skipped/);
 });
 
 test('install --pack prefers a fresh library copy and records from=library', () => {
@@ -99,13 +99,12 @@ test('remove --pack parks the copies (never deletes), keeps user skills, updates
       assert.ok(!existsSync(join(dir, name)), `${join(dir, name)} removed`);
     }
   }
-  assert.equal(readFileSync(userDir, 'SKILL.md', 'utf8') !== '' || true, true);
   assert.equal(readFileSync(join(userDir, 'SKILL.md'), 'utf8'), 'my own variant\n', 'user skill kept');
   // Parked, not deleted.
   const removedRoot = join(home, '.aos', 'store', 'removed');
   const parked = readdirSync(removedRoot).find((n) => n.startsWith('live-show-'));
   assert.ok(parked, 'parked backup dir exists');
-  assert.ok(existsSync(join(removedRoot, parked, '.agents', 'skills', 'bdb-grandma3-mcp', 'SKILL.md')));
+  assert.ok(existsSync(join(removedRoot, parked, '_agents_skills', 'bdb-grandma3-mcp', 'SKILL.md')));
   // Selection updated: live-show out, business stays.
   const st = JSON.parse(readFileSync(settings, 'utf8'));
   assert.deepEqual(st.packs, ['business']);
