@@ -116,3 +116,49 @@ test('withLongPaths adds core.longpaths for the child on win32 only, after exist
   cs.run('x', [], { platform: 'win32', env: { PATH: 'C:\\b', PATHEXT: '.EXE' }, fs: { existsSync: () => true, statSync: () => ({ isFile: () => true }) }, spawn: (f, a, o) => { seen = o.env; return { status: 0 }; } });
   assert.equal(seen && seen.GIT_CONFIG_KEY_0, 'core.longpaths');
 });
+
+// Issue #54: the updating process may have a PATH without the CLI; the standard install
+// locations (self-installer, npm -g, native installer, Homebrew) are tried when PATH misses.
+const winEnv54 = (over = {}) => ({ PATH: 'C:\\Windows', USERPROFILE: 'C:\\Users\\A B', AppData: 'C:\\Users\\A B\\AppData\\Roaming', LocalAppData: 'C:\\Users\\A B\\AppData\\Local', ...over });
+
+test('Windows: PATH still wins; known locations are tried in preference order when PATH misses', () => {
+  const o = (files) => ({ platform: 'win32', env: winEnv54(), fs: fakeFs(new Set(files)) });
+  const onPath = ['C:\\Windows\\claude.EXE'];
+  assert.equal(cs.resolveCommand('claude', o(onPath)).toLowerCase(), 'c:\\windows\\claude.exe');
+  const all = [
+    'C:\\Users\\A B\\AppData\\Roaming\\npm\\claude.cmd',
+    'C:\\Users\\A B\\.local\\bin\\claude.exe',
+    'C:\\Users\\A B\\AppData\\Local\\Programs\\claude\\claude.exe',
+  ];
+  assert.equal(cs.resolveCommand('claude', o(all)).toLowerCase(), 'c:\\users\\a b\\.local\\bin\\claude.exe');
+  const onlyNpm = all.slice(0, 1);
+  assert.equal(cs.resolveCommand('claude', o(onlyNpm)).toLowerCase(), 'c:\\users\\a b\\appdata\\roaming\\npm\\claude.cmd');
+  const onlyLocal = all.slice(2);
+  assert.equal(cs.resolveCommand('claude', o(onlyLocal)).toLowerCase(), 'c:\\users\\a b\\appdata\\local\\programs\\claude\\claude.exe');
+  assert.equal(cs.resolveCommand('claude', o([])), null, 'absent locations are skipped, not invented');
+  assert.equal(cs.resolveCommand('claude', { platform: 'win32', env: { PATH: '' }, fs: fakeFs(new Set(all)) }), null, 'locations without USERPROFILE/APPDATA/LOCALAPPDATA are not guessed');
+});
+
+test('POSIX: known locations in order, PATH first, shared with codex and agy', () => {
+  const o = (files, env = { PATH: '/nowhere', HOME: '/home/u' }) => ({ platform: 'linux', env, fs: fakeFs(new Set(files)) });
+  const all = ['/home/u/.local/bin/claude', '/home/u/.claude/local/claude', '/opt/homebrew/bin/claude', '/usr/local/bin/claude'];
+  assert.equal(cs.resolveCommand('claude', o(all)), '/home/u/.local/bin/claude');
+  for (const want of all.slice(1)) assert.equal(cs.resolveCommand('claude', o([want])), want);
+  assert.equal(cs.resolveCommand('claude', o(['/b/claude', ...all], { PATH: '/b', HOME: '/home/u' })), '/b/claude', 'PATH beats the fallback');
+  assert.equal(cs.resolveCommand('codex', o(['/usr/local/bin/codex'])), '/usr/local/bin/codex');
+  assert.equal(cs.resolveCommand('agy', o(['/opt/homebrew/bin/agy'])), '/opt/homebrew/bin/agy');
+  assert.equal(cs.resolveCommand('claude', o([], { PATH: '/b', HOME: '/home/u' })), null, 'absent locations are skipped, not invented');
+});
+
+test('run(): a CLI outside PATH is spawned from its known install location', () => {
+  const seen = [];
+  const r = cs.run('claude', ['--version'], {
+    platform: 'linux', env: { PATH: '/nowhere', HOME: '/home/u' }, fs: fakeFs(new Set(['/home/u/.local/bin/claude'])),
+    spawn: (f, a) => { seen.push([f, a]); return { status: 0, stdout: '5.3.0' }; },
+  });
+  assert.deepEqual(seen, [['/home/u/.local/bin/claude', ['--version']]]);
+  assert.equal(r.status, 0);
+  const miss = cs.run('claude', [], { platform: 'linux', env: { PATH: '/nowhere' }, fs: fakeFs(new Set()) });
+  assert.equal(miss.missing, true);
+  assert.match(miss.error.message, /not found on PATH or in a known install location/);
+});
