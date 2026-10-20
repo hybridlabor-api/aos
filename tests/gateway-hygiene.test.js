@@ -163,3 +163,11 @@ test('aos-gateway inspect/run: refuse cleanly when the gateway is down; --help i
     assert.match(h.stdout, /inspect/);
     assert.deepEqual(fs.readdirSync(home), []);
 });
+
+test('readAdopted never serves per-session names even when adopted.json lists them', () => {
+    const home = tmp();
+    fs.mkdirSync(cfg.gatewayDir(home), { recursive: true });
+    const e = { command: 'node', args: ['x.js'], env: {} };
+    fs.writeFileSync(cfg.adoptedPath(home), JSON.stringify({ servers: { openwiki: e, memb: e, 'aos-a2a': e, user_own: e } }));
+    assert.deepEqual(Object.keys(cfg.readAdopted(home)), ['user_own']);
+});
