@@ -31,6 +31,13 @@ Three variants, differing only in how much machinery the task needs:
 workflow script — decides every next step. Routing lives in the graph contract,
 never inside an agent's prompt.
 
+## CLIs
+
+Generated from `lib/cli-specs` (`node scripts/build-cli-reference.mjs`); full reference in `docs/cli-reference.md`.
+
+<!-- aos:cli-table:start -->
+<!-- aos:cli-table:end -->
+
 ## Skill categories
 
 `design-ui-ux`, `engineering-method`, `media-eventtech`, `bdb-core`, `library`,

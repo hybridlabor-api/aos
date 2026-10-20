@@ -14,7 +14,18 @@ aos hub status       # check if it is running (also --json)
 aos hub stop         # stop it
 aos hub restart      # stop, then start again
 aos hub --no-open    # start without opening a browser
+aos hub open --tab services   # start if needed, then open the browser on a tab
+aos hub --help       # usage, side-effect free
 ```
+
+Options: `--port N` (default 7900), `--tab ID` (the tab to open), `--no-open`
+(also `AOS_NO_OPEN=1`). `--serve [--watch]` is for service managers: it serves
+in the foreground, and with `--watch` also supervises the other services; it
+exits 3 when the hub's code changed on disk so the service manager restarts it
+on the new code. `AOS_HUB_HOME` moves the state directory. Exit codes: 0 ok
+(also `status` when the hub is down), 1 port in use, did not come up within
+5 s, or `stop` could not verify the process, 2 unexpected error. Full spec:
+`docs/cli-reference.md`.
 
 The hub binds to 127.0.0.1 only, default port 7900 (`--port` overrides). It
 writes `~/.aos/hub/hub.json` (mode 600, dir 700) with pid, port, version and

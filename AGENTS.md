@@ -80,6 +80,9 @@ GO. Only the human typing GO — or `gogate grant <scope> <duration>` as a whole
 message — counts.
 <!-- aos:routing:end -->
 
+<!-- aos:cli-reference:start -->
+<!-- aos:cli-reference:end -->
+
 ---
 
 ## Release gate
