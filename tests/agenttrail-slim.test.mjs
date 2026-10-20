@@ -92,7 +92,7 @@ test('with no viewer the next /events connect still gets the tree, including edi
     assert.match(await firstFrame(d.port), /b\.js/);
   } finally {
     d.child.kill();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });
 
@@ -108,11 +108,11 @@ test('the daemon exits once its repo is gone, even while a viewer is attached', 
       d.child.on('exit', () => resolve(true));
       setTimeout(() => resolve(false), 8000).unref();
     });
-    fs.rmSync(repo, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     assert.equal(await exited, true, 'daemon still running after its repo was removed');
   } finally {
     viewer.destroy();
     d.child.kill();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });
