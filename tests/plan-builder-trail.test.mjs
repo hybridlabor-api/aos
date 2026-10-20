@@ -176,6 +176,47 @@ describe('plan-canvas trail', () => {
     assert.equal(nodes.filter((n) => n.level === 'task').length, 1);
     assert.deepEqual(nodes[0].files, ['ok.js']);
   });
+
+  test('section-level files:/by: lines and Checklist props emit per node', () => {
+    const dir = path.join(ws, 'plans', 'owned');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'plan.mdx'), [
+      '## Prose form {#prose}',
+      '',
+      'files: [src/a.ts, src/b/**]',
+      'by: opencode',
+      '',
+      '<Checklist>',
+      '- [ ] do it',
+      '</Checklist>',
+      '',
+      '## Prop form {#props}',
+      '',
+      '<Checklist files="src/c.ts, src/d/**" by="Claude" items={["other"]} />',
+      ''
+    ].join('\n'));
+    const r = run(['trail', 'plans/owned', '--out', 'owned.md'], ws);
+    assert.equal(r.code, 0, r.stderr);
+    const text = fs.readFileSync(path.join(ws, 'owned.md'), 'utf8');
+    const { nodes } = parsePlan(text);
+    const comps = nodes.filter((n) => n.level === 'component');
+    assert.deepEqual(comps[0].files, ['src/a.ts', 'src/b/**']);
+    assert.equal(comps[0].by, 'opencode');
+    assert.deepEqual(comps[1].files, ['src/c.ts', 'src/d/**']);
+    assert.equal(comps[1].by, 'Claude');
+    assert.match(text, /## Prose form \{#prose\}\nfiles: \[src\/a\.ts, src\/b\/\*\*\]\nby: opencode/);
+  });
+
+  test('regenerating with --force keeps the live task marks from the output file', () => {
+    const file = path.join(ws, 'owned.md');
+    // simulate a dispatcher tick on the output file before regenerating
+    const text = fs.readFileSync(file, 'utf8').replace('- [ ] do it {#', '- [~] do it {#');
+    fs.writeFileSync(file, text);
+    assert.equal(run(['trail', 'plans/owned', '--force', '--out', 'owned.md'], ws).code, 0);
+    const regenerated = fs.readFileSync(file, 'utf8');
+    assert.match(regenerated, /- \[~\] do it \{#/);
+    assert.match(regenerated, /- \[ \] other \{#/);
+  });
 });
 
 describe('prototype hint', () => {

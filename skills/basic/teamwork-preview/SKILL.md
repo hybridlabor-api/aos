@@ -222,7 +222,7 @@ When crafting prompts and delegating to multi-agent teams, map requested roles a
 
 Once approved by the user:
 
-Before delegating, start the live map (Trigger B) so the user can follow the team: `aos-trail --ensure` (add `--plan <plan-file>` if the plan path is explicit) (safe to run twice: it reuses a map already running for this repo). Put the live-map link in your reply (the autostart hook also adds it as context when active). Inside AO (env var `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. See the `agenttrail` skill.
+Before delegating, start the live map (Trigger B) so the user can follow the team: `aos-trail --ensure` (add `--plan <plan-file>` if the plan path is explicit) (safe to run twice: it reuses a map already running for this repo). Put the live-map link in your reply (the autostart hook also adds it as context when active). Inside AO (env var `AO_BROWSER_CAPABILITY` set) also run `ao preview <url>`. Dispatcher duties, every delegation: start each worker with `AOS_TRAIL_NODE=<node-id>` and `AOS_TRAIL_PLAN=<plan-file>` in its environment (`aos-acp --trail-node <id> --trail-plan <file>` does this), run `aos-trail tick <plan> <task-id> --doing` when a worker starts a task and `--done` when it lands — never expect the worker to maintain the plan file. See the `agenttrail` skill.
 
 ### 1. In Antigravity Harness
 If running in Google Antigravity with native subagent support:

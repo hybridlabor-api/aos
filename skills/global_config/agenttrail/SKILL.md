@@ -43,6 +43,16 @@ The plan file uses components and tasks:
 - save the file immediately after each status change; never batch updates to the end
 - Mermaid blocks and prose may stay in the file; the map ignores them.
 
+## Tick the plan
+
+```bash
+aos-trail tick <plan-file> <task-id> [--doing|--done|--todo]   # default --done
+```
+
+Sets exactly one checklist mark: `--doing` = `[~]`, `--done` = `[x]`, `--todo` = `[ ]`. Unknown, already-in-target-state or ambiguous ids exit 1 without touching the file.
+
+**Dispatchers, do this every run:** start every worker with `AOS_TRAIL_NODE=<node-id>` and `AOS_TRAIL_PLAN=<plan-file>` in its environment (`aos-acp --trail-node <id> --trail-plan <file>` does this). Run `aos-trail tick <plan> <task-id> --doing` the moment a worker starts a task and `--done` when it lands. While a stamped worker edits, the map shows its node's first open task as `[~]` in the model only — the plan file is never written automatically and a session end ticks nothing: the dispatcher owns every tick. Never expect the worker to maintain the plan file.
+
 ## Live agent events
 
 The AOS installer registers `.claude/hooks/trail-relay.mjs --agent <harness>` for Claude Code (PreToolUse, PostToolUse, SessionStart, Stop, SubagentStop), Antigravity and Codex (PreToolUse, Stop). The OpenCode plugin and mcsc (for the CLI workers it delegates to) post events directly. Events are fire-and-forget (300 ms cap) and never block a tool call; with no map running they are dropped.

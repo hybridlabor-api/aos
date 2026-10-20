@@ -69,7 +69,7 @@ for (let i = 0; i < argv.length; i++) {
   // AOS patch: ask engine CLI — asks the human a question via the map
   else if (a === 'ask') cmd = 'ask'
   else if (a === 'emit') cmd = 'emit'
-  // AOS patch: `tick <plan-file> <task-id>` — flip one `- [ ]` to `- [x]` so a worker can mark its task done
+  // AOS patch: `tick <plan-file> <task-id> [--doing|--done|--todo]` — set one checklist mark
   else if (a === 'tick') cmd = 'tick'
   else if (a === 'enroll' && cmd === null) cmd = 'enroll'
   else if (a === '--replace') replaceFlag = true
@@ -184,23 +184,30 @@ if (cmd === 'enroll') { process.exit(await enrollFlow()) }
 // AOS v2: report one event to the hub. Always exits 0 — a reporting hook never fails a tool call.
 if (cmd === 'emit') { await emitFlow(); process.exit(0) }
 
-// AOS patch: tick — `tick <plan-file> <task-id>`. Pure file edit, no daemon needed;
-// the map reloads the plan (fs watcher) and the node turns done on its own.
+// AOS patch: tick — `tick <plan-file> <task-id> [--doing|--done|--todo]`. Pure file
+// edit, no daemon needed; the map reloads the plan (fs watcher) and the node updates
+// on its own. Default --done keeps the original behaviour.
 let tickPlanFile = null
 let tickTaskId = null
+let tickMode = 'done'
 if (cmd === 'tick') {
   const pos = []
+  let tickSeen = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
-    if (a.startsWith('-')) continue
-    pos.push(a)
+    if (cmd === 'tick' && !tickSeen && a === 'tick') { tickSeen = true; continue }
+    if (a === '--doing') tickMode = 'doing'
+    else if (a === '--done') tickMode = 'done'
+    else if (a === '--todo') tickMode = 'todo'
+    else if (a.startsWith('-')) continue
+    else pos.push(a)
   }
   tickPlanFile = pos[0] ? path.resolve(pos[0]) : null
   tickTaskId = pos[1] || null
-  if (!tickPlanFile || !tickTaskId) { console.error('usage: aos-trail tick <plan-file> <task-id>'); process.exit(1) }
+  if (!tickPlanFile || !tickTaskId) { console.error('usage: aos-trail tick <plan-file> <task-id> [--doing|--done|--todo]'); process.exit(1) }
   const text = fs.readFileSync(tickPlanFile, 'utf8')
-  const r = tickTask(text, tickTaskId)
-  if (!r.changed) { console.error(`tick: task id "${tickTaskId}" not found, already done, or ambiguous in ${tickPlanFile}`); process.exit(1) }
+  const r = tickTask(text, tickTaskId, tickMode)
+  if (!r.changed) { console.error(`tick: task id "${tickTaskId}" not found, already in that state, or ambiguous in ${tickPlanFile}`); process.exit(1) }
   fs.writeFileSync(tickPlanFile, r.text)
   process.exit(0)
 }

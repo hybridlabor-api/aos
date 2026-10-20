@@ -7,6 +7,19 @@ import path from 'node:path'
 const IDLE_MS = 15 * 60 * 1000
 const ENDED_KEEP_MS = 24 * 60 * 60 * 1000 // ponytail: linear sweep per apply, fine for hundreds of sessions
 
+// A worker stamped with AOS_TRAIL_NODE (+AOS_TRAIL_PLAN) counts as working its
+// node once it has made its first file edit and is still reporting. A session
+// that ended (Stop or SessionEnd) contributes nothing automatic — the plan file
+// is only ever ticked by the dispatcher, never by the map model.
+export function autoActiveTask(s, { now = Date.now(), liveMs = IDLE_MS } = {}) {
+  const task = s && s.currentTask
+  if (!task || !task.id || !task.plan) return null
+  if (s.done || s.ended) return null
+  if (now - (s.lastEventAt || 0) >= liveMs) return null
+  if (!(s.lastFileAt > 0)) return null
+  return { id: task.id, plan: task.plan, status: task.status || 'doing' }
+}
+
 export function mergeKey(event) {
   const id = event?.session?.id
   if (id) return String(id)
@@ -71,8 +84,9 @@ export class SessionTable {
     s.harness = s.harnesses[0]
     s.lastEventAt = Math.max(s.lastEventAt, at)
 
-    // A relayed node (AOS_TRAIL_NODE) rides on any event; task.update keeps its own path.
-    if (event.task?.plan && event.kind !== 'task.update' && event.kind !== 'session.stop' && event.kind !== 'session.end') s.currentTask = event.task
+    // A relayed node (AOS_TRAIL_NODE) rides on any event; the brief-marker path may
+    // carry no plan (the hub then adopts the checkout's primary plan); task.update keeps its own path.
+    if (event.task && event.kind !== 'task.update' && event.kind !== 'session.stop' && event.kind !== 'session.end') s.currentTask = event.task
 
     switch (event.kind) {
       case 'session.start':
