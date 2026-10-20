@@ -8513,7 +8513,7 @@ function runUninstaller() {
 // Prompts exist only in a TTY; `aos update` without one passes ui = {} and nothing is ever asked.
 function v5Options(interactive) {
     const ui = interactive ? {
-        select: async (message, options, initialValue) => pick(await select({ message, options, initialValue })),
+        select: async (message, options, initialValue) => { const v = await select({ message, options, initialValue }); return isCancel(v) ? null : v; },
         multi: async (message, options, initialValues) => { const a = await multiselect({ message, options, initialValues, required: false }); return isCancel(a) ? [] : a; },
         text: async (message, initialValue) => { const v = await text({ message, initialValue }); return isCancel(v) ? null : String(v || '').trim(); },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
