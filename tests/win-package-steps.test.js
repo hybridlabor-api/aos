@@ -196,6 +196,7 @@ test('token saver verify: on win32 finds Store Python when APPDATA is redirected
         assert.deepStrictEqual(calls[1], { cmd: 'python', args: [storeCli, 'stats'] });
         // cli.py imports `src`: the folder above src/ must be on PYTHONPATH (Lenovo: ModuleNotFoundError: No module named 'src').
         assert.strictEqual(pyEnv.PYTHONPATH, path.dirname(path.dirname(storeCli)));
+        assert.strictEqual(pyEnv.PYTHONIOENCODING, 'utf-8'); // Lenovo: UnicodeEncodeError on '\u2550' under cp1252
     } finally { cliSpawn.run = orig; }
 });
 
