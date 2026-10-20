@@ -34,6 +34,7 @@ const pkg = (() => {
 })();
 const updateCheck = req('../lib/update-check.js');
 const { pluginSkills, pluginAgents, claudeConfigDir } = req('../lib/plugin-evidence.js');
+const { doctorPluginRow: pmDoctorRow } = req('../lib/plugin-migration.js');
 const { readGoBuildInfo } = req('../lib/go-buildinfo.js');
 const { HARNESSES, modelProblem } = req('../lib/agent-models.js');
 const { HOOK_SCRIPTS } = req('../lib/v5/profile.js');
@@ -973,7 +974,15 @@ function checkPlugins() {
       flag === false ? 'disabled by the user' : `settings.json ${flag === true ? 'enables' : 'does not enable'} ${PLUGIN_ID}, marketplace ${marketplace ? 'known' : 'missing'}, plugin cache ${installed ? 'present' : 'missing'}`,
       flag === false ? optOut : 'Run the AOS installer (registers settings.json), then: claude plugin marketplace add hybridlabor-api/aos && claude plugin install bdb-aos@bdb-marketplace', true);
   }
-  const claudeBin = which('claude');
+  // Same resolver as the installer's CLI steps: finds claude even when this shell's PATH misses it
+  // (GUI daemons, scheduled tasks). installed+enabled / installed+disabled / missing, from the CLI itself.
+  const { resolveCommand, run: runCli } = req('../lib/cli-spawn.js');
+  const claudeBin = which('claude') || resolveCommand('claude');
+  const pluginRow = (() => {
+    if (!claudeBin) return { ok: false, detail: 'claude CLI not found on PATH or in a known install location; plugin bdb-aos missing', fix: 'Install Claude Code, then: claude plugin marketplace add hybridlabor-api/aos; claude plugin install bdb-aos@bdb-marketplace' };
+    return pmDoctorRow(runCli('claude', ['plugin', 'list'], { timeout: 15000 }), PLUGIN_ID);
+  })();
+  if (pluginRow) add('plugins', 'Claude plugin via CLI', pluginRow.ok, pluginRow.detail, pluginRow.fix, true);
   if (claudeBin) {
     const MODS = ['fleet', 'sessions', 'alert', 'control'];
     const enabled = MODS.filter((m) => settings?.enabledPlugins?.[`bdb-aos-${m}@bdb-marketplace`] === true);
