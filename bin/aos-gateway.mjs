@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Local MCP gateway: token-checking forwarder on 127.0.0.1:7790 in front of @1mcp/agent on 127.0.0.1:7791.
-// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json]
+// Usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | adopt [--dry-run] [--json] | inspect [target] | run <server>/<tool> --args '<json>'
 import '../lib/cli-help-guard.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -300,6 +300,20 @@ async function main() {
         }
         process.exit(report.some((r) => r.error) ? 1 : 0);
     }
+    if (cmd === 'inspect' || cmd === 'run') {
+        // CLI mode: the bundled 1mcp client talks to the upstream on loopback (7791). Its own bearer auth is OAuth only and
+        // unused here; the AOS token guards the forwarder on 7790 and is never read or printed by this command.
+        const dir = gatewayDir(os.homedir());
+        if (!readPid(dir)) { console.error(`aos-gateway ${cmd}: the gateway is not running (aos-gateway start)`); process.exit(1); }
+        const target = rest.find((a) => !a.startsWith('-'));
+        if (cmd === 'run' && !(target && /^[^/]+\/[^/]+$/.test(target))) { console.error('usage: aos-gateway run <server>/<tool> --args \'<json>\''); process.exit(2); }
+        const ai = rest.indexOf('--args');
+        if (ai >= 0) try { JSON.parse(rest[ai + 1]); } catch { console.error('aos-gateway run: --args must be a JSON object string'); process.exit(2); }
+        let entry;
+        try { entry = oneMcpEntry(dir); } catch (e) { console.error(`aos-gateway ${cmd}: ${e.message}`); process.exit(1); }
+        const r = spawnSync(process.execPath, [entry, cmd, ...rest, '-u', `http://127.0.0.1:${UPSTREAM_PORT}/mcp`], { stdio: 'inherit', shell: false, windowsHide: true });
+        process.exit(r.status ?? 1);
+    }
     if (cmd === 'adopt') {
         const home = os.homedir();
         const dryRun = rest.includes('--dry-run');
@@ -365,7 +379,7 @@ async function main() {
         console.log(`${cmd} ${server}: ${result.selected.length} servers selected (${result.dryRun ? 'dry-run' : 'mcp.json rewritten'}); run "aos-gateway status" to confirm`);
         process.exit(0);
     }
-    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | add | remove | adopt [--dry-run] [--json]');
+    console.error('usage: aos-gateway serve | start | stop | restart | status [--json] | enable | direct | add | remove | adopt [--dry-run] [--json] | inspect [target] | run <server>/<tool> --args <json>');
     process.exit(2);
 }
 

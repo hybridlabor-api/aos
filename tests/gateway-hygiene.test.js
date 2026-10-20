@@ -147,3 +147,19 @@ test('doctor says explicitly that VS Code mcp.json is skipped', () => {
     const row = gatewayChecks({ home, files: [{ file: f, kind: 'json' }], shipped, platform: 'linux' }).find((c) => c.name === `gateway skips ${f}`);
     assert.ok(row && /not managed/.test(row.detail));
 });
+
+test('aos-gateway inspect/run: refuse cleanly when the gateway is down; --help is answered without side effects', () => {
+    const { spawnSync } = require('child_process');
+    const home = tmp();
+    const env = { ...process.env, HOME: home, USERPROFILE: home };
+    const bin = path.join(ROOT, 'bin', 'aos-gateway.mjs');
+    for (const args of [['inspect'], ['run', 'github/search', '--args', '{}']]) {
+        const r = spawnSync(process.execPath, [bin, ...args], { env, encoding: 'utf8', timeout: 30000 });
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /not running/);
+    }
+    const h = spawnSync(process.execPath, [bin, '--help'], { env, encoding: 'utf8', timeout: 30000 });
+    assert.equal(h.status, 0);
+    assert.match(h.stdout, /inspect/);
+    assert.deepEqual(fs.readdirSync(home), []);
+});
