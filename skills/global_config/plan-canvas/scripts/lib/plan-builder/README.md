@@ -231,7 +231,13 @@ the live map after approval. Components: headings tagged `{#id}` and `<Section
 id title>`, in document order across `plan.mdx`, `canvas.mdx`, `prototype.mdx`.
 `needs`: `<Section needs=[...]>` or frontmatter `needs-<id>: a, b`. `files`:
 `<ImplementationMap>` entries. Tasks: `<Checklist>` items (`{#id}` kept, else
-generated). The default output is `production_artifacts/00_execution_plan.md`; it must resolve
+generated). `files` and `by` may also be declared per section as plain markdown
+lines (`files: a, b`, `by: opencode`) or as `<Checklist files by>` props —
+plans declared this way pin work to nodes on the live map with an owner badge
+without an `<ImplementationMap>`. Regenerating with `--force` carries the task
+marks (`[~]`, `[x]`, `[!]`) already in the existing output file over to the new
+output, matched by task id — live state is never reset. The default output is
+`production_artifacts/00_execution_plan.md`; it must resolve
 inside the workspace root (cwd), is never overwritten without `--force`, and no
 components means exit 2. Prints `{out, components, tasks, next_step}`.
 
