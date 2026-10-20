@@ -16,7 +16,7 @@
 // deleted; a file with no manifest entry was never ours and is not considered
 // at all.
 
-import { readFileSync, existsSync, rmSync, rmdirSync, lstatSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, rmSync, rmdirSync, renameSync, lstatSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
@@ -181,7 +181,9 @@ function plan(opts = {}) {
 
   const codenotch = cn.planCodenotchUninstall({ stateFile: cn.stateFilePath(HOME) });
 
-  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, codenotch, keptCommands };
+  const mcpTrees = removeGeneratedMcpTrees({ home, appData: opts.appData, dry: true, owned: manifestPaths });
+
+  return { manifest, ours, edited, gone, agents, winSvc, modules, legacy, data, codenotch, keptCommands, mcpTrees };
 }
 
 function describe(p) {
@@ -214,6 +216,14 @@ function describe(p) {
     console.log(`\nBackground services (${agents.length}): ${agents.map((a) => a.label).join(', ')}`);
   }
   for (const s of p.winSvc || []) console.log(`\nWindows Startup entry ${tilde(s.vbs)} is removed; processes running ${tilde(s.full)} are stopped`);
+  if (p.mcpTrees && p.mcpTrees.removed.length) {
+    console.log(`\nGenerated MCP build folders (${p.mcpTrees.removed.length}) are removed:`);
+    for (const t of p.mcpTrees.removed) console.log(`    ${tilde(t)}`);
+  }
+  if (p.mcpTrees && p.mcpTrees.kept.length) {
+    console.log('\nMCP folders with build folders that are not recognised as AOS copies are kept:');
+    for (const k of p.mcpTrees.kept) console.log(`    ${tilde(k)}`);
+  }
   if (modules.length) {
     console.log('\nModules:');
     for (const m of modules) console.log(`    ${tilde(m)}`);
@@ -284,28 +294,44 @@ const pruneEmpty = (dir) => {
   for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
   try { rmdirSync(dir); } catch { /* not empty */ }
 };
-function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false } = {}) {
+// A shipped-name folder counts as an AOS copy when the install manifest lists files in it, or its package.json /
+// pyproject name matches the shipped one (memb-mcp: any memb name). Anything else may be the user's own.
+const pkgName = (dir) => {
+  try { return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).name || null; } catch { /* no package.json */ }
+  try { return (/^name\s*=\s*["']([^"']+)["']/m.exec(readFileSync(path.join(dir, 'pyproject.toml'), 'utf8')) || [])[1] || null; } catch { return null; }
+};
+function isAosMcpCopy(dir, name, owned, shippedDir) {
+  if (owned.some((f) => f.startsWith(dir + path.sep))) return true;
+  const mine = pkgName(dir);
+  if (!mine) return false;
+  if (name === 'memb-mcp') return /memb/i.test(mine);
+  return !!shippedDir && mine === pkgName(path.join(shippedDir, name));
+}
+function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, owned = [] } = {}) {
   const base = appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
   const roots = [
     path.join(home, 'Library', 'Application Support', 'Claude'), path.join(home, '.config', 'Claude'), path.join(base, 'Claude'),
     path.join(home, '.gemini', 'config'), path.join(home, '.codex'), path.join(home, '.windsurf'), path.join(home, '.roo'), path.join(home, '.aider'),
   ].map((r) => path.join(r, 'mcps'));
+  const shippedDir = fileURLToPath(new URL('../mcps', import.meta.url));
   let shipped = names;
-  if (!shipped) { try { shipped = readdirSync(new URL('../mcps', import.meta.url)); } catch { shipped = []; } }
-  const out = [];
+  if (!shipped) { try { shipped = readdirSync(shippedDir); } catch { shipped = []; } }
+  const removed = [];
+  const kept = [];
   for (const root of roots) for (const name of new Set([...shipped, 'memb-mcp'])) {
     const dir = path.join(root, name);
     let st; try { st = lstatSync(dir); } catch { continue; }
     if (!st.isDirectory()) continue;
-    for (const g of MCP_GENERATED) {
-      const t = path.join(dir, g);
-      if (!existsSync(t)) continue;
-      out.push(t);
+    const trees = MCP_GENERATED.map((g) => path.join(dir, g)).filter(existsSync);
+    if (!trees.length) continue;
+    if (!isAosMcpCopy(dir, name, owned, shippedDir)) { kept.push(dir); continue; }
+    for (const t of trees) {
+      removed.push(t);
       if (!dry) rmSync(t, { recursive: true, force: true });
     }
     if (!dry) { pruneEmpty(dir); try { rmdirSync(root); } catch { /* other servers or files left */ } }
   }
-  return out;
+  return { removed, kept };
 }
 
 // ~/CLAUDE.md as the installer wrote it: exactly the pointer goes whole; its prefix line goes from user text.
@@ -313,7 +339,10 @@ function removeClaudePointer(file) {
   const text = readFileSync(file, 'utf8');
   if (text.replace(/\r\n/g, '\n') === installer.CLAUDE_POINTER) { rmSync(file); return 'removed'; }
   if (!text.startsWith(installer.CLAUDE_PREFIX)) return null;
-  writeFileSync(file, text.slice(installer.CLAUDE_PREFIX.length));
+  copyFileSync(file, `${file}.${new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)}.bak`);
+  const tmpFile = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmpFile, text.slice(installer.CLAUDE_PREFIX.length));
+  renameSync(tmpFile, file);
   return 'stripped';
 }
 
@@ -360,8 +389,9 @@ async function execute(p) {
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
   attempt('MCP server build trees', () => {
-    const gone = removeGeneratedMcpTrees();
-    if (gone.length) console.log(`  ${gone.length} generated MCP folders removed (node_modules, dist, venv)`);
+    const { removed: gone, kept } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });
+    for (const t of gone) console.log(`  removed ${tilde(t)}`);
+    for (const k of kept) console.log(`  ${tilde(k)} has build folders but is not recognised as an AOS copy, kept`);
   });
 
   const ruleFiles = [
@@ -500,9 +530,9 @@ async function execute(p) {
       const c = { home: HOME, dryRun: DRY, platform: process.platform, aosRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), env: process.env, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 }) };
       if (!always.includes(id) && !(pkg.present ? pkg.present(c) : (await pkg.detect(c)).installed)) continue;
       const r = await pkg.uninstall(c);
-      if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
+      if (r && r.error) { failures.push(`${pkg.name}: ${r.error}`); console.log(`  ${pkg.name}: ${r.error}`); }
       else if (r && (r.changed || !always.includes(id))) console.log(`  ${pkg.name} removed`);
-    } catch (e) { console.log(`  ${pkg.name}: ${e.message} — check by hand`); }
+    } catch (e) { failures.push(`${pkg.name}: ${e.message}`); console.log(`  ${pkg.name}: ${e.message} — check by hand`); }
   }
 
   // The package loop skips gateway/hub when detect() is false; the Startup .vbs must still go, or both autostart again.

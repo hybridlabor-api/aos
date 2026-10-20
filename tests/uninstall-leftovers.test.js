@@ -22,8 +22,12 @@ test('removeGeneratedMcpTrees removes build trees of shipped servers and keeps f
     touch(roots[0], 'tdmcp', 'node_modules', 'b.js');
     touch(roots[0], 'tdmcp', 'notes.txt');
 
-    const gone = removeGeneratedMcpTrees({ home, names: ['blender-mcp', 'tdmcp'] });
+    const owned = [];
+    for (const root of roots) for (const n of ['blender-mcp', 'memb-mcp']) owned.push(path.join(root, n, 'server.js'));
+    owned.push(path.join(roots[0], 'tdmcp', 'index.js'));
+    const { removed: gone, kept } = removeGeneratedMcpTrees({ home, names: ['blender-mcp', 'tdmcp'], owned });
     assert.equal(gone.length, 7);
+    assert.deepEqual(kept, []);
     for (const root of roots) {
         assert.ok(!fs.existsSync(path.join(root, 'blender-mcp')), 'emptied server dir is pruned');
         assert.ok(!fs.existsSync(path.join(root, 'memb-mcp')));
@@ -36,18 +40,32 @@ test('removeGeneratedMcpTrees removes build trees of shipped servers and keeps f
 test('removeGeneratedMcpTrees drops the mcps dir once nothing is left and is a no-op without one', async () => {
     const { removeGeneratedMcpTrees } = await load();
     const home = tmp();
-    assert.deepEqual(removeGeneratedMcpTrees({ home, names: ['x'] }), []);
+    assert.deepEqual(removeGeneratedMcpTrees({ home, names: ['x'] }).removed, []);
     touch(home, '.config', 'Claude', 'mcps', 'x', 'dist', 'a.js');
-    removeGeneratedMcpTrees({ home, names: ['x'] });
+    removeGeneratedMcpTrees({ home, names: ['x'], owned: [path.join(home, '.config', 'Claude', 'mcps', 'x', 'a.js')] });
     assert.ok(!fs.existsSync(path.join(home, '.config', 'Claude', 'mcps')));
     assert.ok(fs.existsSync(path.join(home, '.config', 'Claude')));
+});
+
+test('a shipped-name folder that is not an AOS copy keeps its build folders and is reported', async () => {
+    const { removeGeneratedMcpTrees } = await load();
+    const home = tmp();
+    const dir = path.join(home, '.config', 'Claude', 'mcps', 'x');
+    touch(dir, 'node_modules', 'a.js');
+    touch(dir, 'package.json');
+    fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"someone-elses-x"}');
+    const r = removeGeneratedMcpTrees({ home, names: ['x'] });
+    assert.deepEqual(r.removed, []);
+    assert.deepEqual(r.kept, [dir]);
+    assert.ok(fs.existsSync(path.join(dir, 'node_modules', 'a.js')));
 });
 
 test('dry run lists the trees and deletes nothing', async () => {
     const { removeGeneratedMcpTrees } = await load();
     const home = tmp();
     touch(home, '.config', 'Claude', 'mcps', 'x', 'node_modules', 'a.js');
-    assert.equal(removeGeneratedMcpTrees({ home, names: ['x'], dry: true }).length, 1);
+    const owned = [path.join(home, '.config', 'Claude', 'mcps', 'x', 'a.js')];
+    assert.equal(removeGeneratedMcpTrees({ home, names: ['x'], dry: true, owned }).removed.length, 1);
     assert.ok(fs.existsSync(path.join(home, '.config', 'Claude', 'mcps', 'x', 'node_modules', 'a.js')));
 });
 
@@ -63,6 +81,7 @@ test('removeClaudePointer removes the exact installer pointer, strips only its p
 
     fs.writeFileSync(f, `${inst.CLAUDE_PREFIX}# My rules\n`);
     assert.equal(removeClaudePointer(f), 'stripped');
+    assert.ok(fs.readdirSync(home).some((n) => n.startsWith('CLAUDE.md.') && n.endsWith('.bak')), 'backup written first');
     assert.equal(fs.readFileSync(f, 'utf8'), '# My rules\n');
 
     fs.writeFileSync(f, '# My rules\nSee AGENTS.md\n');
