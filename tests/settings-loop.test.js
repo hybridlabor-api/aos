@@ -90,6 +90,7 @@ test('a failing setting keeps the loop open and the final exit code is 1', async
 test('menu-mode multi cancel (null) writes nothing', async () => {
     const home = fs.mkdtempSync(path.join(root, 'h-'));
     const ui = { multi: async () => null };
-    await menu.installDefaults(mainHost(home), { home, write: () => {}, ui }, new Set());
+    // gateway and hub are excluded: the case is about the mods prompt, and they would run real installs
+    await menu.installDefaults(mainHost(home), { home, write: () => {}, ui }, new Set(['gateway', 'hub']));
     assert.ok(!fs.existsSync(p.settingsFile(home)) || (p.readSettings(home).disabled || []).length === 0);
 });
