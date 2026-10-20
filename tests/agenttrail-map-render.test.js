@@ -103,7 +103,7 @@ test('task lookups tolerate a model without plan (first render before data)', ()
   assert.equal(sb.graphTaskIsOpen({ id: 't', parent: 'p', status: 'active' }), false)
   setM(sb, { ...modelSnapshot(), plan: undefined })
   assert.equal(sb.graphTaskIsOpen({ id: 't', parent: 'p', status: 'active' }), false)
-  assert.deepEqual(sb.kids('x'), [])
+  assert.equal(sb.kids('x').length, 0) // vm-realm array: deepStrictEqual fails on the foreign prototype
 })
 
 test('expanded lists with more than 3 tasks get the scroll class and CSS caps them at 360px', () => {
