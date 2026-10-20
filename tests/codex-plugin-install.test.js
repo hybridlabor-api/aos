@@ -264,11 +264,28 @@ test('dangling local marketplace (source folder gone): entry is removed, then th
   assert.ok(f.calls.includes('plugin add bdb-aos@bdb-aos'), f.calls.join('\n'));
 });
 
-test('list error naming an existing source path is not treated as dangling', () => {
+const listFails = (f, at) => { f.run = (cmd, args) => { f.calls.push(args.join(' ')); return { status: 1, stdout: '', stderr: `- \`bdb-aos\` at ${at}: marketplace root does not contain a supported manifest` }; }; };
+
+test('dangling check keeps an existing package dir, also behind the \\?\ prefix', () => {
+  const pkg = path.join(home(), 'node_modules', '@hybridlabor-api', 'aos');
+  fs.mkdirSync(pkg, { recursive: true });
   const f = fakeCodex();
-  f.run = (cmd, args) => { f.calls.push(args.join(' ')); return { status: 1, stdout: '', stderr: `- \`bdb-aos\` at ${ROOT}: marketplace root does not contain a supported manifest` }; };
-  const r = go(f);
-  assert.equal(r.ok, false);
+  listFails(f, `\\\\?\\${pkg}`);
+  assert.equal(go(f).ok, false);
+  assert.ok(!f.calls.some((c) => c.includes('marketplace remove')), f.calls.join('\n'));
+});
+
+test('dangling check never removes a missing source outside node_modules/_npx (user-owned)', () => {
+  const f = fakeCodex();
+  listFails(f, path.join(home(), 'my-own-marketplace-gone'));
+  assert.equal(go(f).ok, false);
+  assert.ok(!f.calls.some((c) => c.includes('marketplace remove')), f.calls.join('\n'));
+});
+
+test('dangling check does nothing in check mode', () => {
+  const f = fakeCodex();
+  listFails(f, path.join(home(), 'node_modules', 'gone'));
+  go(f, { mode: 'check' });
   assert.ok(!f.calls.some((c) => c.includes('marketplace remove')), f.calls.join('\n'));
 });
 
