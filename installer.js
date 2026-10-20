@@ -483,7 +483,7 @@ function ensurePythonVenv(dir, opts = {}) {
         if (!v || pyAtLeast(v, MEMB_MIN_PYTHON)) return { created: false };
         log.step(`[memb] existing venv uses Python ${v.join('.')}; rebuilding with Python >= ${MEMB_MIN_PYTHON.join('.')}.`);
     }
-    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: 'ignore', cwd: dir, windowsHide: true, ...o }));
+    const run = opts.run || ((cmd, args, o) => execFileSync(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], cwd: dir, windowsHide: true, ...o }));
     const hasUv = opts.hasUv !== undefined ? opts.hasUv : (() => { try { execFileSync(uvBin(), ['--version'], { stdio: 'ignore', windowsHide: true }); return true; } catch (e) { return false; } })();
     const sys = (opts.pick || pickPython)(MEMB_MIN_PYTHON);
     if (!sys && !hasUv) {
@@ -500,7 +500,16 @@ function ensurePythonVenv(dir, opts = {}) {
             if (!sys) { log.warn(MEMB_PYTHON_FIX); throw new Error(`${MEMB_PYTHON_FIX} (uv: ${e.message})`); }
         }
     }
-    run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
+    try {
+        run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
+    } catch (e) {
+        try { fs.rmSync(path.join(dir, '.venv'), { recursive: true, force: true }); } catch (_) { /* nothing half-built to clean */ }
+        const why = String((e && e.stderr) || (e && e.message) || e).trim().split(/\r?\n/).slice(-3).join(' | ');
+        const fix = process.platform === 'win32' ? 'install Python from https://www.python.org/downloads/ (with pip and venv)'
+            : process.platform === 'darwin' ? 'brew install python'
+                : 'Debian/Ubuntu: sudo apt install python3-venv (matching your python3.x-venv)';
+        throw new Error(`python venv failed (${why}); fix: ${fix}, then run: aos package install memb`);
+    }
     return { created: true, viaUv: false };
 }
 
