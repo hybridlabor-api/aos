@@ -128,6 +128,7 @@ describe('two workers land on the right nodes', () => {
   });
 });
 
+
 describe('float: aos-trail tick', () => {
   test('tickTask flips exactly one checkbox for the named id', () => {
     const plan = `# t\n## C {#c}\n\n- [ ] one {#task-1}\n- [ ] one-two {#task-12}\n- [ ] three {#task-3}\n`;
@@ -140,6 +141,29 @@ describe('float: aos-trail tick', () => {
     assert.equal(tickTask(plan, 'missing').changed, false);
   });
 
+  test('tick --doing marks [~], --done takes in-progress work, --todo re-opens', () => {
+    const plan = `# t\n## C {#c}\n\n- [ ] a {#t-a}\n- [~] b {#t-b}\n- [x] c {#t-c}\n`;
+    const doing = tickTask(plan, 't-a', 'doing');
+    assert.equal(doing.changed, true);
+    assert.match(doing.text, /- \[~\] a \{#t-a\}/);
+    assert.equal(tickTask(doing.text, 't-a', 'doing').changed, false, 'already [~]');
+    assert.equal(tickTask(doing.text, 't-c', 'doing').changed, false, 'done is never un-done by --doing');
+    const done = tickTask(doing.text, 't-a');
+    assert.equal(done.changed, true, 'default --done');
+    assert.match(done.text, /- \[x\] a \{#t-a\}/);
+    const taken = tickTask(plan, 't-b');
+    assert.equal(taken.changed, true, 'in-progress work lands as done');
+    assert.match(taken.text, /- \[x\] b \{#t-b\}/);
+    const todo = tickTask(done.text, 't-a', 'todo');
+    assert.equal(todo.changed, true);
+    assert.match(todo.text, /- \[ \] a \{#t-a\}/);
+    const reopen = tickTask(plan, 't-c', 'todo');
+    assert.equal(reopen.changed, true, '--todo re-opens a done task explicitly');
+    assert.match(reopen.text, /- \[ \] c \{#t-c\}/);
+    assert.equal(tickTask(plan, 't-a', 'todo').changed, false, 'already open is a no-op');
+    assert.equal(tickTask(plan, 't-a', 'bogus').changed, false);
+  });
+
   test('aos-trail tick edits the plan file: exactly one line flips', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trail-tick-'));
     const file = path.join(dir, 'plan.md');
@@ -150,5 +174,21 @@ describe('float: aos-trail tick', () => {
     const text = fs.readFileSync(file, 'utf8');
     assert.match(text, /- \[x\] a \{#aa\}/);
     assert.match(text, /- \[ \] bb \{#aaa\}/);
+  });
+
+  test('aos-trail tick --doing writes the in-progress mark', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trail-tick-'));
+    const file = path.join(dir, 'plan.md');
+    fs.writeFileSync(file, `# t\n## C {#c}\n\n- [ ] a {#aa}\n- [ ] bb {#aaa}\n`);
+    const CLI = path.join(here, '..', 'skills', 'global_config', 'agenttrail', 'bin', 'agenttrail.mjs');
+    const r = spawnSync(process.execPath, [CLI, 'tick', file, 'aa', '--doing'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const text = fs.readFileSync(file, 'utf8');
+    assert.match(text, /- \[~\] a \{#aa\}/);
+    assert.match(text, /- \[ \] bb \{#aaa\}/);
+    // and it lands as done from the doing state with the default mode
+    const done = spawnSync(process.execPath, [CLI, 'tick', file, 'aa'], { encoding: 'utf8' });
+    assert.equal(done.status, 0, done.stderr);
+    assert.match(fs.readFileSync(file, 'utf8'), /- \[x\] a \{#aa\}/);
   });
 });
