@@ -1,8 +1,9 @@
 ---
 name: plan-canvas
 description: >-
-  Open a plan or design artifact in a local browser canvas for annotation
-  and approval. Use for plan, roadmap, /plan-canvas or a visual review.
+  Open a plan in a browser canvas to visualize the plan, annotate, approve.
+  Use for "plan", "planen", "roadmap", /plan-canvas, planning or a
+  brainstorm review.
 category: bdb-core
 metadata:
   version: "1.1.0"

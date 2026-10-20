@@ -1,6 +1,6 @@
 ---
 name: bdbrainstorm
-description: Multi-agent brainstorming with /grill-me and 3 Godmodes. Ideation → technical design → plan-canvas → /startcycle-graph handoff.
+description: Multi-agent brainstorming with /grill-me and Godmodes incl. godmode-engineering. Ideation → technical design → plan-canvas → /startcycle-graph.
 category: bdb-core
 ---
 
