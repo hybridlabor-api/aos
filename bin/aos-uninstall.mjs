@@ -187,14 +187,14 @@ function plan(opts = {}) {
 function describe(p) {
   const { manifest, ours, edited, gone, agents, modules, legacy, data } = p;
 
-  if (!manifest) {
+  if (!manifest && !ur.hasPending(HOME)) {
     console.log('No install manifest at ' + tilde(MANIFEST) + '.');
     console.log('Without it there is no telling which file came from AOS — nothing is deleted.');
     console.log('Otherwise affected: ~/.claude/skills, ~/.gemini/config/skills, ~/.codex/skills, ~/.agents/');
     return false;
   }
 
-  console.log(`\nManifest: ${Object.keys(manifest).length} files recorded`);
+  console.log(`\nManifest: ${Object.keys(manifest || {}).length} files recorded`);
   console.log(`  ${String(ours.length).padStart(5)}  unchanged since install → removed`);
   console.log(`  ${String(edited.length).padStart(5)}  edited after install → .bak first, then removed`);
   console.log(`  ${String(gone.length).padStart(5)}  already gone`);
