@@ -7,12 +7,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { loadGate, panel } from './gatepanel.mjs'
 import { readA2aRegistry } from './sessions.mjs'
+import { RECEIPT_TTL_MS, BROAD_SCOPES, writeExclusive } from './click.mjs'
 
-export const RECEIPT_TTL_MS = 10 * 60 * 1000
-export const REQUEST_MAX_AGE_MS = 10 * 60 * 1000
+const REQUEST_MAX_AGE_MS = 10 * 60 * 1000
 const STALE_MS = 5 * 60 * 1000
-export const GRANT_MS = { '15m': 15 * 60 * 1000, session: 2 * 60 * 60 * 1000 }
-export const BROAD_SCOPES = ['destructive', 'push-main']
+const GRANT_MS = { '15m': 15 * 60 * 1000, session: 2 * 60 * 60 * 1000 }
 // A map click never approves these, once or as a grant: they need a typed GO in the terminal.
 const NEVER_CLICK = ['destructive', 'push-main', 'publish']
 const KEY_RE = /^[a-z0-9._-]{1,128}$/
@@ -22,8 +21,8 @@ export class DecisionError extends Error {
   constructor(code, status = 400) { super(code); this.code = code; this.status = status }
 }
 
-export const roleOf = (name) => (/master/i.test(name) ? 'master' : /orchestr|mgmt|manager|cloud/i.test(name) ? 'orchestrator' : 'worker')
-export const riskOf = (r) => {
+const roleOf = (name) => (/master/i.test(name) ? 'master' : /orchestr|mgmt|manager|cloud/i.test(name) ? 'orchestrator' : 'worker')
+const riskOf = (r) => {
   const sc = r.scopes || []
   if (r.hard) return 'hard'
   if (sc.some((s) => BROAD_SCOPES.includes(s))) return 'destructive'
@@ -36,10 +35,10 @@ const goDir = (home) => path.join(home, '.aos', 'go')
 
 async function gateOf(gateMod) { return gateMod === undefined ? loadGate() : gateMod }
 
-export async function sideModel({ now = Date.now(), home = os.homedir(), gateMod, dismissed = new Set(), registry } = {}) {
+export async function sideModel({ now = Date.now(), home = os.homedir(), gateMod, dismissed = new Set() } = {}) {
   const mod = await gateOf(gateMod)
   const g = await panel({ now, gate: mod || undefined })
-  const reg = registry || readA2aRegistry(path.join(home, '.aos', 'sessions'))
+  const reg = readA2aRegistry(path.join(home, '.aos', 'sessions'))
   const nameByKey = new Map()
   for (const r of g.requests) if (r.sessionName) nameByKey.set(r.sessionKey, r.sessionName)
   const sessions = reg.map((s) => {
@@ -65,12 +64,9 @@ export async function sideModel({ now = Date.now(), home = os.homedir(), gateMod
 export const publicModel = (m) => ({ ...m, requests: m.requests.map(({ cmdHash, ...r }) => r) })
 
 function writeNew(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
-  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify(value), { mode: 0o600, flag: 'wx' })
-  try { fs.linkSync(tmp, file) } catch (e) {
+  try { writeExclusive(file, value) } catch (e) {
     throw new DecisionError(e && e.code === 'EEXIST' ? 'request-decided' : 'write-failed', e && e.code === 'EEXIST' ? 409 : 500)
-  } finally { try { fs.unlinkSync(tmp) } catch { /* gone */ } }
+  }
 }
 
 // The gate scans at most 32 receipts per key and deletes nothing, so stale ones are pruned here.
