@@ -75,3 +75,31 @@ This skill provides domain-specific logic and rules for its respective BDB pipel
 - [ ] Verified script exit codes are explicitly checked.
 - [ ] Confirmed target files or database records reflect the expected change.
 - [ ] Ensured no silent failures were ignored before reporting success.
+
+
+---
+
+## App dev Pack Skills
+
+<!-- aos:pack-index:start -->
+- **agent-tool-builder** — >-
+- **agentic-harness-patterns** — >-
+- **llm-app-patterns** — "Production-ready patterns for building LLM applications, inspired by [Dify](https://github.com/langgenius/dify) and industry best practices."
+- **llm-structured-output** — >
+- **local-llm-expert** — Master local LLM inference, model selection, VRAM optimization, and local deployment using Ollama, llama.cpp, vLLM, and LM Studio. Expert in quantization formats (GGUF, EXL2) and local AI privacy.
+- **rag-implementation** — "RAG (Retrieval-Augmented Generation) implementation workflow covering embedding selection, vector database setup, chunking strategies, and retrieval optimization."
+- **prompt-engineer** — "Transforms user prompts into optimized prompts using frameworks (RTF, RISEN, Chain of Thought, RODES, Chain of Density, RACE, RISE, STAR, SOAP, CLEAR, GROW)"
+- **crewai** — >-
+- **vercel-ai-sdk-expert** — "Expert in the Vercel AI SDK. Covers Core API (generateText, streamText), UI hooks (useChat, useCompletion), tool calling, and streaming UI components with React and Next.js."
+- **gemini-api-integration** — "Use when integrating Google Gemini API into projects. Covers model selection, multimodal inputs, streaming, function calling, and production best practices."
+- **n8n-code-javascript** — Write JavaScript code in n8n Code nodes. Use when writing JavaScript in n8n, using $input/$json/$node syntax, making HTTP requests with $helpers, working with dates using DateTime, troubleshooting Code node errors, or choosing between Code node modes.
+- **n8n-code-python** — Write Python code in n8n Code nodes. Use when writing Python in n8n, using _input/_json/_node syntax, working with standard library, or need to understand Python limitations in n8n Code nodes.
+- **n8n-expression-syntax** — Validate n8n expression syntax and fix common errors. Use when writing n8n expressions, using {{}} syntax, accessing $json/$node variables, troubleshooting expression errors, or working with webhook data in workflows.
+- **n8n-mcp-tools-expert** — Expert guide for using n8n-mcp MCP tools effectively. Use when searching for nodes, validating configurations, accessing templates, managing workflows, or using any n8n-mcp tool. Provides tool selection guidance, parameter formats, and common patterns.
+- **n8n-workflow-patterns** — "Proven architectural patterns for building n8n workflows."
+- **agent-manager-skill** — Use when manage multiple local CLI agents via tmux sessions (start/stop/monitor/assign) with cron-friendly scheduling.
+- **agent-memory-mcp** — Use when a hybrid memory system that provides persistent, searchable knowledge management for AI agents (Architecture, Patterns, Decisions).
+- **subagent-setup** — Configure and synchronize multi-harness subagents (Claude Code, Google Antigravity, OpenCode, ChatGPT Codex CLI) with optional per-harness model overrides and single source of truth in .aos/pipeline.json.
+
+**Install:** `aos store install --pack agents-automation`
+<!-- aos:pack-index:end --><!-- aos:pack-index:end --><!-- aos:pack-index:end --><!-- aos:pack-index:end -->

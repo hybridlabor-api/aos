@@ -58,6 +58,15 @@
 //    than the seven required node ids, this run escalates immediately --
 //    it never silently falls back to a hardcoded list.
 //
+// 5. A node's registry skills (common + own) are only useful if they are
+//    actually installed. Before every node worker starts -- sequential or
+//    inside a pipeline() fan-out -- ensureNodeSkills() runs a deterministic
+//    check-and-install step: whatever is missing from every harness skill
+//    dir is installed offline through the store CLI (local library, package
+//    fallback). Best-effort: an unresolvable skill is reported on stderr and
+//    the worker still starts, since the skills note is a preference, while a
+//    --skill= mandate keeps its own hard-fail path below.
+//
 // max_iterations mirrors .agents/state.schema.json's default (3) --
 // deliberately under Claude Code's own 8-consecutive-Stop-hook-block
 // override, so this workflow's own escalation return reaches the user
@@ -449,6 +458,57 @@ if (typeof globalThis.agent === 'undefined') {
       return { found, missing, suggestions: suggestions.slice(0, 5) };
     }
 
+    // Deterministic step: ensure-node-skills. Before a node's worker starts,
+    // make sure the node's registry skills (common + own) are actually
+    // installed: a SKILL.md in any one harness skill dir (or the project's
+    // own skills/) counts. Whatever is missing everywhere is installed
+    // offline, one name at a time, via the store CLI shipped beside this
+    // dispatcher (local library, falling back to the package's own skills
+    // dir). Best-effort by design: a name that cannot be installed is
+    // reported as stillMissing, never thrown -- the worker still starts.
+    if (label === 'ensure-node-skills' || label.startsWith('ensure-skills-')) {
+      const wanted = (Array.isArray(options?.skills) ? options.skills : [])
+        .filter((s) => typeof s === 'string' && /^[A-Za-z0-9_-]+$/.test(s));
+      const res = { installed: [], stillMissing: [] };
+      if (!fs || !path || !os || !child_process || wanted.length === 0) return res;
+      const home = os.homedir();
+      const candidateRoots = [
+        path.join(home, '.claude', 'skills'),
+        path.join(home, '.agents', 'skills'),
+        path.join(home, '.gemini', 'config', 'skills'),
+        path.join(home, '.codex', 'skills'),
+        path.join(home, '.cursor', 'skills'),
+        path.join(home, '.roo', 'skills'),
+        path.resolve('skills'),
+      ];
+      const have = (name) => candidateRoots.some((r) => {
+        try { return fs.existsSync(path.join(r, name, 'SKILL.md')); } catch { return false; }
+      });
+      const missing = [...new Set(wanted)].filter((n) => !have(n));
+      if (missing.length === 0) return res;
+      try {
+        const urlMod = await import('node:url');
+        const cli = [
+          path.join(home, '.agents', 'bin', 'aos-store.mjs'),
+          path.join(path.dirname(urlMod.fileURLToPath(import.meta.url)), '..', '..', 'bin', 'aos-store.mjs'),
+        ].find((c) => fs.existsSync(c));
+        if (cli) {
+          for (const name of missing) {
+            try {
+              const r = child_process.spawnSync(process.execPath, [cli, 'install', name], {
+                encoding: 'utf8', timeout: 120000, shell: false,
+              });
+              if (r.status === 0 && have(name)) res.installed.push(name);
+              else res.stillMissing.push(name);
+            } catch { res.stillMissing.push(name); }
+          }
+          return res;
+        }
+      } catch {}
+      res.stillMissing = missing;
+      return res;
+    }
+
     // Deterministic step: mergeStateD
     if (label.startsWith('merge-')) {
       if (!fs) return { merged: 0, skipped: [], needsHuman: false };
@@ -742,8 +802,7 @@ let commonSkills = [];
 // the preferred skills. Other installed skills stay usable when they fit.
 // Applies to every node, build and sequential alike.
 function skillsNote(node) {
-  const own = Array.isArray(node?.skills) ? node.skills : [];
-  const skills = [...new Set([...commonSkills, ...own])];
+  const skills = nodeSkillList(node);
   const parts = [];
   if (skills.length > 0) {
     parts.push(
@@ -765,6 +824,59 @@ function skillsNote(node) {
     );
   }
   return parts.join('');
+}
+
+// Per .agents/nodes.json: a node's skills are its own list plus the registry's
+// `common` set, deduped. This exact list is what ensureNodeSkills() installs
+// and what skillsNote() mentions -- one source each, no drift between them.
+function nodeSkillList(node) {
+  const own = Array.isArray(node?.skills) ? node.skills : [];
+  return [...new Set([...commonSkills, ...own])]
+    .filter((s) => typeof s === 'string' && /^[A-Za-z0-9_-]+$/.test(s));
+}
+
+// Installs a node's registry skills before its worker starts, when missing.
+// Like validate-mandatory-skills, this is a deterministic check/install step
+// (the script itself has no filesystem access), not a reasoning task. The
+// skillsNote() preference stays advisory and the run never blocks here: a
+// skill that cannot be installed is logged to stderr and the worker starts
+// anyway -- a missing optional skill is a degraded run, not a broken one.
+async function ensureNodeSkills(node) {
+  const skills = nodeSkillList(node);
+  if (skills.length === 0) return null;
+  try {
+    const res = await agent(
+      `Make sure each of these skills is installed on this machine: ${JSON.stringify(skills)}. ` +
+        'A skill counts as installed when a directory with a real SKILL.md exists for it in any one of the ' +
+        'harness skill locations: ~/.claude/skills/<name>, ~/.agents/skills/<name>, ~/.gemini/config/skills/<name>, ' +
+        '~/.codex/skills/<name>, ~/.cursor/skills/<name>, ~/.roo/skills/<name>, or the project\'s own skills/<name>. ' +
+        'This is a deterministic check-and-install step, not a reasoning task. ' +
+        'For every name found nowhere, run `aos store install <name>` once per missing name (never with --net): ' +
+        'that installs offline from the local AOS library, so one unresolvable name must not block the others. ' +
+        'Never delete or modify anything; installing is additive. ' +
+        'If the aos command is unavailable or a name still resolves nowhere afterwards, list it in stillMissing and continue -- ' +
+        'this step must never block or fail the run.\n\n' +
+        'Return only: { "installed": string[], "stillMissing": string[] }.',
+      {
+        label: `ensure-skills-${node.id}`,
+        ...modelOpt('validate_skills'),
+        skills,
+        schema: {
+          type: 'object',
+          required: ['installed', 'stillMissing'],
+          properties: {
+            installed: { type: 'array', items: { type: 'string' } },
+            stillMissing: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      }
+    );
+    const still = Array.isArray(res?.stillMissing) ? res.stillMissing : [];
+    if (still.length > 0) {
+      console.error(`[startcycle-graph] node ${node.id}: skill(s) missing and not installable offline: ${still.join(', ')}`);
+    }
+    return res;
+  } catch { return null; }
 }
 
 // "a", "a or b", "a, b, or c" -- used for NODE_NAMES, itself derived from the
@@ -1281,6 +1393,7 @@ let approved = false;
 let lastRejectionReason = '';
 
 while (!approved) {
+  await ensureNodeSkills(architectNode);
   const architectResult = await agent(
     `You are acting as the ${architectNode.label} agent (${architectNode.personaFile}). ${dispatchNote(architectNode)}${skillsNote(architectNode)}\n\n` +
       `Goal: ${JSON.stringify(goal)}\n` +
@@ -1434,6 +1547,7 @@ while (!approved) {
     }
   } catch {}
 
+  await ensureNodeSkills(techleadNode);
   const techLeadResult = await agent(
     `You are acting as the ${techleadNode.label} agent (${techleadNode.personaFile}). ${dispatchNote(techleadNode)}${skillsNote(techleadNode)}\n\n` +
       `Read the plan at ${planPath}. Approve it only if it has an explicit capability map: ` +
@@ -1531,7 +1645,7 @@ while (!reviewedClean) {
         properties: { needsHuman: { type: 'boolean' } }
       };
     }
-    return agent(
+    return ensureNodeSkills(n).then(() => agent(
       `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
         `Read the plan at ${planPath}. ${n.instructions}\n` +
         (openFindings.length
@@ -1539,7 +1653,7 @@ while (!reviewedClean) {
           : '') +
         (isSolo ? `\n\nReturn only: { "needsHuman": boolean } (set to true only if you set "needs_human": true in state.json).` : ''),
       opts
-    );
+    ));
   });
 
   if (isSolo) {
@@ -1572,6 +1686,7 @@ while (!reviewedClean) {
     ? executionManifest.workstreams.map((ws) => `state.artifacts.${ws.artifactKey || ws.id}`).join(', ')
     : (profile && profile.artifacts ? Object.values(profile.artifacts).join(', ') : `production_artifacts/01_frontend_spec.md, 02_backend_schema.md${needsMedia ? ', 03_media_pipeline.md' : ''}`);
 
+  await ensureNodeSkills(reviewerNode);
   const reviewResult = await agent(
     `You are acting as the ${reviewerNode.label} agent (${reviewerNode.personaFile}). ${reviewerStateNote()}${skillsNote(reviewerNode)}\n\n` +
       `Read the plan/contract at ${planPath} and the artifacts it produced ` +
@@ -1693,6 +1808,7 @@ let allGatesPass = false;
 let lastGate = null;
 
 while (!allGatesPass) {
+  await ensureNodeSkills(shippingNode);
   const shipResult = await agent(
     `You are acting as the ${shippingNode.label} agent (${shippingNode.personaFile}). ${dispatchNote(shippingNode)}${skillsNote(shippingNode)}\n\n` +
       `Run the automated quality gate against the artifacts from the plan at ${planPath}: ${GATE_LABELS}. ${profile ? 'Run the check each gate above describes with the tools that domain uses -- detect ' : "Use the repository's own commands (npm test / pytest / tsc --noEmit / etc -- detect "}` +
@@ -1753,13 +1869,13 @@ while (!allGatesPass) {
         properties: { needsHuman: { type: 'boolean' } }
       };
     }
-    return agent(
+    return ensureNodeSkills(n).then(() => agent(
       `You are acting as the ${n.label} agent (${n.personaFile}). ${dispatchNote(n, isSolo)}${skillsNote(n)}\n\n` +
         `Shipping's quality gate failed on a check you own: ${JSON.stringify(lastGate)}. ` +
         `Read production_artifacts/04_release_report.md for details and fix it.` +
         (isSolo ? `\n\nReturn only: { "needsHuman": boolean } (set to true only if you set "needs_human": true in state.json).` : ''),
       opts
-    );
+    ));
   });
 
   if (isSolo) {

@@ -35,8 +35,9 @@ const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
-const { pruneRetiredSkills } = require('./lib/retired-skills');
+const { pruneRetiredSkills, storeProtectedDirs } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
+const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
@@ -174,6 +175,24 @@ let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
 // `skillSet` setting: "core" installs only lib/core-skills.json and leaves the rest to `aos store install`.
 let skillSet = coreSkills.DEFAULT_SKILL_SET;
+// Pack selection: array of pack names from ~/.aos/v5-settings.json ("packs", next to skillSet).
+// null = no selection ever stored — everything is installed/kept, no silent removal.
+let packSelection = null;
+// Packs this run's own setup choices bring, on top of the stored selection: the Pro MEDIA tier
+// (live-show), the Creator Extension / Hardware & PCB modules, and the pack checkboxes of the
+// module picker. Additive only — see skillPacks.impliedPacks for the manifest-derived part.
+const runImpliedPacks = [];
+const addImpliedPack = (id) => { if (skillPacks.knownPack(id, srcDir) && !runImpliedPacks.includes(id)) runImpliedPacks.push(id); };
+
+// The selection exclusion and install follow: the explicit selection plus every pack the last
+// install manifest implies and this run's choices imply. null explicit selection stays null.
+function effectivePackSelection(meta = readJsonFile(path.join(homeDir, '.agents', '.bdb-manifest.json'))) {
+    return skillPacks.mergeSelection(
+        packSelection,
+        [...runImpliedPacks, ...skillPacks.impliedPacks(meta, srcDir)],
+        srcDir,
+    );
+}
 // Unified memory (docs/unified-memory.md): off when memb is excluded; then no memb_mcp, deja MCP or memb-inject is wired.
 let memoryOn = true;
 // `gate` setting (Settings menu): off = go-gate, go-token, go-grant and graph-gate are not registered; the script files stay on disk.
@@ -1193,6 +1212,53 @@ function applySkillSet(manifest) {
             log,
         });
     } catch (e) { log.warn(`Skill set "core" skipped: ${e.message}`); }
+}
+
+// Populates the local library (~/.aos/library/skills) with every shipped skill and writes the
+// pack index. The library is AOS's own full copy that no harness reads directly: harness dirs
+// get base+packs, while `aos store install` copies single skills or whole packs from here, offline.
+function populateSkillLibrary(home = homeDir) {
+    const dest = skillPacks.librarySkillsDir(home);
+    const dirs = skillPacks.shippedSkillDirs(srcDir);
+    if (DRY_RUN) {
+        log.step(`[dry-run] would copy ${dirs.size} skills into ${dest}`);
+        return;
+    }
+    installStep('populate the skill library (~/.aos/library)', () => {
+        fs.mkdirSync(dest, { recursive: true });
+        for (const [name, abs] of dirs) copyDirRecursiveSync(abs, path.join(dest, name), []);
+        const def = skillPacks.loadPacks(srcDir);
+        fs.mkdirSync(path.dirname(skillPacks.libraryIndexFile(home)), { recursive: true });
+        fs.writeFileSync(skillPacks.libraryIndexFile(home), JSON.stringify({
+            version: pkg.version,
+            generatedAt: new Date().toISOString(),
+            base: def.base || [],
+            packs: def.packs || {},
+        }, null, 2));
+        log.step(`Skill library populated: ${dirs.size} skills at ${dest}`);
+    }, 'The library is incomplete; pack installs from it fall back to the package copy.');
+}
+
+// A stored pack selection removes installed copies of skills outside base+packs from the harness
+// dirs. Manifest-aware (lib/retired-skills.js): only dirs the install manifest lists are touched,
+// edited files are backed up first, and the exact copies the store wrote (installs.jsonl targets)
+// are left alone. A user skill is never in the manifest, so it can never be removed here.
+function applyPackSelection(manifest) {
+    if (!Array.isArray(packSelection)) return;
+    const names = skillPacks.excludedByPacks(srcDir, effectivePackSelection());
+    if (!names.length) return;
+    try {
+        pruneRetiredSkills({
+            home: homeDir,
+            manifest,
+            roots: globalSkillDestRoots(),
+            backupDir: path.join(homeDir, '.agents', 'backups', `pack-deselect-${timestamp}`),
+            log,
+            names,
+            what: 'deselected-pack',
+            keep: storeProtectedDirs(homeDir),
+        });
+    } catch (e) { log.warn(`Pack deselection prune skipped: ${e.message}`); }
 }
 
 function flushSessionManifest() {
@@ -4355,7 +4421,10 @@ function resolveTargetPaths(platformValue, customPaths) {
 function getTierExcludeSkills(tier) {
     // Matched against directory entry names by copyDirRecursiveSync, so these
     // carry no extension: the MCP guides became <name>/SKILL.md directories.
-    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...(tier === '2' ? [
+    // A stored pack selection excludes every shipped skill outside base+packs; the Pro MEDIA
+    // tier and installed modules imply their packs on top (additive). No stored selection
+    // excludes nothing (existing users keep all skills).
+    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, effectivePackSelection()), ...(tier === '2' ? [
         'bdb-adobe-suite-mcp',
         'bdb-after-effects-mcp',
         'bdb-blender-mcp',
@@ -7282,7 +7351,20 @@ function parseModuleSelection(argv = process.argv, env = process.env) {
         .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
 }
 
+// Pack checkboxes of the setup module picker: every pack that is not brought by a tier or a
+// module on its own (live-show rides with Pro MEDIA, creator/hardware with their modules,
+// stacks rides along with app-dev). Selecting one implies the pack additively.
+const PACK_CHECKBOX_LABELS = {
+    'web-design': 'Web Design & Frontend',
+    'app-dev': 'App Development & Deploy (adds the language stacks pack)',
+    'agents-automation': 'Agents & Automation',
+    'business': 'Agency & Business',
+    'harness-engineering': 'Harness Engineering',
+};
+const PACK_CHECKBOX_IDS = Object.keys(PACK_CHECKBOX_LABELS);
+
 async function promptOptionalModules(installedModules, requested = parseModuleSelection(), modulesOverride = null) {
+    const packDefs = (() => { try { return skillPacks.loadPacks(srcDir).packs || {}; } catch { return {}; } })();
     const allModules = (modulesOverride || [
         { id: 'synapse', name: 'BDB Synapse (3D Codebase Visualizer)', fn: installSynapse },
         { id: 'memb', name: 'memB Vector Engine (Local Semantic Memory)', fn: () => installMemB(true) },
@@ -7290,7 +7372,7 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
         // Offered only where it can actually run -- see aoSupportedHere(). The
         // predecessor, @hybridlabor-api/bdb-os-agent-workspace, must never come
         // back: its repository is archived and its last release predates the
-        // archiving, so it hands out the build with the CDC loop defect.
+        // archiving, so it hands out the build with the CDC defect.
         ...(aoSupportedHere()
             ? [{ id: 'ao', name: 'AO Agent Orchestrator (Session telemetry & WebUI)', fn: installOSAgentWorkspace }]
             : []),
@@ -7299,10 +7381,18 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
         { id: 'rustauri', name: 'Rust + Tauri (tauri-pilot + rust-pro skills, optional)', fn: installRustauri },
         { id: 'styleseed', name: 'StyleSeed (Toss design-language UI/UX skills, optional)', fn: installStyleseed },
         { id: 'codebase-memory', name: 'Codebase Memory MCP (Code Knowledge Graph, Local SQLite)', fn: installCodebaseMemory },
-        { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller }
+        { id: 'installer', name: 'BDB Dev Tool Installer (Interactive Hub & CLI Launcher)', fn: installDevToolInstaller },
+        // Skill-pack checkboxes: a no-op module whose only effect is the implied pack.
+        ...PACK_CHECKBOX_IDS.filter((id) => skillPacks.knownPack(id, srcDir)).map((id) => ({
+            id,
+            name: `${PACK_CHECKBOX_LABELS[id] || id} (skill pack)`,
+            hint: packDefs[id] && packDefs[id].description,
+            fn: () => true,
+        })),
     ]).filter((m) => !installExcluded.has(m.id));
 
     const uninstalled = allModules.filter(m => !installedModules.includes(m.id));
+    const implyPacks = (ids) => { for (const id of ids) addImpliedPack(id); };
     if (isAutoYes) {
         if (!requested.length) return [];
         const wantAll = requested.includes('all');
@@ -7310,17 +7400,21 @@ async function promptOptionalModules(installedModules, requested = parseModuleSe
             if (id !== 'all' && !allModules.some((m) => m.id === id)) log.warn(`Unknown module "${id}" in --modules ignored (known: ${allModules.map((m) => m.id).join(', ')}).`);
         }
         const auto = uninstalled.filter((m) => wantAll || requested.includes(m.id)).map((m) => m.id);
-        return (await runModuleInstalls(allModules, auto, installedModules)).installed;
+        const res = await runModuleInstalls(allModules, auto, installedModules);
+        implyPacks(res.installed);
+        return res.installed;
     }
     if (uninstalled.length === 0) return [];
 
     const chosen = pick(await multiselect({
-        message: 'New / optional BDB OS modules available - select what to install:',
-        options: uninstalled.map(m => ({ value: m.id, label: m.name })),
+        message: 'New / optional BDB OS modules and skill packs - select what to install:',
+        options: uninstalled.map(m => ({ value: m.id, label: m.name, hint: m.hint })),
         required: false
     }));
 
-    return (await runModuleInstalls(allModules, chosen, installedModules)).installed;
+    const res = await runModuleInstalls(allModules, chosen, installedModules);
+    implyPacks(res.installed);
+    return res.installed;
 }
 
 // Module installers return false (or throw) on failure; undefined/true mean success.
@@ -8247,6 +8341,7 @@ function quickUpdateKernel(installState) {
     const excludeSkills = getTierExcludeSkills('1');
     const paths = resolveTargetPaths(defaultPlatformValue(), null);
 
+    populateSkillLibrary();
     fs.mkdirSync(paths.targetSkillDir, { recursive: true });
     retireObsoleteLegacyDir(paths.targetLegacyDir);
     fs.mkdirSync(paths.targetWorkspaceDir, { recursive: true });
@@ -8287,6 +8382,7 @@ function quickUpdateKernel(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
+    applyPackSelection(_sessionManifest);
     s.stop('Skills refreshed');
     // Every AOS bin gets its ~/.local/bin launcher, on update too: skills above refreshed the files the
     // launchers point at (plan-canvas, archify, trail), and an install that predates a new bin never
@@ -8467,6 +8563,11 @@ function applyInstallOptions(home = homeDir) {
     activeProfile = r.profile;
     installExcluded = r.excluded;
     skillSet = r.skillSet;
+    packSelection = r.packs;
+    runImpliedPacks.length = 0;
+    // An unattended --modules= request that names a pack (or the creator/hardware modules)
+    // brings that pack's skills in the same run: the module picker runs after the skill copy.
+    for (const id of parseModuleSelection()) addImpliedPack(id);
     memoryOn = !installExcluded.has('memb');
     gateOn = r.gateOn;
     gateHoldKeys.clear(); // a fresh resolution restarts the decision; an explicit Settings choice re-applies everywhere
@@ -8477,16 +8578,34 @@ function applyInstallOptions(home = homeDir) {
 // --dry-run, status or uninstall). A flag on the command line is saved; AOS_PROFILE is not.
 function persistInstallOptions(home = homeDir) {
     const o = INSTALL_OPTS;
-    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length || o.skillSetFromFlag)) return false;
+    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length || o.skillSetFromFlag || o.packsFromFlag)) return false;
     try {
         const st = v5Profile.readSettings(home);
         const next = { ...st, disabled: [...new Set([...st.disabled, ...o.without])] };
         if (o.profileFromFlag) { next.profile = o.profile; next.noHooks = o.noHooks; } else if (o.noHooks) next.noHooks = true;
         if (o.skillSetFromFlag) next.skillSet = o.skillSet;
+        if (o.packsFromFlag) next.packs = skillPacks.normalizeSelection(o.packs, srcDir) || [];
         v5Profile.writeSettings(home, next);
         return true;
     } catch (e) {
         log.warn(`Could not save the install profile: ${e.message}`);
+        return false;
+    }
+}
+
+// The wizard's choices (Pro MEDIA tier, Creator/Hardware modules, pack checkboxes) become the stored pack
+// selection on a fresh install or a setup re-run. `aos update` never calls this: no stored selection = keep everything.
+function persistWizardPacks(home = homeDir) {
+    if (DRY_RUN || isAutoYes || INSTALL_OPTS.packsFromFlag) return false;
+    try {
+        const meta = readJsonFile(path.join(home, '.agents', '.bdb-manifest.json'));
+        const sel = skillPacks.normalizeSelection([...(packSelection || []), ...runImpliedPacks, ...skillPacks.impliedPacks(meta, srcDir)], srcDir) || [];
+        v5Profile.writeSettings(home, { ...v5Profile.readSettings(home), packs: sel });
+        packSelection = sel;
+        log.step(`Skill packs saved: base${sel.length ? ` + ${sel.join(', ')}` : ' only'} (change with aos store install/remove --pack).`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not save the skill pack selection: ${e.message}`);
         return false;
     }
 }
@@ -8978,6 +9097,7 @@ Options:
             if (specNow.length === 0 && ctx.selectedPlatforms.includes('0')) specNow.push(defaultPlatformValue());
             const lines = [
                 `Tier:          ${ctx.tier === '1' ? 'Pro MEDIA' : 'Basic'}`,
+                `Skill Packs:   ${Array.isArray(packSelection) ? `base + ${[...new Set([...packSelection, ...(ctx.tier === '1' ? ['live-show'] : [])])].join(', ')}` : 'all skills (no pack selection stored)'}`,
                 `Targets:       ${specNow.map(p => platformNames[p] || p).join(', ')}${ctx.selectedPlatforms.includes('0') ? ' + Universal Sync' : ''}`,
                 `Mode:          ${ctx.mode}`,
                 `Memory:        ${memoryOn ? 'unified (memB, deja, OpenWiki)' : 'off'}`,
@@ -9036,6 +9156,8 @@ Options:
         outro('Project harness installation complete.');
         return;
     }
+    // Pro MEDIA brings the live-show pack (additive; base pack is always in).
+    if (tier === '1') addImpliedPack('live-show');
     persistInstallOptions();
     if (INSTALL_OPTS.router && !routerChoice) {
         const detected = detectRouterTargets().filter((t) => t.detected).map((t) => t.key);
@@ -9086,11 +9208,14 @@ Options:
     const s = spinner();
     s.start(`Installing optimized skills${tier === '2' ? ' [Basic Tier]' : ''} to ${targets.length} target(s)...`);
 
+    populateSkillLibrary();
+
     installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBase });
 
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
+    applyPackSelection(_sessionManifest);
     s.stop('Skills installed.');
     runAgyPluginStep();
 
@@ -9137,6 +9262,7 @@ Options:
     const alreadyHandled = justInstalled.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);
     saveManifest({ tier, isUniversal: wantsUniversal, installedModules: installedModulesForPrompt });
+    if (persistWizardPacks()) applyPackSelection(_sessionManifest);
 
     if (wantsUniversal) {
         await universalHarnessSync(primaryTarget.mcpConfigPath, installedModulesForPrompt);
@@ -9265,6 +9391,12 @@ module.exports = {
     defaultPlatformValue,
     harnessSummaryLine,
     applyInstallOptions,
+    getTierExcludeSkills,
+    currentPackSelection: () => packSelection,
+    effectivePackSelection,
+    addImpliedPack,
+    populateSkillLibrary,
+    applyPackSelection,
     installHarnessHookCopies,
     copyHookScripts,
     installA2aLibCopies,

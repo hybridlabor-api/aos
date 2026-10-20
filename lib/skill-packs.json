@@ -1,0 +1,403 @@
+{
+  "base": [
+    "bdb-aos",
+    "ask-tim",
+    "bdbrainstorm",
+    "grill-me",
+    "plan-canvas",
+    "plan-arbiter",
+    "writing-plans",
+    "prototype",
+    "archify",
+    "startcycle",
+    "startcycle-graph",
+    "startcycle-graph-user",
+    "teamwork-preview",
+    "agent-pipeline",
+    "orchestrator-chain",
+    "ao-orchestrator",
+    "agenttrail",
+    "master-session",
+    "loop-templates",
+    "stay-within-limits",
+    "factory",
+    "clear-context",
+    "quick-recap",
+    "read-the-damn-docs",
+    "verification-before-completion",
+    "aos-setup",
+    "aos-store",
+    "aos-project-init",
+    "aos-a2a",
+    "aos-gateway",
+    "gogate",
+    "mcsc",
+    "bdb-updater",
+    "skill-create",
+    "memb-skill",
+    "memb-ingest",
+    "deja-memory",
+    "codebase-memory",
+    "openwiki-skill",
+    "godmode-engineering",
+    "godmode-shipping",
+    "godmode-ui-ux",
+    "godmode-eventtech",
+    "godmode-media-creation",
+    "godmode-3d-creation",
+    "godmode-hardware-pcb",
+    "bdbmediastorm",
+    "bdb-eventagency-skill",
+    "pb-bug-fix",
+    "pb-ci-fix",
+    "pb-clip-from-moodboard",
+    "pb-content-studio",
+    "pb-crew-call-sheet",
+    "pb-deploy-saas",
+    "pb-docs-site",
+    "pb-event-tracker",
+    "pb-focus-chunks",
+    "pb-handover",
+    "pb-harness-work",
+    "pb-health-weekly",
+    "pb-idea-to-launch",
+    "pb-image-to-3d",
+    "pb-inbox-zero",
+    "pb-invoice-check",
+    "pb-landing-page",
+    "pb-launch-video",
+    "pb-machine-setup",
+    "pb-master",
+    "pb-meeting-actions",
+    "pb-newsletter",
+    "pb-offer",
+    "pb-open-source",
+    "pb-pcb-to-case",
+    "pb-project-new",
+    "pb-redesign-app",
+    "pb-release-aos",
+    "pb-security-sweep",
+    "pb-ship",
+    "pb-show-build",
+    "pb-social-pack",
+    "pb-todo",
+    "pb-week-plan",
+    "pb-worktrees-land"
+  ],
+  "packs": {
+    "live-show": {
+      "description": "Event & Live Tech: grandMA3, Resolume, TouchDesigner, Unreal, spatial design",
+      "skills": [
+        "bdb-grandma3-mcp",
+        "bdb-resolume-mcp",
+        "bdb-touchdesigner-mcp",
+        "bdb-unreal-mcp",
+        "bdb-vectorworks-mcp",
+        "bdb-rhino-mcp",
+        "mcp-manage",
+        "bdb-computer-use-mcp"
+      ]
+    },
+    "creator": {
+      "description": "Motion, Content, 3D & Video: After Effects, DaVinci, Blender, Spline, Three.js",
+      "skills": [
+        "remotion",
+        "threejs-skills",
+        "spline-3d-integration",
+        "bdb-after-effects-mcp",
+        "bdb-adobe-suite-mcp",
+        "bdb-davinci-mcp",
+        "bdb-blender-mcp",
+        "brag",
+        "design-spells",
+        "live-preview-canvas"
+      ]
+    },
+    "web-design": {
+      "description": "Design & Frontend: React, Next.js, TailwindCSS, UI components, accessibility",
+      "skills": [
+        "bdbdesignpro",
+        "bdb-ui-library",
+        "editable-design",
+        "bdb-visual-edit",
+        "senior-frontend",
+        "shadcn",
+        "tailwind-patterns",
+        "react-best-practices",
+        "nextjs-best-practices",
+        "landing-page-generator",
+        "web-artifacts-builder",
+        "web-performance-optimization",
+        "wcag-audit-patterns",
+        "ux-persuasion-engineer",
+        "seo",
+        "seo-audit",
+        "schema-markup",
+        "geo-fundamentals",
+        "programmatic-seo",
+        "copywriting"
+      ]
+    },
+    "app-dev": {
+      "description": "Backend, Architecture & Deployment: testing, debugging, CI/CD, security, shipping",
+      "skills": [
+        "software-architecture",
+        "api-design-principles",
+        "test-driven-development",
+        "systematic-debugging",
+        "clean-code",
+        "concise-planning",
+        "planning-with-files",
+        "subagent-driven-development",
+        "dispatching-parallel-agents",
+        "using-git-worktrees",
+        "finishing-a-development-branch",
+        "architect-review",
+        "bdb-security-audit",
+        "bdbresilience",
+        "bdb-shipping-skill",
+        "webapp-testing",
+        "playwright-skill",
+        "github",
+        "github-repo",
+        "ci-pipeline",
+        "github-actions-generator",
+        "github-actions-validator",
+        "requesting-code-review",
+        "two-axis-code-review",
+        "simplify-code",
+        "pr-recap",
+        "typescript-pro",
+        "modern-javascript-patterns",
+        "docker-expert",
+        "bdb-deploy",
+        "golive",
+        "vercel-deployment",
+        "cloudflare-workers-expert"
+      ]
+    },
+    "stacks": {
+      "description": "Language & Framework Stack Specifics (choose: db, python, go, react, repo, shell)",
+      "groups": {
+        "db": [
+          "prisma-expert",
+          "drizzle-orm-expert",
+          "postgres-best-practices",
+          "neon-postgres",
+          "database-design",
+          "vector-database-engineer"
+        ],
+        "python": [
+          "python-pro"
+        ],
+        "go": [
+          "golang-pro",
+          "go-concurrency-patterns"
+        ],
+        "react": [
+          "tanstack-query-expert",
+          "zustand-store-ts"
+        ],
+        "repo": [
+          "turborepo-caching",
+          "monorepo-management",
+          "makefile-pro",
+          "microservices-patterns"
+        ],
+        "shell": [
+          "bash-linux",
+          "posix-shell-pro",
+          "tmux"
+        ]
+      }
+    },
+    "agents-automation": {
+      "description": "Custom Agents, Workflows & LLM Apps: RAG, n8n, prompt engineering, multi-agent",
+      "skills": [
+        "agent-tool-builder",
+        "agentic-harness-patterns",
+        "llm-app-patterns",
+        "llm-structured-output",
+        "local-llm-expert",
+        "rag-implementation",
+        "prompt-engineer",
+        "crewai",
+        "vercel-ai-sdk-expert",
+        "gemini-api-integration",
+        "n8n-code-javascript",
+        "n8n-code-python",
+        "n8n-expression-syntax",
+        "n8n-mcp-tools-expert",
+        "n8n-workflow-patterns",
+        "agent-manager-skill",
+        "agent-memory-mcp",
+        "subagent-setup"
+      ]
+    },
+    "harness-engineering": {
+      "description": "Harness Configuration & AOS Engineering: skills, memory, state, documentation",
+      "skills": [
+        "instinct-export",
+        "instinct-import",
+        "instinct-status",
+        "token-saver-config",
+        "synapse-integration-skill",
+        "design-control-loop",
+        "reverse-engineer-anything",
+        "bdbhtmlmanueldocs",
+        "documentation",
+        "readme"
+      ]
+    },
+    "hardware": {
+      "description": "Hardware & PCB: KiCad, schematics, layouts, DRC, manufacturing (external skills)",
+      "skills": [
+        "code-first-hardware-design",
+        "pcb-constraint-definition",
+        "pcb-layout-routing-automation",
+        "pcb-validation-dfm-signoff",
+        "schematic-datasheet-analysis",
+        "schematic-reverse-engineering"
+      ],
+      "external": true
+    },
+    "business": {
+      "description": "Agentur & Business: project management, research, automation, APIs, automation",
+      "skills": [
+        "product-manager-toolkit",
+        "domain-modeling",
+        "to-spec",
+        "triage",
+        "wayfinder",
+        "executing-plans",
+        "grill-with-docs",
+        "deep-research",
+        "obsidian-markdown",
+        "openapi-spec-generation",
+        "browser-automation",
+        "apify-lead-generation",
+        "apify-ultimate-scraper",
+        "firecrawl",
+        "firecrawl-sdk"
+      ]
+    }
+  },
+  "mergeCandidates": [
+    {
+      "old": "brainstorming",
+      "new": "bdbrainstorm"
+    },
+    {
+      "old": "grilling",
+      "new": "grill-me"
+    },
+    {
+      "old": "debugger",
+      "new": "systematic-debugging"
+    },
+    {
+      "old": "diagnosing-bugs",
+      "new": "systematic-debugging"
+    },
+    {
+      "old": "tdd",
+      "new": "test-driven-development"
+    },
+    {
+      "old": "ui-ux-pro-max",
+      "new": "godmode-ui-ux"
+    },
+    {
+      "old": "frontend-dev-guidelines",
+      "new": "senior-frontend"
+    },
+    {
+      "old": "api-patterns",
+      "new": "api-design-principles"
+    },
+    {
+      "old": "python-patterns",
+      "new": "python-pro"
+    },
+    {
+      "old": "python-performance-optimization",
+      "new": "python-pro"
+    },
+    {
+      "old": "react-patterns",
+      "new": "react-best-practices"
+    },
+    {
+      "old": "react-component-performance",
+      "new": "react-best-practices"
+    },
+    {
+      "old": "nextjs-app-router-patterns",
+      "new": "nextjs-best-practices"
+    },
+    {
+      "old": "postgresql",
+      "new": "postgres-best-practices"
+    },
+    {
+      "old": "using-neon",
+      "new": "neon-postgres"
+    },
+    {
+      "old": "seo-technical",
+      "new": "seo"
+    },
+    {
+      "old": "rag-engineer",
+      "new": "rag-implementation"
+    },
+    {
+      "old": "llm-prompt-optimizer",
+      "new": "prompt-engineer"
+    },
+    {
+      "old": "prompt-engineering-patterns",
+      "new": "prompt-engineer"
+    },
+    {
+      "old": "ai-agent-development",
+      "new": "agent-tool-builder"
+    },
+    {
+      "old": "ai-product",
+      "new": "llm-app-patterns"
+    },
+    {
+      "old": "llm-application-dev-ai-assistant",
+      "new": "llm-app-patterns"
+    },
+    {
+      "old": "gemini-api-dev",
+      "new": "gemini-api-integration"
+    },
+    {
+      "old": "github-actions-templates",
+      "new": "github-actions-generator"
+    },
+    {
+      "old": "github-workflow-automation",
+      "new": "github-actions-generator"
+    },
+    {
+      "old": "go-playwright",
+      "new": "playwright-skill"
+    },
+    {
+      "old": "os-scripting",
+      "new": "bash-linux"
+    },
+    {
+      "old": "web-scraper",
+      "new": "apify-ultimate-scraper"
+    },
+    {
+      "old": "linear-claude-skill",
+      "new": "delete"
+    }
+  ]
+}

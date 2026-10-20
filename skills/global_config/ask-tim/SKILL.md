@@ -354,3 +354,75 @@ When do you use a `godmode-*` skill versus a narrower skill?
 If none of the intents above match your task, look for the closest general library skill in the catalog. 
 
 **Remember:** This file helps discover skills, but **`CLAUDE.md`** is the canonical source of truth for the primary Skill Routing by Domain table and the exact rules for Agent Counts (subagents vs teams vs solo). Do not rely on `ask-tim` to dictate pipeline definitions—always defer to `CLAUDE.md`.
+
+
+---
+
+## Available Packs & Roles Catalogue
+
+<!-- aos:pack-index:start -->
+## Available Packs
+
+### live-show
+
+Event & Live Tech: grandMA3, Resolume, TouchDesigner, Unreal, spatial design
+
+**Install:** `aos store install --pack live-show`
+
+### creator
+
+Motion, Content, 3D & Video: After Effects, DaVinci, Blender, Spline, Three.js
+
+**Install:** `aos store install --pack creator`
+
+### web-design
+
+Design & Frontend: React, Next.js, TailwindCSS, UI components, accessibility
+
+**Install:** `aos store install --pack web-design`
+
+### app-dev
+
+Backend, Architecture & Deployment: testing, debugging, CI/CD, security, shipping
+
+**Install:** `aos store install --pack app-dev`
+
+### stacks
+
+Language & Framework Stack Specifics (choose: db, python, go, react, repo, shell)
+
+**Install:** `aos store install --pack stacks`
+
+### agents-automation
+
+Custom Agents, Workflows & LLM Apps: RAG, n8n, prompt engineering, multi-agent
+
+**Install:** `aos store install --pack agents-automation`
+
+### harness-engineering
+
+Harness Configuration & AOS Engineering: skills, memory, state, documentation
+
+**Install:** `aos store install --pack harness-engineering`
+
+### hardware
+
+Hardware & PCB: KiCad, schematics, layouts, DRC, manufacturing (external skills)
+
+**Install:** `aos store install --pack hardware`
+
+### business
+
+Agentur & Business: project management, research, automation, APIs, automation
+
+**Install:** `aos store install --pack business`
+
+## Roles (Preset Pack Combinations)
+
+- **Eventagentur / Veranstalter**: business, creator
+- **Event- und Live-Technik**: live-show, hardware, creator
+- **Motion- und Content-Design**: creator, web-design
+- **Web- und App-Entwicklung**: web-design, app-dev, stacks
+- **Agents und Automationen**: agents-automation, app-dev
+- **Harness-Engineering**: all packs
+<!-- aos:pack-index:end --><!-- aos:pack-index:end -->

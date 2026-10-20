@@ -250,3 +250,28 @@ Channel attribution is **inherently imperfect** — most attendees meet several 
 - [ ] Invoice triggers captured within 72 hours of strike.
 - [ ] Attribution figures are presented with their acknowledged uncertainty.
 - [ ] No upstream script, Python file, or Composio tool dependency was added.
+
+
+---
+
+## Business Pack Skills
+
+<!-- aos:pack-index:start -->
+- **product-manager-toolkit** — "Essential tools and frameworks for modern product management, from discovery to delivery."
+- **domain-modeling** — Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR.
+- **to-spec** — "Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed."
+- **triage** — Move issues and external PRs through a state machine of triage roles, categorise, verify, and write agent-ready briefs.
+- **wayfinder** — Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear.
+- **executing-plans** — "Use when you have a written implementation plan to execute in a separate session with review checkpoints"
+- **grill-with-docs** — A relentless interview to sharpen a plan or design, which also builds the project's domain model — glossary and ADRs — as it goes. Use in a working directory whenever an idea needs sharpening.
+- **deep-research** — "Run autonomous research tasks that plan, search, read, and synthesize information into comprehensive reports."
+- **obsidian-markdown** — Create and edit Obsidian Flavored Markdown with wikilinks, embeds, callouts, properties, and other Obsidian-specific syntax. Use when working with .md files in Obsidian, or when the user mentions wikilinks, callouts, frontmatter, tags, embeds, or Obsidian notes.
+- **openapi-spec-generation** — "Generate and maintain OpenAPI 3.1 specifications from code, design-first specs, and validation patterns. Use when creating API documentation, generating SDKs, or ensuring API contract compliance."
+- **browser-automation** — >-
+- **apify-lead-generation** — "Scrape leads from multiple platforms using Apify Actors."
+- **apify-ultimate-scraper** — "AI-driven data extraction from 55+ Actors across all major platforms. This skill automatically selects the best Actor for your task."
+- **firecrawl** — firecrawl
+- **firecrawl-sdk** — firecrawl-sdk
+
+**Install:** `aos store install --pack business`
+<!-- aos:pack-index:end --><!-- aos:pack-index:end -->
