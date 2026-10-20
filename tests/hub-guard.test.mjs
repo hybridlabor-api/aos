@@ -148,7 +148,7 @@ test('redact: mid-line assignments, argv pairs, userinfo, JWTs, Authorization he
 });
 
 test('guard loads from an installed (flat skills) layout', async () => {
-  const { mkdtempSync, mkdirSync, cpSync } = await import('node:fs');
+  const { mkdtempSync, mkdirSync, cpSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { pathToFileURL } = await import('node:url');
@@ -157,6 +157,8 @@ test('guard loads from an installed (flat skills) layout', async () => {
   mkdirSync(join(root, 'skills', 'plan-canvas', 'scripts', 'lib'), { recursive: true });
   cpSync(new URL('../lib/hub/guard.mjs', import.meta.url), join(root, 'lib', 'hub', 'guard.mjs'));
   cpSync(new URL('../skills/global_config/plan-canvas/scripts/lib/loopback-guard.js', import.meta.url), join(root, 'skills', 'plan-canvas', 'scripts', 'lib', 'loopback-guard.js'));
-  const g = await import(pathToFileURL(join(root, 'lib', 'hub', 'guard.mjs')).href);
-  assert.equal(typeof g.embedAncestors, 'function');
+  try {
+    const g = await import(pathToFileURL(join(root, 'lib', 'hub', 'guard.mjs')).href);
+    assert.equal(typeof g.embedAncestors, 'function');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
