@@ -26,6 +26,16 @@ export const lazyText = (s) => !s.running ? 'not running' : s.lazyLoading === nu
 export const asyncText = (s) => !s.running ? 'not running'
     : `${s.asyncLoading ? 'on (--enable-async-loading)' : 'off'}${s.asyncRestartPending ? `; restart pending (gateway.json says ${s.asyncLoading ? 'off' : 'on'}; run aos-gateway restart)` : ''}`;
 
+// First non-flag argument, skipping the value of every 1mcp option that takes one (`--args '{"q":"x"}'` must not be the target).
+const VALUE_FLAGS = new Set(['--args', '--format', '--limit', '--cursor', '--preset', '-p', '--tag-filter', '-f', '--tags', '--context', '--url', '-u']);
+export function firstPositional(argv) {
+    for (let i = 0; i < argv.length; i++) {
+        if (VALUE_FLAGS.has(argv[i])) { i++; continue; }
+        if (!argv[i].startsWith('-')) return argv[i];
+    }
+    return undefined;
+}
+
 export const LABEL = 'com.bdb.aos.gateway';
 export const WIN_TASK = 'AOS MCP Gateway';
 
@@ -314,7 +324,7 @@ async function main() {
         // unused here; the AOS token guards the forwarder on 7790 and is never read or printed by this command.
         const dir = gatewayDir(os.homedir());
         if (!readPid(dir)) { console.error(`aos-gateway ${cmd}: the gateway is not running (aos-gateway start)`); process.exit(1); }
-        const target = rest.find((a) => !a.startsWith('-'));
+        const target = firstPositional(rest);
         if (cmd === 'run' && !(target && /^[^/]+\/[^/]+$/.test(target))) { console.error('usage: aos-gateway run <server>/<tool> --args \'<json>\''); process.exit(2); }
         const ai = rest.indexOf('--args');
         if (ai >= 0) try { JSON.parse(rest[ai + 1]); } catch { console.error('aos-gateway run: --args must be a JSON object string'); process.exit(2); }

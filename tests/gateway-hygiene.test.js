@@ -171,3 +171,11 @@ test('readAdopted never serves per-session names even when adopted.json lists th
     fs.writeFileSync(cfg.adoptedPath(home), JSON.stringify({ servers: { openwiki: e, memb: e, 'aos-a2a': e, user_own: e } }));
     assert.deepEqual(Object.keys(cfg.readAdopted(home)), ['user_own']);
 });
+
+test('CLI mode target detection skips option values such as the --args JSON', async () => {
+    const { firstPositional } = await import(require('url').pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+    assert.equal(firstPositional(['--args', '{"q":"x"}', 'github/search']), 'github/search');
+    assert.equal(firstPositional(['github/search', '--args', '{}']), 'github/search');
+    assert.equal(firstPositional(['--format', 'json']), undefined);
+    assert.equal(firstPositional(['-p', 'worker', 'github']), 'github');
+});
