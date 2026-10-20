@@ -44,7 +44,7 @@ test('quoteCmdArg: spaces, ampersands, quotes, trailing backslash, percent', () 
   assert.equal(cs.quoteCmdArg('a&b', false), '^"a^&b^"');
   assert.equal(cs.quoteCmdArg('say "hi"', false), '^"say^ \\^"hi\\^"^"');
   assert.equal(cs.quoteCmdArg('dir\\', false), '^"dir\\\\^"');
-  assert.equal(cs.quoteCmdArg('%TEMP%', false), '^"^%TEMP^%^"');
+  assert.throws(() => cs.buildInvocation('C:\\bin\\x.cmd', ['%TEMP%'], { platform: 'win32', env: {} }), /contains %/);
   // shims re-parse %*: carets are doubled
   assert.equal(cs.quoteCmdArg('a&b'), '^^^"a^^^&b^^^"');
 });
