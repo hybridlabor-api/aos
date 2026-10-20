@@ -46,6 +46,23 @@ test('a fully recorded, unchanged copy is removed whole and the empty mcps dir g
     assert.ok(!fs.existsSync(path.join(home, '.config', 'Claude', 'mcps')));
 });
 
+test('nested __pycache__ trees inside a recorded copy go with it; outside a record they stay', async () => {
+    const { removeGeneratedMcpTrees } = await load();
+    const home = tmp();
+    const root = path.join(home, 'Library', 'Application Support', 'Claude', 'mcps');
+    const dir = path.join(root, 'memb-mcp');
+    touch(dir, 'run.py');
+    touch(dir, 'memb', 'client', 'main.py');
+    marker.writeMarker(dir, null, '1');
+    touch(dir, 'memb', 'client', '__pycache__', 'main.cpython-311.pyc');
+    touch(dir, 'memb', '__pycache__', 'x.pyc');
+    touch(root, 'tdmcp', 'sub', '__pycache__', 'keep.pyc');
+    const r = removeGeneratedMcpTrees({ home, names: ['memb-mcp', 'tdmcp'] });
+    assert.ok(!fs.existsSync(dir), 'copy removed whole');
+    assert.deepEqual(r.kept, [path.join(root, 'tdmcp')]);
+    assert.ok(fs.existsSync(path.join(root, 'tdmcp', 'sub', '__pycache__', 'keep.pyc')));
+});
+
 test('a legacy copy without a record is kept with a hint', async () => {
     const { removeGeneratedMcpTrees } = await load();
     const home = tmp();

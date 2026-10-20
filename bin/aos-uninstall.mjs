@@ -330,11 +330,13 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
     }
     const foreign = [];
     const doomed = [];
+    const nested = []; // __pycache__ at any depth: Python writes it at runtime, it is never in the record
     const walk = (cur, relDir) => {
       for (const e of readdirSync(cur, { withFileTypes: true })) {
         const rel = relDir ? `${relDir}/${e.name}` : e.name;
         const full = path.join(cur, e.name);
         if (!relDir && (MCP_GENERATED.includes(e.name) || e.name === mcpMarker.MARKER)) continue;
+        if (relDir && e.isDirectory() && e.name === '__pycache__') { nested.push(full); continue; }
         if (e.isDirectory()) walk(full, rel);
         else if (rec.files[rel] && mcpMarker.sha(full) === rec.files[rel]) doomed.push(full);
         else foreign.push(full);
@@ -342,12 +344,12 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
     };
     walk(dir, '');
     for (const f of doomed) if (!dry) rmSync(f, { force: true });
-    for (const t of trees) if (!dry) rmSync(t, { recursive: true, force: true });
+    for (const t of [...trees, ...nested]) if (!dry) rmSync(t, { recursive: true, force: true });
     if (!foreign.length) {
       removed.push(dir);
       if (!dry) { rmSync(dir, { recursive: true, force: true }); try { rmdirSync(root); } catch { /* other servers left */ } }
     } else {
-      removed.push(...doomed, ...trees);
+      removed.push(...doomed, ...trees, ...nested);
       kept.push(dir);
       hints.push(`${tilde(dir)}: ${foreign.length} changed or unrecorded file(s) kept (${foreign.slice(0, 3).map((f) => path.basename(f)).join(', ')}${foreign.length > 3 ? ', ...' : ''})`);
       if (!dry) { rmSync(path.join(dir, mcpMarker.MARKER), { force: true }); pruneEmpty(dir); }
