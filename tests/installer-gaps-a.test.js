@@ -15,3 +15,14 @@ test('G2: stored Basic tier survives update', () => {
     assert.deepStrictEqual(storedTierOpts({ manifest: { tier: '2', isUniversal: false } }), { tier: '2', isUniversal: false });
     assert.deepStrictEqual(storedTierOpts({ manifest: null }), { tier: '1', isUniversal: true });
 });
+
+test('G3: pack agents follow the stored pack selection', () => {
+    const { loadPackAgents } = require('../installer.js');
+    const dir = path.join(root, '.agents', 'packs');
+    const names = (sel) => loadPackAgents(dir, undefined, sel).map(a => a.name.toLowerCase().replace(/_/g, '-'));
+    assert.ok(names(null).includes('pcb-design-assistant'));
+    assert.deepStrictEqual(names(['hardware']), ['pcb-design-assistant']);
+    assert.ok(names(['live-show']).includes('event-manager-assistant'));
+    assert.ok(!names(['live-show']).includes('pcb-design-assistant'));
+    assert.deepStrictEqual(names([]), []);
+});

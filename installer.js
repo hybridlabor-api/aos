@@ -5231,16 +5231,19 @@ function parseAgentsMd(content, commonSkills = loadCommonSkills()) {
     return agents;
 }
 
-// Load pack-specific agents from .agents/packs/<pack>/AGENTS.md.
-// Default behavior: load all available packs (for backward compatibility).
-// Future: respect pack selection from user config.
-function loadPackAgents(packDir = path.join(currentDir, '.agents', 'packs'), commonSkills = loadCommonSkills()) {
+// Agent dir under .agents/packs -> the skill packs (lib/skill-packs.json) that bring it in.
+const PACK_AGENT_DIRS = { eventtech: ['live-show'], media: ['creator', 'live-show'], hardware: ['hardware'] };
+
+// Load pack-specific agents from the shipped .agents/packs/<dir>/AGENTS.md. A stored pack selection
+// gates them like skills; no stored selection (null) keeps every pack.
+function loadPackAgents(packDir = path.join(srcDir, '.agents', 'packs'), commonSkills = loadCommonSkills(), selection = effectivePackSelection()) {
     if (!fs.existsSync(packDir)) return [];
 
     const packAgents = [];
     const packs = fs.readdirSync(packDir).filter(f => {
-        const stat = fs.statSync(path.join(packDir, f));
-        return stat.isDirectory();
+        if (!fs.statSync(path.join(packDir, f)).isDirectory()) return false;
+        if (!Array.isArray(selection)) return true;
+        return (PACK_AGENT_DIRS[f] || [f]).some(p => selection.includes(p));
     });
 
     for (const pack of packs) {
