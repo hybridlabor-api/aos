@@ -8,11 +8,11 @@ import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 
-import { validateEvent, fromLegacyHook, MAX_BODY_BYTES } from '../lib/events.mjs'
+import { validateEvent, fromLegacyHook } from '../lib/events.mjs'
 import { SessionTable, readA2aRegistry } from '../lib/sessions.mjs'
 import { buildModel, ttlMemo } from '../lib/hub-model.mjs'
 import { panel as gatePanel, loadGate } from '../lib/gatepanel.mjs'
-import { csrfToken, embedAncestors, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, securityHeaders, MAX_BODY_BYTES as GATE_BODY_BYTES } from '../lib/httpguard.mjs'
+import { csrfToken, embedAncestors, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk, securityHeaders, readJson } from '../lib/httpguard.mjs'
 import { injectEmbed } from '../../plan-canvas/scripts/lib/loopback-guard.js'
 import { createClick, ClickError } from '../lib/click.mjs'
 import { loadConfig } from '../lib/stale.mjs'
@@ -63,7 +63,6 @@ const MIME = {
   '.json': 'application/json',
 }
 
-const hostOk = (host) => host === `localhost:${port}` || host === `127.0.0.1:${port}`
 const clickRoute = (url) => url.startsWith('/v1/gate/')
 
 // CSRF token: delivered only in the same-origin HTML, required on every write.
@@ -106,7 +105,7 @@ async function handleGate(req, res, urlPath) {
   if (!csrfOk(req.headers, CSRF)) { reply(403, { error: 'csrf' }); return }
   const handler = Object.hasOwn(GATE_ROUTES, urlPath.slice('/v1/gate/'.length)) ? GATE_ROUTES[urlPath.slice('/v1/gate/'.length)] : null
   if (!handler) { res.writeHead(404).end(); return }
-  const body = await readJson(req, res, { maxBytes: GATE_BODY_BYTES })
+  const body = await readJson(req, res)
   if (!body.ok) return
   if (!body.value || typeof body.value !== 'object' || Array.isArray(body.value)) { reply(400, { error: 'bad-body' }); return }
   try {
@@ -119,26 +118,6 @@ async function handleGate(req, res, urlPath) {
     if (e instanceof ClickError) reply(e.status, { error: e.code })
     else reply(500, { error: 'internal' })
   }
-}
-
-function readJson(req, res, { maxBytes = MAX_BODY_BYTES } = {}) {
-  return new Promise((resolve) => {
-    let size = 0
-    const chunks = []
-    let done = false
-    const finish = (v) => { if (!done) { done = true; resolve(v) } }
-    req.on('data', (c) => {
-      if (done) return
-      size += c.length
-      if (size > maxBytes) { res.writeHead(413).end(); finish({ ok: false, status: 413 }); req.destroy(); return }
-      chunks.push(c)
-    })
-    req.on('end', () => {
-      if (done) return
-      try { finish({ ok: true, value: JSON.parse(Buffer.concat(chunks).toString('utf8')) }) } catch { res.writeHead(400).end(); finish({ ok: false, status: 400 }) }
-    })
-    req.on('error', () => finish({ ok: false, status: 400 }))
-  })
 }
 
 let modelCache = null
@@ -219,7 +198,7 @@ const server = http.createServer(async (req, res) => {
   const urlPath = (req.url || '/').split('?')[0]
 
   if (req.method === 'OPTIONS') { res.writeHead(405).end(); return }
-  if (!hostOk(req.headers.host)) { res.writeHead(421).end(); return }
+  if (!strictHostOk(req.headers.host, port)) { res.writeHead(421).end(); return }
 
   const origin = req.headers.origin
   // Telemetry may come from any local caller, but never from a page on another origin.
@@ -258,7 +237,6 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && urlPath === '/v1/events') {
-      if (req.headers['content-type'] !== 'application/json') { res.writeHead(415).end(); return }
       const body = await readJson(req, res)
       if (!body.ok) return
       const incoming = Array.isArray(body.value) ? body.value : [body.value]
@@ -278,7 +256,6 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && urlPath === '/hook') {
-      if (req.headers['content-type'] !== 'application/json') { res.writeHead(415).end(); return }
       const body = await readJson(req, res)
       if (!body.ok) return
       const payloads = Array.isArray(body.value) ? body.value : [body.value]
@@ -296,7 +273,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && urlPath === '/v1/repos') {
-      if (req.headers['x-trail-csrf'] !== CSRF) { res.writeHead(403).end(); return }
+      if (!csrfOk(req.headers, CSRF)) { res.writeHead(403).end(); return }
       const body = await readJson(req, res)
       if (!body.ok) return
       const root = body.value && body.value.root
@@ -306,7 +283,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && urlPath === '/v1/pin') {
-      if (req.headers['x-trail-csrf'] !== CSRF) { res.writeHead(403).end(); return }
+      if (!csrfOk(req.headers, CSRF)) { res.writeHead(403).end(); return }
       const body = await readJson(req, res)
       if (!body.ok) return
       const key = body.value && body.value.planKey

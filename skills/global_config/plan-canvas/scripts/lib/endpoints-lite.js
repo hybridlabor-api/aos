@@ -33,4 +33,4 @@ function retire(id) {
   update((doc) => { if (doc.services[id]) doc.services[id] = { ...doc.services[id], pid: null, status: 'down' }; });
 }
 
-module.exports = { announce, retire };
+module.exports = { announce, retire, update };
