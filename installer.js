@@ -507,7 +507,8 @@ function ensurePythonVenv(dir, opts = {}) {
     try {
         run(sys.cmd, ['-m', 'venv', '--clear', '.venv']);
     } catch (e) {
-        try { fs.rmSync(path.join(dir, '.venv'), { recursive: true, force: true }); } catch (_) { /* nothing half-built to clean */ }
+        // Rename, never delete: the half-built venv stays as .venv.broken-<stamp> (as lib/v5/packages.js does).
+        if (path.isAbsolute(dir)) try { fs.renameSync(path.join(dir, '.venv'), path.join(dir, `.venv.broken-${Date.now()}`)); } catch (_) { /* nothing half-built */ }
         const why = String((e && e.stderr) || (e && e.message) || e).trim().split(/\r?\n/).slice(-3).join(' | ');
         const fix = process.platform === 'win32' ? 'install Python from https://www.python.org/downloads/ (with pip and venv)'
             : process.platform === 'darwin' ? 'brew install python'
