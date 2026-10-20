@@ -6369,6 +6369,7 @@ function installGlobalHooks({ targetHome = homeDir, targetGemini = geminiDir, ha
     if (on('codex')) {
         if (mergeCodexTomlHooks(path.join(targetHome, '.codex', 'config.toml'))) codexHooksChanged = true;
         installCodexRules({ targetHome });
+        installCodexWritableRoot({ targetHome });
     }
 
     // 4. OpenCode CLI
@@ -7201,6 +7202,29 @@ function installCodexRules({ targetHome = homeDir } = {}) {
         return true;
     } catch (e) {
         log.warn(`Could not write ${file}: ${e.message}`);
+        return false;
+    }
+}
+
+// #174: Codex's workspace-write sandbox must be able to write the A2A reply file. Only the reply
+// directory becomes a writable root (never ~/.aos); backed up first, removed again by aos-uninstall.
+function installCodexWritableRoot({ targetHome = homeDir } = {}) {
+    if (process.env.AOS_A2A_SIDECAR === 'off') return false;
+    const file = path.join(targetHome, '.codex', 'config.toml');
+    try {
+        const writableRoot = require('./lib/codex-writable-root.js');
+        const dir = writableRoot.replyRoot(targetHome);
+        const r = writableRoot.ensureWritableRoot(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '', dir);
+        if (r.note) log.warn(`${file}: ${r.note}; add ${dir} to [sandbox_workspace_write].writable_roots by hand so Codex can answer A2A messages.`);
+        if (!r.changed) return false;
+        if (DRY_RUN) { log.message(`[dry-run] Codex writable root ${dir}`); return false; }
+        if (!backupConfigFile(file)) return false;
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, r.text, { mode: 0o600 });
+        log.step(`Codex: ${dir} added to [sandbox_workspace_write].writable_roots`);
+        return true;
+    } catch (e) {
+        log.warn(`Could not add the Codex A2A writable root: ${e.message}`);
         return false;
     }
 }
