@@ -191,7 +191,7 @@ describe('Embed Allowlist & Bridge Contract', () => {
       assert.equal(res.status, 200);
       assert.match(res.headers['content-security-policy'] || '', /frame-ancestors 'self' [^;]*tauri:\/\/localhost/);
       assert.match(res.body, /<meta name="ao-embed-ancestors" content="tauri:\/\/localhost">/);
-      assert.match(res.body, /<script src="\/ao-embed-bridge\.js"><\/script>/);
+      assert.match(res.body, /<script src="ao-embed-bridge\.js"><\/script>/);
     });
 
     test('(b) GET on API route with cors / empty dest from cross-site returns 403', async () => {

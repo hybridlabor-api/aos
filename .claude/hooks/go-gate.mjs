@@ -2652,7 +2652,7 @@ export function effectiveGate(key, { source, cmds, opencode = false }, now = Dat
     grants.push({ scope: g.scope, until, session: !!c.parsed.session });
   }
   const hardTs = lastHard >= 0 ? (Number.isFinite(cmds[lastHard].ts) ? cmds[lastHard].ts : Infinity) : -Infinity;
-  grants.push(...clickGrants(key, now, { opencode, hardTs, revokeTs }));
+  grants.push(...clickGrants(key, now, { opencode, hardTs, revokeTs }), ...localClickGrants(key, now, { opencode, hardTs, revokeTs }));
   return { mode, grants, rejected };
 }
 
@@ -3091,6 +3091,86 @@ function clickGrants(key, now, { opencode, hardTs, revokeTs }) {
       for (const scope of parsed.scopes) out.push({ scope, until, session: false });
     }
   } catch { /* fail closed: no click grants */ }
+  return out;
+}
+
+// Local map clicks: the agenttrail map server writes <go dir>/<key>.local-<id>.json = {via:"map-click", payload} after a plain
+// click behind its page token and CSRF/origin guards (owner decision: no WebAuthn). Same payload shape, caps, single use and
+// revoke/hard handling as click receipts; the file must be owned by this uid with mode 0600. Every failure means "not covered".
+function loadLocalReceipt(key, name) {
+  const txt = readOwnedPrivate(join(goDir(), name), CLICK_FILE_MAX);
+  if (!txt) return null;
+  try {
+    const r = JSON.parse(txt);
+    const p = r?.payload;
+    if (r?.via !== "map-click" || !clickPayloadOk(p) || p.session_key !== key || name !== (p.kind === "grant" ? `${key}.local-g-${p.request_id}.json` : `${key}.local-${p.request_id}.json`)) return null;
+    return p;
+  } catch { return null; }
+}
+
+// A map click never approves release-class scopes (destructive, push to main, publish) and a grant lasts at most 2h.
+const LOCAL_NEVER = new Set(["destructive", "push-main", "publish"]);
+const LOCAL_GRANT_MAX_MS = 2 * 3600e3;
+const LOCAL_REQUEST_MAX_MS = 10 * 60e3;
+const localTimeOk = (p, now) => p.issued_at <= now && now < p.expires_at && p.expires_at - p.issued_at <= (p.kind === "go" ? TOKEN_TTL_MS : MAX_GRANT_MS);
+const localNever = (p, r) => [...(p.scopes ?? []), ...(r.scopes ?? [])].some((s) => LOCAL_NEVER.has(s));
+
+// A receipt must answer a request the gate recorded: same id (a go receipt also the same command hash), not a hard block,
+// recorded no later than the receipt and at most 10 min before it; a go receipt is also refused once the request is 10 min old.
+function recordedRequest(key, p, now) {
+  try {
+    if (!p) return null;
+    const txt = readSmallRegular(join(gateDir(), `${key}.req.json`), 64 * 1024);
+    if (!txt) return null;
+    const a = JSON.parse(txt);
+    const r = (Array.isArray(a) ? a : [a]).find((x) => x && x.id === p.request_id && x.hard !== true && (p.kind === "grant" || x.cmd_hash === p.cmd_hash));
+    const ts = Date.parse(r?.ts);
+    if (!r || !Number.isFinite(ts) || ts > p.issued_at || p.issued_at - ts > LOCAL_REQUEST_MAX_MS || (p.kind === "go" && now - ts > LOCAL_REQUEST_MAX_MS)) return null;
+    return r;
+  } catch { return null; }
+}
+
+// A later typed `hard` in the transcript cancels receipts issued before it.
+function lastHardTs(transcriptPath) {
+  try {
+    const cmds = claudeGogateCommands(transcriptPath);
+    const i = cmds.findLastIndex((c) => c.parsed.cmd === "hard");
+    return i < 0 ? -Infinity : Number.isFinite(cmds[i].ts) ? cmds[i].ts : Infinity;
+  } catch { return Infinity; }
+}
+
+export function localClickCovers(command, key, { now = Date.now(), consume = true, hardTs = -Infinity } = {}) {
+  try {
+    if (typeof command !== "string" || !command.trim() || typeof key !== "string" || !CLICK_KEY.test(key) || !clickEligible(command)) return false;
+    if ((inferredReleaseScopes(command) ?? []).some((s) => LOCAL_NEVER.has(s))) return false;
+    const want = textHash(command);
+    const revokeTs = readRevokeTs(key, now);
+    for (const name of clickNames(`${key}.local-`)) {
+      if (name.startsWith(`${key}.local-g-`)) continue;
+      const p = loadLocalReceipt(key, name);
+      const r = p && p.kind === "go" && p.cmd_hash === want ? recordedRequest(key, p, now) : null;
+      if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !localTimeOk(p, now) || localNever(p, r) || clickSpent(key, p.request_id)) continue;
+      if (!consume) return true;
+      if (claimClick(key, p.request_id)) return true;
+    }
+  } catch { /* fail closed */ }
+  return false;
+}
+
+function localClickGrants(key, now, { opencode, hardTs, revokeTs }) {
+  const out = [];
+  try {
+    if (typeof key !== "string" || !CLICK_KEY.test(key)) return out;
+    for (const name of clickNames(`${key}.local-g-`)) {
+      const p = loadLocalReceipt(key, name);
+      const r = p && p.kind === "grant" && p.cmd_hash === "" && Array.isArray(p.scopes) && p.scopes.length ? recordedRequest(key, p, now) : null;
+      if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= LOCAL_GRANT_MAX_MS) || !localTimeOk(p, now) || localNever(p, r)) continue;
+      const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
+      if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
+      const until = Math.min(p.expires_at, p.issued_at + (opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms));
+      if (now < until) for (const scope of parsed.scopes) out.push({ scope, until, session: false });
+    }
+  } catch { /* fail closed */ }
   return out;
 }
 
@@ -3541,7 +3621,7 @@ function main() {
   if (token.ok) return respond(isAgy, true, "", command);
   reasons.push(token.reason);
   // Last additive path (WP-9): a signed click receipt for exactly this command. Hard blocks and the store check returned above.
-  if (key && !tooLong && !cooling && !codexOpaque && clickReceiptCovers(command, key)) {
+  if (key && !tooLong && !cooling && !codexOpaque && (clickReceiptCovers(command, key) || localClickCovers(command, key, { hardTs: lastHardTs(transcriptPath) }))) {
     gateLog(key, `click: allowed ${JSON.stringify(command.slice(0, 200))}`);
     return respond(isAgy, true, "", command);
   }
