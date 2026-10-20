@@ -245,7 +245,7 @@ test('S3: uninstall moves the saved options aside and keeps foreign keys', () =>
 });
 
 test('S6: update and repair skip what the profile excludes, like disabled ids', async () => {
-    assert.deepStrictEqual([...p.excludedIds({ profile: 'minimal', disabled: ['synapse'] })].sort(), ['alert', 'codenotch', 'deja', 'fleet', 'gateway', 'hub', 'memb', 'openwiki', 'sessions', 'synapse', 'token-saver']);
+    assert.deepStrictEqual([...p.excludedIds({ profile: 'minimal', disabled: ['synapse'] })].sort(), ['alert', 'codenotch', 'control', 'deja', 'fleet', 'gateway', 'hub', 'memb', 'openwiki', 'sessions', 'synapse', 'token-saver']);
     assert.deepStrictEqual([...p.excludedIds(null)], ['token-saver']); // the standard profile leaves the opt-in Token Saver out
     assert.deepStrictEqual([...p.excludedIds({ profile: 'constructor' })], ['token-saver']);
 
@@ -270,8 +270,9 @@ test('S6: update and repair skip what the profile excludes, like disabled ids', 
 test('R1: one hook list; the shipped Claude template is covered exactly once', () => {
     const lists = [p.ALWAYS_HOOKS, p.CONTEXT_HOOKS, p.OTHER_HOOKS];
     for (const l of lists) assert.strictEqual(new Set(l).size, l.length);
-    // gate-profile.mjs is an import-only helper of go-gate.mjs: copied with the hooks, never wired, so in no list.
-    assert.deepStrictEqual([...p.HOOK_SCRIPTS].sort(), ['gate-profile.mjs', ...lists.flat()].sort());
+    // gate-profile.mjs and session-cap.mjs are import-only helpers (of go-gate / memb-inject and aos-session-hint):
+    // copied with the hooks, never wired, so in no list.
+    assert.deepStrictEqual([...p.HOOK_SCRIPTS].sort(), ['gate-profile.mjs', 'session-cap.mjs', ...lists.flat()].sort());
     assert.strictEqual(new Set(p.HOOK_SCRIPTS).size, p.HOOK_SCRIPTS.length, 'no script in two lists');
     assert.ok(p.CLAUDE_MERGE_HOOKS.every((n) => p.HOOK_SCRIPTS.includes(n)));
 
