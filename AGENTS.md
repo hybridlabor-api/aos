@@ -81,6 +81,38 @@ message — counts.
 <!-- aos:routing:end -->
 
 <!-- aos:cli-reference:start -->
+## AOS CLIs for agents
+
+Probe before you guess: `aos help --all --json` lists every AOS CLI with usage, flags, exit codes and JSON support; `<cli> --help` is always side-effect free. Full reference: `docs/cli-reference.md`.
+Never call `aos-uninstall`, `aos-gate`, `aos-cli` unprompted: they are for the human.
+
+- `aos` - Install or update AOS, or reach any subcommand below. A bare `aos` starts the interactive installer. (side effects)
+- `aos-plan-canvas` - You wrote a plan and need the human to review, annotate and approve it before building.
+- `aos-trail` - Report agent progress to the live map (emit, tick), ask the human a question (ask), or start the map for a repo. (side effects)
+- `aos-archify` - You need a diagram from a JSON description: render it, validate it, or check an output file.
+- `aos-dashboard` - A human wants the services overview in the browser. Agents should use `aos services status --json`. (side effects)
+- `aos-hub` - Start, stop or inspect the hub. `status --json` is the agent-safe probe. (side effects)
+- `aos-config` - Read or set the workspace root, domains or memB user id during setup.
+- `aos-store` - You need a skill or agent that is not installed, or want to list what the store offers. (side effects)
+- `aos-doctor` - Something does not work, or before and after an update. `--json` for machine-readable results.
+- `aos-uninstall` - Only when the human asks to remove AOS. Never run it unprompted.
+- `aos-acp` - Delegate a bounded task to a worker in its own worktree. Guarded commands run only with a valid GO token. (side effects)
+- `aos-gate` - The human wants to see or change the gate profile or grants. Widening is human-only.
+- `aos-gateway` - Check or control the MCP gateway, add or remove a gateway server, or adopt MCP servers from harness configs. (side effects)
+- `aos-gogate` - Ask the human to grant or change the gate: print the preset text for them to type. It never records anything.
+- `aos-go-ref` - Verify a GO reference a human forwarded over A2A before acting on it. It never issues or consumes anything.
+- `aos-a2a` - Talk to another agent session on this machine: `list` to find peers, `send` a task, `reply` to an incoming one.
+- `aos-router` - See which worker target a role routes to, or set a role preference.
+- `aos-sessions` - See which sessions need input, are working or idle, and which ACP workers run.
+- `aos-team` - List teams, show one team, or create a team definition from a playbook.
+- `aos-bus` - Send text to a running OpenCode session, or list sessions that can receive it.
+- `go-check` - A runner outside a harness (for example AO) must ask the GO gate before executing a command.
+- `mcsc` - Decide which worker CLI should take a task type, or run it there. (side effects)
+- `aos-mcp-env` - Wire an MCP server that needs API keys into a harness config without putting keys in the config.
+- `aos-memb-ingest` - Normally never by hand. Use `aos memory` to configure paths and time. (side effects)
+- `aos-cli` - A human wants a terminal chat with AOS. Not meant for agents to call.
+- `aos-setup-doctor` - Used by the aos-setup skill before installing. For an installed system use `aos doctor`.
+- `aos-project-doctor` - After or before /aos-project-init, to see what is missing in a project.
 <!-- aos:cli-reference:end -->
 
 ---
