@@ -1,6 +1,7 @@
 ---
 name: editable-design
-description: Create and render fixed-canvas editable visual designs, including posters, marketing graphics, covers, menus, banners, and social cards. Default outputs include fixed and editable HTML, PNG, a mouse editor with scan and exploded layer views, and an evidence-backed Design Replay. Do not use for websites, slide decks, videos, or standalone logo systems. Always use this skill when the project contains `poster.json`.
+description: >-
+  Fixed-canvas editable visual designs: posters, banners, covers with HTML/PNG output and a Design Replay. Use for poster.json projects, not websites.
 category: design-ui-ux
 user-invocable: true
 ---

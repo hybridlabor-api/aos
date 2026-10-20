@@ -1,9 +1,7 @@
 ---
 name: factory-watchdog
 description: >-
-  Experimental workflow for monitoring explicitly authorized delivery tasks
-  and reporting stalled work. Report-only: findings are produced in the session
-  or as a draft; no scheduled action is taken.
+  Monitor explicitly authorized delivery tasks and report stalled work. Report-only: findings surface in the session, no scheduled action.
 category: engineering-method
 source: BuilderIO/skills
 ---

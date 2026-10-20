@@ -1,9 +1,7 @@
 ---
 name: factory-recover
 description: >-
-  Experimental workflow for finding interrupted coding runs and reporting
-  resume candidates. Use after an agent host restart or an interrupted
-  automation; resuming anything needs the user's literal GO.
+  Find interrupted coding runs and report resume candidates. Use after a host restart or interrupted automation; resuming needs the user's GO.
 category: engineering-method
 source: BuilderIO/skills
 ---

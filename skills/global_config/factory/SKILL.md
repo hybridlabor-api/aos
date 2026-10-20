@@ -1,9 +1,7 @@
 ---
 name: factory
 description: >-
-  Experimental workflow for configuring an autonomous software delivery
-  factory. Use when choosing feedback sources, schedules, worktree behavior,
-  autonomy gates, or drafting proposed host automations for report-only review.
+  Configure an autonomous software delivery factory. Use when choosing feedback sources, schedules, worktree behavior, autonomy gates or host automations.
 category: engineering-method
 source: BuilderIO/skills
 ---
