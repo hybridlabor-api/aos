@@ -8,6 +8,16 @@
 // vendor CLI wrapper, so "wrap don't patch" §7 doesn't apply here).
 
 async function run() {
+  const first = process.argv[2];
+  if (first === 'help' || first === '-h' || first === '--help' || process.argv.includes('--help')) {
+    console.log(`mcsc - detect agent CLIs, route or run a task on the best one
+Usage:
+  mcsc detect [--json]
+  mcsc route --task-type <type> [--json]
+  mcsc exec --task-type <type> --prompt "<text>" [--json]
+Exit: 0 ok, 1 refused or failed (exec: the worker exit code). Details: aos help mcsc`);
+    return;
+  }
   const fs = (await import('fs')).default;
   const path = (await import('path')).default;
   const os = (await import('os')).default;

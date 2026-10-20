@@ -7,6 +7,7 @@
 // expired, replayed, malformed), 2 usage error. HONOURS THE TEST SEAM: HOME points the
 // token store at a temp directory. There is no subcommand that issues, writes or
 // consumes anything — the consume happens on the gate side when a session resumes a task.
+import "../lib/cli-help-guard.mjs";
 import { verifyGoRef } from "../lib/a2a-go.mjs";
 
 const usage = () => {

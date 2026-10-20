@@ -10,6 +10,7 @@
 // meaningless on someone else's machine. `propose` reads the actual workspace
 // and offers what it finds; the user decides what is real.
 
+import '../lib/cli-help-guard.mjs';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

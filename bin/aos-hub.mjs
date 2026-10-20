@@ -6,6 +6,7 @@
 // (cwd = home) and records hub.json (mode 600, dir 700). `stop` prefers the
 // token-authed POST /api/shutdown and only falls back to ps+SIGTERM, failing
 // closed when ps is unavailable.
+import '../lib/cli-help-guard.mjs';
 import { spawn } from 'node:child_process';
 import { connect as netConnect } from 'node:net';
 import { randomBytes } from 'node:crypto';

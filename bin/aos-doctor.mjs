@@ -5,6 +5,7 @@
 //   aos doctor
 //   node bin/aos-doctor.mjs [--json] [--net] [--resources [--sample <seconds>]]
 
+import '../lib/cli-help-guard.mjs';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { connect } from 'node:net';

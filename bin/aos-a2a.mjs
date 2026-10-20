@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // aos-a2a — A2A peer-mesh CLI (phase 1a: registry listing and Agent Card generation).
+import "../lib/cli-help-guard.mjs";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { list, book } from "../lib/a2a-registry.mjs";

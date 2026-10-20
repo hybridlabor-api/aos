@@ -5,6 +5,7 @@
 //   set    write a role preference list to ~/.aos/router.json or ./.aos/router.json
 //   limits current window/weekly limits
 //   test   which target routeFor would pick for a role now
+import '../lib/cli-help-guard.mjs';
 import { parseArgs } from 'node:util';
 import fs from 'node:fs';
 import os from 'node:os';

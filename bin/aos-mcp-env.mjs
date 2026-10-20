@@ -3,6 +3,7 @@
 // Usage: aos-mcp-env --vars GITHUB_PERSONAL_ACCESS_TOKEN -- npx -y @modelcontextprotocol/server-github@2025.4.8
 // A missing or refused secrets file never blocks the server: it starts without the variables and a hint
 // goes to stderr. Variables already set in the environment win. Values are never printed.
+import '../lib/cli-help-guard.mjs';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';

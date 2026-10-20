@@ -208,7 +208,22 @@ export function parseArgs(argv) {
 const done = (code, out) => process.stdout.write(JSON.stringify(out) + "\n", () => process.exit(code));
 
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
+const HELP = `go-check - may this worker run this guarded command?
+Usage:
+  node go-check.mjs --session <Name> --command "<shell string>" [--consume]
+  node go-check.mjs --session <Name> --ref <id> [--consume]   (GO-over-A2A reference check)
+  node go-check.mjs --write-patterns <file>
+Prints one JSON line {"guarded":bool,"ok":bool,"scope":[...]|null,"reason":"..."}.
+Exit: 0 allowed (not guarded, or a valid GO), 1 guarded without a valid GO, 2 error (treat as denied).
+Read-only; --consume uses up a valid GO token once. Details: aos help go-check
+`;
+
 if (invokedAs === fileURLToPath(import.meta.url)) {
+  const argv0 = process.argv.slice(2);
+  if (argv0[0] === "help" || argv0.includes("--help") || argv0.includes("-h")) {
+    process.stdout.write(HELP, () => process.exit(0));
+    await new Promise(() => {});
+  }
   try {
     const o = parseArgs(process.argv.slice(2));
     const gate = await loadGate();

@@ -16,6 +16,7 @@
 // deleted; a file with no manifest entry was never ours and is not considered
 // at all.
 
+import '../lib/cli-help-guard.mjs';
 import { readFileSync, existsSync, rmSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';

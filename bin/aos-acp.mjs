@@ -17,6 +17,7 @@
 //   Workers start without MCP servers unless --with-mcp is given; see the MCP note above ADAPTERS.
 //   agy runs `agy --print` (no ACP server, no per-tool permission requests): see agyArgs.
 
+import "../lib/cli-help-guard.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
@@ -421,7 +422,7 @@ export function parseArgs(argv) {
   return o;
 }
 
-const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> --prompt <text> [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--no-consume] [--sandbox coop|wsl2] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900] [--with-mcp] [--trail-node <id>] [--trail-plan <file>]";
+const USAGE = "usage: aos-acp <claude|codex|opencode|agy> --name <worker> (--prompt <text> | --prompt-file <file>) [--cwd <dir>] [--allow-default deny|allow|scoped] [--go-wait <sec>] [--consume|--no-consume] [--cmd <agent command>] [--sandbox coop|wsl2] [--model <id>] [--log <file>] [--timeout <sec>] [--print-timeout <sec>, agy only, default 900] [--with-mcp] [--trail-node <id>] [--trail-plan <file>]";
 const invokedAs = (() => { try { return realpathSync(process.argv[1] || ""); } catch { return ""; } })();
 if (invokedAs === fileURLToPath(import.meta.url)) {
   if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) { console.log(`aos-acp: ${USAGE}`); process.exit(0); }

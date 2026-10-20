@@ -6,6 +6,7 @@
 //
 //   aos-dashboard [--port 7900] [--no-open]
 
+import '../lib/cli-help-guard.mjs';
 import { cli } from './aos-hub.mjs';
 
 const raw = process.argv.slice(2);

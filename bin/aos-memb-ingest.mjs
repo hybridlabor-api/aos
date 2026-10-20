@@ -4,6 +4,7 @@
 // No paths = nothing happens and the script says how to add one. Does nothing when memb is excluded (profile minimal,
 // --without=memb|memory) or memoryIngest is off.
 // Usage: aos-memb-ingest.mjs [--dry-run]   Exit code is always 0.
+import '../lib/cli-help-guard.mjs';
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';

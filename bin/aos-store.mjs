@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import '../lib/cli-help-guard.mjs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
