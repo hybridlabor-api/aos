@@ -1432,4 +1432,16 @@ describe('presets.json', () => {
         assert.equal(pkg.stripAosPresets(dir), 'removed');
         assert.ok(!fs.existsSync(path.join(dir, 'presets.json')));
     });
+
+    test('stripAosPresets also recognises presets of the `aos AND NOT x` shape missing from the record', () => {
+        const dir = tmp();
+        fs.writeFileSync(path.join(dir, 'aos-presets-ok.json'), JSON.stringify(['agy']));
+        const mk = (...ex) => ({ strategy: 'advanced', tagQuery: { $and: [{ tag: 'aos' }, ...ex.map((tag) => ({ $not: { tag } }))] } });
+        const mine = { strategy: 'or', tagQuery: { $or: [{ tag: 'github' }] } };
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ presets: { agy: mk('a'), worker: mk('a', 'b'), small: mk('c'), mine } }));
+        assert.equal(pkg.stripAosPresets(dir), 'stripped');
+        assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'presets.json'), 'utf8')).presets), ['mine']);
+        fs.writeFileSync(path.join(dir, 'presets.json'), JSON.stringify({ presets: { worker: mk('a') } }));
+        assert.equal(pkg.stripAosPresets(dir), 'removed');
+    });
 });
