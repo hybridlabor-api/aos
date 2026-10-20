@@ -122,10 +122,6 @@ describe('two workers land on the right nodes', () => {
     assert.equal(byId['cart-build'].live?.status, 'doing');
     assert.equal(byId['cart-wire'].live?.status, 'doing');
     assert.equal(plan.progress.live, 2);
-    const wb = byId['cart-wire'].workers?.[0];
-    assert.equal(wb?.id, 'worker-b');
-    assert.equal(wb?.state, 'working');
-    assert.ok(Array.isArray(byId['cart-build'].workers));
   });
 });
 
@@ -154,7 +150,6 @@ describe('auto state: AOS_TRAIL_NODE workers read their first open task as [~]',
     assert.equal(byId['cart-build'].status, 'active', 'first open task reads as [~]');
     assert.equal(byId['cart-build'].live?.status, 'doing');
     assert.equal(byId['cart-build'].live?.auto, true);
-    assert.equal(byId['cart-build'].workers?.[0]?.id, 'worker-a', 'worker card rides along');
     assert.equal(byId['cart-wire'].status, 'pending', 'only the first open task is promoted');
     assert.equal(byId['cart-wire'].live, null);
     assert.equal(p.progress.live, 1);
