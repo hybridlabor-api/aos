@@ -1,9 +1,7 @@
 ---
 name: factory-babysit-pr
 description: >-
-  Experimental workflow for babysitting one explicitly authorized pull or
-  merge request. Use to monitor its live review state and checks, fix actionable
-  in-scope findings, and apply separate reply, approval, merge, and soak gates.
+  Monitor one explicitly authorized pull request. Use to watch review state and checks, fix in-scope findings, and apply reply/approval/merge gates.
 category: engineering-method
 source: BuilderIO/skills
 ---

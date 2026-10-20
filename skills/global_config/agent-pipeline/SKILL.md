@@ -1,6 +1,7 @@
 ---
 name: agent-pipeline
-description: Reference for how BDB structures autonomous software engineering work — the seven-node dispatcher graph (Architect, TechLead, UI/UX, Engineering, Media/EventTech, Reviewer, Shipping) that /startcycle-graph actually runs. Use when you need the high-level lifecycle framing without inventing your own process.
+description: >-
+  How BDB structures multi-agent build pipelines: the seven-node dispatcher graph /startcycle-graph runs. Use for lifecycle framing.
 category: bdb-core
 ---
 

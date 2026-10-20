@@ -1,6 +1,7 @@
 ---
 name: aos-gateway
-description: "Use the local MCP gateway and the per-app MCP picks. Use when the human asks to check, start, enable or disable the gateway, adopt other MCP servers behind it, wonder why an MCP server is direct or shared, or hit an After Effects MCP that will not start (Node >= 24)."
+description: >-
+  Local MCP gateway and per-app MCP picks. Use when checking, starting, enabling the gateway, or debugging why an MCP server is direct or shared.
 category: bdb-core
 risk: safe
 tools:

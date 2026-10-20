@@ -1,6 +1,7 @@
 ---
 name: bdb-deploy
-description: Use when the user wants to build and deploy a project to a real server via rsync over SSH — "deploy this", "push the build live", "sync to production". Not for git push/PR workflows, and not a replacement for a real CI pipeline; this is the direct-deploy path.
+description: >-
+  Deploy a project to a real server via rsync over SSH. Use when the user says deploy this or push it live. Not for git push or CI pipelines.
 category: bdb-core
 risk: caution
 ---

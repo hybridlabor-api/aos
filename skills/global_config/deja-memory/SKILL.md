@@ -1,6 +1,8 @@
 ---
 name: deja-memory
-description: Use when an error occurs (deja fix), when resuming work in a project (deja wip), or when past sessions in this repo matter (deja search). Local, redacted session memory, installed together with memB.
+description: >-
+  On-demand local session memory (deja fix/wip/search). Use when an error
+  occurs, resuming work in a repo, or past sessions matter.
 category: bdb-core
 risk: low
 source: bdb

@@ -1,7 +1,8 @@
 ---
 name: bdb-ui-library
 category: design-ui-ux
-description: Use when building UI, components, motion icons, loaders, or visual design. In BDB projects, routes to the BDB component and motion-icon library (npm @hybridlabor-api/ui-motion-library, shadcn namespace @bdb) as the first source before third-party registries or building from scratch. Outside BDB projects, the same lookup order applies with the original sources listed in the bdb-ui-library repository docs.
+description: >-
+  Component and motion-icon lookup for UI work. In BDB projects routes to the BDB motion library first. Use when building UI, motion icons or loaders.
 ---
 
 # bdb-ui-library

@@ -1,9 +1,7 @@
 ---
 name: factory-human-digest
 description: >-
-  Experimental workflow for summarizing work that still needs human judgment
-  across configured pull requests, issues, feedback, errors, and delivery
-  signals. Use for a human decision queue or bounded review.
+  Summarize work needing human judgment across PRs, issues, feedback and delivery signals. Use for a human decision queue or bounded review.
 category: bdb-core
 source: BuilderIO/skills
 ---

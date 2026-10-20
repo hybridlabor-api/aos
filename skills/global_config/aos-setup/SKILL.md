@@ -1,10 +1,7 @@
 ---
 name: aos-setup
 description: >-
-  Bring a machine to a complete, verified AOS installation: the skills pack,
-  MCP servers, gate hooks, memB (engine, MCP, ambient hook, WebUI), OpenWiki
-  (CLI, auth, harness integrations, refresh daemon) and Synapse. Run once on a
-  new computer, and again whenever something in the ecosystem stopped working.
+  Bring a machine to a verified AOS install: skills pack, MCP servers, gate hooks, memB, OpenWiki, Synapse. Run on a new computer or after breakage.
 category: bdb-core
 risk: low
 source: bdb
