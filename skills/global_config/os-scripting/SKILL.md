@@ -1,6 +1,6 @@
 ---
 name: os-scripting
-description: "Operating system and shell scripting troubleshooting workflow for Linux, macOS, and Windows. Covers bash scripting, system administration, debugging, and automation."
+description: "Shell scripting troubleshooting. Bash, system admin, debugging, automation on Linux, macOS, Windows."
 category: library
 risk: safe
 source: personal

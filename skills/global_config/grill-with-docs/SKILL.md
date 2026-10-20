@@ -1,6 +1,6 @@
 ---
 name: grill-with-docs
-description: A relentless interview to sharpen a plan or design, which also builds the project's domain model — glossary and ADRs — as it goes. Use in a working directory whenever an idea needs sharpening.
+description: Interview to sharpen plan/design and build domain model. Glossary and ADRs while grilling.
 category: engineering-method
 ---
 
