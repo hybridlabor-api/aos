@@ -1642,6 +1642,12 @@ function detectInstallState() {
     return { isInstalled, localVersion, currentVersion, updateAvailable, isDowngrade, installedModules, manifest, installManifest };
 }
 
+// Tier/universal flag an installed machine already chose; update and -y reinstall must not reset them.
+function storedTierOpts(installState) {
+    const m = (installState && installState.manifest) || {};
+    return { tier: m.tier === '2' ? '2' : '1', isUniversal: m.isUniversal !== false };
+}
+
 function saveManifest(data = {}) {
     if (DRY_RUN) {
         log.step(`[dry-run] would save manifest: ${path.join(homeDir, '.agents', '.bdb-manifest.json')}`);
@@ -8302,7 +8308,7 @@ function quickUpdateKernel(installState) {
     const s = spinner();
     s.start('Quick Update: refreshing skills & syncing installed submodules...');
 
-    const excludeSkills = getTierExcludeSkills('1');
+    const excludeSkills = getTierExcludeSkills(storedTierOpts(installState).tier);
     const paths = resolveTargetPaths(defaultPlatformValue(), null);
 
     populateSkillLibrary();
@@ -8440,7 +8446,7 @@ async function runQuickUpdate(installState) {
     // them alone rather than relaunching and re-checking a daemon a second time.
     const alreadyHandled = modulesToUpdate.map(id => MODULE_ID_TO_DAEMON_NAME[id]).filter(Boolean);
     await reloadDaemons(alreadyHandled);
-    saveManifest({ tier: '1', isUniversal: true, installedModules: modulesToUpdate });
+    saveManifest({ ...storedTierOpts(installState), installedModules: modulesToUpdate });
     flushSessionManifest();
 
     console.log('');
@@ -8865,7 +8871,7 @@ Options:
         { value: '4', label: '⚙️ Custom Installation', hint: 'specify paths manually' }
     ];
 
-    let tier = '1';
+    let tier = installState.isInstalled ? storedTierOpts(installState).tier : '1';
     let mode = 'merge';
     let customPaths = null;
     let creds = null;
@@ -9360,6 +9366,7 @@ module.exports = {
     harnessSummaryLine,
     applyInstallOptions,
     getTierExcludeSkills,
+    storedTierOpts,
     currentPackSelection: () => packSelection,
     effectivePackSelection,
     addImpliedPack,
