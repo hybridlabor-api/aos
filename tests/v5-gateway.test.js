@@ -791,7 +791,7 @@ describe('status JSON', () => {
         await fw.listen();
         const port = fw.server.address().port;
         const s = await status({ dir, port, upstreamPort: inner });
-        assert.deepEqual(s, { running: true, pid: process.pid, port, upstreamsScope: 'global', upstreams: [{ name: 'a', ok: true }, { name: 'b', ok: true }] });
+        assert.deepEqual(s, { running: true, pid: process.pid, lazyLoading: null, restartPending: false, port, upstreamsScope: 'global', upstreams: [{ name: 'a', ok: true }, { name: 'b', ok: true }] });
         await fw.close();
     });
 
