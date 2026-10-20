@@ -724,52 +724,7 @@ function readJsonFile(filePath) {
     }
 }
 
-function isNewerVersion(local, remote) {
-    const parse = (v) => {
-        const dashIdx = v.indexOf('-');
-        if (dashIdx === -1) return { main: v.split('.').map(Number), pre: null };
-        const main = v.slice(0, dashIdx).split('.').map(Number);
-        const pre = v.slice(dashIdx + 1).split('.').map(part => {
-            const num = Number(part);
-            return isNaN(num) ? part : num;
-        });
-        return { main, pre };
-    };
-
-    const l = parse(local);
-    const r = parse(remote);
-
-    for (let i = 0; i < Math.max(l.main.length, r.main.length); i++) {
-        const lv = l.main[i] || 0;
-        const rv = r.main[i] || 0;
-        if (rv > lv) return true;
-        if (lv > rv) return false;
-    }
-
-    if (l.pre === null && r.pre !== null) return false;
-    if (l.pre !== null && r.pre === null) return true;
-    if (l.pre === null && r.pre === null) return false;
-
-    for (let i = 0; i < Math.max(l.pre.length, r.pre.length); i++) {
-        const lp = l.pre[i];
-        const rp = r.pre[i];
-        
-        if (rp === undefined) return false; 
-        if (lp === undefined) return true;
-
-        if (typeof lp === 'number' && typeof rp === 'number') {
-            if (rp > lp) return true;
-            if (lp > rp) return false;
-        } else if (typeof lp === 'string' && typeof rp === 'string') {
-            if (rp > lp) return true;
-            if (lp > rp) return false;
-        } else {
-            if (typeof rp === 'number') return false;
-            return true;
-        }
-    }
-    return false;
-}
+const { isNewerVersion } = require('./lib/update-check');
 
 // Newest dist-tag of `pkg` that is ahead of `localVer`: {tag, version}, or null when none is
 // ahead or npm cannot be reached. `view` is injectable for tests.
