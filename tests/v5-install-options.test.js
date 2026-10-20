@@ -106,8 +106,9 @@ test('settings: profile persists in the v5 settings file next to the disabled li
 });
 
 test('installer: --hooks-only --no-hooks keeps the gate hooks (container only)', { skip: process.env.AOS_TEST_SANDBOX !== 'container' }, () => {
+    // The container's detected harnesses decide where hooks go; name Claude Code so the settings file is the one read below.
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-opt-home-'));
-    const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'installer.js'), '--hooks-only', '--no-hooks', '-y', '--no-intro'], {
+    const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'installer.js'), '--hooks-only', '--no-hooks', '--platforms=2', '-y', '--no-intro'], {
         env: { ...process.env, HOME: home, USERPROFILE: home, AOS_PLUGIN_CLI: 'off' }, encoding: 'utf8', timeout: 120000,
     });
     assert.strictEqual(r.status, 0, r.stderr);
