@@ -1,9 +1,9 @@
 ---
 name: pb-deploy-saas
 description: >-
-  Deploy a SaaS app to the BDB fleet: preflight of the fleet skills, a guardrail plan, green CI, the deploy after GO (Incus via
-  Forgejo CI, or direct rsync), and a health URL check. Use for "deploy this to the
-  fleet", "deploy the SaaS app", "ship to the Incus instance".
+  Deploy a SaaS app to the BDB fleet: skill preflight, guardrail plan,
+  green CI, deploy after GO (Incus via Forgejo CI or direct rsync), and a
+  health URL check.
 category: saas-ops
 kind: playbook
 trigger: ["deploy this to the fleet", "deploy the SaaS app", "deploy to the Incus instance"]

@@ -1,10 +1,9 @@
 ---
 name: pb-landing-page
 description: >-
-  Build and launch a landing page: confirmed copy without invented claims, a
-  generated page in your brand tokens, UI and SEO review, deploy only after
-  GO, then a check on the live URL. Use for "landing page", "launch page for
-  this product", "ship a one-pager".
+  Build and launch a landing page: confirmed copy without invented claims,
+  a generated page in your brand tokens, UI and SEO review, deploy after
+  GO, live URL check.
 category: design-ui-ux
 kind: playbook
 trigger: ["landing page", "launch page for this product", "ship a one-pager"]

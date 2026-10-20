@@ -1,10 +1,9 @@
 ---
 name: pb-idea-to-launch
 description: >-
-  Turn an idea into a deployed prototype: a spec from brainstorming, a visual
-  plan of the ComfyUI workflow, a prototype built with startcycle, one hero
-  image, green CI, then push and deploy after separate GOs. Use for "idea to
-  launch", "from idea to a live prototype", "build and deploy this idea".
+  Turn an idea into a deployed prototype: a spec from brainstorming, a
+  visual ComfyUI plan, a startcycle build, a hero image, green CI, then
+  push and deploy after separate GOs.
 category: engineering-method
 kind: playbook
 trigger: ["idea to launch", "from idea to live prototype", "build and deploy this idea"]

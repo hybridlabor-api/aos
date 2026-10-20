@@ -1,10 +1,9 @@
 ---
 name: pb-crew-call-sheet
 description: >-
-  Build a crew call sheet and a load-in / load-out plan for one show day from
-  your event tracker or brief and your crew list, and send it to the crew only
-  after your GO. Use for "call sheet", "crew call times", "load-in plan",
-  "load-out schedule".
+  Build a crew call sheet and load-in / load-out plan for one show day from
+  your event tracker or brief and crew list; sent to the crew only after
+  your GO.
 category: media-eventtech
 kind: playbook
 trigger: ["call sheet", "crew call times", "load-in plan"]

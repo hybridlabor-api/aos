@@ -1,10 +1,8 @@
 ---
 name: pb-invoice-check
 description: >-
-  Check invoices and receipts line by line against your offers and list what
-  matches, what differs and what has no offer. Nothing is paid or sent. Use
-  for "check my invoices", "match invoices to offers", "does this invoice
-  match the quote".
+  Check invoices and receipts line by line against your offers and list
+  what matches, differs or has no offer. Nothing is paid or sent.
 category: business-ops
 kind: playbook
 trigger: ["check my invoices", "match invoices to offers", "invoice check"]
