@@ -4,6 +4,7 @@ import {
   buildWorktreeItems,
   demoFleet,
   demoPipeline,
+  filterRosterSessions,
   logoCells,
   parseGateStatus,
   parsePipelineState,
@@ -350,4 +351,42 @@ test('buildWorktreeItems derives stages from git output and pipeline state', asy
     ['main', 'merged', false],
     ['feat/ui', 'reviewed', true],
   ])
+})
+
+test('filterRosterSessions collapses 6 delegated workers into one chip', () => {
+  const sessions = [
+    { id: 'm1', name: 'master', role: 'master' as const, activity: 'idle' as const, cwd: '', updatedAt: 0 },
+    { id: 'd1', name: 'swarm-1', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 0, delegated: true },
+    { id: 'd2', name: 'swarm-2', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 0, delegated: true },
+    { id: 'd3', name: 'swarm-3', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 0, delegated: true },
+    { id: 'd4', name: 'swarm-4', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 0, delegated: true },
+    { id: 'd5', name: 'swarm-5', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 0, delegated: true },
+    { id: 'd6', name: 'swarm-6', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 0, delegated: true },
+  ] as never
+  const filtered = filterRosterSessions(sessions)
+  expect(filtered.map(s => s.name)).toEqual(['master', '+6 delegated'])
+})
+
+test('filterRosterSessions shows master and orchestrator always', () => {
+  const sessions = [
+    { id: 'm1', name: 'master', role: 'master' as const, activity: 'idle' as const, cwd: '', updatedAt: 0 },
+    { id: 'o1', name: 'orchestrator', role: 'orchestrator' as const, activity: 'idle' as const, cwd: '', updatedAt: 0 },
+    { id: 'd1', name: 'swarm-1', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 0, delegated: true },
+  ] as never
+  const filtered = filterRosterSessions(sessions)
+  expect(filtered.map(s => s.name)).toEqual(['master', 'orchestrator', '+1 delegated'])
+})
+
+test('filterRosterSessions groups package workers by node with count', () => {
+  const sessions = [
+    { id: 'm1', name: 'master', role: 'master' as const, activity: 'idle' as const, cwd: '', updatedAt: 0 },
+    { id: 'p1', name: 'pack-1', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 100, trailNode: 'engineering' },
+    { id: 'p2', name: 'pack-2', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 200, trailNode: 'engineering' },
+    { id: 'p3', name: 'pack-3', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 300, trailNode: 'review' },
+    { id: 'p4', name: 'pack-4', role: 'worker' as const, activity: 'idle' as const, cwd: '', updatedAt: 400, trailNode: 'review' },
+  ] as never
+  const filtered = filterRosterSessions(sessions)
+  expect(filtered.map(s => s.name)).toEqual(['master', 'packs ×2', 'packs ×2'])
+  expect(filtered.find(s => s.reason === 'engineering')).toBeDefined()
+  expect(filtered.find(s => s.reason === 'review')).toBeDefined()
 })

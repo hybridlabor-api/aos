@@ -634,11 +634,57 @@ async function renderHeader($: EngineInterface, e: PaneInput) {
 const BAR = 8
 export const filled = (p: FleetProgress) => (p.total ? Math.round((p.done / p.total) * BAR) : 0)
 
+export const filterRosterSessions = (sessions: FleetSession[]): FleetSession[] => {
+  const shown: FleetSession[] = []
+  const delegatedWorkers: FleetSession[] = []
+  const nodeWorkers = new Map<string, FleetSession[]>()
+
+  for (const s of sessions) {
+    if (s.role !== 'worker') {
+      shown.push(s)
+      continue
+    }
+    if (s.delegated) {
+      delegatedWorkers.push(s)
+    } else if (s.trailNode) {
+      const workers = nodeWorkers.get(s.trailNode) ?? []
+      workers.push(s)
+      nodeWorkers.set(s.trailNode, workers)
+    }
+  }
+
+  if (delegatedWorkers.length > 0) {
+    shown.push({
+      id: 'delegated-collapse',
+      name: `+${delegatedWorkers.length} delegated`,
+      role: 'worker',
+      activity: 'idle',
+      cwd: '',
+      updatedAt: 0,
+    })
+  }
+
+  for (const [node, workers] of nodeWorkers.entries()) {
+    shown.push({
+      id: `node-${node}`,
+      name: `packs ×${workers.length}`,
+      role: 'worker',
+      activity: 'idle',
+      reason: node,
+      cwd: '',
+      updatedAt: workers[0]!.updatedAt,
+    })
+  }
+
+  return shown
+}
+
 async function renderFleetBody($: EngineInterface, e: PaneInput) {
   const ui = $.ui.resolve(e)
   const { Box, Text } = ui
   const Raster = 'Raster' in ui ? ui.Raster : undefined
-  const list = await read($, fleet_)
+  const raw = await read($, fleet_)
+  const list = filterRosterSessions(raw)
   const frame = await read($, frame_)
   const fits = Math.max(1, Math.floor((e.props.bodyColumns ?? 80) / CARD))
   if (!Raster) return <Text dimColor>The fleet cards need the terminal.</Text>

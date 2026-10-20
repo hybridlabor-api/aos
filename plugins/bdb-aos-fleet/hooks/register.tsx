@@ -554,6 +554,7 @@ async function publish($: EngineInterface, ended = false) {
   const me = await read($, self)
   const name = me.name ?? id.slice(0, 8)
   const pipelineAttention = me.activity !== 'working' && project.pipelineReason
+  const trailNode = await $.env.get('AOS_TRAIL_NODE').catch(() => '')
   const record: FleetSession = {
     id,
     name,
@@ -567,6 +568,8 @@ async function publish($: EngineInterface, ended = false) {
     updatedAt: await $.clock.now(),
     context: reading?.percent,
     ended,
+    delegated: !trailNode,
+    trailNode: trailNode || undefined,
   }
   await $.fs.write(`${dir}/${id}.json`, JSON.stringify(record, null, 2))
 }
