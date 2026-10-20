@@ -3071,11 +3071,17 @@ async function installDeja() {
         return;
     }
     try {
-        log.step('Installing deja-vu session memory...');
-        // Recorded for uninstall only when AOS puts it there; one the user installed stays theirs.
-        const preexisting = hasExecutable('deja');
-        execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
-        if (!preexisting) uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
+        // A copy the user installed stays theirs: not reinstalled, not recorded. One AOS recorded earlier is updated.
+        let present = false;
+        try { present = fs.existsSync(path.join(execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim(), '@vshulcz', 'deja-vu')); } catch { /* npm missing: the install below reports it */ }
+        const ours = (uninstallRecords.readRecords(homeDir).npmGlobal || []).includes('@vshulcz/deja-vu');
+        if (present && !ours) {
+            log.step('deja-vu is already installed globally; left as it is.');
+        } else {
+            log.step('Installing deja-vu session memory...');
+            execSync(`npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`, { stdio: 'ignore', windowsHide: true });
+            uninstallRecords.recordNpmGlobal(homeDir, '@vshulcz/deja-vu');
+        }
     } catch (e) {
         log.warn(`deja-vu install failed. Install later with: npm install -g @vshulcz/deja-vu@${DEJA_VERSION}`);
     }
