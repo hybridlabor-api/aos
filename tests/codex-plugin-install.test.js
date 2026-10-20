@@ -248,3 +248,36 @@ test('M8: a later upgrade run keeps the ownership AOS recorded on the first run'
   assert.equal(state.installedPlugin, true);
   assert.equal(state.addedMarketplace, true);
 });
+
+test('dangling local marketplace (source folder gone): entry is removed, then the plugin is re-added', () => {
+  const f = fakeCodex({ marketplace: { sourceType: 'local', source: '/gone/node_modules/@hybridlabor-api/aos' }, installed: '0.0.1' });
+  const run0 = f.run;
+  let broken = true;
+  f.run = (cmd, args) => {
+    if (broken && args[1] === 'list') { f.calls.push(args.join(' ')); return { status: 1, stdout: '', stderr: 'Error: failed to load configured marketplace snapshot(s):\n- `bdb-aos` at \\\\?\\C:\\gone\\node_modules\\@hybridlabor-api\\aos: marketplace root does not contain a supported manifest' }; }
+    if (args[1] === 'marketplace' && args[2] === 'remove') broken = false;
+    return run0(cmd, args);
+  };
+  const r = go(f);
+  assert.equal(r.ok, true, r.lines.join('\n'));
+  assert.ok(f.calls.includes('plugin marketplace remove bdb-aos'), f.calls.join('\n'));
+  assert.ok(f.calls.includes('plugin add bdb-aos@bdb-aos'), f.calls.join('\n'));
+});
+
+test('list error naming an existing source path is not treated as dangling', () => {
+  const f = fakeCodex();
+  f.run = (cmd, args) => { f.calls.push(args.join(' ')); return { status: 1, stdout: '', stderr: `- \`bdb-aos\` at ${ROOT}: marketplace root does not contain a supported manifest` }; };
+  const r = go(f);
+  assert.equal(r.ok, false);
+  assert.ok(!f.calls.some((c) => c.includes('marketplace remove')), f.calls.join('\n'));
+});
+
+test('a global npm package root is never registered as a local marketplace source', () => {
+  const pkg = path.join(home(), 'node_modules', '@hybridlabor-api', 'aos');
+  fs.mkdirSync(path.join(pkg, '.agents', 'plugins'), { recursive: true });
+  fs.writeFileSync(path.join(pkg, '.agents', 'plugins', 'marketplace.json'), '{}');
+  const f = fakeCodex();
+  const r = go(f, { pkgRoot: pkg });
+  assert.equal(r.ok, true, r.lines.join('\n'));
+  assert.ok(f.calls.includes(`plugin marketplace add ${cp.GITHUB_SOURCE}`), f.calls.join('\n'));
+});
