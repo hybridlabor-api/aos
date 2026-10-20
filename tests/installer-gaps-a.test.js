@@ -133,3 +133,27 @@ test('review 2: a user-owned ~/.roo/skills/legacy is not retired unless the mani
     retireObsoleteLegacyDir(legacy);
     assert.ok(fs.existsSync(path.join(legacy, 'mine.md')));
 });
+
+test('review 3: AOS copies in ~/.roo/bdb-skills are removed, edited files are backed up', () => {
+    const { migrateRooBdbSkills } = require('../installer.js');
+    const crypto = require('crypto');
+    const home = fs.mkdtempSync(path.join(tmpHome, 'roo-'));
+    const root = path.join(home, '.roo', 'bdb-skills');
+    fs.mkdirSync(path.join(home, '.roo', 'skills'), { recursive: true });
+    const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
+    const clean = path.join(root, 'plan-canvas', 'SKILL.md');
+    const edited = path.join(root, 'grill-me', 'SKILL.md');
+    for (const f of [clean, edited]) fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(clean, 'a');
+    fs.writeFileSync(edited, 'user edit');
+    const manifest = { [clean]: { sha256: sha('a') }, [edited]: { sha256: sha('orig') } };
+    migrateRooBdbSkills(manifest, home);
+    assert.ok(!fs.existsSync(path.dirname(clean)));
+    assert.ok(!fs.existsSync(path.dirname(edited)));
+    const backups = path.join(home, '.agents', 'backups');
+    const found = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const a = path.join(d, e.name); if (e.isDirectory()) walk(a); else found.push(a); } };
+    walk(backups);
+    assert.strictEqual(found.length, 1);
+    assert.strictEqual(fs.readFileSync(found[0], 'utf8'), 'user edit');
+});

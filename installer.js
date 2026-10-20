@@ -1152,7 +1152,25 @@ function globalSkillDestRoots() {
 
 // Retires skills the package no longer ships (lib/retired-skills.js). Edited or foreign files are
 // copied to the backup dir before the skill folder is removed.
+// Roo used to get a second copy under ~/.roo/bdb-skills. Once ~/.roo/skills exists, the AOS copies there are removed
+// (manifest-listed files); edited or foreign files are backed up first, never silently lost.
+function migrateRooBdbSkills(manifest, home = homeDir) {
+    const root = path.join(home, '.roo', 'bdb-skills');
+    if (!manifest || !fs.existsSync(root) || !fs.existsSync(path.join(home, '.roo', 'skills'))) return;
+    const names = new Set();
+    for (const f of Object.keys(manifest)) {
+        if (typeof f === 'string' && f.startsWith(root + path.sep)) names.add(f.slice(root.length + 1).split(path.sep)[0]);
+    }
+    if (!names.size) return;
+    pruneRetiredSkills({
+        home, manifest, roots: [root], names: [...names], what: 'duplicate Roo',
+        backupDir: path.join(home, '.agents', 'backups', `roo-bdb-skills-${timestamp}`),
+        log,
+    });
+}
+
 function pruneRemovedSkills(manifest) {
+    migrateRooBdbSkills(manifest);
     pruneRetiredSkills({
         home: homeDir,
         manifest,
@@ -9489,6 +9507,7 @@ module.exports = {
     applyInstallOptions,
     getTierExcludeSkills,
     resolveShippedMcpServers,
+    migrateRooBdbSkills,
     refreshHarnessMcpEntries,
     globalSkillDestRoots,
     globalSkillDestinations,
