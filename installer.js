@@ -983,11 +983,19 @@ const RUNTIME_FILES = new Set(['startcycle-dispatch.mjs', 'stop-module-processes
 function keepOrReplaceGuard(sourcePath, targetPath, manifest, sourceHash) {
     const base = path.basename(targetPath);
     if (GUARD_FILES.has(base) || RUNTIME_FILES.has(base)) {
-        fs.copyFileSync(targetPath, `${targetPath}.bak`);
+        // Never overwrite an earlier backup: it may hold the only copy of a user's edit.
+        let bak = `${targetPath}.bak`;
+        if (fs.existsSync(bak)) bak = `${targetPath}.${Date.now()}.bak`;
+        fs.copyFileSync(targetPath, bak);
         fs.copyFileSync(sourcePath, targetPath);
-        try { fs.rmSync(`${targetPath}.new`, { force: true }); } catch { /* stale .new is only noise */ }
+        // A .new the user was told to merge stays unless it is just this shipped version.
+        const stale = `${targetPath}.new`;
+        if (fs.existsSync(stale)) {
+            if (computeFileHash(stale) === sourceHash) { try { fs.rmSync(stale, { force: true }); } catch { /* noise only */ } }
+            else log.warn(`${stale} differs from the shipped version and was kept; merge or delete it.`);
+        }
         manifest[targetPath] = { path: targetPath, sha256: sourceHash, version: pkg.version, installedAt: new Date().toISOString() };
-        log.warn(`${GUARD_FILES.has(base) ? 'Gate file' : 'AOS runtime file'} ${targetPath} differed from every shipped version; replaced it (previous copy: ${targetPath}.bak).`);
+        log.warn(`${GUARD_FILES.has(base) ? 'Gate file' : 'AOS runtime file'} ${targetPath} differed from every shipped version; replaced it (previous copy: ${bak}).`);
         return 'wrote';
     }
     fs.copyFileSync(sourcePath, `${targetPath}.new`);
