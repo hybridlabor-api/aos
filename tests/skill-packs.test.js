@@ -125,3 +125,30 @@ test('applyInstallOptions reads a stored packs setting from v5-settings.json', (
     installer.applyInstallOptions(HOME);
     assert.deepStrictEqual(installer.currentPackSelection(), []);
 });
+
+test('implied packs: Pro MEDIA tier and module/checkbox choices add, never deselect', () => {
+    assert.deepStrictEqual(skillPacks.impliedPacks({ tier: '1' }, ROOT), ['live-show']);
+    assert.deepStrictEqual(skillPacks.impliedPacks({ tier: '2' }, ROOT), []);
+    assert.deepStrictEqual(skillPacks.impliedPacks({ installedModules: ['creator', 'web-design', 'synapse'] }, ROOT), ['creator', 'web-design']);
+    assert.deepStrictEqual(skillPacks.impliedPacks({ tier: '1', installedModules: ['hardware'] }, ROOT), ['live-show', 'hardware']);
+    assert.deepStrictEqual(skillPacks.impliedPacks(null, ROOT), []);
+    // No explicit selection: implied packs never start deselecting skills.
+    assert.strictEqual(skillPacks.mergeSelection(null, ['live-show'], ROOT), null);
+    assert.deepStrictEqual(skillPacks.mergeSelection(['app-dev'], ['live-show'], ROOT), ['app-dev', 'stacks', 'live-show']);
+});
+
+test('effective selection merges stored packs with run choices and the manifest', () => {
+    v5Profile.writeSettings(HOME, { packs: ['business'] });
+    installer.applyInstallOptions(HOME);
+    assert.deepStrictEqual(installer.effectivePackSelection(), ['business']);
+    installer.addImpliedPack('live-show');
+    assert.deepStrictEqual(installer.effectivePackSelection(), ['business', 'live-show']);
+    assert.deepStrictEqual(
+        installer.effectivePackSelection({ tier: '1', installedModules: ['creator'] }),
+        ['business', 'live-show', 'creator'],
+    );
+    // Exclusion follows the merged selection: a live-show skill is no longer excluded.
+    assert.ok(!installer.getTierExcludeSkills('1').includes('bdb-resolume-mcp'));
+    installer.applyInstallOptions(HOME); // fresh resolution clears run-implied packs
+    assert.ok(installer.getTierExcludeSkills('1').includes('bdb-resolume-mcp'));
+});
