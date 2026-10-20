@@ -1143,6 +1143,7 @@ function globalSkillDestRoots() {
         path.join(homeDir, '.codex', 'skills'),
         path.join(homeDir, '.cursor', 'skills'),
         path.join(homeDir, '.roo', 'skills'),
+        path.join(homeDir, '.config', 'opencode', 'skills'),
         path.join(geminiDir, 'config', 'skills'),
     ];
 }
@@ -9369,6 +9370,8 @@ module.exports = {
     harnessSummaryLine,
     applyInstallOptions,
     getTierExcludeSkills,
+    globalSkillDestRoots,
+    globalSkillDestinations,
     storedTierOpts,
     currentPackSelection: () => packSelection,
     effectivePackSelection,

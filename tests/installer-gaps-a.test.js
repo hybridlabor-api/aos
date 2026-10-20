@@ -26,3 +26,10 @@ test('G3: pack agents follow the stored pack selection', () => {
     assert.ok(!names(['live-show']).includes('pcb-design-assistant'));
     assert.deepStrictEqual(names([]), []);
 });
+
+test('G4: every skill copy destination is also a prune root', () => {
+    const inst = require('../installer.js');
+    const roots = inst.globalSkillDestRoots();
+    for (const { dir } of inst.globalSkillDestinations({ ignorePluginCoverage: true })) assert.ok(roots.includes(dir), dir);
+    assert.ok(roots.some((r) => r.endsWith(path.join('opencode', 'skills'))));
+});
