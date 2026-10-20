@@ -1,6 +1,7 @@
 ---
 name: bdbdesignpro
-description: "Use when choosing an animation engine, defining motion tokens, adding scroll effects or micro-interactions, or auditing motion for accessibility and performance. Covers engine selection (GSAP, Motion.dev, Anime.js, React-Spring, Three.js, CSS Native), DTCG motion tokens, and the anti-slop/a11y quality gate."
+description: >-
+  Choose animation engines, define DTCG motion tokens, add scroll effects and audit motion accessibility. Use for motion design work.
 category: design-ui-ux
 user-invocable: true
 risk: safe

@@ -1,10 +1,7 @@
 ---
 name: aos-project-init
 description: >-
-  Interview a project folder into AOS and write the result: a stable slug and
-  domain in .aos/project.json, an OpenWiki wiki that is actually watched and
-  does not index junk, memB memory bound to the slug, a Synapse map, AGENTS.md
-  with its harness symlinks, and optionally CI and issue triage.
+  Interview a project folder into AOS: .aos/project.json, OpenWiki, memB memory, Synapse map, AGENTS.md. Use when onboarding a project to AOS.
 category: bdb-core
 risk: low
 source: bdb

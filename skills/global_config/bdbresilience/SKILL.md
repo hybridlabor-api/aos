@@ -1,6 +1,7 @@
 ---
 name: bdbresilience
-description: Autonomous CI/CD error recovery, distributed file-based locking, diagnostic triage, and two-phase GO gate resilience engine for BDB Agent OS multi-agent pipelines.
+description: >-
+  CI/CD error recovery, distributed file-based locking, diagnostic triage and GO-gate resilience for BDB Agent OS multi-agent pipelines.
 category: bdb-core
 triggers:
   - error recovery

@@ -1,6 +1,7 @@
 ---
 name: ask-tim
-description: Ask which skill or flow fits your situation. A route through AOS's skills for work that travels idea to ship, plus a catalogue of the available options for lookup. Use when unsure where to start, or when picking between overlapping choices.
+description: >-
+  Route to the right AOS skill or flow for a task. Use when unsure where to start, or when choosing between overlapping skills.
 category: bdb-core
 ---
 
