@@ -179,3 +179,39 @@ test('CLI mode target detection skips option values such as the --args JSON', as
     assert.equal(firstPositional(['--format', 'json']), undefined);
     assert.equal(firstPositional(['-p', 'worker', 'github']), 'github');
 });
+
+test('entries with extra user policy are not identical, not adoptable and never removed; type/enabled do not matter', () => {
+    const home = tmp();
+    fs.mkdirSync(cfg.gatewayDir(home), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(cfg.adoptedPath(home), JSON.stringify({ servers: {
+        policy: { command: 'node', args: ['p.js'], env: {} }, plain: { command: 'node', args: ['q.js'], env: {} },
+    } }));
+    const claude = path.join(home, '.claude.json');
+    wj(claude, { mcpServers: {
+        policy: { type: 'stdio', command: 'node', args: ['p.js'], alwaysAllow: ['read'] },
+        plain: { type: 'stdio', command: 'node', args: ['q.js'] },
+        badargs: { command: 'node', args: 'x.js' },
+        timed: { command: 'node', args: ['t.js'], timeout: 5 },
+    } });
+    const files = [{ file: claude, kind: 'json' }];
+    const scan = adopt.scanAdoptable({ files, shipped });
+    assert.deepEqual(scan.adoptable.map((a) => a.name).sort(), ['plain']);
+    const why = (n) => scan.skipped.find((x) => x.name === n).reason;
+    assert.match(why('policy'), /extra settings.*alwaysAllow/);
+    assert.match(why('timed'), /extra settings.*timeout/);
+    assert.equal(why('badargs'), 'args is not an array');
+    adopt.removeAdoptedDuplicates({ home, token: TOKEN, files, shipped, now: 5000 });
+    const left = rj(claude).mcpServers;
+    assert.deepEqual(left.policy, { type: 'stdio', command: 'node', args: ['p.js'], alwaysAllow: ['read'] });
+    assert.equal(left.plain, undefined);
+    assert.deepEqual(left.badargs, { command: 'node', args: 'x.js' });
+});
+
+test('opencode entries keep their extra fields in the identity', () => {
+    const home = tmp();
+    const oc = path.join(home, '.config', 'opencode', 'opencode.json');
+    wj(oc, { mcp: { a: { type: 'local', command: ['node', 'a.js'], timeout: 9 }, b: { type: 'local', command: ['node', 'b.js'], enabled: true } } });
+    const scan = adopt.scanAdoptable({ files: [{ file: oc, kind: 'opencode' }], shipped });
+    assert.deepEqual(scan.adoptable.map((x) => x.name), ['b']);
+    assert.match(scan.skipped.find((x) => x.name === 'a').reason, /timeout/);
+});
