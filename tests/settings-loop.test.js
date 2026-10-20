@@ -55,7 +55,7 @@ test('cancel inside a setting returns to Settings, Back returns to the main menu
     const ui = { select: async () => { seen++; return script.shift()[1]; } };
     await menu.settingsLoop(host(home), { home, write: () => {}, ui });
     assert.strictEqual(seen, 3);
-    assert.strictEqual(p.readSettings(home).updates, undefined);
+    assert.strictEqual(p.readSettings(home).updates, 'notify', 'cancel leaves the default policy');
 });
 
 const mainHost = (home) => ({ ...host(home), runUninstaller: () => 0 });
