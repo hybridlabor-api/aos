@@ -53,7 +53,8 @@ describe('state schema contract', () => {
   test('dispatcher shipping gate includes every canonical key', () => {
     const dispatcher = readFileSync(resolve(root, '.claude', 'workflows', 'startcycle-dispatch.mjs'), 'utf8');
     assert.match(dispatcher, /const GATE_KEYS = [^;]*?profile \? Object\.keys\(profile\.gates\) : \[[^\]]*'security'/);
-    assert.match(dispatcher, /a11y, seo, security/);
+    // GATE_LABELS derives its human-readable label from GATE_KEYS itself: no second hardcode to drift.
+    assert.match(dispatcher, /const GATE_LABELS = profile[\s\S]*?GATE_KEYS\.join\(', '\);/);
   });
 
   test('gate exposes the canonical keys with pass fail skip only', () => {
