@@ -218,7 +218,7 @@ function describe(p) {
   }
   for (const s of p.winSvc || []) console.log(`\nWindows Startup entry ${tilde(s.vbs)} is removed; processes running ${tilde(s.full)} are stopped`);
   if (p.mcpTrees && p.mcpTrees.removed.length) {
-    console.log(`\nGenerated MCP build folders (${p.mcpTrees.removed.length}) are removed:`);
+    console.log(`\nAOS copies of shipped MCP servers (${p.mcpTrees.removed.length}) are removed:`);
     for (const t of p.mcpTrees.removed) console.log(`    ${tilde(t)}`);
   }
   if (p.mcpTrees && p.mcpTrees.kept.length) {
@@ -323,14 +323,13 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false, own
     const dir = path.join(root, name);
     let st; try { st = lstatSync(dir); } catch { continue; }
     if (!st.isDirectory()) continue;
-    const trees = MCP_GENERATED.map((g) => path.join(dir, g)).filter(existsSync);
-    if (!trees.length) continue;
-    if (!isAosMcpCopy(dir, name, owned, shippedDir)) { kept.push(dir); continue; }
-    for (const t of trees) {
-      removed.push(t);
-      if (!dry) rmSync(t, { recursive: true, force: true });
+    if (!isAosMcpCopy(dir, name, owned, shippedDir)) {
+      if (MCP_GENERATED.some((g) => existsSync(path.join(dir, g)))) kept.push(dir);
+      continue;
     }
-    if (!dry) { pruneEmpty(dir); try { rmdirSync(root); } catch { /* other servers or files left */ } }
+    // An AOS copy goes whole (sources included, they are copies of the shipped payload).
+    removed.push(dir);
+    if (!dry) { rmSync(dir, { recursive: true, force: true }); try { rmdirSync(root); } catch { /* other servers or files left */ } }
   }
   return { removed, kept };
 }
@@ -389,7 +388,7 @@ async function execute(p) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
-  attempt('MCP server build trees', () => {
+  attempt('AOS-copied MCP server folders', () => {
     const { removed: gone, kept } = removeGeneratedMcpTrees({ owned: Object.keys(p.manifest || {}) });
     for (const t of gone) console.log(`  removed ${tilde(t)}`);
     for (const k of kept) console.log(`  ${tilde(k)} has build folders but is not recognised as an AOS copy, kept`);

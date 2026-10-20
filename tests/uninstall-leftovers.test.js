@@ -9,7 +9,7 @@ const load = () => import(pathToFileURL(path.join(__dirname, '..', 'bin', 'aos-u
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-leftovers-'));
 const touch = (...p) => { fs.mkdirSync(path.dirname(path.join(...p)), { recursive: true }); fs.writeFileSync(path.join(...p), 'x'); };
 
-test('removeGeneratedMcpTrees removes build trees of shipped servers and keeps foreign files and servers', async () => {
+test('removeGeneratedMcpTrees removes AOS copies of shipped servers whole and keeps other servers', async () => {
     const { removeGeneratedMcpTrees } = await load();
     const home = tmp();
     const roots = [path.join(home, 'Library', 'Application Support', 'Claude', 'mcps'), path.join(home, '.gemini', 'config', 'mcps')];
@@ -26,15 +26,14 @@ test('removeGeneratedMcpTrees removes build trees of shipped servers and keeps f
     for (const root of roots) for (const n of ['blender-mcp', 'memb-mcp']) owned.push(path.join(root, n, 'server.js'));
     owned.push(path.join(roots[0], 'tdmcp', 'index.js'));
     const { removed: gone, kept } = removeGeneratedMcpTrees({ home, names: ['blender-mcp', 'tdmcp'], owned });
-    assert.equal(gone.length, 7);
+    assert.equal(gone.length, 5);
     assert.deepEqual(kept, []);
     for (const root of roots) {
         assert.ok(!fs.existsSync(path.join(root, 'blender-mcp')), 'emptied server dir is pruned');
         assert.ok(!fs.existsSync(path.join(root, 'memb-mcp')));
         assert.ok(fs.existsSync(path.join(root, 'my-own-mcp', 'node_modules', 'keep.js')), 'non-shipped server untouched');
     }
-    assert.ok(fs.existsSync(path.join(roots[0], 'tdmcp', 'notes.txt')), 'foreign file stays');
-    assert.ok(!fs.existsSync(path.join(roots[0], 'tdmcp', 'node_modules')));
+    assert.ok(!fs.existsSync(path.join(roots[0], 'tdmcp')), 'recognised AOS copy goes whole');
 });
 
 test('removeGeneratedMcpTrees drops the mcps dir once nothing is left and is a no-op without one', async () => {
