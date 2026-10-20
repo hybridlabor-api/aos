@@ -50,3 +50,22 @@ test('dry run lists the trees and deletes nothing', async () => {
     assert.equal(removeGeneratedMcpTrees({ home, names: ['x'], dry: true }).length, 1);
     assert.ok(fs.existsSync(path.join(home, '.config', 'Claude', 'mcps', 'x', 'node_modules', 'a.js')));
 });
+
+test('removeClaudePointer removes the exact installer pointer, strips only its prefix line, leaves user files', async () => {
+    const { removeClaudePointer } = await load();
+    const inst = require('../installer.js');
+    const home = tmp();
+    const f = path.join(home, 'CLAUDE.md');
+
+    fs.writeFileSync(f, inst.CLAUDE_POINTER);
+    assert.equal(removeClaudePointer(f), 'removed');
+    assert.ok(!fs.existsSync(f));
+
+    fs.writeFileSync(f, `${inst.CLAUDE_PREFIX}# My rules\n`);
+    assert.equal(removeClaudePointer(f), 'stripped');
+    assert.equal(fs.readFileSync(f, 'utf8'), '# My rules\n');
+
+    fs.writeFileSync(f, '# My rules\nSee AGENTS.md\n');
+    assert.equal(removeClaudePointer(f), null);
+    assert.equal(fs.readFileSync(f, 'utf8'), '# My rules\nSee AGENTS.md\n');
+});

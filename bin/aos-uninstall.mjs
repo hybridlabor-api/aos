@@ -308,6 +308,15 @@ function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false } = 
   return out;
 }
 
+// ~/CLAUDE.md as the installer wrote it: exactly the pointer goes whole; its prefix line goes from user text.
+function removeClaudePointer(file) {
+  const text = readFileSync(file, 'utf8');
+  if (text.replace(/\r\n/g, '\n') === installer.CLAUDE_POINTER) { rmSync(file); return 'removed'; }
+  if (!text.startsWith(installer.CLAUDE_PREFIX)) return null;
+  writeFileSync(file, text.slice(installer.CLAUDE_PREFIX.length));
+  return 'stripped';
+}
+
 async function execute(p) {
   const { ours, edited, agents, modules, legacy, data, codenotch } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
@@ -361,7 +370,12 @@ async function execute(p) {
   ];
   for (const f of ruleFiles.filter(existsSync)) {
     try {
-      const text = readFileSync(f, 'utf8');
+      let text = readFileSync(f, 'utf8');
+      if (f === h('CLAUDE.md')) {
+        const r = removeClaudePointer(f);
+        if (r === 'removed') { console.log(`  ${tilde(f)} removed (AOS pointer only)`); continue; }
+        if (r === 'stripped') { console.log(`  AOS pointer line removed from ${tilde(f)}`); text = readFileSync(f, 'utf8'); }
+      }
       // The harness-rules block is the outermost one for ~/.gemini/RULES.md and
       // GEMINI.md — strip it first so the inner blocks go with it; the inner
       // strips still cover older installs that carried only those blocks.
@@ -566,7 +580,7 @@ async function execute(p) {
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan, removeWinServices, removeGeneratedMcpTrees };
+export { plan, removeWinServices, removeGeneratedMcpTrees, removeClaudePointer };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });

@@ -439,6 +439,10 @@ let _uvBin;
 const uvBin = () => (_uvBin === undefined ? (_uvBin = findUv()) : _uvBin) || 'uv';
 
 const MEMB_MIN_PYTHON = [3, 10];
+// ~/CLAUDE.md as the installer writes it: the whole file when it was empty, else this line in front of the user's text.
+const CLAUDE_POINTER_LINE = '**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**';
+const CLAUDE_POINTER = `# AOS Rules\n\n${CLAUDE_POINTER_LINE}\n`;
+const CLAUDE_PREFIX = '**Read [AGENTS.md](AGENTS.md) first.**\n\n';
 const MEMB_PYTHON_FIX = 'memB needs Python >= 3.10; install uv (https://docs.astral.sh/uv/) or python 3.12, then run: aos package install memb';
 const parsePyVersion = (s) => { const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(String(s || '')); return m ? [Number(m[1]), Number(m[2])] : null; };
 const pyAtLeast = (v, min) => Boolean(v) && (v[0] > min[0] || (v[0] === min[0] && v[1] >= min[1]));
@@ -5776,9 +5780,9 @@ function injectHarnessRules() {
                 next = next.replace(/Harness files: `CLAUDE\.md`, `RULES\.md` and `CODEX\.md` are symlinks to this/g, 'Harness files: `CLAUDE.md`, `RULES.md` and `CODEX.md` point to this');
 
                 if (!next.trim()) {
-                    next = '# AOS Rules\n\n**See [AGENTS.md](AGENTS.md) for the definitive rules — they apply to all harnesses.**\n';
+                    next = CLAUDE_POINTER;
                 } else if (!next.includes('AGENTS.md')) {
-                    next = `**Read [AGENTS.md](AGENTS.md) first.**\n\n${next}`;
+                    next = `${CLAUDE_PREFIX}${next}`;
                 }
 
                 if (next !== claudeContent) {
@@ -8873,6 +8877,8 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
 
 // Exported for tests -- requiring installer.js must not launch the TUI.
 module.exports = {
+    CLAUDE_POINTER,
+    CLAUDE_PREFIX,
     detectRouterTargets,
     buildRouterPreferences,
     writeUserRouterConfig,
