@@ -230,7 +230,7 @@ function describe(p) {
     console.log(`\nBDB AO Codenotch ${tilde(c.state.path || c.state.uninstallPath)} ${note}`);
   }
 
-  const regLines = ur.reverseRegistrations({ home: HOME, dryRun: true, runner: pm.defaultCliRunner, purge: PURGE });
+  const regLines = ur.reverseRegistrations({ home: HOME, dryRun: true, runner: pm.defaultCliRunner });
   const cxLines = cp.uninstallCodexPlugin({ home: HOME, dryRun: true }).lines;
   const agyLines = [];
   agyPlugin.uninstall({ home: HOME, dryRun: true, log: { step: (m) => agyLines.push(m), warn: (m) => agyLines.push(m) } });
@@ -457,7 +457,7 @@ async function execute(p) {
   for (const l of legacy) { try { rmSync(l); } catch { /* already gone */ } }
   if (legacy.length) console.log(`  ${legacy.length} install markers removed`);
 
-  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner, purge: PURGE })) console.log(`  ${l}`);
+  for (const l of ur.reverseRegistrations({ home: HOME, runner: pm.defaultCliRunner })) console.log(`  ${l}`);
 
   const reg = pm.readState(HOME).registered.claudecode;
   if (reg) {
