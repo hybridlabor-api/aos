@@ -598,7 +598,29 @@ async function checkGateway() {
     const { harnessMcpFiles, shippedServers } = req('../lib/mcp-secrets.js');
     let status;
     try { status = await (await import('./aos-gateway.mjs')).gatewayStatus({ dir: gatewayDir(home) }); } catch { /* reported as not running */ }
-    for (const c of gatewayChecks({ home, files: harnessMcpFiles(home, process.env, process.platform, home), status, shipped: shippedServers() })) add(c.area, c.name, c.ok, c.detail, c.fix, c.warningOnly);
+    let checks;
+    try { checks = gatewayChecks({ home, files: harnessMcpFiles(home, process.env, process.platform, home), status, shipped: shippedServers() }); } catch (e) { add('gateway', 'gateway checks', false, `could not run: ${e.message}`, '', true); checks = []; }
+    for (const c of checks) add(c.area, c.name, c.ok, c.detail, c.fix, c.warningOnly);
+    // Per-harness exposure: live tool counts (estimate) when the gateway answers; server list always.
+    try {
+        let toolCounts = undefined;
+        const profile = req('../lib/v5/profile.js');
+        const st = profile.readSettings(home, () => {});
+        const selection = (st.gateway && st.gateway.servers) || undefined;
+        const aosRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+        const presets = req('../lib/v5/pkg-gateway.js').shippedPresets(aosRoot);
+        if (status && status.running) {
+            const { gatewayToolCounts } = req('../lib/gateway/doctor.js');
+            try { toolCounts = await gatewayToolCounts({ token: fs.readFileSync(path.join(gatewayDir(home), 'token'), 'utf8').trim() }); } catch { /* estimate unavailable */ }
+        }
+        const { gatewayExposureRows } = req('../lib/gateway/doctor.js');
+        const rows = gatewayExposureRows({ files: harnessMcpFiles(home, process.env, process.platform, home), toolCounts: toolCounts || {}, selection, presets: {} });
+        for (const r of rows) {
+            const counts = r.tools === null ? 'tool count unavailable (gateway not running or did not answer)' : `~${r.tools} tools (estimate)`;
+            add('gateway', `gateway exposure in ${path.basename(r.file)}`, r.servers.length > 0,
+                `${r.servers.length} gateway server(s): ${r.servers.join(', ')}; ${counts}${r.estimatedTokens !== null ? ` => ~${r.estimatedTokens.toLocaleString()} tokens (estimate: ${r.tools} tools x 85 tokens/tool)` : ''}`, r.servers.length ? '' : 'aos-gateway add <server>', true);
+        }
+    } catch (e) { add('gateway', 'gateway exposure', false, `could not measure: ${e.message}`, '', true); }
   } catch (e) {
     add('gateway', 'gateway checks', false, `could not run: ${e.message}`, '', true);
   }
