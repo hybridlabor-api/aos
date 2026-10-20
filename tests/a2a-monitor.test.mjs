@@ -200,6 +200,9 @@ test("plugin monitor script prints the injection for a waiting message (end to e
     assert.match(line, /> wake up/);
     assert.match(line, /reply --name claude-e2e00001 e-1/);
     assert.match(line, /never counts as a GO/);
+    // The monitor writes the line first and claims (renames) the message right after; killing it between the two is a race of the test, not a defect.
+    const claimed = () => readdirSync(inboxDir("claude-e2e00001")).some((f) => f.endsWith("e-1.delivered"));
+    for (let i = 0; i < 40 && !claimed(); i++) await new Promise((r) => setTimeout(r, 50));
   } finally {
     child.kill();
   }
