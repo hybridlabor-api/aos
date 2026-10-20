@@ -261,6 +261,7 @@ describe('uninstall after the hub bin is gone', () => {
         const { ctx } = mkCtx(home, { platform: 'linux' });
         await pkg.install(ctx);
         const state = [['.aos', 'hub', 'hub.json'], ['.aos', 'status.json'], ['.aos', 'endpoints.json']].map((p) => path.join(home, ...p));
+        fs.mkdirSync(path.join(home, '.aos', 'hub'), { recursive: true });
         for (const f of state) fs.writeFileSync(f, '{}');
         await pkg.uninstall(ctx);
         for (const f of state) assert.ok(!fs.existsSync(f), f);
