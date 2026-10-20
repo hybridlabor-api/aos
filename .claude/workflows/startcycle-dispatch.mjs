@@ -488,8 +488,11 @@ if (typeof globalThis.agent === 'undefined') {
       if (missing.length === 0) return res;
       try {
         const urlMod = await import('node:url');
-        const cli = path.join(path.dirname(urlMod.fileURLToPath(import.meta.url)), '..', '..', 'bin', 'aos-store.mjs');
-        if (fs.existsSync(cli)) {
+        const cli = [
+          path.join(home, '.agents', 'bin', 'aos-store.mjs'),
+          path.join(path.dirname(urlMod.fileURLToPath(import.meta.url)), '..', '..', 'bin', 'aos-store.mjs'),
+        ].find((c) => fs.existsSync(c));
+        if (cli) {
           for (const name of missing) {
             try {
               const r = child_process.spawnSync(process.execPath, [cli, 'install', name], {
