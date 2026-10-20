@@ -147,13 +147,9 @@ function checkAosCore() {
   // Network version check gated by --net
   if (NET) {
     try {
-      const npmBin = IS_WIN ? 'npm.cmd' : 'npm';
-      const latest = execFileSync(npmBin, ['view', '@hybridlabor-api/aos', 'version'], {
-        encoding: 'utf8',
-        timeout: 8000,
-        stdio: ['ignore', 'pipe', 'ignore'],
-        shell: IS_WIN
-      }).trim();
+      const o = req('../lib/cli-spawn.js').run('npm', ['view', '@hybridlabor-api/aos', 'version'], { timeout: 8000 });
+      if (o.status !== 0) throw new Error(o.stderr);
+      const latest = o.stdout.trim();
       const currentVer = manifest?.version || '4.7.1';
       add('aos-core', 'Version vs npm', currentVer === latest, `local v${currentVer} · npm v${latest}`,
         'Run: npx @hybridlabor-api/aos@latest');
