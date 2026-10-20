@@ -18,11 +18,20 @@ describe('one shared map renderer', () => {
   const LAYOUT_FNS = ['function laneLayout', 'function boardLayout', 'function renderGraph', 'function graphNodeMetrics', 'function fitWorld', 'function flyToRegion'];
 
   test('both pages load the shared renderer and stylesheet', () => {
-    for (const html of [read('index.html'), read('hub', 'index.html')]) {
-      assert.match(html, /<script src="\/shared\/map\.js"><\/script>/);
-      assert.match(html, /<link rel="stylesheet" href="\/shared\/map\.css">/);
-    }
-  });
+  const toSharedUrl = (v) => {
+    if (v === 'shared/map.js') return '/shared/map.js';
+    if (v === 'shared/map.css') return '/shared/map.css';
+    return v;
+  };
+  const errors = [];
+  for (const [page, html] of [['index.html', read('index.html')], ['hub/index.html', read('hub', 'index.html')]]) {
+    const script = [...html.matchAll(/<script src="([^"]*?\/?shared\/map\.js)"\s*><\/script>/g)].map((m) => toSharedUrl(m[1]));
+    const link = [...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]*?\/?shared\/map\.css)"\s*>/g)].map((m) => toSharedUrl(m[1]));
+    if (!script.includes('/shared/map.js')) errors.push(`${page}: no shared/map.js script`);
+    if (!link.includes('/shared/map.css')) errors.push(`${page}: no shared/map.css link`);
+  }
+  assert.deepEqual(errors, []);
+});
 
   test('the layout functions live only in public/shared/', () => {
     const shared = read('shared', 'map.js');
