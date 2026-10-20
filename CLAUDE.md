@@ -15,7 +15,7 @@ blocks `git push`, `npm publish`, `npm version`, and recursive `rm` unless your
 immediately preceding message is the literal word **GO**. On this harness the
 gate is enforced, not merely honoured — you cannot argue around it, and it works
 whether or not this file was loaded. See AGENTS.md for the policy layer and the
-three clarifications that have caused real incidents.
+clarifications.
 
 ## Delegating to other harnesses
 
@@ -43,8 +43,7 @@ identically.
 
 Agent personas live in `.claude/agents/`. Agent Teams were evaluated and
 deferred for `/startcycle-graph` — it runs headless and teams need an
-interactive session. Read `.agents/graph.md` and F-17's addendum in
-`docs/sessions/audit-agents.md` before reversing that.
+interactive session. Read `.agents/graph.md` before reversing that.
 
 ## Validating a skill change
 
