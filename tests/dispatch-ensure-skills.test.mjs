@@ -31,7 +31,7 @@ const calls = [];
 globalThis.args = { goal: 'build a thing' };
 globalThis.pipeline = (items, fn) => Promise.all(items.map(fn));
 globalThis.agent = async (prompt, opts) => {
-  calls.push(opts);
+  calls.push({ ...opts, prompt });
   if (opts.label === 'load-registry') return JSON.parse(fs.readFileSync(${JSON.stringify(path.join(ROOT, '.agents', 'nodes.json'))}, 'utf8'));
   if (opts.label === 'validate-mandatory-skills') return { found: [], missing: [], store_matches: [] };
   if (opts.label.startsWith('ensure-skills-')) return { installed: [], stillMissing: [] };
