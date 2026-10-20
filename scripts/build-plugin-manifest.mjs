@@ -151,14 +151,13 @@ const manifest = {
   name: 'bdb-aos',
   version: pkg.version,
   description:
-    'Full BDB Agent OS suite: 200+ curated skills, 45 subagents and the startcycle pipelines for Claude Code. ' +
-    'Gate hooks and MCP servers are installed by the AOS installer.',
+    'Full BDB Agent OS suite: commands, 45 subagents and the startcycle pipelines for Claude Code. ' +
+    'Skills are installed separately by the AOS installer; gate hooks and MCP servers stay in the installer.',
   author: { name: 'Tim Rennings / Hybridlabor Global LLC' },
   homepage: repoUrl,
   repository: repoUrl,
   license: 'Apache-2.0',
-  keywords: ['skills', 'agent-os', 'cicd', 'multiagent', 'startcycle', 'bdb'],
-  skills,
+  keywords: ['agent-os', 'cicd', 'multiagent', 'startcycle', 'bdb'],
   commands,
 };
 
@@ -167,17 +166,16 @@ const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const codexManifest = {
   name: manifest.name,
   version: pkg.version,
-  description: 'Full BDB Agent OS suite for Codex: command entry points ($bdb-aos:setup, $bdb-aos:init, ...) generated from plugin-commands.json.',
+  description: 'Full BDB Agent OS suite for Codex: command entry points ($bdb-aos:setup, $bdb-aos:init, ...) generated from plugin-commands.json. Skills are installed separately by the AOS installer.',
   author: manifest.author,
   homepage: repoUrl,
   repository: repoUrl,
   license: manifest.license,
   keywords: manifest.keywords,
-  skills: './skills/',
   interface: {
     displayName: 'BDB Agent OS',
     shortDescription: 'AOS commands for setup, planning and pipelines',
-    longDescription: 'Entry-point skills for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the startcycle pipelines.',
+    longDescription: 'Entry-point commands for the BDB Agent OS suite: invoke $bdb-aos:<command> to run setup, project init, planning and the startcycle pipelines. Skills are installed separately by the AOS installer.',
     developerName: 'Hybridlabor Global LLC',
     category: 'Developer Tools',
     capabilities: ['Interactive', 'Read', 'Write'],
@@ -326,7 +324,8 @@ if (CHECK) {
     console.error(`agents/ is out of date (${drift.join(', ')}) — run: node scripts/build-plugin-manifest.mjs`);
     process.exit(1);
   }
-  console.log(`plugin manifests up to date: ${skills.length} skills, ${agentNames.length} agents, ${commandNames.length} commands (+ ${commandNames.length} OpenCode)`);
+  console.log(`plugin manifests up to date: ${agentNames.length} agents, ${commandNames.length} commands (+ ${commandNames.length} OpenCode)`);
+  console.log(`note: skills are no longer bundled by the plugin; they are installed separately by the AOS installer from loose copies.`);
 } else {
   mkdirSync(commandsDst, { recursive: true });
   for (const [file, content] of Object.entries(commandFiles)) writeFileSync(join(commandsDst, file), content);
@@ -349,5 +348,5 @@ if (CHECK) {
     symlinkSync(to, join(SUBDIR, name));
   }
   writeFileSync(marketPath, marketSerialized);
-  console.log(`Wrote 2 plugin.json files with ${skills.length} skills, ${agentNames.length} agents and ${commandNames.length} commands`);
+  console.log(`Wrote 2 plugin.json files with ${agentNames.length} agents and ${commandNames.length} commands (skills now installed separately by AOS installer)`);
 }
