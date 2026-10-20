@@ -8356,7 +8356,7 @@ Options:
         persistInstallOptions();
         // --platforms is parsed above but only marked explicit further down the full flow; hooks-only exits before that.
         markPlatformsExplicit(PLATFORMS_ARG || []);
-        await gateReenableStep(gateReenableAsk());
+        await gateReenableStep({ ask: gateReenableAsk() });
         installGlobalHooks({ harnesses: activeHarnessKeys() });
         flushSessionManifest();
         console.log(`Hooks refreshed${contextHooksOn ? '' : ' (context-injection hooks skipped, gate hooks installed)'}${DRY_RUN ? ' · DRY-RUN (nothing was modified)' : ''}`);
@@ -8416,7 +8416,7 @@ Options:
     }
 
     // A -y reinstall re-merges every hook: never silently re-enable a gate the user removed by hand.
-    await gateReenableStep(gateReenableAsk());
+    await gateReenableStep({ ask: gateReenableAsk() });
 
     const detectedNames = detections.map(d => d.name).join(', ');
     const platformOptions = [
