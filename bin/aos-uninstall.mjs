@@ -16,7 +16,7 @@
 // deleted; a file with no manifest entry was never ours and is not considered
 // at all.
 
-import { readFileSync, existsSync, rmSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
+import { readFileSync, existsSync, rmSync, rmdirSync, lstatSync, copyFileSync, readdirSync, statSync, writeFileSync, realpathSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
@@ -276,6 +276,38 @@ function removeWinServices(list, run = (cmd, args) => spawnSync(cmd, args, { std
   }
 }
 
+// Trees the install builds inside the copied MCP servers (npm install, tsc, venv). They are not in the file
+// manifest, so they outlive it. Only shipped server names are touched, only these subtrees, and directories are
+// removed afterwards only when empty: files the user put there stay.
+const MCP_GENERATED = ['node_modules', 'dist', '.venv', '__pycache__'];
+const pruneEmpty = (dir) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) pruneEmpty(path.join(dir, e.name));
+  try { rmdirSync(dir); } catch { /* not empty */ }
+};
+function removeGeneratedMcpTrees({ home = HOME, appData, names, dry = false } = {}) {
+  const base = appData || process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  const roots = [
+    path.join(home, 'Library', 'Application Support', 'Claude'), path.join(home, '.config', 'Claude'), path.join(base, 'Claude'),
+    path.join(home, '.gemini', 'config'), path.join(home, '.codex'), path.join(home, '.windsurf'), path.join(home, '.roo'), path.join(home, '.aider'),
+  ].map((r) => path.join(r, 'mcps'));
+  let shipped = names;
+  if (!shipped) { try { shipped = readdirSync(new URL('../mcps', import.meta.url)); } catch { shipped = []; } }
+  const out = [];
+  for (const root of roots) for (const name of new Set([...shipped, 'memb-mcp'])) {
+    const dir = path.join(root, name);
+    let st; try { st = lstatSync(dir); } catch { continue; }
+    if (!st.isDirectory()) continue;
+    for (const g of MCP_GENERATED) {
+      const t = path.join(dir, g);
+      if (!existsSync(t)) continue;
+      out.push(t);
+      if (!dry) rmSync(t, { recursive: true, force: true });
+    }
+    if (!dry) { pruneEmpty(dir); try { rmdirSync(root); } catch { /* other servers or files left */ } }
+  }
+  return out;
+}
+
 async function execute(p) {
   const { ours, edited, agents, modules, legacy, data, codenotch } = p;
   const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
@@ -318,6 +350,10 @@ async function execute(p) {
     try { rmSync(f); removed++; } catch { /* already gone */ }
   }
   console.log(`  ${removed} files removed, ${backed} backed up first`);
+  attempt('MCP server build trees', () => {
+    const gone = removeGeneratedMcpTrees();
+    if (gone.length) console.log(`  ${gone.length} generated MCP folders removed (node_modules, dist, venv)`);
+  });
 
   const ruleFiles = [
     h('CLAUDE.md'), h('AGENTS.md'), h('.github', 'copilot-instructions.md'),
@@ -530,7 +566,7 @@ async function execute(p) {
 // ---------------------------------------------------------------------- main
 // plan() is exported for tests; the CLI flow below only runs when this file is
 // the entry script.
-export { plan, removeWinServices };
+export { plan, removeWinServices, removeGeneratedMcpTrees };
 
 const ask = async (q) => {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
