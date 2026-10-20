@@ -315,7 +315,9 @@ describe('dispatcher contract wiring', () => {
     assert.match(source, /aos-archify-contract\.mjs/);
     assert.match(source, /runArchifyBoundary/);
     assert.doesNotMatch(verifyBlock, /JSON\.parse\(deliverRes\.stdout\)/);
-    assert.match(source, /spawn\(cliBin\('aos-trail'\),[\s\S]*?\.map\(cliArg\),[\s\S]*?shell:\s*IS_WIN/);
+    // Windows: one quoted command line (cliBin + cliArg) with an empty args array; POSIX: plain argv. Never shell:true plus args (DEP0190).
+    assert.match(source, /const cliCall = \(name, args\) => \(IS_WIN \? \[\[cliBin\(name\), \.\.\.args\.map\(cliArg\)\]\.join\(' '\), \[\]\] : \[name, args\]\)/);
+    assert.match(source, /spawn\(\.\.\.cliCall\('aos-trail', \[[^\]]*\]\),[\s\S]*?shell:\s*IS_WIN/);
     assert.doesNotMatch(source, /shell:\s*true/);
   });
 });
