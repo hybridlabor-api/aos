@@ -2203,13 +2203,24 @@ function retireCodexSkillCopies(manifest = _sessionManifest || loadInstallManife
                 continue;
             }
 
-            // All file hashes match the ~/.agents copy: back up and retire.
+            // All file hashes match the ~/.agents copy: back up the whole skill first, unlink only when every copy succeeded.
+            let backedUp = true;
             for (const rel of codexScan.files) {
                 const abs = path.join(codexSkillDir, rel);
                 try {
                     const dest = path.join(backup, path.relative(targetHome, abs));
                     fs.mkdirSync(path.dirname(dest), { recursive: true });
                     fs.copyFileSync(abs, dest);
+                } catch (e) {
+                    logDebug(e, `${label} retire module skill backup: ${abs}`);
+                    backedUp = false;
+                    break;
+                }
+            }
+            if (!backedUp) { leftoverSkills.add(skillName); continue; }
+            for (const rel of codexScan.files) {
+                const abs = path.join(codexSkillDir, rel);
+                try {
                     fs.unlinkSync(abs);
                     if (manifest && manifest[abs]) delete manifest[abs];
                     removedFiles.push(abs);

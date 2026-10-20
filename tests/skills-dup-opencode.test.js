@@ -52,3 +52,16 @@ test('with skills.paths (opencode.jsonc, comments) AOS copies are backed up and 
   assert.equal(backups.length > 0, true);
   assert.ok(fs.existsSync(path.join(home, '.agents', 'backups', backups[0], '.config', 'opencode', 'skills', 'alpha', 'SKILL.md')));
 });
+
+test('a failed backup keeps every file of the skill (copy all first, unlink after)', () => {
+  const agents = path.join(home, '.agents', 'skills', 'zeta', 'SKILL.md');
+  fs.mkdirSync(path.dirname(agents), { recursive: true });
+  fs.writeFileSync(agents, 'Z');
+  const z = mk('zeta/SKILL.md', 'Z');
+  const z2 = mk('zeta/extra.md', 'E');
+  fs.writeFileSync(path.join(home, '.agents', 'skills', 'zeta', 'extra.md'), 'E');
+  fs.rmSync(path.join(home, '.agents', 'backups'), { recursive: true, force: true });
+  fs.writeFileSync(path.join(home, '.agents', 'backups'), 'not a directory');
+  inst.retireOpencodeSkillCopies({});
+  assert.ok(fs.existsSync(z) && fs.existsSync(z2));
+});
