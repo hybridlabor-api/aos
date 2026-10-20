@@ -138,3 +138,12 @@ test('doctor: one hygiene row lists duplicates by file + server and gateway serv
     assert.ok(row.detail.includes('served but neither selected nor adopted: deja, extra'), row.detail);
     assert.ok(!row.detail.includes('user_own'));
 });
+
+test('doctor says explicitly that VS Code mcp.json is skipped', () => {
+    const { gatewayChecks } = require('../lib/gateway/doctor.js');
+    const home = gatewayHome(['github']);
+    const f = path.join(home, '.config', 'Code', 'User', 'mcp.json');
+    wj(f, { servers: {} });
+    const row = gatewayChecks({ home, files: [{ file: f, kind: 'json' }], shipped, platform: 'linux' }).find((c) => c.name === `gateway skips ${f}`);
+    assert.ok(row && /not managed/.test(row.detail));
+});
