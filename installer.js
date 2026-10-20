@@ -8511,10 +8511,12 @@ function runUninstaller() {
 }
 
 // Prompts exist only in a TTY; `aos update` without one passes ui = {} and nothing is ever asked.
-function v5Options(interactive) {
+// menuMode (the interactive menu only): cancel returns null (back, nothing written). Otherwise cancel aborts like the wizard.
+function v5Options(interactive, menuMode = false) {
+    const ask = (v) => (menuMode ? (isCancel(v) ? null : v) : pick(v));
     const ui = interactive ? {
-        select: async (message, options, initialValue) => { const v = await select({ message, options, initialValue }); return isCancel(v) ? null : v; },
-        multi: async (message, options, initialValues) => { const a = await multiselect({ message, options, initialValues, required: false }); return isCancel(a) ? [] : a; },
+        select: async (message, options, initialValue) => ask(await select({ message, options, initialValue })),
+        multi: async (message, options, initialValues) => ask(await multiselect({ message, options, initialValues, required: false })),
         text: async (message, initialValue) => { const v = await text({ message, initialValue }); return isCancel(v) ? null : String(v || '').trim(); },
         ask: async (key) => { const v = await password({ message: `${key} (leave blank to skip):` }); return isCancel(v) ? null : String(v || ''); },
         confirm: async (message) => { const a = await askConfirm({ message, initialValue: false }); return !isCancel(a) && !!a; },
@@ -8841,7 +8843,7 @@ Options:
 
     if (installState.isInstalled && !isAutoYes && args[0] !== 'setup') {
         persistInstallOptions();
-        process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true));
+        process.exitCode = await require('./lib/v5/menu').menu(module.exports, v5Options(true, true));
         return;
     }
 
