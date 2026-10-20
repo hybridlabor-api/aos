@@ -1,9 +1,8 @@
 ---
 name: pb-handover
 description: >-
-  Write a handover note for a colleague from the state of a project folder:
-  what is done, open, risky, the next 3 steps and where things live. Sent
-  only after your GO.
+  Write a handover note for a colleague from a project folder's state:
+  done, open, risky, next 3 steps, where things live. Sent only after GO.
 category: bdb-core
 kind: playbook
 trigger: ["handover note", "hand this project over", "brief my colleague"]

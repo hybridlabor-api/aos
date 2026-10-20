@@ -1,9 +1,8 @@
 ---
 name: pb-aos-e2e
 description: >-
-  AOS release E2E check in a sandbox: install the packed tarball
-  non-interactively, verify doctor, gates, memB, hub, update and
-  uninstall. Run before a release PR merges.
+  AOS release E2E in a sandbox: install the packed tarball, verify
+  doctor, gates, memB, hub, update, uninstall. Run before a release merge.
 category: engineering-method
 kind: playbook
 trigger: ["aos e2e", "release e2e", "aos release check", "installer e2e", "e2e check aos"]

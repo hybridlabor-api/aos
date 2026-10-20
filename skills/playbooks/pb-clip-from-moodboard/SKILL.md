@@ -1,9 +1,9 @@
 ---
 name: pb-clip-from-moodboard
 description: >-
-  Turn a look brief and reference images into a finished social clip:
-  concept, TouchDesigner look, ComfyUI stills, a Resolve or Remotion cut,
-  9:16 and 16:9 exports, published only after GO.
+  Turn a look brief and reference images into a social clip: concept,
+  TouchDesigner look, ComfyUI stills, Resolve or Remotion cut, 9:16 and
+  16:9, after GO.
 category: media-eventtech
 kind: playbook
 trigger: ["moodboard to clip", "social clip from references", "look brief to video"]

@@ -2,8 +2,7 @@
 name: pb-todo
 description: >-
   Turn one sentence into a task line in the right to-do list, with project,
-  priority and optional due date. Use for "add a to-do", "remember to ...",
-  "put this on my list", "quick task". Nothing leaves your computer.
+  priority and optional due date. Nothing leaves your computer.
 category: bdb-core
 kind: playbook
 trigger: ["add a to-do", "put this on my list", "quick task"]

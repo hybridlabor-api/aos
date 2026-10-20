@@ -1,9 +1,9 @@
 ---
 name: pb-health-weekly
 description: >-
-  Weekly health report over the BDB repos: git and npm version drift and CI
-  status as an HTML report with auto-remediation off, red CI routed to
-  pb-ci-fix, other fixes one at a time after GO.
+  Weekly health report over the BDB repos as an HTML report: git and npm
+  version drift, CI status, red CI routed to pb-ci-fix, other fixes
+  after GO.
 category: saas-ops
 kind: playbook
 trigger: ["weekly health check", "ecosystem health", "are all repos green"]

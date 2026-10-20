@@ -2,8 +2,7 @@
 name: pb-bug-fix
 description: >-
   Turn a GitHub issue into a tested fix on a branch with an open PR:
-  root cause, failing test first, fix, proof, review, then push and open
-  the PR after GO. Merging stays with pb-ship.
+  contract, root cause, failing test first, proof. Push and PR after GO.
 category: engineering-method
 kind: playbook
 trigger: ["fix issue", "bug fix from issue", "issue to PR"]

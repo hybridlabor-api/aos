@@ -1,9 +1,8 @@
 ---
 name: pb-harness-work
 description: >-
-  Change the agent harness itself (AOS, AO or CBS hooks, gates, memory,
-  permissions, delegation, plugins, bootstrap) the safe way: harness
-  patterns, startcycle build, check every harness, PR after GO.
+  Change the agent harness itself (hooks, gates, memory, permissions,
+  plugins) the safe way: pattern lookup, /startcycle build, PR after GO.
 category: bdb-core
 kind: playbook
 trigger: ["harness work", "change a hook", "fix the go-gate", "plugin change"]

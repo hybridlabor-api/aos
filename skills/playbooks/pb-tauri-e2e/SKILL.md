@@ -1,9 +1,9 @@
 ---
 name: pb-tauri-e2e
 description: >-
-  Multi-phase E2E, live-app, and binary security audit for Tauri v2 desktop
-  apps with sidecars. Tests IPC latency, sidecar lifecycle, CDP inspection,
-  canvas performance, and permissions to generate an ASD-STE100 audit report.
+  Multi-phase E2E, live-app and binary security audit for Tauri v2
+  desktop apps with sidecars: IPC, sidecars, CDP, canvas, permissions,
+  ASD-STE100 report.
 category: engineering-method
 kind: playbook
 trigger: ["test tauri app", "e2e tauri", "audit ao 2.0", "desktop app test", "tauri audit", "live test tauri"]

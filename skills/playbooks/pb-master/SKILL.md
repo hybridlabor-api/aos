@@ -3,8 +3,7 @@ name: pb-master
 description: >-
   Run one control session over several Claude Code, Codex or OpenCode
   sessions: roster, status board, GO board, GO <session> tokens, idle
-  notices and a handover file. Use for "master session", "supervise my
-  sessions", "run several agents", "one control window".
+  notices, handover file.
 category: bdb-core
 kind: playbook
 trigger: ["master session", "supervise my sessions", "run several agents"]

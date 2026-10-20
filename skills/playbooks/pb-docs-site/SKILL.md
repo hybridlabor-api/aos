@@ -2,8 +2,7 @@
 name: pb-docs-site
 description: >-
   Publish a project's docs as a static HTML manual on GitHub Pages: check
-  Pages is enabled, update the wiki, list doc gaps, build, preview locally
-  and push after GO.
+  Pages, update the wiki, list gaps, build and preview, push after GO.
 category: design-ui-ux
 kind: playbook
 trigger: ["publish the docs", "docs site", "manual on GitHub Pages"]
