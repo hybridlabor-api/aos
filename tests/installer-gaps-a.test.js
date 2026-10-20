@@ -188,3 +188,22 @@ test('review 4-6: MCP refresh keeps unregenerated TOML tables, skips commented J
     assert.strictEqual(fs.readFileSync(claude, 'utf8'), empty);
     assert.deepStrictEqual(fs.readdirSync(home).filter((f) => f.startsWith('.claude.json.')), []);
 });
+
+test('G16: harnessWiringProblems covers Codex and Antigravity hooks and agents', () => {
+    const { harnessWiringProblems } = require('../installer.js');
+    const home = fs.mkdtempSync(path.join(tmpHome, 'wire-'));
+    const keys = new Set(['codex', 'antigravity']);
+    fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
+    fs.mkdirSync(path.join(home, '.gemini', 'config'), { recursive: true });
+    const bad = harnessWiringProblems({ home, keys });
+    for (const re of [/Codex config\.toml/, /Codex has no AOS agents/, /Antigravity hooks\.json/, /Antigravity has no AOS agents/]) {
+        assert.ok(bad.some((p) => re.test(p)), String(re));
+    }
+    fs.writeFileSync(path.join(home, '.codex', 'config.toml'), '[[hooks.PreToolUse.hooks]]\ncommand = "node go-gate.mjs"\n');
+    fs.mkdirSync(path.join(home, '.codex', 'agents'));
+    fs.writeFileSync(path.join(home, '.codex', 'agents', 'a.toml'), 'x');
+    fs.writeFileSync(path.join(home, '.gemini', 'config', 'hooks.json'), '{"aos-go-gate":{}}');
+    fs.mkdirSync(path.join(home, '.gemini', 'config', 'agents'));
+    fs.writeFileSync(path.join(home, '.gemini', 'config', 'agents', 'a.md'), 'x');
+    assert.deepStrictEqual(harnessWiringProblems({ home, keys }), []);
+});
