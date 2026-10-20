@@ -447,8 +447,8 @@ async function execute(p) {
     const pkg = pk.registry.find((x) => x.id === id);
     try {
       // run: gateway and hub stop their service through it (launchctl, systemctl, or the Windows Startup .vbs process).
-      const c = { home: HOME, dryRun: DRY, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 }) };
-      if (!always.includes(id) && !(await pkg.detect(c)).installed) continue;
+      const c = { home: HOME, dryRun: DRY, platform: process.platform, aosRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), env: process.env, run: (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 60000 }) };
+      if (!always.includes(id) && !(pkg.present ? pkg.present(c) : (await pkg.detect(c)).installed)) continue;
       const r = await pkg.uninstall(c);
       if (r && r.error) console.log(`  ${pkg.name}: ${r.error}`);
       else if (r && (r.changed || !always.includes(id))) console.log(`  ${pkg.name} removed`);

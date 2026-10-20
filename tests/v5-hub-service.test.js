@@ -239,3 +239,28 @@ describe('beta.2 Windows hub migration through the menu', () => {
         assertMigrated(m);
     });
 });
+
+describe('uninstall after the hub bin is gone', () => {
+    for (const platform of ['linux', 'darwin']) {
+        test(`${platform}: present() sees the AOS unit without the bin and uninstall removes it`, async () => {
+            const home = tmp();
+            const { ctx } = mkCtx(home, { platform });
+            await pkg.install(ctx);
+            const gone = { ...ctx, aosRoot: path.join(home, 'no-such-root') };
+            assert.equal(pkg.detect(gone), false);
+            assert.equal(pkg.present(gone), true);
+            await pkg.uninstall(gone);
+            assert.equal(pkg.present(gone), false);
+            const left = platform === 'linux' ? path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.hub.service') : path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.hub.plist');
+            assert.ok(!fs.existsSync(left));
+        });
+    }
+
+    test('a foreign file at the unit path is not ours', () => {
+        const home = tmp();
+        const f = path.join(home, '.config', 'systemd', 'user', 'com.bdb.aos.hub.service');
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        fs.writeFileSync(f, '[Service]\nExecStart=/bin/true\n');
+        assert.equal(pkg.present({ home, platform: 'linux' }), false);
+    });
+});

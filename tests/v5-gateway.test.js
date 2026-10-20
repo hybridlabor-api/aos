@@ -424,7 +424,7 @@ describe('pkg-gateway', () => {
             assert.ok(!fs.existsSync(path.join(dir, 'token')));
             assert.ok(!fs.existsSync(path.join(dir, 'mcp.json')));
             assert.ok(!fs.existsSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')));
-            assert.equal(res.retired, path.join(dir, 'node_modules.removed-1700000000001'));
+            assert.ok(res.removedDirs.includes('node_modules'));
         });
     }
 
@@ -561,22 +561,45 @@ describe('pkg-gateway', () => {
         assert.equal(pkg.detect(ctx), true);
     });
 
-    test('uninstall keeps gateway.json and migration.json and renames node_modules aside, deleting nothing recursively', async () => {
+    test('uninstall removes the generated trees (node_modules, mcp-pkgs, retired copies, log), keeps gateway.json and migration.json', async () => {
         const home = tmp();
         const { ctx, calls } = mkCtx(home);
         await pkg.install(ctx);
         const dir = cfg.gatewayDir(home);
         fs.writeFileSync(path.join(dir, 'gateway.json'), '{}');
         fs.writeFileSync(path.join(dir, 'migration.json'), '{}');
-        fs.mkdirSync(path.join(dir, 'node_modules', 'x'), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'node_modules', 'x', 'f.js'), '');
+        for (const d of ['node_modules/x', 'mcp-pkgs/node_modules/y', 'node_modules.removed-1/z']) {
+            fs.mkdirSync(path.join(dir, d), { recursive: true });
+            fs.writeFileSync(path.join(dir, d, 'f.js'), '');
+        }
+        fs.writeFileSync(path.join(dir, 'gateway.log'), 'log');
         calls.length = 0;
-        const res = await pkg.uninstall({ ...ctx, now: 1700000000000 });
+        const res = await pkg.uninstall(ctx);
         assert.deepEqual(calls, [['launchctl', 'bootout', 'gui/501/com.bdb.aos.gateway']]);
-        assert.deepEqual(fs.readdirSync(dir).sort(), ['gateway.json', 'migration.json', 'node_modules.removed-1700000000000']);
-        assert.ok(fs.existsSync(path.join(dir, 'node_modules.removed-1700000000000', 'x', 'f.js')), 'content is moved, not deleted');
-        assert.equal(res.retired, path.join(dir, 'node_modules.removed-1700000000000'));
+        assert.deepEqual(fs.readdirSync(dir).sort(), ['gateway.json', 'migration.json']);
+        assert.deepEqual(res.removedDirs.sort(), ['gateway.log', 'mcp-pkgs', 'node_modules', 'node_modules.removed-1']);
         assert.ok(!fs.existsSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist')));
+    });
+
+    test('uninstall removes the whole gateway dir when only generated files are in it', async () => {
+        const home = tmp();
+        const { ctx } = mkCtx(home);
+        await pkg.install(ctx);
+        const dir = cfg.gatewayDir(home);
+        fs.mkdirSync(path.join(dir, 'node_modules', 'x'), { recursive: true });
+        await pkg.uninstall(ctx);
+        assert.ok(!fs.existsSync(dir));
+    });
+
+    test('present() finds the AOS service file without the 1mcp bin and ignores foreign files', async () => {
+        const home = tmp();
+        const { ctx } = mkCtx(home);
+        assert.equal(pkg.present(ctx), false);
+        await pkg.install(ctx);
+        assert.equal(pkg.detect(ctx), false);
+        assert.equal(pkg.present(ctx), true);
+        fs.writeFileSync(path.join(home, 'Library', 'LaunchAgents', 'com.bdb.aos.gateway.plist'), 'not ours');
+        assert.equal(pkg.present(ctx), false);
     });
 
     test('linux install writes the systemd user unit and enables it now', async () => {
