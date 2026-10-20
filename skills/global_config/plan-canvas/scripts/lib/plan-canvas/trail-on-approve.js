@@ -50,13 +50,15 @@ function resolveBinary(env) {
 
 function builderPlan(dir, repo) {
   const target = path.join(repo, PLAN_REL);
-  if (fs.existsSync(target)) return target;
+  let stale = false;
+  try { stale = fs.existsSync(target) && fs.statSync(target).mtimeMs < fs.statSync(path.join(dir, 'plan.mdx')).mtimeMs; } catch { /* no plan.mdx: keep the existing file */ }
+  if (fs.existsSync(target) && !stale) return target;
   try {
     const { writeTrail } = require('../plan-builder/trail');
-    writeTrail(dir, { workspaceRoot: repo });
+    writeTrail(dir, { workspaceRoot: repo, force: stale });
     return target;
   } catch {
-    return null;
+    return fs.existsSync(target) ? target : null;
   }
 }
 

@@ -78,6 +78,12 @@ describe('Plan Canvas modes', () => {
     assert.strictEqual(builder.reason, null);
   });
 
+  test('open defaults --mode to the modes default, not hard-coded standard', () => {
+    const src = fs.readFileSync(scriptPath, 'utf8');
+    assert.match(src, /valueAfter\(args, '--mode'\) \|\| modesInfo\.default/);
+    assert.doesNotMatch(src, /valueAfter\(args, '--mode'\) \|\| 'standard'/);
+  });
+
   test('builder mode is no longer listed', async () => {
     const result = await runCommand(['modes']);
     const output = JSON.parse(result.stdout);

@@ -238,12 +238,15 @@ async function ensureServer({ stateDir, port }) {
 function openBrowser(url) {
   if (process.env.AOS_NO_OPEN === '1') return false;
   const platform = process.platform;
+  if (platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return false;
   const [cmd, args] =
     platform === 'darwin' ? ['open', [url]]
       : platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
         : ['xdg-open', [url]];
   try {
-    spawn(cmd, args, { detached: true, stdio: 'ignore', shell: false }).unref();
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: false });
+    child.on('error', () => {});
+    child.unref();
     return true;
   } catch {
     return false;
@@ -327,8 +330,8 @@ async function doOpen(file, args, { stateDir, port }) {
   if (!file) throw new Error('open requires a file path');
   if (!fs.existsSync(path.resolve(file))) throw new Error(`artifact not found: ${file}`);
 
-  const mode = valueAfter(args, '--mode') || 'standard';
   const modesInfo = resolveModes();
+  const mode = valueAfter(args, '--mode') || modesInfo.default;
   const modeConfig = modesInfo.modes.find(m => m.id === mode);
 
   if (!modeConfig) {
