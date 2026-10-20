@@ -6173,8 +6173,9 @@ function installOpencodePlugin({ targetHome = homeDir, configPath = null, data =
             pluginInstalled = true;
             uninstallRecords.recordOpencodePlugin(targetHome, pluginDest);
             try {
+                // `opencode --version` creates ~/.config, ~/.cache and ~/.local: never in a dry run.
                 const ov = require('./lib/opencode-verify.js');
-                const v = ov.onPath('opencode') && require('./lib/cli-spawn.js').run('opencode', ['--version'], { timeout: 8000 });
+                const v = !DRY_RUN && ov.onPath('opencode') && require('./lib/cli-spawn.js').run('opencode', ['--version'], { timeout: 8000 });
                 const warn = v && v.status === 0 ? ov.opencodeVersionWarning(v.stdout) : null;
                 if (warn) log.warn(warn);
             } catch (e) { logDebug(e, 'opencode version check'); }
