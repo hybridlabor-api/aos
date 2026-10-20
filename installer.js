@@ -37,6 +37,7 @@ const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
 const { pruneRetiredSkills } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
+const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
 const { START: DESTRUCTIVE_START, upsertDestructiveBlock, stripDestructiveBlock, CLAUDE_DENY_RULES } = require('./lib/destructive-rules');
 const { upsertRoutingBlock, stripRoutingBlock } = require('./lib/routing-rules');
@@ -173,6 +174,9 @@ let activeProfile = v5Profile.DEFAULT_PROFILE;
 let installExcluded = new Set();
 // `skillSet` setting: "core" installs only lib/core-skills.json and leaves the rest to `aos store install`.
 let skillSet = coreSkills.DEFAULT_SKILL_SET;
+// Pack selection: array of pack names from ~/.aos/v5-settings.json ("packs", next to skillSet).
+// null = no selection ever stored — everything is installed/kept, no silent removal.
+let packSelection = null;
 // Unified memory (docs/unified-memory.md): off when memb is excluded; then no memb_mcp, deja MCP or memb-inject is wired.
 let memoryOn = true;
 // `gate` setting (Settings menu): off = go-gate, go-token, go-grant and graph-gate are not registered; the script files stay on disk.
@@ -1192,6 +1196,58 @@ function applySkillSet(manifest) {
             log,
         });
     } catch (e) { log.warn(`Skill set "core" skipped: ${e.message}`); }
+}
+
+// Populates the local library (~/.aos/library/skills) with every shipped skill and writes the
+// pack index. The library is AOS's own full copy that no harness reads directly: harness dirs
+// get base+packs, while `aos store install` copies single skills or whole packs from here, offline.
+function populateSkillLibrary(home = homeDir) {
+    const dest = skillPacks.librarySkillsDir(home);
+    const dirs = skillPacks.shippedSkillDirs(srcDir);
+    if (DRY_RUN) {
+        log.step(`[dry-run] would copy ${dirs.size} skills into ${dest}`);
+        return;
+    }
+    installStep('populate the skill library (~/.aos/library)', () => {
+        fs.mkdirSync(dest, { recursive: true });
+        for (const [name, abs] of dirs) copyDirRecursiveSync(abs, path.join(dest, name), []);
+        const def = skillPacks.loadPacks(srcDir);
+        fs.mkdirSync(path.dirname(skillPacks.libraryIndexFile(home)), { recursive: true });
+        fs.writeFileSync(skillPacks.libraryIndexFile(home), JSON.stringify({
+            version: pkg.version,
+            generatedAt: new Date().toISOString(),
+            base: def.base || [],
+            packs: def.packs || {},
+        }, null, 2));
+        log.step(`Skill library populated: ${dirs.size} skills at ${dest}`);
+    }, 'The library is incomplete; pack installs from it fall back to the package copy.');
+}
+
+// A stored pack selection removes installed copies of skills outside base+packs from the harness
+// dirs. Manifest-aware (lib/retired-skills.js): only dirs the install manifest lists are touched,
+// edited files are backed up first, and skills installed through the store are left alone. A user
+// skill is never in the manifest, so it can never be removed here.
+function applyPackSelection(manifest) {
+    if (!Array.isArray(packSelection)) return;
+    const storeOwned = new Set();
+    try {
+        for (const line of fs.readFileSync(path.join(homeDir, '.aos', 'store', 'installs.jsonl'), 'utf8').split('\n')) {
+            try { const j = JSON.parse(line); if (j && j.kind === 'skill' && typeof j.name === 'string') storeOwned.add(j.name); } catch { /* bad line */ }
+        }
+    } catch { /* no store log */ }
+    const names = skillPacks.excludedByPacks(srcDir, packSelection).filter((n) => !storeOwned.has(n));
+    if (!names.length) return;
+    try {
+        pruneRetiredSkills({
+            home: homeDir,
+            manifest,
+            roots: globalSkillDestRoots(),
+            backupDir: path.join(homeDir, '.agents', 'backups', `pack-deselect-${timestamp}`),
+            log,
+            names,
+            what: 'deselected-pack',
+        });
+    } catch (e) { log.warn(`Pack deselection prune skipped: ${e.message}`); }
 }
 
 function flushSessionManifest() {
@@ -4354,7 +4410,9 @@ function resolveTargetPaths(platformValue, customPaths) {
 function getTierExcludeSkills(tier) {
     // Matched against directory entry names by copyDirRecursiveSync, so these
     // carry no extension: the MCP guides became <name>/SKILL.md directories.
-    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...(tier === '2' ? [
+    // A stored pack selection excludes every shipped skill outside base+packs;
+    // no stored selection excludes nothing (existing users keep all skills).
+    return [...coreSkills.excludedBySkillSet(skillSet, srcDir), ...skillPacks.excludedByPacks(srcDir, packSelection), ...(tier === '2' ? [
         'bdb-adobe-suite-mcp',
         'bdb-after-effects-mcp',
         'bdb-blender-mcp',
@@ -8200,6 +8258,7 @@ function quickUpdateKernel(installState) {
     const excludeSkills = getTierExcludeSkills('1');
     const paths = resolveTargetPaths(defaultPlatformValue(), null);
 
+    populateSkillLibrary();
     fs.mkdirSync(paths.targetSkillDir, { recursive: true });
     retireObsoleteLegacyDir(paths.targetLegacyDir);
     fs.mkdirSync(paths.targetWorkspaceDir, { recursive: true });
@@ -8240,6 +8299,7 @@ function quickUpdateKernel(installState) {
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
+    applyPackSelection(_sessionManifest);
     s.stop('Skills refreshed');
     const failures = [];
     const migration = runPluginMigration();
@@ -8416,6 +8476,7 @@ function applyInstallOptions(home = homeDir) {
     activeProfile = r.profile;
     installExcluded = r.excluded;
     skillSet = r.skillSet;
+    packSelection = r.packs;
     memoryOn = !installExcluded.has('memb');
     gateOn = r.gateOn;
     gateHoldKeys.clear(); // a fresh resolution restarts the decision; an explicit Settings choice re-applies everywhere
@@ -8426,12 +8487,13 @@ function applyInstallOptions(home = homeDir) {
 // --dry-run, status or uninstall). A flag on the command line is saved; AOS_PROFILE is not.
 function persistInstallOptions(home = homeDir) {
     const o = INSTALL_OPTS;
-    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length || o.skillSetFromFlag)) return false;
+    if (DRY_RUN || !(o.profileFromFlag || o.noHooks || o.without.length || o.skillSetFromFlag || o.packsFromFlag)) return false;
     try {
         const st = v5Profile.readSettings(home);
         const next = { ...st, disabled: [...new Set([...st.disabled, ...o.without])] };
         if (o.profileFromFlag) { next.profile = o.profile; next.noHooks = o.noHooks; } else if (o.noHooks) next.noHooks = true;
         if (o.skillSetFromFlag) next.skillSet = o.skillSet;
+        if (o.packsFromFlag) next.packs = skillPacks.normalizeSelection(o.packs, srcDir) || [];
         v5Profile.writeSettings(home, next);
         return true;
     } catch (e) {
@@ -9035,11 +9097,14 @@ Options:
     const s = spinner();
     s.start(`Installing optimized skills${tier === '2' ? ' [Basic Tier]' : ''} to ${targets.length} target(s)...`);
 
+    populateSkillLibrary();
+
     installTargetSkills(targets, { mode, backupDir, excludeSkills, skillsBase });
 
     syncSkillsToGlobalHarnesses(excludeSkills);
     pruneRemovedSkills(_sessionManifest);
     applySkillSet(_sessionManifest);
+    applyPackSelection(_sessionManifest);
     s.stop('Skills installed.');
     runAgyPluginStep();
 
@@ -9181,6 +9246,10 @@ module.exports = {
     defaultPlatformValue,
     harnessSummaryLine,
     applyInstallOptions,
+    getTierExcludeSkills,
+    currentPackSelection: () => packSelection,
+    populateSkillLibrary,
+    applyPackSelection,
     installHarnessHookCopies,
     copyHookScripts,
     installA2aLibCopies,
