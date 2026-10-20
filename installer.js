@@ -8843,7 +8843,7 @@ function saveGatewaySelectedServers(tierValue = tier, installedList = null, home
         const selection = require('./lib/gateway/selection');
         const dir = gwConfig.gatewayDir(home);
         const current = require('./lib/v5/pkg-gateway').currentShippedUpstreams(dir);
-        const seen = require('./lib/gateway/doctor').directGatewayNames({ files: harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
+        const seen = require('./lib/gateway/doctor').directGatewayNames({ files: mcpSecrets.harnessMcpFiles(home, process.env, process.platform, home), shipped: mcpSecrets.shippedServers(srcDir) });
         const st = v5Profile.readSettings(home, () => {});
         const r = selection.resolveGatewayServers({
             settingServers: st.gateway && st.gateway.servers,
