@@ -48,11 +48,12 @@ test('aos store install copies from the package into every harness dir, offline,
   const home = tmpHome();
   const r = store(home, ['install', 'tdd']);
   assert.equal(r.status, 0, r.stderr);
-  for (const base of ['.agents', '.claude', '.codex', '.cursor', '.roo']) {
+  for (const base of ['.agents', '.claude', '.cursor', '.roo']) {
     const md = join(home, base, 'skills', 'tdd', 'SKILL.md');
     assert.ok(existsSync(md), md);
     assert.equal(readFileSync(md, 'utf8'), readFileSync(join(root, 'skills', 'global_config', 'tdd', 'SKILL.md'), 'utf8'));
   }
+  assert.ok(!existsSync(join(home, '.codex', 'skills', 'tdd')), 'Codex reads ~/.agents/skills; the store must not recreate .codex copies');
   const again = store(home, ['install', 'tdd']);
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /Already installed: tdd/);
