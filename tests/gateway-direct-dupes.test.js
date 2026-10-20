@@ -148,34 +148,49 @@ test('doctor reports an adopted server that is still configured directly', () =>
     assert.match(row.detail, /mine/);
 });
 
-test('R2: every newly supported harness row is migrated: covered AOS entries go, user and direct-by-design entries stay, a backup is written', () => {
+test('R2: documented rows migrate (backup, record, idempotent); unverified rows are skipped and untouched', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-rows-'));
     const github = JSON.parse(JSON.stringify(shipped.github));
     const zavora = JSON.parse(JSON.stringify(shipped.zavora_computer_use));
     const mcsc = JSON.parse(JSON.stringify(shipped.mcsc));
     const mine = { command: 'node', args: ['m.js'] };
-    const rows = [
-        ['windsurf', ['.codeium', 'windsurf', 'mcp_config.json'], 'mcpServers', { serverUrl: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } }],
-        ['cline', ['.cline', 'data', 'settings', 'cline_mcp_settings.json'], 'mcpServers', { type: 'streamableHttp', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } }],
-        ['vscode', ['Library', 'Application Support', 'Code', 'User', 'mcp.json'], 'servers', { type: 'http', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } }],
-        ['cursor-app', ['Library', 'Application Support', 'Cursor', 'User', 'mcp.json'], 'mcpServers', { url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } }],
-        ['agy-cli', ['.gemini', 'antigravity-cli', 'mcp_config.json'], 'mcpServers', { serverUrl: harness.GATEWAY_URL, headers: { 'x-aos-token': TOKEN } }],
+    const body = (root) => JSON.stringify({ [root]: { github, zavora_computer_use: zavora, mcsc, mine } }, null, 2);
+    const mk = (rel, root) => { const file = path.join(home, ...rel); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body(root)); return file; };
+    const on = [
+        ['windsurf', mk(['.config', 'devin', 'mcp_config.json'], 'mcpServers'), 'mcpServers', { serverUrl: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } }],
+        ['cline', mk(['.cline', 'data', 'settings', 'cline_mcp_settings.json'], 'mcpServers'), 'mcpServers', { type: 'streamableHttp', url: harness.GATEWAY_URL, headers: { 'X-AOS-Token': TOKEN } }],
     ];
-    const files = rows.map(([, rel, root]) => {
-        const file = path.join(home, ...rel);
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, JSON.stringify({ [root]: { github, zavora_computer_use: zavora, mcsc, mine } }, null, 2));
-        return { file, kind: 'json' };
-    });
+    const off = [
+        mk(['Library', 'Application Support', 'Code', 'User', 'mcp.json'], 'servers'),
+        mk(['Library', 'Application Support', 'Cursor', 'User', 'mcp.json'], 'mcpServers'),
+        mk(['.gemini', 'antigravity-cli', 'mcp_config.json'], 'mcpServers'),
+        mk(['.windsurf', 'mcp.json'], 'mcpServers'),
+    ];
+    const offBefore = off.map((f) => fs.readFileSync(f, 'utf8'));
+    const files = [...on.map(([, f]) => ({ file: f, kind: 'json' })), ...off.map((f) => ({ file: f, kind: 'json' }))];
+    const before = on.map(([, f]) => fs.readFileSync(f, 'utf8'));
     const rep = harness.enable({ home, token: TOKEN, shipped, files, now: 1000 });
-    rows.forEach(([id, rel, root, aos], i) => {
+    on.forEach(([id, file, root, aos], i) => {
         assert.ok(!rep[i].error && !rep[i].skipped, `${id}: ${rep[i].error || rep[i].skipped}`);
-        const j = read(files[i].file);
+        const j = read(file);
         assert.deepEqual(j[root].aos, aos, id);
         assert.equal(j[root].github, undefined, id);
         assert.equal(j[root].zavora_computer_use, undefined, id);
         assert.deepEqual(j[root].mine, mine, id);
         assert.deepEqual(j[root].mcsc, mcsc, `${id}: mcsc stays direct by design`);
-        assert.ok(fs.existsSync(rep[i].backup), `${id}: backup`);
+        assert.equal(fs.readFileSync(rep[i].backup, 'utf8'), before[i], `${id}: backup holds the original`);
     });
+    off.forEach((f, i) => {
+        assert.equal(rep[on.length + i].skipped, 'shape unverified', f);
+        assert.equal(fs.readFileSync(f, 'utf8'), offBefore[i], `${f} untouched`);
+    });
+    const recs = harness.readMigration(home);
+    for (const [, file] of on) {
+        assert.deepEqual(recs.filter((r) => r.file === file && !r.added).map((r) => r.key).sort(), ['github', 'zavora_computer_use']);
+        assert.ok(recs.some((r) => r.file === file && r.key === 'aos' && r.added));
+    }
+    const after = on.map(([, f]) => fs.readFileSync(f, 'utf8'));
+    const again = harness.enable({ home, token: TOKEN, shipped, files, now: 2000 });
+    assert.ok(again.every((r) => !r.changed), 'second enable is a no-op');
+    assert.deepEqual(on.map(([, f]) => fs.readFileSync(f, 'utf8')), after);
 });

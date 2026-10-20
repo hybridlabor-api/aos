@@ -58,9 +58,14 @@ test('claude-desktop and aider stay skipped (no remote entry exists for them)', 
     }
 });
 
-test('Windsurf is enabled with the serverUrl shape', () => {
+test('Windsurf legacy paths stay skipped; the vendor-documented path is enabled with the serverUrl shape', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-roo-'));
-    const file = path.join(home, '.codeium', 'windsurf', 'mcp_config.json');
+    const legacy = path.join(home, '.codeium', 'windsurf', 'mcp_config.json');
+    fs.mkdirSync(path.dirname(legacy), { recursive: true });
+    fs.writeFileSync(legacy, '{"mcpServers":{}}');
+    const lrep = harness.enable({ home, token: TOKEN, shipped, files: [{ file: legacy, kind: 'json' }], now: 1 });
+    assert.ok(lrep.length === 1 && lrep[0].skipped === 'shape unverified');
+    const file = path.join(home, '.config', 'devin', 'mcp_config.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, '{"mcpServers":{}}');
     const rep = harness.enable({ home, token: TOKEN, shipped, files: [{ file, kind: 'json' }], now: 1 });

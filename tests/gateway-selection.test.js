@@ -37,7 +37,11 @@ test('resolveGatewayServers: a valid stored choice wins; invalid falls back to d
     // invalid stores fall back to derivation
     assert.equal(selection.validStoredServers(['nope/ok']), null);
     assert.deepEqual(selection.validStoredServers(['github', 'deja', 'chrome-devtools', 'memb_mcp']), ['github', 'deja', 'chrome-devtools', 'memb_mcp']);
-    assert.equal(selection.resolveGatewayServers({ settingServers: [] }).fromSetting, false);
+    // [] is a real selection (the user removed the last server): never re-derived
+    assert.deepEqual(selection.validStoredServers([]), []);
+    assert.deepEqual(selection.resolveGatewayServers({ settingServers: [], media: true, keep: ['github'] }), { servers: [], fromSetting: true, kept: [] });
+    // a non-empty list with no known name is corrupt and falls back to derivation
+    assert.equal(selection.resolveGatewayServers({ settingServers: ['nope'] }).fromSetting, false);
 });
 
 test('pkg-gateway apply: builds only the selection, writes it back, keeps adopted servers', async () => {
@@ -113,4 +117,88 @@ test('detectCreatorServers: only servers whose app exists; none on a bare machin
     assert.deepEqual(selection.detectCreatorServers({ platform: 'darwin', env: {}, home: '/h', fsImpl: fsFor([]) }).sort(), ['adobe_uxp_mcp', 'bdb_after_effects_mcp']);
     assert.ok(selection.detectCreatorServers({ platform: 'darwin', env: {}, home: '/h', fsImpl: fsFor(['/Applications/DaVinci Resolve']) }).includes('bdb_davinci_mcp'));
     assert.deepEqual(selection.detectCreatorServers({ platform: 'linux', env: {}, home: '/h', fsImpl: { existsSync: () => false, readdirSync: () => [] } }), []);
+});
+
+const SRC = path.resolve(__dirname, '..');
+const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+const seedUpstream = (home, names) => {
+    const dir = cfg.gatewayDir(home);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(dir, 'token'), 'a'.repeat(64));
+    fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify({ mcpServers: Object.fromEntries(names.map((n) => [n, { type: 'stdio', command: 'node', args: [], tags: ['aos', n] }])) }));
+    return dir;
+};
+const ctxOf = (home) => ({ home, aosRoot: SRC, platform: 'darwin', env: {} });
+const settingsOf = (home) => path.join(home, '.aos', 'v5-settings.json');
+
+test('resolveAndSaveSelection: first migration keeps running upstreams, saves after the caller says so, and never re-adds them later', () => {
+    const home = tmp();
+    seedUpstream(home, ['github', 'bdb_unreal_mcp']);
+    const pkg = require('../lib/v5/pkg-gateway.js');
+    const msgs = [];
+    const first = pkg.resolveAndSaveSelection(ctxOf(home), (m) => msgs.push(m));
+    assert.ok(first.servers.includes('bdb_unreal_mcp'));
+    assert.ok(msgs.some((m) => m.includes('bdb_unreal_mcp')), 'kept servers are logged');
+    assert.equal(fs.existsSync(settingsOf(home)), false, 'nothing saved before save()');
+    first.save();
+    assert.ok(readJson(settingsOf(home)).gateway.servers.includes('bdb_unreal_mcp'));
+    // the user deselects it; the live mcp.json still lists it, but the stored choice wins
+    const st = readJson(settingsOf(home));
+    st.gateway.servers = st.gateway.servers.filter((n) => n !== 'bdb_unreal_mcp');
+    fs.writeFileSync(settingsOf(home), JSON.stringify(st));
+    const second = pkg.resolveAndSaveSelection(ctxOf(home), () => {});
+    assert.ok(!second.servers.includes('bdb_unreal_mcp'));
+    second.save();
+    assert.ok(!readJson(settingsOf(home)).gateway.servers.includes('bdb_unreal_mcp'));
+});
+
+test('resolveAndSaveSelection: Pro MEDIA tier from the manifest adds the media group on a fresh install', () => {
+    const home = tmp();
+    fs.mkdirSync(path.join(home, '.agents'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.agents', '.bdb-manifest.json'), JSON.stringify({ tier: '1' }));
+    const { servers } = require('../lib/v5/pkg-gateway.js').resolveAndSaveSelection(ctxOf(home), () => {});
+    for (const n of selection.SERVER_GROUPS.media) assert.ok(servers.includes(n), n);
+    assert.ok(!servers.includes('zavora_computer_use'), 'desktop group is opt-in');
+});
+
+test('an unparseable v5-settings.json is never overwritten; writes are atomic', () => {
+    const home = tmp();
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(settingsOf(home), '{ "disabled": ["memb"], oops');
+    assert.throws(() => profile.writeSettings(home, { disabled: [] }), /not valid JSON/);
+    assert.equal(fs.readFileSync(settingsOf(home), 'utf8'), '{ "disabled": ["memb"], oops');
+    const pkg = require('../lib/v5/pkg-gateway.js');
+    const msgs = [];
+    pkg.resolveAndSaveSelection(ctxOf(home), (m) => msgs.push(m)).save();
+    assert.equal(fs.readFileSync(settingsOf(home), 'utf8'), '{ "disabled": ["memb"], oops');
+    assert.ok(msgs.some((m) => /could not save/.test(m)));
+    const ok = tmp();
+    profile.writeSettings(ok, { disabled: [] });
+    assert.deepEqual(fs.readdirSync(path.join(ok, '.aos')), ['v5-settings.json']);
+});
+
+test('menu adopt state keeps gateway.servers (spread of the existing gateway object)', () => {
+    const src = fs.readFileSync(path.join(SRC, 'lib', 'v5', 'menu.js'), 'utf8');
+    assert.equal((src.match(/gateway: \{\n\s+\.\.\.\(st\.gateway \|\| \{\}\),\n\s+adopted:/g) || []).length, 2);
+});
+
+test('applyServerChange: remove of the last server gives an empty selection and an empty gateway, never re-derived', () => {
+    const home = tmp();
+    const dir = seedUpstream(home, ['github']);
+    profile.writeSettings(home, { disabled: [], gateway: { servers: ['github'] } });
+    selection.applyServerChange({ home, aosRoot: SRC, remove: 'github', platform: 'darwin', env: {} });
+    assert.deepEqual(readJson(settingsOf(home)).gateway.servers, []);
+    assert.deepEqual(Object.keys(readJson(path.join(dir, 'mcp.json')).mcpServers), []);
+    const again = selection.resolveGatewayServers({ settingServers: readJson(settingsOf(home)).gateway.servers, media: true });
+    assert.deepEqual(again.servers, []);
+});
+
+test('applyServerChange: a failing settings write restores the previous mcp.json', () => {
+    const home = tmp();
+    const dir = seedUpstream(home, ['github']);
+    fs.mkdirSync(path.join(home, '.aos'), { recursive: true });
+    fs.writeFileSync(settingsOf(home), '{ broken');
+    const before = fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8');
+    assert.throws(() => selection.applyServerChange({ home, aosRoot: SRC, add: 'deja', platform: 'darwin', env: {} }), /not valid JSON/);
+    assert.equal(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf8'), before);
 });

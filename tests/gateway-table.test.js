@@ -22,7 +22,7 @@ test('classify maps every row path back to its row id', () => {
 });
 
 test('SUPPORTED is exactly the verified rows; unverified rows are never written', () => {
-    assert.deepEqual([...harness.SUPPORTED].sort(), ['agy', 'agy-cli', 'claude', 'cline', 'codex', 'cursor', 'cursor-app', 'opencode', 'roo', 'vscode', 'windsurf']);
+    assert.deepEqual([...harness.SUPPORTED].sort(), ['agy', 'claude', 'cline', 'codex', 'cursor', 'opencode', 'roo', 'windsurf']);
     for (const r of rows.filter((x) => !x.verified)) assert.ok(!harness.SUPPORTED.has(r.id), r.id);
 });
 
