@@ -154,3 +154,19 @@ This skill acts as the architectural authority for electrical and PCB design, en
 - [ ] DFM limits were checked against the real target fab house, not a generic assumption.
 - [ ] Any pinout/connector change was cross-checked against firmware assumptions and enclosure geometry.
 - [ ] Reverse-engineered parts cite a real manufacturer part number and source, not memory.
+
+
+---
+
+## Hardware Pack Skills
+
+<!-- aos:pack-index:start -->
+- **code-first-hardware-design** — code-first-hardware-design
+- **pcb-constraint-definition** — pcb-constraint-definition
+- **pcb-layout-routing-automation** — pcb-layout-routing-automation
+- **pcb-validation-dfm-signoff** — pcb-validation-dfm-signoff
+- **schematic-datasheet-analysis** — schematic-datasheet-analysis
+- **schematic-reverse-engineering** — schematic-reverse-engineering
+
+**Install:** `aos store install --pack hardware`
+<!-- aos:pack-index:end --><!-- aos:pack-index:end -->

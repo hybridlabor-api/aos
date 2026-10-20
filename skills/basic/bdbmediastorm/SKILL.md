@@ -121,3 +121,21 @@ BDB MediaStorm is the master ideation and brainstorming engine for live show-con
 - [ ] Output includes a Mermaid.js signal flow diagram.
 - [ ] A dedicated failover/blackout mechanism is documented.
 
+
+
+---
+
+## Live show Pack Skills
+
+<!-- aos:pack-index:start -->
+- **bdb-grandma3-mcp** — Utilizes the grandMA3 MCP server to patch fixtures, execute console commands, and trigger macros via OSC.
+- **bdb-resolume-mcp** — Utilizes the Resolume Arena MCP server to trigger clips, clear layers, adjust speeds, and query composition status via the Resolume REST API.
+- **bdb-touchdesigner-mcp** — Utilizes the TouchDesigner MCP servers (tdmcp and touchdesigner-mcp) to create TOP/CHOP chains, script operators, inspect parameters, and debug node networks.
+- **bdb-unreal-mcp** — Utilizes the Unreal Engine MCP server to control UE5 via a native C++ Automation Bridge plugin.
+- **bdb-vectorworks-mcp** — Utilizes the Vectorworks RAG + MCP server to search and retrieve Python and VectorScript API documentation.
+- **bdb-rhino-mcp** — Utilizes the Rhino MCP servers (RhinoMCP and golem-rhino-mcp) to create and manipulate 3D models and run Grasshopper graphs.
+- **mcp-manage** — "Use when checking capabilities or instructing the user on how to interact with specialized MCP servers like Unreal, Rhino, DaVinci, or TouchDesigner."
+- **bdb-computer-use-mcp** — Utilizes native Rust/Node and Python-based computer-use-mcp servers to control macOS, Windows, and Linux desktops.
+
+**Install:** `aos store install --pack live-show`
+<!-- aos:pack-index:end --><!-- aos:pack-index:end -->
