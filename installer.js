@@ -4443,6 +4443,11 @@ function resolveTargetPaths(platformValue, customPaths) {
             : path.join(homeDir, 'Library', 'Application Support', 'Claude');
         targetMcpDir = claudeAppSupport;
         mcpConfigPath = path.join(claudeAppSupport, 'claude_desktop_config.json');
+        // Claude Desktop does not exist on Linux: no claude_desktop_config.json there, Claude Code's ~/.claude.json is the store.
+        if (process.platform === 'linux') {
+            targetMcpDir = path.join(homeDir, '.config', 'Claude');
+            mcpConfigPath = path.join(homeDir, '.claude.json');
+        }
         // Claude Desktop and Claude Code are two products with two separate MCP
         // stores, and this one option covers both: Desktop reads
         // claude_desktop_config.json, Claude Code (CLI *and* its desktop app)
@@ -4451,7 +4456,7 @@ function resolveTargetPaths(platformValue, customPaths) {
         // without Claude Desktop it created a config for a product that isn't
         // there. universalHarnessSync() already distinguished the two; the
         // per-platform path did not.
-        extraMcpConfigPaths = [path.join(homeDir, '.claude.json')];
+        if (process.platform !== 'linux') extraMcpConfigPaths = [path.join(homeDir, '.claude.json')];
     } else if (platformValue === '3') {
         targetSkillDir = path.join(currentDir, '.cursor', 'bdb-skills');
         targetLegacyDir = path.join(currentDir, '.cursor', 'bdb-skills', 'legacy');
@@ -7903,6 +7908,7 @@ async function universalHarnessSync(primaryMcpConfigPath) {
     for (const d of detections) {
         log.step(`Injecting MCP engines into ${d.name}...`);
         if (d.key === 'claudedesktop') {
+            if (process.platform === 'linux') continue;
             syncMcpConfig(path.join(d.path, 'claude_desktop_config.json'));
         } else if (d.key === 'claudecode') {
             syncMcpConfig(path.join(homeDir, '.claude.json'));

@@ -139,3 +139,18 @@ test('opencode.jsonc left by install (empty plugin[], AOS skills.paths, empty mc
     ur.reverseRegistrations({ home, env: {} });
     assert.deepEqual(JSON.parse(fs.readFileSync(f, 'utf8')).skills.paths, ['/my/skills']);
 });
+
+test('claude_desktop_config.json: AOS servers go, a user server and the file stay; an AOS-only file is removed', () => {
+    const ur = require('../lib/uninstall-records.js');
+    const home = tmp();
+    const f = path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+    const aos = { 'chrome-devtools': { command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer@2025.5.12'] } };
+    const mine = { mine: { command: 'node', args: ['/my/server.js'] } };
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify({ mcpServers: { ...aos, ...mine } }));
+    ur.reverseRegistrations({ home, env: {} });
+    assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(f, 'utf8')).mcpServers), ['mine']);
+    fs.writeFileSync(f, JSON.stringify({ mcpServers: aos }));
+    ur.reverseRegistrations({ home, env: {} });
+    assert.ok(!fs.existsSync(f));
+});
