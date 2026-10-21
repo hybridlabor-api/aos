@@ -36,7 +36,7 @@ const { backupOnce, backupOf } = require('./lib/backup-once');
 const codebaseMemory = require('./lib/codebase-memory');
 const hardwareApps = require('./lib/hardware-apps');
 const v5Secrets = require('./lib/v5/secrets');
-const { pruneRetiredSkills, storeProtectedDirs } = require('./lib/retired-skills');
+const { pruneRetiredSkills, pruneRetiredFiles, storeProtectedDirs } = require('./lib/retired-skills');
 const coreSkills = require('./lib/core-skills');
 const skillPacks = require('./lib/skill-packs');
 const { hasExecutable, findExecutable, getGitInstallInstruction, isElevated } = require('./lib/executable-probe');
@@ -1205,6 +1205,13 @@ function pruneRemovedSkills(manifest) {
         manifest,
         roots: globalSkillDestRoots(),
         backupDir: path.join(homeDir, '.agents', 'backups', `retired-skills-${timestamp}`),
+        log,
+    });
+    pruneRetiredFiles({
+        home: homeDir,
+        claudeDir: claudeConfigDir(homeDir),
+        manifest,
+        backupDir: path.join(homeDir, '.agents', 'backups', `retired-files-${timestamp}`),
         log,
     });
 }

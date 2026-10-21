@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { pruneRetiredSkills, RETIRED_SKILLS } = require('../lib/retired-skills.js');
+const { pruneRetiredSkills, pruneRetiredFiles, RETIRED_FILES, RETIRED_SKILLS } = require('../lib/retired-skills.js');
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 describe('pruneRetiredSkills', () => {
@@ -84,5 +84,49 @@ describe('pruneRetiredSkills', () => {
     const manifest = { [path.join(home, '.agents/skills/visual-edit/../keepme/SKILL.md')]: { sha256: sha('keep') } };
     pruneRetiredSkills({ home, manifest, roots: [path.join(home, '.agents', 'skills')], backupDir: path.join(home, 'bk4') });
     assert.ok(fs.existsSync(keep));
+  });
+});
+
+describe('pruneRetiredFiles', () => {
+  test('removes only the exact retired paths, backs up edited ones, keeps neighbours', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-retired-files-'));
+    try {
+      const put = (rel, body) => {
+        const abs = path.join(home, rel);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, body);
+        return abs;
+      };
+      const old = 'start' + 'cycle';
+      const clean = put(`.claude/workflows/${old}-dispatch.mjs`, 'shipped');
+      const edited = put(`.config/opencode/commands/${old}-graph.md`, 'user edit');
+      const codex = put('.codex/workflows/teamwork-dispatch.mjs', 'x');
+      const keepNew = put('.claude/workflows/fabric-dispatch.mjs', 'new');
+      const keepOther = put('.claude/workflows/other.mjs', 'other');
+      const outside = put('elsewhere/workflows/teamwork-dispatch.mjs', 'outside');
+      const manifest = { [clean]: { sha256: sha('shipped') }, [edited]: { sha256: sha('original') } };
+      const backupDir = path.join(home, 'bk');
+      const res = pruneRetiredFiles({ home, manifest, backupDir });
+      for (const f of [clean, edited, codex]) assert.ok(!fs.existsSync(f), f);
+      for (const f of [keepNew, keepOther, outside]) assert.ok(fs.existsSync(f), f);
+      assert.equal(res.removed.length, 3);
+      assert.equal(fs.readFileSync(path.join(backupDir, '.config/opencode/commands', `${old}-graph.md`), 'utf8'), 'user edit');
+      assert.ok(!fs.existsSync(path.join(backupDir, '.claude/workflows', `${old}-dispatch.mjs`)));
+      assert.ok(!(clean in manifest) && !(edited in manifest));
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  });
+
+  test('a symlink at a retired path is left alone', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aos-retired-files-'));
+    try {
+      const target = path.join(home, 'real.mjs');
+      fs.writeFileSync(target, 'x');
+      const link = path.join(home, '.codex', 'workflows', 'teamwork-dispatch.mjs');
+      fs.mkdirSync(path.dirname(link), { recursive: true });
+      fs.symlinkSync(target, link);
+      pruneRetiredFiles({ home, manifest: {}, backupDir: path.join(home, 'bk') });
+      assert.ok(fs.lstatSync(link).isSymbolicLink());
+      assert.ok(RETIRED_FILES.every((p) => p.every((x) => !/[*?]/.test(x))), 'no globs');
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
   });
 });
