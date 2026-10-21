@@ -23,7 +23,7 @@ const seedGateway = (home) => {
 };
 
 // Fresh HOME, OpenCode present (its config written by the installer, so AOS created it). Migration, then uninstall.
-test('fresh home: memory-direct migration then uninstall leaves no file under .config/opencode that AOS created', () => {
+test('fresh home: memory-direct migration then uninstall leaves no AOS file under .config/opencode; the stamp backup stays', () => {
     const home = tmp();
     const env = fakeComponents(home);
     const opencodeDir = path.join(home, '.config', 'opencode');
@@ -40,7 +40,11 @@ test('fresh home: memory-direct migration then uninstall leaves no file under .c
 
     reverseRegistrations({ home, env, platform: 'darwin' });
 
-    assert.deepStrictEqual(walk(opencodeDir), [], 'nothing AOS created is left in .config/opencode');
+    const left = walk(opencodeDir).map((f) => path.basename(f));
+    assert.ok(!left.includes('opencode.jsonc'), 'the AOS-only config is removed');
+    assert.ok(!left.some((n) => n.includes('aos-memdirect-bak-')), 'the memory-direct backup is archived out of the harness dir');
+    assert.ok(left.every((n) => /^opencode\.jsonc\.\d{8}T\d{6}Z\.bak(\.\d+)?$/.test(n)), `only uninstall stamp backups may remain: ${left}`);
+    assert.ok(left.length > 0, 'the uninstall backup of the removed config is kept');
 });
 
 test('uninstall keeps an OpenCode config the user owns, with the user content intact', () => {
