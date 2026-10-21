@@ -74,6 +74,22 @@ export type GateState = {
   mode: string
   grants: { scope: string; minutesLeft: number }[]
   raw: string
+  error?: string
+}
+
+export type UsageSnapshot = {
+  rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[]
+  context: {
+    tokens?: number
+    window: number
+    percent?: number
+    breakdown?: {
+      categories: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' | 'deferred' }[]
+      rawMaxTokens: number
+      percentage: number
+    }
+  }
+  fetchedAt: number
 }
 
 export type InstallProfileName = 'minimal' | 'standard' | 'full'
@@ -100,6 +116,7 @@ declare module 'claude-code' {
       roleHint: string
       services: ServiceStatus[]
       message: string
+      usage: UsageSnapshot | null
       frame: number
     }
   }
