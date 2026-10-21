@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import '../lib/cli-help-guard.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
