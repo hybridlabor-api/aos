@@ -177,7 +177,7 @@ See [Playbooks](#playbooks) for guided workflows across these domains.
 - [**`/fabric-graph`**](skills/basic/fabric-graph/SKILL.md) - dispatcher graph with durable `state.json`, Reviewer repair loop, quality gate and escalation
   - The dispatcher invokes the subagents [`architect`](agents/architect.md), [`techlead`](agents/techlead.md), [`godmode-ui-ux`](agents/godmode-ui-ux.md), [`godmode-engineering`](agents/godmode-engineering.md), [`godmode-media-eventtech`](agents/godmode-media-eventtech.md), [`reviewer`](agents/reviewer.md) and [`godmode-shipping`](agents/godmode-shipping.md); they never call each other
 - [**`/fabric-multigraph`**](skills/basic/fabric-multigraph/SKILL.md) - throwaway 2-4 node fan-out for any project, nothing persistent left behind
-- [**`/fabric-teamwork`**](skills/basic/fabric-teamwork/SKILL.md) - prompt crafting and delegation to a team; `/fabric-swarm` and `/fabric-loop` are documented and arrive in 5.4.1
+- [**`/fabric-teamwork`**](skills/basic/fabric-teamwork/SKILL.md) - prompt crafting and delegation to a team; `/fabric-loop` repeats a cycle until an exit check is green; `/fabric-swarm` is documented and arrives in 5.4.1
 - [**`/plan`**](commands/plan.md) - draft, render in a browser canvas, annotate, await approval, then hand off
   - [**`plan-canvas`**](skills/global_config/plan-canvas/SKILL.md) - local canvas where you annotate elements, chat and approve or request changes
   - [**`plan-arbiter`**](skills/global_config/plan-arbiter/SKILL.md) - compare competing plans from several agents and produce one recommended plan
@@ -446,7 +446,8 @@ flowchart LR
 | `/fabric-graph` | The full graph: durable `state.json`, Reviewer repair loop, automated quality gate, human escalation. Flags: `--skill=<name>`, `--profile=<name>`, `--workstreams`. | Feature work where correctness matters more than speed and you want an audit trail. |
 | `/fabric-multigraph` | Throwaway 2-4 node fan-out. Nothing persistent. Model-tiered per role; uses Antigravity, OpenCode or Codex if installed, Claude Code subagents otherwise. | A one-off "spawn a few workers" in any project. |
 | `/fabric-teamwork` | 9-step prompt crafting and delegation to a team. | A vague brief that needs sharpening before a team gets it. |
-| `/fabric-swarm`, `/fabric-loop` | Documented, arrive in 5.4.1. Route to `/fabric-multigraph` and `loop-templates` meanwhile. | Many similar workers; repeat until a condition holds. |
+| `/fabric-swarm` | Documented, arrives in 5.4.1. Routes to `/fabric-multigraph` meanwhile. | Many similar workers on one pool of items. |
+| `/fabric-loop` | Repeat a graph run until an exit check is green, bounded by round limits. | Repeat until a condition holds. |
 
 ### The modes side by side
 
@@ -1238,7 +1239,7 @@ Installed as optional modules by the installer; `aos doctor` verifies them and t
 | `skill-create` | >- |
 | `fabric` | Master entry for the fabric family: picks the fitting mode for the task and says why. |
 | `fabric-graph` | The autonomous multi-agent build pipeline with durable state, repair loop and escalation. |
-| `fabric-loop` | Repeat-until-done mode. Arrives in 5.4.1; routes to loop-templates meanwhile. |
+| `fabric-loop` | Repeat-until-done mode with an exit check and round limits. |
 | `fabric-multigraph` | A small, throwaway multi-agent fan-out in any project. |
 | `fabric-swarm` | Many similar workers on one pool of items. Arrives in 5.4.1; routes to fabric-multigraph meanwhile. |
 | `fabric-teamwork` | Interactive 9-step prompt crafting and delegation protocol for autonomous multi-agent teams. |

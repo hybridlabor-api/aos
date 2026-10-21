@@ -2,6 +2,8 @@
 
 Iterate build and review cycles on a plan or goal until the stop predicate holds, bounded by effort tiers, with no-progress detection and quota protection.
 
+`fabric-loop` is the fabric mode that runs this template.
+
 ## Limits
 - Max runs: 3 to 5 rounds (mapped from effort S=3, M=4, L=5; default 3)
 - Max duration: 3 hours
