@@ -22,7 +22,7 @@ const logErr = (m) => {
     appendFileSync(join(d, "a2a-session.log"), `${new Date().toISOString()} ${harness}${finish ? " finish" : ""} ${String(m).replace(/\s+/g, " ").slice(0, 500)}\n`, { mode: 0o600 });
   } catch { /* nowhere to log */ }
 };
-process.on("uncaughtException", (e) => { logErr(`uncaught: ${e?.stack || e}`); process.exit(0); });
+process.on("uncaughtException", (e) => { logErr(`uncaught: ${e?.stack || e}`); process.exitCode = 0; });
 process.on("unhandledRejection", (e) => { logErr(`unhandled: ${e?.stack || e}`); process.exit(0); });
 
 let input = {};
