@@ -28,6 +28,17 @@ describe('fabric-loop', () => {
     assert.match(loop, /never a GO/);
   });
 
+  test('enforces time, quota, signature, grant and terminal logging', () => {
+    assert.match(loop, /Compare elapsed time since the first line with 3 hours/);
+    assert.match(loop, /stay-within-limits/);
+    assert.match(loop, /95 %/);
+    assert.match(loop, /same failing exit-check output signature/);
+    assert.match(loop, /valid grant/);
+    assert.match(loop, /STOP and report/);
+    assert.match(loop, /before any stop decision, terminal rounds included/);
+    assert.match(loop, /govern even when/);
+  });
+
   test('fabric master row for fabric-loop has no 5.4.1', () => {
     const row = read('skills', 'basic', 'fabric', 'SKILL.md').split('\n').find((l) => l.startsWith('| `fabric-loop`'));
     assert.ok(row, 'fabric-loop row exists');
