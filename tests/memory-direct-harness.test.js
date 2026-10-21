@@ -6,6 +6,7 @@ const path = require('path');
 const { migrateMemoryDirect } = require('../lib/gateway/migrate-memory.js');
 const { parseCodexTables } = require('../lib/mcp-secrets.js');
 const profile = require('../lib/v5/profile.js');
+const { fakeComponents } = require('./helpers/memdirect-env.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-memdirect-harness-'));
@@ -26,14 +27,14 @@ test('migrateMemoryDirect adds direct memb_mcp and deja entries to Claude, Codex
     fs.writeFileSync(opencodeJson, JSON.stringify({ mcp: { aos: { type: 'remote', url: 'http://127.0.0.1:7790/mcp' } } }, null, 2));
     fs.writeFileSync(agyJson, JSON.stringify({ mcpServers: { aos: { type: 'http', url: 'http://127.0.0.1:7790/mcp' } } }, null, 2));
 
-    const rep = migrateMemoryDirect({ home, aosRoot: ROOT, now: 12345678 });
+    const rep = migrateMemoryDirect({ home, aosRoot: ROOT, now: 12345678, env: fakeComponents(home) });
     assert.equal(rep.harnesses.length, 4);
 
     // 1. Claude
     const cData = JSON.parse(fs.readFileSync(claudeJson, 'utf8'));
     assert.ok(cData.mcpServers.memb_mcp, 'Claude has memb_mcp');
     assert.ok(cData.mcpServers.deja, 'Claude has deja');
-    assert.equal(cData.mcpServers.memb_mcp.command, 'node');
+    assert.equal(cData.mcpServers.memb_mcp.command, process.execPath);
     assert.ok(cData.mcpServers.memb_mcp.args.some((a) => a.includes('aos-mcp-env.mjs')));
     assert.ok(cData.mcpServers.memb_mcp.args.includes('GEMINI_API_KEY'));
 
@@ -42,7 +43,7 @@ test('migrateMemoryDirect adds direct memb_mcp and deja entries to Claude, Codex
     const tables = parseCodexTables(codexText);
     assert.ok(tables.memb_mcp, 'Codex has memb_mcp table');
     assert.ok(tables.deja, 'Codex has deja table');
-    assert.equal(tables.memb_mcp.fields.command, 'node');
+    assert.equal(tables.memb_mcp.fields.command, process.execPath);
     assert.ok(tables.memb_mcp.fields.args.some((a) => a.includes('aos-mcp-env.mjs')));
 
     // 3. OpenCode
@@ -64,7 +65,7 @@ test('migrateMemoryDirect adds direct memb_mcp and deja entries to Claude, Codex
     assert.ok(fs.existsSync(`${agyJson}.aos-memdirect-bak-12345678`));
 
     // 6. Idempotency: running again adds nothing
-    const rep2 = migrateMemoryDirect({ home, aosRoot: ROOT, now: 12345679 });
+    const rep2 = migrateMemoryDirect({ home, aosRoot: ROOT, now: 12345679, env: fakeComponents(home) });
     assert.equal(rep2.harnesses.length, 0);
 });
 

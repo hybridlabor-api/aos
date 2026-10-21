@@ -9,6 +9,7 @@ const { shippedServers } = require('../lib/mcp-secrets.js');
 const { migrateMemoryDirect } = require('../lib/gateway/migrate-memory.js');
 const profile = require('../lib/v5/profile.js');
 const { writeMigration, readMigration } = require('../lib/gateway/harness.js');
+const { fakeComponents } = require('./helpers/memdirect-env.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aos-mem-absent-'));
@@ -65,7 +66,7 @@ test('migrateMemoryDirect strips memb_mcp and deja from gateway mcp.json with ba
         { file: path.join(home, '.claude.json'), key: 'memb_mcp', original: '{}', now: 1 },
     ]);
 
-    const rep = migrateMemoryDirect({ home, aosRoot: ROOT, now: 9999 });
+    const rep = migrateMemoryDirect({ home, aosRoot: ROOT, now: 9999, env: fakeComponents(home) });
     assert.strictEqual(rep.gatewayCleaned, true);
     assert.strictEqual(rep.recordsCleaned, 1);
 
