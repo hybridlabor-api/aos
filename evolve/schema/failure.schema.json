@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/aos/evolve/schema/failure.schema.json",
+  "title": "AOS Evolve Failure Record",
+  "description": "Redacted failure metadata captured from test/build/review failures.",
+  "type": "object",
+  "required": [
+    "version",
+    "id",
+    "ts",
+    "skill",
+    "kind",
+    "error_sig",
+    "redacted_excerpt"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema format version, currently 1."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Unique failure record ID."
+    },
+    "ts": {
+      "type": "string",
+      "description": "ISO 8601 timestamp of failure capture."
+    },
+    "first_seen": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when this error signature was first encountered."
+    },
+    "last_seen": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when this error signature was most recently encountered."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Deduplication counter for repeated occurrences."
+    },
+    "skill": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target skill directory name.",
+      "pattern": "^[a-z0-9_-]+$"
+    },
+    "harness": {
+      "type": "string",
+      "description": "Execution harness where failure occurred (claude, agy, opencode, codex)."
+    },
+    "role": {
+      "type": "string",
+      "description": "Agent role active during failure."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "test",
+        "build",
+        "review",
+        "advisor-repeat",
+        "user"
+      ],
+      "description": "Source category of failure."
+    },
+    "error_sig": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Normalized error signature hash or string used for deduplication."
+    },
+    "redacted_excerpt": {
+      "type": "string",
+      "maxLength": 65536,
+      "description": "Sanitized error excerpt with home paths and secrets stripped (capped at 64 KiB)."
+    },
+    "trail_node": {
+      "type": "string",
+      "description": "Associated AgentTrail node ID if available."
+    },
+    "session_ref": {
+      "type": "string",
+      "description": "Session or run reference."
+    },
+    "cwd_class": {
+      "type": "string",
+      "description": "Category of working directory (e.g. worktree, scratch, repo)."
+    }
+  },
+  "additionalProperties": false
+}

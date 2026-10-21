@@ -1,0 +1,5 @@
+{
+  "name": "sample-utility",
+  "description": "Concise helper skill for text formatting within token budget.",
+  "required_sections": ["Overview", "Commands", "Guidelines"]
+}

@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/hybridlabor-api/aos/evolve/schema/summary.schema.json",
+  "title": "AOS Evolve Run Summary",
+  "description": "Evaluation metrics and regression verification summary for a candidate or cycle.",
+  "type": "object",
+  "required": [
+    "version",
+    "cycle_id",
+    "skill",
+    "candidate_id",
+    "baseline_run_id",
+    "target_pass_rate",
+    "heldout_pass_rate",
+    "baseline_pass_rate",
+    "regressions",
+    "passed_gate",
+    "probes"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema format version, currently 1."
+    },
+    "cycle_id": {
+      "type": "string",
+      "description": "Evolution cycle identifier."
+    },
+    "skill": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Evaluated skill name."
+    },
+    "candidate_id": {
+      "type": "string",
+      "description": "Candidate patch ID."
+    },
+    "baseline_run_id": {
+      "type": "string",
+      "description": "Baseline run reference ID."
+    },
+    "target_pass_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Pass rate on target probes (0.0 to 1.0)."
+    },
+    "heldout_pass_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Pass rate on held-out probes (0.0 to 1.0)."
+    },
+    "baseline_pass_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Pass rate of baseline HEAD on the same probe set."
+    },
+    "regressions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of probe IDs that passed at baseline but failed on candidate."
+    },
+    "passed_gate": {
+      "type": "boolean",
+      "description": "True if candidate meets all B4 eval gate criteria."
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "pass", "score"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Probe ID."
+          },
+          "pass": {
+            "type": "boolean",
+            "description": "Whether probe run passed."
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Score from checker (0.0 to 1.0)."
+          },
+          "wall_time_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Execution wall time in milliseconds."
+          },
+          "tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tokens consumed during probe run."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Checker output notes or diagnostic details."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Per-probe evaluation breakdown."
+    },
+    "ts": {
+      "type": "string",
+      "description": "ISO 8601 completion timestamp."
+    }
+  },
+  "additionalProperties": false
+}
