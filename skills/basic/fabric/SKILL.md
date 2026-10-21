@@ -31,7 +31,7 @@ Pass the goal text through verbatim; flags are described below.
 
 ## Flags and building blocks
 
-- `--skill=<name>`: all modes; run the named skill's contract inside the chosen mode.
+- `--skill=<name>`: handled by `fabric-graph` and `fabric-multigraph`. `fabric-swarm` and `fabric-loop` pass it through to each worker brief. `fabric-teamwork` does not support it.
 - `--profile=<name>`: domain profile from `.agents/profiles/<name>.json`; handled by `fabric-graph`. An unknown profile escalates.
 - `--workstreams`: `fabric-graph` only; the Architect plans 1-6 dynamic workstreams (target 4, cap 6). Off by default.
 - Teams: `aos-team list`, `aos-team show <id>`, `aos-team new <id> [--from-playbook <name>]`; add `--json` for machine output. Team JSON lives in `~/.aos/teams` or `.aos/teams` (project wins); shipped teams are in `lib/roles/teams`.

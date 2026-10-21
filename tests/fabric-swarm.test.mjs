@@ -14,7 +14,13 @@ test('fabric-swarm skill is the real contract', () => {
   for (const st of ['open', 'claimed', 'done', 'failed']) assert.ok(s.includes(st), st);
   assert.match(s, /hard cap 6/);
   assert.match(s, /Default 4 workers/);
-  assert.match(s, /retry once/);
+  assert.ok(s.includes('open|claimed|done|failed'));
+  assert.match(s, /every `claimed` item goes back to `open`/);
+  assert.match(s, /clamps `max_workers` to 1\.\.6/);
+  assert.match(s, /stay-within-limits/);
+  assert.match(s, /95 %/);
+  assert.match(s, /Workers get no push, merge or publish/);
+  assert.match(s, /no second review round/);
   assert.match(s, /attempts/);
   assert.match(s, /review pass/);
   assert.match(s, /never counts as a GO/);
