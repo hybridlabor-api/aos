@@ -1,42 +1,79 @@
 #!/usr/bin/env node
-// Relays a hook event to any running agenttrail live map (skills/global_config/agenttrail).
-// Best-effort telemetry: bounded I/O stdin read, detached background fetch, errors swallowed,
-// never blocks or fails the agent (the hook timeout is 3 s).
+// Relays a hook event to a running agenttrail live map (skills/global_config/agenttrail).
+// Best-effort telemetry: nothing is read, spawned or sent unless a map is running. A map is "running" when
+// ~/.aos/endpoints.json lists it with a live pid (announceTrail writes that on listen and removes it on exit)
+// or when AGENTTRAIL_PORT names a port. Errors are swallowed; it never blocks or fails the agent.
 // Usage: node trail-relay.mjs --agent <claude|agy|codex> [--event <HookEventName>]
+// aos-hooks.mjs calls hook() in-process: no detached worker, one bounded POST per running map.
 
 import { spawn } from 'node:child_process';
+import { readFileSync, realpathSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Fail-open safety timer: never let the hook linger or block the caller.
-const timer = setTimeout(() => process.exit(0), 1500);
-if (timer.unref) timer.unref();
+const NONE = { code: 0, stdout: '', stderr: '' };
+const RANGE = Array.from({ length: 15 }, (_, i) => 5330 + i);
 
-process.on('uncaughtException', () => process.exit(0));
-process.on('unhandledRejection', () => process.exit(0));
+const alive = (pid) => {
+  if (!Number.isInteger(pid) || pid <= 0) return true; // no pid recorded: trust the entry
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+};
 
-// Detached worker path: executes slow network I/O in the background.
-if (process.argv.includes('--relay-worker')) {
-  let workerBody = '';
-  const sendIdx = process.argv.indexOf('--relay-send');
-  if (sendIdx !== -1 && process.argv[sendIdx + 1]) {
-    workerBody = process.argv[sendIdx + 1];
-  } else {
-    try { for await (const c of process.stdin) workerBody += c; } catch {}
-  }
-  if (!workerBody) process.exit(0);
-  const explicit = Number(process.env.AGENTTRAIL_PORT) || 0;
-  if (explicit === 1) process.exit(0);
-  // default = the per-repo maps (5330-5344); AGENTTRAIL_PORT targets one port instead, AGENTTRAIL_LEGACY=1 adds the range to it
-  const range = Array.from({ length: 15 }, (_, i) => 5330 + i);
-  const ports = explicit ? [explicit, ...(process.env.AGENTTRAIL_LEGACY === '1' ? range.filter((p) => p !== explicit) : [])] : range;
-  const targets = ports.map((p) => ({ url: `http://127.0.0.1:${p}/hook`, body: workerBody }));
+// Ports of the maps that announced themselves and still run. [] when the file is missing or unreadable.
+export function announcedPorts(env = process.env) {
   try {
-    await Promise.allSettled(targets.map((t) => fetch(t.url, { method: 'POST', body: t.body, signal: AbortSignal.timeout(500) }).catch(() => {})));
-  } catch {}
-  process.exit(0);
+    const file = path.join(env.HOME || os.homedir(), '.aos', 'endpoints.json');
+    const list = JSON.parse(readFileSync(file, 'utf8'))?.agenttrail;
+    return (Array.isArray(list) ? list : []).filter((m) => m && Number.isInteger(m.port) && alive(m.pid)).map((m) => m.port);
+  } catch { return []; }
 }
 
-const arg = (name) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
+// Where an event goes. AGENTTRAIL_PORT=1 switches the relay off, another value targets that one port,
+// AGENTTRAIL_LEGACY=1 adds the whole per-repo range (older maps never announced themselves).
+export function relayPorts(env = process.env) {
+  const explicit = Number(env.AGENTTRAIL_PORT) || 0;
+  if (explicit === 1) return [];
+  const legacy = env.AGENTTRAIL_LEGACY === '1' ? RANGE : [];
+  const base = explicit ? [explicit] : announcedPorts(env);
+  return [...new Set([...base, ...legacy])];
+}
+
+export async function post(body, ports, timeoutMs = 500) {
+  await Promise.allSettled(ports.map((p) => fetch(`http://127.0.0.1:${p}/hook`, { method: 'POST', body, signal: AbortSignal.timeout(timeoutMs) }).catch(() => {})));
+}
+
+// Attribution: AOS_TRAIL_NODE env wins (dispatcher intent); a [trail-node:<id>]
+// marker anywhere in the payload (subagent prompt/brief) is the fallback.
+// stampTrailNode lives in the agenttrail lib; the hook dir may sit next to it
+// (repo checkout) or detached (installed copies), so try the known homes.
+async function prepare(input, { agent, event, env }) {
+  const ev = { ...input };
+  ev.agent = agent || ev.agent || 'claude';
+  ev.hook_event_name ||= event;
+  ev.cwd ||= process.cwd();
+  let stampTrailNode = ({ env: e } = {}) => {
+    if (e?.AOS_TRAIL_NODE && !ev.task) ev.task = { id: e.AOS_TRAIL_NODE, status: 'doing', ...(e.AOS_TRAIL_PLAN ? { plan: e.AOS_TRAIL_PLAN } : {}) };
+  };
+  for (const rel of ['../global_config/agenttrail/lib/events.mjs', '../../skills/global_config/agenttrail/lib/events.mjs', './lib/events.mjs']) {
+    try {
+      ({ stampTrailNode } = await import(new URL(rel, import.meta.url)));
+      break;
+    } catch {}
+  }
+  stampTrailNode(ev, { env });
+  return JSON.stringify(ev);
+}
+
+// In-process entry. No running map: returns before anything is imported, spawned or sent.
+export async function hook(input, { agent = 'claude', event, env = process.env, timeoutMs } = {}) {
+  try {
+    const ports = relayPorts(env);
+    if (!ports.length || !input || typeof input !== 'object') return NONE;
+    await post(await prepare(input, { agent, event, env }), ports, timeoutMs);
+  } catch {}
+  return NONE;
+}
 
 async function readStdinBounded(maxMs = 150, maxBytes = 256 * 1024) {
   if (process.stdin.isTTY) return '';
@@ -71,32 +108,43 @@ async function readStdinBounded(maxMs = 150, maxBytes = 256 * 1024) {
   });
 }
 
-const raw = await readStdinBounded(150);
-let ev;
-try { ev = JSON.parse(raw); } catch { process.exit(0); }
-if (!ev || typeof ev !== 'object') process.exit(0);
+const isMain = () => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } };
 
-ev.agent = arg('--agent') || ev.agent || 'claude';
-ev.hook_event_name ||= arg('--event');
-ev.cwd ||= process.cwd();
-// Attribution: AOS_TRAIL_NODE env wins (dispatcher intent); a [trail-node:<id>]
-// marker anywhere in the payload (subagent prompt/brief) is the fallback.
-// stampTrailNode lives in the agenttrail lib; the hook dir may sit next to it
-// (repo checkout) or detached (installed copies), so try the known homes.
-let stampTrailNode = ({ env: e } = {}) => {
-  if (e?.AOS_TRAIL_NODE && !ev.task) ev.task = { id: e.AOS_TRAIL_NODE, status: 'doing', ...(e.AOS_TRAIL_PLAN ? { plan: e.AOS_TRAIL_PLAN } : {}) };
-};
-for (const rel of ['../global_config/agenttrail/lib/events.mjs', '../../skills/global_config/agenttrail/lib/events.mjs', './lib/events.mjs']) {
-  try {
-    ({ stampTrailNode } = await import(new URL(rel, import.meta.url)));
-    break;
-  } catch {}
-}
-stampTrailNode(ev, { env: process.env });
-const body = JSON.stringify(ev);
+if (isMain()) {
+  // Fail-open safety timer: never let the hook linger or block the caller.
+  const timer = setTimeout(() => process.exit(0), 1500);
+  if (timer.unref) timer.unref();
 
-// Detach slow network I/O: spawn a background worker so the hook returns immediately.
-if (Number(process.env.AGENTTRAIL_PORT) !== 1) {
+  process.on('uncaughtException', () => process.exit(0));
+  process.on('unhandledRejection', () => process.exit(0));
+
+  const arg = (name) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
+
+  // Detached worker path: executes slow network I/O in the background.
+  if (process.argv.includes('--relay-worker')) {
+    let workerBody = '';
+    const sendIdx = process.argv.indexOf('--relay-send');
+    if (sendIdx !== -1 && process.argv[sendIdx + 1]) {
+      workerBody = process.argv[sendIdx + 1];
+    } else {
+      try { for await (const c of process.stdin) workerBody += c; } catch {}
+    }
+    const ports = relayPorts();
+    if (workerBody && ports.length) await post(workerBody, ports);
+    process.exit(0);
+  }
+
+  const raw = await readStdinBounded(150);
+  let input;
+  try { input = JSON.parse(raw); } catch { process.exit(0); }
+  if (!input || typeof input !== 'object') process.exit(0);
+
+  // Checked before anything is spawned: no running map, no worker process.
+  if (!relayPorts().length) process.exit(0);
+
+  const body = await prepare(input, { agent: arg('--agent'), event: arg('--event'), env: process.env });
+
+  // Detach slow network I/O: spawn a background worker so the hook returns immediately.
   try {
     const here = fileURLToPath(import.meta.url);
     if (body.length < 65536) {
@@ -118,5 +166,5 @@ if (Number(process.env.AGENTTRAIL_PORT) !== 1) {
       child.unref();
     }
   } catch {}
+  process.exit(0);
 }
-process.exit(0);
