@@ -1,7 +1,7 @@
 # AOS UI "Lanes" rules
 
 One token file drives every AOS web UI: `lib/ui-tokens/aos-tokens.css` (AgentTrail, Hub, Store UI, Plan Canvas).
-Skills that install on their own carry a byte-identical copy; `tests/ui-tokens-sync.test.mjs` fails on drift.
+Skills that install on their own carry a byte-identical copy. `tests/ui-tokens-sync.test.mjs` fails on drift of the AgentTrail copy; `tests/ui-lanes-tokens.test.mjs` fails on drift of the AgentTrail and plan-builder copies.
 Edit the source, then copy it over every copy.
 
 ## Lane colour = agent identity
@@ -39,3 +39,26 @@ Edit the source, then copy it over every copy.
 
 - Text and status labels must meet WCAG AA: 4.5:1 for body text, 3:1 for large text and UI borders, in both themes, on `--aos-surface` and `--aos-surface-2`.
 - A new lane or status colour is only added with its measured light and dark ratios.
+
+### Measured lane contrast (WCAG relative luminance, computed from the token hex values)
+
+Lane colours are accents (edge, tick, dot), so the bar is the 3:1 UI-element minimum plus the ratios below.
+
+| Theme | Lane | Token hex | Ratio vs reference surface |
+|---|---|---|---|
+| Light | 0 | `#7a2fc9` | 6.82:1 vs `#ffffff`, 5.86:1 vs `--aos-surface-2` |
+| Light | 1 | `#0b5cad` | 6.67:1 vs `#ffffff`, 5.73:1 vs `--aos-surface-2` |
+| Light | 2 | `#0a6e62` | 6.14:1 vs `#ffffff`, 5.27:1 vs `--aos-surface-2` |
+| Light | 3 | `#7a5200` | 6.92:1 vs `#ffffff`, 5.94:1 vs `--aos-surface-2` |
+| Light | 4 | `#b01e4c` | 6.70:1 vs `#ffffff`, 5.75:1 vs `--aos-surface-2` |
+| Light | 5 | `#3f6b0a` | 6.33:1 vs `#ffffff`, 5.43:1 vs `--aos-surface-2` |
+| Dark | 0 | `#c58cff` | 7.52:1 vs `--aos-surface` (`#141414`), 6.80:1 vs `--aos-surface-2` |
+| Dark | 1 | `#6cb8ff` | 8.72:1 vs `--aos-surface`, 7.89:1 vs `--aos-surface-2` |
+| Dark | 2 | `#4fd8c4` | 10.48:1 vs `--aos-surface`, 9.49:1 vs `--aos-surface-2` |
+| Dark | 3 | `#e3c07a` | 10.60:1 vs `--aos-surface`, 9.60:1 vs `--aos-surface-2` |
+| Dark | 4 | `#ff8fa8` | 8.55:1 vs `--aos-surface`, 7.74:1 vs `--aos-surface-2` |
+| Dark | 5 | `#a9d96a` | 11.25:1 vs `--aos-surface`, 10.18:1 vs `--aos-surface-2` |
+
+- Light lane 2 is 5.27:1 vs `--aos-surface-2`, below the 5.3:1 target set for the light lanes. It still clears 4.5:1, but it is the one value to revisit.
+- Dark lane 0 is 7.52:1 vs `--aos-surface`, the tightest dark value.
+- Status-pill tints (`--aos-status-*-bg`, `--aos-status-*-fg` on tint) are not yet measured.

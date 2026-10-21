@@ -1,7 +1,7 @@
 /* AOS shared design tokens (direction A2: obsidian surfaces, orchid accent, mono labels).
    Canonical copy. The copies in skills/global_config/agenttrail/public/shared/ and
    skills/global_config/plan-canvas/scripts/lib/plan-builder/ must stay byte-identical (those skills install on
-   their own); tests/ui-tokens-sync.test.mjs enforces it. */
+   their own). tests/ui-tokens-sync.test.mjs checks the AgentTrail copy; tests/ui-lanes-tokens.test.mjs checks both. */
 :root{color-scheme:dark;
 --aos-bg:#0a0a0a;--aos-surface:#141414;--aos-surface-2:#1e1e1e;--aos-border:#2c2c2c;--aos-text:#ececec;--aos-muted:#a3a3a3;
 --aos-accent:#c58cff;--aos-accent-ink:#0a0a0a;--aos-ok:#5fe0a0;--aos-warn:#ffb454;--aos-bad:#ff6b7a;--aos-info:#6cb8ff;

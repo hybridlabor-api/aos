@@ -45,7 +45,7 @@ footer{padding:12px 16px 24px;color:var(--dim);font-size:12px}
 .s-desc{color:var(--dim);font-size:13px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .s-tags{display:flex;flex-wrap:wrap;gap:6px}
 .s-tag{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line);border-radius:var(--aos-chip-r);padding:1px 8px;white-space:nowrap}
-.s-tag.warn{color:var(--aos-status-failed-fg);border-color:var(--aos-status-failed-border)}
+.s-tag.warn{color:var(--aos-status-needs-you-fg);border-color:var(--aos-status-needs-you-border)}
 .s-foot{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
 .s-foot input{min-width:0;flex:1 1 120px}
 .s-state{font-size:12px;color:var(--dim);margin-right:auto}

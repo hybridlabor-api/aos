@@ -60,3 +60,13 @@ test('changed status-pill rules use tokens, no hard-coded hex', () => {
   }
   assert.doesNotMatch(at('lib/hub/ui/services.js'), /color:#f87171/);
 });
+
+test('AgentTrail map assigns lane colours from the tokens', () => {
+  assert.match(at('skills/global_config/agenttrail/public/shared/map.js'), /--aos-lane-/);
+});
+
+test('plan-builder themeCss guards the aos-tokens.css read', () => {
+  const body = at('skills/global_config/plan-canvas/scripts/lib/plan-builder/render.js').match(/function themeCss\(\) \{([\s\S]*?)\n\}/);
+  assert.ok(body, 'themeCss not found');
+  assert.match(body[1], /try\s*\{[\s\S]*aos-tokens\.css[\s\S]*\}\s*catch/);
+});
