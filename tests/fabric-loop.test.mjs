@@ -17,7 +17,7 @@ describe('fabric-loop', () => {
 
   test('states round limits, no-progress rule and the round log', () => {
     assert.match(loop, /S=3, M=4, L=5/);
-    assert.match(loop, /No-progress stop/);
+    assert.match(loop, /no-progress stop/i);
     assert.match(loop, /same set of blocking finding IDs/);
     assert.ok(loop.includes('production_artifacts/loop.log'));
   });
@@ -29,7 +29,7 @@ describe('fabric-loop', () => {
   });
 
   test('enforces time, quota, signature, grant and terminal logging', () => {
-    assert.match(loop, /Compare elapsed time since the `start` line with 3 hours/);
+    assert.match(loop, /Compare elapsed time since the `start` line with 3 hours/i);
     assert.match(loop, /stay-within-limits/);
     assert.match(loop, /95 %/);
     assert.match(loop, /same failing exit-check output signature/);

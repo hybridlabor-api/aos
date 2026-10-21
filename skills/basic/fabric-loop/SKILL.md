@@ -21,7 +21,7 @@ Runs one cycle per round and stops as soon as the exit check passes. It is the f
 ## Bounds
 
 - Max rounds: S=3, M=4, L=5 (default 3).
-- Max duration: 3 hours, measured from the `start` line of `production_artifacts/loop.log`.
+- Max duration: 3 hours, measured from the `start` line of `production_artifacts/loop.log`. The time check runs at round start, so the last round may overrun 3 hours.
 - Never unbounded. Never extend the limits yourself.
 
 ## Start
@@ -57,7 +57,7 @@ Every stop or pause decision comes after its log line. Steps 2 and 3 only gather
 
 ## Round log
 
-One line per round in `production_artifacts/loop.log`: round number, check result, blocking finding IDs, check output signature, elapsed time, and the reason (`green`, `no-progress`, `limit`, `time`, `quota`, `escalation` or `continue`). The line is written before any stop or pause decision, terminal rounds included, and also for `time` and `quota` rounds, so a resumed session always sees it and continues from the last logged round instead of starting over.
+One line per round in `production_artifacts/loop.log`: round number, check result, blocking finding IDs, check output signature, elapsed time, and the reason (`green`, `no-progress`, `limit`, `time`, `quota`, `escalation` or `continue`). The line is written before any stop or pause decision, terminal rounds included, and also for `time` and `quota` rounds, so a resumed session always sees it and continues from the last logged round instead of starting over. `quota` log lines carry no round number.
 
 ## Safety
 
