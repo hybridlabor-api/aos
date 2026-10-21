@@ -40,15 +40,15 @@ test('a gate block exits 2 with the gate message and no later module can undo or
 test('a blocked call is still relayed, and nothing else runs after the block', async () => {
   const calls = [];
   const registry = {
-    gate: { gate: true, run: async () => { calls.push('gate'); return { code: 2, stdout: '', stderr: 'Blocked by fake gate\n' }; } },
+    'go-gate.mjs': { gate: true, closed: true, run: async () => { calls.push('gate'); return { code: 2, stdout: '', stderr: 'Blocked by fake gate\n' }; } },
     cc: { gate: true, run: async () => { calls.push('cc'); return ok(); } },
     ctx: { run: async () => { calls.push('ctx'); return ok(); } },
     relay: { relay: true, run: async () => { calls.push('relay'); throw new Error('map is down'); } },
   };
-  const r = await dispatch('PreToolUse', ['relay', 'ctx', 'cc', 'gate'], payload(), registry);
+  const r = await dispatch('PreToolUse', ['relay', 'ctx', 'cc', 'go-gate.mjs'], payload(), registry);
   assert.equal(r.code, 2);
   assert.match(r.stderr, /Blocked by fake gate/);
-  assert.deepEqual(calls, ['gate', 'relay'], 'a failing relay stays fail-open');
+  assert.deepEqual(calls, ['gate', 'relay'], 'go-gate runs first among gates; the block ends the gates, and a failing relay stays fail-open');
 });
 
 test('a tool-less PreToolUse payload is relayed once: by the catch-all entry only', async () => {

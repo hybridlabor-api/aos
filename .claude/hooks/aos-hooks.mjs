@@ -4,7 +4,7 @@
 // the installer can drop a module by dropping its name; names this file does not know are ignored)
 //
 // Order and blocking:
-//   - gate modules (can answer exit 2) run first, then the rest; each group keeps the listed order.
+//   - gate modules (can answer exit 2) run first, go-gate before any other gate; the rest follow in the listed order.
 //   - go-gate fails closed (an internal error or an unloadable module is exit 2, like `node go-gate.mjs || exit 2`);
 //     every other module fails open: a throw or a timeout is dropped and never hides a block.
 //   - any block => exit 2 with the blocking modules' stderr. On PreToolUse the first block ends the gate run;
@@ -37,7 +37,7 @@ export const REGISTRY = {
   'a2a-session.mjs': { budgetMs: 4000, run: async (c) => (await import('./a2a-session.mjs')).hook(c.input, { harness: 'claude' }) },
   'trail-autostart.mjs': { tools: SUBAGENT, run: async (c) => (await import('./trail-autostart.mjs')).hook(c.input) },
   // timeoutMs 150: the POST goes to loopback; a hung map must not slow the hot path by more than that.
-  'trail-relay.mjs': { relay: true, budgetMs: 400, run: async (c) => (await import('./trail-relay.mjs')).hook(c.input, { agent: 'claude', event: c.event, timeoutMs: 150 }) },
+  'trail-relay.mjs': { relay: true, budgetMs: 150, run: async (c) => (await import('./trail-relay.mjs')).hook(c.input, { agent: 'claude', event: c.event, timeoutMs: 150 }) },
 };
 
 export const COVERED = new Set([...BASH, ...FILE_TOOLS, ...SUBAGENT]);
@@ -83,7 +83,12 @@ export async function dispatch(event, names, raw, registry = REGISTRY, { rest = 
     && !(event === 'PreToolUse' && tool && m.tools && !m.tools.has(tool))
     // one relay per call: matcher entries relay their own tools, the catch-all (--rest) the others and tool-less payloads
     && !(m.relay && event === 'PreToolUse' && (rest ? COVERED.has(tool) : !tool)));
-  const ordered = [...wanted.filter(([, m]) => m.gate), ...wanted.filter(([, m]) => !m.gate)];
+  const gates = wanted.filter(([, m]) => m.gate);
+  const ordered = [
+    ...gates.filter(([n]) => n === 'go-gate.mjs'),
+    ...gates.filter(([n]) => n !== 'go-gate.mjs'),
+    ...wanted.filter(([, m]) => !m.gate),
+  ];
 
   const blocks = [];
   const outs = [];
@@ -109,11 +114,12 @@ export async function dispatch(event, names, raw, registry = REGISTRY, { rest = 
 }
 
 // dispatch never throws by design; if it does, a run that holds the fail-closed gate blocks, any other passes.
-export async function safeDispatch(...args) {
+export async function safeDispatch(event, names, raw, registry = REGISTRY, opts) {
   try {
-    return await dispatch(...args);
+    return await dispatch(event, names, raw, registry, opts);
   } catch (e) {
-    const closed = (args[1] || []).some((n) => REGISTRY[n]?.closed);
+    const mods = registry ?? REGISTRY;
+    const closed = (names || []).some((n) => mods[n]?.closed);
     return closed ? { code: 2, stdout: '', stderr: `Blocked by aos-hooks: internal error, failing closed: ${String(e?.message || e).slice(0, 200)}\n` } : NONE;
   }
 }
