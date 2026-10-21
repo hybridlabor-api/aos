@@ -21,26 +21,43 @@ Runs one cycle per round and stops as soon as the exit check passes. It is the f
 ## Bounds
 
 - Max rounds: S=3, M=4, L=5 (default 3).
-- Max duration: 3 hours, measured from the first line of `production_artifacts/loop.log`.
+- Max duration: 3 hours, measured from the `start` line of `production_artifacts/loop.log`.
 - Never unbounded. Never extend the limits yourself.
+
+## Start
+
+Before round 1, append a `start` line with the start timestamp to `production_artifacts/loop.log`, e.g. `start ts=<ISO-8601 time>`. The 3-hour clock counts from that line. On resume, the `start` line already exists: do not write another.
 
 ## Each round
 
-1. Read `production_artifacts/loop.log` (resume point, previous round's finding IDs and check signature, start time). Compare elapsed time since the first line with 3 hours; if exceeded, stop and report (reason: time).
-2. Check the usage windows via `stay-within-limits`; at 95 % or more, pause (reason: quota).
-3. Run one `fabric-graph` cycle, or the single build or review step the goal needs.
-4. Run the exit check.
-5. Append this round's line to `production_artifacts/loop.log` before any stop decision.
-6. Decide:
-   - Exit check green: stop and report success (reason: green).
-   - No-progress stop: the same set of blocking finding IDs, or the same failing exit-check output signature (for example the first failing test name plus its error line), two rounds in a row. Stop and escalate to the human (reason: no-progress).
-   - Round limit reached: stop and report the state (reason: limit).
-   - A node requests human escalation: stop (reason: escalation).
-   - Otherwise start the next round.
+Every stop or pause decision comes after its log line. Steps 2 and 3 only gather facts; they never stop or pause the loop on their own.
+
+1. Read `production_artifacts/loop.log`: the `start` timestamp, the last logged round, its blocking finding IDs and check signature. Resume from the last logged round, never from round 1. `quota` lines are not rounds.
+2. Time: compare elapsed time since the `start` line with 3 hours. At 3 hours or more, the round does not run: reason `time`.
+3. Quota: check the usage windows via `stay-within-limits`. At 95 % or more, the round does not run: reason `quota`.
+4. If neither applies, run one `fabric-graph` cycle, or the single build or review step the goal needs, then run the exit check and compute this round's signature (see below).
+5. Pick the reason:
+   - `green`: the exit check passes.
+   - `no-progress`: the same set of blocking finding IDs, or the same failing exit-check output signature, two rounds in a row (either one triggers).
+   - `limit`: this was the last allowed round.
+   - `escalation`: a node requests human escalation.
+   - `time` or `quota`: from steps 2 and 3.
+   - `continue`: none of the above.
+6. Append this round's line to `production_artifacts/loop.log` with that reason. This happens every time, including `time`, `quota` and terminal rounds. A round that did not run logs `check=not-run`.
+7. Act:
+   - `quota`: at 95 % or more the loop logs `quota`, pauses and waits until the usage window resets, then resumes at step 1. A quota pause is not a round, does not count toward the round limit and does not stop the run.
+   - `green`: stop and report success.
+   - `no-progress`: stop and escalate to the human.
+   - `limit`: stop and report the state.
+   - `escalation`: stop.
+   - `time`: stop and report.
+   - `continue`: start the next round.
+
+**Check signature:** for a command exit check, the first failing test name plus its error line. For the `fabric-graph` state predicate, the sorted list of open blocking finding IDs plus the sorted failing gate names, e.g. `F-03,F-07 | lint,test`.
 
 ## Round log
 
-One line per round in `production_artifacts/loop.log`: round number, check result, blocking finding IDs, check output signature, elapsed time, and the stop reason (`green`, `no-progress`, `limit`, `time`, `quota`, `escalation`) when the round ends the loop. The line is written before any stop decision, terminal rounds included, so a resumed session always sees it and continues from the last logged round instead of starting over.
+One line per round in `production_artifacts/loop.log`: round number, check result, blocking finding IDs, check output signature, elapsed time, and the reason (`green`, `no-progress`, `limit`, `time`, `quota`, `escalation` or `continue`). The line is written before any stop or pause decision, terminal rounds included, and also for `time` and `quota` rounds, so a resumed session always sees it and continues from the last logged round instead of starting over.
 
 ## Safety
 
