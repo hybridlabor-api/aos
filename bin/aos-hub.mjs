@@ -216,7 +216,9 @@ async function cmdStop() {
         timeoutMs: 1500,
       });
       if (res.status === 200) {
-        try { unlinkSync(file); } catch { /* server removes it too */ }
+        // The server removes hub.json after its teardown; only a leftover is removed here, once it had time to.
+        for (let i = 0; i < 30 && readHubJson(home); i++) await new Promise((r) => setTimeout(r, 100));
+        try { unlinkSync(file); } catch { /* server removed it */ }
         console.log('AOS Hub stopped.');
         return 0;
       }

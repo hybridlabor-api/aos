@@ -447,11 +447,11 @@ describe('click grant receipts', () => {
         assert.equal(g.effectiveGate('s1', { source: t, cmds: [] }).grants.length, 0);
     });
 
-    test('24h is accepted, and an OpenCode session is clamped to 2h', () => {
+    test('24h is accepted, on OpenCode too', () => {
         const issued = Date.now();
         grant({ ms: g.MAX_GRANT_MS, issued_at: issued, expires_at: issued + g.MAX_GRANT_MS });
         assert.equal(g.effectiveGate('s1', { source: t, cmds: [] }).grants[0].until, issued + g.MAX_GRANT_MS);
-        assert.equal(g.effectiveGate('s1', { source: t, cmds: [], opencode: true }).grants[0].until, issued + g.OPENCODE_MAX_GRANT_MS);
+        assert.equal(g.effectiveGate('s1', { source: t, cmds: [], opencode: true }).grants[0].until, issued + g.MAX_GRANT_MS);
     });
 
     test('scopes parseGogateArgs would reject are rejected', () => {

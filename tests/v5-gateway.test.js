@@ -64,6 +64,18 @@ describe('config generator', () => {
         assert.equal(o.bdb_resolume_mcp.command, '/opt/uv');
     });
 
+    test('defaultPathEnv carries the global npm bin (win32 %APPDATA%\\npm, POSIX npm prefix -g/bin)', () => {
+        const win = cfg.defaultPathEnv({ home: 'C:\\Users\\u', nodePath: 'C:\\Program Files\\nodejs\\node.exe', platform: 'win32' });
+        assert.ok(win.split(';').includes(path.join('C:\\Users\\u', 'AppData', 'Roaming', 'npm')), win);
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'win32', env: { APPDATA: 'D:\\Roam' } }), path.join('D:\\Roam', 'npm'));
+        const calls = [];
+        const run = (cmd, args, opts) => { calls.push([cmd, args, opts.shell]); return { status: 0, stdout: '/opt/npm-global\n' }; };
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'linux', run }), path.join('/opt/npm-global', 'bin'));
+        assert.deepEqual(calls, [['npm', ['prefix', '-g'], false]]);
+        assert.equal(cfg.npmGlobalBin({ home: 'h', platform: 'linux', run: () => ({ status: 1, stdout: '' }) }), null);
+        assert.ok(cfg.defaultPathEnv({ home: 'h', nodePath: '/n/bin/node', platform: 'linux', npmBin: '/opt/npm-global/bin' }).split(':').includes('/opt/npm-global/bin'));
+    });
+
     test('defaultPathEnv includes go directories', () => {
         assert.ok(cfg.defaultPathEnv({ home, nodePath: '/n/bin/node', platform: 'darwin' }).split(':').includes(path.join(home, 'go', 'bin')));
         assert.ok(cfg.defaultPathEnv({ home, nodePath: '/n/bin/node', platform: 'darwin' }).split(':').includes('/usr/local/go/bin'));
@@ -775,11 +787,12 @@ describe('pkg-gateway', () => {
 });
 
 describe('status JSON', () => {
-    let status; let dir; const servers = [];
+    let status; let gw; let dir; const servers = [];
     const fake = async (handler) => { const s = http.createServer(handler); servers.push(s); return [s, await listen(s)]; };
 
     test('setup', async () => {
-        status = (await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href)).gatewayStatus;
+        gw = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+        status = gw.gatewayStatus;
         dir = tmp();
         fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify({ mcpServers: { a: {}, b: {} } }));
         fs.writeFileSync(path.join(dir, 'gateway.pid'), String(process.pid));
@@ -824,8 +837,37 @@ describe('status JSON', () => {
         const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
         await fw.listen();
         const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
-        assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'upstream error' }]);
+        assert.deepEqual(s.upstreams, [{ name: 'a', ok: true }, { name: 'b', ok: false, degraded: true, error: 'upstream error: ' + gw.neverConnected('b', new Map()) }]);
         await fw.close();
+    });
+
+    test('an upstream 1mcp never connected names the reason from its log; a loading one is busy, not failed', async () => {
+        fs.writeFileSync(path.join(dir, 'gateway.log'), '2026-10-21T00:00:00.000Z [ERROR] message="Failed to connect to b: spawn deja ENOENT"\n');
+        const api = JSON.stringify({ kind: 'servers', servers: [{ server: 'a', status: 'loading', available: false }, { server: 'b', status: 'unknown', available: false }] });
+        const [, inner] = await fake((req, res) => { res.writeHead(200); res.end(req.url === '/api/v1/servers' ? api : '{}'); });
+        const fw = createForwarder({ port: 0, upstreamPort: inner, token: 'x'.repeat(64) });
+        await fw.listen();
+        const s = await status({ dir, port: fw.server.address().port, upstreamPort: inner });
+        fs.rmSync(path.join(dir, 'gateway.log'));
+        assert.equal(s.upstreams[0].busy, true);
+        assert.match(s.upstreams[0].error, /still starting/);
+        assert.equal(s.upstreams[1].degraded, true);
+        assert.match(s.upstreams[1].error, /not connected since the gateway started \(1mcp log: spawn deja ENOENT\).*aos-gateway restart/);
+        await fw.close();
+    });
+
+    test('log text shown by status is redacted and one line', () => {
+        const raw = 'spawn failed https://u:p4ss@h/x?token=abc123&a=1 Authorization: Bearer abc.def GITHUB_PERSONAL_ACCESS_TOKEN=ghp_abcdefghijkl OPENAI_API_KEY=sk-abcdefghij\nsecond line';
+        const out = gw.redactLog(raw);
+        for (const leak of ['p4ss', 'abc123', 'abc.def', 'ghp_abcdefghijkl', 'sk-abcdefghij']) assert.ok(!out.includes(leak), leak + ' leaked: ' + out);
+        assert.ok(!out.includes('\n') && out.length <= 200);
+        assert.match(out, /spawn failed/);
+    });
+
+    test('run: 1mcp\'s mcp restart recovery is replaced by one AOS can act on', () => {
+        const hint = gw.runHint('server_unavailable: Server deja is unknown. Recovery: 1mcp mcp restart deja');
+        assert.match(hint, /needs an admin login.*aos-gateway status.*aos-gateway restart/);
+        assert.equal(gw.runHint('{"ok":true}'), null);
     });
 
     test('1mcp listing 0 servers while servers are configured is never ready (#178)', async () => {
@@ -919,6 +961,33 @@ http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(Number(port),'1
         assert.equal(await reapOrphan(dir, '/x/1mcp.js', 1, async () => {}), false);
         fs.writeFileSync(path.join(dir, 'upstream.pid'), '1');
         assert.equal(await reapOrphan(dir, '/x/1mcp.js', 1, async () => {}), false);
+    });
+
+    test('openLog writes 0600 and rotates to gateway.log.1 past the cap', async () => {
+        const { openLog } = await import(pathToFileURL(path.join(ROOT, 'bin', 'aos-gateway.mjs')).href);
+        const dir = tmp();
+        const l = openLog(dir, 100);
+        l.write('a'.repeat(80));
+        l.write('b'.repeat(80));
+        l.close();
+        assert.equal(fs.readFileSync(path.join(dir, 'gateway.log'), 'utf8'), 'b'.repeat(80));
+        assert.equal(fs.readFileSync(path.join(dir, 'gateway.log.1'), 'utf8'), 'a'.repeat(80));
+        if (posix) assert.equal(fs.statSync(path.join(dir, 'gateway.log')).mode & 0o777, 0o600);
+    });
+
+    test('serve writes 1mcp output and its own lines to gateway.log', async () => {
+        const dir = mkDir();
+        const port = await freePort();
+        const script = path.join(dir, 'chatty.js');
+        fs.writeFileSync(script, `const http=require('http');console.log('hello from 1mcp');console.error('[ERROR] message="Failed to connect to deja: spawn deja ENOENT"');
+http.createServer((q,s)=>{s.writeHead(200);s.end('{}');}).listen(${port},'127.0.0.1');`);
+        const spawnFn = (cmd, args, opts) => { assert.deepEqual(opts.stdio, ['ignore', 'pipe', 'pipe']); return spawn(process.execPath, [script], opts); };
+        const h = await startServe({ dir, upstreamPort: port, spawnFn, entry: 'x', port: 0 });
+        await new Promise((r) => setTimeout(r, 700));
+        await h.stop();
+        const text = fs.readFileSync(path.join(dir, 'gateway.log'), 'utf8');
+        assert.match(text, /hello from 1mcp/);
+        assert.match(text, /Failed to connect to deja: spawn deja ENOENT/);
     });
 
     test('refuses an empty, invalid or group-readable token', async () => {
