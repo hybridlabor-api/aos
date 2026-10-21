@@ -50,3 +50,21 @@ proxy so the annotation canvas and the app share an origin.
   sends it to other localhost ports including the dev app; the claim "never
   reaches upstream" holds for the proxy's forwarded requests only; (b) HTML
   buffering can hold up to 8 MB raw + 8 MB decoded per concurrent HTML response.
+
+## Decision: loopback proxy, not iframe
+
+Recorded for Annotation v2 (open decision 1 of the recovery plan, AOS 5.1 line).
+
+- Chosen: same-origin loopback reverse proxy (this file). The overlay shares
+  the app's origin, so DOM geometry for connector lines and element picking
+  is synchronous, no postMessage bridge is needed, and the app's cookies stay
+  first-party.
+- Rejected for v1: iframe of the dev URL with a cross-origin overlay. Reasons:
+  the overlay cannot be injected into a cross-origin child, node positions
+  cannot be read synchronously, and many dev apps block framing via
+  `frame-ancestors` or `X-Frame-Options`.
+- Iframe stays a documented non-goal, reconsidered only if an app cannot be
+  proxied (for example binary or preview harnesses).
+- Status: the proxy and guard modules are implemented; they are not yet wired
+  into the `aos-plan-canvas annotate` CLI, which still serves the scriptTag
+  path. Wiring it is open work.
