@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// aos-hook-version: 8
+// aos-hook-version: 9
 /**
  * memB ambient memory hook for Claude Code, Google Antigravity, and OpenAI Codex.
  *
@@ -23,6 +23,12 @@
  * identity on the first invocation of a conversation (cached per
  * conversationId); later invocations recall FTS hits only.
  *
+ * Per-prompt semantic recall (memory.promptRecall = "semantic", the default):
+ * each non-trivial prompt also asks memB's own vector + BM25 search through
+ * memb-recall.py, under a 400 ms budget, keeps hits above a relevance
+ * threshold, and adds at most 5 lines / ~600 tokens. "fulltext" keeps only the
+ * keyword recall; "off" disables per-prompt recall entirely.
+ *
  * Fails open: any error exits 0 silently.
  */
 
@@ -30,13 +36,72 @@ import { readFileSync, existsSync, realpathSync, mkdirSync, writeFileSync } from
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 const COLLECTION = 'bdb_agent_memory';
 const DEFAULT_GROUP_IDS = 'bdb_developer';
 const PROJECT_ROW_CAP = 5;
 const ROW_CHARS = 180;
 const failOpen = () => process.exit(0);
+
+// Per-prompt semantic recall limits. The score threshold is a conservative
+// starting point; calibrate it against real memB scores before relying on it.
+export const PROMPT_RECALL_MODES = ['semantic', 'fulltext', 'off'];
+export const SEMANTIC_BUDGET_MS = 400;
+export const SEMANTIC_MIN_SCORE = 0.45;
+export const SEMANTIC_MAX_HITS = 5;
+export const SEMANTIC_TOKEN_CHARS = 2400; // ~600 tokens at ~4 chars per token
+const SEMANTIC_LINE_CHARS = 240;
+
+// Standing rule, injected once at SessionStart next to the write hint (shared by every harness that reuses this block).
+export const MEMB_RECALL_RULE = '- For questions about projects, people, the company, earlier decisions or preferences: query memB first (memb search / the memB MCP tool), then answer.';
+
+// memory.promptRecall from ~/.aos/v5-settings.json; anything unknown means the default "semantic".
+export function promptRecallMode(home = os.homedir()) {
+  try {
+    const v = JSON.parse(readFileSync(path.join(home, '.aos', 'v5-settings.json'), 'utf8'))?.memory?.promptRecall;
+    if (PROMPT_RECALL_MODES.includes(v)) return v;
+  } catch {}
+  return 'semantic';
+}
+
+// Prompts too short or too structural to recall anything useful for (slash commands included).
+export const isTrivialPrompt = (prompt) => {
+  const t = String(prompt || '').trim();
+  return t.length < 15 || t.startsWith('/');
+};
+
+// Where memb-recall.py and the memB engine live: the first candidate with a venv python and run.py.
+// Null when memB is not installed; the caller then skips semantic recall silently.
+export function membSearchTarget({ home = os.homedir(), env = process.env, exists = existsSync, hookDir = path.dirname(fileURLToPath(import.meta.url)) } = {}) {
+  const win = process.platform === 'win32';
+  const helper = path.join(hookDir, 'memb-recall.py');
+  if (!exists(helper)) return null;
+  const dirs = [env.MEMB_MCP_DIR, path.join(home, '.gemini', 'config', 'mcps', 'memb-mcp'), path.join(home, '.agents', 'mcps', 'memb-mcp'), path.join(home, '.agents', 'memB')];
+  for (const d of dirs.filter(Boolean)) {
+    const py = path.join(d, '.venv', win ? 'Scripts' : 'bin', win ? 'python.exe' : 'python');
+    if (exists(py) && exists(path.join(d, 'run.py'))) return { python: py, helper, memb: d };
+  }
+  return null;
+}
+
+// memB semantic hits for one prompt: [{ memory, score }] above minScore. A timeout, a missing
+// engine, a non-zero exit or unparsable output all yield [] (no error, no injection).
+export function semanticRecall({ prompt, python, helper, memb, run = spawnSync, budgetMs = SEMANTIC_BUDGET_MS, minScore = SEMANTIC_MIN_SCORE } = {}) {
+  if (!python || !helper || !memb) return [];
+  try {
+    const r = run(python, [helper, String(SEMANTIC_MAX_HITS), memb], {
+      input: String(prompt).slice(0, 500), encoding: 'utf8', timeout: budgetMs,
+      stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true,
+    });
+    if (!r || r.error || r.status !== 0 || !r.stdout) return [];
+    const list = JSON.parse(String(r.stdout));
+    if (!Array.isArray(list)) return [];
+    return list.filter((h) => h && typeof h.memory === 'string' && h.memory && Number(h.score) >= minScore);
+  } catch {
+    return [];
+  }
+}
 
 // `deja wip --json` run in the project root, rendered as context lines.
 // Best-effort: deja missing, slow, or silent yields []. Windows needs a shell
@@ -262,7 +327,11 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
 
   const contextItems = [];
   let statusCount = 0;
-  if (sessionStart) contextItems.push(MEMB_WRITE_HINT);
+  const recallMode = promptRecallMode();
+  if (sessionStart) {
+    contextItems.push(MEMB_WRITE_HINT);
+    if (recallMode !== 'off') contextItems.push(MEMB_RECALL_RULE);
+  }
 
   // 1. Standing facts, if the user keeps any. Skipped on UserPromptSubmit:
   //    they were already injected at SessionStart.
@@ -387,7 +456,7 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
     //    single common word can no longer drag in unrelated documents. Hits
     //    are scoped to the current project (or global memories), and raw
     //    imported file chunks (`[repo | file | path]` prefix) are skipped.
-    if (!sessionStart && prompt.length > 5) {
+    if (!sessionStart && recallMode !== 'off' && prompt.length > 5) {
       try {
         const terms = pickTerms(prompt);
         if (terms.length >= 2) {
@@ -427,6 +496,25 @@ export async function buildMemoryBlock({ event = '', prompt = '', cwd, userId, i
           }
         }
       } catch { /* FTS table may not exist on an empty store */ }
+    }
+
+    // 4b. Semantic recall: memB's vector + BM25 search for this prompt, under a
+    //     hard time budget. Deduped against the FTS hits above; capped at
+    //     SEMANTIC_MAX_HITS lines and SEMANTIC_TOKEN_CHARS characters.
+    if (promptSubmit && recallMode === 'semantic' && !isTrivialPrompt(prompt)) {
+      const target = membSearchTarget();
+      const hits = target ? semanticRecall({ prompt, ...target }) : [];
+      let chars = 0;
+      let taken = 0;
+      for (const h of hits) {
+        if (taken >= SEMANTIC_MAX_HITS) break;
+        const text = h.memory.slice(0, SEMANTIC_LINE_CHARS);
+        if (chars + text.length > SEMANTIC_TOKEN_CHARS) break;
+        if (contextItems.some((e) => e.includes(text.slice(0, 50)))) continue;
+        contextItems.push(`- Relevant memory: ${text}`);
+        chars += text.length;
+        taken++;
+      }
     }
 
     // 5. deja: what the last session in this project was doing. memB holds

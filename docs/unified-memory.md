@@ -50,6 +50,20 @@ One hook, `memb-inject.mjs`, serves every harness; deja, OpenWiki and codebase-m
 - **Per prompt:** only full-text hits that share at least two prompt terms. A hit without a project is
   injected only if it relates to this project or prompt: project cards must name the project, other
   categories (branding, mail, ...) must match a project id or a prompt term.
+- **Per prompt, semantic (default):** a non-trivial prompt (15+ characters, not a slash command) also
+  asks memB's own search (`search_memory` in the memB engine: local embeddings plus BM25) through
+  `memb-recall.py`. Hard budget 400 ms; a timeout, a missing memB or an engine error skips it silently.
+  Only hits scoring at least 0.45 are kept, deduped against the full-text hits, at most 5 lines and about
+  600 tokens (2400 characters), shown as `- Relevant memory: ...`. The 0.45 threshold is a starting
+  point; calibrate it against real scores.
+- **Standing rule:** the SessionStart block carries one line telling the agent to query memB first for
+  questions about projects, people, the company, earlier decisions or preferences. Shared text, so
+  Claude Code, Codex, Antigravity and OpenCode all get it once per session.
+- **Setting `memory.promptRecall`** in `~/.aos/v5-settings.json` (no CLI setter yet):
+  - `"semantic"` (default): full-text plus semantic recall per prompt, as above.
+  - `"fulltext"`: full-text recall only; the engine is never started per prompt.
+  - `"off"`: no per-prompt recall at all; the start context and the standing rule are unchanged.
+  Unknown values fall back to `semantic`.
 - **Pull more:** the session hint (`aos-session-hint.mjs`, all four harnesses) ends with one line naming
   the installed tools: `memb search`, `deja search`, `openwiki_search`, `codebase_memory_mcp`. Tools that
   are not installed, or whose package is in the `disabled` list, are left out; AOS works with none of them.
