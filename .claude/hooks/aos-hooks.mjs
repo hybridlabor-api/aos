@@ -37,10 +37,10 @@ export const REGISTRY = {
   'a2a-session.mjs': { budgetMs: 4000, run: async (c) => (await import('./a2a-session.mjs')).hook(c.input, { harness: 'claude' }) },
   'trail-autostart.mjs': { tools: SUBAGENT, run: async (c) => (await import('./trail-autostart.mjs')).hook(c.input) },
   // timeoutMs 150: the POST goes to loopback; a hung map must not slow the hot path by more than that.
-  'trail-relay.mjs': { budgetMs: 400, run: async (c) => (await import('./trail-relay.mjs')).hook(c.input, { agent: 'claude', event: c.event, timeoutMs: 150 }) },
+  'trail-relay.mjs': { relay: true, budgetMs: 400, run: async (c) => (await import('./trail-relay.mjs')).hook(c.input, { agent: 'claude', event: c.event, timeoutMs: 150 }) },
 };
 
-const COVERED = new Set([...BASH, ...FILE_TOOLS, ...SUBAGENT]);
+export const COVERED = new Set([...BASH, ...FILE_TOOLS, ...SUBAGENT]);
 const NONE = { code: 0, stdout: '', stderr: '' };
 const parse = (raw) => { try { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 
@@ -81,13 +81,16 @@ export async function dispatch(event, names, raw, registry = REGISTRY, { rest = 
   // Unparseable input on PreToolUse: only the gates run, and they decide on the raw text (go-gate denies).
   const wanted = picked.filter(([, m]) => (input || !m || m.gate)
     && !(event === 'PreToolUse' && tool && m.tools && !m.tools.has(tool))
-    && !(rest && event === 'PreToolUse' && COVERED.has(tool)));
+    // one relay per call: matcher entries relay their own tools, the catch-all (--rest) the others and tool-less payloads
+    && !(m.relay && event === 'PreToolUse' && (rest ? COVERED.has(tool) : !tool)));
   const ordered = [...wanted.filter(([, m]) => m.gate), ...wanted.filter(([, m]) => !m.gate)];
 
   const blocks = [];
   const outs = [];
   let err = '';
+  let relayOnly = false;
   for (const [name, m] of ordered) {
+    if (relayOnly && !m.relay) continue;
     let r;
     try {
       const ctx = { event, raw, input: input ? { hook_event_name: event, ...input } : null };
@@ -98,10 +101,21 @@ export async function dispatch(event, names, raw, registry = REGISTRY, { rest = 
     if (r.stderr) err += r.stderr;
     if (r.code === 2 || (m.closed && r.code !== 0)) blocks.push(r);
     else if (r.stdout) outs.push(r.stdout);
-    if (blocks.length && event === 'PreToolUse') break; // the first PreToolUse block ends the run
+    // the first PreToolUse block ends the run, except that the (bounded, fail-open) relay still shows the denied call
+    if (blocks.length && event === 'PreToolUse') relayOnly = true;
   }
   if (blocks.length) return { code: 2, stdout: blocks.map((b) => b.stdout).join(''), stderr: err };
   return { code: 0, stdout: mergeOutputs(outs), stderr: err };
+}
+
+// dispatch never throws by design; if it does, a run that holds the fail-closed gate blocks, any other passes.
+export async function safeDispatch(...args) {
+  try {
+    return await dispatch(...args);
+  } catch (e) {
+    const closed = (args[1] || []).some((n) => REGISTRY[n]?.closed);
+    return closed ? { code: 2, stdout: '', stderr: `Blocked by aos-hooks: internal error, failing closed: ${String(e?.message || e).slice(0, 200)}\n` } : NONE;
+  }
 }
 
 function flush({ code, stdout, stderr }) {
@@ -120,13 +134,5 @@ if (isMain()) {
   // Unreadable stdin is not an empty payload: the sentinel is not JSON, so go-gate denies like `node go-gate.mjs` does.
   let raw = '\0unreadable hook input';
   try { raw = readFileSync(0, 'utf8'); } catch { /* sentinel stays */ }
-  let result;
-  try {
-    result = await dispatch(event, names, raw, REGISTRY, { rest: rest.includes('--rest') });
-  } catch (e) {
-    // dispatch never throws by design; if it does, a run that holds the fail-closed gate blocks, any other passes.
-    const closed = names.some((n) => REGISTRY[n]?.closed);
-    result = closed ? { code: 2, stdout: '', stderr: `Blocked by aos-hooks: internal error, failing closed: ${String(e?.message || e).slice(0, 200)}\n` } : NONE;
-  }
-  flush(result);
+  flush(await safeDispatch(event, names, raw, REGISTRY, { rest: rest.includes('--rest') }));
 }

@@ -15,7 +15,7 @@ const HOOKS = path.join(ROOT, '.claude', 'hooks');
 const DISPATCHER = path.join(HOOKS, 'aos-hooks.mjs');
 const RELAY = path.join(HOOKS, 'trail-relay.mjs');
 const require = createRequire(import.meta.url);
-const { dispatch, mergeOutputs, REGISTRY } = await import(pathToFileURL(DISPATCHER).href);
+const { dispatch, safeDispatch, mergeOutputs, REGISTRY, COVERED } = await import(pathToFileURL(DISPATCHER).href);
 const relay = await import(pathToFileURL(RELAY).href);
 
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), `aos-disp-${p}-`));
@@ -35,6 +35,45 @@ test('a gate block exits 2 with the gate message and no later module can undo or
   assert.match(r.stderr, /Blocked by fake gate: no GO/);
   assert.equal(r.stdout, '', 'no context is delivered with a block');
   assert.deepEqual(calls, ['gate'], 'gates run before the rest; the first PreToolUse block ends the run');
+});
+
+test('a blocked call is still relayed, and nothing else runs after the block', async () => {
+  const calls = [];
+  const registry = {
+    gate: { gate: true, run: async () => { calls.push('gate'); return { code: 2, stdout: '', stderr: 'Blocked by fake gate\n' }; } },
+    cc: { gate: true, run: async () => { calls.push('cc'); return ok(); } },
+    ctx: { run: async () => { calls.push('ctx'); return ok(); } },
+    relay: { relay: true, run: async () => { calls.push('relay'); throw new Error('map is down'); } },
+  };
+  const r = await dispatch('PreToolUse', ['relay', 'ctx', 'cc', 'gate'], payload(), registry);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /Blocked by fake gate/);
+  assert.deepEqual(calls, ['gate', 'relay'], 'a failing relay stays fail-open');
+});
+
+test('a tool-less PreToolUse payload is relayed once: by the catch-all entry only', async () => {
+  const seen = [];
+  const registry = { relay: { relay: true, run: async () => { seen.push('relay'); return ok(); } } };
+  const noTool = JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 's' });
+  await dispatch('PreToolUse', ['relay'], noTool, registry);
+  assert.deepEqual(seen, [], 'matcher entries never relay it');
+  await dispatch('PreToolUse', ['relay'], noTool, registry, { rest: true });
+  assert.deepEqual(seen, ['relay']);
+});
+
+test('COVERED is exactly the union of the non-catch-all PreToolUse matchers of the template', () => {
+  const tpl = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'claude-hooks.json'), 'utf8')).hooks;
+  const union = tpl.PreToolUse.filter((e) => e.matcher).flatMap((e) => e.matcher.split('|'));
+  assert.deepEqual([...COVERED].sort(), [...new Set(union)].sort());
+});
+
+test('an unexpected dispatcher throw fails closed with go-gate in the run and open otherwise', async () => {
+  const broken = null; // registry[n] throws inside dispatch
+  const closed = await safeDispatch('PreToolUse', ['go-gate.mjs', 'trail-relay.mjs'], payload(), broken);
+  assert.equal(closed.code, 2);
+  assert.match(closed.stderr, /failing closed/);
+  const open = await safeDispatch('PostToolUse', ['trail-relay.mjs'], payload(), broken);
+  assert.deepEqual(open, { code: 0, stdout: '', stderr: '' });
 });
 
 test('the real go-gate blocks a guarded command through the dispatcher (exit 2, its message on stderr)', () => {
@@ -60,7 +99,7 @@ test('unreadable stdin on a gate event is denied by go-gate, not read as an empt
 
 test('the catch-all relay entry (--rest) skips the tools the other PreToolUse entries relayed', async () => {
   const seen = [];
-  const registry = { relay: { run: async (c) => { seen.push(c.input.tool_name); return ok(); } } };
+  const registry = { relay: { relay: true, run: async (c) => { seen.push(c.input.tool_name); return ok(); } } };
   for (const tool of ['Bash', 'Write', 'MultiEdit', 'Agent', 'Task', 'Read', 'mcp__x__y']) {
     await dispatch('PreToolUse', ['relay'], payload({ tool_name: tool }), registry, { rest: true });
   }
