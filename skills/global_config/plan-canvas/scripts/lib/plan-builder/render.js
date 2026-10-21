@@ -1212,7 +1212,13 @@ function renderDocument(blocks, ctx) {
 }
 
 function themeCss() {
-  return fs.readFileSync(path.join(__dirname, 'theme.css'), 'utf8');
+  let tokens = '';
+  try {
+    tokens = fs.readFileSync(path.join(__dirname, 'aos-tokens.css'), 'utf8');
+  } catch {
+    // shortcut: theme.css keeps its own fallbacks when the token file is missing, so pages still render
+  }
+  return tokens + fs.readFileSync(path.join(__dirname, 'theme.css'), 'utf8');
 }
 
 function boardScript() {
