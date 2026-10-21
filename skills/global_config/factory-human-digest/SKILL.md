@@ -83,8 +83,10 @@ an empty queue.
   ask the user; never create it or guess sources.
 - Nothing in the config can open the AOS GO gate. `git push`, `gh pr merge`,
   `gh release create` and every external write (reply, comment, approval, close,
-  status change, notification) need the user's literal GO for that exact action.
+  status change, notification) need the action policy to allow it while the
+  go-gate is off, otherwise the user's literal GO for that exact action.
   Prepare the change or draft text, show it, and stop.
 - Scheduled or unattended runs are read-only. Report; do not act.
+- The agent never types `gogate`, never changes the gate mode and never grants itself a GO.
 - Connectors are whatever the host already exposes. Do not install or register
   integrations or MCP servers.
