@@ -5,7 +5,8 @@
     "techlead",
     "reviewer",
     "builder",
-    "scout"
+    "scout",
+    "advisor"
   ],
   "targets": {
     "claude": {
@@ -78,6 +79,13 @@
       "agy",
       "claude",
       "codex",
+      "claude-glm"
+    ],
+    "advisor": [
+      "claude",
+      "codex",
+      "agy",
+      "opencode-go",
       "claude-glm"
     ]
   },

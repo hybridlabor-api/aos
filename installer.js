@@ -1632,6 +1632,7 @@ function buildRouterPreferences(mainHarness, selectedTargets, preset = 'default'
         reviewer: orderTargets(planningFirst, selectedTargets),
         builder: orderTargets(buildFirst, selectedTargets),
         scout: orderTargets(buildFirst, selectedTargets),
+        advisor: orderTargets(planningFirst, selectedTargets),
     };
 }
 

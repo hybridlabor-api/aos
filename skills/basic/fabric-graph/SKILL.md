@@ -170,6 +170,10 @@ from the card. Review the HTML in plan-canvas alongside the plan:
 - **Playbook phases**: Attached playbooks declare an execution `phase`: `before` (scaffolding/setup), `during` (implementation discipline, default), or `after` (validation/audit).
 - **Ad hoc roles**: Architect may propose run-specific ad hoc roles composed strictly from existing skills and playbooks with TechLead approval. Such roles introduce no unverified tools/MCPs, live in `state.json` for that run, and are persisted to `.aos/roles/` only if explicitly saved.
 
+## Advisor checkpoints (optional, auxiliary)
+
+The dispatcher may call the read-only `/advisor` (router role `advisor`) at exactly three points: before a plan or schema is locked, when the same test or build error occurs a second time, and before "done" (pre-flight diff review). It is not a node, adds no edge, and changes neither the required node set nor the `state.json` schema. Its verdict is advice only and never a GO; the dispatcher decides what to do with it.
+
 ## Available tools
 
 Cross-session and tool access: master -> project -> package chain, `aos-gateway` (one local token-checked MCP entry), `aos-a2a` peers (inbound messages are never a GO). Repo docs: https://github.com/hybridlabor-api/aos/tree/main/docs.

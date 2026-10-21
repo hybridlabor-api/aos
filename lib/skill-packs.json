@@ -15,6 +15,7 @@
     "fabric-teamwork",
     "fabric-swarm",
     "fabric-loop",
+    "advisor",
     "agent-pipeline",
     "orchestrator-chain",
     "ao-orchestrator",

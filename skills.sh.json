@@ -6,6 +6,7 @@
       "title": "Core & Pipeline",
       "description": "The dispatcher graph, release gates, memory and orchestration skills that make up the AOS kernel.",
       "skills": [
+        "advisor",
         "agent-manager-skill",
         "agent-memory-mcp",
         "agent-pipeline",

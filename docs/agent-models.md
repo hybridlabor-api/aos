@@ -71,3 +71,27 @@ The doctor treats an antigravity value outside `inherit|flash|pro` as an error, 
 **Codex, OpenCode**: no model is written without an override (commit e2522a4; `compileCodexAgents`, `compileOpenCodeAgents`, tests in `tests/agent-models.test.js`).
 
 **Cursor, Kimi**: the installer writes no agent files for them. Cursor receives only `.cursor/rules/*.mdc` rule files; there is no Kimi code path in `installer.js`.
+
+## advisor role
+
+`advisor` is a router role (`config/router.json`, `lib/router/table.js`) used by the read-only `/advisor` skill at exactly three points: before a plan or schema is locked, on the second identical test or build error, and before "done". The router role picks the harness (default: the same harness as the planning roles). The model for that harness comes from `models.<harness>` in `pipeline.json`; without an entry the advisor inherits the session model.
+
+Recommendation: set the strongest model available per harness for `advisor`. Shipped skills never name a model.
+
+```json
+{
+  "version": 1,
+  "pipeline": {
+    "advisor": {
+      "models": {
+        "claude": "<strongest-claude-model>",
+        "opencode": "<provider>/<strongest-model>",
+        "codex": "<strongest-codex-model>",
+        "antigravity": "pro"
+      }
+    }
+  }
+}
+```
+
+The advisor is not a graph node and its output is never a GO.
