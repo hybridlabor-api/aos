@@ -1,27 +1,30 @@
 /*
  * Plan Builder theme — inlined into plan.builder.html.
- * Dark theme, one purple accent (#9b30c4),
- * 1px borders, rounded cards. No other accent hues.
+ * Lanes dark theme on aos-tokens.css: obsidian steps, the shared green accent,
+ * accent text, links and edges use the accent; lila (#9b30c4 fallback) stays the focus ring only.
+ * Fallback values apply when the token file is missing.
  */
 
 :root {
-  --paper: #0a0a0a;
-  --panel: #121212;
-  --card: #161616;
-  --card-hi: #1c1c1c;
-  --line: #262626;
-  --line-soft: #1e1e1e;
-  --ink: #ffffff;
-  --ink-2: #b8b8b8;
-  --ink-3: #7a7a7a;
-  --accent: #9b30c4;
-  --accent-2: #c05ee6;
-  --accent-soft: rgba(155, 48, 196, 0.16);
-  --radius: 10px;
-  --radius-sm: 6px;
-  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
-  --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', ui-monospace, Menlo, monospace;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --paper: var(--aos-bg, #0a0a0a);
+  --panel: var(--aos-surface, #121212);
+  --card: var(--aos-surface-2, #1a1a1a);
+  --card-hi: var(--aos-surface-3, #242424);
+  --line: var(--aos-border, #2a2a2a);
+  --line-soft: var(--aos-line, #1e1e1e);
+  --ink: var(--aos-text, #f3f3f3);
+  --ink-2: var(--aos-muted, #a4a4a4);
+  --ink-3: var(--aos-faint, #858585);
+  --accent: var(--aos-accent, #9b30c4);
+  --accent-ink: var(--aos-accent-ink, #ffffff);
+  --accent-2: var(--aos-accent, #c05ee6);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --radius: 12px;
+  --radius-sm: 7px;
+  --font: var(--aos-font-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  --mono: var(--aos-font-mono, ui-monospace, Menlo, monospace);
+  --shadow: var(--aos-shadow-card, 0 1px 2px rgba(0, 0, 0, 0.6));
+  --shadow-focus: var(--aos-shadow-focus, 0 0 0 1px #9b30c4);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -52,7 +55,7 @@ code { font-family: var(--mono); font-size: 0.86em; background: var(--card); bor
   background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
-.topbar .mark { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); flex: none; }
+.topbar .mark { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); flex: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 .topbar .title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 .topbar .status {
   font: 600 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em;
@@ -79,16 +82,19 @@ body.nav-collapsed .sidenav { display: none; }
   background: var(--paper);
 }
 .sidenav h2 {
-  font: 600 10px/1 var(--font); text-transform: uppercase; letter-spacing: 0.1em;
+  font: 500 12px/1 var(--font);
   color: var(--ink-3); margin-bottom: 10px;
 }
 .sidenav ol { list-style: none; }
 .sidenav li { margin: 0; }
 .sidenav a {
-  display: block; padding: 4px 8px; border-left: 1px solid var(--line);
+  position: relative; display: block; padding: 5px 8px 5px 14px; border-left: 0; border-radius: 7px;
   color: var(--ink-2); font-size: 12.5px; line-height: 1.4; border-bottom: 0;
+  transition: background var(--aos-motion-fast, 160ms) ease-out, color var(--aos-motion-fast, 160ms) ease-out;
 }
-.sidenav a:hover { color: var(--ink); border-left-color: var(--accent); background: var(--accent-soft); }
+.sidenav a::before { content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 2px; border-radius: 2px; background: var(--line); }
+.sidenav a:hover { color: var(--ink); background: var(--card-hi); }
+.sidenav a:hover::before { background: var(--accent); }
 .sidenav a.lvl3 { padding-left: 20px; font-size: 12px; color: var(--ink-3); }
 .sidenav .empty { color: var(--ink-3); font-size: 12px; }
 
@@ -125,11 +131,13 @@ h4.sec { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; col
 }
 
 .card {
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  position: relative; background: var(--card); border: 0; border-radius: var(--radius);
   padding: 16px 18px; box-shadow: var(--shadow);
+  transition: box-shadow var(--aos-motion-settle, 420ms) var(--aos-ease-out, ease-out);
 }
+.card:target, .card:focus-within { box-shadow: var(--shadow-focus); }
 .card > .label {
-  display: inline-block; font: 600 10px/1 var(--font); text-transform: uppercase; letter-spacing: 0.1em;
+  display: inline-block; font: 400 11px/1 var(--mono);
   color: var(--ink-3); margin-bottom: 8px;
 }
 .card.flush { padding: 0; overflow: hidden; }
@@ -137,7 +145,7 @@ h4.sec { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; col
 .columns { display: grid; gap: 16px; grid-template-columns: 1fr; }
 @media (min-width: 900px) { .columns.cols-2 { grid-template-columns: 1fr 1fr; } }
 
-.group { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--card); }
+.group { border: 0; border-radius: var(--radius); overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
 .group > .group-label {
   font: 600 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--ink-2); background: var(--card-hi); border-bottom: 1px solid var(--line); padding: 8px 12px;
@@ -355,7 +363,7 @@ pre.mermaid.mermaid-unrendered::before {
 .k-title { font-size: 17px; font-weight: 700; color: var(--ink); }
 .k-section-label { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--k-mute); }
 .k-btn { display: inline-block; padding: 3px 10px; border: 1px solid var(--k-line); border-radius: 6px; font-size: 12px; color: var(--ink-2); }
-.k-btn.on { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+.k-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .k-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .k-chip { padding: 1px 9px; border: 1px solid var(--k-line); border-radius: 999px; font-size: 11.5px; color: var(--ink-2); }
 .k-chip.on { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
