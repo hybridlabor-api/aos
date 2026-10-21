@@ -16,7 +16,7 @@ import { norm, probePorts, mainRoot, gitRoots, listWorktrees, selectPlan, PROTOC
 import { parsePlan, lintPlan, tickTask } from '../lib/plan.mjs'
 import { emit as emitEvent, buildEvent } from '../lib/events.mjs'
 import { enrolRefusal, createEnrolCode } from '../lib/click.mjs'
-import { embedAncestors, securityHeaders, csrfToken, hostOk as strictHostOk, originOk, sameOriginFetchSite, contentTypeOk, csrfOk } from '../lib/httpguard.mjs'
+import { embedAncestors, securityHeaders, csrfToken, hostOk as strictHostOk, corsRead, loadCorsOrigins, originOk, sameOriginFetchSite, contentTypeOk, csrfOk } from '../lib/httpguard.mjs'
 import { sideModel, publicModel, decide, DecisionError } from '../lib/sidepanel.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -948,9 +948,11 @@ watchCodeStamp({
   stamp: ownStamp,
   server: () => server, // declared below; read only when a restart happens
 })
+const CORS_EXTRA = loadCorsOrigins()
 const server = http.createServer((req, res) => {
   lastSeen = Date.now()
   const u = new URL(req.url, 'http://x')
+  if ((u.pathname === '/model' || u.pathname === '/events') && (req.method === 'OPTIONS' || req.method === 'GET') && corsRead(req, res, CORS_EXTRA, port)) return
   if (u.pathname === '/') {
     // The page builds markup with style attributes and data: icons; scripts stay 'self' only.
     securityHeaders(res, process.env, ["style-src 'self' 'unsafe-inline'", "img-src 'self' data:"])
@@ -1155,7 +1157,7 @@ const server = http.createServer((req, res) => {
   } else if (u.pathname === '/answer' && req.method === 'POST') {
     // AOS patch: ask engine, CSRF-hard. Requires exact `content-type: application/json`
     // (foreign form posts die here; cross-origin fetches die in the preflight this
-    // server never answers — no OPTIONS handler, no Access-Control-* headers anywhere)
+    // route never answers — Access-Control-* exists only on the read-only GET /model and /events)
     // and, when an `origin` header is present, it must be the map's own
     // http://localhost:<port> / http://127.0.0.1:<port>. Non-browser local callers
     // (AO, scripts) legitimately send no Origin and stay allowed. Loopback-only bind.

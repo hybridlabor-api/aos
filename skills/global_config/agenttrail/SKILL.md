@@ -63,6 +63,18 @@ The AOS installer registers `.claude/hooks/trail-relay.mjs --agent <harness>` fo
 
 A component's `url:` may be a path under `production_artifacts/` — the map serves that folder, so e.g. `url: production_artifacts/00_architecture.html` opens the archify diagram from the card.
 
+## Cross-origin reads (local apps)
+
+`GET /model` and `GET /events` (plus their `OPTIONS` preflight) send `Access-Control-Allow-Origin: <origin>` and `Vary: Origin` for loopback origins only: `localhost`, `127.0.0.1`, `[::1]`, any `*.localhost`, and `tauri://localhost` / `(http|https)://tauri.localhost`. Every other route (`/answer`, `/spawn`, `/ask/*`, click/GO) gets no `Access-Control-*` headers. The daemon still binds `127.0.0.1`, and `Host: <name>.localhost:<port>` is accepted on the guarded routes.
+
+To allow more origins, create `~/.aos/agenttrail.json` (read at daemon start, never written or removed by AOS installers):
+
+```json
+{ "corsOrigins": ["http://my-dashboard.example:3000"] }
+```
+
+Entries are exact origins added to the defaults; the single entry `"*"` allows any origin on the two read-only routes. A malformed file logs one line and falls back to the defaults. `AOS_TRAIL_CORS_ORIGINS` (comma list) overrides the file.
+
 ## Stop
 
 The daemon runs until its terminal/process ends; `aos-trail up` relaunches saved boards.
