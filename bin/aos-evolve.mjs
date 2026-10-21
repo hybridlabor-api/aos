@@ -8,6 +8,7 @@ import {
   isEvolveDisabled,
   disableEvolve,
   enableEvolve,
+  confirmEnable,
   loadFailures,
   resolveFailureStorePath,
 } from '../lib/evolve/capture.mjs';
@@ -99,6 +100,11 @@ export async function main(args = process.argv.slice(2)) {
   }
 
   if (cmd === 'enable') {
+    const confirmation = await confirmEnable();
+    if (!confirmation.ok) {
+      process.stderr.write(`Error: ${confirmation.reason}\n`);
+      return 1;
+    }
     const removed = enableEvolve();
     process.stdout.write(removed ? 'AOS Evolve re-enabled.\n' : 'AOS Evolve was not disabled.\n');
     return 0;

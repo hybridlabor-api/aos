@@ -12,6 +12,9 @@ import {
   loadFailures,
   saveFailures,
   resolveFailureStorePath,
+  acquireStoreLock,
+  withStoreLock,
+  confirmEnable,
 } from '../lib/evolve/capture.mjs';
 import { main as cliMain } from '../bin/aos-evolve.mjs';
 
@@ -268,5 +271,81 @@ describe('AOS Evolve Failure Capture Engine (WP2)', () => {
     } finally {
       process.stderr.write = origWrite;
     }
+  });
+
+  test('R2-5: acquireStoreLock provides mutual exclusion with O_EXCL and cleans up lockfile', () => {
+    const lock1 = acquireStoreLock(testStorePath, { baseDir: path.dirname(testStorePath) });
+    assert.ok(fs.existsSync(`${testStorePath}.lock`), 'lock file must exist after acquire');
+
+    // Attempting second acquire with short timeout must time out
+    assert.throws(
+      () => acquireStoreLock(testStorePath, { baseDir: path.dirname(testStorePath), maxWaitMs: 50 }),
+      /Timed out waiting for store lock/,
+      'must throw timeout when lock is already held'
+    );
+
+    lock1.release();
+    assert.ok(!fs.existsSync(`${testStorePath}.lock`), 'lock file must be unlinked on release');
+
+    // After release, new lock can be acquired immediately
+    const lock2 = acquireStoreLock(testStorePath, { baseDir: path.dirname(testStorePath) });
+    lock2.release();
+  });
+
+  test('R2-5: acquireStoreLock cleans up stale locks exceeding timeout', () => {
+    const lockFile = `${testStorePath}.lock`;
+    fs.writeFileSync(lockFile, '99999\n', 'utf8');
+
+    // Set mtime to 10 seconds ago
+    const past = new Date(Date.now() - 10000);
+    fs.utimesSync(lockFile, past, past);
+
+    // acquireStoreLock should detect stale lock, unlink, and acquire successfully
+    const lock = acquireStoreLock(testStorePath, {
+      baseDir: path.dirname(testStorePath),
+      staleTimeoutMs: 1000,
+      maxWaitMs: 500,
+    });
+    assert.ok(fs.existsSync(lockFile));
+    lock.release();
+  });
+
+  test('NF-10: confirmEnable enforces interactive TTY and blocks automated harness execution', async () => {
+    // 1. Non-TTY stdin/stdout
+    const nonTtyResult = await confirmEnable({
+      stdin: { isTTY: false },
+      stdout: { isTTY: false },
+    });
+    assert.equal(nonTtyResult.ok, false);
+    assert.ok(nonTtyResult.reason.includes('TTY required') || nonTtyResult.reason.includes('TTY terminal'));
+
+    // 2. Harness environment detected
+    const harnessResult = await confirmEnable({
+      stdin: { isTTY: true },
+      stdout: { isTTY: true },
+      env: { CLAUDE_SESSION_ID: 'sess-123' },
+    });
+    assert.equal(harnessResult.ok, false);
+    assert.ok(harnessResult.reason.includes('harness session detected'));
+
+    // 3. Mismatched human confirmation
+    let stdoutBuf = '';
+    const badConfirmResult = await confirmEnable({
+      stdin: { isTTY: true },
+      stdout: { isTTY: true, write: (s) => { stdoutBuf += s; } },
+      ask: async () => 'no',
+      env: {},
+    });
+    assert.equal(badConfirmResult.ok, false);
+    assert.ok(badConfirmResult.reason.includes('confirmation does not match'));
+
+    // 4. Successful human confirmation
+    const goodConfirmResult = await confirmEnable({
+      stdin: { isTTY: true },
+      stdout: { isTTY: true, write: (s) => { stdoutBuf += s; } },
+      ask: async () => 'ENABLE',
+      env: {},
+    });
+    assert.equal(goodConfirmResult.ok, true);
   });
 });
