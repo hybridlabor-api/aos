@@ -114,13 +114,14 @@ test('gateway install removes the direct copies of gateway and adopted servers f
     const claude = path.join(home, '.claude.json');
     wj(claude, { mcpServers: {
         github: owned(home, 'github'), user_own: { command: 'node', args: ['own.js'] }, mine: { command: 'node', args: ['mine.js'] },
+        deja: owned(home, 'deja'), memb_mcp: owned(home, 'memb_mcp'),
     } });
     const ctx = {
         home, run: async () => ({ status: 0, stdout: '' }), dryRun: false, platform: 'darwin', log: () => {}, nodePath: '/n/node',
         aosRoot: ROOT, uid: 501, env: {}, sleep: async () => {}, statusFn: async () => ({ running: true, port: cfg.GATEWAY_PORT }), now: 3000,
     };
     await pkg.install(ctx);
-    assert.deepEqual(Object.keys(rj(claude).mcpServers).sort(), ['aos', 'mine']);
+    assert.deepEqual(Object.keys(rj(claude).mcpServers).sort(), ['aos', 'deja', 'memb_mcp', 'mine']);
     assert.ok(fs.readdirSync(home).some((n) => n.startsWith('.claude.json.aos-gateway-bak-')));
 });
 

@@ -42,8 +42,8 @@ test('migrateMemoryDirect adds direct memb_mcp and deja entries to Claude, Codex
     const tables = parseCodexTables(codexText);
     assert.ok(tables.memb_mcp, 'Codex has memb_mcp table');
     assert.ok(tables.deja, 'Codex has deja table');
-    assert.equal(tables.memb_mcp.command, 'node');
-    assert.ok(tables.memb_mcp.args.some((a) => a.includes('aos-mcp-env.mjs')));
+    assert.equal(tables.memb_mcp.fields.command, 'node');
+    assert.ok(tables.memb_mcp.fields.args.some((a) => a.includes('aos-mcp-env.mjs')));
 
     // 3. OpenCode
     const ocData = JSON.parse(fs.readFileSync(opencodeJson, 'utf8'));
