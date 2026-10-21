@@ -20,10 +20,11 @@ export const AOS = {
 // Redaction
 // ---------------------------------------------------------------------------
 
-const SECRET_KEY = '[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|key|authorization)[A-Za-z0-9_.-]*'
+const SECRET_KEY = '[A-Za-z0-9_.-]{0,64}(?:password|passwd|pwd|secret|token|key|authorization)[A-Za-z0-9_.-]{0,64}'
+const MAX_REDACT_LEN = 4096
 const REDACTIONS: Array<[RegExp, string]> = [
   // KEY=VALUE, KEY: VALUE, "key": "value", any identifier containing a secret word, Bearer/Basic values included
-  [new RegExp(`(["']?)(${SECRET_KEY})(\\1\\s*[:=]\\s*)("[^"]*"|'[^']*'|(?:(?:Bearer|Basic|Token)\\s+)?[^\\s,;&"'}]+)`, 'gi'), '$1$2$3[redacted]'],
+  [new RegExp(`(["']?)(${SECRET_KEY})(\\1[ \\t]*[:=][ \\t]*)("[^"\\n]*"|'[^'\\n]*'|[^\\n]+)`, 'gi'), '$1$2$3[redacted]'],
   [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, 'Bearer [redacted]'],
   [/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/g, '[redacted]'],
   [/\bgh[pousr]_[A-Za-z0-9]{20,}/g, '[redacted]'],
@@ -34,7 +35,12 @@ const REDACTIONS: Array<[RegExp, string]> = [
 
 export const shq = (text: string) => `'${String(text).replace(/'/g, `'\\''`)}'`
 
-export const redact = (text: string): string => REDACTIONS.reduce((t, [re, to]) => t.replace(re, to), String(text))
+// input is capped so the regexes stay linear on hostile long runs; an unquoted secret value masks to end of line
+export const redact = (text: string): string => {
+  const t = String(text)
+  const capped = t.length > MAX_REDACT_LEN ? `${t.slice(0, MAX_REDACT_LEN)}…` : t
+  return REDACTIONS.reduce((acc, [re, to]) => acc.replace(re, to), capped)
+}
 
 // ---------------------------------------------------------------------------
 // TTL cache (git/worktree probes)
@@ -57,7 +63,9 @@ export const createTtlCache = (ttlMs = PROBE_TTL_MS): TtlCache => {
       // in-flight probes are shared per key; a failed load is not cached
       const value = load()
       entries.set(key, { at: now, value })
-      value.catch(() => entries.delete(key))
+      value.catch(() => {
+        if (entries.get(key)?.value === value) entries.delete(key)
+      })
       return value
     },
     size: () => entries.size,
@@ -216,7 +224,7 @@ export function flowSteps(state: Pick<PipelineState, 'phase' | 'needs_human' | '
 
 export function parseGateStatus(text: string): GateState {
   const mode = /: mode (\w+)/.exec(text)?.[1]
-  const grants = [...text.matchAll(/^\s+grant (\S+) until \S+ \((-?\d+) min left/gm)].map(m => ({
+  const grants = [...text.matchAll(/^[ \t]+grant (\S+) until \S+ \((-?\d+) min left/gm)].map(m => ({
     scope: m[1]!,
     minutesLeft: Number(m[2]),
   }))

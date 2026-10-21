@@ -33,7 +33,7 @@ export type PipelineFinding = {
   summary?: string
 }
 
-export type PipelineGate = Record<string, 'pass' | 'fail' | 'skip'>
+export type PipelineGate = Record<string, 'pass' | 'fail' | 'skip' | 'unknown'>
 
 export type PipelineState = {
   run_id: string
@@ -116,6 +116,7 @@ declare module 'claude-code' {
       roleHint: string
       services: ServiceStatus[]
       message: string
+      gitError: string
       usage: UsageSnapshot | null
       frame: number
     }

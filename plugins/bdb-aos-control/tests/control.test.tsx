@@ -481,7 +481,7 @@ test('gate load failure shows unknown plus the error, never soft', () => {
 test('redact masks tokens, keys, Authorization and password=', () => {
   expect(redact('Authorization: Bearer abcdef1234567890')).toBe('Authorization: [redacted]')
   expect(redact('curl -H "Authorization: Basic dXNlcjpwYXNz" url')).not.toContain('dXNlcjpwYXNz')
-  expect(redact('db password=hunter2 ok')).toBe('db password=[redacted] ok')
+  expect(redact('db password=hunter2 ok')).toBe('db password=[redacted]')
   expect(redact('GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123')).not.toContain('ghp_')
   expect(redact('key sk-abcdefghijklmnopqrstuvwx end')).toBe('key [redacted] end')
   expect(redact('plain text stays')).toBe('plain text stays')
@@ -603,4 +603,42 @@ test('a throwing render becomes a one-line redacted error box', async ($, on) =>
   const pane = await $.ui.mount(CONTROL_MOUNT(80) as never)
   expect(JSON.stringify(await pane.drawn())).toContain('render error')
   expect(renderErrorText(new Error('x password=p'))).toBe('AOS Control: render error: x password=[redacted]')
+})
+
+test('redact caps its input and masks an unquoted value to end of line', () => {
+  const long = redact(`${'a'.repeat(100_000)}token=x`)
+  expect(long.length).toBeLessThanOrEqual(4200)
+  expect(long.endsWith('…')).toBe(true)
+  expect(redact('password=hunter 2 more\nnext line')).toBe('password=[redacted]\nnext line')
+})
+
+test('parsePipelineState validates gate values', () => {
+  const s = parsePipelineState(JSON.stringify({ phase: 'build', gate: { lint: 'pass', tests: 'FAIL!!', seo: { x: 1 }, a11y: 'skip' } }))
+  expect(s!.gate).toEqual({ lint: 'pass', tests: 'unknown', seo: 'unknown', a11y: 'skip' })
+  expect(parsePipelineState(JSON.stringify({ phase: 'build', gate: ['x'] }))!.gate).toEqual({})
+})
+
+test('redactSession validates progress numbers', () => {
+  const base = { id: 'x', name: 'w', role: 'worker', activity: 'idle', cwd: '', updatedAt: 1 }
+  expect(redactSession({ ...base, progress: { done: 9, total: 3, blocked: -1, source: 'x' } } as never).progress).toEqual({ done: 3, total: 3, blocked: 0, source: 'plan' })
+  expect(redactSession({ ...base, progress: { done: 'a', total: NaN } } as never).progress).toEqual({ done: 0, total: 0, blocked: 0, source: 'plan' })
+  expect(redactSession({ ...base, progress: 'bad' } as never).progress).toBeUndefined()
+})
+
+test('a git probe failure throws a redacted message', async () => {
+  const fake = { process: { run: async () => ({ stdout: '', stderr: 'fatal: token=abc123 denied', exitCode: 128 }) } }
+  let msg = ''
+  await buildWorktreeItems(fake as never, '/r', null).catch(e => (msg = e.message))
+  expect(msg).toBe('git probe failed: fatal: token=[redacted]')
+})
+
+test('a stale failed probe does not evict a newer entry', async () => {
+  const cache = createTtlCache(10)
+  let fail: (e: Error) => void = () => undefined
+  const first = cache.get('k', 0, () => new Promise<number>((_, rej) => (fail = rej)))
+  const second = cache.get('k', 20, async () => 2)
+  fail(new Error('late'))
+  await first.catch(() => undefined)
+  expect(await cache.get('k', 21, async () => 3)).toBe(2)
+  expect(await second).toBe(2)
 })

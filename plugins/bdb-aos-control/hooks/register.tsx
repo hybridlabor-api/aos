@@ -46,6 +46,7 @@ const ROLES: FleetRole[] = ['master', 'task-manager', 'orchestrator', 'worker']
 const tab_ = atom({ plugin: 'bdb-aos-control', key: 'tab' } as const, 'fleet' as const)
 const fleet_ = atom({ plugin: 'bdb-aos-control', key: 'fleet' } as const, [] as FleetSession[])
 const pipeline_ = atom({ plugin: 'bdb-aos-control', key: 'pipeline' } as const, null as PipelineState | null)
+const gitError_ = atom({ plugin: 'bdb-aos-control', key: 'gitError' } as const, '')
 const gitWorktrees_ = atom({ plugin: 'bdb-aos-control', key: 'gitWorktrees' } as const, [] as GitWorktreeItem[])
 const profile_ = atom({ plugin: 'bdb-aos-control', key: 'profile' } as const, null as GateProfile | null)
 const gate_ = atom({ plugin: 'bdb-aos-control', key: 'gate' } as const, { mode: 'unknown', grants: [], raw: '', error: 'not read yet' } as GateState)
@@ -235,7 +236,9 @@ export function parsePipelineState(text: string): PipelineState | null {
       phase: raw.phase,
       iteration: Number(raw.iteration ?? 0),
       max_iterations: Number(raw.max_iterations ?? 1),
-      gate: raw.gate && typeof raw.gate === 'object' ? raw.gate : {},
+      gate: raw.gate && typeof raw.gate === 'object' && !Array.isArray(raw.gate)
+        ? Object.fromEntries(Object.entries(raw.gate).map(([k, v]) => [k, v === 'pass' || v === 'fail' || v === 'skip' ? v : 'unknown']))
+        : {},
       findings: Array.isArray(raw.findings)
         ? raw.findings
             .filter((f: unknown) => f && typeof f === 'object')
@@ -356,8 +359,11 @@ export async function buildWorktreeItems(
 ): Promise<GitWorktreeItem[]> {
   // TTL cache: 1 + 2 subprocesses per worktree otherwise run on every 5 s tick
   const cached = <T,>(key: string, load: () => Promise<T>) => (cache ? cache.get(key, now, load) : load())
-  const r = await cached(`list:${root}`, () => $.process.run(['git', '-C', root, 'worktree', 'list', '--porcelain']).catch(() => null))
-  if (!r || r.exitCode !== 0) return []
+  const probeFailed = (why: string) => new Error(`git probe failed: ${redact(why).slice(0, 100)}`)
+  const r = await cached(`list:${root}`, () => $.process.run(['git', '-C', root, 'worktree', 'list', '--porcelain'])).catch(err => {
+    throw probeFailed(err instanceof Error ? err.message : String(err))
+  })
+  if (r.exitCode !== 0) throw probeFailed(r.stderr || `exit ${r.exitCode}`)
   const worktrees = parseWorktrees(r.stdout)
   const main = worktrees.find(w => !w.bare && (w.branch === 'main' || w.branch === 'master')) ?? worktrees[0]
   const mainRoot = main?.path ?? root
@@ -466,6 +472,15 @@ export const demoPipeline = (): PipelineState => ({
 const ACTIVITIES: FleetActivity[] = ['working', 'idle', 'attention']
 
 // external JSON: enums fall back safely so a malformed file can never crash a render
+const count = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.floor(x) : 0)
+
+const validProgress = (p: unknown): FleetProgress | undefined => {
+  if (!p || typeof p !== 'object') return undefined
+  const r = p as Record<string, unknown>
+  const total = count(r.total)
+  return { total, done: Math.min(count(r.done), total), blocked: count(r.blocked), source: r.source === 'tasks' ? 'tasks' : 'plan' }
+}
+
 export const redactSession = (s: FleetSession): FleetSession => {
   const name = redact(String(s.name ?? s.id ?? 'unknown'))
   return {
@@ -480,6 +495,7 @@ export const redactSession = (s: FleetSession): FleetSession => {
     ...(s.branch ? { branch: redact(String(s.branch)) } : {}),
     ...(s.trailNode ? { trailNode: redact(String(s.trailNode)) } : {}),
     cwd: redact(String(s.cwd ?? '')),
+    progress: validProgress(s.progress),
     updatedAt: Number(s.updatedAt) || 0,
   }
 }
@@ -538,8 +554,15 @@ async function loadGit($: EngineInterface) {
   const repo = await $.session.repo().catch(() => null)
   const root = (repo as { root?: string } | null)?.root ?? cwd
   const state = await read($, pipeline_)
-  const items = await buildWorktreeItems($, root, state, probeCache, await $.clock.now()).catch(() => [])
+  let items: GitWorktreeItem[] = []
+  let failure = ''
+  try {
+    items = await buildWorktreeItems($, root, state, probeCache, await $.clock.now())
+  } catch (err) {
+    failure = redact(err instanceof Error ? err.message : String(err)).slice(0, 120)
+  }
   await update($, gitWorktrees_, () => items)
+  await update($, gitError_, () => failure)
 }
 
 async function loadGate($: EngineInterface) {
@@ -762,7 +785,7 @@ async function renderDeck($: EngineInterface, e: PaneInput) {
           {ctx.segments.map((s, i) => (
             <Box key={`ctxleg-${i}`} flexDirection="row">
               <Text color={s.color}>{'■ '}</Text>
-              <Text color={AOS.text} wrap="truncate-end">{s.name}</Text>
+              <Text color={AOS.text} wrap="truncate-end">{redact(s.name)}</Text>
               <Text color={AOS.muted}>{' '}{kTokens(s.tokens)}</Text>
             </Box>
           ))}
@@ -971,10 +994,11 @@ async function renderGitBody($: EngineInterface, e: PaneInput) {
   const ui = $.ui.resolve(e)
   const { Box, Text, Button } = ui
   const items = await read($, gitWorktrees_)
+  const gitError = await read($, gitError_)
   if (items.length === 0) {
     return (
       <Box flexDirection="column">
-        <Text dimColor>No git worktrees found.</Text>
+        {gitError ? <Text color={AOS.bad} wrap="truncate-end">{gitError}</Text> : <Text dimColor>No git worktrees found.</Text>}
       </Box>
     )
   }
