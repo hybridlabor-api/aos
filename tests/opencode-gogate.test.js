@@ -168,13 +168,13 @@ describe('grants in OpenCode', () => {
         await assert.rejects(run(b.hooks, b.id, 'git push origin main'), BLOCK);
     });
 
-    test('grants are capped at 2h and only the plain form counts', async () => {
+    test('grants keep their typed duration and only the plain form counts', async () => {
         const { hooks, id } = await boot();
         seed({ [id]: null }, [{ id: 'm1', session: id, parts: [{ type: 'text', text: 'gogate grant merge 1d' }] }]);
         await say(hooks, id, 'm1', [{ type: 'text', text: 'gogate grant merge 1d' }]);
         const eff = g.effectiveGate(g.sessionKey(`oc-${id}`), { source: `opencode:${id}`, cmds: g.opencodeGogateCommands(id), opencode: true });
         assert.equal(eff.grants.length, 1);
-        assert.ok(eff.grants[0].until <= Date.now() + 2 * 3600e3 + 1000, 'capped at 2h');
+        assert.ok(eff.grants[0].until > Date.now() + 2 * 3600e3 + 1000, 'not clamped to 2h');
         await run(hooks, id, 'gh pr merge 5');
 
         const b = await boot();

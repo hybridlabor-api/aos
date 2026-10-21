@@ -98,8 +98,7 @@ git's push configuration (`git config remote...`, `GIT_CONFIG_*`,
 
 `15m`, `2h`, `1d` (24 hours is the maximum) or `session`. `session` means:
 this session id, at most 24 hours; it survives `--resume` of the same session
-and ends with a new session (`/clear`, a fresh start). On OpenCode every grant
-is capped at 2 hours. Nothing is permanent and there is no config file that
+and ends with a new session (`/clear`, a fresh start). Nothing is permanent and there is no config file that
 grants anything.
 
 ### GO with PR numbers
@@ -120,5 +119,5 @@ merge`) is not a GO.
 - On OpenCode there is no human-origin signal at all: a prompt posted to the
   local OpenCode server looks like a typed message. The gate blocks the known
   ways an agent could post one (see above; any non-GET network call to the OpenCode server's own loopback port counts, whatever the path), honours `off` and `soft` as on Claude
-  (plain form only, `off` expires after 24h) and caps grants at 2 hours, but a
+  (plain form only; `off` and grants expire as on Claude), but a
   prompt injected by other means would count.

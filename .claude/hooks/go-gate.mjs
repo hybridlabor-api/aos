@@ -2743,7 +2743,6 @@ export function claudeGogateCommands(transcriptPath) {
 
 const WEAK_HINT = "it came from a slash command, which Claude Code stores without human-origin data; type the plain form as the whole message instead, e.g. `gogate grant merge 2h` or `gogate off`";
 const OC_HINT = "OpenCode accepts only the plain form (`gogate off`, `gogate grant merge 2h`) typed as the whole message";
-export const OPENCODE_MAX_GRANT_MS = 2 * 3600e3;
 
 // Resolves mode and active grants for a session, verified against `cmds` (gogate commands
 // of the session, oldest first, each marked `strict` when it has human-origin evidence).
@@ -2754,7 +2753,7 @@ export const OPENCODE_MAX_GRANT_MS = 2 * 3600e3;
 //   the previous mode. soft/off also need their own store entry (written by go-grant), else hard.
 // - OpenCode has no human-origin signal at all (a prompt posted through the HTTP API is a
 //   plain text part), so there only the plain form counts (and the known agent routes that
-//   post a prompt are blocked); `off` is honoured like on Claude, grants last at most 2h.
+//   post a prompt are blocked); `off` and grants behave like on Claude.
 // - Grants need a strict entry after the last hard; `until` is clamped to the typed duration.
 export function effectiveGate(key, { source, cmds, opencode = false }, now = Date.now()) {
   const st = readState(key);
@@ -2798,7 +2797,7 @@ export function effectiveGate(key, { source, cmds, opencode = false }, now = Dat
     if (cmds.indexOf(c) < lastHard) { rejected.push(`grant ${g.scope} revoked by a later hard`); continue; }
     if (revokeTs && !(Number.isFinite(c.ts) && c.ts > revokeTs)) { rejected.push(`grant ${g.scope} revoked from the trail UI`); continue; }
     if (c.parsed.session && g.session_key !== key) { rejected.push(`session grant ${g.scope} belongs to another session`); continue; }
-    const until = Math.min(Date.parse(g.until), c.ts + (opencode ? Math.min(c.parsed.ms, OPENCODE_MAX_GRANT_MS) : c.parsed.ms));
+    const until = Math.min(Date.parse(g.until), c.ts + c.parsed.ms);
     if (!(now < until)) continue; // expired
     grants.push({ scope: g.scope, until, session: !!c.parsed.session });
   }
@@ -3237,7 +3236,7 @@ function clickGrants(key, now, { opencode, hardTs, revokeTs }) {
       if (p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= MAX_GRANT_MS)) continue;
       const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
       if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
-      const until = Math.min(p.expires_at, p.issued_at + (opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms));
+      const until = Math.min(p.expires_at, p.issued_at + p.ms);
       if (!(now < until) || !receiptValid(rec, cred, now)) continue;
       for (const scope of parsed.scopes) out.push({ scope, until, session: false });
     }
@@ -3318,7 +3317,7 @@ function localClickGrants(key, now, { opencode, hardTs, revokeTs }) {
       if (!r || p.issued_at <= revokeTs || p.issued_at <= hardTs || !(p.ms > 0 && p.ms <= LOCAL_GRANT_MAX_MS) || !localTimeOk(p, now) || localNever(p, r)) continue;
       const parsed = parseGogateArgs(["grant", p.scopes.join(","), "15m"]);
       if (parsed.error || parsed.scopes.length !== p.scopes.length || !p.scopes.every((s) => parsed.scopes.includes(s))) continue;
-      const until = Math.min(p.expires_at, p.issued_at + (opencode ? Math.min(p.ms, OPENCODE_MAX_GRANT_MS) : p.ms));
+      const until = Math.min(p.expires_at, p.issued_at + p.ms);
       if (now < until) for (const scope of parsed.scopes) out.push({ scope, until, session: false });
     }
   } catch { /* fail closed */ }
