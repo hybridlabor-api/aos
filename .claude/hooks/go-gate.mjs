@@ -1954,6 +1954,7 @@ const PS_CMDLET = /^(?:Get-\w+|Select-String|Select-Object|Where-Object|ForEach-
 const PS_KEYWORD = /^(?:try|catch|finally|foreach|if|else|elseif|for|while|break|continue)$/i;
 const PS_GIT = /^(?:log|status|diff|show|rev-parse|ls-files|describe|blame|shortlog)$/i;
 const PS_METHOD = /^(?:ToString|Trim|TrimEnd|TrimStart|Split|Contains|StartsWith|EndsWith|Replace|Substring|ToLower|ToUpper|IndexOf|GetType)$/i;
+const PS_OP = /^-(?:eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|is|isnot|and|or|xor|not|replace|split|join|f|ceq|cne|ieq|ine|imatch|cmatch|as)$/i;
 const PS_PLAIN = /^(?:-\S*|\$[\w:.\[\]]*|\u0001|\d+|in|\[\w.\[\]]*\])$/;
 
 export function psReadOnly(command) {
@@ -1977,9 +1978,10 @@ export function psReadOnly(command) {
     seen++;
     const words = frag.split(/\s+/), head = words[0];
     if (PS_KEYWORD.test(head)) { if (words.length > 1 && !/^catch$/i.test(head)) return false; continue; }
-    if (PS_PLAIN.test(head)) { if (!words.slice(1).every((x) => PS_PLAIN.test(x))) return false; continue; }
+    // A variable, operator or literal statement is an expression; `$SHELL -c ...` or `"x.cmd" --yes` is a command call.
+    if (/^\$[\w:.\[\]]*$/.test(head) || PS_OP.test(head)) { if (words.length > 1 && !((/^\$/.test(head) ? PS_OP.test(words[1]) : true) && words.slice(1).every((x) => PS_PLAIN.test(x)))) return false; continue; }
     if (/^git$/i.test(head)) { if (!PS_GIT.test(words[1] ?? "") || words.some((x) => /^--output/i.test(x))) return false; continue; }
-    if (/^node$/i.test(head)) { if (!/^(?:--check|-c|-v|--version)$/.test(words[1] ?? "")) return false; continue; }
+    if (/^node$/i.test(head)) { if (!(/^(?:--check|-c)$/.test(words[1] ?? "") ? words.length > 2 && words.slice(2).every((x) => !x.startsWith("-")) : /^(?:-v|--version)$/.test(words[1] ?? "") && words.length === 2)) return false; continue; }
     if (!PS_CMDLET.test(head)) return false;
     if (/^(?:Invoke-(?:WebRequest|RestMethod)|iwr|irm)$/i.test(head)) {
       for (let i = 1; i < words.length; i++) {
@@ -1995,11 +1997,15 @@ export function psReadOnly(command) {
 
 export function commandScopes(command, protectedFor = staticResolver) {
   if (nest > 3) return null;
-  const psGuarded = typeof command === "string" && PS_GUARDED.some((r) => r.test(command)); // raw text: a powershell -Command body is quoted
-  if (psGuarded) return null;
-  if (psReadOnly(command) && !neverGrantable(command) && !GUARDED_PATTERNS.some((r) => r.test(command))) return [];
   nest++;
-  try { return withBudget(() => scopesOf(winNorm(command), protectedFor), null); } finally { nest--; }
+  try {
+    return withBudget(() => {
+      tick();
+      if (typeof command === "string" && PS_GUARDED.some((r) => r.test(command))) return null; // raw text: a powershell -Command body is quoted
+      if (psReadOnly(command) && !neverGrantable(command) && !GUARDED_PATTERNS.some((r) => r.test(command))) return [];
+      return scopesOf(winNorm(command), protectedFor);
+    }, null);
+  } finally { nest--; }
 }
 
 function scopesOf(orig, protectedFor) {
