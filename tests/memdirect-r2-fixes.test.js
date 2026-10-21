@@ -125,18 +125,16 @@ test('removeMcpBackups refuses any directory other than the gateway dir of HOME'
 });
 
 // Should-fix: the uninstall-created <file>.<stamp>.bak files are pruned like the other backup markers.
-test('pruneBackups recognises the uninstall stamp backups and keeps the oldest and newest', () => {
+test('pruneBackups recognises the uninstall stamp backups and archives all of them', () => {
     const home = tmp();
     const file = path.join(home, '.claude.json');
     fs.writeFileSync(file, '{}');
-    const names = ['20261020T100000Z.bak', '20261021T100000Z.bak', '20261021T110000Z.bak'];
+    const names = ['20261020T100000Z.bak', '20261021T100000Z.bak', '20261021T110000Z.bak.1'];
     for (const n of names) fs.writeFileSync(`${file}.${n}`, '{}');
     const archive = path.join(home, 'archive');
     const moved = pruneBackups(file, archive);
-    assert.equal(moved.length, 1);
-    assert.equal(fs.existsSync(`${file}.20261020T100000Z.bak`), true, 'oldest kept');
-    assert.equal(fs.existsSync(`${file}.20261021T110000Z.bak`), true, 'newest kept');
-    assert.equal(fs.existsSync(`${file}.20261021T100000Z.bak`), false, 'middle moved out');
+    assert.equal(moved.length, 3);
+    assert.deepEqual(fs.readdirSync(home).sort(), ['.claude.json', 'archive']);
     assert.equal(fs.existsSync(moved[0]), true, 'moved into the archive');
 });
 

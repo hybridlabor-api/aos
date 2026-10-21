@@ -53,14 +53,16 @@ test('item 6: uninstall keeps an entry the user changed (command no longer the o
     assert.equal(c.memb_mcp, undefined, 'unchanged AOS entry is removed');
 });
 
-test('item 6: memory-direct backups are pruned like gateway backups (oldest and newest stay)', () => {
+test('item 6: every memory-direct and uninstall backup beside a harness file is archived, none stays in the harness dir', () => {
     const home = tmp();
     const file = path.join(home, '.claude.json');
     fs.writeFileSync(file, '{}');
     for (const t of [100, 200, 300]) fs.writeFileSync(`${file}.aos-memdirect-bak-${t}`, '{}');
-    const arch = path.join(home, 'archive');
+    fs.writeFileSync(`${file}.20261021T110511Z.bak`, '{}');
+    fs.writeFileSync(`${file}.20261021T110511Z.bak.1`, '{}');
+    const arch = path.join(tmp(), 'archive');
     const moved = pruneBackups(file, arch);
-    assert.deepStrictEqual(fs.readdirSync(home).filter((n) => n.includes('aos-memdirect-bak-')).sort(), ['.claude.json.aos-memdirect-bak-100', '.claude.json.aos-memdirect-bak-300']);
-    assert.deepStrictEqual(fs.readdirSync(arch), ['.claude.json.aos-memdirect-bak-200']);
-    assert.equal(moved.length, 1);
+    assert.deepStrictEqual(fs.readdirSync(home), ['.claude.json']);
+    assert.equal(fs.readdirSync(arch).length, 5);
+    assert.equal(moved.length, 5);
 });
